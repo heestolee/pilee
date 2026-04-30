@@ -1,0 +1,13 @@
+{
+  "name": "pilee",
+  "version": "0.1.0",
+  "description": "Personal pi coding agent config 🔥",
+  "private": true,
+  "type": "module",
+  "pi": {
+    "extensions": ["extensions"],
+    "skills": ["skills"],
+    "prompts": ["prompts"],
+    "themes": ["themes"]
+  }
+}
