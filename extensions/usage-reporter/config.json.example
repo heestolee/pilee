@@ -1,0 +1,5 @@
+{
+  "endpoint": "https://your-metrics-endpoint.example.com",
+  "token": "your-api-token",
+  "user": "your-name"
+}
