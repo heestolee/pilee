@@ -9,5 +9,8 @@
     "skills": ["skills"],
     "prompts": ["prompts"],
     "themes": ["themes"]
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.0"
   }
 }
