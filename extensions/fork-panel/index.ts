@@ -10,7 +10,61 @@ const VALID_DIRS = ["right", "left", "down", "up", "tab"] as const;
 type Direction = (typeof VALID_DIRS)[number];
 
 const HANDOFF_DIR = join(homedir(), ".pi", "agent", "fork-panel");
+const RECENT_PATH = join(HANDOFF_DIR, "recent.json");
 const HANDOFF_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+const RECENT_KEEP = 50;
+
+interface ForkRecord {
+	forkId: string;
+	label: string;
+	sessionFile: string;
+	cwd: string;
+	createdAt: number;
+	closedAt?: number;
+	preview?: string;
+}
+
+function loadRecent(): Record<string, ForkRecord> {
+	try {
+		if (!existsSync(RECENT_PATH)) return {};
+		return JSON.parse(readFileSync(RECENT_PATH, "utf8"));
+	} catch { return {}; }
+}
+
+function saveRecent(data: Record<string, ForkRecord>) {
+	const entries = Object.entries(data)
+		.sort((a, b) => b[1].createdAt - a[1].createdAt)
+		.slice(0, RECENT_KEEP);
+	mkdirSync(HANDOFF_DIR, { recursive: true });
+	writeFileSync(RECENT_PATH, JSON.stringify(Object.fromEntries(entries), null, 2));
+}
+
+function recordFork(rec: ForkRecord) {
+	const all = loadRecent();
+	all[rec.forkId] = rec;
+	saveRecent(all);
+}
+
+function markForkClosed(forkId: string, preview: string) {
+	const all = loadRecent();
+	const rec = all[forkId];
+	if (!rec) return;
+	rec.closedAt = Date.now();
+	rec.preview = preview.slice(0, 100);
+	saveRecent(all);
+}
+
+function readTranscriptFromFile(sessionFile: string): string | null {
+	try {
+		const raw = readFileSync(sessionFile, "utf8");
+		const entries = raw.split("\n").filter(Boolean).map((l) => {
+			try { return JSON.parse(l); } catch { return null; }
+		}).filter(Boolean);
+		return extractFullTranscript(entries);
+	} catch {
+		return null;
+	}
+}
 
 function esc(s: string): string {
 	return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -298,8 +352,10 @@ export default function (pi: ExtensionAPI) {
 				const pidDead = data.pid && !isPidAlive(data.pid);
 				if (!finished && !pidDead) return;
 
-				const message = `[fork-panel handoff: ${label}]\n\n${data.summary}`;
+				const hint = `\n\n💡 전체 transcript이 필요하면: /recall ${forkId}  또는  /recall last`;
+				const message = `[fork-panel handoff: ${label}]\n\n${data.summary}${hint}`;
 				pi.sendUserMessage(message, { deliverAs: "followUp" });
+				markForkClosed(forkId, data.summary);
 				unlinkSync(autoPath);
 			} catch {}
 
@@ -363,6 +419,13 @@ export default function (pi: ExtensionAPI) {
 
 			// Register watcher for handoff
 			const label = prompt ? prompt.slice(0, 40) : `${direction} panel`;
+			recordFork({
+				forkId: newForkId,
+				label,
+				sessionFile: forkedFile,
+				cwd: ctx.cwd,
+				createdAt: timestamp,
+			});
 			watchHandoff(newForkId, label);
 
 			ctx.ui.notify(
@@ -402,4 +465,60 @@ export default function (pi: ExtensionAPI) {
 			},
 		});
 	}
+
+	// /recall — pull full transcript from a recent (closed) fork
+	pi.registerCommand("recall", {
+		description: "Recall full transcript from a recent fork-panel session. Usage: /recall [list|last|<forkId>]",
+		handler: async (args, ctx) => {
+			const sub = (args ?? "").trim();
+			const all = loadRecent();
+			const sortedClosed = Object.values(all)
+				.filter((r) => r.closedAt)
+				.sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0));
+
+			if (!sub || sub === "list") {
+				const recent = Object.values(all)
+					.sort((a, b) => b.createdAt - a.createdAt)
+					.slice(0, 10);
+				if (recent.length === 0) {
+					ctx.ui.notify("No recent forks tracked.", "info");
+					return;
+				}
+				const lines = ["Recent forks:"];
+				for (const r of recent) {
+					const time = new Date(r.createdAt).toLocaleString();
+					const status = r.closedAt ? "closed" : "running";
+					const preview = r.preview ? ` — ${r.preview.slice(0, 50)}…` : "";
+					lines.push(`  ${r.forkId} [${status}] ${r.label} (${time})${preview}`);
+				}
+				lines.push("\nUsage: /recall last  |  /recall <forkId>");
+				ctx.ui.notify(lines.join("\n"), "info");
+				return;
+			}
+
+			let target: ForkRecord | undefined;
+			if (sub === "last") {
+				target = sortedClosed[0];
+				if (!target) { ctx.ui.notify("No closed forks to recall.", "warning"); return; }
+			} else {
+				target = all[sub];
+				if (!target) { ctx.ui.notify(`Fork not found: ${sub}. Use /recall list to see available.`, "error"); return; }
+			}
+
+			if (!existsSync(target.sessionFile)) {
+				ctx.ui.notify(`Session file missing: ${target.sessionFile}`, "error");
+				return;
+			}
+
+			const transcript = readTranscriptFromFile(target.sessionFile);
+			if (!transcript) {
+				ctx.ui.notify(`Could not read transcript from ${target.sessionFile}`, "error");
+				return;
+			}
+
+			const message = `[recall: ${target.label}]\n\n📜 전체 대화:\n\n${transcript}`;
+			pi.sendUserMessage(message, { deliverAs: "followUp" });
+			ctx.ui.notify(`전체 transcript 전달됨 (${target.label}, ${(transcript.length / 1000).toFixed(1)}K chars)`, "info");
+		},
+	});
 }
