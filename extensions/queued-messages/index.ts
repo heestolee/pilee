@@ -3,6 +3,11 @@ import { Text } from "@mariozechner/pi-tui";
 
 const WIDGET_ID = "queued-messages";
 
+// Idle watchdog config
+const IDLE_THRESHOLD_MS = 5 * 60 * 1000;     // 5분 무응답 시 알림
+const ALERT_REPEAT_MS = 5 * 60 * 1000;        // 알림 후 5분마다 반복
+const IDLE_CHECK_INTERVAL_MS = 30 * 1000;     // 30초마다 체크
+
 interface QueuedMessage {
 	text: string;
 	queuedAt: number;
@@ -11,6 +16,11 @@ interface QueuedMessage {
 export default function (pi: ExtensionAPI) {
 	const queue: QueuedMessage[] = [];
 	let currentCtx: ExtensionContext | undefined;
+
+	// Idle watchdog state
+	let lastOutputAt = 0;
+	let lastAlertAt = 0;
+	let agentRunning = false;
 
 	function clearWidget(ctx: ExtensionContext) {
 		if (ctx.hasUI) ctx.ui.setWidget(WIDGET_ID, undefined);
@@ -52,20 +62,35 @@ export default function (pi: ExtensionAPI) {
 		}
 	});
 
+	// Track agent activity for idle watchdog
+	pi.on("agent_start", async (_e, ctx) => {
+		currentCtx = ctx;
+		agentRunning = true;
+		lastOutputAt = Date.now();
+		lastAlertAt = 0;
+	});
+
+	pi.on("message_update", async (_e, ctx) => {
+		currentCtx = ctx;
+		lastOutputAt = Date.now();
+	});
+
+	pi.on("tool_execution_end", async (_e, ctx) => {
+		currentCtx = ctx;
+		lastOutputAt = Date.now();
+	});
+
 	// When agent picks up a steering message (between turns)
 	pi.on("turn_start", async (_e, ctx) => {
 		currentCtx = ctx;
-		// One queued message likely just got delivered (FIFO-ish for steering)
-		if (queue.length > 0 && ctx.hasPendingMessages()) {
-			// Still messages pending, but at least one might have been consumed
-			// Trust hasPendingMessages — sync below will handle
-		}
+		lastOutputAt = Date.now();
 		syncWithReality(ctx);
 	});
 
 	// When agent fully done (followUp messages get delivered then)
 	pi.on("agent_end", async (_e, ctx) => {
 		currentCtx = ctx;
+		agentRunning = false;
 		// agent_end fires before followUp delivery... give a tick
 		setTimeout(() => {
 			if (currentCtx) syncWithReality(currentCtx);
@@ -76,6 +101,34 @@ export default function (pi: ExtensionAPI) {
 	const syncInterval = setInterval(() => {
 		if (currentCtx) syncWithReality(currentCtx);
 	}, 1500);
+
+	// Idle watchdog
+	const idleInterval = setInterval(() => {
+		if (!currentCtx?.hasUI || !agentRunning) return;
+		const now = Date.now();
+		const idleFor = now - lastOutputAt;
+		if (idleFor < IDLE_THRESHOLD_MS) return;
+		if (lastAlertAt > 0 && now - lastAlertAt < ALERT_REPEAT_MS) return;
+
+		lastAlertAt = now;
+		const minutes = Math.floor(idleFor / 60000);
+
+		const lines: string[] = [
+			`⚠️ 에이전트가 ${minutes}분간 출력 없음`,
+		];
+		if (queue.length > 0) {
+			lines.push("");
+			lines.push(`큐잉된 메시지 (${queue.length}개):`);
+			for (const [i, m] of queue.entries()) {
+				const preview = m.text.replace(/\n/g, " ").slice(0, 80);
+				lines.push(`  ${i + 1}. ${preview}${m.text.length > 80 ? "…" : ""}`);
+			}
+		}
+		lines.push("");
+		lines.push("필요 시 Esc로 abort 가능");
+
+		currentCtx.ui.notify(lines.join("\n"), "warning");
+	}, IDLE_CHECK_INTERVAL_MS);
 
 	function syncWithReality(ctx: ExtensionContext) {
 		if (!ctx.hasPendingMessages() && queue.length > 0) {
@@ -91,11 +144,15 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_start", async (_e, ctx) => {
 		currentCtx = ctx;
 		queue.length = 0;
+		agentRunning = false;
+		lastOutputAt = 0;
+		lastAlertAt = 0;
 		clearWidget(ctx);
 	});
 
 	pi.on("session_shutdown", async (_e, ctx) => {
 		clearInterval(syncInterval);
+		clearInterval(idleInterval);
 		queue.length = 0;
 		clearWidget(ctx);
 	});
