@@ -4,8 +4,10 @@ description: 기술적 의사결정이 필요할 때 대안 비교·트레이드
 ---
 
 <PREREQUISITE>
-이 스킬을 실행하기 전에 `skills/ask-user-question-rules/SKILL.md`를 읽었는지 확인하세요.
-읽지 않았으면 먼저 읽고 오세요. AskUserQuestion 호출 시 모든 규칙이 decide 전체 과정에 적용됩니다.
+이 스킬을 실행하기 전에 다음 두 스킬을 모두 읽었는지 확인하세요:
+- `skills/tft-guidelines/SKILL.md` — 언제 묻고 언제 안 묻을지 (philosophy)
+- `skills/ask-user-question-rules/SKILL.md` — 어떻게 물을지 (craft)
+읽지 않았으면 먼저 읽고 오세요. 두 규칙 모두 decide 전체 과정에 적용됩니다.
 </PREREQUISITE>
 
 # Decide
