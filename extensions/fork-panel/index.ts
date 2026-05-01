@@ -83,7 +83,7 @@ end tell`;
 export default function (pi: ExtensionAPI) {
 	const forkId = process.env.PI_FORK_ID;
 
-	// CHILD MODE: this session was launched via fork-panel
+	// CHILD MODE additions: this session is a fork of a parent — write handoff on shutdown
 	if (forkId) {
 		const handoffPath = join(HANDOFF_DIR, `${forkId}.json`);
 		let latestEntries: any[] = [];
@@ -129,11 +129,10 @@ export default function (pi: ExtensionAPI) {
 				}
 			});
 		}
-
-		return; // Don't register /fork-panel in child sessions to avoid confusion
+		// Continue to register fork-panel command/shortcuts so child can fork further
 	}
 
-	// PARENT MODE: this is a normal pi session that can spawn forks
+	// All sessions (parent or child fork): can spawn new forks
 	const activeWatchers = new Map<string, ReturnType<typeof setInterval>>();
 
 	function watchHandoff(forkId: string, label: string) {
