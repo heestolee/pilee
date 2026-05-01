@@ -113,19 +113,32 @@ async function showScreensaver(): Promise<void> {
 
 	// Try to load sprite — match by folderName (workspace name) or meta.name
 	let spriteLines: string[] | null = null;
+	let spritePokemonName: string | null = null;
 	if (config.showSprite) {
+		// First try exact match
 		const candidates = [folderName, meta?.name].filter(Boolean) as string[];
 		for (const candidate of candidates) {
 			if (POKEMON_KO_TO_ID[candidate]) {
 				spriteLines = await renderSprite(candidate, config.spriteSize, config.spriteSize);
-				if (spriteLines) break;
+				if (spriteLines) {
+					spritePokemonName = candidate;
+					break;
+				}
 			}
+		}
+
+		// Fallback: random pokemon
+		if (!spriteLines) {
+			const allNames = Object.keys(POKEMON_KO_TO_ID);
+			const randomName = allNames[Math.floor(Math.random() * allNames.length)];
+			spriteLines = await renderSprite(randomName, config.spriteSize, config.spriteSize);
+			if (spriteLines) spritePokemonName = randomName;
 		}
 	}
 
 	await latestCtx.ui.custom(
 		(tui: ScreensaverTui, theme: ScreensaverTheme, _kb: unknown, done: (v: undefined) => void) => ({
-			render: (w: number) => renderScreensaver(w, tui.terminal?.rows ?? 40, { title, subtitle, metaLines, spriteLines }, theme),
+			render: (w: number) => renderScreensaver(w, tui.terminal?.rows ?? 40, { title, subtitle, metaLines, spriteLines, spritePokemonName }, theme),
 			handleInput: (_data: string) => done(undefined),
 			invalidate: () => {},
 		}),
@@ -143,6 +156,7 @@ interface RenderData {
 	subtitle: string;
 	metaLines: string[];
 	spriteLines: string[] | null;
+	spritePokemonName: string | null;
 }
 
 function renderScreensaver(width: number, height: number, data: RenderData, theme: ScreensaverTheme): string[] {
@@ -172,7 +186,7 @@ function renderScreensaver(width: number, height: number, data: RenderData, them
 	const separatorWidth = Math.min(innerWidth - 4, Math.max(visibleWidth(titleText) + 8, 24));
 	const separator = bc("─".repeat(Math.max(1, separatorWidth)));
 
-	const SPRITE_H = data.spriteLines?.length ?? 0;
+	const SPRITE_H = (data.spriteLines?.length ?? 0) + (data.spritePokemonName ? 1 : 0);
 	const TITLE_BLOCK_H = 3;
 	const META_BLOCK_H = (data.subtitle ? 2 : 0) + (data.metaLines.length > 0 ? data.metaLines.length + 1 : 0);
 	const FOOTER_H = 1;
@@ -188,6 +202,9 @@ function renderScreensaver(width: number, height: number, data: RenderData, them
 	if (data.spriteLines) {
 		for (const sl of data.spriteLines) {
 			lines.push(centerLine(sl));
+		}
+		if (data.spritePokemonName) {
+			lines.push(centerLine(theme.fg("dim", data.spritePokemonName)));
 		}
 		lines.push(emptyLine());
 	}
