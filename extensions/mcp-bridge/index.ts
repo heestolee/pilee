@@ -1,6 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -25,10 +25,130 @@ interface Connection {
 	tools: McpTool[];
 	status: "connected" | "disconnected" | "error";
 	error?: string;
+	lastUsedAt: number;
 }
+
+// --- Failure Tracker (in-memory, resets on session start) ---
+
+interface FailureRecord {
+	count: number;
+	consecutive: number;
+	lastError: string;
+	lastFailureAt: number;
+}
+
+const failures = new Map<string, FailureRecord>();
+
+function recordFailure(name: string, error: string) {
+	const existing = failures.get(name);
+	if (existing) {
+		existing.count++;
+		existing.consecutive++;
+		existing.lastError = error;
+		existing.lastFailureAt = Date.now();
+	} else {
+		failures.set(name, { count: 1, consecutive: 1, lastError: error, lastFailureAt: Date.now() });
+	}
+}
+
+function recordIdleDisconnect(name: string) {
+	const existing = failures.get(name);
+	if (existing) {
+		existing.count++;
+		existing.lastError = "idle-timeout";
+		existing.lastFailureAt = Date.now();
+	} else {
+		failures.set(name, { count: 1, consecutive: 0, lastError: "idle-timeout", lastFailureAt: Date.now() });
+	}
+}
+
+function recordSuccess(name: string) {
+	const existing = failures.get(name);
+	if (existing) existing.consecutive = 0;
+}
+
+function isUnhealthy(name: string): boolean {
+	const record = failures.get(name);
+	return !!record && record.consecutive >= 3;
+}
+
+function failureStatusText(name: string): string {
+	const record = failures.get(name);
+	if (!record || record.count === 0) return "failures: 0";
+	const ago = formatTimeAgo(record.lastFailureAt);
+	return `${record.count} failures, last: ${record.lastError} ${ago}`;
+}
+
+function formatTimeAgo(timestamp: number): string {
+	const diff = Math.floor((Date.now() - timestamp) / 1000);
+	if (diff < 60) return `${diff}s ago`;
+	if (diff < 3600) return `${Math.floor(diff / 60)}min ago`;
+	return `${Math.floor(diff / 3600)}h ago`;
+}
+
+// --- NPX Cache ---
+
+const NPX_CACHE_PATH = join(homedir(), ".pi", "agent", "state", "mcp-npx-cache.json");
+const NPX_CACHE_TTL = 24 * 60 * 60 * 1000;
+
+interface NpxCacheData {
+	[key: string]: { resolvedAt: number };
+}
+
+function loadNpxCache(): NpxCacheData {
+	try {
+		if (existsSync(NPX_CACHE_PATH)) {
+			return JSON.parse(readFileSync(NPX_CACHE_PATH, "utf8"));
+		}
+	} catch {}
+	return {};
+}
+
+function saveNpxCache(cache: NpxCacheData) {
+	try {
+		mkdirSync(dirname(NPX_CACHE_PATH), { recursive: true });
+		writeFileSync(NPX_CACHE_PATH, JSON.stringify(cache, null, 2));
+	} catch {}
+}
+
+function npxCacheKey(args: string[]): string {
+	return args.filter((a) => a !== "--prefer-offline").join("|");
+}
+
+function applyNpxCache(config: ServerConfig): ServerConfig {
+	if (config.command !== "npx") return config;
+	const args = config.args ?? [];
+	if (!args.includes("-y")) return config;
+
+	const key = npxCacheKey(args);
+	const cache = loadNpxCache();
+	const entry = cache[key];
+
+	if (entry && Date.now() - entry.resolvedAt < NPX_CACHE_TTL && !args.includes("--prefer-offline")) {
+		return { ...config, args: ["--prefer-offline", ...args] };
+	}
+	return config;
+}
+
+function updateNpxCache(config: ServerConfig) {
+	if (config.command !== "npx") return;
+	const args = config.args ?? [];
+	if (!args.includes("-y")) return;
+
+	const key = npxCacheKey(args);
+	const cache = loadNpxCache();
+	cache[key] = { resolvedAt: Date.now() };
+	saveNpxCache(cache);
+}
+
+// --- Core ---
 
 const connections = new Map<string, Connection>();
 let serverConfigs: Record<string, ServerConfig> = {};
+let idleCheckInterval: ReturnType<typeof setInterval> | null = null;
+
+const IDLE_TIMEOUT = 10 * 60 * 1000;
+const IDLE_CHECK_INTERVAL = 60 * 1000;
 
 function loadConfig(): Record<string, ServerConfig> {
 	const paths = [
@@ -61,10 +181,12 @@ async function connectServer(name: string, config: ServerConfig): Promise<Connec
 	const existing = connections.get(name);
 	if (existing?.status === "connected") return existing;
 
+	const effectiveConfig = applyNpxCache(config);
+
 	const transport = new StdioClientTransport({
-		command: config.command,
-		args: config.args ?? [],
-		env: expandEnv(config.env),
+		command: effectiveConfig.command,
+		args: effectiveConfig.args ?? [],
+		env: expandEnv(effectiveConfig.env),
 	});
 
 	const client = new Client({ name: `pilee-${name}`, version: "0.1.0" }, { capabilities: {} });
@@ -77,18 +199,24 @@ async function connectServer(name: string, config: ServerConfig): Promise<Connec
 			transport,
 			tools: tools.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema as Record<string, unknown> })),
 			status: "connected",
+			lastUsedAt: Date.now(),
 		};
 		connections.set(name, conn);
+		recordSuccess(name);
+		updateNpxCache(config);
 		return conn;
 	} catch (e) {
+		const errorMsg = e instanceof Error ? e.message : String(e);
 		const conn: Connection = {
 			client,
 			transport,
 			tools: [],
 			status: "error",
-			error: e instanceof Error ? e.message : String(e),
+			error: errorMsg,
+			lastUsedAt: Date.now(),
 		};
 		connections.set(name, conn);
+		recordFailure(name, errorMsg);
 		throw e;
 	}
 }
@@ -96,13 +224,44 @@ async function connectServer(name: string, config: ServerConfig): Promise<Connec
 async function disconnectServer(name: string): Promise<void> {
 	const conn = connections.get(name);
 	if (!conn) return;
-	try { await conn.transport.close(); } catch {}
+	try {
+		await conn.transport.close();
+	} catch {}
 	conn.status = "disconnected";
 	connections.delete(name);
 }
 
+async function idleDisconnectServer(name: string): Promise<void> {
+	const conn = connections.get(name);
+	if (!conn || conn.status !== "connected") return;
+	try {
+		await conn.transport.close();
+	} catch {}
+	conn.status = "disconnected";
+	recordIdleDisconnect(name);
+}
+
 async function disconnectAll(): Promise<void> {
 	for (const name of [...connections.keys()]) await disconnectServer(name);
+}
+
+function startIdleChecker() {
+	if (idleCheckInterval) return;
+	idleCheckInterval = setInterval(() => {
+		const now = Date.now();
+		for (const [name, conn] of connections) {
+			if (conn.status === "connected" && now - conn.lastUsedAt > IDLE_TIMEOUT) {
+				idleDisconnectServer(name);
+			}
+		}
+	}, IDLE_CHECK_INTERVAL);
+}
+
+function stopIdleChecker() {
+	if (idleCheckInterval) {
+		clearInterval(idleCheckInterval);
+		idleCheckInterval = null;
+	}
 }
 
 function text(msg: string) {
@@ -116,12 +275,16 @@ function statusText(): string {
 	const lines: string[] = ["MCP Servers:"];
 	for (const name of configured) {
 		const conn = connections.get(name);
+		const failInfo = failureStatusText(name);
+		const unhealthy = isUnhealthy(name) ? " [unhealthy]" : "";
 		if (!conn) {
-			lines.push(`  ${name}: not connected`);
+			lines.push(`  ${name}: not connected${unhealthy} | ${failInfo}`);
 		} else if (conn.status === "error") {
-			lines.push(`  ${name}: error — ${conn.error}`);
+			lines.push(`  ${name}: error — ${conn.error}${unhealthy} | ${failInfo}`);
+		} else if (conn.status === "disconnected") {
+			lines.push(`  ${name}: disconnected (idle)${unhealthy} | ${failInfo}`);
 		} else {
-			lines.push(`  ${name}: connected (${conn.tools.length} tools)`);
+			lines.push(`  ${name}: connected (${conn.tools.length} tools) | ${failInfo}`);
 		}
 	}
 	return lines.join("\n");
@@ -135,8 +298,9 @@ function listTools(server?: string): string {
 	}
 	const lines: string[] = [];
 	for (const [name, conn] of connections) {
-		if (conn.status !== "connected") continue;
-		lines.push(`[${name}]`);
+		if (conn.status !== "connected" && conn.status !== "disconnected") continue;
+		if (conn.tools.length === 0) continue;
+		lines.push(`[${name}]${conn.status === "disconnected" ? " (idle — will reconnect on use)" : ""}`);
 		for (const t of conn.tools) lines.push(`  ${t.name} — ${t.description ?? ""}`);
 	}
 	return lines.join("\n") || "No connected servers.";
@@ -184,6 +348,19 @@ async function callTool(toolName: string, args?: Record<string, unknown>): Promi
 	const found = findToolServer(toolName);
 	if (!found) return `Tool "${toolName}" not found. Use action:"status" or action:"list" to see available tools.`;
 
+	if (found.conn.status === "disconnected") {
+		const config = serverConfigs[found.server];
+		if (!config) return `Server "${found.server}" config not found, cannot auto-reconnect.`;
+		try {
+			const reconnected = await connectServer(found.server, config);
+			found.conn = reconnected;
+		} catch (e) {
+			return `Auto-reconnect to "${found.server}" failed: ${e instanceof Error ? e.message : e}`;
+		}
+	}
+
+	found.conn.lastUsedAt = Date.now();
+
 	try {
 		const result = await found.conn.client.callTool({ name: toolName, arguments: args ?? {} });
 		const parts = (result.content as Array<{ type: string; text?: string }>)
@@ -195,7 +372,9 @@ async function callTool(toolName: string, args?: Record<string, unknown>): Promi
 		}
 		return output || "(empty response)";
 	} catch (e) {
-		return `Error calling ${toolName}: ${e instanceof Error ? e.message : e}`;
+		const errorMsg = e instanceof Error ? e.message : String(e);
+		recordFailure(found.server, errorMsg);
+		return `Error calling ${toolName}: ${errorMsg}`;
 	}
 }
 
@@ -243,7 +422,7 @@ export default function (pi: ExtensionAPI) {
 					return text(searchTools(params.query));
 				case "connect": {
 					const name = params.server;
-					if (!name) return text("Server name is required. Use action:\"status\" to see available servers.");
+					if (!name) return text('Server name is required. Use action:"status" to see available servers.');
 					const config = serverConfigs[name];
 					if (!config) return text(`Server "${name}" not found in config. Available: ${Object.keys(serverConfigs).join(", ")}`);
 					try {
@@ -258,7 +437,7 @@ export default function (pi: ExtensionAPI) {
 					let args: Record<string, unknown> | undefined;
 					if (params.args) {
 						try {
-							args = typeof params.args === "object" ? params.args as any : JSON.parse(params.args);
+							args = typeof params.args === "object" ? (params.args as any) : JSON.parse(params.args);
 						} catch {
 							return text(`Invalid JSON in args: ${params.args}`);
 						}
@@ -270,15 +449,21 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	// Auto-connect on session start
+	// Auto-connect on session start (skip unhealthy servers)
 	pi.on("session_start", async (_event, ctx) => {
 		serverConfigs = loadConfig();
+		failures.clear();
 		const names = Object.keys(serverConfigs);
 		if (names.length === 0) return;
 
 		let connected = 0;
 		let failed = 0;
+		let skipped = 0;
 		for (const name of names) {
+			if (isUnhealthy(name)) {
+				skipped++;
+				continue;
+			}
 			try {
 				await connectServer(name, serverConfigs[name]);
 				connected++;
@@ -287,11 +472,15 @@ export default function (pi: ExtensionAPI) {
 			}
 		}
 
+		startIdleChecker();
+
 		if (ctx.hasUI) {
-			const total = connections.size;
 			const toolCount = [...connections.values()].reduce((sum, c) => sum + c.tools.length, 0);
-			if (failed > 0) {
-				ctx.ui.notify(`MCP: ${connected}/${names.length} servers connected (${toolCount} tools, ${failed} failed)`, "warning");
+			if (failed > 0 || skipped > 0) {
+				const parts = [`${connected}/${names.length} servers connected`, `${toolCount} tools`];
+				if (failed > 0) parts.push(`${failed} failed`);
+				if (skipped > 0) parts.push(`${skipped} unhealthy skipped`);
+				ctx.ui.notify(`MCP: ${parts.join(", ")}`, "warning");
 			} else if (connected > 0) {
 				ctx.ui.setStatus("mcp", `MCP ${connected}/${names.length} · ${toolCount} tools`);
 			}
@@ -319,7 +508,9 @@ export default function (pi: ExtensionAPI) {
 				} else {
 					await disconnectAll();
 					for (const [n, c] of Object.entries(serverConfigs)) {
-						try { await connectServer(n, c); } catch {}
+						try {
+							await connectServer(n, c);
+						} catch {}
 					}
 					ctx.ui.notify("Reconnected all servers", "info");
 				}
@@ -337,6 +528,7 @@ export default function (pi: ExtensionAPI) {
 
 	// Cleanup on shutdown
 	pi.on("session_shutdown", async () => {
+		stopIdleChecker();
 		await disconnectAll();
 	});
 }
