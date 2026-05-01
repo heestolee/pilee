@@ -532,8 +532,8 @@ export default function (pi: ExtensionAPI) {
 			const sub = (args ?? "").trim();
 			const all = loadRecent();
 			const sorted = Object.values(all)
-				.filter((r) => r.closedAt)
-				.sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0));
+				.filter((r) => existsSync(r.sessionFile))
+				.sort((a, b) => (b.closedAt ?? b.createdAt) - (a.closedAt ?? a.createdAt));
 
 			if (sub === "last") {
 				const target = sorted[0];
@@ -565,7 +565,7 @@ export default function (pi: ExtensionAPI) {
 
 						lines.push(theme.fg("accent", "─".repeat(w)));
 						lines.push(`  ${theme.fg("accent", theme.bold("REVIVE"))} ${theme.fg("dim", "|")} ${theme.fg("muted", `${sorted.length} sessions`)} ${theme.fg("dim", "·")} ${theme.fg("muted", "Enter: open · q/Esc: close")}`);
-						lines.push(theme.fg("dim", "  ↑/↓ select · Enter open · d delete"));
+						lines.push(theme.fg("dim", "  ↑/↓ select · Enter open"));
 
 						if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
 						if (selectedIndex >= scrollOffset + bodyH) scrollOffset = selectedIndex - bodyH + 1;
@@ -575,11 +575,10 @@ export default function (pi: ExtensionAPI) {
 							const sel = i === selectedIndex;
 							const cursor = sel ? theme.fg("accent", "▶") : " ";
 							const pad = (n: number) => String(n).padStart(2, "0");
-							const d = new Date(r.closedAt!);
+							const d = new Date(r.closedAt ?? r.createdAt);
 							const timeStr = theme.fg("dim", `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`);
 							const label = sel ? theme.fg("accent", r.label) : theme.fg("text", r.label);
-							const exists = existsSync(r.sessionFile);
-							const status = exists ? theme.fg("success", "●") : theme.fg("error", "✕");
+							const status = r.closedAt ? theme.fg("muted", "●") : theme.fg("success", "●");
 							const previewW = Math.max(10, w - 45);
 							const preview = r.preview ? r.preview.slice(0, previewW) : "";
 							const previewStr = sel ? theme.fg("text", preview) : theme.fg("muted", preview);
