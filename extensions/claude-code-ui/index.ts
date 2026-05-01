@@ -236,6 +236,7 @@ export default function (pi: ExtensionAPI) {
 	// Footer
 	pi.on("session_start", async (_e, ctx) => {
 		if (!ctx.hasUI) return;
+		ctx.ui.setToolsExpanded(false);
 		const projectName = path.basename(ctx.cwd) || "pi";
 		ctx.ui.setFooter((tui, theme, footerData) => {
 			const dispose = footerData.onBranchChange(() => tui.requestRender());
