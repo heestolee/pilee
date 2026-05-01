@@ -198,6 +198,101 @@ tmux ls 2>/dev/null
 tmux kill-server 2>/dev/null  # 모든 tmux 세션 종료
 ```
 
+### 5) Turbo daemon orphan 프로세스
+
+`turbo` 빌드/watch가 종료 후에도 daemon 프로세스가 남아 다음 실행을 방해함. 증상: exit 143/144, 의문의 캐시 충돌.
+
+```bash
+# Turbo daemon 정리
+turbo daemon clean 2>/dev/null
+pkill -f "turbo.*daemon" 2>/dev/null
+
+# turbo 관련 모든 프로세스 확인
+ps aux | grep -E "turbo|pnpm" | grep -v grep
+```
+
+### 6) trip 백엔드 부팅 실패 — SWC 파싱 에러
+
+**증상**: 60초 timeout, trip이 ready 상태 안 됨
+
+**진단**: trip-server.log 확인 (보통 비어있거나 SWC 에러):
+```bash
+cat backend/tools/local-router/.trip-server.log
+
+# log가 비었다면 stderr 확인
+ls -la backend/tools/local-router/.trip-server.{log,err}
+```
+
+**자주 발생하는 원인**:
+- TypeScript `satisfies` 키워드를 SWC가 못 파싱
+- 테스트 파일(`*.spec.ts`)에 신문법 사용 → trip 컴파일 시 포함되어 fail
+
+**해결**:
+- 즉시 우회: `--service:trip` 빼고 dev로 trip 사용 (가능한 경우)
+- 근본 해결: 문제 파일 찾아서 SWC가 지원하는 문법으로 수정 또는 빌드 설정 업데이트
+
+### 7) 외부 webhook (Stripe 등) 처리
+
+**증상**: 결제 완료해도 voucher 미발급, payment를 로컬로 띄워도 webhook은 dev backend로 감
+
+**원인**: Stripe 등 외부 서비스의 webhook URL이 dev 환경에 고정 등록되어 있음. 로컬에서 결제하면 webhook이 dev로 가서 dev 코드가 실행됨.
+
+**해결책**:
+
+#### A. Stripe CLI listen + forward (권장)
+```bash
+# 별도 터미널에서
+stripe login  # 한번만
+stripe listen --forward-to localhost:7004/webhooks/stripe \
+  --events payment_intent.succeeded,payment_intent.payment_failed,charge.refunded
+```
+
+이 명령이 webhook secret을 출력하면 `payment/.env`의 `STRIPE_WEBHOOK_SECRET`에 임시 저장 (커밋 X).
+
+#### B. 마이그레이션 + dev 머지 후 검증 (대안)
+풀 로컬 검증이 어려우면:
+1. 코드 변경 PR 생성
+2. dev에 머지
+3. dev에서 실제 결제로 검증
+4. 마이그레이션은 별도로 idempotency 테스트
+
+### 8) 다중 워크스페이스 점유 진단
+
+다른 conductor 워크스페이스가 동일 포트 점유 시 어디서 잡고 있는지 확인:
+
+```bash
+# 점유 프로세스의 cwd 확인
+for p in 3000 4000 5173 17000 7004; do
+  pid=$(lsof -nP -iTCP:$p -sTCP:LISTEN -t 2>/dev/null | head -1)
+  [ -n "$pid" ] && echo "Port $p (PID $pid):" && lsof -p $pid 2>/dev/null | grep cwd | head -1
+done
+```
+
+cwd가 현재 워크스페이스와 다르면 사용자에게 확인:
+> 포트 4000을 다른 워크스페이스(`...damascus`)가 잡고 있어요. 그 쪽 종료 후 진행할까요?
+
+### 9) 에이전트 환경(Bash 도구)에서 띄우기
+
+pi 에이전트가 직접 `pnpm start`를 실행할 때:
+
+- `pnpm start`는 **포그라운드 실행**이 정상 동작 → 에이전트의 Bash 도구는 timeout(보통 2~5분) 후 종료됨
+- **반드시 백그라운드로 실행** (`run_in_background: true`):
+
+```bash
+# 에이전트가 직접 띄울 때
+nohup pnpm start --frontend:web --backend:local --service:trip,payment \
+  > /tmp/pnpm-start.log 2>&1 &
+echo "PID: $!"
+```
+
+- 진행 상황은 별도 명령으로 폴링:
+```bash
+tail -50 /tmp/pnpm-start.log
+ps -p <PID> > /dev/null && echo "running" || echo "stopped"
+```
+
+- **추천**: 에이전트가 띄우지 말고 사용자에게 "별도 터미널에서 실행해주세요"로 위임. 또는 `/fp right` 로 새 패널에서 실행.
+
 ## 수동 fallback (start 스크립트 미사용)
 
 `pnpm start` 스크립트 이슈가 있거나 일부 서버만 띄워서 테스트해야 하는 부득이한 경우에만:
