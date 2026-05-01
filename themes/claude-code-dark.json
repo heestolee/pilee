@@ -46,7 +46,7 @@
     "thinkingText": "inactive",
     "selectedBg": "messageActionsBg",
     "userMessageBg": "userMessageBg",
-    "userMessageText": "",
+    "userMessageText": "#e8e8e8",
     "customMessageBg": "memoryBg",
     "customMessageText": "",
     "customMessageLabel": "permission",
