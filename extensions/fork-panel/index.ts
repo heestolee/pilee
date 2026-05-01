@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { copyFileSync, unlinkSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { AutocompleteItem } from "@mariozechner/pi-tui";
@@ -7,13 +8,50 @@ import type { AutocompleteItem } from "@mariozechner/pi-tui";
 const VALID_DIRS = ["right", "left", "down", "up", "tab"] as const;
 type Direction = (typeof VALID_DIRS)[number];
 
+const HANDOFF_DIR = join(homedir(), ".pi", "agent", "fork-panel");
+const HANDOFF_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+
 function esc(s: string): string {
 	return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
-function buildScript(direction: Direction, cwd: string, sessionFile: string, prompt?: string): string {
-	const baseCmd = `cd \\"${esc(cwd)}\\" && pi --session \\"${esc(sessionFile)}\\"`;
-	const cmd = prompt ? `${baseCmd}` : baseCmd;
+interface HandoffData {
+	forkId: string;
+	parentSessionId?: string;
+	finishedAt: number;
+	summary: string;
+}
+
+function cleanOldHandoffs() {
+	if (!existsSync(HANDOFF_DIR)) return;
+	const now = Date.now();
+	try {
+		for (const f of readdirSync(HANDOFF_DIR)) {
+			const p = join(HANDOFF_DIR, f);
+			try {
+				const stat = statSync(p);
+				if (now - stat.mtimeMs > HANDOFF_TTL_MS) unlinkSync(p);
+			} catch {}
+		}
+	} catch {}
+}
+
+function extractLastAssistant(entries: any[]): string {
+	for (let i = entries.length - 1; i >= 0; i--) {
+		const e = entries[i];
+		if (e?.type === "message" && e.message?.role === "assistant") {
+			const content = e.message.content;
+			const text = Array.isArray(content)
+				? content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("")
+				: typeof content === "string" ? content : "";
+			if (text.trim()) return text.trim();
+		}
+	}
+	return "";
+}
+
+function buildScript(direction: Direction, cwd: string, sessionFile: string, forkId: string, prompt?: string): string {
+	const cmd = `PI_FORK_ID=${forkId} cd \\"${esc(cwd)}\\" && PI_FORK_ID=${forkId} pi --session \\"${esc(sessionFile)}\\"`;
 
 	if (direction === "tab") {
 		return `tell application "Ghostty"
@@ -32,8 +70,60 @@ end tell`;
 }
 
 export default function (pi: ExtensionAPI) {
+	const forkId = process.env.PI_FORK_ID;
+
+	// CHILD MODE: this session was launched via fork-panel
+	if (forkId) {
+		pi.on("session_shutdown", async (_event, ctx) => {
+			try {
+				const entries = ctx.sessionManager.getEntries();
+				const summary = extractLastAssistant(entries);
+				if (!summary) return;
+
+				mkdirSync(HANDOFF_DIR, { recursive: true });
+				const handoffPath = join(HANDOFF_DIR, `${forkId}.json`);
+				const data: HandoffData = {
+					forkId,
+					parentSessionId: process.env.PI_FORK_PARENT,
+					finishedAt: Date.now(),
+					summary,
+				};
+				writeFileSync(handoffPath, JSON.stringify(data, null, 2));
+			} catch {}
+		});
+		return; // Don't register /fork-panel in child sessions to avoid confusion
+	}
+
+	// PARENT MODE: this is a normal pi session that can spawn forks
+	const activeWatchers = new Map<string, ReturnType<typeof setInterval>>();
+
+	function watchHandoff(forkId: string, label: string) {
+		const handoffPath = join(HANDOFF_DIR, `${forkId}.json`);
+		const interval = setInterval(() => {
+			if (!existsSync(handoffPath)) return;
+			try {
+				const data: HandoffData = JSON.parse(readFileSync(handoffPath, "utf8"));
+				const message = `[fork-panel handoff: ${label}]\n\n${data.summary}`;
+				pi.sendUserMessage(message, { deliverAs: "followUp" });
+				unlinkSync(handoffPath);
+			} catch {}
+			clearInterval(interval);
+			activeWatchers.delete(forkId);
+		}, 1500);
+		activeWatchers.set(forkId, interval);
+	}
+
+	pi.on("session_shutdown", async () => {
+		for (const interval of activeWatchers.values()) clearInterval(interval);
+		activeWatchers.clear();
+	});
+
+	pi.on("session_start", async () => {
+		cleanOldHandoffs();
+	});
+
 	pi.registerCommand("fork-panel", {
-		description: "Fork current session into a new Ghostty panel/tab (args: right|left|down|up|tab [prompt])",
+		description: "Fork current session into a new Ghostty panel/tab. On panel close, the panel's last assistant message returns to this session as a follow-up. (args: right|left|down|up|tab [prompt])",
 		getArgumentCompletions: (prefix: string): AutocompleteItem[] | null => {
 			const filtered = VALID_DIRS.filter((d) => d.startsWith(prefix)).map((d) => ({ value: d, label: d }));
 			return filtered.length > 0 ? filtered : null;
@@ -50,12 +140,11 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			// Parse args: first token is direction, rest is optional prompt
+			// Parse args
 			const trimmed = args?.trim() ?? "";
 			const firstSpace = trimmed.indexOf(" ");
 			const dirArg = (firstSpace === -1 ? trimmed : trimmed.slice(0, firstSpace)).toLowerCase();
 			const prompt = firstSpace === -1 ? undefined : trimmed.slice(firstSpace + 1).trim();
-
 			const direction: Direction = VALID_DIRS.includes(dirArg as Direction) ? (dirArg as Direction) : "right";
 
 			// Copy session file
@@ -63,6 +152,7 @@ export default function (pi: ExtensionAPI) {
 			const timestamp = Date.now();
 			const uuid = randomUUID().slice(0, 8);
 			const forkedFile = join(dir, `${timestamp}_${uuid}.jsonl`);
+			const newForkId = `fk_${uuid}_${timestamp}`;
 
 			try {
 				copyFileSync(sessionFile, forkedFile);
@@ -72,7 +162,7 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			// Open in Ghostty
-			const script = buildScript(direction, ctx.cwd, forkedFile, prompt);
+			const script = buildScript(direction, ctx.cwd, forkedFile, newForkId, prompt);
 			const result = await pi.exec("osascript", ["-e", script]);
 
 			if (result.code !== 0) {
@@ -81,8 +171,12 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
+			// Register watcher for handoff
+			const label = prompt ? prompt.slice(0, 40) : `${direction} panel`;
+			watchHandoff(newForkId, label);
+
 			ctx.ui.notify(
-				`세션 포크 → ${direction === "tab" ? "새 탭" : `${direction} 패널`}${prompt ? ` (자동 prompt 전달됨)` : ""}`,
+				`세션 포크 → ${direction === "tab" ? "새 탭" : `${direction} 패널`}${prompt ? ` (자동 prompt)` : ""}\n패널 종료 시 마지막 응답이 이 세션에 전달됩니다.`,
 				"info",
 			);
 		},
