@@ -18,7 +18,7 @@ const SYSTEM_PROMPT = [
 function normalizeTitle(raw: string): string {
 	let t = raw.split(/\r?\n/).map((l) => l.trim()).find(Boolean) ?? "";
 	t = t.replace(/^[-*•]\s*/, "").replace(/^(title|session title|제목|세션 제목)\s*[:：-]\s*/iu, "").trim();
-	for (const [o, c] of [["\"", "\""], ["'", "'"], ["`", "`"], [""", """]]) {
+	for (const [o, c] of [["\"", "\""], ["'", "'"], ["`", "`"], ["\u201C", "\u201D"], ["\u2018", "\u2019"]]) {
 		if (t.startsWith(o) && t.endsWith(c) && t.length > 2) t = t.slice(1, -1).trim();
 	}
 	t = t.replace(/\s+/g, " ").replace(/[.。!！?？:：;；,，\-–—\s]+$/, "").trim();
