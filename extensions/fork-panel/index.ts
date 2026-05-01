@@ -237,4 +237,19 @@ export default function (pi: ExtensionAPI) {
 		getArgumentCompletions: completions,
 		handler,
 	});
+
+	// Keyboard shortcuts: Ctrl+Shift+Arrow → fork-panel direction
+	for (const [key, dir] of [
+		["ctrl+shift+right", "right"],
+		["ctrl+shift+left", "left"],
+		["ctrl+shift+up", "up"],
+		["ctrl+shift+down", "down"],
+	] as const) {
+		pi.registerShortcut(key, {
+			description: `fork-panel ${dir}`,
+			handler: async (ctx) => {
+				await handler(dir, ctx);
+			},
+		});
+	}
 }
