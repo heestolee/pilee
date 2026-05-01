@@ -78,8 +78,9 @@ async function showOverlay(ctx: ExtensionCommandContext) {
 
 	let selectedIdx = 0;
 	let showDone = false;
-	let inputMode: null | "add" | "note" = null;
+	let inputMode: null | "add" | "note" | "edit-title" | "edit-note" = null;
 	let inputBuffer = "";
+	let detailId: number | null = null;
 
 	const getVisible = () => {
 		const items = showDone ? store.items : store.items.filter((i) => i.status === "open");
@@ -103,11 +104,40 @@ async function showOverlay(ctx: ExtensionCommandContext) {
 					lines.push(theme.fg("accent", "─".repeat(w)));
 
 					if (inputMode) {
-						const label = inputMode === "add" ? "새 항목" : "노트";
-						lines.push(`  ${theme.fg("warning", `[${label}]`)} ${inputBuffer}${theme.fg("dim", "│")}`);
+						const labels: Record<string, string> = { add: "새 항목", note: "노트", "edit-title": "제목 수정", "edit-note": "노트 수정" };
+						lines.push(`  ${theme.fg("warning", `[${labels[inputMode] ?? inputMode}]`)} ${inputBuffer}${theme.fg("dim", "│")}`);
 						lines.push(theme.fg("dim", "  Enter 확인 · Esc 취소"));
 						lines.push(theme.fg("accent", "─".repeat(w)));
 						return lines;
+					}
+
+					// Detail view
+					if (detailId !== null) {
+						const item = store.items.find((i) => i.id === detailId);
+						if (!item) { detailId = null; } else {
+							const icon = priorityIcon(item.priority);
+							const statusLabel = item.status === "done" ? theme.fg("success", "완료") : item.status === "open" ? theme.fg("warning", "진행 중") : theme.fg("muted", item.status);
+							lines.push("");
+							lines.push(`  ${icon} ${theme.fg("accent", theme.bold(`#${item.id} ${item.title}`))}`);
+							lines.push("");
+							lines.push(`  ${theme.fg("dim", "상태:")}     ${statusLabel}`);
+							lines.push(`  ${theme.fg("dim", "우선순위:")} ${theme.fg(priorityColor(item.priority), item.priority)}`);
+							lines.push(`  ${theme.fg("dim", "생성일:")}   ${new Date(item.createdAt).toLocaleString("ko-KR")}`);
+							if (item.doneAt) lines.push(`  ${theme.fg("dim", "완료일:")}   ${new Date(item.doneAt).toLocaleString("ko-KR")}`);
+							lines.push("");
+							if (item.note) {
+								lines.push(`  ${theme.fg("dim", "노트:")}`);
+								for (const line of item.note.split("\n")) {
+									lines.push(`    ${line}`);
+								}
+							} else {
+								lines.push(`  ${theme.fg("muted", "(노트 없음)")}`);
+							}
+							lines.push("");
+							lines.push(theme.fg("accent", "─".repeat(w)));
+							lines.push(theme.fg("dim", "  Esc 돌아가기 · e 제목 수정 · t 노트 수정 · p 우선순위 · Space 완료 토글 · d 삭제"));
+							return lines;
+						}
 					}
 
 					if (visible.length === 0) {
