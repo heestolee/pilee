@@ -1,6 +1,6 @@
 ---
 name: jira-issue-management
-description: Manages Jira issue creation and updates with proper Wiki markup formatting. Use when the user asks to create, update, or clean up Jira tickets — phrases like "Jira 이슈 만들어줘", "COM-XXXX 업데이트", "티켓 정리해줘", "create a Jira ticket", "update Jira description" trigger this skill. Automatically formats descriptions in Jira Wiki markup with proper sections, tables, and code blocks. Falls back through MCP servers (creatrip-internal → Atlassian) → REST API.
+description: Manages Jira issue creation and updates with mandatory Wiki markup formatting + preview confirmation. Use when the user asks to create, update, or clean up Jira tickets — phrases like "Jira 이슈 만들어줘", "COM-XXXX 업데이트", "티켓 정리해줘", "create a Jira ticket", "update Jira description" trigger this skill. Always formats description as Wiki markup AND shows preview to user before sending — no silent sends. Falls back through MCP servers (creatrip-internal → Atlassian) → REST API.
 ---
 
 # Jira Issue Management
@@ -33,9 +33,10 @@ Jira 티켓 생성·업데이트를 항상 깔끔한 Wiki markup으로 처리하
 ### Update 모드 (티켓 키 있음)
 
 ```
-1) 현재 description 읽기 (1단계 참고)
-2) Wiki markup으로 재구성 (2단계 참고)
-3) 업데이트 (3단계 참고)
+1) 현재 description 읽기 (3단계 참고)
+2) Wiki markup으로 재구성 (4단계 참고)
+3) → [필수] 미리보기 + 사용자 confirm (5단계)
+4) Confirm 받은 후에만 업데이트 (3단계)
 ```
 
 ### Create 모드 (새 이슈 생성 요청)
@@ -45,9 +46,12 @@ Jira 티켓 생성·업데이트를 항상 깔끔한 Wiki markup으로 처리하
    - Summary (제목)
    - Issue Type (Task / Bug / Story / Epic 중 어느 거?)
    - 추가 필드 (assignee, labels, sprint 등 — 명시적 지정 시만)
-2) Description은 사용자가 준 정보로 Wiki markup 생성
-3) Jira에 새 이슈 생성
+2) Description을 Wiki markup으로 생성 (4단계 참고)
+3) → [필수] 미리보기 + 사용자 confirm (5단계)
+4) Confirm 받은 후에만 이슈 생성 (3단계)
 ```
+
+> **중요**: Create든 Update든, **반드시** 5단계 미리보기 + confirm을 거친 다음에만 실제 send 함. 사용자가 명시적으로 "확인 없이 바로 보내" 같이 말하지 않은 이상 절대 스킵 금지.
 
 ## 3. MCP/API 우선순위
 
@@ -147,7 +151,45 @@ h2. 참고
 
 **모든 섹션이 모든 티켓에 필요하진 않음.** 내용 없으면 빈 섹션 만들지 말기.
 
-## 5. 작업 원칙
+## 5. 미리보기 + Confirm (필수 단계)
+
+포매팅 끝났으면 **반드시** 사용자에게 미리보기 보여주고 확인받기. 절대 바로 send 금지.
+
+### 출력 형식
+
+```
+다음 내용으로 {생성|업데이트}할게요. 확인해주세요:
+
+────────────────────────────────────────
+{Summary 또는 티켓 키}
+────────────────────────────────────────
+
+{Wiki markup으로 포매팅된 description 전체}
+
+────────────────────────────────────────
+
+{Issue Type / 변경 필드 등 메타정보 한 줄}
+
+이대로 진행할까요?
+- "ok" / "보내" / "yes" → 그대로 send
+- "수정 ..." / 구체적 피드백 → 수정 후 다시 미리보기
+- "취소" / "no" → 작업 중단
+```
+
+### 처리 분기
+
+| 사용자 응답 | 동작 |
+|------------|------|
+| "ok", "보내", "응", "yes", "go" 등 긍정 | → 3단계의 Update/Create로 실제 API 호출 |
+| "수정 ...", "이 부분 바꿔", 구체적 요청 | → description 수정 후 다시 5단계 미리보기 |
+| "취소", "no", "그만" | → 작업 중단, 아무것도 보내지 말기 |
+| 모호한 답 | → 명확하게 다시 묻기 |
+
+### 예외: skip 가능
+
+사용자가 명시적으로 "확인 없이 바로 보내", "no preview", "yolo" 같이 요청한 경우만 5단계 스킵 가능. **묵시적으로는 절대 스킵 X**.
+
+## 6. 작업 원칙
 
 ### 절대 변경 금지
 
@@ -163,7 +205,7 @@ h2. 참고
 - 코드/명령어는 코드 블록으로 (인라인은 `{{}}`, 블록은 `{code:lang}`)
 - 외부 링크는 `[label|url]` 형태로
 
-## 6. 결과 출력
+## 7. 결과 출력
 
 ### Update 완료 시
 
@@ -183,7 +225,7 @@ h2. 참고
 
 여러 티켓 처리 시 각각 결과 출력.
 
-## 7. Edge Cases
+## 8. Edge Cases
 
 | 상황 | 처리 |
 |------|------|
