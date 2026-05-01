@@ -101,32 +101,32 @@ async function fetchPageContent(pageId: string): Promise<string> {
 function resolveDate(arg: string): { date: string; category: string; label: string } | null {
 	const trimmed = arg.trim();
 
-	if (trimmed === "monthly" || trimmed === "월간") {
-		const lastMonth = new Date();
-		lastMonth.setMonth(lastMonth.getMonth() - 1);
-		const lastDay = new Date(lastMonth.getFullYear(), lastMonth.getMonth() + 1, 0);
+	// YYYY-MM-wN → 주간 (N째주 월요일 기준)
+	const weeklyMatch = trimmed.match(/^(\d{4})-(\d{1,2})-w(\d)$/i);
+	if (weeklyMatch) {
+		const [, y, m, w] = weeklyMatch;
+		const year = Number(y);
+		const month = Number(m) - 1;
+		const weekNum = Number(w);
+		// 해당 월 첫 번째 월요일 찾기
+		const firstOfMonth = new Date(year, month, 1);
+		let firstMonday = 1 + ((8 - firstOfMonth.getDay()) % 7);
+		if (firstMonday > 7) firstMonday -= 7;
+		const mondayDate = firstMonday + (weekNum - 1) * 7;
+		const monday = new Date(year, month, mondayDate);
+		const saturday = new Date(year, month, mondayDate + 5);
 		return {
-			date: lastDay.toISOString().slice(0, 10),
-			category: "월간회고",
-			label: `${lastMonth.getFullYear()}년 ${lastMonth.getMonth() + 1}월`,
-		};
-	}
-
-	if (trimmed === "weekly" || trimmed === "주간") {
-		const now = new Date();
-		const day = now.getDay();
-		const lastSat = new Date(now);
-		lastSat.setDate(now.getDate() - day - 1);
-		return {
-			date: lastSat.toISOString().slice(0, 10),
+			date: saturday.toISOString().slice(0, 10),
 			category: "주간회고",
-			label: `${lastSat.getMonth() + 1}월 주간`,
+			label: `${Number(m)}월 ${weekNum}째주`,
 		};
 	}
 
-	// YYYY-MM format → monthly
-	if (/^\d{4}-\d{2}$/.test(trimmed)) {
-		const [y, m] = trimmed.split("-").map(Number);
+	// YYYY-MM → 월간
+	if (/^\d{4}-\d{1,2}$/.test(trimmed)) {
+		const parts = trimmed.split("-");
+		const y = Number(parts[0]);
+		const m = Number(parts[1]);
 		const lastDay = new Date(y, m, 0);
 		return {
 			date: lastDay.toISOString().slice(0, 10),
@@ -135,12 +135,12 @@ function resolveDate(arg: string): { date: string; category: string; label: stri
 		};
 	}
 
-	// YYYY-MM-DD format → daily
+	// YYYY-MM-DD → 일간
 	if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
 		return { date: trimmed, category: "일간회고", label: trimmed };
 	}
 
-	// Empty → yesterday
+	// Empty → 어제 일간
 	if (!trimmed) {
 		const yesterday = new Date();
 		yesterday.setDate(yesterday.getDate() - 1);
