@@ -3,6 +3,11 @@ name: frame
 description: 작업 시작 전에 목표·성공 기준·범위·검증 계획을 한 번에 정렬하고, 이후 /decide·/verify가 mechanically 읽을 수 있는 frame.json을 워크트리에 박제한다.
 ---
 
+<PREREQUISITE>
+이 스킬을 실행하기 전에 `skills/ask-user-question-rules/SKILL.md`를 읽었는지 확인하세요.
+읽지 않았으면 먼저 읽고 오세요. AskUserQuestion 호출 시 모든 규칙이 frame 전체 과정에 적용됩니다.
+</PREREQUISITE>
+
 # Frame
 
 `/frame`은 **한 작업의 시작점**이 아니라 **사이클 setup**이다.

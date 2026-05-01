@@ -3,6 +3,11 @@ name: decide
 description: 기술적 의사결정이 필요할 때 대안 비교·트레이드오프 분석 후 frame.json에 박제. /frame이 큐잉한 frame.decision task를 자동 처리하거나, 즉석 의사결정도 가능.
 ---
 
+<PREREQUISITE>
+이 스킬을 실행하기 전에 `skills/ask-user-question-rules/SKILL.md`를 읽었는지 확인하세요.
+읽지 않았으면 먼저 읽고 오세요. AskUserQuestion 호출 시 모든 규칙이 decide 전체 과정에 적용됩니다.
+</PREREQUISITE>
+
 # Decide
 
 기술적 의사결정 한 건을 처리한다. 결과는 **frame.json의 `decisions[]`에 기록**하여 /verify가 cross-reference할 수 있게 한다.
