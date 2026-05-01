@@ -3,6 +3,47 @@ import { homedir } from "node:os";
 import { join, dirname, basename } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 
+// ─── Repo registry ─────────────────────────────────────────────────────────
+
+const REGISTRY_PATH = join(homedir(), ".pi", "worktree-repos.json");
+
+interface RepoRegistry {
+	[name: string]: string; // name → absolute path
+}
+
+function loadRegistry(): RepoRegistry {
+	if (!existsSync(REGISTRY_PATH)) return {};
+	try { return JSON.parse(readFileSync(REGISTRY_PATH, "utf8")); } catch { return {}; }
+}
+
+function saveRegistry(reg: RepoRegistry) {
+	mkdirSync(dirname(REGISTRY_PATH), { recursive: true });
+	writeFileSync(REGISTRY_PATH, JSON.stringify(reg, null, 2));
+}
+
+function findRegisteredName(reg: RepoRegistry, repoPath: string): string | null {
+	for (const [name, path] of Object.entries(reg)) {
+		if (path === repoPath) return name;
+	}
+	return null;
+}
+
+function autoRegister(repoRoot: string): { name: string; isNew: boolean } {
+	const reg = loadRegistry();
+	const existing = findRegisteredName(reg, repoRoot);
+	if (existing) return { name: existing, isNew: false };
+
+	let name = basename(repoRoot);
+	// Avoid name collision
+	let suffix = 1;
+	while (reg[name]) {
+		name = `${basename(repoRoot)}-${++suffix}`;
+	}
+	reg[name] = repoRoot;
+	saveRegistry(reg);
+	return { name, isNew: true };
+}
+
 // ─── Config ────────────────────────────────────────────────────────────────
 
 interface WorktreeConfig {
@@ -173,9 +214,10 @@ interface NewArgs {
 	ticket?: string;
 	note?: string;
 	branch?: string;
+	repo?: string;
 }
 
-function parseNewArgs(args: string): NewArgs {
+function tokenize(args: string): string[] {
 	const tokens: string[] = [];
 	let cur = "";
 	let inQuote = false;
@@ -189,7 +231,11 @@ function parseNewArgs(args: string): NewArgs {
 		cur += c;
 	}
 	if (cur) tokens.push(cur);
+	return tokens;
+}
 
+function parseNewArgs(args: string): NewArgs {
+	const tokens = tokenize(args);
 	const result: NewArgs = { hotfix: false, hotfeature: false };
 	const positional: string[] = [];
 	for (let i = 0; i < tokens.length; i++) {
@@ -200,6 +246,7 @@ function parseNewArgs(args: string): NewArgs {
 		else if (t === "--ticket" && i + 1 < tokens.length) result.ticket = tokens[++i];
 		else if (t === "--note" && i + 1 < tokens.length) result.note = tokens[++i];
 		else if (t === "--branch" && i + 1 < tokens.length) result.branch = tokens[++i];
+		else if (t === "--repo" && i + 1 < tokens.length) result.repo = tokens[++i];
 		else positional.push(t);
 	}
 	if (positional.length > 0) result.name = positional[0];
@@ -236,12 +283,35 @@ end tell`;
 
 // ─── Commands ──────────────────────────────────────────────────────────────
 
-async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
+async function resolveRepoRoot(pi: ExtensionAPI, ctx: ExtensionCommandContext, repoFlag?: string): Promise<string | null> {
+	if (repoFlag) {
+		const reg = loadRegistry();
+		const path = reg[repoFlag];
+		if (!path) {
+			ctx.ui.notify(`Repo "${repoFlag}" not registered. Available: ${Object.keys(reg).join(", ") || "(none)"}. Use /wt repo add ${repoFlag} <path> first.`, "error");
+			return null;
+		}
+		if (!existsSync(path)) {
+			ctx.ui.notify(`Registered repo path missing: ${path}`, "error");
+			return null;
+		}
+		return path;
+	}
 	const repoRoot = await findRepoRoot(pi, ctx.cwd);
-	if (!repoRoot) { ctx.ui.notify("Not a git repository", "error"); return; }
+	if (!repoRoot) { ctx.ui.notify("Not a git repository (and no --repo specified)", "error"); return null; }
+	return repoRoot;
+}
+
+async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
+	const parsed = parseNewArgs(args);
+	const repoRoot = await resolveRepoRoot(pi, ctx, parsed.repo);
+	if (!repoRoot) return;
+
+	// Auto-register if not in registry
+	const { name: registeredName, isNew: justRegistered } = autoRegister(repoRoot);
+	if (justRegistered) ctx.ui.notify(`Registered repo "${registeredName}" → ${repoRoot}`, "info");
 
 	const config = loadConfig(repoRoot);
-	const parsed = parseNewArgs(args);
 
 	// Determine base branch
 	let baseBranch: string;
@@ -320,19 +390,18 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 	}
 }
 
-async function handleList(pi: ExtensionAPI, _args: string, ctx: ExtensionCommandContext) {
-	const repoRoot = await findRepoRoot(pi, ctx.cwd);
-	if (!repoRoot) { ctx.ui.notify("Not a git repository", "error"); return; }
-
+async function listOneRepo(pi: ExtensionAPI, repoRoot: string, _ctx: ExtensionCommandContext): Promise<{ repo: string; lines: string[] }> {
 	const config = loadConfig(repoRoot);
+	const reg = loadRegistry();
+	const repoName = findRegisteredName(reg, repoRoot) ?? basename(repoRoot);
 	const worktrees = listExistingWorktrees(config.rootDir);
 
+	const lines: string[] = [];
 	if (worktrees.length === 0) {
-		ctx.ui.notify(`No worktrees in ${config.rootDir}. Use /wt new to create one.`, "info");
-		return;
+		lines.push(`  (no worktrees in ${config.rootDir})`);
+		return { repo: repoName, lines };
 	}
 
-	const lines: string[] = [`Worktrees (${worktrees.length}):`];
 	for (const w of worktrees) {
 		const status = await getWorktreeStatus(pi, w.path);
 		const statusStr = status === null ? "?" : status.changes > 0 ? `${status.changes} changes` : status.ahead > 0 ? `${status.ahead} ahead` : status.behind > 0 ? `${status.behind} behind` : "clean";
@@ -340,7 +409,40 @@ async function handleList(pi: ExtensionAPI, _args: string, ctx: ExtensionCommand
 		const note = w.meta?.note ? ` — ${w.meta.note.slice(0, 40)}` : "";
 		lines.push(`  ${w.name.padEnd(15)} ${w.branch.padEnd(35)} ${statusStr}${ticket}${note}`);
 	}
-	ctx.ui.notify(lines.join("\n"), "info");
+	return { repo: repoName, lines };
+}
+
+async function handleList(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
+	const all = args.includes("--all") || args.includes("-a");
+
+	if (all) {
+		const reg = loadRegistry();
+		const names = Object.keys(reg);
+		if (names.length === 0) {
+			ctx.ui.notify("No repos registered. Use /wt new in a repo to auto-register, or /wt repo add <name> <path>.", "info");
+			return;
+		}
+		const sections: string[] = [];
+		let total = 0;
+		for (const name of names) {
+			const path = reg[name];
+			if (!existsSync(path)) {
+				sections.push(`[${name}] (path missing: ${path})`);
+				continue;
+			}
+			const result = await listOneRepo(pi, path, ctx);
+			sections.push(`[${result.repo}]`);
+			sections.push(...result.lines);
+			total += result.lines.length;
+		}
+		ctx.ui.notify([`All worktrees across ${names.length} repos:`, ...sections].join("\n"), "info");
+		return;
+	}
+
+	const repoRoot = await findRepoRoot(pi, ctx.cwd);
+	if (!repoRoot) { ctx.ui.notify("Not a git repository (use --all to see all registered repos)", "error"); return; }
+	const result = await listOneRepo(pi, repoRoot, ctx);
+	ctx.ui.notify([`Worktrees in ${result.repo}:`, ...result.lines].join("\n"), "info");
 }
 
 async function handleRemove(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
@@ -379,24 +481,102 @@ async function handleRemove(pi: ExtensionAPI, args: string, ctx: ExtensionComman
 }
 
 async function handleSwitch(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
-	const repoRoot = await findRepoRoot(pi, ctx.cwd);
-	if (!repoRoot) { ctx.ui.notify("Not a git repository", "error"); return; }
+	const target = args.trim();
+	if (!target) { ctx.ui.notify("Usage: /wt switch <name> | /wt switch <repo>/<name>", "error"); return; }
+
+	let repoRoot: string;
+	let wtName: string;
+
+	if (target.includes("/")) {
+		// Cross-repo syntax: <repo>/<name>
+		const slashIdx = target.indexOf("/");
+		const repoName = target.slice(0, slashIdx);
+		wtName = target.slice(slashIdx + 1);
+		const reg = loadRegistry();
+		if (!reg[repoName]) {
+			ctx.ui.notify(`Repo "${repoName}" not registered. Available: ${Object.keys(reg).join(", ") || "(none)"}`, "error");
+			return;
+		}
+		repoRoot = reg[repoName];
+	} else {
+		// Current repo
+		const found = await findRepoRoot(pi, ctx.cwd);
+		if (!found) { ctx.ui.notify("Not a git repository (use <repo>/<name> for cross-repo)", "error"); return; }
+		repoRoot = found;
+		wtName = target;
+	}
 
 	const config = loadConfig(repoRoot);
-	const name = args.trim();
-	if (!name) { ctx.ui.notify("Usage: /wt switch <name>", "error"); return; }
-
-	const path = join(config.rootDir, name);
-	if (!existsSync(path)) { ctx.ui.notify(`Worktree "${name}" not found`, "error"); return; }
+	const path = join(config.rootDir, wtName);
+	if (!existsSync(path)) { ctx.ui.notify(`Worktree "${wtName}" not found at ${path}`, "error"); return; }
 
 	if (config.autoOpenInGhostty) {
 		const opened = await openInGhostty(pi, path, config.ghosttyDirection);
 		if (opened) {
-			ctx.ui.notify(`→ ${name} opened in Ghostty`, "info");
+			ctx.ui.notify(`→ ${wtName} opened in Ghostty`, "info");
 			return;
 		}
 	}
 	ctx.ui.notify(`Switch to: cd ${path}`, "info");
+}
+
+async function handleRepo(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
+	const tokens = tokenize(args);
+	const sub = tokens[0] ?? "list";
+	const reg = loadRegistry();
+
+	if (sub === "list" || sub === "ls") {
+		const names = Object.keys(reg).sort();
+		if (names.length === 0) {
+			ctx.ui.notify("No repos registered.", "info");
+			return;
+		}
+		const lines = ["Registered repos:"];
+		for (const name of names) {
+			const exists = existsSync(reg[name]);
+			lines.push(`  ${name.padEnd(15)} ${reg[name]}${exists ? "" : " (path missing)"}`);
+		}
+		ctx.ui.notify(lines.join("\n"), "info");
+		return;
+	}
+
+	if (sub === "add") {
+		const name = tokens[1];
+		const path = tokens[2];
+		if (!name || !path) { ctx.ui.notify("Usage: /wt repo add <name> <path>", "error"); return; }
+		const expanded = expandHome(path);
+		const root = await findRepoRoot(pi, expanded);
+		if (!root) { ctx.ui.notify(`${expanded} is not a git repository`, "error"); return; }
+		reg[name] = root;
+		saveRegistry(reg);
+		ctx.ui.notify(`Registered "${name}" → ${root}`, "info");
+		return;
+	}
+
+	if (sub === "rm" || sub === "remove") {
+		const name = tokens[1];
+		if (!name) { ctx.ui.notify("Usage: /wt repo rm <name>", "error"); return; }
+		if (!reg[name]) { ctx.ui.notify(`Repo "${name}" not registered`, "error"); return; }
+		delete reg[name];
+		saveRegistry(reg);
+		ctx.ui.notify(`Unregistered "${name}"`, "info");
+		return;
+	}
+
+	if (sub === "rename") {
+		const oldName = tokens[1];
+		const newName = tokens[2];
+		if (!oldName || !newName) { ctx.ui.notify("Usage: /wt repo rename <old> <new>", "error"); return; }
+		if (!reg[oldName]) { ctx.ui.notify(`Repo "${oldName}" not registered`, "error"); return; }
+		if (reg[newName]) { ctx.ui.notify(`Name "${newName}" already taken`, "error"); return; }
+		reg[newName] = reg[oldName];
+		delete reg[oldName];
+		saveRegistry(reg);
+		ctx.ui.notify(`Renamed "${oldName}" → "${newName}"`, "info");
+		return;
+	}
+
+	ctx.ui.notify("Usage: /wt repo [list|add|rm|rename]", "info");
 }
 
 async function handleConfig(_pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
@@ -430,10 +610,11 @@ async function handleWt(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCon
 	if (!trimmed) {
 		ctx.ui.notify([
 			"Usage:",
-			"  /wt new [name] [--hotfix|--hotfeature|--from <branch>] [--ticket COM-XXXX] [--note \"...\"]",
-			"  /wt list",
-			"  /wt switch <name>",
+			"  /wt new [name] [--repo <name>] [--hotfix|--hotfeature|--from <branch>] [--ticket COM-XXXX] [--note \"...\"]",
+			"  /wt list [--all]",
+			"  /wt switch <name> | <repo>/<name>",
 			"  /wt rm <name> [--force]",
+			"  /wt repo [list|add|rm|rename]",
 			"  /wt config [show|init]",
 		].join("\n"), "info");
 		return;
@@ -448,6 +629,7 @@ async function handleWt(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCon
 		case "list": case "ls": return handleList(pi, rest, ctx);
 		case "rm": case "remove": return handleRemove(pi, rest, ctx);
 		case "switch": case "sw": return handleSwitch(pi, rest, ctx);
+		case "repo": return handleRepo(pi, rest, ctx);
 		case "config": return handleConfig(pi, rest, ctx);
 		default:
 			ctx.ui.notify(`Unknown subcommand: ${sub}. Try /wt for help.`, "error");
