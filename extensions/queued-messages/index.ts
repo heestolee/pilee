@@ -38,7 +38,7 @@ export default function (pi: ExtensionAPI) {
 			invalidate() {},
 			render(width: number) {
 				const lines: string[] = [];
-				const header = `${theme.fg("accent", "📋")} ${theme.fg("accent", theme.bold(`큐잉됨 ${items.length}개`))}`;
+				const header = `${theme.fg("accent", "📋")} ${theme.fg("accent", theme.bold(`메시지 큐 ${items.length}개`))} ${theme.fg("dim", "(스티어/팔로업)")}`;
 				lines.push(header);
 				for (const [i, m] of items.entries()) {
 					const num = theme.fg("dim", `${i + 1}.`);
