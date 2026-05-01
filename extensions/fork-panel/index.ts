@@ -18,8 +18,19 @@ function esc(s: string): string {
 interface HandoffData {
 	forkId: string;
 	parentSessionId?: string;
-	finishedAt: number;
+	pid: number;
+	updatedAt: number;
+	finishedAt?: number;
 	summary: string;
+}
+
+function isPidAlive(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 function cleanOldHandoffs() {
@@ -74,23 +85,51 @@ export default function (pi: ExtensionAPI) {
 
 	// CHILD MODE: this session was launched via fork-panel
 	if (forkId) {
-		pi.on("session_shutdown", async (_event, ctx) => {
-			try {
-				const entries = ctx.sessionManager.getEntries();
-				const summary = extractLastAssistant(entries);
-				if (!summary) return;
+		const handoffPath = join(HANDOFF_DIR, `${forkId}.json`);
+		let latestEntries: any[] = [];
+		let alreadyFinalized = false;
 
+		const writeHandoff = (final: boolean) => {
+			try {
+				const summary = extractLastAssistant(latestEntries);
+				if (!summary) return;
 				mkdirSync(HANDOFF_DIR, { recursive: true });
-				const handoffPath = join(HANDOFF_DIR, `${forkId}.json`);
 				const data: HandoffData = {
 					forkId,
 					parentSessionId: process.env.PI_FORK_PARENT,
-					finishedAt: Date.now(),
+					pid: process.pid,
+					updatedAt: Date.now(),
+					...(final ? { finishedAt: Date.now() } : {}),
 					summary,
 				};
 				writeFileSync(handoffPath, JSON.stringify(data, null, 2));
 			} catch {}
+		};
+
+		// Update on every assistant turn
+		pi.on("agent_end", async (_e, ctx) => {
+			latestEntries = ctx.sessionManager.getEntries();
+			writeHandoff(false);
 		});
+
+		// Final write on graceful shutdown (/quit, Ctrl+C)
+		pi.on("session_shutdown", async (_e, ctx) => {
+			if (alreadyFinalized) return;
+			alreadyFinalized = true;
+			latestEntries = ctx.sessionManager.getEntries();
+			writeHandoff(true);
+		});
+
+		// Final write on signals (Cmd+W, kill, etc.)
+		for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+			process.on(sig, () => {
+				if (!alreadyFinalized) {
+					alreadyFinalized = true;
+					writeHandoff(true);
+				}
+			});
+		}
+
 		return; // Don't register /fork-panel in child sessions to avoid confusion
 	}
 
@@ -103,13 +142,20 @@ export default function (pi: ExtensionAPI) {
 			if (!existsSync(handoffPath)) return;
 			try {
 				const data: HandoffData = JSON.parse(readFileSync(handoffPath, "utf8"));
+				// Trigger handoff when:
+				//   1. file has finishedAt marker (graceful shutdown), OR
+				//   2. child PID is dead (Cmd+W, crash, etc.)
+				const finished = !!data.finishedAt;
+				const pidDead = data.pid && !isPidAlive(data.pid);
+				if (!finished && !pidDead) return;
+
 				const message = `[fork-panel handoff: ${label}]\n\n${data.summary}`;
 				pi.sendUserMessage(message, { deliverAs: "followUp" });
 				unlinkSync(handoffPath);
 			} catch {}
 			clearInterval(interval);
 			activeWatchers.delete(forkId);
-		}, 1500);
+		}, 2000);
 		activeWatchers.set(forkId, interval);
 	}
 
