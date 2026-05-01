@@ -5,18 +5,23 @@ import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext, ThemeColor } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { visibleWidth } from "@mariozechner/pi-tui";
+import { POKEMON_KO_TO_ID, renderSprite } from "./sprite.js";
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
 interface ScreensaverConfig {
 	idleMinutes: number;
 	showWorktreeMeta: boolean;
+	showSprite: boolean;
+	spriteSize: number;
 	enabled: boolean;
 }
 
 const DEFAULT_CONFIG: ScreensaverConfig = {
 	idleMinutes: 5,
 	showWorktreeMeta: true,
+	showSprite: true,
+	spriteSize: 32,
 	enabled: true,
 };
 
@@ -106,9 +111,21 @@ async function showScreensaver(): Promise<void> {
 	if (meta?.ticket) metaLines.push(meta.ticket);
 	if (meta?.note) metaLines.push(meta.note);
 
+	// Try to load sprite — match by folderName (workspace name) or meta.name
+	let spriteLines: string[] | null = null;
+	if (config.showSprite) {
+		const candidates = [folderName, meta?.name].filter(Boolean) as string[];
+		for (const candidate of candidates) {
+			if (POKEMON_KO_TO_ID[candidate]) {
+				spriteLines = await renderSprite(candidate, config.spriteSize, config.spriteSize);
+				if (spriteLines) break;
+			}
+		}
+	}
+
 	await latestCtx.ui.custom(
 		(tui: ScreensaverTui, theme: ScreensaverTheme, _kb: unknown, done: (v: undefined) => void) => ({
-			render: (w: number) => renderScreensaver(w, tui.terminal?.rows ?? 40, { title, subtitle, metaLines }, theme),
+			render: (w: number) => renderScreensaver(w, tui.terminal?.rows ?? 40, { title, subtitle, metaLines, spriteLines }, theme),
 			handleInput: (_data: string) => done(undefined),
 			invalidate: () => {},
 		}),
@@ -125,6 +142,7 @@ interface RenderData {
 	title: string;
 	subtitle: string;
 	metaLines: string[];
+	spriteLines: string[] | null;
 }
 
 function renderScreensaver(width: number, height: number, data: RenderData, theme: ScreensaverTheme): string[] {
@@ -154,15 +172,25 @@ function renderScreensaver(width: number, height: number, data: RenderData, them
 	const separatorWidth = Math.min(innerWidth - 4, Math.max(visibleWidth(titleText) + 8, 24));
 	const separator = bc("─".repeat(Math.max(1, separatorWidth)));
 
+	const SPRITE_H = data.spriteLines?.length ?? 0;
 	const TITLE_BLOCK_H = 3;
 	const META_BLOCK_H = (data.subtitle ? 2 : 0) + (data.metaLines.length > 0 ? data.metaLines.length + 1 : 0);
 	const FOOTER_H = 1;
 	const innerHeight = height - 2;
-	const contentH = TITLE_BLOCK_H + META_BLOCK_H + FOOTER_H;
+	const SPRITE_PAD = SPRITE_H > 0 ? 1 : 0;
+	const contentH = SPRITE_H + SPRITE_PAD + TITLE_BLOCK_H + META_BLOCK_H + FOOTER_H;
 	const topPad = Math.max(0, Math.floor((innerHeight - contentH) / 2) - 1);
 
 	lines.push(hRule);
 	for (let i = 0; i < topPad; i++) lines.push(emptyLine());
+
+	// Sprite (if available)
+	if (data.spriteLines) {
+		for (const sl of data.spriteLines) {
+			lines.push(centerLine(sl));
+		}
+		lines.push(emptyLine());
+	}
 
 	// Title
 	lines.push(centerLine(separator));
