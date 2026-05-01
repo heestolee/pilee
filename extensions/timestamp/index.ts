@@ -50,7 +50,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerShortcut("ctrl+shift+t", {
+	pi.registerShortcut("ctrl+alt+t", {
 		description: "Toggle timestamp display",
 		handler: async (ctx) => {
 			enabled = !enabled;
