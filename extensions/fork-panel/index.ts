@@ -168,13 +168,7 @@ export default function (pi: ExtensionAPI) {
 		cleanOldHandoffs();
 	});
 
-	pi.registerCommand("fork-panel", {
-		description: "Fork current session into a new Ghostty panel/tab. On panel close, the panel's last assistant message returns to this session as a follow-up. (args: right|left|down|up|tab [prompt])",
-		getArgumentCompletions: (prefix: string): AutocompleteItem[] | null => {
-			const filtered = VALID_DIRS.filter((d) => d.startsWith(prefix)).map((d) => ({ value: d, label: d }));
-			return filtered.length > 0 ? filtered : null;
-		},
-		handler: async (args, ctx) => {
+	const handler = async (args: string, ctx: any) => {
 			if (process.platform !== "darwin" || process.env.TERM_PROGRAM !== "ghostty") {
 				ctx.ui.notify("/fork-panel은 macOS Ghostty 터미널에서만 동작합니다", "warning");
 				return;
@@ -225,6 +219,22 @@ export default function (pi: ExtensionAPI) {
 				`세션 포크 → ${direction === "tab" ? "새 탭" : `${direction} 패널`}${prompt ? ` (자동 prompt)` : ""}\n패널 종료 시 마지막 응답이 이 세션에 전달됩니다.`,
 				"info",
 			);
-		},
+	};
+
+	const completions = (prefix: string): AutocompleteItem[] | null => {
+		const filtered = VALID_DIRS.filter((d) => d.startsWith(prefix)).map((d) => ({ value: d, label: d }));
+		return filtered.length > 0 ? filtered : null;
+	};
+
+	pi.registerCommand("fork-panel", {
+		description: "Fork current session into a new Ghostty panel/tab. On panel close, the panel's last assistant message returns to this session as a follow-up. (args: right|left|down|up|tab [prompt])",
+		getArgumentCompletions: completions,
+		handler,
+	});
+
+	pi.registerCommand("fp", {
+		description: "Alias for /fork-panel",
+		getArgumentCompletions: completions,
+		handler,
 	});
 }
