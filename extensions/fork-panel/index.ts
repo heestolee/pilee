@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ThemeColor } from "@mariozechner/pi-coding-agent";
+import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 import type { AutocompleteItem } from "@mariozechner/pi-tui";
 import { completeSimple } from "@mariozechner/pi-ai";
 
@@ -524,12 +525,9 @@ export default function (pi: ExtensionAPI) {
 
 	// /revive — reopen a previous fork panel session
 	pi.registerCommand("revive", {
-		description: "Reopen a previous fork-panel session in a new Ghostty panel. Usage: /revive [list|last|<forkId>]",
+		description: "TUI로 종료된 fork-panel 세션 목록을 보고 선택해서 Ghostty 패널로 재개",
 		handler: async (args, ctx) => {
-			if (process.platform !== "darwin" || process.env.TERM_PROGRAM !== "ghostty") {
-				ctx.ui.notify("/revive는 macOS Ghostty에서만 동작합니다", "warning");
-				return;
-			}
+			if (!ctx.hasUI) return;
 
 			const sub = (args ?? "").trim();
 			const all = loadRecent();
@@ -537,54 +535,105 @@ export default function (pi: ExtensionAPI) {
 				.filter((r) => r.closedAt)
 				.sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0));
 
-			if (!sub || sub === "list") {
-				if (sorted.length === 0) {
-					ctx.ui.notify("재개 가능한 포크 세션이 없습니다", "info");
-					return;
-				}
-				const lines = ["종료된 포크 세션:"];
-				for (const r of sorted.slice(0, 10)) {
-					const time = new Date(r.closedAt!).toLocaleString();
-					const exists = existsSync(r.sessionFile) ? "" : " (파일 없음)";
-					const preview = r.preview ? ` — ${r.preview.slice(0, 40)}…` : "";
-					lines.push(`  ${r.forkId} ${r.label} (${time})${preview}${exists}`);
-				}
-				lines.push("\nUsage: /revive last  |  /revive <forkId>");
-				ctx.ui.notify(lines.join("\n"), "info");
-				return;
-			}
-
-			let target: ForkRecord | undefined;
 			if (sub === "last") {
-				target = sorted[0];
+				const target = sorted[0];
 				if (!target) { ctx.ui.notify("재개 가능한 세션이 없습니다", "warning"); return; }
-			} else {
-				target = all[sub];
-				if (!target) { ctx.ui.notify(`포크 없음: ${sub}. /revive list로 확인`, "error"); return; }
+				await openRevive(target, ctx);
+				return;
 			}
-
-			if (!existsSync(target.sessionFile)) {
-				ctx.ui.notify(`세션 파일 없음: ${target.sessionFile}`, "error");
+			if (sub && all[sub]) {
+				await openRevive(all[sub], ctx);
 				return;
 			}
 
-			const cwd = target.cwd || ctx.cwd;
-			const escStr = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-			const cmd = `cd \\"${escStr(cwd)}\\" && pi --session \\"${escStr(target.sessionFile)}\\"`;
-			const script = `tell application "Ghostty"
+			if (sorted.length === 0) {
+				ctx.ui.notify("재개 가능한 포크 세션이 없습니다", "info");
+				return;
+			}
+
+			let selectedIndex = 0;
+			let scrollOffset = 0;
+
+			const selected = await ctx.ui.custom<ForkRecord | null>(
+				(tui, theme, _kb, done) => ({
+					render: (w: number) => {
+						const rows = (tui as any).terminal?.rows ?? 30;
+						const headerH = 3;
+						const footerH = 1;
+						const bodyH = Math.max(3, rows - headerH - footerH);
+						const lines: string[] = [];
+
+						lines.push(theme.fg("accent", "─".repeat(w)));
+						lines.push(`  ${theme.fg("accent", theme.bold("REVIVE"))} ${theme.fg("dim", "|")} ${theme.fg("muted", `${sorted.length} sessions`)} ${theme.fg("dim", "·")} ${theme.fg("muted", "Enter: open · q/Esc: close")}`);
+						lines.push(theme.fg("dim", "  ↑/↓ select · Enter open · d delete"));
+
+						if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
+						if (selectedIndex >= scrollOffset + bodyH) scrollOffset = selectedIndex - bodyH + 1;
+
+						for (let i = scrollOffset; i < Math.min(sorted.length, scrollOffset + bodyH); i++) {
+							const r = sorted[i];
+							const sel = i === selectedIndex;
+							const cursor = sel ? theme.fg("accent", "▶") : " ";
+							const pad = (n: number) => String(n).padStart(2, "0");
+							const d = new Date(r.closedAt!);
+							const timeStr = theme.fg("dim", `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`);
+							const label = sel ? theme.fg("accent", r.label) : theme.fg("text", r.label);
+							const exists = existsSync(r.sessionFile);
+							const status = exists ? theme.fg("success", "●") : theme.fg("error", "✕");
+							const previewW = Math.max(10, w - 45);
+							const preview = r.preview ? r.preview.slice(0, previewW) : "";
+							const previewStr = sel ? theme.fg("text", preview) : theme.fg("muted", preview);
+							lines.push(truncateToWidth(`${cursor} ${status} ${timeStr} ${label}  ${previewStr}`, w, ""));
+						}
+
+						while (lines.length < headerH + bodyH) lines.push("");
+						lines.push(theme.fg("accent", "─".repeat(w)));
+						return lines;
+					},
+					handleInput: (data: string) => {
+						if (data === "q" || matchesKey(data, Key.escape)) { done(null); return; }
+						if (matchesKey(data, Key.up) || data === "k") {
+							if (selectedIndex > 0) selectedIndex--;
+						} else if (matchesKey(data, Key.down) || data === "j") {
+							if (selectedIndex < sorted.length - 1) selectedIndex++;
+						} else if (matchesKey(data, Key.enter)) {
+							done(sorted[selectedIndex]);
+							return;
+						}
+						(tui as any).requestRender?.();
+					},
+					invalidate: () => {},
+				}),
+				{ overlay: true, overlayOptions: { width: "100%", maxHeight: "100%", anchor: "center" } },
+			);
+
+			if (selected) await openRevive(selected, ctx);
+		},
+	});
+
+	async function openRevive(target: ForkRecord, ctx: ExtensionContext) {
+		if (!existsSync(target.sessionFile)) {
+			ctx.ui.notify(`세션 파일 없음: ${target.sessionFile}`, "error");
+			return;
+		}
+		if (process.platform !== "darwin" || process.env.TERM_PROGRAM !== "ghostty") {
+			ctx.ui.notify("/revive는 macOS Ghostty에서만 동작합니다", "warning");
+			return;
+		}
+		const cwd = target.cwd || ctx.cwd;
+		const escStr = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+		const cmd = `cd \\"${escStr(cwd)}\\" && pi --session \\"${escStr(target.sessionFile)}\\"`;
+		const script = `tell application "Ghostty"
   set currentTerm to focused terminal of selected tab of front window
   set newTerm to split currentTerm direction right
   input text "${cmd}" to newTerm
   send key "enter" to newTerm
 end tell`;
-
-			const result = await pi.exec("osascript", ["-e", script]);
-			if (result.code !== 0) {
-				ctx.ui.notify(`패널 생성 실패: ${result.stderr?.trim() ?? "unknown"}`, "error");
-				return;
-			}
-
-			ctx.ui.notify(`${target.label} 세션 재개 → right 패널`, "info");
-		},
-	});
+		const result = await pi.exec("osascript", ["-e", script]);
+		if (result.code !== 0) {
+			ctx.ui.notify(`패널 생성 실패: ${result.stderr?.trim() ?? "unknown"}`, "error");
+			return;
+		}
+		ctx.ui.notify(`${target.label} 세션 재개 → right 패널`, "info");
+	}
 }
