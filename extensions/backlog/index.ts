@@ -111,12 +111,11 @@ async function showOverlay(ctx: ExtensionCommandContext) {
 						return lines;
 					}
 
-					// Detail view
 					if (detailId !== null) {
 						const item = store.items.find((i) => i.id === detailId);
 						if (!item) { detailId = null; } else {
 							const icon = priorityIcon(item.priority);
-							const statusLabel = item.status === "done" ? theme.fg("success", "완료") : item.status === "open" ? theme.fg("warning", "진행 중") : theme.fg("muted", item.status);
+							const statusLabel = item.status === "done" ? theme.fg("success", "완료") : theme.fg("warning", "진행 중");
 							lines.push("");
 							lines.push(`  ${icon} ${theme.fg("accent", theme.bold(`#${item.id} ${item.title}`))}`);
 							lines.push("");
@@ -161,7 +160,7 @@ async function showOverlay(ctx: ExtensionCommandContext) {
 					}
 
 					lines.push(theme.fg("accent", "─".repeat(w)));
-					lines.push(theme.fg("dim", "  ↑↓ 이동 · n 추가 · d 삭제 · Space 완료 토글 · p 우선순위 변경 · t 노트 · v done 표시 · q 닫기"));
+					lines.push(theme.fg("dim", "  ↑↓ 이동 · Enter 상세 · n 추가 · d 삭제 · Space 완료 토글 · p 우선순위 변경 · t 노트 · v done 표시 · q 닫기"));
 					return lines;
 				},
 				handleInput: (data: string) => {
@@ -193,6 +192,18 @@ async function showOverlay(ctx: ExtensionCommandContext) {
 										item.note = inputBuffer.trim();
 										save(store);
 									}
+								} else if (inputMode === "edit-title") {
+									const item = store.items.find((i) => i.id === detailId);
+									if (item) {
+										item.title = inputBuffer.trim();
+										save(store);
+									}
+								} else if (inputMode === "edit-note") {
+									const item = store.items.find((i) => i.id === detailId);
+									if (item) {
+										item.note = inputBuffer.trim();
+										save(store);
+									}
 								}
 							}
 							inputMode = null;
@@ -206,13 +217,47 @@ async function showOverlay(ctx: ExtensionCommandContext) {
 						return;
 					}
 
-					// Navigation
+					// Detail view keybindings
+					if (detailId !== null) {
+						const item = store.items.find((i) => i.id === detailId);
+						if (matchesKey(data, Key.escape)) {
+							detailId = null;
+						} else if (data === "e" && item) {
+							inputMode = "edit-title";
+							inputBuffer = item.title;
+						} else if (data === "t" && item) {
+							inputMode = "edit-note";
+							inputBuffer = item.note ?? "";
+						} else if (data === "p" && item) {
+							const cycle: Priority[] = ["high", "medium", "low"];
+							const idx = cycle.indexOf(item.priority);
+							item.priority = cycle[(idx + 1) % cycle.length];
+							save(store);
+						} else if (data === " " && item) {
+							item.status = item.status === "open" ? "done" : "open";
+							item.doneAt = item.status === "done" ? Date.now() : undefined;
+							save(store);
+						} else if (data === "d" && item) {
+							store.items = store.items.filter((i) => i.id !== item.id);
+							save(store);
+							detailId = null;
+							const newVisible = getVisible();
+							if (selectedIdx >= newVisible.length) selectedIdx = Math.max(0, newVisible.length - 1);
+						}
+						(tui as any).requestRender?.();
+						return;
+					}
+
+					// List view keybindings
 					if (data === "q" || matchesKey(data, Key.escape)) { done(undefined); return; }
 
 					if (matchesKey(data, Key.up) || data === "k") {
 						selectedIdx = Math.max(0, selectedIdx - 1);
 					} else if (matchesKey(data, Key.down) || data === "j") {
 						selectedIdx = Math.min(visible.length - 1, selectedIdx + 1);
+					} else if (matchesKey(data, Key.enter)) {
+						const item = visible[selectedIdx];
+						if (item) detailId = item.id;
 					} else if (data === "n") {
 						inputMode = "add";
 						inputBuffer = "";
@@ -307,7 +352,6 @@ export default function (pi: ExtensionAPI) {
 			if (sub === "add") return handleAdd(rest, ctx);
 			if (sub === "done") return handleDone(rest, ctx);
 			if (sub === "list" || sub === "ls") return handleList(ctx);
-			// Default: treat entire arg as overlay
 			return showOverlay(ctx);
 		},
 	});
