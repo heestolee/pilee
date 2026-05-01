@@ -22,6 +22,8 @@ interface HandoffData {
 	updatedAt: number;
 	finishedAt?: number;
 	summary: string;
+	mode?: "auto" | "manual";
+	customNote?: string;
 }
 
 function isPidAlive(pid: number): boolean {
@@ -101,6 +103,7 @@ export default function (pi: ExtensionAPI) {
 					updatedAt: Date.now(),
 					...(final ? { finishedAt: Date.now() } : {}),
 					summary,
+					mode: "auto",
 				};
 				writeFileSync(handoffPath, JSON.stringify(data, null, 2));
 			} catch {}
@@ -129,6 +132,39 @@ export default function (pi: ExtensionAPI) {
 				}
 			});
 		}
+
+		// Manual /handoff command — explicit context send to parent
+		pi.registerCommand("handoff", {
+			description: "Send the latest assistant message (and optional note) to the parent session right now. The panel keeps running.",
+			handler: async (args, ctx) => {
+				try {
+					const entries = ctx.sessionManager.getEntries();
+					const summary = extractLastAssistant(entries);
+					if (!summary) {
+						ctx.ui.notify("전송할 응답이 없습니다 (assistant 메시지가 아직 없음)", "warning");
+						return;
+					}
+
+					mkdirSync(HANDOFF_DIR, { recursive: true });
+					const ts = Date.now();
+					const manualPath = join(HANDOFF_DIR, `${forkId}-manual-${ts}.json`);
+					const note = args?.trim() || undefined;
+					const data: HandoffData = {
+						forkId,
+						parentSessionId: process.env.PI_FORK_PARENT,
+						pid: process.pid,
+						updatedAt: ts,
+						summary,
+						mode: "manual",
+						customNote: note,
+					};
+					writeFileSync(manualPath, JSON.stringify(data, null, 2));
+					ctx.ui.notify(`부모 세션에 handoff 전송됨${note ? ` (메모: ${note.slice(0, 40)})` : ""}`, "info");
+				} catch (e) {
+					ctx.ui.notify(`handoff 실패: ${e instanceof Error ? e.message : e}`, "error");
+				}
+			},
+		});
 		// Continue to register fork-panel command/shortcuts so child can fork further
 	}
 
@@ -136,22 +172,42 @@ export default function (pi: ExtensionAPI) {
 	const activeWatchers = new Map<string, ReturnType<typeof setInterval>>();
 
 	function watchHandoff(forkId: string, label: string) {
-		const handoffPath = join(HANDOFF_DIR, `${forkId}.json`);
+		const autoPath = join(HANDOFF_DIR, `${forkId}.json`);
+		const manualPrefix = `${forkId}-manual-`;
+
 		const interval = setInterval(() => {
-			if (!existsSync(handoffPath)) return;
+			// 1. Pick up any manual handoffs (panel still running, multiple possible)
 			try {
-				const data: HandoffData = JSON.parse(readFileSync(handoffPath, "utf8"));
-				// Trigger handoff when:
-				//   1. file has finishedAt marker (graceful shutdown), OR
-				//   2. child PID is dead (Cmd+W, crash, etc.)
+				if (existsSync(HANDOFF_DIR)) {
+					const files = readdirSync(HANDOFF_DIR)
+						.filter((f) => f.startsWith(manualPrefix) && f.endsWith(".json"))
+						.sort(); // chronological
+					for (const f of files) {
+						const fp = join(HANDOFF_DIR, f);
+						try {
+							const data: HandoffData = JSON.parse(readFileSync(fp, "utf8"));
+							const note = data.customNote ? `\n\n📝 ${data.customNote}` : "";
+							const message = `[fork-panel handoff (manual): ${label}]${note}\n\n${data.summary}`;
+							pi.sendUserMessage(message, { deliverAs: "followUp" });
+							unlinkSync(fp);
+						} catch {}
+					}
+				}
+			} catch {}
+
+			// 2. Check if child is done (auto handoff trigger)
+			if (!existsSync(autoPath)) return;
+			try {
+				const data: HandoffData = JSON.parse(readFileSync(autoPath, "utf8"));
 				const finished = !!data.finishedAt;
 				const pidDead = data.pid && !isPidAlive(data.pid);
 				if (!finished && !pidDead) return;
 
 				const message = `[fork-panel handoff: ${label}]\n\n${data.summary}`;
 				pi.sendUserMessage(message, { deliverAs: "followUp" });
-				unlinkSync(handoffPath);
+				unlinkSync(autoPath);
 			} catch {}
+
 			clearInterval(interval);
 			activeWatchers.delete(forkId);
 		}, 2000);
