@@ -1,0 +1,102 @@
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { Text } from "@mariozechner/pi-tui";
+
+const WIDGET_ID = "queued-messages";
+
+interface QueuedMessage {
+	text: string;
+	queuedAt: number;
+}
+
+export default function (pi: ExtensionAPI) {
+	const queue: QueuedMessage[] = [];
+	let currentCtx: ExtensionContext | undefined;
+
+	function clearWidget(ctx: ExtensionContext) {
+		if (ctx.hasUI) ctx.ui.setWidget(WIDGET_ID, undefined);
+	}
+
+	function updateWidget(ctx: ExtensionContext) {
+		if (!ctx.hasUI) return;
+		if (queue.length === 0) {
+			ctx.ui.setWidget(WIDGET_ID, undefined);
+			return;
+		}
+
+		const items = [...queue];
+		ctx.ui.setWidget(WIDGET_ID, (_tui, theme) => ({
+			invalidate() {},
+			render(width: number) {
+				const lines: string[] = [];
+				const header = `${theme.fg("accent", "📋")} ${theme.fg("accent", theme.bold(`큐잉됨 ${items.length}개`))}`;
+				lines.push(header);
+				for (const [i, m] of items.entries()) {
+					const num = theme.fg("dim", `${i + 1}.`);
+					const max = Math.max(20, width - 6);
+					const preview = m.text.replace(/\n/g, " ").trim();
+					const clipped = preview.length > max ? `${preview.slice(0, max - 1)}…` : preview;
+					lines.push(`  ${num} ${theme.fg("muted", clipped)}`);
+				}
+				return lines;
+			},
+			handleInput() {},
+		}));
+	}
+
+	// Track user input — if agent is busy, the message is queued
+	pi.on("input", async (event, ctx) => {
+		currentCtx = ctx;
+		if (!ctx.isIdle()) {
+			queue.push({ text: event.text, queuedAt: Date.now() });
+			updateWidget(ctx);
+		}
+	});
+
+	// When agent picks up a steering message (between turns)
+	pi.on("turn_start", async (_e, ctx) => {
+		currentCtx = ctx;
+		// One queued message likely just got delivered (FIFO-ish for steering)
+		if (queue.length > 0 && ctx.hasPendingMessages()) {
+			// Still messages pending, but at least one might have been consumed
+			// Trust hasPendingMessages — sync below will handle
+		}
+		syncWithReality(ctx);
+	});
+
+	// When agent fully done (followUp messages get delivered then)
+	pi.on("agent_end", async (_e, ctx) => {
+		currentCtx = ctx;
+		// agent_end fires before followUp delivery... give a tick
+		setTimeout(() => {
+			if (currentCtx) syncWithReality(currentCtx);
+		}, 100);
+	});
+
+	// Periodic sync — best-effort cleanup if our tracking gets out of sync
+	const syncInterval = setInterval(() => {
+		if (currentCtx) syncWithReality(currentCtx);
+	}, 1500);
+
+	function syncWithReality(ctx: ExtensionContext) {
+		if (!ctx.hasPendingMessages() && queue.length > 0) {
+			// Real queue empty but we still have items — clear
+			queue.length = 0;
+			updateWidget(ctx);
+			return;
+		}
+		// Otherwise just re-render in case nothing changed
+		if (queue.length > 0) updateWidget(ctx);
+	}
+
+	pi.on("session_start", async (_e, ctx) => {
+		currentCtx = ctx;
+		queue.length = 0;
+		clearWidget(ctx);
+	});
+
+	pi.on("session_shutdown", async (_e, ctx) => {
+		clearInterval(syncInterval);
+		queue.length = 0;
+		clearWidget(ctx);
+	});
+}
