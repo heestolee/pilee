@@ -182,7 +182,89 @@ export default function (pi: ExtensionAPI) {
 					ctx.ui.notify("활성 회고가 없어요. /retro [날짜]로 먼저 불러오세요.", "warning");
 					return;
 				}
-				ctx.ui.notify("다듬은 회고를 Notion에 저장하려면 이 세션에서 수정된 내용을 정리해서 말씀해주세요. 그러면 제가 Notion에 반영합니다.", "info");
+				if (!activeRetro.pageId) {
+					ctx.ui.notify("Notion 페이지 ID를 찾지 못했어요.", "error");
+					return;
+				}
+
+				ctx.ui.notify("📝 대화에서 교정 사항을 반영한 회고를 생성해주세요. 마크다운으로 작성하면 Notion에 반영합니다.", "info");
+
+				const prompt = `이 세션에서 "${activeRetro.title}" 회고를 다듬었어요. 대화에서 나온 교정 사항을 반영해서 **최종 회고 전문**을 마크다운으로 작성해주세요.
+
+원본:
+${activeRetro.content}
+
+규칙:
+1. 대화에서 합의된 교정만 반영 (임의 수정 금지)
+2. 교정되지 않은 섹션은 원본 그대로 유지
+3. 전체를 하나의 마크다운으로 출력
+4. 출력 시작을 "---RETRO_START---", 끝을 "---RETRO_END---"로 감싸주세요
+
+완성되면 제가 Notion에 반영할게요.`;
+
+				pi.sendUserMessage(prompt, { deliverAs: "followUp" });
+
+				// Watch for the response with markers
+				const onMessage = async (event: any) => {
+					const content = event?.message?.content;
+					if (!content || event?.message?.role !== "assistant") return;
+					const text = Array.isArray(content)
+						? content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("")
+						: typeof content === "string" ? content : "";
+
+					const startMarker = "---RETRO_START---";
+					const endMarker = "---RETRO_END---";
+					const startIdx = text.indexOf(startMarker);
+					const endIdx = text.indexOf(endMarker);
+					if (startIdx === -1 || endIdx === -1) return;
+
+					const finalMd = text.slice(startIdx + startMarker.length, endIdx).trim();
+					if (!finalMd) return;
+
+					pi.off("message_end", onMessage);
+
+					// Save to local cache
+					const categoryMap: Record<string, string> = {
+						"일간회고": "daily-retrospective",
+						"주간회고": "weekly-retrospective",
+						"월간회고": "monthly-retrospective",
+						"개발성장": "dev-growth-report",
+					};
+					const cacheSubdir = categoryMap[activeRetro!.category] ?? "";
+					if (cacheSubdir) {
+						const cacheDir = join(REPORT_DIR, cacheSubdir);
+						mkdirSync(cacheDir, { recursive: true });
+						writeFileSync(join(cacheDir, `${activeRetro!.date}.md`), finalMd, "utf8");
+					}
+
+					// Upload via notion_upload.py upsert
+					const tmpFile = join(homedir(), ".pi", "agent", "retro-save-tmp.md");
+					writeFileSync(tmpFile, finalMd, "utf8");
+
+					const iconMap: Record<string, string> = {
+						"일간회고": "📋", "주간회고": "📅", "월간회고": "📆", "개발성장": "📊",
+					};
+					const icon = iconMap[activeRetro!.category] ?? "📋";
+					const uploadScript = join(homedir(), ".claude", "script", "notion_upload.py");
+
+					const result = await pi.exec("python3", [
+						uploadScript, "upsert",
+						"--title", activeRetro!.title,
+						"--date", activeRetro!.date,
+						"--category", activeRetro!.category,
+						"--icon", icon,
+						"--file", tmpFile,
+					]);
+
+					if (result.code === 0) {
+						ctx.ui.notify(`✅ "${activeRetro!.title}" Notion 반영 완료`, "info");
+						activeRetro!.content = finalMd;
+					} else {
+						ctx.ui.notify(`❌ Notion 반영 실패: ${result.stderr?.slice(0, 200) ?? "unknown"}`, "error");
+					}
+				};
+
+				pi.on("message_end", onMessage);
 				return;
 			}
 
