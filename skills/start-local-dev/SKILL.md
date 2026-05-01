@@ -18,14 +18,40 @@ description: 로컬 개발 서버 (FE web/admin + BE) 시작하거나 실행 중
 
 product 레포는 **각 서비스가 고정 포트만 사용**해야 한다. 다른 포트로 fallback되면 네트워크 연결이 깨짐 (백엔드 CORS + 프론트 env가 특정 포트 가정).
 
-| 서비스 | 포트 | 부착 |
+### 프론트엔드
+| 서비스 | 포트 | fallback 발생 시 |
+|--------|------|-----------------|
+| **web** (Next.js) | **5173** | 5174로 떨어지면 ❌ 네트워크 깨짐 |
+| **admin** (Vite) | **3000** | 3001로 떨어지면 ❌ 네트워크 깨짐 |
+
+### 백엔드 라우터
+| 서비스 | 포트 | 비고 |
 |--------|------|------|
-| **web** (Next.js) | **5173** | 5174 fallback 시 ❌ |
-| **admin** (Vite) | **3000** | 3001 fallback 시 ❌ |
-| **router** (GraphQL) | 4000 | 시작 실패 |
-| **supergraph** | 8088 | 시작 실패 |
-| **로컬 서비스** | 17000~17005 | trip/payment/stay/search/language-school |
-| **기타 backend** | 7002~7005 | |
+| **router** (Apollo Federation) | **4000** | 모든 FE 요청의 진입점 |
+| **supergraph** | **8088** | composition 서비스 |
+
+### 로컬 서비스 (--backend:local 시)
+| 서비스 | HTTP | gRPC |
+|--------|------|------|
+| **trip** | 17000 | 9090 |
+| **payment** | 7004 | 9094 |
+| **stay** | 7005 | 9095 |
+| **search** | 7002 | 9092 |
+| **language-school** | 7003 | 9093 |
+
+### 아키텍처
+```
+FE (5173/3000)
+  └→ Router (4000)
+       ├→ trip local (17000)         ← spot, reservation, member, ...
+       ├→ payment local (7004)        ← gRPC 9094로 trip과 통신
+       ├→ stay local (7005)
+       ├→ search local (7002)
+       └→ language-school local (7003)
+       (또는 dev URL로 우회)
+```
+
+**중요**: FE에서 backend 직접 호출 안 됨 (CORS). 반드시 Router(4000) 경유.
 
 ## 1단계: 포트 충돌 확인 (필수)
 
