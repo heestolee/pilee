@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ExtensionCommandContext, ThemeColor } from "@mariozechner/pi-coding-agent";
+import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
 
 interface Task {
@@ -204,12 +205,202 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.on("session_start", async (_e, ctx) => {
+	// ─── Widget (above editor) ─────────────────────────────────────────────
+
+	let latestCtx: ExtensionContext | undefined;
+	const WIDGET_KEY = "tasks";
+
+	function updateWidget(ctx: ExtensionContext) {
 		if (!ctx.hasUI) return;
+		const store = load(ctx);
+		const active = store.tasks.filter((t) => t.status !== "completed");
+		if (active.length === 0) {
+			ctx.ui.setWidget(WIDGET_KEY, undefined);
+			return;
+		}
+		const inProgress = active.filter((t) => t.status === "in_progress");
+		const pending = active.filter((t) => t.status === "pending");
+		ctx.ui.setWidget(WIDGET_KEY, (_tui, theme) => {
+			const lines: string[] = [];
+			const header = `${theme.fg("accent", "☐")} Tasks: ${theme.fg("success", String(inProgress.length))} in progress · ${theme.fg("muted", String(pending.length))} pending`;
+			lines.push(header);
+			for (const t of inProgress.slice(0, 3)) {
+				lines.push(`  ${theme.fg("warning", "▸")} ${t.activeForm ?? t.subject}`);
+			}
+			return { render: () => lines, invalidate() {}, handleInput() {} };
+		});
+	}
+
+	pi.on("session_start", async (_e, ctx) => {
+		latestCtx = ctx;
+		if (!ctx.hasUI) return;
+		updateWidget(ctx);
 		const store = load(ctx);
 		const inProgress = store.tasks.filter((t) => t.status === "in_progress");
 		if (inProgress.length > 0) {
 			ctx.ui.notify(`${inProgress.length} task(s) in progress from previous session`, "info");
 		}
+	});
+
+	pi.on("tool_result", async (event, ctx) => {
+		latestCtx = ctx;
+		if (["TaskCreate", "TaskUpdate"].includes(event.toolName)) {
+			updateWidget(ctx);
+		}
+	});
+
+	// ─── Overlay (/tasks command) ──────────────────────────────────────────
+
+	async function showTasksOverlay(ctx: ExtensionCommandContext) {
+		const store = load(ctx);
+		if (store.tasks.length === 0) {
+			ctx.ui.notify("No tasks. LLM will create tasks with TaskCreate tool.", "info");
+			return;
+		}
+
+		let selectedIdx = 0;
+		let inputMode: null | "new" | "edit" = null;
+		let inputBuffer = "";
+
+		const getVisible = () => store.tasks.filter((t) => t.status !== "completed");
+
+		await ctx.ui.custom<void>(
+			(tui, theme, _kb, done) => {
+				return {
+					render: (w: number) => {
+						const visible = getVisible();
+						const completed = store.tasks.filter((t) => t.status === "completed").length;
+						const total = store.tasks.length;
+
+						const lines: string[] = [];
+						lines.push(theme.fg("accent", "─".repeat(w)));
+						lines.push(`  ${theme.bold("Tasks")} (${total - completed}/${total} active)        ${inputMode ? theme.fg("warning", `[${inputMode === "new" ? "새 태스크" : "수정"}]`) : ""}`);
+						lines.push(theme.fg("accent", "─".repeat(w)));
+
+						if (inputMode) {
+							lines.push(`  > ${inputBuffer}${theme.fg("dim", "│")}`);
+							lines.push(theme.fg("dim", "  Enter: 확인 · Esc: 취소"));
+							lines.push(theme.fg("accent", "─".repeat(w)));
+							return lines;
+						}
+
+						if (visible.length === 0) {
+							lines.push(theme.fg("muted", "  모든 태스크 완료! 🎉"));
+						} else {
+							for (let i = 0; i < visible.length; i++) {
+								const t = visible[i];
+								const sel = i === selectedIdx;
+								const cursor = sel ? theme.fg("accent", "▶") : " ";
+								const icon = t.status === "in_progress" ? theme.fg("warning", "●") : theme.fg("dim", "○");
+								const subject = sel ? theme.fg("accent", t.subject) : t.subject;
+								const meta = t.metadata?.ticket ? theme.fg("dim", ` [${t.metadata.ticket}]`) : "";
+								lines.push(truncateToWidth(`${cursor} ${icon} #${t.id} ${subject}${meta}`, w, ""));
+							}
+						}
+
+						if (completed > 0) {
+							lines.push(theme.fg("dim", `  + ${completed} completed`));
+						}
+
+						lines.push(theme.fg("accent", "─".repeat(w)));
+						lines.push(theme.fg("dim", "  ↑↓ 이동 · Space 상태 토글 · n 새로 · d 삭제 · q 닫기"));
+
+						return lines;
+					},
+					handleInput: (data: string) => {
+						const visible = getVisible();
+
+						// Input mode
+						if (inputMode) {
+							if (matchesKey(data, Key.escape)) {
+								inputMode = null;
+								inputBuffer = "";
+							} else if (matchesKey(data, Key.enter)) {
+								if (inputBuffer.trim()) {
+									if (inputMode === "new") {
+										const task: Task = {
+											id: String(store.nextId++),
+											subject: inputBuffer.trim(),
+											description: "",
+											status: "pending",
+											blocks: [],
+											blockedBy: [],
+											metadata: {},
+											createdAt: Date.now(),
+											updatedAt: Date.now(),
+										};
+										store.tasks.push(task);
+										save(ctx, store);
+									}
+								}
+								inputMode = null;
+								inputBuffer = "";
+								updateWidget(ctx);
+							} else if (matchesKey(data, Key.backspace)) {
+								inputBuffer = inputBuffer.slice(0, -1);
+							} else if (data.length === 1 && data >= " ") {
+								inputBuffer += data;
+							}
+							(tui as any).requestRender?.();
+							return;
+						}
+
+						// Navigation
+						if (matchesKey(data, Key.escape) || data === "q") {
+							done(undefined);
+							return;
+						}
+						if (matchesKey(data, Key.up) || data === "k") {
+							selectedIdx = Math.max(0, selectedIdx - 1);
+						} else if (matchesKey(data, Key.down) || data === "j") {
+							selectedIdx = Math.min(visible.length - 1, selectedIdx + 1);
+						} else if (data === " " || matchesKey(data, Key.enter)) {
+							// Toggle status
+							const t = visible[selectedIdx];
+							if (t) {
+								if (t.status === "pending") t.status = "in_progress";
+								else if (t.status === "in_progress") t.status = "completed";
+								t.updatedAt = Date.now();
+								save(ctx, store);
+								updateWidget(ctx);
+								// Adjust selection if task moved out
+								const newVisible = getVisible();
+								if (selectedIdx >= newVisible.length) selectedIdx = Math.max(0, newVisible.length - 1);
+							}
+						} else if (data === "n") {
+							inputMode = "new";
+							inputBuffer = "";
+						} else if (data === "d") {
+							const t = visible[selectedIdx];
+							if (t) {
+								store.tasks = store.tasks.filter((s) => s.id !== t.id);
+								save(ctx, store);
+								updateWidget(ctx);
+								if (selectedIdx >= getVisible().length) selectedIdx = Math.max(0, getVisible().length - 1);
+							}
+						}
+						(tui as any).requestRender?.();
+					},
+					invalidate: () => {},
+				};
+			},
+			{ overlay: true, overlayOptions: { width: "80%", maxHeight: "60%", anchor: "center" } },
+		);
+	}
+
+	pi.registerCommand("tasks", {
+		description: "Interactive task checklist overlay",
+		handler: async (_args, ctx) => showTasksOverlay(ctx),
+	});
+
+	// ─── Keyboard shortcut ─────────────────────────────────────────────────
+
+	pi.registerShortcut("ctrl+shift+t", {
+		description: "Open tasks overlay",
+		handler: async (ctx) => {
+			// Shortcut can't open overlay directly (no CommandContext)
+			// Pre-fill /tasks command
+			ctx.ui.setEditorText("/tasks");
+		},
 	});
 }
