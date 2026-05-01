@@ -14,15 +14,30 @@ description: 로컬 개발 서버 (FE web/admin + BE) 시작하거나 실행 중
 - "포트 충돌 났어"
 - "router timeout 떴어"
 
+## 고정 포트 (변경 불가)
+
+product 레포는 **각 서비스가 고정 포트만 사용**해야 한다. 다른 포트로 fallback되면 네트워크 연결이 깨짐 (백엔드 CORS + 프론트 env가 특정 포트 가정).
+
+| 서비스 | 포트 | 부착 |
+|--------|------|------|
+| **web** (Next.js) | **5173** | 5174 fallback 시 ❌ |
+| **admin** (Vite) | **3000** | 3001 fallback 시 ❌ |
+| **router** (GraphQL) | 4000 | 시작 실패 |
+| **supergraph** | 8088 | 시작 실패 |
+| **로컬 서비스** | 17000~17005 | trip/payment/stay/search/language-school |
+| **기타 backend** | 7002~7005 | |
+
 ## 1단계: 포트 충돌 확인 (필수)
 
-실행 전에 아래 포트에 이미 로컬 서버가 떠 있는지 확인:
+실행 전에 핵심 포트 점유 상태 확인:
 
 ```bash
 for p in 3000 5173 4000 8088 7002 7003 7004 7005 17000 17001 17002 17003 17004 17005; do
   lsof -nP -iTCP:$p -sTCP:LISTEN
 done
 ```
+
+**중요**: `pnpm start`는 자체적으로 stale 프로세스를 정리하지만, 직접 `pnpm dev:web` 등을 실행하면 fallback이 일어남. 항상 `pnpm start` 사용.
 
 점유된 포트가 있으면 바로 실행하지 말고 먼저 사용자에게 확인:
 
@@ -32,6 +47,17 @@ done
 - 기존 프로세스 유지하고 그대로 진행
 - 기존 프로세스 종료 후 새로 실행
 - 이번 실행 중단, 사용자가 수동 정리
+
+### 5173/3000 포트 fallback 절대 금지
+
+만약 이전 vite/next 실행이 5174, 3001 등 fallback 포트를 사용 중이면 그 프로세스도 죽여야 함:
+
+```bash
+for p in 3001 3002 5174 5175; do
+  pid=$(lsof -nP -iTCP:$p -sTCP:LISTEN -t 2>/dev/null)
+  [ -n "$pid" ] && echo "Killing fallback $pid on port $p" && kill -9 $pid
+done
+```
 
 ## 2단계: CLI 한 줄 실행
 
@@ -115,3 +141,4 @@ cd frontend && pnpm dev:admin:local 4000
 - **백그라운드 실행 금지** — `pnpm start &` 같은 백그라운드 실행은 로그 추적이 어려움
 - **새 터미널/패널에서 실행** — `/fp right` 또는 새 Ghostty 탭으로 분리해서 실행 후 메인 패널에선 다른 작업
 - **종료는 Ctrl+C 한 번** — 정상 종료. 두 번 누르면 강제 종료라 자식 프로세스가 좀비로 남을 수 있음
+- **`pnpm dev:web`/`pnpm dev:admin` 직접 실행 금지** — port fallback 발생. 항상 `pnpm start` 통해서
