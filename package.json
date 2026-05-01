@@ -18,6 +18,10 @@
       "themes"
     ]
   },
+  "scripts": {
+    "sync-agents": "node scripts/sync-agents.mjs",
+    "postinstall": "node scripts/sync-agents.mjs"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.0",
     "@mozilla/readability": "^0.5.0",
