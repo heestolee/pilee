@@ -112,6 +112,57 @@ pnpm start --frontend:web,admin --backend:local --service:trip
 
 ## 문제 해결
 
+### 0) 🔥 가장 흔한 이슈 — trip → payment 호출이 dev로 가는 문제
+
+**원인**: 로컬 서비스가 **2개 이상**일 때만 서비스 간 .env가 자동 업데이트됨. `--service:trip` 처럼 1개만 띄우면 trip의 PAYMENT_GRPC_HOST는 dev URL 그대로 → trip이 dev payment를 호출.
+
+**해결책**: 서비스 간 통신이 필요하면 **모두 한 번에 로컬로 띄우기**
+
+```bash
+# ❌ trip만 로컬 → payment 호출 시 dev로 연결됨
+pnpm start --frontend:web --backend:local --service:trip
+
+# ✅ trip + payment 둘 다 로컬 → trip의 .env가 자동으로 localhost:9094 가리킴
+pnpm start --frontend:web --backend:local --service:trip,payment
+```
+
+**서비스 간 의존성 (자동 .env 업데이트 대상)**:
+- `payment` → trip(gRPC), stay(gRPC), language-school(gRPC)
+- `stay` → trip(gRPC), payment(gRPC/REST)
+- `search` → trip(gRPC), language-school(gRPC)
+- `language-school` → trip(gRPC), payment(gRPC)
+- `trip` → payment(gRPC/REST), stay(gRPC), language-school(gRPC)
+
+서로 호출하는 두 서비스는 반드시 함께 로컬로 띄우거나, 둘 다 dev 사용.
+
+### 0-B) 비정상 종료 후 .env 잔존 백업
+
+**증상**: 로컬 서비스가 떴는데도 dev로 호출되거나, 환경변수 이상함
+
+**진단**:
+```bash
+# 백업 파일이 남아있으면 이전 실행이 비정상 종료된 것
+ls backend/apps/*/.env.router-backup 2>/dev/null
+```
+
+**해결**:
+```bash
+# 백업으로 .env 복원 (안전)
+for f in backend/apps/*/.env.router-backup; do
+  [ -f "$f" ] && original="${f%.router-backup}" && mv "$f" "$original" && echo "Restored: $original"
+done
+```
+
+### 0-C) 현재 .env 상태 진단
+
+trip → payment 호출이 어디로 가는지 확인:
+```bash
+grep PAYMENT_GRPC_HOST backend/apps/trip/.env
+```
+
+- `localhost:9094` → ✅ 로컬 payment 호출
+- `payment-...com` → ❌ dev payment 호출 (둘 다 로컬로 띄워야 함)
+
 ### 1) Router 기동 실패 / supergraph timeout
 
 VPN 재연결 후 재시도하고, 그래도 안 되면 backend env 재생성:
