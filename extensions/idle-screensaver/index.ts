@@ -111,6 +111,24 @@ async function showScreensaver(): Promise<void> {
 	if (meta?.ticket) metaLines.push(meta.ticket);
 	if (meta?.note) metaLines.push(meta.note);
 
+	// Last context: 마지막 assistant 메시지 1줄 요약
+	try {
+		const entries = latestCtx.sessionManager.getEntries();
+		for (let i = entries.length - 1; i >= 0; i--) {
+			const e = entries[i] as any;
+			if (e?.type === "message" && e.message?.role === "assistant") {
+				const text = Array.isArray(e.message.content)
+					? e.message.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("").trim()
+					: "";
+				if (text) {
+					const oneLine = text.replace(/\s+/g, " ").slice(0, 80);
+					metaLines.push(`💬 ${oneLine}${text.length > 80 ? "…" : ""}`);
+					break;
+				}
+			}
+		}
+	} catch {}
+
 	// Try to load sprite — match by folderName (workspace name) or meta.name
 	let spriteLines: string[] | null = null;
 	let spritePokemonName: string | null = null;

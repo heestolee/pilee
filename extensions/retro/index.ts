@@ -3,8 +3,26 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 
-const NOTION_TOKEN = "REDACTED";
-const NOTION_DB = "REDACTED";
+const CONFIG_PATH = join(homedir(), ".pi", "agent", "retro-config.json");
+
+function loadRetroConfig(): { token: string; dbId: string } {
+	// Env vars first
+	if (process.env.NOTION_API_KEY && process.env.NOTION_DB_ID) {
+		return { token: process.env.NOTION_API_KEY, dbId: process.env.NOTION_DB_ID };
+	}
+	// Config file fallback
+	if (existsSync(CONFIG_PATH)) {
+		try {
+			const cfg = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
+			return { token: cfg.notionToken ?? "", dbId: cfg.notionDbId ?? "" };
+		} catch {}
+	}
+	return { token: "", dbId: "" };
+}
+
+const RETRO_CONFIG = loadRetroConfig();
+const NOTION_TOKEN = RETRO_CONFIG.token;
+const NOTION_DB = RETRO_CONFIG.dbId;
 const NOTION_API = "https://api.notion.com/v1";
 const REPORT_DIR = join(homedir(), ".claude", "script", "reports");
 
