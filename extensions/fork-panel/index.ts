@@ -521,4 +521,70 @@ export default function (pi: ExtensionAPI) {
 			ctx.ui.notify(`전체 transcript 전달됨 (${target.label}, ${(transcript.length / 1000).toFixed(1)}K chars)`, "info");
 		},
 	});
+
+	// /revive — reopen a previous fork panel session
+	pi.registerCommand("revive", {
+		description: "Reopen a previous fork-panel session in a new Ghostty panel. Usage: /revive [list|last|<forkId>]",
+		handler: async (args, ctx) => {
+			if (process.platform !== "darwin" || process.env.TERM_PROGRAM !== "ghostty") {
+				ctx.ui.notify("/revive는 macOS Ghostty에서만 동작합니다", "warning");
+				return;
+			}
+
+			const sub = (args ?? "").trim();
+			const all = loadRecent();
+			const sorted = Object.values(all)
+				.filter((r) => r.closedAt)
+				.sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0));
+
+			if (!sub || sub === "list") {
+				if (sorted.length === 0) {
+					ctx.ui.notify("재개 가능한 포크 세션이 없습니다", "info");
+					return;
+				}
+				const lines = ["종료된 포크 세션:"];
+				for (const r of sorted.slice(0, 10)) {
+					const time = new Date(r.closedAt!).toLocaleString();
+					const exists = existsSync(r.sessionFile) ? "" : " (파일 없음)";
+					const preview = r.preview ? ` — ${r.preview.slice(0, 40)}…` : "";
+					lines.push(`  ${r.forkId} ${r.label} (${time})${preview}${exists}`);
+				}
+				lines.push("\nUsage: /revive last  |  /revive <forkId>");
+				ctx.ui.notify(lines.join("\n"), "info");
+				return;
+			}
+
+			let target: ForkRecord | undefined;
+			if (sub === "last") {
+				target = sorted[0];
+				if (!target) { ctx.ui.notify("재개 가능한 세션이 없습니다", "warning"); return; }
+			} else {
+				target = all[sub];
+				if (!target) { ctx.ui.notify(`포크 없음: ${sub}. /revive list로 확인`, "error"); return; }
+			}
+
+			if (!existsSync(target.sessionFile)) {
+				ctx.ui.notify(`세션 파일 없음: ${target.sessionFile}`, "error");
+				return;
+			}
+
+			const cwd = target.cwd || ctx.cwd;
+			const escStr = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+			const cmd = `cd \\"${escStr(cwd)}\\" && pi --session \\"${escStr(target.sessionFile)}\\"`;
+			const script = `tell application "Ghostty"
+  set currentTerm to focused terminal of selected tab of front window
+  set newTerm to split currentTerm direction right
+  input text "${cmd}" to newTerm
+  send key "enter" to newTerm
+end tell`;
+
+			const result = await pi.exec("osascript", ["-e", script]);
+			if (result.code !== 0) {
+				ctx.ui.notify(`패널 생성 실패: ${result.stderr?.trim() ?? "unknown"}`, "error");
+				return;
+			}
+
+			ctx.ui.notify(`${target.label} 세션 재개 → right 패널`, "info");
+		},
+	});
 }
