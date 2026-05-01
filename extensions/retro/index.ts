@@ -140,6 +140,19 @@ function resolveDate(arg: string): { date: string; category: string; label: stri
 		return { date: trimmed, category: "일간회고", label: trimmed };
 	}
 
+	// growth 키워드 + 날짜 조합
+	const growthMatch = trimmed.match(/^(growth|dev-growth|개발성장)\s+(.+)$/i);
+	if (growthMatch) {
+		const inner = resolveDate(growthMatch[2]);
+		if (inner) return { date: inner.date, category: "개발성장", label: `${inner.label} 개발성장` };
+	}
+	// growth 단독 → 어제
+	if (/^(growth|dev-growth|개발성장)$/i.test(trimmed)) {
+		const yesterday = new Date();
+		yesterday.setDate(yesterday.getDate() - 1);
+		return { date: yesterday.toISOString().slice(0, 10), category: "개발성장", label: "개발성장" };
+	}
+
 	// Empty → 어제 일간
 	if (!trimmed) {
 		const yesterday = new Date();
@@ -180,7 +193,7 @@ export default function (pi: ExtensionAPI) {
 			const resolved = resolveDate(dateArg);
 			if (!resolved) {
 				ctx.ui.notify(
-					"사용법:\n  /retro — 어제 회고 불러와서 대화\n  /retro 2026-04-30 — 특정 날짜\n  /retro monthly — 최근 월간 회고\n  /retro weekly — 최근 주간 회고\n  /retro 2026-04 — 4월 월간 회고\n  /retro save — 다듬은 내용 Notion 반영\n  /retro view [날짜] — 보기만",
+					"사용법:\n  /retro — 어제 일간 회고\n  /retro 2026-04-30 — 특정 날짜\n  /retro monthly — 월간 회고\n  /retro weekly — 주간 회고\n  /retro 2026-04 — 4월 월간\n  /retro growth 2026-04-30 — 개발성장\n  /retro save — Notion 반영\n  /retro view [날짜] — 보기만",
 					"info",
 				);
 				return;
@@ -194,6 +207,7 @@ export default function (pi: ExtensionAPI) {
 				"일간회고": "daily-retrospective",
 				"주간회고": "weekly-retrospective",
 				"월간회고": "monthly-retrospective",
+				"개발성장": "dev-growth-report",
 			};
 			const cacheDir = join(REPORT_DIR, cacheMap[resolved.category] ?? "");
 			const cacheFiles = [
