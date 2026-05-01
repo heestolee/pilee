@@ -2,8 +2,9 @@ import { randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { AutocompleteItem } from "@mariozechner/pi-tui";
+import { completeSimple } from "@mariozechner/pi-ai";
 
 const VALID_DIRS = ["right", "left", "down", "up", "tab"] as const;
 type Direction = (typeof VALID_DIRS)[number];
@@ -63,6 +64,72 @@ function extractLastAssistant(entries: any[]): string {
 	return "";
 }
 
+function extractFullTranscript(entries: any[]): string {
+	const lines: string[] = [];
+	for (const e of entries) {
+		if (e?.type !== "message") continue;
+		const role = e.message?.role;
+		const content = Array.isArray(e.message?.content)
+			? e.message.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("")
+			: typeof e.message?.content === "string" ? e.message.content : "";
+		if (!content.trim()) continue;
+		if (role === "user" || role === "assistant") {
+			lines.push(`[${role}]: ${content}`);
+		}
+	}
+	return lines.join("\n\n");
+}
+
+const SUMMARY_SYSTEM_PROMPT = `You summarize an AI coding session.
+Output a brief 3-5 bullet point summary in the same language as the conversation (Korean if Korean).
+Focus on: what was done, what was discovered/decided, key file/code references, action items.
+Each bullet 1-2 lines max. Be concrete (file paths, function names, ticket IDs).
+Output only the bullets, no preamble.`;
+
+async function generateSummary(entries: any[], ctx: ExtensionContext): Promise<string | null> {
+	if (!ctx.model || !ctx.modelRegistry) return null;
+
+	const transcript = extractFullTranscript(entries);
+	if (!transcript || transcript.length < 200) return null; // too short
+
+	try {
+		const auth = await ctx.modelRegistry.getApiKeyAndHeaders(ctx.model).catch(() => null);
+		if (!auth?.ok) return null;
+
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), 20000);
+		const result = await completeSimple(
+			ctx.model,
+			{
+				systemPrompt: SUMMARY_SYSTEM_PROMPT,
+				messages: [{ role: "user", content: [{ type: "text", text: transcript.slice(0, 30000) }], timestamp: Date.now() }],
+			},
+			{ apiKey: auth.apiKey, headers: auth.headers, signal: controller.signal, reasoning: "minimal", maxTokens: 600 },
+		).catch(() => undefined);
+		clearTimeout(timeout);
+
+		if (!result || result.stopReason !== "stop") return null;
+		const text = result.content
+			.filter((c): c is { type: "text"; text: string } => c.type === "text")
+			.map((c) => c.text)
+			.join("")
+			.trim();
+		return text || null;
+	} catch {
+		return null;
+	}
+}
+
+function assemblePayload(opts: { mode: "summary" | "full" | "last"; lastMessage: string; summary?: string | null; transcript?: string }): string {
+	if (opts.mode === "full" && opts.transcript) {
+		return `📜 전체 대화:\n\n${opts.transcript}`;
+	}
+	if (opts.mode === "summary" && opts.summary) {
+		return `📋 요약:\n${opts.summary}\n\n💬 마지막 응답:\n${opts.lastMessage}`;
+	}
+	return opts.lastMessage;
+}
+
 function buildScript(direction: Direction, cwd: string, sessionFile: string, forkId: string, prompt?: string): string {
 	const cmd = `PI_FORK_ID=${forkId} cd \\"${esc(cwd)}\\" && PI_FORK_ID=${forkId} pi --session \\"${esc(sessionFile)}\\"`;
 
@@ -89,12 +156,13 @@ export default function (pi: ExtensionAPI) {
 	if (forkId) {
 		const handoffPath = join(HANDOFF_DIR, `${forkId}.json`);
 		let latestEntries: any[] = [];
+		let latestCtx: ExtensionContext | undefined;
 		let alreadyFinalized = false;
 
-		const writeHandoff = (final: boolean) => {
+		const writeAuto = (final: boolean, payload?: string) => {
 			try {
-				const summary = extractLastAssistant(latestEntries);
-				if (!summary) return;
+				const lastMsg = extractLastAssistant(latestEntries);
+				if (!lastMsg) return;
 				mkdirSync(HANDOFF_DIR, { recursive: true });
 				const data: HandoffData = {
 					forkId,
@@ -102,64 +170,91 @@ export default function (pi: ExtensionAPI) {
 					pid: process.pid,
 					updatedAt: Date.now(),
 					...(final ? { finishedAt: Date.now() } : {}),
-					summary,
+					summary: payload ?? lastMsg,
 					mode: "auto",
 				};
 				writeFileSync(handoffPath, JSON.stringify(data, null, 2));
 			} catch {}
 		};
 
-		// Update on every assistant turn
+		// Update on every assistant turn (just last message — fast)
 		pi.on("agent_end", async (_e, ctx) => {
 			latestEntries = ctx.sessionManager.getEntries();
-			writeHandoff(false);
+			latestCtx = ctx;
+			writeAuto(false);
 		});
 
-		// Final write on graceful shutdown (/quit, Ctrl+C)
+		// Final write on graceful shutdown — has time to generate summary
 		pi.on("session_shutdown", async (_e, ctx) => {
 			if (alreadyFinalized) return;
 			alreadyFinalized = true;
 			latestEntries = ctx.sessionManager.getEntries();
-			writeHandoff(true);
+			const lastMsg = extractLastAssistant(latestEntries);
+			const summary = await generateSummary(latestEntries, ctx);
+			const payload = assemblePayload({ mode: summary ? "summary" : "last", lastMessage: lastMsg, summary });
+			writeAuto(true, payload);
 		});
 
-		// Final write on signals (Cmd+W, kill, etc.)
+		// Signal handlers (Cmd+W etc.) — no time for LLM, just last message
 		for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
 			process.on(sig, () => {
 				if (!alreadyFinalized) {
 					alreadyFinalized = true;
-					writeHandoff(true);
+					writeAuto(true);
 				}
 			});
 		}
 
-		// Manual /handoff command — explicit context send to parent
+		// Manual /handoff command
 		pi.registerCommand("handoff", {
-			description: "Send the latest assistant message (and optional note) to the parent session right now. The panel keeps running.",
+			description: "Send to parent: default = summary + last message. Options: --full (full transcript), --last (just last message). [optional note]",
 			handler: async (args, ctx) => {
 				try {
 					const entries = ctx.sessionManager.getEntries();
-					const summary = extractLastAssistant(entries);
-					if (!summary) {
+					const lastMsg = extractLastAssistant(entries);
+					if (!lastMsg) {
 						ctx.ui.notify("전송할 응답이 없습니다 (assistant 메시지가 아직 없음)", "warning");
 						return;
+					}
+
+					// Parse mode flag and note
+					const tokens = (args ?? "").trim().split(/\s+/).filter(Boolean);
+					let mode: "summary" | "full" | "last" = "summary";
+					const noteParts: string[] = [];
+					for (const t of tokens) {
+						if (t === "--full") mode = "full";
+						else if (t === "--last") mode = "last";
+						else if (t === "--summary") mode = "summary";
+						else noteParts.push(t);
+					}
+					const note = noteParts.join(" ").trim() || undefined;
+
+					let payload: string;
+					if (mode === "full") {
+						const transcript = extractFullTranscript(entries);
+						payload = assemblePayload({ mode: "full", lastMessage: lastMsg, transcript });
+					} else if (mode === "summary") {
+						ctx.ui.notify("요약 생성 중…", "info");
+						const summary = await generateSummary(entries, ctx);
+						payload = assemblePayload({ mode: summary ? "summary" : "last", lastMessage: lastMsg, summary });
+					} else {
+						payload = lastMsg;
 					}
 
 					mkdirSync(HANDOFF_DIR, { recursive: true });
 					const ts = Date.now();
 					const manualPath = join(HANDOFF_DIR, `${forkId}-manual-${ts}.json`);
-					const note = args?.trim() || undefined;
 					const data: HandoffData = {
 						forkId,
 						parentSessionId: process.env.PI_FORK_PARENT,
 						pid: process.pid,
 						updatedAt: ts,
-						summary,
+						summary: payload,
 						mode: "manual",
 						customNote: note,
 					};
 					writeFileSync(manualPath, JSON.stringify(data, null, 2));
-					ctx.ui.notify(`부모 세션에 handoff 전송됨${note ? ` (메모: ${note.slice(0, 40)})` : ""}`, "info");
+					ctx.ui.notify(`부모 세션에 handoff 전송됨 (mode: ${mode}${note ? `, 메모: ${note.slice(0, 30)}` : ""})`, "info");
 				} catch (e) {
 					ctx.ui.notify(`handoff 실패: ${e instanceof Error ? e.message : e}`, "error");
 				}
