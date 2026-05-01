@@ -1,3 +1,5 @@
 node_modules/
 dist/
 .DS_Store
+AGENTS.md
+docs/pilee-history.md
