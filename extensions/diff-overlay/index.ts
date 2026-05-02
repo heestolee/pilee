@@ -1164,13 +1164,13 @@ function buildRenderedDiffLines(
 
 		const oldNumber = line?.oldLineNumber ? String(line.oldLineNumber).padStart(lineNumberWidth, " ") : blankLineNumber;
 		const newNumber = line?.newLineNumber ? String(line.newLineNumber).padStart(lineNumberWidth, " ") : blankLineNumber;
-		const gutter = t.fg("dim", `${oldNumber} ${newNumber} │`);
+		const gutter = t.fg("muted", `${oldNumber} ${newNumber} │`);
 		const contentWidth = Math.max(1, width - visibleWidth(gutter) - 1);
 
 		if (wrapLines) {
 			const wrapped = wrapTextWithAnsi(` ${text}`, contentWidth);
 			for (const [segmentIndex, segment] of wrapped.entries()) {
-				const lineGutter = segmentIndex === 0 ? gutter : t.fg("dim", `${blankLineNumber} ${blankLineNumber} │`);
+				const lineGutter = segmentIndex === 0 ? gutter : t.fg("muted", `${blankLineNumber} ${blankLineNumber} │`);
 				rendered.push({ text: padStyledLine(`${lineGutter} ${segment}`, width), category, newLineNumber: segmentIndex === 0 ? line?.newLineNumber : undefined });
 			}
 			continue;
