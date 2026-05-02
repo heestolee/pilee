@@ -189,10 +189,13 @@ function buildScript(direction: Direction, cwd: string, sessionFile: string, for
 	const cmd = `PI_FORK_ID=${forkId} cd \\"${esc(cwd)}\\" && PI_FORK_ID=${forkId} pi --session \\"${esc(sessionFile)}\\"`;
 
 	if (direction === "tab") {
-		return `tell application "Ghostty"
-  set newTerm to make new tab in front window
-  input text "${cmd}" to newTerm
-  send key "enter" to newTerm${prompt ? `\n  delay 2\n  input text "${esc(prompt)}" to newTerm\n  send key "enter" to newTerm` : ""}
+		return `tell application "System Events"
+  tell process "Ghostty"
+    keystroke "t" using command down
+    delay 0.5
+    keystroke "${cmd}"
+    key code 36${prompt ? `\n    delay 2\n    keystroke "${esc(prompt)}"\n    key code 36` : ""}
+  end tell
 end tell`;
 	}
 
