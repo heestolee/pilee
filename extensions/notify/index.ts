@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-let enabled = false;
+let enabled = true;
 let sessionTitle = "";
 
 async function sendNotification(pi: ExtensionAPI, title: string, message: string) {
