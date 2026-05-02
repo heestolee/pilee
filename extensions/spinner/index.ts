@@ -1,23 +1,26 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-const SPINNER_INTERVAL_MS = 120;
+const SPINNER_INTERVAL_MS = 150;
 
 function getSpinnerFrames(): string[] {
-	const term = process.env.TERM;
-	const chars =
-		term === "xterm-ghostty"
-			? ["·", "✢", "✳", "✶", "✻", "*"]
-			: process.platform === "darwin"
-				? ["·", "✢", "✳", "✶", "✻", "✽"]
-				: ["·", "✢", "*", "✶", "✻", "✽"];
-	return [...chars, ...chars.reverse()];
+	return [
+		"🔥",
+		" 🔥",
+		"  🔥",
+		" 🔥",
+		"🔥",
+		"🔥🔥",
+		"🔥🔥🔥",
+		"🔥🔥",
+		"🔥",
+	];
 }
 
 export default function (pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx) => {
 		if (!ctx.hasUI) return;
 		ctx.ui.setWorkingIndicator({
-			frames: getSpinnerFrames().map((f) => ctx.ui.theme.fg("accent", f)),
+			frames: getSpinnerFrames(),
 			intervalMs: SPINNER_INTERVAL_MS,
 		});
 	});
