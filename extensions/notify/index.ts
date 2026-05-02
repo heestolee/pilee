@@ -28,6 +28,19 @@ function clearNotifyWidget(ctx: ExtensionContext) {
 	if (ctx.hasUI) ctx.ui.setWidget("notify-bar", undefined);
 }
 
+function extractSummary(messages: any[]): string | undefined {
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const msg = messages[i];
+		if (msg?.role !== "assistant") continue;
+		const textBlock = msg.content?.find((c: any) => c.type === "text" && c.text?.trim());
+		if (!textBlock) continue;
+		const firstLine = textBlock.text.trim().split("\n")[0].replace(/^[#*\-]+\s*/, "");
+		if (firstLine.length > 80) return firstLine.slice(0, 77) + "…";
+		return firstLine;
+	}
+	return undefined;
+}
+
 async function sendNotification(pi: ExtensionAPI, title: string, message: string) {
 	const escaped = message.replace(/"/g, '\\"').slice(0, 200);
 	const titleEscaped = title.replace(/"/g, '\\"');
@@ -42,11 +55,12 @@ export default function (pi: ExtensionAPI) {
 		sessionTitle = pi.getSessionName?.() ?? "pi";
 	});
 
-	pi.on("agent_end", async (_e, ctx) => {
+	pi.on("agent_end", async (event, ctx) => {
 		if (!enabled || !ctx.hasUI) return;
-		const name = pi.getSessionName?.() ?? sessionTitle ?? "pi";
-		await sendNotification(pi, "pilee", `작업 완료 — ${name}`);
-		showNotifyWidget(ctx, `작업 완료 — ${name}`);
+		const summary = extractSummary(event.messages);
+		const text = summary ?? pi.getSessionName?.() ?? sessionTitle ?? "pi";
+		await sendNotification(pi, "pilee", `작업 완료 — ${text}`);
+		showNotifyWidget(ctx, `작업 완료 — ${text}`);
 	});
 
 	pi.on("agent_start", async (_e, ctx) => {
