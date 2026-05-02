@@ -36,6 +36,12 @@ function formatTerminalTitle(title: string | undefined, cwd: string): string {
 
 export default function (pi: ExtensionAPI) {
 	let naming = false;
+	// Tracks whether *this* extension instance set the current name.
+	// If false and a name already exists, it was inherited (e.g. from a fork-panel parent).
+	let selfHasSet = false;
+	// fork-panel children launch with PI_FORK_ID set (see fork-panel/index.ts).
+	// In that case the inherited name belongs to the parent's task — child does different work.
+	const isForkChild = !!process.env.PI_FORK_ID;
 
 	function syncUi(ctx: ExtensionContext) {
 		if (!ctx.hasUI) return;
@@ -45,18 +51,24 @@ export default function (pi: ExtensionAPI) {
 	async function autoName(prompt: string, ctx: ExtensionContext) {
 		if (naming || !prompt.trim()) return;
 		const current = pi.getSessionName()?.trim();
-		if (current) return;
+		// Protect names we've already set ourselves in this session.
+		if (current && selfHasSet) return;
+		// Outside fork-child mode an existing name is user-intended (resume, manual set, prior run).
+		if (current && !isForkChild) return;
+		// Otherwise: no name yet, or fork-child inheriting parent's name → (re)generate.
 
 		naming = true;
 		try {
 			if (!ctx.model || !ctx.modelRegistry) {
 				pi.setSessionName(normalizeTitle(prompt.slice(0, MAX_TITLE_CHARS)));
+				selfHasSet = true;
 				return;
 			}
 
 			const auth = await ctx.modelRegistry.getApiKeyAndHeaders(ctx.model).catch(() => undefined);
 			if (!auth?.ok) {
 				pi.setSessionName(normalizeTitle(prompt.slice(0, MAX_TITLE_CHARS)));
+				selfHasSet = true;
 				return;
 			}
 
@@ -81,7 +93,10 @@ export default function (pi: ExtensionAPI) {
 				: "";
 
 			const title = normalizeTitle(text || prompt.slice(0, MAX_TITLE_CHARS));
-			if (title) pi.setSessionName(title);
+			if (title) {
+				pi.setSessionName(title);
+				selfHasSet = true;
+			}
 		} finally {
 			naming = false;
 			syncUi(ctx);
