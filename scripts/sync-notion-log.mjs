@@ -58,14 +58,69 @@ function chunkText(text, maxLen = 2000) {
 	return chunks.length > 0 ? chunks : [""];
 }
 
-function textBlocks(text) {
-	return chunkText(text).map((chunk) => ({
-		object: "block",
-		type: "paragraph",
-		paragraph: {
-			rich_text: [{ type: "text", text: { content: chunk } }],
-		},
-	}));
+function markdownToBlocks(text) {
+	const blocks = [];
+	const lines = text.split("\n");
+	let i = 0;
+	while (i < lines.length) {
+		const line = lines[i];
+		if (line.startsWith("## ")) {
+			blocks.push({ object: "block", type: "heading_2", heading_2: { rich_text: parseInline(line.slice(3)) } });
+			i++;
+		} else if (line.startsWith("### ")) {
+			blocks.push({ object: "block", type: "heading_3", heading_3: { rich_text: parseInline(line.slice(4)) } });
+			i++;
+		} else if (/^[-*] /.test(line)) {
+			blocks.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: parseInline(line.slice(2)) } });
+			i++;
+		} else if (/^\d+\. /.test(line)) {
+			const content = line.replace(/^\d+\.\s*/, "");
+			blocks.push({ object: "block", type: "numbered_list_item", numbered_list_item: { rich_text: parseInline(content) } });
+			i++;
+		} else if (line.startsWith("> ")) {
+			blocks.push({ object: "block", type: "quote", quote: { rich_text: parseInline(line.slice(2)) } });
+			i++;
+		} else if (line.startsWith("---")) {
+			blocks.push({ object: "block", type: "divider", divider: {} });
+			i++;
+		} else if (line.trim() === "") {
+			i++;
+		} else {
+			let para = line;
+			while (i + 1 < lines.length && lines[i + 1].trim() !== "" && !/^(##|###|[-*] |\d+\. |> |---)/.test(lines[i + 1])) {
+				i++;
+				para += "\n" + lines[i];
+			}
+			const chunks = chunkText(para);
+			for (const chunk of chunks) {
+				blocks.push({ object: "block", type: "paragraph", paragraph: { rich_text: parseInline(chunk) } });
+			}
+			i++;
+		}
+	}
+	return blocks.length > 0 ? blocks : [{ object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: " " } }] } }];
+}
+
+function parseInline(text) {
+	const result = [];
+	const regex = /(\*\*(.+?)\*\*|`(.+?)`)/g;
+	let lastIndex = 0;
+	let match;
+	while ((match = regex.exec(text)) !== null) {
+		if (match.index > lastIndex) {
+			result.push({ type: "text", text: { content: text.slice(lastIndex, match.index) } });
+		}
+		if (match[2]) {
+			result.push({ type: "text", text: { content: match[2] }, annotations: { bold: true } });
+		} else if (match[3]) {
+			result.push({ type: "text", text: { content: match[3] }, annotations: { code: true } });
+		}
+		lastIndex = regex.lastIndex;
+	}
+	if (lastIndex < text.length) {
+		result.push({ type: "text", text: { content: text.slice(lastIndex) } });
+	}
+	return result.length > 0 ? result : [{ type: "text", text: { content: text } }];
 }
 
 function readStdin() {
@@ -110,17 +165,19 @@ async function findWhyPage(dbId, datePrefix) {
 
 async function appendToPage(pageId, narrative) {
 	const divider = { object: "block", type: "divider", divider: {} };
+	const blocks = markdownToBlocks(narrative);
 	await notionRequest("PATCH", `/blocks/${pageId}/children`, {
-		children: [divider, ...textBlocks(narrative)],
+		children: [divider, ...blocks],
 	});
 }
 
 async function createWhyPage(dbId, datePrefix, title, narrative) {
 	const pageTitle = title ? `${datePrefix} ${title}` : datePrefix;
+	const blocks = narrative ? markdownToBlocks(narrative) : [];
 	await notionRequest("POST", "/pages", {
 		parent: { database_id: dbId },
 		properties: { "이름": { title: [{ text: { content: pageTitle } }] } },
-		children: narrative ? textBlocks(narrative) : [],
+		children: blocks,
 	});
 	return pageTitle;
 }
