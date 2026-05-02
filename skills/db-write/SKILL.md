@@ -296,3 +296,14 @@ SELECT id, column FROM target_table WHERE <조건>;
 - [ ] INSERT IGNORE 사용 시 카운트 비교 검증 포함했나
 - [ ] 트레이드오프를 "위험"이 아닌 "결정 포인트"로 서술했나
 - [ ] 사용자 결정이 필요한 지점은 AskUserQuestion으로 물었나
+- [ ] **실행 기록 로그에 기록했나**
+
+---
+
+## 실행 기록 로그 (필수)
+
+**작업 완료 시 반드시 로그를 남길 것.** 이 단계를 건너뛰면 안 됨.
+
+db-write-migration과 공유 기록 파일: `skills/db-write-migration/migration-log.local.md` (.gitignore 포함)
+
+작업 시작 전에도 이 파일을 읽어서 유사 사례를 참고할 것.
