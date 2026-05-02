@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { completeSimple } from "@mariozechner/pi-ai";
 import { Type } from "typebox";
+import { truncateToWidth } from "@mariozechner/pi-tui";
 
 interface SupervisorState {
 	active: boolean;
@@ -98,7 +99,7 @@ export default function (pi: ExtensionAPI) {
 			const header = `${theme.fg("accent", "◉")} ${theme.fg("accent", "Supervising")}`;
 			const goal = `${theme.fg("dim", "Goal:")} ${theme.fg("muted", `"${truncate(state!.outcome, 48)}"`)}`
 			const info = [theme.fg("dim", state!.modelId), steers > 0 ? theme.fg("dim", `↗ ${steers}`) : "", label ? theme.fg("muted", label) : ""].filter(Boolean).join(" · ");
-			return { render: () => [`${header} ${goal} ${info}`], invalidate() {}, handleInput() {} };
+			return { render: (width: number) => [truncateToWidth(`${header} ${goal} ${info}`, width)], invalidate() {}, handleInput() {} };
 		});
 	}
 

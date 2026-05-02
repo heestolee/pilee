@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
+import { Text, truncateToWidth } from "@mariozechner/pi-tui";
 
 const WIDGET_ID = "queued-messages";
 
@@ -39,13 +39,11 @@ export default function (pi: ExtensionAPI) {
 			render(width: number) {
 				const lines: string[] = [];
 				const header = `${theme.fg("accent", "📋")} ${theme.fg("accent", theme.bold(`메시지 큐 ${items.length}개`))} ${theme.fg("dim", "(스티어/팔로업)")}`;
-				lines.push(header);
+				lines.push(truncateToWidth(header, width));
 				for (const [i, m] of items.entries()) {
 					const num = theme.fg("dim", `${i + 1}.`);
-					const max = Math.max(20, width - 6);
 					const preview = m.text.replace(/\n/g, " ").trim();
-					const clipped = preview.length > max ? `${preview.slice(0, max - 1)}…` : preview;
-					lines.push(`  ${num} ${theme.fg("muted", clipped)}`);
+					lines.push(truncateToWidth(`  ${num} ${theme.fg("muted", preview)}`, width));
 				}
 				return lines;
 			},

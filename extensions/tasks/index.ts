@@ -228,7 +228,7 @@ export default function (pi: ExtensionAPI) {
 			for (const t of inProgress.slice(0, 3)) {
 				lines.push(`  ${theme.fg("warning", "▸")} ${t.activeForm ?? t.subject}`);
 			}
-			return { render: () => lines, invalidate() {}, handleInput() {} };
+			return { render: (width: number) => lines.map(l => truncateToWidth(l, width)), invalidate() {}, handleInput() {} };
 		});
 	}
 

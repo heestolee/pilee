@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { truncateToWidth } from "@mariozechner/pi-tui";
+import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 
 let enabled = true;
 let sessionTitle = "";
@@ -16,8 +16,9 @@ function showNotifyWidget(ctx: ExtensionContext, message: string) {
 		invalidate() {},
 		render(width: number): string[] {
 			const content = `  ${theme.fg("text", "🔔")} ${theme.fg("text", message)}`;
-			const pad = " ".repeat(Math.max(0, width - content.replace(/\x1b\[[^m]*m/g, "").length));
-			return [`${WIDGET_BG}${truncateToWidth(content, width)}${pad}${WIDGET_RESET}`];
+			const truncated = truncateToWidth(content, width);
+			const pad = " ".repeat(Math.max(0, width - visibleWidth(truncated)));
+			return [`${WIDGET_BG}${truncated}${pad}${WIDGET_RESET}`];
 		},
 	}));
 }
