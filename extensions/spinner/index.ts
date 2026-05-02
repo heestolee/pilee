@@ -3,12 +3,14 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 const SPINNER_INTERVAL_MS = 150;
 
 function getSpinnerFrames(accent: (s: string) => string): string[] {
+	const pad = " ";
 	return [
-		accent("·"),
-		accent("✦"),
+		accent("·") + pad,
+		accent("✦") + pad,
 		"🔥",
-		accent("✦"),
-		accent("·"),
+		"🔥",
+		accent("✦") + pad,
+		accent("·") + pad,
 	];
 }
 
