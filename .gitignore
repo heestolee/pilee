@@ -3,3 +3,6 @@ dist/
 .DS_Store
 docs/pilee-history.md
 *.local.md
+scripts/sync-notion-log.mjs
+scripts/db-review.mjs
+scripts/backfill-notion-db-log.mjs
