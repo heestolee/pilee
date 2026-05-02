@@ -79,13 +79,29 @@ async function updateDateBlock(blockId) {
 	});
 }
 
-async function addDbEntry(dbId, title, description) {
-	const pageData = {
-		parent: { database_id: dbId },
-		properties: {
-			"이름": { title: [{ text: { content: title } }] },
-		},
+async function addDbEntry(dbId, title, description, meta = {}) {
+	const properties = {
+		"이름": { title: [{ text: { content: title } }] },
 	};
+	if (meta.date) {
+		properties["날짜"] = { date: { start: meta.date } };
+	}
+	if (meta.service) {
+		properties["서비스"] = { select: { name: meta.service } };
+	}
+	if (meta.skill) {
+		properties["스킬"] = { select: { name: meta.skill } };
+	}
+	if (meta.type) {
+		properties["유형"] = { select: { name: meta.type } };
+	}
+	if (meta.table) {
+		properties["대상 테이블"] = { rich_text: [{ type: "text", text: { content: meta.table } }] };
+	}
+	if (meta.status) {
+		properties["상태"] = { select: { name: meta.status } };
+	}
+	const pageData = { parent: { database_id: dbId }, properties };
 	if (description) {
 		pageData.children = [
 			{
@@ -123,14 +139,34 @@ async function main() {
 
 	const content = readFileSync(page.filePath, "utf8");
 
-	let description = "";
-	const descIdx = summary.indexOf("--desc ");
-	if (descIdx >= 0) {
-		description = summary.slice(descIdx + 7).replace(/^"|"$/g, "");
+	const flags = {};
+	let cleanSummary = summary;
+	const quotedPattern = /--(\w[\w-]*)\s+"([^"]*)"/g;
+	let flagMatch;
+	while ((flagMatch = quotedPattern.exec(summary)) !== null) {
+		flags[flagMatch[1]] = flagMatch[2];
 	}
-	const titleSummary = descIdx >= 0 ? summary.slice(0, descIdx).trim() : summary;
+	cleanSummary = cleanSummary.replace(/--(\w[\w-]*)\s+"([^"]*)"/g, "");
+	const simplePattern = /--(\w[\w-]*)\s+(\S+)/g;
+	while ((flagMatch = simplePattern.exec(cleanSummary)) !== null) {
+		if (!flags[flagMatch[1]]) flags[flagMatch[1]] = flagMatch[2];
+	}
+	cleanSummary = cleanSummary.replace(/--(\w[\w-]*)\s+\S+/g, "").replace(/\s+/g, " ").trim();
+	const titleSummary = cleanSummary;
+	const description = flags.desc || "";
+
+	const meta = {};
+	if (flags.service) meta.service = flags.service;
+	if (flags.skill) meta.skill = flags.skill;
+	if (flags.type) meta.type = flags.type;
+	if (flags.table) meta.table = flags.table;
+	if (flags.status) meta.status = flags.status;
+	if (flags.date) meta.date = flags.date;
 
 	const now = new Date();
+	if (!meta.date) {
+		meta.date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+	}
 	const datePrefix = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
 	const entryTitle = `${datePrefix} ${titleSummary}`;
 
@@ -143,7 +179,7 @@ async function main() {
 	console.log("  ✓ Date updated");
 
 	if (titleSummary) {
-		await addDbEntry(page.dbId, entryTitle, description);
+		await addDbEntry(page.dbId, entryTitle, description, meta);
 		console.log(`  ✓ DB entry added: ${entryTitle}`);
 	}
 
