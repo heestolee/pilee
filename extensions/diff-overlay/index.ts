@@ -1361,11 +1361,8 @@ function injectReviewComments(
 
 	if (wholeDrafts.length > 0) {
 		for (const draft of wholeDrafts) {
-			const commentLine = truncateToWidth(
-				`  ${t.fg("warning", "│ \u{1f4ac}")} ${t.fg("text", draft.prompt)}`,
-				w,
-			);
-			result.push({ text: commentLine, category: "context" });
+			const content = `  ${t.fg("warning", "│ \u{1f4ac}")} ${t.fg("text", draft.prompt)}`;
+			result.push({ text: t.bg("toolPendingBg", padStyledLine(content, w)), category: "context" });
 		}
 	}
 
@@ -1375,11 +1372,8 @@ function injectReviewComments(
 		if (comments) {
 			for (const draft of comments) {
 				const rangeLabel = draft.lineRange ? t.fg("warning", `L:${draft.lineRange} `) : "";
-				const commentLine = truncateToWidth(
-					`  ${t.fg("warning", "│ \u{1f4ac}")} ${rangeLabel}${t.fg("text", draft.prompt)}`,
-					w,
-				);
-				result.push({ text: commentLine, category: "context" });
+				const content = `  ${t.fg("warning", "│ \u{1f4ac}")} ${rangeLabel}${t.fg("text", draft.prompt)}`;
+				result.push({ text: t.bg("toolPendingBg", padStyledLine(content, w)), category: "context" });
 			}
 		}
 	}
