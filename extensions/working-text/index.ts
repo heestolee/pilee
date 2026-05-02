@@ -34,6 +34,7 @@ export default function (pi: ExtensionAPI) {
 	let paused = 0;
 	let currentTool = "";
 	let currentToolArgs = "";
+	let lastToolEndAt = 0;
 
 	const stop = () => {
 		if (timer) clearInterval(timer);
@@ -49,7 +50,12 @@ export default function (pi: ExtensionAPI) {
 				message = pick(TIPS);
 				lastRotate = now;
 			}
-			const toolInfo = currentTool ? ` [${currentTool}${currentToolArgs ? `: ${currentToolArgs}` : ""}]` : "";
+			let toolInfo = "";
+			if (currentTool) {
+				toolInfo = ` [${currentTool}${currentToolArgs ? `: ${currentToolArgs}` : ""}]`;
+			} else if (lastToolEndAt > 0 && now - lastToolEndAt > 10_000) {
+				toolInfo = ` [LLM 응답 대기 중 · ${elapsed(lastToolEndAt)}]`;
+			}
 			ctx.ui.setWorkingMessage(`${message} · ${elapsed(startedAt)}${toolInfo}`);
 		}, 1000);
 	};
@@ -92,6 +98,11 @@ export default function (pi: ExtensionAPI) {
 		if (PAUSE_TOOLS.has(e.toolName) && paused > 0) paused--;
 		currentTool = "";
 		currentToolArgs = "";
+		lastToolEndAt = Date.now();
+	});
+
+	pi.on("message_start", async () => {
+		lastToolEndAt = 0;
 	});
 
 	pi.on("session_start", async () => {
