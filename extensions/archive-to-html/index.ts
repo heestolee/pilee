@@ -5,6 +5,7 @@ import type { ExtensionAPI, ExtensionContext, ToolResultEvent } from "@mariozech
 
 const ARCHIVE_DIR = path.join(os.homedir(), "Documents", "agent-history", "분류 전");
 const FONT_SIGNATURE = "Noto+Serif+KR";
+const REPORT_SIGNATURE = "Verify Report";
 
 const SVG_STYLES = `
 :root {
@@ -141,16 +142,41 @@ function wrapArchivedWidgetHTML(code: string, isSVG = false): string {
 }
 
 export default function (pi: ExtensionAPI) {
+	pi.registerCommand("show-report", {
+		description: "Open the latest make-report HTML in the browser. Usage: /show-report [path]",
+		handler: async (args, ctx) => {
+			const explicit = (args ?? "").trim();
+			let target = "";
+
+			if (explicit && fs.existsSync(explicit)) {
+				target = explicit;
+			} else {
+				const candidates = [
+					findLatestReport(ctx.cwd),
+					path.join(ARCHIVE_DIR, findLatestInDir(ARCHIVE_DIR)),
+				].filter(Boolean) as string[];
+				target = candidates[0] ?? "";
+			}
+
+			if (!target || !fs.existsSync(target)) {
+				ctx.ui.notify("리포트를 찾을 수 없습니다. /show-report <path>로 직접 지정하세요.", "warning");
+				return;
+			}
+
+			await pi.exec("open", [target]);
+			ctx.ui.notify(`📊 리포트 열기 → ${path.basename(target)}`, "info");
+		},
+	});
+
 	pi.on("tool_result", async (event, ctx) => {
 		if (event.isError) return;
 
-		// ── to-html skill: write tool → /tmp/*.html with font signature ──
 		if (event.toolName === "write") {
 			archiveToHtmlSkill(event, ctx);
+			archiveMakeReport(event, ctx);
 			return;
 		}
 
-		// ── generative-ui package: show_widget → wrap & save widget HTML ──
 		if (event.toolName === "show_widget") {
 			archiveWidget(event, ctx);
 			return;
@@ -180,6 +206,60 @@ function archiveToHtmlSkill(event: ToolResultEvent, ctx: ExtensionContext) {
 	} catch {
 		// file read/copy failed — silently skip
 	}
+}
+
+function archiveMakeReport(event: ToolResultEvent, ctx: ExtensionContext) {
+	const filePath = typeof event.input?.path === "string" ? event.input.path : undefined;
+	if (!filePath || !filePath.endsWith(".html")) return;
+
+	try {
+		const resolved = fs.realpathSync(filePath);
+		const content = fs.readFileSync(resolved, "utf-8");
+		if (!content.includes(REPORT_SIGNATURE)) return;
+
+		const cwd = ctx.cwd ?? process.cwd();
+		const workspaceName = path.basename(cwd);
+		const ticket = extractTicket(content);
+		const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+
+		const reportDir = path.join(ARCHIVE_DIR, "..", "reports");
+		fs.mkdirSync(reportDir, { recursive: true });
+
+		const filename = `${ts}_${workspaceName}${ticket ? `_${ticket}` : ""}.html`;
+		fs.copyFileSync(resolved, path.join(reportDir, filename));
+
+		if (ctx.hasUI) {
+			ctx.ui.notify(`📊 리포트 아카이브 → reports/${filename}`, "info");
+		}
+	} catch {}
+}
+
+function extractTicket(html: string): string {
+	const m = html.match(/Verify Report\s*[—–-]\s*([A-Z]+-\d+)/i);
+	return m ? m[1] : "";
+}
+
+function findLatestReport(cwd: string): string | null {
+	const capturesDir = path.join(cwd, ".context", "work");
+	if (!fs.existsSync(capturesDir)) return null;
+	try {
+		for (const ws of fs.readdirSync(capturesDir)) {
+			const report = path.join(capturesDir, ws, "captures", "report.html");
+			if (fs.existsSync(report)) return report;
+		}
+	} catch {}
+	return null;
+}
+
+function findLatestInDir(dir: string): string {
+	if (!fs.existsSync(dir)) return "";
+	try {
+		const files = fs.readdirSync(dir)
+			.filter((f: string) => f.endsWith(".html"))
+			.sort()
+			.reverse();
+		return files[0] ?? "";
+	} catch { return ""; }
 }
 
 function archiveWidget(event: ToolResultEvent, ctx: ExtensionContext) {
