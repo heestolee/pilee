@@ -1137,6 +1137,12 @@ function buildCommitRenderedDiffLines(
 	return rendered;
 }
 
+interface RenderedDiffLine {
+	text: string;
+	category: DiffLineCategory;
+	newLineNumber?: number;
+}
+
 function buildRenderedDiffLines(
 	t: Theme,
 	all: string[],
@@ -1144,8 +1150,8 @@ function buildRenderedDiffLines(
 	width: number,
 	wrapLines: boolean,
 	changedOnly: boolean,
-): Array<{ text: string; category: DiffLineCategory }> {
-	const rendered: Array<{ text: string; category: DiffLineCategory }> = [];
+): RenderedDiffLine[] {
+	const rendered: RenderedDiffLine[] = [];
 	const lineNumberWidth = diffLineNumberWidth(parsed);
 	const blankLineNumber = " ".repeat(lineNumberWidth);
 
@@ -1165,12 +1171,12 @@ function buildRenderedDiffLines(
 			const wrapped = wrapTextWithAnsi(` ${text}`, contentWidth);
 			for (const [segmentIndex, segment] of wrapped.entries()) {
 				const lineGutter = segmentIndex === 0 ? gutter : t.fg("dim", `${blankLineNumber} ${blankLineNumber} │`);
-				rendered.push({ text: padStyledLine(`${lineGutter} ${segment}`, width), category });
+				rendered.push({ text: padStyledLine(`${lineGutter} ${segment}`, width), category, newLineNumber: segmentIndex === 0 ? line?.newLineNumber : undefined });
 			}
 			continue;
 		}
 
-		rendered.push({ text: padStyledLine(`${gutter} ${text}`, width), category });
+		rendered.push({ text: padStyledLine(`${gutter} ${text}`, width), category, newLineNumber: line?.newLineNumber });
 	}
 
 	return rendered;
@@ -1314,6 +1320,73 @@ function renderCommits(t: Theme, st: DiffState, w: number, h: number): string[] 
 	return lines;
 }
 
+function parseLineRange(range: string): { start: number; end: number } | null {
+	const match = /^(\d+)(?:-(\d+))?$/.exec(range);
+	if (!match) return null;
+	const start = Number(match[1]);
+	const end = match[2] ? Number(match[2]) : start;
+	return { start, end };
+}
+
+function injectReviewComments(
+	rendered: RenderedDiffLine[],
+	drafts: ReviewDraft[],
+	t: Theme,
+	w: number,
+): RenderedDiffLine[] {
+	if (drafts.length === 0) return rendered;
+
+	const fileDrafts = drafts.filter((d) => d.lineRange);
+	const wholeDrafts = drafts.filter((d) => !d.lineRange);
+
+	const insertions = new Map<number, ReviewDraft[]>();
+	for (const draft of fileDrafts) {
+		const range = parseLineRange(draft.lineRange!);
+		if (!range) continue;
+		let insertAfter = -1;
+		for (let i = 0; i < rendered.length; i++) {
+			const ln = rendered[i]?.newLineNumber;
+			if (ln !== undefined && ln >= range.start && ln <= range.end) {
+				insertAfter = i;
+			}
+		}
+		if (insertAfter >= 0) {
+			const existing = insertions.get(insertAfter) ?? [];
+			existing.push(draft);
+			insertions.set(insertAfter, existing);
+		}
+	}
+
+	const result: RenderedDiffLine[] = [];
+
+	if (wholeDrafts.length > 0) {
+		for (const draft of wholeDrafts) {
+			const commentLine = truncateToWidth(
+				`  ${t.fg("warning", "│ \u{1f4ac}")} ${t.fg("text", draft.prompt)}`,
+				w,
+			);
+			result.push({ text: commentLine, category: "context" });
+		}
+	}
+
+	for (let i = 0; i < rendered.length; i++) {
+		result.push(rendered[i]!);
+		const comments = insertions.get(i);
+		if (comments) {
+			for (const draft of comments) {
+				const rangeLabel = draft.lineRange ? t.fg("warning", `L:${draft.lineRange} `) : "";
+				const commentLine = truncateToWidth(
+					`  ${t.fg("warning", "│ \u{1f4ac}")} ${rangeLabel}${t.fg("text", draft.prompt)}`,
+					w,
+				);
+				result.push({ text: commentLine, category: "context" });
+			}
+		}
+	}
+
+	return result;
+}
+
 function renderDiff(t: Theme, st: DiffState, w: number, h: number): string[] {
 	if (st.files.length === 0) return [t.fg("muted", "  No changes")];
 
@@ -1334,16 +1407,19 @@ function renderDiff(t: Theme, st: DiffState, w: number, h: number): string[] {
 	const rendered = buildRenderedDiffLines(t, all, parsed, w, st.wrapLines, st.changedOnly);
 	if (rendered.length === 0) return [t.fg("muted", "  (all context hidden by filter)")];
 
+	const fileDrafts = st.reviewDrafts.filter((d) => d.filePath === f.path);
+	const withComments = injectReviewComments(rendered, fileDrafts, t, w);
+
 	const max = Math.max(1, h);
-	const maxOffset = Math.max(0, rendered.length - max);
+	const maxOffset = Math.max(0, withComments.length - max);
 	if (st.diffScrollOffset > maxOffset) st.diffScrollOffset = maxOffset;
 
 	const start = st.diffScrollOffset;
-	const end = Math.min(rendered.length, start + max);
+	const end = Math.min(withComments.length, start + max);
 
 	const lines: string[] = [];
 	for (let i = start; i < end; i++) {
-		const line = rendered[i];
+		const line = withComments[i];
 		if (!line) continue;
 		if (line.category === "added") lines.push(t.bg("toolSuccessBg", line.text));
 		else if (line.category === "removed") lines.push(t.bg("toolErrorBg", line.text));
@@ -1352,9 +1428,9 @@ function renderDiff(t: Theme, st: DiffState, w: number, h: number): string[] {
 
 	while (lines.length < max) lines.push("");
 
-	if (rendered.length > max) {
+	if (withComments.length > max) {
 		const pct = maxOffset > 0 ? Math.round((st.diffScrollOffset / maxOffset) * 100) : 0;
-		const indicator = t.fg("dim", `${pct}% (${start + 1}–${end}/${rendered.length})`);
+		const indicator = t.fg("dim", `${pct}% (${start + 1}–${end}/${withComments.length})`);
 		lines[max - 1] = truncateToWidth(` ${indicator}`, w, t.fg("dim", "..."));
 	}
 
@@ -1964,13 +2040,14 @@ class DiffOverlay {
 		const raw = f ? (st.diffCache.get(scopedDiffKey(st.scope, f.path)) ?? "") : "";
 		const parsed = parseDiffLines(raw);
 		const highlighted = f ? (st.highlightedDiffCache.get(scopedDiffKey(st.scope, f.path)) ?? raw.split("\n")) : [];
+		const fileDrafts = f ? st.reviewDrafts.filter((d) => d.filePath === f.path) : [];
 		const diffLen = countRenderedDiffLines(
 			highlighted,
 			parsed,
 			Math.max(1, this.lastRightWidth),
 			st.wrapLines,
 			st.changedOnly,
-		);
+		) + fileDrafts.length;
 		if (matchesKey(data, Key.up)) {
 			st.diffScrollOffset = Math.max(0, st.diffScrollOffset - ARROW_SCROLL_STEP);
 		} else if (matchesKey(data, Key.down)) {
@@ -2222,7 +2299,7 @@ class DiffOverlay {
 				);
 				footer.push(st.reviewInput.error ? t.fg("error", `  ${st.reviewInput.error}`) : "");
 			} else {
-				const lineInfo = st.reviewInput.lineRange ? t.fg("muted", ` [L:${st.reviewInput.lineRange}]`) : t.fg("dim", " [전체]");
+				const lineInfo = st.reviewInput.lineRange ? t.fg("warning", ` [L:${st.reviewInput.lineRange}]`) : t.fg("dim", " [전체]");
 				footer.push(
 					truncateToWidth(
 						`  ${t.fg("accent", "review")}${lineInfo}${t.fg("accent", ">")} ${st.reviewInput.buffer || t.fg("dim", "리뷰 메시지 입력")}`,
