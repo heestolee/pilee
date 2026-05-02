@@ -101,6 +101,7 @@ interface ReviewDraft {
 	scope: OverlayDiffScope;
 	filePath: string;
 	fileDisplayPath: string;
+	lineRange: string | null;
 	prompt: string;
 }
 
@@ -108,6 +109,11 @@ interface ReviewInputState {
 	active: boolean;
 	buffer: string;
 	error: string | null;
+	lineRange: string | null;
+	lineRangeSelectMode: boolean;
+	lineRangeSelectIndex: number;
+	lineRangeDirectInputMode: boolean;
+	lineRangeBuffer: string;
 }
 
 interface DiffState {
@@ -522,13 +528,46 @@ function collectAllDirPaths(nodes: FileTreeNode[]): string[] {
 
 // ─── Diff parsing & syntax highlight ───────────────────────────────────────
 
-function parseHunkHeader(line: string): { oldStart: number; newStart: number } | null {
-	const match = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
+function parseHunkHeader(line: string): { oldStart: number; newStart: number; newCount: number } | null {
+	const match = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
 	if (!match) return null;
 	const oldStart = Number(match[1]);
 	const newStart = Number(match[2]);
+	const newCount = match[3] ? Number(match[3]) : 1;
 	if (!Number.isInteger(oldStart) || !Number.isInteger(newStart)) return null;
-	return { oldStart, newStart };
+	return { oldStart, newStart, newCount };
+}
+
+interface HunkInfo {
+	index: number;
+	startLine: number;
+	endLine: number;
+	label: string;
+}
+
+function extractHunksFromDiff(rawDiff: string): HunkInfo[] {
+	const lines = rawDiff.split("\n");
+	const hunks: HunkInfo[] = [];
+	let hunkIndex = 0;
+	for (const line of lines) {
+		if (line.startsWith("@@")) {
+			const header = parseHunkHeader(line);
+			if (header) {
+				hunkIndex++;
+				const endLine = header.newStart + header.newCount - 1;
+				const label = header.newStart === endLine
+					? `Hunk ${hunkIndex}: L${header.newStart}`
+					: `Hunk ${hunkIndex}: L${header.newStart}-${endLine}`;
+				hunks.push({
+					index: hunkIndex,
+					startLine: header.newStart,
+					endLine,
+					label,
+				});
+			}
+		}
+	}
+	return hunks;
 }
 
 function parseDiffLines(rawDiff: string): ParsedDiffLine[] {
@@ -692,7 +731,8 @@ function buildReviewTransferPrompt(drafts: ReviewDraft[]): string {
 	if (drafts.length === 0) return "";
 	const lines: string[] = [];
 	for (const [index, draft] of drafts.entries()) {
-		lines.push(`${index + 1}. [${scopeLabel(draft.scope)}] ${draft.fileDisplayPath}`);
+		const lineInfo = draft.lineRange ? `:${draft.lineRange}` : "";
+		lines.push(`${index + 1}. [${scopeLabel(draft.scope)}] ${draft.fileDisplayPath}${lineInfo}`);
 		lines.push(`   ${draft.prompt}`);
 		lines.push("");
 	}
@@ -1445,7 +1485,30 @@ class DiffOverlay {
 			this.st.error = "Select a file before adding review feedback";
 			return;
 		}
-		this.st.reviewInput = { active: true, buffer: "", error: null };
+		this.st.reviewInput = {
+			active: true,
+			buffer: "",
+			error: null,
+			lineRange: null,
+			lineRangeSelectMode: true,
+			lineRangeSelectIndex: 0,
+			lineRangeDirectInputMode: false,
+			lineRangeBuffer: "",
+		};
+	}
+
+	private getHunksForSelectedFile(): HunkInfo[] {
+		const file = this.selectedDiffFile();
+		if (!file) return [];
+		const rawDiff = this.st.diffCache.get(scopedDiffKey(this.st.scope, file.path));
+		if (!rawDiff) return [];
+		return extractHunksFromDiff(rawDiff);
+	}
+
+	private selectLineRangeAndProceed(lineRange: string | null): void {
+		this.st.reviewInput.lineRange = lineRange;
+		this.st.reviewInput.lineRangeSelectMode = false;
+		this.st.reviewInput.lineRangeDirectInputMode = false;
 	}
 
 	private submitReviewDraft(): void {
@@ -1463,14 +1526,119 @@ class DiffOverlay {
 			scope: this.st.scope,
 			filePath: file.path,
 			fileDisplayPath: fileDisplayPath(file),
+			lineRange: this.st.reviewInput.lineRange,
 			prompt,
 		});
-		this.st.reviewInput = { active: false, buffer: "", error: null };
+		this.resetReviewInput();
 		this.st.error = null;
 	}
 
+	private resetReviewInput(): void {
+		this.st.reviewInput = {
+			active: false,
+			buffer: "",
+			error: null,
+			lineRange: null,
+			lineRangeSelectMode: false,
+			lineRangeSelectIndex: 0,
+			lineRangeDirectInputMode: false,
+			lineRangeBuffer: "",
+		};
+	}
+
 	private closeReviewDraftInput(): void {
-		this.st.reviewInput = { active: false, buffer: "", error: null };
+		this.resetReviewInput();
+	}
+
+	private getLineRangeOptions(): { value: string; label: string }[] {
+		const options: { value: string; label: string }[] = [
+			{ value: "__entire__", label: "(전체 파일 코멘트)" },
+			{ value: "__direct__", label: "[직접 입력]" },
+		];
+		const hunks = this.getHunksForSelectedFile();
+		for (const hunk of hunks) {
+			options.push({
+				value: hunk.startLine === hunk.endLine ? String(hunk.startLine) : `${hunk.startLine}-${hunk.endLine}`,
+				label: hunk.label,
+			});
+		}
+		return options;
+	}
+
+	private handleLineRangeSelectInput(data: string, tui: Tui): void {
+		const st = this.st;
+		const options = this.getLineRangeOptions();
+		const maxIndex = options.length - 1;
+
+		if (matchesKey(data, Key.escape)) {
+			this.closeReviewDraftInput();
+			tui.requestRender();
+			return;
+		}
+		if (matchesKey(data, Key.up) || data === "k") {
+			st.reviewInput.lineRangeSelectIndex = Math.max(0, st.reviewInput.lineRangeSelectIndex - 1);
+			tui.requestRender();
+			return;
+		}
+		if (matchesKey(data, Key.down) || data === "j") {
+			st.reviewInput.lineRangeSelectIndex = Math.min(maxIndex, st.reviewInput.lineRangeSelectIndex + 1);
+			tui.requestRender();
+			return;
+		}
+		if (matchesKey(data, Key.enter)) {
+			const selected = options[st.reviewInput.lineRangeSelectIndex];
+			if (!selected) return;
+			if (selected.value === "__entire__") {
+				this.selectLineRangeAndProceed(null);
+			} else if (selected.value === "__direct__") {
+				st.reviewInput.lineRangeSelectMode = false;
+				st.reviewInput.lineRangeDirectInputMode = true;
+				st.reviewInput.lineRangeBuffer = "";
+			} else {
+				this.selectLineRangeAndProceed(selected.value);
+			}
+			tui.requestRender();
+			return;
+		}
+	}
+
+	private handleLineRangeDirectInput(data: string, tui: Tui): void {
+		const st = this.st;
+
+		if (matchesKey(data, Key.escape)) {
+			st.reviewInput.lineRangeDirectInputMode = false;
+			st.reviewInput.lineRangeSelectMode = true;
+			st.reviewInput.lineRangeBuffer = "";
+			tui.requestRender();
+			return;
+		}
+		if (matchesKey(data, Key.enter)) {
+			const range = st.reviewInput.lineRangeBuffer.trim();
+			if (!range) {
+				st.reviewInput.error = "줄 번호를 입력하세요 (예: 42 또는 42-50)";
+				tui.requestRender();
+				return;
+			}
+			if (!/^\d+(-\d+)?$/.test(range)) {
+				st.reviewInput.error = "형식: 42 또는 42-50";
+				tui.requestRender();
+				return;
+			}
+			this.selectLineRangeAndProceed(range);
+			tui.requestRender();
+			return;
+		}
+		if (matchesKey(data, Key.backspace)) {
+			st.reviewInput.lineRangeBuffer = st.reviewInput.lineRangeBuffer.slice(0, -1);
+			st.reviewInput.error = null;
+			tui.requestRender();
+			return;
+		}
+		if (/^[0-9-]$/.test(data)) {
+			st.reviewInput.lineRangeBuffer += data;
+			st.reviewInput.error = null;
+			tui.requestRender();
+		}
 	}
 
 	private closeOverlay(): void {
@@ -1664,6 +1832,14 @@ class DiffOverlay {
 		const st = this.st;
 
 		if (st.reviewInput.active) {
+			if (st.reviewInput.lineRangeSelectMode) {
+				this.handleLineRangeSelectInput(data, tui);
+				return;
+			}
+			if (st.reviewInput.lineRangeDirectInputMode) {
+				this.handleLineRangeDirectInput(data, tui);
+				return;
+			}
 			if (matchesKey(data, Key.escape)) {
 				this.closeReviewDraftInput();
 				tui.requestRender();
@@ -2026,13 +2202,35 @@ class DiffOverlay {
 
 		const footer: string[] = [];
 		if (st.reviewInput.active) {
-			footer.push(
-				truncateToWidth(
-					`  ${t.fg("accent", "review>")} ${st.reviewInput.buffer || t.fg("dim", "type review message (line numbers go here too)")}`,
-					w,
-				),
-			);
-			footer.push(st.reviewInput.error ? t.fg("error", `  ${st.reviewInput.error}`) : "");
+			if (st.reviewInput.lineRangeSelectMode) {
+				const options = this.getLineRangeOptions();
+				footer.push(`  ${t.fg("accent", t.bold("Select line range:"))}`);
+				for (let i = 0; i < options.length; i++) {
+					const opt = options[i]!;
+					const isSelected = i === st.reviewInput.lineRangeSelectIndex;
+					const prefix = isSelected ? t.fg("accent", "> ") : "  ";
+					const label = isSelected ? t.fg("accent", opt.label) : t.fg("muted", opt.label);
+					footer.push(`  ${prefix}${label}`);
+				}
+				footer.push(st.reviewInput.error ? t.fg("error", `  ${st.reviewInput.error}`) : "");
+			} else if (st.reviewInput.lineRangeDirectInputMode) {
+				footer.push(
+					truncateToWidth(
+						`  ${t.fg("accent", "줄 번호>")} ${st.reviewInput.lineRangeBuffer || t.fg("dim", "예: 42 또는 42-50")}`,
+						w,
+					),
+				);
+				footer.push(st.reviewInput.error ? t.fg("error", `  ${st.reviewInput.error}`) : "");
+			} else {
+				const lineInfo = st.reviewInput.lineRange ? t.fg("muted", ` [L:${st.reviewInput.lineRange}]`) : t.fg("dim", " [전체]");
+				footer.push(
+					truncateToWidth(
+						`  ${t.fg("accent", "review")}${lineInfo}${t.fg("accent", ">")} ${st.reviewInput.buffer || t.fg("dim", "리뷰 메시지 입력")}`,
+						w,
+					),
+				);
+				footer.push(st.reviewInput.error ? t.fg("error", `  ${st.reviewInput.error}`) : "");
+			}
 		} else {
 			footer.push(st.error ? t.fg("error", `  ${st.error}`) : "");
 		}
@@ -2040,7 +2238,11 @@ class DiffOverlay {
 		const hint =
 			st.viewMode === "diff"
 				? st.reviewInput.active
-					? `  Review draft · type message · Enter save · Esc cancel`
+					? st.reviewInput.lineRangeSelectMode
+						? "  ↑/↓ 선택  ·  Enter 확인  ·  Esc 취소"
+						: st.reviewInput.lineRangeDirectInputMode
+							? "  줄 번호 입력  ·  Enter 확인  ·  Esc 뒤로"
+							: "  리뷰 메시지 입력  ·  Enter 저장  ·  Esc 취소"
 					: st.searchMode
 						? "  Search mode · type to filter · Backspace delete · Enter/Esc close"
 						: st.focus === "left"
@@ -2168,7 +2370,7 @@ export default function diffOverlayExtension(pi: ExtensionAPI) {
 			wrapLines: true,
 			changedOnly: false,
 			reviewDrafts: [],
-			reviewInput: { active: false, buffer: "", error: null },
+			reviewInput: { active: false, buffer: "", error: null, lineRange: null, lineRangeSelectMode: false, lineRangeSelectIndex: 0, lineRangeDirectInputMode: false, lineRangeBuffer: "" },
 
 			treeNodes,
 			expandedDirs,

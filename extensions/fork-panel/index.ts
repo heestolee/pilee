@@ -189,7 +189,7 @@ function assemblePayload(opts: { mode: "summary" | "full" | "last"; lastMessage:
 }
 
 function buildScript(direction: Direction, cwd: string, sessionFile: string, forkId: string, prompt?: string): string {
-	const cmd = `PI_FORK_ID=${forkId} cd \\"${esc(cwd)}\\" && PI_FORK_ID=${forkId} pi --session \\"${esc(sessionFile)}\\"`;
+	const cmd = `cd \\"${esc(cwd)}\\" && pi update && PI_FORK_ID=${forkId} pi --session \\"${esc(sessionFile)}\\"`;
 
 	if (direction === "tab") {
 		return `tell application "System Events"
