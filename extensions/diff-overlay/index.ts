@@ -178,8 +178,8 @@ interface Tui {
 // ─── Constants ─────────────────────────────────────────────────────────────
 
 const UNCOMMITTED_HASH = "__uncommitted__";
-const ARROW_SCROLL_STEP = 5;
-const PAGE_SCROLL_STEP = 20;
+const ARROW_SCROLL_STEP = 10;
+const PAGE_SCROLL_STEP = 100;
 const COMMIT_HISTORY_LIMIT = 200;
 const GIT_LOG_PRETTY = "%H%x1f%h%x1f%an%x1f%ar%x1f%s%x1e";
 
@@ -2126,9 +2126,9 @@ class DiffOverlay {
 			st.diffScrollOffset = Math.max(0, st.diffScrollOffset - 1);
 		} else if (matchesKey(data, "j")) {
 			st.diffScrollOffset = Math.min(st.diffScrollOffset + 1, Math.max(0, diffLen - 3));
-		} else if (matchesKey(data, Key.pageUp) || matchesKey(data, Key.ctrl("u"))) {
+		} else if (matchesKey(data, Key.pageUp) || matchesKey(data, Key.ctrl("u")) || matchesKey(data, "u")) {
 			st.diffScrollOffset = Math.max(0, st.diffScrollOffset - PAGE_SCROLL_STEP);
-		} else if (matchesKey(data, Key.pageDown) || matchesKey(data, Key.ctrl("d"))) {
+		} else if (matchesKey(data, Key.pageDown) || matchesKey(data, Key.ctrl("d")) || matchesKey(data, "i")) {
 			st.diffScrollOffset = Math.min(st.diffScrollOffset + PAGE_SCROLL_STEP, Math.max(0, diffLen - 3));
 		} else if (matchesKey(data, "g")) {
 			st.diffScrollOffset = 0;
@@ -2278,10 +2278,10 @@ class DiffOverlay {
 		} else if (matchesKey(data, "j")) {
 			st.commitFileSelectedIndex = clamp(selectedIndex + 1, 0, maxIndex);
 			st.commitFileManualScroll = false;
-		} else if (matchesKey(data, Key.pageUp) || matchesKey(data, Key.ctrl("u"))) {
+		} else if (matchesKey(data, Key.pageUp) || matchesKey(data, Key.ctrl("u")) || matchesKey(data, "u")) {
 			st.commitFileScrollOffset = Math.max(0, st.commitFileScrollOffset - PAGE_SCROLL_STEP);
 			st.commitFileManualScroll = true;
-		} else if (matchesKey(data, Key.pageDown) || matchesKey(data, Key.ctrl("d"))) {
+		} else if (matchesKey(data, Key.pageDown) || matchesKey(data, Key.ctrl("d")) || matchesKey(data, "i")) {
 			st.commitFileScrollOffset = Math.min(maxOffset, st.commitFileScrollOffset + PAGE_SCROLL_STEP);
 			st.commitFileManualScroll = true;
 		} else if (matchesKey(data, "g")) {
@@ -2392,9 +2392,9 @@ class DiffOverlay {
 		lines.push(`  ${t.fg("warning", "Enter")}  ${t.fg("muted", "오른쪽 diff 패널로 이동")}`);
 		lines.push("");
 		lines.push(`  ${t.fg("accent", "── diff 모드: 오른쪽 (diff 보기) ──")}`);
-		lines.push(`  ${t.fg("warning", "↑/↓")}    ${t.fg("muted", "5줄 스크롤")}`);
+		lines.push(`  ${t.fg("warning", "↑/↓")}    ${t.fg("muted", "10줄 스크롤")}`);
 		lines.push(`  ${t.fg("warning", "j/k")}    ${t.fg("muted", "1줄 스크롤")}`);
-		lines.push(`  ${t.fg("warning", "PgUp/Dn")} ${t.fg("muted", "빠른 스크롤")}`);
+		lines.push(`  ${t.fg("warning", "u/i")}    ${t.fg("muted", "100줄 스크롤")}`);
 		lines.push(`  ${t.fg("warning", "g/G")}    ${t.fg("muted", "맨 위/맨 아래")}`);
 		lines.push(`  ${t.fg("warning", "←/Esc")}  ${t.fg("muted", "파일 패널로 복귀")}`);
 		lines.push("");
@@ -2403,8 +2403,11 @@ class DiffOverlay {
 		lines.push(`  ${t.fg("warning", "Enter")}  ${t.fg("muted", "오른쪽 파일 패널로 이동")}`);
 		lines.push("");
 		lines.push(`  ${t.fg("accent", "── commit 모드: 오른쪽 (파일/diff) ──")}`);
+		lines.push(`  ${t.fg("warning", "↑/↓")}    ${t.fg("muted", "10줄 스크롤")}`);
 		lines.push(`  ${t.fg("warning", "j/k")}    ${t.fg("muted", "파일 선택")}`);
+		lines.push(`  ${t.fg("warning", "u/i")}    ${t.fg("muted", "100줄 스크롤")}`);
 		lines.push(`  ${t.fg("warning", "Enter")}  ${t.fg("muted", "diff 펼치기/접기")}`);
+		lines.push(`  ${t.fg("warning", "g/G")}    ${t.fg("muted", "맨 위/맨 아래")}`);
 		lines.push(`  ${t.fg("warning", "←/Esc")}  ${t.fg("muted", "커밋 패널로 복귀")}`);
 		lines.push("");
 		lines.push(`  ${t.fg("dim", "아무 키나 누르면 닫힘")}`);
@@ -2486,10 +2489,10 @@ class DiffOverlay {
 						? "  Search mode · type to filter · Backspace delete · Enter/Esc close"
 						: st.focus === "left"
 							? "  ↑/↓ Select File  ·  / Search  ·  s Scope  ·  w Wrap  ·  a Full  ·  c Changed-only  ·  r Review draft  ·  Enter → Diff  ·  Tab/v Commit  ·  o Open  ·  f Finder  ·  S Stash  ·  q/Esc Close"
-							: "  ↑/↓ Scroll 5 lines  ·  j/k Scroll 1 line  ·  PgUp/PgDn Fast  ·  / Search  ·  s Scope  ·  w Wrap  ·  a Full  ·  c Changed-only  ·  r Review draft  ·  Tab/v Commit  ·  o Open  ·  f Finder  ·  ←/Esc → Files  ·  q Close"
+							: "  ↑/↓ 10lines  ·  j/k 1line  ·  u/i 100lines  ·  g/G Top/Bottom  ·  / Search  ·  s Scope  ·  w Wrap  ·  a Full  ·  c Changed-only  ·  r Review  ·  , Help  ·  q Close"
 				: st.focus === "left"
 					? "  ↑/↓ Select Commit  ·  Enter → Changed Files  ·  Tab/v Toggle Diff  ·  S Stash  ·  q/Esc Close"
-					: "  ↑/↓ Select (overflow → 5-line scroll)  ·  j/k Select File  ·  Enter Fold/Unfold Diff  ·  PgUp/PgDn Scroll  ·  r Review draft  ·  Tab/v Toggle Diff  ·  o Open  ·  f Finder  ·  ←/Esc → Commits  ·  q Close";
+					: "  ↑/↓ 10lines  ·  j/k Select  ·  u/i 100lines  ·  Enter Fold/Unfold  ·  r Review  ·  w Wrap  ·  a Full  ·  , Help  ·  ←/Esc → Commits  ·  q Close";
 		footer.push(t.fg("dim", hint));
 		footer.push(...new DynamicBorder((s: string) => t.fg("accent", s)).render(w));
 
