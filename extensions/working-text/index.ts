@@ -32,6 +32,8 @@ export default function (pi: ExtensionAPI) {
 	let timer: ReturnType<typeof setInterval> | null = null;
 	let ctx: ExtensionContext | undefined;
 	let paused = 0;
+	let currentTool = "";
+	let currentToolArgs = "";
 
 	const stop = () => {
 		if (timer) clearInterval(timer);
@@ -47,7 +49,8 @@ export default function (pi: ExtensionAPI) {
 				message = pick(TIPS);
 				lastRotate = now;
 			}
-			ctx.ui.setWorkingMessage(`${message} · ${elapsed(startedAt)}`);
+			const toolInfo = currentTool ? ` [${currentTool}${currentToolArgs ? `: ${currentToolArgs}` : ""}]` : "";
+			ctx.ui.setWorkingMessage(`${message} · ${elapsed(startedAt)}${toolInfo}`);
 		}, 1000);
 	};
 
@@ -69,10 +72,26 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("tool_execution_start", async (e) => {
 		if (PAUSE_TOOLS.has(e.toolName)) paused++;
+		currentTool = e.toolName;
+		const args = e.args;
+		if (e.toolName === "Bash" || e.toolName === "bash") {
+			const cmd = typeof args === "string" ? args : args?.command ?? "";
+			currentToolArgs = cmd.split("\n")[0].slice(0, 40);
+		} else if (e.toolName === "Read" || e.toolName === "read") {
+			currentToolArgs = (typeof args === "string" ? args : args?.path ?? "").split("/").pop() ?? "";
+		} else if (e.toolName === "Edit" || e.toolName === "edit" || e.toolName === "Write" || e.toolName === "write") {
+			currentToolArgs = (typeof args === "string" ? args : args?.path ?? "").split("/").pop() ?? "";
+		} else if (e.toolName === "Agent") {
+			currentToolArgs = (typeof args === "string" ? args : args?.description ?? "").slice(0, 30);
+		} else {
+			currentToolArgs = "";
+		}
 	});
 
 	pi.on("tool_execution_end", async (e) => {
 		if (PAUSE_TOOLS.has(e.toolName) && paused > 0) paused--;
+		currentTool = "";
+		currentToolArgs = "";
 	});
 
 	pi.on("session_start", async () => {
