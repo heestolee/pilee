@@ -3,6 +3,29 @@ import { Text, truncateToWidth } from "@mariozechner/pi-tui";
 
 const WIDGET_ID = "queued-messages";
 
+const SLOW_HINTS: Array<{ test: (tool: string, args: string) => boolean; hint: string }> = [
+	{ test: (t, a) => t === "bash" && /^find\s+(\/|~|\$HOME)/.test(a), hint: "루트/홈 디렉토리 전체 탐색 중일 수 있음" },
+	{ test: (t, a) => t === "bash" && /^sleep\b/.test(a), hint: "의도적 대기 중" },
+	{ test: (t, a) => t === "bash" && /npm install|pnpm install|yarn install|pnpm i\b/.test(a), hint: "패키지 설치 중" },
+	{ test: (t, a) => t === "bash" && /git clone\b/.test(a), hint: "레포 클론 중" },
+	{ test: (t, a) => t === "bash" && /docker build\b/.test(a), hint: "도커 빌드 중" },
+	{ test: (t, a) => t === "bash" && /npm run build|pnpm build|yarn build|tsc\b/.test(a), hint: "빌드/컴파일 중" },
+	{ test: (t, a) => t === "bash" && /npm test|pnpm test|yarn test|jest|vitest/.test(a), hint: "테스트 실행 중" },
+	{ test: (t, a) => t === "bash" && /curl|wget/.test(a), hint: "네트워크 요청 대기 중" },
+	{ test: (t, a) => t === "bash" && /migration:run|migrate\b/.test(a), hint: "DB 마이그레이션 실행 중" },
+	{ test: (t, a) => t === "bash" && /grep -r|rg\b/.test(a) && /\/(\s|$)|~/.test(a), hint: "넓은 범위 검색 중" },
+	{ test: (t) => t === "Agent", hint: "서브에이전트 실행 중 — 완료까지 시간이 걸릴 수 있음" },
+	{ test: (t) => t === "web_search" || t === "fetch_content", hint: "웹 검색/콘텐츠 가져오는 중" },
+];
+
+function getSlowCommandHint(tool: string, args: string): string | null {
+	const normalized = tool.toLowerCase();
+	for (const { test, hint } of SLOW_HINTS) {
+		if (test(normalized, args)) return hint;
+	}
+	return null;
+}
+
 // Idle watchdog config
 const IDLE_THRESHOLD_MS = 5 * 60 * 1000;     // 5분 무응답 시 알림
 const ALERT_REPEAT_MS = 5 * 60 * 1000;        // 알림 후 5분마다 반복
@@ -116,6 +139,8 @@ export default function (pi: ExtensionAPI) {
 		];
 		if (currentTool) {
 			lines.push(`🔄 현재 실행 중: ${currentTool}${currentToolArgs ? ` — ${currentToolArgs}` : ""}`);
+			const hint = getSlowCommandHint(currentTool, currentToolArgs);
+			if (hint) lines.push(`💡 ${hint}`);
 		}
 		if (queue.length > 0) {
 			lines.push("");
