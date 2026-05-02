@@ -1042,17 +1042,20 @@ async function workingTreeFileDiff(
 	return "(no diff available)";
 }
 
-async function commitFileDiff(pi: ExtensionAPI, cwd: string, commitHash: string, file: CommitFile): Promise<string> {
-	if (commitHash === UNCOMMITTED_HASH) return workingTreeFileDiff(pi, cwd, file);
+async function commitFileDiff(pi: ExtensionAPI, cwd: string, commitHash: string, file: CommitFile, showFullFile = false): Promise<string> {
+	const contextArg = showFullFile ? "-U99999" : undefined;
+	if (commitHash === UNCOMMITTED_HASH) return workingTreeFileDiff(pi, cwd, file, contextArg);
 
-	const primary = await pi.exec(
-		"git",
-		["show", "--no-color", "--format=", "--diff-merges=first-parent", commitHash, "--", file.path],
-		{ cwd },
-	);
+	const primaryArgs = ["show", "--no-color", "--format=", "--diff-merges=first-parent"];
+	if (contextArg) primaryArgs.push(contextArg);
+	primaryArgs.push(commitHash, "--", file.path);
+	const primary = await pi.exec("git", primaryArgs, { cwd });
 	if (primary.code === 0 && (primary.stdout ?? "").trim()) return (primary.stdout ?? "").trim();
 
-	const fallback = await pi.exec("git", ["show", "--no-color", "--format=", commitHash, "--", file.path], { cwd });
+	const fallbackArgs = ["show", "--no-color", "--format="];
+	if (contextArg) fallbackArgs.push(contextArg);
+	fallbackArgs.push(commitHash, "--", file.path);
+	const fallback = await pi.exec("git", fallbackArgs, { cwd });
 	if (fallback.code === 0 && (fallback.stdout ?? "").trim()) return (fallback.stdout ?? "").trim();
 	return "(no diff available)";
 }
@@ -1874,7 +1877,7 @@ class DiffOverlay {
 		this.st.commitFileDiffLoading.add(key);
 		tui.requestRender();
 		try {
-			const raw = await commitFileDiff(this.pi, this.cwd, commitHash, file);
+			const raw = await commitFileDiff(this.pi, this.cwd, commitHash, file, this.st.showFullFile);
 			this.st.commitFileDiffCache.set(key, raw);
 		} finally {
 			this.st.commitFileDiffLoading.delete(key);
@@ -2147,6 +2150,20 @@ class DiffOverlay {
 
 	private handleCommitModeInput(data: string, tui: Tui): void {
 		const st = this.st;
+
+		if (matchesKey(data, "w")) {
+			st.wrapLines = !st.wrapLines;
+			tui.requestRender();
+			return;
+		}
+		if (matchesKey(data, "a")) {
+			st.showFullFile = !st.showFullFile;
+			st.diffCache.clear();
+			st.highlightedDiffCache.clear();
+			st.commitFileDiffCache.clear();
+			tui.requestRender();
+			return;
+		}
 
 		if (st.focus === "left") {
 			if (matchesKey(data, Key.escape)) {
