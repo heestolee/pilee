@@ -1119,6 +1119,7 @@ function buildCommitRenderedDiffLines(
 	t: Theme,
 	rawDiff: string,
 	width: number,
+	wrapLines: boolean,
 ): RenderedDiffLine[] {
 	const parsed = parseDiffLines(rawDiff);
 	const lineNumberWidth = diffLineNumberWidth(parsed);
@@ -1131,6 +1132,17 @@ function buildCommitRenderedDiffLines(
 		const newNumber = line.newLineNumber ? String(line.newLineNumber).padStart(lineNumberWidth, " ") : blankLineNumber;
 		const gutter = t.fg("muted", `${oldNumber} ${newNumber} │`);
 		const content = colorDiffLine(t, expandTabs(line.originalLine));
+		const contentWidth = Math.max(1, width - visibleWidth(gutter) - 1);
+
+		if (wrapLines) {
+			const wrapped = wrapTextWithAnsi(` ${content}`, contentWidth);
+			for (const [segmentIndex, segment] of wrapped.entries()) {
+				const lineGutter = segmentIndex === 0 ? gutter : t.fg("muted", `${blankLineNumber} ${blankLineNumber} │`);
+				rendered.push({ text: padStyledLine(`${lineGutter} ${segment}`, width), category: line.category, newLineNumber: segmentIndex === 0 ? line.newLineNumber : undefined });
+			}
+			continue;
+		}
+
 		rendered.push({ text: padStyledLine(`${gutter} ${content}`, width), category: line.category, newLineNumber: line.newLineNumber });
 	}
 
@@ -1481,7 +1493,7 @@ function renderCommitFiles(t: Theme, st: DiffState, w: number, h: number): strin
 			continue;
 		}
 
-		const renderedDiffLines = buildCommitRenderedDiffLines(t, raw, w);
+		const renderedDiffLines = buildCommitRenderedDiffLines(t, raw, w, st.wrapLines);
 		if (renderedDiffLines.length === 0) {
 			rows.push(t.fg("muted", "    (empty diff)"));
 			continue;
@@ -2308,7 +2320,7 @@ class DiffOverlay {
 			`  ${t.fg("accent", t.bold("DIFF"))} ${t.fg("dim", "|")} ${branch}${baseInfo} ${t.fg("dim", "·")} ${fileCnt} ${t.fg("dim", "·")} ${commitCnt} ${t.fg("dim", "·")} mode:${mode}`,
 		);
 		header.push(
-			`  ${t.fg("dim", "scope:")}${t.fg("muted", scopeLabel(st.scope))} ${t.fg("dim", "· filter:")}${t.fg(st.searchMode ? "accent" : "muted", st.searchQuery || "-")} ${t.fg("dim", "· wrap:")}${t.fg(st.wrapLines ? "success" : "muted", st.wrapLines ? "on" : "off")} ${t.fg("dim", "· changed-only:")}${t.fg(st.changedOnly ? "success" : "muted", st.changedOnly ? "on" : "off")} ${t.fg("dim", "· reviews:")}${t.fg(st.reviewDrafts.length > 0 ? "accent" : "muted", String(st.reviewDrafts.length))}`,
+			`  ${t.fg("muted", "scope:")}${t.fg("muted", scopeLabel(st.scope))} ${t.fg("muted", "· filter:")}${t.fg(st.searchMode ? "accent" : "muted", st.searchQuery || "-")} ${t.fg("muted", "· wrap:")}${t.fg(st.wrapLines ? "success" : "muted", st.wrapLines ? "on" : "off")} ${t.fg("muted", "· changed-only:")}${t.fg(st.changedOnly ? "success" : "muted", st.changedOnly ? "on" : "off")} ${t.fg("muted", "· reviews:")}${t.fg(st.reviewDrafts.length > 0 ? "accent" : "muted", String(st.reviewDrafts.length))}`,
 		);
 
 		const footer: string[] = [];
