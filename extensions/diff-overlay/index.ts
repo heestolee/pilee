@@ -1359,10 +1359,12 @@ function injectReviewComments(
 
 	const result: RenderedDiffLine[] = [];
 
+	const commentBg = (s: string) => `\x1b[48;2;55;55;55m${s}\x1b[49m`;
+
 	if (wholeDrafts.length > 0) {
 		for (const draft of wholeDrafts) {
 			const content = `  ${t.fg("warning", "│ \u{1f4ac}")} ${t.fg("text", draft.prompt)}`;
-			result.push({ text: t.bg("toolPendingBg", padStyledLine(content, w)), category: "context" });
+			result.push({ text: commentBg(padStyledLine(content, w)), category: "context" });
 		}
 	}
 
@@ -1373,7 +1375,7 @@ function injectReviewComments(
 			for (const draft of comments) {
 				const rangeLabel = draft.lineRange ? t.fg("warning", `L:${draft.lineRange} `) : "";
 				const content = `  ${t.fg("warning", "│ \u{1f4ac}")} ${rangeLabel}${t.fg("text", draft.prompt)}`;
-				result.push({ text: t.bg("toolPendingBg", padStyledLine(content, w)), category: "context" });
+				result.push({ text: commentBg(padStyledLine(content, w)), category: "context" });
 			}
 		}
 	}
