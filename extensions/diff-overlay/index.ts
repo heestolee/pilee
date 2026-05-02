@@ -132,6 +132,7 @@ interface DiffState {
 	selectedFilePathByScope: Record<OverlayDiffScope, string | null>;
 	wrapLines: boolean;
 	changedOnly: boolean;
+	showFullFile: boolean;
 	reviewDrafts: ReviewDraft[];
 	reviewInput: ReviewInputState;
 
@@ -1012,16 +1013,28 @@ async function workingTreeFileDiff(
 	pi: ExtensionAPI,
 	cwd: string,
 	file: { path: string; status: DiffFileStatus },
+	contextArg?: string,
 ): Promise<string> {
 	if (file.status === "untracked" || file.status === "ignored") return asAddedFileDiff(pi, cwd, file.path);
 
 	if (await repositoryHasHead(pi, cwd)) {
-		const againstHead = await pi.exec("git", ["diff", "--no-color", "HEAD", "--", file.path], { cwd });
+		const args = ["diff", "--no-color"];
+		if (contextArg) args.push(contextArg);
+		args.push("HEAD", "--", file.path);
+		const againstHead = await pi.exec("git", args, { cwd });
 		if (againstHead.code === 0 && (againstHead.stdout ?? "").trim()) return (againstHead.stdout ?? "").trim();
 	}
 
-	const working = await pi.exec("git", ["diff", "--no-color", "--", file.path], { cwd });
-	const staged = await pi.exec("git", ["diff", "--cached", "--no-color", "--", file.path], { cwd });
+	const workingArgs = ["diff", "--no-color"];
+	if (contextArg) workingArgs.push(contextArg);
+	workingArgs.push("--", file.path);
+	const working = await pi.exec("git", workingArgs, { cwd });
+
+	const stagedArgs = ["diff", "--cached", "--no-color"];
+	if (contextArg) stagedArgs.push(contextArg);
+	stagedArgs.push("--", file.path);
+	const staged = await pi.exec("git", stagedArgs, { cwd });
+
 	if (working.code === 0 && (working.stdout ?? "").trim()) return (working.stdout ?? "").trim();
 	if (staged.code === 0 && (staged.stdout ?? "").trim()) return (staged.stdout ?? "").trim();
 
@@ -1050,8 +1063,11 @@ async function fileDiff(
 	file: DiffFile,
 	scope: OverlayDiffScope,
 	mergeBase: string | null,
+	showFullFile = false,
 ): Promise<string> {
-	if (scope === "working") return workingTreeFileDiff(pi, cwd, file);
+	const contextArg = showFullFile ? "-U99999" : undefined;
+
+	if (scope === "working") return workingTreeFileDiff(pi, cwd, file, contextArg);
 
 	if (scope === "last-commit") {
 		if (!(await repositoryHasHead(pi, cwd))) return "(no commit available)";
@@ -1063,11 +1079,14 @@ async function fileDiff(
 	if (file.status === "untracked" || file.status === "ignored") return asAddedFileDiff(pi, cwd, file.path);
 
 	if (mergeBase) {
-		const r = await pi.exec("git", ["diff", "--no-color", mergeBase, "--", file.path], { cwd });
+		const args = ["diff", "--no-color"];
+		if (contextArg) args.push(contextArg);
+		args.push(mergeBase, "--", file.path);
+		const r = await pi.exec("git", args, { cwd });
 		if (r.code === 0 && (r.stdout ?? "").trim()) return (r.stdout ?? "").trim();
 	}
 
-	return workingTreeFileDiff(pi, cwd, file);
+	return workingTreeFileDiff(pi, cwd, file, contextArg);
 }
 
 // ─── Render helpers ────────────────────────────────────────────────────────
@@ -1808,7 +1827,7 @@ class DiffOverlay {
 		if (this.st.diffCache.has(key) || this.diffLoading) return;
 		this.diffLoading = true;
 		try {
-			this.st.diffCache.set(key, await fileDiff(this.pi, this.cwd, f, this.st.scope, this.st.mergeBase));
+			this.st.diffCache.set(key, await fileDiff(this.pi, this.cwd, f, this.st.scope, this.st.mergeBase, this.st.showFullFile));
 		} finally {
 			this.diffLoading = false;
 		}
@@ -2016,6 +2035,14 @@ class DiffOverlay {
 		}
 		if (data === "w") {
 			st.wrapLines = !st.wrapLines;
+			tui.requestRender();
+			return;
+		}
+		if (data === "a") {
+			st.showFullFile = !st.showFullFile;
+			st.diffCache.clear();
+			st.highlightedDiffCache.clear();
+			void this.ensureDiff(tui);
 			tui.requestRender();
 			return;
 		}
@@ -2320,7 +2347,7 @@ class DiffOverlay {
 			`  ${t.fg("accent", t.bold("DIFF"))} ${t.fg("dim", "|")} ${branch}${baseInfo} ${t.fg("dim", "·")} ${fileCnt} ${t.fg("dim", "·")} ${commitCnt} ${t.fg("dim", "·")} mode:${mode}`,
 		);
 		header.push(
-			`  ${t.fg("muted", "scope:")}${t.fg("muted", scopeLabel(st.scope))} ${t.fg("muted", "· filter:")}${t.fg(st.searchMode ? "accent" : "muted", st.searchQuery || "-")} ${t.fg("muted", "· wrap:")}${t.fg(st.wrapLines ? "success" : "muted", st.wrapLines ? "on" : "off")} ${t.fg("muted", "· changed-only:")}${t.fg(st.changedOnly ? "success" : "muted", st.changedOnly ? "on" : "off")} ${t.fg("muted", "· reviews:")}${t.fg(st.reviewDrafts.length > 0 ? "accent" : "muted", String(st.reviewDrafts.length))}`,
+			`  ${t.fg("muted", "scope:")}${t.fg("muted", scopeLabel(st.scope))} ${t.fg("muted", "· filter:")}${t.fg(st.searchMode ? "accent" : "muted", st.searchQuery || "-")} ${t.fg("muted", "· wrap:")}${t.fg(st.wrapLines ? "success" : "muted", st.wrapLines ? "on" : "off")} ${t.fg("muted", "· full:")}${t.fg(st.showFullFile ? "success" : "muted", st.showFullFile ? "on" : "off")} ${t.fg("muted", "· changed-only:")}${t.fg(st.changedOnly ? "success" : "muted", st.changedOnly ? "on" : "off")} ${t.fg("muted", "· reviews:")}${t.fg(st.reviewDrafts.length > 0 ? "accent" : "muted", String(st.reviewDrafts.length))}`,
 		);
 
 		const footer: string[] = [];
@@ -2369,8 +2396,8 @@ class DiffOverlay {
 					: st.searchMode
 						? "  Search mode · type to filter · Backspace delete · Enter/Esc close"
 						: st.focus === "left"
-							? "  ↑/↓ Select File  ·  / Search  ·  s Scope  ·  w Wrap  ·  c Changed-only  ·  r Review draft  ·  Enter → Diff  ·  Tab/v Commit  ·  o Open  ·  f Finder  ·  S Stash  ·  q/Esc Close"
-							: "  ↑/↓ Scroll 5 lines  ·  j/k Scroll 1 line  ·  PgUp/PgDn Fast  ·  / Search  ·  s Scope  ·  w Wrap  ·  c Changed-only  ·  r Review draft  ·  Tab/v Commit  ·  o Open  ·  f Finder  ·  ←/Esc → Files  ·  q Close"
+							? "  ↑/↓ Select File  ·  / Search  ·  s Scope  ·  w Wrap  ·  a Full  ·  c Changed-only  ·  r Review draft  ·  Enter → Diff  ·  Tab/v Commit  ·  o Open  ·  f Finder  ·  S Stash  ·  q/Esc Close"
+							: "  ↑/↓ Scroll 5 lines  ·  j/k Scroll 1 line  ·  PgUp/PgDn Fast  ·  / Search  ·  s Scope  ·  w Wrap  ·  a Full  ·  c Changed-only  ·  r Review draft  ·  Tab/v Commit  ·  o Open  ·  f Finder  ·  ←/Esc → Files  ·  q Close"
 				: st.focus === "left"
 					? "  ↑/↓ Select Commit  ·  Enter → Changed Files  ·  Tab/v Toggle Diff  ·  S Stash  ·  q/Esc Close"
 					: "  ↑/↓ Select (overflow → 5-line scroll)  ·  j/k Select File  ·  Enter Fold/Unfold Diff  ·  PgUp/PgDn Scroll  ·  r Review draft  ·  Tab/v Toggle Diff  ·  o Open  ·  f Finder  ·  ←/Esc → Commits  ·  q Close";
@@ -2492,6 +2519,7 @@ export default function diffOverlayExtension(pi: ExtensionAPI) {
 			},
 			wrapLines: true,
 			changedOnly: false,
+			showFullFile: false,
 			reviewDrafts: [],
 			reviewInput: { active: false, buffer: "", error: null, lineRange: null, lineRangeSelectMode: false, lineRangeSelectIndex: 0, lineRangeDirectInputMode: false, lineRangeBuffer: "" },
 
