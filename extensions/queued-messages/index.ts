@@ -114,6 +114,9 @@ export default function (pi: ExtensionAPI) {
 		const lines: string[] = [
 			`⚠️ 에이전트가 ${minutes}분간 출력 없음`,
 		];
+		if (currentTool) {
+			lines.push(`🔄 현재 실행 중: ${currentTool}${currentToolArgs ? ` — ${currentToolArgs}` : ""}`);
+		}
 		if (queue.length > 0) {
 			lines.push("");
 			lines.push(`큐잉된 메시지 (${queue.length}개):`);
