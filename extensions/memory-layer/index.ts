@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, unlink
 import { homedir } from "node:os";
 import { join, basename } from "node:path";
 import type { ExtensionAPI, ExtensionContext, ExtensionCommandContext, ThemeColor } from "@mariozechner/pi-coding-agent";
+import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
 
@@ -153,6 +154,7 @@ function text(msg: string) {
 async function showMemoryOverlay(ctx: ExtensionCommandContext, projectId: string) {
 	const allMems = () => getAllMemories(projectId);
 	let selectedIdx = 0;
+	let showHelp = false;
 	let viewingId: string | null = null;
 	let searchQuery = "";
 	let searchMode = false;
@@ -170,8 +172,27 @@ async function showMemoryOverlay(ctx: ExtensionCommandContext, projectId: string
 
 	await ctx.ui.custom<void>(
 		(tui, theme, _kb, done) => {
+			const renderHelp = (w: number): string[] => {
+				const lines: string[] = [];
+				lines.push(...new DynamicBorder((s: string) => theme.fg("accent", s)).render(w));
+				lines.push(`  ${theme.bold("KEYBINDINGS")}`);
+				lines.push("");
+				lines.push(`  ${theme.fg("warning", "↑/↓, k/j")}  ${theme.fg("muted", "항목 이동")}`);
+				lines.push(`  ${theme.fg("warning", "Enter")}     ${theme.fg("muted", "상세 보기")}`);
+				lines.push(`  ${theme.fg("warning", "d")}         ${theme.fg("muted", "삭제")}`);
+				lines.push(`  ${theme.fg("warning", "s")}         ${theme.fg("muted", "scope 변경 (All→Global→Project)")}`);
+				lines.push(`  ${theme.fg("warning", "/")}         ${theme.fg("muted", "검색")}`);
+				lines.push(`  ${theme.fg("warning", ",")}         ${theme.fg("muted", "이 도움말")}`);
+				lines.push(`  ${theme.fg("warning", "q/Esc")}     ${theme.fg("muted", "닫기")}`);
+				lines.push("");
+				lines.push(`  ${theme.fg("dim", "아무 키나 누르면 닫힘")}`);
+				lines.push(...new DynamicBorder((s: string) => theme.fg("accent", s)).render(w));
+				return lines;
+			};
+
 			return {
 				render: (w: number) => {
+					if (showHelp) return renderHelp(w);
 					const mems = getFiltered();
 					const lines: string[] = [];
 					lines.push(theme.fg("accent", "─".repeat(w)));
@@ -217,6 +238,18 @@ async function showMemoryOverlay(ctx: ExtensionCommandContext, projectId: string
 					return lines;
 				},
 				handleInput: (data: string) => {
+					if (showHelp) {
+						showHelp = false;
+						(tui as any).requestRender?.();
+						return;
+					}
+
+					if (matchesKey(data, ",")) {
+						showHelp = true;
+						(tui as any).requestRender?.();
+						return;
+					}
+
 					const mems = getFiltered();
 
 					if (searchMode) {

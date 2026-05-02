@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext, ExtensionCommandContext, ThemeColor } from "@mariozechner/pi-coding-agent";
+import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
 
@@ -259,6 +260,7 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		let selectedIdx = 0;
+		let showHelp = false;
 		let inputMode: null | "new" | "edit" = null;
 		let inputBuffer = "";
 
@@ -266,8 +268,26 @@ export default function (pi: ExtensionAPI) {
 
 		await ctx.ui.custom<void>(
 			(tui, theme, _kb, done) => {
+				const renderHelp = (w: number): string[] => {
+					const lines: string[] = [];
+					lines.push(...new DynamicBorder((s: string) => theme.fg("accent", s)).render(w));
+					lines.push(`  ${theme.bold("KEYBINDINGS")}`);
+					lines.push("");
+					lines.push(`  ${theme.fg("warning", "↑/↓, k/j")}     ${theme.fg("muted", "항목 이동")}`);
+					lines.push(`  ${theme.fg("warning", "Space/Enter")}  ${theme.fg("muted", "상태 토글 (pending→in_progress→completed)")}`);
+					lines.push(`  ${theme.fg("warning", "n")}            ${theme.fg("muted", "새 태스크 추가")}`);
+					lines.push(`  ${theme.fg("warning", "d")}            ${theme.fg("muted", "삭제")}`);
+					lines.push(`  ${theme.fg("warning", ",")}            ${theme.fg("muted", "이 도움말")}`);
+					lines.push(`  ${theme.fg("warning", "q")}            ${theme.fg("muted", "닫기")}`);
+					lines.push("");
+					lines.push(`  ${theme.fg("dim", "아무 키나 누르면 닫힘")}`);
+					lines.push(...new DynamicBorder((s: string) => theme.fg("accent", s)).render(w));
+					return lines;
+				};
+
 				return {
 					render: (w: number) => {
+						if (showHelp) return renderHelp(w);
 						const visible = getVisible();
 						const completed = store.tasks.filter((t) => t.status === "completed").length;
 						const total = store.tasks.length;
@@ -308,6 +328,18 @@ export default function (pi: ExtensionAPI) {
 						return lines;
 					},
 					handleInput: (data: string) => {
+						if (showHelp) {
+							showHelp = false;
+							(tui as any).requestRender?.();
+							return;
+						}
+
+						if (matchesKey(data, ",")) {
+							showHelp = true;
+							(tui as any).requestRender?.();
+							return;
+						}
+
 						const visible = getVisible();
 
 						// Input mode

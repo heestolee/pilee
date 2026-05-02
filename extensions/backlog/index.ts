@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ThemeColor } from "@mariozechner/pi-coding-agent";
+import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 
 // ─── Storage ───────────────────────────────────────────────────────────────
@@ -78,6 +79,7 @@ async function showOverlay(ctx: ExtensionCommandContext) {
 
 	let selectedIdx = 0;
 	let showDone = false;
+	let showHelp = false;
 	let inputMode: null | "add" | "note" | "edit-title" | "edit-note" = null;
 	let inputBuffer = "";
 	let detailId: number | null = null;
@@ -92,8 +94,30 @@ async function showOverlay(ctx: ExtensionCommandContext) {
 			const priorityColor = (p: Priority): ThemeColor => p === "high" ? "error" : p === "medium" ? "warning" : "dim";
 			const priorityIcon = (p: Priority) => p === "high" ? "🔴" : p === "medium" ? "🟡" : "⚪";
 
+			const renderHelp = (w: number): string[] => {
+				const lines: string[] = [];
+				lines.push(...new DynamicBorder((s: string) => theme.fg("accent", s)).render(w));
+				lines.push(`  ${theme.bold("KEYBINDINGS")}`);
+				lines.push("");
+				lines.push(`  ${theme.fg("warning", "↑/↓, k/j")}  ${theme.fg("muted", "항목 이동")}`);
+				lines.push(`  ${theme.fg("warning", "Enter")}     ${theme.fg("muted", "상세 보기")}`);
+				lines.push(`  ${theme.fg("warning", "n")}         ${theme.fg("muted", "새 항목 추가")}`);
+				lines.push(`  ${theme.fg("warning", "d")}         ${theme.fg("muted", "삭제")}`);
+				lines.push(`  ${theme.fg("warning", "Space")}     ${theme.fg("muted", "완료/미완료 토글")}`);
+				lines.push(`  ${theme.fg("warning", "p")}         ${theme.fg("muted", "우선순위 변경 (high→medium→low)")}`);
+				lines.push(`  ${theme.fg("warning", "t")}         ${theme.fg("muted", "노트 작성/수정")}`);
+				lines.push(`  ${theme.fg("warning", "v")}         ${theme.fg("muted", "완료 항목 표시/숨김")}`);
+				lines.push(`  ${theme.fg("warning", ",")}         ${theme.fg("muted", "이 도움말")}`);
+				lines.push(`  ${theme.fg("warning", "q/Esc")}     ${theme.fg("muted", "닫기")}`);
+				lines.push("");
+				lines.push(`  ${theme.fg("dim", "아무 키나 누르면 닫힘")}`);
+				lines.push(...new DynamicBorder((s: string) => theme.fg("accent", s)).render(w));
+				return lines;
+			};
+
 			return {
 				render: (w: number) => {
+					if (showHelp) return renderHelp(w);
 					const visible = getVisible();
 					const openCount = store.items.filter((i) => i.status === "open").length;
 					const doneCount = store.items.filter((i) => i.status === "done").length;
@@ -164,6 +188,18 @@ async function showOverlay(ctx: ExtensionCommandContext) {
 					return lines;
 				},
 				handleInput: (data: string) => {
+					if (showHelp) {
+						showHelp = false;
+						(tui as any).requestRender?.();
+						return;
+					}
+
+					if (matchesKey(data, ",")) {
+						showHelp = true;
+						(tui as any).requestRender?.();
+						return;
+					}
+
 					const visible = getVisible();
 
 					// Input mode
