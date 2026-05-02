@@ -1359,7 +1359,7 @@ function injectReviewComments(
 
 	const result: RenderedDiffLine[] = [];
 
-	const commentBg = (s: string) => `\x1b[48;2;80;75;60m${s}\x1b[49m`;
+	const commentBg = (s: string) => `\x1b[48;2;140;135;120m${s}\x1b[49m`;
 
 	if (wholeDrafts.length > 0) {
 		for (const draft of wholeDrafts) {
