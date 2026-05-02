@@ -22,7 +22,6 @@ const PAGES = {
 		codeBlockId: "3549d270-074a-805a-ad68-c2a3618a5ba1",
 		dateBlockId: "3549d270-074a-8053-a459-c0171f4b57c2",
 		whyDbId: "3549d270-074a-8005-a8c3-d97328c22cfb",
-		backupDbId: "3549d270-074a-8037-b451-e4f0c76177eb",
 		snapshotDbId: "3549d270-074a-8037-b451-e4f0c76177eb",
 		filePath: join(process.cwd(), "docs/pilee-history.md"),
 		syncFilePath: join(process.cwd(), "docs/pilee-history.sync.local.md"),
@@ -186,21 +185,6 @@ async function createWhyPage(dbId, datePrefix, title, narrative) {
 	return pageTitle;
 }
 
-async function createBackup(backupDbId, datePrefix, content) {
-	const chunks = chunkText(content);
-	await notionRequest("POST", "/pages", {
-		parent: { database_id: backupDbId },
-		properties: { "이름": { title: [{ text: { content: `${datePrefix} snapshot` } }] } },
-		children: [{
-			object: "block",
-			type: "code",
-			code: {
-				rich_text: chunks.map((c) => ({ type: "text", text: { content: c } })),
-				language: "markdown",
-			},
-		}],
-	});
-}
 
 async function main() {
 	const args = process.argv.slice(2);
@@ -208,8 +192,8 @@ async function main() {
 
 	if (!target || !PAGES[target]) {
 		console.error("Usage:");
-		console.error("  echo '서사 내용' | node scripts/sync-notion-log.mjs <target> [title] [--date YYYY-MM-DD] [--backup]");
-		console.error("  node scripts/sync-notion-log.mjs <target> [title] --desc '서사 내용' [--date YYYY-MM-DD] [--backup]");
+		console.error("  echo '서사 내용' | node scripts/sync-notion-log.mjs <target> [title] [--date YYYY-MM-DD] [--snapshot '변경 요약']");
+		console.error("  node scripts/sync-notion-log.mjs <target> [title] --desc '서사 내용' [--date YYYY-MM-DD] [--snapshot '변경 요약']");
 		console.error("Targets: pilee-history, db-write-log");
 		process.exit(1);
 	}
@@ -229,9 +213,7 @@ async function main() {
 	const flags = {};
 	const positional = [];
 	for (let i = 1; i < args.length; i++) {
-		if (args[i] === "--backup") {
-			flags.backup = true;
-		} else if (args[i] === "--snapshot" && i + 1 < args.length) {
+		if (args[i] === "--snapshot" && i + 1 < args.length) {
 			flags.snapshot = args[i + 1];
 			i++;
 		} else if (args[i].startsWith("--") && i + 1 < args.length) {
@@ -272,11 +254,6 @@ async function main() {
 			const pageTitle = await createWhyPage(page.whyDbId, datePrefix, title, narrative);
 			console.log(`  ✓ Created why page: ${pageTitle}`);
 		}
-	}
-
-	if (flags.backup && page.backupDbId) {
-		await createBackup(page.backupDbId, datePrefix, content);
-		console.log(`  ✓ Backup created: ${datePrefix} snapshot`);
 	}
 
 	if (flags.snapshot && page.snapshotDbId && page.syncFilePath && existsSync(page.syncFilePath)) {
