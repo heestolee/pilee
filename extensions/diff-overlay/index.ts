@@ -133,6 +133,7 @@ interface DiffState {
 	wrapLines: boolean;
 	changedOnly: boolean;
 	showFullFile: boolean;
+	showHelp: boolean;
 	reviewDrafts: ReviewDraft[];
 	reviewInput: ReviewInputState;
 
@@ -2316,6 +2317,18 @@ class DiffOverlay {
 	// ─── Input dispatch ──────────────────────────────────────────────────────
 
 	handleInput(data: string, tui: Tui): void {
+		if (this.st.showHelp) {
+			this.st.showHelp = false;
+			tui.requestRender();
+			return;
+		}
+
+		if (matchesKey(data, ",")) {
+			this.st.showHelp = true;
+			tui.requestRender();
+			return;
+		}
+
 		if (matchesKey(data, "q") && !this.st.searchMode && !this.st.reviewInput.active) {
 			this.closeOverlay();
 			return;
@@ -2355,7 +2368,54 @@ class DiffOverlay {
 
 	// ─── Frame render ────────────────────────────────────────────────────────
 
+	private renderHelp(w: number, h: number, t: Theme): string[] {
+		const lines: string[] = [];
+		lines.push(...new DynamicBorder((s: string) => t.fg("accent", s)).render(w));
+		lines.push(`  ${t.fg("accent", t.bold("KEYBINDINGS"))}`);
+		lines.push("");
+		lines.push(`  ${t.fg("accent", "── 공통 ──")}`);
+		lines.push(`  ${t.fg("warning", "Tab/v")}  ${t.fg("muted", "diff ↔ commit 모드 전환")}`);
+		lines.push(`  ${t.fg("warning", "/")}      ${t.fg("muted", "파일 검색")}`);
+		lines.push(`  ${t.fg("warning", "s")}      ${t.fg("muted", "scope 변경 (branch/working/last-commit)")}`);
+		lines.push(`  ${t.fg("warning", "w")}      ${t.fg("muted", "줄바꿈 토글")}`);
+		lines.push(`  ${t.fg("warning", "a")}      ${t.fg("muted", "파일 전체 보기 토글")}`);
+		lines.push(`  ${t.fg("warning", "c")}      ${t.fg("muted", "변경된 줄만 보기 토글")}`);
+		lines.push(`  ${t.fg("warning", "r")}      ${t.fg("muted", "리뷰 드래프트 작성")}`);
+		lines.push(`  ${t.fg("warning", "o")}      ${t.fg("muted", "파일 열기")}`);
+		lines.push(`  ${t.fg("warning", "f")}      ${t.fg("muted", "Finder에서 열기")}`);
+		lines.push(`  ${t.fg("warning", "S")}      ${t.fg("muted", "git stash")}`);
+		lines.push(`  ${t.fg("warning", ",")}      ${t.fg("muted", "이 도움말")}`);
+		lines.push(`  ${t.fg("warning", "q/Esc")}  ${t.fg("muted", "닫기")}`);
+		lines.push("");
+		lines.push(`  ${t.fg("accent", "── diff 모드: 왼쪽 (파일 선택) ──")}`);
+		lines.push(`  ${t.fg("warning", "↑/↓")}    ${t.fg("muted", "파일 선택")}`);
+		lines.push(`  ${t.fg("warning", "Enter")}  ${t.fg("muted", "오른쪽 diff 패널로 이동")}`);
+		lines.push("");
+		lines.push(`  ${t.fg("accent", "── diff 모드: 오른쪽 (diff 보기) ──")}`);
+		lines.push(`  ${t.fg("warning", "↑/↓")}    ${t.fg("muted", "5줄 스크롤")}`);
+		lines.push(`  ${t.fg("warning", "j/k")}    ${t.fg("muted", "1줄 스크롤")}`);
+		lines.push(`  ${t.fg("warning", "PgUp/Dn")} ${t.fg("muted", "빠른 스크롤")}`);
+		lines.push(`  ${t.fg("warning", "g/G")}    ${t.fg("muted", "맨 위/맨 아래")}`);
+		lines.push(`  ${t.fg("warning", "←/Esc")}  ${t.fg("muted", "파일 패널로 복귀")}`);
+		lines.push("");
+		lines.push(`  ${t.fg("accent", "── commit 모드: 왼쪽 (커밋 선택) ──")}`);
+		lines.push(`  ${t.fg("warning", "↑/↓")}    ${t.fg("muted", "커밋 선택")}`);
+		lines.push(`  ${t.fg("warning", "Enter")}  ${t.fg("muted", "오른쪽 파일 패널로 이동")}`);
+		lines.push("");
+		lines.push(`  ${t.fg("accent", "── commit 모드: 오른쪽 (파일/diff) ──")}`);
+		lines.push(`  ${t.fg("warning", "j/k")}    ${t.fg("muted", "파일 선택")}`);
+		lines.push(`  ${t.fg("warning", "Enter")}  ${t.fg("muted", "diff 펼치기/접기")}`);
+		lines.push(`  ${t.fg("warning", "←/Esc")}  ${t.fg("muted", "커밋 패널로 복귀")}`);
+		lines.push("");
+		lines.push(`  ${t.fg("dim", "아무 키나 누르면 닫힘")}`);
+		lines.push(...new DynamicBorder((s: string) => t.fg("accent", s)).render(w));
+		while (lines.length < h) lines.push("");
+		return lines;
+	}
+
 	render(w: number, h: number, t: Theme): string[] {
+		if (this.st.showHelp) return this.renderHelp(w, h, t);
+
 		const st = this.st;
 
 		const header: string[] = [];
@@ -2549,6 +2609,7 @@ export default function diffOverlayExtension(pi: ExtensionAPI) {
 			wrapLines: true,
 			changedOnly: false,
 			showFullFile: false,
+			showHelp: false,
 			reviewDrafts: [],
 			reviewInput: { active: false, buffer: "", error: null, lineRange: null, lineRangeSelectMode: false, lineRangeSelectIndex: 0, lineRangeDirectInputMode: false, lineRangeBuffer: "" },
 
