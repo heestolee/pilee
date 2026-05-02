@@ -1,7 +1,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ExtensionAPI, ExtensionContext, ToolResultEvent } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ToolResultEvent } from "@mariozechner/pi-coding-agent";
+import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 
 const ARCHIVE_DIR = path.join(os.homedir(), "Documents", "agent-history", "분류 전");
 const FONT_SIGNATURE = "Noto+Serif+KR";
@@ -143,28 +144,84 @@ function wrapArchivedWidgetHTML(code: string, isSVG = false): string {
 
 export default function (pi: ExtensionAPI) {
 	pi.registerCommand("show-report", {
-		description: "Open the latest make-report HTML in the browser. Usage: /show-report [path]",
-		handler: async (args, ctx) => {
+		description: "TUI로 리포트 목록을 보고 선택해서 브라우저에서 열기. Usage: /show-report [path]",
+		handler: async (args: string, ctx: ExtensionCommandContext) => {
+			if (!ctx.hasUI) return;
+
 			const explicit = (args ?? "").trim();
-			let target = "";
-
 			if (explicit && fs.existsSync(explicit)) {
-				target = explicit;
-			} else {
-				const candidates = [
-					findLatestReport(ctx.cwd),
-					path.join(ARCHIVE_DIR, findLatestInDir(ARCHIVE_DIR)),
-				].filter(Boolean) as string[];
-				target = candidates[0] ?? "";
-			}
-
-			if (!target || !fs.existsSync(target)) {
-				ctx.ui.notify("리포트를 찾을 수 없습니다. /show-report <path>로 직접 지정하세요.", "warning");
+				await pi.exec("open", [explicit]);
+				ctx.ui.notify(`📊 리포트 열기 → ${path.basename(explicit)}`, "info");
 				return;
 			}
 
-			await pi.exec("open", [target]);
-			ctx.ui.notify(`📊 리포트 열기 → ${path.basename(target)}`, "info");
+			const reports = collectReports(ctx.cwd);
+			if (reports.length === 0) {
+				ctx.ui.notify("리포트를 찾을 수 없습니다.", "warning");
+				return;
+			}
+
+			if (reports.length === 1) {
+				await pi.exec("open", [reports[0].path]);
+				ctx.ui.notify(`📊 리포트 열기 → ${reports[0].name}`, "info");
+				return;
+			}
+
+			let selectedIndex = 0;
+			let scrollOffset = 0;
+
+			const selected = await ctx.ui.custom<ReportEntry | null>(
+				(tui, theme, _kb, done) => ({
+					render: (w: number) => {
+						const rows = (tui as any).terminal?.rows ?? 30;
+						const headerH = 3;
+						const footerH = 1;
+						const bodyH = Math.max(3, rows - headerH - footerH);
+						const lines: string[] = [];
+
+						lines.push(theme.fg("accent", "─".repeat(w)));
+						lines.push(`  ${theme.fg("accent", theme.bold("REPORTS"))} ${theme.fg("dim", "|")} ${theme.fg("muted", `${reports.length} files`)} ${theme.fg("dim", "·")} ${theme.fg("muted", "Enter: open · q/Esc: close")}`);
+						lines.push(theme.fg("dim", "  ↑/↓ select · Enter open"));
+
+						if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
+						if (selectedIndex >= scrollOffset + bodyH) scrollOffset = selectedIndex - bodyH + 1;
+
+						for (let i = scrollOffset; i < Math.min(reports.length, scrollOffset + bodyH); i++) {
+							const r = reports[i];
+							const sel = i === selectedIndex;
+							const cursor = sel ? theme.fg("accent", "▶") : " ";
+							const timeStr = theme.fg("dim", r.time);
+							const src = r.source === "workspace" ? theme.fg("success", "ws") : theme.fg("muted", "ar");
+							const name = sel ? theme.fg("accent", r.name) : theme.fg("text", r.name);
+							const ticket = r.ticket ? theme.fg("warning", ` ${r.ticket}`) : "";
+							lines.push(truncateToWidth(`${cursor} ${src} ${timeStr}${ticket} ${name}`, w, ""));
+						}
+
+						while (lines.length < headerH + bodyH) lines.push("");
+						lines.push(theme.fg("accent", "─".repeat(w)));
+						return lines;
+					},
+					handleInput: (data: string) => {
+						if (data === "q" || matchesKey(data, Key.escape)) { done(null); return; }
+						if (matchesKey(data, Key.up) || data === "k") {
+							if (selectedIndex > 0) selectedIndex--;
+						} else if (matchesKey(data, Key.down) || data === "j") {
+							if (selectedIndex < reports.length - 1) selectedIndex++;
+						} else if (matchesKey(data, Key.enter)) {
+							done(reports[selectedIndex]);
+							return;
+						}
+						(tui as any).requestRender?.();
+					},
+					invalidate: () => {},
+				}),
+				{ overlay: true, overlayOptions: { width: "100%", maxHeight: "100%", anchor: "center" } },
+			);
+
+			if (selected) {
+				await pi.exec("open", [selected.path]);
+				ctx.ui.notify(`📊 리포트 열기 → ${selected.name}`, "info");
+			}
 		},
 	});
 
@@ -206,6 +263,59 @@ function archiveToHtmlSkill(event: ToolResultEvent, ctx: ExtensionContext) {
 	} catch {
 		// file read/copy failed — silently skip
 	}
+}
+
+interface ReportEntry {
+	path: string;
+	name: string;
+	time: string;
+	ticket: string;
+	source: "workspace" | "archive";
+	mtime: number;
+}
+
+function formatMtime(ms: number): string {
+	const d = new Date(ms);
+	const pad = (n: number) => String(n).padStart(2, "0");
+	return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function collectReports(cwd: string): ReportEntry[] {
+	const results: ReportEntry[] = [];
+
+	// 1. 워크스페이스 captures 내 리포트
+	const contextDir = path.join(cwd, ".context", "work");
+	if (fs.existsSync(contextDir)) {
+		try {
+			for (const ws of fs.readdirSync(contextDir)) {
+				const capturesDir = path.join(contextDir, ws, "captures");
+				if (!fs.existsSync(capturesDir)) continue;
+				for (const f of fs.readdirSync(capturesDir)) {
+					if (!f.endsWith(".html")) continue;
+					const fp = path.join(capturesDir, f);
+					const stat = fs.statSync(fp);
+					const ticket = extractTicket(fs.readFileSync(fp, "utf-8"));
+					results.push({ path: fp, name: `${ws}/${f}`, time: formatMtime(stat.mtimeMs), ticket, source: "workspace", mtime: stat.mtimeMs });
+				}
+			}
+		} catch {}
+	}
+
+	// 2. 아카이브 reports 디렉토리
+	const reportDir = path.join(ARCHIVE_DIR, "..", "reports");
+	if (fs.existsSync(reportDir)) {
+		try {
+			for (const f of fs.readdirSync(reportDir)) {
+				if (!f.endsWith(".html")) continue;
+				const fp = path.join(reportDir, f);
+				const stat = fs.statSync(fp);
+				const ticket = extractTicket(fs.readFileSync(fp, "utf-8"));
+				results.push({ path: fp, name: f, time: formatMtime(stat.mtimeMs), ticket, source: "archive", mtime: stat.mtimeMs });
+			}
+		} catch {}
+	}
+
+	return results.sort((a, b) => b.mtime - a.mtime);
 }
 
 function archiveMakeReport(event: ToolResultEvent, ctx: ExtensionContext) {
