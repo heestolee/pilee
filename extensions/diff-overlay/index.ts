@@ -1709,12 +1709,12 @@ class DiffOverlay {
 			tui.requestRender();
 			return;
 		}
-		if (matchesKey(data, Key.up) || data === "k") {
+		if (matchesKey(data, Key.up) || matchesKey(data, "k")) {
 			st.reviewInput.lineRangeSelectIndex = Math.max(0, st.reviewInput.lineRangeSelectIndex - 1);
 			tui.requestRender();
 			return;
 		}
-		if (matchesKey(data, Key.down) || data === "j") {
+		if (matchesKey(data, Key.down) || matchesKey(data, "j")) {
 			st.reviewInput.lineRangeSelectIndex = Math.min(maxIndex, st.reviewInput.lineRangeSelectIndex + 1);
 			tui.requestRender();
 			return;
@@ -2023,22 +2023,22 @@ class DiffOverlay {
 		const currentRow = rows[st.selectedIndex];
 		const f = this.selectedDiffFile();
 
-		if (data === "/") {
+		if (matchesKey(data, "/")) {
 			st.searchMode = true;
 			tui.requestRender();
 			return;
 		}
-		if (data === "s") {
+		if (matchesKey(data, "s")) {
 			this.switchScope(cycleOverlayDiffScope(st.scope), tui);
 			tui.requestRender();
 			return;
 		}
-		if (data === "w") {
+		if (matchesKey(data, "w")) {
 			st.wrapLines = !st.wrapLines;
 			tui.requestRender();
 			return;
 		}
-		if (data === "a") {
+		if (matchesKey(data, "a")) {
 			st.showFullFile = !st.showFullFile;
 			st.diffCache.clear();
 			st.highlightedDiffCache.clear();
@@ -2046,12 +2046,12 @@ class DiffOverlay {
 			tui.requestRender();
 			return;
 		}
-		if (data === "c") {
+		if (matchesKey(data, "c")) {
 			st.changedOnly = !st.changedOnly;
 			tui.requestRender();
 			return;
 		}
-		if (data === "r") {
+		if (matchesKey(data, "r")) {
 			this.openReviewDraftInput();
 			tui.requestRender();
 			return;
@@ -2062,20 +2062,20 @@ class DiffOverlay {
 				this.closeOverlay();
 				return;
 			}
-			if (matchesKey(data, Key.up) || data === "k") {
+			if (matchesKey(data, Key.up) || matchesKey(data, "k")) {
 				if (st.selectedIndex > 0) {
 					st.selectedIndex -= 1;
 					this.syncSelectedFile(tui);
 				}
-			} else if (matchesKey(data, Key.down) || data === "j") {
+			} else if (matchesKey(data, Key.down) || matchesKey(data, "j")) {
 				if (st.selectedIndex < n - 1) {
 					st.selectedIndex += 1;
 					this.syncSelectedFile(tui);
 				}
-			} else if (data === "g") {
+			} else if (matchesKey(data, "g")) {
 				st.selectedIndex = 0;
 				this.syncSelectedFile(tui);
-			} else if (data === "G") {
+			} else if (matchesKey(data, "G")) {
 				st.selectedIndex = Math.max(0, n - 1);
 				this.syncSelectedFile(tui);
 			} else if (matchesKey(data, Key.enter)) {
@@ -2086,9 +2086,9 @@ class DiffOverlay {
 					this.selectDiffFile(currentRow.fullPath, tui);
 					st.focus = "right";
 				}
-			} else if (data === "o" && f) {
+			} else if (matchesKey(data, "o") && f) {
 				void this.openPath(f.path).then(() => tui.requestRender());
-			} else if (data === "f" && f) {
+			} else if (matchesKey(data, "f") && f) {
 				void this.revealPath(f.path).then(() => tui.requestRender());
 			}
 
@@ -2118,24 +2118,24 @@ class DiffOverlay {
 			st.diffScrollOffset = Math.max(0, st.diffScrollOffset - ARROW_SCROLL_STEP);
 		} else if (matchesKey(data, Key.down)) {
 			st.diffScrollOffset = Math.min(st.diffScrollOffset + ARROW_SCROLL_STEP, Math.max(0, diffLen - 3));
-		} else if (data === "k") {
+		} else if (matchesKey(data, "k")) {
 			st.diffScrollOffset = Math.max(0, st.diffScrollOffset - 1);
-		} else if (data === "j") {
+		} else if (matchesKey(data, "j")) {
 			st.diffScrollOffset = Math.min(st.diffScrollOffset + 1, Math.max(0, diffLen - 3));
 		} else if (matchesKey(data, Key.pageUp) || matchesKey(data, Key.ctrl("u"))) {
 			st.diffScrollOffset = Math.max(0, st.diffScrollOffset - PAGE_SCROLL_STEP);
 		} else if (matchesKey(data, Key.pageDown) || matchesKey(data, Key.ctrl("d"))) {
 			st.diffScrollOffset = Math.min(st.diffScrollOffset + PAGE_SCROLL_STEP, Math.max(0, diffLen - 3));
-		} else if (data === "g") {
+		} else if (matchesKey(data, "g")) {
 			st.diffScrollOffset = 0;
-		} else if (data === "G") {
+		} else if (matchesKey(data, "G")) {
 			st.diffScrollOffset = Math.max(0, diffLen - 3);
 		} else if (matchesKey(data, Key.left)) {
 			saveDiffScroll(st);
 			st.focus = "left";
-		} else if (data === "o" && f) {
+		} else if (matchesKey(data, "o") && f) {
 			void this.openPath(f.path).then(() => tui.requestRender());
-		} else if (data === "f" && f) {
+		} else if (matchesKey(data, "f") && f) {
 			void this.revealPath(f.path).then(() => tui.requestRender());
 		}
 
@@ -2154,17 +2154,17 @@ class DiffOverlay {
 				return;
 			}
 
-			if (matchesKey(data, Key.up) || data === "k") {
+			if (matchesKey(data, Key.up) || matchesKey(data, "k")) {
 				this.selectCommit(st.commitSelectedIndex - 1, tui);
-			} else if (matchesKey(data, Key.down) || data === "j") {
+			} else if (matchesKey(data, Key.down) || matchesKey(data, "j")) {
 				this.selectCommit(st.commitSelectedIndex + 1, tui);
 			} else if (matchesKey(data, Key.pageUp) || matchesKey(data, Key.ctrl("u"))) {
 				this.selectCommit(st.commitSelectedIndex - 10, tui);
 			} else if (matchesKey(data, Key.pageDown) || matchesKey(data, Key.ctrl("d"))) {
 				this.selectCommit(st.commitSelectedIndex + 10, tui);
-			} else if (data === "g") {
+			} else if (matchesKey(data, "g")) {
 				this.selectCommit(0, tui);
-			} else if (data === "G") {
+			} else if (matchesKey(data, "G")) {
 				this.selectCommit(Math.max(0, st.commits.length - 1), tui);
 			} else if (matchesKey(data, Key.enter)) {
 				st.focus = "right";
@@ -2242,10 +2242,10 @@ class DiffOverlay {
 				st.commitFileSelectedIndex = clamp(selectedIndex + 1, 0, maxIndex);
 				st.commitFileManualScroll = false;
 			}
-		} else if (data === "k") {
+		} else if (matchesKey(data, "k")) {
 			st.commitFileSelectedIndex = clamp(selectedIndex - 1, 0, maxIndex);
 			st.commitFileManualScroll = false;
-		} else if (data === "j") {
+		} else if (matchesKey(data, "j")) {
 			st.commitFileSelectedIndex = clamp(selectedIndex + 1, 0, maxIndex);
 			st.commitFileManualScroll = false;
 		} else if (matchesKey(data, Key.pageUp) || matchesKey(data, Key.ctrl("u"))) {
@@ -2254,10 +2254,10 @@ class DiffOverlay {
 		} else if (matchesKey(data, Key.pageDown) || matchesKey(data, Key.ctrl("d"))) {
 			st.commitFileScrollOffset = Math.min(maxOffset, st.commitFileScrollOffset + PAGE_SCROLL_STEP);
 			st.commitFileManualScroll = true;
-		} else if (data === "g") {
+		} else if (matchesKey(data, "g")) {
 			st.commitFileSelectedIndex = 0;
 			st.commitFileManualScroll = false;
-		} else if (data === "G") {
+		} else if (matchesKey(data, "G")) {
 			st.commitFileSelectedIndex = maxIndex;
 			st.commitFileManualScroll = false;
 		} else if (matchesKey(data, Key.enter)) {
@@ -2271,12 +2271,12 @@ class DiffOverlay {
 				}
 				st.commitFileManualScroll = false;
 			}
-		} else if (data === "r") {
+		} else if (matchesKey(data, "r")) {
 			this.openCommitReviewDraftInput();
-		} else if (data === "o") {
+		} else if (matchesKey(data, "o")) {
 			const file = this.selectedCommitFile();
 			if (file) void this.openPath(file.path).then(() => tui.requestRender());
-		} else if (data === "f") {
+		} else if (matchesKey(data, "f")) {
 			const file = this.selectedCommitFile();
 			if (file) void this.revealPath(file.path).then(() => tui.requestRender());
 		}
@@ -2287,7 +2287,7 @@ class DiffOverlay {
 	// ─── Input dispatch ──────────────────────────────────────────────────────
 
 	handleInput(data: string, tui: Tui): void {
-		if (data === "q" && !this.st.searchMode && !this.st.reviewInput.active) {
+		if (matchesKey(data, "q") && !this.st.searchMode && !this.st.reviewInput.active) {
 			this.closeOverlay();
 			return;
 		}
@@ -2302,12 +2302,12 @@ class DiffOverlay {
 			return;
 		}
 
-		if (data === "S") {
+		if (matchesKey(data, "S")) {
 			void this.stashChanges(tui).then(() => tui.requestRender());
 			return;
 		}
 
-		if (matchesKey(data, Key.tab) || data === "v") {
+		if (matchesKey(data, Key.tab) || matchesKey(data, "v")) {
 			this.st.viewMode = toggleOverlayViewMode(this.st.viewMode);
 			this.st.focus = "left";
 			if (this.st.viewMode === "diff") {
