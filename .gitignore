@@ -3,3 +3,4 @@ dist/
 .DS_Store
 AGENTS.md
 docs/pilee-history.md
+*.local.md
