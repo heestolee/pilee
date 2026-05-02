@@ -15,7 +15,7 @@ import { Key, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from
 
 // ─── Domain types ──────────────────────────────────────────────────────────
 
-type DiffFileStatus = "added" | "deleted" | "modified" | "renamed" | "copied" | "untracked";
+type DiffFileStatus = "added" | "deleted" | "modified" | "renamed" | "copied" | "untracked" | "ignored";
 type CommitState = "committed" | "uncommitted" | "both";
 type OverlayViewMode = "diff" | "commit";
 type OverlayDiffScope = "branch" | "working" | "last-commit";
@@ -179,9 +179,10 @@ const FILE_STATUS_ORDER: Record<DiffFileStatus, number> = {
 	modified: 0,
 	added: 1,
 	untracked: 2,
-	renamed: 3,
-	deleted: 4,
-	copied: 5,
+	ignored: 3,
+	renamed: 4,
+	deleted: 5,
+	copied: 6,
 };
 
 // ─── Pure helpers (formatting, math) ───────────────────────────────────────
@@ -242,6 +243,7 @@ function mapDiffStatusCode(code: string): DiffFileStatus {
 function parseStatus(code: string): DiffFileStatus {
 	const second = code.charAt(1);
 	const effective = second !== " " && second !== "?" ? second : code.charAt(0);
+	if (code === "!!") return "ignored";
 	if (code === "??") return "untracked";
 	if (effective === "A") return "added";
 	if (effective === "D") return "deleted";
@@ -883,9 +885,12 @@ async function committedFiles(pi: ExtensionAPI, cwd: string, mergeBase: string |
 }
 
 async function workingTreeFiles(pi: ExtensionAPI, cwd: string): Promise<DiffFile[]> {
-	const r = await pi.exec("git", ["status", "--porcelain=1", "-uall", "-z"], { cwd });
+	const r = await pi.exec("git", ["status", "--porcelain=1", "-uall", "--ignored", "-z"], { cwd });
 	if (r.code !== 0 || !r.stdout) return [];
-	return parsePorcelainStatusZ(r.stdout).map((entry) => ({ ...entry, commitState: "uncommitted" as CommitState }));
+	const IGNORED_DIRS = ["node_modules/", "dist/", ".git/", ".DS_Store"];
+	return parsePorcelainStatusZ(r.stdout)
+		.filter((entry) => entry.status !== "ignored" || !IGNORED_DIRS.some((d) => entry.path.startsWith(d) || entry.path === d.replace("/", "")))
+		.map((entry) => ({ ...entry, commitState: "uncommitted" as CommitState }));
 }
 
 async function lastCommitFiles(pi: ExtensionAPI, cwd: string): Promise<DiffFile[]> {
@@ -968,7 +973,7 @@ async function workingTreeFileDiff(
 	cwd: string,
 	file: { path: string; status: DiffFileStatus },
 ): Promise<string> {
-	if (file.status === "untracked") return asAddedFileDiff(pi, cwd, file.path);
+	if (file.status === "untracked" || file.status === "ignored") return asAddedFileDiff(pi, cwd, file.path);
 
 	if (await repositoryHasHead(pi, cwd)) {
 		const againstHead = await pi.exec("git", ["diff", "--no-color", "HEAD", "--", file.path], { cwd });
@@ -1015,7 +1020,7 @@ async function fileDiff(
 		return "(no diff available)";
 	}
 
-	if (file.status === "untracked") return asAddedFileDiff(pi, cwd, file.path);
+	if (file.status === "untracked" || file.status === "ignored") return asAddedFileDiff(pi, cwd, file.path);
 
 	if (mergeBase) {
 		const r = await pi.exec("git", ["diff", "--no-color", mergeBase, "--", file.path], { cwd });
@@ -1028,7 +1033,7 @@ async function fileDiff(
 // ─── Render helpers ────────────────────────────────────────────────────────
 
 function icon(s: DiffFileStatus): string {
-	if (s === "added" || s === "untracked") return "+";
+	if (s === "added" || s === "untracked" || s === "ignored") return "+";
 	if (s === "deleted") return "-";
 	if (s === "renamed") return "→";
 	if (s === "copied") return "©";
@@ -1036,7 +1041,7 @@ function icon(s: DiffFileStatus): string {
 }
 
 function statusColor(s: DiffFileStatus): ThemeColor {
-	if (s === "added" || s === "untracked") return "success";
+	if (s === "added" || s === "untracked" || s === "ignored") return "success";
 	if (s === "deleted") return "error";
 	return "warning";
 }
