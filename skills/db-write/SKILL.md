@@ -308,4 +308,4 @@ db-write-migration과 공유 기록 파일: `docs/db-write-log.local.md` (.gitig
 
 작업 시작 전에도 이 파일을 읽어서 유사 사례를 참고할 것.
 
-**기록 후 Notion 동기화 필수**: `node scripts/sync-notion-log.mjs db-write-log "요약" --desc "변경 맥락"`
+기록 후 Notion 동기화 필수 — 상세 규칙: `docs/db-write-log.sync.local.md` 참조
