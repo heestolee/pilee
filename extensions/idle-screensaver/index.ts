@@ -111,7 +111,7 @@ async function showScreensaver(): Promise<void> {
 	if (meta?.ticket) metaLines.push(meta.ticket);
 	if (meta?.note) metaLines.push(meta.note);
 
-	// Last context: 마지막 assistant 메시지 1줄 요약
+	// 💬 마지막 assistant 메시지 1줄 요약
 	try {
 		const entries = latestCtx.sessionManager.getEntries();
 		for (let i = entries.length - 1; i >= 0; i--) {
@@ -124,6 +124,26 @@ async function showScreensaver(): Promise<void> {
 					const oneLine = text.replace(/\s+/g, " ").slice(0, 80);
 					metaLines.push(`💬 ${oneLine}${text.length > 80 ? "…" : ""}`);
 					break;
+				}
+			}
+		}
+	} catch {}
+
+	// 📋 TODO: tasks에서 in_progress/pending 항목
+	try {
+		const tasksFile = join(homedir(), ".pi", "agent", "tasks.json");
+		if (existsSync(tasksFile)) {
+			const tasks = JSON.parse(readFileSync(tasksFile, "utf8"));
+			const active = (Array.isArray(tasks) ? tasks : Object.values(tasks))
+				.filter((t: any) => t.status === "in_progress" || t.status === "pending")
+				.slice(0, 5);
+			if (active.length > 0) {
+				metaLines.push("");
+				metaLines.push("📋 TODO");
+				for (const t of active) {
+					const icon = (t as any).status === "in_progress" ? "▸" : "○";
+					const subj = ((t as any).subject ?? "").slice(0, 60);
+					metaLines.push(`  ${icon} ${subj}`);
 				}
 			}
 		}
