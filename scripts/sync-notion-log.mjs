@@ -23,6 +23,7 @@ const PAGES = {
 		codeBlockId: "3549d270-074a-805a-ad68-c2a3618a5ba1",
 		dateBlockId: "3549d270-074a-8053-a459-c0171f4b57c2",
 		dbId: "3549d270-074a-8005-a8c3-d97328c22cfb",
+		backupDbId: "3549d270-074a-8037-b451-e4f0c76177eb",
 		filePath: join(process.cwd(), "docs/pilee-history.md"),
 	},
 	"db-write-log": {
@@ -79,29 +80,11 @@ async function updateDateBlock(blockId) {
 	});
 }
 
-async function addDbEntry(dbId, title, description, meta = {}) {
-	const properties = {
-		"이름": { title: [{ text: { content: title } }] },
+async function addDbEntry(dbId, title, description) {
+	const pageData = {
+		parent: { database_id: dbId },
+		properties: { "이름": { title: [{ text: { content: title } }] } },
 	};
-	if (meta.date) {
-		properties["날짜"] = { date: { start: meta.date } };
-	}
-	if (meta.service) {
-		properties["서비스"] = { select: { name: meta.service } };
-	}
-	if (meta.skill) {
-		properties["스킬"] = { select: { name: meta.skill } };
-	}
-	if (meta.type) {
-		properties["유형"] = { select: { name: meta.type } };
-	}
-	if (meta.table) {
-		properties["대상 테이블"] = { rich_text: [{ type: "text", text: { content: meta.table } }] };
-	}
-	if (meta.status) {
-		properties["상태"] = { select: { name: meta.status } };
-	}
-	const pageData = { parent: { database_id: dbId }, properties };
 	if (description) {
 		pageData.children = [
 			{
@@ -117,11 +100,11 @@ async function addDbEntry(dbId, title, description, meta = {}) {
 }
 
 async function main() {
-	const [target, ...summaryParts] = process.argv.slice(2);
-	const summary = summaryParts.join(" ");
+	const args = process.argv.slice(2);
+	const target = args[0];
 
 	if (!target || !PAGES[target]) {
-		console.error(`Usage: node scripts/sync-notion-log.mjs <pilee-history|db-write-log> <summary> [--desc "description"]`);
+		console.error(`Usage: node scripts/sync-notion-log.mjs <pilee-history|db-write-log> <summary> [--desc "..."] [--date YYYY-MM-DD] [--backup true]`);
 		process.exit(1);
 	}
 
@@ -140,34 +123,23 @@ async function main() {
 	const content = readFileSync(page.filePath, "utf8");
 
 	const flags = {};
-	let cleanSummary = summary;
-	const quotedPattern = /--(\w[\w-]*)\s+"([^"]*)"/g;
-	let flagMatch;
-	while ((flagMatch = quotedPattern.exec(summary)) !== null) {
-		flags[flagMatch[1]] = flagMatch[2];
+	const positional = [];
+	for (let i = 1; i < args.length; i++) {
+		if (args[i].startsWith("--") && i + 1 < args.length) {
+			flags[args[i].slice(2)] = args[i + 1];
+			i++;
+		} else {
+			positional.push(args[i]);
+		}
 	}
-	cleanSummary = cleanSummary.replace(/--(\w[\w-]*)\s+"([^"]*)"/g, "");
-	const simplePattern = /--(\w[\w-]*)\s+(\S+)/g;
-	while ((flagMatch = simplePattern.exec(cleanSummary)) !== null) {
-		if (!flags[flagMatch[1]]) flags[flagMatch[1]] = flagMatch[2];
-	}
-	cleanSummary = cleanSummary.replace(/--(\w[\w-]*)\s+\S+/g, "").replace(/\s+/g, " ").trim();
-	const titleSummary = cleanSummary;
+	const titleSummary = positional.join(" ");
 	const description = flags.desc || "";
 
-	const meta = {};
-	if (flags.service) meta.service = flags.service;
-	if (flags.skill) meta.skill = flags.skill;
-	if (flags.type) meta.type = flags.type;
-	if (flags.table) meta.table = flags.table;
-	if (flags.status) meta.status = flags.status;
-	if (flags.date) meta.date = flags.date;
-
 	const now = new Date();
-	if (!meta.date) {
-		meta.date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+	if (!flags.date) {
+		flags.date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 	}
-	const datePrefix = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+	const datePrefix = flags.date.replace(/-/g, "");
 	const entryTitle = `${datePrefix} ${titleSummary}`;
 
 	console.log(`Syncing ${target} to Notion...`);
@@ -179,8 +151,26 @@ async function main() {
 	console.log("  ✓ Date updated");
 
 	if (titleSummary) {
-		await addDbEntry(page.dbId, entryTitle, description, meta);
-		console.log(`  ✓ DB entry added: ${entryTitle}`);
+		await addDbEntry(page.dbId, entryTitle, description);
+		console.log(`  ✓ Why DB entry added: ${entryTitle}`);
+	}
+
+	if (flags.backup && page.backupDbId) {
+		const backupTitle = `${datePrefix} snapshot`;
+		const backupChunks = chunkText(content);
+		await notionRequest("POST", "/pages", {
+			parent: { database_id: page.backupDbId },
+			properties: { "이름": { title: [{ text: { content: backupTitle } }] } },
+			children: [{
+				object: "block",
+				type: "code",
+				code: {
+					rich_text: backupChunks.map((c) => ({ type: "text", text: { content: c } })),
+					language: "markdown",
+				},
+			}],
+		});
+		console.log(`  ✓ Backup entry added: ${backupTitle}`);
 	}
 
 	console.log("Done!");
