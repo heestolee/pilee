@@ -2161,6 +2161,18 @@ class DiffOverlay {
 			st.diffCache.clear();
 			st.highlightedDiffCache.clear();
 			st.commitFileDiffCache.clear();
+			st.commitFileDiffLoading.clear();
+			const commit = this.selectedCommit();
+			if (commit) {
+				const expanded = this.st.commitExpandedByHash.get(commit.hash);
+				const files = st.commitFilesCache.get(commit.hash);
+				if (expanded && files) {
+					for (const filePath of expanded) {
+						const file = files.find((f) => f.path === filePath);
+						if (file) void this.ensureCommitFileDiff(commit.hash, file, tui);
+					}
+				}
+			}
 			tui.requestRender();
 			return;
 		}
