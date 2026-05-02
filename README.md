@@ -272,5 +272,5 @@ pilee/
 ├── prompts/        # fix-bug, jira-format
 ├── scripts/        # sync-agents.mjs
 ├── docs/           # pilee-history.md (로컬 전용)
-└── AGENTS.md       # 핵심 원칙 (로컬 전용)
+└── AGENTS.md       # 핵심 원칙
 ```
