@@ -11,6 +11,9 @@ const VALID_DIRS = ["right", "left", "down", "up", "tab"] as const;
 type Direction = (typeof VALID_DIRS)[number];
 
 const HANDOFF_DIR = join(homedir(), ".pi", "agent", "fork-panel");
+
+let forkInProgress = false;
+const FORK_COOLDOWN_MS = 2000;
 const RECENT_PATH = join(HANDOFF_DIR, "recent.json");
 const HANDOFF_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 const RECENT_KEEP = 50;
@@ -192,7 +195,7 @@ function buildScript(direction: Direction, cwd: string, sessionFile: string, for
 		return `tell application "System Events"
   tell process "Ghostty"
     keystroke "t" using command down
-    delay 0.5
+    delay 1.0
     keystroke "${cmd}"
     key code 36${prompt ? `\n    delay 2\n    keystroke "${esc(prompt)}"\n    key code 36` : ""}
   end tell
@@ -379,6 +382,11 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	const handler = async (args: string, ctx: any) => {
+			if (forkInProgress) {
+				ctx.ui.notify("포크 진행 중입니다. 잠시 후 다시 시도하세요.", "warning");
+				return;
+			}
+
 			if (process.platform !== "darwin" || process.env.TERM_PROGRAM !== "ghostty") {
 				ctx.ui.notify("/fork-panel은 macOS Ghostty 터미널에서만 동작합니다", "warning");
 				return;
@@ -412,10 +420,14 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			// Open in Ghostty
+			forkInProgress = true;
 			const script = buildScript(direction, ctx.cwd, forkedFile, newForkId, prompt);
 			const result = await pi.exec("osascript", ["-e", script]);
 
+			setTimeout(() => { forkInProgress = false; }, FORK_COOLDOWN_MS);
+
 			if (result.code !== 0) {
+				forkInProgress = false;
 				ctx.ui.notify(`패널 생성 실패: ${result.stderr?.trim() ?? "unknown"}`, "error");
 				try { unlinkSync(forkedFile); } catch {}
 				return;
