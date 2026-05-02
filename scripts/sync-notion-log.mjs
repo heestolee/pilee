@@ -23,13 +23,17 @@ const PAGES = {
 		dateBlockId: "3549d270-074a-8053-a459-c0171f4b57c2",
 		whyDbId: "3549d270-074a-8005-a8c3-d97328c22cfb",
 		backupDbId: "3549d270-074a-8037-b451-e4f0c76177eb",
+		snapshotDbId: "3549d270-074a-8037-b451-e4f0c76177eb",
 		filePath: join(process.cwd(), "docs/pilee-history.md"),
+		syncFilePath: join(process.cwd(), "docs/pilee-history.sync.local.md"),
 	},
 	"db-write-log": {
 		codeBlockId: "3549d270-074a-81a2-946f-fbbfe3e43a06",
 		dateBlockId: "3549d270-074a-81fe-9f17-cd7389067236",
 		whyDbId: "3549d270-074a-81a5-93ac-ef4a3b8646dd",
+		snapshotDbId: "3549d270-074a-80fb-a16b-ee9389a80ace",
 		filePath: join(process.cwd(), "docs/db-write-log.local.md"),
+		syncFilePath: join(process.cwd(), "docs/db-write-log.sync.local.md"),
 	},
 };
 
@@ -227,6 +231,9 @@ async function main() {
 	for (let i = 1; i < args.length; i++) {
 		if (args[i] === "--backup") {
 			flags.backup = true;
+		} else if (args[i] === "--snapshot" && i + 1 < args.length) {
+			flags.snapshot = args[i + 1];
+			i++;
 		} else if (args[i].startsWith("--") && i + 1 < args.length) {
 			flags[args[i].slice(2)] = args[i + 1];
 			i++;
@@ -270,6 +277,28 @@ async function main() {
 	if (flags.backup && page.backupDbId) {
 		await createBackup(page.backupDbId, datePrefix, content);
 		console.log(`  ✓ Backup created: ${datePrefix} snapshot`);
+	}
+
+	if (flags.snapshot && page.snapshotDbId && page.syncFilePath && existsSync(page.syncFilePath)) {
+		const syncContent = readFileSync(page.syncFilePath, "utf8");
+		const snapshotTitle = `${datePrefix} ${flags.snapshot}`;
+		const chunks = chunkText(syncContent);
+		await notionRequest("POST", "/pages", {
+			parent: { database_id: page.snapshotDbId },
+			properties: {
+				"이름": { title: [{ text: { content: snapshotTitle } }] },
+				"날짜": { date: { start: flags.date } },
+			},
+			children: [{
+				object: "block",
+				type: "code",
+				code: {
+					rich_text: chunks.map((c) => ({ type: "text", text: { content: c } })),
+					language: "markdown",
+				},
+			}],
+		});
+		console.log(`  ✓ Rule snapshot: ${snapshotTitle}`);
 	}
 
 	console.log("Done!");
