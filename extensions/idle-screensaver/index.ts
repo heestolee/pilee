@@ -131,19 +131,23 @@ async function showScreensaver(): Promise<void> {
 
 	// 📋 TODO: tasks에서 in_progress/pending 항목
 	try {
-		const tasksFile = join(homedir(), ".pi", "agent", "tasks.json");
-		if (existsSync(tasksFile)) {
-			const tasks = JSON.parse(readFileSync(tasksFile, "utf8"));
-			const active = (Array.isArray(tasks) ? tasks : Object.values(tasks))
-				.filter((t: any) => t.status === "in_progress" || t.status === "pending")
-				.slice(0, 5);
-			if (active.length > 0) {
-				metaLines.push("");
-				metaLines.push("📋 TODO");
-				for (const t of active) {
-					const icon = (t as any).status === "in_progress" ? "▸" : "○";
-					const subj = ((t as any).subject ?? "").slice(0, 60);
-					metaLines.push(`  ${icon} ${subj}`);
+		const tasksDir = join(homedir(), ".pi", "tasks");
+		if (existsSync(tasksDir)) {
+			const taskFiles = readdirSync(tasksDir).filter((f: string) => f.endsWith(".json")).sort().reverse();
+			for (const tf of taskFiles) {
+				const data = JSON.parse(readFileSync(join(tasksDir, tf), "utf8"));
+				const taskList = data.tasks ?? (Array.isArray(data) ? data : []);
+				const active = taskList
+					.filter((t: any) => t.status === "in_progress" || t.status === "pending")
+					.slice(0, 5);
+				if (active.length > 0) {
+					metaLines.push("");
+					metaLines.push("📋 TODO");
+					for (const t of active) {
+						const icon = t.status === "in_progress" ? "▸" : "○";
+						metaLines.push(`  ${icon} ${(t.subject ?? "").slice(0, 60)}`);
+					}
+					break;
 				}
 			}
 		}
