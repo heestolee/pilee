@@ -470,6 +470,13 @@ export default function (pi: ExtensionAPI) {
 		});
 	}
 
+	pi.registerShortcut("ctrl+shift+n", {
+		description: "fork-panel new tab",
+		handler: async (ctx) => {
+			await handler("tab", ctx);
+		},
+	});
+
 	// /recall — pull full transcript from a recent (closed) fork
 	pi.registerCommand("recall", {
 		description: "Recall full transcript from a recent fork-panel session. Usage: /recall [list|last|<forkId>]",
