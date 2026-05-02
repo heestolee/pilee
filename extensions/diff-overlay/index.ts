@@ -1119,19 +1119,19 @@ function buildCommitRenderedDiffLines(
 	t: Theme,
 	rawDiff: string,
 	width: number,
-): Array<{ text: string; category: DiffLineCategory }> {
+): RenderedDiffLine[] {
 	const parsed = parseDiffLines(rawDiff);
 	const lineNumberWidth = diffLineNumberWidth(parsed);
 	const blankLineNumber = " ".repeat(lineNumberWidth);
-	const rendered: Array<{ text: string; category: DiffLineCategory }> = [];
+	const rendered: RenderedDiffLine[] = [];
 
 	for (const line of parsed) {
 		if (shouldHideCommitParsedLine(line)) continue;
 		const oldNumber = line.oldLineNumber ? String(line.oldLineNumber).padStart(lineNumberWidth, " ") : blankLineNumber;
 		const newNumber = line.newLineNumber ? String(line.newLineNumber).padStart(lineNumberWidth, " ") : blankLineNumber;
-		const gutter = t.fg("dim", `${oldNumber} ${newNumber} │`);
+		const gutter = t.fg("muted", `${oldNumber} ${newNumber} │`);
 		const content = colorDiffLine(t, expandTabs(line.originalLine));
-		rendered.push({ text: padStyledLine(`${gutter} ${content}`, width), category: line.category });
+		rendered.push({ text: padStyledLine(`${gutter} ${content}`, width), category: line.category, newLineNumber: line.newLineNumber });
 	}
 
 	return rendered;
@@ -1487,7 +1487,10 @@ function renderCommitFiles(t: Theme, st: DiffState, w: number, h: number): strin
 			continue;
 		}
 
-		for (const line of renderedDiffLines) {
+		const fileDrafts = st.reviewDrafts.filter((d) => d.filePath === file.path);
+		const withComments = injectReviewComments(renderedDiffLines, fileDrafts, t, w);
+
+		for (const line of withComments) {
 			if (line.category === "added") rows.push(t.bg("toolSuccessBg", line.text));
 			else if (line.category === "removed") rows.push(t.bg("toolErrorBg", line.text));
 			else rows.push(line.text);
@@ -1570,11 +1573,39 @@ class DiffOverlay {
 	}
 
 	private getHunksForSelectedFile(): HunkInfo[] {
+		if (this.st.viewMode === "commit") return this.getHunksForCommitFile();
 		const file = this.selectedDiffFile();
 		if (!file) return [];
 		const rawDiff = this.st.diffCache.get(scopedDiffKey(this.st.scope, file.path));
 		if (!rawDiff) return [];
 		return extractHunksFromDiff(rawDiff);
+	}
+
+	private getHunksForCommitFile(): HunkInfo[] {
+		const commit = this.selectedCommit();
+		const file = this.selectedCommitFile();
+		if (!commit || !file) return [];
+		const rawDiff = this.st.commitFileDiffCache.get(commitDiffKey(commit.hash, file.path));
+		if (!rawDiff) return [];
+		return extractHunksFromDiff(rawDiff);
+	}
+
+	private openCommitReviewDraftInput(): void {
+		const file = this.selectedCommitFile();
+		if (!file) {
+			this.st.error = "Select a file before adding review feedback";
+			return;
+		}
+		this.st.reviewInput = {
+			active: true,
+			buffer: "",
+			error: null,
+			lineRange: null,
+			lineRangeSelectMode: true,
+			lineRangeSelectIndex: 0,
+			lineRangeDirectInputMode: false,
+			lineRangeBuffer: "",
+		};
 	}
 
 	private selectLineRangeAndProceed(lineRange: string | null): void {
@@ -1584,7 +1615,7 @@ class DiffOverlay {
 	}
 
 	private submitReviewDraft(): void {
-		const file = this.selectedDiffFile();
+		const file = this.st.viewMode === "commit" ? this.selectedCommitFile() : this.selectedDiffFile();
 		if (!file) {
 			this.st.reviewInput.error = "No file selected";
 			return;
@@ -2201,6 +2232,8 @@ class DiffOverlay {
 				}
 				st.commitFileManualScroll = false;
 			}
+		} else if (data === "r") {
+			this.openCommitReviewDraftInput();
 		} else if (data === "o") {
 			const file = this.selectedCommitFile();
 			if (file) void this.openPath(file.path).then(() => tui.requestRender());
@@ -2220,7 +2253,12 @@ class DiffOverlay {
 			return;
 		}
 
-		if (this.st.viewMode === "diff" && (this.st.searchMode || this.st.reviewInput.active)) {
+		if (this.st.reviewInput.active) {
+			this.handleDiffModeInput(data, tui);
+			return;
+		}
+
+		if (this.st.viewMode === "diff" && this.st.searchMode) {
 			this.handleDiffModeInput(data, tui);
 			return;
 		}
@@ -2323,7 +2361,7 @@ class DiffOverlay {
 							: "  ↑/↓ Scroll 5 lines  ·  j/k Scroll 1 line  ·  PgUp/PgDn Fast  ·  / Search  ·  s Scope  ·  w Wrap  ·  c Changed-only  ·  r Review draft  ·  Tab/v Commit  ·  o Open  ·  f Finder  ·  ←/Esc → Files  ·  q Close"
 				: st.focus === "left"
 					? "  ↑/↓ Select Commit  ·  Enter → Changed Files  ·  Tab/v Toggle Diff  ·  S Stash  ·  q/Esc Close"
-					: "  ↑/↓ Select (overflow → 5-line scroll)  ·  j/k Select File  ·  Enter Fold/Unfold Diff  ·  PgUp/PgDn Scroll  ·  Tab/v Toggle Diff  ·  o Open  ·  f Finder  ·  ←/Esc → Commits  ·  q Close";
+					: "  ↑/↓ Select (overflow → 5-line scroll)  ·  j/k Select File  ·  Enter Fold/Unfold Diff  ·  PgUp/PgDn Scroll  ·  r Review draft  ·  Tab/v Toggle Diff  ·  o Open  ·  f Finder  ·  ←/Esc → Commits  ·  q Close";
 		footer.push(t.fg("dim", hint));
 		footer.push(...new DynamicBorder((s: string) => t.fg("accent", s)).render(w));
 
