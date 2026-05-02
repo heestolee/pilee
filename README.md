@@ -3,7 +3,7 @@
 > 파이리(Charmander) + pi + Lee
 
 [pi](https://github.com/badlogic/pi-mono) coding agent를 위한 개인 설정 패키지.
-Conductor 705세션에서 쌓은 경험을 기반으로, 포크나 래핑 없이 **처음부터 직접 구현**.
+Conductor 1852세션에서 쌓은 경험을 기반으로, 포크나 래핑 없이 **처음부터 직접 구현**.
 
 ## Install
 
@@ -33,7 +33,7 @@ pi install https://github.com/heestolee/pilee
 
 [Conductor](https://www.conductor.build/)는 잘 만든 프로덕트였다. 워크트리 자동 관리, 다중 세션 병렬 실행, MCP 연결, 시스템 프롬프트 — 하나의 앱 안에서 다 해결해줬다.
 
-하지만 705세션, 185개 워크스페이스를 운용하면서 **제품의 구조적 한계**가 체감되기 시작했다.
+하지만 1852세션, 185개 워크스페이스를 운용하면서 **제품의 구조적 한계**가 체감되기 시작했다.
 
 ### Conductor의 한계
 
@@ -79,7 +79,7 @@ conductor.db:       1.8GB (315K 메시지, 단일 SQLite)
 | 워크스페이스 복제 방식 불투명 | worktree 생성부터 Ghostty 패널 오픈까지 전 과정이 `extensions/worktree/index.ts`에 명시적으로 정의 |
 | 앱 91MB 상주 + 세션당 ~220MB | 터미널 프로세스만 존재 (세션당 ~60MB), OS 레벨 프로세스 격리 |
 
-정리하면, Conductor는 **"잘 만든 기본값"** 이고, pilee는 **"내 워크플로에 맞춘 커스텀"** 이다. 705세션의 경험이 있었기에 "뭐가 필요하고 뭐가 부족한지" 정확히 알고 만들 수 있었다.
+정리하면, Conductor는 **"잘 만든 기본값"** 이고, pilee는 **"내 워크플로에 맞춘 커스텀"** 이다. 1852세션의 경험이 있었기에 "뭐가 필요하고 뭐가 부족한지" 정확히 알고 만들 수 있었다.
 
 ---
 
