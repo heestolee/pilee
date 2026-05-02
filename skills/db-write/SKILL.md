@@ -304,6 +304,6 @@ SELECT id, column FROM target_table WHERE <조건>;
 
 **작업 완료 시 반드시 로그를 남길 것.** 이 단계를 건너뛰면 안 됨.
 
-db-write-migration과 공유 기록 파일: `skills/db-write-migration/migration-log.local.md` (.gitignore 포함)
+db-write-migration과 공유 기록 파일: `docs/db-write-log.local.md` (.gitignore 포함)
 
 작업 시작 전에도 이 파일을 읽어서 유사 사례를 참고할 것.
