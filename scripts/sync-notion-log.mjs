@@ -19,18 +19,16 @@ const NOTION_API = "https://api.notion.com/v1";
 
 const PAGES = {
 	"pilee-history": {
-		pageId: "3549d270074a8052a308e2144b4f5e77",
 		codeBlockId: "3549d270-074a-805a-ad68-c2a3618a5ba1",
 		dateBlockId: "3549d270-074a-8053-a459-c0171f4b57c2",
-		dbId: "3549d270-074a-8005-a8c3-d97328c22cfb",
+		whyDbId: "3549d270-074a-8005-a8c3-d97328c22cfb",
 		backupDbId: "3549d270-074a-8037-b451-e4f0c76177eb",
 		filePath: join(process.cwd(), "docs/pilee-history.md"),
 	},
 	"db-write-log": {
-		pageId: "3549d270074a80cb8c61f20cd85eb022",
 		codeBlockId: "3549d270-074a-81a2-946f-fbbfe3e43a06",
 		dateBlockId: "3549d270-074a-81fe-9f17-cd7389067236",
-		dbId: "3549d270-074a-81a5-93ac-ef4a3b8646dd",
+		whyDbId: "3549d270-074a-81a5-93ac-ef4a3b8646dd",
 		filePath: join(process.cwd(), "docs/db-write-log.local.md"),
 	},
 };
@@ -60,6 +58,26 @@ function chunkText(text, maxLen = 2000) {
 	return chunks.length > 0 ? chunks : [""];
 }
 
+function textBlocks(text) {
+	return chunkText(text).map((chunk) => ({
+		object: "block",
+		type: "paragraph",
+		paragraph: {
+			rich_text: [{ type: "text", text: { content: chunk } }],
+		},
+	}));
+}
+
+function readStdin() {
+	return new Promise((resolve) => {
+		if (process.stdin.isTTY) { resolve(""); return; }
+		let data = "";
+		process.stdin.setEncoding("utf8");
+		process.stdin.on("data", (chunk) => { data += chunk; });
+		process.stdin.on("end", () => resolve(data.trim()));
+	});
+}
+
 async function updateCodeBlock(blockId, content) {
 	const chunks = chunkText(content);
 	await notionRequest("PATCH", `/blocks/${blockId}`, {
@@ -80,23 +98,47 @@ async function updateDateBlock(blockId) {
 	});
 }
 
-async function addDbEntry(dbId, title, description) {
-	const pageData = {
+async function findWhyPage(dbId, datePrefix) {
+	const result = await notionRequest("POST", `/databases/${dbId}/query`, {
+		filter: {
+			property: "이름",
+			title: { starts_with: datePrefix },
+		},
+	});
+	return result.results?.[0] ?? null;
+}
+
+async function appendToPage(pageId, narrative) {
+	const divider = { object: "block", type: "divider", divider: {} };
+	await notionRequest("PATCH", `/blocks/${pageId}/children`, {
+		children: [divider, ...textBlocks(narrative)],
+	});
+}
+
+async function createWhyPage(dbId, datePrefix, title, narrative) {
+	const pageTitle = title ? `${datePrefix} ${title}` : datePrefix;
+	await notionRequest("POST", "/pages", {
 		parent: { database_id: dbId },
-		properties: { "이름": { title: [{ text: { content: title } }] } },
-	};
-	if (description) {
-		pageData.children = [
-			{
-				object: "block",
-				type: "paragraph",
-				paragraph: {
-					rich_text: [{ type: "text", text: { content: description } }],
-				},
+		properties: { "이름": { title: [{ text: { content: pageTitle } }] } },
+		children: narrative ? textBlocks(narrative) : [],
+	});
+	return pageTitle;
+}
+
+async function createBackup(backupDbId, datePrefix, content) {
+	const chunks = chunkText(content);
+	await notionRequest("POST", "/pages", {
+		parent: { database_id: backupDbId },
+		properties: { "이름": { title: [{ text: { content: `${datePrefix} snapshot` } }] } },
+		children: [{
+			object: "block",
+			type: "code",
+			code: {
+				rich_text: chunks.map((c) => ({ type: "text", text: { content: c } })),
+				language: "markdown",
 			},
-		];
-	}
-	await notionRequest("POST", "/pages", pageData);
+		}],
+	});
 }
 
 async function main() {
@@ -104,7 +146,10 @@ async function main() {
 	const target = args[0];
 
 	if (!target || !PAGES[target]) {
-		console.error(`Usage: node scripts/sync-notion-log.mjs <pilee-history|db-write-log> <summary> [--desc "..."] [--date YYYY-MM-DD] [--backup true]`);
+		console.error("Usage:");
+		console.error("  echo '서사 내용' | node scripts/sync-notion-log.mjs <target> [title] [--date YYYY-MM-DD] [--backup]");
+		console.error("  node scripts/sync-notion-log.mjs <target> [title] --desc '서사 내용' [--date YYYY-MM-DD] [--backup]");
+		console.error("Targets: pilee-history, db-write-log");
 		process.exit(1);
 	}
 
@@ -120,27 +165,28 @@ async function main() {
 		process.exit(1);
 	}
 
-	const content = readFileSync(page.filePath, "utf8");
-
 	const flags = {};
 	const positional = [];
 	for (let i = 1; i < args.length; i++) {
-		if (args[i].startsWith("--") && i + 1 < args.length) {
+		if (args[i] === "--backup") {
+			flags.backup = true;
+		} else if (args[i].startsWith("--") && i + 1 < args.length) {
 			flags[args[i].slice(2)] = args[i + 1];
 			i++;
 		} else {
 			positional.push(args[i]);
 		}
 	}
-	const titleSummary = positional.join(" ");
-	const description = flags.desc || "";
 
+	const title = positional.join(" ");
 	const now = new Date();
 	if (!flags.date) {
 		flags.date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 	}
 	const datePrefix = flags.date.replace(/-/g, "");
-	const entryTitle = `${datePrefix} ${titleSummary}`;
+
+	const narrative = flags.desc || (await readStdin()) || "";
+	const content = readFileSync(page.filePath, "utf8");
 
 	console.log(`Syncing ${target} to Notion...`);
 
@@ -150,27 +196,23 @@ async function main() {
 	await updateDateBlock(page.dateBlockId);
 	console.log("  ✓ Date updated");
 
-	if (titleSummary) {
-		await addDbEntry(page.dbId, entryTitle, description);
-		console.log(`  ✓ Why DB entry added: ${entryTitle}`);
+	if (narrative || title) {
+		const existing = await findWhyPage(page.whyDbId, datePrefix);
+		if (existing) {
+			if (narrative) {
+				const header = title ? `\n## ${title}\n\n` : "\n---\n\n";
+				await appendToPage(existing.id, header + narrative);
+				console.log(`  ✓ Appended to existing why page: ${datePrefix}`);
+			}
+		} else {
+			const pageTitle = await createWhyPage(page.whyDbId, datePrefix, title, narrative);
+			console.log(`  ✓ Created why page: ${pageTitle}`);
+		}
 	}
 
 	if (flags.backup && page.backupDbId) {
-		const backupTitle = `${datePrefix} snapshot`;
-		const backupChunks = chunkText(content);
-		await notionRequest("POST", "/pages", {
-			parent: { database_id: page.backupDbId },
-			properties: { "이름": { title: [{ text: { content: backupTitle } }] } },
-			children: [{
-				object: "block",
-				type: "code",
-				code: {
-					rich_text: backupChunks.map((c) => ({ type: "text", text: { content: c } })),
-					language: "markdown",
-				},
-			}],
-		});
-		console.log(`  ✓ Backup entry added: ${backupTitle}`);
+		await createBackup(page.backupDbId, datePrefix, content);
+		console.log(`  ✓ Backup created: ${datePrefix} snapshot`);
 	}
 
 	console.log("Done!");
