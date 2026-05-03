@@ -5,7 +5,14 @@ import { truncatePlainToWidth } from "../utils/format-utils.js";
 const PATCH_STATE_KEY = Symbol.for("creatrip.tool-group-renderer.patch-state");
 const PATCH_VERSION = "2026-04-27-r1";
 const GROUP_STATE = Symbol("creatrip.tool-group-renderer.state");
-const PI_INTERACTIVE_BASE = "/usr/local/lib/node_modules/@mariozechner/pi-coding-agent/dist/modes/interactive";
+const PI_INTERACTIVE_BASE = (() => {
+	const candidates = [
+		"/usr/local/lib/node_modules/@mariozechner/pi-coding-agent/dist/modes/interactive",
+		`${process.env.HOME}/Library/Application Support/com.conductor.app/lib/node_modules/@mariozechner/pi-coding-agent/dist/modes/interactive`,
+	];
+	const { existsSync } = require("node:fs");
+	return candidates.find(p => existsSync(`${p}/interactive-mode.js`)) ?? candidates[0];
+})();
 const BASH_PREVIEW_LIMIT = 56;
 const MIN_BASH_LINE_WIDTH_WITH_COMMAND = 36;
 const MIN_BASH_COMMAND_PREVIEW_WIDTH = 12;
