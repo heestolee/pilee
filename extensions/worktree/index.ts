@@ -393,10 +393,25 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 		}
 	}
 
-	// Step 5: open in Ghostty
-	if (config.autoOpenInGhostty) {
-		const opened = await openInGhostty(pi, worktreePath, config.ghosttyDirection);
-		if (opened) ctx.ui.notify(`→ opened in Ghostty`, "info");
+	// Step 5: switch to new session with worktree cwd
+	const sessionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+	const pathEncoded = "--" + worktreePath.slice(1).replace(/\//g, "-") + "--";
+	const sessionDir = join(homedir(), ".pi", "agent", "sessions", pathEncoded);
+	mkdirSync(sessionDir, { recursive: true });
+	const sessionFile = join(sessionDir, `${Date.now()}_${sessionId}.jsonl`);
+	writeFileSync(sessionFile, JSON.stringify({
+		type: "session", version: 3, id: sessionId,
+		timestamp: new Date().toISOString(), cwd: worktreePath,
+	}) + "\n");
+
+	try {
+		await ctx.switchSession(sessionFile, {
+			withSession: async (newCtx: any) => {
+				newCtx.ui.notify(`✓ ${name} ready (${branchName})`, "info");
+			},
+		});
+	} catch {
+		ctx.ui.notify(`✓ Created. cwd: ${worktreePath}`, "info");
 	}
 }
 
