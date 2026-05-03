@@ -1,16 +1,27 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-
+import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 
 let enabled = true;
 let sessionTitle = "";
 
-function showNotifyStatus(ctx: ExtensionContext) {
+const WIDGET_BG = "\x1b[48;2;130;130;130m";
+const WIDGET_RESET = "\x1b[49m";
+
+function showNotifyWidget(ctx: ExtensionContext, message: string) {
 	if (!ctx.hasUI) return;
-	ctx.ui.setStatus("notify", `🔔 ${ctx.ui.theme.fg("accent", "작업 완료")}`);
+	ctx.ui.setWidget("notify-bar", (_tui, theme) => ({
+		invalidate() {},
+		render(width: number): string[] {
+			const content = `  ${theme.fg("text", "🔔")} ${theme.fg("accent", "작업 완료")} ${theme.fg("text", `— ${message}`)}`;
+			const truncated = truncateToWidth(content, width);
+			const pad = " ".repeat(Math.max(0, width - visibleWidth(truncated)));
+			return [`${WIDGET_BG}${truncated}${pad}${WIDGET_RESET}`];
+		},
+	}));
 }
 
-function clearNotifyStatus(ctx: ExtensionContext) {
-	if (ctx.hasUI) ctx.ui.setStatus("notify", undefined);
+function clearNotifyWidget(ctx: ExtensionContext) {
+	if (ctx.hasUI) ctx.ui.setWidget("notify-bar", undefined);
 }
 
 function extractSummary(messages: any[]): string | undefined {
@@ -47,15 +58,15 @@ export default function (pi: ExtensionAPI) {
 		const summary = extractSummary(event.messages);
 		const text = summary ?? pi.getSessionName?.() ?? sessionTitle ?? "pi";
 		sendNotification(pi, "pilee", `작업 완료 — ${text}`);
-		showNotifyStatus(ctx);
+		showNotifyWidget(ctx, text);
 	});
 
 	pi.on("agent_start", async (_e, ctx) => {
-		clearNotifyStatus(ctx);
+		clearNotifyWidget(ctx);
 	});
 
 	pi.on("input", async (_e, ctx) => {
-		clearNotifyStatus(ctx);
+		clearNotifyWidget(ctx);
 	});
 
 	pi.registerCommand("notify", {
