@@ -23,6 +23,7 @@
     "postinstall": "node scripts/sync-agents.mjs"
   },
   "dependencies": {
+    "yaml": "^2.7.0",
     "@modelcontextprotocol/sdk": "^1.25.0",
     "@mozilla/readability": "^0.5.0",
     "linkedom": "^0.16.11",
