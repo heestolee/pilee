@@ -1328,17 +1328,17 @@ async function handleSessions(pi: ExtensionAPI, args: string, ctx: ExtensionComm
 async function handleWt(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
 	const trimmed = args.trim();
 	if (!trimmed) {
+		const t = ctx.ui.theme;
 		ctx.ui.notify([
-			"Usage:",
-			"  /wt new [name] [--repo <name>] [--hotfix|--hotfeature|--from <branch>] [--ticket COM-XXXX] [--note \"...\"]",
-			"  /wt resume <conductor-workspace> [--repo <name>]",
-			"  /wt resume --list [repo]",
-			"  /wt sessions [workspace]  — Conductor 대화 세션 선택 모달",
-			"  /wt list [--all]",
-			"  /wt switch <name> | <repo>/<name>",
-			"  /wt rm <name> [--force]",
-			"  /wt repo [list|add|rm|rename]",
-			"  /wt config [show|init]",
+			t.fg("accent", "Usage:"),
+			`  ${t.fg("warning", "/wt new")} ${t.fg("borderAccent", "[name] [--repo <name>] [--hotfix|--hotfeature|--from <branch>] [--ticket COM-XXXX]")}`,
+			`  ${t.fg("warning", "/wt switch")} ${t.fg("borderAccent", "<name> | <repo>/<name>  — 워크트리 대시보드")}`,
+			`  ${t.fg("warning", "/wt resume")} ${t.fg("borderAccent", "<conductor-workspace>  — Conductor 워크스페이스 복원")}`,
+			`  ${t.fg("warning", "/wt list")} ${t.fg("borderAccent", "[--all]")}`,
+			`  ${t.fg("warning", "/wt rm")} ${t.fg("borderAccent", "<name> [--force]")}`,
+			`  ${t.fg("warning", "/wt repo")} ${t.fg("borderAccent", "[list|add|rm|rename]")}`,
+			`  ${t.fg("warning", "/wt config")} ${t.fg("borderAccent", "[show|init]")}`,
+			`  ${t.fg("border", "Ctrl+W — 워크트리 대시보드 단축키")}`,
 		].join("\n"), "info");
 		return;
 	}
