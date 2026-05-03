@@ -588,10 +588,10 @@ function statusIcon(s: WorktreeStatus): string {
 
 function statusColor(s: WorktreeStatus): ThemeColor {
 	switch (s) {
-		case "backlog": return "muted";
+		case "backlog": return "warning";
 		case "active": return "success";
 		case "done": return "accent";
-		case "archived": return "dim";
+		case "archived": return "warning";
 	}
 }
 
@@ -603,7 +603,7 @@ function cycleStatus(current: WorktreeStatus): WorktreeStatus {
 }
 
 function gitStatusStr(gs: { changes: number; ahead: number; behind: number } | null | undefined, theme: any): string {
-	if (!gs) return theme.fg("dim", "?");
+	if (!gs) return "?";
 	const parts: string[] = [];
 	if (gs.changes > 0) parts.push(theme.fg("warning", `${gs.changes} changes`));
 	if (gs.ahead > 0) parts.push(theme.fg("accent", `↑${gs.ahead}`));
@@ -651,20 +651,20 @@ async function showDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Pr
 				lines.push(...new DynamicBorder((s: string) => theme.fg("accent", s)).render(w));
 				lines.push(`  ${theme.bold("KEYBINDINGS")}`);
 				lines.push("");
-				lines.push(`  ${theme.fg("warning", "↑/↓, k/j")}  ${theme.fg("muted", "항목 이동")}`);
-				lines.push(`  ${theme.fg("warning", "Enter")}     ${theme.fg("muted", "워크트리 전환")}`);
-				lines.push(`  ${theme.fg("warning", "Tab")}       ${theme.fg("muted", "메인 ↔ 아카이브 탭 전환")}`);
-				lines.push(`  ${theme.fg("warning", "Space")}     ${theme.fg("muted", "상태 순환 (backlog → active → done)")}`);
-				lines.push(`  ${theme.fg("warning", "a")}         ${theme.fg("muted", "아카이브 ↔ 메인 이동")}`);
-				lines.push(`  ${theme.fg("warning", "t")}         ${theme.fg("muted", "태그 편집")}`);
-				lines.push(`  ${theme.fg("warning", "e")}         ${theme.fg("muted", "노트 편집")}`);
-				lines.push(`  ${theme.fg("warning", "/")}         ${theme.fg("muted", "필터 (이름/브랜치/태그)")}`);
-				lines.push(`  ${theme.fg("warning", "n")}         ${theme.fg("muted", "새 워크트리")}`);
-				lines.push(`  ${theme.fg("warning", "d")}         ${theme.fg("muted", "삭제")}`);
-				lines.push(`  ${theme.fg("warning", ",")}         ${theme.fg("muted", "이 도움말")}`);
-				lines.push(`  ${theme.fg("warning", "q/Esc")}     ${theme.fg("muted", "닫기")}`);
+				lines.push(`  ${theme.fg("warning", "↑/↓, k/j")}  항목 이동`);
+				lines.push(`  ${theme.fg("warning", "Enter")}     워크트리 전환`);
+				lines.push(`  ${theme.fg("warning", "Tab")}       메인 ↔ 아카이브 탭 전환`);
+				lines.push(`  ${theme.fg("warning", "Space")}     상태 순환 (backlog → active → done)`);
+				lines.push(`  ${theme.fg("warning", "a")}         아카이브 ↔ 메인 이동`);
+				lines.push(`  ${theme.fg("warning", "t")}         태그 편집`);
+				lines.push(`  ${theme.fg("warning", "e")}         노트 편집`);
+				lines.push(`  ${theme.fg("warning", "/")}         필터 (이름/브랜치/태그)`);
+				lines.push(`  ${theme.fg("warning", "n")}         새 워크트리`);
+				lines.push(`  ${theme.fg("warning", "d")}         삭제`);
+				lines.push(`  ${theme.fg("warning", ",")}         이 도움말`);
+				lines.push(`  ${theme.fg("warning", "q/Esc")}     닫기`);
 				lines.push("");
-				lines.push(`  ${theme.fg("dim", "아무 키나 누르면 닫힘")}`);
+				lines.push(`  아무 키나 누르면 닫힘`);
 				lines.push(...new DynamicBorder((s: string) => theme.fg("accent", s)).render(w));
 				return lines;
 			};
@@ -685,39 +685,39 @@ async function showDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Pr
 					// Tab bar
 					const mainTab = currentTab === "main"
 						? theme.fg("accent", theme.bold(`● Worktrees (${mainCount})`))
-						: theme.fg("dim", `  Worktrees (${mainCount})`);
+						: `  Worktrees (${mainCount})`;
 					const archiveTab = currentTab === "archive"
 						? theme.fg("accent", theme.bold(`● Archive (${archivedCount})`))
-						: theme.fg("dim", `  Archive (${archivedCount})`);
-					lines.push(`  ${mainTab}    ${archiveTab}    ${theme.fg("dim", "Tab 전환")}`);
+						: `  Archive (${archivedCount})`;
+					lines.push(`  ${mainTab}    ${archiveTab}    ${theme.fg("accent", "Tab 전환")}`);
 					lines.push(theme.fg("accent", "─".repeat(w)));
 
 					// Stats for main tab
 					if (currentTab === "main") {
 						const stats: string[] = [];
 						if (activeCount > 0) stats.push(theme.fg("success", `${activeCount} active`));
-						if (backlogCount > 0) stats.push(theme.fg("muted", `${backlogCount} backlog`));
+						if (backlogCount > 0) stats.push(theme.fg("warning", `${backlogCount} backlog`));
 						if (doneCount > 0) stats.push(theme.fg("accent", `${doneCount} done`));
 						if (stats.length > 0) lines.push(`  ${stats.join(" · ")}`);
 					}
 					lines.push(theme.fg("accent", "─".repeat(w)));
 
 					if (filterMode || filterBuffer) {
-						lines.push(`  ${theme.fg("warning", "[Filter]")} ${filterBuffer}${filterMode ? theme.fg("dim", "│") : ""}`);
-						if (filterMode) lines.push(theme.fg("dim", "  Enter 확인 · Esc 취소"));
+						lines.push(`  ${theme.fg("warning", "[Filter]")} ${filterBuffer}${filterMode ? "│" : ""}`);
+						if (filterMode) lines.push("  Enter 확인 · Esc 취소");
 						lines.push(theme.fg("accent", "─".repeat(w)));
 					}
 
 					if (inputMode) {
 						const labels: Record<string, string> = { tag: "태그 (콤마 구분)", note: "노트" };
-						lines.push(`  ${theme.fg("warning", `[${labels[inputMode]}]`)} ${inputBuffer}${theme.fg("dim", "│")}`);
-						lines.push(theme.fg("dim", "  Enter 확인 · Esc 취소"));
+						lines.push(`  ${theme.fg("warning", `[${labels[inputMode]}]`)} ${inputBuffer}│`);
+						lines.push("  Enter 확인 · Esc 취소");
 						lines.push(theme.fg("accent", "─".repeat(w)));
 						return lines;
 					}
 
 					if (visible.length === 0) {
-						lines.push(theme.fg("muted", filterBuffer ? "  검색 결과 없음" : "  워크트리가 없습니다. n으로 추가하세요."));
+						lines.push(filterBuffer ? "  검색 결과 없음" : "  워크트리가 없습니다. n으로 추가하세요.");
 					} else {
 						const termRows = (tui as any).terminal?.rows ?? 24;
 						const visibleHeight = Math.max(5, termRows - 10);
@@ -738,12 +738,12 @@ async function showDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Pr
 							const sel = i === selectedIdx;
 							const cursor = sel ? theme.fg("accent", "▶") : " ";
 							const icon = theme.fg(statusColor(wt.status), statusIcon(wt.status));
-							const name = sel ? theme.fg("accent", theme.bold(wt.name)) : wt.status === "archived" ? theme.fg("dim", wt.name) : wt.name;
-							const branchStr = theme.fg("muted", wt.branch.length > 30 ? wt.branch.slice(0, 27) + "..." : wt.branch);
+							const name = sel ? theme.fg("accent", theme.bold(wt.name)) : wt.name;
+							const branchStr = wt.branch.length > 30 ? wt.branch.slice(0, 27) + "..." : wt.branch;
 							const gs = gitStatusStr(wt.gitStatus, theme);
 							const tags = (wt.meta?.tags ?? []).length > 0 ? " " + (wt.meta!.tags!).map(t => theme.fg("warning", `[${t}]`)).join(" ") : "";
 							const ticket = wt.meta?.ticket ? theme.fg("accent", ` ${wt.meta.ticket}`) : "";
-							const note = wt.meta?.note ? theme.fg("dim", ` — ${wt.meta.note.slice(0, 25)}`) : "";
+							const note = wt.meta?.note ? ` — ${wt.meta.note.slice(0, 25)}` : "";
 
 							lines.push(truncateToWidth(`${cursor} ${icon} ${name}  ${branchStr}  ${gs}${ticket}${tags}${note}`, w, ""));
 						}
@@ -753,7 +753,7 @@ async function showDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Pr
 					const hint = currentTab === "main"
 						? "  ↑↓ 이동 · Enter 전환 · Tab 아카이브 · Space 상태순환 · a 아카이브로 · t 태그 · / 필터 · n 새로 · , help"
 						: "  ↑↓ 이동 · Enter 전환 · Tab 메인 · a 메인으로 복관 · d 삭제 · / 필터 · , help";
-					lines.push(theme.fg("dim", hint));
+					lines.push(hint);
 					return lines;
 				},
 
