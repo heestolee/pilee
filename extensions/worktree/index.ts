@@ -1,7 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, statSync, rmSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname, basename } from "node:path";
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, ThemeColor } from "@mariozechner/pi-coding-agent";
+import { DynamicBorder } from "@mariozechner/pi-coding-agent";
+import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 
 // ─── Repo registry ─────────────────────────────────────────────────────────
 
@@ -141,6 +143,8 @@ function pickName(scheme: WorktreeConfig["namingScheme"], existing: Set<string>)
 
 // ─── Metadata ──────────────────────────────────────────────────────────────
 
+type WorktreeStatus = "active" | "done" | "archived";
+
 interface WorktreeMeta {
 	name: string;
 	branch: string;
@@ -148,6 +152,9 @@ interface WorktreeMeta {
 	createdAt: number;
 	ticket?: string;
 	note?: string;
+	status?: WorktreeStatus;
+	tags?: string[];
+	doneAt?: number;
 }
 
 function metaPath(worktreePath: string): string {
@@ -505,19 +512,6 @@ async function handleRemove(pi: ExtensionAPI, args: string, ctx: ExtensionComman
 	ctx.ui.notify(`✓ ${name} removed`, "info");
 }
 
-async function getAllWorktrees(pi: ExtensionAPI): Promise<Array<{ name: string; path: string; branch: string; repoName: string }>> {
-	const reg = loadRegistry();
-	const results: Array<{ name: string; path: string; branch: string; repoName: string }> = [];
-	for (const [repoName, repoPath] of Object.entries(reg)) {
-		if (!existsSync(repoPath)) continue;
-		const config = loadConfig(repoPath);
-		for (const w of listExistingWorktrees(config.rootDir)) {
-			results.push({ name: w.name, path: w.path, branch: w.branch, repoName });
-		}
-	}
-	return results;
-}
-
 async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string, ctx: ExtensionCommandContext) {
 	const pathEncoded = "--" + wtPath.slice(1).replace(/\//g, "-") + "--";
 	const sessionDir = join(homedir(), ".pi", "agent", "sessions", pathEncoded);
@@ -555,18 +549,288 @@ async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string
 	}
 }
 
+interface DashboardWorktree {
+	name: string;
+	path: string;
+	branch: string;
+	repoName: string;
+	status: WorktreeStatus;
+	meta: WorktreeMeta | null;
+	gitStatus?: { changes: number; ahead: number; behind: number } | null;
+}
+
+async function loadDashboardWorktrees(pi: ExtensionAPI): Promise<DashboardWorktree[]> {
+	const reg = loadRegistry();
+	const results: DashboardWorktree[] = [];
+	for (const [repoName, repoPath] of Object.entries(reg)) {
+		if (!existsSync(repoPath)) continue;
+		const config = loadConfig(repoPath);
+		for (const w of listExistingWorktrees(config.rootDir)) {
+			const gs = await getWorktreeStatus(pi, w.path);
+			results.push({
+				name: w.name, path: w.path, branch: w.branch, repoName,
+				status: w.meta?.status ?? "active",
+				meta: w.meta, gitStatus: gs,
+			});
+		}
+	}
+	return results;
+}
+
+function statusIcon(s: WorktreeStatus): string {
+	return s === "active" ? "●" : s === "done" ? "✓" : "○";
+}
+
+function statusColor(s: WorktreeStatus): ThemeColor {
+	return s === "active" ? "success" : s === "done" ? "accent" : "dim";
+}
+
+function gitStatusStr(gs: { changes: number; ahead: number; behind: number } | null | undefined, theme: any): string {
+	if (!gs) return theme.fg("dim", "?");
+	const parts: string[] = [];
+	if (gs.changes > 0) parts.push(theme.fg("warning", `${gs.changes} changes`));
+	if (gs.ahead > 0) parts.push(theme.fg("accent", `↑${gs.ahead}`));
+	if (gs.behind > 0) parts.push(theme.fg("error", `↓${gs.behind}`));
+	if (parts.length === 0) return theme.fg("success", "clean");
+	return parts.join(" ");
+}
+
+async function showDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<DashboardWorktree | null> {
+	let worktrees = await loadDashboardWorktrees(pi);
+	let selectedIdx = 0;
+	let showArchived = false;
+	let showHelp = false;
+	let filterMode = false;
+	let filterBuffer = "";
+	let inputMode: null | "tag" | "note" = null;
+	let inputBuffer = "";
+
+	const getVisible = () => {
+		let items = showArchived ? worktrees : worktrees.filter(w => w.status !== "archived");
+		if (filterBuffer) {
+			const q = filterBuffer.toLowerCase();
+			items = items.filter(w =>
+				w.name.toLowerCase().includes(q) ||
+				w.branch.toLowerCase().includes(q) ||
+				(w.meta?.ticket ?? "").toLowerCase().includes(q) ||
+				(w.meta?.tags ?? []).some(t => t.toLowerCase().includes(q))
+			);
+		}
+		const order: Record<WorktreeStatus, number> = { active: 0, done: 1, archived: 2 };
+		return [...items].sort((a, b) => order[a.status] - order[b.status] || (b.meta?.createdAt ?? 0) - (a.meta?.createdAt ?? 0));
+	};
+
+	return ctx.ui.custom<DashboardWorktree | null>(
+		(tui, theme, _kb, done) => {
+			const renderHelp = (w: number): string[] => {
+				const lines: string[] = [];
+				lines.push(...new DynamicBorder((s: string) => theme.fg("accent", s)).render(w));
+				lines.push(`  ${theme.bold("KEYBINDINGS")}`);
+				lines.push("");
+				lines.push(`  ${theme.fg("warning", "↑/↓, k/j")}  ${theme.fg("muted", "항목 이동")}`);
+				lines.push(`  ${theme.fg("warning", "Enter")}     ${theme.fg("muted", "워크트리 전환")}`);
+				lines.push(`  ${theme.fg("warning", "Space")}     ${theme.fg("muted", "active ↔ done 토글")}`);
+				lines.push(`  ${theme.fg("warning", "a")}         ${theme.fg("muted", "아카이브 토글")}`);
+				lines.push(`  ${theme.fg("warning", "t")}         ${theme.fg("muted", "태그 편집")}`);
+				lines.push(`  ${theme.fg("warning", "e")}         ${theme.fg("muted", "노트 편집")}`);
+				lines.push(`  ${theme.fg("warning", "/")}         ${theme.fg("muted", "필터 (이름/브랜치/태그)")}`);
+				lines.push(`  ${theme.fg("warning", "v")}         ${theme.fg("muted", "아카이브 표시/숨김")}`);
+				lines.push(`  ${theme.fg("warning", "n")}         ${theme.fg("muted", "새 워크트리 (이름 입력)")}`);
+				lines.push(`  ${theme.fg("warning", "d")}         ${theme.fg("muted", "삭제")}`);
+				lines.push(`  ${theme.fg("warning", ",")}         ${theme.fg("muted", "이 도움말")}`);
+				lines.push(`  ${theme.fg("warning", "q/Esc")}     ${theme.fg("muted", "닫기")}`);
+				lines.push("");
+				lines.push(`  ${theme.fg("dim", "아무 키나 누르면 닫힘")}`);
+				lines.push(...new DynamicBorder((s: string) => theme.fg("accent", s)).render(w));
+				return lines;
+			};
+
+			return {
+				render: (w: number) => {
+					if (showHelp) return renderHelp(w);
+					const visible = getVisible();
+					const activeCount = worktrees.filter(wt => wt.status === "active").length;
+					const doneCount = worktrees.filter(wt => wt.status === "done").length;
+					const archivedCount = worktrees.filter(wt => wt.status === "archived").length;
+
+					const lines: string[] = [];
+					lines.push(theme.fg("accent", "─".repeat(w)));
+					let header = `  ${theme.bold("Worktrees")}  ${theme.fg("success", `${activeCount} active`)}`;
+					if (doneCount > 0) header += ` · ${theme.fg("accent", `${doneCount} done`)}`;
+					if (archivedCount > 0) header += ` · ${theme.fg("dim", `${archivedCount} archived`)}`;
+					lines.push(header);
+					lines.push(theme.fg("accent", "─".repeat(w)));
+
+					if (filterMode || filterBuffer) {
+						lines.push(`  ${theme.fg("warning", "[Filter]")} ${filterBuffer}${filterMode ? theme.fg("dim", "│") : ""}`);
+						if (filterMode) lines.push(theme.fg("dim", "  Enter 확인 · Esc 취소"));
+						lines.push(theme.fg("accent", "─".repeat(w)));
+					}
+
+					if (inputMode) {
+						const labels: Record<string, string> = { tag: "태그 (콤마 구분)", note: "노트" };
+						lines.push(`  ${theme.fg("warning", `[${labels[inputMode]}]`)} ${inputBuffer}${theme.fg("dim", "│")}`);
+						lines.push(theme.fg("dim", "  Enter 확인 · Esc 취소"));
+						lines.push(theme.fg("accent", "─".repeat(w)));
+						return lines;
+					}
+
+					if (visible.length === 0) {
+						lines.push(theme.fg("muted", filterBuffer ? "  검색 결과 없음" : "  워크트리가 없습니다. n으로 추가하세요."));
+					} else {
+						const termRows = (tui as any).terminal?.rows ?? 24;
+						const visibleHeight = Math.max(5, termRows - 10);
+						let scrollOffset = 0;
+						if (selectedIdx >= scrollOffset + visibleHeight) scrollOffset = selectedIdx - visibleHeight + 1;
+						if (selectedIdx < scrollOffset) scrollOffset = selectedIdx;
+
+						let lastStatus: WorktreeStatus | null = null;
+						for (let i = scrollOffset; i < Math.min(visible.length, scrollOffset + visibleHeight); i++) {
+							const wt = visible[i];
+							if (wt.status !== lastStatus) {
+								const label = wt.status === "active" ? "ACTIVE" : wt.status === "done" ? "DONE" : "ARCHIVED";
+								if (lastStatus !== null) lines.push("");
+								lines.push(`  ${theme.fg(statusColor(wt.status), theme.bold(label))}`);
+								lastStatus = wt.status;
+							}
+
+							const sel = i === selectedIdx;
+							const cursor = sel ? theme.fg("accent", "▶") : " ";
+							const icon = theme.fg(statusColor(wt.status), statusIcon(wt.status));
+							const name = sel ? theme.fg("accent", theme.bold(wt.name)) : wt.status === "archived" ? theme.fg("dim", wt.name) : wt.name;
+							const branchStr = theme.fg("muted", wt.branch.length > 30 ? wt.branch.slice(0, 27) + "..." : wt.branch);
+							const gs = gitStatusStr(wt.gitStatus, theme);
+							const tags = (wt.meta?.tags ?? []).length > 0 ? " " + (wt.meta!.tags!).map(t => theme.fg("warning", `[${t}]`)).join(" ") : "";
+							const ticket = wt.meta?.ticket ? theme.fg("accent", ` ${wt.meta.ticket}`) : "";
+							const note = wt.meta?.note ? theme.fg("dim", ` — ${wt.meta.note.slice(0, 25)}`) : "";
+
+							lines.push(truncateToWidth(`${cursor} ${icon} ${name}  ${branchStr}  ${gs}${ticket}${tags}${note}`, w, ""));
+						}
+					}
+
+					lines.push(theme.fg("accent", "─".repeat(w)));
+					lines.push(theme.fg("dim", "  ↑↓ 이동 · Enter 전환 · Space done · a archive · t 태그 · / 필터 · n 새로 · d 삭제 · , 도움말 · q 닫기"));
+					return lines;
+				},
+
+				handleInput: (data: string) => {
+					if (showHelp) { showHelp = false; (tui as any).requestRender?.(); return; }
+
+					const visible = getVisible();
+
+					// Filter mode
+					if (filterMode) {
+						if (matchesKey(data, Key.escape)) { filterMode = false; filterBuffer = ""; selectedIdx = 0; }
+						else if (matchesKey(data, Key.enter)) { filterMode = false; selectedIdx = 0; }
+						else if (matchesKey(data, Key.backspace)) { filterBuffer = filterBuffer.slice(0, -1); selectedIdx = 0; }
+						else if (data.length === 1 && data >= " ") { filterBuffer += data; selectedIdx = 0; }
+						(tui as any).requestRender?.();
+						return;
+					}
+
+					// Input mode (tag/note)
+					if (inputMode) {
+						if (matchesKey(data, Key.escape)) { inputMode = null; inputBuffer = ""; }
+						else if (matchesKey(data, Key.enter)) {
+							const wt = visible[selectedIdx];
+							if (wt?.meta && inputBuffer.trim()) {
+								if (inputMode === "tag") {
+									wt.meta.tags = inputBuffer.split(",").map(t => t.trim()).filter(Boolean);
+								} else if (inputMode === "note") {
+									wt.meta.note = inputBuffer.trim();
+								}
+								writeMeta(wt.path, wt.meta);
+							}
+							inputMode = null; inputBuffer = "";
+						}
+						else if (matchesKey(data, Key.backspace)) { inputBuffer = inputBuffer.slice(0, -1); }
+						else if (data.length === 1 && data >= " ") { inputBuffer += data; }
+						(tui as any).requestRender?.();
+						return;
+					}
+
+					// Navigation
+					if (data === "q" || matchesKey(data, Key.escape)) { done(null); return; }
+					if (matchesKey(data, Key.up) || data === "k") { selectedIdx = Math.max(0, selectedIdx - 1); }
+					else if (matchesKey(data, Key.down) || data === "j") { selectedIdx = Math.min(visible.length - 1, selectedIdx + 1); }
+
+					// Enter: switch
+					else if (matchesKey(data, Key.enter)) {
+						const wt = visible[selectedIdx];
+						if (wt) done(wt);
+						return;
+					}
+
+					// Space: active ↔ done
+					else if (data === " ") {
+						const wt = visible[selectedIdx];
+						if (wt?.meta) {
+							wt.meta.status = wt.status === "done" ? "active" : "done";
+							wt.meta.doneAt = wt.meta.status === "done" ? Date.now() : undefined;
+							wt.status = wt.meta.status;
+							writeMeta(wt.path, wt.meta);
+						}
+					}
+
+					// a: archive toggle
+					else if (data === "a") {
+						const wt = visible[selectedIdx];
+						if (wt?.meta) {
+							wt.meta.status = wt.status === "archived" ? "active" : "archived";
+							wt.status = wt.meta.status;
+							writeMeta(wt.path, wt.meta);
+							const newVisible = getVisible();
+							if (selectedIdx >= newVisible.length) selectedIdx = Math.max(0, newVisible.length - 1);
+						}
+					}
+
+					// t: tag edit
+					else if (data === "t") {
+						const wt = visible[selectedIdx];
+						if (wt?.meta) { inputMode = "tag"; inputBuffer = (wt.meta.tags ?? []).join(", "); }
+					}
+
+					// e: note edit
+					else if (data === "e") {
+						const wt = visible[selectedIdx];
+						if (wt?.meta) { inputMode = "note"; inputBuffer = wt.meta.note ?? ""; }
+					}
+
+					// /: filter
+					else if (data === "/") { filterMode = true; filterBuffer = ""; }
+
+					// v: toggle archived visibility
+					else if (data === "v") { showArchived = !showArchived; selectedIdx = 0; }
+
+					// ,: help
+					else if (matchesKey(data, ",")) { showHelp = true; }
+
+					// n: new worktree (exit overlay, pre-fill command)
+					else if (data === "n") { done(null); ctx.ui.setEditorText("/wt new"); return; }
+
+					// d: delete (mark for removal on close)
+					else if (data === "d") {
+						const wt = visible[selectedIdx];
+						if (wt) { done(null); ctx.ui.setEditorText(`/wt rm ${wt.name}`); return; }
+					}
+
+					(tui as any).requestRender?.();
+				},
+				invalidate: () => {},
+			};
+		},
+		{ overlay: true, overlayOptions: { width: "85%", maxHeight: "70%", anchor: "center" } },
+	);
+}
+
 async function handleSwitch(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
 	const target = args.trim();
 
-	// No argument: show all worktrees picker
+	// No argument: show dashboard overlay
 	if (!target) {
-		const all = await getAllWorktrees(pi);
-		if (all.length === 0) { ctx.ui.notify("No worktrees found.", "info"); return; }
-		const options = all.map(w => `${w.name}  (${w.repoName}, ${w.branch})`);
-		const choice = await ctx.ui.select("워크트리 선택:", options);
-		if (!choice) return;
-		const selected = all[options.indexOf(choice)];
-		return switchToWorktree(pi, selected.name, selected.path, ctx);
+		const selected = await showDashboard(pi, ctx);
+		if (selected) return switchToWorktree(pi, selected.name, selected.path, ctx);
+		return;
 	}
 
 	let repoRoot: string;
@@ -1054,7 +1318,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerShortcut("ctrl+w", {
-		description: "Switch worktree",
+		description: "Worktree dashboard",
 		handler: async (ctx) => {
 			ctx.ui.setEditorText("/wt switch");
 		},
