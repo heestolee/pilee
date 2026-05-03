@@ -180,8 +180,8 @@ export default function (pi: ExtensionAPI) {
 						const lines: string[] = [];
 
 						lines.push(theme.fg("accent", "─".repeat(w)));
-						lines.push(`  ${theme.fg("accent", theme.bold("REPORTS"))} ${theme.fg("accent", "|")} ${reports.length} files ${theme.fg("accent", "·")} Enter: open · q/Esc: close`);
-						lines.push("  ↑/↓ select · Enter open");
+						lines.push(`  ${theme.fg("accent", theme.bold("REPORTS"))} ${theme.fg("accent", "|")} ${reports.length} files ${theme.fg("accent", "·")} ${theme.fg("border", "Enter: open · q/Esc: close")}`);
+						lines.push(`  ${theme.fg("border", "↑/↓ select · Enter open")}`);
 
 						if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
 						if (selectedIndex >= scrollOffset + bodyH) scrollOffset = selectedIndex - bodyH + 1;
@@ -190,7 +190,7 @@ export default function (pi: ExtensionAPI) {
 							const r = reports[i];
 							const sel = i === selectedIndex;
 							const cursor = sel ? theme.fg("accent", "▶") : " ";
-							const timeStr = r.time;
+							const timeStr = theme.fg("borderAccent", r.time);
 							const src = r.source === "workspace" ? theme.fg("success", "ws") : "ar";
 							const name = sel ? theme.fg("accent", r.name) : theme.fg("text", r.name);
 							const ticket = r.ticket ? theme.fg("warning", ` ${r.ticket}`) : "";

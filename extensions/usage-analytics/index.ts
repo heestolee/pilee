@@ -122,7 +122,7 @@ function filterByPeriod(entries: LogEntry[], period: Period): LogEntry[] {
 
 function renderOverview(entries: LogEntry[], period: Period, theme: { fg: (c: ThemeColor, t: string) => string }): string[] {
 	const filtered = filterByPeriod(entries, period);
-	if (filtered.length === 0) return [`데이터 없음 (${period})`];
+	if (filtered.length === 0) return [theme.fg("border", `데이터 없음 (${period})`)];
 
 	const subagentEnds = filtered.filter((e): e is SubagentEndEntry => e.type === "subagent_end");
 	const skillReads = filtered.filter((e): e is SkillReadEntry => e.type === "skill_read");
@@ -175,7 +175,7 @@ function renderOverview(entries: LogEntry[], period: Period, theme: { fg: (c: Th
 
 function renderAgents(entries: LogEntry[], period: Period, theme: { fg: (c: ThemeColor, t: string) => string }): string[] {
 	const filtered = filterByPeriod(entries, period).filter((e): e is SubagentEndEntry => e.type === "subagent_end");
-	if (filtered.length === 0) return [`데이터 없음 (${period})`];
+	if (filtered.length === 0) return [theme.fg("border", `데이터 없음 (${period})`)];
 
 	const stats = new Map<string, { count: number; done: number; error: number; totalMs: number; minMs: number; maxMs: number; retries: number }>();
 	for (const e of filtered) {
@@ -210,7 +210,7 @@ function renderAgents(entries: LogEntry[], period: Period, theme: { fg: (c: Them
 
 function renderSkills(entries: LogEntry[], period: Period, theme: { fg: (c: ThemeColor, t: string) => string }): string[] {
 	const filtered = filterByPeriod(entries, period).filter((e): e is SkillReadEntry => e.type === "skill_read");
-	if (filtered.length === 0) return [`데이터 없음 (${period})`];
+	if (filtered.length === 0) return [theme.fg("border", `데이터 없음 (${period})`)];
 
 	const counts = new Map<string, { count: number; lastRead: number }>();
 	for (const e of filtered) {
@@ -231,7 +231,7 @@ function renderSkills(entries: LogEntry[], period: Period, theme: { fg: (c: Them
 		lines.push(
 			name.padEnd(32) +
 			String(s.count).padStart(6) +
-			agoStr.padStart(20),
+			theme.fg("borderAccent", agoStr.padStart(20)),
 		);
 	}
 	return lines;
@@ -254,12 +254,12 @@ async function showOverlay(ctx: ExtensionCommandContext) {
 		(tui, theme, _kb, done) => {
 			const renderTabs = () => {
 				const t = (label: string, t2: Tab, key: string) =>
-					tab === t2 ? theme.fg("accent", theme.bold(`[${key}] ${label}`)) : `[${key}] ${label}`;
+					tab === t2 ? theme.fg("accent", theme.bold(`[${key}] ${label}`)) : theme.fg("border", `[${key}] ${label}`);
 				return `${t("Overview", "overview", "1")}  ${t("Agents", "agents", "2")}  ${t("Skills", "skills", "3")}`;
 			};
 			const renderPeriod = () => {
 				const p = (label: string, p2: Period, key: string) =>
-					period === p2 ? theme.fg("accent", theme.bold(`[${key}] ${label}`)) : `[${key}] ${label}`;
+					period === p2 ? theme.fg("accent", theme.bold(`[${key}] ${label}`)) : theme.fg("border", `[${key}] ${label}`);
 				return `Period: ${p("Day", "day", "d")} ${p("Week", "week", "w")} ${p("Month", "month", "m")}`;
 			};
 
@@ -284,7 +284,7 @@ async function showOverlay(ctx: ExtensionCommandContext) {
 					}
 
 					lines.push(theme.fg("accent", "─".repeat(w)));
-					lines.push("  ↑↓/jk 스크롤  ·  1/2/3 탭  ·  d/w/m 기간  ·  q/Esc 닫기");
+					lines.push(`  ${theme.fg("border", "↑↓/jk 스크롤  ·  1/2/3 탭  ·  d/w/m 기간  ·  q/Esc 닫기")}`);
 					return lines;
 				},
 				handleInput: (data: string) => {

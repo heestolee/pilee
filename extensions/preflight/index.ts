@@ -381,7 +381,7 @@ function bar(value: number, max: number, width: number): string {
 function renderOverview(logs: RunLog[], period: Period, theme: { fg: (c: ThemeColor, t: string) => string }): string[] {
 	const filtered = filterByPeriod(logs, period);
 	if (filtered.length === 0) {
-		return [`데이터 없음 (${period})`];
+		return [theme.fg("border", `데이터 없음 (${period})`)];
 	}
 
 	const total = filtered.length;
@@ -448,7 +448,7 @@ function renderChecks(logs: RunLog[], period: Period, theme: { fg: (c: ThemeColo
 	}
 
 	const lines: string[] = [];
-	if (stats.size === 0) return [`데이터 없음`];
+	if (stats.size === 0) return [theme.fg("border", `데이터 없음`)];
 
 	lines.push("체크".padEnd(22) + "실행".padStart(6) + "성공".padStart(6) + "실패".padStart(6) + "평균".padStart(10) + "최소".padStart(10) + "최대".padStart(10));
 	for (const [name, s] of [...stats.entries()].sort((a, b) => b[1].count - a[1].count)) {
@@ -515,12 +515,12 @@ async function showStatsOverlay(ctx: ExtensionCommandContext) {
 		(tui, theme, _kb, done) => {
 			const renderTabs = () => {
 				const t = (label: string, t2: Tab, key: string) =>
-					tab === t2 ? theme.fg("accent", theme.bold(`[${key}] ${label}`)) : `[${key}] ${label}`;
+					tab === t2 ? theme.fg("accent", theme.bold(`[${key}] ${label}`)) : theme.fg("border", `[${key}] ${label}`);
 				return `${t("Overview", "overview", "1")}  ${t("Checks", "checks", "2")}  ${t("Failures", "failures", "3")}`;
 			};
 			const renderPeriod = () => {
 				const p = (label: string, p2: Period, key: string) =>
-					period === p2 ? theme.fg("accent", theme.bold(`[${key}] ${label}`)) : `[${key}] ${label}`;
+					period === p2 ? theme.fg("accent", theme.bold(`[${key}] ${label}`)) : theme.fg("border", `[${key}] ${label}`);
 				return `Period: ${p("Day", "day", "d")} ${p("Week", "week", "w")} ${p("Month", "month", "m")}`;
 			};
 
@@ -545,7 +545,7 @@ async function showStatsOverlay(ctx: ExtensionCommandContext) {
 					}
 
 					lines.push(theme.fg("accent", "─".repeat(w)));
-					lines.push("  ↑↓/jk 스크롤  ·  1/2/3 탭  ·  d/w/m 기간  ·  q/Esc 닫기");
+					lines.push(`  ${theme.fg("border", "↑↓/jk 스크롤  ·  1/2/3 탭  ·  d/w/m 기간  ·  q/Esc 닫기")}`);
 
 					return lines;
 				},

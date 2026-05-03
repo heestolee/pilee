@@ -99,18 +99,18 @@ async function showOverlay(ctx: ExtensionCommandContext) {
 				lines.push(...new DynamicBorder((s: string) => theme.fg("accent", s)).render(w));
 				lines.push(`  ${theme.bold("KEYBINDINGS")}`);
 				lines.push("");
-				lines.push(`  ${theme.fg("warning", "↑/↓, k/j")}  항목 이동`);
-				lines.push(`  ${theme.fg("warning", "Enter")}     상세 보기`);
-				lines.push(`  ${theme.fg("warning", "n")}         새 항목 추가`);
-				lines.push(`  ${theme.fg("warning", "d")}         삭제`);
-				lines.push(`  ${theme.fg("warning", "Space")}     완료/미완료 토글`);
-				lines.push(`  ${theme.fg("warning", "p")}         우선순위 변경 (high→medium→low)`);
-				lines.push(`  ${theme.fg("warning", "t")}         노트 작성/수정`);
-				lines.push(`  ${theme.fg("warning", "v")}         완료 항목 표시/숨김`);
-				lines.push(`  ${theme.fg("warning", ",")}         이 도움말`);
-				lines.push(`  ${theme.fg("warning", "q/Esc")}     닫기`);
+				lines.push(`  ${theme.fg("warning", "↑/↓, k/j")}  ${theme.fg("border", "항목 이동")}`);
+				lines.push(`  ${theme.fg("warning", "Enter")}     ${theme.fg("border", "상세 보기")}`);
+				lines.push(`  ${theme.fg("warning", "n")}         ${theme.fg("border", "새 항목 추가")}`);
+				lines.push(`  ${theme.fg("warning", "d")}         ${theme.fg("border", "삭제")}`);
+				lines.push(`  ${theme.fg("warning", "Space")}     ${theme.fg("border", "완료/미완료 토글")}`);
+				lines.push(`  ${theme.fg("warning", "p")}         ${theme.fg("border", "우선순위 변경 (high→medium→low)")}`);
+				lines.push(`  ${theme.fg("warning", "t")}         ${theme.fg("border", "노트 작성/수정")}`);
+				lines.push(`  ${theme.fg("warning", "v")}         ${theme.fg("border", "완료 항목 표시/숨김")}`);
+				lines.push(`  ${theme.fg("warning", ",")}         ${theme.fg("border", "이 도움말")}`);
+				lines.push(`  ${theme.fg("warning", "q/Esc")}     ${theme.fg("border", "닫기")}`);
 				lines.push("");
-				lines.push(`  아무 키나 누르면 닫힘`);
+				lines.push(`  ${theme.fg("border", "아무 키나 누르면 닫힘")}`);
 				lines.push(...new DynamicBorder((s: string) => theme.fg("accent", s)).render(w));
 				return lines;
 			};
@@ -130,7 +130,7 @@ async function showOverlay(ctx: ExtensionCommandContext) {
 					if (inputMode) {
 						const labels: Record<string, string> = { add: "새 항목", note: "노트", "edit-title": "제목 수정", "edit-note": "노트 수정" };
 						lines.push(`  ${theme.fg("warning", `[${labels[inputMode] ?? inputMode}]`)} ${inputBuffer}${theme.fg("accent", "│")}`);
-						lines.push("  Enter 확인 · Esc 취소");
+						lines.push(`  ${theme.fg("border", "Enter 확인 · Esc 취소")}`);
 						lines.push(theme.fg("accent", "─".repeat(w)));
 						return lines;
 					}
@@ -145,26 +145,26 @@ async function showOverlay(ctx: ExtensionCommandContext) {
 							lines.push("");
 							lines.push(`  상태:     ${statusLabel}`);
 							lines.push(`  우선순위: ${theme.fg(priorityColor(item.priority), item.priority)}`);
-							lines.push(`  생성일:   ${new Date(item.createdAt).toLocaleString("ko-KR")}`);
-							if (item.doneAt) lines.push(`  완료일:   ${new Date(item.doneAt).toLocaleString("ko-KR")}`);
+							lines.push(`  생성일:   ${theme.fg("borderAccent", new Date(item.createdAt).toLocaleString("ko-KR"))}`);
+							if (item.doneAt) lines.push(`  완료일:   ${theme.fg("borderAccent", new Date(item.doneAt).toLocaleString("ko-KR"))}`);
 							lines.push("");
 							if (item.note) {
 								lines.push(`  노트:`);
 								for (const line of item.note.split("\n")) {
-									lines.push(`    ${line}`);
+									lines.push(`    ${theme.fg("borderAccent", line)}`);
 								}
 							} else {
-								lines.push(`  (노트 없음)`);
+								lines.push(`  ${theme.fg("border", "(노트 없음)")}`);
 							}
 							lines.push("");
 							lines.push(theme.fg("accent", "─".repeat(w)));
-							lines.push("  Esc 돌아가기 · e 제목 수정 · t 노트 수정 · p 우선순위 · Space 완료 토글 · d 삭제");
+							lines.push(`  ${theme.fg("border", "Esc 돌아가기 · e 제목 수정 · t 노트 수정 · p 우선순위 · Space 완료 토글 · d 삭제")}`);
 							return lines;
 						}
 					}
 
 					if (visible.length === 0) {
-						lines.push("  백로그가 비어있습니다. n으로 추가하세요.");
+						lines.push(`  ${theme.fg("border", "백로그가 비어있습니다. n으로 추가하세요.")}`);
 					} else {
 						const visibleHeight = Math.max(5, ((tui as any).terminal?.rows ?? 24) - 8);
 						let scrollOffset = 0;
@@ -178,13 +178,13 @@ async function showOverlay(ctx: ExtensionCommandContext) {
 							const check = item.status === "done" ? theme.fg("success", "✓") : " ";
 							const icon = priorityIcon(item.priority);
 							const title = item.status === "done" ? item.title : sel ? theme.fg("accent", item.title) : item.title;
-							const note = item.note ? ` — ${item.note.slice(0, 30)}` : "";
+							const note = item.note ? theme.fg("borderAccent", ` — ${item.note.slice(0, 30)}`) : "";
 							lines.push(truncateToWidth(`${cursor} ${check} ${icon} #${item.id} ${title}${note}`, w, ""));
 						}
 					}
 
 					lines.push(theme.fg("accent", "─".repeat(w)));
-					lines.push("  ↑↓ 이동 · Enter 상세 · n 추가 · d 삭제 · Space 완료 토글 · p 우선순위 변경 · t 노트 · v done 표시 · q 닫기");
+					lines.push(`  ${theme.fg("border", "↑↓ 이동 · Enter 상세 · n 추가 · d 삭제 · Space 완료 토글 · p 우선순위 변경 · t 노트 · v done 표시 · q 닫기")}`);
 					return lines;
 				},
 				handleInput: (data: string) => {

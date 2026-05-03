@@ -86,7 +86,7 @@ export default function (pi: ExtensionAPI) {
 								? elapsed(timeline[0].rawTs, timeline[timeline.length - 1].rawTs)
 								: "?";
 							lines.push(`  ${theme.fg("accent", theme.bold("TIMELINE"))} ${theme.fg("accent", "|")} ${total} messages ${theme.fg("accent", "·")} ${first} → ${last} ${theme.fg("accent", "·")} total ${totalElapsed}`);
-							lines.push("  ↑/↓ select · q/Esc close");
+							lines.push(`  ${theme.fg("border", "↑/↓ select · q/Esc close")}`);
 
 							// Body
 							if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;

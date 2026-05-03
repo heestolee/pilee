@@ -273,14 +273,14 @@ export default function (pi: ExtensionAPI) {
 					lines.push(...new DynamicBorder((s: string) => theme.fg("accent", s)).render(w));
 					lines.push(`  ${theme.bold("KEYBINDINGS")}`);
 					lines.push("");
-					lines.push(`  ${theme.fg("warning", "↑/↓, k/j")}     항목 이동`);
-					lines.push(`  ${theme.fg("warning", "Space/Enter")}  상태 토글 (pending→in_progress→completed)`);
-					lines.push(`  ${theme.fg("warning", "n")}            새 태스크 추가`);
-					lines.push(`  ${theme.fg("warning", "d")}            삭제`);
-					lines.push(`  ${theme.fg("warning", ",")}            이 도움말`);
-					lines.push(`  ${theme.fg("warning", "q")}            닫기`);
+					lines.push(`  ${theme.fg("warning", "↑/↓, k/j")}     ${theme.fg("border", "항목 이동")}`);
+					lines.push(`  ${theme.fg("warning", "Space/Enter")}  ${theme.fg("border", "상태 토글 (pending→in_progress→completed)")}`);
+					lines.push(`  ${theme.fg("warning", "n")}            ${theme.fg("border", "새 태스크 추가")}`);
+					lines.push(`  ${theme.fg("warning", "d")}            ${theme.fg("border", "삭제")}`);
+					lines.push(`  ${theme.fg("warning", ",")}            ${theme.fg("border", "이 도움말")}`);
+					lines.push(`  ${theme.fg("warning", "q")}            ${theme.fg("border", "닫기")}`);
 					lines.push("");
-					lines.push(`  아무 키나 누르면 닫힘`);
+					lines.push(`  ${theme.fg("border", "아무 키나 누르면 닫힘")}`);
 					lines.push(...new DynamicBorder((s: string) => theme.fg("accent", s)).render(w));
 					return lines;
 				};
@@ -299,13 +299,13 @@ export default function (pi: ExtensionAPI) {
 
 						if (inputMode) {
 							lines.push(`  > ${inputBuffer}${theme.fg("accent", "│")}`);
-							lines.push("  Enter: 확인 · Esc: 취소");
+							lines.push(`  ${theme.fg("border", "Enter: 확인 · Esc: 취소")}`);
 							lines.push(theme.fg("accent", "─".repeat(w)));
 							return lines;
 						}
 
 						if (visible.length === 0) {
-							lines.push("  모든 태스크 완료! 🎉");
+							lines.push(`  ${theme.fg("border", "모든 태스크 완료! 🎉")}`);
 						} else {
 							for (let i = 0; i < visible.length; i++) {
 								const t = visible[i];
@@ -323,7 +323,7 @@ export default function (pi: ExtensionAPI) {
 						}
 
 						lines.push(theme.fg("accent", "─".repeat(w)));
-						lines.push("  ↑↓ 이동 · Space 상태 토글 · n 새로 · d 삭제 · q 닫기");
+						lines.push(`  ${theme.fg("border", "↑↓ 이동 · Space 상태 토글 · n 새로 · d 삭제 · q 닫기")}`);
 
 						return lines;
 					},

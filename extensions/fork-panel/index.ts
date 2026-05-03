@@ -586,8 +586,8 @@ export default function (pi: ExtensionAPI) {
 						const lines: string[] = [];
 
 						lines.push(theme.fg("accent", "─".repeat(w)));
-						lines.push(`  ${theme.fg("accent", theme.bold("REVIVE"))} ${theme.fg("accent", "|")} ${sorted.length} sessions ${theme.fg("accent", "·")} Enter: open · q/Esc: close`);
-						lines.push("  ↑/↓ select · Enter open");
+						lines.push(`  ${theme.fg("accent", theme.bold("REVIVE"))} ${theme.fg("accent", "|")} ${sorted.length} sessions ${theme.fg("accent", "·")} ${theme.fg("border", "Enter: open · q/Esc: close")}`);
+						lines.push(`  ${theme.fg("border", "↑/↓ select · Enter open")}`);
 
 						if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
 						if (selectedIndex >= scrollOffset + bodyH) scrollOffset = selectedIndex - bodyH + 1;
@@ -598,12 +598,12 @@ export default function (pi: ExtensionAPI) {
 							const cursor = sel ? theme.fg("accent", "▶") : " ";
 							const pad = (n: number) => String(n).padStart(2, "0");
 							const d = new Date(r.closedAt ?? r.createdAt);
-							const timeStr = `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+							const timeStr = theme.fg("borderAccent", `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`);
 							const label = sel ? theme.fg("accent", r.label) : theme.fg("text", r.label);
 							const status = r.closedAt ? "●" : theme.fg("success", "●");
 							const previewW = Math.max(10, w - 45);
 							const preview = r.preview ? r.preview.slice(0, previewW) : "";
-							const previewStr = sel ? theme.fg("text", preview) : preview;
+							const previewStr = sel ? preview : theme.fg("borderAccent", preview);
 							lines.push(truncateToWidth(`${cursor} ${status} ${timeStr} ${label}  ${previewStr}`, w, ""));
 						}
 

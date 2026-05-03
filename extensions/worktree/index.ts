@@ -739,11 +739,11 @@ async function showDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Pr
 							const cursor = sel ? theme.fg("accent", "▶") : " ";
 							const icon = theme.fg(statusColor(wt.status), statusIcon(wt.status));
 							const name = sel ? theme.fg("accent", theme.bold(wt.name)) : wt.name;
-							const branchStr = theme.fg("border", wt.branch.length > 30 ? wt.branch.slice(0, 27) + "..." : wt.branch);
+							const branchStr = theme.fg("borderAccent", wt.branch.length > 30 ? wt.branch.slice(0, 27) + "..." : wt.branch);
 							const gs = gitStatusStr(wt.gitStatus, theme);
 							const tags = (wt.meta?.tags ?? []).length > 0 ? " " + (wt.meta!.tags!).map(t => theme.fg("warning", `[${t}]`)).join(" ") : "";
 							const ticket = wt.meta?.ticket ? theme.fg("accent", ` ${wt.meta.ticket}`) : "";
-							const note = wt.meta?.note ? theme.fg("border", ` — ${wt.meta.note.slice(0, 25)}`) : "";
+							const note = wt.meta?.note ? theme.fg("borderAccent", ` — ${wt.meta.note.slice(0, 25)}`) : "";
 
 							lines.push(truncateToWidth(`${cursor} ${icon} ${name}  ${branchStr}  ${gs}${ticket}${tags}${note}`, w, ""));
 						}

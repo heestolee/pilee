@@ -177,15 +177,15 @@ async function showMemoryOverlay(ctx: ExtensionCommandContext, projectId: string
 				lines.push(...new DynamicBorder((s: string) => theme.fg("accent", s)).render(w));
 				lines.push(`  ${theme.bold("KEYBINDINGS")}`);
 				lines.push("");
-				lines.push(`  ${theme.fg("warning", "↑/↓, k/j")}  항목 이동`);
-				lines.push(`  ${theme.fg("warning", "Enter")}     상세 보기`);
-				lines.push(`  ${theme.fg("warning", "d")}         삭제`);
-				lines.push(`  ${theme.fg("warning", "s")}         scope 변경 (All→Global→Project)`);
-				lines.push(`  ${theme.fg("warning", "/")}         검색`);
-				lines.push(`  ${theme.fg("warning", ",")}         이 도움말`);
-				lines.push(`  ${theme.fg("warning", "q/Esc")}     닫기`);
+				lines.push(`  ${theme.fg("warning", "↑/↓, k/j")}  ${theme.fg("border", "항목 이동")}`);
+				lines.push(`  ${theme.fg("warning", "Enter")}     ${theme.fg("border", "상세 보기")}`);
+				lines.push(`  ${theme.fg("warning", "d")}         ${theme.fg("border", "삭제")}`);
+				lines.push(`  ${theme.fg("warning", "s")}         ${theme.fg("border", "scope 변경 (All→Global→Project)")}`);
+				lines.push(`  ${theme.fg("warning", "/")}         ${theme.fg("border", "검색")}`);
+				lines.push(`  ${theme.fg("warning", ",")}         ${theme.fg("border", "이 도움말")}`);
+				lines.push(`  ${theme.fg("warning", "q/Esc")}     ${theme.fg("border", "닫기")}`);
 				lines.push("");
-				lines.push(`  아무 키나 누르면 닫힘`);
+				lines.push(`  ${theme.fg("border", "아무 키나 누르면 닫힘")}`);
 				lines.push(...new DynamicBorder((s: string) => theme.fg("accent", s)).render(w));
 				return lines;
 			};
@@ -198,23 +198,23 @@ async function showMemoryOverlay(ctx: ExtensionCommandContext, projectId: string
 					lines.push(theme.fg("accent", "─".repeat(w)));
 
 					const scopeLabel = scopeFilter === "all" ? "All" : scopeFilter === "user" ? "Global" : "Project";
-					lines.push(`  ${theme.bold("Memories")} (${mems.length})  Scope: ${theme.fg("accent", scopeLabel)} [s]  ${searchMode ? theme.fg("warning", `Search: ${searchQuery}│`) : "/ to search"}`);
+					lines.push(`  ${theme.bold("Memories")} (${mems.length})  Scope: ${theme.fg("accent", scopeLabel)} [s]  ${searchMode ? theme.fg("warning", `Search: ${searchQuery}│`) : theme.fg("border", "/ to search")}`);
 					lines.push(theme.fg("accent", "─".repeat(w)));
 
 					if (viewingId) {
 						const mem = mems.find((m) => m.id === viewingId);
 						if (mem) {
-							lines.push(`  ${theme.fg("accent", `#${mem.id}`)} [${mem.scope}] ${mem.topic}`);
-							lines.push(`  Created: ${new Date(mem.createdAt).toLocaleDateString()}`);
+							lines.push(`  ${theme.fg("accent", `#${mem.id}`)} ${theme.fg("borderAccent", `[${mem.scope}]`)} ${mem.topic}`);
+							lines.push(`  ${theme.fg("borderAccent", `Created: ${new Date(mem.createdAt).toLocaleDateString()}`)}`);
 							lines.push("");
 							for (const line of mem.content.split("\n")) {
 								lines.push(`  ${line}`);
 							}
 							lines.push("");
-							lines.push("  Esc 돌아가기 · d 삭제");
+							lines.push(`  ${theme.fg("border", "Esc 돌아가기 · d 삭제")}`);
 						}
 					} else if (mems.length === 0) {
-						lines.push(searchQuery ? `  "${searchQuery}" 검색 결과 없음` : "  메모리 없음. /remember로 추가하세요.");
+						lines.push(searchQuery ? `  ${theme.fg("border", `"${searchQuery}" 검색 결과 없음`)}` : `  ${theme.fg("border", "메모리 없음. /remember로 추가하세요.")}`);
 					} else {
 						const visibleHeight = Math.max(5, ((tui as any).terminal?.rows ?? 24) - 8);
 						let scrollOffset = 0;
@@ -225,7 +225,7 @@ async function showMemoryOverlay(ctx: ExtensionCommandContext, projectId: string
 							const m = mems[i];
 							const sel = i === selectedIdx;
 							const cursor = sel ? theme.fg("accent", "▶") : " ";
-							const scope = m.scope === "user" ? "G" : theme.fg("accent", "P");
+							const scope = m.scope === "user" ? theme.fg("borderAccent", "G") : theme.fg("accent", "P");
 							const topic = m.topic.padEnd(15);
 							const preview = m.content.split("\n")[0].slice(0, 60);
 							const content = sel ? theme.fg("accent", preview) : preview;
@@ -234,7 +234,7 @@ async function showMemoryOverlay(ctx: ExtensionCommandContext, projectId: string
 					}
 
 					lines.push(theme.fg("accent", "─".repeat(w)));
-					lines.push("  ↑↓ 이동 · Enter 상세 · d 삭제 · s scope · / 검색 · q 닫기");
+					lines.push(`  ${theme.fg("border", "↑↓ 이동 · Enter 상세 · d 삭제 · s scope · / 검색 · q 닫기")}`);
 					return lines;
 				},
 				handleInput: (data: string) => {
