@@ -42,8 +42,14 @@ function extractSummary(messages: any[]): string | undefined {
 }
 
 function sendNotification(_pi: ExtensionAPI, title: string, message: string) {
-	const clean = (s: string) => s.replace(/[\x07\x1b]/g, "").slice(0, 200);
-	process.stdout.write(`\x1b]777;notify;${clean(title)};${clean(message)}\x07`);
+	const clean = (s: string) => s.replace(/["'\\`$]/g, "").slice(0, 200);
+	const { spawn } = require("child_process");
+	const child = spawn("/opt/homebrew/bin/terminal-notifier", [
+		"-title", clean(title),
+		"-message", clean(message),
+		"-sound", "default",
+	], { detached: true, stdio: "ignore" });
+	child.unref();
 }
 
 export default function (pi: ExtensionAPI) {

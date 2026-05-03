@@ -131,7 +131,7 @@ async function showScreensaver(): Promise<void> {
 
 	// 📋 TODO: tasks에서 in_progress/pending 항목
 	try {
-		const tasksDir = join(homedir(), ".pi", "tasks");
+		const tasksDir = join(folder, ".pi", "tasks");
 		if (existsSync(tasksDir)) {
 			const taskFiles = readdirSync(tasksDir).filter((f: string) => f.endsWith(".json")).sort().reverse();
 			for (const tf of taskFiles) {
