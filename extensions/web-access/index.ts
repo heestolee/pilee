@@ -11,15 +11,17 @@ import TurndownService from "turndown";
 const PERPLEXITY_API = "https://api.perplexity.ai/chat/completions";
 const EXA_SEARCH = "https://api.exa.ai/search";
 const EXA_ANSWER = "https://api.exa.ai/answer";
+const TAVILY_SEARCH = "https://api.tavily.com/search";
 const FETCH_TIMEOUT_MS = 30000;
 const MIN_USEFUL_CONTENT = 500;
 const CONFIG_PATH = join(homedir(), ".pi", "web-search.json");
 
 interface Config {
-	provider?: "auto" | "perplexity" | "exa" | "gemini";
+	provider?: "auto" | "perplexity" | "exa" | "gemini" | "tavily";
 	perplexityApiKey?: string;
 	exaApiKey?: string;
 	geminiApiKey?: string;
+	tavilyApiKey?: string;
 }
 
 function loadConfig(): Config {
@@ -148,6 +150,33 @@ async function searchExa(query: string, options: { numResults?: number; signal?:
 	return { answer: "", results, provider: "exa" };
 }
 
+async function searchTavily(query: string, options: { numResults?: number; recencyFilter?: string; signal?: AbortSignal }, apiKey: string): Promise<SearchResponse> {
+	const body: any = {
+		api_key: apiKey,
+		query,
+		max_results: options.numResults ?? 10,
+		include_answer: true,
+		...(options.recencyFilter ? { days: options.recencyFilter === "day" ? 1 : options.recencyFilter === "week" ? 7 : options.recencyFilter === "month" ? 30 : 365 } : {}),
+	};
+	const response = await fetch(TAVILY_SEARCH, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(body),
+		signal: options.signal,
+	});
+	if (!response.ok) {
+		const txt = await response.text().catch(() => "");
+		throw new Error(`Tavily ${response.status}: ${txt.slice(0, 200)}`);
+	}
+	const data = await response.json() as any;
+	const results: SearchResult[] = (data.results ?? []).map((r: any) => ({
+		title: r.title ?? r.url,
+		url: r.url,
+		snippet: r.content ?? r.snippet ?? "",
+	}));
+	return { answer: data.answer ?? "", results, provider: "tavily" };
+}
+
 async function fetchHtml(url: string, signal?: AbortSignal): Promise<{ html: string; contentType: string }> {
 	const controller = new AbortController();
 	const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -233,17 +262,20 @@ export default function (pi: ExtensionAPI) {
 			const provider = params.provider ?? config.provider ?? "auto";
 			const perplexityKey = getApiKey("PERPLEXITY_API_KEY", config.perplexityApiKey);
 			const exaKey = getApiKey("EXA_API_KEY", config.exaApiKey);
+			const tavilyKey = getApiKey("TAVILY_API_KEY", config.tavilyApiKey);
 
-			let useProvider: "perplexity" | "exa" | null = null;
+			let useProvider: "perplexity" | "exa" | "tavily" | null = null;
 			if (provider === "perplexity" && perplexityKey) useProvider = "perplexity";
 			else if (provider === "exa" && exaKey) useProvider = "exa";
+			else if (provider === "tavily" && tavilyKey) useProvider = "tavily";
 			else if (provider === "auto") {
-				if (perplexityKey) useProvider = "perplexity";
+				if (tavilyKey) useProvider = "tavily";
+				else if (perplexityKey) useProvider = "perplexity";
 				else if (exaKey) useProvider = "exa";
 			}
 
 			if (!useProvider) {
-				return text("No search provider available. Set PERPLEXITY_API_KEY or EXA_API_KEY env var, or configure ~/.pi/web-search.json.");
+				return text("No search provider available. Set TAVILY_API_KEY, PERPLEXITY_API_KEY, or EXA_API_KEY env var, or configure ~/.pi/web-search.json.");
 			}
 
 			const numResults = Math.min(params.numResults ?? 5, 20);
@@ -255,6 +287,8 @@ export default function (pi: ExtensionAPI) {
 				try {
 					const result = useProvider === "perplexity"
 						? await searchPerplexity(q, { numResults, recencyFilter: params.recencyFilter, signal }, perplexityKey!)
+						: useProvider === "tavily"
+						? await searchTavily(q, { numResults, recencyFilter: params.recencyFilter, signal }, tavilyKey!)
 						: await searchExa(q, { numResults, signal }, exaKey!);
 
 					storedResults.set(`${responseId}:${q}`, { id: responseId, query: q, timestamp: Date.now(), response: result });
