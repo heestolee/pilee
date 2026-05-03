@@ -505,38 +505,21 @@ async function handleRemove(pi: ExtensionAPI, args: string, ctx: ExtensionComman
 	ctx.ui.notify(`✓ ${name} removed`, "info");
 }
 
-async function handleSwitch(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
-	const target = args.trim();
-	if (!target) { ctx.ui.notify("Usage: /wt switch <name> | /wt switch <repo>/<name>", "error"); return; }
-
-	let repoRoot: string;
-	let wtName: string;
-
-	if (target.includes("/")) {
-		// Cross-repo syntax: <repo>/<name>
-		const slashIdx = target.indexOf("/");
-		const repoName = target.slice(0, slashIdx);
-		wtName = target.slice(slashIdx + 1);
-		const reg = loadRegistry();
-		if (!reg[repoName]) {
-			ctx.ui.notify(`Repo "${repoName}" not registered. Available: ${Object.keys(reg).join(", ") || "(none)"}`, "error");
-			return;
+async function getAllWorktrees(pi: ExtensionAPI): Promise<Array<{ name: string; path: string; branch: string; repoName: string }>> {
+	const reg = loadRegistry();
+	const results: Array<{ name: string; path: string; branch: string; repoName: string }> = [];
+	for (const [repoName, repoPath] of Object.entries(reg)) {
+		if (!existsSync(repoPath)) continue;
+		const config = loadConfig(repoPath);
+		for (const w of listExistingWorktrees(config.rootDir)) {
+			results.push({ name: w.name, path: w.path, branch: w.branch, repoName });
 		}
-		repoRoot = reg[repoName];
-	} else {
-		// Current repo
-		const found = await findRepoRoot(pi, ctx.cwd);
-		if (!found) { ctx.ui.notify("Not a git repository (use <repo>/<name> for cross-repo)", "error"); return; }
-		repoRoot = found;
-		wtName = target;
 	}
+	return results;
+}
 
-	const config = loadConfig(repoRoot);
-	const path = join(config.rootDir, wtName);
-	if (!existsSync(path)) { ctx.ui.notify(`Worktree "${wtName}" not found at ${path}`, "error"); return; }
-
-	// Check for existing pi sessions for this worktree
-	const pathEncoded = "--" + path.slice(1).replace(/\//g, "-") + "--";
+async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string, ctx: ExtensionCommandContext) {
+	const pathEncoded = "--" + wtPath.slice(1).replace(/\//g, "-") + "--";
 	const sessionDir = join(homedir(), ".pi", "agent", "sessions", pathEncoded);
 	let sessionFile: string | null = null;
 
@@ -547,7 +530,7 @@ async function handleSwitch(pi: ExtensionAPI, args: string, ctx: ExtensionComman
 		} else if (files.length > 1) {
 			const choice = await ctx.ui.select(`${wtName} 세션 선택:`, files.map(f => f.replace(/\.jsonl$/, "")));
 			if (!choice) return;
-			sessionFile = join(sessionDir, files[files.indexOf(choice + ".jsonl")] ?? files.find(f => f.startsWith(choice))!);
+			sessionFile = join(sessionDir, files.find(f => f.startsWith(choice))!);
 		}
 	}
 
@@ -557,19 +540,60 @@ async function handleSwitch(pi: ExtensionAPI, args: string, ctx: ExtensionComman
 		sessionFile = join(sessionDir, `${Date.now()}_${sessionId}.jsonl`);
 		writeFileSync(sessionFile, JSON.stringify({
 			type: "session", version: 3, id: sessionId,
-			timestamp: new Date().toISOString(), cwd: path,
+			timestamp: new Date().toISOString(), cwd: wtPath,
 		}) + "\n");
 	}
 
 	try {
 		await ctx.switchSession(sessionFile, {
 			withSession: async (newCtx: any) => {
-				newCtx.ui.notify(`✓ ${wtName} (${readMeta(path)?.branch ?? "unknown"})`, "info");
+				newCtx.ui.notify(`✓ ${wtName} (${readMeta(wtPath)?.branch ?? "unknown"})`, "info");
 			},
 		});
 	} catch {
-		ctx.ui.notify(`Switch to: cd ${path}`, "info");
+		ctx.ui.notify(`Switch to: cd ${wtPath}`, "info");
 	}
+}
+
+async function handleSwitch(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
+	const target = args.trim();
+
+	// No argument: show all worktrees picker
+	if (!target) {
+		const all = await getAllWorktrees(pi);
+		if (all.length === 0) { ctx.ui.notify("No worktrees found.", "info"); return; }
+		const options = all.map(w => `${w.name}  (${w.repoName}, ${w.branch})`);
+		const choice = await ctx.ui.select("워크트리 선택:", options);
+		if (!choice) return;
+		const selected = all[options.indexOf(choice)];
+		return switchToWorktree(pi, selected.name, selected.path, ctx);
+	}
+
+	let repoRoot: string;
+	let wtName: string;
+
+	if (target.includes("/")) {
+		const slashIdx = target.indexOf("/");
+		const repoName = target.slice(0, slashIdx);
+		wtName = target.slice(slashIdx + 1);
+		const reg = loadRegistry();
+		if (!reg[repoName]) {
+			ctx.ui.notify(`Repo "${repoName}" not registered. Available: ${Object.keys(reg).join(", ") || "(none)"}`, "error");
+			return;
+		}
+		repoRoot = reg[repoName];
+	} else {
+		const resolved = await resolveRepoRoot(pi, ctx);
+		if (!resolved) return;
+		repoRoot = resolved;
+		wtName = target;
+	}
+
+	const config = loadConfig(repoRoot);
+	const path = join(config.rootDir, wtName);
+	if (!existsSync(path)) { ctx.ui.notify(`Worktree "${wtName}" not found at ${path}`, "error"); return; }
+
+	return switchToWorktree(pi, wtName, path, ctx);
 }
 
 async function handleRepo(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
@@ -1027,6 +1051,13 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("wt", {
 		description: "Git worktree management — create/list/switch/remove parallel workspaces",
 		handler: (args, ctx) => handleWt(pi, args, ctx),
+	});
+
+	pi.registerShortcut("ctrl+w", {
+		description: "Switch worktree",
+		handler: async (ctx) => {
+			ctx.ui.setEditorText("/wt switch");
+		},
 	});
 
 	pi.on("before_agent_start", async (event: any) => {
