@@ -1334,10 +1334,10 @@ async function handleWt(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCon
 			`  ${t.fg("warning", "/wt new")} ${t.fg("borderAccent", "[name] [--repo <name>] [--hotfix|--hotfeature|--from <branch>] [--ticket COM-XXXX]")}`,
 			`  ${t.fg("warning", "/wt switch")} ${t.fg("borderAccent", "<name> | <repo>/<name>  — 워크트리 대시보드")}`,
 			`  ${t.fg("warning", "/wt resume")} ${t.fg("borderAccent", "<conductor-workspace>  — Conductor 워크스페이스 복원")}`,
-			`  ${t.fg("warning", "/wt list")} ${t.fg("borderAccent", "[--all]")}`,
-			`  ${t.fg("warning", "/wt rm")} ${t.fg("borderAccent", "<name> [--force]")}`,
-			`  ${t.fg("warning", "/wt repo")} ${t.fg("borderAccent", "[list|add|rm|rename]")}`,
-			`  ${t.fg("warning", "/wt config")} ${t.fg("borderAccent", "[show|init]")}`,
+			`  ${t.fg("warning", "/wt list")} ${t.fg("borderAccent", "[--all]  \u2014 \uc6cc\ud06c\ud2b8\ub9ac \ubaa9\ub85d")}`,
+			`  ${t.fg("warning", "/wt rm")} ${t.fg("borderAccent", "<name> [--force]  \u2014 \uc6cc\ud06c\ud2b8\ub9ac \uc0ad\uc81c")}`,
+			`  ${t.fg("warning", "/wt repo")} ${t.fg("borderAccent", "[list|add|rm|rename]  \u2014 \ub808\ud3ec \ub4f1\ub85d \uad00\ub9ac")}`,
+			`  ${t.fg("warning", "/wt config")} ${t.fg("borderAccent", "[show|init]  \u2014 \uc124\uc815 \ud655\uc778/\ucd08\uae30\ud654")}`,
 			`  ${t.fg("border", "Ctrl+W — 워크트리 대시보드 단축키")}`,
 		].join("\n"), "info");
 		return;
