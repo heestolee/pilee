@@ -44,6 +44,8 @@ export default function (pi: ExtensionAPI) {
 	let lastOutputAt = 0;
 	let lastAlertAt = 0;
 	let agentRunning = false;
+	let currentTool = "";
+	let currentToolArgs = "";
 
 	function clearWidget(ctx: ExtensionContext) {
 		if (ctx.hasUI) ctx.ui.setWidget(WIDGET_ID, undefined);
@@ -96,8 +98,17 @@ export default function (pi: ExtensionAPI) {
 		lastOutputAt = Date.now();
 	});
 
+	pi.on("tool_execution_start", async (e: any, ctx) => {
+		currentCtx = ctx;
+		currentTool = e.tool ?? e.name ?? "";
+		currentToolArgs = (e.args ?? e.input ?? "").toString().slice(0, 200);
+		lastOutputAt = Date.now();
+	});
+
 	pi.on("tool_execution_end", async (_e, ctx) => {
 		currentCtx = ctx;
+		currentTool = "";
+		currentToolArgs = "";
 		lastOutputAt = Date.now();
 	});
 
