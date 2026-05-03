@@ -298,8 +298,18 @@ async function resolveRepoRoot(pi: ExtensionAPI, ctx: ExtensionCommandContext, r
 		return path;
 	}
 	const repoRoot = await findRepoRoot(pi, ctx.cwd);
-	if (!repoRoot) { ctx.ui.notify("Not a git repository (and no --repo specified)", "error"); return null; }
-	return repoRoot;
+	if (repoRoot) return repoRoot;
+
+	const reg = loadRegistry();
+	const names = Object.keys(reg).filter(n => existsSync(reg[n]));
+	if (names.length === 0) {
+		ctx.ui.notify("Not a git repository and no repos registered. Use /wt repo add <name> <path>", "error");
+		return null;
+	}
+	if (names.length === 1) return reg[names[0]];
+	const choice = await ctx.ui.select("어느 repo에 만들까요?", names);
+	if (!choice) return null;
+	return reg[choice];
 }
 
 async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
