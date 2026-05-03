@@ -140,7 +140,6 @@ export default function (pi: ExtensionAPI) {
 			query: Type.Optional(Type.String({ description: "Single search query." })),
 			queries: Type.Optional(Type.Array(Type.String(), { description: "Multiple queries searched in sequence, each returning its own synthesized answer." })),
 			numResults: Type.Optional(Type.Number({ description: "Results per query (default: 5, max: 20)" })),
-			provider: Type.Optional(Type.Union([Type.Literal("auto"), Type.Literal("perplexity"), Type.Literal("exa")], { description: "Search provider (default: auto)" })),
 			recencyFilter: Type.Optional(Type.Union([Type.Literal("day"), Type.Literal("week"), Type.Literal("month"), Type.Literal("year")])),
 			includeContent: Type.Optional(Type.Boolean({ description: "Fetch full page content for each result" })),
 		}),
