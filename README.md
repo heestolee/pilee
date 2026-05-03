@@ -209,7 +209,7 @@ Ctrl+W                  → 전체 워크트리 오버레이
 | 이름 | 설명 |
 |------|------|
 | **tasks** | 태스크 CRUD + `Ctrl+Shift+T` |
-| **web-access** | Perplexity/Exa 웹 검색 |
+| **web-access** | Tavily 웹 검색 + URL 콘텐츠 추출 |
 | **memory-layer** | 장기 기억 저장/검색 |
 | **backlog** | `/backlog` TUI — 작업 백로그 관리 |
 | **preflight** | 커밋 전 자동 lint/type-check |
