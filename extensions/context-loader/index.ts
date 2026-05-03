@@ -10,11 +10,13 @@ export default function (pi: ExtensionAPI) {
     if (!existsSync(contextPath)) return;
 
     // .context/work/ 아래에서 context.md 찾기
-    const { readdirSync } = await import("node:fs");
+    const { readdirSync, statSync } = await import("node:fs");
     let contextContent = "";
 
     try {
-      const workDirs = readdirSync(contextPath);
+      const workDirs = readdirSync(contextPath).filter(
+        (name) => !name.startsWith(".") && statSync(join(contextPath, name)).isDirectory()
+      );
       for (const dir of workDirs) {
         const contextMd = join(contextPath, dir, "context.md");
         if (existsSync(contextMd)) {
