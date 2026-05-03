@@ -535,14 +535,41 @@ async function handleSwitch(pi: ExtensionAPI, args: string, ctx: ExtensionComman
 	const path = join(config.rootDir, wtName);
 	if (!existsSync(path)) { ctx.ui.notify(`Worktree "${wtName}" not found at ${path}`, "error"); return; }
 
-	if (config.autoOpenInGhostty) {
-		const opened = await openInGhostty(pi, path, config.ghosttyDirection);
-		if (opened) {
-			ctx.ui.notify(`→ ${wtName} opened in Ghostty`, "info");
-			return;
+	// Check for existing pi sessions for this worktree
+	const pathEncoded = "--" + path.slice(1).replace(/\//g, "-") + "--";
+	const sessionDir = join(homedir(), ".pi", "agent", "sessions", pathEncoded);
+	let sessionFile: string | null = null;
+
+	if (existsSync(sessionDir)) {
+		const files = readdirSync(sessionDir).filter(f => f.endsWith(".jsonl")).sort().reverse();
+		if (files.length === 1) {
+			sessionFile = join(sessionDir, files[0]);
+		} else if (files.length > 1) {
+			const choice = await ctx.ui.select(`${wtName} 세션 선택:`, files.map(f => f.replace(/\.jsonl$/, "")));
+			if (!choice) return;
+			sessionFile = join(sessionDir, files[files.indexOf(choice + ".jsonl")] ?? files.find(f => f.startsWith(choice))!);
 		}
 	}
-	ctx.ui.notify(`Switch to: cd ${path}`, "info");
+
+	if (!sessionFile) {
+		const sessionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+		mkdirSync(sessionDir, { recursive: true });
+		sessionFile = join(sessionDir, `${Date.now()}_${sessionId}.jsonl`);
+		writeFileSync(sessionFile, JSON.stringify({
+			type: "session", version: 3, id: sessionId,
+			timestamp: new Date().toISOString(), cwd: path,
+		}) + "\n");
+	}
+
+	try {
+		await ctx.switchSession(sessionFile, {
+			withSession: async (newCtx: any) => {
+				newCtx.ui.notify(`✓ ${wtName} (${readMeta(path)?.branch ?? "unknown"})`, "info");
+			},
+		});
+	} catch {
+		ctx.ui.notify(`Switch to: cd ${path}`, "info");
+	}
 }
 
 async function handleRepo(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
