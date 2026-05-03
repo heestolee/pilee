@@ -122,7 +122,7 @@ function filterByPeriod(entries: LogEntry[], period: Period): LogEntry[] {
 
 function renderOverview(entries: LogEntry[], period: Period, theme: { fg: (c: ThemeColor, t: string) => string }): string[] {
 	const filtered = filterByPeriod(entries, period);
-	if (filtered.length === 0) return [theme.fg("muted", `데이터 없음 (${period})`)];
+	if (filtered.length === 0) return [`데이터 없음 (${period})`];
 
 	const subagentEnds = filtered.filter((e): e is SubagentEndEntry => e.type === "subagent_end");
 	const skillReads = filtered.filter((e): e is SkillReadEntry => e.type === "skill_read");
@@ -137,7 +137,7 @@ function renderOverview(entries: LogEntry[], period: Period, theme: { fg: (c: Th
 	const lines: string[] = [];
 	lines.push(theme.fg("accent", "Subagent"));
 	lines.push(`  총: ${theme.fg("accent", String(totalAgents))} · 성공: ${theme.fg("success", String(doneAgents))} · 실패: ${theme.fg("error", String(errorAgents))}`);
-	lines.push(`  평균 시간: ${theme.fg("muted", formatDuration(avgDuration))}`);
+	lines.push(`  평균 시간: ${formatDuration(avgDuration)}`);
 	lines.push("");
 	lines.push(theme.fg("accent", "Skill"));
 	lines.push(`  총 읽기: ${theme.fg("accent", String(totalSkills))}`);
@@ -152,7 +152,7 @@ function renderOverview(entries: LogEntry[], period: Period, theme: { fg: (c: Th
 		lines.push(theme.fg("accent", "자주 쓴 에이전트:"));
 		const max = topAgents[0][1];
 		for (const [name, n] of topAgents.slice(0, 8)) {
-			lines.push(`  ${name.padEnd(22)} ${theme.fg("dim", bar(n, max, 24))} ${n}`);
+			lines.push(`  ${name.padEnd(22)} ${bar(n, max, 24)} ${n}`);
 		}
 		lines.push("");
 	}
@@ -166,7 +166,7 @@ function renderOverview(entries: LogEntry[], period: Period, theme: { fg: (c: Th
 		lines.push(theme.fg("accent", "자주 읽은 스킬:"));
 		const max = topSkills[0][1];
 		for (const [name, n] of topSkills.slice(0, 8)) {
-			lines.push(`  ${name.padEnd(22)} ${theme.fg("dim", bar(n, max, 24))} ${n}`);
+			lines.push(`  ${name.padEnd(22)} ${bar(n, max, 24)} ${n}`);
 		}
 	}
 
@@ -175,7 +175,7 @@ function renderOverview(entries: LogEntry[], period: Period, theme: { fg: (c: Th
 
 function renderAgents(entries: LogEntry[], period: Period, theme: { fg: (c: ThemeColor, t: string) => string }): string[] {
 	const filtered = filterByPeriod(entries, period).filter((e): e is SubagentEndEntry => e.type === "subagent_end");
-	if (filtered.length === 0) return [theme.fg("muted", `데이터 없음 (${period})`)];
+	if (filtered.length === 0) return [`데이터 없음 (${period})`];
 
 	const stats = new Map<string, { count: number; done: number; error: number; totalMs: number; minMs: number; maxMs: number; retries: number }>();
 	for (const e of filtered) {
@@ -191,7 +191,7 @@ function renderAgents(entries: LogEntry[], period: Period, theme: { fg: (c: Them
 	}
 
 	const lines: string[] = [];
-	lines.push(theme.fg("dim", "에이전트".padEnd(22) + "실행".padStart(6) + "성공".padStart(6) + "실패".padStart(6) + "재시도".padStart(7) + "평균".padStart(10) + "최소".padStart(10) + "최대".padStart(10)));
+	lines.push("에이전트".padEnd(22) + "실행".padStart(6) + "성공".padStart(6) + "실패".padStart(6) + "재시도".padStart(7) + "평균".padStart(10) + "최소".padStart(10) + "최대".padStart(10));
 	for (const [name, s] of [...stats.entries()].sort((a, b) => b[1].count - a[1].count)) {
 		const avg = s.totalMs / s.count;
 		lines.push(
@@ -210,7 +210,7 @@ function renderAgents(entries: LogEntry[], period: Period, theme: { fg: (c: Them
 
 function renderSkills(entries: LogEntry[], period: Period, theme: { fg: (c: ThemeColor, t: string) => string }): string[] {
 	const filtered = filterByPeriod(entries, period).filter((e): e is SkillReadEntry => e.type === "skill_read");
-	if (filtered.length === 0) return [theme.fg("muted", `데이터 없음 (${period})`)];
+	if (filtered.length === 0) return [`데이터 없음 (${period})`];
 
 	const counts = new Map<string, { count: number; lastRead: number }>();
 	for (const e of filtered) {
@@ -221,7 +221,7 @@ function renderSkills(entries: LogEntry[], period: Period, theme: { fg: (c: Them
 	}
 
 	const lines: string[] = [];
-	lines.push(theme.fg("dim", "스킬".padEnd(32) + "읽기".padStart(6) + "마지막".padStart(20)));
+	lines.push("스킬".padEnd(32) + "읽기".padStart(6) + "마지막".padStart(20));
 	for (const [name, s] of [...counts.entries()].sort((a, b) => b[1].count - a[1].count)) {
 		const ago = Date.now() - s.lastRead;
 		const agoStr = ago < 60_000 ? "방금 전"
@@ -231,7 +231,7 @@ function renderSkills(entries: LogEntry[], period: Period, theme: { fg: (c: Them
 		lines.push(
 			name.padEnd(32) +
 			String(s.count).padStart(6) +
-			theme.fg("muted", agoStr.padStart(20)),
+			agoStr.padStart(20),
 		);
 	}
 	return lines;
@@ -254,12 +254,12 @@ async function showOverlay(ctx: ExtensionCommandContext) {
 		(tui, theme, _kb, done) => {
 			const renderTabs = () => {
 				const t = (label: string, t2: Tab, key: string) =>
-					tab === t2 ? theme.fg("accent", theme.bold(`[${key}] ${label}`)) : theme.fg("dim", `[${key}] ${label}`);
+					tab === t2 ? theme.fg("accent", theme.bold(`[${key}] ${label}`)) : `[${key}] ${label}`;
 				return `${t("Overview", "overview", "1")}  ${t("Agents", "agents", "2")}  ${t("Skills", "skills", "3")}`;
 			};
 			const renderPeriod = () => {
 				const p = (label: string, p2: Period, key: string) =>
-					period === p2 ? theme.fg("accent", theme.bold(`[${key}] ${label}`)) : theme.fg("dim", `[${key}] ${label}`);
+					period === p2 ? theme.fg("accent", theme.bold(`[${key}] ${label}`)) : `[${key}] ${label}`;
 				return `Period: ${p("Day", "day", "d")} ${p("Week", "week", "w")} ${p("Month", "month", "m")}`;
 			};
 
@@ -283,8 +283,8 @@ async function showOverlay(ctx: ExtensionCommandContext) {
 						lines.push(truncateToWidth(body[i], w, ""));
 					}
 
-					lines.push(theme.fg("dim", "─".repeat(w)));
-					lines.push(theme.fg("dim", "  ↑↓/jk 스크롤  ·  1/2/3 탭  ·  d/w/m 기간  ·  q/Esc 닫기"));
+					lines.push(theme.fg("accent", "─".repeat(w)));
+					lines.push("  ↑↓/jk 스크롤  ·  1/2/3 탭  ·  d/w/m 기간  ·  q/Esc 닫기");
 					return lines;
 				},
 				handleInput: (data: string) => {

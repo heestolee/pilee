@@ -85,8 +85,8 @@ export default function (pi: ExtensionAPI) {
 							const totalElapsed = timeline[0]?.rawTs && timeline[timeline.length - 1]?.rawTs
 								? elapsed(timeline[0].rawTs, timeline[timeline.length - 1].rawTs)
 								: "?";
-							lines.push(`  ${theme.fg("accent", theme.bold("TIMELINE"))} ${theme.fg("dim", "|")} ${theme.fg("muted", `${total} messages`)} ${theme.fg("dim", "·")} ${theme.fg("muted", `${first} → ${last}`)} ${theme.fg("dim", "·")} ${theme.fg("muted", `total ${totalElapsed}`)}`);
-							lines.push(theme.fg("dim", "  ↑/↓ select · q/Esc close"));
+							lines.push(`  ${theme.fg("accent", theme.bold("TIMELINE"))} ${theme.fg("accent", "|")} ${total} messages ${theme.fg("accent", "·")} ${first} → ${last} ${theme.fg("accent", "·")} total ${totalElapsed}`);
+							lines.push("  ↑/↓ select · q/Esc close");
 
 							// Body
 							if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
@@ -96,13 +96,13 @@ export default function (pi: ExtensionAPI) {
 								const entry = timeline[i];
 								const sel = i === selectedIndex;
 								const cursor = sel ? theme.fg("accent", "▶") : " ";
-								const timeStr = theme.fg("dim", entry.time);
+								const timeStr = entry.time;
 								const elapsedStr = entry.elapsedFromPrev ? theme.fg("warning", ` ${entry.elapsedFromPrev}`) : "";
 								const roleColor: ThemeColor = entry.role === "user" ? "accent" : "success";
 								const roleStr = theme.fg(roleColor, entry.role.padEnd(10));
 								const previewW = Math.max(10, w - 40);
 								const preview = entry.preview.slice(0, previewW);
-								const previewStr = sel ? theme.fg("text", preview) : theme.fg("muted", preview);
+								const previewStr = sel ? theme.fg("text", preview) : preview;
 								lines.push(truncateToWidth(`${cursor} ${timeStr}${elapsedStr} ${roleStr} ${previewStr}`, w, ""));
 							}
 

@@ -180,8 +180,8 @@ export default function (pi: ExtensionAPI) {
 						const lines: string[] = [];
 
 						lines.push(theme.fg("accent", "─".repeat(w)));
-						lines.push(`  ${theme.fg("accent", theme.bold("REPORTS"))} ${theme.fg("dim", "|")} ${theme.fg("muted", `${reports.length} files`)} ${theme.fg("dim", "·")} ${theme.fg("muted", "Enter: open · q/Esc: close")}`);
-						lines.push(theme.fg("dim", "  ↑/↓ select · Enter open"));
+						lines.push(`  ${theme.fg("accent", theme.bold("REPORTS"))} ${theme.fg("accent", "|")} ${reports.length} files ${theme.fg("accent", "·")} Enter: open · q/Esc: close`);
+						lines.push("  ↑/↓ select · Enter open");
 
 						if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
 						if (selectedIndex >= scrollOffset + bodyH) scrollOffset = selectedIndex - bodyH + 1;
@@ -190,8 +190,8 @@ export default function (pi: ExtensionAPI) {
 							const r = reports[i];
 							const sel = i === selectedIndex;
 							const cursor = sel ? theme.fg("accent", "▶") : " ";
-							const timeStr = theme.fg("dim", r.time);
-							const src = r.source === "workspace" ? theme.fg("success", "ws") : theme.fg("muted", "ar");
+							const timeStr = r.time;
+							const src = r.source === "workspace" ? theme.fg("success", "ws") : "ar";
 							const name = sel ? theme.fg("accent", r.name) : theme.fg("text", r.name);
 							const ticket = r.ticket ? theme.fg("warning", ` ${r.ticket}`) : "";
 							lines.push(truncateToWidth(`${cursor} ${src} ${timeStr}${ticket} ${name}`, w, ""));

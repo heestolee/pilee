@@ -381,7 +381,7 @@ function bar(value: number, max: number, width: number): string {
 function renderOverview(logs: RunLog[], period: Period, theme: { fg: (c: ThemeColor, t: string) => string }): string[] {
 	const filtered = filterByPeriod(logs, period);
 	if (filtered.length === 0) {
-		return [theme.fg("muted", `데이터 없음 (${period})`)];
+		return [`데이터 없음 (${period})`];
 	}
 
 	const total = filtered.length;
@@ -392,7 +392,7 @@ function renderOverview(logs: RunLog[], period: Period, theme: { fg: (c: ThemeCo
 	const lines: string[] = [];
 	lines.push(`총 실행: ${theme.fg("accent", String(total))}회`);
 	lines.push(`성공률: ${theme.fg("success", `${Math.round((passed / total) * 100)}%`)} (${passed}/${total})`);
-	lines.push(`평균 시간: ${theme.fg("muted", formatDuration(avgDuration))}`);
+	lines.push(`평균 시간: ${formatDuration(avgDuration)}`);
 	lines.push("");
 
 	// Most run checks
@@ -405,7 +405,7 @@ function renderOverview(logs: RunLog[], period: Period, theme: { fg: (c: ThemeCo
 
 	lines.push(theme.fg("accent", "자주 실행된 체크:"));
 	for (const [name, count] of sortedRun.slice(0, 8)) {
-		lines.push(`  ${name.padEnd(20)} ${theme.fg("dim", bar(count, maxRun, 24))} ${count}`);
+		lines.push(`  ${name.padEnd(20)} ${bar(count, maxRun, 24)} ${count}`);
 	}
 	lines.push("");
 
@@ -448,9 +448,9 @@ function renderChecks(logs: RunLog[], period: Period, theme: { fg: (c: ThemeColo
 	}
 
 	const lines: string[] = [];
-	if (stats.size === 0) return [theme.fg("muted", `데이터 없음`)];
+	if (stats.size === 0) return [`데이터 없음`];
 
-	lines.push(theme.fg("dim", "체크".padEnd(22) + "실행".padStart(6) + "성공".padStart(6) + "실패".padStart(6) + "평균".padStart(10) + "최소".padStart(10) + "최대".padStart(10)));
+	lines.push("체크".padEnd(22) + "실행".padStart(6) + "성공".padStart(6) + "실패".padStart(6) + "평균".padStart(10) + "최소".padStart(10) + "최대".padStart(10));
 	for (const [name, s] of [...stats.entries()].sort((a, b) => b[1].count - a[1].count)) {
 		const avg = s.totalMs / s.count;
 		lines.push(
@@ -485,13 +485,13 @@ function renderFailures(logs: RunLog[], period: Period, theme: { fg: (c: ThemeCo
 	const sorted = [...clusters.values()].sort((a, b) => b.count - a.count);
 
 	const lines: string[] = [];
-	lines.push(theme.fg("dim", `${failures.length}건 실패, ${sorted.length}개 패턴 (period: ${period})`));
+	lines.push(`${failures.length}건 실패, ${sorted.length}개 패턴 (period: ${period})`);
 	lines.push("");
 
 	for (const c of sorted.slice(0, 10)) {
 		lines.push(`${theme.fg("error", `[${c.count}회]`)} ${theme.fg("accent", c.check)}`);
 		for (const s of c.samples) {
-			lines.push(`  ${theme.fg("muted", s.slice(0, 80))}`);
+			lines.push(`  ${s.slice(0, 80)}`);
 		}
 		lines.push("");
 	}
@@ -515,12 +515,12 @@ async function showStatsOverlay(ctx: ExtensionCommandContext) {
 		(tui, theme, _kb, done) => {
 			const renderTabs = () => {
 				const t = (label: string, t2: Tab, key: string) =>
-					tab === t2 ? theme.fg("accent", theme.bold(`[${key}] ${label}`)) : theme.fg("dim", `[${key}] ${label}`);
+					tab === t2 ? theme.fg("accent", theme.bold(`[${key}] ${label}`)) : `[${key}] ${label}`;
 				return `${t("Overview", "overview", "1")}  ${t("Checks", "checks", "2")}  ${t("Failures", "failures", "3")}`;
 			};
 			const renderPeriod = () => {
 				const p = (label: string, p2: Period, key: string) =>
-					period === p2 ? theme.fg("accent", theme.bold(`[${key}] ${label}`)) : theme.fg("dim", `[${key}] ${label}`);
+					period === p2 ? theme.fg("accent", theme.bold(`[${key}] ${label}`)) : `[${key}] ${label}`;
 				return `Period: ${p("Day", "day", "d")} ${p("Week", "week", "w")} ${p("Month", "month", "m")}`;
 			};
 
@@ -544,8 +544,8 @@ async function showStatsOverlay(ctx: ExtensionCommandContext) {
 						lines.push(truncateToWidth(body[i], w, ""));
 					}
 
-					lines.push(theme.fg("dim", "─".repeat(w)));
-					lines.push(theme.fg("dim", "  ↑↓/jk 스크롤  ·  1/2/3 탭  ·  d/w/m 기간  ·  q/Esc 닫기"));
+					lines.push(theme.fg("accent", "─".repeat(w)));
+					lines.push("  ↑↓/jk 스크롤  ·  1/2/3 탭  ·  d/w/m 기간  ·  q/Esc 닫기");
 
 					return lines;
 				},

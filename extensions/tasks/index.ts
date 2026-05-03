@@ -223,7 +223,7 @@ export default function (pi: ExtensionAPI) {
 		const pending = active.filter((t) => t.status === "pending");
 		ctx.ui.setWidget(WIDGET_KEY, (_tui, theme) => {
 			const lines: string[] = [];
-			const header = `${theme.fg("accent", "☐")} Tasks: ${theme.fg("success", String(inProgress.length))} in progress · ${theme.fg("muted", String(pending.length))} pending`;
+			const header = `${theme.fg("accent", "☐")} Tasks: ${theme.fg("success", String(inProgress.length))} in progress · ${String(pending.length)} pending`;
 			lines.push(header);
 			for (const t of inProgress.slice(0, 3)) {
 				lines.push(`  ${theme.fg("warning", "▸")} ${t.activeForm ?? t.subject}`);
@@ -273,14 +273,14 @@ export default function (pi: ExtensionAPI) {
 					lines.push(...new DynamicBorder((s: string) => theme.fg("accent", s)).render(w));
 					lines.push(`  ${theme.bold("KEYBINDINGS")}`);
 					lines.push("");
-					lines.push(`  ${theme.fg("warning", "↑/↓, k/j")}     ${theme.fg("muted", "항목 이동")}`);
-					lines.push(`  ${theme.fg("warning", "Space/Enter")}  ${theme.fg("muted", "상태 토글 (pending→in_progress→completed)")}`);
-					lines.push(`  ${theme.fg("warning", "n")}            ${theme.fg("muted", "새 태스크 추가")}`);
-					lines.push(`  ${theme.fg("warning", "d")}            ${theme.fg("muted", "삭제")}`);
-					lines.push(`  ${theme.fg("warning", ",")}            ${theme.fg("muted", "이 도움말")}`);
-					lines.push(`  ${theme.fg("warning", "q")}            ${theme.fg("muted", "닫기")}`);
+					lines.push(`  ${theme.fg("warning", "↑/↓, k/j")}     항목 이동`);
+					lines.push(`  ${theme.fg("warning", "Space/Enter")}  상태 토글 (pending→in_progress→completed)`);
+					lines.push(`  ${theme.fg("warning", "n")}            새 태스크 추가`);
+					lines.push(`  ${theme.fg("warning", "d")}            삭제`);
+					lines.push(`  ${theme.fg("warning", ",")}            이 도움말`);
+					lines.push(`  ${theme.fg("warning", "q")}            닫기`);
 					lines.push("");
-					lines.push(`  ${theme.fg("dim", "아무 키나 누르면 닫힘")}`);
+					lines.push(`  아무 키나 누르면 닫힘`);
 					lines.push(...new DynamicBorder((s: string) => theme.fg("accent", s)).render(w));
 					return lines;
 				};
@@ -298,32 +298,32 @@ export default function (pi: ExtensionAPI) {
 						lines.push(theme.fg("accent", "─".repeat(w)));
 
 						if (inputMode) {
-							lines.push(`  > ${inputBuffer}${theme.fg("dim", "│")}`);
-							lines.push(theme.fg("dim", "  Enter: 확인 · Esc: 취소"));
+							lines.push(`  > ${inputBuffer}${theme.fg("accent", "│")}`);
+							lines.push("  Enter: 확인 · Esc: 취소");
 							lines.push(theme.fg("accent", "─".repeat(w)));
 							return lines;
 						}
 
 						if (visible.length === 0) {
-							lines.push(theme.fg("muted", "  모든 태스크 완료! 🎉"));
+							lines.push("  모든 태스크 완료! 🎉");
 						} else {
 							for (let i = 0; i < visible.length; i++) {
 								const t = visible[i];
 								const sel = i === selectedIdx;
 								const cursor = sel ? theme.fg("accent", "▶") : " ";
-								const icon = t.status === "in_progress" ? theme.fg("warning", "●") : theme.fg("dim", "○");
+								const icon = t.status === "in_progress" ? theme.fg("warning", "●") : "○";
 								const subject = sel ? theme.fg("accent", t.subject) : t.subject;
-								const meta = t.metadata?.ticket ? theme.fg("dim", ` [${t.metadata.ticket}]`) : "";
+								const meta = t.metadata?.ticket ? ` [${t.metadata.ticket}]` : "";
 								lines.push(truncateToWidth(`${cursor} ${icon} #${t.id} ${subject}${meta}`, w, ""));
 							}
 						}
 
 						if (completed > 0) {
-							lines.push(theme.fg("dim", `  + ${completed} completed`));
+							lines.push(`  + ${completed} completed`);
 						}
 
 						lines.push(theme.fg("accent", "─".repeat(w)));
-						lines.push(theme.fg("dim", "  ↑↓ 이동 · Space 상태 토글 · n 새로 · d 삭제 · q 닫기"));
+						lines.push("  ↑↓ 이동 · Space 상태 토글 · n 새로 · d 삭제 · q 닫기");
 
 						return lines;
 					},
