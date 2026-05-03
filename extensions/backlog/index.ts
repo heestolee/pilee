@@ -72,6 +72,25 @@ function parsePriority(rest: string): { title: string; priority: Priority; note?
 	return { title, priority, note };
 }
 
+// ─── Tasks interop ──────────────────────────────────────────────────────────
+
+function tasksStorePath(ctx: any): string {
+	const sessionId = ctx.sessionManager?.getSessionId?.() ?? "default";
+	const dir = join(ctx.cwd ?? homedir(), ".pi", "tasks");
+	if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+	return join(dir, `tasks-${sessionId}.json`);
+}
+
+function loadTasks(ctx: any): { nextId: number; tasks: any[] } {
+	const p = tasksStorePath(ctx);
+	if (!existsSync(p)) return { nextId: 1, tasks: [] };
+	try { return JSON.parse(readFileSync(p, "utf8")); } catch { return { nextId: 1, tasks: [] }; }
+}
+
+function saveTasks(ctx: any, store: { nextId: number; tasks: any[] }) {
+	writeFileSync(tasksStorePath(ctx), JSON.stringify(store, null, 2));
+}
+
 // ─── Overlay ───────────────────────────────────────────────────────────────
 
 async function showOverlay(ctx: ExtensionCommandContext) {
@@ -107,6 +126,7 @@ async function showOverlay(ctx: ExtensionCommandContext) {
 				lines.push(`  ${theme.fg("warning", "p")}         ${theme.fg("border", "우선순위 변경 (high→medium→low)")}`);
 				lines.push(`  ${theme.fg("warning", "t")}         ${theme.fg("border", "노트 작성/수정")}`);
 				lines.push(`  ${theme.fg("warning", "v")}         ${theme.fg("border", "완료 항목 표시/숨김")}`);
+				lines.push(`  ${theme.fg("warning", "b")}         ${theme.fg("border", "tasks로 이동")}`);
 				lines.push(`  ${theme.fg("warning", ",")}         ${theme.fg("border", "이 도움말")}`);
 				lines.push(`  ${theme.fg("warning", "q/Esc")}     ${theme.fg("border", "닫기")}`);
 				lines.push("");
@@ -158,7 +178,7 @@ async function showOverlay(ctx: ExtensionCommandContext) {
 							}
 							lines.push("");
 							lines.push(theme.fg("accent", "─".repeat(w)));
-							lines.push(`  ${theme.fg("border", "Esc 돌아가기 · e 제목 수정 · t 노트 수정 · p 우선순위 · Space 완료 토글 · d 삭제")}`);
+							lines.push(`  ${theme.fg("border", "Esc 돌아가기 · e 제목 수정 · t 노트 수정 · p 우선순위 · Space 완료 토글 · b tasks로 · d 삭제")}`);
 							return lines;
 						}
 					}
@@ -184,7 +204,7 @@ async function showOverlay(ctx: ExtensionCommandContext) {
 					}
 
 					lines.push(theme.fg("accent", "─".repeat(w)));
-					lines.push(`  ${theme.fg("border", "↑↓ 이동 · Enter 상세 · n 추가 · d 삭제 · Space 완료 토글 · p 우선순위 변경 · t 노트 · v done 표시 · q 닫기")}`);
+					lines.push(`  ${theme.fg("border", "↑↓ 이동 · Enter 상세 · n 추가 · d 삭제 · Space 완료 토글 · p 우선순위 · b tasks로 · v done 표시 · q 닫기")}`);
 					return lines;
 				},
 				handleInput: (data: string) => {
@@ -279,6 +299,25 @@ async function showOverlay(ctx: ExtensionCommandContext) {
 							detailId = null;
 							const newVisible = getVisible();
 							if (selectedIdx >= newVisible.length) selectedIdx = Math.max(0, newVisible.length - 1);
+						} else if (data === "b" && item) {
+							const taskStore = loadTasks(ctx);
+							taskStore.tasks.push({
+								id: String(taskStore.nextId++),
+								subject: item.title,
+								description: item.note ?? "",
+								status: "pending",
+								blocks: [],
+								blockedBy: [],
+								metadata: {},
+								createdAt: Date.now(),
+								updatedAt: Date.now(),
+							});
+							saveTasks(ctx, taskStore);
+							store.items = store.items.filter((i) => i.id !== item.id);
+							save(store);
+							detailId = null;
+							const newVisible = getVisible();
+							if (selectedIdx >= newVisible.length) selectedIdx = Math.max(0, newVisible.length - 1);
 						}
 						(tui as any).requestRender?.();
 						return;
@@ -331,6 +370,27 @@ async function showOverlay(ctx: ExtensionCommandContext) {
 					} else if (data === "v") {
 						showDone = !showDone;
 						selectedIdx = 0;
+					} else if (data === "b") {
+						const item = visible[selectedIdx];
+						if (item) {
+							const taskStore = loadTasks(ctx);
+							taskStore.tasks.push({
+								id: String(taskStore.nextId++),
+								subject: item.title,
+								description: item.note ?? "",
+								status: "pending",
+								blocks: [],
+								blockedBy: [],
+								metadata: {},
+								createdAt: Date.now(),
+								updatedAt: Date.now(),
+							});
+							saveTasks(ctx, taskStore);
+							store.items = store.items.filter((i) => i.id !== item.id);
+							save(store);
+							const newVisible = getVisible();
+							if (selectedIdx >= newVisible.length) selectedIdx = Math.max(0, newVisible.length - 1);
+						}
 					}
 
 					(tui as any).requestRender?.();

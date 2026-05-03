@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionContext, ExtensionCommandContext, ThemeColor } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
@@ -61,6 +62,18 @@ function formatTask(store: TaskStore, t: Task): string {
 	const blocked = blockers.length > 0 ? ` [blocked by: ${blockers.join(", ")}]` : "";
 	const owner = t.owner ? ` (owner: ${t.owner})` : "";
 	return `#${t.id} [${t.status}] ${t.subject}${owner}${blocked}`;
+}
+
+const BACKLOG_FILE = join(homedir(), ".pi", "agent", "state", "backlog.json");
+
+function loadBacklog(): { nextId: number; items: any[] } {
+	if (!existsSync(BACKLOG_FILE)) return { nextId: 1, items: [] };
+	try { return JSON.parse(readFileSync(BACKLOG_FILE, "utf8")); } catch { return { nextId: 1, items: [] }; }
+}
+
+function saveBacklog(store: { nextId: number; items: any[] }) {
+	mkdirSync(dirname(BACKLOG_FILE), { recursive: true });
+	writeFileSync(BACKLOG_FILE, JSON.stringify(store, null, 2));
 }
 
 function text(t: string) {
@@ -261,10 +274,11 @@ export default function (pi: ExtensionAPI) {
 
 		let selectedIdx = 0;
 		let showHelp = false;
+		let showCompleted = false;
 		let inputMode: null | "new" | "edit" = null;
 		let inputBuffer = "";
 
-		const getVisible = () => store.tasks.filter((t) => t.status !== "completed");
+		const getVisible = () => showCompleted ? store.tasks : store.tasks.filter((t) => t.status !== "completed");
 
 		await ctx.ui.custom<void>(
 			(tui, theme, _kb, done) => {
@@ -311,19 +325,19 @@ export default function (pi: ExtensionAPI) {
 								const t = visible[i];
 								const sel = i === selectedIdx;
 								const cursor = sel ? theme.fg("accent", "▶") : " ";
-								const icon = t.status === "in_progress" ? theme.fg("warning", "●") : "○";
-								const subject = sel ? theme.fg("accent", t.subject) : t.subject;
+								const icon = t.status === "completed" ? theme.fg("success", "✓") : t.status === "in_progress" ? theme.fg("warning", "●") : "○";
+								const subject = t.status === "completed" ? theme.fg("dim", t.subject) : sel ? theme.fg("accent", t.subject) : t.subject;
 								const meta = t.metadata?.ticket ? ` [${t.metadata.ticket}]` : "";
 								lines.push(truncateToWidth(`${cursor} ${icon} #${t.id} ${subject}${meta}`, w, ""));
 							}
 						}
 
-						if (completed > 0) {
-							lines.push(`  + ${completed} completed`);
+						if (completed > 0 && !showCompleted) {
+							lines.push(`  + ${completed} completed (v로 표시)`);
 						}
 
 						lines.push(theme.fg("accent", "─".repeat(w)));
-						lines.push(`  ${theme.fg("border", "↑↓ 이동 · Space 상태 토글 · n 새로 · d 삭제 · q 닫기")}`);
+						lines.push(`  ${theme.fg("border", "↑↓ 이동 · Space 상태 토글 · n 새로 · d 삭제 · b backlog · v 완료 표시 · q 닫기")}`);
 
 						return lines;
 					},
@@ -405,6 +419,27 @@ export default function (pi: ExtensionAPI) {
 						} else if (data === "d") {
 							const t = visible[selectedIdx];
 							if (t) {
+								store.tasks = store.tasks.filter((s) => s.id !== t.id);
+								save(ctx, store);
+								updateWidget(ctx);
+								if (selectedIdx >= getVisible().length) selectedIdx = Math.max(0, getVisible().length - 1);
+							}
+						} else if (data === "v") {
+							showCompleted = !showCompleted;
+							selectedIdx = 0;
+						} else if (data === "b") {
+							const t = visible[selectedIdx];
+							if (t) {
+								const bl = loadBacklog();
+								bl.items.push({
+									id: bl.nextId++,
+									title: t.subject,
+									priority: "medium",
+									note: t.description || undefined,
+									status: "open",
+									createdAt: Date.now(),
+								});
+								saveBacklog(bl);
 								store.tasks = store.tasks.filter((s) => s.id !== t.id);
 								save(ctx, store);
 								updateWidget(ctx);
