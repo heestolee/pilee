@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, statSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, statSync, rmSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname, basename } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
@@ -603,6 +603,334 @@ async function handleConfig(_pi: ExtensionAPI, args: string, ctx: ExtensionComma
 	ctx.ui.notify("Usage: /wt config [show|init]", "info");
 }
 
+// ─── Conductor Bridge ───────────────────────────────────────────────────────
+
+const CONDUCTOR_DB = join(homedir(), "Library", "Application Support", "com.conductor.app", "conductor.db");
+
+interface ConductorWorkspace {
+	directoryName: string;
+	branch: string;
+	state: string;
+	prTitle: string | null;
+	repoName: string;
+	activeSessionId: string | null;
+	createdAt: string;
+}
+
+function sanitizeSql(s: string): string {
+	return s.replace(/'/g, "''");
+}
+
+async function queryConductor(pi: ExtensionAPI, sql: string): Promise<string> {
+	if (!existsSync(CONDUCTOR_DB)) return "";
+	const r = await pi.exec("sqlite3", ["-separator", "§", CONDUCTOR_DB, sql]);
+	return r.code === 0 ? (r.stdout?.trim() ?? "") : "";
+}
+
+async function listConductorWorkspaces(pi: ExtensionAPI, repoFilter?: string): Promise<ConductorWorkspace[]> {
+	const where = repoFilter ? ` WHERE r.name='${sanitizeSql(repoFilter)}'` : "";
+	const result = await queryConductor(pi,
+		`SELECT w.directory_name, w.branch, w.state, COALESCE(w.pr_title,''), COALESCE(r.name,''), COALESCE(w.active_session_id,''), w.created_at FROM workspaces w LEFT JOIN repos r ON w.repository_id = r.id${where} ORDER BY w.created_at DESC`
+	);
+	if (!result) return [];
+	return result.split("\n").map(line => {
+		const p = line.split("§");
+		return { directoryName: p[0], branch: p[1], state: p[2], prTitle: p[3] || null, repoName: p[4], activeSessionId: p[5] || null, createdAt: p[6] };
+	});
+}
+
+async function buildResumeContext(pi: ExtensionAPI, ws: ConductorWorkspace, sessionId: string, repoPath: string): Promise<string> {
+	const lines: string[] = [];
+	lines.push(`# Conductor 워크스페이스: ${ws.directoryName}`, "");
+	lines.push("| 항목 | 값 |", "|------|-----|");
+	lines.push(`| Branch | \`${ws.branch}\` |`);
+	lines.push(`| PR | ${ws.prTitle ?? "(없음)"} |`);
+	lines.push(`| 상태 | ${ws.state} |`);
+	lines.push(`| 생성일 | ${ws.createdAt} |`);
+	lines.push(`| Session | \`${sessionId}\` |`, "");
+
+	const rawUsers = await queryConductor(pi,
+		`SELECT content FROM session_messages WHERE session_id='${sanitizeSql(sessionId)}' AND role='user' AND content IS NOT NULL ORDER BY created_at`
+	);
+	if (rawUsers) {
+		const msgs = rawUsers.split("\n").filter(m =>
+			m.length > 15 && !m.startsWith("<system") && !m.startsWith("<local-command")
+			&& !m.startsWith("<command-name>") && !m.startsWith("Base directory for this skill")
+			&& !m.startsWith("Continue from where") && !m.startsWith("[Request interrupted")
+		);
+		if (msgs.length > 0) {
+			lines.push("## 이전 대화 (사용자 요청)", "");
+			for (const m of msgs) lines.push(`- ${m.slice(0, 300).replace(/\n/g, " ")}`);
+			lines.push("");
+		}
+	}
+
+	const baseBranch = loadConfig(repoPath).baseBranch;
+	const log = await pi.exec("git", ["log", "--oneline", "-15", `origin/${baseBranch}..${ws.branch}`], { cwd: repoPath });
+	if (log.code === 0 && log.stdout?.trim()) {
+		lines.push("## 브랜치 커밋", "", "```", log.stdout.trim(), "```", "");
+	}
+
+	const diff = await pi.exec("git", ["diff", "--name-only", `origin/${baseBranch}...${ws.branch}`], { cwd: repoPath });
+	if (diff.code === 0 && diff.stdout?.trim()) {
+		lines.push("## 변경된 파일", "");
+		for (const f of diff.stdout.trim().split("\n")) lines.push(`- ${f}`);
+		lines.push("");
+	}
+
+	lines.push("## 전체 대화 기록", "");
+	lines.push(`JSONL: \`~/.claude/projects/*conductor-workspaces-*${ws.directoryName}/${sessionId}.jsonl\``);
+	return lines.join("\n");
+}
+
+function findConductorJsonl(wsName: string, sessionId: string): string | null {
+	const base = join(homedir(), ".claude", "projects");
+	if (!existsSync(base)) return null;
+	for (const dir of readdirSync(base)) {
+		if (dir.includes("conductor-workspaces") && dir.endsWith(wsName)) {
+			const jsonl = join(base, dir, `${sessionId}.jsonl`);
+			if (existsSync(jsonl)) return jsonl;
+		}
+	}
+	return null;
+}
+
+function convertConductorToPiSession(jsonlPath: string, worktreePath: string): string | null {
+	const raw = readFileSync(jsonlPath, "utf8");
+	const lines = raw.split("\n").filter(Boolean);
+
+	const sessionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+	const entries: string[] = [];
+
+	entries.push(JSON.stringify({
+		type: "session", version: 3, id: sessionId,
+		timestamp: new Date().toISOString(), cwd: worktreePath,
+	}));
+
+	let prevId: string | null = null;
+	let counter = 0;
+
+	for (const line of lines) {
+		let obj: any;
+		try { obj = JSON.parse(line); } catch { continue; }
+
+		if (obj.type === "user") {
+			let text = "";
+			const c = obj.message?.content;
+			if (typeof c === "string") text = c;
+			else if (Array.isArray(c)) text = c.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n");
+			if (!text || text.length < 5 || text.startsWith("<system") || text.startsWith("<local-command")) continue;
+
+			const id = (++counter).toString(16).padStart(8, "0");
+			entries.push(JSON.stringify({
+				type: "message", id, parentId: prevId, timestamp: obj.timestamp ?? new Date().toISOString(),
+				message: { role: "user", content: [{ type: "text", text }], timestamp: Date.now() },
+			}));
+			prevId = id;
+		} else if (obj.type === "assistant" && obj.message?.content) {
+			const content = obj.message.content;
+			if (!Array.isArray(content)) continue;
+			const textBlocks = content.filter((b: any) => b.type === "text" && b.text).map((b: any) => ({ type: "text", text: b.text }));
+			if (textBlocks.length === 0) continue;
+
+			const id = (++counter).toString(16).padStart(8, "0");
+			entries.push(JSON.stringify({
+				type: "message", id, parentId: prevId, timestamp: obj.timestamp ?? new Date().toISOString(),
+				message: {
+					role: "assistant", content: textBlocks,
+					api: "messages", provider: "anthropic",
+					model: obj.message.model ?? "unknown",
+					usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+					stopReason: "stop", timestamp: Date.now(),
+				},
+			}));
+			prevId = id;
+		}
+	}
+
+	if (entries.length <= 1) return null;
+
+	const pathEncoded = "--" + worktreePath.slice(1).replace(/\//g, "-") + "--";
+	const sessionDir = join(homedir(), ".pi", "agent", "sessions", pathEncoded);
+	mkdirSync(sessionDir, { recursive: true });
+	const sessionFile = join(sessionDir, `${Date.now()}_${sessionId}.jsonl`);
+	writeFileSync(sessionFile, entries.join("\n") + "\n");
+	return sessionFile;
+}
+
+interface ConductorSession {
+	id: string;
+	title: string;
+	createdAt: string;
+	model: string;
+}
+
+async function listConductorSessions(pi: ExtensionAPI, wsName: string): Promise<ConductorSession[]> {
+	const result = await queryConductor(pi,
+		`SELECT s.id, COALESCE(s.title,'(untitled)'), substr(s.created_at,1,16), COALESCE(s.model,'') FROM sessions s JOIN workspaces w ON s.workspace_id = w.id WHERE w.directory_name='${sanitizeSql(wsName)}' ORDER BY s.created_at DESC`
+	);
+	if (!result) return [];
+	return result.split("\n").map(line => {
+		const p = line.split("§");
+		return { id: p[0], title: p[1], createdAt: p[2], model: p[3] };
+	});
+}
+
+async function handleResume(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
+	const tokens = tokenize(args);
+
+	if (!tokens[0] || tokens[0] === "--list" || tokens[0] === "list") {
+		const repoFilter = (tokens[0] === "--list" || tokens[0] === "list") ? tokens[1] : undefined;
+		const workspaces = await listConductorWorkspaces(pi, repoFilter);
+		if (workspaces.length === 0) {
+			ctx.ui.notify("No Conductor workspaces found. Is Conductor installed?", "info");
+			return;
+		}
+		const lines = workspaces.slice(0, 40).map(w =>
+			`  ${w.directoryName.padEnd(22)} ${(w.repoName ?? "").padEnd(10)} ${w.state.padEnd(10)} ${w.prTitle?.slice(0, 50) ?? w.branch}`
+		);
+		ctx.ui.notify(["Conductor workspaces:", ...lines].join("\n"), "info");
+		return;
+	}
+
+	const name = tokens[0];
+	let repoFlag: string | undefined;
+	for (let i = 1; i < tokens.length; i++) {
+		if (tokens[i] === "--repo" && i + 1 < tokens.length) repoFlag = tokens[++i];
+	}
+
+	const workspaces = await listConductorWorkspaces(pi);
+	const ws = workspaces.find(w => w.directoryName === name);
+	if (!ws) {
+		ctx.ui.notify(`Conductor workspace "${name}" not found.`, "error");
+		return;
+	}
+
+	const sessionId = ws.activeSessionId ?? undefined;
+
+	const reg = loadRegistry();
+	const repoName = repoFlag ?? ws.repoName;
+	const repoPath = reg[repoName];
+	if (!repoPath) {
+		ctx.ui.notify(`Repo "${repoName}" not registered. Available: ${Object.keys(reg).join(", ") || "(none)"}.\nUse: /wt repo add ${repoName} <path>`, "error");
+		return;
+	}
+
+	const config = loadConfig(repoPath);
+	const worktreePath = join(config.rootDir, name);
+
+	if (existsSync(worktreePath)) {
+		ctx.ui.notify(`✓ "${name}" already exists (${ws.branch})`, "info");
+		return handleSessions(pi, name, ctx, worktreePath);
+	}
+
+	ctx.ui.notify(`Fetching branch ${ws.branch}…`, "info");
+	await pi.exec("git", ["fetch", "origin", ws.branch], { cwd: repoPath });
+
+	// Check if branch is used by another worktree (e.g. old Conductor worktree)
+	const wtList = await pi.exec("git", ["worktree", "list", "--porcelain"], { cwd: repoPath });
+	if (wtList.code === 0 && wtList.stdout) {
+		let conflictPath: string | null = null;
+		let currentWtPath = "";
+		for (const line of wtList.stdout.split("\n")) {
+			if (line.startsWith("worktree ")) currentWtPath = line.slice(9);
+			if (line.startsWith("branch ") && line.slice(7) === `refs/heads/${ws.branch}`) {
+				if (currentWtPath !== repoPath) conflictPath = currentWtPath;
+			}
+		}
+		if (conflictPath) {
+			const ok = await ctx.ui.confirm("Branch conflict",
+				`"${ws.branch}" is checked out at:\n${conflictPath}\n\nRemove old worktree and continue?`);
+			if (!ok) { ctx.ui.notify("Cancelled.", "info"); return; }
+			await pi.exec("git", ["worktree", "remove", "--force", conflictPath], { cwd: repoPath });
+			ctx.ui.notify(`Removed old worktree: ${conflictPath}`, "info");
+		}
+	}
+
+	mkdirSync(config.rootDir, { recursive: true });
+	const localCheck = await pi.exec("git", ["rev-parse", "--verify", ws.branch], { cwd: repoPath });
+	const addArgs = localCheck.code === 0
+		? ["worktree", "add", worktreePath, ws.branch]
+		: ["worktree", "add", "-b", ws.branch, worktreePath, `origin/${ws.branch}`];
+
+	const addR = await pi.exec("git", addArgs, { cwd: repoPath });
+	if (addR.code !== 0) {
+		ctx.ui.notify(`git worktree add failed: ${addR.stderr?.trim().slice(0, 300)}`, "error");
+		return;
+	}
+
+	writeMeta(worktreePath, {
+		name, branch: ws.branch, baseBranch: config.baseBranch,
+		createdAt: Date.now(), note: ws.prTitle ?? "Resumed from Conductor",
+	});
+
+	if (sessionId) {
+		ctx.ui.notify("Extracting session context…", "info");
+		const context = await buildResumeContext(pi, ws, sessionId, repoPath);
+		const contextDir = join(worktreePath, ".pi");
+		mkdirSync(contextDir, { recursive: true });
+		writeFileSync(join(contextDir, "conductor-context.md"), context);
+	}
+
+	ctx.ui.notify(`✓ ${name} resumed (${ws.branch})${ws.prTitle ? ` — ${ws.prTitle}` : ""}`, "info");
+
+	if (config.setupScript) {
+		ctx.ui.notify("Running setup…", "info");
+		const setupR = await pi.exec("bash", ["-lc", config.setupScript], { cwd: worktreePath });
+		if (setupR.code !== 0) ctx.ui.notify(`Setup failed (code ${setupR.code}).`, "warning");
+	}
+
+	return handleSessions(pi, name, ctx, worktreePath);
+}
+
+async function handleSessions(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext, overrideCwd?: string) {
+	const tokens = tokenize(args);
+
+	// Determine workspace name: from arg, or from current worktree meta
+	let wsName = tokens[0];
+	if (!wsName) {
+		const meta = readMeta(ctx.cwd);
+		wsName = meta?.name ?? basename(ctx.cwd);
+	}
+
+	const sessions = await listConductorSessions(pi, wsName);
+	if (sessions.length === 0) {
+		ctx.ui.notify(`No Conductor sessions found for "${wsName}".`, "info");
+		return;
+	}
+
+	const options = sessions.map(s => `${s.title}  (${s.createdAt}, ${s.model})`);
+	const choice = await ctx.ui.select(`Conductor sessions — ${wsName}:`, options);
+	if (!choice) return;
+
+	const idx = options.indexOf(choice);
+	const selected = sessions[idx];
+
+	const jsonlPath = findConductorJsonl(wsName, selected.id);
+	if (!jsonlPath) {
+		ctx.ui.notify(`JSONL not found for session "${selected.title}" (${selected.id}).`, "error");
+		return;
+	}
+
+	ctx.ui.notify(`Converting "${selected.title}"…`, "info");
+	const resolvedCwd = overrideCwd ?? ctx.cwd;
+	const sessionFile = convertConductorToPiSession(jsonlPath, resolvedCwd);
+	if (!sessionFile) {
+		ctx.ui.notify("Conversion failed (no messages found).", "error");
+		return;
+	}
+
+	try {
+		await (ctx as any).switchSession(sessionFile, {
+			withSession: async (newCtx: any) => {
+				newCtx.ui.notify(`✓ Loaded: ${selected.title}`, "info");
+			},
+		});
+	} catch {
+		ctx.ui.notify(`✓ Session saved. Use /resume to load it.`, "info");
+	}
+}
+
 // ─── Subcommand dispatch ───────────────────────────────────────────────────
 
 async function handleWt(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
@@ -611,6 +939,9 @@ async function handleWt(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCon
 		ctx.ui.notify([
 			"Usage:",
 			"  /wt new [name] [--repo <name>] [--hotfix|--hotfeature|--from <branch>] [--ticket COM-XXXX] [--note \"...\"]",
+			"  /wt resume <conductor-workspace> [--repo <name>]",
+			"  /wt resume --list [repo]",
+			"  /wt sessions [workspace]  — Conductor 대화 세션 선택 모달",
 			"  /wt list [--all]",
 			"  /wt switch <name> | <repo>/<name>",
 			"  /wt rm <name> [--force]",
@@ -631,6 +962,8 @@ async function handleWt(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCon
 		case "switch": case "sw": return handleSwitch(pi, rest, ctx);
 		case "repo": return handleRepo(pi, rest, ctx);
 		case "config": return handleConfig(pi, rest, ctx);
+		case "resume": return handleResume(pi, rest, ctx);
+		case "sessions": case "ss": return handleSessions(pi, rest, ctx);
 		default:
 			ctx.ui.notify(`Unknown subcommand: ${sub}. Try /wt for help.`, "error");
 	}
@@ -642,5 +975,18 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("wt", {
 		description: "Git worktree management — create/list/switch/remove parallel workspaces",
 		handler: (args, ctx) => handleWt(pi, args, ctx),
+	});
+
+	pi.on("before_agent_start", async (event: any) => {
+		const cwd: string = event.systemPromptOptions?.cwd ?? process.cwd();
+		const contextFile = join(cwd, ".pi", "conductor-context.md");
+		if (!existsSync(contextFile)) return {};
+		try {
+			const content = readFileSync(contextFile, "utf8");
+			renameSync(contextFile, contextFile.replace(".md", ".loaded.md"));
+			return {
+				message: { customType: "conductor-resume", content: `## 이전 Conductor 세션 컨텍스트\n\n${content}`, display: true },
+			};
+		} catch { return {}; }
 	});
 }
