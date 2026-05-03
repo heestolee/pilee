@@ -326,7 +326,7 @@ export default function (pi: ExtensionAPI) {
 								const sel = i === selectedIdx;
 								const cursor = sel ? theme.fg("accent", "▶") : " ";
 								const icon = t.status === "completed" ? theme.fg("success", "✓") : t.status === "in_progress" ? theme.fg("warning", "●") : "○";
-								const subject = t.status === "completed" ? theme.fg("dim", t.subject) : sel ? theme.fg("accent", t.subject) : t.subject;
+								const subject = t.status === "completed" ? theme.fg("border", t.subject) : sel ? theme.fg("accent", t.subject) : t.subject;
 								const meta = t.metadata?.ticket ? ` [${t.metadata.ticket}]` : "";
 								lines.push(truncateToWidth(`${cursor} ${icon} #${t.id} ${subject}${meta}`, w, ""));
 							}
