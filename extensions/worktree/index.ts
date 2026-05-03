@@ -143,7 +143,7 @@ function pickName(scheme: WorktreeConfig["namingScheme"], existing: Set<string>)
 
 // ─── Metadata ──────────────────────────────────────────────────────────────
 
-type WorktreeStatus = "active" | "done" | "archived";
+type WorktreeStatus = "backlog" | "active" | "done" | "archived";
 
 interface WorktreeMeta {
 	name: string;
@@ -578,11 +578,28 @@ async function loadDashboardWorktrees(pi: ExtensionAPI): Promise<DashboardWorktr
 }
 
 function statusIcon(s: WorktreeStatus): string {
-	return s === "active" ? "●" : s === "done" ? "✓" : "○";
+	switch (s) {
+		case "backlog": return "○";
+		case "active": return "●";
+		case "done": return "✓";
+		case "archived": return "○";
+	}
 }
 
 function statusColor(s: WorktreeStatus): ThemeColor {
-	return s === "active" ? "success" : s === "done" ? "accent" : "dim";
+	switch (s) {
+		case "backlog": return "muted";
+		case "active": return "success";
+		case "done": return "accent";
+		case "archived": return "dim";
+	}
+}
+
+const MAIN_STATUSES: WorktreeStatus[] = ["backlog", "active", "done"];
+function cycleStatus(current: WorktreeStatus): WorktreeStatus {
+	const idx = MAIN_STATUSES.indexOf(current);
+	if (idx === -1) return "active";
+	return MAIN_STATUSES[(idx + 1) % MAIN_STATUSES.length];
 }
 
 function gitStatusStr(gs: { changes: number; ahead: number; behind: number } | null | undefined, theme: any): string {
@@ -595,10 +612,12 @@ function gitStatusStr(gs: { changes: number; ahead: number; behind: number } | n
 	return parts.join(" ");
 }
 
+type DashboardTab = "main" | "archive";
+
 async function showDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<DashboardWorktree | null> {
 	let worktrees = await loadDashboardWorktrees(pi);
 	let selectedIdx = 0;
-	let showArchived = false;
+	let currentTab: DashboardTab = "main";
 	let showHelp = false;
 	let filterMode = false;
 	let filterBuffer = "";
@@ -606,7 +625,9 @@ async function showDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Pr
 	let inputBuffer = "";
 
 	const getVisible = () => {
-		let items = showArchived ? worktrees : worktrees.filter(w => w.status !== "archived");
+		let items = currentTab === "main"
+			? worktrees.filter(w => w.status !== "archived")
+			: worktrees.filter(w => w.status === "archived");
 		if (filterBuffer) {
 			const q = filterBuffer.toLowerCase();
 			items = items.filter(w =>
@@ -616,8 +637,11 @@ async function showDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Pr
 				(w.meta?.tags ?? []).some(t => t.toLowerCase().includes(q))
 			);
 		}
-		const order: Record<WorktreeStatus, number> = { active: 0, done: 1, archived: 2 };
-		return [...items].sort((a, b) => order[a.status] - order[b.status] || (b.meta?.createdAt ?? 0) - (a.meta?.createdAt ?? 0));
+		if (currentTab === "main") {
+			const order: Record<WorktreeStatus, number> = { active: 0, backlog: 1, done: 2, archived: 3 };
+			return [...items].sort((a, b) => order[a.status] - order[b.status] || (b.meta?.createdAt ?? 0) - (a.meta?.createdAt ?? 0));
+		}
+		return [...items].sort((a, b) => (b.meta?.doneAt ?? b.meta?.createdAt ?? 0) - (a.meta?.doneAt ?? a.meta?.createdAt ?? 0));
 	};
 
 	return ctx.ui.custom<DashboardWorktree | null>(
@@ -629,13 +653,13 @@ async function showDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Pr
 				lines.push("");
 				lines.push(`  ${theme.fg("warning", "↑/↓, k/j")}  ${theme.fg("muted", "항목 이동")}`);
 				lines.push(`  ${theme.fg("warning", "Enter")}     ${theme.fg("muted", "워크트리 전환")}`);
-				lines.push(`  ${theme.fg("warning", "Space")}     ${theme.fg("muted", "active ↔ done 토글")}`);
-				lines.push(`  ${theme.fg("warning", "a")}         ${theme.fg("muted", "아카이브 토글")}`);
+				lines.push(`  ${theme.fg("warning", "Tab")}       ${theme.fg("muted", "메인 ↔ 아카이브 탭 전환")}`);
+				lines.push(`  ${theme.fg("warning", "Space")}     ${theme.fg("muted", "상태 순환 (backlog → active → done)")}`);
+				lines.push(`  ${theme.fg("warning", "a")}         ${theme.fg("muted", "아카이브 ↔ 메인 이동")}`);
 				lines.push(`  ${theme.fg("warning", "t")}         ${theme.fg("muted", "태그 편집")}`);
 				lines.push(`  ${theme.fg("warning", "e")}         ${theme.fg("muted", "노트 편집")}`);
 				lines.push(`  ${theme.fg("warning", "/")}         ${theme.fg("muted", "필터 (이름/브랜치/태그)")}`);
-				lines.push(`  ${theme.fg("warning", "v")}         ${theme.fg("muted", "아카이브 표시/숨김")}`);
-				lines.push(`  ${theme.fg("warning", "n")}         ${theme.fg("muted", "새 워크트리 (이름 입력)")}`);
+				lines.push(`  ${theme.fg("warning", "n")}         ${theme.fg("muted", "새 워크트리")}`);
 				lines.push(`  ${theme.fg("warning", "d")}         ${theme.fg("muted", "삭제")}`);
 				lines.push(`  ${theme.fg("warning", ",")}         ${theme.fg("muted", "이 도움말")}`);
 				lines.push(`  ${theme.fg("warning", "q/Esc")}     ${theme.fg("muted", "닫기")}`);
@@ -649,16 +673,33 @@ async function showDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Pr
 				render: (w: number) => {
 					if (showHelp) return renderHelp(w);
 					const visible = getVisible();
+					const backlogCount = worktrees.filter(wt => wt.status === "backlog").length;
 					const activeCount = worktrees.filter(wt => wt.status === "active").length;
 					const doneCount = worktrees.filter(wt => wt.status === "done").length;
 					const archivedCount = worktrees.filter(wt => wt.status === "archived").length;
+					const mainCount = backlogCount + activeCount + doneCount;
 
 					const lines: string[] = [];
 					lines.push(theme.fg("accent", "─".repeat(w)));
-					let header = `  ${theme.bold("Worktrees")}  ${theme.fg("success", `${activeCount} active`)}`;
-					if (doneCount > 0) header += ` · ${theme.fg("accent", `${doneCount} done`)}`;
-					if (archivedCount > 0) header += ` · ${theme.fg("dim", `${archivedCount} archived`)}`;
-					lines.push(header);
+
+					// Tab bar
+					const mainTab = currentTab === "main"
+						? theme.fg("accent", theme.bold(`● Worktrees (${mainCount})`))
+						: theme.fg("dim", `  Worktrees (${mainCount})`);
+					const archiveTab = currentTab === "archive"
+						? theme.fg("accent", theme.bold(`● Archive (${archivedCount})`))
+						: theme.fg("dim", `  Archive (${archivedCount})`);
+					lines.push(`  ${mainTab}    ${archiveTab}    ${theme.fg("dim", "Tab 전환")}`);
+					lines.push(theme.fg("accent", "─".repeat(w)));
+
+					// Stats for main tab
+					if (currentTab === "main") {
+						const stats: string[] = [];
+						if (activeCount > 0) stats.push(theme.fg("success", `${activeCount} active`));
+						if (backlogCount > 0) stats.push(theme.fg("muted", `${backlogCount} backlog`));
+						if (doneCount > 0) stats.push(theme.fg("accent", `${doneCount} done`));
+						if (stats.length > 0) lines.push(`  ${stats.join(" · ")}`);
+					}
 					lines.push(theme.fg("accent", "─".repeat(w)));
 
 					if (filterMode || filterBuffer) {
@@ -687,8 +728,8 @@ async function showDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Pr
 						let lastStatus: WorktreeStatus | null = null;
 						for (let i = scrollOffset; i < Math.min(visible.length, scrollOffset + visibleHeight); i++) {
 							const wt = visible[i];
-							if (wt.status !== lastStatus) {
-								const label = wt.status === "active" ? "ACTIVE" : wt.status === "done" ? "DONE" : "ARCHIVED";
+							if (currentTab === "main" && wt.status !== lastStatus) {
+								const label = wt.status === "active" ? "ACTIVE" : wt.status === "backlog" ? "BACKLOG" : wt.status === "done" ? "DONE" : "ARCHIVED";
 								if (lastStatus !== null) lines.push("");
 								lines.push(`  ${theme.fg(statusColor(wt.status), theme.bold(label))}`);
 								lastStatus = wt.status;
@@ -709,7 +750,10 @@ async function showDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Pr
 					}
 
 					lines.push(theme.fg("accent", "─".repeat(w)));
-					lines.push(theme.fg("dim", "  ↑↓ 이동 · Enter 전환 · Space done · a archive · t 태그 · / 필터 · n 새로 · d 삭제 · , 도움말 · q 닫기"));
+					const hint = currentTab === "main"
+						? "  ↑↓ 이동 · Enter 전환 · Tab 아카이브 · Space 상태순환 · a 아카이브로 · t 태그 · / 필터 · n 새로 · , help"
+						: "  ↑↓ 이동 · Enter 전환 · Tab 메인 · a 메인으로 복관 · d 삭제 · / 필터 · , help";
+					lines.push(theme.fg("dim", hint));
 					return lines;
 				},
 
@@ -761,22 +805,33 @@ async function showDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Pr
 						return;
 					}
 
-					// Space: active ↔ done
-					else if (data === " ") {
+					// Tab: switch between main and archive
+					else if (data === "\t" || matchesKey(data, Key.tab)) {
+						currentTab = currentTab === "main" ? "archive" : "main";
+						selectedIdx = 0;
+						filterBuffer = "";
+					}
+
+					// Space: cycle status (backlog → active → done) — main tab only
+					else if (data === " " && currentTab === "main") {
 						const wt = visible[selectedIdx];
 						if (wt?.meta) {
-							wt.meta.status = wt.status === "done" ? "active" : "done";
+							wt.meta.status = cycleStatus(wt.status);
 							wt.meta.doneAt = wt.meta.status === "done" ? Date.now() : undefined;
 							wt.status = wt.meta.status;
 							writeMeta(wt.path, wt.meta);
 						}
 					}
 
-					// a: archive toggle
+					// a: archive (main→archive) or restore (archive→main)
 					else if (data === "a") {
 						const wt = visible[selectedIdx];
 						if (wt?.meta) {
-							wt.meta.status = wt.status === "archived" ? "active" : "archived";
+							if (currentTab === "main") {
+								wt.meta.status = "archived";
+							} else {
+								wt.meta.status = "active";
+							}
 							wt.status = wt.meta.status;
 							writeMeta(wt.path, wt.meta);
 							const newVisible = getVisible();
@@ -798,9 +853,6 @@ async function showDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Pr
 
 					// /: filter
 					else if (data === "/") { filterMode = true; filterBuffer = ""; }
-
-					// v: toggle archived visibility
-					else if (data === "v") { showArchived = !showArchived; selectedIdx = 0; }
 
 					// ,: help
 					else if (matchesKey(data, ",")) { showHelp = true; }
