@@ -14,7 +14,8 @@
     "promptBorder": "#888888",
     "promptBorderShimmer": "#a6a6a6",
     "inactive": "#999999",
-    "subtle": "#505050",
+    "subtle": "#707070",
+    "questionYellow": "#e5c07b",
     "success": "#4eba65",
     "error": "#ff6b80",
     "warning": "#ffc107",
@@ -33,7 +34,7 @@
     "briefYou": "#7ab4e8"
   },
   "colors": {
-    "accent": "claude",
+    "accent": "questionYellow",
     "border": "promptBorder",
     "borderAccent": "promptBorderShimmer",
     "borderMuted": "subtle",
