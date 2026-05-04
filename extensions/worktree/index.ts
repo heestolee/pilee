@@ -1363,19 +1363,28 @@ function findConductorJsonl(wsName: string, sessionId: string): string | null {
 	return null;
 }
 
-function convertConductorToPiSession(jsonlPath: string, worktreePath: string): string | null {
+function convertConductorToPiSession(jsonlPath: string, worktreePath: string, title?: string): string | null {
 	const raw = readFileSync(jsonlPath, "utf8");
 	const lines = raw.split("\n").filter(Boolean);
 
 	const sessionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 	const entries: string[] = [];
+	const nowIso = new Date().toISOString();
+	const titleText = normalizeSessionText(title ?? "");
+	const normalizedTitle = titleText && !["untitled", "(untitled)"].includes(titleText.toLowerCase()) ? titleText : "";
 
 	entries.push(JSON.stringify({
 		type: "session", version: 3, id: sessionId,
-		timestamp: new Date().toISOString(), cwd: worktreePath,
+		timestamp: nowIso, cwd: worktreePath,
 	}));
+	if (normalizedTitle) {
+		entries.push(JSON.stringify({
+			type: "session_info", id: "00000000", parentId: null,
+			timestamp: nowIso, name: normalizedTitle,
+		}));
+	}
 
-	let prevId: string | null = null;
+	let prevId: string | null = normalizedTitle ? "00000000" : null;
 	let counter = 0;
 
 	for (const line of lines) {
@@ -1416,7 +1425,7 @@ function convertConductorToPiSession(jsonlPath: string, worktreePath: string): s
 		}
 	}
 
-	if (entries.length <= 1) return null;
+	if (counter === 0) return null;
 
 	const pathEncoded = "--" + worktreePath.slice(1).replace(/\//g, "-") + "--";
 	const sessionDir = join(homedir(), ".pi", "agent", "sessions", pathEncoded);
@@ -1582,7 +1591,7 @@ async function handleSessions(pi: ExtensionAPI, args: string, ctx: ExtensionComm
 
 	ctx.ui.notify(`Converting "${selected.title}"…`, "info");
 	const resolvedCwd = overrideCwd ?? ctx.cwd;
-	const sessionFile = convertConductorToPiSession(jsonlPath, resolvedCwd);
+	const sessionFile = convertConductorToPiSession(jsonlPath, resolvedCwd, selected.title);
 	if (!sessionFile) {
 		ctx.ui.notify("Conversion failed (no messages found).", "error");
 		return;
