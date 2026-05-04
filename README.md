@@ -267,19 +267,19 @@ Ctrl+W                  → 전체 워크트리 오버레이
 
 | 에이전트 | 심볼 | 모델 | 역할 |
 |---------|------|------|------|
-| **worker** | `>>` (기본) | claude-sonnet-4-6 | 범용 구현/수정 |
-| **finder** | `>>/` | claude-sonnet-4-6 | 파일/코드 탐색 (read/grep/find only) |
-| **searcher** | `>>?` | claude-sonnet-4-6 | 웹 리서치/문서 조사 |
-| **planner** | `>>#` | claude-opus-4-7 (thinking:high) | 구현 계획 설계 |
-| **challenger** | `>>!` | claude-sonnet-4-6 | 계획/코드 검증, 구멍 찾기 |
-| **browser** | `>>@` | claude-sonnet-4-6 | playwright E2E, UI 확인 |
+| **worker** | `>>` (기본) | openai-codex/gpt-5.5 | 범용 구현/수정 |
+| **finder** | `>>/` | openai-codex/gpt-5.5 | 파일/코드 탐색 (read/grep/find only) |
+| **searcher** | `>>?` | openai-codex/gpt-5.5 | 웹 리서치/문서 조사 |
+| **planner** | `>>#` | openai-codex/gpt-5.5 (thinking:high) | 구현 계획 설계 |
+| **challenger** | `>>!` | openai-codex/gpt-5.5 | 계획/코드 검증, 구멍 찾기 |
+| **browser** | `>>@` | openai-codex/gpt-5.5 | playwright E2E, UI 확인 |
 
 ### 리뷰 (`/stress-interview`)
 
 | 에이전트 | 관점 |
 |---------|------|
-| **verifier** | 구현이 요구사항을 충족하는가 |
-| **reviewer** | 코드 품질, 패턴, 유지보수성 |
+| **verifier** | 구현이 요구사항을 충족하는가 (openai-codex/gpt-5.5) |
+| **reviewer** | 코드 품질, 패턴, 유지보수성 (openai-codex/gpt-5.5) |
 
 ---
 
