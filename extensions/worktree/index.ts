@@ -616,9 +616,25 @@ function isPromptPrefix(shorter: string[], longer: string[]): boolean {
 	return true;
 }
 
+function sessionPromptKey(prompts: string[]): string {
+	return prompts.join("\u0000");
+}
+
 function dedupeSessionChoices(choices: SessionChoiceInfo[]): SessionChoiceInfo[] {
+	const firstIndexByExactPrompts = new Map<string, number>();
+	choices.forEach((choice, index) => {
+		if (choice.prompts.length === 0) return;
+		const key = sessionPromptKey(choice.prompts);
+		if (!firstIndexByExactPrompts.has(key)) firstIndexByExactPrompts.set(key, index);
+	});
+
 	return choices.filter((choice, index) => {
 		if (choice.prompts.length === 0) return true;
+
+		// Same conversation snapshot saved multiple times: keep the newest one.
+		if (firstIndexByExactPrompts.get(sessionPromptKey(choice.prompts)) !== index) return false;
+
+		// Older checkpoint of a longer conversation: hide the prefix snapshot.
 		return !choices.some((other, otherIndex) => {
 			if (index === otherIndex) return false;
 			if (other.prompts.length <= choice.prompts.length) return false;
