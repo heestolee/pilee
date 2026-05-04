@@ -29,6 +29,12 @@
 
 물어바야 할 상황에서만 물을 것. 매 작업마다 의례적으로 묻지 않는다.
 
+## pilee 변경 배포 규칙
+
+pilee 레포에 변경이 생기면 **명시적 푸시 보류 지시가 없는 한 반드시 push**한다.
+- 적용 흐름: push → (대상 머신에서) `pi update` → pi 재시작
+- `pi update` = git pull + npm install. 재시작은 별도.
+
 ## 기록 규칙
 
 pilee에 변경이 있는 세션이 끝나기 전, `docs/pilee-history.md`에 해당 세션의 작업 내용을 추가할 것.
