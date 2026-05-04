@@ -876,6 +876,118 @@ async function showDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Pr
 	);
 }
 
+async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
+	const parsed = parseNewArgs(args);
+	const repoRoot = await resolveRepoRoot(pi, ctx, parsed.repo);
+	if (!repoRoot) return;
+
+	const { isNew: justRegistered } = autoRegister(repoRoot);
+	if (justRegistered) ctx.ui.notify(`Registered repo "${basename(repoRoot)}"`, "info");
+
+	const config = loadConfig(repoRoot);
+
+	let baseBranch: string;
+	if (parsed.from) baseBranch = parsed.from;
+	else if (parsed.hotfix || parsed.hotfeature) baseBranch = config.productionBranch;
+	else baseBranch = config.baseBranch;
+
+	let prefix: string;
+	if (parsed.hotfix) prefix = "hotfix";
+	else if (parsed.hotfeature) prefix = "hotfeature";
+	else prefix = config.branchPrefix;
+
+	mkdirSync(config.rootDir, { recursive: true });
+	const existing = new Set(listExistingWorktrees(config.rootDir).map((w) => w.name));
+	const name = parsed.name ?? pickName(config.namingScheme, existing);
+
+	if (existing.has(name)) {
+		ctx.ui.notify(`Worktree "${name}" already exists at ${config.rootDir}`, "error");
+		return;
+	}
+
+	const worktreePath = join(config.rootDir, name);
+	const branchName = parsed.branch
+		? parsed.branch
+		: parsed.ticket
+			? `${prefix}/${parsed.ticket}/${name}`
+			: `${prefix}/${name}`;
+
+	// Read context from --context-file if provided
+	let contextContent: string | null = null;
+	const contextFileMatch = args.match(/--context-file\s+(\S+)/);
+	if (contextFileMatch) {
+		const contextFilePath = contextFileMatch[1];
+		if (existsSync(contextFilePath)) {
+			contextContent = readFileSync(contextFilePath, "utf8");
+		} else {
+			ctx.ui.notify(`Context file not found: ${contextFilePath}`, "error");
+			return;
+		}
+	}
+
+	ctx.ui.notify(`Forking into "${name}" from origin/${baseBranch}…`, "info");
+
+	const fetchR = await pi.exec("git", ["fetch", "origin", baseBranch], { cwd: repoRoot });
+	if (fetchR.code !== 0) {
+		ctx.ui.notify(`git fetch failed: ${fetchR.stderr?.trim().slice(0, 200) ?? "unknown error"}`, "error");
+		return;
+	}
+
+	const addR = await pi.exec("git", ["worktree", "add", worktreePath, "-b", branchName, `origin/${baseBranch}`], { cwd: repoRoot });
+	if (addR.code !== 0) {
+		ctx.ui.notify(`git worktree add failed: ${addR.stderr?.trim().slice(0, 200)}`, "error");
+		return;
+	}
+
+	writeMeta(worktreePath, {
+		name,
+		branch: branchName,
+		baseBranch,
+		createdAt: Date.now(),
+		ticket: parsed.ticket,
+		note: parsed.note,
+	});
+
+	if (contextContent) {
+		const contextDir = join(worktreePath, ".pi");
+		mkdirSync(contextDir, { recursive: true });
+		writeFileSync(join(contextDir, "conductor-context.md"), contextContent);
+		ctx.ui.notify(`✓ Context written (${contextContent.length} chars)`, "info");
+	}
+
+	ctx.ui.notify(`✓ ${name} forked (${branchName})`, "info");
+
+	if (config.setupScript) {
+		ctx.ui.notify(`Running setup: ${config.setupScript}…`, "info");
+		const setupR = await pi.exec("bash", ["-lc", config.setupScript], { cwd: worktreePath });
+		if (setupR.code !== 0) {
+			ctx.ui.notify(`Setup script failed (code ${setupR.code}). Worktree created but setup skipped.`, "warning");
+		} else {
+			ctx.ui.notify(`✓ Setup complete`, "info");
+		}
+	}
+
+	const sessionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+	const pathEncoded = "--" + worktreePath.slice(1).replace(/\//g, "-") + "--";
+	const sessionDir = join(homedir(), ".pi", "agent", "sessions", pathEncoded);
+	mkdirSync(sessionDir, { recursive: true });
+	const sessionFile = join(sessionDir, `${Date.now()}_${sessionId}.jsonl`);
+	writeFileSync(sessionFile, JSON.stringify({
+		type: "session", version: 3, id: sessionId,
+		timestamp: new Date().toISOString(), cwd: worktreePath,
+	}) + "\n");
+
+	try {
+		await ctx.switchSession(sessionFile, {
+			withSession: async (newCtx: any) => {
+				newCtx.ui.notify(`✓ ${name} ready (${branchName})${contextContent ? " — context loaded" : ""}`, "info");
+			},
+		});
+	} catch {
+		ctx.ui.notify(`✓ Created. cwd: ${worktreePath}`, "info");
+	}
+}
+
 async function handleSwitch(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
 	const target = args.trim();
 
@@ -1333,6 +1445,7 @@ async function handleWt(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCon
 		ctx.ui.notify([
 			t.fg("accent", "Usage:"),
 			`  ${t.fg("warning", "/wt new")} ${t.fg("borderAccent", "[name] [--repo <name>] [--hotfix|--hotfeature|--from <branch>] [--ticket COM-XXXX]")}`,
+			`  ${t.fg("warning", "/wt fork")} ${t.fg("borderAccent", "[name] [--context-file <path>] [--repo <name>]  \u2014 \uB9E5\uB77D \uD3EC\uD568 \uC6CC\uD06C\uD2B8\uB9AC \uC0DD\uC131")}`,
 			`  ${t.fg("warning", "/wt switch")} ${t.fg("borderAccent", "<name> | <repo>/<name>  — 워크트리 대시보드")}`,
 			`  ${t.fg("warning", "/wt resume")} ${t.fg("borderAccent", "<conductor-workspace>  — Conductor 워크스페이스 복원")}`,
 			`  ${t.fg("warning", "/wt list")} ${t.fg("borderAccent", "[--all]  \u2014 \uc6cc\ud06c\ud2b8\ub9ac \ubaa9\ub85d")}`,
@@ -1350,6 +1463,7 @@ async function handleWt(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCon
 
 	switch (sub) {
 		case "new": return handleNew(pi, rest, ctx);
+		case "fork": return handleFork(pi, rest, ctx);
 		case "list": case "ls": return handleList(pi, rest, ctx);
 		case "rm": case "remove": return handleRemove(pi, rest, ctx);
 		case "switch": case "sw": return handleSwitch(pi, rest, ctx);
@@ -1516,6 +1630,103 @@ export default function (pi: ExtensionAPI) {
 			return {
 				content: [{ type: "text", text: `✓ Switching to worktree "${params.name}" (${target.branch}). Session switch queued.` }],
 				details: { name: target.name, branch: target.branch, path: target.path },
+			};
+		},
+	});
+
+	pi.registerTool({
+		name: "worktree_fork",
+		label: "Fork Worktree",
+		description: "Create a new worktree with current session context carried over. Use when investigation/planning is done in the current session and you want to hand off to a new implementation session.",
+		promptSnippet: "Fork current session into a new worktree, carrying over investigation context and conversation summary.",
+		promptGuidelines: [
+			"Use worktree_fork instead of worktree_create when you have valuable session context (investigation results, code analysis, plans) to carry over.",
+			"The context parameter should be a comprehensive markdown summary: goals, findings, target files, code snippets, and action items.",
+			"After worktree_fork succeeds, wait for the session switch before continuing work.",
+		],
+		parameters: Type.Object({
+			context: Type.String({ description: "Markdown summary of current session context to carry over (goals, investigation results, target files, action items)" }),
+			repo: Type.Optional(Type.String({ description: "Registered repo name (e.g. 'product', 'lambda'). Auto-detected if omitted." })),
+			name: Type.Optional(Type.String({ description: "Worktree name. Auto-generated if omitted." })),
+			ticket: Type.Optional(Type.String({ description: "Jira ticket (e.g. 'COM-2345')" })),
+			note: Type.Optional(Type.String({ description: "Short description of the work" })),
+			hotfix: Type.Optional(Type.Boolean({ description: "Branch from production instead of development" })),
+		}),
+		async execute(_toolCallId, params, signal, onUpdate, _ctx) {
+			const repoName = params.repo;
+			const reg = loadRegistry();
+
+			let repoRoot: string | null = null;
+			if (repoName) {
+				repoRoot = reg[repoName] ?? null;
+				if (!repoRoot) throw new Error(`Repo "${repoName}" not registered. Available: ${Object.keys(reg).join(", ") || "(none)"}`);
+			} else {
+				const names = Object.keys(reg).filter(n => existsSync(reg[n]));
+				if (names.length === 0) throw new Error("No repos registered.");
+				if (names.length === 1) repoRoot = reg[names[0]];
+				else throw new Error(`Multiple repos registered: ${names.join(", ")}. Pass repo parameter explicitly.`);
+			}
+
+			if (!existsSync(repoRoot)) throw new Error(`Repo path missing: ${repoRoot}`);
+
+			autoRegister(repoRoot);
+			const config = loadConfig(repoRoot);
+
+			const baseBranch = params.hotfix ? config.productionBranch : config.baseBranch;
+			const prefix = params.hotfix ? "hotfix" : config.branchPrefix;
+
+			mkdirSync(config.rootDir, { recursive: true });
+			const existing = new Set(listExistingWorktrees(config.rootDir).map(w => w.name));
+			const name = params.name ?? pickName(config.namingScheme, existing);
+
+			if (existing.has(name)) throw new Error(`Worktree "${name}" already exists at ${config.rootDir}`);
+
+			const worktreePath = join(config.rootDir, name);
+			const branchName = params.ticket ? `${prefix}/${params.ticket}/${name}` : `${prefix}/${name}`;
+
+			onUpdate?.({
+				content: [{ type: "text", text: `Fetching origin/${baseBranch}…` }],
+				details: {},
+			});
+
+			const fetchR = await pi.exec("git", ["fetch", "origin", baseBranch], { cwd: repoRoot, signal });
+			if (fetchR.code !== 0) throw new Error(`git fetch failed: ${fetchR.stderr?.trim().slice(0, 300) ?? "unknown"}`);
+
+			onUpdate?.({
+				content: [{ type: "text", text: `Creating worktree "${name}" (${branchName})…` }],
+				details: {},
+			});
+
+			const addR = await pi.exec("git", ["worktree", "add", worktreePath, "-b", branchName, `origin/${baseBranch}`], { cwd: repoRoot, signal });
+			if (addR.code !== 0) throw new Error(`git worktree add failed: ${addR.stderr?.trim().slice(0, 300)}`);
+
+			writeMeta(worktreePath, {
+				name,
+				branch: branchName,
+				baseBranch,
+				createdAt: Date.now(),
+				ticket: params.ticket,
+				note: params.note,
+			});
+
+			// Write context file for the new session to pick up
+			const contextDir = join(worktreePath, ".pi");
+			mkdirSync(contextDir, { recursive: true });
+			writeFileSync(join(contextDir, "conductor-context.md"), params.context);
+
+			if (config.setupScript) {
+				onUpdate?.({
+					content: [{ type: "text", text: `Running setup: ${config.setupScript}…` }],
+					details: {},
+				});
+				await pi.exec("bash", ["-lc", config.setupScript], { cwd: worktreePath, signal });
+			}
+
+			pi.sendUserMessage(`/wt switch ${name}`, { deliverAs: "followUp" });
+
+			return {
+				content: [{ type: "text", text: `✓ Worktree "${name}" forked (${branchName}) at ${worktreePath}. Context written (${params.context.length} chars). Session switch queued.` }],
+				details: { name, branch: branchName, path: worktreePath, contextLength: params.context.length },
 			};
 		},
 	});
