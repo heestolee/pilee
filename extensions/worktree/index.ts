@@ -513,6 +513,93 @@ async function handleRemove(pi: ExtensionAPI, args: string, ctx: ExtensionComman
 	ctx.ui.notify(`✓ ${name} removed`, "info");
 }
 
+function normalizeSessionText(text: string): string {
+	return text.replace(/\s+/g, " ").trim();
+}
+
+function extractTextFromMessageContent(content: unknown): string {
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return "";
+	return content
+		.map((part) => {
+			if (!part || typeof part !== "object") return "";
+			const record = part as Record<string, unknown>;
+			return typeof record.text === "string" ? record.text : "";
+		})
+		.filter(Boolean)
+		.join(" ");
+}
+
+function isMeaninglessSessionPrompt(text: string): boolean {
+	const t = text.trim();
+	if (!t) return true;
+	if (t.startsWith("<system") || t.startsWith("<!--")) return true;
+	if (t.startsWith("<skill ") || t.startsWith("Base directory for this skill")) return true;
+	if (t.startsWith("[subagent:") || t.startsWith("[fork-panel handoff:")) return true;
+	if (t.startsWith("/var/folders/") || t.startsWith("/tmp/")) return true;
+	return false;
+}
+
+function isGenericSessionPrompt(text: string): boolean {
+	const t = text.trim().toLowerCase();
+	return ["응", "ㅇㅇ", "넵", "네", "어", "어 해봐", "해줘", "좋아", "1", "2", "3"].includes(t)
+		|| /^응\s/.test(t)
+		|| /^넵\s/.test(t)
+		|| /^ㅇㅇ\s/.test(t);
+}
+
+function shortenSessionPrompt(text: string): string {
+	let t = normalizeSessionText(text);
+	const jira = t.match(/browse\/(COM-\d+)/i)?.[1];
+	if (t.startsWith("/frame") && jira) return `/frame ${jira}`;
+	if (t.startsWith("## Unresolved PR review comments")) return "PR 리뷰 코멘트 대응";
+	if (t.includes("migrate: run")) return "마이그레이션 실행";
+	if (t.includes("커밋") && t.includes("push")) return "커밋/푸시 정리";
+	return truncateToWidth(t, 58);
+}
+
+function formatSessionTimestamp(filename: string, fallbackIso?: string): string {
+	const raw = filename.split("_")[0];
+	const n = Number(raw);
+	const d = Number.isFinite(n) ? new Date(n) : (fallbackIso ? new Date(fallbackIso) : null);
+	if (!d || Number.isNaN(d.getTime())) return "날짜 없음";
+	const mm = String(d.getMonth() + 1).padStart(2, "0");
+	const dd = String(d.getDate()).padStart(2, "0");
+	const hh = String(d.getHours()).padStart(2, "0");
+	const mi = String(d.getMinutes()).padStart(2, "0");
+	return `${mm}-${dd} ${hh}:${mi}`;
+}
+
+function buildSessionChoiceLabel(sessionPath: string): string {
+	const filename = basename(sessionPath).replace(/\.jsonl$/, "");
+	const shortId = filename.split("_").slice(1).join("_") || filename.slice(-8);
+	let sessionIso: string | undefined;
+	let userTurns = 0;
+	const prompts: string[] = [];
+
+	try {
+		const raw = readFileSync(sessionPath, "utf8");
+		for (const line of raw.split("\n")) {
+			if (!line.trim()) continue;
+			let entry: any;
+			try { entry = JSON.parse(line); } catch { continue; }
+			if (entry?.type === "session" && typeof entry.timestamp === "string") sessionIso = entry.timestamp;
+			const message = entry?.message;
+			if (!message || message.role !== "user") continue;
+			const text = normalizeSessionText(extractTextFromMessageContent(message.content));
+			if (isMeaninglessSessionPrompt(text)) continue;
+			userTurns += 1;
+			prompts.push(text);
+		}
+	} catch {
+		// Fall back to filename-only label below.
+	}
+
+	const meaningful = [...prompts].reverse().find((p) => !isGenericSessionPrompt(p)) ?? prompts[prompts.length - 1];
+	const summary = meaningful ? shortenSessionPrompt(meaningful) : filename;
+	return `${formatSessionTimestamp(filename, sessionIso)} · ${summary} · ${userTurns}턴 · ${shortId}`;
+}
+
 async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string, ctx: ExtensionCommandContext) {
 	const pathEncoded = "--" + wtPath.slice(1).replace(/\//g, "-") + "--";
 	const sessionDir = join(homedir(), ".pi", "agent", "sessions", pathEncoded);
@@ -523,9 +610,12 @@ async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string
 		if (files.length === 1) {
 			sessionFile = join(sessionDir, files[0]);
 		} else if (files.length > 1) {
-			const choice = await ctx.ui.select(`${wtName} 세션 선택:`, files.map(f => f.replace(/\.jsonl$/, "")));
+			const choices = files.map((file) => ({ file, label: buildSessionChoiceLabel(join(sessionDir, file)) }));
+			const choice = await ctx.ui.select(`${wtName} 세션 선택:`, choices.map((c) => c.label));
 			if (!choice) return;
-			sessionFile = join(sessionDir, files.find(f => f.startsWith(choice))!);
+			const selected = choices.find((c) => c.label === choice);
+			if (!selected) return;
+			sessionFile = join(sessionDir, selected.file);
 		}
 	}
 
