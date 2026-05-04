@@ -1469,6 +1469,57 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
+	pi.registerTool({
+		name: "worktree_switch",
+		label: "Switch Worktree",
+		description: "Switch to an existing git worktree. Lists available worktrees if name is omitted.",
+		promptSnippet: "Switch to an existing git worktree session, or list available worktrees.",
+		parameters: Type.Object({
+			name: Type.Optional(Type.String({ description: "Worktree name to switch to. Omit to list available worktrees." })),
+			repo: Type.Optional(Type.String({ description: "Registered repo name (e.g. 'product'). Auto-detected if only one repo registered." })),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+			const reg = loadRegistry();
+
+			let repoRoot: string | null = null;
+			if (params.repo) {
+				repoRoot = reg[params.repo] ?? null;
+				if (!repoRoot) throw new Error(`Repo "${params.repo}" not registered. Available: ${Object.keys(reg).join(", ") || "(none)"}`);
+			} else {
+				const names = Object.keys(reg).filter(n => existsSync(reg[n]));
+				if (names.length === 0) throw new Error("No repos registered.");
+				if (names.length === 1) repoRoot = reg[names[0]];
+				else throw new Error(`Multiple repos registered: ${names.join(", ")}. Pass repo parameter.`);
+			}
+
+			const config = loadConfig(repoRoot);
+			const worktrees = listExistingWorktrees(config.rootDir);
+
+			if (!params.name) {
+				if (worktrees.length === 0) {
+					return { content: [{ type: "text", text: "No worktrees found. Use worktree_create to make one." }], details: {} };
+				}
+				const lines = worktrees.map(w => {
+					const status = w.meta?.status ?? "active";
+					const ticket = w.meta?.ticket ? ` [${w.meta.ticket}]` : "";
+					const note = w.meta?.note ? ` — ${w.meta.note.slice(0, 50)}` : "";
+					return `- ${w.name} (${status}) ${w.branch}${ticket}${note}`;
+				});
+				return { content: [{ type: "text", text: `Available worktrees:\n${lines.join("\n")}` }], details: { worktrees: worktrees.map(w => w.name) } };
+			}
+
+			const target = worktrees.find(w => w.name === params.name);
+			if (!target) throw new Error(`Worktree "${params.name}" not found. Available: ${worktrees.map(w => w.name).join(", ") || "(none)"}`);
+
+			pi.sendUserMessage(`/wt switch ${params.name}`, { deliverAs: "followUp" });
+
+			return {
+				content: [{ type: "text", text: `✓ Switching to worktree "${params.name}" (${target.branch}). Session switch queued.` }],
+				details: { name: target.name, branch: target.branch, path: target.path },
+			};
+		},
+	});
+
 	pi.on("before_agent_start", async (event: any) => {
 		const cwd: string = event.systemPromptOptions?.cwd ?? process.cwd();
 		const contextFile = join(cwd, ".pi", "conductor-context.md");
