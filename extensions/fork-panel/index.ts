@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import type { ExtensionAPI, ExtensionContext, ThemeColor } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 import type { AutocompleteItem } from "@mariozechner/pi-tui";
@@ -26,6 +26,14 @@ interface ForkRecord {
 	createdAt: number;
 	closedAt?: number;
 	preview?: string;
+}
+
+interface ReviveItem {
+	record: ForkRecord;
+	workspaceKey: string;
+	workspaceLabel: string;
+	title: string;
+	preview: string;
 }
 
 function loadRecent(): Record<string, ForkRecord> {
@@ -64,6 +72,89 @@ function sanitizeRowText(value: string | undefined | null): string {
 		.replace(/[\r\n\t]+/g, " ")
 		.replace(/\s+/g, " ")
 		.trim();
+}
+
+function readSessionEntries(sessionFile: string): any[] {
+	try {
+		const raw = readFileSync(sessionFile, "utf8");
+		return raw.split("\n").filter(Boolean).map((line) => {
+			try { return JSON.parse(line); } catch { return null; }
+		}).filter(Boolean);
+	} catch {
+		return [];
+	}
+}
+
+function messageText(message: any): string {
+	const content = message?.content;
+	return Array.isArray(content)
+		? content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("")
+		: typeof content === "string" ? content : "";
+}
+
+function extractLastSessionName(entries: any[]): string {
+	for (let i = entries.length - 1; i >= 0; i--) {
+		const e = entries[i];
+		if (e?.type === "session_info" && typeof e.name === "string" && e.name.trim()) {
+			return sanitizeRowText(e.name);
+		}
+	}
+	return "";
+}
+
+function extractLastText(entries: any[], role?: "user" | "assistant"): string {
+	for (let i = entries.length - 1; i >= 0; i--) {
+		const e = entries[i];
+		if (e?.type !== "message") continue;
+		if (role && e.message?.role !== role) continue;
+		if (!role && e.message?.role !== "user" && e.message?.role !== "assistant") continue;
+		const text = sanitizeRowText(messageText(e.message));
+		if (text) return text;
+	}
+	return "";
+}
+
+function normalizedPath(path: string): string {
+	return path.replace(/\/+$/, "") || path;
+}
+
+function workspaceKeyFor(cwd: string): string {
+	const home = normalizedPath(homedir());
+	const normalized = normalizedPath(cwd || home);
+	const workspacesRoot = normalizedPath(join(home, "pilee-workspaces"));
+	if (normalized === home) return home;
+	if (normalized.startsWith(`${workspacesRoot}/`)) {
+		const parts = normalized.slice(workspacesRoot.length + 1).split("/");
+		if (parts.length >= 2) return join(workspacesRoot, parts[0], parts[1]);
+	}
+	return normalized;
+}
+
+function workspaceLabelFor(cwd: string): string {
+	const key = workspaceKeyFor(cwd);
+	const home = normalizedPath(homedir());
+	const workspacesRoot = normalizedPath(join(home, "pilee-workspaces"));
+	if (key === home) return "~";
+	if (key.startsWith(`${workspacesRoot}/`)) {
+		const parts = key.slice(workspacesRoot.length + 1).split("/");
+		if (parts.length >= 2) return `${parts[0]}/${parts[1]}`;
+	}
+	return key.startsWith(`${home}/`) ? `~/${relative(home, key)}` : key;
+}
+
+function buildReviveItem(record: ForkRecord): ReviveItem {
+	const entries = readSessionEntries(record.sessionFile);
+	const lastAssistant = extractLastText(entries, "assistant");
+	const lastAny = extractLastText(entries);
+	const title = extractLastSessionName(entries) || lastAny || sanitizeRowText(record.label) || record.forkId;
+	const preview = sanitizeRowText(record.preview) || lastAssistant || lastAny;
+	return {
+		record,
+		workspaceKey: workspaceKeyFor(record.cwd),
+		workspaceLabel: workspaceLabelFor(record.cwd),
+		title,
+		preview: preview === title ? "" : preview,
+	};
 }
 
 function esc(s: string): string {
@@ -493,61 +584,81 @@ export default function (pi: ExtensionAPI) {
 
 			const sub = (args ?? "").trim();
 			const all = loadRecent();
-			const sorted = Object.values(all)
+			const allItems = Object.values(all)
 				.filter((r) => existsSync(r.sessionFile))
-				.sort((a, b) => (b.closedAt ?? b.createdAt) - (a.closedAt ?? a.createdAt));
+				.map(buildReviveItem)
+				.sort((a, b) => (b.record.closedAt ?? b.record.createdAt) - (a.record.closedAt ?? a.record.createdAt));
+			const currentWorkspaceKey = workspaceKeyFor(ctx.cwd);
+			const currentWorkspaceLabel = workspaceLabelFor(ctx.cwd);
+			const scopedItems = () => allItems.filter((item) => item.workspaceKey === currentWorkspaceKey);
 
 			if (sub === "last") {
-				const target = sorted[0];
-				if (!target) { ctx.ui.notify("재개 가능한 세션이 없습니다", "warning"); return; }
-				await openRevive(target, ctx);
+				const target = scopedItems()[0];
+				if (!target) { ctx.ui.notify(`현재 워크스페이스(${currentWorkspaceLabel})에 재개 가능한 세션이 없습니다. /revive all 또는 /revive에서 a를 누르세요.`, "warning"); return; }
+				await openRevive(target.record, ctx);
 				return;
 			}
-			if (sub && all[sub]) {
+			if (sub && sub !== "all" && all[sub]) {
 				await openRevive(all[sub], ctx);
 				return;
 			}
 
-			if (sorted.length === 0) {
+			if (allItems.length === 0) {
 				ctx.ui.notify("재개 가능한 포크 세션이 없습니다", "info");
 				return;
 			}
 
+			let showAll = sub === "all";
 			let selectedIndex = 0;
 			let scrollOffset = 0;
+			const visibleItems = () => showAll ? allItems : scopedItems();
 
 			const selected = await ctx.ui.custom<ForkRecord | null>(
 				(tui, theme, _kb, done) => ({
 					render: (w: number) => {
+						const items = visibleItems();
+						if (selectedIndex >= items.length) selectedIndex = Math.max(0, items.length - 1);
+						if (scrollOffset >= items.length) scrollOffset = Math.max(0, items.length - 1);
+
 						const rows = (tui as any).terminal?.rows ?? 30;
 						const headerH = 3;
 						const footerH = 1;
 						const bodyH = Math.max(3, rows - headerH - footerH);
 						const lines: string[] = [];
+						const scopeText = showAll ? "all workspaces" : `workspace ${currentWorkspaceLabel}`;
+						const toggleText = showAll ? "a: current" : "a: all";
 
 						lines.push(theme.fg("accent", "─".repeat(w)));
-						const title = `  ${theme.fg("accent", theme.bold("REVIVE"))} ${theme.fg("accent", "|")} ${sorted.length} sessions ${theme.fg("accent", "·")} ${theme.fg("border", "Enter: open · q/Esc: close")}`;
-						const help = `  ${theme.fg("border", "↑/↓ select · Enter open")}`;
+						const title = `  ${theme.fg("accent", theme.bold("REVIVE"))} ${theme.fg("accent", "|")} ${items.length}/${allItems.length} sessions ${theme.fg("accent", "·")} ${theme.fg("border", scopeText)} ${theme.fg("accent", "·")} ${theme.fg("border", "Enter: open · q/Esc: close")}`;
+						const helpText = `↑/↓ select · Enter open · ${toggleText}`;
+						const help = `  ${theme.fg("border", helpText)}`;
 						lines.push(truncateToWidth(title, w, ""));
 						lines.push(truncateToWidth(help, w, ""));
 
-						if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
-						if (selectedIndex >= scrollOffset + bodyH) scrollOffset = selectedIndex - bodyH + 1;
+						if (items.length === 0) {
+							lines.push(truncateToWidth(theme.fg("warning", `  현재 워크스페이스(${currentWorkspaceLabel})에 세션이 없습니다. a를 눌러 전체 워크스페이스를 보세요.`), w, ""));
+						} else {
+							if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
+							if (selectedIndex >= scrollOffset + bodyH) scrollOffset = selectedIndex - bodyH + 1;
 
-						for (let i = scrollOffset; i < Math.min(sorted.length, scrollOffset + bodyH); i++) {
-							const r = sorted[i];
-							const sel = i === selectedIndex;
-							const cursor = sel ? theme.fg("accent", "▶") : " ";
-							const pad = (n: number) => String(n).padStart(2, "0");
-							const d = new Date(r.closedAt ?? r.createdAt);
-							const timeStr = theme.fg("borderAccent", `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`);
-							const rawLabel = sanitizeRowText(r.label) || r.forkId;
-							const label = sel ? theme.fg("accent", rawLabel) : theme.fg("text", rawLabel);
-							const status = r.closedAt ? "●" : theme.fg("success", "●");
-							const previewW = Math.max(10, w - 45);
-							const preview = truncateToWidth(sanitizeRowText(r.preview), previewW, "…");
-							const previewStr = sel ? preview : theme.fg("borderAccent", preview);
-							lines.push(truncateToWidth(`${cursor} ${status} ${timeStr} ${label}  ${previewStr}`, w, ""));
+							for (let i = scrollOffset; i < Math.min(items.length, scrollOffset + bodyH); i++) {
+								const item = items[i];
+								const r = item.record;
+								const sel = i === selectedIndex;
+								const cursor = sel ? theme.fg("accent", "▶") : " ";
+								const pad = (n: number) => String(n).padStart(2, "0");
+								const d = new Date(r.closedAt ?? r.createdAt);
+								const timeStr = theme.fg("borderAccent", `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`);
+								const status = r.closedAt ? "●" : theme.fg("success", "●");
+								const workspace = theme.fg("border", truncateToWidth(item.workspaceLabel, 18, "…"));
+								const titleW = Math.max(18, Math.min(42, Math.floor(w * 0.32)));
+								const titleRaw = truncateToWidth(item.title, titleW, "…");
+								const titleStr = sel ? theme.fg("accent", titleRaw) : theme.fg("text", titleRaw);
+								const previewW = Math.max(0, w - titleW - 36);
+								const preview = previewW > 0 ? truncateToWidth(item.preview, previewW, "…") : "";
+								const previewStr = sel ? preview : theme.fg("borderAccent", preview);
+								lines.push(truncateToWidth(`${cursor} ${status} ${timeStr} ${workspace}  ${titleStr}  ${previewStr}`, w, ""));
+							}
 						}
 
 						while (lines.length < headerH + bodyH) lines.push("");
@@ -555,13 +666,18 @@ export default function (pi: ExtensionAPI) {
 						return lines;
 					},
 					handleInput: (data: string) => {
+						const items = visibleItems();
 						if (data === "q" || matchesKey(data, Key.escape)) { done(null); return; }
-						if (matchesKey(data, Key.up) || data === "k") {
+						if (data === "a") {
+							showAll = !showAll;
+							selectedIndex = 0;
+							scrollOffset = 0;
+						} else if (matchesKey(data, Key.up) || data === "k") {
 							if (selectedIndex > 0) selectedIndex--;
 						} else if (matchesKey(data, Key.down) || data === "j") {
-							if (selectedIndex < sorted.length - 1) selectedIndex++;
+							if (selectedIndex < items.length - 1) selectedIndex++;
 						} else if (matchesKey(data, Key.enter)) {
-							done(sorted[selectedIndex]);
+							if (items[selectedIndex]) done(items[selectedIndex].record);
 							return;
 						}
 						(tui as any).requestRender?.();
@@ -598,6 +714,7 @@ end tell`;
 			ctx.ui.notify(`패널 생성 실패: ${result.stderr?.trim() ?? "unknown"}`, "error");
 			return;
 		}
-		ctx.ui.notify(`${sanitizeRowText(target.label) || target.forkId} 세션 재개 → right 패널`, "info");
+		const item = buildReviveItem(target);
+		ctx.ui.notify(`${item.workspaceLabel} · ${item.title} 세션 재개 → right 패널`, "info");
 	}
 }
