@@ -4,6 +4,7 @@ import { join, dirname, basename } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ThemeColor } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
+import { Type } from "typebox";
 
 // ─── Repo registry ─────────────────────────────────────────────────────────
 
@@ -1373,6 +1374,98 @@ export default function (pi: ExtensionAPI) {
 		description: "Worktree dashboard",
 		handler: async (ctx) => {
 			ctx.ui.setEditorText("/wt switch");
+		},
+	});
+
+	pi.registerTool({
+		name: "worktree_create",
+		label: "Create Worktree",
+		description: "Create a new git worktree for code changes. Use when you need to modify files in product/lambda repos.",
+		promptSnippet: "Create a git worktree for code changes in product/lambda repos. Required before editing files in those repos.",
+		promptGuidelines: [
+			"Use worktree_create before editing files in product or lambda repos. Do not manually run git worktree add.",
+			"After worktree_create succeeds, wait for the session switch before continuing work.",
+		],
+		parameters: Type.Object({
+			repo: Type.Optional(Type.String({ description: "Registered repo name (e.g. 'product', 'lambda'). Auto-detected if omitted." })),
+			name: Type.Optional(Type.String({ description: "Worktree name. Auto-generated if omitted." })),
+			ticket: Type.Optional(Type.String({ description: "Jira ticket (e.g. 'COM-2345')" })),
+			note: Type.Optional(Type.String({ description: "Short description of the work" })),
+			hotfix: Type.Optional(Type.Boolean({ description: "Branch from production instead of development" })),
+		}),
+		async execute(_toolCallId, params, signal, onUpdate, _ctx) {
+			const repoName = params.repo;
+			const reg = loadRegistry();
+
+			let repoRoot: string | null = null;
+			if (repoName) {
+				repoRoot = reg[repoName] ?? null;
+				if (!repoRoot) {
+					throw new Error(`Repo "${repoName}" not registered. Available: ${Object.keys(reg).join(", ") || "(none)"}. Use /wt repo add ${repoName} <path> first.`);
+				}
+			} else {
+				const names = Object.keys(reg).filter(n => existsSync(reg[n]));
+				if (names.length === 0) throw new Error("No repos registered. Use /wt repo add <name> <path> first.");
+				if (names.length === 1) repoRoot = reg[names[0]];
+				else throw new Error(`Multiple repos registered: ${names.join(", ")}. Pass repo parameter explicitly.`);
+			}
+
+			if (!existsSync(repoRoot)) throw new Error(`Repo path missing: ${repoRoot}`);
+
+			const { isNew: justRegistered } = autoRegister(repoRoot);
+			const config = loadConfig(repoRoot);
+
+			const baseBranch = params.hotfix ? config.productionBranch : config.baseBranch;
+			const prefix = params.hotfix ? "hotfix" : config.branchPrefix;
+
+			mkdirSync(config.rootDir, { recursive: true });
+			const existing = new Set(listExistingWorktrees(config.rootDir).map(w => w.name));
+			const name = params.name ?? pickName(config.namingScheme, existing);
+
+			if (existing.has(name)) throw new Error(`Worktree "${name}" already exists at ${config.rootDir}`);
+
+			const worktreePath = join(config.rootDir, name);
+			const branchName = params.ticket ? `${prefix}/${params.ticket}/${name}` : `${prefix}/${name}`;
+
+			onUpdate?.({
+				content: [{ type: "text", text: `Fetching origin/${baseBranch}…` }],
+				details: {},
+			});
+
+			const fetchR = await pi.exec("git", ["fetch", "origin", baseBranch], { cwd: repoRoot, signal });
+			if (fetchR.code !== 0) throw new Error(`git fetch failed: ${fetchR.stderr?.trim().slice(0, 300) ?? "unknown"}`);
+
+			onUpdate?.({
+				content: [{ type: "text", text: `Creating worktree "${name}" (${branchName})…` }],
+				details: {},
+			});
+
+			const addR = await pi.exec("git", ["worktree", "add", worktreePath, "-b", branchName, `origin/${baseBranch}`], { cwd: repoRoot, signal });
+			if (addR.code !== 0) throw new Error(`git worktree add failed: ${addR.stderr?.trim().slice(0, 300)}`);
+
+			writeMeta(worktreePath, {
+				name,
+				branch: branchName,
+				baseBranch,
+				createdAt: Date.now(),
+				ticket: params.ticket,
+				note: params.note,
+			});
+
+			if (config.setupScript) {
+				onUpdate?.({
+					content: [{ type: "text", text: `Running setup: ${config.setupScript}…` }],
+					details: {},
+				});
+				await pi.exec("bash", ["-lc", config.setupScript], { cwd: worktreePath, signal });
+			}
+
+			pi.sendUserMessage(`/wt switch ${name}`, { deliverAs: "followUp" });
+
+			return {
+				content: [{ type: "text", text: `✓ Worktree "${name}" created (${branchName}) at ${worktreePath}. Session switch queued.` }],
+				details: { name, branch: branchName, path: worktreePath },
+			};
 		},
 	});
 
