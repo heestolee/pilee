@@ -548,14 +548,36 @@ function isGenericSessionPrompt(text: string): boolean {
 		|| /^ㅇㅇ\s/.test(t);
 }
 
-function shortenSessionPrompt(text: string): string {
+function shortenSessionPrompt(text: string, width = 58): string {
 	let t = normalizeSessionText(text);
 	const jira = t.match(/browse\/(COM-\d+)/i)?.[1];
 	if (t.startsWith("/frame") && jira) return `/frame ${jira}`;
 	if (t.startsWith("## Unresolved PR review comments")) return "PR 리뷰 코멘트 대응";
 	if (t.includes("migrate: run")) return "마이그레이션 실행";
 	if (t.includes("커밋") && t.includes("push")) return "커밋/푸시 정리";
-	return truncateToWidth(t, 58);
+	return truncateToWidth(t, width);
+}
+
+function shortenSessionName(text: string): string {
+	return truncateToWidth(normalizeSessionText(text), 42);
+}
+
+function buildSessionChoiceLabel(opts: {
+	filename: string;
+	sessionIso?: string;
+	sessionName?: string;
+	summary: string;
+	turns: number;
+	shortId: string;
+}): string {
+	const timestamp = formatSessionTimestamp(opts.filename, opts.sessionIso);
+	const title = opts.sessionName ? shortenSessionName(opts.sessionName) : opts.summary;
+	const normalizedTitleSource = normalizeSessionText(opts.sessionName ?? title);
+	const normalizedSummary = normalizeSessionText(opts.summary);
+	const detail = opts.sessionName && normalizedSummary && normalizedSummary !== normalizedTitleSource
+		? ` · ${shortenSessionPrompt(opts.summary, 42)}`
+		: "";
+	return `${timestamp} · ${title}${detail} · ${opts.turns}턴 · ${opts.shortId}`;
 }
 
 function formatSessionTimestamp(filename: string, fallbackIso?: string): string {
@@ -574,12 +596,14 @@ interface SessionChoiceInfo {
 	file: string;
 	label: string;
 	prompts: string[];
+	sessionName?: string;
 }
 
 function parseSessionChoiceInfo(sessionPath: string): SessionChoiceInfo {
 	const filename = basename(sessionPath).replace(/\.jsonl$/, "");
 	const shortId = filename.split("_").slice(1).join("_") || filename.slice(-8);
 	let sessionIso: string | undefined;
+	let sessionName: string | undefined;
 	const prompts: string[] = [];
 
 	try {
@@ -589,6 +613,9 @@ function parseSessionChoiceInfo(sessionPath: string): SessionChoiceInfo {
 			let entry: any;
 			try { entry = JSON.parse(line); } catch { continue; }
 			if (entry?.type === "session" && typeof entry.timestamp === "string") sessionIso = entry.timestamp;
+			if (entry?.type === "session_info" && typeof entry.name === "string" && entry.name.trim()) {
+				sessionName = normalizeSessionText(entry.name);
+			}
 			const message = entry?.message;
 			if (!message || message.role !== "user") continue;
 			const text = normalizeSessionText(extractTextFromMessageContent(message.content));
@@ -603,8 +630,9 @@ function parseSessionChoiceInfo(sessionPath: string): SessionChoiceInfo {
 	const summary = meaningful ? shortenSessionPrompt(meaningful) : filename;
 	return {
 		file: basename(sessionPath),
-		label: `${formatSessionTimestamp(filename, sessionIso)} · ${summary} · ${prompts.length}턴 · ${shortId}`,
+		label: buildSessionChoiceLabel({ filename, sessionIso, sessionName, summary, turns: prompts.length, shortId }),
 		prompts,
+		sessionName,
 	};
 }
 
