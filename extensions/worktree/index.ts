@@ -570,11 +570,16 @@ function formatSessionTimestamp(filename: string, fallbackIso?: string): string 
 	return `${mm}-${dd} ${hh}:${mi}`;
 }
 
-function buildSessionChoiceLabel(sessionPath: string): string {
+interface SessionChoiceInfo {
+	file: string;
+	label: string;
+	prompts: string[];
+}
+
+function parseSessionChoiceInfo(sessionPath: string): SessionChoiceInfo {
 	const filename = basename(sessionPath).replace(/\.jsonl$/, "");
 	const shortId = filename.split("_").slice(1).join("_") || filename.slice(-8);
 	let sessionIso: string | undefined;
-	let userTurns = 0;
 	const prompts: string[] = [];
 
 	try {
@@ -588,7 +593,6 @@ function buildSessionChoiceLabel(sessionPath: string): string {
 			if (!message || message.role !== "user") continue;
 			const text = normalizeSessionText(extractTextFromMessageContent(message.content));
 			if (isMeaninglessSessionPrompt(text)) continue;
-			userTurns += 1;
 			prompts.push(text);
 		}
 	} catch {
@@ -597,7 +601,30 @@ function buildSessionChoiceLabel(sessionPath: string): string {
 
 	const meaningful = [...prompts].reverse().find((p) => !isGenericSessionPrompt(p)) ?? prompts[prompts.length - 1];
 	const summary = meaningful ? shortenSessionPrompt(meaningful) : filename;
-	return `${formatSessionTimestamp(filename, sessionIso)} · ${summary} · ${userTurns}턴 · ${shortId}`;
+	return {
+		file: basename(sessionPath),
+		label: `${formatSessionTimestamp(filename, sessionIso)} · ${summary} · ${prompts.length}턴 · ${shortId}`,
+		prompts,
+	};
+}
+
+function isPromptPrefix(shorter: string[], longer: string[]): boolean {
+	if (shorter.length === 0 || shorter.length > longer.length) return false;
+	for (let i = 0; i < shorter.length; i += 1) {
+		if (shorter[i] !== longer[i]) return false;
+	}
+	return true;
+}
+
+function dedupeSessionChoices(choices: SessionChoiceInfo[]): SessionChoiceInfo[] {
+	return choices.filter((choice, index) => {
+		if (choice.prompts.length === 0) return true;
+		return !choices.some((other, otherIndex) => {
+			if (index === otherIndex) return false;
+			if (other.prompts.length <= choice.prompts.length) return false;
+			return isPromptPrefix(choice.prompts, other.prompts);
+		});
+	});
 }
 
 async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string, ctx: ExtensionCommandContext) {
@@ -610,7 +637,9 @@ async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string
 		if (files.length === 1) {
 			sessionFile = join(sessionDir, files[0]);
 		} else if (files.length > 1) {
-			const choices = files.map((file) => ({ file, label: buildSessionChoiceLabel(join(sessionDir, file)) }));
+			const choices = dedupeSessionChoices(
+				files.map((file) => parseSessionChoiceInfo(join(sessionDir, file))),
+			);
 			const choice = await ctx.ui.select(`${wtName} 세션 선택:`, choices.map((c) => c.label));
 			if (!choice) return;
 			const selected = choices.find((c) => c.label === choice);
