@@ -2,7 +2,7 @@
 name: finder
 description: Fast file/code locator — use for exploring codebases, finding files, locating specific code patterns
 tools: read, grep, find
-model: openai-codex/gpt-5.5
+model: openai-codex/gpt-5.4
 runtime: pi
 thinking: low
 ---

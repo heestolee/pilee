@@ -268,8 +268,8 @@ Ctrl+W                  → 전체 워크트리 오버레이
 | 에이전트 | 심볼 | 모델 | 역할 |
 |---------|------|------|------|
 | **worker** | `>>` (기본) | openai-codex/gpt-5.5 | 범용 구현/수정 |
-| **finder** | `>>/` | openai-codex/gpt-5.5 | 파일/코드 탐색 (read/grep/find only) |
-| **searcher** | `>>?` | openai-codex/gpt-5.5 | 웹 리서치/문서 조사 |
+| **finder** | `>>/` | openai-codex/gpt-5.4 | 파일/코드 탐색 (read/grep/find only) |
+| **searcher** | `>>?` | openai-codex/gpt-5.4 | 웹 리서치/문서 조사 |
 | **planner** | `>>#` | openai-codex/gpt-5.5 (thinking:high) | 구현 계획 설계 |
 | **challenger** | `>>!` | openai-codex/gpt-5.5 | 계획/코드 검증, 구멍 찾기 |
 | **browser** | `>>@` | openai-codex/gpt-5.5 | playwright E2E, UI 확인 |
