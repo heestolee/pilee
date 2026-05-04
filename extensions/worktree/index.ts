@@ -1574,7 +1574,8 @@ export default function (pi: ExtensionAPI) {
 				await pi.exec("bash", ["-lc", config.setupScript], { cwd: worktreePath, signal });
 			}
 
-			pi.sendUserMessage(`/wt switch ${name}`, { deliverAs: "followUp" });
+			const registeredName = findRegisteredName(loadRegistry(), repoRoot) ?? basename(repoRoot);
+			pi.sendUserMessage(`/wt switch ${registeredName}/${name}`, { deliverAs: "followUp" });
 
 			return {
 				content: [{ type: "text", text: `✓ Worktree "${name}" created (${branchName}) at ${worktreePath}. Session switch queued.` }],
@@ -1625,7 +1626,8 @@ export default function (pi: ExtensionAPI) {
 			const target = worktrees.find(w => w.name === params.name);
 			if (!target) throw new Error(`Worktree "${params.name}" not found. Available: ${worktrees.map(w => w.name).join(", ") || "(none)"}`);
 
-			pi.sendUserMessage(`/wt switch ${params.name}`, { deliverAs: "followUp" });
+			const registeredName = findRegisteredName(loadRegistry(), repoRoot) ?? basename(repoRoot);
+			pi.sendUserMessage(`/wt switch ${registeredName}/${params.name}`, { deliverAs: "followUp" });
 
 			return {
 				content: [{ type: "text", text: `✓ Switching to worktree "${params.name}" (${target.branch}). Session switch queued.` }],
@@ -1722,7 +1724,8 @@ export default function (pi: ExtensionAPI) {
 				await pi.exec("bash", ["-lc", config.setupScript], { cwd: worktreePath, signal });
 			}
 
-			pi.sendUserMessage(`/wt switch ${name}`, { deliverAs: "followUp" });
+			const registeredName = findRegisteredName(loadRegistry(), repoRoot) ?? basename(repoRoot);
+			pi.sendUserMessage(`/wt switch ${registeredName}/${name}`, { deliverAs: "followUp" });
 
 			return {
 				content: [{ type: "text", text: `✓ Worktree "${name}" forked (${branchName}) at ${worktreePath}. Context written (${params.context.length} chars). Session switch queued.` }],
