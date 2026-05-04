@@ -81,14 +81,43 @@ export default function (pi: ExtensionAPI) {
 	const isForkChild = !!process.env.PI_FORK_ID;
 	const collectedPrompts: string[] = [];
 
+	function getSessionName(): string | undefined {
+		try {
+			return pi.getSessionName()?.trim() || undefined;
+		} catch {
+			return undefined;
+		}
+	}
+
+	function setSessionName(title: string): boolean {
+		try {
+			pi.setSessionName(title);
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	function appendMarker(value: Record<string, unknown>) {
+		try {
+			pi.appendEntry(EVAL_MARKER, value);
+		} catch {
+			// The session may already be shutting down or replaced.
+		}
+	}
+
 	function syncUi(ctx: ExtensionContext) {
-		if (!ctx.hasUI) return;
-		ctx.ui.setTitle(formatTerminalTitle(pi.getSessionName()?.trim() || undefined, ctx.cwd));
+		try {
+			if (!ctx.hasUI) return;
+			ctx.ui.setTitle(formatTerminalTitle(getSessionName(), ctx.cwd));
+		} catch {
+			// Ignore stale extension contexts after session replacement/reload.
+		}
 	}
 
 	async function autoName(prompt: string, ctx: ExtensionContext) {
 		if (naming || !prompt.trim()) return;
-		const current = pi.getSessionName()?.trim();
+		const current = getSessionName();
 		if (current && selfHasSet) return;
 		if (current && !isForkChild) return;
 
@@ -96,8 +125,7 @@ export default function (pi: ExtensionAPI) {
 		try {
 			const raw = await callLLMForTitle(`User request:\n${prompt.slice(0, MAX_PROMPT_CHARS)}`, SYSTEM_PROMPT, ctx);
 			const title = normalizeTitle(raw || prompt.slice(0, MAX_TITLE_CHARS));
-			if (title) {
-				pi.setSessionName(title);
+			if (title && setSessionName(title)) {
 				selfHasSet = true;
 			}
 		} finally {
@@ -137,8 +165,8 @@ export default function (pi: ExtensionAPI) {
 			const input = buildRenameInput(collectedPrompts);
 			const raw = await callLLMForTitle(`User messages:\n${input}`, RENAME_SYSTEM_PROMPT, ctx);
 			const title = normalizeTitle(raw || "");
-			if (title) pi.setSessionName(title);
-			pi.appendEntry(EVAL_MARKER, { ts: Date.now(), promptCount: collectedPrompts.length });
+			if (title) setSessionName(title);
+			appendMarker({ ts: Date.now(), promptCount: collectedPrompts.length });
 		} catch { /* don't block shutdown */ }
 	}
 
@@ -157,11 +185,10 @@ export default function (pi: ExtensionAPI) {
 			const input = buildRenameInput(prompts);
 			const raw = await callLLMForTitle(`User messages:\n${input}`, RENAME_SYSTEM_PROMPT, ctx);
 			const title = normalizeTitle(raw || "");
-			if (title) {
-				pi.setSessionName(title);
+			if (title && setSessionName(title)) {
 				selfHasSet = true;
 			}
-			pi.appendEntry(EVAL_MARKER, { ts: Date.now(), promptCount: prompts.length, fromSafetyNet: true });
+			appendMarker({ ts: Date.now(), promptCount: prompts.length, fromSafetyNet: true });
 		} catch { /* don't block startup */ }
 	}
 
@@ -181,6 +208,10 @@ export default function (pi: ExtensionAPI) {
 		if (e.reason !== "reload") {
 			await reevaluateAtShutdown(ctx);
 		}
-		if (ctx.hasUI) ctx.ui.setTitle(formatTerminalTitle(undefined, ctx.cwd));
+		try {
+			if (ctx.hasUI) ctx.ui.setTitle(formatTerminalTitle(undefined, ctx.cwd));
+		} catch {
+			// Ignore stale extension contexts after session replacement/reload.
+		}
 	});
 }
