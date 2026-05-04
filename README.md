@@ -185,7 +185,7 @@ Ctrl+W                  → 전체 워크트리 오버레이
 | 이름 | 설명 |
 |------|------|
 | **worktree** | Git worktree 대시보드 — backlog/active/done/archive, 태그, 필터, `Ctrl+W` |
-| **fork-panel** | Ghostty 패널 분할 포크 + handoff(자동/수동) + `/recall` + `/revive` TUI |
+| **fork-panel** | Ghostty 패널 분할 포크 + handoff(자동/수동) + `/revive` TUI |
 | **session-title** | 세션 제목 자동 설정 |
 
 ### UI / UX

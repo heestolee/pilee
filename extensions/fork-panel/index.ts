@@ -54,20 +54,16 @@ function markForkClosed(forkId: string, preview: string) {
 	const rec = all[forkId];
 	if (!rec) return;
 	rec.closedAt = Date.now();
-	rec.preview = preview.slice(0, 100);
+	rec.preview = sanitizeRowText(preview).slice(0, 140);
 	saveRecent(all);
 }
 
-function readTranscriptFromFile(sessionFile: string): string | null {
-	try {
-		const raw = readFileSync(sessionFile, "utf8");
-		const entries = raw.split("\n").filter(Boolean).map((l) => {
-			try { return JSON.parse(l); } catch { return null; }
-		}).filter(Boolean);
-		return extractFullTranscript(entries);
-	} catch {
-		return null;
-	}
+function sanitizeRowText(value: string | undefined | null): string {
+	return (value ?? "")
+		.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, "")
+		.replace(/[\r\n\t]+/g, " ")
+		.replace(/\s+/g, " ")
+		.trim();
 }
 
 function esc(s: string): string {
@@ -359,7 +355,7 @@ export default function (pi: ExtensionAPI) {
 				const pidDead = data.pid && !isPidAlive(data.pid);
 				if (!finished && !pidDead) return;
 
-				const hint = `\n\n💡 전체 transcript이 필요하면: /recall ${forkId}  또는  /recall last`;
+				const hint = `\n\n💡 이어서 작업하려면: /revive ${forkId}  또는  /revive last`;
 				const message = `[fork-panel handoff: ${label}]\n\n${data.summary}${hint}`;
 				pi.sendUserMessage(message, { deliverAs: "followUp" });
 				markForkClosed(forkId, data.summary);
@@ -434,7 +430,7 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			// Register watcher for handoff
-			const label = prompt ? prompt.slice(0, 40) : `${direction} panel`;
+			const label = prompt ? sanitizeRowText(prompt).slice(0, 40) : `${direction} panel`;
 			recordFork({
 				forkId: newForkId,
 				label,
@@ -489,62 +485,6 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	// /recall — pull full transcript from a recent (closed) fork
-	pi.registerCommand("recall", {
-		description: "Recall full transcript from a recent fork-panel session. Usage: /recall [list|last|<forkId>]",
-		handler: async (args, ctx) => {
-			const sub = (args ?? "").trim();
-			const all = loadRecent();
-			const sortedClosed = Object.values(all)
-				.filter((r) => r.closedAt)
-				.sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0));
-
-			if (!sub || sub === "list") {
-				const recent = Object.values(all)
-					.sort((a, b) => b.createdAt - a.createdAt)
-					.slice(0, 10);
-				if (recent.length === 0) {
-					ctx.ui.notify("No recent forks tracked.", "info");
-					return;
-				}
-				const lines = ["Recent forks:"];
-				for (const r of recent) {
-					const time = new Date(r.createdAt).toLocaleString();
-					const status = r.closedAt ? "closed" : "running";
-					const preview = r.preview ? ` — ${r.preview.slice(0, 50)}…` : "";
-					lines.push(`  ${r.forkId} [${status}] ${r.label} (${time})${preview}`);
-				}
-				lines.push("\nUsage: /recall last  |  /recall <forkId>");
-				ctx.ui.notify(lines.join("\n"), "info");
-				return;
-			}
-
-			let target: ForkRecord | undefined;
-			if (sub === "last") {
-				target = sortedClosed[0];
-				if (!target) { ctx.ui.notify("No closed forks to recall.", "warning"); return; }
-			} else {
-				target = all[sub];
-				if (!target) { ctx.ui.notify(`Fork not found: ${sub}. Use /recall list to see available.`, "error"); return; }
-			}
-
-			if (!existsSync(target.sessionFile)) {
-				ctx.ui.notify(`Session file missing: ${target.sessionFile}`, "error");
-				return;
-			}
-
-			const transcript = readTranscriptFromFile(target.sessionFile);
-			if (!transcript) {
-				ctx.ui.notify(`Could not read transcript from ${target.sessionFile}`, "error");
-				return;
-			}
-
-			const message = `[recall: ${target.label}]\n\n📜 전체 대화:\n\n${transcript}`;
-			pi.sendUserMessage(message, { deliverAs: "followUp" });
-			ctx.ui.notify(`전체 transcript 전달됨 (${target.label}, ${(transcript.length / 1000).toFixed(1)}K chars)`, "info");
-		},
-	});
-
 	// /revive — reopen a previous fork panel session
 	pi.registerCommand("revive", {
 		description: "TUI로 종료된 fork-panel 세션 목록을 보고 선택해서 Ghostty 패널로 재개",
@@ -586,8 +526,10 @@ export default function (pi: ExtensionAPI) {
 						const lines: string[] = [];
 
 						lines.push(theme.fg("accent", "─".repeat(w)));
-						lines.push(`  ${theme.fg("accent", theme.bold("REVIVE"))} ${theme.fg("accent", "|")} ${sorted.length} sessions ${theme.fg("accent", "·")} ${theme.fg("border", "Enter: open · q/Esc: close")}`);
-						lines.push(`  ${theme.fg("border", "↑/↓ select · Enter open")}`);
+						const title = `  ${theme.fg("accent", theme.bold("REVIVE"))} ${theme.fg("accent", "|")} ${sorted.length} sessions ${theme.fg("accent", "·")} ${theme.fg("border", "Enter: open · q/Esc: close")}`;
+						const help = `  ${theme.fg("border", "↑/↓ select · Enter open")}`;
+						lines.push(truncateToWidth(title, w, ""));
+						lines.push(truncateToWidth(help, w, ""));
 
 						if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
 						if (selectedIndex >= scrollOffset + bodyH) scrollOffset = selectedIndex - bodyH + 1;
@@ -599,10 +541,11 @@ export default function (pi: ExtensionAPI) {
 							const pad = (n: number) => String(n).padStart(2, "0");
 							const d = new Date(r.closedAt ?? r.createdAt);
 							const timeStr = theme.fg("borderAccent", `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`);
-							const label = sel ? theme.fg("accent", r.label) : theme.fg("text", r.label);
+							const rawLabel = sanitizeRowText(r.label) || r.forkId;
+							const label = sel ? theme.fg("accent", rawLabel) : theme.fg("text", rawLabel);
 							const status = r.closedAt ? "●" : theme.fg("success", "●");
 							const previewW = Math.max(10, w - 45);
-							const preview = r.preview ? r.preview.slice(0, previewW) : "";
+							const preview = truncateToWidth(sanitizeRowText(r.preview), previewW, "…");
 							const previewStr = sel ? preview : theme.fg("borderAccent", preview);
 							lines.push(truncateToWidth(`${cursor} ${status} ${timeStr} ${label}  ${previewStr}`, w, ""));
 						}
@@ -655,6 +598,6 @@ end tell`;
 			ctx.ui.notify(`패널 생성 실패: ${result.stderr?.trim() ?? "unknown"}`, "error");
 			return;
 		}
-		ctx.ui.notify(`${target.label} 세션 재개 → right 패널`, "info");
+		ctx.ui.notify(`${sanitizeRowText(target.label) || target.forkId} 세션 재개 → right 패널`, "info");
 	}
 }
