@@ -17,7 +17,7 @@ source:
   - pilee-history:2026-05-05#52
   - session-backfill:2026-05-05#judgment-unit
 reviewed_at: 2026-05-05
-reviewed_commit: d5829047aef2c107923607d377fae7e225a2f3cd
+reviewed_commit: 5f0a71d647cbc6854d01582e80ba36f7fc68ebbc
 related:
   - private-journal-public-doctrine
   - readme-coverage-map
