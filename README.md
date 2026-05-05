@@ -202,7 +202,7 @@ Ctrl+W                  → 전체 워크트리 오버레이
 | **queued-messages** | 메시지 큐 시각화 + idle watchdog |
 | **diff-overlay** | `/diff` TUI — 커밋 모드, 파일 트리, 구문 하이라이팅 |
 | **timestamp** | `/timestamp` TUI — 대화 타임라인 |
-| **archive-to-html** | HTML 산출물 아카이브 + `/show-report` TUI |
+| **archive-to-html** | Verify/Web Search HTML 아카이브 + `/show-report` Glimpse viewer |
 
 ### 도구
 
@@ -251,7 +251,7 @@ Ctrl+W                  → 전체 워크트리 오버레이
 | **skill-creator** | 스킬 생성/개선/평가 워크플로 |
 | **db-write / db-write-migration** | DB 쓰기 + 마이그레이션 가이드 |
 | **jira-issue-management** | Jira 이슈 CRUD |
-| **make-report** | PR 리포트 자동 생성 |
+| **verify-report** | PR 캡처/검증 리포트 + Glimpse 프리뷰 |
 | **start-local-dev** | 로컬 dev 서버 구동 |
 | **debugging-and-error-recovery** | 디버깅 패턴 |
 | **git-workflow-and-versioning** | Git 워크플로 |

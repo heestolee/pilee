@@ -1,4 +1,4 @@
-# Make Report — agent-storage 업로드 (upload 모드만)
+# Verify Report — agent-storage 업로드 (upload 모드만)
 
 > **default는 confirm 모드** — 업로드 안 함. 이 문서는 `--upload` 명시 시에만 따라가는 절차.
 

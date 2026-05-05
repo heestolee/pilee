@@ -242,7 +242,7 @@ frame.json `verify_plan.manual_checks` 중 처리 안 된 항목이 있거나, G
   "questions": [{
     "question": "검증 완료. 미검증 <n>건 (시각/수동 확인 필요). 다음:",
     "options": [
-      "/make-report — 시각적 검증 리포트 (브라우저 자동화)",
+      "/verify-report — 캡처/검증 리포트 (Glimpse 프리뷰)",
       "/verify --resume — 미검증 항목 직접 처리",
       "수동 확인 후 verify에 기록 추가",
       "(미검증 무시) /create-pr — PR 생성"

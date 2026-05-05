@@ -1,12 +1,16 @@
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
+import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ToolResultEvent } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 
 const ARCHIVE_DIR = path.join(os.homedir(), "Documents", "agent-history", "분류 전");
 const FONT_SIGNATURE = "Noto+Serif+KR";
 const REPORT_SIGNATURE = "Verify Report";
+const WEB_SEARCH_SIGNATURE = "Web Search Review";
 
 const SVG_STYLES = `
 :root {
@@ -134,6 +138,171 @@ input[type="text"]:focus, input[type="number"]:focus, textarea:focus, select:foc
 }
 `;
 
+interface GlimpseWindow {
+	on(event: "closed", handler: () => void): void;
+}
+
+let glimpseOpen: ((html: string, opts: Record<string, unknown>) => GlimpseWindow) | null | undefined;
+const artifactWindows = new Set<GlimpseWindow>();
+
+function findGlimpseMjs(): string | null {
+	try {
+		const req = createRequire(import.meta.url);
+		return req.resolve("glimpseui");
+	} catch {}
+	try {
+		const globalRoot = execFileSync("npm", ["root", "-g"], { encoding: "utf-8" }).trim();
+		const entry = path.join(globalRoot, "glimpseui", "src", "glimpse.mjs");
+		if (fs.existsSync(entry)) return entry;
+	} catch {}
+	return null;
+}
+
+async function getGlimpseOpen() {
+	if (glimpseOpen !== undefined) return glimpseOpen;
+	const resolved = findGlimpseMjs();
+	if (resolved) {
+		try {
+			glimpseOpen = (await import(resolved)).open;
+			return glimpseOpen;
+		} catch {}
+	}
+	glimpseOpen = null;
+	return glimpseOpen;
+}
+
+function escapeHtml(value: string): string {
+	return value
+		.replaceAll("&", "&amp;")
+		.replaceAll("<", "&lt;")
+		.replaceAll(">", "&gt;")
+		.replaceAll('"', "&quot;");
+}
+
+function escapeAttr(value: string): string {
+	return escapeHtml(value);
+}
+
+function mimeFor(filePath: string): string {
+	const ext = path.extname(filePath).toLowerCase();
+	if (ext === ".png") return "image/png";
+	if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+	if (ext === ".gif") return "image/gif";
+	if (ext === ".webp") return "image/webp";
+	if (ext === ".svg") return "image/svg+xml";
+	return "application/octet-stream";
+}
+
+function inlineLocalImageSrc(html: string, htmlDir: string): string {
+	return html.replace(/(<img\b[^>]*\bsrc=["'])([^"']+)(["'][^>]*>)/gi, (match, prefix, src, suffix) => {
+		if (/^(https?:|data:|blob:|file:)/i.test(src)) return match;
+		const assetPath = path.resolve(htmlDir, src);
+		const relative = path.relative(htmlDir, assetPath);
+		if (relative.startsWith("..") || path.isAbsolute(relative)) return match;
+		if (!fs.existsSync(assetPath)) return match;
+		const b64 = fs.readFileSync(assetPath).toString("base64");
+		return `${prefix}data:${mimeFor(assetPath)};base64,${b64}${suffix}`;
+	});
+}
+
+function artifactTitle(html: string, filePath: string): string {
+	if (html.includes(WEB_SEARCH_SIGNATURE)) return "Web Search Review";
+	if (html.includes(REPORT_SIGNATURE)) return "Verify Report";
+	const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+	if (titleMatch?.[1]) return titleMatch[1].replace(/<[^>]*>/g, "").trim() || path.basename(filePath);
+	return path.basename(filePath);
+}
+
+function buildGlimpseArtifactHtml(artifactHtml: string, artifactPath: string): string {
+	const artifactDataUri = `data:text/html;base64,${Buffer.from(artifactHtml, "utf8").toString("base64")}`;
+	const title = artifactTitle(artifactHtml, artifactPath);
+	const fileUrl = pathToFileURL(artifactPath).href;
+
+	return `<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${escapeHtml(title)} Preview</title>
+<style>
+	:root { color-scheme: light dark; --bar: rgba(20,20,24,.94); --text: #f5f5f5; --muted: #b8b8b8; }
+	* { box-sizing: border-box; }
+	html, body { width: 100%; height: 100%; margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+	body { display: grid; grid-template-rows: auto 1fr; background: #111; }
+	.bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 14px; background: var(--bar); color: var(--text); border-bottom: 1px solid rgba(255,255,255,.12); }
+	.title { min-width: 0; }
+	.title strong { display: block; font-size: 14px; line-height: 1.2; }
+	.title span { display: block; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 66vw; }
+	.actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+	a.button, button { border: 1px solid rgba(255,255,255,.18); border-radius: 8px; padding: 7px 10px; background: rgba(255,255,255,.08); color: var(--text); font-size: 12px; text-decoration: none; cursor: pointer; }
+	a.button:hover, button:hover { background: rgba(255,255,255,.15); }
+	iframe { width: 100%; height: 100%; border: 0; background: white; }
+</style>
+</head>
+<body>
+	<div class="bar">
+		<div class="title">
+			<strong>${escapeHtml(title)}</strong>
+			<span>${escapeHtml(artifactPath)}</span>
+		</div>
+		<div class="actions">
+			<a class="button" href="${escapeAttr(fileUrl)}" target="_blank" rel="noreferrer">Open in Browser</a>
+			<button onclick="window.close()">Close</button>
+		</div>
+	</div>
+	<iframe src="${artifactDataUri}" title="${escapeAttr(title)}"></iframe>
+</body>
+</html>`;
+}
+
+function openHtmlInGlimpse(open: (html: string, opts: Record<string, unknown>) => GlimpseWindow, filePath: string): void {
+	const resolved = fs.realpathSync(filePath);
+	const htmlDir = path.dirname(resolved);
+	const html = inlineLocalImageSrc(fs.readFileSync(resolved, "utf-8"), htmlDir);
+	const title = artifactTitle(html, resolved);
+	const win = open(buildGlimpseArtifactHtml(html, resolved), { width: 1280, height: 900, title, openLinks: true });
+	artifactWindows.add(win);
+	win.on("closed", () => artifactWindows.delete(win));
+}
+
+async function openInSystemBrowser(pi: ExtensionAPI, filePath: string): Promise<void> {
+	const resolved = fs.realpathSync(filePath);
+	const plat = os.platform();
+	const result = plat === "darwin"
+		? await pi.exec("open", [resolved])
+		: plat === "win32"
+			? await pi.exec("cmd", ["/c", "start", "", resolved])
+			: await pi.exec("xdg-open", [resolved]);
+	if (result.code !== 0) throw new Error(result.stderr || `Failed to open browser (${result.code})`);
+}
+
+async function openHtmlArtifact(pi: ExtensionAPI, filePath: string, browserOnly = false): Promise<"glimpse" | "browser"> {
+	if (!browserOnly) {
+		const open = await getGlimpseOpen();
+		if (open) {
+			try {
+				openHtmlInGlimpse(open, filePath);
+				return "glimpse";
+			} catch {}
+		}
+	}
+	await openInSystemBrowser(pi, filePath);
+	return "browser";
+}
+
+function toAbsolutePath(filePath: string, cwd: string): string {
+	return path.isAbsolute(filePath) ? filePath : path.resolve(cwd, filePath);
+}
+
+function parseShowReportArgs(args: string, cwd: string): { browserOnly: boolean; explicitPath: string } {
+	const raw = (args ?? "").trim();
+	if (!raw) return { browserOnly: false, explicitPath: "" };
+	const browserOnly = /(^|\s)--browser(\s|$)/.test(raw);
+	const withoutFlag = raw.replace(/(^|\s)--browser(?=\s|$)/g, " ").trim();
+	const unquoted = withoutFlag.replace(/^['"]|['"]$/g, "");
+	return { browserOnly, explicitPath: unquoted ? toAbsolutePath(unquoted, cwd) : "" };
+}
+
 function wrapArchivedWidgetHTML(code: string, isSVG = false): string {
 	if (isSVG) {
 		return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{-webkit-user-select:text;user-select:text}body{cursor:text}${SVG_STYLES}</style></head><body style="margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#1a1a1a;color:#e0e0e0;">${code}</body></html>`;
@@ -144,14 +313,18 @@ function wrapArchivedWidgetHTML(code: string, isSVG = false): string {
 
 export default function (pi: ExtensionAPI) {
 	pi.registerCommand("show-report", {
-		description: "TUI로 리포트 목록을 보고 선택해서 브라우저에서 열기. Usage: /show-report [path]",
+		description: "Verify/Web Search HTML 리포트를 목록에서 선택하거나 경로로 받아 Glimpse로 열기. Usage: /show-report [--browser] [path]",
 		handler: async (args: string, ctx: ExtensionCommandContext) => {
 			if (!ctx.hasUI) return;
 
-			const explicit = (args ?? "").trim();
-			if (explicit && fs.existsSync(explicit)) {
-				await pi.exec("open", [explicit]);
-				ctx.ui.notify(`📊 리포트 열기 → ${path.basename(explicit)}`, "info");
+			const parsed = parseShowReportArgs(args, ctx.cwd);
+			if (parsed.explicitPath) {
+				if (!fs.existsSync(parsed.explicitPath)) {
+					ctx.ui.notify(`리포트를 찾을 수 없습니다: ${parsed.explicitPath}`, "warning");
+					return;
+				}
+				const mode = await openHtmlArtifact(pi, parsed.explicitPath, parsed.browserOnly);
+				ctx.ui.notify(`📊 ${mode === "glimpse" ? "Glimpse" : "브라우저"} 열기 → ${path.basename(parsed.explicitPath)}`, "info");
 				return;
 			}
 
@@ -162,8 +335,8 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			if (reports.length === 1) {
-				await pi.exec("open", [reports[0].path]);
-				ctx.ui.notify(`📊 리포트 열기 → ${reports[0].name}`, "info");
+				const mode = await openHtmlArtifact(pi, reports[0].path, parsed.browserOnly);
+				ctx.ui.notify(`📊 ${mode === "glimpse" ? "Glimpse" : "브라우저"} 열기 → ${reports[0].name}`, "info");
 				return;
 			}
 
@@ -180,8 +353,8 @@ export default function (pi: ExtensionAPI) {
 						const lines: string[] = [];
 
 						lines.push(theme.fg("accent", "─".repeat(w)));
-						lines.push(`  ${theme.fg("accent", theme.bold("REPORTS"))} ${theme.fg("accent", "|")} ${reports.length} files ${theme.fg("accent", "·")} ${theme.fg("border", "Enter: open · q/Esc: close")}`);
-						lines.push(`  ${theme.fg("border", "↑/↓ select · Enter open")}`);
+						lines.push(`  ${theme.fg("accent", theme.bold("REPORTS"))} ${theme.fg("accent", "|")} ${reports.length} files ${theme.fg("accent", "·")} ${theme.fg("border", "Enter: Glimpse · q/Esc: close")}`);
+						lines.push(`  ${theme.fg("border", "↑/↓ select · Enter open · /show-report --browser for browser")}`);
 
 						if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
 						if (selectedIndex >= scrollOffset + bodyH) scrollOffset = selectedIndex - bodyH + 1;
@@ -191,7 +364,11 @@ export default function (pi: ExtensionAPI) {
 							const sel = i === selectedIndex;
 							const cursor = sel ? theme.fg("accent", "▶") : " ";
 							const timeStr = theme.fg("borderAccent", r.time);
-							const src = r.source === "workspace" ? theme.fg("success", "ws") : "ar";
+							const src = r.source === "workspace"
+								? theme.fg("success", "ws")
+								: r.source === "web-search"
+									? theme.fg("accent", "web")
+									: theme.fg("warning", "ar");
 							const name = sel ? theme.fg("accent", r.name) : theme.fg("text", r.name);
 							const ticket = r.ticket ? theme.fg("warning", ` ${r.ticket}`) : "";
 							lines.push(truncateToWidth(`${cursor} ${src} ${timeStr}${ticket} ${name}`, w, ""));
@@ -219,8 +396,8 @@ export default function (pi: ExtensionAPI) {
 			);
 
 			if (selected) {
-				await pi.exec("open", [selected.path]);
-				ctx.ui.notify(`📊 리포트 열기 → ${selected.name}`, "info");
+				const mode = await openHtmlArtifact(pi, selected.path, parsed.browserOnly);
+				ctx.ui.notify(`📊 ${mode === "glimpse" ? "Glimpse" : "브라우저"} 열기 → ${selected.name}`, "info");
 			}
 		},
 	});
@@ -230,7 +407,12 @@ export default function (pi: ExtensionAPI) {
 
 		if (event.toolName === "write") {
 			archiveToHtmlSkill(event, ctx);
-			archiveMakeReport(event, ctx);
+			await archiveVerifyReport(event, ctx, pi);
+			return;
+		}
+
+		if (event.toolName === "web_search") {
+			archiveWebSearchResult(event, ctx);
 			return;
 		}
 
@@ -270,7 +452,7 @@ interface ReportEntry {
 	name: string;
 	time: string;
 	ticket: string;
-	source: "workspace" | "archive";
+	source: "workspace" | "archive" | "web-search";
 	mtime: number;
 }
 
@@ -315,10 +497,23 @@ function collectReports(cwd: string): ReportEntry[] {
 		} catch {}
 	}
 
+	// 3. web_search summary-review 아카이브
+	const webSearchDir = path.join(ARCHIVE_DIR, "..", "web-search");
+	if (fs.existsSync(webSearchDir)) {
+		try {
+			for (const f of fs.readdirSync(webSearchDir)) {
+				if (!f.endsWith(".html")) continue;
+				const fp = path.join(webSearchDir, f);
+				const stat = fs.statSync(fp);
+				results.push({ path: fp, name: f, time: formatMtime(stat.mtimeMs), ticket: "", source: "web-search", mtime: stat.mtimeMs });
+			}
+		} catch {}
+	}
+
 	return results.sort((a, b) => b.mtime - a.mtime);
 }
 
-function archiveMakeReport(event: ToolResultEvent, ctx: ExtensionContext) {
+async function archiveVerifyReport(event: ToolResultEvent, ctx: ExtensionContext, pi: ExtensionAPI) {
 	const filePath = typeof event.input?.path === "string" ? event.input.path : undefined;
 	if (!filePath || !filePath.endsWith(".html")) return;
 
@@ -339,7 +534,195 @@ function archiveMakeReport(event: ToolResultEvent, ctx: ExtensionContext) {
 		fs.copyFileSync(resolved, path.join(reportDir, filename));
 
 		if (ctx.hasUI) {
-			ctx.ui.notify(`📊 리포트 아카이브 → reports/${filename}`, "info");
+			let mode: "glimpse" | "browser" | "none" = "none";
+			try {
+				mode = await openHtmlArtifact(pi, resolved);
+			} catch {}
+			ctx.ui.notify(
+				`📊 Verify Report 아카이브${mode !== "none" ? ` + ${mode === "glimpse" ? "Glimpse" : "브라우저"} 프리뷰` : ""} → reports/${filename}`,
+				"info",
+			);
+		}
+	} catch {}
+}
+
+function textContentFromToolResult(event: ToolResultEvent): string {
+	return event.content
+		.map((item) => (item?.type === "text" && typeof item.text === "string" ? item.text : ""))
+		.filter(Boolean)
+		.join("\n\n")
+		.trim();
+}
+
+function stringArrayFromInput(input: unknown): string[] {
+	if (!input || typeof input !== "object") return [];
+	const obj = input as Record<string, unknown>;
+	if (Array.isArray(obj.queries)) return obj.queries.filter((q): q is string => typeof q === "string" && q.trim().length > 0);
+	return typeof obj.query === "string" && obj.query.trim().length > 0 ? [obj.query] : [];
+}
+
+function valueFromRecord(record: unknown, key: string): unknown {
+	return record && typeof record === "object" ? (record as Record<string, unknown>)[key] : undefined;
+}
+
+function slugify(value: string): string {
+	return value
+		.toLowerCase()
+		.replace(/https?:\/\//g, "")
+		.replace(/[^a-z0-9가-힣_-]+/gi, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, 60) || "web-search";
+}
+
+function renderInlineMarkdown(value: string): string {
+	return escapeHtml(value)
+		.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (_m, label, url) => `<a href="${escapeAttr(url)}" target="_blank" rel="noreferrer">${label}</a>`)
+		.replace(/`([^`]+)`/g, "<code>$1</code>")
+		.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+}
+
+function renderMarkdownLite(markdown: string): string {
+	const lines = markdown.split(/\r?\n/);
+	const out: string[] = [];
+	let inList = false;
+	let inCode = false;
+	let codeLines: string[] = [];
+	const closeList = () => {
+		if (inList) {
+			out.push("</ul>");
+			inList = false;
+		}
+	};
+	const closeCode = () => {
+		if (inCode) {
+			out.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+			codeLines = [];
+			inCode = false;
+		}
+	};
+
+	for (const line of lines) {
+		if (line.trim().startsWith("```")) {
+			if (inCode) closeCode();
+			else {
+				closeList();
+				inCode = true;
+				codeLines = [];
+			}
+			continue;
+		}
+		if (inCode) {
+			codeLines.push(line);
+			continue;
+		}
+		if (!line.trim()) {
+			closeList();
+			continue;
+		}
+		const heading = line.match(/^(#{1,4})\s+(.+)$/);
+		if (heading) {
+			closeList();
+			const level = Math.min(heading[1].length + 1, 5);
+			out.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
+			continue;
+		}
+		const bullet = line.match(/^\s*[-*]\s+(.+)$/);
+		if (bullet) {
+			if (!inList) {
+				out.push("<ul>");
+				inList = true;
+			}
+			out.push(`<li>${renderInlineMarkdown(bullet[1])}</li>`);
+			continue;
+		}
+		closeList();
+		out.push(`<p>${renderInlineMarkdown(line)}</p>`);
+	}
+	closeCode();
+	closeList();
+	return out.join("\n");
+}
+
+function buildWebSearchReviewHtml(args: {
+	queries: string[];
+	content: string;
+	responseId: string;
+	workflow: string;
+	selectedCount: string;
+	createdAt: Date;
+}): string {
+	const queryTitle = args.queries.length > 0 ? args.queries.join(" · ") : "web_search";
+	return `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${WEB_SEARCH_SIGNATURE} — ${escapeHtml(queryTitle)}</title>
+<style>
+	:root { color-scheme: light dark; --bg: #111827; --panel: #1f2937; --text: #f9fafb; --muted: #9ca3af; --line: #374151; --accent: #60a5fa; }
+	body { margin: 0; padding: 28px; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+	main { max-width: 960px; margin: 0 auto; }
+	header { border-bottom: 1px solid var(--line); margin-bottom: 24px; padding-bottom: 18px; }
+	h1 { margin: 0 0 8px; font-size: 28px; }
+	.meta { display: flex; flex-wrap: wrap; gap: 8px; color: var(--muted); font-size: 13px; }
+	.badge { border: 1px solid var(--line); border-radius: 999px; padding: 4px 9px; background: rgba(255,255,255,.04); }
+	section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; margin-bottom: 18px; }
+	h2, h3, h4, h5 { margin-top: 1.2em; }
+	a { color: var(--accent); }
+	code { background: rgba(255,255,255,.08); border-radius: 5px; padding: 1px 5px; }
+	pre { overflow: auto; background: #0b1020; border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+	li { margin: 7px 0; }
+</style>
+</head>
+<body>
+<main>
+<header>
+	<h1>${WEB_SEARCH_SIGNATURE}</h1>
+	<div class="meta">
+		<span class="badge">${escapeHtml(args.createdAt.toLocaleString())}</span>
+		<span class="badge">workflow=${escapeHtml(args.workflow)}</span>
+		${args.responseId ? `<span class="badge">responseId=${escapeHtml(args.responseId)}</span>` : ""}
+		${args.selectedCount ? `<span class="badge">selected=${escapeHtml(args.selectedCount)}</span>` : ""}
+	</div>
+</header>
+<section>
+	<h2>Queries</h2>
+	<ul>${args.queries.map((query) => `<li>${escapeHtml(query)}</li>`).join("\n")}</ul>
+</section>
+<section>
+	<h2>Result</h2>
+	${renderMarkdownLite(args.content)}
+</section>
+</main>
+</body>
+</html>`;
+}
+
+function archiveWebSearchResult(event: ToolResultEvent, ctx: ExtensionContext) {
+	const workflow = String(valueFromRecord(event.details, "workflow") ?? valueFromRecord(event.input, "workflow") ?? "none");
+	if (workflow !== "summary-review") return;
+
+	const content = textContentFromToolResult(event);
+	if (!content) return;
+
+	try {
+		const queries = stringArrayFromInput(event.input);
+		const createdAt = new Date();
+		const ts = createdAt.toISOString().replace(/[:.]/g, "-").slice(0, 19);
+		const responseId = String(valueFromRecord(event.details, "responseId") ?? "");
+		const selectedCount = String(valueFromRecord(event.details, "selectedCount") ?? "");
+		const title = queries.length > 0 ? queries.join(" ") : responseId || "web-search";
+		const filename = `${ts}_${slugify(title)}.html`;
+		const webSearchDir = path.join(ARCHIVE_DIR, "..", "web-search");
+		fs.mkdirSync(webSearchDir, { recursive: true });
+		fs.writeFileSync(
+			path.join(webSearchDir, filename),
+			buildWebSearchReviewHtml({ queries, content, responseId, workflow, selectedCount, createdAt }),
+			"utf-8",
+		);
+
+		if (ctx.hasUI) {
+			ctx.ui.notify(`🔎 Web Search Review 아카이브 → web-search/${filename}`, "info");
 		}
 	} catch {}
 }

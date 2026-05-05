@@ -1,8 +1,8 @@
-# Make Report — 리포트 & 기록 템플릿
+# Verify Report — 리포트 & 기록 템플릿
 
 ## HTML 리포트 구조 (로컬 프리뷰용)
 
-이미지 참조: 로컬 상대 경로 (현재 디렉토리 기준). Step 6의 Glimpse 프리뷰 스크립트가 로컬 이미지 경로를 data URI로 인라인 처리하므로, report.html 자체는 상대 경로를 유지한다.
+이미지 참조: 로컬 상대 경로 (현재 디렉토리 기준). `/show-report`의 Glimpse 프리뷰가 로컬 이미지 경로를 data URI로 인라인 처리하므로, report.html 자체는 상대 경로를 유지한다.
 
 ```html
 <!DOCTYPE html>
@@ -31,7 +31,7 @@
 <h2>요약</h2>
 <table>
   <tr><th>#</th><th>항목</th><th>분류</th><th>형태</th><th>결과</th></tr>
-  <tr><td>A1</td><td>...</td><td>UI</td><td>PNG</td><td class="pass">PASS</td></tr>
+  <tr><td>A1</td><td>...</td><td>UI_CAPTURE</td><td>PNG</td><td class="pass">PASS</td></tr>
   <tr><td>A2</td><td>...</td><td>BE</td><td>—</td><td class="skip">SKIP (CODE_DIFF)</td></tr>
 </table>
 
@@ -60,7 +60,7 @@
 
 | # | 항목 | 분류 | 결과 | 스크린샷 |
 |---|------|------|------|---------|
-| A1 | ... | UI | PASS | ![A1](...?raw=true) |
+| A1 | ... | UI_CAPTURE | PASS | ![A1](...?raw=true) |
 | A2 | ... | BE | SKIP | — |
 ```
 
@@ -85,19 +85,19 @@ gh pr view --json body | jq -r .body > /tmp/pr-body.md
 gh pr edit --body-file /tmp/pr-body.md
 ```
 
-## 캡처 분류 AskUserQuestion 템플릿 (Step 1)
+## 캡처/검증 분류 AskUserQuestion 템플릿 (Step 1)
 
 ```
-다음 항목들을 캡처 대상으로 분류했습니다. 수정할 게 있으신가요?
+다음 항목들을 어떤 캡처/검증 증거로 남길지 분류했습니다. 수정할 게 있으신가요?
 
 | # | 항목 | 분류 | 이유 |
 |---|------|------|------|
-| A1 | 리뷰답글 권한 토글 노출 | UI | admin 메뉴에서 보임 |
-| A2 | 권한 가드 mutation 차단 | BE | UI 변화 없음 → CODE_DIFF 권장 |
+| A1 | 리뷰답글 권한 토글 노출 | UI_CAPTURE | admin 메뉴에서 보임 — 캡처가 가장 확실 |
+| A2 | 권한 가드 mutation 차단 | BE | UI 변화 없음 → API 응답/CODE_DIFF 권장 |
 
 옵션:
 - 분류대로 진행
-- A2를 UI로 변경 (직접 시연하고 싶다)
+- A2를 UI_CAPTURE로 변경 (직접 시연하고 싶다)
 - 항목 수정/추가/삭제
 ```
 
@@ -128,25 +128,21 @@ gh pr edit --body-file /tmp/pr-body.md
 - 사전 확인 모드로 (각 항목 시작 전 확인)
 ```
 
-## Glimpse 프리뷰 액션 처리
+## Glimpse 프리뷰 처리
 
-Step 6에서 실행:
+Step 6에서 `report.html`을 생성하면 `archive-to-html` extension이 Verify Report를 감지해 Glimpse로 자동 프리뷰한다. 다시 열 때는 `/show-report`를 사용한다.
 
-```bash
-node skills/make-report/scripts/preview-report-glimpse.mjs .context/work/{workspace}/captures/report.html
-```
-
-stdout 예시:
-
-```json
-{"action":"approve","reportPath":"/abs/path/.context/work/ws/captures/report.html"}
+```text
+/show-report .context/work/{workspace}/captures/report.html
+/show-report                          # 목록에서 선택
+/show-report --browser report.html    # 시스템 브라우저 fallback
 ```
 
 처리 규칙:
-- `approve` / `closed`: 로컬 확인 완료. 업로드하지 않고 종료.
-- `upload`: Step 7 upload 진행.
-- `recapture`: 필요한 항목 재캡처 또는 `/make-report --update`로 보완.
-- `error`: `/show-report` 또는 시스템 브라우저 open fallback.
+- 로컬 확인 완료: 업로드하지 않고 종료.
+- 업로드 명시: Step 7 upload 진행.
+- 보완 필요: 필요한 항목 재캡처 또는 `/verify-report --update`로 보완.
+- Glimpse 실패: `/show-report --browser` 또는 시스템 브라우저 open fallback.
 
 ## 후속 단계 AskUserQuestion 템플릿 (Step 9)
 
@@ -157,8 +153,8 @@ stdout 예시:
     "options": [
       "/create-pr — PR 생성 (이 리포트 포함)",
       "/reflect — 학습 캡처",
-      "/make-report --upload — agent-storage 업로드 (upload 모드)",
-      "/make-report --update — 추가 항목 캡처",
+      "/verify-report --upload — agent-storage 업로드 (upload 모드)",
+      "/verify-report --update — 추가 검증 항목 처리",
       "일단 멈춤"
     ]
   }]

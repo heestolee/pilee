@@ -1,4 +1,4 @@
-# Make Report — 캡처 명령어
+# Verify Report — 캡처 명령어
 
 ## 출력 디렉토리
 
