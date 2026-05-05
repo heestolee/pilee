@@ -1,6 +1,16 @@
 ---
 title: pilee 지식 계층과 정합성 갱신
-tags: [pilee, knowledge, history, journal, sanitized, reviewed-at, graph, 지식, 히스토리, 정합성]
+tags:
+  - pilee
+  - knowledge
+  - history
+  - journal
+  - sanitized
+  - reviewed-at
+  - graph
+  - 지식
+  - 히스토리
+  - 정합성
 category: knowledge
 status: active
 applies_to:
@@ -11,6 +21,7 @@ applies_to:
 source:
   - pilee-history:2026-05-05#knowledge-system
 reviewed_at: 2026-05-05
+reviewed_commit: b730f16e977be8fa2f810038fc3aafe2c29ceea9
 related:
   - verify-report-workflow
   - web-search-curator
@@ -33,12 +44,13 @@ pilee knowledge는 product knowledge의 `scope.path + verified_at` 모델을 그
 
 - `applies_to`는 이 지식이 설명하는 기능, 스킬, 확장, 자동화 영역입니다.
 - `reviewed_at`은 마지막으로 현재 판단이 유효하다고 확인한 날짜입니다.
+- `reviewed_commit`은 그 검토가 기준 삼은 git commit입니다. 같은 날짜에 추가 커밋이 생겨도 review 후보에서 빠지지 않게 하는 보조 기준입니다.
 - `related`는 README graph의 명시적 edge입니다.
 - `supersedes`는 대체된 과거 결정이나 개념 label입니다.
 
 ## Review Loop
 
-정합성 갱신은 완전 자동 수정보다 “후보를 찾고, AI/사용자가 공개 가능한 형태로 재작성하고, 검토 날짜를 갱신하는” 흐름을 따릅니다. `scripts/knowledge.mjs --review-candidates`는 최근 commit과 로컬 journal에서 각 문서의 tags/applies_to와 맞닿는 흔적을 찾아 리뷰 후보를 제안합니다. 후보 문서는 내용을 읽고, 실제로 바뀐 원칙이 있으면 수정한 뒤 `--confirm`으로 `reviewed_at`을 갱신합니다.
+정합성 갱신은 완전 자동 수정보다 “후보를 찾고, AI/사용자가 공개 가능한 형태로 재작성하고, 검토 기준을 갱신하는” 흐름을 따릅니다. `scripts/knowledge.mjs --freshness`는 doctrine freshness, README freshness, deterministic actions, AI/human review actions를 한 report로 나눠 보여줍니다. `--review-candidates`는 최근 commit과 로컬 journal에서 각 문서의 tags/applies_to와 맞닿는 흔적을 찾아 리뷰 후보를 제안합니다. 후보 문서는 내용을 읽고, 실제로 바뀐 원칙이 있으면 수정한 뒤 `--confirm`으로 `reviewed_at`과 `reviewed_commit`을 갱신합니다.
 
 ## Privacy Guardrail
 

@@ -24,6 +24,7 @@
     "knowledge": "node scripts/knowledge.mjs",
     "knowledge:validate": "node scripts/knowledge.mjs --validate",
     "knowledge:graph": "node scripts/knowledge.mjs --graph",
+    "knowledge:freshness": "node scripts/knowledge.mjs --freshness",
     "knowledge:review": "node scripts/knowledge.mjs --review-candidates"
   },
   "dependencies": {

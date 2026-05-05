@@ -35,25 +35,24 @@ jobs:
       - name: Validate knowledge docs
         run: npm run knowledge:validate
 
-      - name: Collect review candidates
+      - name: Collect freshness report
         run: |
-          node scripts/knowledge.mjs --review-candidates --json > /tmp/pilee-knowledge-candidates.json
+          node scripts/knowledge.mjs --freshness --json > /tmp/pilee-knowledge-freshness.json
           node <<'NODE' >> "$GITHUB_STEP_SUMMARY"
           const fs = require('fs');
-          const data = JSON.parse(fs.readFileSync('/tmp/pilee-knowledge-candidates.json', 'utf8'));
-          console.log('## pilee knowledge review candidates');
+          const data = JSON.parse(fs.readFileSync('/tmp/pilee-knowledge-freshness.json', 'utf8'));
+          console.log('## pilee knowledge freshness');
           console.log('');
-          if (!data.candidates.length) {
-            console.log('No candidates found from public git history.');
-          } else {
-            console.log('| Doc | Evidence |');
-            console.log('|---|---:|');
-            for (const candidate of data.candidates) {
-              const evidence = candidate.commitEvidence.length + candidate.historyEvidence.length;
-              console.log(`| ${candidate.id} | ${evidence} |`);
-            }
+          console.log(`Doctrine: ${data.doctrine_freshness.fresh} fresh / ${data.doctrine_freshness.review_needed} review_needed / ${data.doctrine_freshness.unreviewed} unreviewed`);
+          console.log(`Deterministic actions: ${data.deterministic_actions.length}`);
+          console.log(`AI/human actions: ${data.ai_actions.length}`);
+          console.log('');
+          if (data.ai_actions.length) {
+            console.log('| Doc | Reason |');
+            console.log('|---|---|');
+            for (const action of data.ai_actions) console.log(`| ${action.doc} | ${action.reason} |`);
             console.log('');
-            console.log('Private/local journal is intentionally not available in GitHub Actions. Run `npm run knowledge:review` locally before an AI-assisted content sync PR.');
+            console.log('Private/local journal is intentionally not available in GitHub Actions. Run `npm run knowledge:freshness` locally before an AI-assisted content sync PR.');
           }
           NODE
 
@@ -67,9 +66,10 @@ jobs:
           commit-message: "chore: sync pilee knowledge graph"
           body: |
             ## Overview
-            Automated deterministic sync for `docs/knowledge/README.md`.
+            Automated deterministic sync for generated knowledge blocks in `docs/knowledge/README.md` and root `README.md`.
 
-            This workflow only refreshes generated graph/index content and validates knowledge metadata.
-            Content updates that require private `docs/pilee-history.md` context should be done locally with `npm run knowledge:review`, sanitized, and reviewed before pushing.
+            This workflow only refreshes generated graph/index/link content and validates knowledge metadata.
+            Content updates that require private `docs/pilee-history.md` context should be done locally with `npm run knowledge:freshness`, sanitized, and reviewed before pushing.
           add-paths: |
             docs/knowledge/README.md
+            README.md

@@ -1,6 +1,16 @@
 ---
 title: Codex-first subagent 모델 운용 정책
-tags: [subagent, codex, model-policy, worker, finder, searcher, stress-interview, self-healing, agent, 모델]
+tags:
+  - subagent
+  - codex
+  - model-policy
+  - worker
+  - finder
+  - searcher
+  - stress-interview
+  - self-healing
+  - agent
+  - 모델
 category: agent
 status: active
 applies_to:
@@ -13,6 +23,7 @@ source:
   - pilee-history:2026-05-04#34
   - pilee-history:2026-05-05#42
 reviewed_at: 2026-05-05
+reviewed_commit: b730f16e977be8fa2f810038fc3aafe2c29ceea9
 related:
   - pilee-knowledge-system
   - worktree-session-continuity

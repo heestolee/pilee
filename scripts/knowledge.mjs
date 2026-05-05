@@ -19,9 +19,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "..");
 const KNOWLEDGE_DIR = path.join(REPO_ROOT, "docs", "knowledge");
-const README_PATH = path.join(KNOWLEDGE_DIR, "README.md");
+const KNOWLEDGE_README_PATH = path.join(KNOWLEDGE_DIR, "README.md");
+const ROOT_README_PATH = path.join(REPO_ROOT, "README.md");
 const GRAPH_START = "<!-- PILEE_KNOWLEDGE_GRAPH_START -->";
 const GRAPH_END = "<!-- PILEE_KNOWLEDGE_GRAPH_END -->";
+const ROOT_LINKS_START = "<!-- PILEE_ROOT_KNOWLEDGE_LINKS_START -->";
+const ROOT_LINKS_END = "<!-- PILEE_ROOT_KNOWLEDGE_LINKS_END -->";
 const VALID_STATUSES = new Set(["active", "experimental", "deprecated", "draft"]);
 const MAX_QUERY_RESULTS = 8;
 
@@ -75,8 +78,34 @@ function isDate(value) {
 	return /^\d{4}-\d{2}-\d{2}$/.test(normalizeDate(value));
 }
 
+function isCommitLike(value) {
+	return /^[0-9a-f]{7,40}$/i.test(String(value || ""));
+}
+
 function today() {
 	return new Date().toISOString().slice(0, 10);
+}
+
+function git(args, { allowFail = true } = {}) {
+	try {
+		return execFileSync("git", args, {
+			cwd: REPO_ROOT,
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "pipe"],
+		}).trim();
+	} catch (error) {
+		if (allowFail) return null;
+		throw error;
+	}
+}
+
+function headCommit() {
+	return git(["rev-parse", "HEAD"]) || "";
+}
+
+function commitExists(hash) {
+	if (!isCommitLike(hash)) return false;
+	return !!git(["rev-parse", "--verify", `${hash}^{commit}`]);
 }
 
 function extractMarkdownLinks(body) {
@@ -147,6 +176,10 @@ function reviewedAtOf(doc) {
 	return normalizeDate(doc.frontmatter.reviewed_at);
 }
 
+function reviewedCommitOf(doc) {
+	return String(doc.frontmatter.reviewed_commit || "").trim();
+}
+
 function printHelp() {
 	console.log(`
 🔥 pilee Knowledge CLI
@@ -154,21 +187,23 @@ function printHelp() {
 Usage:
   node scripts/knowledge.mjs --help
   node scripts/knowledge.mjs <keywords>                  Search public knowledge docs
-  node scripts/knowledge.mjs --validate                  Validate metadata, links, and README graph
-  node scripts/knowledge.mjs --graph [--check]           Regenerate docs/knowledge/README.md graph, or fail if stale
+  node scripts/knowledge.mjs --validate                  Validate metadata, links, README graph, and root README freshness
+  node scripts/knowledge.mjs --graph [--check]           Regenerate docs/knowledge/README.md + root README knowledge links, or fail if stale
+  node scripts/knowledge.mjs --freshness [opts]          Report doctrine/readme freshness and deterministic vs AI actions
   node scripts/knowledge.mjs --review-candidates [opts]  Find docs likely needing review from commits/local history
   node scripts/knowledge.mjs --confirm <doc-id> [--date YYYY-MM-DD]
-                                                        Update reviewed_at after human/AI review
+                                                        Update reviewed_at + reviewed_commit after human/AI review
 
-Review candidate options:
-  --since-days <n>   Fallback lookback when reviewed_at is missing (default: 14)
+Report options:
+  --since-days <n>   Fallback lookback when reviewed_commit is missing (default: 14)
   --json             Emit JSON instead of Markdown
-  --strict           Exit non-zero when candidates are found
+  --strict           Exit non-zero when freshness/review issues are found
 
 Notes:
   - Private journal entries should stay in docs/pilee-history.md or Notion.
   - Knowledge docs must be public/sanitized and describe currently valid decisions.
-  - README's Knowledge Map is generated between ${GRAPH_START} and ${GRAPH_END}.
+  - Knowledge README graph is generated between ${GRAPH_START} and ${GRAPH_END}.
+  - Root README knowledge links are generated between ${ROOT_LINKS_START} and ${ROOT_LINKS_END}.
 `);
 }
 
@@ -244,7 +279,7 @@ function cmdQuery(query) {
 
 function printDocSummary(doc, label) {
 	console.log(`📄 [${label}] ${doc.id} — ${titleOf(doc)}`);
-	console.log(`   Status: ${statusOf(doc) || "unknown"}  Reviewed: ${reviewedAtOf(doc) || "unknown"}`);
+	console.log(`   Status: ${statusOf(doc) || "unknown"}  Reviewed: ${reviewedAtOf(doc) || "unknown"}  Commit: ${shortHash(reviewedCommitOf(doc)) || "unknown"}`);
 	console.log(`   Category: ${categoryOf(doc)}`);
 	console.log(`   Tags: ${tagsOf(doc).join(", ")}`);
 	console.log(`   File: ${rel(doc.filePath)}`);
@@ -305,6 +340,10 @@ function cmdValidate({ includeGraph = true } = {}) {
 			console.log(`❌ ${doc.id}: reviewed_at must be YYYY-MM-DD`);
 			issues++;
 		}
+		if (!isCommitLike(fm.reviewed_commit) || !commitExists(fm.reviewed_commit)) {
+			console.log(`❌ ${doc.id}: reviewed_commit must be an existing git commit hash`);
+			issues++;
+		}
 
 		for (const linkId of doc.markdownLinks) {
 			if (!ids.has(linkId)) {
@@ -329,12 +368,9 @@ function cmdValidate({ includeGraph = true } = {}) {
 	}
 
 	if (includeGraph) {
-		const expected = renderReadme(loadDocs());
-		if (!fs.existsSync(README_PATH)) {
-			console.log(`❌ README missing: ${rel(README_PATH)}`);
-			issues++;
-		} else if (readText(README_PATH) !== expected) {
-			console.log("❌ docs/knowledge/README.md generated graph is stale. Run `node scripts/knowledge.mjs --graph`.");
+		const freshness = inspectReadmeFreshness(docs);
+		for (const issue of freshness.issues) {
+			console.log(`❌ ${issue}`);
 			issues++;
 		}
 	}
@@ -345,9 +381,50 @@ function cmdValidate({ includeGraph = true } = {}) {
 	return issues;
 }
 
-function renderReadme(docs) {
-	const existing = fs.existsSync(README_PATH) ? readText(README_PATH) : defaultReadme();
-	const generated = buildGeneratedSection(docs);
+function inspectReadmeFreshness(docs) {
+	const issues = [];
+	const knowledgeExpected = renderKnowledgeReadme(docs);
+	const knowledgeCurrent = fs.existsSync(KNOWLEDGE_README_PATH) ? readText(KNOWLEDGE_README_PATH) : "";
+	const rootExpected = renderRootReadme(docs);
+	const rootCurrent = fs.existsSync(ROOT_README_PATH) ? readText(ROOT_README_PATH) : "";
+	const extensionCount = countTopLevelDirs("extensions");
+	const skillCount = countTopLevelDirs("skills");
+	const declaredExtensionCount = extractDeclaredCount(rootCurrent, "Extensions");
+	const declaredSkillCount = extractDeclaredCount(rootCurrent, "Skills");
+
+	if (!knowledgeCurrent) issues.push(`README missing: ${rel(KNOWLEDGE_README_PATH)}`);
+	else if (knowledgeCurrent !== knowledgeExpected) issues.push("docs/knowledge/README.md generated graph is stale. Run `node scripts/knowledge.mjs --graph`.");
+	if (!rootCurrent) issues.push(`README missing: ${rel(ROOT_README_PATH)}`);
+	else if (rootCurrent !== rootExpected) issues.push("README.md knowledge link block is stale. Run `node scripts/knowledge.mjs --graph`.");
+	if (declaredExtensionCount !== null && declaredExtensionCount !== extensionCount) {
+		issues.push(`README.md Extensions count is stale: declared ${declaredExtensionCount}, actual ${extensionCount}.`);
+	}
+	if (declaredSkillCount !== null && declaredSkillCount !== skillCount) {
+		issues.push(`README.md Skills count is stale: declared ${declaredSkillCount}, actual ${skillCount}.`);
+	}
+
+	return {
+		knowledge_readme: {
+			path: rel(KNOWLEDGE_README_PATH),
+			fresh: !!knowledgeCurrent && knowledgeCurrent === knowledgeExpected,
+		},
+		root_readme: {
+			path: rel(ROOT_README_PATH),
+			knowledge_links_fresh: !!rootCurrent && rootCurrent === rootExpected,
+			extension_count: extensionCount,
+			declared_extension_count: declaredExtensionCount,
+			extension_count_fresh: declaredExtensionCount === null || declaredExtensionCount === extensionCount,
+			skill_count: skillCount,
+			declared_skill_count: declaredSkillCount,
+			skill_count_fresh: declaredSkillCount === null || declaredSkillCount === skillCount,
+		},
+		issues,
+	};
+}
+
+function renderKnowledgeReadme(docs) {
+	const existing = fs.existsSync(KNOWLEDGE_README_PATH) ? readText(KNOWLEDGE_README_PATH) : defaultKnowledgeReadme();
+	const generated = buildKnowledgeGeneratedSection(docs);
 	if (existing.includes(GRAPH_START) && existing.includes(GRAPH_END)) {
 		return existing.replace(
 			new RegExp(`${escapeRegex(GRAPH_START)}[\\s\\S]*?${escapeRegex(GRAPH_END)}`),
@@ -357,11 +434,11 @@ function renderReadme(docs) {
 	return `${existing.trim()}\n\n${GRAPH_START}\n${generated}\n${GRAPH_END}\n`;
 }
 
-function defaultReadme() {
+function defaultKnowledgeReadme() {
 	return `# pilee Knowledge\n\nPublic, sanitized knowledge extracted from private pilee history.\n`;
 }
 
-function buildGeneratedSection(docs) {
+function buildKnowledgeGeneratedSection(docs) {
 	const sorted = [...docs].sort(
 		(a, b) => categoryOf(a).localeCompare(categoryOf(b)) || a.id.localeCompare(b.id),
 	);
@@ -380,11 +457,11 @@ function buildGeneratedSection(docs) {
 	for (const [category, categoryDocs] of categories) {
 		lines.push(`### ${category}`);
 		lines.push("");
-		lines.push("| Topic | Status | Reviewed | Tags |");
-		lines.push("|---|---|---:|---|");
+		lines.push("| Topic | Status | Reviewed | Commit | Tags |");
+		lines.push("|---|---|---:|---:|---|");
 		for (const doc of categoryDocs) {
 			const tags = tagsOf(doc).slice(0, 6).join(", ");
-			lines.push(`| [${escapeTable(titleOf(doc))}](./${doc.id}.md) | ${statusOf(doc)} | ${reviewedAtOf(doc)} | ${escapeTable(tags)} |`);
+			lines.push(`| [${escapeTable(titleOf(doc))}](./${doc.id}.md) | ${statusOf(doc)} | ${reviewedAtOf(doc)} | ${shortHash(reviewedCommitOf(doc))} | ${escapeTable(tags)} |`);
 		}
 		lines.push("");
 	}
@@ -417,6 +494,62 @@ function buildGeneratedSection(docs) {
 	return lines.join("\n");
 }
 
+function renderRootReadme(docs) {
+	const existing = fs.existsSync(ROOT_README_PATH) ? readText(ROOT_README_PATH) : "";
+	if (!existing) return "";
+	const generated = buildRootKnowledgeLinksSection(docs);
+	if (existing.includes(ROOT_LINKS_START) && existing.includes(ROOT_LINKS_END)) {
+		return existing.replace(
+			new RegExp(`${escapeRegex(ROOT_LINKS_START)}[\\s\\S]*?${escapeRegex(ROOT_LINKS_END)}`),
+			`${ROOT_LINKS_START}\n${generated}\n${ROOT_LINKS_END}`,
+		);
+	}
+	const section = `\n## Knowledge\n\n공개 가능한 최신 설계 지식은 [docs/knowledge/README.md](./docs/knowledge/README.md)에서 검색/그래프 형태로 확인합니다.\n\n${ROOT_LINKS_START}\n${generated}\n${ROOT_LINKS_END}\n\n---\n`;
+	if (existing.includes("\n## Extensions\n")) {
+		return existing.replace("\n## Extensions\n", `${section}\n## Extensions\n`);
+	}
+	return `${existing.trim()}\n${section}\n`;
+}
+
+function buildRootKnowledgeLinksSection(docs) {
+	const surfaceMap = new Map();
+	for (const doc of docs) {
+		for (const target of appliesToOf(doc)) {
+			const surface = normalizeSurface(target);
+			if (!surface) continue;
+			if (!surfaceMap.has(surface)) surfaceMap.set(surface, []);
+			surfaceMap.get(surface).push(doc);
+		}
+	}
+
+	const lines = [];
+	lines.push(`> Generated by \`node scripts/knowledge.mjs --graph\`. Do not edit this block manually.`);
+	lines.push("");
+	lines.push("| Surface | Knowledge docs |");
+	lines.push("|---|---|");
+	for (const [surface, surfaceDocs] of [...surfaceMap.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+		const uniqueDocs = [...new Map(surfaceDocs.map((doc) => [doc.id, doc])).values()].sort((a, b) => a.id.localeCompare(b.id));
+		const links = uniqueDocs.map((doc) => `[${escapeTable(titleOf(doc))}](./docs/knowledge/${doc.id}.md)`).join("<br>");
+		lines.push(`| \`${escapeTable(surface)}\` | ${links} |`);
+	}
+	if (surfaceMap.size === 0) lines.push("| _none_ | _no applies_to surface links yet_ |");
+	return lines.join("\n");
+}
+
+function normalizeSurface(target) {
+	const value = String(target || "").trim();
+	const skillMatch = value.match(/^(skills\/[a-z0-9-]+)/);
+	if (skillMatch) return skillMatch[1];
+	const extensionMatch = value.match(/^(extensions\/[a-z0-9-]+)/);
+	if (extensionMatch) return extensionMatch[1];
+	if (value === "agents" || value.startsWith("agents/")) return "agents";
+	if (value === "docs/knowledge" || value.startsWith("docs/knowledge/")) return "docs/knowledge";
+	if (value === "scripts/knowledge.mjs") return "scripts/knowledge.mjs";
+	if (value === "show-report") return "show-report";
+	if (value.startsWith("web_search")) return "web_search";
+	return null;
+}
+
 function escapeRegex(value) {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -433,19 +566,43 @@ function nodeId(id) {
 	return `doc_${id.replace(/[^a-zA-Z0-9_]/g, "_")}`;
 }
 
+function shortHash(hash) {
+	return hash ? String(hash).slice(0, 7) : "";
+}
+
+function countTopLevelDirs(dirname) {
+	const dir = path.join(REPO_ROOT, dirname);
+	if (!fs.existsSync(dir)) return 0;
+	return fs.readdirSync(dir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).length;
+}
+
+function extractDeclaredCount(content, heading) {
+	const regex = new RegExp(`## ${escapeRegex(heading)}\\n\\n(\\d+)개`);
+	const match = content.match(regex);
+	return match ? Number(match[1]) : null;
+}
+
 function cmdGraph({ check = false } = {}) {
-	const next = renderReadme(loadDocs());
-	const current = fs.existsSync(README_PATH) ? readText(README_PATH) : "";
+	const docs = loadDocs();
+	const nextKnowledge = renderKnowledgeReadme(docs);
+	const currentKnowledge = fs.existsSync(KNOWLEDGE_README_PATH) ? readText(KNOWLEDGE_README_PATH) : "";
+	const nextRoot = renderRootReadme(docs);
+	const currentRoot = fs.existsSync(ROOT_README_PATH) ? readText(ROOT_README_PATH) : "";
 	if (check) {
-		if (current === next) {
-			console.log("✅ docs/knowledge/README.md graph is up to date.");
+		const stale = [];
+		if (currentKnowledge !== nextKnowledge) stale.push(rel(KNOWLEDGE_README_PATH));
+		if (currentRoot !== nextRoot) stale.push(rel(ROOT_README_PATH));
+		if (stale.length === 0) {
+			console.log("✅ knowledge generated README blocks are up to date.");
 			return 0;
 		}
-		console.log("❌ docs/knowledge/README.md graph is stale. Run `node scripts/knowledge.mjs --graph`.");
+		console.log(`❌ Generated README block(s) stale: ${stale.join(", ")}. Run \`node scripts/knowledge.mjs --graph\`.`);
 		return 1;
 	}
-	fs.writeFileSync(README_PATH, next);
-	console.log(`💾 Updated ${rel(README_PATH)}`);
+	fs.writeFileSync(KNOWLEDGE_README_PATH, nextKnowledge);
+	if (nextRoot) fs.writeFileSync(ROOT_README_PATH, nextRoot);
+	console.log(`💾 Updated ${rel(KNOWLEDGE_README_PATH)}`);
+	if (nextRoot) console.log(`💾 Updated ${rel(ROOT_README_PATH)}`);
 	return 0;
 }
 
@@ -460,12 +617,13 @@ function cmdConfirm(docId, date = today()) {
 		process.exit(1);
 	}
 
-	const fm = { ...doc.frontmatter, reviewed_at: date };
+	const commit = headCommit();
+	const fm = { ...doc.frontmatter, reviewed_at: date, reviewed_commit: commit };
 	delete fm.__parseError;
 	const nextFrontmatter = stringifyFrontmatter(fm);
 	const nextContent = `---\n${nextFrontmatter}---\n\n${doc.body.trim()}\n`;
 	fs.writeFileSync(doc.filePath, nextContent);
-	console.log(`✅ ${doc.id}: reviewed_at updated to ${date}`);
+	console.log(`✅ ${doc.id}: reviewed_at=${date}, reviewed_commit=${shortHash(commit)}`);
 	cmdGraph();
 }
 
@@ -478,6 +636,7 @@ function stringifyFrontmatter(fm) {
 		"applies_to",
 		"source",
 		"reviewed_at",
+		"reviewed_commit",
 		"related",
 		"supersedes",
 	];
@@ -492,40 +651,54 @@ function stringifyFrontmatter(fm) {
 }
 
 function cmdReviewCandidates({ sinceDays = 14, json = false, strict = false } = {}) {
+	const candidates = buildReviewCandidates({ sinceDays });
+	if (json) {
+		console.log(JSON.stringify({ generatedAt: new Date().toISOString(), candidates }, null, 2));
+	} else {
+		printReviewCandidates(candidates, { historyAvailable: fs.existsSync(path.join(REPO_ROOT, "docs", "pilee-history.md")) });
+	}
+
+	if (strict && candidates.length > 0) return 1;
+	return 0;
+}
+
+function buildReviewCandidates({ sinceDays = 14 } = {}) {
 	const docs = loadDocs();
 	const fallbackDate = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000)
 		.toISOString()
 		.slice(0, 10);
-	const gitCommits = readGitCommitsSince(fallbackDate);
 	const historyEntries = readHistoryEntries();
 	const candidates = [];
 
 	for (const doc of docs) {
-		const since = reviewedAtOf(doc) || fallbackDate;
+		const sinceDate = reviewedAtOf(doc) || fallbackDate;
+		const reviewedCommit = reviewedCommitOf(doc);
+		const gitCommits = readGitCommitsForDoc(doc, fallbackDate);
 		const tokens = tokensForDoc(doc);
 		const commitEvidence = gitCommits
-			.filter((commit) => commit.date > since)
-			.map((commit) => ({ commit, matches: matchingTokens(tokens, `${commit.subject}\n${commit.files.join("\n")}`) }))
+			.map((commit) => ({ commit, matches: matchingTokens(tokens, `${commit.subject}\n${actionableFiles(commit).join("\n")}`) }))
 			.filter((item) => item.matches.length > 0)
 			.slice(0, 8);
 		const historyEvidence = historyEntries
-			.filter((entry) => entry.date > since)
+			.filter((entry) => entry.date > sinceDate)
 			.map((entry) => ({ entry, matches: matchingTokens(tokens, entry.text) }))
 			.filter((item) => item.matches.length > 0)
 			.slice(0, 8);
 
-		if (commitEvidence.length || historyEvidence.length) {
+		if (commitEvidence.length || historyEvidence.length || !commitExists(reviewedCommit)) {
 			candidates.push({
 				id: doc.id,
 				title: titleOf(doc),
 				category: categoryOf(doc),
 				status: statusOf(doc),
-				reviewed_at: since,
+				reviewed_at: sinceDate,
+				reviewed_commit: reviewedCommit || null,
+				reviewed_commit_valid: commitExists(reviewedCommit),
 				commitEvidence: commitEvidence.map(({ commit, matches }) => ({
-					hash: commit.hash.slice(0, 7),
+					hash: shortHash(commit.hash),
 					date: commit.date,
 					subject: commit.subject,
-					files: commit.files.slice(0, 6),
+					files: actionableFiles(commit).slice(0, 6),
 					matches,
 				})),
 				historyEvidence: historyEvidence.map(({ entry, matches }) => ({
@@ -537,23 +710,32 @@ function cmdReviewCandidates({ sinceDays = 14, json = false, strict = false } = 
 		}
 	}
 
-	if (json) {
-		console.log(JSON.stringify({ generatedAt: new Date().toISOString(), candidates }, null, 2));
-	} else {
-		printReviewCandidates(candidates, { historyAvailable: fs.existsSync(path.join(REPO_ROOT, "docs", "pilee-history.md")) });
-	}
+	return candidates;
+}
 
-	if (strict && candidates.length > 0) return 1;
-	return 0;
+function readGitCommitsForDoc(doc, fallbackDate) {
+	const reviewedCommit = reviewedCommitOf(doc);
+	if (commitExists(reviewedCommit)) {
+		return readGitCommitsRange(`${reviewedCommit}..HEAD`).filter((commit) => actionableFiles(commit).length > 0);
+	}
+	return readGitCommitsSince(fallbackDate).filter((commit) => actionableFiles(commit).length > 0);
 }
 
 function readGitCommitsSince(date) {
+	return readGitCommits([`--since=${date} 00:00:00`]);
+}
+
+function readGitCommitsRange(range) {
+	return readGitCommits([range]);
+}
+
+function readGitCommits(extraArgs) {
 	try {
 		const output = execFileSync(
 			"git",
 			[
 				"log",
-				`--since=${date} 00:00:00`,
+				...extraArgs,
 				"--date=short",
 				"--name-only",
 				"--pretty=format:@@@%H%x09%cs%x09%s",
@@ -578,6 +760,14 @@ function readGitCommitsSince(date) {
 	} catch {
 		return [];
 	}
+}
+
+function actionableFiles(commit) {
+	return commit.files.filter((file) => !isKnowledgeDocFile(file));
+}
+
+function isKnowledgeDocFile(file) {
+	return file === "docs/knowledge/README.md" || /^docs\/knowledge\/[^/]+\.md$/.test(file);
 }
 
 function readHistoryEntries() {
@@ -626,6 +816,8 @@ function tokensForDoc(doc) {
 		"main",
 		"workflow",
 		"source",
+		"report",
+		"리포트",
 		"pilee",
 		"mjs",
 		"ts",
@@ -650,7 +842,8 @@ function printReviewCandidates(candidates, { historyAvailable }) {
 	}
 	for (const candidate of candidates) {
 		console.log(`📄 ${candidate.id} — ${candidate.title}`);
-		console.log(`   reviewed_at: ${candidate.reviewed_at}  status: ${candidate.status}`);
+		console.log(`   reviewed_at: ${candidate.reviewed_at}  reviewed_commit: ${shortHash(candidate.reviewed_commit) || "missing"}  status: ${candidate.status}`);
+		if (!candidate.reviewed_commit_valid) console.log("   ❓ reviewed_commit is missing or invalid; run --confirm after review.");
 		for (const evidence of candidate.historyEvidence) {
 			console.log(`   📝 history ${evidence.date}: ${evidence.title}`);
 			console.log(`      matches: ${evidence.matches.join(", ")}`);
@@ -663,6 +856,86 @@ function printReviewCandidates(candidates, { historyAvailable }) {
 		console.log();
 	}
 	console.log("Next: review each doc, edit if needed, then `node scripts/knowledge.mjs --confirm <doc-id>`.");
+}
+
+function cmdFreshness({ sinceDays = 14, json = false, strict = false } = {}) {
+	const docs = loadDocs();
+	const candidates = buildReviewCandidates({ sinceDays });
+	const candidateIds = new Set(candidates.map((candidate) => candidate.id));
+	const readmeFreshness = inspectReadmeFreshness(docs);
+	const doctrineDocs = docs.map((doc) => {
+		const reviewedCommit = reviewedCommitOf(doc);
+		const validCommit = commitExists(reviewedCommit);
+		return {
+			id: doc.id,
+			title: titleOf(doc),
+			status: statusOf(doc),
+			reviewed_at: reviewedAtOf(doc),
+			reviewed_commit: reviewedCommit || null,
+			freshness: !validCommit ? "unreviewed" : candidateIds.has(doc.id) ? "review_needed" : "fresh",
+		};
+	});
+	const deterministicActions = [];
+	if (!readmeFreshness.knowledge_readme.fresh || !readmeFreshness.root_readme.knowledge_links_fresh) {
+		deterministicActions.push({
+			type: "regenerate-readme-graphs",
+			command: "npm run knowledge:graph",
+			reason: "generated README knowledge graph/link block is stale",
+		});
+	}
+	if (!readmeFreshness.root_readme.extension_count_fresh || !readmeFreshness.root_readme.skill_count_fresh) {
+		deterministicActions.push({
+			type: "update-root-readme-counts",
+			file: "README.md",
+			reason: "declared extension/skill counts do not match filesystem",
+		});
+	}
+	const aiActions = candidates.map((candidate) => ({
+		type: "review-doctrine",
+		doc: candidate.id,
+		reason: candidate.reviewed_commit_valid ? "related commit/history evidence found" : "reviewed_commit missing or invalid",
+	}));
+	const report = {
+		generatedAt: new Date().toISOString(),
+		doctrine_freshness: {
+			total: doctrineDocs.length,
+			fresh: doctrineDocs.filter((doc) => doc.freshness === "fresh").length,
+			review_needed: doctrineDocs.filter((doc) => doc.freshness === "review_needed").length,
+			unreviewed: doctrineDocs.filter((doc) => doc.freshness === "unreviewed").length,
+			docs: doctrineDocs,
+		},
+		readme_freshness: readmeFreshness,
+		deterministic_actions: deterministicActions,
+		ai_actions: aiActions,
+		candidates,
+	};
+
+	if (json) console.log(JSON.stringify(report, null, 2));
+	else printFreshness(report);
+
+	if (strict && (deterministicActions.length > 0 || aiActions.length > 0 || readmeFreshness.issues.length > 0)) return 1;
+	return 0;
+}
+
+function printFreshness(report) {
+	console.log("📊 pilee knowledge freshness\n");
+	console.log(`Doctrine: ✅ ${report.doctrine_freshness.fresh} fresh  ⚠️ ${report.doctrine_freshness.review_needed} review_needed  ❓ ${report.doctrine_freshness.unreviewed} unreviewed`);
+	console.log(`README: ${report.readme_freshness.issues.length === 0 ? "✅ fresh" : "⚠️ stale"}`);
+	for (const issue of report.readme_freshness.issues) console.log(`  - ${issue}`);
+	console.log("");
+	if (report.deterministic_actions.length) {
+		console.log("Deterministic actions:");
+		for (const action of report.deterministic_actions) console.log(`  - ${action.type}: ${action.command || action.file} — ${action.reason}`);
+		console.log("");
+	}
+	if (report.ai_actions.length) {
+		console.log("AI/human review actions:");
+		for (const action of report.ai_actions) console.log(`  - ${action.doc}: ${action.reason}`);
+		console.log("");
+	}
+	if (!report.deterministic_actions.length && !report.ai_actions.length) {
+		console.log("✅ No freshness actions needed.");
+	}
 }
 
 function readOption(name, fallback = null) {
@@ -684,6 +957,15 @@ if (args.includes("--validate")) {
 
 if (args.includes("--graph")) {
 	process.exit(cmdGraph({ check: args.includes("--check") }));
+}
+
+if (args.includes("--freshness")) {
+	const sinceDays = Number(readOption("--since-days", "14"));
+	process.exit(cmdFreshness({
+		sinceDays: Number.isFinite(sinceDays) && sinceDays > 0 ? sinceDays : 14,
+		json: args.includes("--json"),
+		strict: args.includes("--strict"),
+	}));
 }
 
 if (args.includes("--confirm") || args.includes("--review")) {

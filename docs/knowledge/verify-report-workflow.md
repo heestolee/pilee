@@ -1,6 +1,16 @@
 ---
 title: Verify Report와 증거 기반 검증 흐름
-tags: [verify-report, verification, evidence, glimpse, live-preview, report, show-report, 검증, 리포트, 증거]
+tags:
+  - verify-report
+  - verification
+  - evidence
+  - glimpse
+  - live-preview
+  - report
+  - show-report
+  - 검증
+  - 리포트
+  - 증거
 category: verification
 status: active
 applies_to:
@@ -13,6 +23,7 @@ source:
   - pilee-history:2026-05-05#47
   - pilee-history:2026-05-05#48
 reviewed_at: 2026-05-05
+reviewed_commit: b730f16e977be8fa2f810038fc3aafe2c29ceea9
 related:
   - pilee-knowledge-system
   - web-search-curator
