@@ -19,7 +19,7 @@ applies_to:
 source:
   - pilee-history:2026-05-01#6
 reviewed_at: 2026-05-05
-reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
+reviewed_commit: 70468c2a01aa78453eb5a98cce65e9dc50822f39
 related:
   - ask-user-question-decision-gates
   - evidence-first-verification-gate

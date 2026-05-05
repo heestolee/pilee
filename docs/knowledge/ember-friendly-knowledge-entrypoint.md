@@ -1,6 +1,10 @@
 ---
 title: Ember는 knowledge의 친근한 입구다
-tags: [ember, branding, command, knowledge]
+tags:
+  - ember
+  - branding
+  - command
+  - knowledge
 category: knowledge
 status: active
 applies_to:
@@ -11,7 +15,7 @@ applies_to:
 source:
   - user-direction:2026-05-05-ember-branding
 reviewed_at: 2026-05-05
-reviewed_commit: 11ee860
+reviewed_commit: 70468c2a01aa78453eb5a98cce65e9dc50822f39
 related:
   - pilee-knowledge-system
   - private-journal-public-doctrine
