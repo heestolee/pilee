@@ -7,39 +7,18 @@ import { Type } from "typebox";
 import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
 import TurndownService from "turndown";
+import { applyCuratedSelection, runCuratedSearchReview } from "./curator.js";
+import type { ExtractedContent, QueryResultData, SearchResponse, SearchResult } from "./types.js";
 
 const TAVILY_SEARCH = "https://api.tavily.com/search";
 const FETCH_TIMEOUT_MS = 30000;
 const CONFIG_PATH = join(homedir(), ".pi", "web-search.json");
 
+type SearchWorkflow = "none" | "summary-review";
+
 interface Config {
 	tavilyApiKey?: string;
-}
-
-function loadConfig(): Config {
-	if (!existsSync(CONFIG_PATH)) return {};
-	try { return JSON.parse(readFileSync(CONFIG_PATH, "utf8")); } catch { return {}; }
-}
-
-function getApiKey(envName: string, configKey?: string): string | undefined {
-	return configKey || process.env[envName];
-}
-
-interface SearchResult {
-	title: string;
-	url: string;
-	snippet: string;
-}
-
-interface SearchResponse {
-	answer: string;
-	results: SearchResult[];
-}
-
-interface ExtractedContent {
-	url: string;
-	title?: string;
-	content: string;
+	workflow?: SearchWorkflow;
 }
 
 interface StoredQuery {
@@ -53,8 +32,58 @@ interface StoredQuery {
 
 const storedResults = new Map<string, StoredQuery>();
 
+function loadConfig(): Config {
+	if (!existsSync(CONFIG_PATH)) return {};
+	try { return JSON.parse(readFileSync(CONFIG_PATH, "utf8")); } catch { return {}; }
+}
+
+function getApiKey(envName: string, configKey?: string): string | undefined {
+	return configKey || process.env[envName];
+}
+
 function text(msg: string, details?: any) {
 	return { content: [{ type: "text" as const, text: msg }], details };
+}
+
+function normalizeWorkflow(value: unknown, fallback: SearchWorkflow): SearchWorkflow {
+	return value === "summary-review" || value === "none" ? value : fallback;
+}
+
+function queryResultFromSearch(query: string, response: SearchResponse): QueryResultData {
+	return { query, answer: response.answer, results: response.results, error: null, provider: "tavily" };
+}
+
+function queryResultFromError(query: string, error: unknown): QueryResultData {
+	return {
+		query,
+		answer: "",
+		results: [],
+		error: error instanceof Error ? error.message : String(error),
+		provider: "tavily",
+	};
+}
+
+function formatQueryResults(queryResults: QueryResultData[]): string {
+	const sections: string[] = [];
+	for (const result of queryResults) {
+		if (result.error) {
+			sections.push(`### ${result.query}\n(error: ${result.error})`);
+			continue;
+		}
+		sections.push(`### ${result.query}`);
+		if (result.answer) sections.push(result.answer);
+		if (result.results.length > 0) {
+			sections.push("\n**Sources:**");
+			for (const r of result.results) {
+				sections.push(`- [${r.title}](${r.url})${r.snippet ? `\n  ${r.snippet.slice(0, 200)}` : ""}`);
+			}
+		}
+	}
+	return sections.join("\n\n");
+}
+
+function flattenSources(queryResults: QueryResultData[]): SearchResult[] {
+	return queryResults.flatMap((result) => result.results);
 }
 
 async function searchTavily(
@@ -135,15 +164,16 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "web_search",
 		label: "Web Search",
-		description: "Search the web using Tavily. Returns an AI-synthesized answer with source citations. Prefer queries (plural) with 2-4 varied angles over a single query for broader coverage.",
+		description: "Search the web using Tavily. With workflow='summary-review' in interactive Pi, opens a curator/preview modal before returning the approved summary.",
 		parameters: Type.Object({
 			query: Type.Optional(Type.String({ description: "Single search query." })),
 			queries: Type.Optional(Type.Array(Type.String(), { description: "Multiple queries searched in sequence, each returning its own synthesized answer." })),
 			numResults: Type.Optional(Type.Number({ description: "Results per query (default: 5, max: 20)" })),
 			recencyFilter: Type.Optional(Type.Union([Type.Literal("day"), Type.Literal("week"), Type.Literal("month"), Type.Literal("year")])),
 			includeContent: Type.Optional(Type.Boolean({ description: "Fetch full page content for each result" })),
+			workflow: Type.Optional(Type.Union([Type.Literal("none"), Type.Literal("summary-review")], { description: "Interactive workflow. Default: config.workflow or 'none'." })),
 		}),
-		async execute(_id, params, signal) {
+		async execute(_id, params, signal, onUpdate, ctx) {
 			const config = loadConfig();
 			const queries = params.queries ?? (params.query ? [params.query] : []);
 			if (queries.length === 0) return text("Provide either query or queries[].");
@@ -152,29 +182,61 @@ export default function (pi: ExtensionAPI) {
 			if (!apiKey) return text("Tavily API key not found. Configure ~/.pi/web-search.json or set TAVILY_API_KEY env var.");
 
 			const numResults = Math.min(params.numResults ?? 5, 20);
-			const sections: string[] = [];
-			const totalResults: SearchResult[] = [];
 			const responseId = randomUUID().slice(0, 8);
 
-			for (const q of queries) {
+			const executeSearch = async (q: string): Promise<QueryResultData> => {
 				try {
-					const result = await searchTavily(q, { numResults, recencyFilter: params.recencyFilter, signal }, apiKey);
-					storedResults.set(`${responseId}:${q}`, { id: responseId, query: q, timestamp: Date.now(), response: result });
-					sections.push(`### ${q}`);
-					if (result.answer) sections.push(result.answer);
-					if (result.results.length > 0) {
-						sections.push("\n**Sources:**");
-						for (const r of result.results) {
-							sections.push(`- [${r.title}](${r.url})${r.snippet ? `\n  ${r.snippet.slice(0, 200)}` : ""}`);
-							totalResults.push(r);
-						}
-					}
-				} catch (e) {
-					sections.push(`### ${q}\n(error: ${e instanceof Error ? e.message : e})`);
+					const response = await searchTavily(q, { numResults, recencyFilter: params.recencyFilter, signal }, apiKey);
+					storedResults.set(`${responseId}:${q}`, { id: responseId, query: q, timestamp: Date.now(), response });
+					return queryResultFromSearch(q, response);
+				} catch (error) {
+					return queryResultFromError(q, error);
 				}
+			};
+
+			const queryResults: QueryResultData[] = [];
+			for (const q of queries) queryResults.push(await executeSearch(q));
+
+			const workflow = normalizeWorkflow(params.workflow, config.workflow ?? "none");
+			if (workflow === "summary-review" && ctx?.hasUI) {
+				const curated = await runCuratedSearchReview({
+					pi,
+					ctx,
+					initialResults: queryResults,
+					onSearch: executeSearch,
+					onUpdate: (message) => onUpdate?.(text(message)),
+				});
+
+				if (curated.status === "approved" && curated.summary) {
+					return text(curated.summary, {
+						responseId,
+						provider: "tavily",
+						workflow,
+						summaryMeta: curated.summaryMeta,
+						selectedCount: curated.selected.length,
+					});
+				}
+
+				if (curated.status === "raw") {
+					const selected = curated.selectedResults ?? applyCuratedSelection(queryResults, curated.selected);
+					return text(formatQueryResults(selected), {
+						responseId,
+						totalResults: flattenSources(selected).length,
+						provider: "tavily",
+						workflow,
+						selectedCount: selected.length,
+					});
+				}
+
+				return text(`Curator ${curated.status}; returning uncurated Tavily results.\n\n${formatQueryResults(queryResults)}`, {
+					responseId,
+					totalResults: flattenSources(queryResults).length,
+					provider: "tavily",
+					workflow,
+				});
 			}
 
-			return text(sections.join("\n\n"), { responseId, totalResults: totalResults.length, provider: "tavily" });
+			return text(formatQueryResults(queryResults), { responseId, totalResults: flattenSources(queryResults).length, provider: "tavily", workflow: "none" });
 		},
 	});
 
