@@ -42,14 +42,16 @@ function summarizeQueryResult(result: QueryResultData): string {
 
 export function buildSummaryPrompt(results: QueryResultData[], feedback?: string): string {
 	const sections = [
-		"You are writing the final web search summary for a coding assistant.",
-		"Write a concise, factual Korean summary using only the provided Tavily search results.",
+		"You are writing the final web search summary for a Korean-speaking coding assistant user.",
+		"Write the entire summary in Korean, even when the query, source titles, or source snippets are in English.",
 		"Requirements:",
+		"- 모든 설명 문장은 한국어로 작성한다.",
+		"- 고유명사, API 이름, 코드 식별자는 원문을 유지하되 필요한 경우 한국어 설명을 붙인다.",
 		"- Keep it readable and skimmable.",
 		"- Include key findings and caveats.",
 		"- Do not invent sources or claims.",
-		"- If evidence is weak or conflicting, say so explicitly.",
-		'- End with a short "Sources" section listing the most relevant URLs.',
+		"- If evidence is weak or conflicting, say so explicitly in Korean.",
+		'- End with a short "출처" section listing the most relevant URLs.',
 	];
 
 	if (feedback) sections.push("- Incorporate the user feedback provided below into the summary.");
@@ -75,7 +77,7 @@ function buildDeterministicAnswerPreview(answer: string): string {
 }
 
 export function buildDeterministicSummary(results: QueryResultData[]): { summary: string; meta: SummaryMeta } {
-	const lines: string[] = ["Summary based on the currently selected Tavily search results.", ""];
+	const lines: string[] = ["선택된 Tavily 검색 결과를 바탕으로 한 요약입니다.", ""];
 	const sourceUrls: string[] = [];
 	let successful = 0;
 	let failed = 0;
@@ -83,21 +85,21 @@ export function buildDeterministicSummary(results: QueryResultData[]): { summary
 	for (const result of results) {
 		if (result.error) {
 			failed += 1;
-			lines.push(`- ${result.query}: failed (${result.error})`);
+			lines.push(`- ${result.query}: 실패 (${result.error})`);
 			continue;
 		}
 		successful += 1;
 		const preview = buildDeterministicAnswerPreview(result.answer);
-		lines.push(`- ${result.query}: ${preview || `${result.results.length} source(s) returned without answer text.`}`);
+		lines.push(`- ${result.query}: ${preview || `답변 텍스트 없이 출처 ${result.results.length}개가 반환되었습니다.`}`);
 		for (const source of result.results) {
 			if (!sourceUrls.includes(source.url)) sourceUrls.push(source.url);
 		}
 	}
 
-	lines.push("", `Completed queries: ${results.length}`, `Successful: ${successful}`, `Failed: ${failed}`, "", "Sources");
-	if (sourceUrls.length === 0) lines.push("- None");
+	lines.push("", `완료된 쿼리: ${results.length}`, `성공: ${successful}`, `실패: ${failed}`, "", "출처");
+	if (sourceUrls.length === 0) lines.push("- 없음");
 	else for (const url of sourceUrls.slice(0, 12)) lines.push(`- ${url}`);
-	if (sourceUrls.length > 12) lines.push(`- ... and ${sourceUrls.length - 12} more`);
+	if (sourceUrls.length > 12) lines.push(`- ... 외 ${sourceUrls.length - 12}개`);
 
 	const summary = lines.join("\n").trim();
 	return {
@@ -209,9 +211,10 @@ export async function rewriteSearchQuery(
 	signal?: AbortSignal,
 ): Promise<string> {
 	const prompt = [
-		"Rewrite this web search query to get better, more specific Tavily results.",
+		"Rewrite this web search query in Korean to get better, more specific Tavily results.",
 		"Add relevant year qualifiers, precise technical terms, and useful specificity.",
-		"Return ONLY the improved query text, nothing else.",
+		"Return ONLY the improved Korean query text, nothing else.",
+		"If an English technical term is important, keep it alongside the Korean words.",
 		"",
 		`Query: ${query}`,
 	].join("\n");

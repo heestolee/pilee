@@ -49,6 +49,12 @@ function normalizeWorkflow(value: unknown, fallback: SearchWorkflow): SearchWork
 	return value === "summary-review" || value === "none" ? value : fallback;
 }
 
+function withKoreanAnswerInstruction(query: string): string {
+	const trimmed = query.trim();
+	if (/한국어|한글|korean/i.test(trimmed)) return trimmed;
+	return `${trimmed}\n\n한국어로 답변하고, 설명은 항상 한국어로 작성해 주세요.`;
+}
+
 function queryResultFromSearch(query: string, response: SearchResponse): QueryResultData {
 	return { query, answer: response.answer, results: response.results, error: null, provider: "tavily" };
 }
@@ -67,15 +73,15 @@ function formatQueryResults(queryResults: QueryResultData[]): string {
 	const sections: string[] = [];
 	for (const result of queryResults) {
 		if (result.error) {
-			sections.push(`### ${result.query}\n(error: ${result.error})`);
+			sections.push(`### ${result.query}\n(오류: ${result.error})`);
 			continue;
 		}
 		sections.push(`### ${result.query}`);
 		if (result.answer) sections.push(result.answer);
 		if (result.results.length > 0) {
-			sections.push("\n**Sources:**");
+			sections.push("\n**출처:**");
 			for (const r of result.results) {
-				sections.push(`- [${r.title}](${r.url})${r.snippet ? `\n  ${r.snippet.slice(0, 200)}` : ""}`);
+				sections.push(`- [${r.title}](${r.url})`);
 			}
 		}
 	}
@@ -93,7 +99,7 @@ async function searchTavily(
 ): Promise<SearchResponse> {
 	const body: any = {
 		api_key: apiKey,
-		query,
+		query: withKoreanAnswerInstruction(query),
 		max_results: options.numResults ?? 10,
 		include_answer: true,
 		...(options.recencyFilter
@@ -227,7 +233,7 @@ export default function (pi: ExtensionAPI) {
 				}
 
 				const completedResults = curated.selectedResults ?? [];
-				return text(`Curator ${curated.status}; returning completed Tavily results.\n\n${formatQueryResults(completedResults)}`, {
+				return text(`Curator ${curated.status}; 완료된 Tavily 결과를 반환합니다.\n\n${formatQueryResults(completedResults)}`, {
 					responseId,
 					totalResults: flattenSources(completedResults).length,
 					provider: "tavily",

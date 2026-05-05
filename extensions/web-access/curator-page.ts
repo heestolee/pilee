@@ -53,7 +53,7 @@ export function generateCuratorPage(
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Curate Search Results</title>
+<title>검색 결과 검토</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -64,51 +64,51 @@ ${CSS}
 </head>
 <body>
 
-<div class="timer-badge" id="timer" title="Click to adjust">--:--</div>
+<div class="timer-badge" id="timer" title="클릭해서 시간 조정">--:--</div>
 <div class="timer-adjust" id="timer-adjust">
 <input type="text" id="timer-input" value="${timeout}">
-<span class="timer-adjust-label">sec</span>
-<button class="timer-adjust-btn" id="timer-set">Set</button>
+<span class="timer-adjust-label">초</span>
+<button class="timer-adjust-btn" id="timer-set">설정</button>
 </div>
 
 <main>
 <div class="hero" id="hero">
-<div class="hero-kicker">Web Search</div>
-<h1 class="hero-title">Searching\u2026</h1>
-<p class="hero-desc">Results will appear below as they complete.</p>
+<div class="hero-kicker">웹 검색</div>
+<h1 class="hero-title">검색 중\u2026</h1>
+<p class="hero-desc">검색이 끝나는 대로 아래에 결과가 표시됩니다.</p>
 <div class="hero-meta">
-<span id="hero-status">Searching\u2026</span>
+<span id="hero-status">검색 중\u2026</span>
 <span class="hero-meta-sep"></span>
 <div class="provider-buttons" id="provider-buttons">${providerButtonsHtml}</div>
 </div>
 </div>
 <div id="result-cards"></div>
 <div class="send-raw-row hidden" id="send-raw-row">
-<button class="btn btn-secondary" id="btn-send-raw" disabled>Send selected results without summary</button>
+<button class="btn btn-secondary" id="btn-send-raw" disabled>선택한 결과를 요약 없이 보내기</button>
 </div>
 <div class="add-search" id="add-search">
 <span class="add-search-icon">+</span>
-<input type="text" placeholder="Add a search\u2026" id="add-search-input">
+<input type="text" placeholder="추가 검색어 입력\u2026" id="add-search-input">
 <button type="button" class="add-search-wand" id="add-search-wand" disabled title="Rewrite query with AI">\u2728</button>
 </div>
 
-<section class="summary-panel hidden" id="summary-panel" aria-label="Summary review">
+<section class="summary-panel hidden" id="summary-panel" aria-label="요약 검토">
 <div class="summary-header">
 <div class="summary-header-top">
 <div>
-<h2 class="summary-title">Review summary draft</h2>
-<p class="summary-subtitle" id="summary-subtitle">Edit the summary before approving.</p>
+<h2 class="summary-title">요약 초안 검토</h2>
+<p class="summary-subtitle" id="summary-subtitle">승인하기 전에 요약을 직접 수정할 수 있습니다.</p>
 </div>
 <div class="summary-model-controls">
-<select id="summary-provider-select" class="summary-model-dropdown" aria-label="Summary provider"></select>
-<select id="summary-model-select" class="summary-model-dropdown" aria-label="Summary model"></select>
+<select id="summary-provider-select" class="summary-model-dropdown" aria-label="요약 provider"></select>
+<select id="summary-model-select" class="summary-model-dropdown" aria-label="요약 모델"></select>
 </div>
 </div>
 </div>
 <div class="summary-generating hidden" id="summary-generating" aria-live="polite">
 <div class="summary-generating-head">
 <span class="summary-generating-orb" aria-hidden="true"></span>
-<span id="summary-generating-copy">Generating summary draft…</span>
+<span id="summary-generating-copy">요약 초안 생성 중…</span>
 </div>
 <div class="summary-generating-bars" aria-hidden="true">
 <span class="summary-generating-bar b1"></span>
@@ -116,15 +116,15 @@ ${CSS}
 <span class="summary-generating-bar b3"></span>
 </div>
 </div>
-<textarea id="summary-input" class="summary-input" placeholder="Summary draft will appear here\u2026"></textarea>
+<textarea id="summary-input" class="summary-input" placeholder="요약 초안이 여기에 표시됩니다\u2026"></textarea>
 <div class="summary-feedback-row">
-<input type="text" id="summary-feedback" class="summary-feedback" placeholder="Optional feedback for regeneration\u2026" />
+<input type="text" id="summary-feedback" class="summary-feedback" placeholder="재생성에 반영할 피드백 입력\u2026" />
 </div>
 <div class="summary-actions">
-<button class="btn btn-secondary" id="btn-summary-back">Back</button>
-<button class="btn btn-secondary" id="btn-summary-regenerate">Regenerate</button>
-<button class="btn btn-secondary" id="btn-summary-preview" title="Preview rendered summary">Preview</button>
-<button class="btn btn-submit" id="btn-summary-approve">Approve</button>
+<button class="btn btn-secondary" id="btn-summary-back">뒤로</button>
+<button class="btn btn-secondary" id="btn-summary-regenerate">재생성</button>
+<button class="btn btn-secondary" id="btn-summary-preview" title="렌더링된 요약 미리보기">미리보기</button>
+<button class="btn btn-submit" id="btn-summary-approve">승인</button>
 </div>
 </section>
 </main>
@@ -136,7 +136,7 @@ ${CSS}
 <span class="shortcut"><kbd>Esc</kbd> <span>Cancel</span></span>
 </div>
 <div class="action-buttons">
-<button class="btn btn-submit" id="btn-send" disabled>Waiting for results\u2026</button>
+<button class="btn btn-submit" id="btn-send" disabled>결과 대기 중\u2026</button>
 </div>
 </footer>
 
@@ -157,19 +157,19 @@ ${CSS}
 <div id="preview-modal" class="preview-modal hidden">
 <div class="preview-modal-inner">
 <div class="preview-modal-header">
-<h2 class="preview-modal-title">Summary Preview</h2>
+<h2 class="preview-modal-title">요약 미리보기</h2>
 <button class="preview-modal-close" id="preview-modal-close" title="Close">\u00d7</button>
 </div>
 <div class="preview-modal-body" id="preview-modal-body"></div>
 <div class="preview-popover hidden" id="preview-popover">
 <div class="preview-popover-quote" id="preview-popover-quote"></div>
 <textarea class="preview-popover-input" id="preview-popover-input" placeholder="Feedback\u2026" rows="3"></textarea>
-<button class="btn btn-submit preview-popover-btn" id="preview-popover-regen">Regenerate</button>
+<button class="btn btn-submit preview-popover-btn" id="preview-popover-regen">재생성</button>
 </div>
 <div class="preview-modal-footer">
-<select id="preview-modal-model" class="preview-modal-model" aria-label="Summary model"></select>
-<button class="btn btn-secondary" id="preview-modal-regenerate">Regenerate</button>
-<button class="btn btn-submit" id="preview-modal-approve">Approve</button>
+<select id="preview-modal-model" class="preview-modal-model" aria-label="요약 모델"></select>
+<button class="btn btn-secondary" id="preview-modal-regenerate">재생성</button>
+<button class="btn btn-submit" id="preview-modal-approve">승인</button>
 </div>
 </div>
 </div>
@@ -1834,12 +1834,12 @@ const SCRIPT = `(function() {
     var totalCards = resultCardsEl.querySelectorAll(".result-card").length;
     var searchingCount = totalCards - completedCount;
     if (searchingCount > 0) {
-      heroTitle.textContent = completedCount + " of " + totalCards + " Searches Complete";
+      heroTitle.textContent = totalCards + "개 중 " + completedCount + "개 검색 완료";
     } else {
-      heroTitle.textContent = completedCount + " Search" + (completedCount !== 1 ? "es" : "") + " Complete";
+      heroTitle.textContent = completedCount + "개 검색 완료";
     }
-    heroDesc.textContent = "Check the results to include, then generate and approve a summary.";
-    if (heroStatus) heroStatus.textContent = completedCount + " completed" + (searchingCount > 0 ? ", " + searchingCount + " searching" : "");
+    heroDesc.textContent = "포함할 결과를 선택한 뒤 요약을 생성하고 승인하세요.";
+    if (heroStatus) heroStatus.textContent = completedCount + "개 완료" + (searchingCount > 0 ? ", " + searchingCount + "개 검색 중" : "");
   }
 
   function getSummaryDraftText() {
@@ -1863,7 +1863,7 @@ const SCRIPT = `(function() {
     if (!summaryGeneratingCopy) return;
 
     if (stage !== "generating-summary") {
-      summaryGeneratingCopy.textContent = "Generating summary draft…";
+      summaryGeneratingCopy.textContent = "요약 초안 생성 중…";
       summaryGeneratingPhase = -1;
       if (summaryGeneratingEl) {
         summaryGeneratingEl.removeAttribute("data-phase");
@@ -1881,12 +1881,12 @@ const SCRIPT = `(function() {
 
     summaryGeneratingPhase = nextPhase;
 
-    var phaseLabel = "Planning summary";
-    if (nextPhase === 1) phaseLabel = "Drafting summary";
-    if (nextPhase === 2) phaseLabel = "Polishing summary";
+    var phaseLabel = "요약 구조 정리 중";
+    if (nextPhase === 1) phaseLabel = "요약 초안 작성 중";
+    if (nextPhase === 2) phaseLabel = "요약 다듬는 중";
 
     summaryGeneratingCopy.textContent = summaryPendingModel
-      ? phaseLabel + " with " + summaryPendingModel + "…"
+      ? summaryPendingModel + "로 " + phaseLabel + "…"
       : phaseLabel + "…";
 
     if (summaryGeneratingEl) {
@@ -1902,19 +1902,19 @@ const SCRIPT = `(function() {
     }
     if (summarySubtitle) {
       var selCount = getSelectedIndices().length;
-      var selLabel = selCount + " selected result" + (selCount !== 1 ? "s" : "");
+      var selLabel = "선택 결과 " + selCount + "개";
       if (isRegenerating && stage === "generating-summary") {
-        summarySubtitle.textContent = "Selection changed — regenerating summary…";
+        summarySubtitle.textContent = "선택이 변경되어 요약을 재생성하는 중입니다…";
       } else if (isRegenerating) {
-        summarySubtitle.textContent = "Selection changed — summary will regenerate shortly…";
+        summarySubtitle.textContent = "선택이 변경되어 곧 요약을 재생성합니다…";
       } else if (stage === "generating-summary") {
         summarySubtitle.textContent = summaryPendingModel
-          ? "Summarizing " + selLabel + " with " + summaryPendingModel + "…"
-          : "Summarizing " + selLabel + "…";
+          ? summaryPendingModel + "로 " + selLabel + "를 요약하는 중입니다…"
+          : selLabel + "를 요약하는 중입니다…";
       } else if (summaryMeta && summaryMeta.fallbackUsed) {
-        summarySubtitle.textContent = "Fallback summary of " + selLabel + ".";
+        summarySubtitle.textContent = selLabel + "에 대한 fallback 요약입니다.";
       } else {
-        summarySubtitle.textContent = "Summary of " + selLabel + ". Edit directly, regenerate with feedback, or approve.";
+        summarySubtitle.textContent = selLabel + " 요약입니다. 직접 수정하거나 피드백으로 재생성한 뒤 승인하세요.";
       }
     }
 
@@ -1946,16 +1946,16 @@ const SCRIPT = `(function() {
 
     if (btnSend) {
       if (stage === "generating-summary") {
-        btnSend.textContent = "Generating summary…";
+        btnSend.textContent = "요약 생성 중…";
         btnSend.disabled = true;
       } else if (!inResults) {
-        btnSend.textContent = "Summary ready";
+        btnSend.textContent = "요약 준비 완료";
         btnSend.disabled = true;
       } else if (!hasCompleted) {
-        btnSend.textContent = searchesDone ? "No results yet" : "Waiting for results…";
+        btnSend.textContent = searchesDone ? "아직 결과 없음" : "결과 대기 중…";
         btnSend.disabled = true;
       } else {
-        btnSend.textContent = hasSelection ? "Generate summary" : "Select results to summarize";
+        btnSend.textContent = hasSelection ? "요약 생성" : "요약할 결과를 선택하세요";
         btnSend.disabled = !canGenerate || !hasSelection;
       }
     }
@@ -1991,8 +1991,8 @@ const SCRIPT = `(function() {
     panel.className = "result-loading";
     panel.innerHTML =
       '<div class="result-loading-header">' +
-        '<div class="result-loading-title">Searching sources</div>' +
-        '<div class="result-loading-sub">Searching\u2026</div>' +
+        '<div class="result-loading-title">출처 검색 중</div>' +
+        '<div class="result-loading-sub">검색 중\u2026</div>' +
       '</div>' +
       '<div class="result-loading-grid">' +
         '<div class="loading-card"><div class="loading-card-row long"></div><div class="loading-card-row mid"></div><div class="loading-card-row short"></div></div>' +
@@ -2011,13 +2011,12 @@ const SCRIPT = `(function() {
 
     var total = allQueries.length;
     if (total <= 0) {
-      sub.textContent = "Searching\u2026";
+      sub.textContent = "검색 중\u2026";
       return;
     }
 
     var done = Math.min(completedCount, total);
-    var noun = total === 1 ? "query" : "queries";
-    sub.textContent = "Searching " + done + "/" + total + " " + noun + "\u2026";
+    sub.textContent = total + "개 중 " + done + "개 검색 완료\u2026";
   }
 
   function syncLoadingPanel() {
@@ -2043,10 +2042,10 @@ const SCRIPT = `(function() {
             '<div class="result-card-query">' + escHtml(queryText) + "</div>" +
             tag +
           "</div>" +
-          '<div class="result-card-meta" style="color:var(--timer-urgent-fg)">Failed</div>' +
+          '<div class="result-card-meta" style="color:var(--timer-urgent-fg)">실패</div>' +
         "</div>" +
       "</div>" +
-      '<div class="result-card-error-msg">' + escHtml(errorText || "Search failed") + "</div>";
+      '<div class="result-card-error-msg">' + escHtml(errorText || "검색 실패") + "</div>";
   }
 
   function populateResultCard(card, data, queryText, provider) {
@@ -2214,7 +2213,7 @@ const SCRIPT = `(function() {
         }
       }).catch(function(err) {
         var message = err instanceof Error ? err.message : String(err);
-        setError("Failed to save provider preference: " + (message || "unknown error"));
+        setError("실패 to save provider preference: " + (message || "알 수 없는 오류"));
       });
     }
   }
@@ -2270,7 +2269,7 @@ const SCRIPT = `(function() {
                 '<div class="result-card-query">' + escHtml(bq.query) + "</div>" +
                 providerTagHtml(provider) +
               "</div>" +
-              '<div class="result-card-meta"><span class="searching-dots">Searching</span></div>' +
+              '<div class="result-card-meta"><span class="searching-dots">검색 중</span></div>' +
             "</div>" +
           "</div>" +
           buildAltChipsHtml(provider, bq.query);
@@ -2288,7 +2287,7 @@ const SCRIPT = `(function() {
               applyResponseToCard(searchingCard, {
                 answer: "",
                 results: [],
-                error: extractServerError(data) || "Search failed",
+                error: extractServerError(data) || "검색 실패",
                 provider: provider,
               }, slot.query, provider, slot.slotId);
               return;
@@ -2301,7 +2300,7 @@ const SCRIPT = `(function() {
             applyResponseToCard(searchingCard, {
               answer: "",
               results: [],
-              error: message || "Search failed",
+              error: message || "검색 실패",
               provider: provider,
             }, slot.query, provider, slot.slotId);
           })
@@ -2352,7 +2351,7 @@ const SCRIPT = `(function() {
               '<div class="result-card-query">' + escHtml(altQuery) + "</div>" +
               providerTagHtml(altProvider) +
             "</div>" +
-            '<div class="result-card-meta"><span class="searching-dots">Searching</span></div>' +
+            '<div class="result-card-meta"><span class="searching-dots">검색 중</span></div>' +
           "</div>" +
         "</div>" +
         buildAltChipsHtml(altProvider, altQuery);
@@ -2369,7 +2368,7 @@ const SCRIPT = `(function() {
           if (!data || data.ok === false) {
             applyResponseToCard(newCard, {
               answer: "", results: [],
-              error: extractServerError(data) || "Search failed",
+              error: extractServerError(data) || "검색 실패",
               provider: altProvider,
             }, altQuery, altProvider, slotId);
             return;
@@ -2380,7 +2379,7 @@ const SCRIPT = `(function() {
           removeSlot(slotId);
           newCard.remove();
           var message = err instanceof Error ? err.message : String(err);
-          setError("Re-search failed: " + (message || "Search failed"));
+          setError("재검색 실패: " + (message || "검색 실패"));
           updateSummaryText();
         })
         .finally(function() {
@@ -2409,7 +2408,7 @@ const SCRIPT = `(function() {
       postJson("/rewrite", { query: text })
         .then(function(data) {
           if (!data || data.ok === false) {
-            throw new Error(extractServerError(data) || "Rewrite failed");
+            throw new Error(extractServerError(data) || "쿼리 재작성 실패");
           }
           var rewritten = typeof data.query === "string" ? data.query.trim() : "";
           if (rewritten) {
@@ -2419,7 +2418,7 @@ const SCRIPT = `(function() {
         })
         .catch(function(err) {
           var message = err instanceof Error ? err.message : String(err);
-          setError("Rewrite failed: " + (message || "unknown error"));
+          setError("쿼리 재작성 실패: " + (message || "알 수 없는 오류"));
         })
         .finally(function() {
           rewriteInFlight = false;
@@ -2458,7 +2457,7 @@ const SCRIPT = `(function() {
             '<div class="result-card-query">' + escHtml(text) + "</div>" +
             providerTagHtml(requestedProvider) +
           "</div>" +
-          '<div class="result-card-meta"><span class="searching-dots">Searching</span></div>' +
+          '<div class="result-card-meta"><span class="searching-dots">검색 중</span></div>' +
         "</div>" +
       "</div>" +
       buildAltChipsHtml(requestedProvider, text);
@@ -2471,7 +2470,7 @@ const SCRIPT = `(function() {
         if (!data || data.ok === false) {
           removeSlot(slotId);
           card.remove();
-          setError("Failed to add search: " + (extractServerError(data) || "Search failed"));
+          setError("실패 to add search: " + (extractServerError(data) || "검색 실패"));
           recomputeProviderStates();
           updateSummaryText();
           return;
@@ -2485,7 +2484,7 @@ const SCRIPT = `(function() {
         removeSlot(slotId);
         card.remove();
         var message = err instanceof Error ? err.message : String(err);
-        setError("Failed to add search: " + (message || "Search failed"));
+        setError("실패 to add search: " + (message || "검색 실패"));
         recomputeProviderStates();
         updateSummaryText();
       })
@@ -2558,7 +2557,7 @@ const SCRIPT = `(function() {
     syncLoadingPanel();
     updateStageUI();
     clearError();
-    showExpired("Time\u2019s up \u2014 submitting current summary state.");
+    showExpired("시간이 만료되어 현재 요약 상태를 제출합니다.");
 
     function finalizeClose() {
       submitInFlight = false;
@@ -2615,10 +2614,10 @@ const SCRIPT = `(function() {
   }
 
   if (queries.length === 0) {
-    heroTitle.textContent = "What do you need?";
-    heroDesc.textContent = "Search for anything below, then generate and approve a summary.";
+    heroTitle.textContent = "무엇을 검색할까요?";
+    heroDesc.textContent = "아래에서 검색한 뒤 요약을 생성하고 승인하세요.";
     if (heroStatus) heroStatus.textContent = "";
-    btnSend.textContent = "No results yet";
+    btnSend.textContent = "아직 결과 없음";
   } else {
     for (var i = 0; i < queries.length; i++) {
       queryIndexToSlot.set(i, i);
@@ -2633,7 +2632,7 @@ const SCRIPT = `(function() {
               '<div class="result-card-query">' + escHtml(queries[i]) + "</div>" +
               providerTagHtml(initialDefaultProvider) +
             "</div>" +
-            '<div class="result-card-meta"><span class="searching-dots">Searching</span></div>' +
+            '<div class="result-card-meta"><span class="searching-dots">검색 중</span></div>' +
           "</div>" +
         "</div>" +
         buildAltChipsHtml(initialDefaultProvider, queries[i]);
@@ -2683,7 +2682,7 @@ const SCRIPT = `(function() {
       queryIndex: data.queryIndex,
       answer: "",
       results: [],
-      error: data.error || "Search failed",
+      error: data.error || "검색 실패",
       provider: data.provider,
     }, data.query || queries[data.queryIndex], data.provider, slotId);
   });
@@ -2848,14 +2847,14 @@ const SCRIPT = `(function() {
     if (submitted || timerExpired || submitInFlight) return;
 
     if (!Array.isArray(indices) || indices.length === 0) {
-      setError("Select at least one result to summarize");
+      setError("요약할 결과를 하나 이상 선택하세요");
       stage = "results";
       updateStageUI();
       return;
     }
 
     if (hasPendingSearchCards()) {
-      setError("Wait for running searches to finish before generating summary");
+      setError("진행 중인 검색이 끝난 뒤 요약을 생성하세요");
       stage = "results";
       updateStageUI();
       return;
@@ -2911,7 +2910,7 @@ const SCRIPT = `(function() {
           return retryData;
         }).catch(function(retryErr) {
           var retryMessage = retryErr instanceof Error ? retryErr.message : String(retryErr);
-          throw new Error(firstMessage + " (auto retry failed: " + (retryMessage || "unknown error") + ")");
+          throw new Error(firstMessage + " (auto retry failed: " + (retryMessage || "알 수 없는 오류") + ")");
         });
       })
       .then(function(data) {
@@ -2938,7 +2937,7 @@ const SCRIPT = `(function() {
       .catch(function(err) {
         if (requestId !== summaryRequestSeq) return;
         var message = err instanceof Error ? err.message : String(err);
-        setError("Failed to generate summary — " + (message || "unknown error"));
+        setError("실패 to generate summary — " + (message || "알 수 없는 오류"));
         resetSummaryGeneratingState();
         isRegenerating = false;
         if (wasRegenerating && getSummaryDraftText().length > 0) {
@@ -2991,7 +2990,7 @@ const SCRIPT = `(function() {
 
     var selected = getSelectedIndices();
     if (selected.length === 0) {
-      setError("Select at least one result before approving");
+      setError("승인하기 전에 결과를 하나 이상 선택하세요");
       updateStageUI();
       return;
     }
@@ -3006,7 +3005,7 @@ const SCRIPT = `(function() {
     submitPayload(payload, "Summary approved")
       .catch(function(err) {
         var message = err instanceof Error ? err.message : String(err);
-        setError("Failed to approve summary — " + (message || "the agent may have moved on"));
+        setError("실패 to approve summary — " + (message || "the agent may have moved on"));
       });
   }
 
@@ -3031,7 +3030,7 @@ const SCRIPT = `(function() {
         syncLoadingPanel();
         updateStageUI();
         var message = err instanceof Error ? err.message : String(err);
-        setError("Failed to cancel — " + (message || "the agent may have moved on"));
+        setError("실패 to cancel — " + (message || "the agent may have moved on"));
       });
   }
 
@@ -3047,7 +3046,7 @@ const SCRIPT = `(function() {
       submitPayload({ selected: selected, rawResults: true }, "Results sent")
         .catch(function(err) {
           var message = err instanceof Error ? err.message : String(err);
-          setError("Failed to send results — " + (message || "the agent may have moved on"));
+          setError("실패 to send results — " + (message || "the agent may have moved on"));
         });
     });
   }
