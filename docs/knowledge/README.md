@@ -94,14 +94,14 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Reviewed | Commit | Tags |
 |---|---|---:|---:|---|
-| [Deterministic action과 AI review action은 분리한다](./deterministic-vs-ai-actions.md) | active | 2026-05-05 | 059f445 | knowledge, deterministic, ai-actions, review, automation, 정합성 |
-| [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | 2026-05-05 | 059f445 | knowledge, freshness, diagnosis, review, candidate, 정합성 |
-| [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | 2026-05-05 | 059f445 | knowledge, judgment, granularity, documentation, coverage, 문서 |
-| [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | 2026-05-05 | d08f5b7 | pilee, knowledge, history, journal, sanitized, reviewed-at |
-| [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | 2026-05-05 | 059f445 | knowledge, journal, privacy, sanitized, doctrine, history |
-| [README는 knowledge coverage map이다](./readme-coverage-map.md) | active | 2026-05-05 | 059f445 | knowledge, readme, coverage, graph, surface, todo |
-| [Retro는 private reflection이다](./retro-private-reflection-boundary.md) | active | 2026-05-05 | 059f445 | retro, notion, reflection, private, journal, 회고 |
-| [reviewed_commit은 날짜 freshness의 빈틈을 막는다](./reviewed-commit-freshness.md) | active | 2026-05-05 | 059f445 | knowledge, reviewed-commit, reviewed-at, freshness, commit, 정합성 |
+| [Deterministic action과 AI review action은 분리한다](./deterministic-vs-ai-actions.md) | active | 2026-05-05 | 468e619 | knowledge, deterministic, ai-actions, review, automation, 정합성 |
+| [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | 2026-05-05 | 468e619 | knowledge, freshness, diagnosis, review, candidate, 정합성 |
+| [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | 2026-05-05 | 468e619 | knowledge, judgment, granularity, documentation, coverage, 문서 |
+| [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | 2026-05-05 | 468e619 | pilee, knowledge, history, journal, sanitized, reviewed-at |
+| [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | 2026-05-05 | 468e619 | knowledge, journal, privacy, sanitized, doctrine, history |
+| [README는 knowledge coverage map이다](./readme-coverage-map.md) | active | 2026-05-05 | 468e619 | knowledge, readme, coverage, graph, surface, todo |
+| [Retro는 private reflection이다](./retro-private-reflection-boundary.md) | active | 2026-05-05 | 468e619 | retro, notion, reflection, private, journal, 회고 |
+| [reviewed_commit은 날짜 freshness의 빈틈을 막는다](./reviewed-commit-freshness.md) | active | 2026-05-05 | 468e619 | knowledge, reviewed-commit, reviewed-at, freshness, commit, 정합성 |
 
 ### review
 

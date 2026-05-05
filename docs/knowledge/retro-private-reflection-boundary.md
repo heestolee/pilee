@@ -15,7 +15,7 @@ applies_to:
 source:
   - pilee-history:2026-05-01#16
 reviewed_at: 2026-05-05
-reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
+reviewed_commit: 468e619e086b19401a5f2944b35d9c32b24eee63
 related:
   - private-journal-public-doctrine
   - artifact-archive-reopenability
