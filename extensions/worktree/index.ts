@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, statSync, rmSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname, basename } from "node:path";
@@ -606,6 +607,21 @@ function extractTextFromMessageContent(content: unknown): string {
 		.join(" ");
 }
 
+function cleanupSessionPromptText(text: string): string {
+	let t = normalizeSessionText(text);
+	if (/^\[(GENERAL INSTRUCTION|HISTORY)\b[^\]]*\]/i.test(t)) {
+		const request = t.match(/\[REQUEST\b[^\]]*\]\s*([\s\S]*)/i)?.[1];
+		return request ? normalizeSessionText(request) : "";
+	}
+	if (/^\[REQUEST\b[^\]]*\]/i.test(t)) {
+		t = t.replace(/^\[REQUEST\b[^\]]*\]\s*/i, "");
+	}
+	if (/^read\s+\/tmp\//i.test(t)) {
+		t = t.replace(/^read\s+\/tmp\/\S+\.?\s*/i, "");
+	}
+	return normalizeSessionText(t);
+}
+
 function isMeaninglessSessionPrompt(text: string): boolean {
 	const t = text.trim();
 	if (!t) return true;
@@ -672,7 +688,14 @@ interface SessionChoiceInfo {
 	file: string;
 	label: string;
 	prompts: string[];
+	transcriptKey?: string;
+	transcriptMessageKeys: string[];
 	sessionName?: string;
+}
+
+interface SessionChoiceOption {
+	choice: SessionChoiceInfo;
+	displayLabel: string;
 }
 
 function parseSessionChoiceInfo(sessionPath: string): SessionChoiceInfo {
@@ -681,6 +704,8 @@ function parseSessionChoiceInfo(sessionPath: string): SessionChoiceInfo {
 	let sessionIso: string | undefined;
 	let sessionName: string | undefined;
 	const prompts: string[] = [];
+	const transcriptHash = createHash("sha1");
+	const transcriptMessageKeys: string[] = [];
 
 	try {
 		const raw = readFileSync(sessionPath, "utf8");
@@ -693,8 +718,14 @@ function parseSessionChoiceInfo(sessionPath: string): SessionChoiceInfo {
 				sessionName = normalizeSessionText(entry.name);
 			}
 			const message = entry?.message;
-			if (!message || message.role !== "user") continue;
-			const text = normalizeSessionText(extractTextFromMessageContent(message.content));
+			if (!message || typeof message.role !== "string") continue;
+			const messageKey = createHash("sha1")
+				.update(JSON.stringify({ role: message.role, content: message.content ?? null }))
+				.digest("hex");
+			transcriptHash.update(messageKey).update("\n");
+			transcriptMessageKeys.push(messageKey);
+			if (message.role !== "user") continue;
+			const text = cleanupSessionPromptText(extractTextFromMessageContent(message.content));
 			if (isMeaninglessSessionPrompt(text)) continue;
 			prompts.push(text);
 		}
@@ -708,11 +739,13 @@ function parseSessionChoiceInfo(sessionPath: string): SessionChoiceInfo {
 		file: basename(sessionPath),
 		label: buildSessionChoiceLabel({ filename, sessionIso, sessionName, summary, turns: prompts.length, shortId }),
 		prompts,
+		transcriptKey: transcriptMessageKeys.length > 0 ? transcriptHash.digest("hex") : undefined,
+		transcriptMessageKeys,
 		sessionName,
 	};
 }
 
-function isPromptPrefix(shorter: string[], longer: string[]): boolean {
+function isArrayPrefix(shorter: string[], longer: string[]): boolean {
 	if (shorter.length === 0 || shorter.length > longer.length) return false;
 	for (let i = 0; i < shorter.length; i += 1) {
 		if (shorter[i] !== longer[i]) return false;
@@ -720,30 +753,39 @@ function isPromptPrefix(shorter: string[], longer: string[]): boolean {
 	return true;
 }
 
-function sessionPromptKey(prompts: string[]): string {
-	return prompts.join("\u0000");
-}
-
 function dedupeSessionChoices(choices: SessionChoiceInfo[]): SessionChoiceInfo[] {
-	const firstIndexByExactPrompts = new Map<string, number>();
+	const firstIndexByExactTranscript = new Map<string, number>();
 	choices.forEach((choice, index) => {
-		if (choice.prompts.length === 0) return;
-		const key = sessionPromptKey(choice.prompts);
-		if (!firstIndexByExactPrompts.has(key)) firstIndexByExactPrompts.set(key, index);
+		if (!choice.transcriptKey) return;
+		if (!firstIndexByExactTranscript.has(choice.transcriptKey)) firstIndexByExactTranscript.set(choice.transcriptKey, index);
 	});
 
 	return choices.filter((choice, index) => {
+		if (choice.transcriptKey && firstIndexByExactTranscript.get(choice.transcriptKey) !== index) return false;
 		if (choice.prompts.length === 0) return true;
 
-		// Same conversation snapshot saved multiple times: keep the newest one.
-		if (firstIndexByExactPrompts.get(sessionPromptKey(choice.prompts)) !== index) return false;
-
-		// Older checkpoint of a longer conversation: hide the prefix snapshot.
+		// Older checkpoint of a longer conversation: hide only when both prompts and transcript are prefixes.
 		return !choices.some((other, otherIndex) => {
 			if (index === otherIndex) return false;
+			if (otherIndex > index) return false;
 			if (other.prompts.length <= choice.prompts.length) return false;
-			return isPromptPrefix(choice.prompts, other.prompts);
+			return isArrayPrefix(choice.prompts, other.prompts)
+				&& isArrayPrefix(choice.transcriptMessageKeys, other.transcriptMessageKeys);
 		});
+	});
+}
+
+function buildUniqueSessionChoiceOptions(choices: SessionChoiceInfo[]): SessionChoiceOption[] {
+	const usedLabels = new Set<string>();
+	return choices.map((choice) => {
+		let displayLabel = choice.label;
+		let suffix = 2;
+		while (usedLabels.has(displayLabel)) {
+			displayLabel = `${choice.label} · #${suffix}`;
+			suffix += 1;
+		}
+		usedLabels.add(displayLabel);
+		return { choice, displayLabel };
 	});
 }
 
@@ -760,9 +802,10 @@ async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string
 			const choices = dedupeSessionChoices(
 				files.map((file) => parseSessionChoiceInfo(join(sessionDir, file))),
 			);
-			const choice = await ctx.ui.select(`${wtName} 세션 선택:`, choices.map((c) => c.label));
+			const options = buildUniqueSessionChoiceOptions(choices);
+			const choice = await ctx.ui.select(`${wtName} 세션 선택:`, options.map((option) => option.displayLabel));
 			if (!choice) return;
-			const selected = choices.find((c) => c.label === choice);
+			const selected = options.find((option) => option.displayLabel === choice)?.choice;
 			if (!selected) return;
 			sessionFile = join(sessionDir, selected.file);
 		}
