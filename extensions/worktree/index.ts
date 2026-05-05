@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, statSync, rmSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname, basename } from "node:path";
-import type { ExtensionAPI, ExtensionCommandContext, ThemeColor } from "@mariozechner/pi-coding-agent";
-import { DynamicBorder } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ThemeColor } from "@mariozechner/pi-coding-agent";
+import { DynamicBorder, SessionManager } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
 
@@ -218,11 +218,13 @@ interface NewArgs {
 	name?: string;
 	hotfix: boolean;
 	hotfeature: boolean;
+	carryContext: boolean;
 	from?: string;
 	ticket?: string;
 	note?: string;
 	branch?: string;
 	repo?: string;
+	contextFile?: string;
 }
 
 function tokenize(args: string): string[] {
@@ -244,21 +246,94 @@ function tokenize(args: string): string[] {
 
 function parseNewArgs(args: string): NewArgs {
 	const tokens = tokenize(args);
-	const result: NewArgs = { hotfix: false, hotfeature: false };
+	const result: NewArgs = { hotfix: false, hotfeature: false, carryContext: false };
 	const positional: string[] = [];
 	for (let i = 0; i < tokens.length; i++) {
 		const t = tokens[i];
 		if (t === "--hotfix") result.hotfix = true;
 		else if (t === "--hotfeature") result.hotfeature = true;
+		else if (t === "--carry-context" || t === "--context" || t === "--fork-current") result.carryContext = true;
 		else if (t === "--from" && i + 1 < tokens.length) result.from = tokens[++i];
 		else if (t === "--ticket" && i + 1 < tokens.length) result.ticket = tokens[++i];
 		else if (t === "--note" && i + 1 < tokens.length) result.note = tokens[++i];
 		else if (t === "--branch" && i + 1 < tokens.length) result.branch = tokens[++i];
 		else if (t === "--repo" && i + 1 < tokens.length) result.repo = tokens[++i];
+		else if (t === "--context-file" && i + 1 < tokens.length) result.contextFile = tokens[++i];
 		else positional.push(t);
 	}
 	if (positional.length > 0) result.name = positional[0];
 	return result;
+}
+
+function createEmptySessionFile(worktreePath: string): string {
+	const sessionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+	const pathEncoded = "--" + worktreePath.slice(1).replace(/\//g, "-") + "--";
+	const sessionDir = join(homedir(), ".pi", "agent", "sessions", pathEncoded);
+	mkdirSync(sessionDir, { recursive: true });
+	const sessionFile = join(sessionDir, `${Date.now()}_${sessionId}.jsonl`);
+	writeFileSync(sessionFile, JSON.stringify({
+		type: "session", version: 3, id: sessionId,
+		timestamp: new Date().toISOString(), cwd: worktreePath,
+	}) + "\n");
+	return sessionFile;
+}
+
+function appendWorktreeContext(session: SessionManager, context: string, source: string) {
+	if (!context.trim()) return;
+	session.appendCustomMessageEntry(
+		"worktree-context",
+		`## 워크트리 인계 컨텍스트\n\n${context.trim()}`,
+		true,
+		{ source },
+	);
+}
+
+function createWorktreeSession(ctx: ExtensionContext, worktreePath: string, options: {
+	carryContext?: boolean;
+	contextContent?: string | null;
+	sessionName?: string;
+} = {}): { sessionFile: string; carriedContext: boolean; appendedContext: boolean } {
+	let session: SessionManager | null = null;
+	let sessionFile: string | undefined;
+	let carriedContext = false;
+
+	const sourceSessionFile = ctx.sessionManager.getSessionFile();
+	if (options.carryContext && sourceSessionFile && existsSync(sourceSessionFile)) {
+		try {
+			session = SessionManager.forkFrom(sourceSessionFile, worktreePath);
+			sessionFile = session.getSessionFile();
+			carriedContext = true;
+		} catch {
+			// Fall back to an empty target session; callers still get an actionable session file.
+		}
+	}
+
+	if (!session || !sessionFile) {
+		sessionFile = createEmptySessionFile(worktreePath);
+		session = SessionManager.open(sessionFile);
+	}
+
+	if (options.sessionName) session.appendSessionInfo(options.sessionName);
+	const appendedContext = Boolean(options.contextContent?.trim());
+	if (options.contextContent) appendWorktreeContext(session, options.contextContent, "worktree");
+
+	return { sessionFile, carriedContext, appendedContext };
+}
+
+function readContextFileOption(ctx: ExtensionContext, path?: string): string | null {
+	if (!path) return null;
+	const expanded = expandHome(path);
+	if (!existsSync(expanded)) {
+		ctx.ui.notify(`Context file not found: ${expanded}`, "error");
+		return null;
+	}
+	return readFileSync(expanded, "utf8");
+}
+
+function prefillSwitchCommand(ctx: ExtensionContext, command: string): boolean {
+	if (!ctx.hasUI) return false;
+	ctx.ui.setEditorText(command);
+	return true;
 }
 
 // ─── Ghostty integration ───────────────────────────────────────────────────
@@ -362,6 +437,9 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 			? `${prefix}/${parsed.ticket}/${name}`
 			: `${prefix}/${name}`;
 
+	const contextContent = readContextFileOption(ctx, parsed.contextFile);
+	if (parsed.contextFile && contextContent === null) return;
+
 	ctx.ui.notify(`Creating worktree "${name}" from origin/${baseBranch}…`, "info");
 
 	// Step 1: fetch
@@ -402,24 +480,22 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 	}
 
 	// Step 5: switch to new session with worktree cwd
-	const sessionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-	const pathEncoded = "--" + worktreePath.slice(1).replace(/\//g, "-") + "--";
-	const sessionDir = join(homedir(), ".pi", "agent", "sessions", pathEncoded);
-	mkdirSync(sessionDir, { recursive: true });
-	const sessionFile = join(sessionDir, `${Date.now()}_${sessionId}.jsonl`);
-	writeFileSync(sessionFile, JSON.stringify({
-		type: "session", version: 3, id: sessionId,
-		timestamp: new Date().toISOString(), cwd: worktreePath,
-	}) + "\n");
+	const session = createWorktreeSession(ctx, worktreePath, {
+		carryContext: parsed.carryContext,
+		contextContent,
+		sessionName: `${name} (${branchName})`,
+	});
+	const contextLabel = session.carriedContext ? " — context carried" : session.appendedContext ? " — context loaded" : "";
 
 	try {
-		await ctx.switchSession(sessionFile, {
+		await ctx.switchSession(session.sessionFile, {
 			withSession: async (newCtx: any) => {
-				newCtx.ui.notify(`✓ ${name} ready (${branchName})`, "info");
+				newCtx.ui.notify(`✓ ${name} ready (${branchName})${contextLabel}`, "info");
 			},
 		});
-	} catch {
-		ctx.ui.notify(`✓ Created. cwd: ${worktreePath}`, "info");
+	} catch (error) {
+		const reason = error instanceof Error ? ` (${error.message})` : "";
+		ctx.ui.notify(`✓ Created. cwd: ${worktreePath}${reason}`, "info");
 	}
 }
 
@@ -1075,20 +1151,10 @@ async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandC
 			? `${prefix}/${parsed.ticket}/${name}`
 			: `${prefix}/${name}`;
 
-	// Read context from --context-file if provided
-	let contextContent: string | null = null;
-	const contextFileMatch = args.match(/--context-file\s+(\S+)/);
-	if (contextFileMatch) {
-		const contextFilePath = contextFileMatch[1];
-		if (existsSync(contextFilePath)) {
-			contextContent = readFileSync(contextFilePath, "utf8");
-		} else {
-			ctx.ui.notify(`Context file not found: ${contextFilePath}`, "error");
-			return;
-		}
-	}
+	const contextContent = readContextFileOption(ctx, parsed.contextFile);
+	if (parsed.contextFile && contextContent === null) return;
 
-	ctx.ui.notify(`Forking into "${name}" from origin/${baseBranch}…`, "info");
+	ctx.ui.notify(`Forking current session into "${name}" from origin/${baseBranch}…`, "info");
 
 	const fetchR = await pi.exec("git", ["fetch", "origin", baseBranch], { cwd: repoRoot });
 	if (fetchR.code !== 0) {
@@ -1111,13 +1177,6 @@ async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandC
 		note: parsed.note,
 	});
 
-	if (contextContent) {
-		const contextDir = join(worktreePath, ".pi");
-		mkdirSync(contextDir, { recursive: true });
-		writeFileSync(join(contextDir, "conductor-context.md"), contextContent);
-		ctx.ui.notify(`✓ Context written (${contextContent.length} chars)`, "info");
-	}
-
 	ctx.ui.notify(`✓ ${name} forked (${branchName})`, "info");
 
 	if (config.setupScript) {
@@ -1130,24 +1189,22 @@ async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandC
 		}
 	}
 
-	const sessionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-	const pathEncoded = "--" + worktreePath.slice(1).replace(/\//g, "-") + "--";
-	const sessionDir = join(homedir(), ".pi", "agent", "sessions", pathEncoded);
-	mkdirSync(sessionDir, { recursive: true });
-	const sessionFile = join(sessionDir, `${Date.now()}_${sessionId}.jsonl`);
-	writeFileSync(sessionFile, JSON.stringify({
-		type: "session", version: 3, id: sessionId,
-		timestamp: new Date().toISOString(), cwd: worktreePath,
-	}) + "\n");
+	const session = createWorktreeSession(ctx, worktreePath, {
+		carryContext: true,
+		contextContent,
+		sessionName: `${name} (${branchName})`,
+	});
+	const contextLabel = session.carriedContext ? " — context carried" : session.appendedContext ? " — context loaded" : "";
 
 	try {
-		await ctx.switchSession(sessionFile, {
+		await ctx.switchSession(session.sessionFile, {
 			withSession: async (newCtx: any) => {
-				newCtx.ui.notify(`✓ ${name} ready (${branchName})${contextContent ? " — context loaded" : ""}`, "info");
+				newCtx.ui.notify(`✓ ${name} ready (${branchName})${contextLabel}`, "info");
 			},
 		});
-	} catch {
-		ctx.ui.notify(`✓ Created. cwd: ${worktreePath}`, "info");
+	} catch (error) {
+		const reason = error instanceof Error ? ` (${error.message})` : "";
+		ctx.ui.notify(`✓ Created. cwd: ${worktreePath}${reason}`, "info");
 	}
 }
 
@@ -1616,8 +1673,8 @@ async function handleWt(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCon
 		const t = ctx.ui.theme;
 		ctx.ui.notify([
 			t.fg("accent", "Usage:"),
-			`  ${t.fg("warning", "/wt new")} ${t.fg("borderAccent", "[name] [--repo <name>] [--hotfix|--hotfeature|--from <branch>] [--ticket COM-XXXX]")}`,
-			`  ${t.fg("warning", "/wt fork")} ${t.fg("borderAccent", "[name] [--context-file <path>] [--repo <name>]  \u2014 \uB9E5\uB77D \uD3EC\uD568 \uC6CC\uD06C\uD2B8\uB9AC \uC0DD\uC131")}`,
+			`  ${t.fg("warning", "/wt new")} ${t.fg("borderAccent", "[name] [--repo <name>] [--hotfix|--hotfeature|--from <branch>] [--ticket COM-XXXX] [--carry-context]")}`,
+			`  ${t.fg("warning", "/wt fork")} ${t.fg("borderAccent", "[name] [--context-file <path>] [--repo <name>]  — 현재 세션 전체를 이어받아 워크트리 생성")}`,
 			`  ${t.fg("warning", "/wt switch")} ${t.fg("borderAccent", "<name> | <repo>/<name>  — 워크트리 대시보드")}`,
 			`  ${t.fg("warning", "/wt resume")} ${t.fg("borderAccent", "<conductor-workspace>  — Conductor 워크스페이스 복원")}`,
 			`  ${t.fg("warning", "/wt list")} ${t.fg("borderAccent", "[--all]  \u2014 \uc6cc\ud06c\ud2b8\ub9ac \ubaa9\ub85d")}`,
@@ -1670,7 +1727,7 @@ export default function (pi: ExtensionAPI) {
 		promptSnippet: "Create a git worktree for code changes in product/lambda repos. Required before editing files in those repos.",
 		promptGuidelines: [
 			"Use worktree_create before editing files in product or lambda repos. Do not manually run git worktree add.",
-			"After worktree_create succeeds, wait for the session switch before continuing work.",
+			"Tool calls cannot execute slash-command session switches directly. After worktree_create succeeds, tell the user to submit the returned /wt switch command (prefilled in interactive UI) and wait before continuing.",
 		],
 		parameters: Type.Object({
 			repo: Type.Optional(Type.String({ description: "Registered repo name (e.g. 'product', 'lambda'). Auto-detected if omitted." })),
@@ -1679,7 +1736,7 @@ export default function (pi: ExtensionAPI) {
 			note: Type.Optional(Type.String({ description: "Short description of the work" })),
 			hotfix: Type.Optional(Type.Boolean({ description: "Branch from production instead of development" })),
 		}),
-		async execute(_toolCallId, params, signal, onUpdate, _ctx) {
+		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			const repoName = params.repo;
 			const reg = loadRegistry();
 
@@ -1746,12 +1803,14 @@ export default function (pi: ExtensionAPI) {
 				await pi.exec("bash", ["-lc", config.setupScript], { cwd: worktreePath, signal });
 			}
 
+			createWorktreeSession(ctx, worktreePath, { sessionName: `${name} (${branchName})` });
 			const registeredName = findRegisteredName(loadRegistry(), repoRoot) ?? basename(repoRoot);
-			pi.sendUserMessage(`/wt switch ${registeredName}/${name}`, { deliverAs: "followUp" });
+			const switchCommand = `/wt switch ${registeredName}/${name}`;
+			const prefilled = prefillSwitchCommand(ctx, switchCommand);
 
 			return {
-				content: [{ type: "text", text: `✓ Worktree "${name}" created (${branchName}) at ${worktreePath}. Session switch queued.` }],
-				details: { name, branch: branchName, path: worktreePath },
+				content: [{ type: "text", text: `✓ Worktree "${name}" created (${branchName}) at ${worktreePath}. Run ${switchCommand} to switch${prefilled ? " (prefilled in editor)" : ""}.` }],
+				details: { name, branch: branchName, path: worktreePath, switchCommand, prefilled },
 			};
 		},
 	});
@@ -1765,7 +1824,7 @@ export default function (pi: ExtensionAPI) {
 			name: Type.Optional(Type.String({ description: "Worktree name to switch to. Omit to list available worktrees." })),
 			repo: Type.Optional(Type.String({ description: "Registered repo name (e.g. 'product'). Auto-detected if only one repo registered." })),
 		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const reg = loadRegistry();
 
 			let repoRoot: string | null = null;
@@ -1799,11 +1858,12 @@ export default function (pi: ExtensionAPI) {
 			if (!target) throw new Error(`Worktree "${params.name}" not found. Available: ${worktrees.map(w => w.name).join(", ") || "(none)"}`);
 
 			const registeredName = findRegisteredName(loadRegistry(), repoRoot) ?? basename(repoRoot);
-			pi.sendUserMessage(`/wt switch ${registeredName}/${params.name}`, { deliverAs: "followUp" });
+			const switchCommand = `/wt switch ${registeredName}/${params.name}`;
+			const prefilled = prefillSwitchCommand(ctx, switchCommand);
 
 			return {
-				content: [{ type: "text", text: `✓ Switching to worktree "${params.name}" (${target.branch}). Session switch queued.` }],
-				details: { name: target.name, branch: target.branch, path: target.path },
+				content: [{ type: "text", text: `✓ Worktree "${params.name}" (${target.branch}) found. Run ${switchCommand} to switch${prefilled ? " (prefilled in editor)" : ""}.` }],
+				details: { name: target.name, branch: target.branch, path: target.path, switchCommand, prefilled },
 			};
 		},
 	});
@@ -1816,7 +1876,7 @@ export default function (pi: ExtensionAPI) {
 		promptGuidelines: [
 			"Use worktree_fork instead of worktree_create when you have valuable session context (investigation results, code analysis, plans) to carry over.",
 			"The context parameter should be a comprehensive markdown summary: goals, findings, target files, code snippets, and action items.",
-			"After worktree_fork succeeds, wait for the session switch before continuing work.",
+			"Tool calls cannot execute slash-command session switches directly. After worktree_fork succeeds, tell the user to submit the returned /wt switch command (prefilled in interactive UI) and wait before continuing.",
 		],
 		parameters: Type.Object({
 			context: Type.String({ description: "Markdown summary of current session context to carry over (goals, investigation results, target files, action items)" }),
@@ -1826,7 +1886,7 @@ export default function (pi: ExtensionAPI) {
 			note: Type.Optional(Type.String({ description: "Short description of the work" })),
 			hotfix: Type.Optional(Type.Boolean({ description: "Branch from production instead of development" })),
 		}),
-		async execute(_toolCallId, params, signal, onUpdate, _ctx) {
+		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			const repoName = params.repo;
 			const reg = loadRegistry();
 
@@ -1883,10 +1943,11 @@ export default function (pi: ExtensionAPI) {
 				note: params.note,
 			});
 
-			// Write context file for the new session to pick up
-			const contextDir = join(worktreePath, ".pi");
-			mkdirSync(contextDir, { recursive: true });
-			writeFileSync(join(contextDir, "conductor-context.md"), params.context);
+			createWorktreeSession(ctx, worktreePath, {
+				carryContext: true,
+				contextContent: params.context,
+				sessionName: `${name} (${branchName})`,
+			});
 
 			if (config.setupScript) {
 				onUpdate?.({
@@ -1897,11 +1958,12 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			const registeredName = findRegisteredName(loadRegistry(), repoRoot) ?? basename(repoRoot);
-			pi.sendUserMessage(`/wt switch ${registeredName}/${name}`, { deliverAs: "followUp" });
+			const switchCommand = `/wt switch ${registeredName}/${name}`;
+			const prefilled = prefillSwitchCommand(ctx, switchCommand);
 
 			return {
-				content: [{ type: "text", text: `✓ Worktree "${name}" forked (${branchName}) at ${worktreePath}. Context written (${params.context.length} chars). Session switch queued.` }],
-				details: { name, branch: branchName, path: worktreePath, contextLength: params.context.length },
+				content: [{ type: "text", text: `✓ Worktree "${name}" forked (${branchName}) at ${worktreePath}. Context attached (${params.context.length} chars). Run ${switchCommand} to switch${prefilled ? " (prefilled in editor)" : ""}.` }],
+				details: { name, branch: branchName, path: worktreePath, contextLength: params.context.length, switchCommand, prefilled },
 			};
 		},
 	});

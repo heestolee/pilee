@@ -125,11 +125,16 @@ conductor.db:       1.8GB (315K 메시지, 단일 SQLite)
 ### worktree 대시보드
 
 ```
-Ctrl+W                  → 전체 워크트리 오버레이
-/wt new                 → 새 워크트리 (포켓몬 이름 자동 생성)
-/wt resume <name>       → Conductor 워크스페이스 복원
-/wt switch              → 워크트리 전환 (세션 + cwd 자동 변경)
+Ctrl+W                       → 전체 워크트리 오버레이
+/wt new                      → 새 워크트리 (깨끗한 세션)
+/wt new --carry-context      → 현재 세션 전체를 이어받아 새 워크트리
+/wt fork                     → /wt new --carry-context 별도 UX
+/wt resume <name>            → Conductor 워크스페이스 복원
+/wt switch                   → 워크트리 전환 (세션 + cwd 자동 변경)
 ```
+
+에이전트 tool(`worktree_create`/`worktree_fork`)은 slash command를 직접 실행할 수 없으므로
+워크트리 생성 후 `/wt switch <repo>/<name>`을 에디터에 채우고 사용자가 제출하는 방식으로 전환한다.
 
 대시보드 상태: `backlog` / `active` / `done` / `archive`
 - `Space`: backlog → active → done 순환
