@@ -14,6 +14,7 @@ type Direction = (typeof VALID_DIRS)[number];
 type OpenMode = Direction | "here";
 
 const HANDOFF_DIR = join(homedir(), ".pi", "agent", "fork-panel");
+const INBOX_DIR = join(HANDOFF_DIR, "inbox");
 
 let forkInProgress = false;
 const FORK_COOLDOWN_MS = 2000;
@@ -25,6 +26,8 @@ const RECENT_KEEP = 50;
 interface ForkRecord {
 	forkId: string;
 	label: string;
+	panelLabel?: string;
+	parentSessionFile?: string;
 	sessionFile: string;
 	cwd: string;
 	createdAt: number;
@@ -38,6 +41,41 @@ interface ReviveItem {
 	workspaceLabel: string;
 	title: string;
 	preview: string;
+}
+
+type InboxStatus = "unread" | "read" | "dismissed";
+type HandoffDelivery = "inbox" | "inject" | "snapshot";
+type HandoffSource = "manual" | "done" | "fallback" | "auto";
+
+interface InboxItem {
+	id: string;
+	forkId: string;
+	panelLabel?: string;
+	parentSessionFile?: string;
+	title?: string;
+	pid: number;
+	createdAt: number;
+	updatedAt: number;
+	finishedAt?: number;
+	summary: string;
+	mode?: "auto" | "manual" | "done" | "fallback";
+	delivery: HandoffDelivery;
+	source: HandoffSource;
+	status: InboxStatus;
+	customNote?: string;
+	notifiedAt?: number;
+	injectedAt?: number;
+}
+
+interface PanelListItem {
+	record: ForkRecord;
+	revive: ReviveItem;
+	panelLabel: string;
+	status: "unread" | "running" | "closed" | "read";
+	unreadCount: number;
+	latestInbox?: InboxItem;
+	latestUnread?: InboxItem;
+	snapshot?: HandoffData;
 }
 
 function loadRecent(): Record<string, ForkRecord> {
@@ -68,6 +106,132 @@ function markForkClosed(forkId: string, preview: string) {
 	rec.closedAt = Date.now();
 	rec.preview = sanitizeRowText(preview).slice(0, 140);
 	saveRecent(all);
+}
+
+function panelNumber(label: string | undefined): number {
+	const match = /^P(\d+)$/.exec(label ?? "");
+	return match ? Number(match[1]) : 0;
+}
+
+function allocatePanelLabel(parentSessionFile: string): string {
+	const records = Object.values(loadRecent()).filter((record) => record.parentSessionFile === parentSessionFile);
+	const max = records.reduce((acc, record) => Math.max(acc, panelNumber(record.panelLabel)), 0);
+	return `P${max + 1}`;
+}
+
+function panelLabelOf(record: ForkRecord | undefined, fallback?: string): string {
+	return record?.panelLabel || fallback || "P?";
+}
+
+function ensureInboxDir() {
+	mkdirSync(INBOX_DIR, { recursive: true });
+}
+
+function inboxPath(id: string): string {
+	return join(INBOX_DIR, `${id}.json`);
+}
+
+function createInboxId(forkId: string, source: HandoffSource, timestamp = Date.now()): string {
+	return `${forkId}-${source}-${timestamp}-${randomUUID().slice(0, 6)}`;
+}
+
+function readInboxItem(filePath: string): InboxItem | null {
+	try {
+		const parsed = JSON.parse(readFileSync(filePath, "utf8"));
+		if (!parsed?.id || !parsed?.forkId || !parsed?.summary) return null;
+		return parsed as InboxItem;
+	} catch {
+		return null;
+	}
+}
+
+function loadInboxItems(): InboxItem[] {
+	if (!existsSync(INBOX_DIR)) return [];
+	try {
+		return readdirSync(INBOX_DIR)
+			.filter((file) => file.endsWith(".json"))
+			.map((file) => readInboxItem(join(INBOX_DIR, file)))
+			.filter((item): item is InboxItem => !!item)
+			.sort((a, b) => b.createdAt - a.createdAt);
+	} catch {
+		return [];
+	}
+}
+
+function writeInboxItem(item: InboxItem) {
+	ensureInboxDir();
+	writeFileSync(inboxPath(item.id), JSON.stringify(item, null, 2));
+}
+
+function updateInboxItem(item: InboxItem, patch: Partial<InboxItem>) {
+	writeInboxItem({ ...item, ...patch, updatedAt: Date.now() });
+}
+
+function writeInboxFromHandoff(data: HandoffData, source: HandoffSource, delivery: HandoffDelivery = "inbox"): InboxItem {
+	const timestamp = Date.now();
+	const item: InboxItem = {
+		id: createInboxId(data.forkId, source, timestamp),
+		forkId: data.forkId,
+		panelLabel: data.panelLabel,
+		parentSessionFile: data.parentSessionFile,
+		title: data.title,
+		pid: data.pid,
+		createdAt: timestamp,
+		updatedAt: timestamp,
+		finishedAt: data.finishedAt,
+		summary: data.summary,
+		mode: source === "done" ? "done" : source === "fallback" ? "fallback" : data.mode,
+		delivery,
+		source,
+		status: "unread",
+		customNote: data.customNote,
+	};
+	writeInboxItem(item);
+	return item;
+}
+
+function setInboxRead(item: InboxItem) {
+	updateInboxItem(item, { status: "read" });
+}
+
+function setInboxDismissed(item: InboxItem) {
+	updateInboxItem(item, { status: "dismissed" });
+}
+
+function markInboxNotified(item: InboxItem) {
+	updateInboxItem(item, { notifiedAt: Date.now() });
+}
+
+function markInboxInjected(item: InboxItem) {
+	updateInboxItem(item, { status: "read", injectedAt: Date.now(), notifiedAt: item.notifiedAt ?? Date.now() });
+}
+
+function readSnapshot(forkId: string): HandoffData | null {
+	try {
+		const snapshotPath = join(HANDOFF_DIR, `${forkId}.json`);
+		if (!existsSync(snapshotPath)) return null;
+		return JSON.parse(readFileSync(snapshotPath, "utf8")) as HandoffData;
+	} catch {
+		return null;
+	}
+}
+
+function isSnapshotClosed(snapshot: HandoffData | null): boolean {
+	if (!snapshot) return false;
+	return Boolean(snapshot.finishedAt) || Boolean(snapshot.pid && !isPidAlive(snapshot.pid));
+}
+
+function formatHandoffMessage(item: InboxItem | HandoffData, record?: ForkRecord): string {
+	const panelLabel = item.panelLabel || panelLabelOf(record);
+	const title = sanitizeRowText(item.title || record?.label || "fork panel");
+	const note = "customNote" in item && item.customNote ? `\n\n📝 ${item.customNote}` : "";
+	return `[panel ${panelLabel} handoff: ${title}]${note}\n\n${item.summary}`;
+}
+
+function insertIntoEditor(ctx: ExtensionCommandContext, text: string) {
+	const current = ctx.ui.getEditorText?.() ?? "";
+	const separator = current.trim() ? "\n\n" : "";
+	ctx.ui.setEditorText(`${current}${separator}${text}`);
 }
 
 function repanelMarkerPath(forkId: string, pid = process.pid): string {
@@ -187,6 +351,48 @@ function buildReviveItem(record: ForkRecord): ReviveItem {
 	};
 }
 
+function collectClosedSnapshot(record: ForkRecord): InboxItem | null {
+	const snapshot = readSnapshot(record.forkId);
+	if (!isSnapshotClosed(snapshot)) return null;
+	const item = writeInboxFromHandoff({
+		...snapshot!,
+		panelLabel: snapshot?.panelLabel || record.panelLabel,
+		parentSessionFile: snapshot?.parentSessionFile || record.parentSessionFile,
+		title: snapshot?.title || buildReviveItem(record).title,
+	}, "fallback", "inbox");
+	markForkClosed(record.forkId, snapshot?.summary ?? "");
+	try { unlinkSync(join(HANDOFF_DIR, `${record.forkId}.json`)); } catch {}
+	return item;
+}
+
+function buildPanelListItems(records: ForkRecord[], inboxItems: InboxItem[]): PanelListItem[] {
+	const items: PanelListItem[] = [];
+	for (const record of records) {
+		const revive = buildReviveItem(record);
+		const relatedInbox = inboxItems
+			.filter((item) => item.forkId === record.forkId && item.status !== "dismissed")
+			.sort((a, b) => b.createdAt - a.createdAt);
+		const unread = relatedInbox.filter((item) => item.status === "unread");
+		const snapshot = readSnapshot(record.forkId) ?? undefined;
+		const closed = Boolean(record.closedAt) || isSnapshotClosed(snapshot ?? null);
+		const status: PanelListItem["status"] = unread.length > 0 ? "unread" : closed ? (relatedInbox.length ? "read" : "closed") : "running";
+		items.push({
+			record,
+			revive,
+			panelLabel: panelLabelOf(record, snapshot?.panelLabel),
+			status,
+			unreadCount: unread.length,
+			latestInbox: relatedInbox[0],
+			latestUnread: unread[0],
+			snapshot,
+		});
+	}
+	return items.sort((a, b) => {
+		const statusRank = (item: PanelListItem) => item.status === "unread" ? 0 : item.status === "running" ? 1 : 2;
+		return statusRank(a) - statusRank(b) || b.record.createdAt - a.record.createdAt;
+	});
+}
+
 function esc(s: string): string {
 	return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
@@ -282,14 +488,27 @@ async function getGhosttyFocusedTerminalId(pi: ExtensionAPI): Promise<string | n
 	return result.stdout?.trim() || null;
 }
 
+async function closeCurrentForkPanel(pi: ExtensionAPI) {
+	if (process.platform === "darwin" && process.env.TERM_PROGRAM === "ghostty") {
+		await runDetachedOsa(pi, `delay 0.2\ntell application "Ghostty"\n  close focused terminal of selected tab of front window\nend tell`);
+		setTimeout(() => process.exit(0), 800);
+		return;
+	}
+	setTimeout(() => process.exit(0), 100);
+}
+
 interface HandoffData {
 	forkId: string;
+	panelLabel?: string;
+	parentSessionFile?: string;
 	parentSessionId?: string;
+	title?: string;
 	pid: number;
 	updatedAt: number;
 	finishedAt?: number;
 	summary: string;
-	mode?: "auto" | "manual";
+	mode?: "auto" | "manual" | "done" | "fallback";
+	delivery?: HandoffDelivery;
 	customNote?: string;
 }
 
@@ -305,15 +524,20 @@ function isPidAlive(pid: number): boolean {
 function cleanOldHandoffs() {
 	if (!existsSync(HANDOFF_DIR)) return;
 	const now = Date.now();
-	try {
-		for (const f of readdirSync(HANDOFF_DIR)) {
-			const p = join(HANDOFF_DIR, f);
-			try {
-				const stat = statSync(p);
-				if (now - stat.mtimeMs > HANDOFF_TTL_MS) unlinkSync(p);
-			} catch {}
-		}
-	} catch {}
+	const cleanDir = (dir: string) => {
+		try {
+			for (const f of readdirSync(dir)) {
+				const p = join(dir, f);
+				try {
+					const stat = statSync(p);
+					if (stat.isDirectory()) continue;
+					if (now - stat.mtimeMs > HANDOFF_TTL_MS) unlinkSync(p);
+				} catch {}
+			}
+		} catch {}
+	};
+	cleanDir(HANDOFF_DIR);
+	if (existsSync(INBOX_DIR)) cleanDir(INBOX_DIR);
 }
 
 function extractLastAssistant(entries: any[]): string {
@@ -396,8 +620,13 @@ function assemblePayload(opts: { mode: "summary" | "full" | "last"; lastMessage:
 	return opts.lastMessage;
 }
 
-function buildScript(direction: Direction, cwd: string, sessionFile: string, forkId: string, prompt?: string): string {
-	const cmd = `cd \\"${esc(cwd)}\\" && pi update && PI_FORK_ID=${forkId} pi --session \\"${esc(sessionFile)}\\"`;
+function buildScript(direction: Direction, cwd: string, sessionFile: string, forkId: string, panelLabel: string, parentSessionFile: string, prompt?: string): string {
+	const envPrefix = buildEnvPrefix({
+		PI_FORK_ID: forkId,
+		PI_FORK_PANEL_LABEL: panelLabel,
+		PI_FORK_PARENT: parentSessionFile,
+	});
+	const cmd = `cd \\"${esc(cwd)}\\" && pi update && ${envPrefix}pi --session \\"${esc(sessionFile)}\\"`;
 
 	if (direction === "tab") {
 		return `tell application "System Events"
@@ -421,12 +650,19 @@ end tell`;
 export default function (pi: ExtensionAPI) {
 	const forkId = process.env.PI_FORK_ID;
 
-	// CHILD MODE additions: this session is a fork of a parent — write handoff on shutdown
+	// CHILD MODE additions: this session is a fork of a parent — write snapshots/inbox handoffs
 	if (forkId) {
 		const handoffPath = join(HANDOFF_DIR, `${forkId}.json`);
+		const childPanelLabel = process.env.PI_FORK_PANEL_LABEL;
+		const parentSessionFile = process.env.PI_FORK_PARENT;
 		let latestEntries: any[] = [];
 		let latestCtx: ExtensionContext | undefined;
 		let alreadyFinalized = false;
+
+		const currentTitle = () => {
+			const entries = latestEntries.length ? latestEntries : latestCtx?.sessionManager.getEntries() ?? [];
+			return extractLastSessionName(entries) || extractLastText(entries) || childPanelLabel || forkId;
+		};
 
 		const writeAuto = (final: boolean, payload?: string) => {
 			try {
@@ -435,16 +671,25 @@ export default function (pi: ExtensionAPI) {
 				mkdirSync(HANDOFF_DIR, { recursive: true });
 				const data: HandoffData = {
 					forkId,
-					parentSessionId: process.env.PI_FORK_PARENT,
+					panelLabel: childPanelLabel,
+					parentSessionFile,
+					parentSessionId: parentSessionFile,
+					title: currentTitle(),
 					pid: process.pid,
 					updatedAt: Date.now(),
 					...(final ? { finishedAt: Date.now() } : {}),
 					summary: payload ?? lastMsg,
 					mode: "auto",
+					delivery: "snapshot",
 				};
 				writeFileSync(handoffPath, JSON.stringify(data, null, 2));
 			} catch {}
 		};
+
+		pi.on("session_start", async (_e, ctx) => {
+			if (!childPanelLabel) return;
+			ctx.ui.notify(`${childPanelLabel} fork panel 시작됨 · /handoff: inbox 저장 · /done: handoff 후 종료`, "info");
+		});
 
 		// Update on every assistant turn (just last message — fast)
 		pi.on("agent_end", async (_e, ctx) => {
@@ -478,58 +723,93 @@ export default function (pi: ExtensionAPI) {
 			});
 		}
 
+		const buildManualHandoff = async (args: string | undefined, ctx: ExtensionContext, source: HandoffSource) => {
+			const tokens = (args ?? "").trim().split(/\s+/).filter(Boolean);
+			let mode: "summary" | "full" | "last" = "summary";
+			let inject = false;
+			let noHandoff = false;
+			const noteParts: string[] = [];
+			for (const t of tokens) {
+				if (t === "--full") mode = "full";
+				else if (t === "--last") mode = "last";
+				else if (t === "--summary") mode = "summary";
+				else if (t === "--inject") inject = true;
+				else if (t === "--no-handoff") noHandoff = true;
+				else noteParts.push(t);
+			}
+			if (noHandoff) return { noHandoff: true, mode, inject, item: null as InboxItem | null };
+
+			const entries = ctx.sessionManager.getEntries();
+			latestEntries = entries;
+			latestCtx = ctx;
+			const lastMsg = extractLastAssistant(entries);
+			if (!lastMsg) {
+				ctx.ui.notify("전송할 응답이 없습니다 (assistant 메시지가 아직 없음)", "warning");
+				return null;
+			}
+			const note = noteParts.join(" ").trim() || undefined;
+
+			let payload: string;
+			if (mode === "full") {
+				const transcript = extractFullTranscript(entries);
+				payload = assemblePayload({ mode: "full", lastMessage: lastMsg, transcript });
+			} else if (mode === "summary") {
+				ctx.ui.notify("요약 생성 중…", "info");
+				const summary = await generateSummary(entries, ctx);
+				payload = assemblePayload({ mode: summary ? "summary" : "last", lastMessage: lastMsg, summary });
+			} else {
+				payload = lastMsg;
+			}
+
+			const ts = Date.now();
+			const data: HandoffData = {
+				forkId,
+				panelLabel: childPanelLabel,
+				parentSessionFile,
+				parentSessionId: parentSessionFile,
+				title: currentTitle(),
+				pid: process.pid,
+				updatedAt: ts,
+				summary: payload,
+				mode: source === "done" ? "done" : "manual",
+				delivery: inject ? "inject" : "inbox",
+				customNote: note,
+			};
+			const item = writeInboxFromHandoff(data, source, inject ? "inject" : "inbox");
+			return { noHandoff: false, mode, inject, item };
+		};
+
 		// Manual /handoff command
 		pi.registerCommand("handoff", {
-			description: "Send to parent: default = summary + last message. Options: --full (full transcript), --last (just last message). [optional note]",
+			description: "Send to parent inbox. Options: --inject (immediate follow-up), --full, --last, --summary. [optional note]",
 			handler: async (args, ctx) => {
 				try {
-					const entries = ctx.sessionManager.getEntries();
-					const lastMsg = extractLastAssistant(entries);
-					if (!lastMsg) {
-						ctx.ui.notify("전송할 응답이 없습니다 (assistant 메시지가 아직 없음)", "warning");
-						return;
-					}
-
-					// Parse mode flag and note
-					const tokens = (args ?? "").trim().split(/\s+/).filter(Boolean);
-					let mode: "summary" | "full" | "last" = "summary";
-					const noteParts: string[] = [];
-					for (const t of tokens) {
-						if (t === "--full") mode = "full";
-						else if (t === "--last") mode = "last";
-						else if (t === "--summary") mode = "summary";
-						else noteParts.push(t);
-					}
-					const note = noteParts.join(" ").trim() || undefined;
-
-					let payload: string;
-					if (mode === "full") {
-						const transcript = extractFullTranscript(entries);
-						payload = assemblePayload({ mode: "full", lastMessage: lastMsg, transcript });
-					} else if (mode === "summary") {
-						ctx.ui.notify("요약 생성 중…", "info");
-						const summary = await generateSummary(entries, ctx);
-						payload = assemblePayload({ mode: summary ? "summary" : "last", lastMessage: lastMsg, summary });
-					} else {
-						payload = lastMsg;
-					}
-
-					mkdirSync(HANDOFF_DIR, { recursive: true });
-					const ts = Date.now();
-					const manualPath = join(HANDOFF_DIR, `${forkId}-manual-${ts}.json`);
-					const data: HandoffData = {
-						forkId,
-						parentSessionId: process.env.PI_FORK_PARENT,
-						pid: process.pid,
-						updatedAt: ts,
-						summary: payload,
-						mode: "manual",
-						customNote: note,
-					};
-					writeFileSync(manualPath, JSON.stringify(data, null, 2));
-					ctx.ui.notify(`부모 세션에 handoff 전송됨 (mode: ${mode}${note ? `, 메모: ${note.slice(0, 30)}` : ""})`, "info");
+					const result = await buildManualHandoff(args, ctx, "manual");
+					if (!result || result.noHandoff || !result.item) return;
+					ctx.ui.notify(`${childPanelLabel ?? "panel"} handoff ${result.inject ? "즉시 주입 요청" : "parent inbox 저장"} (mode: ${result.mode})`, "info");
 				} catch (e) {
 					ctx.ui.notify(`handoff 실패: ${e instanceof Error ? e.message : e}`, "error");
+				}
+			},
+		});
+
+		pi.registerCommand("done", {
+			description: "Send handoff then close this fork panel. Options: --inject, --no-handoff, --full, --last, --summary. [optional note]",
+			handler: async (args, ctx) => {
+				try {
+					const result = await buildManualHandoff(args, ctx, "done");
+					alreadyFinalized = true;
+					if (result?.noHandoff) {
+						markForkClosed(forkId, "closed without handoff");
+						ctx.ui.notify(`${childPanelLabel ?? "panel"} 종료 (handoff 없음)`, "info");
+					} else if (result?.item) {
+						markForkClosed(forkId, result.item.summary);
+						ctx.ui.notify(`${childPanelLabel ?? "panel"} ${result.inject ? "handoff 즉시 주입 요청 후" : "handoff inbox 저장 후"} 종료`, "info");
+					}
+					try { unlinkSync(handoffPath); } catch {}
+					await closeCurrentForkPanel(pi);
+				} catch (e) {
+					ctx.ui.notify(`done 실패: ${e instanceof Error ? e.message : e}`, "error");
 				}
 			},
 		});
@@ -539,50 +819,56 @@ export default function (pi: ExtensionAPI) {
 	// All sessions (parent or child fork): can spawn new forks
 	const activeWatchers = new Map<string, ReturnType<typeof setInterval>>();
 
-	function watchHandoff(forkId: string, label: string) {
+	function watchHandoff(forkId: string, label: string, ctx?: ExtensionCommandContext) {
 		const existing = activeWatchers.get(forkId);
 		if (existing) clearInterval(existing);
 
 		const autoPath = join(HANDOFF_DIR, `${forkId}.json`);
-		const manualPrefix = `${forkId}-manual-`;
 
 		const interval = setInterval(() => {
-			// 1. Pick up any manual handoffs (panel still running, multiple possible)
+			const record = loadRecent()[forkId];
+
+			// 1. Inbox handoffs: default stays in inbox, --inject becomes immediate follow-up.
 			try {
-				if (existsSync(HANDOFF_DIR)) {
-					const files = readdirSync(HANDOFF_DIR)
-						.filter((f) => f.startsWith(manualPrefix) && f.endsWith(".json"))
-						.sort(); // chronological
-					for (const f of files) {
-						const fp = join(HANDOFF_DIR, f);
-						try {
-							const data: HandoffData = JSON.parse(readFileSync(fp, "utf8"));
-							const note = data.customNote ? `\n\n📝 ${data.customNote}` : "";
-							const message = `[fork-panel handoff (manual): ${label}]${note}\n\n${data.summary}`;
-							pi.sendUserMessage(message, { deliverAs: "followUp" });
-							unlinkSync(fp);
-						} catch {}
+				for (const item of loadInboxItems().filter((i) => i.forkId === forkId && i.status === "unread")) {
+					if (item.delivery === "inject") {
+						pi.sendUserMessage(formatHandoffMessage(item, record), { deliverAs: "followUp" });
+						markInboxInjected(item);
+						continue;
+					}
+					if (!item.notifiedAt) {
+						ctx?.ui.notify(`${item.panelLabel || record?.panelLabel || "panel"} handoff 도착 · /panels에서 Enter로 입력창에 삽입`, "info");
+						markInboxNotified(item);
 					}
 				}
 			} catch {}
 
-			// 2. Check if child is done (auto handoff trigger)
-			if (!existsSync(autoPath)) return;
-			try {
-				const data: HandoffData = JSON.parse(readFileSync(autoPath, "utf8"));
-				const finished = !!data.finishedAt;
-				const pidDead = data.pid && !isPidAlive(data.pid);
-				if (!finished && !pidDead) return;
+			// 2. Closed child fallback: turn latest snapshot into an inbox item, not an automatic follow-up.
+			if (existsSync(autoPath)) {
+				try {
+					const data: HandoffData = JSON.parse(readFileSync(autoPath, "utf8"));
+					const finished = !!data.finishedAt;
+					const pidDead = data.pid && !isPidAlive(data.pid);
+					if (finished || pidDead) {
+						const item = writeInboxFromHandoff({
+							...data,
+							panelLabel: data.panelLabel || record?.panelLabel,
+							parentSessionFile: data.parentSessionFile || record?.parentSessionFile,
+							title: data.title || label,
+							finishedAt: data.finishedAt ?? Date.now(),
+						}, "fallback", "inbox");
+						markForkClosed(forkId, data.summary);
+						try { unlinkSync(autoPath); } catch {}
+						ctx?.ui.notify(`${item.panelLabel || "panel"} 종료 handoff 도착 · /panels에서 확인`, "info");
+						markInboxNotified(item);
+					}
+				} catch {}
+			}
 
-				const hint = `\n\n💡 이어서 작업하려면: /revive ${forkId}  또는  /revive last`;
-				const message = `[fork-panel handoff: ${label}]\n\n${data.summary}${hint}`;
-				pi.sendUserMessage(message, { deliverAs: "followUp" });
-				markForkClosed(forkId, data.summary);
-				unlinkSync(autoPath);
-			} catch {}
-
-			clearInterval(interval);
-			activeWatchers.delete(forkId);
+			if (record?.closedAt && !loadInboxItems().some((item) => item.forkId === forkId && item.status === "unread" && item.delivery === "inject")) {
+				clearInterval(interval);
+				activeWatchers.delete(forkId);
+			}
 		}, 2000);
 		activeWatchers.set(forkId, interval);
 	}
@@ -626,6 +912,8 @@ export default function (pi: ExtensionAPI) {
 			const uuid = randomUUID().slice(0, 8);
 			const forkedFile = join(dir, `${timestamp}_${uuid}.jsonl`);
 			const newForkId = `fk_${uuid}_${timestamp}`;
+			const parentSessionFile = sessionFile;
+			const panelLabel = allocatePanelLabel(parentSessionFile);
 
 			try {
 				copyFileSync(sessionFile, forkedFile);
@@ -636,7 +924,7 @@ export default function (pi: ExtensionAPI) {
 
 			// Open in Ghostty
 			forkInProgress = true;
-			const script = buildScript(direction, ctx.cwd, forkedFile, newForkId, prompt);
+			const script = buildScript(direction, ctx.cwd, forkedFile, newForkId, panelLabel, parentSessionFile, prompt);
 			const result = await pi.exec("osascript", ["-e", script]);
 
 			setTimeout(() => { forkInProgress = false; }, FORK_COOLDOWN_MS);
@@ -653,14 +941,16 @@ export default function (pi: ExtensionAPI) {
 			recordFork({
 				forkId: newForkId,
 				label,
+				panelLabel,
+				parentSessionFile,
 				sessionFile: forkedFile,
 				cwd: ctx.cwd,
 				createdAt: timestamp,
 			});
-			watchHandoff(newForkId, label);
+			watchHandoff(newForkId, label, ctx);
 
 			ctx.ui.notify(
-				`세션 포크 → ${direction === "tab" ? "새 탭" : `${direction} 패널`}${prompt ? ` (자동 prompt)` : ""}\n패널 종료 시 마지막 응답이 이 세션에 전달됩니다.`,
+				`${panelLabel} 세션 포크 → ${direction === "tab" ? "새 탭" : `${direction} 패널`}${prompt ? ` (자동 prompt)` : ""}\n/handoff는 parent inbox에 저장되고, 종료 fallback도 /panels에서 확인합니다.`,
 				"info",
 			);
 	};
@@ -680,6 +970,125 @@ export default function (pi: ExtensionAPI) {
 		description: "Alias for /fork-panel",
 		getArgumentCompletions: completions,
 		handler,
+	});
+
+	pi.registerCommand("panels", {
+		description: "fork-panel inbox/list. Enter inserts selected handoff/snapshot into editor; s sends follow-up; o revives; r marks read; d dismisses.",
+		handler: async (args, ctx) => {
+			const allRecords = loadRecent();
+			for (const record of Object.values(allRecords)) collectClosedSnapshot(record);
+
+			const currentWorkspaceKey = workspaceKeyFor(ctx.cwd);
+			const currentWorkspaceLabel = workspaceLabelFor(ctx.cwd);
+			let showAll = (args ?? "").trim().split(/\s+/).some((token) => token.toLowerCase() === "all");
+			let selectedIndex = 0;
+			let scrollOffset = 0;
+
+			const listItems = () => {
+				const records = Object.values(loadRecent()).filter((record) => existsSync(record.sessionFile));
+				const filtered = showAll ? records : records.filter((record) => workspaceKeyFor(record.cwd) === currentWorkspaceKey);
+				return buildPanelListItems(filtered, loadInboxItems());
+			};
+
+			const payloadFor = (item: PanelListItem): { text: string; inbox?: InboxItem } | null => {
+				const inbox = item.latestUnread ?? item.latestInbox;
+				if (inbox) return { text: formatHandoffMessage(inbox, item.record), inbox };
+				if (item.snapshot?.summary) return { text: formatHandoffMessage(item.snapshot, item.record) };
+				const last = extractLastText(readSessionEntries(item.record.sessionFile), "assistant") || item.revive.preview;
+				if (!last) return null;
+				return { text: `[panel ${item.panelLabel} snapshot: ${item.revive.title}]\n\n${last}` };
+			};
+
+			const markSelectedRead = (item: PanelListItem) => {
+				for (const inbox of loadInboxItems().filter((entry) => entry.forkId === item.record.forkId && entry.status === "unread")) {
+					setInboxRead(inbox);
+				}
+			};
+
+			const selected = await ctx.ui.custom<PanelListItem | null>(
+				(tui, theme, _kb, done) => ({
+					render: (w: number) => {
+						const items = listItems();
+						if (selectedIndex >= items.length) selectedIndex = Math.max(0, items.length - 1);
+						if (scrollOffset >= items.length) scrollOffset = Math.max(0, items.length - 1);
+						const rows = (tui as any).terminal?.rows ?? 30;
+						const headerH = 3;
+						const footerH = 1;
+						const bodyH = Math.max(3, rows - headerH - footerH);
+						const lines: string[] = [];
+						const scopeText = showAll ? "all workspaces" : `workspace ${currentWorkspaceLabel}`;
+						const toggleText = showAll ? "a: current" : "a: all";
+						lines.push(theme.fg("accent", "─".repeat(w)));
+						lines.push(truncateToWidth(`  ${theme.fg("accent", theme.bold("PANELS"))} ${theme.fg("accent", "|")} ${items.length} panels ${theme.fg("accent", "·")} ${theme.fg("border", scopeText)} ${theme.fg("accent", "·")} ${theme.fg("border", "Enter insert · s send · o revive · r read · d dismiss · q close")}`, w, ""));
+						lines.push(truncateToWidth(`  ${theme.fg("border", `↑/↓ select · ${toggleText} · unread items are not injected until you choose them`)}`, w, ""));
+
+						if (items.length === 0) {
+							lines.push(truncateToWidth(theme.fg("warning", `  현재 워크스페이스(${currentWorkspaceLabel})에 fork panel 기록이 없습니다. a를 눌러 전체를 보세요.`), w, ""));
+						} else {
+							if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
+							if (selectedIndex >= scrollOffset + bodyH) scrollOffset = selectedIndex - bodyH + 1;
+							for (let i = scrollOffset; i < Math.min(items.length, scrollOffset + bodyH); i++) {
+								const item = items[i];
+								const sel = i === selectedIndex;
+								const cursor = sel ? theme.fg("accent", "▶") : " ";
+								const statusIcon = item.status === "unread" ? theme.fg("warning", "●") : item.status === "running" ? theme.fg("success", "●") : theme.fg("border", "●");
+								const status = item.status === "unread" ? `unread${item.unreadCount > 1 ? `(${item.unreadCount})` : ""}` : item.status;
+								const panel = sel ? theme.fg("accent", item.panelLabel) : theme.fg("borderAccent", item.panelLabel);
+								const workspace = theme.fg("border", truncateToWidth(item.revive.workspaceLabel, 16, "…"));
+								const titleW = Math.max(18, Math.min(42, Math.floor(w * 0.32)));
+								const title = sel ? theme.fg("accent", truncateToWidth(item.revive.title, titleW, "…")) : truncateToWidth(item.revive.title, titleW, "…");
+								const previewSource = item.latestUnread?.summary || item.latestInbox?.summary || item.snapshot?.summary || item.revive.preview;
+								const previewW = Math.max(0, w - titleW - 48);
+								const preview = previewW > 0 ? theme.fg("border", truncateToWidth(sanitizeRowText(previewSource), previewW, "…")) : "";
+								lines.push(truncateToWidth(`${cursor} ${statusIcon} ${panel} ${theme.fg("border", status.padEnd(8))} ${workspace}  ${title}  ${preview}`, w, ""));
+							}
+						}
+
+						while (lines.length < headerH + bodyH) lines.push("");
+						lines.push(theme.fg("accent", "─".repeat(w)));
+						return lines;
+					},
+					handleInput: (data: string) => {
+						const items = listItems();
+						const item = items[selectedIndex];
+						if (data === "q" || matchesKey(data, Key.escape)) { done(null); return; }
+						if (data === "a") { showAll = !showAll; selectedIndex = 0; scrollOffset = 0; }
+						else if (matchesKey(data, Key.up) || data === "k") { if (selectedIndex > 0) selectedIndex--; }
+						else if (matchesKey(data, Key.down) || data === "j") { if (selectedIndex < items.length - 1) selectedIndex++; }
+						else if (matchesKey(data, Key.enter)) { if (item) done(item); return; }
+						else if (data === "s" && item) {
+							const payload = payloadFor(item);
+							if (payload) {
+								pi.sendUserMessage(payload.text, { deliverAs: "followUp" });
+								if (payload.inbox) setInboxRead(payload.inbox);
+								ctx.ui.notify(`${item.panelLabel} handoff를 follow-up으로 전송했습니다`, "info");
+							}
+							done(null); return;
+						} else if (data === "r" && item) {
+							markSelectedRead(item);
+							ctx.ui.notify(`${item.panelLabel} unread handoff를 read 처리했습니다`, "info");
+						} else if (data === "d" && item) {
+							for (const inbox of loadInboxItems().filter((entry) => entry.forkId === item.record.forkId && entry.status !== "dismissed")) setInboxDismissed(inbox);
+							ctx.ui.notify(`${item.panelLabel} inbox를 dismiss 처리했습니다`, "info");
+						} else if (data === "o" && item) { done(null); void openRevive(item.record, ctx, "right"); return; }
+						(tui as any).requestRender?.();
+					},
+					invalidate: () => {},
+				}),
+				{ overlay: true, overlayOptions: { width: "100%", maxHeight: "100%", anchor: "center" } },
+			);
+
+			if (selected) {
+				const payload = payloadFor(selected);
+				if (!payload) {
+					ctx.ui.notify(`${selected.panelLabel}에서 가져올 handoff/snapshot이 없습니다`, "warning");
+					return;
+				}
+				insertIntoEditor(ctx, payload.text);
+				if (payload.inbox) setInboxRead(payload.inbox);
+				ctx.ui.notify(`${selected.panelLabel} handoff를 입력창에 삽입했습니다`, "info");
+			}
+		},
 	});
 
 	// Keyboard shortcuts: Ctrl+Shift+Arrow → fork-panel direction
@@ -925,14 +1334,18 @@ export default function (pi: ExtensionAPI) {
 
 		const cwd = target.cwd || ctx.cwd;
 		try { unlinkSync(join(HANDOFF_DIR, `${target.forkId}.json`)); } catch {}
-		const script = buildOpenSessionScript(mode, cwd, target.sessionFile, { PI_FORK_ID: target.forkId });
+		const script = buildOpenSessionScript(mode, cwd, target.sessionFile, {
+			PI_FORK_ID: target.forkId,
+			PI_FORK_PANEL_LABEL: target.panelLabel,
+			PI_FORK_PARENT: target.parentSessionFile,
+		});
 		const result = await pi.exec("osascript", ["-e", script]);
 		if (result.code !== 0) {
 			ctx.ui.notify(`패널 생성 실패: ${result.stderr?.trim() ?? "unknown"}`, "error");
 			return;
 		}
 
-		watchHandoff(target.forkId, item.title || target.label);
+		watchHandoff(target.forkId, item.title || target.label, ctx);
 		ctx.ui.notify(`${item.workspaceLabel} · ${item.title} 세션 재개 → ${modeLabel(mode)}`, "info");
 	}
 
@@ -968,6 +1381,7 @@ export default function (pi: ExtensionAPI) {
 
 		const script = buildRepanelScript(direction, ctx.cwd, sessionFile, {
 			PI_FORK_ID: forkId,
+			PI_FORK_PANEL_LABEL: process.env.PI_FORK_PANEL_LABEL,
 			PI_FORK_PARENT: process.env.PI_FORK_PARENT,
 		}, oldTerminalId);
 		const result = await runDetachedOsa(pi, script);
