@@ -13,6 +13,7 @@
 ## 상세 기록
 
 설계 결정, 분석 결과, 개선 근거 → `docs/pilee-history.md` 참조
+공개 가능한 최신 설계 지식/검색 그래프 → `docs/knowledge/README.md` 참조
 
 ## 투두/백로그 제안 규칙
 
