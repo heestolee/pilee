@@ -29,7 +29,7 @@ source:
   - pilee-history:2026-05-05#41
   - pilee-history:2026-05-05#42
 reviewed_at: 2026-05-05
-reviewed_commit: b730f16e977be8fa2f810038fc3aafe2c29ceea9
+reviewed_commit: aa0e440375a6cfcc701896552c94366ee813c171
 related:
   - subagent-model-policy
   - pilee-knowledge-system

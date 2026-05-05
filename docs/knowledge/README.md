@@ -90,7 +90,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Reviewed | Commit | Tags |
 |---|---|---:|---:|---|
-| [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | 2026-05-05 | b730f16 | worktree, session, revive, fork-panel, panel-inbox, handoff |
+| [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | 2026-05-05 | aa0e440 | worktree, session, revive, fork-panel, panel-inbox, handoff |
 
 ## Knowledge Map
 
