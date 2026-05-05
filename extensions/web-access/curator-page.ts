@@ -2526,7 +2526,7 @@ const SCRIPT = `(function() {
   }
 
   function submitPayload(payload, successText) {
-    if (submitInFlight) return Promise.reject(new Error("Submit already in progress"));
+    if (submitInFlight) return Promise.reject(new Error("이미 제출 중입니다"));
     submitInFlight = true;
     submitted = true;
     syncLoadingPanel();
@@ -2536,7 +2536,7 @@ const SCRIPT = `(function() {
     return postJson("/submit", payload)
       .then(function(data) {
         if (data && data.ok === false) {
-          throw new Error(extractServerError(data) || "submit rejected");
+          throw new Error(extractServerError(data) || "제출이 거부되었습니다");
         }
         showSuccess(successText);
       })
@@ -2579,7 +2579,7 @@ const SCRIPT = `(function() {
     postJson("/submit", payload)
       .then(function(data) {
         if (data && data.ok === false) {
-          throw new Error(extractServerError(data) || "submit rejected");
+          throw new Error(extractServerError(data) || "제출이 거부되었습니다");
         }
         finalizeClose();
       })
@@ -2589,7 +2589,7 @@ const SCRIPT = `(function() {
           postJson("/submit", payload)
             .then(function(data) {
               if (data && data.ok === false) {
-                throw new Error(extractServerError(data) || "submit rejected");
+                throw new Error(extractServerError(data) || "제출이 거부되었습니다");
               }
               finalizeClose();
             })
