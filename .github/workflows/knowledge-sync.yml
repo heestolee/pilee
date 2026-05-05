@@ -24,14 +24,17 @@ jobs:
         id: recent
         shell: bash
         run: |
+          KST_DATE=$(TZ=Asia/Seoul date +%F)
+          SINCE_UTC=$(TZ=Asia/Seoul date -d "$KST_DATE 00:00:00" -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "kst_date=$KST_DATE" >> "$GITHUB_OUTPUT"
+          echo "since_utc=$SINCE_UTC" >> "$GITHUB_OUTPUT"
+
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
             echo "reason=manual workflow_dispatch" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          KST_DATE=$(TZ=Asia/Seoul date +%F)
-          SINCE_UTC=$(TZ=Asia/Seoul date -d "$KST_DATE 00:00:00" -u +"%Y-%m-%dT%H:%M:%SZ")
           COUNT=$(git log --since="$SINCE_UTC" --format=%H -- . ':(exclude)docs/knowledge-review.md' | wc -l | tr -d ' ')
 
           if [[ "$COUNT" -gt 0 ]]; then
@@ -92,15 +95,41 @@ jobs:
           NODE
         env:
           RECENT_REASON: ${{ steps.recent.outputs.reason }}
+          SINCE_UTC: ${{ steps.recent.outputs.since_utc }}
+          KST_DATE: ${{ steps.recent.outputs.kst_date }}
 
       - name: Render public review queue
         if: steps.recent.outputs.has_changes == 'true'
         run: |
           node <<'NODE'
           const fs = require('fs');
+          const { execFileSync } = require('child_process');
           const path = 'docs/knowledge-review.md';
           const data = JSON.parse(fs.readFileSync('/tmp/pilee-knowledge-freshness.json', 'utf8'));
-          const hasActions = data.deterministic_actions.length > 0 || data.ai_actions.length > 0;
+
+          const ROOT_LINKS_START = '<!-- PILEE_ROOT_KNOWLEDGE_LINKS_START -->';
+          const ROOT_LINKS_END = '<!-- PILEE_ROOT_KNOWLEDGE_LINKS_END -->';
+          const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const stripGeneratedReadme = (content) => String(content || '')
+            .replace(/\r\n/g, '\n')
+            .replace(
+              new RegExp(`${escapeRegex(ROOT_LINKS_START)}[\\s\\S]*?${escapeRegex(ROOT_LINKS_END)}`),
+              `${ROOT_LINKS_START}\n<generated knowledge links>\n${ROOT_LINKS_END}`,
+            )
+            .trim();
+          const git = (args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+          const readGitFile = (commit, file) => {
+            try { return git(['show', `${commit}:${file}`]); }
+            catch { return ''; }
+          };
+          const currentReadme = fs.existsSync('README.md') ? fs.readFileSync('README.md', 'utf8') : '';
+          const sinceUtc = process.env.SINCE_UTC || '';
+          let baseCommit = '';
+          try { if (sinceUtc) baseCommit = git(['rev-list', '-1', `--before=${sinceUtc}`, 'HEAD']); } catch {}
+          const baseReadme = baseCommit ? readGitFile(baseCommit, 'README.md') : '';
+          const readmeNarrativeChanged = Boolean(baseReadme && stripGeneratedReadme(baseReadme) !== stripGeneratedReadme(currentReadme));
+
+          const hasActions = data.deterministic_actions.length > 0 || data.ai_actions.length > 0 || readmeNarrativeChanged;
           if (!hasActions) {
             if (fs.existsSync(path)) fs.unlinkSync(path);
             process.exit(0);
@@ -129,6 +158,15 @@ jobs:
               const link = action.doc ? `[${target}](./knowledge/${target}.md)` : target;
               lines.push(`| ${link} | ${action.reason} | ${detail.replace(/\|/g, '\\|')} |`);
             }
+            lines.push('');
+          }
+
+          if (readmeNarrativeChanged) {
+            lines.push('## README public narrative review');
+            lines.push('');
+            lines.push('| Target | Reason | Suggested review |');
+            lines.push('|---|---|---|');
+            lines.push(`| [README.md](../README.md) | Non-generated README content changed since ${process.env.KST_DATE || 'today'} KST | Confirm philosophy, positioning, and public-facing wording reflect owner intent. Generated knowledge table changes are ignored for this check. |`);
             lines.push('');
           }
 
@@ -168,6 +206,7 @@ jobs:
             This PR may include:
             - deterministic generated blocks in `docs/knowledge/README.md` and root `README.md`
             - public `docs/knowledge-review.md` review queue for stale or medium/low confidence doctrine
+            - README public narrative review when non-generated README content changed
 
             Private/local journal is intentionally not available in GitHub Actions. Content changes that require private context should be done locally, sanitized, and reviewed before pushing.
           add-paths: |
