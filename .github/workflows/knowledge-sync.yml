@@ -1,0 +1,75 @@
+name: "pilee knowledge 정합성 점검"
+
+on:
+  schedule:
+    # 매주 월요일 03:20 KST (일요일 18:20 UTC)
+    - cron: "20 18 * * 0"
+  workflow_dispatch:
+
+jobs:
+  knowledge-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Refresh generated knowledge graph
+        run: npm run knowledge:graph
+
+      - name: Validate knowledge docs
+        run: npm run knowledge:validate
+
+      - name: Collect review candidates
+        run: |
+          node scripts/knowledge.mjs --review-candidates --json > /tmp/pilee-knowledge-candidates.json
+          node <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require('fs');
+          const data = JSON.parse(fs.readFileSync('/tmp/pilee-knowledge-candidates.json', 'utf8'));
+          console.log('## pilee knowledge review candidates');
+          console.log('');
+          if (!data.candidates.length) {
+            console.log('No candidates found from public git history.');
+          } else {
+            console.log('| Doc | Evidence |');
+            console.log('|---|---:|');
+            for (const candidate of data.candidates) {
+              const evidence = candidate.commitEvidence.length + candidate.historyEvidence.length;
+              console.log(`| ${candidate.id} | ${evidence} |`);
+            }
+            console.log('');
+            console.log('Private/local journal is intentionally not available in GitHub Actions. Run `npm run knowledge:review` locally before an AI-assisted content sync PR.');
+          }
+          NODE
+
+      - name: Create PR for deterministic README graph updates
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: auto/pilee-knowledge-sync
+          delete-branch: true
+          title: "[AUTO] pilee knowledge graph sync"
+          commit-message: "chore: sync pilee knowledge graph"
+          body: |
+            ## Overview
+            Automated deterministic sync for `docs/knowledge/README.md`.
+
+            This workflow only refreshes generated graph/index content and validates knowledge metadata.
+            Content updates that require private `docs/pilee-history.md` context should be done locally with `npm run knowledge:review`, sanitized, and reviewed before pushing.
+          add-paths: |
+            docs/knowledge/README.md

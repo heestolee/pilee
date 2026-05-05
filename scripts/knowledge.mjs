@@ -504,12 +504,12 @@ function cmdReviewCandidates({ sinceDays = 14, json = false, strict = false } = 
 		const since = reviewedAtOf(doc) || fallbackDate;
 		const tokens = tokensForDoc(doc);
 		const commitEvidence = gitCommits
-			.filter((commit) => commit.date > since || commit.date === since)
+			.filter((commit) => commit.date > since)
 			.map((commit) => ({ commit, matches: matchingTokens(tokens, `${commit.subject}\n${commit.files.join("\n")}`) }))
 			.filter((item) => item.matches.length > 0)
 			.slice(0, 8);
 		const historyEvidence = historyEntries
-			.filter((entry) => entry.date > since || entry.date === since)
+			.filter((entry) => entry.date > since)
 			.map((entry) => ({ entry, matches: matchingTokens(tokens, entry.text) }))
 			.filter((item) => item.matches.length > 0)
 			.slice(0, 8);
@@ -613,7 +613,25 @@ function tokensForDoc(doc) {
 			if (part.length >= 3) tokens.add(part);
 		}
 	}
-	return [...tokens].filter((token) => !["docs", "skill", "skills", "index", "main", "workflow"].includes(token));
+	const noisy = new Set([
+		"docs",
+		"doc",
+		"skill",
+		"skills",
+		"script",
+		"scripts",
+		"extension",
+		"extensions",
+		"index",
+		"main",
+		"workflow",
+		"source",
+		"pilee",
+		"mjs",
+		"ts",
+		"md",
+	]);
+	return [...tokens].filter((token) => !noisy.has(token));
 }
 
 function matchingTokens(tokens, text) {
