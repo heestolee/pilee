@@ -168,13 +168,27 @@ function loadConfig(): Record<string, ServerConfig> {
 	return {};
 }
 
+function baseMcpEnv(): Record<string, string> {
+	return {
+		...process.env,
+		FRAMELINK_TELEMETRY: process.env.FRAMELINK_TELEMETRY ?? "off",
+		DO_NOT_TRACK: process.env.DO_NOT_TRACK ?? "1",
+	} as Record<string, string>;
+}
+
 function expandEnv(env: Record<string, string> | undefined): Record<string, string> {
-	if (!env) return { ...process.env } as Record<string, string>;
-	const result = { ...process.env } as Record<string, string>;
-	for (const [k, v] of Object.entries(env)) {
+	const result = baseMcpEnv();
+	for (const [k, v] of Object.entries(env ?? {})) {
 		result[k] = v.replace(/\$\{(\w+)\}/g, (_, name) => process.env[name] ?? "");
 	}
 	return result;
+}
+
+function drainServerStderr(transport: StdioClientTransport) {
+	const stderr = transport.stderr;
+	if (!stderr) return;
+	stderr.on("data", () => {});
+	stderr.on("error", () => {});
 }
 
 async function connectServer(name: string, config: ServerConfig): Promise<Connection> {
@@ -187,7 +201,9 @@ async function connectServer(name: string, config: ServerConfig): Promise<Connec
 		command: effectiveConfig.command,
 		args: effectiveConfig.args ?? [],
 		env: expandEnv(effectiveConfig.env),
+		stderr: "pipe",
 	});
+	drainServerStderr(transport);
 
 	const client = new Client({ name: `pilee-${name}`, version: "0.1.0" }, { capabilities: {} });
 
