@@ -157,17 +157,14 @@ function getTextFromContentPart(part: unknown): string {
 	return "";
 }
 
-export async function generateSummaryDraft(
-	results: QueryResultData[],
+async function completeTextPrompt(
 	ctx: SummaryGenerationContext,
+	prompt: string,
 	signal?: AbortSignal,
 	modelOverride?: string,
-	feedback?: string,
-): Promise<{ summary: string; meta: SummaryMeta }> {
+): Promise<{ text: string; model: Model<Api>; durationMs: number }> {
 	const startedAt = Date.now();
 	const { model, apiKey } = await resolveSummaryModel(ctx, modelOverride);
-	const prompt = buildSummaryPrompt(results, feedback);
-
 	const userMessage: Message = {
 		role: "user",
 		content: [{ type: "text", text: prompt }],
@@ -178,17 +175,46 @@ export async function generateSummaryDraft(
 	if (response.stopReason === "aborted") throw new Error("Aborted");
 
 	const contentParts = Array.isArray(response.content) ? response.content : [];
-	const summary = contentParts.map(getTextFromContentPart).filter((text) => text.trim().length > 0).join("\n").trim();
-	if (summary.length === 0) throw new Error("Summary model returned empty response");
+	const text = contentParts.map(getTextFromContentPart).filter((partText) => partText.trim().length > 0).join("\n").trim();
+	if (text.length === 0) throw new Error("Model returned empty response");
+
+	return { text, model, durationMs: Math.max(0, Date.now() - startedAt) };
+}
+
+export async function generateSummaryDraft(
+	results: QueryResultData[],
+	ctx: SummaryGenerationContext,
+	signal?: AbortSignal,
+	modelOverride?: string,
+	feedback?: string,
+): Promise<{ summary: string; meta: SummaryMeta }> {
+	const prompt = buildSummaryPrompt(results, feedback);
+	const { text: summary, model, durationMs } = await completeTextPrompt(ctx, prompt, signal, modelOverride);
 
 	return {
 		summary,
 		meta: {
 			model: `${model.provider}/${model.id}`,
-			durationMs: Math.max(0, Date.now() - startedAt),
+			durationMs,
 			tokenEstimate: estimateTokens(summary),
 			fallbackUsed: false,
 			edited: false,
 		},
 	};
+}
+
+export async function rewriteSearchQuery(
+	query: string,
+	ctx: SummaryGenerationContext,
+	signal?: AbortSignal,
+): Promise<string> {
+	const prompt = [
+		"Rewrite this web search query to get better, more specific Tavily results.",
+		"Add relevant year qualifiers, precise technical terms, and useful specificity.",
+		"Return ONLY the improved query text, nothing else.",
+		"",
+		`Query: ${query}`,
+	].join("\n");
+	const { text } = await completeTextPrompt(ctx, prompt, signal);
+	return text.replace(/^['\"]|['\"]$/g, "").trim();
 }

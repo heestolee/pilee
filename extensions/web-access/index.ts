@@ -7,7 +7,7 @@ import { Type } from "typebox";
 import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
 import TurndownService from "turndown";
-import { applyCuratedSelection, runCuratedSearchReview } from "./curator.js";
+import { runCuratedSearchReview } from "./curator.js";
 import type { ExtractedContent, QueryResultData, SearchResponse, SearchResult } from "./types.js";
 
 const TAVILY_SEARCH = "https://api.tavily.com/search";
@@ -184,9 +184,9 @@ export default function (pi: ExtensionAPI) {
 			const numResults = Math.min(params.numResults ?? 5, 20);
 			const responseId = randomUUID().slice(0, 8);
 
-			const executeSearch = async (q: string): Promise<QueryResultData> => {
+			const executeSearch = async (q: string, searchSignal: AbortSignal | undefined = signal): Promise<QueryResultData> => {
 				try {
-					const response = await searchTavily(q, { numResults, recencyFilter: params.recencyFilter, signal }, apiKey);
+					const response = await searchTavily(q, { numResults, recencyFilter: params.recencyFilter, signal: searchSignal }, apiKey);
 					storedResults.set(`${responseId}:${q}`, { id: responseId, query: q, timestamp: Date.now(), response });
 					return queryResultFromSearch(q, response);
 				} catch (error) {
@@ -194,15 +194,13 @@ export default function (pi: ExtensionAPI) {
 				}
 			};
 
-			const queryResults: QueryResultData[] = [];
-			for (const q of queries) queryResults.push(await executeSearch(q));
-
 			const workflow = normalizeWorkflow(params.workflow, config.workflow ?? "none");
 			if (workflow === "summary-review" && ctx?.hasUI) {
 				const curated = await runCuratedSearchReview({
 					pi,
 					ctx,
-					initialResults: queryResults,
+					queries,
+					signal,
 					onSearch: executeSearch,
 					onUpdate: (message) => onUpdate?.(text(message)),
 				});
@@ -218,7 +216,7 @@ export default function (pi: ExtensionAPI) {
 				}
 
 				if (curated.status === "raw") {
-					const selected = curated.selectedResults ?? applyCuratedSelection(queryResults, curated.selected);
+					const selected = curated.selectedResults ?? [];
 					return text(formatQueryResults(selected), {
 						responseId,
 						totalResults: flattenSources(selected).length,
@@ -228,14 +226,17 @@ export default function (pi: ExtensionAPI) {
 					});
 				}
 
-				return text(`Curator ${curated.status}; returning uncurated Tavily results.\n\n${formatQueryResults(queryResults)}`, {
+				const completedResults = curated.selectedResults ?? [];
+				return text(`Curator ${curated.status}; returning completed Tavily results.\n\n${formatQueryResults(completedResults)}`, {
 					responseId,
-					totalResults: flattenSources(queryResults).length,
+					totalResults: flattenSources(completedResults).length,
 					provider: "tavily",
 					workflow,
 				});
 			}
 
+			const queryResults: QueryResultData[] = [];
+			for (const q of queries) queryResults.push(await executeSearch(q));
 			return text(formatQueryResults(queryResults), { responseId, totalResults: flattenSources(queryResults).length, provider: "tavily", workflow: "none" });
 		},
 	});
