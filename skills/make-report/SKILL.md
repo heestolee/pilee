@@ -29,7 +29,7 @@ argument-hint: "[base-url] [--upload] [--update] [--ask-before]"
 | 4 | 캡처 계획 수립 → 유저 확인 | ✓ | ✓ | ✓ |
 | 4-B | (ask-before 모드만) 항목별 사전 확인 | opt | opt | opt |
 | 5 | 브라우저 자동화 실행 | ✓ | ✓ | ✓ |
-| 6 | HTML 리포트 생성 → 유저 리뷰 | ✓ | ✓ | ✓ (병합) |
+| 6 | HTML 리포트 생성 → Glimpse 프리뷰 → 유저 리뷰 | ✓ | ✓ | ✓ (병합) |
 | 7 | agent-storage 업로드 |  | ✓ | ✓ |
 | 8 | context.md + PR 본문 업데이트 |  | ✓ | ✓ |
 | 9 | 후속 단계 AskUserQuestion | ✓ | ✓ | ✓ |
@@ -38,6 +38,7 @@ argument-hint: "[base-url] [--upload] [--update] [--ask-before]"
 > - [references/capture-commands.md](references/capture-commands.md) — agent-browser 명령, ffmpeg GIF 합성 (고화질 설정)
 > - [references/upload-scripts.md](references/upload-scripts.md) — agent-storage 업로드
 > - [references/report-templates.md](references/report-templates.md) — HTML/context.md/PR 템플릿
+> - [scripts/preview-report-glimpse.mjs](scripts/preview-report-glimpse.mjs) — 로컬 HTML 리포트를 Glimpse WebView로 프리뷰
 > - [references/troubleshooting.md](references/troubleshooting.md) — agent-browser daemon 복구, 자주 깨지는 케이스
 
 ## Step 1: 캡처 대상 수집 + 분류
@@ -118,19 +119,35 @@ URL: {url}
 - **GIF 고화질 설정** — `lanczos` 스케일링 + `sierra2_4a` 디더링 + 256색 (이전: bayer + 저화질)
 - **Daemon 실패 시 복구 절차** — [troubleshooting.md](references/troubleshooting.md)의 표준 절차 따라 재시작 (이전엔 매번 즉흥 처리)
 
-## Step 6: HTML 리포트 생성 → 유저 리뷰
+## Step 6: HTML 리포트 생성 → Glimpse 프리뷰 → 유저 리뷰
 
-`.context/work/{workspace}/captures/report.html` 생성 후 로컬 프리뷰. 
+`.context/work/{workspace}/captures/report.html` 생성 후 반드시 Glimpse WebView로 로컬 프리뷰를 연다.
+
+```bash
+node skills/make-report/scripts/preview-report-glimpse.mjs .context/work/{workspace}/captures/report.html
+```
+
+스크립트는 리포트의 로컬 이미지(`.png`, `.gif` 등)를 data URI로 인라인 처리한 뒤 WebView에 표시하고, stdout에 JSON을 출력한다.
+
+```json
+{"action":"approve"|"upload"|"recapture"|"closed","reportPath":"..."}
+```
+
+액션 처리:
+- `approve` / `closed`: confirm 모드 완료. 업로드하지 않는다.
+- `upload`: 사용자가 UI에서 명시적으로 선택한 것으로 보고 Step 7(upload)로 진행한다.
+- `recapture`: 필요한 항목을 재캡처하거나 update 모드로 보완한다.
+- Glimpse 실행 실패: `/show-report` 또는 `open .context/work/{workspace}/captures/report.html`로 fallback하고 업로드하지 않는다.
 
 **update 모드**: 기존 report.html 읽어서 새 항목만 append. 기존 항목 보존.
 
-유저 리뷰: "괜찮습니다 / 재캡처 필요 / 항목 추가" AskUserQuestion.
+유저 리뷰는 Glimpse 프리뷰 액션을 우선 사용한다. 별도 확인이 필요하면 AskUserQuestion으로 "업로드 / 재캡처 / 멈춤"만 묻는다.
 
 ## Step 7: agent-storage 업로드 (upload 모드만)
 
 [references/upload-scripts.md](references/upload-scripts.md) 참조.
 
-기본 confirm 모드에선 이 단계 스킵 — 사용자가 만족하면 그대로 종료. 업로드 원하면 `/make-report --upload`로 재실행.
+기본 confirm 모드에선 이 단계 스킵 — 사용자가 Glimpse 프리뷰에서 `Upload now`를 누르거나 `/make-report --upload`를 명시한 경우에만 진행한다.
 
 ## Step 8: context.md + PR 본문 업데이트 (upload 모드만)
 
@@ -163,3 +180,4 @@ URL: {url}
 | 사용자가 "BE는 빼" | 분류 단계에서 BE/CODE_DIFF 항목 SKIP 표시. |
 | 사용자가 "여러 번 다시 했는데 또" | troubleshooting.md 확인 + daemon 표준 재시작 절차. |
 | 사용자가 "업로드는 나중에" | confirm 모드로 종료. /make-report --upload 안내. |
+| Glimpse 창이 안 뜸/닫힘 | 업로드하지 않고 `/show-report` 또는 `open report.html` fallback 안내. |

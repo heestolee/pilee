@@ -2,7 +2,7 @@
 
 ## HTML 리포트 구조 (로컬 프리뷰용)
 
-이미지 참조: 로컬 상대 경로 (현재 디렉토리 기준)
+이미지 참조: 로컬 상대 경로 (현재 디렉토리 기준). Step 6의 Glimpse 프리뷰 스크립트가 로컬 이미지 경로를 data URI로 인라인 처리하므로, report.html 자체는 상대 경로를 유지한다.
 
 ```html
 <!DOCTYPE html>
@@ -127,6 +127,26 @@ gh pr edit --body-file /tmp/pr-body.md
 - 항목 수정 (어떤 항목인지 알려주세요)
 - 사전 확인 모드로 (각 항목 시작 전 확인)
 ```
+
+## Glimpse 프리뷰 액션 처리
+
+Step 6에서 실행:
+
+```bash
+node skills/make-report/scripts/preview-report-glimpse.mjs .context/work/{workspace}/captures/report.html
+```
+
+stdout 예시:
+
+```json
+{"action":"approve","reportPath":"/abs/path/.context/work/ws/captures/report.html"}
+```
+
+처리 규칙:
+- `approve` / `closed`: 로컬 확인 완료. 업로드하지 않고 종료.
+- `upload`: Step 7 upload 진행.
+- `recapture`: 필요한 항목 재캡처 또는 `/make-report --update`로 보완.
+- `error`: `/show-report` 또는 시스템 브라우저 open fallback.
 
 ## 후속 단계 AskUserQuestion 템플릿 (Step 9)
 
