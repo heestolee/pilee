@@ -9,6 +9,7 @@ tags:
   - database
 category: database
 status: active
+confidence: medium
 applies_to:
   - skills/db-write
   - skills/db-write-migration

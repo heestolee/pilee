@@ -8,6 +8,7 @@ tags:
   - agent
 category: agent
 status: active
+confidence: medium
 applies_to:
   - extensions/supervisor
   - start_supervision

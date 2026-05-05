@@ -9,6 +9,7 @@ tags:
   - approval
 category: workflow
 status: active
+confidence: medium
 applies_to:
   - skills/jira-issue-management
 source:

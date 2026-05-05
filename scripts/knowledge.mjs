@@ -26,6 +26,7 @@ const GRAPH_END = "<!-- PILEE_KNOWLEDGE_GRAPH_END -->";
 const ROOT_LINKS_START = "<!-- PILEE_ROOT_KNOWLEDGE_LINKS_START -->";
 const ROOT_LINKS_END = "<!-- PILEE_ROOT_KNOWLEDGE_LINKS_END -->";
 const VALID_STATUSES = new Set(["active", "experimental", "deprecated", "draft"]);
+const VALID_CONFIDENCES = new Set(["high", "medium", "low"]);
 const MAX_QUERY_RESULTS = 8;
 
 function rel(filePath) {
@@ -172,6 +173,14 @@ function statusOf(doc) {
 	return String(doc.frontmatter.status || "");
 }
 
+function confidenceOf(doc) {
+	return String(doc.frontmatter.confidence || "high").trim().toLowerCase();
+}
+
+function confidenceRank(confidence) {
+	return { high: 0, medium: 1, low: 2 }[confidence] ?? 3;
+}
+
 function reviewedAtOf(doc) {
 	return normalizeDate(doc.frontmatter.reviewed_at);
 }
@@ -191,7 +200,7 @@ Usage:
   node scripts/knowledge.mjs --graph [--check]           Regenerate docs/knowledge/README.md + root README knowledge links, or fail if stale
   node scripts/knowledge.mjs --freshness [opts]          Report doctrine/readme freshness and deterministic vs AI actions
   node scripts/knowledge.mjs --review-candidates [opts]  Find docs likely needing review from commits/local history
-  node scripts/knowledge.mjs --confirm <doc-id> [--date YYYY-MM-DD]
+  node scripts/knowledge.mjs --confirm <doc-id> [--date YYYY-MM-DD] [--confidence high|medium|low]
                                                         Update reviewed_at + reviewed_commit after human/AI review
 
 Report options:
@@ -331,6 +340,10 @@ function cmdValidate({ includeGraph = true } = {}) {
 		}
 		if (!VALID_STATUSES.has(statusOf(doc))) {
 			console.log(`❌ ${doc.id}: status must be one of ${[...VALID_STATUSES].join(", ")}`);
+			issues++;
+		}
+		if (fm.confidence !== undefined && !VALID_CONFIDENCES.has(confidenceOf(doc))) {
+			console.log(`❌ ${doc.id}: confidence must be one of ${[...VALID_CONFIDENCES].join(", ")}`);
 			issues++;
 		}
 		if (!normalizeArray(fm.applies_to).length) {
@@ -486,11 +499,11 @@ function buildKnowledgeGeneratedSection(docs) {
 	for (const [category, categoryDocs] of categories) {
 		lines.push(`### ${category}`);
 		lines.push("");
-		lines.push("| Topic | Status | Reviewed | Commit | Tags |");
-		lines.push("|---|---|---:|---:|---|");
+		lines.push("| Topic | Status | Confidence | Reviewed | Commit | Tags |");
+		lines.push("|---|---|---:|---:|---:|---|");
 		for (const doc of categoryDocs) {
 			const tags = tagsOf(doc).slice(0, 6).join(", ");
-			lines.push(`| [${escapeTable(titleOf(doc))}](./${doc.id}.md) | ${statusOf(doc)} | ${reviewedAtOf(doc)} | ${shortHash(reviewedCommitOf(doc))} | ${escapeTable(tags)} |`);
+			lines.push(`| [${escapeTable(titleOf(doc))}](./${doc.id}.md) | ${statusOf(doc)} | ${confidenceOf(doc)} | ${reviewedAtOf(doc)} | ${shortHash(reviewedCommitOf(doc))} | ${escapeTable(tags)} |`);
 		}
 		lines.push("");
 	}
@@ -710,7 +723,7 @@ function cmdGraph({ check = false } = {}) {
 	return 0;
 }
 
-function cmdConfirm(docId, date = today()) {
+function cmdConfirm(docId, date = today(), confidence = null) {
 	const doc = getDoc(docId);
 	if (!doc) {
 		console.error(`❌ Document not found: ${docId}`);
@@ -720,9 +733,14 @@ function cmdConfirm(docId, date = today()) {
 		console.error(`❌ --date must be YYYY-MM-DD: ${date}`);
 		process.exit(1);
 	}
+	if (confidence !== null && !VALID_CONFIDENCES.has(confidence)) {
+		console.error(`❌ --confidence must be one of ${[...VALID_CONFIDENCES].join(", ")}: ${confidence}`);
+		process.exit(1);
+	}
 
 	const commit = headCommit();
 	const fm = { ...doc.frontmatter, reviewed_at: date, reviewed_commit: commit };
+	if (confidence !== null) fm.confidence = confidence;
 	delete fm.__parseError;
 	const nextFrontmatter = stringifyFrontmatter(fm);
 	const nextContent = `---\n${nextFrontmatter}---\n\n${doc.body.trim()}\n`;
@@ -737,6 +755,7 @@ function stringifyFrontmatter(fm) {
 		"tags",
 		"category",
 		"status",
+		"confidence",
 		"applies_to",
 		"source",
 		"reviewed_at",
@@ -995,6 +1014,8 @@ function buildFreshnessReport({ sinceDays = 14 } = {}) {
 		const reviewedCommit = reviewedCommitOf(doc);
 		const validCommit = commitExists(reviewedCommit);
 		const candidate = candidates.find((item) => item.id === doc.id);
+		const confidence = confidenceOf(doc);
+		const confidenceReviewNeeded = confidenceRank(confidence) > confidenceRank("high");
 		const reasons = [];
 		if (!validCommit) {
 			reasons.push({
@@ -1020,11 +1041,20 @@ function buildFreshnessReport({ sinceDays = 14 } = {}) {
 				evidence: { date: evidence.date, matches: evidence.matches },
 			});
 		}
-		const freshness = !validCommit ? "unknown" : candidateIds.has(doc.id) ? "stale" : "fresh";
+		if (confidenceReviewNeeded) {
+			reasons.push({
+				type: "confidence_review",
+				severity: confidence === "low" ? "high" : "medium",
+				detail: `confidence is ${confidence}; keep in review queue until user/AI review promotes it`,
+				evidence: { confidence },
+			});
+		}
+		const freshness = !validCommit ? "unknown" : (candidateIds.has(doc.id) || confidenceReviewNeeded) ? "stale" : "fresh";
 		return {
 			id: doc.id,
 			title: titleOf(doc),
 			status: statusOf(doc),
+			confidence,
 			reviewed_at: reviewedAtOf(doc),
 			reviewed_commit: reviewedCommit || null,
 			freshness,
@@ -1053,12 +1083,20 @@ function buildFreshnessReport({ sinceDays = 14 } = {}) {
 		target: surface.surface,
 		reason: "surface has no linked knowledge doc",
 	}));
+	const confidenceActions = doctrine
+		.filter((doc) => doc.freshness === "stale" && confidenceRank(doc.confidence) > confidenceRank("high") && !candidateIds.has(doc.id))
+		.map((doc) => ({
+			type: "review-doctrine-confidence",
+			doc: doc.id,
+			reason: `confidence is ${doc.confidence}; user review requested`,
+		}));
 	const aiActions = [
 		...candidates.map((candidate) => ({
 			type: "review-doctrine",
 			doc: candidate.id,
 			reason: candidate.reviewed_commit_valid ? "related commit/history evidence found" : "reviewed_commit missing or invalid",
 		})),
+		...confidenceActions,
 		...coverageActions,
 	];
 	const freshnessDocs = {
@@ -1096,6 +1134,14 @@ function buildFreshnessReport({ sinceDays = 14 } = {}) {
 			],
 			suggested_action: "Review the doctrine, update if needed, then run --confirm",
 		})),
+		...confidenceActions.map((action) => ({
+			kind: "confidence_review",
+			target: action.doc,
+			priority: action.reason.includes("low") ? "high" : "medium",
+			reason: action.reason,
+			source: ["frontmatter:confidence"],
+			suggested_action: "Review the doctrine; if accepted, run --confirm <doc-id> --confidence high",
+		})),
 		...readmeFreshness.coverage.missing.map((surface) => ({
 			kind: "coverage_gap",
 			target: surface.surface,
@@ -1122,6 +1168,7 @@ function buildFreshnessReport({ sinceDays = 14 } = {}) {
 				id: doc.id,
 				title: doc.title,
 				status: doc.status,
+				confidence: doc.confidence,
 				reviewed_at: doc.reviewed_at,
 				reviewed_commit: doc.reviewed_commit,
 				freshness: doc.freshness === "stale" ? "review_needed" : doc.freshness === "unknown" ? "unreviewed" : "fresh",
@@ -1210,7 +1257,7 @@ if (args.includes("--confirm") || args.includes("--review")) {
 		console.error(`${flag} requires a document id.`);
 		process.exit(1);
 	}
-	cmdConfirm(docId, readOption("--date", today()));
+	cmdConfirm(docId, readOption("--date", today()), readOption("--confidence", null));
 	process.exit(0);
 }
 

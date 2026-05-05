@@ -8,6 +8,7 @@ tags:
   - extension
 category: architecture
 status: active
+confidence: medium
 applies_to:
   - extensions/utils
 source:
