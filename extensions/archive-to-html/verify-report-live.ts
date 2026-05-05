@@ -12,6 +12,64 @@ const REPORT_SIGNATURE = "Verify Report";
 const DEFAULT_WORKSPACE_PREFIX = ".context/work";
 const REPORTS_ARCHIVE_DIR = join(homedir(), "Documents", "agent-history", "reports");
 
+const REPORT_SURFACE_TONES = [50, 100, 200, 300] as const;
+const REPORT_SURFACE_SCALE: Record<(typeof REPORT_SURFACE_TONES)[number], string> = {
+	50: "#fafaf9",
+	100: "#f5f5f4",
+	200: "#e7e5e4",
+	300: "#d6d3d1",
+};
+
+function distributeReportSurfaceTones<T extends readonly string[]>(tokens: T): Record<T[number], string> {
+	const maxToneIndex = REPORT_SURFACE_TONES.length - 1;
+	const maxTokenIndex = Math.max(tokens.length - 1, 1);
+	return Object.fromEntries(
+		tokens.map((token, index) => {
+			const toneIndex = Math.round((index / maxTokenIndex) * maxToneIndex);
+			return [token, REPORT_SURFACE_SCALE[REPORT_SURFACE_TONES[toneIndex]]];
+		}),
+	) as Record<T[number], string>;
+}
+
+const REPORT_SURFACE = distributeReportSurfaceTones(["bg", "panel", "panel2", "line"] as const);
+const REPORT_COLORS = {
+	text: "#292524",
+	detail: "#44403c",
+	muted: "#78716c",
+	accent: "#a78bfa",
+	accentText: "#6d28d9",
+	green: "#166534",
+	red: "#991b1b",
+	yellow: "#854d0e",
+	badgeBg: "rgba(231,229,228,.62)",
+	inlineCodeBg: "rgba(120,113,108,.14)",
+	logLine: "rgba(41,37,36,.08)",
+	imageBg: "#fff",
+} as const;
+
+function reportRootVariablesCss(): string {
+	return [
+		"color-scheme: light",
+		`--bg:${REPORT_SURFACE.bg}`,
+		`--panel:${REPORT_SURFACE.panel}`,
+		`--panel2:${REPORT_SURFACE.panel2}`,
+		`--codeBg:${REPORT_SURFACE.panel2}`,
+		`--line:${REPORT_SURFACE.line}`,
+		`--text:${REPORT_COLORS.text}`,
+		`--detail:${REPORT_COLORS.detail}`,
+		`--muted:${REPORT_COLORS.muted}`,
+		`--accent:${REPORT_COLORS.accent}`,
+		`--accentText:${REPORT_COLORS.accentText}`,
+		`--green:${REPORT_COLORS.green}`,
+		`--red:${REPORT_COLORS.red}`,
+		`--yellow:${REPORT_COLORS.yellow}`,
+		`--badgeBg:${REPORT_COLORS.badgeBg}`,
+		`--inlineCodeBg:${REPORT_COLORS.inlineCodeBg}`,
+		`--logLine:${REPORT_COLORS.logLine}`,
+		`--imageBg:${REPORT_COLORS.imageBg}`,
+	].join("; ");
+}
+
 type ReportStatus = "draft" | "running" | "done" | "aborted";
 type ItemStatus = "pending" | "running" | "pass" | "fail" | "skip" | "blocked" | "unverified";
 
@@ -309,7 +367,7 @@ async function listenOnLoopback(server: Server): Promise<string> {
 }
 
 function openGlimpseUrl(open: (html: string, opts: Record<string, unknown>) => GlimpseWindow, url: string, title: string): GlimpseWindow {
-	const shellHtml = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title></head><body style="margin:0;background:#111"><script>window.location.replace(${JSON.stringify(url)});</script></body></html>`;
+	const shellHtml = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title></head><body style="margin:0;background:${REPORT_SURFACE.bg}"><script>window.location.replace(${JSON.stringify(url)});</script></body></html>`;
 	return open(shellHtml, { width: 1180, height: 920, title, openLinks: true });
 }
 
@@ -414,15 +472,15 @@ function generateLivePage(initialState: unknown): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Verify Report Live</title>
 <style>
-	:root { color-scheme: light dark; --bg:#0f172a; --panel:#111827; --panel2:#1f2937; --text:#f9fafb; --muted:#9ca3af; --line:#374151; --accent:#60a5fa; --green:#34d399; --red:#f87171; --yellow:#fbbf24; }
+	:root { ${reportRootVariablesCss()} }
 	* { box-sizing: border-box; }
 	body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-	.header { position: sticky; top: 0; z-index: 2; background: rgba(15,23,42,.94); border-bottom: 1px solid var(--line); padding: 16px 22px; backdrop-filter: blur(8px); }
+	.header { position: sticky; top: 0; z-index: 2; background: rgba(250,250,249,.94); border-bottom: 1px solid var(--line); padding: 16px 22px; backdrop-filter: blur(8px); }
 	.header-row { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; }
 	h1 { margin:0 0 8px; font-size:24px; }
 	.meta { display:flex; flex-wrap:wrap; gap:7px; color:var(--muted); font-size:12px; }
-	.badge { border:1px solid var(--line); border-radius:999px; padding:4px 8px; background:rgba(255,255,255,.04); }
-	.badge.running { border-color: var(--accent); color: var(--accent); }
+	.badge { border:1px solid var(--line); border-radius:999px; padding:4px 8px; background:var(--badgeBg); }
+	.badge.running { border-color: var(--accent); color: var(--accentText); }
 	.badge.pass, .badge.done { border-color: var(--green); color: var(--green); }
 	.badge.fail, .badge.aborted { border-color: var(--red); color: var(--red); }
 	main { max-width: 1100px; margin: 0 auto; padding: 22px; }
@@ -437,18 +495,18 @@ function generateLivePage(initialState: unknown): string {
 	.status { border-radius:999px; padding:5px 9px; font-size:12px; border:1px solid var(--line); white-space:nowrap; }
 	.status.pass { color:var(--green); border-color:var(--green); }
 	.status.fail { color:var(--red); border-color:var(--red); }
-	.status.running { color:var(--accent); border-color:var(--accent); }
+	.status.running { color:var(--accentText); border-color:var(--accent); }
 	.status.skip, .status.blocked, .status.unverified { color:var(--yellow); border-color:var(--yellow); }
-	.detail { color:#d1d5db; line-height:1.55; white-space:pre-wrap; }
+	.detail { color:var(--detail); line-height:1.55; white-space:pre-wrap; }
 	.evidence { display:grid; gap:12px; margin-top:12px; }
 	figure { margin:0; }
-	img { display:block; max-width:100%; border:1px solid var(--line); border-radius:12px; background:#fff; }
+	img { display:block; max-width:100%; border:1px solid var(--line); border-radius:12px; background:var(--imageBg); }
 	figcaption { color:var(--muted); font-size:12px; margin-top:6px; }
-	pre { white-space:pre-wrap; overflow:auto; background:#020617; border:1px solid var(--line); border-radius:10px; padding:12px; color:#e5e7eb; }
-	code { background:rgba(255,255,255,.08); border-radius:4px; padding:1px 4px; }
-	a { color:var(--accent); }
-	.log { color:var(--muted); font-size:12px; padding:5px 0; border-bottom:1px solid rgba(255,255,255,.06); }
-	.pulse { width:9px; height:9px; display:inline-block; border-radius:50%; background:var(--accent); margin-right:7px; animation:pulse 1.2s infinite; }
+	pre { white-space:pre-wrap; overflow:auto; background:var(--codeBg); border:1px solid var(--line); border-radius:10px; padding:12px; color:var(--text); }
+	code { background:var(--inlineCodeBg); border-radius:4px; padding:1px 4px; }
+	a { color:var(--accentText); }
+	.log { color:var(--muted); font-size:12px; padding:5px 0; border-bottom:1px solid var(--logLine); }
+	.pulse { width:9px; height:9px; display:inline-block; border-radius:50%; background:var(--accentText); margin-right:7px; animation:pulse 1.2s infinite; }
 	@keyframes pulse { 0%,100%{opacity:.25} 50%{opacity:1} }
 </style>
 </head>
@@ -512,24 +570,25 @@ function generateStaticReportHtml(state: VerifyReportState): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${REPORT_SIGNATURE} — ${escapeHtml(state.ticket || state.title)}</title>
 <style>
-	body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 1120px; margin: 0 auto; padding: 24px; color: #111827; }
-	h1 { border-bottom: 2px solid #e5e7eb; padding-bottom: 12px; }
-	.meta { color: #6b7280; font-size: 13px; display: flex; gap: 8px; flex-wrap: wrap; }
-	.badge { border: 1px solid #d1d5db; border-radius: 999px; padding: 3px 8px; }
+	:root { ${reportRootVariablesCss()} }
+	body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 1120px; margin: 0 auto; padding: 24px; background: var(--bg); color: var(--text); }
+	h1 { border-bottom: 2px solid var(--line); padding-bottom: 12px; }
+	.meta { color: var(--muted); font-size: 13px; display: flex; gap: 8px; flex-wrap: wrap; }
+	.badge { border: 1px solid var(--line); border-radius: 999px; padding: 3px 8px; background: var(--panel); }
 	table { border-collapse: collapse; width: 100%; margin: 20px 0 28px; }
-	th, td { padding: 8px 10px; border: 1px solid #e5e7eb; text-align: left; vertical-align: top; }
-	th { background: #f9fafb; }
+	th, td { padding: 8px 10px; border: 1px solid var(--panel2); text-align: left; vertical-align: top; }
+	th { background: var(--panel); }
 	.item { margin-bottom: 34px; }
 	.item h3 { margin-bottom: 6px; }
-	.pass { color: #047857; font-weight: 700; }
-	.fail { color: #b91c1c; font-weight: 700; }
-	.skip { color: #92400e; font-weight: 700; }
-	.running, .pending { color: #1d4ed8; font-weight: 700; }
+	.pass { color: var(--green); font-weight: 700; }
+	.fail { color: var(--red); font-weight: 700; }
+	.skip { color: var(--yellow); font-weight: 700; }
+	.running, .pending { color: var(--accentText); font-weight: 700; }
 	.detail { white-space: pre-wrap; line-height: 1.55; }
-	img { max-width: 100%; border: 1px solid #d1d5db; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
-	figcaption { color: #6b7280; font-size: 12px; margin-top: 4px; }
-	pre { white-space: pre-wrap; overflow: auto; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; }
-	code { background: #f3f4f6; border-radius: 4px; padding: 1px 4px; }
+	img { max-width: 100%; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 2px 8px var(--logLine); }
+	figcaption { color: var(--muted); font-size: 12px; margin-top: 4px; }
+	pre { white-space: pre-wrap; overflow: auto; background: var(--panel); border: 1px solid var(--panel2); border-radius: 8px; padding: 12px; }
+	code { background: var(--panel2); border-radius: 4px; padding: 1px 4px; }
 </style>
 </head>
 <body>
