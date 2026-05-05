@@ -1,0 +1,41 @@
+---
+title: Worktree 세션 연속성과 식별성 원칙
+tags: [worktree, session, revive, fork-panel, conductor, title, continuity, context, 워크트리, 세션]
+category: workflow
+status: active
+applies_to:
+  - extensions/worktree
+  - extensions/fork-panel
+  - session_info.name
+  - revive workflow
+source:
+  - pilee-history:2026-05-04#38
+  - pilee-history:2026-05-05#39
+  - pilee-history:2026-05-05#40
+  - pilee-history:2026-05-05#41
+  - pilee-history:2026-05-05#42
+reviewed_at: 2026-05-05
+related:
+  - subagent-model-policy
+  - pilee-knowledge-system
+---
+
+## Overview
+
+pilee의 worktree/fork UX는 “세션을 많이 만들 수 있다”보다 “나중에 어떤 세션이 무엇이었는지 회수할 수 있다”가 중요합니다. 따라서 세션 목록은 파일명이나 방향 label보다 사람이 기억하는 제목, 마지막 의미 있는 요청, workspace 정보를 우선 표시합니다.
+
+## Identification Rule
+
+세션 식별자는 내부 파일명보다 `session_info.name`을 우선합니다. footer에 보이는 세션명은 사용자가 실제로 본 제목이므로, revive나 worktree switch 목록에서 가장 강한 식별 정보입니다. 세션명이 없거나 의미 없는 경우에만 마지막 user/assistant 메시지 요약으로 fallback합니다.
+
+## Continuity Rule
+
+fork-panel에서 종료된 대화는 transcript를 주입하는 것보다 세션 자체를 다시 살리는 편이 자연스럽습니다. 그래서 회수 흐름은 `/recall`식 복사보다 `/revive`식 재개를 중심으로 둡니다. 목록은 현재 workspace를 기본 scope로 보여주되, 필요할 때 전체 workspace를 확장해 탐색할 수 있어야 합니다.
+
+## Display Guardrail
+
+TUI 목록 row는 반드시 단일 행이어야 합니다. preview나 label에 newline, code block, ANSI/control 문자가 남아 있으면 화면 전체가 깨질 수 있습니다. 과거 저장 데이터가 multi-line이어도 렌더링 단계에서 정규화하고 폭을 제한해야 합니다.
+
+## Migration Lesson
+
+외부 세션 기록을 pilee JSONL로 변환할 때는 message만 옮기지 말고 원본 시스템의 session title도 `session_info.name`으로 보존합니다. 의미 없는 `Untitled`는 제외하고, 메시지가 없는 세션은 title만으로 파일을 만들지 않습니다. 이 원칙은 [subagent-model-policy](./subagent-model-policy.md)처럼 agent fan-out이 늘어날수록 더 중요해집니다.

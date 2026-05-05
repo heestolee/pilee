@@ -1,6 +1,6 @@
 {
   "name": "pilee",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Personal pi coding agent config 🔥",
   "private": true,
   "type": "module",
@@ -20,7 +20,11 @@
   },
   "scripts": {
     "sync-agents": "node scripts/sync-agents.mjs",
-    "postinstall": "node scripts/sync-agents.mjs"
+    "postinstall": "node scripts/sync-agents.mjs",
+    "knowledge": "node scripts/knowledge.mjs",
+    "knowledge:validate": "node scripts/knowledge.mjs --validate",
+    "knowledge:graph": "node scripts/knowledge.mjs --graph",
+    "knowledge:review": "node scripts/knowledge.mjs --review-candidates"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.0",
