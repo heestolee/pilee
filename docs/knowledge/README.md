@@ -71,7 +71,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Reviewed | Commit | Tags |
 |---|---|---:|---:|---|
-| [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | 2026-05-05 | b730f16 | pilee, knowledge, history, journal, sanitized, reviewed-at |
+| [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | 2026-05-05 | e388abb | pilee, knowledge, history, journal, sanitized, reviewed-at |
 
 ### verification
 
