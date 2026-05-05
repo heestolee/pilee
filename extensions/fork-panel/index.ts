@@ -2,13 +2,16 @@ import { randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, relative } from "node:path";
-import type { ExtensionAPI, ExtensionContext, ThemeColor } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 import type { AutocompleteItem } from "@mariozechner/pi-tui";
 import { completeSimple } from "@mariozechner/pi-ai";
 
-const VALID_DIRS = ["right", "left", "down", "up", "tab"] as const;
+const SPLIT_DIRS = ["right", "left", "down", "up"] as const;
+type SplitDirection = (typeof SPLIT_DIRS)[number];
+const VALID_DIRS = [...SPLIT_DIRS, "tab"] as const;
 type Direction = (typeof VALID_DIRS)[number];
+type OpenMode = Direction | "here";
 
 const HANDOFF_DIR = join(homedir(), ".pi", "agent", "fork-panel");
 
@@ -16,6 +19,7 @@ let forkInProgress = false;
 const FORK_COOLDOWN_MS = 2000;
 const RECENT_PATH = join(HANDOFF_DIR, "recent.json");
 const HANDOFF_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+const REPANEL_MARKER_TTL_MS = 2 * 60 * 1000; // 2m
 const RECENT_KEEP = 50;
 
 interface ForkRecord {
@@ -64,6 +68,32 @@ function markForkClosed(forkId: string, preview: string) {
 	rec.closedAt = Date.now();
 	rec.preview = sanitizeRowText(preview).slice(0, 140);
 	saveRecent(all);
+}
+
+function repanelMarkerPath(forkId: string, pid = process.pid): string {
+	return join(HANDOFF_DIR, `${forkId}-repanel-${pid}.json`);
+}
+
+function writeRepanelMarker(forkId: string) {
+	try {
+		mkdirSync(HANDOFF_DIR, { recursive: true });
+		writeFileSync(repanelMarkerPath(forkId), JSON.stringify({ forkId, pid: process.pid, createdAt: Date.now() }, null, 2));
+		try { unlinkSync(join(HANDOFF_DIR, `${forkId}.json`)); } catch {}
+	} catch {}
+}
+
+function consumeRepanelMarker(forkId: string): boolean {
+	const markerPath = repanelMarkerPath(forkId);
+	if (!existsSync(markerPath)) return false;
+	let suppress = false;
+	try {
+		const data = JSON.parse(readFileSync(markerPath, "utf8"));
+		suppress = data?.pid === process.pid && Date.now() - Number(data?.createdAt ?? 0) < REPANEL_MARKER_TTL_MS;
+	} catch {
+		suppress = true;
+	}
+	try { unlinkSync(markerPath); } catch {}
+	return suppress;
 }
 
 function sanitizeRowText(value: string | undefined | null): string {
@@ -159,6 +189,97 @@ function buildReviveItem(record: ForkRecord): ReviveItem {
 
 function esc(s: string): string {
 	return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function shellQuote(s: string): string {
+	return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
+function parseOpenMode(value: string | undefined): OpenMode | null {
+	const normalized = value?.trim().toLowerCase();
+	if (!normalized) return null;
+	if (normalized === "here" || normalized === "current" || normalized === "panel" || normalized === "this") return "here";
+	if (VALID_DIRS.includes(normalized as Direction)) return normalized as Direction;
+	return null;
+}
+
+function isSplitDirection(value: string | undefined): value is SplitDirection {
+	return SPLIT_DIRS.includes(value as SplitDirection);
+}
+
+function modeLabel(mode: OpenMode): string {
+	if (mode === "here") return "현재 패널";
+	if (mode === "tab") return "새 탭";
+	return `${mode} 패널`;
+}
+
+function buildEnvPrefix(env: Record<string, string | undefined>): string {
+	const entries = Object.entries(env).filter(([, value]) => !!value);
+	return entries.length > 0 ? `${entries.map(([key, value]) => `${key}=${shellQuote(value!)}`).join(" ")} ` : "";
+}
+
+function buildSessionLaunchCommand(cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}): string {
+	return `cd \\"${esc(cwd)}\\" && ${buildEnvPrefix(env)}pi --session \\"${esc(sessionFile)}\\"`;
+}
+
+function buildOpenSessionScript(mode: Direction, cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}): string {
+	const cmd = buildSessionLaunchCommand(cwd, sessionFile, env);
+	if (mode === "tab") {
+		return `tell application "System Events"
+  tell process "Ghostty"
+    keystroke "t" using command down
+    delay 1.0
+    keystroke "${cmd}"
+    key code 36
+  end tell
+end tell`;
+	}
+
+	return `tell application "Ghostty"
+  set currentTerm to focused terminal of selected tab of front window
+  set newTerm to split currentTerm direction ${mode}
+  input text "${cmd}" to newTerm
+  send key "enter" to newTerm
+end tell`;
+}
+
+function buildRepanelScript(direction: SplitDirection, cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}, oldTerminalId?: string): string {
+	const cmd = buildSessionLaunchCommand(cwd, sessionFile, env);
+	const oldTermSelector = oldTerminalId
+		? `set oldTerm to first terminal whose id is "${esc(oldTerminalId)}"`
+		: "set oldTerm to focused terminal of selected tab of front window";
+	return `tell application "Ghostty"
+  activate
+  ${oldTermSelector}
+  close oldTerm
+end tell
+delay 0.7
+tell application "Ghostty"
+  set currentTerm to focused terminal of selected tab of front window
+  set newTerm to split currentTerm direction ${direction}
+  input text "${cmd}" to newTerm
+  send key "enter" to newTerm
+end tell`;
+}
+
+async function runDetachedOsa(pi: ExtensionAPI, script: string) {
+	mkdirSync(HANDOFF_DIR, { recursive: true });
+	const scriptPath = join(HANDOFF_DIR, `repanel-${Date.now()}-${randomUUID().slice(0, 8)}.applescript`);
+	writeFileSync(scriptPath, script);
+	return pi.exec("bash", ["-lc", `nohup osascript ${shellQuote(scriptPath)} >/dev/null 2>&1 &`]);
+}
+
+async function getGhosttyTerminalCount(pi: ExtensionAPI): Promise<number | null> {
+	const result = await pi.exec("osascript", ["-e", `tell application "Ghostty" to count terminals of selected tab of front window`]);
+	if (result.code !== 0) return null;
+	const count = Number.parseInt(result.stdout?.trim() ?? "", 10);
+	return Number.isFinite(count) ? count : null;
+}
+
+async function getGhosttyFocusedTerminalId(pi: ExtensionAPI): Promise<string | null> {
+	const result = await pi.exec("osascript", ["-e", `tell application "Ghostty" to id of focused terminal of selected tab of front window`]);
+	if (result.code !== 0) return null;
+	return result.stdout?.trim() || null;
 }
 
 interface HandoffData {
@@ -336,6 +457,7 @@ export default function (pi: ExtensionAPI) {
 		pi.on("session_shutdown", async (_e, ctx) => {
 			if (alreadyFinalized) return;
 			alreadyFinalized = true;
+			if (consumeRepanelMarker(forkId)) return;
 			latestEntries = ctx.sessionManager.getEntries();
 			const lastMsg = extractLastAssistant(latestEntries);
 			const summary = await generateSummary(latestEntries, ctx);
@@ -348,6 +470,9 @@ export default function (pi: ExtensionAPI) {
 			process.on(sig, () => {
 				if (!alreadyFinalized) {
 					alreadyFinalized = true;
+					if (consumeRepanelMarker(forkId)) {
+						process.exit(0);
+					}
 					writeAuto(true);
 				}
 			});
@@ -415,6 +540,9 @@ export default function (pi: ExtensionAPI) {
 	const activeWatchers = new Map<string, ReturnType<typeof setInterval>>();
 
 	function watchHandoff(forkId: string, label: string) {
+		const existing = activeWatchers.get(forkId);
+		if (existing) clearInterval(existing);
+
 		const autoPath = join(HANDOFF_DIR, `${forkId}.json`);
 		const manualPrefix = `${forkId}-manual-`;
 
@@ -576,13 +704,36 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
+	const splitCompletions = (prefix: string): AutocompleteItem[] | null => {
+		const filtered = SPLIT_DIRS.filter((d) => d.startsWith(prefix)).map((d) => ({ value: d, label: d }));
+		return filtered.length > 0 ? filtered : null;
+	};
+
+	const repanelHandler = async (args: string, ctx: ExtensionCommandContext) => {
+		const direction = (args ?? "").trim().split(/\s+/).filter(Boolean)[0]?.toLowerCase();
+		if (!isSplitDirection(direction)) {
+			ctx.ui.notify("사용법: /repanel right|left|down|up", "warning");
+			return;
+		}
+		await repanelCurrent(direction, ctx);
+	};
+
+	pi.registerCommand("repanel", {
+		description: "현재 Ghostty pi 패널을 닫은 뒤, 남은 패널 기준으로 지정 방향에 같은 세션을 다시 엽니다. (right|left|down|up)",
+		getArgumentCompletions: splitCompletions,
+		handler: repanelHandler,
+	});
+
 	// /revive — reopen a previous fork panel session
 	pi.registerCommand("revive", {
-		description: "TUI로 종료된 fork-panel 세션 목록을 보고 선택해서 Ghostty 패널로 재개",
+		description: "fork-panel 세션을 선택하고 현재 패널/방향 패널/탭 중 어디에 열지 선택",
 		handler: async (args, ctx) => {
-			if (!ctx.hasUI) return;
+			const tokens = (args ?? "").trim().split(/\s+/).filter(Boolean);
+			if (tokens[0]?.toLowerCase() === "to") {
+				await repanelHandler(tokens.slice(1).join(" "), ctx);
+				return;
+			}
 
-			const sub = (args ?? "").trim();
 			const all = loadRecent();
 			const allItems = Object.values(all)
 				.filter((r) => existsSync(r.sessionFile))
@@ -592,28 +743,52 @@ export default function (pi: ExtensionAPI) {
 			const currentWorkspaceLabel = workspaceLabelFor(ctx.cwd);
 			const scopedItems = () => allItems.filter((item) => item.workspaceKey === currentWorkspaceKey);
 
-			if (sub === "last") {
-				const target = scopedItems()[0];
+			let showAll = false;
+			let selector: string | null = null;
+			let requestedMode: OpenMode | null = null;
+			for (const token of tokens) {
+				const lower = token.toLowerCase();
+				if (lower === "list") continue;
+				if (lower === "all") showAll = true;
+				else {
+					const mode = parseOpenMode(lower);
+					if (mode) requestedMode = mode;
+					else if (!selector) selector = token;
+				}
+			}
+
+			const openItem = async (item: ReviveItem) => {
+				const mode = requestedMode ?? await chooseReviveOpenMode(item, ctx);
+				if (mode) await openRevive(item.record, ctx, mode);
+			};
+
+			if (selector === "last") {
+				const target = (showAll ? allItems : scopedItems())[0];
 				if (!target) { ctx.ui.notify(`현재 워크스페이스(${currentWorkspaceLabel})에 재개 가능한 세션이 없습니다. /revive all 또는 /revive에서 a를 누르세요.`, "warning"); return; }
-				await openRevive(target.record, ctx);
+				await openItem(target);
 				return;
 			}
-			if (sub && sub !== "all" && all[sub]) {
-				await openRevive(all[sub], ctx);
+			if (selector) {
+				const target = all[selector];
+				if (!target) { ctx.ui.notify(`포크 없음: ${selector}. /revive로 목록을 확인하세요.`, "error"); return; }
+				await openItem(buildReviveItem(target));
 				return;
 			}
 
+			if (!ctx.hasUI) {
+				ctx.ui.notify("TUI가 없는 모드에서는 /revive last here 또는 /revive <forkId> right처럼 대상과 열 위치를 지정하세요.", "warning");
+				return;
+			}
 			if (allItems.length === 0) {
 				ctx.ui.notify("재개 가능한 포크 세션이 없습니다", "info");
 				return;
 			}
 
-			let showAll = sub === "all";
 			let selectedIndex = 0;
 			let scrollOffset = 0;
 			const visibleItems = () => showAll ? allItems : scopedItems();
 
-			const selected = await ctx.ui.custom<ForkRecord | null>(
+			const selected = await ctx.ui.custom<ReviveItem | null>(
 				(tui, theme, _kb, done) => ({
 					render: (w: number) => {
 						const items = visibleItems();
@@ -627,9 +802,10 @@ export default function (pi: ExtensionAPI) {
 						const lines: string[] = [];
 						const scopeText = showAll ? "all workspaces" : `workspace ${currentWorkspaceLabel}`;
 						const toggleText = showAll ? "a: current" : "a: all";
+						const openHint = requestedMode ? `Enter: open → ${modeLabel(requestedMode)}` : "Enter: choose open target";
 
 						lines.push(theme.fg("accent", "─".repeat(w)));
-						const title = `  ${theme.fg("accent", theme.bold("REVIVE"))} ${theme.fg("accent", "|")} ${items.length}/${allItems.length} sessions ${theme.fg("accent", "·")} ${theme.fg("border", scopeText)} ${theme.fg("accent", "·")} ${theme.fg("border", "Enter: open · q/Esc: close")}`;
+						const title = `  ${theme.fg("accent", theme.bold("REVIVE"))} ${theme.fg("accent", "|")} ${items.length}/${allItems.length} sessions ${theme.fg("accent", "·")} ${theme.fg("border", scopeText)} ${theme.fg("accent", "·")} ${theme.fg("border", `${openHint} · q/Esc: close`)}`;
 						const helpText = `↑/↓ select · Enter open · ${toggleText}`;
 						const help = `  ${theme.fg("border", helpText)}`;
 						lines.push(truncateToWidth(title, w, ""));
@@ -677,7 +853,7 @@ export default function (pi: ExtensionAPI) {
 						} else if (matchesKey(data, Key.down) || data === "j") {
 							if (selectedIndex < items.length - 1) selectedIndex++;
 						} else if (matchesKey(data, Key.enter)) {
-							if (items[selectedIndex]) done(items[selectedIndex].record);
+							if (items[selectedIndex]) done(items[selectedIndex]);
 							return;
 						}
 						(tui as any).requestRender?.();
@@ -687,34 +863,120 @@ export default function (pi: ExtensionAPI) {
 				{ overlay: true, overlayOptions: { width: "100%", maxHeight: "100%", anchor: "center" } },
 			);
 
-			if (selected) await openRevive(selected, ctx);
+			if (selected) await openItem(selected);
 		},
 	});
 
-	async function openRevive(target: ForkRecord, ctx: ExtensionContext) {
+	async function chooseReviveOpenMode(item: ReviveItem, ctx: ExtensionCommandContext): Promise<OpenMode | null> {
+		if (!ctx.hasUI) return "right";
+		return ctx.ui.custom<OpenMode | null>(
+			(tui, theme, _kb, done) => ({
+				render: (w: number) => {
+					const lines = [
+						theme.fg("accent", "─".repeat(w)),
+						truncateToWidth(`  ${theme.fg("accent", theme.bold("OPEN REVIVE"))} ${theme.fg("accent", "|")} ${theme.fg("border", item.workspaceLabel)} ${theme.fg("accent", "·")} ${theme.fg("text", item.title)}`, w, ""),
+						truncateToWidth(`  ${theme.fg("border", "Enter/h: 현재 패널 · ← left · → right · ↑ up · ↓ down · t: 새 탭")}`, w, ""),
+						truncateToWidth(`  ${theme.fg("borderAccent", "q/Esc: 취소")}`, w, ""),
+						theme.fg("accent", "─".repeat(w)),
+					];
+					return lines;
+				},
+				handleInput: (data: string) => {
+					if (data === "q" || matchesKey(data, Key.escape)) { done(null); return; }
+					if (matchesKey(data, Key.enter) || data === "h") { done("here"); return; }
+					if (matchesKey(data, Key.left) || data === "l") { done("left"); return; }
+					if (matchesKey(data, Key.right) || data === "r") { done("right"); return; }
+					if (matchesKey(data, Key.up) || data === "u") { done("up"); return; }
+					if (matchesKey(data, Key.down) || data === "d") { done("down"); return; }
+					if (data === "t") { done("tab"); return; }
+					(tui as any).requestRender?.();
+				},
+				invalidate: () => {},
+			}),
+			{ overlay: true, overlayOptions: { width: "72%", minWidth: 52, maxHeight: 8, anchor: "center" } },
+		);
+	}
+
+	async function openRevive(target: ForkRecord, ctx: ExtensionCommandContext, mode: OpenMode) {
 		if (!existsSync(target.sessionFile)) {
 			ctx.ui.notify(`세션 파일 없음: ${target.sessionFile}`, "error");
 			return;
 		}
-		if (process.platform !== "darwin" || process.env.TERM_PROGRAM !== "ghostty") {
-			ctx.ui.notify("/revive는 macOS Ghostty에서만 동작합니다", "warning");
+
+		const item = buildReviveItem(target);
+		if (mode === "here") {
+			try {
+				const result = await ctx.switchSession(target.sessionFile, {
+					withSession: async (nextCtx) => {
+						nextCtx.ui.notify(`${item.workspaceLabel} · ${item.title} 세션 재개 → 현재 패널`, "info");
+					},
+				});
+				if (result.cancelled) ctx.ui.notify("세션 전환이 취소되었습니다", "warning");
+			} catch (e) {
+				ctx.ui.notify(`세션 전환 실패: ${e instanceof Error ? e.message : e}`, "error");
+			}
 			return;
 		}
+
+		if (process.platform !== "darwin" || process.env.TERM_PROGRAM !== "ghostty") {
+			ctx.ui.notify("패널/탭 열기는 macOS Ghostty에서만 동작합니다. 현재 패널에서 열려면 here를 선택하세요.", "warning");
+			return;
+		}
+
 		const cwd = target.cwd || ctx.cwd;
-		const escStr = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-		const cmd = `cd \\"${escStr(cwd)}\\" && pi --session \\"${escStr(target.sessionFile)}\\"`;
-		const script = `tell application "Ghostty"
-  set currentTerm to focused terminal of selected tab of front window
-  set newTerm to split currentTerm direction right
-  input text "${cmd}" to newTerm
-  send key "enter" to newTerm
-end tell`;
+		try { unlinkSync(join(HANDOFF_DIR, `${target.forkId}.json`)); } catch {}
+		const script = buildOpenSessionScript(mode, cwd, target.sessionFile, { PI_FORK_ID: target.forkId });
 		const result = await pi.exec("osascript", ["-e", script]);
 		if (result.code !== 0) {
 			ctx.ui.notify(`패널 생성 실패: ${result.stderr?.trim() ?? "unknown"}`, "error");
 			return;
 		}
-		const item = buildReviveItem(target);
-		ctx.ui.notify(`${item.workspaceLabel} · ${item.title} 세션 재개 → right 패널`, "info");
+
+		watchHandoff(target.forkId, item.title || target.label);
+		ctx.ui.notify(`${item.workspaceLabel} · ${item.title} 세션 재개 → ${modeLabel(mode)}`, "info");
+	}
+
+	async function repanelCurrent(direction: SplitDirection, ctx: ExtensionCommandContext) {
+		if (process.platform !== "darwin" || process.env.TERM_PROGRAM !== "ghostty") {
+			ctx.ui.notify("/repanel은 macOS Ghostty에서만 동작합니다", "warning");
+			return;
+		}
+
+		const sessionFile = ctx.sessionManager.getSessionFile();
+		if (!sessionFile) {
+			ctx.ui.notify("재배치할 세션 파일이 없습니다 (ephemeral session)", "error");
+			return;
+		}
+
+		const terminalCount = await getGhosttyTerminalCount(pi);
+		if (terminalCount === null) {
+			ctx.ui.notify("Ghostty 패널 수를 확인하지 못해 /repanel을 중단했습니다", "error");
+			return;
+		}
+		if (terminalCount < 2) {
+			ctx.ui.notify("/repanel은 현재 패널을 먼저 닫은 뒤 남은 패널 기준으로 split하므로, 최소 2개 패널이 필요합니다", "warning");
+			return;
+		}
+		const oldTerminalId = await getGhosttyFocusedTerminalId(pi);
+		if (!oldTerminalId) {
+			ctx.ui.notify("현재 Ghostty 패널 ID를 확인하지 못해 /repanel을 중단했습니다", "error");
+			return;
+		}
+
+		const forkId = process.env.PI_FORK_ID;
+		if (forkId) writeRepanelMarker(forkId);
+
+		const script = buildRepanelScript(direction, ctx.cwd, sessionFile, {
+			PI_FORK_ID: forkId,
+			PI_FORK_PARENT: process.env.PI_FORK_PARENT,
+		}, oldTerminalId);
+		const result = await runDetachedOsa(pi, script);
+		if (result.code !== 0) {
+			if (forkId) consumeRepanelMarker(forkId);
+			ctx.ui.notify(`repanel 실행 실패: ${result.stderr?.trim() ?? "unknown"}`, "error");
+			return;
+		}
+
+		ctx.ui.notify(`현재 패널을 닫은 뒤 남은 패널 기준으로 ${direction}에 같은 세션을 다시 엽니다`, "info");
 	}
 }
