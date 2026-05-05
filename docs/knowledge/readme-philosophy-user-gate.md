@@ -16,7 +16,7 @@ applies_to:
 source:
   - session-backfill:2026-05-05#readme-philosophy-discussion
 reviewed_at: 2026-05-05
-reviewed_commit: 8d2a1a403baa433d336684cb1ff0edc40dcd6591
+reviewed_commit: f11f8c9b1e8e4664502eb3331507dc37bb7d8392
 related:
   - readme-coverage-map
   - ask-user-question-decision-gates

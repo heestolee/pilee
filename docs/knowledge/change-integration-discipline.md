@@ -17,7 +17,7 @@ source:
   - pilee-history:2026-05-01#7
   - pilee-history:2026-05-02#24
 reviewed_at: 2026-05-05
-reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
+reviewed_commit: f11f8c9b1e8e4664502eb3331507dc37bb7d8392
 related:
   - evidence-first-verification-gate
   - stress-interview-multi-axis-review
