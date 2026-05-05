@@ -22,7 +22,7 @@ source:
   - pilee-history:2026-05-05#45
   - pilee-history:2026-05-05#46
 reviewed_at: 2026-05-05
-reviewed_commit: f11f8c9b1e8e4664502eb3331507dc37bb7d8392
+reviewed_commit: d5829047aef2c107923607d377fae7e225a2f3cd
 related:
   - verify-report-workflow
   - pilee-knowledge-system

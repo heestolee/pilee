@@ -17,7 +17,7 @@ applies_to:
 source:
   - session-backfill:2026-05-05#confidence-review-policy
 reviewed_at: 2026-05-05
-reviewed_commit: f11f8c9b1e8e4664502eb3331507dc37bb7d8392
+reviewed_commit: d5829047aef2c107923607d377fae7e225a2f3cd
 related:
   - freshness-diagnosis-report
   - deterministic-vs-ai-actions

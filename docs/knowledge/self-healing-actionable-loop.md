@@ -18,7 +18,7 @@ source:
   - pilee-history:2026-05-01#7
   - pilee-history:2026-05-05#42
 reviewed_at: 2026-05-05
-reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
+reviewed_commit: d5829047aef2c107923607d377fae7e225a2f3cd
 related:
   - stress-interview-multi-axis-review
   - subagent-model-policy
