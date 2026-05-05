@@ -1,0 +1,36 @@
+---
+title: 웹 검색은 승인된 출처 선택을 거친다
+tags:
+  - web-search
+  - curator
+  - source-selection
+  - approval
+  - tavily
+  - 검색
+category: web-access
+status: active
+applies_to:
+  - extensions/web-access
+  - web_search workflow=summary-review
+source:
+  - pilee-history:2026-05-05#44
+  - pilee-history:2026-05-05#45
+reviewed_at: 2026-05-05
+reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
+related:
+  - web-search-curator
+  - live-artifact-preview-pattern
+  - deterministic-fallbacks-preserve-workflow
+---
+
+## Judgment
+
+웹 검색 결과를 모델 답변에 바로 섞으면 사용자는 어떤 자료가 근거로 쓰였는지 통제하기 어렵습니다. curator는 검색을 “자료 선택 → 요약 초안 → 승인” 흐름으로 바꿔 출처 선택권을 사용자에게 돌려줍니다.
+
+## Interaction Rule
+
+검색 창은 초기 Tavily 결과가 끝난 뒤가 아니라 검색 중에 먼저 열립니다. 결과는 placeholder와 SSE로 채워지고, 사용자는 선택/추가 검색/rewrite/요약 재생성을 거쳐 승인합니다. 승인 전 초안은 최종 답변이 아닙니다.
+
+## Failure Mode
+
+자동 요약이 빨라도 출처 선택이 불투명하면 신뢰가 떨어집니다. curator는 속도를 조금 늦추더라도 사용자가 본 자료만 답변 근거로 삼게 합니다.

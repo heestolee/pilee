@@ -66,57 +66,289 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Reviewed | Commit | Tags |
 |---|---|---:|---:|---|
+| [Self-healing은 actionable item만 수정한다](./self-healing-actionable-loop.md) | active | 2026-05-05 | 059f445 | self-healing, actionable, worker, fix-class, subagent, 자동수정 |
+| [Stress Interview는 다축 검토다](./stress-interview-multi-axis-review.md) | active | 2026-05-05 | 059f445 | stress-interview, review, verifier, reviewer, challenger, subagent |
 | [Codex-first subagent 모델 운용 정책](./subagent-model-policy.md) | active | 2026-05-05 | b730f16 | subagent, codex, model-policy, worker, finder, searcher |
+| [Subagent 위임은 구체 프롬프트를 요구한다](./subagent-prompt-specificity.md) | active | 2026-05-05 | 059f445 | subagent, prompt, delegation, worker, context, 위임 |
+| [Supervisor는 outcome guardrail이다](./supervisor-outcome-guardrail.md) | active | 2026-05-05 | 059f445 | supervisor, outcome, guardrail, steering, agent |
+
+### architecture
+
+| Topic | Status | Reviewed | Commit | Tags |
+|---|---|---:|---:|---|
+| [Utils surface는 사용자 계약을 만들지 않는다](./utility-surface-stays-invisible.md) | active | 2026-05-05 | 059f445 | utils, internal, surface, abstraction, extension |
+
+### database
+
+| Topic | Status | Reviewed | Commit | Tags |
+|---|---|---:|---:|---|
+| [DB write는 인간 실행 게이트를 가진다](./database-write-human-execution-gate.md) | active | 2026-05-05 | 059f445 | db-write, migration, sql, approval, transaction, database |
+
+### debugging
+
+| Topic | Status | Reviewed | Commit | Tags |
+|---|---|---:|---:|---|
+| [수정 전에 근본 원인을 좁힌다](./root-cause-before-fix.md) | active | 2026-05-05 | 059f445 | debugging, root-cause, triage, error-recovery, systematic, 디버깅 |
 
 ### knowledge
 
 | Topic | Status | Reviewed | Commit | Tags |
 |---|---|---:|---:|---|
+| [Deterministic action과 AI review action은 분리한다](./deterministic-vs-ai-actions.md) | active | 2026-05-05 | 059f445 | knowledge, deterministic, ai-actions, review, automation, 정합성 |
+| [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | 2026-05-05 | 059f445 | knowledge, freshness, diagnosis, review, candidate, 정합성 |
+| [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | 2026-05-05 | 059f445 | knowledge, judgment, granularity, documentation, coverage, 문서 |
 | [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | 2026-05-05 | d08f5b7 | pilee, knowledge, history, journal, sanitized, reviewed-at |
+| [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | 2026-05-05 | 059f445 | knowledge, journal, privacy, sanitized, doctrine, history |
+| [README는 knowledge coverage map이다](./readme-coverage-map.md) | active | 2026-05-05 | 059f445 | knowledge, readme, coverage, graph, surface, todo |
+| [Retro는 private reflection이다](./retro-private-reflection-boundary.md) | active | 2026-05-05 | 059f445 | retro, notion, reflection, private, journal, 회고 |
+| [reviewed_commit은 날짜 freshness의 빈틈을 막는다](./reviewed-commit-freshness.md) | active | 2026-05-05 | 059f445 | knowledge, reviewed-commit, reviewed-at, freshness, commit, 정합성 |
+
+### review
+
+| Topic | Status | Reviewed | Commit | Tags |
+|---|---|---:|---:|---|
+| [Diff review draft는 PR 코멘트 전 단계다](./diff-review-draft-handoff.md) | active | 2026-05-05 | 059f445 | diff-overlay, review-draft, pr-comments, code-review, handoff |
+
+### runtime
+
+| Topic | Status | Reviewed | Commit | Tags |
+|---|---|---:|---:|---|
+| [Deterministic fallback은 workflow를 보존한다](./deterministic-fallbacks-preserve-workflow.md) | active | 2026-05-05 | 059f445 | fallback, deterministic, model-failure, resilience, web-search, report |
+| [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | 2026-05-05 | 059f445 | mcp, stderr, stdio, terminal, tui, noise |
+| [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | 2026-05-05 | 059f445 | terminal, ghostty, applescript, notify, host, integration |
+
+### ui
+
+| Topic | Status | Reviewed | Commit | Tags |
+|---|---|---:|---:|---|
+| [Idle UI는 장식이 아니라 ambient status다](./ambient-status-surfaces.md) | active | 2026-05-05 | 059f445 | idle-screensaver, tasks, spinner, status, ambient, ui |
+| [Editor affordance는 숨은 컨텍스트가 아니다](./editor-affordance-not-context.md) | active | 2026-05-05 | 059f445 | editor, footer, prompt-suggest, working-text, affordance, ui |
+| [User-facing 출력은 한국어를 기본으로 한다](./korean-first-user-facing-output.md) | active | 2026-05-05 | 059f445 | korean-output, localization, web-search, ui, rewrite, 한국어 |
+| [색상은 정보 위계다](./theme-information-hierarchy.md) | active | 2026-05-05 | 059f445 | theme, color, dim, muted, border, accent |
+| [도구 출력은 대화 흐름을 침범하지 않는다](./tool-output-noise-management.md) | active | 2026-05-05 | 059f445 | tool-output, collapse, noise, ui, usage, renderer |
+| [TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다](./tui-rendering-sanitization.md) | active | 2026-05-05 | 059f445 | tui, rendering, newline, ansi, sanitize, terminal |
 
 ### verification
 
 | Topic | Status | Reviewed | Commit | Tags |
 |---|---|---:|---:|---|
+| [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | 2026-05-05 | 059f445 | verify, evidence, gate, done, ready, verification |
+| [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | 2026-05-05 | 059f445 | frame, verify, frame-json, success-criteria, contract, verification |
+| [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | 2026-05-05 | 059f445 | verify, invalidation, code-change, freshness, gate, 검증 |
 | [Verify Report와 증거 기반 검증 흐름](./verify-report-workflow.md) | active | 2026-05-05 | b730f16 | verify-report, verification, evidence, glimpse, live-preview, report |
 
 ### web-access
 
 | Topic | Status | Reviewed | Commit | Tags |
 |---|---|---:|---:|---|
+| [웹 검색은 승인된 출처 선택을 거친다](./curator-approved-source-selection.md) | active | 2026-05-05 | 059f445 | web-search, curator, source-selection, approval, tavily, 검색 |
 | [Web Search curator와 승인형 요약 흐름](./web-search-curator.md) | active | 2026-05-05 | b730f16 | web-search, tavily, curator, glimpse, summary-review, korean-output |
 
 ### workflow
 
 | Topic | Status | Reviewed | Commit | Tags |
 |---|---|---:|---:|---|
+| [검토 산출물은 다시 열 수 있어야 한다](./artifact-archive-reopenability.md) | active | 2026-05-05 | 059f445 | artifact, archive, show-report, history, html, reopen |
+| [AskUserQuestion은 의사결정 게이트다](./ask-user-question-decision-gates.md) | active | 2026-05-05 | 059f445 | ask-user-question, tft, decision-gate, question, non-delegable, 질문 |
+| [AskUserQuestion 옵션은 행동 분기를 표현한다](./ask-user-question-option-design.md) | active | 2026-05-05 | 059f445 | ask-user-question, option, wording, ceremony, tft, 질문 |
+| [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | 2026-05-05 | 059f445 | backlog, tasks, provenance, source-session, session, 맥락 |
+| [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md) | active | 2026-05-05 | 059f445 | git, incremental, code-review, commit, quality, 통합 |
+| [자동 로드 컨텍스트는 최소 surface만 가진다](./context-loading-minimal-surface.md) | active | 2026-05-05 | 059f445 | context, agents-md, memory, system-prompt, token, autoload |
+| [외부 이슈 업데이트는 preview gate를 지난다](./external-issue-preview-gate.md) | active | 2026-05-05 | 059f445 | jira, issue, preview, wiki-markup, external-update, approval |
+| [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | 2026-05-05 | 059f445 | fork-panel, handoff, inbox, inject, parent, panel |
+| [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | 2026-05-05 | 059f445 | fork-panel, revive, repanel, ghostty, spatial, panel |
+| [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | 2026-05-05 | 059f445 | artifact, glimpse, preview, sse, upload, local-first |
+| [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | 2026-05-05 | 059f445 | local-dev, server, startup, diagnosis, product, dev |
+| [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | 2026-05-05 | 059f445 | queued-messages, slash-command, prefill, worktree, session, boundary |
+| [종료된 포크는 transcript 주입보다 revive가 우선이다](./revive-over-transcript-recall.md) | active | 2026-05-05 | 059f445 | revive, recall, fork-panel, session, continuity, 세션 |
+| [세션 식별자는 파일명이 아니라 사람이 본 이름이다](./session-identity-over-filenames.md) | active | 2026-05-05 | 059f445 | session, title, identity, session_info, worktree, revive |
+| [Skill은 재사용 가능한 절차다](./skills-as-portable-procedures.md) | active | 2026-05-05 | 059f445 | skill, skill-creator, procedure, porting, workflow, 스킬 |
+| [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
+| [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | 2026-05-05 | 059f445 | worktree, workspace, repo, branch, execution-boundary, 워크트리 |
 | [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | 2026-05-05 | aa0e440 | worktree, session, revive, fork-panel, panel-inbox, handoff |
 
 ## Knowledge Map
 
 ```mermaid
 graph TD
+  doc_self_healing_actionable_loop["Self-healing은 actionable item만 수정한다"]
+  doc_stress_interview_multi_axis_review["Stress Interview는 다축 검토다"]
   doc_subagent_model_policy["Codex-first subagent 모델 운용 정책"]
+  doc_subagent_prompt_specificity["Subagent 위임은 구체 프롬프트를 요구한다"]
+  doc_supervisor_outcome_guardrail["Supervisor는 outcome guardrail이다"]
+  doc_utility_surface_stays_invisible["Utils surface는 사용자 계약을 만들지 않는다"]
+  doc_database_write_human_execution_gate["DB write는 인간 실행 게이트를 가진다"]
+  doc_root_cause_before_fix["수정 전에 근본 원인을 좁힌다"]
+  doc_deterministic_vs_ai_actions["Deterministic action과 AI review action은 분리한다"]
+  doc_freshness_diagnosis_report["Freshness는 진단서다"]
+  doc_judgment_doc_unit["Knowledge 문서 단위는 판단 하나다"]
   doc_pilee_knowledge_system["pilee 지식 계층과 정합성 갱신"]
+  doc_private_journal_public_doctrine["Private journal과 public doctrine은 분리한다"]
+  doc_readme_coverage_map["README는 knowledge coverage map이다"]
+  doc_retro_private_reflection_boundary["Retro는 private reflection이다"]
+  doc_reviewed_commit_freshness["reviewed_commit은 날짜 freshness의 빈틈을 막는다"]
+  doc_diff_review_draft_handoff["Diff review draft는 PR 코멘트 전 단계다"]
+  doc_deterministic_fallbacks_preserve_workflow["Deterministic fallback은 workflow를 보존한다"]
+  doc_mcp_stderr_isolation["MCP stderr는 TUI 출력이 아니다"]
+  doc_terminal_host_integration["터미널 연동은 host adapter로 다룬다"]
+  doc_ambient_status_surfaces["Idle UI는 장식이 아니라 ambient status다"]
+  doc_editor_affordance_not_context["Editor affordance는 숨은 컨텍스트가 아니다"]
+  doc_korean_first_user_facing_output["User-facing 출력은 한국어를 기본으로 한다"]
+  doc_theme_information_hierarchy["색상은 정보 위계다"]
+  doc_tool_output_noise_management["도구 출력은 대화 흐름을 침범하지 않는다"]
+  doc_tui_rendering_sanitization["TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다"]
+  doc_evidence_first_verification_gate["완료 선언은 증거 뒤에만 온다"]
+  doc_frame_verify_contract["Frame과 Verify는 구조화 계약이다"]
+  doc_verification_invalidation_on_change["검증 중 코드 변경은 이전 검증을 무효화한다"]
   doc_verify_report_workflow["Verify Report와 증거 기반 검증 흐름"]
+  doc_curator_approved_source_selection["웹 검색은 승인된 출처 선택을 거친다"]
   doc_web_search_curator["Web Search curator와 승인형 요약 흐름"]
+  doc_artifact_archive_reopenability["검토 산출물은 다시 열 수 있어야 한다"]
+  doc_ask_user_question_decision_gates["AskUserQuestion은 의사결정 게이트다"]
+  doc_ask_user_question_option_design["AskUserQuestion 옵션은 행동 분기를 표현한다"]
+  doc_backlog_source_session_provenance["Backlog는 원 세션 출처를 보존한다"]
+  doc_change_integration_discipline["변경 통합은 작은 단위와 검증을 요구한다"]
+  doc_context_loading_minimal_surface["자동 로드 컨텍스트는 최소 surface만 가진다"]
+  doc_external_issue_preview_gate["외부 이슈 업데이트는 preview gate를 지난다"]
+  doc_fork_panel_parent_inbox["Fork-panel handoff는 parent inbox로 들어간다"]
+  doc_fork_panel_spatial_continuity["Fork-panel 위치는 작업 맥락의 일부다"]
+  doc_live_artifact_preview_pattern["Live artifact는 local preview first다"]
+  doc_local_dev_startup_diagnosis["로컬 개발 서버 시작은 진단 가능한 절차여야 한다"]
+  doc_queued_command_prefill_boundary["Queued command는 실행 보장이 아니다"]
+  doc_revive_over_transcript_recall["종료된 포크는 transcript 주입보다 revive가 우선이다"]
+  doc_session_identity_over_filenames["세션 식별자는 파일명이 아니라 사람이 본 이름이다"]
+  doc_skills_as_portable_procedures["Skill은 재사용 가능한 절차다"]
+  doc_until_loop_explicit_reporting["Until loop는 종료 조건을 명시 보고한다"]
+  doc_worktree_execution_boundary["Worktree는 실행 경계다"]
   doc_worktree_session_continuity["Worktree 세션 연속성과 식별성 원칙"]
+  doc_self_healing_actionable_loop --> doc_stress_interview_multi_axis_review
+  doc_self_healing_actionable_loop --> doc_subagent_model_policy
+  doc_self_healing_actionable_loop --> doc_verification_invalidation_on_change
+  doc_stress_interview_multi_axis_review --> doc_evidence_first_verification_gate
+  doc_stress_interview_multi_axis_review --> doc_self_healing_actionable_loop
+  doc_stress_interview_multi_axis_review --> doc_subagent_model_policy
   doc_subagent_model_policy --> doc_pilee_knowledge_system
   doc_subagent_model_policy --> doc_worktree_session_continuity
+  doc_subagent_prompt_specificity --> doc_self_healing_actionable_loop
+  doc_subagent_prompt_specificity --> doc_subagent_model_policy
+  doc_subagent_prompt_specificity --> doc_worktree_session_continuity
+  doc_supervisor_outcome_guardrail --> doc_ask_user_question_decision_gates
+  doc_supervisor_outcome_guardrail --> doc_subagent_prompt_specificity
+  doc_utility_surface_stays_invisible --> doc_deterministic_fallbacks_preserve_workflow
+  doc_utility_surface_stays_invisible --> doc_terminal_host_integration
+  doc_database_write_human_execution_gate --> doc_ask_user_question_decision_gates
+  doc_database_write_human_execution_gate --> doc_evidence_first_verification_gate
+  doc_root_cause_before_fix --> doc_evidence_first_verification_gate
+  doc_root_cause_before_fix --> doc_verification_invalidation_on_change
+  doc_deterministic_vs_ai_actions --> doc_freshness_diagnosis_report
+  doc_deterministic_vs_ai_actions --> doc_readme_coverage_map
+  doc_freshness_diagnosis_report --> doc_deterministic_vs_ai_actions
+  doc_freshness_diagnosis_report --> doc_judgment_doc_unit
+  doc_freshness_diagnosis_report --> doc_readme_coverage_map
+  doc_judgment_doc_unit --> doc_freshness_diagnosis_report
+  doc_judgment_doc_unit --> doc_private_journal_public_doctrine
+  doc_judgment_doc_unit --> doc_readme_coverage_map
   doc_pilee_knowledge_system --> doc_subagent_model_policy
   doc_pilee_knowledge_system --> doc_verify_report_workflow
   doc_pilee_knowledge_system --> doc_web_search_curator
+  doc_private_journal_public_doctrine --> doc_freshness_diagnosis_report
+  doc_private_journal_public_doctrine --> doc_judgment_doc_unit
+  doc_private_journal_public_doctrine --> doc_pilee_knowledge_system
+  doc_readme_coverage_map --> doc_freshness_diagnosis_report
+  doc_readme_coverage_map --> doc_judgment_doc_unit
+  doc_retro_private_reflection_boundary --> doc_artifact_archive_reopenability
+  doc_retro_private_reflection_boundary --> doc_private_journal_public_doctrine
+  doc_reviewed_commit_freshness --> doc_deterministic_vs_ai_actions
+  doc_reviewed_commit_freshness --> doc_freshness_diagnosis_report
+  doc_diff_review_draft_handoff --> doc_change_integration_discipline
+  doc_diff_review_draft_handoff --> doc_tool_output_noise_management
+  doc_deterministic_fallbacks_preserve_workflow --> doc_curator_approved_source_selection
+  doc_deterministic_fallbacks_preserve_workflow --> doc_live_artifact_preview_pattern
+  doc_mcp_stderr_isolation --> doc_terminal_host_integration
+  doc_mcp_stderr_isolation --> doc_tui_rendering_sanitization
+  doc_terminal_host_integration --> doc_fork_panel_spatial_continuity
+  doc_terminal_host_integration --> doc_mcp_stderr_isolation
+  doc_terminal_host_integration --> doc_theme_information_hierarchy
+  doc_ambient_status_surfaces --> doc_backlog_source_session_provenance
+  doc_ambient_status_surfaces --> doc_tool_output_noise_management
+  doc_editor_affordance_not_context --> doc_context_loading_minimal_surface
+  doc_editor_affordance_not_context --> doc_theme_information_hierarchy
+  doc_editor_affordance_not_context --> doc_tool_output_noise_management
+  doc_korean_first_user_facing_output --> doc_curator_approved_source_selection
+  doc_korean_first_user_facing_output --> doc_theme_information_hierarchy
+  doc_korean_first_user_facing_output --> doc_web_search_curator
+  doc_theme_information_hierarchy --> doc_terminal_host_integration
+  doc_theme_information_hierarchy --> doc_tui_rendering_sanitization
+  doc_tool_output_noise_management --> doc_ambient_status_surfaces
+  doc_tool_output_noise_management --> doc_mcp_stderr_isolation
+  doc_tool_output_noise_management --> doc_tui_rendering_sanitization
+  doc_tui_rendering_sanitization --> doc_mcp_stderr_isolation
+  doc_tui_rendering_sanitization --> doc_terminal_host_integration
+  doc_tui_rendering_sanitization --> doc_theme_information_hierarchy
+  doc_evidence_first_verification_gate --> doc_frame_verify_contract
+  doc_evidence_first_verification_gate --> doc_verification_invalidation_on_change
+  doc_evidence_first_verification_gate --> doc_verify_report_workflow
+  doc_frame_verify_contract --> doc_ask_user_question_decision_gates
+  doc_frame_verify_contract --> doc_evidence_first_verification_gate
+  doc_frame_verify_contract --> doc_verification_invalidation_on_change
+  doc_verification_invalidation_on_change --> doc_evidence_first_verification_gate
+  doc_verification_invalidation_on_change --> doc_frame_verify_contract
   doc_verify_report_workflow --> doc_pilee_knowledge_system
   doc_verify_report_workflow --> doc_web_search_curator
+  doc_curator_approved_source_selection --> doc_deterministic_fallbacks_preserve_workflow
+  doc_curator_approved_source_selection --> doc_live_artifact_preview_pattern
+  doc_curator_approved_source_selection --> doc_web_search_curator
   doc_web_search_curator --> doc_pilee_knowledge_system
   doc_web_search_curator --> doc_verify_report_workflow
+  doc_artifact_archive_reopenability --> doc_backlog_source_session_provenance
+  doc_artifact_archive_reopenability --> doc_live_artifact_preview_pattern
+  doc_artifact_archive_reopenability --> doc_verify_report_workflow
+  doc_ask_user_question_decision_gates --> doc_ask_user_question_option_design
+  doc_ask_user_question_decision_gates --> doc_evidence_first_verification_gate
+  doc_ask_user_question_decision_gates --> doc_frame_verify_contract
+  doc_ask_user_question_option_design --> doc_ask_user_question_decision_gates
+  doc_ask_user_question_option_design --> doc_evidence_first_verification_gate
+  doc_backlog_source_session_provenance --> doc_artifact_archive_reopenability
+  doc_backlog_source_session_provenance --> doc_session_identity_over_filenames
+  doc_change_integration_discipline --> doc_evidence_first_verification_gate
+  doc_change_integration_discipline --> doc_stress_interview_multi_axis_review
+  doc_context_loading_minimal_surface --> doc_private_journal_public_doctrine
+  doc_context_loading_minimal_surface --> doc_tool_output_noise_management
+  doc_external_issue_preview_gate --> doc_ask_user_question_decision_gates
+  doc_external_issue_preview_gate --> doc_live_artifact_preview_pattern
+  doc_fork_panel_parent_inbox --> doc_revive_over_transcript_recall
+  doc_fork_panel_parent_inbox --> doc_session_identity_over_filenames
+  doc_fork_panel_parent_inbox --> doc_subagent_prompt_specificity
+  doc_fork_panel_spatial_continuity --> doc_revive_over_transcript_recall
+  doc_fork_panel_spatial_continuity --> doc_session_identity_over_filenames
+  doc_fork_panel_spatial_continuity --> doc_terminal_host_integration
+  doc_live_artifact_preview_pattern --> doc_artifact_archive_reopenability
+  doc_live_artifact_preview_pattern --> doc_verify_report_workflow
+  doc_live_artifact_preview_pattern --> doc_web_search_curator
+  doc_local_dev_startup_diagnosis --> doc_root_cause_before_fix
+  doc_local_dev_startup_diagnosis --> doc_worktree_execution_boundary
+  doc_queued_command_prefill_boundary --> doc_session_identity_over_filenames
+  doc_queued_command_prefill_boundary --> doc_subagent_prompt_specificity
+  doc_queued_command_prefill_boundary --> doc_worktree_execution_boundary
+  doc_revive_over_transcript_recall --> doc_fork_panel_parent_inbox
+  doc_revive_over_transcript_recall --> doc_session_identity_over_filenames
+  doc_revive_over_transcript_recall --> doc_worktree_session_continuity
+  doc_session_identity_over_filenames --> doc_backlog_source_session_provenance
+  doc_session_identity_over_filenames --> doc_revive_over_transcript_recall
+  doc_session_identity_over_filenames --> doc_worktree_session_continuity
+  doc_skills_as_portable_procedures --> doc_context_loading_minimal_surface
+  doc_skills_as_portable_procedures --> doc_judgment_doc_unit
+  doc_until_loop_explicit_reporting --> doc_deterministic_vs_ai_actions
+  doc_until_loop_explicit_reporting --> doc_evidence_first_verification_gate
+  doc_worktree_execution_boundary --> doc_session_identity_over_filenames
+  doc_worktree_execution_boundary --> doc_worktree_session_continuity
   doc_worktree_session_continuity --> doc_pilee_knowledge_system
   doc_worktree_session_continuity --> doc_subagent_model_policy
 ```
 
 ## Review Metadata Summary
 
-- Documents: 5
-- Links: 11
+- Documents: 50
+- Links: 123
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
