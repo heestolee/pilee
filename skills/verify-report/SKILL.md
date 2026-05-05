@@ -33,8 +33,8 @@ argument-hint: "[base-url] [--upload] [--update] [--ask-before]"
 | 3 | 로그인/권한 Credential 확보 | ✓ | ✓ | ✓ |
 | 4 | 검증 계획 수립 → 유저 확인 | ✓ | ✓ | ✓ |
 | 4-B | (ask-before 모드만) 항목별 사전 확인 | opt | opt | opt |
-| 5 | 브라우저/명령 자동화로 캡처/증거 수집 | ✓ | ✓ | ✓ |
-| 6 | HTML 리포트 생성 → Glimpse 프리뷰 → 유저 리뷰 | ✓ | ✓ | ✓ (병합) |
+| 5 | `verify_report_live` 시작 → 브라우저/명령 자동화로 캡처/증거 수집 | ✓ | ✓ | ✓ |
+| 6 | live preview 갱신 → 정적 HTML export → 유저 리뷰 | ✓ | ✓ | ✓ (병합) |
 | 7 | agent-storage 업로드 |  | ✓ | ✓ |
 | 8 | context.md + PR 본문 업데이트 |  | ✓ | ✓ |
 | 9 | 후속 단계 AskUserQuestion | ✓ | ✓ | ✓ |
@@ -121,9 +121,41 @@ URL: https://dev.creatrip.com/en/spot/13214
 
 옵션: 진행 / 건너뛰기 / 다른 액션으로
 
-## Step 5: 브라우저/명령 자동화로 캡처/증거 수집
+## Step 5: `verify_report_live` 시작 → 캡처/증거 수집
 
 [references/capture-commands.md](references/capture-commands.md)를 따른다.
+
+캡처 계획이 확정되면 먼저 live report를 시작한다. 이때 Glimpse가 열리고, 이후 항목별 진행 상태가 SSE로 실시간 갱신된다.
+
+```json
+{
+  "action": "start",
+  "title": "Verify Report — {ticket-or-branch}",
+  "ticket": "{ticket}",
+  "summary": "이번 리포트에서 검증할 성공 기준 요약",
+  "items": [
+    { "id": "V1", "title": "신규 버튼 노출", "type": "UI_CAPTURE", "status": "pending" },
+    { "id": "V2", "title": "GA 이벤트 미발화", "type": "NETWORK", "status": "pending" }
+  ]
+}
+```
+
+각 항목 시작 시 `running`, 완료 시 `pass`/`fail`/`skip`/`unverified`로 갱신한다.
+
+```json
+{
+  "action": "update",
+  "runId": "{runId}",
+  "item": {
+    "id": "V1",
+    "title": "신규 버튼 노출",
+    "type": "UI_CAPTURE",
+    "status": "pass",
+    "detail": "Preview 환경에서 버튼 노출 확인",
+    "evidence": [{ "label": "버튼 노출", "kind": "image", "path": ".context/work/{workspace}/captures/v1-button.png" }]
+  }
+}
+```
 
 - UI 캡처 증거: PNG/GIF를 남긴다.
 - NETWORK 증거: 필터 조건, matched count, matched request 목록을 JSON/TXT로 남긴다.
@@ -132,22 +164,30 @@ URL: https://dev.creatrip.com/en/spot/13214
 
 캡처/증거는 “무엇을 실행했는지”와 “결과가 무엇인지”를 재현 가능하게 남긴다. 예: `reload + scroll`, `targetEvents`, `matchedResourceCount`.
 
-## Step 6: HTML 리포트 생성 → Glimpse 프리뷰 → 유저 리뷰
+## Step 6: live preview 갱신 → 정적 HTML export → 유저 리뷰
 
-`.context/work/{workspace}/captures/report.html` 생성 후 반드시 Glimpse WebView로 로컬 프리뷰를 연다.
+모든 항목을 처리한 뒤 `verify_report_live action=finish`로 `.context/work/{workspace}/captures/report.html`을 export한다. live Glimpse 창은 최종 상태로 갱신되고, 이후에는 `/show-report`로 다시 열 수 있다.
 
-- 기본 경로: report HTML을 쓰면 `archive-to-html` extension이 Verify Report를 감지해 Glimpse로 자동 프리뷰한다.
-- 재오픈/수동 오픈: `/show-report .context/work/{workspace}/captures/report.html`
-- 목록에서 선택: `/show-report`
-- 브라우저 fallback: `/show-report --browser .context/work/{workspace}/captures/report.html` 또는 `open .context/work/{workspace}/captures/report.html`
+```json
+{
+  "action": "finish",
+  "runId": "{runId}",
+  "finalSummary": "PASS/SKIP/미검증 및 주의사항 요약"
+}
+```
+
+재오픈/수동 오픈:
+- `/show-report .context/work/{workspace}/captures/report.html`
+- `/show-report` 목록에서 선택
+- `/show-report --browser .context/work/{workspace}/captures/report.html` 브라우저 fallback
 
 액션 처리:
 - 로컬 프리뷰 확인만 한 경우: confirm 모드 완료. 업로드하지 않는다.
 - 사용자가 업로드를 명시한 경우: Step 7(upload)로 진행한다.
 - 보완이 필요한 경우: 필요한 항목을 재검증하거나 update 모드로 보완한다.
-- Glimpse 실행 실패: 시스템 브라우저 fallback을 안내하고 업로드하지 않는다.
+- live/Glimpse 실행 실패: 정적 HTML export 후 시스템 브라우저 fallback을 안내하고 업로드하지 않는다.
 
-**update 모드**: 기존 `report.html`을 읽어서 새 항목만 append한다. 기존 증거는 보존한다.
+**update 모드**: 기존 run이 있으면 같은 `runId`에 항목을 append/update한다. 없으면 새 `start` 후 기존 `report.html` 내용을 참고해 필요한 항목만 보완한다.
 
 ## Step 7: agent-storage 업로드 (upload 모드만)
 

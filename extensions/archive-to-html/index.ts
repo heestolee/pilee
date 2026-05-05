@@ -6,6 +6,7 @@ import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ToolResultEvent } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
+import { registerVerifyReportLive } from "./verify-report-live.js";
 
 const ARCHIVE_DIR = path.join(os.homedir(), "Documents", "agent-history", "분류 전");
 const FONT_SIGNATURE = "Noto+Serif+KR";
@@ -312,6 +313,8 @@ function wrapArchivedWidgetHTML(code: string, isSVG = false): string {
 }
 
 export default function (pi: ExtensionAPI) {
+	registerVerifyReportLive(pi);
+
 	pi.registerCommand("show-report", {
 		description: "Verify/Web Search HTML 리포트를 목록에서 선택하거나 경로로 받아 Glimpse로 열기. Usage: /show-report [--browser] [path]",
 		handler: async (args: string, ctx: ExtensionCommandContext) => {

@@ -128,9 +128,17 @@ gh pr edit --body-file /tmp/pr-body.md
 - 사전 확인 모드로 (각 항목 시작 전 확인)
 ```
 
-## Glimpse 프리뷰 처리
+## Live Glimpse 프리뷰 처리
 
-Step 6에서 `report.html`을 생성하면 `archive-to-html` extension이 Verify Report를 감지해 Glimpse로 자동 프리뷰한다. 다시 열 때는 `/show-report`를 사용한다.
+Step 5에서 `verify_report_live action=start`를 호출하면 Glimpse live preview가 열린다. 이후 각 항목을 `action=update`로 갱신하고, Step 6에서 `action=finish`를 호출해 정적 `report.html`을 export한다.
+
+```json
+{"action":"start","title":"Verify Report — {ticket}","items":[{"id":"V1","title":"...","type":"UI_CAPTURE","status":"pending"}]}
+{"action":"update","runId":"{runId}","item":{"id":"V1","title":"...","type":"UI_CAPTURE","status":"pass","evidence":[{"kind":"image","path":".context/work/{workspace}/captures/v1.png"}]}}
+{"action":"finish","runId":"{runId}","finalSummary":"..."}
+```
+
+다시 열 때는 `/show-report`를 사용한다.
 
 ```text
 /show-report .context/work/{workspace}/captures/report.html
