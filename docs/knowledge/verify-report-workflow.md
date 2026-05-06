@@ -7,6 +7,7 @@ tags:
   - coverage
   - capture
   - crop
+  - before-after
   - glimpse
   - live-preview
   - report
@@ -26,8 +27,9 @@ source:
   - pilee-history:2026-05-05#47
   - pilee-history:2026-05-05#48
   - pilee-history:2026-05-06#68
+  - pilee-history:2026-05-06#69
 reviewed_at: 2026-05-06
-reviewed_commit: ce6b0aae6fdbe21a53d2766d9e4f21988806c94e
+reviewed_commit: 39f8acfe995b16c7ca0f2693af3fb020f5148bfd
 related:
   - pilee-knowledge-system
   - web-search-curator
@@ -53,11 +55,13 @@ live preview는 [web-search-curator](./web-search-curator.md)의 “작업 중 G
 
 캡처는 coverage 계획 뒤에 옵니다. responsive/layout 변경이면 mobile, breakpoint boundary, desktop을 각각 확인하고, nav 변경이면 expanded/collapsed와 role 차이를 봅니다. typography 변경은 screenshot만으로 닫지 않고 DOM class/token과 computed style을 함께 확인합니다.
 
+기존 UI/동작을 바꾸는 작업은 before/after도 coverage 후보입니다. 같은 route, viewport, role, 데이터 상태로 작업 전 기준과 작업 후 결과를 나란히 보여주면 리뷰어가 “무엇이 바뀌었고 무엇은 유지됐는지”를 더 빨리 판단할 수 있습니다.
+
 계획한 축이 빠졌다면 캡처가 있더라도 PASS가 아닙니다. 해당 항목은 `unverified`, `blocked`, 또는 Coverage Gap으로 남겨야 합니다.
 
 ## Capture Quality Rule
 
-Primary evidence는 검증 포인트가 바로 보이는 viewport/section/element crop이어야 합니다. Full-page나 세로로 긴 스크롤 캡처는 supporting context로만 사용하고, 리포트에서는 토글/details/appendix/link 뒤에 둡니다.
+Primary evidence는 검증 포인트가 바로 보이는 viewport/section/element crop이어야 합니다. Before/after가 필요한 항목은 `Before — ...`, `After — ...` label로 같은 item에 넣어 비교되게 합니다. Full-page나 세로로 긴 스크롤 캡처는 supporting context로만 사용하고, 리포트에서는 토글/details/appendix/link 뒤에 둡니다.
 
 긴 캡처를 그대로 본문에 펼치면 리뷰어가 실제 검증 지점을 찾기 어렵습니다. 따라서 Verify Report는 “전체 페이지를 찍었다”보다 “어떤 영역에서 무엇을 확인했는가”를 우선합니다.
 
@@ -67,6 +71,8 @@ Primary evidence는 검증 포인트가 바로 보이는 viewport/section/elemen
 - 사용자가 upload를 명시하지 않으면 로컬 report와 archive까지만 처리합니다.
 - “화면이 바뀌지 않는다”는 이유로 검증을 생략하지 않고, 더 적절한 evidence type을 선택합니다.
 - UI evidence는 crop/section image를 primary로 두고, 긴 full-page image는 supporting으로 둡니다.
+- 기존 대비 변화가 검증 포인트이면 before/after를 포함합니다.
+- before가 없거나 위험하면 생략 사유를 detail 또는 Coverage Gap에 남깁니다.
 - live preview는 사용자의 중간 확인을 돕기 위한 것이며, 최종 판단은 export된 report와 검증 결과에 근거합니다.
 
 ## Why It Matters

@@ -138,7 +138,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-05-05 | 059f445 | verify, evidence, gate, done, ready, verification |
 | [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-05-06 | 8f5edee | frame, verify, frame-json, success-criteria, contract, verification |
 | [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-05-05 | d582904 | verify, invalidation, code-change, freshness, gate, 검증 |
-| [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | active | high | 2026-05-06 | ce6b0aa | verify-report, verification, evidence, coverage, capture, crop |
+| [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | active | high | 2026-05-06 | 39f8acf | verify-report, verification, evidence, coverage, capture, crop |
 
 ### web-access
 
