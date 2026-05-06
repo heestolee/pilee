@@ -25,6 +25,27 @@ agent-browser wait 2000 --session {session}
 agent-browser screenshot .context/work/{workspace}/captures/{filename}.png --session {session}
 ```
 
+## Crop / section evidence
+
+Primary evidence는 검증 포인트가 바로 보이는 crop/section 이미지를 우선한다. full-page나 긴 스크롤 캡처는 supporting evidence로만 남긴다.
+
+Playwright/브라우저 도구에서 element screenshot이 가능하면 먼저 사용한다. 이미 viewport/full-page PNG가 있을 때는 내장 helper로 잘라낸다.
+
+```bash
+node /Users/changheelee/.pi/agent/git/github.com/heestolee/pilee/skills/verify-report/scripts/crop-png.mjs \
+  .context/work/{workspace}/captures/{source}.png \
+  .context/work/{workspace}/captures/{항목}-primary-crop.png \
+  --x 220 --y 360 --width 520 --height 680
+```
+
+좌표를 모르면 먼저 전체 PNG 크기를 확인한 뒤, 브라우저 devtools/이미지 뷰어로 대략 좌표를 잡고 한 번 crop → 확인 → 보정한다.
+
+```bash
+file .context/work/{workspace}/captures/{source}.png
+```
+
+긴 이미지를 보조로 남길 때 evidence label에 `supporting full-page` 또는 `전체 페이지 참고`를 명시한다. `verify_report_live`는 높이 1600px 이상 등 긴 이미지를 자동으로 접힌 토글에 넣는다.
+
 ## GIF 캡처 (다단계 플로우) — 고화질 설정
 
 ```bash

@@ -10,8 +10,10 @@ argument-hint: "[base-url] [--upload] [--update] [--ask-before]"
 
 ## 원칙
 
+- **Coverage 먼저, 캡처는 그 다음**: 리포트 시작 전에 변경 diff/요구사항으로 검증 축을 정의한다. 캡처가 있어도 해당 축을 닫지 못하면 PASS가 아니다.
 - **캡처/증거 우선**: UI는 화면 캡처를 우선 증거로 삼고, 비가시 동작은 성공 기준을 어떤 로그/결과로 확인할지 먼저 정한다.
-- **미검증 명시**: 자동화로 확인하지 못한 항목은 PASS로 쓰지 않고 `미검증`에 남긴다.
+- **미검증 명시**: 자동화로 확인하지 못한 항목은 PASS로 쓰지 않고 `미검증`/`blocked`/`Coverage Gap`에 남긴다.
+- **짧고 초점 있는 primary evidence**: 리포트 본문 핵심 증거는 viewport/섹션/element crop을 우선한다. 세로로 긴 full-page 캡처는 필요할 때만 보조 증거로 남기고 토글/appendix/link 뒤에 둔다.
 - **업로드 opt-in**: 기본 `/verify-report`는 로컬 리포트 확인까지만 한다. agent-storage 업로드와 PR 본문 갱신은 `--upload` 또는 사용자의 명시적 업로드 액션이 있을 때만 한다.
 - **프리뷰 강제**: HTML 생성 후 Glimpse WebView로 먼저 보여주고, 사용자가 확인한 뒤 다음 행동을 정한다.
 
@@ -40,7 +42,8 @@ argument-hint: "[base-url] [--upload] [--update] [--ask-before]"
 | 9 | 후속 단계 AskUserQuestion | ✓ | ✓ | ✓ |
 
 > 상세 참조:
-> - [references/capture-commands.md](references/capture-commands.md) — agent-browser 명령, ffmpeg GIF 합성, 브라우저 증거 수집
+> - [references/coverage-and-capture-quality.md](references/coverage-and-capture-quality.md) — 검증 축 도출, UI 변경 프리셋, 긴 이미지 처리 규칙
+> - [references/capture-commands.md](references/capture-commands.md) — agent-browser 명령, crop helper, ffmpeg GIF 합성, 브라우저 증거 수집
 > - [references/upload-scripts.md](references/upload-scripts.md) — agent-storage 업로드
 > - [references/report-templates.md](references/report-templates.md) — HTML/context.md/PR 템플릿
 > - [references/troubleshooting.md](references/troubleshooting.md) — agent-browser daemon 복구, 자주 깨지는 케이스
@@ -52,7 +55,19 @@ argument-hint: "[base-url] [--upload] [--update] [--ask-before]"
 2. **Verify 체크리스트** — `.context/work/{workspace}/context.md`의 `## Verifications`
 3. **자체 도출** — Frame 성공 기준 + 구현 코드 분석
 
-수집 직후 각 항목을 **화면 캡처로 검증할지, 다른 증거로 검증할지** 분류한다.
+수집 직후 각 항목을 **검증 축(coverage axis)** 으로 쪼개고, 축마다 **화면 캡처로 검증할지, 다른 증거로 검증할지** 분류한다.
+
+필수 coverage 도출 규칙:
+
+| 변경 감지 | 기본 검증 축 |
+|----------|--------------|
+| responsive class/layout 변경 | mobile(예: 390px) + breakpoint boundary(예: 480/500/640px) + desktop(예: 1320~1440px) |
+| nav/sidebar/menu 변경 | expanded + collapsed + 영향받는 role/account |
+| typography/logo/token 변경 | screenshot + DOM class/token + computed `font-size`/`line-height` |
+| table/card/overflow 변경 | empty state + data state + overflow/scroll state |
+| option/default selection 변경 | no data + data exists + stale/refresh selection 유지 |
+
+> 더 자세한 프리셋은 [references/coverage-and-capture-quality.md](references/coverage-and-capture-quality.md)를 따른다.
 
 | 분류 | 설명 | 리포트 증거 |
 |------|------|-------------|
@@ -68,11 +83,12 @@ argument-hint: "[base-url] [--upload] [--update] [--ask-before]"
 ```markdown
 다음 검증 항목과 증거 유형으로 리포트를 만들겠습니다. 수정할 게 있나요?
 
-| # | 성공 기준 | 캡처/증거 유형 | 이유 |
-|---|-----------|----------------|------|
-| V1 | dev 스팟상세에서 GA 이벤트 미발화 | NETWORK | 화면 변화 없음, 네트워크 요청 여부가 핵심 증거 |
-| V2 | 신규 버튼 노출 | UI_CAPTURE | 화면에 보이는 상태는 캡처가 가장 확실 |
-| V3 | 권한 없는 mutation 차단 | BE | API 응답/권한 로직 검증 |
+| # | 성공 기준 / 검증 축 | 캡처/증거 유형 | 환경 메타데이터 | 이유 |
+|---|----------------------|----------------|------------------|------|
+| V1 | dev 스팟상세에서 GA 이벤트 미발화 | NETWORK | dev / reload+scroll / anonymous | 화면 변화 없음, 네트워크 요청 여부가 핵심 증거 |
+| V2 | 신규 버튼 노출 — mobile 390px | UI_CAPTURE | local / 390×844 / member | 화면에 보이는 상태는 캡처가 가장 확실 |
+| V3 | 신규 버튼 노출 — desktop 1440px | UI_CAPTURE | local / 1440×900 / member | responsive 회귀를 막기 위한 별도 축 |
+| V4 | 권한 없는 mutation 차단 | BE | preview / unauthorized role | API 응답/권한 로직 검증 |
 ```
 
 ## Step 2: 검증 환경 확인
@@ -99,11 +115,28 @@ which ffmpeg          # GIF 항목이 있을 때만. 미설치 시: brew install
 | CODE_DIFF | 파일/라인/diff 요약 |
 | BE/API | 응답 JSON/상태코드/쿼리 결과 |
 
+각 항목에는 리포트에서 확인 가능한 메타데이터를 포함한다.
+
+- URL / 환경: local, PR Preview, dev, production 등
+- viewport: `390×844`, `1440×900` 등
+- account/role: admin, partner, anonymous 등
+- commit/branch 또는 PR 번호
+- 실행 액션: reload, click, scroll, filter 조건 등
+
 **파일 경로**: `.context/work/{workspace}/captures/` 안에 저장한다.
 
 > ⚠️ `/tmp/`는 사용 금지 — 휘발되고 `/show-report`/Glimpse 프리뷰 탐색 대상이 아니다.
 
 파일명: kebab-case `{항목번호}-{설명}.{png|gif|json|txt}`
+
+UI 캡처 계획은 primary/supporting을 분리한다.
+
+| 역할 | 권장 형태 | 리포트 표시 |
+|------|-----------|-------------|
+| primary evidence | viewport crop, section crop, element crop | 본문에 바로 표시 |
+| supporting context | full-page, 긴 스크롤 캡처, raw debug screenshot | 토글/details/appendix/link 뒤에 표시 |
+
+세로 1600px 이상 또는 viewport 높이의 2배 이상인 이미지는 primary evidence로 쓰지 말고 crop을 추가한다. `verify_report_live` HTML은 긴 이미지를 자동으로 접힌 토글에 넣지만, 검증 품질상 primary crop을 별도로 남겨야 한다.
 
 AskUserQuestion으로 계획 확인.
 
@@ -157,16 +190,35 @@ URL: https://dev.creatrip.com/en/spot/13214
 }
 ```
 
-- UI 캡처 증거: PNG/GIF를 남긴다.
+- UI 캡처 증거: primary crop PNG/GIF를 먼저 남기고, full-page는 필요 시 supporting으로 남긴다.
 - NETWORK 증거: 필터 조건, matched count, matched request 목록을 JSON/TXT로 남긴다.
 - CONSOLE 증거: 콘솔 error/warn/log excerpt를 남긴다.
 - CODE_DIFF 증거: 관련 파일/라인과 diff summary를 남긴다.
+
+PASS 처리 조건:
+- 성공 기준의 모든 필수 coverage axis가 증거로 닫혔을 때만 `pass`.
+- 캡처가 있어도 축이 빠졌으면 `unverified` 또는 별도 Coverage Gap 항목으로 남긴다.
+- 자동화/권한/외부 환경 때문에 못 본 항목은 `blocked`로 남기고 차단 사유를 적는다.
 
 캡처/증거는 “무엇을 실행했는지”와 “결과가 무엇인지”를 재현 가능하게 남긴다. 예: `reload + scroll`, `targetEvents`, `matchedResourceCount`.
 
 ## Step 6: live preview 갱신 → 정적 HTML export → 유저 리뷰
 
 모든 항목을 처리한 뒤 `verify_report_live action=finish`로 `.context/work/{workspace}/captures/report.html`을 export한다. live Glimpse 창은 최종 상태로 갱신되고, 이후에는 `/show-report`로 다시 열 수 있다.
+
+finish 전에 결과를 세 그룹으로 분리한다.
+
+```markdown
+Verified
+- 증거로 닫힌 항목
+
+Coverage gaps / Unverified
+- 필요한 축이 빠진 항목
+- 캡처는 있지만 검증 기준을 닫지 못한 항목
+
+Blocked / Known unrelated failures
+- 권한/외부 환경/기존 실패로 막힌 항목
+```
 
 ```json
 {
@@ -225,6 +277,8 @@ URL: https://dev.creatrip.com/en/spot/13214
 | 케이스 | 해결 |
 |--------|------|
 | 화면 변화가 있는 검증 | PNG/GIF 캡처를 우선 증거로 남긴다. |
+| responsive/layout 변경 | mobile + breakpoint boundary + desktop 축을 모두 계획하고, 누락 시 Coverage Gap으로 남긴다. |
+| 긴 full-page 캡처 | primary evidence로 쓰지 않는다. crop/section 이미지를 본문에 두고 full-page는 토글/appendix/link로 둔다. |
 | 화면 변화가 없는 검증 | UI 캡처로 억지 증명하지 말고 NETWORK/CONSOLE/CODE_DIFF 증거로 남긴다. |
 | GA/픽셀 미발화 검증 | `targetEvents`, 필터 조건, matched count, matched requests를 JSON으로 저장한다. |
 | 사용자가 “BE는 빼” | BE/CODE_DIFF 항목을 SKIP 표시하고 사유를 남긴다. |

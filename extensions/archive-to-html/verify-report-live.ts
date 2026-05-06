@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { createReadStream, existsSync, mkdirSync, statSync, writeFileSync, copyFileSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync, copyFileSync } from "node:fs";
 import { createServer, type Server, type ServerResponse } from "node:http";
 import { createRequire } from "node:module";
 import { homedir, platform } from "node:os";
@@ -451,13 +451,74 @@ function relativeEvidencePath(evidence: Evidence, state: VerifyReportState): str
 	return rel.startsWith("..") || isAbsolute(rel) ? evidence.path : rel;
 }
 
+interface ImageDimensions {
+	width: number;
+	height: number;
+}
+
+function readImageDimensions(filePath: string): ImageDimensions | null {
+	try {
+		const buffer = readFileSync(filePath);
+		if (buffer.length >= 24 && buffer.toString("ascii", 1, 4) === "PNG") {
+			return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+		}
+		if (buffer.length >= 10 && buffer.toString("ascii", 0, 3) === "GIF") {
+			return { width: buffer.readUInt16LE(6), height: buffer.readUInt16LE(8) };
+		}
+		if (buffer.length >= 12 && buffer[0] === 0xff && buffer[1] === 0xd8) {
+			let offset = 2;
+			while (offset + 9 < buffer.length) {
+				if (buffer[offset] !== 0xff) {
+					offset += 1;
+					continue;
+				}
+				const marker = buffer[offset + 1];
+				const length = buffer.readUInt16BE(offset + 2);
+				if ([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].includes(marker)) {
+					return { width: buffer.readUInt16BE(offset + 7), height: buffer.readUInt16BE(offset + 5) };
+				}
+				offset += 2 + length;
+			}
+		}
+		if (buffer.length >= 30 && buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WEBP") {
+			const chunk = buffer.toString("ascii", 12, 16);
+			if (chunk === "VP8X") {
+				return {
+					width: 1 + buffer.readUIntLE(24, 3),
+					height: 1 + buffer.readUIntLE(27, 3),
+				};
+			}
+		}
+	} catch {}
+	return null;
+}
+
+function isTallEvidence(dimensions: ImageDimensions | null): boolean {
+	if (!dimensions) return false;
+	const ratio = dimensions.height / Math.max(dimensions.width, 1);
+	return dimensions.height >= 1600 || (dimensions.height >= 1200 && ratio >= 2.4);
+}
+
+function imageDimensionLabel(dimensions: ImageDimensions | null): string {
+	return dimensions ? ` · ${dimensions.width}×${dimensions.height}` : "";
+}
+
+function renderImageFigure(evidence: Evidence, state: VerifyReportState, label: string, dimensions: ImageDimensions | null): string {
+	const src = relativeEvidencePath(evidence, state) ?? evidence.path ?? "";
+	return `<figure><img src="${escapeHtml(src)}" alt="${escapeHtml(label)}"><figcaption>${escapeHtml(label)} · ${escapeHtml(basename(evidence.path ?? src))}${escapeHtml(imageDimensionLabel(dimensions))}</figcaption></figure>`;
+}
+
 function renderEvidenceStatic(evidence: Evidence, state: VerifyReportState): string {
 	const kind = evidenceKind(evidence);
 	const label = evidence.label || kind;
 	if (evidence.url) return `<a href="${escapeHtml(evidence.url)}" target="_blank" rel="noreferrer">${escapeHtml(label)}</a>`;
 	if (evidence.path && ["image", "gif"].includes(kind)) {
-		const src = relativeEvidencePath(evidence, state) ?? evidence.path;
-		return `<figure><img src="${escapeHtml(src)}" alt="${escapeHtml(label)}"><figcaption>${escapeHtml(label)} · ${escapeHtml(basename(evidence.path))}</figcaption></figure>`;
+		const dimensions = readImageDimensions(evidence.path);
+		const figure = renderImageFigure(evidence, state, label, dimensions);
+		if (isTallEvidence(dimensions)) {
+			return `<details class="tall-evidence"><summary>긴/전체 페이지 캡처 보기 — ${escapeHtml(label)}${escapeHtml(imageDimensionLabel(dimensions))}</summary>${figure}</details>`;
+		}
+		return figure;
 	}
 	if (evidence.path) return `<p><strong>${escapeHtml(label)}</strong>: <code>${escapeHtml(relativeEvidencePath(evidence, state) ?? evidence.path)}</code></p>`;
 	if (evidence.text) return `<pre><code>${escapeHtml(evidence.text)}</code></pre>`;
@@ -502,6 +563,9 @@ function generateLivePage(initialState: unknown): string {
 	figure { margin:0; }
 	img { display:block; max-width:100%; border:1px solid var(--line); border-radius:12px; background:var(--imageBg); }
 	figcaption { color:var(--muted); font-size:12px; margin-top:6px; }
+	details.tall-image { border:1px dashed var(--line); border-radius:12px; padding:10px 12px; background:var(--imageBg); }
+	details.tall-image summary { cursor:pointer; color:var(--detail); font-weight:700; }
+	details.tall-image figure { margin-top:10px; }
 	pre { white-space:pre-wrap; overflow:auto; background:var(--codeBg); border:1px solid var(--line); border-radius:10px; padding:12px; color:var(--text); }
 	code { background:var(--inlineCodeBg); border-radius:4px; padding:1px 4px; }
 	a { color:var(--accentText); }
@@ -518,10 +582,28 @@ function esc(v) { return String(v == null ? '' : v).replace(/[&<>\"]/g, function
 function statusLabel(s) { return ({draft:'준비',running:'진행 중',done:'완료',aborted:'중단',pending:'대기',pass:'PASS',fail:'FAIL',skip:'SKIP',blocked:'BLOCKED',unverified:'미검증'})[s] || s; }
 function count(status) { return (state.items || []).filter(function(i){ return i.status === status; }).length; }
 function evKind(ev) { if (ev.kind) return ev.kind; if (ev.url) return 'link'; if (!ev.path) return 'text'; var p=ev.path.toLowerCase(); if (/\.(png|jpg|jpeg|webp|svg)$/.test(p)) return 'image'; if (/\.gif$/.test(p)) return 'gif'; if (/\.json$/.test(p)) return 'json'; return 'text'; }
+function isTallImage(width, height) { var ratio = height / Math.max(width || 1, 1); return height >= 1600 || (height >= 1200 && ratio >= 2.4); }
+function maybeCollapseTallImage(img) {
+  var fig = img.closest('figure[data-auto-collapse]');
+  if (!fig || fig.closest('details.tall-image') || !img.naturalHeight || !img.naturalWidth || !isTallImage(img.naturalWidth, img.naturalHeight)) return;
+  var details = document.createElement('details');
+  details.className = 'tall-image';
+  var summary = document.createElement('summary');
+  summary.textContent = '긴/전체 페이지 캡처 보기 — ' + (fig.getAttribute('data-label') || 'image') + ' · ' + img.naturalWidth + '×' + img.naturalHeight;
+  details.appendChild(summary);
+  fig.parentNode.insertBefore(details, fig);
+  details.appendChild(fig);
+}
+function collapseTallImages() {
+  document.querySelectorAll('figure[data-auto-collapse] img').forEach(function(img) {
+    if (img.complete) maybeCollapseTallImage(img);
+    else img.addEventListener('load', function() { maybeCollapseTallImage(img); }, { once: true });
+  });
+}
 function evHtml(ev) {
   var kind = evKind(ev); var label = ev.label || kind;
   if (ev.url) return '<a href="' + esc(ev.url) + '" target="_blank" rel="noreferrer">' + esc(label) + '</a>';
-  if (ev.path && (kind === 'image' || kind === 'gif')) return '<figure><img src="/file?path=' + encodeURIComponent(ev.path) + '" alt="' + esc(label) + '"><figcaption>' + esc(label) + ' · ' + esc(ev.path.split('/').pop()) + '</figcaption></figure>';
+  if (ev.path && (kind === 'image' || kind === 'gif')) return '<figure data-auto-collapse="true" data-label="' + esc(label) + '"><img src="/file?path=' + encodeURIComponent(ev.path) + '" alt="' + esc(label) + '" onload="maybeCollapseTallImage(this)"><figcaption>' + esc(label) + ' · ' + esc(ev.path.split('/').pop()) + '</figcaption></figure>';
   if (ev.path) return '<p><strong>' + esc(label) + '</strong>: <code>' + esc(ev.path) + '</code></p>';
   if (ev.text) return '<pre><code>' + esc(ev.text) + '</code></pre>';
   return '';
@@ -547,6 +629,7 @@ function render() {
   }
   html += '</main>';
   document.getElementById('app').innerHTML = html;
+  collapseTallImages();
 }
 render();
 var events = new EventSource('/events');
@@ -563,6 +646,7 @@ function generateStaticReportHtml(state: VerifyReportState): string {
 		fail: state.items.filter((item) => item.status === "fail").length,
 		skipped: state.items.filter((item) => ["skip", "blocked", "unverified"].includes(item.status)).length,
 	};
+	const coverageGaps = state.items.filter((item) => ["skip", "blocked", "unverified"].includes(item.status));
 	const title = `${REPORT_SIGNATURE} — ${state.ticket || state.title}`;
 	const outcomeClass = counts.fail > 0 || state.status === "aborted" ? "fail" : counts.skipped > 0 ? "partial" : "pass";
 	const outcomeLabel = counts.fail > 0 || state.status === "aborted" ? "ISSUES FOUND" : counts.skipped > 0 ? "PARTIAL" : "PASSED";
@@ -620,6 +704,9 @@ function generateStaticReportHtml(state: VerifyReportState): string {
 	}
 	.pass-banner.partial { background: #fef3c7; border-color: #f59e0b; color: #92400e; }
 	.pass-banner.fail { background: #fee2e2; border-color: #ef4444; color: #991b1b; }
+	.gap-list { display: grid; gap: 10px; margin-top: 12px; }
+	.gap-item { background: #fffbeb; border: 1px solid #fbbf24; border-radius: 10px; padding: 12px 14px; color: #78350f; }
+	.gap-item strong { display: block; color: #92400e; margin-bottom: 4px; }
 	.info-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
 	.info-item { background: #f9fafb; padding: 12px 16px; border-radius: 10px; border: 1px solid #e5e7eb; min-width: 0; }
 	.info-item .label { font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
@@ -641,6 +728,9 @@ function generateStaticReportHtml(state: VerifyReportState): string {
 	figure { margin: 0; }
 	img { display: block; max-width: 100%; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
 	figcaption { color: #6b7280; font-size: 12px; margin-top: 6px; }
+	.tall-evidence { border: 1px dashed #d1d5db; border-radius: 10px; padding: 12px 14px; background: #fff; }
+	.tall-evidence summary { cursor: pointer; font-weight: 800; color: #374151; }
+	.tall-evidence figure { margin-top: 12px; }
 	code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 13px; color: #be185d; }
 	pre { background: #1f2937; color: #f9fafb; padding: 16px; border-radius: 10px; overflow-x: auto; white-space: pre-wrap; font-size: 13px; line-height: 1.5; margin: 12px 0; }
 	pre code { background: none; color: inherit; padding: 0; }
@@ -671,6 +761,14 @@ function generateStaticReportHtml(state: VerifyReportState): string {
 		<div class="info-item"><div class="label">archive</div><div class="value">${escapeHtml(state.archivePath || "-")}</div></div>
 	</div>
 </section>
+
+${coverageGaps.length ? `<section>
+	<h2>⚠️ Coverage Gaps</h2>
+	<p>아래 항목은 리포트에 포함됐지만 PASS로 닫히지 않았습니다. 추가 캡처/로그/환경 검증이 필요합니다.</p>
+	<div class="gap-list">
+	${coverageGaps.map((item) => `<div class="gap-item"><strong>${escapeHtml(item.id)} · ${escapeHtml(statusLabel(item.status))}</strong>${escapeHtml(item.title)}${item.detail ? `<br>${escapeHtml(item.detail)}` : ""}</div>`).join("\n")}
+	</div>
+</section>` : ""}
 
 <section>
 	<h2>🧪 검증 항목</h2>
@@ -723,7 +821,9 @@ export function registerVerifyReportLive(pi: ExtensionAPI) {
 		description: "Create and update a live Glimpse Verify Report. Use action=start before capture/verification, update after each item, and finish to export report.html.",
 		promptSnippet: "Start/update/finalize a live Glimpse Verify Report for capture/verification evidence.",
 		promptGuidelines: [
-			"Use verify_report_live for /verify-report workflows: start before executing verification items, update after each item with status/evidence, then finish to export report.html.",
+			"Use verify_report_live for /verify-report workflows: start after defining verification coverage, update after each item with status/evidence, then finish to export report.html.",
+			"Evidence must close the stated criterion. If a required axis is not checked, keep that item unverified/blocked instead of marking pass.",
+			"For UI evidence, prefer focused viewport or section crops as primary evidence. Tall/full-page images are auto-collapsed in the report and should be supporting context only.",
 			"Do not use verify_report_live to upload reports or modify PRs; upload remains opt-in via the verify-report skill.",
 		],
 		parameters: Type.Object({

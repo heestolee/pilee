@@ -47,6 +47,7 @@ subagent run worker --main -- "read /tmp/<task>-self-healing-context.md. Cycle 1
 9. Cycle 2 결과에서 남은 actionable item만 추린다.
 10. 수정할 항목이 있으면 다시 `subagent run worker --main -- ...`으로 **남은 항목만** 수정 요청한다.
 11. 2사이클 후 종료하고, 남은 리스크와 미해결 항목을 명시한다.
+12. UI/responsive/nav/typography처럼 화면 회귀 가능성이 있는 수정이 포함되면 캡처를 직접 수행하지 말고 **`/verify-report` 권장 여부와 추천 검증 축**만 남긴다. 예: `mobile 390px + breakpoint 500px + desktop 1440px`, `collapsed/expanded nav`, `computed typography`.
 
 ## worker 프롬프트 필수 요소
 `worker`에게는 절대 빈 요청을 보내지 않는다. 반드시 아래를 포함한다.
@@ -121,6 +122,7 @@ reviewer가 `fix_class`를 제공하지 않으면 기존 심각도(Critical/Impo
 
 ## Recommendation
 - 추가 수동 작업 필요 여부
+- UI 변경이 있으면 `/verify-report` 권장 여부와 추천 coverage axis
 ```
 
 ## 주의
