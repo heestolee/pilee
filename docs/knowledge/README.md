@@ -169,7 +169,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Skill은 재사용 가능한 절차다](./skills-as-portable-procedures.md) | active | high | 2026-05-05 | 059f445 | skill, skill-creator, procedure, porting, workflow, 스킬 |
 | [Command shim은 skill source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-05-06 | 7160f80 | command-shim, skill, tft, frame, slash-command, routing |
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
-| [Worktree 생성은 부모 패널의 게이트다](./worktree-creation-parent-gate.md) | active | high | 2026-05-06 | d1ba5a0 | worktree, fork-panel, parent-panel, hotfix, context, product |
+| [Worktree 생성은 부모 패널의 게이트다](./worktree-creation-parent-gate.md) | active | high | 2026-05-06 | 8834088 | worktree, fork-panel, parent-panel, hotfix, context, product |
 | [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-05-05 | 059f445 | worktree, workspace, repo, branch, execution-boundary, 워크트리 |
 | [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-05-05 | aa0e440 | worktree, session, revive, fork-panel, panel-inbox, handoff |
 

@@ -11,6 +11,7 @@ tags:
   - 워크트리
 category: workflow
 status: active
+confidence: high
 applies_to:
   - extensions/worktree
   - extensions/fork-panel
@@ -21,8 +22,7 @@ applies_to:
 source:
   - pilee-history:2026-05-06#67
 reviewed_at: 2026-05-06
-reviewed_commit: d1ba5a0aa247dfe7e2aad352fa84c079cbc85419
-confidence: high
+reviewed_commit: 8834088cd9ceecb06aec00e96cc6121fa7d922af
 related:
   - worktree-execution-boundary
   - worktree-session-continuity
