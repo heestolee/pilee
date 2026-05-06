@@ -138,7 +138,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-05-05 | 059f445 | verify, evidence, gate, done, ready, verification |
 | [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-05-06 | 8f5edee | frame, verify, frame-json, success-criteria, contract, verification |
 | [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-05-05 | d582904 | verify, invalidation, code-change, freshness, gate, 검증 |
-| [Verify Report와 증거 기반 검증 흐름](./verify-report-workflow.md) | active | high | 2026-05-05 | b730f16 | verify-report, verification, evidence, glimpse, live-preview, report |
+| [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | active | high | 2026-05-06 | ce6b0aa | verify-report, verification, evidence, coverage, capture, crop |
 
 ### web-access
 
@@ -161,6 +161,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-05-06 | 4c927ab | fork-panel, handoff, inbox, inject, parent, panel |
 | [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-05-05 | 059f445 | fork-panel, revive, repanel, ghostty, spatial, panel |
 | [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-05-06 | d1ba5a0 | frame, planning, identity, home-directory, ticket, session-title |
+| [Frame Studio는 frame 질문을 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-05-06 | ce6b0aa | frame-studio, frame, glimpse, ask-user-question, decision-ui, co-thinking |
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-05-05 | 059f445 | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | medium | 2026-05-05 | 059f445 | local-dev, server, startup, diagnosis, product, dev |
 | [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-05-05 | 059f445 | queued-messages, slash-command, prefill, worktree, session, boundary |
@@ -209,7 +210,7 @@ graph TD
   doc_evidence_first_verification_gate["완료 선언은 증거 뒤에만 온다"]
   doc_frame_verify_contract["Frame과 Verify는 구조화 계약이다"]
   doc_verification_invalidation_on_change["검증 중 코드 변경은 이전 검증을 무효화한다"]
-  doc_verify_report_workflow["Verify Report와 증거 기반 검증 흐름"]
+  doc_verify_report_workflow["Verify Report와 coverage-aware 증거 검증 흐름"]
   doc_curator_approved_source_selection["웹 검색은 승인된 출처 선택을 거친다"]
   doc_web_search_curator["Web Search curator와 승인형 요약 흐름"]
   doc_artifact_archive_reopenability["검토 산출물은 다시 열 수 있어야 한다"]
@@ -222,6 +223,7 @@ graph TD
   doc_fork_panel_parent_inbox["Fork-panel handoff는 parent inbox로 들어간다"]
   doc_fork_panel_spatial_continuity["Fork-panel 위치는 작업 맥락의 일부다"]
   doc_frame_planning_identity["Frame identity는 cwd보다 작업 의도를 우선한다"]
+  doc_frame_studio_interactive_decision_ui["Frame Studio는 frame 질문을 작업 단위 UI로 묶는다"]
   doc_live_artifact_preview_pattern["Live artifact는 local preview first다"]
   doc_local_dev_startup_diagnosis["로컬 개발 서버 시작은 진단 가능한 절차여야 한다"]
   doc_queued_command_prefill_boundary["Queued command는 실행 보장이 아니다"]
@@ -314,6 +316,8 @@ graph TD
   doc_frame_verify_contract --> doc_verification_invalidation_on_change
   doc_verification_invalidation_on_change --> doc_evidence_first_verification_gate
   doc_verification_invalidation_on_change --> doc_frame_verify_contract
+  doc_verify_report_workflow --> doc_evidence_first_verification_gate
+  doc_verify_report_workflow --> doc_live_artifact_preview_pattern
   doc_verify_report_workflow --> doc_pilee_knowledge_system
   doc_verify_report_workflow --> doc_web_search_curator
   doc_curator_approved_source_selection --> doc_deterministic_fallbacks_preserve_workflow
@@ -346,6 +350,11 @@ graph TD
   doc_frame_planning_identity --> doc_frame_verify_contract
   doc_frame_planning_identity --> doc_session_identity_over_filenames
   doc_frame_planning_identity --> doc_worktree_session_continuity
+  doc_frame_studio_interactive_decision_ui --> doc_ask_user_question_option_design
+  doc_frame_studio_interactive_decision_ui --> doc_evidence_first_verification_gate
+  doc_frame_studio_interactive_decision_ui --> doc_frame_planning_identity
+  doc_frame_studio_interactive_decision_ui --> doc_frame_verify_contract
+  doc_frame_studio_interactive_decision_ui --> doc_live_artifact_preview_pattern
   doc_live_artifact_preview_pattern --> doc_artifact_archive_reopenability
   doc_live_artifact_preview_pattern --> doc_verify_report_workflow
   doc_live_artifact_preview_pattern --> doc_web_search_curator
@@ -377,7 +386,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 56
-- Links: 140
+- Documents: 57
+- Links: 147
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
