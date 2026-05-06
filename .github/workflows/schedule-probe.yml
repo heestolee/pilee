@@ -1,0 +1,37 @@
+name: "schedule probe"
+
+on:
+  schedule:
+    # Temporary probe: every 5 minutes UTC/KST to confirm GitHub schedule events are being dispatched.
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+
+    steps:
+      - name: Print schedule probe context
+        run: |
+          echo "event_name=${{ github.event_name }}"
+          echo "schedule=${{ github.event.schedule || '' }}"
+          echo "ref=${{ github.ref }}"
+          echo "sha=${{ github.sha }}"
+          echo "utc_now=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          echo "kst_now=$(TZ=Asia/Seoul date +'%Y-%m-%dT%H:%M:%S%z')"
+
+      - name: Write summary
+        run: |
+          {
+            echo "## Schedule probe"
+            echo ""
+            echo "- event: ${{ github.event_name }}"
+            echo "- schedule: ${{ github.event.schedule || '' }}"
+            echo "- ref: ${{ github.ref }}"
+            echo "- sha: ${{ github.sha }}"
+            echo "- UTC: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo "- KST: $(TZ=Asia/Seoul date +'%Y-%m-%dT%H:%M:%S%z')"
+          } >> "$GITHUB_STEP_SUMMARY"
