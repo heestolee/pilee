@@ -27,18 +27,31 @@ description: 작업 시작 전에 구체 질문으로 목표·성공 기준·범
 
 ## 실행 단계
 
-### Step 1: 컨텍스트 자동 수집 (질문 없이)
+### Step 1: 컨텍스트 자동 수집 + frame identity 결정 (질문 없이)
 
 순서대로 수행:
 
-1. cwd가 worktree인지 확인 → `<worktree>/.pi/worktree-meta.json` 읽기
-2. 메타에 `ticket`이 있으면 MCP `jira_getIssue`로 본문/acceptance/status 가져옴
-3. 메타에 `ticket`이 없으면 사용자 첫 입력에서 `[A-Z]{2,}-\d+` 패턴 추출 시도. 발견되면 fetch + 메타에 저장 제안
-4. `git status` + `git log --oneline -5`로 진행 상태 파악
-5. 기존 `<worktree>/.pi/frame.json`이 있으면 **재진입 모드** — 덮어쓰기 전 사용자 확인
-6. 워크트리에 결합된 이전 fork-panel summary가 있으면 한 줄 인용
+1. command shim이 제공한 **Frame identity hint**를 먼저 읽는다.
+2. cwd가 worktree인지 확인 → `<worktree>/.pi/worktree-meta.json` 읽기
+3. worktree가 있으면 **worktree-bound frame**으로 진행한다.
+   - 저장 위치: `<worktree>/.pi/frame.json`, `<worktree>/.pi/frame.md`
+   - 표시 이름: `Frame · <worktreeName> · <ticket?>`
+4. worktree가 없고 티켓이 있으면 **ticket-bound planning frame**으로 진행한다.
+   - 저장 위치: `~/.pi/agent/frame-planning/planning-ticket-<TICKET>/frame.json`
+   - 표시 이름: `Planning · <TICKET> · <sessionTitle?>`
+5. worktree도 티켓도 없으면 **session-bound planning frame**으로 진행한다.
+   - 저장 위치: `~/.pi/agent/frame-planning/planning-session-<sessionFileHash>/frame.json`
+   - 표시 이름: `Planning · <하단 session title>`
+   - 내부 key는 session file hash를 쓰고, 하단 타이틀은 사람이 보는 label로만 쓴다.
+6. 홈 디렉토리 자체(`/Users/...`)는 identity로 쓰지 않는다. 홈은 여러 기획 탭이 공유하므로 충돌한다.
+7. 메타/인자/하단 session title에서 `[A-Z]{2,}-\d+` 티켓 패턴을 추출한다. 발견되면 MCP `jira_getIssue`로 본문/acceptance/status 가져온다.
+8. `git status` + `git log --oneline -5`로 진행 상태 파악 (git repo가 아니면 planning mode로 생략 사유 기록)
+9. 기존 frame이 있으면 **재진입 모드** — 덮어쓰기 전 사용자 확인
+10. 워크트리에 결합된 이전 fork-panel summary가 있으면 한 줄 인용
 
-이 단계에선 **유저에게 묻지 않는다.** 출력은 단 하나: 수집된 컨텍스트 요약 카드.
+이 단계에선 **유저에게 묻지 않는다.** 출력은 단 하나: identity + 수집된 컨텍스트 요약 카드.
+
+planning frame은 나중에 worktree가 만들어지면 해당 worktree의 `.pi/frame.json`으로 승격할 수 있어야 한다. 따라서 ticket, session title, 원래 session file, source cwd를 frame metadata에 남긴다.
 
 ### Step 2: 사고 초점 카드 (Surface Assumptions + Review Lenses)
 
@@ -204,8 +217,16 @@ Draft를 보여줄 때 맨 위에 반드시 다음을 붙인다:
 ```ts
 type FrameDoc = {
   version: 1;
-  workspace: string;          // worktree 이름 (예: "atlanta-COM-1234")
-  worktree: string;           // 절대 경로
+  identity: {
+    mode: "worktree" | "planning-ticket" | "planning-session";
+    key: string;              // worktree:<hash> | planning:ticket:COM-1234 | planning:session:<hash>
+    displayTitle: string;     // Glimpse/보고서에 보여줄 이름
+    sourceSessionFile?: string;
+    sourceSessionTitle?: string;
+    promotedToWorktree?: string;
+  };
+  workspace: string;          // worktree 이름 또는 planning label
+  worktree?: string;          // worktree mode일 때 절대 경로
   ticket?: {
     key: string;              // "COM-1234"
     url: string;

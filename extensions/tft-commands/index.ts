@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import { buildFrameIdentity, type FrameIdentity, formatFrameIdentityHint } from "./frame-identity.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = resolve(__dirname, "../..");
@@ -49,10 +50,11 @@ function formatInlinedSkill(skill: { name: string; path: string; content: string
 	].join("\n");
 }
 
-export function buildPileeTftPrompt(command: TftCommandName, args: string, cwd: string): string {
+export function buildPileeTftPrompt(command: TftCommandName, args: string, cwd: string, frameIdentity?: FrameIdentity): string {
 	const targetSkill = readSkill(command);
 	const prerequisiteSkills = PREREQUISITE_SKILLS.map((name) => readSkill(name));
 	const commandLine = `/${command}${args.trim() ? ` ${args.trim()}` : ""}`;
+	const frameIdentitySection = command === "frame" && frameIdentity ? ["", formatFrameIdentityHint(frameIdentity)] : [];
 
 	return [
 		"# pilee TFT command shim",
@@ -72,6 +74,7 @@ export function buildPileeTftPrompt(command: TftCommandName, args: string, cwd: 
 		"----- BEGIN ORIGINAL ARGUMENTS -----",
 		args.trim() || "(none)",
 		"----- END ORIGINAL ARGUMENTS -----",
+		...frameIdentitySection,
 		"",
 		"## Inlined prerequisite skills",
 		...prerequisiteSkills.map(formatInlinedSkill),
@@ -88,7 +91,8 @@ function registerTftCommand(pi: ExtensionAPI, command: TftCommandName): void {
 		description: COMMANDS[command].description,
 		handler: async (args: string, ctx: ExtensionCommandContext) => {
 			try {
-				const prompt = buildPileeTftPrompt(command, args, ctx.cwd);
+				const frameIdentity = command === "frame" ? buildFrameIdentity(ctx, args) : undefined;
+				const prompt = buildPileeTftPrompt(command, args, ctx.cwd, frameIdentity);
 				ctx.ui.notify(`pilee /${command}: SKILL.md를 인라인해 실행합니다.`, "info");
 				pi.sendMessage(
 					{
