@@ -250,7 +250,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 
 ## Extensions
 
-35개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
+36개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
 
 ### 인프라
 
@@ -263,6 +263,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | **mcp-bridge** | `~/.claude.json` mcpServers 프록시 (figma/github/sentry 등) |
 | **dynamic-agents-md** | 파일 탐색 결과에 AGENTS.md 자동 주입 |
 | **tool-group-renderer** | 관련 도구 출력 그룹/축소 |
+| **tft-commands** | `/frame`/`/decide`/`/verify`를 pilee SKILL.md 인라인 실행으로 라우팅 |
 
 ### 세션 관리
 
