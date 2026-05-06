@@ -15,11 +15,12 @@ applies_to:
   - skills/frame
   - skills/decide
   - skills/verify
-  - .context/frame.json
+  - .pi/frame.json
 source:
   - pilee-history:2026-05-01#6
-reviewed_at: 2026-05-05
-reviewed_commit: 70468c2a01aa78453eb5a98cce65e9dc50822f39
+  - pilee-history:2026-05-06#65
+reviewed_at: 2026-05-06
+reviewed_commit: 8f5edeef3baff0455a7178acf07297e221029467
 related:
   - ask-user-question-decision-gates
   - evidence-first-verification-gate
@@ -35,6 +36,10 @@ Frame은 구현 전 자연어 메모가 아니라, Verify가 기계적으로 읽
 ## Contract Shape
 
 `frame.json`에는 성공 기준, 검증 계획, 범위 밖 항목, 엣지 케이스 seed, 위험 register가 구조화되어야 합니다. Verify는 이 계약의 `success_criteria`를 행 단위로 PASS/FAIL 판정합니다. 새 의사결정이 필요하면 `/decide`로 분리하고, 결정 결과를 다시 계약에 반영합니다.
+
+## Co-thinking Boundary
+
+Frame은 구현 plan을 대신 만들지 않습니다. 먼저 사용자가 볼 사고 렌즈와 실제 목표/범위 분기를 드러내고, 그 선택을 바탕으로 검증 계약을 작성합니다. 사용자가 검수해야 할 초점이 보이지 않으면 frame은 정교한 문서여도 TFT로는 실패입니다.
 
 ## Review Trigger
 
