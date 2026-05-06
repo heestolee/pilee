@@ -169,6 +169,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Skill은 재사용 가능한 절차다](./skills-as-portable-procedures.md) | active | high | 2026-05-05 | 059f445 | skill, skill-creator, procedure, porting, workflow, 스킬 |
 | [Command shim은 skill source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-05-06 | 7160f80 | command-shim, skill, tft, frame, slash-command, routing |
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
+| [Worktree 생성은 부모 패널의 게이트다](./worktree-creation-parent-gate.md) | active | high | 2026-05-06 | d1ba5a0 | worktree, fork-panel, parent-panel, hotfix, context, product |
 | [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-05-05 | 059f445 | worktree, workspace, repo, branch, execution-boundary, 워크트리 |
 | [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-05-05 | aa0e440 | worktree, session, revive, fork-panel, panel-inbox, handoff |
 
@@ -229,6 +230,7 @@ graph TD
   doc_skills_as_portable_procedures["Skill은 재사용 가능한 절차다"]
   doc_tft_command_shim_skill_routing["Command shim은 skill source of truth를 지킨다"]
   doc_until_loop_explicit_reporting["Until loop는 종료 조건을 명시 보고한다"]
+  doc_worktree_creation_parent_gate["Worktree 생성은 부모 패널의 게이트다"]
   doc_worktree_execution_boundary["Worktree는 실행 경계다"]
   doc_worktree_session_continuity["Worktree 세션 연속성과 식별성 원칙"]
   doc_self_healing_actionable_loop --> doc_stress_interview_multi_axis_review
@@ -365,6 +367,8 @@ graph TD
   doc_tft_command_shim_skill_routing --> doc_skills_as_portable_procedures
   doc_until_loop_explicit_reporting --> doc_deterministic_vs_ai_actions
   doc_until_loop_explicit_reporting --> doc_evidence_first_verification_gate
+  doc_worktree_creation_parent_gate --> doc_worktree_execution_boundary
+  doc_worktree_creation_parent_gate --> doc_worktree_session_continuity
   doc_worktree_execution_boundary --> doc_session_identity_over_filenames
   doc_worktree_execution_boundary --> doc_worktree_session_continuity
   doc_worktree_session_continuity --> doc_pilee_knowledge_system
@@ -373,7 +377,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 55
-- Links: 138
+- Documents: 56
+- Links: 140
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

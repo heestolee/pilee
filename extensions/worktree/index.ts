@@ -337,6 +337,54 @@ function prefillSwitchCommand(ctx: ExtensionContext, command: string): boolean {
 	return true;
 }
 
+const COMPANY_WORKTREE_REPOS = new Set(["product", "lambda"]);
+
+function getCurrentPanelLabel(): string {
+	const raw = process.env.PI_FORK_PANEL_LABEL?.trim();
+	return raw || "P0";
+}
+
+function isChildForkPanel(): boolean {
+	const label = getCurrentPanelLabel();
+	return /^P\d+$/i.test(label) && label.toUpperCase() !== "P0";
+}
+
+function getKnownRepoName(repoRoot: string): string {
+	return findRegisteredName(loadRegistry(), repoRoot) ?? basename(repoRoot);
+}
+
+function isCompanyWorktreeRepo(repoRoot: string): boolean {
+	const name = getKnownRepoName(repoRoot);
+	return COMPANY_WORKTREE_REPOS.has(name) || /\/creatrip\/(product|lambda)$/.test(repoRoot);
+}
+
+function getWorktreeCreationPanelGuardMessage(repoRoot: string): string | null {
+	if (!isChildForkPanel()) return null;
+	if (!isCompanyWorktreeRepo(repoRoot)) return null;
+	const panelLabel = getCurrentPanelLabel();
+	const repoName = getKnownRepoName(repoRoot);
+	const hotfixHint = COMPANY_WORKTREE_REPOS.has(repoName) ? " 핫픽스라면 --hotfix를 함께 붙이세요." : "";
+	return [
+		`현재 패널은 ${panelLabel} fork panel입니다.`,
+		`${repoName} worktree 생성은 부모 패널(P0)에서 /wt fork로 실행해야 대화 맥락과 base 선택이 깨지지 않습니다.`,
+		`이 패널에서는 /handoff로 조사 결과를 부모에 넘긴 뒤, 부모에서 /wt fork --repo ${repoName}를 실행하세요.${hotfixHint}`,
+	].join(" ");
+}
+
+function hasHotfixIntent(text?: string): boolean {
+	return Boolean(text && /(핫픽스|\bhotfix\b|\bproduction\b|\bprod\b)/i.test(text));
+}
+
+function getHotfixBaseGuardMessage(
+	opts: Pick<NewArgs, "hotfix" | "hotfeature" | "from" | "branch" | "note">,
+	actionLabel: string,
+): string | null {
+	if (opts.hotfix || opts.hotfeature || opts.from) return null;
+	const branch = opts.branch?.toLowerCase();
+	if (!hasHotfixIntent(opts.note) && !hasHotfixIntent(opts.branch) && !branch?.startsWith("hotfix/")) return null;
+	return `${actionLabel}: 핫픽스/production 의도가 보이지만 production base가 지정되지 않았습니다. --hotfix 또는 hotfix: true를 명시하세요.`;
+}
+
 // ─── Ghostty integration ───────────────────────────────────────────────────
 
 async function openInGhostty(pi: ExtensionAPI, cwd: string, direction: WorktreeConfig["ghosttyDirection"]) {
@@ -400,6 +448,11 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 	const parsed = parseNewArgs(args);
 	const repoRoot = await resolveRepoRoot(pi, ctx, parsed.repo);
 	if (!repoRoot) return;
+
+	const panelGuard = getWorktreeCreationPanelGuardMessage(repoRoot);
+	if (panelGuard) { ctx.ui.notify(panelGuard, "error"); return; }
+	const hotfixGuard = getHotfixBaseGuardMessage(parsed, "/wt new");
+	if (hotfixGuard) { ctx.ui.notify(hotfixGuard, "error"); return; }
 
 	// Auto-register if not in registry
 	const { name: registeredName, isNew: justRegistered } = autoRegister(repoRoot);
@@ -1163,6 +1216,11 @@ async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandC
 	const repoRoot = await resolveRepoRoot(pi, ctx, parsed.repo);
 	if (!repoRoot) return;
 
+	const panelGuard = getWorktreeCreationPanelGuardMessage(repoRoot);
+	if (panelGuard) { ctx.ui.notify(panelGuard, "error"); return; }
+	const hotfixGuard = getHotfixBaseGuardMessage(parsed, "/wt fork");
+	if (hotfixGuard) { ctx.ui.notify(hotfixGuard, "error"); return; }
+
 	const { isNew: justRegistered } = autoRegister(repoRoot);
 	if (justRegistered) ctx.ui.notify(`Registered repo "${basename(repoRoot)}"`, "info");
 
@@ -1717,7 +1775,7 @@ async function handleWt(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCon
 		ctx.ui.notify([
 			t.fg("accent", "Usage:"),
 			`  ${t.fg("warning", "/wt new")} ${t.fg("borderAccent", "[name] [--repo <name>] [--hotfix|--hotfeature|--from <branch>] [--ticket COM-XXXX] [--carry-context]")}`,
-			`  ${t.fg("warning", "/wt fork")} ${t.fg("borderAccent", "[name] [--context-file <path>] [--repo <name>]  — 현재 세션 전체를 이어받아 워크트리 생성")}`,
+			`  ${t.fg("warning", "/wt fork")} ${t.fg("borderAccent", "[name] [--context-file <path>] [--repo <name>] [--hotfix|--from <branch>]  — 현재 세션 전체를 이어받아 워크트리 생성")}`,
 			`  ${t.fg("warning", "/wt switch")} ${t.fg("borderAccent", "<name> | <repo>/<name>  — 워크트리 대시보드")}`,
 			`  ${t.fg("warning", "/wt resume")} ${t.fg("borderAccent", "<conductor-workspace>  — Conductor 워크스페이스 복원")}`,
 			`  ${t.fg("warning", "/wt list")} ${t.fg("borderAccent", "[--all]  \u2014 \uc6cc\ud06c\ud2b8\ub9ac \ubaa9\ub85d")}`,
@@ -1766,9 +1824,13 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "worktree_create",
 		label: "Create Worktree",
-		description: "Create a new git worktree for code changes. Use when you need to modify files in product/lambda repos.",
-		promptSnippet: "Create a git worktree for code changes in product/lambda repos. Required before editing files in those repos.",
+		description: "Create a fresh git worktree for code changes. Use only when no investigation/planning context needs to be carried into product/lambda repos.",
+		promptSnippet: "Create a fresh git worktree for code changes in product/lambda repos. Required before editing files there only when context carry is not needed.",
 		promptGuidelines: [
+			"Before any worktree creation, classify: investigation vs implementation, context-carry needed vs fresh, development vs production/hotfix base.",
+			"Use worktree_create only for a fresh implementation session with no valuable investigation/planning context. If context exists, use worktree_fork instead.",
+			"In fork/child panels (P1/P2), do not call worktree_create for product/lambda. Hand off to the parent P0 panel and have the parent run /wt fork.",
+			"If the request mentions hotfix/production/핫픽스, pass hotfix: true. Do not create a development-based hotfix branch.",
 			"Use worktree_create before editing files in product or lambda repos. Do not manually run git worktree add.",
 			"Tool calls cannot execute slash-command session switches directly. After worktree_create succeeds, tell the user to submit the returned /wt switch command (prefilled in interactive UI) and wait before continuing.",
 		],
@@ -1797,6 +1859,14 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			if (!existsSync(repoRoot)) throw new Error(`Repo path missing: ${repoRoot}`);
+
+			const panelGuard = getWorktreeCreationPanelGuardMessage(repoRoot);
+			if (panelGuard) throw new Error(panelGuard);
+			const hotfixGuard = getHotfixBaseGuardMessage(
+				{ hotfix: Boolean(params.hotfix), hotfeature: false, from: undefined, branch: undefined, note: params.note },
+				"worktree_create",
+			);
+			if (hotfixGuard) throw new Error(hotfixGuard);
 
 			const { isNew: justRegistered } = autoRegister(repoRoot);
 			const config = loadConfig(repoRoot);
@@ -1914,10 +1984,13 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "worktree_fork",
 		label: "Fork Worktree",
-		description: "Create a new worktree with current session context carried over. Use when investigation/planning is done in the current session and you want to hand off to a new implementation session.",
+		description: "Create a new worktree with current session context carried over. Use when investigation/planning is done in the current parent session and you want to hand off to a new implementation session.",
 		promptSnippet: "Fork current session into a new worktree, carrying over investigation context and conversation summary.",
 		promptGuidelines: [
+			"Before any worktree creation, classify: investigation vs implementation, context-carry needed vs fresh, development vs production/hotfix base.",
 			"Use worktree_fork instead of worktree_create when you have valuable session context (investigation results, code analysis, plans) to carry over.",
+			"In fork/child panels (P1/P2), do not call worktree_fork for product/lambda. Hand off to the parent P0 panel and have the parent run /wt fork so the parent conversation is the source session.",
+			"If the request mentions hotfix/production/핫픽스, pass hotfix: true. Do not create a development-based hotfix branch.",
 			"The context parameter should be a comprehensive markdown summary: goals, findings, target files, code snippets, and action items.",
 			"Tool calls cannot execute slash-command session switches directly. After worktree_fork succeeds, tell the user to submit the returned /wt switch command (prefilled in interactive UI) and wait before continuing.",
 		],
@@ -1945,6 +2018,14 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			if (!existsSync(repoRoot)) throw new Error(`Repo path missing: ${repoRoot}`);
+
+			const panelGuard = getWorktreeCreationPanelGuardMessage(repoRoot);
+			if (panelGuard) throw new Error(panelGuard);
+			const hotfixGuard = getHotfixBaseGuardMessage(
+				{ hotfix: Boolean(params.hotfix), hotfeature: false, from: undefined, branch: undefined, note: params.note },
+				"worktree_fork",
+			);
+			if (hotfixGuard) throw new Error(hotfixGuard);
 
 			autoRegister(repoRoot);
 			const config = loadConfig(repoRoot);
