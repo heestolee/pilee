@@ -2,9 +2,8 @@ name: "pilee knowledge 정합성 점검"
 
 on:
   schedule:
-    # 매일 02:05 KST에 실행하되, 그날 repo 수정이 없으면 skip
-    - cron: "5 2 * * *"
-      timezone: "Asia/Seoul"
+    # 임시: schedule dispatch 안정화 확인을 위해 5분마다 실행하되, 그날 repo 수정이 없으면 skip
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
