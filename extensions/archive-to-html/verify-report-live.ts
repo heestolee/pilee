@@ -563,55 +563,130 @@ function generateStaticReportHtml(state: VerifyReportState): string {
 		fail: state.items.filter((item) => item.status === "fail").length,
 		skipped: state.items.filter((item) => ["skip", "blocked", "unverified"].includes(item.status)).length,
 	};
+	const title = `${REPORT_SIGNATURE} — ${state.ticket || state.title}`;
+	const outcomeClass = counts.fail > 0 || state.status === "aborted" ? "fail" : counts.skipped > 0 ? "partial" : "pass";
+	const outcomeLabel = counts.fail > 0 || state.status === "aborted" ? "ISSUES FOUND" : counts.skipped > 0 ? "PARTIAL" : "PASSED";
+	const outcomeIcon = outcomeClass === "fail" ? "❌" : outcomeClass === "partial" ? "⚠️" : "✅";
 	return `<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${REPORT_SIGNATURE} — ${escapeHtml(state.ticket || state.title)}</title>
+<title>${escapeHtml(title)}</title>
 <style>
-	:root { ${reportRootVariablesCss()} }
-	body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 1120px; margin: 0 auto; padding: 24px; background: var(--bg); color: var(--text); }
-	h1 { border-bottom: 2px solid var(--line); padding-bottom: 12px; }
-	.meta { color: var(--muted); font-size: 13px; display: flex; gap: 8px; flex-wrap: wrap; }
-	.badge { border: 1px solid var(--line); border-radius: 999px; padding: 3px 8px; background: var(--panel); }
-	table { border-collapse: collapse; width: 100%; margin: 20px 0 28px; }
-	th, td { padding: 8px 10px; border: 1px solid var(--panel2); text-align: left; vertical-align: top; }
-	th { background: var(--panel); }
-	.item { margin-bottom: 34px; }
-	.item h3 { margin-bottom: 6px; }
-	.pass { color: var(--green); font-weight: 700; }
-	.fail { color: var(--red); font-weight: 700; }
-	.skip { color: var(--yellow); font-weight: 700; }
-	.running, .pending { color: var(--accentText); font-weight: 700; }
-	.detail { white-space: pre-wrap; line-height: 1.55; }
-	img { max-width: 100%; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 2px 8px var(--logLine); }
-	figcaption { color: var(--muted); font-size: 12px; margin-top: 4px; }
-	pre { white-space: pre-wrap; overflow: auto; background: var(--panel); border: 1px solid var(--panel2); border-radius: 8px; padding: 12px; }
-	code { background: var(--panel2); border-radius: 4px; padding: 1px 4px; }
+	* { box-sizing: border-box; margin: 0; padding: 0; }
+	body {
+		font-family: -apple-system, BlinkMacSystemFont, 'Pretendard', 'Apple SD Gothic Neo', 'Segoe UI', sans-serif;
+		line-height: 1.6;
+		color: #1f2937;
+		background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+		min-height: 100vh;
+	}
+	.container { max-width: 1100px; margin: 0 auto; padding: 40px 24px; }
+	header {
+		background: linear-gradient(135deg, #10b981 0%, #047857 100%);
+		color: white;
+		padding: 40px;
+		border-radius: 14px;
+		margin-bottom: 32px;
+		box-shadow: 0 10px 25px rgba(16, 185, 129, 0.2);
+	}
+	header h1 { font-size: 28px; line-height: 1.25; margin-bottom: 8px; }
+	header .subtitle { font-size: 16px; opacity: 0.92; }
+	header .meta { margin-top: 16px; font-size: 14px; opacity: 0.88; display: flex; gap: 12px; flex-wrap: wrap; }
+	.badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; background: rgba(255,255,255,0.20); color: inherit; }
+	.badge.outcome.pass { background: rgba(209, 250, 229, .95); color: #065f46; }
+	.badge.outcome.partial { background: rgba(254, 243, 199, .95); color: #92400e; }
+	.badge.outcome.fail { background: rgba(254, 226, 226, .95); color: #991b1b; }
+	section {
+		background: white;
+		border-radius: 14px;
+		padding: 32px;
+		margin-bottom: 24px;
+		box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+	}
+	section h2 { font-size: 22px; margin-bottom: 16px; color: #111827; display: flex; align-items: center; gap: 8px; }
+	section h3 { font-size: 16px; margin-bottom: 8px; color: #374151; }
+	p { margin-bottom: 12px; color: #4b5563; }
+	.pass-banner {
+		background: #d1fae5;
+		border: 1px solid #10b981;
+		color: #065f46;
+		padding: 16px 20px;
+		border-radius: 10px;
+		font-weight: 700;
+		margin-bottom: 16px;
+		font-size: 15px;
+	}
+	.pass-banner.partial { background: #fef3c7; border-color: #f59e0b; color: #92400e; }
+	.pass-banner.fail { background: #fee2e2; border-color: #ef4444; color: #991b1b; }
+	.info-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+	.info-item { background: #f9fafb; padding: 12px 16px; border-radius: 10px; border: 1px solid #e5e7eb; min-width: 0; }
+	.info-item .label { font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+	.info-item .value { font-weight: 700; color: #1f2937; font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 13px; overflow-wrap: anywhere; }
+	table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+	th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+	th { background: #f9fafb; color: #374151; font-weight: 700; }
+	.pass { color: #059669; font-weight: 800; }
+	.fail { color: #dc2626; font-weight: 800; }
+	.skip { color: #d97706; font-weight: 800; }
+	.running, .pending { color: #2563eb; font-weight: 800; }
+	.detail { white-space: pre-wrap; line-height: 1.65; color: #4b5563; }
+	.step { background: #f9fafb; border-radius: 10px; padding: 20px; margin-bottom: 16px; border: 1px solid #e5e7eb; }
+	.step-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+	.step-num { background: #10b981; color: white; min-width: 32px; height: 32px; padding: 0 9px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; flex-shrink: 0; }
+	.step-title { font-weight: 800; color: #1f2937; font-size: 16px; }
+	.step-meta { color: #6b7280; font-size: 13px; margin-top: 2px; }
+	.evidence { display: grid; gap: 14px; margin-top: 14px; }
+	figure { margin: 0; }
+	img { display: block; max-width: 100%; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+	figcaption { color: #6b7280; font-size: 12px; margin-top: 6px; }
+	code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 13px; color: #be185d; }
+	pre { background: #1f2937; color: #f9fafb; padding: 16px; border-radius: 10px; overflow-x: auto; white-space: pre-wrap; font-size: 13px; line-height: 1.5; margin: 12px 0; }
+	pre code { background: none; color: inherit; padding: 0; }
+	@media (max-width: 760px) { .container { padding: 24px 14px; } header, section { padding: 24px; } .info-grid { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
-<h1>${REPORT_SIGNATURE} — ${escapeHtml(state.ticket || state.title)}</h1>
-<p class="meta">
-	<span class="badge">${escapeHtml(new Date(state.createdAt).toLocaleString())}</span>
-	<span class="badge">workspace=${escapeHtml(state.workspaceName)}</span>
-	<span class="badge">status=${escapeHtml(statusLabel(state.status))}</span>
-	<span class="badge">PASS ${counts.pass}</span>
-	<span class="badge">FAIL ${counts.fail}</span>
-	<span class="badge">SKIP/미검증 ${counts.skipped}</span>
-</p>
-${state.summary ? `<h2>요약</h2><p class="detail">${escapeHtml(state.summary)}</p>` : ""}
-${state.finalSummary ? `<h2>최종 메모</h2><p class="detail">${escapeHtml(state.finalSummary)}</p>` : ""}
-<h2>검증 항목</h2>
-<table>
-<thead><tr><th>#</th><th>항목</th><th>분류</th><th>결과</th><th>상세</th></tr></thead>
-<tbody>
-${state.items.map((item) => `<tr><td>${escapeHtml(item.id)}</td><td>${escapeHtml(item.title)}</td><td>${escapeHtml(item.type || "")}</td><td class="${escapeHtml(statusClass(item.status))}">${escapeHtml(statusLabel(item.status))}</td><td>${escapeHtml(item.detail || "")}</td></tr>`).join("\n")}
-</tbody>
-</table>
-<h2>상세 증거</h2>
-${state.items.map((item) => `<section class="item"><h3>${escapeHtml(item.id)}. ${escapeHtml(item.title)}</h3><p><strong>분류</strong>: ${escapeHtml(item.type || "-")} · <strong>결과</strong>: <span class="${escapeHtml(statusClass(item.status))}">${escapeHtml(statusLabel(item.status))}</span></p>${item.detail ? `<p class="detail">${escapeHtml(item.detail)}</p>` : ""}${item.evidence.map((evidence) => renderEvidenceStatic(evidence, state)).join("\n")}</section>`).join("\n")}
+<div class="container">
+<header>
+	<h1>${escapeHtml(title)}</h1>
+	<div class="subtitle">${escapeHtml(state.summary || state.finalSummary || "검증 결과와 캡처 증거를 한눈에 확인하는 리포트")}</div>
+	<div class="meta">
+		<span><strong>일자</strong> ${escapeHtml(new Date(state.createdAt).toLocaleString())}</span>
+		<span><strong>workspace</strong> ${escapeHtml(state.workspaceName)}</span>
+		<span><strong>status</strong> ${escapeHtml(statusLabel(state.status))}</span>
+		<span class="badge outcome ${outcomeClass}">${outcomeLabel}</span>
+	</div>
+</header>
+
+<section>
+	<h2>📋 요약</h2>
+	<div class="pass-banner ${outcomeClass}">${outcomeIcon} <strong>${counts.pass} passed</strong> · ${counts.fail} failed · ${counts.skipped} skipped/unverified</div>
+	${state.finalSummary ? `<p class="detail">${escapeHtml(state.finalSummary)}</p>` : state.summary ? `<p class="detail">${escapeHtml(state.summary)}</p>` : ""}
+	<div class="info-grid">
+		<div class="info-item"><div class="label">report</div><div class="value">${escapeHtml(state.reportPath)}</div></div>
+		<div class="info-item"><div class="label">run id</div><div class="value">${escapeHtml(state.runId)}</div></div>
+		<div class="info-item"><div class="label">items</div><div class="value">${state.items.length}</div></div>
+		<div class="info-item"><div class="label">archive</div><div class="value">${escapeHtml(state.archivePath || "-")}</div></div>
+	</div>
+</section>
+
+<section>
+	<h2>🧪 검증 항목</h2>
+	<table>
+	<thead><tr><th>#</th><th>항목</th><th>분류</th><th>결과</th><th>상세</th></tr></thead>
+	<tbody>
+	${state.items.map((item) => `<tr><td>${escapeHtml(item.id)}</td><td>${escapeHtml(item.title)}</td><td>${escapeHtml(item.type || "")}</td><td class="${escapeHtml(statusClass(item.status))}">${escapeHtml(statusLabel(item.status))}</td><td>${escapeHtml(item.detail || "")}</td></tr>`).join("\n")}
+	</tbody>
+	</table>
+</section>
+
+<section>
+	<h2>📸 상세 증거</h2>
+	${state.items.map((item) => `<div class="step"><div class="step-header"><div class="step-num">${escapeHtml(item.id)}</div><div><div class="step-title">${escapeHtml(item.title)}</div><div class="step-meta">${escapeHtml(item.type || "-")} · <span class="${escapeHtml(statusClass(item.status))}">${escapeHtml(statusLabel(item.status))}</span></div></div></div>${item.detail ? `<p class="detail">${escapeHtml(item.detail)}</p>` : ""}<div class="evidence">${item.evidence.map((evidence) => renderEvidenceStatic(evidence, state)).join("\n")}</div></div>`).join("\n")}
+</section>
+</div>
 </body>
 </html>`;
 }
