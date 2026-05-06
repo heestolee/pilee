@@ -166,6 +166,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [종료된 포크는 transcript 주입보다 revive가 우선이다](./revive-over-transcript-recall.md) | active | high | 2026-05-05 | 059f445 | revive, recall, fork-panel, session, continuity, 세션 |
 | [세션 식별자는 파일명이 아니라 사람이 본 이름이다](./session-identity-over-filenames.md) | active | high | 2026-05-05 | 059f445 | session, title, identity, session_info, worktree, revive |
 | [Skill은 재사용 가능한 절차다](./skills-as-portable-procedures.md) | active | high | 2026-05-05 | 059f445 | skill, skill-creator, procedure, porting, workflow, 스킬 |
+| [Command shim은 skill source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-05-06 | 7160f80 | command-shim, skill, tft, frame, slash-command, routing |
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
 | [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-05-05 | 059f445 | worktree, workspace, repo, branch, execution-boundary, 워크트리 |
 | [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-05-05 | aa0e440 | worktree, session, revive, fork-panel, panel-inbox, handoff |
@@ -224,6 +225,7 @@ graph TD
   doc_revive_over_transcript_recall["종료된 포크는 transcript 주입보다 revive가 우선이다"]
   doc_session_identity_over_filenames["세션 식별자는 파일명이 아니라 사람이 본 이름이다"]
   doc_skills_as_portable_procedures["Skill은 재사용 가능한 절차다"]
+  doc_tft_command_shim_skill_routing["Command shim은 skill source of truth를 지킨다"]
   doc_until_loop_explicit_reporting["Until loop는 종료 조건을 명시 보고한다"]
   doc_worktree_execution_boundary["Worktree는 실행 경계다"]
   doc_worktree_session_continuity["Worktree 세션 연속성과 식별성 원칙"]
@@ -353,6 +355,9 @@ graph TD
   doc_session_identity_over_filenames --> doc_worktree_session_continuity
   doc_skills_as_portable_procedures --> doc_context_loading_minimal_surface
   doc_skills_as_portable_procedures --> doc_judgment_doc_unit
+  doc_tft_command_shim_skill_routing --> doc_frame_verify_contract
+  doc_tft_command_shim_skill_routing --> doc_queued_command_prefill_boundary
+  doc_tft_command_shim_skill_routing --> doc_skills_as_portable_procedures
   doc_until_loop_explicit_reporting --> doc_deterministic_vs_ai_actions
   doc_until_loop_explicit_reporting --> doc_evidence_first_verification_gate
   doc_worktree_execution_boundary --> doc_session_identity_over_filenames
@@ -363,7 +368,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 53
-- Links: 132
+- Documents: 54
+- Links: 135
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
