@@ -14,6 +14,7 @@ argument-hint: "[base-url] [--upload] [--update] [--ask-before]"
 - **캡처/증거 우선**: UI는 화면 캡처를 우선 증거로 삼고, 비가시 동작은 성공 기준을 어떤 로그/결과로 확인할지 먼저 정한다.
 - **미검증 명시**: 자동화로 확인하지 못한 항목은 PASS로 쓰지 않고 `미검증`/`blocked`/`Coverage Gap`에 남긴다.
 - **짧고 초점 있는 primary evidence**: 리포트 본문 핵심 증거는 viewport/섹션/element crop을 우선한다. 세로로 긴 full-page 캡처는 필요할 때만 보조 증거로 남기고 토글/appendix/link 뒤에 둔다.
+- **Before/After 비교는 판단해서 포함**: 기존 UI/동작이 기준점으로 의미 있는 변경은 작업 전(before)과 작업 후(after)를 같은 축/viewport/role로 캡처하고, 차이를 설명한다. 신규 화면처럼 baseline이 없거나 부작용 위험이 큰 경우는 생략 사유를 남긴다.
 - **업로드 opt-in**: 기본 `/verify-report`는 로컬 리포트 확인까지만 한다. agent-storage 업로드와 PR 본문 갱신은 `--upload` 또는 사용자의 명시적 업로드 액션이 있을 때만 한다.
 - **프리뷰 강제**: HTML 생성 후 Glimpse WebView로 먼저 보여주고, 사용자가 확인한 뒤 다음 행동을 정한다.
 
@@ -66,6 +67,7 @@ argument-hint: "[base-url] [--upload] [--update] [--ask-before]"
 | typography/logo/token 변경 | screenshot + DOM class/token + computed `font-size`/`line-height` |
 | table/card/overflow 변경 | empty state + data state + overflow/scroll state |
 | option/default selection 변경 | no data + data exists + stale/refresh selection 유지 |
+| 기존 UI/동작을 바꾸는 수정 | 같은 route/action/viewport/role의 before + after 비교 |
 
 > 더 자세한 프리셋은 [references/coverage-and-capture-quality.md](references/coverage-and-capture-quality.md)를 따른다.
 
@@ -86,8 +88,8 @@ argument-hint: "[base-url] [--upload] [--update] [--ask-before]"
 | # | 성공 기준 / 검증 축 | 캡처/증거 유형 | 환경 메타데이터 | 이유 |
 |---|----------------------|----------------|------------------|------|
 | V1 | dev 스팟상세에서 GA 이벤트 미발화 | NETWORK | dev / reload+scroll / anonymous | 화면 변화 없음, 네트워크 요청 여부가 핵심 증거 |
-| V2 | 신규 버튼 노출 — mobile 390px | UI_CAPTURE | local / 390×844 / member | 화면에 보이는 상태는 캡처가 가장 확실 |
-| V3 | 신규 버튼 노출 — desktop 1440px | UI_CAPTURE | local / 1440×900 / member | responsive 회귀를 막기 위한 별도 축 |
+| V2 | 신규 버튼 노출 — mobile 390px | UI_CAPTURE | before=base / after=local / 390×844 / member | 화면에 보이는 상태는 before/after 비교가 가장 명확 |
+| V3 | 신규 버튼 노출 — desktop 1440px | UI_CAPTURE | before=base / after=local / 1440×900 / member | responsive 회귀를 막기 위한 별도 축 |
 | V4 | 권한 없는 mutation 차단 | BE | preview / unauthorized role | API 응답/권한 로직 검증 |
 ```
 
@@ -99,6 +101,12 @@ which ffmpeg          # GIF 항목이 있을 때만. 미설치 시: brew install
 ```
 
 대상 URL: `$ARGUMENTS` > Preview URL (PR 감지) > dev/staging URL > 로컬 서버 순으로 자동 감지 후 AskUserQuestion으로 확인한다. 환경 차이가 검증 결과에 영향을 주는 경우(`NODE_ENV` vs 배포 환경 등)는 리포트에 명시한다.
+
+Before/After가 필요한 항목은 before 기준도 함께 정한다.
+
+- 우선순위: 사용자 제공 before URL/capture > PR base preview/develop/production > base branch local 실행 > 기존 report/archive capture
+- before와 after는 가능한 한 같은 route, query, data fixture, viewport, role, action으로 맞춘다.
+- before 재현이 과도하게 비싸거나 데이터/결제/외부 side effect 위험이 있으면 캡처하지 말고 `before 생략 사유`를 Coverage Gap 또는 detail에 남긴다.
 
 ## Step 3: 로그인/권한 Credential 확보
 
@@ -129,12 +137,26 @@ which ffmpeg          # GIF 항목이 있을 때만. 미설치 시: brew install
 
 파일명: kebab-case `{항목번호}-{설명}.{png|gif|json|txt}`
 
-UI 캡처 계획은 primary/supporting을 분리한다.
+UI 캡처 계획은 primary/supporting과 before/after 여부를 분리한다.
 
 | 역할 | 권장 형태 | 리포트 표시 |
 |------|-----------|-------------|
-| primary evidence | viewport crop, section crop, element crop | 본문에 바로 표시 |
+| primary before | 변경 전 기준 상태의 viewport/section/element crop | after와 같은 항목에 나란히 표시 |
+| primary after | 변경 후 검증 상태의 viewport/section/element crop | before와 같은 항목에 나란히 표시 |
 | supporting context | full-page, 긴 스크롤 캡처, raw debug screenshot | 토글/details/appendix/link 뒤에 표시 |
+
+Before/After는 다음 조건이면 포함한다.
+
+- 기존 UI/동작의 개선·회귀 방지가 핵심인 변경
+- 사용자가 “기존 대비”, “전/후”, “깨짐/복구”, “regression”을 언급한 변경
+- responsive/nav/typography처럼 전 상태와 비교할 때 의도가 더 분명해지는 변경
+
+다음 조건이면 생략 가능하지만 사유를 남긴다.
+
+- 완전히 신규 화면/기능이라 의미 있는 before가 없음
+- before 환경을 띄우는 비용이 검증 가치보다 큼
+- 결제/알림/외부 API처럼 before 재현이 side effect를 만들 수 있음
+- 동일 데이터/권한 상태를 맞출 수 없어 비교가 오히려 오해를 부름
 
 세로 1600px 이상 또는 viewport 높이의 2배 이상인 이미지는 primary evidence로 쓰지 말고 crop을 추가한다. `verify_report_live` HTML은 긴 이미지를 자동으로 접힌 토글에 넣지만, 검증 품질상 primary crop을 별도로 남겨야 한다.
 
@@ -191,12 +213,14 @@ URL: https://dev.creatrip.com/en/spot/13214
 ```
 
 - UI 캡처 증거: primary crop PNG/GIF를 먼저 남기고, full-page는 필요 시 supporting으로 남긴다.
+- Before/After 증거: label을 `Before — ...`, `After — ...`로 시작하고, detail에 “무엇이 달라져야 하는지 / 달라지면 안 되는지”를 설명한다.
 - NETWORK 증거: 필터 조건, matched count, matched request 목록을 JSON/TXT로 남긴다.
 - CONSOLE 증거: 콘솔 error/warn/log excerpt를 남긴다.
 - CODE_DIFF 증거: 관련 파일/라인과 diff summary를 남긴다.
 
 PASS 처리 조건:
 - 성공 기준의 모든 필수 coverage axis가 증거로 닫혔을 때만 `pass`.
+- before/after가 필요한 항목은 after만 캡처하고 PASS로 닫지 않는다. before 생략이 정당하면 detail에 사유를 명시한다.
 - 캡처가 있어도 축이 빠졌으면 `unverified` 또는 별도 Coverage Gap 항목으로 남긴다.
 - 자동화/권한/외부 환경 때문에 못 본 항목은 `blocked`로 남기고 차단 사유를 적는다.
 
@@ -278,6 +302,7 @@ Blocked / Known unrelated failures
 |--------|------|
 | 화면 변화가 있는 검증 | PNG/GIF 캡처를 우선 증거로 남긴다. |
 | responsive/layout 변경 | mobile + breakpoint boundary + desktop 축을 모두 계획하고, 누락 시 Coverage Gap으로 남긴다. |
+| 기존 대비 변경이 중요한 UI | before + after를 같은 viewport/role/action으로 캡처하고 차이를 설명한다. |
 | 긴 full-page 캡처 | primary evidence로 쓰지 않는다. crop/section 이미지를 본문에 두고 full-page는 토글/appendix/link로 둔다. |
 | 화면 변화가 없는 검증 | UI 캡처로 억지 증명하지 말고 NETWORK/CONSOLE/CODE_DIFF 증거로 남긴다. |
 | GA/픽셀 미발화 검증 | `targetEvents`, 필터 조건, matched count, matched requests를 JSON으로 저장한다. |

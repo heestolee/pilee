@@ -575,7 +575,8 @@ function generateLivePage(initialState: unknown): string {
 	.status.running { color:var(--accentText); border-color:var(--accent); }
 	.status.skip, .status.blocked, .status.unverified { color:var(--yellow); border-color:var(--yellow); }
 	.detail { color:var(--detail); line-height:1.55; white-space:pre-wrap; }
-	.evidence { display:grid; gap:12px; margin-top:12px; }
+	.evidence { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap:12px; margin-top:12px; align-items:start; }
+	.evidence > p, .evidence > pre, .evidence > details, .evidence > a { grid-column:1 / -1; }
 	figure { margin:0; }
 	img { display:block; max-width:100%; border:1px solid var(--line); border-radius:12px; background:var(--imageBg); }
 	figcaption { color:var(--muted); font-size:12px; margin-top:6px; }
@@ -740,7 +741,8 @@ function generateStaticReportHtml(state: VerifyReportState): string {
 	.step-num { background: #10b981; color: white; min-width: 32px; height: 32px; padding: 0 9px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; flex-shrink: 0; }
 	.step-title { font-weight: 800; color: #1f2937; font-size: 16px; }
 	.step-meta { color: #6b7280; font-size: 13px; margin-top: 2px; }
-	.evidence { display: grid; gap: 14px; margin-top: 14px; }
+	.evidence { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 14px; margin-top: 14px; align-items: start; }
+	.evidence > p, .evidence > pre, .evidence > details, .evidence > a { grid-column: 1 / -1; }
 	figure { margin: 0; }
 	img { display: block; max-width: 100%; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
 	figcaption { color: #6b7280; font-size: 12px; margin-top: 6px; }
@@ -840,6 +842,7 @@ export function registerVerifyReportLive(pi: ExtensionAPI) {
 			"Use verify_report_live for /verify-report workflows: start after defining verification coverage, update after each item with status/evidence, then finish to export report.html.",
 			"Evidence must close the stated criterion. If a required axis is not checked, keep that item unverified/blocked instead of marking pass.",
 			"For UI evidence, prefer focused viewport or section crops as primary evidence. Tall/full-page images are auto-collapsed in the report and should be supporting context only.",
+			"When existing UI/behavior is the baseline, include Before and After image evidence in the same item when practical, with labels that state environment/viewport/role.",
 			"Do not use verify_report_live to upload reports or modify PRs; upload remains opt-in via the verify-report skill.",
 		],
 		parameters: Type.Object({
