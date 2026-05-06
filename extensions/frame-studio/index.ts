@@ -173,7 +173,7 @@ function listenOnLoopback(server: Server): Promise<string> {
 }
 
 function buildPageHtml(): string {
-	return `<!doctype html>
+	return String.raw`<!doctype html>
 <html lang="ko">
 <head>
 <meta charset="utf-8" />
