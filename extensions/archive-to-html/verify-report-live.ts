@@ -488,6 +488,22 @@ function readImageDimensions(filePath: string): ImageDimensions | null {
 					height: 1 + buffer.readUIntLE(27, 3),
 				};
 			}
+			if (chunk === "VP8 " && buffer.length >= 30 && buffer[23] === 0x9d && buffer[24] === 0x01 && buffer[25] === 0x2a) {
+				return {
+					width: buffer.readUInt16LE(26) & 0x3fff,
+					height: buffer.readUInt16LE(28) & 0x3fff,
+				};
+			}
+			if (chunk === "VP8L" && buffer.length >= 25 && buffer[20] === 0x2f) {
+				const b0 = buffer[21];
+				const b1 = buffer[22];
+				const b2 = buffer[23];
+				const b3 = buffer[24];
+				return {
+					width: 1 + (((b1 & 0x3f) << 8) | b0),
+					height: 1 + (((b3 & 0x0f) << 10) | (b2 << 2) | ((b1 & 0xc0) >> 6)),
+				};
+			}
 		}
 	} catch {}
 	return null;
