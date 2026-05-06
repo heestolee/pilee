@@ -1,0 +1,39 @@
+name: cron-smoke
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    # Temporary smoke test: every 5 minutes to verify GitHub schedule dispatch.
+    - cron: "*/5 * * * *"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+
+    steps:
+      - name: Print event context
+        run: |
+          echo "event_name=${{ github.event_name }}"
+          echo "schedule=${{ github.event.schedule || '' }}"
+          echo "ref=${{ github.ref }}"
+          echo "sha=${{ github.sha }}"
+          echo "utc_now=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          echo "kst_now=$(TZ=Asia/Seoul date +'%Y-%m-%dT%H:%M:%S%z')"
+
+      - name: Write summary
+        run: |
+          {
+            echo "## cron-smoke"
+            echo ""
+            echo "- event: ${{ github.event_name }}"
+            echo "- schedule: ${{ github.event.schedule || '' }}"
+            echo "- ref: ${{ github.ref }}"
+            echo "- sha: ${{ github.sha }}"
+            echo "- UTC: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo "- KST: $(TZ=Asia/Seoul date +'%Y-%m-%dT%H:%M:%S%z')"
+          } >> "$GITHUB_STEP_SUMMARY"
