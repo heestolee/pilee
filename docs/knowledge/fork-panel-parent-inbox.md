@@ -18,8 +18,8 @@ source:
   - pilee-history:2026-05-05#39
   - pilee-history:2026-05-05#40
   - pilee-history:2026-05-05#41
-reviewed_at: 2026-05-05
-reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
+reviewed_at: 2026-05-06
+reviewed_commit: 4c927abf3c3ea5aa55d80f8b85f7f48fddf47706
 related:
   - revive-over-transcript-recall
   - session-identity-over-filenames
@@ -38,4 +38,4 @@ supersedes:
 
 ## Identity Rule
 
-자식 패널은 `P1`, `P2`처럼 부모 기준 주소를 갖고, 그 label을 입력창 메타에 표시합니다. inbox item도 panel label, parent session, title, summary를 함께 보존합니다.
+최초/부모 패널은 `P0`로 표시하고, 자식 패널은 `P1`, `P2`처럼 부모 기준 주소를 갖습니다. 이 label은 입력창 메타에 표시해 현재 패널의 위치를 즉시 식별하게 하고, inbox item도 panel label, parent session, title, summary를 함께 보존합니다.
