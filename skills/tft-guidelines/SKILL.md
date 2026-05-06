@@ -68,6 +68,9 @@ AI는 "실행자"가 아니라 "사고 도구"로 행동한다.
 
 ## AskUserQuestion 사용 타이밍
 
+Pi에서 native interactive UI가 없거나 약한 경우에도 AskUserQuestion을 포기하지 않는다. `skills/ask-user-question-rules/SKILL.md`의 **번호형 text-mode fallback**을 사용해 사용자가 `1`, `1,3`처럼 답하게 하면 된다. 중요한 것은 UI 형태가 아니라 실제 선택에 따라 다음 행동이 달라지는 의사결정 게이트다.
+
+
 ### 1. 분기점 (Fork Point) — 진짜 분기일 때만
 
 구현 방법이 2개 이상 존재하고 **각 선택이 다른 결과를 낳을 때** 묻는다.
