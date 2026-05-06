@@ -211,7 +211,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | extension | `extensions/subagent` | [Self-healing은 actionable item만 수정한다](./docs/knowledge/self-healing-actionable-loop.md)<br>[Stress Interview는 다축 검토다](./docs/knowledge/stress-interview-multi-axis-review.md)<br>[Codex-first subagent 모델 운용 정책](./docs/knowledge/subagent-model-policy.md)<br>[Subagent 위임은 구체 프롬프트를 요구한다](./docs/knowledge/subagent-prompt-specificity.md) |
 | extension | `extensions/supervisor` | [Supervisor는 outcome guardrail이다](./docs/knowledge/supervisor-outcome-guardrail.md) |
 | extension | `extensions/tasks` | [Idle UI는 장식이 아니라 ambient status다](./docs/knowledge/ambient-status-surfaces.md)<br>[Backlog는 원 세션 출처를 보존한다](./docs/knowledge/backlog-source-session-provenance.md) |
-| extension | `extensions/tft-commands` | [Command shim은 skill source of truth를 지킨다](./docs/knowledge/tft-command-shim-skill-routing.md) |
+| extension | `extensions/tft-commands` | [Frame identity는 cwd보다 작업 의도를 우선한다](./docs/knowledge/frame-planning-identity.md)<br>[Command shim은 skill source of truth를 지킨다](./docs/knowledge/tft-command-shim-skill-routing.md) |
 | extension | `extensions/timestamp` | [색상은 정보 위계다](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다](./docs/knowledge/tui-rendering-sanitization.md) |
 | extension | `extensions/tool-group-renderer` | [도구 출력은 대화 흐름을 침범하지 않는다](./docs/knowledge/tool-output-noise-management.md) |
 | extension | `extensions/until` | [Until loop는 종료 조건을 명시 보고한다](./docs/knowledge/until-loop-explicit-reporting.md) |
@@ -227,7 +227,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | skill | `skills/db-write-migration` | [DB write는 인간 실행 게이트를 가진다](./docs/knowledge/database-write-human-execution-gate.md) |
 | skill | `skills/debugging-and-error-recovery` | [수정 전에 근본 원인을 좁힌다](./docs/knowledge/root-cause-before-fix.md) |
 | skill | `skills/decide` | [AskUserQuestion은 의사결정 게이트다](./docs/knowledge/ask-user-question-decision-gates.md)<br>[AskUserQuestion 옵션은 행동 분기를 표현한다](./docs/knowledge/ask-user-question-option-design.md)<br>[Frame과 Verify는 구조화 계약이다](./docs/knowledge/frame-verify-contract.md)<br>[Command shim은 skill source of truth를 지킨다](./docs/knowledge/tft-command-shim-skill-routing.md) |
-| skill | `skills/frame` | [AskUserQuestion은 의사결정 게이트다](./docs/knowledge/ask-user-question-decision-gates.md)<br>[AskUserQuestion 옵션은 행동 분기를 표현한다](./docs/knowledge/ask-user-question-option-design.md)<br>[Frame과 Verify는 구조화 계약이다](./docs/knowledge/frame-verify-contract.md)<br>[Command shim은 skill source of truth를 지킨다](./docs/knowledge/tft-command-shim-skill-routing.md) |
+| skill | `skills/frame` | [AskUserQuestion은 의사결정 게이트다](./docs/knowledge/ask-user-question-decision-gates.md)<br>[AskUserQuestion 옵션은 행동 분기를 표현한다](./docs/knowledge/ask-user-question-option-design.md)<br>[Frame identity는 cwd보다 작업 의도를 우선한다](./docs/knowledge/frame-planning-identity.md)<br>[Frame과 Verify는 구조화 계약이다](./docs/knowledge/frame-verify-contract.md)<br>[Command shim은 skill source of truth를 지킨다](./docs/knowledge/tft-command-shim-skill-routing.md) |
 | skill | `skills/git-workflow-and-versioning` | [변경 통합은 작은 단위와 검증을 요구한다](./docs/knowledge/change-integration-discipline.md) |
 | skill | `skills/incremental-implementation` | [변경 통합은 작은 단위와 검증을 요구한다](./docs/knowledge/change-integration-discipline.md) |
 | skill | `skills/jira-issue-management` | [외부 이슈 업데이트는 preview gate를 지난다](./docs/knowledge/external-issue-preview-gate.md) |

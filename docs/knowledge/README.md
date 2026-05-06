@@ -160,6 +160,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [외부 이슈 업데이트는 preview gate를 지난다](./external-issue-preview-gate.md) | active | medium | 2026-05-05 | 059f445 | jira, issue, preview, wiki-markup, external-update, approval |
 | [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-05-06 | 4c927ab | fork-panel, handoff, inbox, inject, parent, panel |
 | [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-05-05 | 059f445 | fork-panel, revive, repanel, ghostty, spatial, panel |
+| [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-05-06 | d1ba5a0 | frame, planning, identity, home-directory, ticket, session-title |
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-05-05 | 059f445 | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | medium | 2026-05-05 | 059f445 | local-dev, server, startup, diagnosis, product, dev |
 | [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-05-05 | 059f445 | queued-messages, slash-command, prefill, worktree, session, boundary |
@@ -219,6 +220,7 @@ graph TD
   doc_external_issue_preview_gate["외부 이슈 업데이트는 preview gate를 지난다"]
   doc_fork_panel_parent_inbox["Fork-panel handoff는 parent inbox로 들어간다"]
   doc_fork_panel_spatial_continuity["Fork-panel 위치는 작업 맥락의 일부다"]
+  doc_frame_planning_identity["Frame identity는 cwd보다 작업 의도를 우선한다"]
   doc_live_artifact_preview_pattern["Live artifact는 local preview first다"]
   doc_local_dev_startup_diagnosis["로컬 개발 서버 시작은 진단 가능한 절차여야 한다"]
   doc_queued_command_prefill_boundary["Queued command는 실행 보장이 아니다"]
@@ -339,6 +341,9 @@ graph TD
   doc_fork_panel_spatial_continuity --> doc_revive_over_transcript_recall
   doc_fork_panel_spatial_continuity --> doc_session_identity_over_filenames
   doc_fork_panel_spatial_continuity --> doc_terminal_host_integration
+  doc_frame_planning_identity --> doc_frame_verify_contract
+  doc_frame_planning_identity --> doc_session_identity_over_filenames
+  doc_frame_planning_identity --> doc_worktree_session_continuity
   doc_live_artifact_preview_pattern --> doc_artifact_archive_reopenability
   doc_live_artifact_preview_pattern --> doc_verify_report_workflow
   doc_live_artifact_preview_pattern --> doc_web_search_curator
@@ -368,7 +373,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 54
-- Links: 135
+- Documents: 55
+- Links: 138
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

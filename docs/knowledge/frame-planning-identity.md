@@ -1,0 +1,37 @@
+---
+title: Frame identity는 cwd보다 작업 의도를 우선한다
+tags:
+  - frame
+  - planning
+  - identity
+  - home-directory
+  - ticket
+  - session-title
+category: workflow
+status: active
+applies_to:
+  - skills/frame
+  - extensions/tft-commands
+source:
+  - pilee-history:2026-05-06#66
+reviewed_at: 2026-05-06
+reviewed_commit: d1ba5a0
+related:
+  - frame-verify-contract
+  - session-identity-over-filenames
+  - worktree-session-continuity
+---
+
+## Judgment
+
+Frame identity should follow the user's work unit, not the current directory alone. Home directory planning sessions often start before a worktree exists, so `~/` cannot be the owner of a frame. It is shared by many planning tabs and would collide immediately.
+
+## Identity Order
+
+1. If a worktree is present, use a worktree-bound frame.
+2. If no worktree exists but a ticket is visible, use a ticket-bound planning frame.
+3. If neither exists, use a session-bound planning frame: the bottom/session title is the display label, while the internal key is derived from the session file.
+
+## Boundary Rule
+
+Session title is human identity, not a stable key. It can change and collide, so it should be shown in Glimpse/report titles but backed by a session file hash. When a worktree is later created, the planning frame should be promotable into that worktree's `.pi/frame.json`.
