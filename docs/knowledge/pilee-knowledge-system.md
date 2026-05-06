@@ -17,7 +17,7 @@ applies_to:
   - docs/knowledge
   - scripts/knowledge.mjs
   - skills/pilee-knowledge
-  - .github/workflows/knowledge-sync.yml
+  - .github/workflows/knowledge-review-sync.yml
 source:
   - pilee-history:2026-05-05#knowledge-system
 reviewed_at: 2026-05-05

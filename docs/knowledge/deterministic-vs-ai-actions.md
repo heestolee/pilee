@@ -12,7 +12,7 @@ status: active
 applies_to:
   - scripts/knowledge.mjs
   - docs/knowledge
-  - .github/workflows/knowledge-sync.yml
+  - .github/workflows/knowledge-review-sync.yml
 source:
   - pilee-history:2026-05-05#50
   - pilee-history:2026-05-05#52

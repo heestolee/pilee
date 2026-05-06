@@ -12,7 +12,7 @@ status: active
 applies_to:
   - docs/knowledge
   - scripts/knowledge.mjs
-  - .github/workflows/knowledge-sync.yml
+  - .github/workflows/knowledge-review-sync.yml
   - skills/pilee-knowledge
 source:
   - session-backfill:2026-05-05#confidence-review-policy

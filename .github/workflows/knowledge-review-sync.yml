@@ -1,10 +1,16 @@
-name: "pilee knowledge 정합성 점검"
+name: "pilee knowledge sync"
 
 on:
   schedule:
-    # 임시: schedule dispatch 안정화 확인을 위해 5분마다 실행하되, 그날 repo 수정이 없으면 skip
-    - cron: "*/5 * * * *"
+    # KST 02:13 / 02:43 / 03:13. Multiple windows reduce GitHub schedule drop risk.
+    - cron: "13 17 * * *"
+    - cron: "43 17 * * *"
+    - cron: "13 18 * * *"
   workflow_dispatch:
+
+concurrency:
+  group: pilee-knowledge-sync
+  cancel-in-progress: false
 
 jobs:
   knowledge-sync:
