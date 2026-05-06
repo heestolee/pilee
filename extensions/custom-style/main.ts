@@ -4,17 +4,18 @@ import { type CustomStyleConfig, ensureConfigExists, loadConfig } from "./config
 import { installFooter } from "./footer.ts";
 import { isCodexFastModeEnabled, shouldUseCodexFastBadge } from "./footer-state.ts";
 import { promptSuggestLiteStore } from "../prompt-suggest-lite/shared.ts";
+import { getForkPanelLabel } from "./panel-label.ts";
 import { PolishedEditor } from "./ui.ts";
 
 type SyncedState = {
 	modelLabel: string;
-	panelLabel?: string;
+	panelLabel: string;
 };
 
 function syncState(ctx: ExtensionContext): SyncedState {
 	return {
 		modelLabel: ctx.model?.id ?? "no-model",
-		panelLabel: process.env.PI_FORK_PANEL_LABEL?.trim() || undefined,
+		panelLabel: getForkPanelLabel(),
 	};
 }
 
@@ -41,9 +42,7 @@ function installEditor(pi: ExtensionAPI, ctx: ExtensionContext, getState: () => 
 				const modelLabel = shouldUseCodexFastBadge(ctx.model?.provider, isCodexFastModeEnabled())
 					? `${state.modelLabel} ⚡`
 					: state.modelLabel;
-				const panelPrefix = state.panelLabel
-					? `${ctx.ui.theme.fg("accent", state.panelLabel)}${ctx.ui.theme.fg("border", " · ")}`
-					: "";
+				const panelPrefix = `${ctx.ui.theme.fg("accent", state.panelLabel)}${ctx.ui.theme.fg("border", " · ")}`;
 				return `${panelPrefix}${ctx.ui.theme.fg("accent", modelLabel)}`;
 			},
 			() => pi.getThinkingLevel(),
@@ -78,7 +77,7 @@ export default function (pi: ExtensionAPI) {
 	let currentConfig: CustomStyleConfig = loadConfig();
 	let latestSyncedState: SyncedState = {
 		modelLabel: "no-model",
-		panelLabel: process.env.PI_FORK_PANEL_LABEL?.trim() || undefined,
+		panelLabel: getForkPanelLabel(),
 	};
 
 	const doSync = (ctx: ExtensionContext) => {
