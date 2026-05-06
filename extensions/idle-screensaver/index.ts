@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, watchFile, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionContext, ThemeColor } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { visibleWidth } from "@mariozechner/pi-tui";
@@ -67,6 +67,33 @@ type ScreensaverTheme = { fg: (color: ThemeColor, text: string) => string; bold:
 
 // ─── Timer helpers ─────────────────────────────────────────────────────────
 
+function applyConfig(next: ScreensaverConfig): void {
+	Object.assign(config, next);
+}
+
+function reloadConfig(): void {
+	applyConfig(loadConfig());
+}
+
+function saveConfig(next: ScreensaverConfig): void {
+	mkdirSync(dirname(CONFIG_PATH), { recursive: true });
+	writeFileSync(CONFIG_PATH, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+	applyConfig(next);
+}
+
+function saveEnabledConfig(enabled: boolean): void {
+	saveConfig({ ...loadConfig(), enabled });
+}
+
+function syncConfigFromDisk(): void {
+	reloadConfig();
+	if (!config.enabled) {
+		clearIdleTimer();
+		return;
+	}
+	scheduleIdleTimer();
+}
+
 function clearIdleTimer(): void {
 	if (idleTimer) {
 		clearTimeout(idleTimer);
@@ -76,14 +103,19 @@ function clearIdleTimer(): void {
 
 function scheduleIdleTimer(): void {
 	clearIdleTimer();
+	reloadConfig();
 	if (!config.enabled) return;
 	if (agentRunning || overlayActive || askUserQuestionActive) return;
 	idleTimer = setTimeout(() => void showScreensaver(), config.idleMinutes * 60 * 1000);
 }
 
+watchFile(CONFIG_PATH, { interval: 1000, persistent: false }, syncConfigFromDisk);
+
 // ─── Show screensaver ──────────────────────────────────────────────────────
 
-async function showScreensaver(): Promise<void> {
+async function showScreensaver({ force = false }: { force?: boolean } = {}): Promise<void> {
+	reloadConfig();
+	if (!force && !config.enabled) return;
 	if (!latestCtx?.hasUI) return;
 
 	overlayActive = true;
@@ -327,27 +359,28 @@ export default function (pi: ExtensionAPI): void {
 
 	// /screensaver command
 	pi.registerCommand("screensaver", {
-		description: "Idle screensaver controls (/screensaver show|on|off|config)",
+		description: "Global idle screensaver controls (/screensaver show|on|off|config)",
 		async handler(args, ctx) {
 			const sub = args.trim();
 			if (sub === "show") {
-				await showScreensaver();
+				await showScreensaver({ force: true });
 				return;
 			}
 			if (sub === "off" || sub === "disable") {
-				config.enabled = false;
+				saveEnabledConfig(false);
 				clearIdleTimer();
-				ctx.ui.notify("Screensaver disabled", "info");
+				ctx.ui.notify("Screensaver disabled globally", "info");
 				return;
 			}
 			if (sub === "on" || sub === "enable") {
-				config.enabled = true;
+				saveEnabledConfig(true);
 				scheduleIdleTimer();
-				ctx.ui.notify("Screensaver enabled", "info");
+				ctx.ui.notify("Screensaver enabled globally", "info");
 				return;
 			}
 			if (sub === "config") {
-				ctx.ui.notify(`Idle: ${config.idleMinutes}min · enabled: ${config.enabled} · showWorktreeMeta: ${config.showWorktreeMeta}\nConfig file: ${CONFIG_PATH}`, "info");
+				reloadConfig();
+				ctx.ui.notify(`Idle: ${config.idleMinutes}min · enabled: ${config.enabled} · showWorktreeMeta: ${config.showWorktreeMeta}\nGlobal config file: ${CONFIG_PATH}`, "info");
 				return;
 			}
 			ctx.ui.notify("Usage: /screensaver show|on|off|config", "info");
