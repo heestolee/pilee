@@ -25,6 +25,18 @@ description: 작업 시작 전에 구체 질문으로 목표·성공 기준·범
 
 ---
 
+## Frame Studio UI
+
+Pi UI가 있고 `frame_studio` tool을 사용할 수 있으면, 번호형 텍스트만 출력하지 말고 Glimpse Frame Studio를 우선 사용한다.
+
+- Step 1 직후: `frame_studio action=start`로 identity-bound Studio를 연다.
+- Step 2/5: 현재 markdown을 `action=update`로 렌더링한다.
+- Step 3/4/6/8: 선택이 필요한 지점은 `action=ask`를 호출해 버튼/체크박스/직접입력으로 답을 받는다.
+- tool 결과가 `unavailable`, `cancelled`, `timeout`이면 `ask-user-question-rules`의 번호형 text-mode fallback으로 이어간다.
+- Frame Studio 제목과 identity는 command shim의 **Frame identity hint**를 따른다. P0/P1 panel label이 아니라 worktree/ticket/session planning identity에 귀속한다.
+
+---
+
 ## 실행 단계
 
 ### Step 1: 컨텍스트 자동 수집 + frame identity 결정 (질문 없이)
