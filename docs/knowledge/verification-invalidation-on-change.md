@@ -16,6 +16,7 @@ applies_to:
   - skills/code-review-and-quality
 source:
   - pilee-history:2026-05-01#4
+  - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-05
 reviewed_commit: d5829047aef2c107923607d377fae7e225a2f3cd
 related:
@@ -30,6 +31,10 @@ Verify 단계에서 코드를 수정하면 그 전까지의 검증 결과는 더
 ## Operating Rule
 
 검증은 “현재 diff”에 대한 판정입니다. Verify 중 수정이 발생하면 수정 내용을 명시하고, 어떤 증거가 무효화되었는지 표시한 뒤 해당 항목을 재실행합니다. 단순 문구 수정처럼 영향이 제한적이어도 `(명백: 영향 범위)`를 적어 재검증 범위를 좁힙니다.
+
+## Report Rule
+
+Verify Report나 knowledge resolver처럼 검증/검토 산출물을 만드는 동안 코드나 문서가 추가로 바뀌면, 이전 산출물의 기준 커밋을 그대로 신뢰하지 않습니다. 최종 PR body에는 마지막 기준 커밋과 재실행한 검증 명령을 적고, 중간 산출물은 local-only 참고로 둡니다.
 
 ## Failure Mode
 

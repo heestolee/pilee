@@ -20,6 +20,7 @@ source:
   - pilee-history:2026-05-05#40
   - pilee-history:2026-05-05#41
   - pilee-history:2026-05-05#42
+  - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-05
 reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
 related:
@@ -39,3 +40,7 @@ related:
 ## Display Rule
 
 목록에는 workspace, 제목, 마지막 의미 있는 요청, turn 수, short id처럼 사람이 빠르게 구분할 수 있는 정보를 함께 둡니다. 중복 스냅샷은 최신/가장 긴 대화를 우선해 숨깁니다.
+
+## Artifact Identity Rule
+
+Frame Studio transcript, resolver run, backlog source 같은 durable artifact도 사람이 본 작업 이름으로 묶여야 합니다. 파일명 hash는 저장소 내부 식별자로만 쓰고, 사용자에게는 worktree/ticket/session title과 최근 의미 있는 요청을 함께 보여줍니다. 그래야 나중에 revive, `/show-report`, resolver log가 같은 작업을 가리킨다는 것을 이해할 수 있습니다.

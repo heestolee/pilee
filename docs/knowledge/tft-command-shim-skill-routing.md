@@ -16,6 +16,7 @@ applies_to:
   - skills/verify
 source:
   - pilee-history:2026-05-06#63
+  - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-06
 reviewed_commit: 7160f8025c2ea89a0fcbd2789036776d4d17a546
 related:
@@ -33,6 +34,10 @@ Project-local skills can legitimately override generic workflow names such as `f
 The shim owns only routing and context packaging. It registers the slash command earlier than skill/template expansion, reads the canonical pilee `SKILL.md` files, inlines the target skill plus prerequisites into the agent context, and explicitly tells the agent to ignore project-local skill files for that invocation.
 
 The skill remains the source of truth. Do not duplicate the full workflow as TypeScript unless a specific step needs deterministic execution.
+
+## Identity Rule
+
+When a shim opens an auxiliary UI such as Frame Studio, identity still belongs to the worktree/ticket/session planning context, not to the transient panel label or command invocation. The shim may compute and pass identity hints, but the skill-level contract decides what the identity means and where durable artifacts are stored.
 
 ## Review Trigger
 

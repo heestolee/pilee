@@ -17,6 +17,7 @@ applies_to:
 source:
   - pilee-history:2026-05-05#44
   - pilee-history:2026-05-05#45
+  - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-05
 reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
 related:
@@ -31,6 +32,10 @@ related:
 ## Fallback Rule
 
 모델 요약이 실패하면 deterministic summary를 만들고, Glimpse가 실패하면 브라우저로 열며, 긴 raw snippet 대신 출처 title/URL과 짧은 요약을 남깁니다. fallback은 조용히 숨기지 않고 사용자가 품질 차이를 알 수 있게 표시합니다.
+
+## Artifact Rule
+
+fallback 산출물도 workflow의 일부이므로 다시 열 수 있어야 합니다. web search, verify report, local resolver처럼 중간 모델 호출이 실패해도 사용자는 최소한 입력, deterministic 결과, 다음 행동을 확인할 수 있어야 합니다. fallback은 품질을 낮추는 대신 state loss를 막는 안전장치입니다.
 
 ## Boundary
 

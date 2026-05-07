@@ -15,6 +15,7 @@ applies_to:
 source:
   - pilee-history:2026-05-05#44
   - pilee-history:2026-05-05#45
+  - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-05
 reviewed_commit: d5829047aef2c107923607d377fae7e225a2f3cd
 related:
@@ -30,6 +31,10 @@ related:
 ## Interaction Rule
 
 검색 창은 초기 Tavily 결과가 끝난 뒤가 아니라 검색 중에 먼저 열립니다. 결과는 placeholder와 SSE로 채워지고, 사용자는 선택/추가 검색/rewrite/요약 재생성을 거쳐 승인합니다. 승인 전 초안은 최종 답변이 아닙니다.
+
+## Evidence Rule
+
+승인형 검색에서 중요한 증거는 모델이 만든 요약문 자체가 아니라 사용자가 선택한 출처 집합입니다. archive나 PR 요약에는 승인된 출처와 선택 시점의 요약을 남기되, raw snippet을 길게 복사하거나 사용자가 보지 않은 결과를 근거로 섞지 않습니다.
 
 ## Failure Mode
 
