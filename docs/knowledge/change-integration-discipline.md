@@ -18,7 +18,7 @@ source:
   - pilee-history:2026-05-02#24
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: b6da702c75ff0dec4d54a46fa24e77fdd224754f
+reviewed_commit: f97db772c09fd46cee4db42c40de13d82220fec1
 related:
   - evidence-first-verification-gate
   - stress-interview-multi-axis-review
@@ -31,6 +31,10 @@ AI가 빠르게 많은 파일을 바꿀수록 변경 통합은 더 작은 단위
 ## Integration Rule
 
 한 commit은 하나의 논리적 변경을 담고, formatting/behavior/doc 변경은 가능하면 분리합니다. 100줄 이상을 쓰기 전에 테스트나 타입체크처럼 빠른 검증을 실행합니다. 리뷰는 correctness뿐 아니라 readability, architecture, security, performance를 함께 봅니다.
+
+## PR Gate Rule
+
+PR 생성과 merge는 다른 통합 단계입니다. agent가 diff를 만들고 검증을 통과시켜도, 사용자가 초기 운영에서 직접 merge하고 싶다고 한 workflow라면 PR URL과 검증 결과를 보고하고 멈춥니다. 자동 merge를 하려면 별도 정책과 자동화 actor가 필요합니다.
 
 ## Dirty State Rule
 

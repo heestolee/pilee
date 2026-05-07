@@ -17,8 +17,9 @@ applies_to:
 source:
   - session-backfill:2026-05-05#confidence-review-policy
   - user-direction:2026-05-07-local-resolver
+  - user-direction:2026-05-07-resolver-merge-gate
 reviewed_at: 2026-05-07
-reviewed_commit: 1b5b68d8fc7197824e8cd1e57dba3a36c113bc9a
+reviewed_commit: f97db772c09fd46cee4db42c40de13d82220fec1
 related:
   - freshness-diagnosis-report
   - deterministic-vs-ai-actions
@@ -32,6 +33,10 @@ related:
 ## Confidence Rule
 
 Knowledge frontmatter는 필요할 때 `confidence: medium` 또는 `confidence: low`를 가질 수 있습니다. `high`가 아니면 freshness report의 AI/human review action이 되고, 자동 정합성 workflow의 검토 큐로 올라갑니다. 검토 큐 PR은 문서를 대신 고치는 PR이 아니라, 로컬 resolver가 실제 확인 작업을 시작하게 하는 공개 알림입니다. 이런 항목은 사용자가 확인해 받아들인 뒤에만 `--confirm <doc-id> --confidence high`로 승격합니다.
+
+## Merge Review Rule
+
+초기 운영에서 confidence나 stale 해소 PR은 생성 자체가 review 요청입니다. agent가 검증을 통과시켰더라도 사용자 review 없이 바로 병합하지 않습니다. 자동 병합을 허용하려면 PR의 성격이 generated-only인지, merge actor가 자동화로 표시되는지, 사용자가 그 정책을 받아들였는지까지 확인해야 합니다.
 
 ## Ask Boundary
 
