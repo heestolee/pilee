@@ -182,7 +182,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 
 공개 가능한 최신 설계 지식은 [docs/knowledge/README.md](./docs/knowledge/README.md)에서 검색/그래프 형태로 확인합니다.
 
-**불씨 / Ember**는 이 knowledge를 다루는 친근한 입구입니다. `/ember`로 세션에서 남은 깨달음을 후보로 모으고, `/ember tend`로 freshness/confidence review queue를 살핍니다. 저장소의 canonical 용어와 구조는 계속 `knowledge`입니다.
+**불씨 / Ember**는 이 knowledge를 다루는 친근한 입구입니다. `/ember`로 세션에서 남은 깨달음을 후보로 모으고, `/ember tend`로 freshness/confidence review queue를 살핍니다. `/ember resolve`는 stale/review_needed 문서를 로컬 resolver PR 작업 단위로 바꾸며, PR body는 내용 수정·confirm-only·보류·Privacy·검증·Freshness를 구분해 작성합니다. 저장소의 canonical 용어와 구조는 계속 `knowledge`입니다.
 
 <p align="center">
   <img src="./tmp/knowledge-map.ko.svg" alt="pilee knowledge map" width="900"/>

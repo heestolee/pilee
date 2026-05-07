@@ -1529,23 +1529,38 @@ function renderResolverPrBody(selectedDocs) {
 	return `## 개요
 로컬 knowledge resolver로 stale/review_needed 문서를 실제 검토해 해소합니다.
 
+<이번 PR의 의미를 1-2문장으로 설명합니다. 예: public/private split 이후 핵심 boundary doctrine을 갱신합니다.>
+
 ## 대상 문서
 ${ids}
 
-## 검토 방식
-- 관련 커밋과 적용 파일을 확인했습니다.
-- 필요한 경우 로컬 Pi session/private history 전문을 확인했습니다.
-- private 원문은 PR에 복사하지 않고 public/sanitized 판단만 반영했습니다.
-
 ## 해소 결과
-- 내용 수정:
-- confirm-only:
-- 사용자 판단 필요/보류:
+
+### 내용 수정
+- 없음
+
+### confirm-only
+- 없음
+
+### 사용자 판단 필요/보류
+- 없음
+
+## Privacy
+- \`.context/knowledge-resolver/...\` 산출물은 PR에 포함하지 않았습니다.
+- \`freshness.local.json\`, session hint, private history 원문/제목은 PR body와 public docs에 복사하지 않았습니다.
+- PR에는 sanitized 판단과 문서 수정 결과만 포함했습니다.
 
 ## 검증
-- [ ] \`node scripts/knowledge.mjs --graph\`
-- [ ] \`node scripts/knowledge.mjs --validate\`
-- [ ] \`node scripts/knowledge.mjs --freshness\`
+- [ ] \`npm run knowledge:validate\`
+- [ ] \`npm run knowledge:graph -- --check\`
+- [ ] \`node scripts/knowledge.mjs --freshness --json\`
+- [ ] \`git diff --check\`
+
+## Freshness
+이 PR은 선택된 ${selectedDocs.length}개 문서를 fresh로 전환합니다. 전체 freshness는 남은 batch가 있으면 아직 stale일 수 있습니다.
+
+## Merge policy
+stale resolver PR입니다. 사용자가 명시적으로 auto-merge/merge를 허용한 경우에만 병합합니다.
 `;
 }
 

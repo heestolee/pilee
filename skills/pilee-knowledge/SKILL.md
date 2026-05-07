@@ -109,6 +109,8 @@ node scripts/knowledge.mjs --confirm <doc-id> --confidence high
 
 `--resolve-stale`은 GitHub Actions의 검토 큐를 실제 로컬 작업 단위로 바꾸는 준비 명령이다. 생성된 `.context/knowledge-resolver/.../resolve-plan.md`와 session hint를 읽고, 문서가 틀리면 수정하고 여전히 맞으면 `--confirm`한다. `freshness.local.json`, session hint, private history 제목/원문은 민감할 수 있으므로 PR이나 public knowledge 문서에 복사하지 않는다.
 
+Resolver PR body는 `skills/pilee-knowledge/references/resolver-pr-template.md`의 구조를 따른다. 특히 `내용 수정`, `confirm-only`, `사용자 판단 필요/보류`, `Privacy`, `검증`, `Freshness`, `Merge policy`를 분리해 적는다. README/SVG/public narrative PR은 resolver batch와 분리하고 사용자 review용 open PR로 남긴다.
+
 초기 운영 중 local resolver PR은 생성까지만 하고 merge하지 않는다. 사용자가 `머지해줘`처럼 명시 요청했을 때만 병합한다. 나중에 자동 병합을 도입하더라도 `heestolee` 개인 계정으로 `gh pr merge`하지 않고, GitHub Actions/GitHub App/bot처럼 자동화 actor가 GitHub UI에 드러나는 경로를 사용한다.
 
 `--resolver-log`는 로컬 resolver 실행 이력을 요약해서 보여준다. 이 로그도 local-only이며 session path/private text를 저장하지 않고, 실행 시각·대상 문서·카운트·산출물 디렉터리만 남긴다.
@@ -138,5 +140,7 @@ node scripts/knowledge.mjs --confirm <doc-id> --confidence high
 - 확신이 낮은 문서를 `confidence` 없이 확정 doctrine처럼 추가하고 있다.
 - `related` 없이 독립 문서를 계속 만들고 있다.
 - 실제 검토 없이 `reviewed_at`만 갱신하고 있다.
+- local resolver PR body에 내용 수정/confirm-only/보류를 구분하지 않고 뭉뚱그려 적고 있다.
+- README/SVG/public narrative PR을 resolver batch와 섞거나 사용자 review 없이 merge하고 있다.
 - local resolver PR을 사용자 명시 요청 없이 바로 merge하고 있다.
 - 자동 병합인데 GitHub UI에는 개인 계정이 merge한 것처럼 남긴다.
