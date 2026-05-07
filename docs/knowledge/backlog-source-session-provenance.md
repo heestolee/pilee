@@ -16,8 +16,9 @@ applies_to:
   - extensions/archive-to-html
 source:
   - pilee-history:2026-05-05#51
-reviewed_at: 2026-05-05
-reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
+  - user-direction:2026-05-07-local-resolver
+reviewed_at: 2026-05-07
+reviewed_commit: ce5ea75eb6b29355731d29f547a972ee62f2e262
 related:
   - session-identity-over-filenames
   - artifact-archive-reopenability
@@ -34,3 +35,7 @@ Backlog item은 제목과 노트만 저장하면 시간이 지난 뒤 왜 생겼
 ## Promotion Rule
 
 Backlog에서 task로 옮겨도 provenance를 버리지 않습니다. 단기 작업 추적 시스템으로 승격될수록 오히려 원 세션을 열 수 있는 링크와 전문 export가 중요해집니다.
+
+## Reopen Rule
+
+출처 보존은 raw path 저장만으로 충분하지 않습니다. 사용자가 backlog/task를 다시 볼 때 source session export나 artifact browser를 통해 원 대화를 열 수 있어야 합니다. 공개 PR에는 session path를 복사하지 않지만, 로컬 시스템 안에서는 provenance가 revive/export/reopen 동작으로 이어져야 합니다.
