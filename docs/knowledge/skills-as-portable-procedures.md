@@ -17,7 +17,7 @@ applies_to:
 source:
   - pilee-history:2026-05-03#32
 reviewed_at: 2026-05-07
-reviewed_commit: d601ac0041243e78871b352c51f38b50f22be4bb
+reviewed_commit: ce6c2b04f7774e2da5e7aa4df9114959429b22d7
 related:
   - context-loading-minimal-surface
   - judgment-doc-unit
