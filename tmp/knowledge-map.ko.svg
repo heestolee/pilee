@@ -49,24 +49,24 @@
   <!-- Metrics -->
   <g filter="url(#shadow)">
     <rect x="154" y="112" width="210" height="86" rx="14" class="panel blue"/>
-    <text x="259" y="148" text-anchor="middle" class="num">58/58</text>
+    <text x="259" y="148" text-anchor="middle" class="num">61/61</text>
     <text x="259" y="172" text-anchor="middle" class="numLabel">SURFACES LINKED</text>
     <text x="259" y="187" text-anchor="middle" class="small">README coverage</text>
 
     <rect x="384" y="112" width="210" height="86" rx="14" class="panel orange"/>
-    <text x="489" y="148" text-anchor="middle" class="num">52</text>
+    <text x="489" y="148" text-anchor="middle" class="num">59</text>
     <text x="489" y="172" text-anchor="middle" class="numLabel">JUDGMENT DOCS</text>
     <text x="489" y="187" text-anchor="middle" class="small">feature보다 작은 판단 단위</text>
 
     <rect x="614" y="112" width="210" height="86" rx="14" class="panel green"/>
-    <text x="719" y="148" text-anchor="middle" class="num">47</text>
+    <text x="719" y="148" text-anchor="middle" class="num">59</text>
     <text x="719" y="172" text-anchor="middle" class="numLabel">HIGH CONFIDENCE</text>
     <text x="719" y="187" text-anchor="middle" class="small">현재 확정 doctrine</text>
 
     <rect x="844" y="112" width="210" height="86" rx="14" class="panel yellow"/>
-    <text x="949" y="148" text-anchor="middle" class="num">5</text>
+    <text x="949" y="148" text-anchor="middle" class="num">0</text>
     <text x="949" y="172" text-anchor="middle" class="numLabel">REVIEW QUEUE</text>
-    <text x="949" y="187" text-anchor="middle" class="small">medium confidence</text>
+    <text x="949" y="187" text-anchor="middle" class="small">fresh after resolver</text>
   </g>
 
   <!-- Main flow background -->
@@ -93,7 +93,7 @@
   <g filter="url(#shadow)">
     <rect x="430" y="300" width="340" height="178" rx="18" class="panel orange"/>
     <text x="600" y="335" text-anchor="middle" class="section orangeText">PUBLIC / SANITIZED</text>
-    <text x="600" y="384" text-anchor="middle" class="num">52</text>
+    <text x="600" y="384" text-anchor="middle" class="num">59</text>
     <text x="600" y="411" text-anchor="middle" class="h">Judgment docs</text>
     <text x="600" y="438" text-anchor="middle" class="p">문서 단위 = 기능 하나가 아니라</text>
     <text x="600" y="458" text-anchor="middle" class="p">앞으로 재사용할 판단 하나</text>
@@ -104,17 +104,17 @@
     <rect x="855" y="286" width="285" height="92" rx="14" class="panel-soft purple"/>
     <text x="879" y="318" class="h">③ Freshness</text>
     <text x="879" y="343" class="p">reviewed_commit 기준 진단</text>
-    <text x="879" y="363" class="p">stale · confidence · coverage</text>
+    <text x="879" y="363" class="p">fresh · confidence · coverage</text>
 
     <rect x="855" y="406" width="285" height="92" rx="14" class="panel-soft yellow"/>
     <text x="879" y="438" class="h">④ Daily auto PR</text>
-    <text x="879" y="463" class="p">변경 있는 날만 실행</text>
+    <text x="879" y="463" class="p">매일 freshness 점검</text>
     <text x="879" y="481" class="p">knowledge-review.md 생성</text>
 
     <rect x="855" y="526" width="285" height="92" rx="14" class="panel-soft green"/>
     <text x="879" y="558" class="h">⑤ User review</text>
     <text x="879" y="583" class="p">README narrative 확인</text>
-    <text x="879" y="603" class="p">medium → high 승격</text>
+    <text x="879" y="603" class="p">review_needed 해소</text>
   </g>
 
   <!-- Arrows -->
@@ -133,12 +133,12 @@
     <g transform="translate(262,592)">
       <rect width="118" height="34" rx="9" fill="#1f2937" stroke="#f97316"/>
       <text x="59" y="15" text-anchor="middle" class="chip orangeText">workflow</text>
-      <text x="59" y="28" text-anchor="middle" class="chipSmall">18 docs</text>
+      <text x="59" y="28" text-anchor="middle" class="chipSmall">24 docs</text>
     </g>
     <g transform="translate(396,592)">
       <rect width="118" height="34" rx="9" fill="#1f2937" stroke="#a78bfa"/>
       <text x="59" y="15" text-anchor="middle" class="chip purpleText">knowledge</text>
-      <text x="59" y="28" text-anchor="middle" class="chipSmall">10 docs</text>
+      <text x="59" y="28" text-anchor="middle" class="chipSmall">11 docs</text>
     </g>
     <g transform="translate(530,592)">
       <rect width="118" height="34" rx="9" fill="#1f2937" stroke="#38bdf8"/>
@@ -176,10 +176,10 @@
   <!-- Footer -->
   <g>
     <rect x="80" y="704" width="1040" height="38" rx="12" fill="#0b1220" stroke="#30363d"/>
-    <text x="112" y="728" class="p">Generated block은 자동 갱신 · README 철학 문구와 medium/low confidence 문서는 자동 PR에서 검토</text>
+    <text x="112" y="728" class="p">Generated block은 자동 갱신 · README 시각화/철학 문구와 review_needed 문서는 PR에서 검토</text>
     <circle cx="974" cy="723" r="5" fill="#22c55e"/>
     <text x="988" y="727" class="small">high</text>
     <circle cx="1038" cy="723" r="5" fill="#eab308"/>
-    <text x="1052" y="727" class="small">review</text>
+    <text x="1052" y="727" class="small">queue</text>
   </g>
 </svg>
