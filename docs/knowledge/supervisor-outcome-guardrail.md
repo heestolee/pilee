@@ -8,14 +8,14 @@ tags:
   - agent
 category: agent
 status: active
-confidence: medium
+confidence: high
 applies_to:
   - extensions/supervisor
   - start_supervision
 source:
   - pilee-history:2026-05-01#workflow-analysis
-reviewed_at: 2026-05-05
-reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
+reviewed_at: 2026-05-07
+reviewed_commit: 1a0093b1c3b3917e504de299e97d7c68ad79932b
 related:
   - ask-user-question-decision-gates
   - subagent-prompt-specificity
