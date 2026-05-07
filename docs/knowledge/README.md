@@ -94,13 +94,13 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [낮은 confidence 판단은 정합성 PR로 올린다](./confidence-sensitive-review.md) | active | high | 2026-05-07 | 1b5b68d | confidence, review, freshness, ai-actions, user-review, 정합성 |
-| [Deterministic action과 AI review action은 분리한다](./deterministic-vs-ai-actions.md) | active | high | 2026-05-07 | 4a62531 | knowledge, deterministic, ai-actions, review, automation, 정합성 |
+| [낮은 confidence 판단은 정합성 PR로 올린다](./confidence-sensitive-review.md) | active | high | 2026-05-07 | f97db77 | confidence, review, freshness, ai-actions, user-review, 정합성 |
+| [Deterministic action과 AI review action은 분리한다](./deterministic-vs-ai-actions.md) | active | high | 2026-05-07 | f97db77 | knowledge, deterministic, ai-actions, review, automation, 정합성 |
 | [Ember는 knowledge의 친근한 입구다](./ember-friendly-knowledge-entrypoint.md) | active | high | 2026-05-07 | 74e15fc | ember, branding, command, knowledge |
-| [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | high | 2026-05-07 | 0e6c083 | knowledge, freshness, diagnosis, review, candidate, 정합성 |
+| [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | high | 2026-05-07 | f97db77 | knowledge, freshness, diagnosis, review, candidate, 정합성 |
 | [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | high | 2026-05-07 | 1b5b68d | knowledge, judgment, granularity, documentation, coverage, 문서 |
 | [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | high | 2026-05-07 | 2a83750 | pilee, knowledge, history, journal, sanitized, reviewed-at |
-| [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | high | 2026-05-07 | c1d02c3 | knowledge, journal, privacy, sanitized, doctrine, history |
+| [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | high | 2026-05-07 | f97db77 | knowledge, journal, privacy, sanitized, doctrine, history |
 | [README는 knowledge coverage map이다](./readme-coverage-map.md) | active | high | 2026-05-07 | 5474cf3 | knowledge, readme, coverage, graph, surface, todo |
 | [README 철학 변경은 사용자 판단 게이트를 지난다](./readme-philosophy-user-gate.md) | active | high | 2026-05-07 | 5474cf3 | readme, philosophy, user-gate, public-facing, documentation, 판단 |
 | [Retro는 private reflection이다](./retro-private-reflection-boundary.md) | active | high | 2026-05-07 | 5474cf3 | retro, notion, reflection, private, journal, 회고 |
@@ -138,14 +138,14 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-05-07 | 2a83750 | verify, evidence, gate, done, ready, verification |
 | [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-05-07 | 1b5b68d | frame, verify, frame-json, success-criteria, contract, verification |
 | [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-05-07 | ce5ea75 | verify, invalidation, code-change, freshness, gate, 검증 |
-| [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | active | high | 2026-05-07 | 0e6c083 | verify-report, verification, evidence, coverage, capture, crop |
+| [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | active | high | 2026-05-07 | f97db77 | verify-report, verification, evidence, coverage, capture, crop |
 
 ### web-access
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [웹 검색은 승인된 출처 선택을 거친다](./curator-approved-source-selection.md) | active | high | 2026-05-07 | ce5ea75 | web-search, curator, source-selection, approval, tavily, 검색 |
-| [Web Search curator와 승인형 요약 흐름](./web-search-curator.md) | active | high | 2026-05-07 | ce5ea75 | web-search, tavily, curator, glimpse, summary-review, korean-output |
+| [Web Search curator와 승인형 요약 흐름](./web-search-curator.md) | active | high | 2026-05-07 | f97db77 | web-search, tavily, curator, glimpse, summary-review, korean-output |
 
 ### workflow
 
@@ -155,7 +155,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [AskUserQuestion은 의사결정 게이트다](./ask-user-question-decision-gates.md) | active | high | 2026-05-07 | b6da702 | ask-user-question, tft, decision-gate, question, non-delegable, 질문 |
 | [AskUserQuestion 옵션은 행동 분기를 표현한다](./ask-user-question-option-design.md) | active | high | 2026-05-07 | b6da702 | ask-user-question, option, wording, ceremony, tft, 질문 |
 | [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | high | 2026-05-07 | 2a83750 | backlog, tasks, provenance, source-session, session, 맥락 |
-| [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md) | active | high | 2026-05-07 | b6da702 | git, incremental, code-review, commit, quality, 통합 |
+| [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md) | active | high | 2026-05-07 | f97db77 | git, incremental, code-review, commit, quality, 통합 |
 | [자동 로드 컨텍스트는 최소 surface만 가진다](./context-loading-minimal-surface.md) | active | high | 2026-05-05 | 059f445 | context, agents-md, memory, system-prompt, token, autoload |
 | [외부 이슈 업데이트는 preview gate를 지난다](./external-issue-preview-gate.md) | active | medium | 2026-05-05 | 059f445 | jira, issue, preview, wiki-markup, external-update, approval |
 | [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-05-06 | 4c927ab | fork-panel, handoff, inbox, inject, parent, panel |
@@ -171,7 +171,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Command shim은 skill source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-05-07 | ce5ea75 | command-shim, skill, tft, frame, slash-command, routing |
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
 | [Worktree 생성은 부모 패널의 게이트다](./worktree-creation-parent-gate.md) | active | high | 2026-05-07 | 0e6c083 | worktree, fork-panel, parent-panel, hotfix, context, product |
-| [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-05-07 | ce5ea75 | worktree, workspace, repo, branch, execution-boundary, 워크트리 |
+| [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-05-07 | f97db77 | worktree, workspace, repo, branch, execution-boundary, 워크트리 |
 | [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-05-07 | 74e15fc | worktree, session, revive, fork-panel, panel-inbox, handoff |
 
 ## Knowledge Map

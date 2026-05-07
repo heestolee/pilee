@@ -18,7 +18,7 @@ source:
   - pilee-history:2026-05-05#52
   - user-direction:2026-05-07-resolver-merge-gate
 reviewed_at: 2026-05-07
-reviewed_commit: 4a6253169b3af37b21490a71c773399df6e7464c
+reviewed_commit: f97db772c09fd46cee4db42c40de13d82220fec1
 related:
   - freshness-diagnosis-report
   - readme-coverage-map
