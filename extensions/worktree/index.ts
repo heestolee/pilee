@@ -652,6 +652,21 @@ function buildBootstrapOrchestratorTask(args: {
 	].join("\n");
 }
 
+function isSubagentSessionContext(ctx: ExtensionContext | ExtensionCommandContext): boolean {
+	try {
+		const sessionFile = (ctx as any).sessionManager?.getSessionFile?.();
+		return typeof sessionFile === "string" && sessionFile.includes("/sessions/subagents/");
+	} catch {
+		return false;
+	}
+}
+
+function isBootstrapOrchestratorPrompt(prompt: string): boolean {
+	return prompt.includes("You are a dependency readiness orchestrator subagent")
+		&& prompt.includes("Executor contract:")
+		&& prompt.includes("orchestrator-report.md");
+}
+
 function setDependencyBootstrapStatus(ctx: ExtensionContext | ExtensionCommandContext, status: BootstrapStatus | "ready", text: string) {
 	if ((ctx as any).hasUI === false) return;
 	const theme = ctx.ui.theme;
@@ -682,6 +697,10 @@ async function ensureDependencyBootstrapWorker(
 	prompt: string,
 	options: { force?: boolean; domains?: BootstrapDomain[]; reason?: string; mode?: "auto" | "executor" | "orchestrator" } = {},
 ): Promise<DependencyBootstrapResult> {
+	if (!options.force && (isSubagentSessionContext(ctx) || isBootstrapOrchestratorPrompt(prompt))) {
+		return { state: "not-implementation" };
+	}
+
 	const repoRoot = await findRepoRoot(pi, ctx.cwd);
 	if (!repoRoot) return { state: "not-company-repo" };
 
