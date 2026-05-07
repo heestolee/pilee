@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { dirname, join, resolve, sep } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Container, Spacer, Text, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { truncatePlainToWidth } from "../utils/format-utils.js";
@@ -5,14 +8,37 @@ import { truncatePlainToWidth } from "../utils/format-utils.js";
 const PATCH_STATE_KEY = Symbol.for("pilee.tool-group-renderer.patch-state");
 const PATCH_VERSION = "2026-04-27-r1";
 const GROUP_STATE = Symbol("pilee.tool-group-renderer.state");
+function piPackageRootFromDistEntrypoint(filePath: string | undefined): string | null {
+	if (!filePath) return null;
+	const resolved = resolve(filePath);
+	const marker = `${sep}dist${sep}`;
+	const index = resolved.lastIndexOf(marker);
+	return index >= 0 ? resolved.slice(0, index) : null;
+}
+
+function piInteractiveBaseCandidates(): string[] {
+	const candidates: string[] = [];
+	if (process.env.PI_INTERACTIVE_BASE) candidates.push(process.env.PI_INTERACTIVE_BASE);
+	if (process.env.PI_CODING_AGENT_ROOT) candidates.push(join(process.env.PI_CODING_AGENT_ROOT, "dist", "modes", "interactive"));
+	const entrypointRoots = [
+		piPackageRootFromDistEntrypoint(process.argv[1]),
+		piPackageRootFromDistEntrypoint(fileURLToPath(import.meta.url)),
+	].filter((value): value is string => Boolean(value));
+	for (const root of entrypointRoots) candidates.push(join(root, "dist", "modes", "interactive"));
+	candidates.push(join(dirname(process.execPath), "..", "lib", "node_modules", "@mariozechner", "pi-coding-agent", "dist", "modes", "interactive"));
+	candidates.push("/usr/local/lib/node_modules/@mariozechner/pi-coding-agent/dist/modes/interactive");
+	candidates.push("/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/dist/modes/interactive");
+	return [...new Set(candidates.map((candidate) => resolve(candidate)))];
+}
+
 const PI_INTERACTIVE_BASE = (() => {
-	const candidates = [
-		"/usr/local/lib/node_modules/@mariozechner/pi-coding-agent/dist/modes/interactive",
-		`${process.env.HOME}/Library/Application Support/com.conductor.app/lib/node_modules/@mariozechner/pi-coding-agent/dist/modes/interactive`,
-	];
-	const { existsSync } = require("node:fs");
-	return candidates.find(p => existsSync(`${p}/interactive-mode.js`)) ?? candidates[0];
+	const candidates = piInteractiveBaseCandidates();
+	return candidates.find((candidate) => existsSync(join(candidate, "interactive-mode.js"))) ?? candidates[0];
 })();
+
+function interactiveModuleUrl(file: string): string {
+	return pathToFileURL(join(PI_INTERACTIVE_BASE, file)).href;
+}
 const BASH_PREVIEW_LIMIT = 56;
 const MIN_BASH_LINE_WIDTH_WITH_COMMAND = 36;
 const MIN_BASH_COMMAND_PREVIEW_WIDTH = 12;
@@ -893,9 +919,9 @@ export default async function toolGroupRenderer(_pi: ExtensionAPI): Promise<void
 	globalState[PATCH_STATE_KEY] = patchState;
 
 	const [{ InteractiveMode }, { ToolExecutionComponent }, themeModule] = await Promise.all([
-		import(`${PI_INTERACTIVE_BASE}/interactive-mode.js`),
-		import(`${PI_INTERACTIVE_BASE}/components/tool-execution.js`),
-		import(`${PI_INTERACTIVE_BASE}/theme/theme.js`),
+		import(interactiveModuleUrl("interactive-mode.js")),
+		import(interactiveModuleUrl("components/tool-execution.js")),
+		import(interactiveModuleUrl("theme/theme.js")),
 	]);
 
 	patchState.toolExecutionComponent = ToolExecutionComponent;
