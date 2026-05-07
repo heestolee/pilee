@@ -16,8 +16,8 @@ applies_to:
 source:
   - pilee-history:2026-05-05#50
   - pilee-history:2026-05-05#52
-reviewed_at: 2026-05-05
-reviewed_commit: 70468c2a01aa78453eb5a98cce65e9dc50822f39
+reviewed_at: 2026-05-07
+reviewed_commit: 858d8a21fb045c561b35a90172f37eb149d89b92
 related:
   - judgment-doc-unit
   - readme-coverage-map
