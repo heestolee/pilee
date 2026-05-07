@@ -29,8 +29,8 @@ source:
   - pilee-history:2026-05-06#68
   - pilee-history:2026-05-06#69
   - user-direction:2026-05-07-local-resolver
-reviewed_at: 2026-05-06
-reviewed_commit: 39f8acfe995b16c7ca0f2693af3fb020f5148bfd
+reviewed_at: 2026-05-07
+reviewed_commit: 0e6c08396034c8c5f9940871083eafa1c5d39e49
 related:
   - pilee-knowledge-system
   - web-search-curator

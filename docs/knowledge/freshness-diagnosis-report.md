@@ -18,7 +18,7 @@ source:
   - pilee-history:2026-05-05#52
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: c1d02c3e3d7ba120ec264c3981067def2741c1b7
+reviewed_commit: 0e6c08396034c8c5f9940871083eafa1c5d39e49
 related:
   - judgment-doc-unit
   - readme-coverage-map
