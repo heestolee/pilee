@@ -18,7 +18,7 @@ source:
   - session-backfill:2026-05-05#judgment-unit
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: 1b5b68d8fc7197824e8cd1e57dba3a36c113bc9a
+reviewed_commit: 67f2836035e8cbe0cab3e659bfce37cfd013ff9e
 related:
   - private-journal-public-doctrine
   - readme-coverage-map

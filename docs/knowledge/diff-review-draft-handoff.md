@@ -15,7 +15,7 @@ applies_to:
 source:
   - session-backfill:2026-05-02#diff-overlay-review-draft
 reviewed_at: 2026-05-07
-reviewed_commit: b6da702c75ff0dec4d54a46fa24e77fdd224754f
+reviewed_commit: 67f2836035e8cbe0cab3e659bfce37cfd013ff9e
 related:
   - change-integration-discipline
   - tool-output-noise-management
