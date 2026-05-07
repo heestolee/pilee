@@ -286,69 +286,42 @@ function truncatePreviewText(value: string, max = 5000): string {
 	return value.length > max ? `${value.slice(0, max)}\n…` : value;
 }
 
-function stringifyCompact(value: unknown, max = 1200): string {
-	try { return truncatePreviewText(JSON.stringify(value, null, 2), max); }
-	catch { return truncatePreviewText(String(value), max); }
-}
-
-function contentBlockText(content: unknown): string {
+function textBlocksOnly(content: unknown): string {
 	if (typeof content === "string") return content;
 	if (!Array.isArray(content)) return "";
-	const parts: string[] = [];
-	for (const block of content.slice(0, 12)) {
-		if (!block || typeof block !== "object") continue;
-		const record = block as Record<string, unknown>;
-		const type = String(record.type || "");
-		if (type === "text" && typeof record.text === "string") parts.push(record.text);
-		else if (type === "thinking") {
-			const summary = Array.isArray(record.summary)
-				? record.summary.map((item) => typeof item === "object" && item && "text" in item ? String((item as Record<string, unknown>).text || "") : "").filter(Boolean).join("\n")
-				: typeof record.thinking === "string" ? record.thinking : "";
-			if (summary) parts.push(`💭 ${summary}`);
-		} else if (type === "toolCall" || type === "tool_use") {
-			const name = typeof record.name === "string" ? record.name : typeof record.toolName === "string" ? record.toolName : "tool";
-			const args = record.arguments ?? record.input ?? {};
-			parts.push(`🔧 ${name}\n${stringifyCompact(args, 1200)}`);
-		} else if (type === "image" || type === "image_url") {
-			parts.push("[image]");
-		}
-	}
-	return parts.join("\n\n").trim();
+	return content
+		.map((block) => {
+			if (!block || typeof block !== "object") return "";
+			const record = block as Record<string, unknown>;
+			return record.type === "text" && typeof record.text === "string" ? record.text : "";
+		})
+		.filter(Boolean)
+		.join("\n\n")
+		.trim();
 }
 
 function sessionPreviewEntry(raw: unknown): string {
 	if (!raw || typeof raw !== "object") return "";
 	const record = raw as Record<string, unknown>;
-	const type = String(record.type || "entry");
+	if (record.type !== "message") return "";
 	const timestamp = typeof record.timestamp === "string" ? record.timestamp : "";
-	if (type === "session") {
-		return `<article class="session-entry meta"><div class="session-head"><strong>session</strong>${timestamp ? `<span>${escapeHtml(timestamp)}</span>` : ""}</div><pre>${escapeHtml(stringifyCompact({ id: record.id, cwd: record.cwd }, 800))}</pre></article>`;
-	}
-	if (type === "session_info") {
-		return `<article class="session-entry meta"><div class="session-head"><strong>session title</strong>${timestamp ? `<span>${escapeHtml(timestamp)}</span>` : ""}</div><pre>${escapeHtml(String(record.name || ""))}</pre></article>`;
-	}
-	if (type === "model_change") {
-		return `<article class="session-entry meta"><div class="session-head"><strong>model</strong>${timestamp ? `<span>${escapeHtml(timestamp)}</span>` : ""}</div><pre>${escapeHtml(`${String(record.provider || "")} ${String(record.modelId || "")}`.trim())}</pre></article>`;
-	}
-	if (type !== "message") return "";
 	const message = record.message && typeof record.message === "object" ? record.message as Record<string, unknown> : {};
 	const role = String(message.role || "message");
-	const toolName = typeof record.toolName === "string" ? record.toolName : "";
-	const title = role === "toolResult" ? `tool result${toolName ? ` · ${toolName}` : ""}` : role;
-	let text = contentBlockText(message.content);
-	if (!text && typeof message.errorMessage === "string") text = `ERROR: ${message.errorMessage}`;
-	if (!text && record.isError) text = "ERROR";
+	if (role !== "user" && role !== "assistant") return "";
+	const text = textBlocksOnly(message.content);
 	if (!text) return "";
-	const roleClass = role.replace(/[^a-z0-9_-]+/gi, "-").toLowerCase();
-	return `<article class="session-entry role-${escapeAttr(roleClass)}"><div class="session-head"><strong>${escapeHtml(title)}</strong>${timestamp ? `<span>${escapeHtml(timestamp)}</span>` : ""}</div><pre>${escapeHtml(truncatePreviewText(text))}</pre></article>`;
+	const roleClass = role === "user" ? "user" : "assistant";
+	const speaker = role === "user" ? "나" : "pilee";
+	return `<article class="chat-row ${escapeAttr(roleClass)}"><div class="chat-meta"><span>${escapeHtml(speaker)}</span>${timestamp ? `<time>${escapeHtml(timestamp)}</time>` : ""}</div><div class="chat-bubble">${escapeHtml(truncatePreviewText(text, 8000))}</div></article>`;
 }
 
-function buildJsonlSessionPreviewHtml(filePath: string): string {
-	const preview = readTextPreview(filePath, 1024 * 1024);
+function buildJsonlSessionPreviewHtml(filePath: string, full = false): string {
+	const preview = readTextPreview(filePath, full ? 8 * 1024 * 1024 : 1024 * 1024);
 	const lines = preview.text.split(/\r?\n/);
 	if (preview.truncated && !preview.text.endsWith("\n")) lines.pop();
 	const entries: string[] = [];
 	let parsed = 0;
+	const maxEntries = full ? 1000 : 160;
 	for (const line of lines) {
 		if (!line.trim()) continue;
 		try {
@@ -356,15 +329,15 @@ function buildJsonlSessionPreviewHtml(filePath: string): string {
 			parsed++;
 			if (html) entries.push(html);
 		} catch {}
-		if (entries.length >= 120) break;
+		if (entries.length >= maxEntries) break;
 	}
 	const notice = preview.truncated
-		? `<p class="session-notice">세션 JSONL 앞부분 ${escapeHtml(formatBytes(preview.text.length))}만 timeline으로 미리보기합니다. 전체 원본은 브라우저에서 여세요. 전체 크기: ${escapeHtml(formatBytes(preview.size))}</p>`
+		? `<p class="session-notice">세션 JSONL 앞부분 ${escapeHtml(formatBytes(preview.text.length))}만 대화로 미리보기합니다. 더 크게 보려면 브라우저에서 여세요. 전체 크기: ${escapeHtml(formatBytes(preview.size))}</p>`
 		: "";
-	return `<style>body{margin:0;padding:18px;background:#fafaf9;color:#292524;font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.session-preview{max-width:980px;margin:0 auto}.session-notice{border:1px solid #f59e0b;background:#fffbeb;color:#92400e;border-radius:12px;padding:10px 12px}.session-entry{border:1px solid #e7e5e4;border-left:5px solid #a8a29e;border-radius:14px;background:#fff;margin:10px 0;padding:12px;box-shadow:0 8px 24px rgba(41,37,36,.05)}.role-user{border-left-color:#2563eb}.role-assistant{border-left-color:#7c3aed}.role-toolresult{border-left-color:#059669}.meta{border-left-color:#78716c;background:#f5f5f4}.session-head{display:flex;gap:8px;justify-content:space-between;align-items:center;color:#78716c;font-size:12px;margin-bottom:8px}.session-head strong{color:#292524;text-transform:uppercase;letter-spacing:.04em}pre{white-space:pre-wrap;word-break:break-word;margin:0;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace}</style><main class="session-preview"><h1>${escapeHtml(path.basename(filePath))}</h1><p class="session-notice">원본 JSONL을 사람이 읽기 쉬운 timeline으로 변환한 미리보기입니다. thinking signature/encrypted payload는 숨기고 text/tool/error 요약만 보여줍니다.</p>${notice}${entries.length ? entries.join("\n") : `<pre>${escapeHtml(preview.text)}</pre>`}<p class="session-notice">parsed lines: ${parsed}, rendered entries: ${entries.length}</p></main>`;
+	return `<style>body{margin:0;padding:18px;background:#fafaf9;color:#292524;font:15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.session-preview{max-width:980px;margin:0 auto}.session-notice{border:1px solid #f59e0b;background:#fffbeb;color:#92400e;border-radius:12px;padding:10px 12px}.chat-row{display:flex;flex-direction:column;margin:14px 0}.chat-row.user{align-items:flex-end}.chat-row.assistant{align-items:flex-start}.chat-meta{display:flex;gap:8px;align-items:center;color:#78716c;font-size:12px;margin:0 8px 4px}.chat-meta span{font-weight:800;color:#57534e}.chat-bubble{max-width:min(780px,92%);white-space:pre-wrap;word-break:break-word;border:1px solid #e7e5e4;border-radius:18px;padding:12px 14px;background:#fff;box-shadow:0 8px 24px rgba(41,37,36,.05)}.user .chat-bubble{background:#eff6ff;border-color:#bfdbfe}.assistant .chat-bubble{background:#fff}</style><main class="session-preview"><h1>${escapeHtml(path.basename(filePath))}</h1><p class="session-notice">원본 JSONL에서 실제 대화만 추려 보여줍니다. system/model/session/tool/thinking/encrypted payload는 숨기고, 사용자 메시지와 assistant의 실제 답변 text만 표시합니다.</p>${notice}${entries.length ? entries.join("\n") : `<p class="session-notice">표시할 user/assistant text 대화를 찾지 못했습니다.</p>`}<p class="session-notice">parsed lines: ${parsed}, rendered conversation entries: ${entries.length}</p></main>`;
 }
 
-function artifactPreviewInnerHtml(filePath: string): { title: string; html: string } {
+function artifactPreviewInnerHtml(filePath: string, options: { full?: boolean } = {}): { title: string; html: string } {
 	const ext = path.extname(filePath).toLowerCase();
 	if (ext === ".html" || ext === ".htm") {
 		const htmlDir = path.dirname(filePath);
@@ -378,15 +351,15 @@ function artifactPreviewInnerHtml(filePath: string): { title: string; html: stri
 		return { title: path.basename(filePath), html: buildMediaPreviewHtml(filePath) };
 	}
 	if (isSessionJsonlPath(filePath)) {
-		return { title: path.basename(filePath), html: buildJsonlSessionPreviewHtml(filePath) };
+		return { title: path.basename(filePath), html: buildJsonlSessionPreviewHtml(filePath, Boolean(options.full)) };
 	}
 	const preview = readTextPreview(filePath);
 	const notice = preview.truncated ? `<p class="muted">파일이 커서 앞부분 ${escapeHtml(formatBytes(preview.text.length))}만 미리보기합니다. 전체 원본은 브라우저에서 여세요. 전체 크기: ${escapeHtml(formatBytes(preview.size))}</p>` : "";
 	return { title: path.basename(filePath), html: `${notice}<pre>${escapeHtml(preview.text)}</pre>` };
 }
 
-function buildArtifactPreviewHtml(filePath: string): string {
-	const { title, html } = artifactPreviewInnerHtml(filePath);
+function buildArtifactPreviewHtml(filePath: string, options: { full?: boolean } = {}): string {
+	const { title, html } = artifactPreviewInnerHtml(filePath, options);
 	const artifactDataUri = `data:text/html;charset=utf-8;base64,${Buffer.from(html, "utf8").toString("base64")}`;
 	return `<!doctype html>
 <html lang="ko">
@@ -893,7 +866,7 @@ function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData,
 					return;
 				}
 				res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-				res.end(buildArtifactPreviewHtml(resolved));
+				res.end(buildArtifactPreviewHtml(resolved, { full: url.searchParams.get("full") === "1" }));
 				return;
 			}
 			if (req.method === "POST" && url.pathname === "/open") {
@@ -906,14 +879,17 @@ function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData,
 					res.end(JSON.stringify({ ok: false, error: "Path is not in this Artifact Browser." }));
 					return;
 				}
+				const previewPath = `/preview?path=${encodeURIComponent(resolved)}`;
 				if (target === "glimpse") {
 					res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-					res.end(JSON.stringify({ ok: true, mode: "glimpse", previewUrl: `/preview?path=${encodeURIComponent(resolved)}` }));
+					res.end(JSON.stringify({ ok: true, mode: "glimpse", previewUrl: previewPath }));
 					return;
 				}
-				const mode = await openAnyArtifact(pi, resolved, true);
+				const host = typeof req.headers.host === "string" && req.headers.host ? req.headers.host : "127.0.0.1";
+				const browserUrl = new URL(`${previewPath}&full=1`, `http://${host}`).toString();
+				await openUrlOrPathInSystem(pi, browserUrl);
 				res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-				res.end(JSON.stringify({ ok: true, mode }));
+				res.end(JSON.stringify({ ok: true, mode: "browser", url: browserUrl }));
 				return;
 			}
 			res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
