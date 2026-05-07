@@ -20,6 +20,7 @@ applies_to:
   - .github/workflows/knowledge-review-sync.yml
 source:
   - pilee-history:2026-05-05#knowledge-system
+  - user-direction:2026-05-07-resolver-merge-gate
 reviewed_at: 2026-05-07
 reviewed_commit: c1d02c3e3d7ba120ec264c3981067def2741c1b7
 related:
@@ -53,6 +54,8 @@ pilee knowledge는 product knowledge의 `scope.path + verified_at` 모델을 그
 ## Review Loop
 
 정합성 갱신은 완전 자동 수정보다 “후보를 찾고, AI/사용자가 공개 가능한 형태로 재작성하고, 검토 기준을 갱신하는” 흐름을 따릅니다. `scripts/knowledge.mjs --freshness`는 base, summary, doctrine, README coverage, deterministic actions, AI/human review actions, candidates를 한 report로 나눠 보여줍니다. GitHub Actions workflow는 “오늘 커밋 있음”을 실행 gate로 쓰지 않고 매번 graph, validate, freshness, review queue 렌더링까지 수행합니다. generated-only 변경은 자동 병합할 수 있지만, AI/human review action이나 README narrative review가 포함된 PR은 **검토 큐 PR**로 남깁니다.
+
+초기 운영 단계의 local resolver PR은 생성까지만 하고 사용자 review/merge를 기다립니다. agent가 로컬에서 `gh pr merge`까지 수행하면 GitHub UI에는 개인 계정이 merge한 것처럼 남아 자동화와 사용자 판단이 구분되지 않습니다. 사용자가 명시적으로 merge를 요청하지 않는 한 local resolver는 PR URL과 검증 결과를 보고하고 멈춥니다. 나중에 자동 병합을 도입한다면 GitHub Actions, GitHub App, bot account처럼 merge actor가 자동화임을 드러내는 경로를 사용합니다.
 
 검토 큐 PR은 stale 문서를 직접 고치는 PR이 아닙니다. GitHub Actions는 private journal/Pi session 전문을 읽지 않으므로, doctrine stale을 실제로 해소할 충분한 맥락이 없습니다. 실제 해소는 로컬에서 `node scripts/knowledge.mjs --resolve-stale` 또는 `/ember resolve`로 resolver plan을 만들고, 관련 commit·문서·필요 시 로컬 session hint를 확인한 뒤 수행합니다. 문서가 현재 판단과 다르면 public/sanitized 내용으로 수정하고, 여전히 맞으면 `--confirm`으로 `reviewed_at`과 `reviewed_commit`을 갱신합니다.
 

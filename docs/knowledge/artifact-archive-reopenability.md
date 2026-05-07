@@ -44,6 +44,10 @@ related:
 
 artifact browser에서 “원본 열기”는 static `file://` 링크에 기대지 않고 extension host가 허용한 realpath를 system opener로 여는 방식이 안전합니다. Glimpse/WebView가 외부 링크를 삼킬 수 있으므로, 열기 요청은 allowlisted local path와 host-side open 동작으로 처리합니다.
 
+## Preview Navigation Rule
+
+Artifact Browser 안의 `열기`는 새 static wrapper를 또 띄우기보다 현재 local server의 `/preview` route로 이동해 같은 창에서 preview를 보여줍니다. preview top bar에는 artifact browser로 돌아가는 `이전`, host-side browser open, `닫기`가 있어야 합니다. 다시 열 수 있음은 파일이 있다는 뜻을 넘어, 사용자가 preview와 원본 확인 사이를 안전하게 왕복할 수 있음을 뜻합니다.
+
 ## Artifact Browser Rule
 
 artifact 종류가 늘어나면 한 목록에 섞지 않습니다. `/show-report`는 최소 세 축을 분리해서 보여줘야 합니다.

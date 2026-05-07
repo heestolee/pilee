@@ -45,6 +45,10 @@ local preview first는 일회성 창을 뜻하지 않습니다. Verify Report, w
 
 Glimpse/WebView preview가 열린 뒤에도 사용자는 원본 HTML/JSON/media를 열어 확인할 수 있어야 합니다. static `file://` anchor만으로는 WebView가 외부 열기를 삼킬 수 있으므로, artifact browser는 local server에서 allowlisted path를 받고 host-side opener로 여는 경계를 둡니다. local-first는 local-only가 아니라 local에서 검토 가능한 조작면을 제공한다는 뜻입니다.
 
+## In-Place Preview Rule
+
+Artifact Browser에서 preview를 열 때는 현재 browser session을 버리지 않습니다. `target=glimpse`는 같은 local server의 `/preview?path=...`로 이동하고, preview top bar에서 `이전`으로 목록에 돌아오게 합니다. 이렇게 해야 live/local preview가 “한 번 보고 닫는 창”이 아니라 탐색 가능한 artifact surface가 됩니다.
+
 ## Boundary
 
 기본 동작은 로컬 report/archive까지입니다. PR 업데이트, 외부 업로드, 최종 답변 채택은 별도 opt-in입니다. 이 경계가 무너지면 artifact workflow는 안전장치가 아니라 자동 배포 장치가 됩니다.
