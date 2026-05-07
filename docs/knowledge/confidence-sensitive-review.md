@@ -18,7 +18,7 @@ source:
   - session-backfill:2026-05-05#confidence-review-policy
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: b6da702c75ff0dec4d54a46fa24e77fdd224754f
+reviewed_commit: 1b5b68d8fc7197824e8cd1e57dba3a36c113bc9a
 related:
   - freshness-diagnosis-report
   - deterministic-vs-ai-actions

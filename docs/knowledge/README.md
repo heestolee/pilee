@@ -94,11 +94,11 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [낮은 confidence 판단은 정합성 PR로 올린다](./confidence-sensitive-review.md) | active | high | 2026-05-07 | b6da702 | confidence, review, freshness, ai-actions, user-review, 정합성 |
+| [낮은 confidence 판단은 정합성 PR로 올린다](./confidence-sensitive-review.md) | active | high | 2026-05-07 | 1b5b68d | confidence, review, freshness, ai-actions, user-review, 정합성 |
 | [Deterministic action과 AI review action은 분리한다](./deterministic-vs-ai-actions.md) | active | high | 2026-05-07 | 4a62531 | knowledge, deterministic, ai-actions, review, automation, 정합성 |
 | [Ember는 knowledge의 친근한 입구다](./ember-friendly-knowledge-entrypoint.md) | active | high | 2026-05-07 | 311bf8a | ember, branding, command, knowledge |
 | [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | high | 2026-05-07 | c1d02c3 | knowledge, freshness, diagnosis, review, candidate, 정합성 |
-| [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | high | 2026-05-07 | b6da702 | knowledge, judgment, granularity, documentation, coverage, 문서 |
+| [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | high | 2026-05-07 | 1b5b68d | knowledge, judgment, granularity, documentation, coverage, 문서 |
 | [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | high | 2026-05-07 | c1d02c3 | pilee, knowledge, history, journal, sanitized, reviewed-at |
 | [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | high | 2026-05-07 | c1d02c3 | knowledge, journal, privacy, sanitized, doctrine, history |
 | [README는 knowledge coverage map이다](./readme-coverage-map.md) | active | high | 2026-05-05 | 70468c2 | knowledge, readme, coverage, graph, surface, todo |
@@ -136,7 +136,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-05-07 | b6da702 | verify, evidence, gate, done, ready, verification |
-| [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-05-07 | b6da702 | frame, verify, frame-json, success-criteria, contract, verification |
+| [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-05-07 | 1b5b68d | frame, verify, frame-json, success-criteria, contract, verification |
 | [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-05-05 | d582904 | verify, invalidation, code-change, freshness, gate, 검증 |
 | [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | active | high | 2026-05-06 | 39f8acf | verify-report, verification, evidence, coverage, capture, crop |
 
