@@ -16,8 +16,9 @@ applies_to:
   - skills/verify-report
 source:
   - pilee-history:2026-05-05#46
-reviewed_at: 2026-05-05
-reviewed_commit: d5829047aef2c107923607d377fae7e225a2f3cd
+  - user-direction:2026-05-07-local-resolver
+reviewed_at: 2026-05-07
+reviewed_commit: 5474cf3424f95d56ba2f6ef04f7e7de1dcf9a8e4
 related:
   - web-search-curator
   - curator-approved-source-selection
@@ -31,6 +32,10 @@ related:
 ## Language Rule
 
 API 이름, 코드 식별자, 원문 제목, URL처럼 보존해야 하는 문자열은 유지합니다. 하지만 설명 문장, 안내, 오류, deterministic fallback, query rewrite 결과는 한국어 중심으로 작성합니다. 검색 provider에는 필요하면 한국어 답변 지시를 함께 보냅니다.
+
+## Review Artifact Rule
+
+GitHub Actions나 local resolver가 만드는 PR body, `docs/knowledge-review.md`, resolver plan 요약처럼 사용자가 읽는 검토 산출물도 한국어 우선입니다. 단, doc id, branch, command, file path, commit hash는 그대로 둡니다. 한국어 설명과 원문 식별자를 분리하면 사용자는 맥락을 읽으면서도 재현 명령을 잃지 않습니다.
 
 ## Failure Mode
 

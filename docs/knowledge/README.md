@@ -66,7 +66,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [Self-healing은 actionable item만 수정한다](./self-healing-actionable-loop.md) | active | high | 2026-05-05 | d582904 | self-healing, actionable, worker, fix-class, subagent, 자동수정 |
+| [Self-healing은 actionable item만 수정한다](./self-healing-actionable-loop.md) | active | high | 2026-05-07 | 5474cf3 | self-healing, actionable, worker, fix-class, subagent, 자동수정 |
 | [Stress Interview는 다축 검토다](./stress-interview-multi-axis-review.md) | active | high | 2026-05-05 | d582904 | stress-interview, review, verifier, reviewer, challenger, subagent |
 | [Codex-first subagent 모델 운용 정책](./subagent-model-policy.md) | active | high | 2026-05-05 | b730f16 | subagent, codex, model-policy, worker, finder, searcher |
 | [Subagent 위임은 구체 프롬프트를 요구한다](./subagent-prompt-specificity.md) | active | high | 2026-05-05 | 059f445 | subagent, prompt, delegation, worker, context, 위임 |
@@ -88,7 +88,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [수정 전에 근본 원인을 좁힌다](./root-cause-before-fix.md) | active | high | 2026-05-05 | d582904 | debugging, root-cause, triage, error-recovery, systematic, 디버깅 |
+| [수정 전에 근본 원인을 좁힌다](./root-cause-before-fix.md) | active | high | 2026-05-07 | 5474cf3 | debugging, root-cause, triage, error-recovery, systematic, 디버깅 |
 
 ### knowledge
 
@@ -101,10 +101,10 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | high | 2026-05-07 | 1b5b68d | knowledge, judgment, granularity, documentation, coverage, 문서 |
 | [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | high | 2026-05-07 | c1d02c3 | pilee, knowledge, history, journal, sanitized, reviewed-at |
 | [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | high | 2026-05-07 | c1d02c3 | knowledge, journal, privacy, sanitized, doctrine, history |
-| [README는 knowledge coverage map이다](./readme-coverage-map.md) | active | high | 2026-05-05 | 70468c2 | knowledge, readme, coverage, graph, surface, todo |
-| [README 철학 변경은 사용자 판단 게이트를 지난다](./readme-philosophy-user-gate.md) | active | high | 2026-05-05 | 70468c2 | readme, philosophy, user-gate, public-facing, documentation, 판단 |
-| [Retro는 private reflection이다](./retro-private-reflection-boundary.md) | active | high | 2026-05-05 | 70468c2 | retro, notion, reflection, private, journal, 회고 |
-| [reviewed_commit은 날짜 freshness의 빈틈을 막는다](./reviewed-commit-freshness.md) | active | high | 2026-05-05 | 70468c2 | knowledge, reviewed-commit, reviewed-at, freshness, commit, 정합성 |
+| [README는 knowledge coverage map이다](./readme-coverage-map.md) | active | high | 2026-05-07 | 5474cf3 | knowledge, readme, coverage, graph, surface, todo |
+| [README 철학 변경은 사용자 판단 게이트를 지난다](./readme-philosophy-user-gate.md) | active | high | 2026-05-07 | 5474cf3 | readme, philosophy, user-gate, public-facing, documentation, 판단 |
+| [Retro는 private reflection이다](./retro-private-reflection-boundary.md) | active | high | 2026-05-07 | 5474cf3 | retro, notion, reflection, private, journal, 회고 |
+| [reviewed_commit은 날짜 freshness의 빈틈을 막는다](./reviewed-commit-freshness.md) | active | high | 2026-05-07 | 5474cf3 | knowledge, reviewed-commit, reviewed-at, freshness, commit, 정합성 |
 
 ### review
 
@@ -126,7 +126,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 |---|---|---:|---:|---:|---|
 | [Idle UI는 장식이 아니라 ambient status다](./ambient-status-surfaces.md) | active | high | 2026-05-05 | 059f445 | idle-screensaver, tasks, spinner, status, ambient, ui |
 | [Editor affordance는 숨은 컨텍스트가 아니다](./editor-affordance-not-context.md) | active | high | 2026-05-05 | 059f445 | editor, footer, prompt-suggest, working-text, affordance, ui |
-| [User-facing 출력은 한국어를 기본으로 한다](./korean-first-user-facing-output.md) | active | high | 2026-05-05 | d582904 | korean-output, localization, web-search, ui, rewrite, 한국어 |
+| [User-facing 출력은 한국어를 기본으로 한다](./korean-first-user-facing-output.md) | active | high | 2026-05-07 | 5474cf3 | korean-output, localization, web-search, ui, rewrite, 한국어 |
 | [색상은 정보 위계다](./theme-information-hierarchy.md) | active | high | 2026-05-05 | 059f445 | theme, color, dim, muted, border, accent |
 | [도구 출력은 대화 흐름을 침범하지 않는다](./tool-output-noise-management.md) | active | high | 2026-05-05 | 059f445 | tool-output, collapse, noise, ui, usage, renderer |
 | [TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다](./tui-rendering-sanitization.md) | active | high | 2026-05-05 | 059f445 | tui, rendering, newline, ansi, sanitize, terminal |
@@ -162,7 +162,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-05-05 | 059f445 | fork-panel, revive, repanel, ghostty, spatial, panel |
 | [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-05-06 | d1ba5a0 | frame, planning, identity, home-directory, ticket, session-title |
 | [Frame Studio는 frame 질문을 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-05-07 | d12a52a | frame-studio, frame, glimpse, ask-user-question, decision-ui, co-thinking |
-| [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-05-05 | 059f445 | artifact, glimpse, preview, sse, upload, local-first |
+| [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-05-07 | 5474cf3 | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | medium | 2026-05-05 | 059f445 | local-dev, server, startup, diagnosis, product, dev |
 | [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-05-05 | 059f445 | queued-messages, slash-command, prefill, worktree, session, boundary |
 | [종료된 포크는 transcript 주입보다 revive가 우선이다](./revive-over-transcript-recall.md) | active | high | 2026-05-05 | 059f445 | revive, recall, fork-panel, session, continuity, 세션 |

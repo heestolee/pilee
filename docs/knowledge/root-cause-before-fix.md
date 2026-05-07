@@ -16,8 +16,9 @@ applies_to:
 source:
   - pilee-history:2026-05-03#32
   - session-backfill:2026-05-02#setwidget-notify
-reviewed_at: 2026-05-05
-reviewed_commit: d5829047aef2c107923607d377fae7e225a2f3cd
+  - user-direction:2026-05-07-local-resolver
+reviewed_at: 2026-05-07
+reviewed_commit: 5474cf3424f95d56ba2f6ef04f7e7de1dcf9a8e4
 related:
   - evidence-first-verification-gate
   - verification-invalidation-on-change
@@ -30,6 +31,10 @@ related:
 ## Debug Rule
 
 최근 변경, 재현 입력, 실제 출력, 기대 출력, 관련 코드 경계를 먼저 정리합니다. 가설은 명시하고, 하나씩 확인합니다. 원인이 확인되기 전의 수정은 실험으로 표시하고, 성공 여부를 검증 증거로 남깁니다.
+
+## Automation Noise Rule
+
+자동화 결과가 기대와 다르면 숫자만 맞추지 말고 원인을 좁힙니다. 예를 들어 stale count가 머지 후 다시 늘면, 문서를 무작정 `--confirm`하기 전에 어떤 commit/file이 후보를 만들었는지 확인합니다. 생성물 변경이 review queue를 증폭한다면 생성물 exclusion처럼 원인 규칙을 고쳐야 합니다.
 
 ## Failure Mode
 

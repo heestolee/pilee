@@ -15,8 +15,9 @@ applies_to:
   - skills/pilee-knowledge
 source:
   - pilee-history:2026-05-05#50
-reviewed_at: 2026-05-05
-reviewed_commit: 70468c2a01aa78453eb5a98cce65e9dc50822f39
+  - user-direction:2026-05-07-local-resolver
+reviewed_at: 2026-05-07
+reviewed_commit: 5474cf3424f95d56ba2f6ef04f7e7de1dcf9a8e4
 related:
   - freshness-diagnosis-report
   - deterministic-vs-ai-actions
@@ -33,3 +34,7 @@ Knowledge doc은 `reviewed_at`과 함께 `reviewed_commit`을 기록합니다. `
 ## Boundary
 
 Knowledge 문서 자체를 고친 commit은 freshness stale의 직접 원인이 아닙니다. 판단을 바꾸는 코드/스킬/확장 변경이 문서 검토를 요구합니다.
+
+## Actionable Range Rule
+
+`reviewed_commit..HEAD`를 볼 때 모든 파일 변경을 같은 무게로 보지 않습니다. `docs/knowledge/*.md`, `docs/knowledge/README.md`, `docs/knowledge-review.md`, root README의 generated block 같은 knowledge 산출물은 다른 doctrine을 stale하게 만드는 입력에서 제외합니다. 그렇지 않으면 검토 큐 PR이나 confirm-only commit이 다음 검토 큐를 계속 만들어냅니다.
