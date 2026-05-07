@@ -10,6 +10,7 @@
  */
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -200,14 +201,22 @@ Usage:
   node scripts/knowledge.mjs --graph [--check]           Regenerate docs/knowledge/README.md + root README knowledge links, or fail if stale
   node scripts/knowledge.mjs --freshness [opts]          Report doctrine/readme freshness and deterministic vs AI actions
   node scripts/knowledge.mjs --review-candidates [opts]  Find docs likely needing review from commits/local history
+  node scripts/knowledge.mjs --resolve-stale [opts]      Build a local resolver plan for stale/review_needed docs
   node scripts/knowledge.mjs --confirm <doc-id> [--date YYYY-MM-DD] [--confidence high|medium|low]
                                                         Update reviewed_at + reviewed_commit after human/AI review
 
 Report options:
   --since-days <n>   Fallback lookback when reviewed_commit is missing (default: 14)
   --json             Emit JSON instead of Markdown
-  --output <path>    Write freshness JSON report to a file
+  --output <path>    Write freshness JSON/report artifacts to a file or directory
   --strict           Exit non-zero when freshness/review issues are found
+
+Resolver options:
+  --doc <id>         Resolve only a doc id. Can be repeated or comma-separated
+  --topic <query>    Filter stale docs by topic/reason text
+  --limit <n>        Max docs in this local batch (default: 8; ignored with --all or --doc)
+  --all              Include every stale/review_needed doc in the resolver plan
+  --no-session-hints Skip local Pi session path hints
 
 Notes:
   - Private journal entries should stay in docs/pilee-history.md or Notion.
@@ -1219,10 +1228,323 @@ function printFreshness(report, { output = null } = {}) {
 	}
 }
 
+function timestampForPath(date = new Date()) {
+	return date.toISOString().replace(/[:.]/g, "-");
+}
+
+function displayLocalPath(filePath) {
+	const home = os.homedir();
+	if (filePath === home) return "~";
+	if (filePath.startsWith(`${home}${path.sep}`)) return `~/${path.relative(home, filePath)}`;
+	return filePath;
+}
+
+function markdownEscapeTable(value) {
+	return String(value || "").replace(/\|/g, "\\|").replace(/\n/g, "<br>");
+}
+
+function reasonText(reason) {
+	const evidence = reason?.evidence || {};
+	const chunks = [reason?.type, reason?.detail, evidence.commit, evidence.date, ...(evidence.files || []), ...(evidence.matches || [])];
+	return chunks.filter(Boolean).join(" ");
+}
+
+function reportDocSearchText(reportDoc, doc = null) {
+	return [
+		reportDoc?.id,
+		reportDoc?.title,
+		reportDoc?.confidence,
+		...(reportDoc?.reasons || []).map(reasonText),
+		doc ? titleOf(doc) : "",
+		doc ? categoryOf(doc) : "",
+		...(doc ? tagsOf(doc) : []),
+		...(doc ? appliesToOf(doc) : []),
+	].filter(Boolean).join("\n").toLowerCase();
+}
+
+function selectResolverDocs(report, docs, { docIds = [], topic = "", limit = 8, all = false } = {}) {
+	const docsById = new Map(docs.map((doc) => [doc.id, doc]));
+	let candidates = (report.doctrine || [])
+		.filter((doc) => doc.freshness !== "fresh")
+		.map((reportDoc) => ({ reportDoc, doc: docsById.get(reportDoc.id) || null }));
+
+	if (docIds.length > 0) {
+		const requested = new Set(docIds);
+		candidates = candidates.filter(({ reportDoc }) => requested.has(reportDoc.id));
+	}
+
+	const query = String(topic || "").trim().toLowerCase();
+	if (query) {
+		const terms = query.split(/\s+/).filter(Boolean);
+		candidates = candidates.filter(({ reportDoc, doc }) => {
+			const text = reportDocSearchText(reportDoc, doc);
+			return terms.every((term) => text.includes(term));
+		});
+	}
+
+	candidates.sort((a, b) => {
+		const confidenceDiff = confidenceRank(a.reportDoc.confidence) - confidenceRank(b.reportDoc.confidence);
+		if (confidenceDiff !== 0) return confidenceDiff;
+		const reasonDiff = (b.reportDoc.reasons || []).length - (a.reportDoc.reasons || []).length;
+		if (reasonDiff !== 0) return reasonDiff;
+		return a.reportDoc.id.localeCompare(b.reportDoc.id);
+	});
+
+	if (!all && docIds.length === 0) candidates = candidates.slice(0, limit);
+	return candidates;
+}
+
+function resolverTokensForDoc(reportDoc, doc) {
+	const tokenSet = new Set(doc ? tokensForDoc(doc) : []);
+	for (const reason of reportDoc.reasons || []) {
+		for (const part of reasonText(reason).toLowerCase().split(/[^\p{L}\p{N}_/-]+/u)) {
+			const normalized = part.replace(/^[-_/]+|[-_/]+$/g, "");
+			if (normalized.length >= 3) tokenSet.add(normalized);
+		}
+	}
+	const noisy = new Set(["chore", "docs", "feat", "fix", "knowledge", "review", "stale", "commit", "github", "workflow", "script", "scripts"]);
+	return [...tokenSet]
+		.map((token) => token.toLowerCase())
+		.filter((token) => token.length >= 3 && !noisy.has(token))
+		.slice(0, 24);
+}
+
+function listLocalSessionFiles() {
+	const root = path.join(os.homedir(), ".pi", "agent", "sessions");
+	if (!fs.existsSync(root)) return [];
+	const files = [];
+	function walk(dir) {
+		for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+			const full = path.join(dir, entry.name);
+			if (entry.isDirectory()) {
+				if (entry.name === "subagents" || entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+				walk(full);
+				continue;
+			}
+			if (entry.isFile() && /\.(jsonl|json)$/i.test(entry.name)) files.push(full);
+		}
+	}
+	walk(root);
+	return files
+		.map((file) => ({ file, stat: fs.statSync(file) }))
+		.filter(({ stat }) => stat.size > 0 && stat.size <= 8 * 1024 * 1024)
+		.sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs)
+		.slice(0, 1200);
+}
+
+function buildSessionHints(selectedDocs, { maxPerDoc = 4 } = {}) {
+	const sessionFiles = listLocalSessionFiles();
+	const tokenMap = new Map(selectedDocs.map(({ reportDoc, doc }) => [reportDoc.id, resolverTokensForDoc(reportDoc, doc)]));
+	const hints = new Map(selectedDocs.map(({ reportDoc }) => [reportDoc.id, []]));
+	if (sessionFiles.length === 0) return { available: false, scanned: 0, hints };
+
+	for (const { file, stat } of sessionFiles) {
+		let content = "";
+		try {
+			content = fs.readFileSync(file, "utf8").toLowerCase();
+		} catch {
+			continue;
+		}
+		for (const { reportDoc } of selectedDocs) {
+			const tokens = tokenMap.get(reportDoc.id) || [];
+			const matched = tokens.filter((token) => content.includes(token)).slice(0, 10);
+			if (matched.length === 0) continue;
+			const list = hints.get(reportDoc.id);
+			list.push({
+				path: displayLocalPath(file),
+				mtime: stat.mtime.toISOString(),
+				score: matched.length,
+				matched,
+			});
+		}
+	}
+
+	for (const [docId, list] of hints) {
+		hints.set(docId, list.sort((a, b) => b.score - a.score || b.mtime.localeCompare(a.mtime)).slice(0, maxPerDoc));
+	}
+	return { available: true, scanned: sessionFiles.length, hints };
+}
+
+function renderResolverPlan(report, selectedDocs, sessionHintResult, { outputDir, topic = "", all = false } = {}) {
+	const lines = [];
+	lines.push("# pilee knowledge stale resolver plan");
+	lines.push("");
+	lines.push("> Local-only resolver artifact. 이 파일은 `.context/` 아래에 두고 PR에 올리지 않습니다.");
+	lines.push("");
+	lines.push("## 목적");
+	lines.push("");
+	lines.push("GitHub Actions의 review queue PR은 stale 후보만 공개적으로 보여줍니다. 실제 해소는 로컬에서 관련 커밋, 문서, private journal/Pi session 전문을 확인한 뒤 public/sanitized 문서 수정 또는 `--confirm`으로 처리합니다.");
+	lines.push("");
+	lines.push("## 현재 freshness 요약");
+	lines.push("");
+	lines.push("| 항목 | 값 |");
+	lines.push("|---|---:|");
+	lines.push(`| 기준 커밋 | ${report.base.head_short || "unknown"} |`);
+	lines.push(`| 전체 상태 | ${report.summary.status} |`);
+	lines.push(`| 전체 문서 | ${report.doctrine_freshness.total}개 |`);
+	lines.push(`| fresh | ${report.doctrine_freshness.fresh}개 |`);
+	lines.push(`| stale / review_needed | ${report.doctrine_freshness.review_needed}개 |`);
+	lines.push(`| unreviewed | ${report.doctrine_freshness.unreviewed}개 |`);
+	lines.push(`| README coverage | ${report.readme.coverage.covered_count}/${report.readme.coverage.total} |`);
+	lines.push(`| deterministic action | ${report.deterministic_actions.length}개 |`);
+	lines.push(`| AI/사람 검토 action | ${report.ai_actions.length}개 |`);
+	lines.push("");
+	lines.push("## 이번 로컬 배치");
+	lines.push("");
+	lines.push(`- 선택 기준: ${all ? "all stale docs" : topic ? `topic=${topic}` : "top stale docs"}`);
+	lines.push(`- 선택 문서: ${selectedDocs.length}개`);
+	lines.push(`- 산출물 디렉터리: \`${displayLocalPath(outputDir)}\``);
+	lines.push(`- 로컬 session hint: ${sessionHintResult.available ? `${sessionHintResult.scanned}개 session 파일 스캔` : "사용 불가"}`);
+	lines.push("");
+	lines.push("| 문서 | confidence | reason 수 | 대표 사유 |");
+	lines.push("|---|---|---:|---|");
+	for (const { reportDoc } of selectedDocs) {
+		const firstReason = (reportDoc.reasons || [])[0];
+		lines.push(`| \`${reportDoc.id}\` | ${reportDoc.confidence || "high"} | ${(reportDoc.reasons || []).length} | ${markdownEscapeTable(firstReason?.detail || firstReason?.type || "")} |`);
+	}
+	lines.push("");
+	lines.push("## 문서별 검토 카드");
+	for (const { reportDoc, doc } of selectedDocs) {
+		lines.push("");
+		lines.push(`### ${reportDoc.id} — ${reportDoc.title}`);
+		lines.push("");
+		lines.push(`- 파일: \`docs/knowledge/${reportDoc.id}.md\``);
+		lines.push(`- confidence: ${reportDoc.confidence || "high"}`);
+		lines.push(`- reviewed_commit: ${reportDoc.reviewed_commit || "missing"}`);
+		if (doc) lines.push(`- applies_to: ${appliesToOf(doc).map((item) => `\`${item}\``).join(", ") || "없음"}`);
+		lines.push("");
+		lines.push("검토 사유:");
+		for (const reason of reportDoc.reasons || []) lines.push(`- ${reason.type}: ${reason.detail}${reason.evidence?.commit ? ` (${reason.evidence.commit})` : ""}`);
+		const hints = sessionHintResult.hints.get(reportDoc.id) || [];
+		lines.push("");
+		if (hints.length > 0) {
+			lines.push("로컬 session hint:");
+			for (const hint of hints) lines.push(`- \`${hint.path}\` — score ${hint.score}, tokens: ${hint.matched.join(", ")}`);
+		} else {
+			lines.push("로컬 session hint: 없음. 커밋/문서 근거만으로 판단하거나 별도 검색이 필요합니다.");
+		}
+		lines.push("");
+		lines.push("판정 기록:");
+		lines.push("- [ ] 내용 수정 필요 — public/sanitized 문서로 수정");
+		lines.push("- [ ] 내용은 유효 — `node scripts/knowledge.mjs --confirm <doc-id>`");
+		lines.push("- [ ] 사용자 판단 필요 — PR/보고서에 보류 사유 기록");
+	}
+	lines.push("");
+	lines.push("## 실제 해소 PR 흐름");
+	lines.push("");
+	lines.push("1. 로컬 브랜치를 만든다.");
+	lines.push("");
+	lines.push("```bash");
+	lines.push("git switch -c docs/knowledge-resolve-stale-$(date +%Y%m%d)");
+	lines.push("```");
+	lines.push("");
+	lines.push("2. 각 문서를 실제로 검토한다. session hint가 있으면 파일 전문을 읽고, 없으면 관련 커밋과 적용 파일을 확인한다.");
+	lines.push("3. 문서 내용이 현재 판단과 다르면 수정한다. 여전히 맞으면 `--confirm <doc-id>`만 실행한다. confidence 승격은 사용자/AI 검토 근거가 있을 때만 `--confidence high`를 붙인다.");
+	lines.push("4. 검증한다.");
+	lines.push("");
+	lines.push("```bash");
+	lines.push("node scripts/knowledge.mjs --graph");
+	lines.push("node scripts/knowledge.mjs --validate");
+	lines.push("node scripts/knowledge.mjs --freshness");
+	lines.push("```");
+	lines.push("");
+	lines.push("5. 커밋하고 PR을 만든다. PR에는 수정/confirm-only/보류 문서를 구분해 적는다.");
+	lines.push("");
+	lines.push("```bash");
+	lines.push("git add docs/knowledge README.md");
+	lines.push("git commit -m \"docs: resolve pilee knowledge stale batch\"");
+	lines.push("git push -u origin HEAD");
+	lines.push(`gh pr create --title "docs: pilee knowledge stale 해소" --body-file "${path.join(outputDir, "pr-body.md")}"`);
+	lines.push("```");
+	lines.push("");
+	return `${lines.join("\n")}\n`;
+}
+
+function renderResolverPrompt(selectedDocs, outputDir) {
+	const ids = selectedDocs.map(({ reportDoc }) => reportDoc.id);
+	return `pilee knowledge stale을 로컬 맥락으로 실제 해소해줘.
+
+Resolver plan: ${displayLocalPath(path.join(outputDir, "resolve-plan.md"))}
+Freshness JSON: ${displayLocalPath(path.join(outputDir, "freshness.json"))}
+대상 문서: ${ids.join(", ")}
+
+절차:
+1. plan의 문서별 검토 카드를 읽는다.
+2. 관련 docs/knowledge 문서, 커밋 diff, 필요한 경우 로컬 Pi session hint의 전문을 확인한다.
+3. 각 문서를 다음 중 하나로 판정한다: 내용 수정 / confirm-only / 사용자 판단 필요.
+4. private journal/session 원문은 공개 문서나 PR body에 복사하지 말고 sanitized judgment만 남긴다.
+5. 수정 또는 \`node scripts/knowledge.mjs --confirm <doc-id>\`로 stale을 해소한다.
+6. \`node scripts/knowledge.mjs --graph && node scripts/knowledge.mjs --validate && node scripts/knowledge.mjs --freshness\`로 검증한다.
+7. 로컬 브랜치에 커밋하고 실제 update PR을 만든다. PR에는 수정/confirm-only/보류를 구분해 적는다.
+`;
+}
+
+function renderResolverPrBody(selectedDocs) {
+	const ids = selectedDocs.map(({ reportDoc }) => `- [ ] ${reportDoc.id}`).join("\n");
+	return `## 개요
+로컬 knowledge resolver로 stale/review_needed 문서를 실제 검토해 해소합니다.
+
+## 대상 문서
+${ids}
+
+## 검토 방식
+- 관련 커밋과 적용 파일을 확인했습니다.
+- 필요한 경우 로컬 Pi session/private history 전문을 확인했습니다.
+- private 원문은 PR에 복사하지 않고 public/sanitized 판단만 반영했습니다.
+
+## 해소 결과
+- 내용 수정:
+- confirm-only:
+- 사용자 판단 필요/보류:
+
+## 검증
+- [ ] \`node scripts/knowledge.mjs --graph\`
+- [ ] \`node scripts/knowledge.mjs --validate\`
+- [ ] \`node scripts/knowledge.mjs --freshness\`
+`;
+}
+
+function cmdResolveStale({ sinceDays = 14, docIds = [], topic = "", limit = 8, all = false, output = null, sessionHints = true } = {}) {
+	const docs = loadDocs();
+	const report = buildFreshnessReport({ sinceDays });
+	const selectedDocs = selectResolverDocs(report, docs, { docIds, topic, limit, all });
+	const outputDir = path.resolve(REPO_ROOT, output || path.join(".context", "knowledge-resolver", timestampForPath()));
+	fs.mkdirSync(outputDir, { recursive: true });
+	fs.writeFileSync(path.join(outputDir, "freshness.json"), `${JSON.stringify(report, null, 2)}\n`);
+
+	const sessionHintResult = sessionHints ? buildSessionHints(selectedDocs) : { available: false, scanned: 0, hints: new Map(selectedDocs.map(({ reportDoc }) => [reportDoc.id, []])) };
+	fs.writeFileSync(path.join(outputDir, "resolve-plan.md"), renderResolverPlan(report, selectedDocs, sessionHintResult, { outputDir, topic, all }));
+	fs.writeFileSync(path.join(outputDir, "prompt.md"), renderResolverPrompt(selectedDocs, outputDir));
+	fs.writeFileSync(path.join(outputDir, "pr-body.md"), renderResolverPrBody(selectedDocs));
+
+	console.log("🧭 pilee knowledge local resolver plan");
+	console.log("");
+	console.log(`Selected docs: ${selectedDocs.length}`);
+	console.log(`Output dir: ${displayLocalPath(outputDir)}`);
+	console.log(`Plan: ${displayLocalPath(path.join(outputDir, "resolve-plan.md"))}`);
+	console.log(`Prompt: ${displayLocalPath(path.join(outputDir, "prompt.md"))}`);
+	console.log(`PR body template: ${displayLocalPath(path.join(outputDir, "pr-body.md"))}`);
+	if (sessionHints) console.log(`Session hints: ${sessionHintResult.available ? `${sessionHintResult.scanned} files scanned` : "not available"}`);
+	console.log("");
+	console.log("Next: read prompt.md or run `/ember resolve` to let Pi review docs, update/confirm, and create the actual PR.");
+	return 0;
+}
+
 function readOption(name, fallback = null) {
 	const idx = args.indexOf(name);
 	if (idx < 0) return fallback;
 	return args[idx + 1] ?? fallback;
+}
+
+function readOptions(name) {
+	const values = [];
+	for (let i = 0; i < args.length; i += 1) {
+		if (args[i] !== name) continue;
+		const value = args[i + 1];
+		if (!value || value.startsWith("--")) continue;
+		values.push(...value.split(",").map((item) => item.trim()).filter(Boolean));
+	}
+	return values;
 }
 
 const args = process.argv.slice(2);
@@ -1247,6 +1569,20 @@ if (args.includes("--freshness")) {
 		json: args.includes("--json"),
 		strict: args.includes("--strict"),
 		output: readOption("--output", null),
+	}));
+}
+
+if (args.includes("--resolve-stale")) {
+	const sinceDays = Number(readOption("--since-days", "14"));
+	const limit = Number(readOption("--limit", "8"));
+	process.exit(cmdResolveStale({
+		sinceDays: Number.isFinite(sinceDays) && sinceDays > 0 ? sinceDays : 14,
+		docIds: readOptions("--doc"),
+		topic: readOption("--topic", ""),
+		limit: Number.isFinite(limit) && limit > 0 ? limit : 8,
+		all: args.includes("--all"),
+		output: readOption("--output", null),
+		sessionHints: !args.includes("--no-session-hints"),
 	}));
 }
 

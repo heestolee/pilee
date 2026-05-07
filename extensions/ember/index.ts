@@ -6,6 +6,7 @@ Usage:
   /ember [topic]        현재 세션에서 knowledge 후보를 찾기
   /ember collect [q]    같은 동작. 불씨 후보 수집
   /ember tend           freshness / confidence review queue 점검
+  /ember resolve [opts] stale/review_needed 문서를 로컬 맥락으로 실제 해소
   /ember review         medium/low confidence 문서 검토 준비
   /ember graph          knowledge graph/index 재생성·검증
 
@@ -16,7 +17,7 @@ function normalizeArgs(args: string): { sub: string; rest: string } {
 	if (!trimmed) return { sub: "collect", rest: "" };
 	const [first = "", ...restParts] = trimmed.split(/\s+/);
 	const sub = first.toLowerCase();
-	if (["collect", "ignite", "tend", "review", "graph", "help"].includes(sub)) {
+	if (["collect", "ignite", "tend", "resolve", "review", "graph", "help"].includes(sub)) {
 		return { sub, rest: restParts.join(" ").trim() };
 	}
 	return { sub: "collect", rest: trimmed };
@@ -38,6 +39,22 @@ function buildPrompt(sub: string, rest: string): string {
 1. \`node scripts/knowledge.mjs --freshness\`를 실행한다.
 2. deterministic action과 AI/human review action을 분리해서 요약한다.
 3. medium/low confidence 문서는 사용자 review queue로 남기고, 임의로 \`--confirm\`하지 않는다.
+${commonRules}`;
+	}
+
+	if (sub === "resolve") {
+		const resolverArgs = rest ? (rest.startsWith("--") ? rest : `--topic "${rest.replace(/"/g, '\\"')}"`) : "--limit 8";
+		return `불씨 resolver로 stale/review_needed knowledge 문서를 실제 해소해줘.${topicLine}
+
+해야 할 일:
+1. 먼저 git status를 확인하고, 충돌/무관 WIP가 있으면 중단하고 보고한다.
+2. \`node scripts/knowledge.mjs --resolve-stale ${resolverArgs}\`를 실행해 로컬 resolver plan을 만든다.
+3. 생성된 \`.context/knowledge-resolver/.../resolve-plan.md\`와 \`prompt.md\`를 읽는다.
+4. 각 후보별로 관련 knowledge 문서, 관련 커밋 diff, 필요 시 로컬 Pi session hint의 전문을 확인한다.
+5. 문서가 현재 판단과 다르면 public/sanitized 내용으로 수정하고, 여전히 맞으면 근거를 확인한 뒤 \`node scripts/knowledge.mjs --confirm <doc-id>\`로 reviewed 기준을 갱신한다.
+6. private journal/session 원문은 공개 문서나 PR body에 복사하지 않는다.
+7. \`node scripts/knowledge.mjs --graph\`, \`node scripts/knowledge.mjs --validate\`, \`node scripts/knowledge.mjs --freshness\`로 검증한다.
+8. 실제 업데이트 PR을 만들 준비가 되면 로컬 브랜치/커밋/PR body를 구성하고, 수정/confirm-only/보류 항목을 구분해 보고한다.
 ${commonRules}`;
 	}
 

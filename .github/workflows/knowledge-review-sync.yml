@@ -251,15 +251,15 @@ jobs:
           fs.writeFileSync(path, `${lines.join('\n')}\n`);
           NODE
 
-      - name: Create PR for knowledge sync updates
+      - name: Create PR for knowledge review queue
         id: cpr
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: auto/pilee-knowledge-sync
           delete-branch: true
-          title: "[AUTO] pilee knowledge 정합성 갱신"
-          commit-message: "chore: sync pilee knowledge review state"
+          title: "[AUTO] pilee knowledge 검토 큐"
+          commit-message: "chore: render pilee knowledge review queue"
           body: |
             ## 이번 실행 요약
             - 전체 상태: `${{ steps.review_queue.outputs.summary_status }}`
@@ -271,20 +271,22 @@ jobs:
             `stale`은 문서가 틀렸다는 확정이 아니라, 현재 HEAD 기준으로 다시 읽고 확인해야 한다는 뜻입니다. 상세 목록은 `docs/knowledge-review.md`에 한국어 검토 큐로 생성됩니다.
 
             ## 개요
-            pilee knowledge 정합성 workflow가 생성한 자동 PR입니다.
+            pilee knowledge review queue workflow가 생성한 자동 PR입니다.
+
+            이 PR은 stale/review_needed 문서를 직접 수정하는 PR이 아니라, 로컬 resolver가 실제 문서 갱신 PR을 만들 수 있도록 공개 검토 큐를 갱신합니다.
 
             이 PR에는 다음 변경이 포함될 수 있습니다.
             - `docs/knowledge/README.md`와 root `README.md`의 deterministic generated block 갱신
             - stale 또는 medium/low confidence doctrine에 대한 공개 `docs/knowledge-review.md` 검토 큐
             - generated block이 아닌 README 공개 서사가 바뀐 경우의 수동 검토 요청
 
-            Private/local journal은 GitHub Actions에서 의도적으로 읽지 않습니다. private 맥락이 필요한 내용 변경은 로컬에서 sanitized 형태로 작성·검토한 뒤 push하세요.
+            Private/local journal은 GitHub Actions에서 의도적으로 읽지 않습니다. 실제 stale 해소는 로컬에서 session/private history 맥락을 확인한 뒤 sanitized 문서 수정 또는 `--confirm`으로 처리하세요.
           add-paths: |
             docs/knowledge/README.md
             README.md
             docs/knowledge-review.md
 
-      - name: Auto-merge generated-only knowledge sync PR
+      - name: Auto-merge generated-only knowledge PR
         if: steps.cpr.outputs.pull-request-number != '' && steps.review_queue.outputs.manual_review_required != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -299,8 +301,8 @@ jobs:
             echo "Generated-only PR #$PR_NUMBER 자동 병합에 실패해 열린 상태로 둡니다." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Keep manual review PR open
+      - name: Keep knowledge review queue PR open
         if: steps.cpr.outputs.pull-request-number != '' && steps.review_queue.outputs.manual_review_required == 'true'
         run: |
           echo "## 수동 knowledge 검토 필요" >> "$GITHUB_STEP_SUMMARY"
-          echo "PR #${{ steps.cpr.outputs.pull-request-number }} 에 AI/사람 검토 action 또는 README 서사 검토가 포함되어 수동 병합 대상으로 남겼습니다." >> "$GITHUB_STEP_SUMMARY"
+          echo "PR #${{ steps.cpr.outputs.pull-request-number }} 에 AI/사람 검토 action 또는 README 서사 검토가 포함되어 검토 큐 PR로 남겼습니다." >> "$GITHUB_STEP_SUMMARY"

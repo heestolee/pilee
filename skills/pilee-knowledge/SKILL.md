@@ -1,6 +1,6 @@
 ---
 name: pilee-knowledge
-description: pilee-history/private journal에서 공개 가능한 설계 지식을 추출하거나 docs/knowledge 문서를 검색·작성·갱신·검증할 때 사용한다. 사용자가 "pilee knowledge", "히스토리를 지식으로", "지식 정합성", "README 그래프", "reviewed_at 갱신", "add-knowledge처럼"이라고 말하면 사용한다.
+description: pilee-history/private journal에서 공개 가능한 설계 지식을 추출하거나 docs/knowledge 문서를 검색·작성·갱신·검증할 때 사용한다. 사용자가 "pilee knowledge", "히스토리를 지식으로", "지식 정합성", "stale 해소", "README 그래프", "reviewed_at 갱신", "add-knowledge처럼"이라고 말하면 사용한다.
 argument-hint: "검색어 또는 정리할 주제"
 disable-model-invocation: false
 ---
@@ -51,6 +51,7 @@ node scripts/knowledge.mjs "<검색어>"
 - private 쪽: `docs/pilee-history.md`, `docs/pilee-history.sync.local.md`는 로컬 근거로만 사용하고 원문을 공개 문서에 복사하지 않는다.
 - freshness report: `node scripts/knowledge.mjs --freshness`
 - 자동 후보: `node scripts/knowledge.mjs --review-candidates`
+- stale 해소용 로컬 plan: `node scripts/knowledge.mjs --resolve-stale` 또는 `/ember resolve`
 
 ### 3. 작성/수정 결정
 
@@ -100,9 +101,12 @@ node scripts/knowledge.mjs --graph
 node scripts/knowledge.mjs --validate
 node scripts/knowledge.mjs --freshness
 node scripts/knowledge.mjs --freshness --json --output .context/knowledge-freshness.json
+node scripts/knowledge.mjs --resolve-stale --limit 8
 node scripts/knowledge.mjs --confirm <doc-id>
 node scripts/knowledge.mjs --confirm <doc-id> --confidence high
 ```
+
+`--resolve-stale`은 GitHub Actions의 검토 큐를 실제 로컬 작업 단위로 바꾸는 준비 명령이다. 생성된 `.context/knowledge-resolver/.../resolve-plan.md`와 session hint를 읽고, 문서가 틀리면 수정하고 여전히 맞으면 `--confirm`한다.
 
 `--confirm`은 문서 내용과 관련 기능/히스토리를 실제로 확인한 뒤 실행한다. 단순 날짜/커밋 갱신 용도로 남발하지 않는다. `confidence: medium|low` 문서를 사용자가 받아들이면 `--confidence high`로 승격한다.
 
