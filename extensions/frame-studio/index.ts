@@ -27,6 +27,7 @@ type StudioQuestion = {
 type StudioAnswer = {
 	status: AskStatus;
 	questionId?: string;
+	question?: string;
 	selectedIndices: number[];
 	selectedOptions: string[];
 	text?: string;
@@ -217,6 +218,11 @@ button { border:0; border-radius:12px; padding:10px 15px; font-weight:800; curso
 .primary { background:var(--accent); color:white; }
 .secondary { background:var(--panel2); color:var(--text); }
 .status { color:var(--muted); font-size:13px; }
+.answer { border-color:#bbf7d0; background:linear-gradient(180deg,#fff,#f0fdf4); }
+.answer-title { display:flex; gap:8px; align-items:center; font-size:18px; font-weight:850; margin:0 0 12px; color:var(--green); }
+.answer-row { margin:8px 0; }
+.answer-label { color:var(--muted); font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
+.answer-value { margin-top:3px; }
 .logs { color:var(--muted); font-size:12px; max-height:160px; overflow:auto; }
 .empty { color:var(--muted); padding:24px; text-align:center; }
 </style>
@@ -257,6 +263,23 @@ function renderMarkdown(md) {
   return html.join('');
 }
 function setStatus(text) { var el = document.getElementById('submitStatus'); if (el) el.textContent = text; }
+function answerStatusLabel(status) {
+  if (status === 'answered') return '선택 완료됨';
+  if (status === 'cancelled') return '선택 취소됨';
+  if (status === 'timeout') return '응답 시간 초과';
+  return '응답 상태: ' + esc(status || 'unknown');
+}
+function renderAnswerCard(answer) {
+  var optionHtml = (answer.selectedOptions || []).length
+    ? '<ol>' + answer.selectedOptions.map(function(opt) { return '<li>' + inline(opt) + '</li>'; }).join('') + '</ol>'
+    : '<div class="status">선택한 옵션 없음</div>';
+  var textHtml = answer.text ? '<div class="answer-row"><div class="answer-label">직접 입력</div><div class="answer-value">' + inline(answer.text) + '</div></div>' : '';
+  return '<div class="answer-title">✅ ' + answerStatusLabel(answer.status) + '</div>'
+    + (answer.question ? '<div class="answer-row"><div class="answer-label">질문</div><div class="answer-value">' + inline(answer.question) + '</div></div>' : '')
+    + '<div class="answer-row"><div class="answer-label">선택값</div><div class="answer-value">' + optionHtml + '</div></div>'
+    + textHtml
+    + '<div class="status">Pi가 다음 단계를 준비 중입니다. 다음 markdown update가 오면 이 카드가 교체됩니다.</div>';
+}
 function render(s) {
   state = s;
   document.title = s.title || 'Frame Studio';
@@ -271,9 +294,18 @@ function render(s) {
   document.getElementById('markdown').innerHTML = s.markdown ? renderMarkdown(s.markdown) : '<div class="empty">Frame markdown을 기다리는 중...</div>';
   var q = s.question;
   var qc = document.getElementById('questionCard');
-  if (!q || s.status !== 'awaiting') { qc.hidden = true; }
+  if (!q || s.status !== 'awaiting') {
+    if (s.lastAnswer) {
+      qc.hidden = false;
+      qc.className = 'card answer';
+      qc.innerHTML = renderAnswerCard(s.lastAnswer);
+    } else {
+      qc.hidden = true;
+    }
+  }
   else {
     qc.hidden = false;
+    qc.className = 'card question';
     var type = q.multiSelect ? 'checkbox' : 'radio';
     qc.innerHTML = '<div class="question-title">' + esc(q.question) + '</div>'
       + (q.markdown ? '<div class="markdown">' + renderMarkdown(q.markdown) + '</div>' : '')
@@ -358,6 +390,7 @@ function createServerFor(state: FrameStudioState): FrameStudioHandle {
 				const answer: StudioAnswer = {
 					status: body.cancelled ? "cancelled" : "answered",
 					questionId: pending.questionId,
+					question: handle.state.question?.question,
 					selectedIndices,
 					selectedOptions: selectedIndices.map((i) => options[i]).filter(Boolean),
 					text: typeof body.text === "string" && body.text.trim() ? body.text.trim() : undefined,
@@ -432,6 +465,7 @@ async function ensureRun(pi: ExtensionAPI, ctx: ExtensionContext, params: { titl
 		if (params.title) handle.state.title = params.title;
 		if (params.markdown !== undefined) handle.state.markdown = params.markdown;
 		if (params.step) handle.state.step = params.step;
+		if (params.markdown !== undefined || params.step) handle.state.lastAnswer = undefined;
 		handle.state.updatedAt = Date.now();
 		pushState(handle);
 		latestRunId = handle.state.runId;
@@ -473,7 +507,7 @@ function closeHandle(handle: FrameStudioHandle) {
 	try { handle.window?.close(); } catch {}
 	if (handle.pending) {
 		clearTimeout(handle.pending.timer);
-		handle.pending.resolve({ status: "cancelled", selectedIndices: [], selectedOptions: [], submittedAt: Date.now() });
+		handle.pending.resolve({ status: "cancelled", questionId: handle.pending.questionId, question: handle.state.question?.question, selectedIndices: [], selectedOptions: [], submittedAt: Date.now() });
 		handle.pending = undefined;
 	}
 	runsById.delete(handle.state.runId);
@@ -483,8 +517,9 @@ function closeHandle(handle: FrameStudioHandle) {
 function ask(handle: FrameStudioHandle, question: StudioQuestion, signal?: AbortSignal): Promise<StudioAnswer> {
 	if (handle.pending) {
 		clearTimeout(handle.pending.timer);
-		handle.pending.resolve({ status: "cancelled", questionId: handle.pending.questionId, selectedIndices: [], selectedOptions: [], submittedAt: Date.now() });
+		handle.pending.resolve({ status: "cancelled", questionId: handle.pending.questionId, question: handle.state.question?.question, selectedIndices: [], selectedOptions: [], submittedAt: Date.now() });
 	}
+	handle.state.lastAnswer = undefined;
 	handle.state.question = question;
 	handle.state.status = "awaiting";
 	if (question.markdown) handle.state.markdown = question.markdown;
@@ -494,7 +529,7 @@ function ask(handle: FrameStudioHandle, question: StudioQuestion, signal?: Abort
 		const timer = setTimeout(() => {
 			if (handle.pending?.questionId !== question.id) return;
 			handle.pending = undefined;
-			const answer: StudioAnswer = { status: "timeout", questionId: question.id, selectedIndices: [], selectedOptions: [], submittedAt: Date.now() };
+			const answer: StudioAnswer = { status: "timeout", questionId: question.id, question: question.question, selectedIndices: [], selectedOptions: [], submittedAt: Date.now() };
 			handle.state.lastAnswer = answer;
 			handle.state.question = undefined;
 			handle.state.status = "running";
@@ -508,7 +543,7 @@ function ask(handle: FrameStudioHandle, question: StudioQuestion, signal?: Abort
 				if (handle.pending?.questionId !== question.id) return;
 				clearTimeout(timer);
 				handle.pending = undefined;
-				const answer: StudioAnswer = { status: "cancelled", questionId: question.id, selectedIndices: [], selectedOptions: [], submittedAt: Date.now() };
+				const answer: StudioAnswer = { status: "cancelled", questionId: question.id, question: question.question, selectedIndices: [], selectedOptions: [], submittedAt: Date.now() };
 				handle.state.lastAnswer = answer;
 				handle.state.question = undefined;
 				handle.state.status = "running";
@@ -573,6 +608,7 @@ export default function (pi: ExtensionAPI) {
 				if (params.title) handle.state.title = params.title;
 				if (params.step) handle.state.step = params.step;
 				if (params.markdown !== undefined) handle.state.markdown = params.markdown;
+				if (params.markdown !== undefined || params.step) handle.state.lastAnswer = undefined;
 				addLog(handle, `Updated${params.step ? `: ${params.step}` : ""}.`);
 				pushState(handle);
 				return resultText(`Frame Studio updated (${handle.state.runId}).`, { runId: handle.state.runId, url: handle.state.url });
