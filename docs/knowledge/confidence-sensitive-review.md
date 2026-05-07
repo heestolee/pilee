@@ -16,8 +16,9 @@ applies_to:
   - skills/pilee-knowledge
 source:
   - session-backfill:2026-05-05#confidence-review-policy
-reviewed_at: 2026-05-05
-reviewed_commit: 70468c2a01aa78453eb5a98cce65e9dc50822f39
+  - user-direction:2026-05-07-local-resolver
+reviewed_at: 2026-05-07
+reviewed_commit: b6da702c75ff0dec4d54a46fa24e77fdd224754f
 related:
   - freshness-diagnosis-report
   - deterministic-vs-ai-actions
@@ -30,7 +31,7 @@ related:
 
 ## Confidence Rule
 
-Knowledge frontmatter는 필요할 때 `confidence: medium` 또는 `confidence: low`를 가질 수 있습니다. `high`가 아니면 freshness report의 AI/human review action이 되고, 자동 정합성 PR의 검토 대상으로 올라갑니다. 이런 PR은 자동 병합하지 않고 사용자가 확인해 받아들인 뒤에만 `--confirm <doc-id> --confidence high`로 승격합니다.
+Knowledge frontmatter는 필요할 때 `confidence: medium` 또는 `confidence: low`를 가질 수 있습니다. `high`가 아니면 freshness report의 AI/human review action이 되고, 자동 정합성 workflow의 검토 큐로 올라갑니다. 검토 큐 PR은 문서를 대신 고치는 PR이 아니라, 로컬 resolver가 실제 확인 작업을 시작하게 하는 공개 알림입니다. 이런 항목은 사용자가 확인해 받아들인 뒤에만 `--confirm <doc-id> --confidence high`로 승격합니다.
 
 ## Ask Boundary
 

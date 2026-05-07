@@ -102,11 +102,14 @@ node scripts/knowledge.mjs --validate
 node scripts/knowledge.mjs --freshness
 node scripts/knowledge.mjs --freshness --json --output .context/knowledge-freshness.json
 node scripts/knowledge.mjs --resolve-stale --limit 8
+node scripts/knowledge.mjs --resolver-log
 node scripts/knowledge.mjs --confirm <doc-id>
 node scripts/knowledge.mjs --confirm <doc-id> --confidence high
 ```
 
 `--resolve-stale`은 GitHub Actions의 검토 큐를 실제 로컬 작업 단위로 바꾸는 준비 명령이다. 생성된 `.context/knowledge-resolver/.../resolve-plan.md`와 session hint를 읽고, 문서가 틀리면 수정하고 여전히 맞으면 `--confirm`한다. `freshness.local.json`, session hint, private history 제목/원문은 민감할 수 있으므로 PR이나 public knowledge 문서에 복사하지 않는다.
+
+`--resolver-log`는 로컬 resolver 실행 이력을 요약해서 보여준다. 이 로그도 local-only이며 session path/private text를 저장하지 않고, 실행 시각·대상 문서·카운트·산출물 디렉터리만 남긴다.
 
 `--confirm`은 문서 내용과 관련 기능/히스토리를 실제로 확인한 뒤 실행한다. 단순 날짜/커밋 갱신 용도로 남발하지 않는다. `confidence: medium|low` 문서를 사용자가 받아들이면 `--confidence high`로 승격한다.
 

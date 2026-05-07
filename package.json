@@ -1,6 +1,6 @@
 {
   "name": "pilee",
-  "version": "0.1.22",
+  "version": "0.1.23",
   "description": "Personal pi coding agent config 🔥",
   "private": true,
   "type": "module",
@@ -26,7 +26,8 @@
     "knowledge:graph": "node scripts/knowledge.mjs --graph",
     "knowledge:freshness": "node scripts/knowledge.mjs --freshness",
     "knowledge:review": "node scripts/knowledge.mjs --review-candidates",
-    "knowledge:resolve": "node scripts/knowledge.mjs --resolve-stale"
+    "knowledge:resolve": "node scripts/knowledge.mjs --resolve-stale",
+    "knowledge:resolver-log": "node scripts/knowledge.mjs --resolver-log"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.0",

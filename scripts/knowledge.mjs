@@ -22,6 +22,8 @@ const REPO_ROOT = path.resolve(__dirname, "..");
 const KNOWLEDGE_DIR = path.join(REPO_ROOT, "docs", "knowledge");
 const KNOWLEDGE_README_PATH = path.join(KNOWLEDGE_DIR, "README.md");
 const ROOT_README_PATH = path.join(REPO_ROOT, "README.md");
+const RESOLVER_DIR = path.join(REPO_ROOT, ".context", "knowledge-resolver");
+const RESOLVER_RUNS_LOG = path.join(RESOLVER_DIR, "runs.jsonl");
 const GRAPH_START = "<!-- PILEE_KNOWLEDGE_GRAPH_START -->";
 const GRAPH_END = "<!-- PILEE_KNOWLEDGE_GRAPH_END -->";
 const ROOT_LINKS_START = "<!-- PILEE_ROOT_KNOWLEDGE_LINKS_START -->";
@@ -202,6 +204,7 @@ Usage:
   node scripts/knowledge.mjs --freshness [opts]          Report doctrine/readme freshness and deterministic vs AI actions
   node scripts/knowledge.mjs --review-candidates [opts]  Find docs likely needing review from commits/local history
   node scripts/knowledge.mjs --resolve-stale [opts]      Build a local resolver plan for stale/review_needed docs
+  node scripts/knowledge.mjs --resolver-log [opts]       List local resolver runs from .context/knowledge-resolver/runs.jsonl
   node scripts/knowledge.mjs --confirm <doc-id> [--date YYYY-MM-DD] [--confidence high|medium|low]
                                                         Update reviewed_at + reviewed_commit after human/AI review
 
@@ -218,6 +221,10 @@ Resolver options:
   --limit <n>        Max docs in this local batch (default: 8; ignored with --all or --doc)
   --all              Include every stale/review_needed doc in the resolver plan
   --no-session-hints Skip local Pi session path hints
+
+Resolver log options:
+  --limit <n>        Max resolver log entries to print (default: 10)
+  --json             Emit resolver log JSON instead of Markdown
 
 Notes:
   - Private journal entries should stay in docs/pilee-history.md or Notion.
@@ -1539,11 +1546,82 @@ ${ids}
 `;
 }
 
+function appendResolverRunLog({ outputDir, report, selectedDocs, sessionHintResult, options }) {
+	fs.mkdirSync(RESOLVER_DIR, { recursive: true });
+	const entry = {
+		created_at: new Date().toISOString(),
+		base: report.base.head_short || report.base.head || "unknown",
+		output_dir: displayLocalPath(outputDir),
+		counts: {
+			total: report.doctrine_freshness.total,
+			fresh: report.doctrine_freshness.fresh,
+			review_needed: report.doctrine_freshness.review_needed,
+			unreviewed: report.doctrine_freshness.unreviewed,
+		},
+		selected_docs: selectedDocs.map(({ reportDoc }) => ({
+			id: reportDoc.id,
+			title: reportDoc.title,
+			confidence: reportDoc.confidence || "high",
+			reason_count: (reportDoc.reasons || []).length,
+		})),
+		options: {
+			since_days: options.sinceDays,
+			doc_ids: options.docIds,
+			topic: options.topic,
+			limit: options.limit,
+			all: options.all,
+			session_hints: options.sessionHints,
+		},
+		session_hints: {
+			enabled: options.sessionHints,
+			scanned: sessionHintResult.scanned || 0,
+			per_doc_counts: Object.fromEntries(selectedDocs.map(({ reportDoc }) => [reportDoc.id, (sessionHintResult.hints.get(reportDoc.id) || []).length])),
+		},
+		privacy: "local-only log; no session paths or private history text stored",
+	};
+	fs.appendFileSync(RESOLVER_RUNS_LOG, `${JSON.stringify(entry)}\n`);
+	return entry;
+}
+
+function readResolverRunLog() {
+	if (!fs.existsSync(RESOLVER_RUNS_LOG)) return [];
+	return fs.readFileSync(RESOLVER_RUNS_LOG, "utf8")
+		.split("\n")
+		.map((line) => line.trim())
+		.filter(Boolean)
+		.map((line) => {
+			try { return JSON.parse(line); }
+			catch { return null; }
+		})
+		.filter(Boolean);
+}
+
+function cmdResolverLog({ limit = 10, json = false } = {}) {
+	const entries = readResolverRunLog().reverse().slice(0, limit);
+	if (json) {
+		console.log(JSON.stringify({ log_path: displayLocalPath(RESOLVER_RUNS_LOG), entries }, null, 2));
+		return 0;
+	}
+	console.log("📚 pilee knowledge resolver local runs\n");
+	console.log(`Log: ${displayLocalPath(RESOLVER_RUNS_LOG)}`);
+	console.log("Privacy: local-only summary log. Raw session paths/private text are not stored here.\n");
+	if (entries.length === 0) {
+		console.log("No resolver runs found.");
+		return 0;
+	}
+	for (const entry of entries) {
+		console.log(`- ${entry.created_at}  base=${entry.base}  docs=${entry.selected_docs.length}  output=${entry.output_dir}`);
+		console.log(`  selected: ${entry.selected_docs.map((doc) => doc.id).join(", ")}`);
+		console.log(`  counts: fresh ${entry.counts.fresh} / review_needed ${entry.counts.review_needed} / unreviewed ${entry.counts.unreviewed}`);
+	}
+	return 0;
+}
+
 function cmdResolveStale({ sinceDays = 14, docIds = [], topic = "", limit = 8, all = false, output = null, sessionHints = true } = {}) {
 	const docs = loadDocs();
 	const report = buildFreshnessReport({ sinceDays });
 	const selectedDocs = selectResolverDocs(report, docs, { docIds, topic, limit, all });
-	const outputDir = path.resolve(REPO_ROOT, output || path.join(".context", "knowledge-resolver", timestampForPath()));
+	const outputDir = path.resolve(REPO_ROOT, output || path.join(RESOLVER_DIR, timestampForPath()));
 	fs.mkdirSync(outputDir, { recursive: true });
 	fs.writeFileSync(path.join(outputDir, "freshness.local.json"), `${JSON.stringify(report, null, 2)}\n`);
 	fs.writeFileSync(path.join(outputDir, "freshness.public-redacted.json"), `${JSON.stringify(sanitizeFreshnessReportForArtifact(report), null, 2)}\n`);
@@ -1552,6 +1630,7 @@ function cmdResolveStale({ sinceDays = 14, docIds = [], topic = "", limit = 8, a
 	fs.writeFileSync(path.join(outputDir, "resolve-plan.md"), renderResolverPlan(report, selectedDocs, sessionHintResult, { outputDir, topic, all }));
 	fs.writeFileSync(path.join(outputDir, "prompt.md"), renderResolverPrompt(selectedDocs, outputDir));
 	fs.writeFileSync(path.join(outputDir, "pr-body.md"), renderResolverPrBody(selectedDocs));
+	appendResolverRunLog({ outputDir, report, selectedDocs, sessionHintResult, options: { sinceDays, docIds, topic, limit, all, sessionHints } });
 
 	console.log("🧭 pilee knowledge local resolver plan");
 	console.log("");
@@ -1564,8 +1643,9 @@ function cmdResolveStale({ sinceDays = 14, docIds = [], topic = "", limit = 8, a
 	console.log(`PR body template: ${displayLocalPath(path.join(outputDir, "pr-body.md"))}`);
 	if (sessionHints) console.log(`Session hints: ${sessionHintResult.available ? `${sessionHintResult.scanned} files scanned` : "not available"}`);
 	console.log("");
+	console.log(`Local run log: ${displayLocalPath(RESOLVER_RUNS_LOG)}`);
 	console.log("Privacy: resolver artifacts are local-only; do not attach freshness.local.json or session paths to public PRs.");
-	console.log("Next: read prompt.md or run `/ember resolve` to let Pi review docs, update/confirm, and create the actual PR.");
+	console.log("Next: read prompt.md or run `/ember resolve` to let Pi review docs, update/confirm, and create the actual PR. Use `node scripts/knowledge.mjs --resolver-log` to view local runs.");
 	return 0;
 }
 
@@ -1622,6 +1702,14 @@ if (args.includes("--resolve-stale")) {
 		all: args.includes("--all"),
 		output: readOption("--output", null),
 		sessionHints: !args.includes("--no-session-hints"),
+	}));
+}
+
+if (args.includes("--resolver-log")) {
+	const limit = Number(readOption("--limit", "10"));
+	process.exit(cmdResolverLog({
+		limit: Number.isFinite(limit) && limit > 0 ? limit : 10,
+		json: args.includes("--json"),
 	}));
 }
 

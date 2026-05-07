@@ -94,13 +94,13 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [낮은 confidence 판단은 정합성 PR로 올린다](./confidence-sensitive-review.md) | active | high | 2026-05-05 | 70468c2 | confidence, review, freshness, ai-actions, user-review, 정합성 |
+| [낮은 confidence 판단은 정합성 PR로 올린다](./confidence-sensitive-review.md) | active | high | 2026-05-07 | b6da702 | confidence, review, freshness, ai-actions, user-review, 정합성 |
 | [Deterministic action과 AI review action은 분리한다](./deterministic-vs-ai-actions.md) | active | high | 2026-05-07 | 311bf8a | knowledge, deterministic, ai-actions, review, automation, 정합성 |
 | [Ember는 knowledge의 친근한 입구다](./ember-friendly-knowledge-entrypoint.md) | active | high | 2026-05-07 | 311bf8a | ember, branding, command, knowledge |
-| [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | high | 2026-05-07 | 311bf8a | knowledge, freshness, diagnosis, review, candidate, 정합성 |
-| [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | high | 2026-05-05 | 70468c2 | knowledge, judgment, granularity, documentation, coverage, 문서 |
-| [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | high | 2026-05-07 | 311bf8a | pilee, knowledge, history, journal, sanitized, reviewed-at |
-| [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | high | 2026-05-05 | 70468c2 | knowledge, journal, privacy, sanitized, doctrine, history |
+| [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | high | 2026-05-07 | c1d02c3 | knowledge, freshness, diagnosis, review, candidate, 정합성 |
+| [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | high | 2026-05-07 | b6da702 | knowledge, judgment, granularity, documentation, coverage, 문서 |
+| [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | high | 2026-05-07 | c1d02c3 | pilee, knowledge, history, journal, sanitized, reviewed-at |
+| [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | high | 2026-05-07 | c1d02c3 | knowledge, journal, privacy, sanitized, doctrine, history |
 | [README는 knowledge coverage map이다](./readme-coverage-map.md) | active | high | 2026-05-05 | 70468c2 | knowledge, readme, coverage, graph, surface, todo |
 | [README 철학 변경은 사용자 판단 게이트를 지난다](./readme-philosophy-user-gate.md) | active | high | 2026-05-05 | 70468c2 | readme, philosophy, user-gate, public-facing, documentation, 판단 |
 | [Retro는 private reflection이다](./retro-private-reflection-boundary.md) | active | high | 2026-05-05 | 70468c2 | retro, notion, reflection, private, journal, 회고 |
@@ -110,7 +110,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [Diff review draft는 PR 코멘트 전 단계다](./diff-review-draft-handoff.md) | active | high | 2026-05-05 | d582904 | diff-overlay, review-draft, pr-comments, code-review, handoff |
+| [Diff review draft는 PR 코멘트 전 단계다](./diff-review-draft-handoff.md) | active | high | 2026-05-07 | b6da702 | diff-overlay, review-draft, pr-comments, code-review, handoff |
 
 ### runtime
 
@@ -135,8 +135,8 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-05-05 | 059f445 | verify, evidence, gate, done, ready, verification |
-| [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-05-06 | 8f5edee | frame, verify, frame-json, success-criteria, contract, verification |
+| [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-05-07 | b6da702 | verify, evidence, gate, done, ready, verification |
+| [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-05-07 | b6da702 | frame, verify, frame-json, success-criteria, contract, verification |
 | [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-05-05 | d582904 | verify, invalidation, code-change, freshness, gate, 검증 |
 | [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | active | high | 2026-05-06 | 39f8acf | verify-report, verification, evidence, coverage, capture, crop |
 
@@ -152,10 +152,10 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [검토 산출물은 다시 열 수 있어야 한다](./artifact-archive-reopenability.md) | active | high | 2026-05-07 | b7bce3d | artifact, archive, show-report, history, html, reopen |
-| [AskUserQuestion은 의사결정 게이트다](./ask-user-question-decision-gates.md) | active | high | 2026-05-05 | 059f445 | ask-user-question, tft, decision-gate, question, non-delegable, 질문 |
-| [AskUserQuestion 옵션은 행동 분기를 표현한다](./ask-user-question-option-design.md) | active | high | 2026-05-06 | 8f5edee | ask-user-question, option, wording, ceremony, tft, 질문 |
+| [AskUserQuestion은 의사결정 게이트다](./ask-user-question-decision-gates.md) | active | high | 2026-05-07 | b6da702 | ask-user-question, tft, decision-gate, question, non-delegable, 질문 |
+| [AskUserQuestion 옵션은 행동 분기를 표현한다](./ask-user-question-option-design.md) | active | high | 2026-05-07 | b6da702 | ask-user-question, option, wording, ceremony, tft, 질문 |
 | [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | high | 2026-05-05 | 059f445 | backlog, tasks, provenance, source-session, session, 맥락 |
-| [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md) | active | high | 2026-05-05 | d582904 | git, incremental, code-review, commit, quality, 통합 |
+| [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md) | active | high | 2026-05-07 | b6da702 | git, incremental, code-review, commit, quality, 통합 |
 | [자동 로드 컨텍스트는 최소 surface만 가진다](./context-loading-minimal-surface.md) | active | high | 2026-05-05 | 059f445 | context, agents-md, memory, system-prompt, token, autoload |
 | [외부 이슈 업데이트는 preview gate를 지난다](./external-issue-preview-gate.md) | active | medium | 2026-05-05 | 059f445 | jira, issue, preview, wiki-markup, external-update, approval |
 | [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-05-06 | 4c927ab | fork-panel, handoff, inbox, inject, parent, panel |

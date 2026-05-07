@@ -16,8 +16,9 @@ applies_to:
 source:
   - pilee-history:2026-05-01#7
   - pilee-history:2026-05-02#24
-reviewed_at: 2026-05-05
-reviewed_commit: d5829047aef2c107923607d377fae7e225a2f3cd
+  - user-direction:2026-05-07-local-resolver
+reviewed_at: 2026-05-07
+reviewed_commit: b6da702c75ff0dec4d54a46fa24e77fdd224754f
 related:
   - evidence-first-verification-gate
   - stress-interview-multi-axis-review
@@ -30,6 +31,10 @@ AI가 빠르게 많은 파일을 바꿀수록 변경 통합은 더 작은 단위
 ## Integration Rule
 
 한 commit은 하나의 논리적 변경을 담고, formatting/behavior/doc 변경은 가능하면 분리합니다. 100줄 이상을 쓰기 전에 테스트나 타입체크처럼 빠른 검증을 실행합니다. 리뷰는 correctness뿐 아니라 readability, architecture, security, performance를 함께 봅니다.
+
+## Dirty State Rule
+
+작업 시작과 커밋 직전에는 `git status`를 확인합니다. 현재 작업과 무관한 dirty file은 보존하고, stage에는 관련 파일만 올립니다. local-only 산출물은 `.context/`처럼 명시적으로 ignore된 경로에 두고, PR에는 재현 가능한 코드/문서 변경과 sanitized 요약만 포함합니다.
 
 ## Failure Mode
 
