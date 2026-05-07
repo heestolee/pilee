@@ -10,6 +10,7 @@ import { registerVerifyReportLive } from "./verify-report-live.js";
 
 const ARCHIVE_DIR = path.join(os.homedir(), "Documents", "agent-history", "분류 전");
 const FRAME_TRANSCRIPTS_DIR = path.join(os.homedir(), ".pi", "agent", "frame-studio", "transcripts");
+const CONDUCTOR_DB = path.join(os.homedir(), "Library", "Application Support", "com.conductor.app", "conductor.db");
 const FONT_SIGNATURE = "Noto+Serif+KR";
 const REPORT_SIGNATURE = "Verify Report";
 const WEB_SEARCH_SIGNATURE = "Web Search Review";
@@ -426,7 +427,7 @@ export default function (pi: ExtensionAPI) {
 	registerVerifyReportLive(pi);
 
 	pi.registerCommand("show-report", {
-		description: "검증 리포트·Frame 기획 전문·캡처 미디어를 탭형 Artifact Browser로 열기. Usage: /show-report [--browser] [path]",
+		description: "Pi 이력·Conductor 이력·웹 검색·검증 리포트·Frame/기획·캡처 미디어를 Artifact Browser로 열기. Usage: /show-report [--browser] [path]",
 		handler: async (args: string, ctx: ExtensionCommandContext) => {
 			if (!ctx.hasUI) return;
 
@@ -442,14 +443,14 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			const artifacts = collectArtifactBrowserData(ctx.cwd);
-			const total = artifacts.reports.length + artifacts.frames.length + artifacts.captures.length + artifacts.conductors.length;
+			const total = artifacts.piUnits.length + artifacts.conductors.length + artifacts.webSearches.length + artifacts.reports.length + artifacts.planningDocs.length + artifacts.captures.length;
 			if (total === 0) {
 				ctx.ui.notify("표시할 artifact를 찾을 수 없습니다.", "warning");
 				return;
 			}
 
 			const mode = await openArtifactBrowser(pi, artifacts, ctx.cwd, parsed.browserOnly);
-			ctx.ui.notify(`🗂️ Artifact Browser ${mode === "glimpse" ? "Glimpse" : "브라우저"} 열기 · reports ${artifacts.reports.length} · frame ${artifacts.frames.length} · captures ${artifacts.captures.length} · conductor ${artifacts.conductors.length}`, "info");
+			ctx.ui.notify(`🗂️ Artifact Browser ${mode === "glimpse" ? "Glimpse" : "브라우저"} 열기 · Pi ${artifacts.piUnits.length} · Conductor ${artifacts.conductors.length} · web ${artifacts.webSearches.length} · reports ${artifacts.reports.length}`, "info");
 		},
 	});
 
@@ -509,65 +510,19 @@ interface ReportEntry {
 	name: string;
 	time: string;
 	ticket: string;
-	source: "workspace" | "archive" | "web-search";
+	workspace: string;
+	source: "workspace" | "archive";
 	mtime: number;
 }
 
-function formatMtime(ms: number): string {
-	const d = new Date(ms);
-	const pad = (n: number) => String(n).padStart(2, "0");
-	return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function collectReports(cwd: string): ReportEntry[] {
-	const results: ReportEntry[] = [];
-
-	// 1. 워크스페이스 captures 내 리포트
-	const contextDir = path.join(cwd, ".context", "work");
-	if (fs.existsSync(contextDir)) {
-		try {
-			for (const ws of fs.readdirSync(contextDir)) {
-				const capturesDir = path.join(contextDir, ws, "captures");
-				if (!fs.existsSync(capturesDir)) continue;
-				for (const f of fs.readdirSync(capturesDir)) {
-					if (!f.endsWith(".html")) continue;
-					const fp = path.join(capturesDir, f);
-					const stat = fs.statSync(fp);
-					const ticket = extractTicket(fs.readFileSync(fp, "utf-8"));
-					results.push({ path: fp, name: `${ws}/${f}`, time: formatMtime(stat.mtimeMs), ticket, source: "workspace", mtime: stat.mtimeMs });
-				}
-			}
-		} catch {}
-	}
-
-	// 2. 아카이브 reports 디렉토리
-	const reportDir = path.join(ARCHIVE_DIR, "..", "reports");
-	if (fs.existsSync(reportDir)) {
-		try {
-			for (const f of fs.readdirSync(reportDir)) {
-				if (!f.endsWith(".html")) continue;
-				const fp = path.join(reportDir, f);
-				const stat = fs.statSync(fp);
-				const ticket = extractTicket(fs.readFileSync(fp, "utf-8"));
-				results.push({ path: fp, name: f, time: formatMtime(stat.mtimeMs), ticket, source: "archive", mtime: stat.mtimeMs });
-			}
-		} catch {}
-	}
-
-	// 3. web_search summary-review 아카이브
-	const webSearchDir = path.join(ARCHIVE_DIR, "..", "web-search");
-	if (fs.existsSync(webSearchDir)) {
-		try {
-			for (const f of fs.readdirSync(webSearchDir)) {
-				if (!f.endsWith(".html")) continue;
-				const fp = path.join(webSearchDir, f);
-				const stat = fs.statSync(fp);
-				results.push({ path: fp, name: f, time: formatMtime(stat.mtimeMs), ticket: "", source: "web-search", mtime: stat.mtimeMs });
-			}
-		} catch {}
-	}
-
-	return results.sort((a, b) => b.mtime - a.mtime);
+interface WebSearchEntry {
+	path: string;
+	name: string;
+	time: string;
+	queries: string[];
+	workspace: string;
+	ticket: string;
+	mtime: number;
 }
 
 interface FrameTranscriptEntry {
@@ -578,6 +533,8 @@ interface FrameTranscriptEntry {
 	time: string;
 	mtime: number;
 	updatedAt: number;
+	workspace: string;
+	ticket: string;
 	timeline: unknown[];
 }
 
@@ -605,13 +562,49 @@ interface CaptureGroupEntry {
 	latestTime: string;
 }
 
-interface ConductorHistoryEntry {
+interface PlanningDocEntry {
+	path: string;
+	name: string;
+	title: string;
+	workspace: string;
+	ticket: string;
+	source: "frame-studio" | "context" | "plan";
+	time: string;
+	mtime: number;
+}
+
+interface PiSessionEntry {
+	path: string;
+	title: string;
+	workspace: string;
+	restoredFromConductor: boolean;
+	time: string;
+	mtime: number;
+}
+
+interface PiWorkUnitEntry {
 	key: string;
 	repo: string;
 	workspace: string;
 	workspacePath: string;
+	label: string;
+	ticket: string;
+	title: string;
+	branch: string;
 	contextPath: string;
 	loadedByResume: boolean;
+	originalConductorSessionPaths: string[];
+	piRestoredSessions: PiSessionEntry[];
+	piChatSessions: PiSessionEntry[];
+	mtime: number;
+	time: string;
+}
+
+interface ConductorHistoryEntry {
+	key: string;
+	repo: string;
+	workspace: string;
+	label: string;
 	ticket: string;
 	title: string;
 	branch: string;
@@ -621,25 +614,153 @@ interface ConductorHistoryEntry {
 	sessionId: string;
 	requests: string[];
 	sourceSessionPaths: string[];
-	piSessionPaths: string[];
 	mtime: number;
 	time: string;
 }
 
 interface ArtifactBrowserData {
-	reports: ReportEntry[];
-	frames: FrameTranscriptEntry[];
-	captures: CaptureEntry[];
+	piUnits: PiWorkUnitEntry[];
 	conductors: ConductorHistoryEntry[];
+	reports: ReportEntry[];
+	webSearches: WebSearchEntry[];
+	frames: FrameTranscriptEntry[];
+	planningDocs: PlanningDocEntry[];
+	captures: CaptureEntry[];
 	generatedAt: Date;
 }
 
+interface WorktreeRootEntry {
+	repo: string;
+	workspace: string;
+	workspacePath: string;
+	piDir: string;
+}
+
+function formatMtime(ms: number): string {
+	const d = new Date(ms);
+	const pad = (n: number) => String(n).padStart(2, "0");
+	return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function existingRealDirs(dirs: Array<{ dir: string; source: string }>): Array<{ dir: string; source: string }> {
+	const seen = new Set<string>();
+	const results: Array<{ dir: string; source: string }> = [];
+	for (const item of dirs) {
+		try {
+			if (!fs.existsSync(item.dir)) continue;
+			const real = fs.realpathSync(item.dir);
+			if (seen.has(real)) continue;
+			seen.add(real);
+			results.push({ dir: real, source: item.source });
+		} catch {}
+	}
+	return results;
+}
+
+function collectWorktreeRoots(): WorktreeRootEntry[] {
+	const roots: WorktreeRootEntry[] = [];
+	for (const repo of ["product", "lambda"]) {
+		const repoRoot = path.join(os.homedir(), "pilee-workspaces", repo);
+		if (!fs.existsSync(repoRoot)) continue;
+		try {
+			for (const workspace of fs.readdirSync(repoRoot)) {
+				const workspacePath = path.join(repoRoot, workspace);
+				const piDir = path.join(workspacePath, ".pi");
+				if (!fs.existsSync(workspacePath) || !fs.statSync(workspacePath).isDirectory()) continue;
+				if (!fs.existsSync(piDir) && !fs.existsSync(path.join(workspacePath, ".context"))) continue;
+				roots.push({ repo, workspace, workspacePath, piDir });
+			}
+		} catch {}
+	}
+	return roots;
+}
+
+function contextWorkRoots(cwd: string): Array<{ dir: string; source: string }> {
+	return existingRealDirs([
+		{ dir: path.join(cwd, ".context", "work"), source: "workspace" },
+		{ dir: path.join(os.homedir(), ".context", "work"), source: "home" },
+		...collectWorktreeRoots().map((root) => ({ dir: path.join(root.workspacePath, ".context", "work"), source: root.workspace })),
+	]);
+}
+
+function collectReports(cwd: string): ReportEntry[] {
+	const results: ReportEntry[] = [];
+	for (const root of contextWorkRoots(cwd)) {
+		try {
+			for (const ws of fs.readdirSync(root.dir)) {
+				const capturesDir = path.join(root.dir, ws, "captures");
+				if (!fs.existsSync(capturesDir)) continue;
+				for (const f of fs.readdirSync(capturesDir)) {
+					if (!f.endsWith(".html")) continue;
+					const fp = path.join(capturesDir, f);
+					const content = fs.readFileSync(fp, "utf-8");
+					if (content.includes(WEB_SEARCH_SIGNATURE)) continue;
+					const stat = fs.statSync(fp);
+					const ticket = extractTicket(content);
+					results.push({ path: fp, name: `${ws}/${f}`, time: formatMtime(stat.mtimeMs), ticket, workspace: ws, source: "workspace", mtime: stat.mtimeMs });
+				}
+			}
+		} catch {}
+	}
+
+	const reportDir = path.join(ARCHIVE_DIR, "..", "reports");
+	if (fs.existsSync(reportDir)) {
+		try {
+			for (const f of fs.readdirSync(reportDir)) {
+				if (!f.endsWith(".html")) continue;
+				const fp = path.join(reportDir, f);
+				const content = fs.readFileSync(fp, "utf-8");
+				if (content.includes(WEB_SEARCH_SIGNATURE)) continue;
+				const stat = fs.statSync(fp);
+				const ticket = extractTicket(content);
+				const workspace = extractWorkspaceHint(`${f} ${ticket}`);
+				results.push({ path: fp, name: f, time: formatMtime(stat.mtimeMs), ticket, workspace, source: "archive", mtime: stat.mtimeMs });
+			}
+		} catch {}
+	}
+
+	return results.sort((a, b) => b.mtime - a.mtime).slice(0, 180);
+}
+
+function extractWebSearchQueries(html: string): string[] {
+	const section = html.match(/<h2>Queries<\/h2>\s*<ul>([\s\S]*?)<\/ul>/i)?.[1] ?? "";
+	return [...section.matchAll(/<li>([\s\S]*?)<\/li>/gi)].map((match) => match[1].replace(/<[^>]*>/g, "").trim()).filter(Boolean);
+}
+
+function collectWebSearchReviews(): WebSearchEntry[] {
+	const results: WebSearchEntry[] = [];
+	const webSearchDir = path.join(ARCHIVE_DIR, "..", "web-search");
+	if (!fs.existsSync(webSearchDir)) return results;
+	try {
+		for (const f of fs.readdirSync(webSearchDir)) {
+			if (!f.endsWith(".html")) continue;
+			const fp = path.join(webSearchDir, f);
+			const content = fs.readFileSync(fp, "utf-8");
+			if (!content.includes(WEB_SEARCH_SIGNATURE)) continue;
+			const stat = fs.statSync(fp);
+			const queries = extractWebSearchQueries(content);
+			const ticket = content.match(/\b[A-Z]+-\d+\b/)?.[0] ?? f.match(/\b[A-Z]+-\d+\b/)?.[0] ?? "";
+			const workspace = extractWorkspaceHint(`${f} ${queries.join(" ")}`);
+			results.push({ path: fp, name: f, time: formatMtime(stat.mtimeMs), queries, workspace, ticket, mtime: stat.mtimeMs });
+		}
+	} catch {}
+	return results.sort((a, b) => b.mtime - a.mtime).slice(0, 120);
+}
+
 function collectArtifactBrowserData(cwd: string): ArtifactBrowserData {
+	const reports = collectReports(cwd);
+	const frames = collectFrameTranscripts();
+	const captures = collectCaptureMedia(cwd);
+	const webSearches = collectWebSearchReviews();
+	const planningDocs = collectPlanningDocs(cwd, frames);
 	return {
-		reports: collectReports(cwd),
-		frames: collectFrameTranscripts(),
-		captures: collectCaptureMedia(cwd),
+		piUnits: collectPiWorkUnits(reports, frames, planningDocs, captures, webSearches),
 		conductors: collectConductorHistories(),
+		reports,
+		webSearches,
+		frames,
+		planningDocs,
+		captures,
 		generatedAt: new Date(),
 	};
 }
@@ -648,11 +769,14 @@ function artifactBrowserAllowedPaths(data: ArtifactBrowserData): Set<string> {
 	const allowed = new Set<string>();
 	for (const filePath of [
 		...data.reports.map((item) => item.path),
+		...data.webSearches.map((item) => item.path),
 		...data.frames.map((item) => item.path),
+		...data.planningDocs.map((item) => item.path),
 		...data.captures.map((item) => item.path),
-		...data.conductors.flatMap((item) => [item.contextPath, ...item.sourceSessionPaths, ...item.piSessionPaths]),
+		...data.piUnits.flatMap((item) => [item.contextPath, ...item.originalConductorSessionPaths, ...item.piRestoredSessions.map((s) => s.path), ...item.piChatSessions.map((s) => s.path)]),
+		...data.conductors.flatMap((item) => item.sourceSessionPaths),
 	]) {
-		try { allowed.add(fs.realpathSync(filePath)); } catch {}
+		try { if (filePath) allowed.add(fs.realpathSync(filePath)); } catch {}
 	}
 	return allowed;
 }
@@ -692,7 +816,7 @@ function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData,
 				}
 				if (target === "glimpse") {
 					res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-					res.end(JSON.stringify({ ok: true, mode: "glimpse", url: `/preview?path=${encodeURIComponent(resolved)}` }));
+					res.end(JSON.stringify({ ok: true, mode: "glimpse", previewUrl: `/preview?path=${encodeURIComponent(resolved)}` }));
 					return;
 				}
 				const mode = await openAnyArtifact(pi, resolved, true);
@@ -749,14 +873,18 @@ function collectFrameTranscripts(): FrameTranscriptEntry[] {
 				const parsed = JSON.parse(fs.readFileSync(fp, "utf-8")) as Record<string, unknown>;
 				const identity = valueFromRecord(parsed, "identity") as Record<string, unknown> | undefined;
 				const timeline = Array.isArray(parsed.timeline) ? parsed.timeline : [];
+				const title = String(parsed.title || identity?.displayTitle || file.replace(/\.json$/, ""));
+				const identityText = String(identity?.displayTitle || identity?.key || "Frame Studio");
 				entries.push({
 					path: fp,
-					title: String(parsed.title || identity?.displayTitle || file.replace(/\.json$/, "")),
-					identity: String(identity?.displayTitle || identity?.key || "Frame Studio"),
+					title,
+					identity: identityText,
 					mode: String(identity?.mode || "planning"),
 					time: formatMtime(stat.mtimeMs),
 					mtime: stat.mtimeMs,
 					updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : stat.mtimeMs,
+					workspace: extractWorkspaceHint(`${title} ${identityText} ${file}`),
+					ticket: `${title} ${identityText}`.match(/\b[A-Z]+-\d+\b/)?.[0] ?? "",
 					timeline,
 				});
 			} catch {}
@@ -823,8 +951,7 @@ function walkMediaFiles(root: string, source: string, maxDepth = 8): CaptureEntr
 
 function collectCaptureMedia(cwd: string): CaptureEntry[] {
 	const roots = uniqueExistingDirs([
-		{ dir: path.join(cwd, ".context", "work"), source: "workspace" },
-		{ dir: path.join(os.homedir(), ".context", "work"), source: "home" },
+		...contextWorkRoots(cwd),
 		{ dir: path.join(ARCHIVE_DIR, "..", "captures"), source: "archive" },
 	]);
 	const byPath = new Map<string, CaptureEntry>();
@@ -834,6 +961,15 @@ function collectCaptureMedia(cwd: string): CaptureEntry[] {
 		}
 	}
 	return [...byPath.values()].sort((a, b) => b.mtime - a.mtime).slice(0, 80);
+}
+
+function extractWorkspaceHint(value: string): string {
+	const haystack = value.toLowerCase();
+	for (const root of collectWorktreeRoots()) {
+		const workspace = root.workspace.toLowerCase();
+		if (workspace.length >= 2 && haystack.includes(workspace)) return root.workspace;
+	}
+	return "";
 }
 
 function parseTicketAndTitle(value: string): { ticket: string; title: string } {
@@ -1025,97 +1161,253 @@ function findConductorSourceSessions(repo: string, workspace: string, sessionId:
 	return found.slice(0, 3);
 }
 
-function findPiSessionsForWorkspace(repo: string, workspace: string): string[] {
-	const sessionsDir = path.join(os.homedir(), ".pi", "agent", "sessions", `--Users-changheelee-pilee-workspaces-${repo}-${workspace}--`);
+function readPiSessionsFromDir(sessionsDir: string, workspace: string, limit = 10): PiSessionEntry[] {
 	if (!fs.existsSync(sessionsDir)) return [];
 	try {
 		return fs.readdirSync(sessionsDir)
 			.filter((file) => file.endsWith(".jsonl"))
 			.map((file) => path.join(sessionsDir, file))
 			.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)
-			.slice(0, 3)
-			.map((file) => {
-				try { return fs.realpathSync(file); } catch { return file; }
-			});
+			.slice(0, limit)
+			.map((file) => readPiSessionEntry(file, workspace))
+			.filter((entry): entry is PiSessionEntry => Boolean(entry));
 	} catch { return []; }
 }
 
-function collectConductorHistories(): ConductorHistoryEntry[] {
-	const roots = [
-		{ repo: "product", dir: path.join(os.homedir(), "pilee-workspaces", "product") },
-		{ repo: "lambda", dir: path.join(os.homedir(), "pilee-workspaces", "lambda") },
-	];
-	const entries: ConductorHistoryEntry[] = [];
-	for (const root of roots) {
-		if (!fs.existsSync(root.dir)) continue;
-		try {
-			for (const workspace of fs.readdirSync(root.dir)) {
-				const workspacePath = path.join(root.dir, workspace);
-				const piDir = path.join(workspacePath, ".pi");
-				if (!fs.existsSync(piDir)) continue;
-				const loadedPath = path.join(piDir, "conductor-context.loaded.md");
-				const contextPath = fs.existsSync(loadedPath) ? loadedPath : path.join(piDir, "conductor-context.md");
-				if (!fs.existsSync(contextPath)) continue;
-				try {
-					const stat = fs.statSync(contextPath);
-					const markdown = fs.readFileSync(contextPath, "utf-8");
-					const meta = readJsonFile(path.join(piDir, "worktree-meta.json"));
-					const branch = firstNonEmpty(markdownTableValue(markdown, "Branch"), typeof meta?.branch === "string" ? meta.branch : "");
-					const pr = markdownTableValue(markdown, "PR");
-					const note = typeof meta?.note === "string" ? meta.note : "";
-					const parsedPr = parseTicketAndTitle(pr);
-					const parsedNote = parseTicketAndTitle(note);
-					const parsedBranch = parseTicketAndTitle(branch);
-					const ticket = firstNonEmpty(parsedPr.ticket, parsedNote.ticket, parsedBranch.ticket);
-					const title = firstNonEmpty(parsedPr.title, parsedNote.title, workspace);
-					const sessionId = markdownTableValue(markdown, "Session");
-					entries.push({
-						key: `${root.repo}:${workspace}`,
-						repo: root.repo,
-						workspace,
-						workspacePath,
-						contextPath,
-						loadedByResume: path.basename(contextPath) === "conductor-context.loaded.md",
-						ticket,
-						title,
-						branch,
-						pr,
-						status: markdownTableValue(markdown, "상태"),
-						createdAt: markdownTableValue(markdown, "생성일"),
-						sessionId,
-						requests: extractConductorRequests(markdown),
-						sourceSessionPaths: findConductorSourceSessions(root.repo, workspace, sessionId),
-						piSessionPaths: findPiSessionsForWorkspace(root.repo, workspace),
-						mtime: stat.mtimeMs,
-						time: formatMtime(stat.mtimeMs),
-					});
-				} catch {}
-			}
-		} catch {}
-	}
-	return entries.sort((a, b) => {
-		if (a.loadedByResume !== b.loadedByResume) return a.loadedByResume ? -1 : 1;
-		return b.mtime - a.mtime;
-	}).slice(0, 80);
+function findPiSessionsForWorkspace(repo: string, workspace: string): PiSessionEntry[] {
+	const sessionsDir = path.join(os.homedir(), ".pi", "agent", "sessions", `--Users-changheelee-pilee-workspaces-${repo}-${workspace}--`);
+	return readPiSessionsFromDir(sessionsDir, workspace);
 }
 
-function conductorMatches(entry: ConductorHistoryEntry, ...values: string[]): boolean {
+function readPiSessionEntry(filePath: string, workspace: string): PiSessionEntry | null {
+	try {
+		const stat = fs.statSync(filePath);
+		let title = "Pi 대화 세션";
+		let restoredFromConductor = false;
+		const lines = fs.readFileSync(filePath, "utf-8").split(/\r?\n/).slice(0, 120);
+		for (const line of lines) {
+			if (line.includes('"customType":"conductor-resume"')) restoredFromConductor = true;
+			if (!line.includes('"type":"session_info"')) continue;
+			try {
+				const parsed = JSON.parse(line) as { name?: string };
+				const name = typeof parsed.name === "string" ? parsed.name.trim() : "";
+				if (isMeaningfulSessionTitle(name)) title = name;
+			} catch {}
+		}
+		return { path: fs.realpathSync(filePath), title, workspace, restoredFromConductor, time: formatMtime(stat.mtimeMs), mtime: stat.mtimeMs };
+	} catch { return null; }
+}
+
+function titleFromMarkdown(filePath: string): string {
+	try {
+		for (const line of fs.readFileSync(filePath, "utf-8").split(/\r?\n/).slice(0, 40)) {
+			const heading = line.match(/^#\s+(.+)$/);
+			if (heading) return heading[1].trim();
+		}
+	} catch {}
+	return path.basename(filePath);
+}
+
+function collectPlanningDocs(cwd: string, frames: FrameTranscriptEntry[]): PlanningDocEntry[] {
+	const byPath = new Map<string, PlanningDocEntry>();
+	const roots = existingRealDirs([
+		...contextWorkRoots(cwd),
+		...collectWorktreeRoots().flatMap((root) => [
+			{ dir: path.join(root.workspacePath, ".context", "plans"), source: root.workspace },
+			{ dir: path.join(root.workspacePath, ".context", "work"), source: root.workspace },
+		]),
+	]);
+	for (const root of roots) {
+		const visit = (dir: string, depth: number) => {
+			if (depth > 4) return;
+			let entries: fs.Dirent[] = [];
+			try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+			for (const entry of entries) {
+				const fp = path.join(dir, entry.name);
+				if (entry.isDirectory()) { if (!entry.name.startsWith(".")) visit(fp, depth + 1); continue; }
+				if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+				try {
+					const stat = fs.statSync(fp);
+					const name = path.relative(root.dir, fp) || entry.name;
+					const title = titleFromMarkdown(fp);
+					const workspace = workspaceFromCapturePath(root.dir, fp) || extractWorkspaceHint(`${name} ${title}`) || root.source;
+					const ticket = `${name} ${title}`.match(/\b[A-Z]+-\d+\b/)?.[0] ?? "";
+					const source: PlanningDocEntry["source"] = fp.includes(`${path.sep}plans${path.sep}`) ? "plan" : "context";
+					byPath.set(fs.realpathSync(fp), { path: fp, name, title, workspace, ticket, source, time: formatMtime(stat.mtimeMs), mtime: stat.mtimeMs });
+				} catch {}
+			}
+		};
+		visit(root.dir, 0);
+	}
+	for (const frame of frames) {
+		byPath.set(frame.path, { path: frame.path, name: path.basename(frame.path), title: frame.title, workspace: frame.workspace, ticket: frame.ticket, source: "frame-studio", time: frame.time, mtime: frame.mtime });
+	}
+	return [...byPath.values()].sort((a, b) => b.mtime - a.mtime).slice(0, 180);
+}
+
+function collectPiWorkUnits(reports: ReportEntry[], frames: FrameTranscriptEntry[], planningDocs: PlanningDocEntry[], captures: CaptureEntry[], webSearches: WebSearchEntry[]): PiWorkUnitEntry[] {
+	const units: PiWorkUnitEntry[] = [];
+	for (const root of collectWorktreeRoots()) {
+		const meta = readJsonFile(path.join(root.piDir, "worktree-meta.json"));
+		const loadedPath = path.join(root.piDir, "conductor-context.loaded.md");
+		const fallbackContextPath = path.join(root.piDir, "conductor-context.md");
+		const contextPath = fs.existsSync(loadedPath) ? loadedPath : fs.existsSync(fallbackContextPath) ? fallbackContextPath : "";
+		let markdown = "";
+		try { if (contextPath) markdown = fs.readFileSync(contextPath, "utf-8"); } catch {}
+		const branch = firstNonEmpty(markdownTableValue(markdown, "Branch"), typeof meta?.branch === "string" ? meta.branch : "");
+		const pr = markdownTableValue(markdown, "PR");
+		const note = typeof meta?.note === "string" ? meta.note : "";
+		const parsedPr = parseTicketAndTitle(pr);
+		const parsedNote = parseTicketAndTitle(note);
+		const parsedBranch = parseTicketAndTitle(branch);
+		const ticket = firstNonEmpty(parsedPr.ticket, parsedNote.ticket, parsedBranch.ticket);
+		const title = firstNonEmpty(parsedPr.title, parsedNote.title, latestSessionTitleForWorkspace(root.workspace), root.workspace);
+		const sessions = findPiSessionsForWorkspace(root.repo, root.workspace);
+		const originalConductorSessionPaths = contextPath ? findConductorSourceSessions(root.repo, root.workspace, markdownTableValue(markdown, "Session")) : [];
+		const relatedMtimes = [
+			...reportsForUnit({ ticket, workspace: root.workspace, title }, reports).map((item) => item.mtime),
+			...framesForUnit({ ticket, workspace: root.workspace, title }, frames).map((item) => item.mtime),
+			...planningDocsForUnit({ ticket, workspace: root.workspace, title }, planningDocs).map((item) => item.mtime),
+			...capturesForUnit({ ticket, workspace: root.workspace, title }, captures).map((item) => item.mtime),
+			...webSearchesForUnit({ ticket, workspace: root.workspace, title }, webSearches).map((item) => item.mtime),
+			...sessions.map((item) => item.mtime),
+		];
+		const statMtime = contextPath ? fs.statSync(contextPath).mtimeMs : fs.statSync(root.workspacePath).mtimeMs;
+		const mtime = Math.max(statMtime, ...relatedMtimes, 0);
+		units.push({
+			key: `${root.repo}:${root.workspace}`,
+			repo: root.repo,
+			workspace: root.workspace,
+			workspacePath: root.workspacePath,
+			label: ticket ? `${ticket} · ${title}` : `${root.workspace} · ${title}`,
+			ticket,
+			title,
+			branch,
+			contextPath,
+			loadedByResume: Boolean(contextPath && path.basename(contextPath) === "conductor-context.loaded.md"),
+			originalConductorSessionPaths,
+			piRestoredSessions: sessions.filter((session) => session.restoredFromConductor),
+			piChatSessions: sessions.filter((session) => !session.restoredFromConductor),
+			mtime,
+			time: formatMtime(mtime),
+		});
+	}
+	const sessionsRoot = path.join(os.homedir(), ".pi", "agent", "sessions");
+	for (const special of [
+		{ key: "pi:pilee", workspace: "pilee", title: "pilee Pi 대화 세션", workspacePath: path.join(os.homedir(), ".pi", "agent", "git", "github.com", "heestolee", "pilee"), sessionsDir: path.join(sessionsRoot, "--Users-changheelee-pilee--") },
+		{ key: "pi:home", workspace: "home", title: "home Pi 대화 세션", workspacePath: os.homedir(), sessionsDir: path.join(sessionsRoot, "--Users-changheelee--") },
+	]) {
+		const sessions = readPiSessionsFromDir(special.sessionsDir, special.workspace, 12);
+		if (!sessions.length) continue;
+		const mtime = Math.max(...sessions.map((session) => session.mtime));
+		units.push({
+			key: special.key,
+			repo: "pi",
+			workspace: special.workspace,
+			workspacePath: special.workspacePath,
+			label: special.title,
+			ticket: "",
+			title: special.title,
+			branch: "",
+			contextPath: "",
+			loadedByResume: false,
+			originalConductorSessionPaths: [],
+			piRestoredSessions: sessions.filter((session) => session.restoredFromConductor),
+			piChatSessions: sessions.filter((session) => !session.restoredFromConductor),
+			mtime,
+			time: formatMtime(mtime),
+		});
+	}
+	return units.sort((a, b) => b.mtime - a.mtime).slice(0, 80);
+}
+
+function queryConductorSync(sql: string): string {
+	if (!fs.existsSync(CONDUCTOR_DB)) return "";
+	try { return execFileSync("sqlite3", ["-separator", "§", CONDUCTOR_DB, sql], { encoding: "utf-8" }).trim(); } catch { return ""; }
+}
+
+function requestsFromConductorJsonl(filePath: string): string[] {
+	const requests: string[] = [];
+	try {
+		for (const line of fs.readFileSync(filePath, "utf-8").split(/\r?\n/)) {
+			if (!line.trim()) continue;
+			let obj: any;
+			try { obj = JSON.parse(line); } catch { continue; }
+			if (obj.type !== "user") continue;
+			const content = obj.message?.content;
+			let text = typeof content === "string" ? content : Array.isArray(content) ? content.filter((block: any) => block?.type === "text").map((block: any) => block.text).join(" ") : "";
+			text = text.replace(/\s+/g, " ").trim();
+			if (!text || text.startsWith("<system") || text.startsWith("<local-command")) continue;
+			requests.push(text.slice(0, 300));
+			if (requests.length >= 30) break;
+		}
+	} catch {}
+	return requests;
+}
+
+function collectConductorHistories(): ConductorHistoryEntry[] {
+	const rows = queryConductorSync("SELECT w.directory_name, COALESCE(r.name,''), COALESCE(w.branch,''), COALESCE(w.state,''), COALESCE(w.pr_title,''), COALESCE(w.active_session_id,''), COALESCE(w.created_at,''), COALESCE(w.updated_at,'') FROM workspaces w LEFT JOIN repos r ON w.repository_id = r.id ORDER BY w.updated_at DESC LIMIT 160");
+	if (!rows) return [];
+	const entries: ConductorHistoryEntry[] = [];
+	for (const line of rows.split("\n")) {
+		const [workspace = "", repo = "", branch = "", status = "", pr = "", sessionId = "", createdAt = "", updatedAt = ""] = line.split("§");
+		if (!workspace) continue;
+		const parsedPr = parseTicketAndTitle(pr);
+		const parsedBranch = parseTicketAndTitle(branch);
+		const ticket = firstNonEmpty(parsedPr.ticket, parsedBranch.ticket);
+		const title = firstNonEmpty(parsedPr.title, workspace);
+		const sourceSessionPaths = findConductorSourceSessions(repo || "product", workspace, sessionId);
+		const firstSession = sourceSessionPaths[0] ?? "";
+		let mtime = Date.parse(updatedAt || createdAt);
+		if (firstSession) { try { mtime = Math.max(mtime || 0, fs.statSync(firstSession).mtimeMs); } catch {} }
+		entries.push({
+			key: `${repo || "conductor"}:${workspace}`,
+			repo: repo || "conductor",
+			workspace,
+			label: ticket ? `${ticket} · ${title}` : `${workspace} · ${title}`,
+			ticket,
+			title,
+			branch,
+			pr,
+			status,
+			createdAt,
+			sessionId,
+			requests: firstSession ? requestsFromConductorJsonl(firstSession) : [],
+			sourceSessionPaths,
+			mtime: Number.isFinite(mtime) && mtime > 0 ? mtime : Date.now(),
+			time: formatMtime(Number.isFinite(mtime) && mtime > 0 ? mtime : Date.now()),
+		});
+	}
+	return entries.sort((a, b) => b.mtime - a.mtime).slice(0, 120);
+}
+
+interface MatchableUnit { ticket: string; workspace: string; title: string; }
+
+function unitMatches(unit: MatchableUnit, ...values: string[]): boolean {
 	const haystack = values.join(" ").toLowerCase();
 	if (!haystack) return false;
-	const needles = [entry.ticket, entry.workspace, entry.title].filter((value) => value && value.length >= 2).map((value) => value.toLowerCase());
+	const needles = [unit.ticket, unit.workspace, unit.title].filter((value) => value && value.length >= 2).map((value) => value.toLowerCase());
 	return needles.some((needle) => haystack.includes(needle));
 }
 
-function reportsForConductor(entry: ConductorHistoryEntry, reports: ReportEntry[]): ReportEntry[] {
-	return reports.filter((report) => conductorMatches(entry, report.name, report.path, report.ticket));
+function reportsForUnit(unit: MatchableUnit, reports: ReportEntry[]): ReportEntry[] {
+	return reports.filter((report) => report.workspace === unit.workspace || unitMatches(unit, report.name, report.path, report.ticket));
 }
 
-function framesForConductor(entry: ConductorHistoryEntry, frames: FrameTranscriptEntry[]): FrameTranscriptEntry[] {
-	return frames.filter((frame) => conductorMatches(entry, frame.title, frame.identity, frame.path));
+function framesForUnit(unit: MatchableUnit, frames: FrameTranscriptEntry[]): FrameTranscriptEntry[] {
+	return frames.filter((frame) => frame.workspace === unit.workspace || unitMatches(unit, frame.title, frame.identity, frame.path, frame.ticket));
 }
 
-function capturesForConductor(entry: ConductorHistoryEntry, captures: CaptureEntry[]): CaptureEntry[] {
-	return captures.filter((capture) => capture.workspace === entry.workspace || conductorMatches(entry, capture.name, capture.path));
+function planningDocsForUnit(unit: MatchableUnit, docs: PlanningDocEntry[]): PlanningDocEntry[] {
+	return docs.filter((doc) => doc.workspace === unit.workspace || unitMatches(unit, doc.name, doc.title, doc.path, doc.ticket));
+}
+
+function capturesForUnit(unit: MatchableUnit, captures: CaptureEntry[]): CaptureEntry[] {
+	return captures.filter((capture) => capture.workspace === unit.workspace || unitMatches(unit, capture.name, capture.path));
+}
+
+function webSearchesForUnit(unit: MatchableUnit, webSearches: WebSearchEntry[]): WebSearchEntry[] {
+	return webSearches.filter((entry) => entry.workspace === unit.workspace || unitMatches(unit, entry.name, entry.path, entry.ticket, entry.queries.join(" ")));
 }
 
 function fileHref(filePath: string): string {
@@ -1204,9 +1496,13 @@ function artifactBrowserStyle(): string {
 }
 
 function reportSourceLabel(source: ReportEntry["source"]): string {
-	if (source === "workspace") return "workspace";
-	if (source === "web-search") return "web-search";
-	return "archive";
+	return source === "workspace" ? "workspace" : "archive";
+}
+
+function planningSourceLabel(source: PlanningDocEntry["source"]): string {
+	if (source === "frame-studio") return "Frame Studio";
+	if (source === "plan") return ".context/plans";
+	return ".context/work";
 }
 
 function artifactOpenButtons(filePath: string): string {
@@ -1215,13 +1511,33 @@ function artifactOpenButtons(filePath: string): string {
 }
 
 function renderReportCards(reports: ReportEntry[]): string {
-	if (!reports.length) return `<div class="empty">검증 리포트나 web-search review가 없습니다.</div>`;
-	return `<div class="grid">${reports.map((r) => `<article class="card searchable" data-search="${escapeAttr(`${r.name} ${r.ticket} ${r.source}`.toLowerCase())}"><h3>${escapeHtml(r.name)}</h3><div class="meta"><span class="badge">${escapeHtml(reportSourceLabel(r.source))}</span><span class="badge">${escapeHtml(r.time)}</span>${r.ticket ? `<span class="badge">${escapeHtml(r.ticket)}</span>` : ""}</div><div class="path">${escapeHtml(r.path)}</div><div class="actions">${artifactOpenButtons(r.path)}</div></article>`).join("\n")}</div>`;
+	if (!reports.length) return `<div class="empty">검증 리포트가 없습니다.</div>`;
+	return `<div class="grid">${reports.map((r) => `<article class="card searchable" data-search="${escapeAttr(`${r.name} ${r.ticket} ${r.workspace} ${r.source}`.toLowerCase())}"><h3>${escapeHtml(r.name)}</h3><div class="meta"><span class="badge">${escapeHtml(reportSourceLabel(r.source))}</span>${r.workspace ? `<span class="badge">${escapeHtml(r.workspace)}</span>` : ""}<span class="badge">${escapeHtml(r.time)}</span>${r.ticket ? `<span class="badge">${escapeHtml(r.ticket)}</span>` : ""}</div><div class="path">${escapeHtml(r.path)}</div><div class="actions">${artifactOpenButtons(r.path)}</div></article>`).join("\n")}</div>`;
+}
+
+function renderWebSearchCards(webSearches: WebSearchEntry[]): string {
+	if (!webSearches.length) return `<div class="empty">웹 검색 review artifact가 없습니다.</div>`;
+	return `<div class="grid">${webSearches.map((entry) => `<article class="card searchable" data-search="${escapeAttr(`${entry.name} ${entry.queries.join(" ")} ${entry.ticket} ${entry.workspace}`.toLowerCase())}"><div class="kicker">🔎 Web Search</div><h3>${escapeHtml(entry.queries[0] || entry.name)}</h3><div class="meta">${entry.workspace ? `<span class="badge">${escapeHtml(entry.workspace)}</span>` : `<span class="badge">미분류</span>`}${entry.ticket ? `<span class="badge">${escapeHtml(entry.ticket)}</span>` : ""}<span class="badge">${escapeHtml(entry.time)}</span></div>${entry.queries.length > 1 ? `<ol>${entry.queries.map((q) => `<li>${escapeHtml(q)}</li>`).join("\n")}</ol>` : ""}<div class="path">${escapeHtml(entry.path)}</div><div class="actions">${artifactOpenButtons(entry.path)}</div></article>`).join("\n")}</div>`;
 }
 
 function renderFrameCards(frames: FrameTranscriptEntry[]): string {
 	if (!frames.length) return `<div class="empty">저장된 Frame Studio 전문이 없습니다.</div>`;
-	return `<div class="grid">${frames.map((f) => `<article class="card searchable" data-search="${escapeAttr(`${f.title} ${f.identity} ${f.mode}`.toLowerCase())}"><h3>${escapeHtml(f.title)}</h3><div class="meta"><span class="badge">${escapeHtml(f.mode)}</span><span class="badge">${escapeHtml(f.time)}</span><span class="badge">${f.timeline.length} entries</span></div><div class="path">${escapeHtml(f.identity)}</div><details><summary>Frame 전문 미리보기</summary><div class="timeline">${renderFrameTimeline(f.timeline)}</div></details><div class="actions">${artifactOpenButtons(f.path)}</div></article>`).join("\n")}</div>`;
+	return `<div class="grid">${frames.map((f) => `<article class="card searchable" data-search="${escapeAttr(`${f.title} ${f.identity} ${f.mode} ${f.workspace} ${f.ticket}`.toLowerCase())}"><h3>${escapeHtml(f.title)}</h3><div class="meta"><span class="badge">${escapeHtml(f.mode)}</span>${f.workspace ? `<span class="badge">${escapeHtml(f.workspace)}</span>` : ""}${f.ticket ? `<span class="badge">${escapeHtml(f.ticket)}</span>` : ""}<span class="badge">${escapeHtml(f.time)}</span><span class="badge">${f.timeline.length} entries</span></div><div class="path">${escapeHtml(f.identity)}</div><details><summary>Frame 전문 미리보기</summary><div class="timeline">${renderFrameTimeline(f.timeline)}</div></details><div class="actions">${artifactOpenButtons(f.path)}</div></article>`).join("\n")}</div>`;
+}
+
+function renderPlanningDocCards(docs: PlanningDocEntry[]): string {
+	if (!docs.length) return `<div class="empty">기획/컨텍스트 markdown이 없습니다.</div>`;
+	return `<div class="grid">${docs.map((doc) => `<article class="card searchable" data-search="${escapeAttr(`${doc.title} ${doc.name} ${doc.workspace} ${doc.ticket} ${doc.source}`.toLowerCase())}"><h3>${escapeHtml(doc.title)}</h3><div class="meta"><span class="badge">${escapeHtml(planningSourceLabel(doc.source))}</span>${doc.workspace ? `<span class="badge">${escapeHtml(doc.workspace)}</span>` : ""}${doc.ticket ? `<span class="badge">${escapeHtml(doc.ticket)}</span>` : ""}<span class="badge">${escapeHtml(doc.time)}</span></div><div class="path">${escapeHtml(doc.path)}</div><div class="actions">${artifactOpenButtons(doc.path)}</div></article>`).join("\n")}</div>`;
+}
+
+function renderSessionCards(title: string, sessions: PiSessionEntry[]): string {
+	if (!sessions.length) return `<section><h3>${escapeHtml(title)} · 0</h3><div class="empty">세션이 없습니다.</div></section>`;
+	return `<section><h3>${escapeHtml(title)} · ${sessions.length}</h3><div class="grid">${sessions.map((session) => `<article class="card searchable" data-search="${escapeAttr(`${session.title} ${session.workspace}`.toLowerCase())}"><h3>${escapeHtml(session.title)}</h3><div class="meta"><span class="badge">${session.restoredFromConductor ? "Conductor 복구" : "Pi 대화"}</span><span class="badge">${escapeHtml(session.time)}</span></div><div class="path">${escapeHtml(session.path)}</div><div class="actions">${artifactOpenButtons(session.path)}</div></article>`).join("\n")}</div></section>`;
+}
+
+function renderConductorSourceCards(title: string, paths: string[], restored = false): string {
+	if (!paths.length) return "";
+	return `<section><h3>${escapeHtml(title)} · ${paths.length}</h3><div class="grid">${paths.map((filePath) => `<article class="card searchable" data-search="${escapeAttr(filePath.toLowerCase())}"><h3>${escapeHtml(path.basename(filePath))}</h3><div class="meta"><span class="badge">원본 Conductor</span>${restored ? `<span class="badge">Pi 복구됨</span>` : ""}</div><div class="path">${escapeHtml(filePath)}</div><div class="actions">${artifactOpenButtons(filePath)}</div></article>`).join("\n")}</div></section>`;
 }
 
 function captureSourceLabel(source: CaptureGroupEntry["source"]): string {
@@ -1244,54 +1560,151 @@ function renderCaptureCards(captures: CaptureEntry[], frames: FrameTranscriptEnt
 	return `<div id="capture-groups"><div class="grid">${groupCards}</div></div><div id="capture-files" hidden>${groupPanels}</div>`;
 }
 
-function conductorDisplayLabel(entry: ConductorHistoryEntry): string {
-	return entry.ticket ? `${entry.ticket} · ${entry.title}` : `${entry.workspace} · ${entry.title}`;
+function renderPiWorkUnitCards(data: ArtifactBrowserData): string {
+	if (!data.piUnits.length) return `<div class="empty">Pi worktree 이력이 없습니다.</div>`;
+	const groupCards = data.piUnits.map((unit) => {
+		const reports = reportsForUnit(unit, data.reports);
+		const frames = framesForUnit(unit, data.frames);
+		const planningDocs = planningDocsForUnit(unit, data.planningDocs);
+		const captures = capturesForUnit(unit, data.captures);
+		const webSearches = webSearchesForUnit(unit, data.webSearches);
+		return `<article class="card searchable pi-work-card" data-search="${escapeAttr(`${unit.label} ${unit.workspace} ${unit.branch}`.toLowerCase())}"><div class="kicker">🔥 Pi history</div><h3>${escapeHtml(unit.label)}</h3><div class="meta"><span class="badge">${escapeHtml(unit.repo)}</span>${unit.loadedByResume ? `<span class="badge">/wt resume</span>` : ""}${unit.branch ? `<span class="badge">${escapeHtml(unit.branch)}</span>` : ""}</div><div class="meta"><span class="badge">원본 ${unit.originalConductorSessionPaths.length}</span><span class="badge">복구 세션 ${unit.piRestoredSessions.length}</span><span class="badge">Pi 대화 ${unit.piChatSessions.length}</span><span class="badge">리포트 ${reports.length}</span><span class="badge">Frame/기획 ${planningDocs.length}</span><span class="badge">캡처 ${captures.length}</span><span class="badge">웹검색 ${webSearches.length}</span></div><div class="path">${escapeHtml(unit.workspacePath)}</div><div class="actions"><button class="button open-pi-detail" type="button" data-pi="${escapeAttr(unit.key)}">이력 열기</button></div></article>`;
+	}).join("\n");
+	const detailPanels = data.piUnits.map((unit) => {
+		const reports = reportsForUnit(unit, data.reports);
+		const frames = framesForUnit(unit, data.frames);
+		const planningDocs = planningDocsForUnit(unit, data.planningDocs);
+		const captures = capturesForUnit(unit, data.captures);
+		const webSearches = webSearchesForUnit(unit, data.webSearches);
+		return `<section class="pi-detail-panel" data-pi-panel="${escapeAttr(unit.key)}" hidden><div class="actions"><button class="button" type="button" onclick="showPiGroups()">← Pi 이력 목록</button></div><header class="card"><div class="kicker">Pi 이력</div><h2>${escapeHtml(unit.label)}</h2><div class="meta"><span class="badge">${escapeHtml(unit.repo)}</span>${unit.ticket ? `<span class="badge">${escapeHtml(unit.ticket)}</span>` : ""}${unit.loadedByResume ? `<span class="badge">/wt resume 복구</span>` : ""}${unit.branch ? `<span class="badge">${escapeHtml(unit.branch)}</span>` : ""}</div><div class="path">${escapeHtml(unit.workspacePath)}</div></header>${renderConductorSourceCards("원본 Conductor 세션", unit.originalConductorSessionPaths, unit.piRestoredSessions.length > 0)}${renderSessionCards("Pi 복구 세션", unit.piRestoredSessions)}${renderSessionCards("Pi 대화 세션", unit.piChatSessions)}${unit.contextPath ? `<section><h3>복구 컨텍스트</h3><div class="grid"><article class="card"><h3>${escapeHtml(path.basename(unit.contextPath))}</h3><div class="path">${escapeHtml(unit.contextPath)}</div><div class="actions">${artifactOpenButtons(unit.contextPath)}</div></article></div></section>` : ""}<section><h3>검증 리포트 · ${reports.length}</h3>${renderReportCards(reports)}</section><section><h3>기획 / Frame · ${planningDocs.length}</h3>${renderPlanningDocCards(planningDocs)}</section><section><h3>캡처 / 미디어 · ${captures.length}</h3>${captures.length ? renderCaptureFileCards(captures) : `<div class="empty">연결된 캡처 미디어가 없습니다.</div>`}</section><section><h3>웹 검색 · ${webSearches.length}</h3>${renderWebSearchCards(webSearches)}</section></section>`;
+	}).join("\n");
+	return `<div id="pi-groups"><div class="grid">${groupCards}</div></div><div id="pi-details" hidden>${detailPanels}</div>`;
 }
 
-function renderConductorPathCards(title: string, paths: string[]): string {
-	if (!paths.length) return "";
-	return `<section><h3>${escapeHtml(title)}</h3><div class="grid">${paths.map((filePath) => `<article class="card"><h3>${escapeHtml(path.basename(filePath))}</h3><div class="path">${escapeHtml(filePath)}</div><div class="actions">${artifactOpenButtons(filePath)}</div></article>`).join("\n")}</div></section>`;
+function renderRequestList(requests: string[]): string {
+	if (!requests.length) return `<p class="muted">원본 요청 preview가 없습니다.</p>`;
+	return `<ol>${requests.slice(0, 20).map((request) => `<li>${escapeHtml(request)}</li>`).join("\n")}</ol>`;
 }
 
-function renderRequestList(requests: string[], limit = 12): string {
-	if (!requests.length) return `<p class="muted">보존된 이전 요청 목록이 없습니다.</p>`;
-	const visible = requests.slice(0, limit);
-	const rest = requests.length - visible.length;
-	return `<ol>${visible.map((request) => `<li>${escapeHtml(request)}</li>`).join("\n")}</ol>${rest > 0 ? `<p class="muted">외 ${rest}개 요청은 컨텍스트 원문에서 확인할 수 있습니다.</p>` : ""}`;
+function conductorRestoredByPi(entry: ConductorHistoryEntry, units: PiWorkUnitEntry[]): boolean {
+	const sourceSet = new Set(entry.sourceSessionPaths.map((item) => {
+		try { return fs.realpathSync(item); } catch { return item; }
+	}));
+	return units.some((unit) => (unit.workspace === entry.workspace && unit.piRestoredSessions.length > 0) || unit.originalConductorSessionPaths.some((item) => {
+		try { return sourceSet.has(fs.realpathSync(item)); } catch { return sourceSet.has(item); }
+	}));
 }
 
 function renderConductorCards(data: ArtifactBrowserData): string {
-	if (!data.conductors.length) return `<div class="empty">보존된 Conductor 이력을 찾지 못했습니다. /wt resume으로 복구된 worktree의 .pi/conductor-context*.md를 확인합니다.</div>`;
+	if (!data.conductors.length) return `<div class="empty">Conductor DB / 원본 JSONL 이력을 찾지 못했습니다.</div>`;
 	const groupCards = data.conductors.map((entry) => {
-		const reports = reportsForConductor(entry, data.reports);
-		const frames = framesForConductor(entry, data.frames);
-		const captures = capturesForConductor(entry, data.captures);
-		const label = conductorDisplayLabel(entry);
-		return `<article class="card searchable conductor-history-card" data-search="${escapeAttr(`${label} ${entry.workspace} ${entry.branch} ${entry.status} ${entry.requests.slice(0, 10).join(" ")}`.toLowerCase())}"><div class="kicker">🧭 Conductor history</div><h3>${escapeHtml(label)}</h3><div class="meta"><span class="badge">${entry.loadedByResume ? "/wt resume" : "conductor context"}</span><span class="badge">${escapeHtml(entry.repo)}</span>${entry.branch ? `<span class="badge">${escapeHtml(entry.branch)}</span>` : ""}${entry.status ? `<span class="badge">${escapeHtml(entry.status)}</span>` : ""}</div><div class="meta"><span class="badge">검증 리포트 ${reports.length}</span><span class="badge">Frame ${frames.length}</span><span class="badge">캡처 ${captures.length}</span><span class="badge">원본 세션 ${entry.sourceSessionPaths.length}</span></div><div class="path">workspace: ${escapeHtml(entry.workspace)}</div><div class="actions"><button class="button open-conductor-detail" type="button" data-conductor="${escapeAttr(entry.key)}">이력 열기</button></div></article>`;
+		const reports = reportsForUnit(entry, data.reports);
+		const frames = framesForUnit(entry, data.frames);
+		const planningDocs = planningDocsForUnit(entry, data.planningDocs).filter((doc) => doc.source !== "frame-studio");
+		const captures = capturesForUnit(entry, data.captures);
+		const restored = conductorRestoredByPi(entry, data.piUnits);
+		return `<article class="card searchable conductor-history-card" data-search="${escapeAttr(`${entry.label} ${entry.workspace} ${entry.branch} ${entry.status} ${entry.requests.slice(0, 10).join(" ")}`.toLowerCase())}"><div class="kicker">🧭 Conductor master</div><h3>${escapeHtml(entry.label)}</h3><div class="meta"><span class="badge">${escapeHtml(entry.repo)}</span>${restored ? `<span class="badge">Pi로 복구됨</span>` : ""}${entry.branch ? `<span class="badge">${escapeHtml(entry.branch)}</span>` : ""}${entry.status ? `<span class="badge">${escapeHtml(entry.status)}</span>` : ""}</div><div class="meta"><span class="badge">원본 세션 ${entry.sourceSessionPaths.length}</span><span class="badge">리포트 ${reports.length}</span><span class="badge">기획 ${planningDocs.length}</span><span class="badge">캡처 ${captures.length}</span></div><div class="path">workspace: ${escapeHtml(entry.workspace)}</div><div class="actions"><button class="button open-conductor-detail" type="button" data-conductor="${escapeAttr(entry.key)}">이력 열기</button></div></article>`;
 	}).join("\n");
 	const detailPanels = data.conductors.map((entry) => {
-		const reports = reportsForConductor(entry, data.reports);
-		const frames = framesForConductor(entry, data.frames);
-		const captures = capturesForConductor(entry, data.captures);
-		const label = conductorDisplayLabel(entry);
-		return `<section class="conductor-detail-panel" data-conductor-panel="${escapeAttr(entry.key)}" hidden><div class="actions"><button class="button" type="button" onclick="showConductorGroups()">← 컨덕터 이력 목록</button></div><header class="card"><div class="kicker">컨덕터 이력</div><h2>${escapeHtml(label)}</h2><div class="meta"><span class="badge">${entry.loadedByResume ? "/wt resume 복구" : "보존 컨텍스트"}</span><span class="badge">${escapeHtml(entry.repo)}</span>${entry.ticket ? `<span class="badge">${escapeHtml(entry.ticket)}</span>` : ""}${entry.createdAt ? `<span class="badge">생성 ${escapeHtml(entry.createdAt)}</span>` : ""}${entry.sessionId ? `<span class="badge">session ${escapeHtml(entry.sessionId.slice(0, 8))}</span>` : ""}</div><div class="path">${escapeHtml(entry.workspacePath)}</div></header><section class="card"><h3>이전 요청</h3>${renderRequestList(entry.requests)}<div class="actions">${artifactOpenButtons(entry.contextPath)}</div></section>${renderConductorPathCards("원본 Conductor 세션", entry.sourceSessionPaths)}${renderConductorPathCards("Pi 복구 세션", entry.piSessionPaths)}<section><h3>검증 리포트 · ${reports.length}</h3>${renderReportCards(reports)}</section><section><h3>기획 / Frame · ${frames.length}</h3>${renderFrameCards(frames)}</section><section><h3>캡처 미디어 · ${captures.length}</h3>${captures.length ? renderCaptureFileCards(captures) : `<div class="empty">연결된 캡처 미디어가 없습니다.</div>`}</section></section>`;
+		const reports = reportsForUnit(entry, data.reports);
+		const planningDocs = planningDocsForUnit(entry, data.planningDocs).filter((doc) => doc.source !== "frame-studio");
+		const captures = capturesForUnit(entry, data.captures);
+		const restored = conductorRestoredByPi(entry, data.piUnits);
+		return `<section class="conductor-detail-panel" data-conductor-panel="${escapeAttr(entry.key)}" hidden><div class="actions"><button class="button" type="button" onclick="showConductorGroups()">← 컨덕터 이력 목록</button></div><header class="card"><div class="kicker">컨덕터 이력</div><h2>${escapeHtml(entry.label)}</h2><div class="meta"><span class="badge">Conductor master</span>${restored ? `<span class="badge">Pi로 복구됨</span>` : ""}<span class="badge">${escapeHtml(entry.repo)}</span>${entry.ticket ? `<span class="badge">${escapeHtml(entry.ticket)}</span>` : ""}${entry.createdAt ? `<span class="badge">생성 ${escapeHtml(entry.createdAt)}</span>` : ""}${entry.sessionId ? `<span class="badge">session ${escapeHtml(entry.sessionId.slice(0, 8))}</span>` : ""}</div><div class="path">${escapeHtml(entry.branch)}</div></header><section class="card"><h3>이전 요청</h3>${renderRequestList(entry.requests)}</section>${renderConductorSourceCards("원본 Conductor 세션", entry.sourceSessionPaths, restored)}<section><h3>검증 리포트 · ${reports.length}</h3>${renderReportCards(reports)}</section><section><h3>기획 / Frame · ${planningDocs.length}</h3>${renderPlanningDocCards(planningDocs)}</section><section><h3>캡처 / 미디어 · ${captures.length}</h3>${captures.length ? renderCaptureFileCards(captures) : `<div class="empty">연결된 캡처 미디어가 없습니다.</div>`}</section></section>`;
 	}).join("\n");
 	return `<div id="conductor-groups"><div class="grid">${groupCards}</div></div><div id="conductor-details" hidden>${detailPanels}</div>`;
 }
 
+function unassignedWebSearches(data: ArtifactBrowserData): WebSearchEntry[] {
+	return data.webSearches.filter((entry) => !data.piUnits.some((unit) => webSearchesForUnit(unit, [entry]).length > 0) && !data.conductors.some((unit) => webSearchesForUnit(unit, [entry]).length > 0));
+}
+
+function renderWebSearchPanel(data: ArtifactBrowserData): string {
+	const unassigned = unassignedWebSearches(data);
+	return `<section><h2>웹 검색 기본 그룹</h2>${renderWebSearchCards(unassigned)}</section><section><h2>전체 웹 검색</h2>${renderWebSearchCards(data.webSearches)}</section>`;
+}
+
 function buildArtifactBrowserHtml(data: ArtifactBrowserData, cwd: string): string {
-	const initialTab = data.conductors.length ? "conductors" : data.reports.length ? "reports" : data.frames.length ? "frames" : "captures";
-	return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>pilee Artifact Browser</title>${artifactBrowserStyle()}</head><body><main class="shell"><header class="hero"><div class="kicker">🗂️ pilee Artifact Browser</div><h1>산출물 다시 보기</h1><p>검증 리포트, Frame 기획 전문, 캡처 미디어, Conductor 복구 이력을 분리해서 봅니다.</p><div class="meta"><span class="badge">cwd ${escapeHtml(cwd)}</span><span class="badge">generated ${escapeHtml(data.generatedAt.toLocaleString())}</span></div></header><input id="search" class="search" type="search" placeholder="현재 탭에서 검색: 이름, 티켓, workspace, identity, source" oninput="filterCards()"><nav class="tabs"><button class="tab" data-tab="reports" onclick="showTab('reports')">검증 리포트 <strong>${data.reports.length}</strong></button><button class="tab" data-tab="frames" onclick="showTab('frames')">기획 / Frame <strong>${data.frames.length}</strong></button><button class="tab" data-tab="captures" onclick="showTab('captures')">캡처 / 미디어 <strong>${data.captures.length}</strong></button><button class="tab" data-tab="conductors" onclick="showTab('conductors')">컨덕터 이력 <strong>${data.conductors.length}</strong></button></nav><section id="tab-reports" class="panel">${renderReportCards(data.reports)}</section><section id="tab-frames" class="panel">${renderFrameCards(data.frames)}</section><section id="tab-captures" class="panel">${renderCaptureCards(data.captures, data.frames)}</section><section id="tab-conductors" class="panel">${renderConductorCards(data)}</section></main><script>
-	function showTab(name){document.querySelectorAll('.tab').forEach(function(el){el.classList.toggle('active',el.dataset.tab===name)});document.querySelectorAll('.panel').forEach(function(el){el.classList.toggle('active',el.id==='tab-'+name)});window.currentTab=name;filterCards();}
-	function filterCards(){var q=(document.getElementById('search').value||'').toLowerCase().trim();var panel=document.getElementById('tab-'+(window.currentTab||'${initialTab}'));if(!panel)return;panel.querySelectorAll('.searchable').forEach(function(card){card.style.display=!q||String(card.dataset.search||'').indexOf(q)>=0?'':'none';});}
-	function showCaptureGroups(){var groups=document.getElementById('capture-groups');var files=document.getElementById('capture-files');if(groups)groups.hidden=false;if(files)files.hidden=true;document.querySelectorAll('[data-group-panel]').forEach(function(panel){panel.hidden=true;});filterCards();}
-	function showCaptureGroup(key){var groups=document.getElementById('capture-groups');var files=document.getElementById('capture-files');if(groups)groups.hidden=true;if(files)files.hidden=false;document.querySelectorAll('[data-group-panel]').forEach(function(panel){panel.hidden=panel.dataset.groupPanel!==key;});filterCards();}
-	function showConductorGroups(){var groups=document.getElementById('conductor-groups');var details=document.getElementById('conductor-details');if(groups)groups.hidden=false;if(details)details.hidden=true;document.querySelectorAll('[data-conductor-panel]').forEach(function(panel){panel.hidden=true;});filterCards();}
-	function showConductorDetail(key){var groups=document.getElementById('conductor-groups');var details=document.getElementById('conductor-details');if(groups)groups.hidden=true;if(details)details.hidden=false;document.querySelectorAll('[data-conductor-panel]').forEach(function(panel){panel.hidden=panel.dataset.conductorPanel!==key;});filterCards();}
-	async function openArtifact(button){var path=button.dataset.path||'';var target=button.dataset.target||'glimpse';var label=button.textContent;button.disabled=true;button.textContent=target==='browser'?'브라우저 여는 중...':'Glimpse 여는 중...';try{var res=await fetch('/open?path='+encodeURIComponent(path)+'&target='+encodeURIComponent(target),{method:'POST'});if(!res.ok)throw new Error(await res.text());var payload=await res.json().catch(function(){return {}});if(payload&&payload.url){location.href=payload.url;return;}button.textContent='열기 요청됨';setTimeout(function(){button.textContent=label;button.disabled=false;},1400);}catch(e){button.textContent='열기 실패';button.title=String(e&&e.message||e);setTimeout(function(){button.textContent=label;button.disabled=false;},2200);}}
-	document.addEventListener('click',function(ev){var conductor=ev.target&&ev.target.closest?ev.target.closest('.open-conductor-detail'):null;if(conductor){ev.preventDefault();showConductorDetail(conductor.dataset.conductor||'');return;}var folder=ev.target&&ev.target.closest?ev.target.closest('.open-capture-group'):null;if(folder){ev.preventDefault();showCaptureGroup(folder.dataset.group||'');return;}var button=ev.target&&ev.target.closest?ev.target.closest('.open-artifact'):null;if(button){ev.preventDefault();openArtifact(button);}});
+	const initialTab = data.piUnits.length ? "pi" : data.conductors.length ? "conductors" : "web-search";
+	return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>pilee Artifact Browser</title>${artifactBrowserStyle()}</head><body><main class="shell"><header class="hero"><div class="kicker">🗂️ pilee Artifact Browser</div><h1>산출물 다시 보기</h1><p>Pi 작업 이력, Conductor master 이력, 웹 검색 review를 상위 단위로 분리해서 봅니다.</p><div class="meta"><span class="badge">cwd ${escapeHtml(cwd)}</span><span class="badge">generated ${escapeHtml(data.generatedAt.toLocaleString())}</span></div></header><input id="search" class="search" type="search" placeholder="현재 탭에서 검색: 이름, 티켓, workspace, session, source" oninput="filterCards()"><nav class="tabs"><button class="tab" data-tab="pi" onclick="showTab('pi')">Pi 이력 <strong>${data.piUnits.length}</strong></button><button class="tab" data-tab="conductors" onclick="showTab('conductors')">컨덕터 이력 <strong>${data.conductors.length}</strong></button><button class="tab" data-tab="web-search" onclick="showTab('web-search')">웹 검색 <strong>${data.webSearches.length}</strong></button><button class="tab" data-tab="reports" onclick="showTab('reports')">검증 리포트 <strong>${data.reports.length}</strong></button><button class="tab" data-tab="planning" onclick="showTab('planning')">기획 / Frame <strong>${data.planningDocs.length}</strong></button><button class="tab" data-tab="captures" onclick="showTab('captures')">캡처 / 미디어 <strong>${data.captures.length}</strong></button></nav><section id="tab-pi" class="panel">${renderPiWorkUnitCards(data)}</section><section id="tab-conductors" class="panel">${renderConductorCards(data)}</section><section id="tab-web-search" class="panel">${renderWebSearchPanel(data)}</section><section id="tab-reports" class="panel">${renderReportCards(data.reports)}</section><section id="tab-planning" class="panel">${renderPlanningDocCards(data.planningDocs)}</section><section id="tab-captures" class="panel">${renderCaptureCards(data.captures, data.frames)}</section></main><script>
+(function(){
+	function qs(selector, root=document){ return root.querySelector(selector); }
+	function qsa(selector, root=document){ return Array.from(root.querySelectorAll(selector)); }
+	window.showTab = function(tab){
+		qsa('.tab').forEach((btn) => btn.classList.toggle('active', btn.dataset.tab === tab));
+		qsa('.panel').forEach((panel) => panel.classList.toggle('active', panel.id === 'tab-' + tab));
+		const search = qs('#search'); if (search) search.value = '';
+		filterCards();
+	};
+	window.filterCards = function(){
+		const query = (qs('#search')?.value || '').toLowerCase().trim();
+		qsa('.panel.active .searchable').forEach((card) => { card.style.display = !query || (card.dataset.search || '').includes(query) ? '' : 'none'; });
+	};
+	window.showCaptureGroups = function(){
+		const groups = qs('#capture-groups'); const files = qs('#capture-files');
+		if (groups) groups.hidden = false; if (files) files.hidden = true;
+		qsa('.capture-group-panel').forEach((panel) => panel.hidden = true);
+	};
+	window.showCaptureGroup = function(key){
+		const groups = qs('#capture-groups'); const files = qs('#capture-files');
+		if (groups) groups.hidden = true; if (files) files.hidden = false;
+		qsa('.capture-group-panel').forEach((panel) => panel.hidden = panel.dataset.groupPanel !== key);
+	};
+	window.showPiGroups = function(){
+		const groups = qs('#pi-groups'); const details = qs('#pi-details');
+		if (groups) groups.hidden = false; if (details) details.hidden = true;
+		qsa('.pi-detail-panel').forEach((panel) => panel.hidden = true);
+	};
+	window.showPiDetail = function(key){
+		const groups = qs('#pi-groups'); const details = qs('#pi-details');
+		if (groups) groups.hidden = true; if (details) details.hidden = false;
+		qsa('.pi-detail-panel').forEach((panel) => panel.hidden = panel.dataset.piPanel !== key);
+	};
+	window.showConductorGroups = function(){
+		const groups = qs('#conductor-groups'); const details = qs('#conductor-details');
+		if (groups) groups.hidden = false; if (details) details.hidden = true;
+		qsa('.conductor-detail-panel').forEach((panel) => panel.hidden = true);
+	};
+	window.showConductorDetail = function(key){
+		const groups = qs('#conductor-groups'); const details = qs('#conductor-details');
+		if (groups) groups.hidden = true; if (details) details.hidden = false;
+		qsa('.conductor-detail-panel').forEach((panel) => panel.hidden = panel.dataset.conductorPanel !== key);
+	};
+	async function requestOpen(button){
+		const path = button.dataset.path;
+		const target = button.dataset.target || 'glimpse';
+		if (!path) return;
+		const previous = button.textContent;
+		button.disabled = true;
+		button.textContent = target === 'browser' ? '브라우저 여는 중...' : 'Glimpse 여는 중...';
+		try {
+			const response = await fetch('/open?target=' + encodeURIComponent(target) + '&path=' + encodeURIComponent(path), { method: 'POST' });
+			const payload = await response.json().catch(() => ({}));
+			if (!response.ok || !payload.ok) throw new Error(payload.error || 'open failed');
+			if (payload.previewUrl && target !== 'browser') { window.location.href = payload.previewUrl; return; }
+			button.textContent = target === 'browser' ? '브라우저 열기 요청됨' : '열기 요청됨';
+			setTimeout(() => { button.textContent = previous; button.disabled = false; }, 1200);
+		} catch (error) {
+			button.textContent = '열기 실패';
+			button.title = String(error && error.message || error);
+			setTimeout(() => { button.textContent = previous; button.disabled = false; }, 2200);
+		}
+	}
+	document.addEventListener('click', (event) => {
+		const target = event.target;
+		if (!(target instanceof HTMLElement)) return;
+		const opener = target.closest('.open-artifact');
+		if (opener) { requestOpen(opener); return; }
+		const capture = target.closest('.open-capture-group');
+		if (capture) { showCaptureGroup(capture.dataset.group || ''); return; }
+		const pi = target.closest('.open-pi-detail');
+		if (pi) { showPiDetail(pi.dataset.pi || ''); return; }
+		const conductor = target.closest('.open-conductor-detail');
+		if (conductor) { showConductorDetail(conductor.dataset.conductor || ''); return; }
+	});
 	showTab('${initialTab}');
-	</script></body></html>`;
+})();
+</script></body></html>`;
 }
 
 async function archiveVerifyReport(event: ToolResultEvent, ctx: ExtensionContext, pi: ExtensionAPI) {
