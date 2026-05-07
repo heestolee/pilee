@@ -21,8 +21,8 @@ source:
   - pilee-history:2026-05-05#44
   - pilee-history:2026-05-05#48
   - user-direction:2026-05-07-local-resolver
-reviewed_at: 2026-05-05
-reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
+reviewed_at: 2026-05-07
+reviewed_commit: 5474cf3424f95d56ba2f6ef04f7e7de1dcf9a8e4
 related:
   - verify-report-workflow
   - web-search-curator
