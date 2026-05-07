@@ -21,7 +21,7 @@ applies_to:
 source:
   - pilee-history:2026-05-05#knowledge-system
 reviewed_at: 2026-05-07
-reviewed_commit: 858d8a21fb045c561b35a90172f37eb149d89b92
+reviewed_commit: 311bf8a61efbc0bf67b5fc92b42a6ea1bb42620b
 related:
   - verify-report-workflow
   - web-search-curator
