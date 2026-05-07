@@ -27,7 +27,7 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-07-conductor-history-artifact-browser
 reviewed_at: 2026-05-07
-reviewed_commit: be8db2fb544e2392bc0740c6993e9de60c4693e8
+reviewed_commit: d601ac0041243e78871b352c51f38b50f22be4bb
 related:
   - live-artifact-preview-pattern
   - backlog-source-session-provenance
@@ -84,9 +84,11 @@ Pi/Conductor session JSONL은 raw UTF-8 원본입니다. Artifact Browser previe
 
 세션 JSONL은 raw line을 그대로 펼치기보다 실제 대화만 추려 보여줍니다. system/model/session/tool/thinking/encrypted payload와 tool result 같은 실행 노이즈는 숨기고, 사용자 메시지와 assistant의 실제 답변 text만 대화 버블로 표시합니다. Pi v3 JSONL의 `type: "message"`와 Conductor/Claude JSONL의 top-level `type: "user" | "assistant"`, `last-prompt` shape를 모두 지원해야 합니다. 한쪽 schema만 파싱하면 다른 쪽 이력이 “비어 있음”으로 보입니다.
 
-Conductor master 탭은 원본 `.claude/projects` JSONL만 믿지 않습니다. Conductor DB `session_messages`의 user 요청을 함께 preview로 보여줘야 원본 JSONL 파일이 없거나 일부 workspace source lookup이 실패해도 작업 의도를 잃지 않습니다. DB preview는 요청 요약/탐색 보조이고, 전체 대화 근거는 원본 Conductor 세션 preview/open으로 분리합니다.
+Conductor master 탭은 원본 `.claude/projects` JSONL만 믿지 않습니다. Conductor DB `session_messages`의 user 요청을 함께 preview로 보여줘야 원본 JSONL 파일이 없거나 일부 workspace source lookup이 실패해도 작업 의도를 잃지 않습니다. DB preview는 요청 요약/탐색 보조이고, 전체 대화 근거는 원본 Conductor 세션 전문 export/open으로 분리합니다.
 
-`브라우저에서 열기`는 macOS file association에 맡기지 않습니다. `.jsonl`처럼 기본 앱이 없어 `open <file>`이 실패할 수 있으므로, Artifact Browser의 allowlisted localhost `/preview?path=...&full=1` URL을 외부 브라우저로 엽니다. 직접 `/show-report --browser <session.jsonl>`로 연 경우에도 원본 파일을 바로 `open`하지 않고 HTML preview 임시 파일을 열어야 합니다. 이렇게 하면 원본 경계는 유지하면서도 브라우저 버튼이 파일 확장자에 의존하지 않습니다.
+세션 전문 보기는 `/backlog`의 source-session export 방식과 같은 `pi --export <sessionFile> <outputPath>` 렌더러를 재사용합니다. Pi session JSONL은 그대로 export하고, Conductor/Claude JSONL은 원본 파일을 직접 export하지 않습니다. 먼저 로컬 `session-exports/show-report/normalized` 아래에 Pi-compatible session JSONL로 변환한 뒤 exporter에 넘깁니다. 이 guard가 없으면 Pi exporter가 session header 없는 raw JSONL을 열면서 원본을 새 Pi session header로 덮어쓸 수 있습니다.
+
+`브라우저에서 열기`는 macOS file association에 맡기지 않습니다. `.jsonl`처럼 기본 앱이 없어 `open <file>`이 실패할 수 있으므로, session JSONL은 export된 HTML 전문 파일을 열고, 일반 artifact는 Artifact Browser의 allowlisted localhost `/preview?path=...&full=1` URL을 외부 브라우저로 엽니다. 직접 `/show-report --browser <session.jsonl>`로 연 경우에도 원본 파일을 바로 `open`하지 않고 export된 HTML을 열어야 합니다. 이렇게 하면 원본 경계는 유지하면서도 브라우저 버튼이 파일 확장자에 의존하지 않습니다.
 
 ## Failure Mode
 

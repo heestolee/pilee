@@ -22,7 +22,7 @@ applies_to:
 source:
   - pilee-history:2026-05-06#67
 reviewed_at: 2026-05-07
-reviewed_commit: 0e6c08396034c8c5f9940871083eafa1c5d39e49
+reviewed_commit: d601ac0041243e78871b352c51f38b50f22be4bb
 related:
   - worktree-execution-boundary
   - worktree-session-continuity

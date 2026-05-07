@@ -9,14 +9,15 @@ tags:
   - 스킬
 category: workflow
 status: active
+confidence: high
 applies_to:
   - skills/skill-creator
   - extensions/dynamic-agents-md
   - skills/systematic-debugging
 source:
   - pilee-history:2026-05-03#32
-reviewed_at: 2026-05-05
-reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
+reviewed_at: 2026-05-07
+reviewed_commit: d601ac0041243e78871b352c51f38b50f22be4bb
 related:
   - context-loading-minimal-surface
   - judgment-doc-unit

@@ -9,6 +9,7 @@ tags:
   - session-title
 category: workflow
 status: active
+confidence: high
 applies_to:
   - skills/frame
   - extensions/tft-commands
@@ -16,7 +17,7 @@ source:
   - pilee-history:2026-05-06#66
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: 74e15fcd9f1709efc1b06a1dbb0a1976216ad8c3
+reviewed_commit: d601ac0041243e78871b352c51f38b50f22be4bb
 related:
   - frame-verify-contract
   - session-identity-over-filenames

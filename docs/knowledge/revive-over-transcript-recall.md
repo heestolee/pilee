@@ -9,6 +9,7 @@ tags:
   - 세션
 category: workflow
 status: active
+confidence: high
 applies_to:
   - extensions/fork-panel
   - extensions/worktree
@@ -18,7 +19,7 @@ source:
   - pilee-history:2026-05-05#40
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: 74e15fcd9f1709efc1b06a1dbb0a1976216ad8c3
+reviewed_commit: d601ac0041243e78871b352c51f38b50f22be4bb
 related:
   - session-identity-over-filenames
   - fork-panel-parent-inbox

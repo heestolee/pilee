@@ -11,6 +11,7 @@ tags:
   - 검증
 category: verification
 status: active
+confidence: high
 applies_to:
   - skills/frame
   - skills/decide
@@ -21,7 +22,7 @@ source:
   - pilee-history:2026-05-06#65
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: 1b5b68d8fc7197824e8cd1e57dba3a36c113bc9a
+reviewed_commit: d601ac0041243e78871b352c51f38b50f22be4bb
 related:
   - ask-user-question-decision-gates
   - evidence-first-verification-gate

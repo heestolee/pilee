@@ -9,6 +9,7 @@ tags:
   - 위임
 category: agent
 status: active
+confidence: high
 applies_to:
   - extensions/subagent
   - agents
@@ -17,7 +18,7 @@ applies_to:
 source:
   - pilee-history:2026-05-05#42
 reviewed_at: 2026-05-07
-reviewed_commit: 8b79c81704f67905fa6cecca9c6bb24e50c433c1
+reviewed_commit: d601ac0041243e78871b352c51f38b50f22be4bb
 related:
   - subagent-model-policy
   - self-healing-actionable-loop

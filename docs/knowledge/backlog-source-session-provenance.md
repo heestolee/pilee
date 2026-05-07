@@ -19,7 +19,7 @@ source:
   - pilee-history:2026-05-05#51
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: be8db2fb544e2392bc0740c6993e9de60c4693e8
+reviewed_commit: d601ac0041243e78871b352c51f38b50f22be4bb
 related:
   - session-identity-over-filenames
   - artifact-archive-reopenability
@@ -39,7 +39,7 @@ Backlog에서 task로 옮겨도 provenance를 버리지 않습니다. 단기 작
 
 ## Reopen Rule
 
-출처 보존은 raw path 저장만으로 충분하지 않습니다. 사용자가 backlog/task를 다시 볼 때 source session export나 artifact browser를 통해 원 대화를 열 수 있어야 합니다. 공개 PR에는 session path를 복사하지 않지만, 로컬 시스템 안에서는 provenance가 revive/export/reopen 동작으로 이어져야 합니다.
+출처 보존은 raw path 저장만으로 충분하지 않습니다. 사용자가 backlog/task를 다시 볼 때 source session export나 artifact browser를 통해 원 대화를 열 수 있어야 합니다. `/backlog`와 `/show-report`는 같은 session export helper를 공유해 Pi의 공식 HTML session exporter를 호출해야 합니다. 이렇게 해야 sidebar/tree/filter(`Default`, `No-tools`, `User`, `Labeled`, `All`)가 있는 “세션 전문” UX가 유지됩니다. 공개 PR에는 session path를 복사하지 않지만, 로컬 시스템 안에서는 provenance가 revive/export/reopen 동작으로 이어져야 합니다.
 
 ## Artifact Label Rule
 
