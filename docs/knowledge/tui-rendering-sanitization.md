@@ -36,6 +36,8 @@ TUI row에 들어가는 문자열은 저장된 preview, 외부 출력, 사용자
 
 목록 row는 단일 행입니다. 렌더링 직전에 newline과 control char를 제거하고, 폭을 계산해 잘라야 합니다. 과거 저장 데이터가 multi-line이어도 migration에 기대지 말고 render boundary에서 정규화합니다.
 
+Panel label이나 model metadata처럼 짧아 보이는 값도 렌더링 경계에서는 문자열입니다. `P0 · model` 같은 affordance는 한 줄로 제한하고, 외부 값이 길어지거나 control char를 포함해도 editor layout을 깨지 않게 정규화합니다.
+
 ## Detail Rule
 
 긴 노트나 전문은 row에 억지로 넣지 않습니다. detail view에 scroll state를 두고 PgUp/PgDn, j/k 같은 이동을 제공합니다. 한 줄 목록과 긴 본문 화면은 다른 UI 계약입니다.
