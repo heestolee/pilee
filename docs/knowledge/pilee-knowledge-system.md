@@ -56,7 +56,7 @@ pilee knowledge는 product knowledge의 `scope.path + verified_at` 모델을 그
 
 검토 큐 PR은 stale 문서를 직접 고치는 PR이 아닙니다. GitHub Actions는 private journal/Pi session 전문을 읽지 않으므로, doctrine stale을 실제로 해소할 충분한 맥락이 없습니다. 실제 해소는 로컬에서 `node scripts/knowledge.mjs --resolve-stale` 또는 `/ember resolve`로 resolver plan을 만들고, 관련 commit·문서·필요 시 로컬 session hint를 확인한 뒤 수행합니다. 문서가 현재 판단과 다르면 public/sanitized 내용으로 수정하고, 여전히 맞으면 `--confirm`으로 `reviewed_at`과 `reviewed_commit`을 갱신합니다.
 
-`--review-candidates`는 최근 commit과 로컬 journal에서 각 문서의 tags/applies_to와 맞닿는 흔적을 찾아 리뷰 후보를 제안합니다. `--resolve-stale`은 그 후보를 실제 PR 작업 단위로 바꾸기 위해 `.context/knowledge-resolver/...`에 freshness JSON, resolver plan, agent prompt, PR body template을 생성합니다. 이 산출물은 local-only이며 PR에 올리지 않습니다.
+`--review-candidates`는 최근 commit과 로컬 journal에서 각 문서의 tags/applies_to와 맞닿는 흔적을 찾아 리뷰 후보를 제안합니다. `--resolve-stale`은 그 후보를 실제 PR 작업 단위로 바꾸기 위해 `.context/knowledge-resolver/...`에 local/redacted freshness JSON, resolver plan, agent prompt, PR body template을 생성합니다. 이 산출물은 local-only이며, 특히 `freshness.local.json`과 session hint는 민감 정보를 포함할 수 있으므로 PR에 올리지 않습니다.
 
 ## Privacy Guardrail
 

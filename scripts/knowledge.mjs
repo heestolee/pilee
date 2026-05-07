@@ -209,6 +209,7 @@ Report options:
   --since-days <n>   Fallback lookback when reviewed_commit is missing (default: 14)
   --json             Emit JSON instead of Markdown
   --output <path>    Write freshness JSON/report artifacts to a file or directory
+                    Resolver outputs are local-only; freshness.local.json may contain private evidence
   --strict           Exit non-zero when freshness/review issues are found
 
 Resolver options:
@@ -1294,9 +1295,41 @@ function selectResolverDocs(report, docs, { docIds = [], topic = "", limit = 8, 
 	return candidates;
 }
 
+function redactPrivateReason(reason) {
+	if (!reason || reason.type !== "recent_history") return reason;
+	return {
+		...reason,
+		detail: "local private history evidence found (redacted)",
+		evidence: { date: reason.evidence?.date || null, redacted: true },
+	};
+}
+
+function resolverReasonDisplay(reason) {
+	const safeReason = redactPrivateReason(reason) || {};
+	const evidence = safeReason.evidence || {};
+	const suffix = evidence.commit ? ` (${evidence.commit})` : evidence.date ? ` (${evidence.date})` : "";
+	return `${safeReason.type || "reason"}: ${safeReason.detail || ""}${suffix}`;
+}
+
+function sanitizeFreshnessReportForArtifact(report) {
+	const copy = JSON.parse(JSON.stringify(report));
+	const redactReasons = (item) => {
+		if (!item || !Array.isArray(item.reasons)) return;
+		item.reasons = item.reasons.map(redactPrivateReason);
+	};
+	for (const item of copy.doctrine || []) redactReasons(item);
+	for (const item of copy.doctrine_freshness?.docs || []) redactReasons(item);
+	for (const candidate of copy.candidates || []) {
+		if (!Array.isArray(candidate.source)) continue;
+		candidate.source = candidate.source.map((source) => String(source).startsWith("history:") ? "history:redacted" : source);
+	}
+	return copy;
+}
+
 function resolverTokensForDoc(reportDoc, doc) {
 	const tokenSet = new Set(doc ? tokensForDoc(doc) : []);
 	for (const reason of reportDoc.reasons || []) {
+		if (reason?.type === "recent_history") continue;
 		for (const part of reasonText(reason).toLowerCase().split(/[^\p{L}\p{N}_/-]+/u)) {
 			const normalized = part.replace(/^[-_/]+|[-_/]+$/g, "");
 			if (normalized.length >= 3) tokenSet.add(normalized);
@@ -1369,7 +1402,7 @@ function renderResolverPlan(report, selectedDocs, sessionHintResult, { outputDir
 	const lines = [];
 	lines.push("# pilee knowledge stale resolver plan");
 	lines.push("");
-	lines.push("> Local-only resolver artifact. 이 파일은 `.context/` 아래에 두고 PR에 올리지 않습니다.");
+	lines.push("> Local-only resolver artifact. 이 파일은 `.context/` 아래에 두고 PR에 올리지 않습니다. 로컬 session/private history 근거는 민감할 수 있으므로 공개 PR에는 sanitized 결론만 옮깁니다.");
 	lines.push("");
 	lines.push("## 목적");
 	lines.push("");
@@ -1394,13 +1427,14 @@ function renderResolverPlan(report, selectedDocs, sessionHintResult, { outputDir
 	lines.push(`- 선택 기준: ${all ? "all stale docs" : topic ? `topic=${topic}` : "top stale docs"}`);
 	lines.push(`- 선택 문서: ${selectedDocs.length}개`);
 	lines.push(`- 산출물 디렉터리: \`${displayLocalPath(outputDir)}\``);
+	lines.push(`- 민감도: local-only. \`freshness.local.json\`은 private history evidence를 포함할 수 있고, \`freshness.public-redacted.json\`은 공유 가능한 redacted 참고용입니다.`);
 	lines.push(`- 로컬 session hint: ${sessionHintResult.available ? `${sessionHintResult.scanned}개 session 파일 스캔` : "사용 불가"}`);
 	lines.push("");
 	lines.push("| 문서 | confidence | reason 수 | 대표 사유 |");
 	lines.push("|---|---|---:|---|");
 	for (const { reportDoc } of selectedDocs) {
 		const firstReason = (reportDoc.reasons || [])[0];
-		lines.push(`| \`${reportDoc.id}\` | ${reportDoc.confidence || "high"} | ${(reportDoc.reasons || []).length} | ${markdownEscapeTable(firstReason?.detail || firstReason?.type || "")} |`);
+		lines.push(`| \`${reportDoc.id}\` | ${reportDoc.confidence || "high"} | ${(reportDoc.reasons || []).length} | ${markdownEscapeTable(resolverReasonDisplay(firstReason))} |`);
 	}
 	lines.push("");
 	lines.push("## 문서별 검토 카드");
@@ -1414,11 +1448,11 @@ function renderResolverPlan(report, selectedDocs, sessionHintResult, { outputDir
 		if (doc) lines.push(`- applies_to: ${appliesToOf(doc).map((item) => `\`${item}\``).join(", ") || "없음"}`);
 		lines.push("");
 		lines.push("검토 사유:");
-		for (const reason of reportDoc.reasons || []) lines.push(`- ${reason.type}: ${reason.detail}${reason.evidence?.commit ? ` (${reason.evidence.commit})` : ""}`);
+		for (const reason of reportDoc.reasons || []) lines.push(`- ${resolverReasonDisplay(reason)}`);
 		const hints = sessionHintResult.hints.get(reportDoc.id) || [];
 		lines.push("");
 		if (hints.length > 0) {
-			lines.push("로컬 session hint:");
+			lines.push("로컬 session hint (경로만 제공, 전문은 plan에 복사하지 않음):");
 			for (const hint of hints) lines.push(`- \`${hint.path}\` — score ${hint.score}, tokens: ${hint.matched.join(", ")}`);
 		} else {
 			lines.push("로컬 session hint: 없음. 커밋/문서 근거만으로 판단하거나 별도 검색이 필요합니다.");
@@ -1465,14 +1499,15 @@ function renderResolverPrompt(selectedDocs, outputDir) {
 	return `pilee knowledge stale을 로컬 맥락으로 실제 해소해줘.
 
 Resolver plan: ${displayLocalPath(path.join(outputDir, "resolve-plan.md"))}
-Freshness JSON: ${displayLocalPath(path.join(outputDir, "freshness.json"))}
+Local freshness JSON: ${displayLocalPath(path.join(outputDir, "freshness.local.json"))} (local-only, 공유 금지)
+Redacted freshness JSON: ${displayLocalPath(path.join(outputDir, "freshness.public-redacted.json"))}
 대상 문서: ${ids.join(", ")}
 
 절차:
 1. plan의 문서별 검토 카드를 읽는다.
 2. 관련 docs/knowledge 문서, 커밋 diff, 필요한 경우 로컬 Pi session hint의 전문을 확인한다.
 3. 각 문서를 다음 중 하나로 판정한다: 내용 수정 / confirm-only / 사용자 판단 필요.
-4. private journal/session 원문은 공개 문서나 PR body에 복사하지 말고 sanitized judgment만 남긴다.
+4. private journal/session 원문, 로컬 session 경로, private history 제목은 공개 문서나 PR body에 복사하지 말고 sanitized judgment만 남긴다.
 5. 수정 또는 \`node scripts/knowledge.mjs --confirm <doc-id>\`로 stale을 해소한다.
 6. \`node scripts/knowledge.mjs --graph && node scripts/knowledge.mjs --validate && node scripts/knowledge.mjs --freshness\`로 검증한다.
 7. 로컬 브랜치에 커밋하고 실제 update PR을 만든다. PR에는 수정/confirm-only/보류를 구분해 적는다.
@@ -1510,7 +1545,8 @@ function cmdResolveStale({ sinceDays = 14, docIds = [], topic = "", limit = 8, a
 	const selectedDocs = selectResolverDocs(report, docs, { docIds, topic, limit, all });
 	const outputDir = path.resolve(REPO_ROOT, output || path.join(".context", "knowledge-resolver", timestampForPath()));
 	fs.mkdirSync(outputDir, { recursive: true });
-	fs.writeFileSync(path.join(outputDir, "freshness.json"), `${JSON.stringify(report, null, 2)}\n`);
+	fs.writeFileSync(path.join(outputDir, "freshness.local.json"), `${JSON.stringify(report, null, 2)}\n`);
+	fs.writeFileSync(path.join(outputDir, "freshness.public-redacted.json"), `${JSON.stringify(sanitizeFreshnessReportForArtifact(report), null, 2)}\n`);
 
 	const sessionHintResult = sessionHints ? buildSessionHints(selectedDocs) : { available: false, scanned: 0, hints: new Map(selectedDocs.map(({ reportDoc }) => [reportDoc.id, []])) };
 	fs.writeFileSync(path.join(outputDir, "resolve-plan.md"), renderResolverPlan(report, selectedDocs, sessionHintResult, { outputDir, topic, all }));
@@ -1522,10 +1558,13 @@ function cmdResolveStale({ sinceDays = 14, docIds = [], topic = "", limit = 8, a
 	console.log(`Selected docs: ${selectedDocs.length}`);
 	console.log(`Output dir: ${displayLocalPath(outputDir)}`);
 	console.log(`Plan: ${displayLocalPath(path.join(outputDir, "resolve-plan.md"))}`);
+	console.log(`Local freshness JSON: ${displayLocalPath(path.join(outputDir, "freshness.local.json"))}`);
+	console.log(`Redacted freshness JSON: ${displayLocalPath(path.join(outputDir, "freshness.public-redacted.json"))}`);
 	console.log(`Prompt: ${displayLocalPath(path.join(outputDir, "prompt.md"))}`);
 	console.log(`PR body template: ${displayLocalPath(path.join(outputDir, "pr-body.md"))}`);
 	if (sessionHints) console.log(`Session hints: ${sessionHintResult.available ? `${sessionHintResult.scanned} files scanned` : "not available"}`);
 	console.log("");
+	console.log("Privacy: resolver artifacts are local-only; do not attach freshness.local.json or session paths to public PRs.");
 	console.log("Next: read prompt.md or run `/ember resolve` to let Pi review docs, update/confirm, and create the actual PR.");
 	return 0;
 }

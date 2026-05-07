@@ -38,4 +38,6 @@ freshness가 제안한 후보는 자동 수정 명령이 아닙니다. 문서를
 
 ## Local Resolver Shape
 
-`--resolve-stale`은 freshness 진단서를 실제 로컬 작업 단위로 바꾸는 보조 명령입니다. 이 명령은 `.context/knowledge-resolver/<timestamp>/` 아래에 `freshness.json`, `resolve-plan.md`, `prompt.md`, `pr-body.md`를 생성합니다. plan에는 stale/review_needed 문서, 관련 커밋 근거, 가능한 로컬 Pi session path hint, 판정 체크리스트가 들어갑니다. 실제 수정과 confirm은 agent/human이 plan을 읽고 private 맥락을 확인한 뒤 수행합니다.
+`--resolve-stale`은 freshness 진단서를 실제 로컬 작업 단위로 바꾸는 보조 명령입니다. 이 명령은 `.context/knowledge-resolver/<timestamp>/` 아래에 `freshness.local.json`, `freshness.public-redacted.json`, `resolve-plan.md`, `prompt.md`, `pr-body.md`를 생성합니다. plan에는 stale/review_needed 문서, 관련 커밋 근거, 가능한 로컬 Pi session path hint, 판정 체크리스트가 들어갑니다. 실제 수정과 confirm은 agent/human이 plan을 읽고 private 맥락을 확인한 뒤 수행합니다.
+
+`freshness.local.json`과 session hint는 민감 정보를 포함할 수 있으므로 PR에 첨부하지 않습니다. 공개 PR에는 `pr-body.md`의 sanitized 구조와 문서 수정 결과만 사용합니다. `freshness.public-redacted.json`은 private history 근거를 숨긴 참고용 산출물입니다.

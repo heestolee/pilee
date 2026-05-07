@@ -52,7 +52,7 @@ ${commonRules}`;
 3. 생성된 \`.context/knowledge-resolver/.../resolve-plan.md\`와 \`prompt.md\`를 읽는다.
 4. 각 후보별로 관련 knowledge 문서, 관련 커밋 diff, 필요 시 로컬 Pi session hint의 전문을 확인한다.
 5. 문서가 현재 판단과 다르면 public/sanitized 내용으로 수정하고, 여전히 맞으면 근거를 확인한 뒤 \`node scripts/knowledge.mjs --confirm <doc-id>\`로 reviewed 기준을 갱신한다.
-6. private journal/session 원문은 공개 문서나 PR body에 복사하지 않는다.
+6. private journal/session 원문, session path, \`freshness.local.json\` 내용은 공개 문서나 PR body에 복사하지 않는다.
 7. \`node scripts/knowledge.mjs --graph\`, \`node scripts/knowledge.mjs --validate\`, \`node scripts/knowledge.mjs --freshness\`로 검증한다.
 8. 실제 업데이트 PR을 만들 준비가 되면 로컬 브랜치/커밋/PR body를 구성하고, 수정/confirm-only/보류 항목을 구분해 보고한다.
 ${commonRules}`;
