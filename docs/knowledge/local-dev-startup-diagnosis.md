@@ -15,7 +15,7 @@ source:
   - pilee-history:2026-05-01#dev-server-analysis
   - session-backfill:2026-05-01#local-dev
 reviewed_at: 2026-05-07
-reviewed_commit: 1a0093b1c3b3917e504de299e97d7c68ad79932b
+reviewed_commit: 264ea1727c5c7defa23e8452c8c4ccd801959235
 related:
   - root-cause-before-fix
   - worktree-execution-boundary

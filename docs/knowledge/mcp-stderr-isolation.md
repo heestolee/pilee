@@ -15,7 +15,7 @@ applies_to:
 source:
   - pilee-history:2026-05-05#53
 reviewed_at: 2026-05-07
-reviewed_commit: 67f2836035e8cbe0cab3e659bfce37cfd013ff9e
+reviewed_commit: 264ea1727c5c7defa23e8452c8c4ccd801959235
 related:
   - tui-rendering-sanitization
   - terminal-host-integration

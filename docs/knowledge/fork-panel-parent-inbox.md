@@ -18,8 +18,8 @@ source:
   - pilee-history:2026-05-05#39
   - pilee-history:2026-05-05#40
   - pilee-history:2026-05-05#41
-reviewed_at: 2026-05-06
-reviewed_commit: 4c927abf3c3ea5aa55d80f8b85f7f48fddf47706
+reviewed_at: 2026-05-07
+reviewed_commit: 264ea1727c5c7defa23e8452c8c4ccd801959235
 related:
   - revive-over-transcript-recall
   - session-identity-over-filenames

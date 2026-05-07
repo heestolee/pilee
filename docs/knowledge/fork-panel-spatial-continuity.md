@@ -19,7 +19,7 @@ source:
   - pilee-history:2026-05-05#40
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: 0e6c08396034c8c5f9940871083eafa1c5d39e49
+reviewed_commit: 264ea1727c5c7defa23e8452c8c4ccd801959235
 related:
   - revive-over-transcript-recall
   - terminal-host-integration
