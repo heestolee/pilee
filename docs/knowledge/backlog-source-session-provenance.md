@@ -39,3 +39,7 @@ Backlog에서 task로 옮겨도 provenance를 버리지 않습니다. 단기 작
 ## Reopen Rule
 
 출처 보존은 raw path 저장만으로 충분하지 않습니다. 사용자가 backlog/task를 다시 볼 때 source session export나 artifact browser를 통해 원 대화를 열 수 있어야 합니다. 공개 PR에는 session path를 복사하지 않지만, 로컬 시스템 안에서는 provenance가 revive/export/reopen 동작으로 이어져야 합니다.
+
+## Artifact Label Rule
+
+source session title과 workspace metadata는 backlog뿐 아니라 capture artifact를 묶는 label에도 재사용될 수 있습니다. 다만 공개 PR에는 session path나 private 원문을 복사하지 않고, 로컬 Artifact Browser 안에서만 작업 단위를 알아보게 하는 provenance hint로 사용합니다.

@@ -73,6 +73,8 @@ Primary evidence는 검증 포인트가 바로 보이는 viewport/section/elemen
 
 report preview는 artifact browser 안에서 `/preview` route로 열리고, top bar의 `이전`, `브라우저에서 열기`, `닫기`로 탐색 경계를 유지해야 합니다. 검증 report는 생성 시점뿐 아니라 리뷰어가 나중에 열어 보는 시점에도 조작 가능한 증거여야 합니다.
 
+원본 capture가 별도 media tab에 남는 경우에는 workspace/Jira/session/frame label로 group drill-down할 수 있어야 합니다. 다만 Verify Report의 PASS 판정은 여전히 report item evidence와 coverage gap에 있고, capture group은 원자료 탐색 보조입니다.
+
 ## Decision Rules
 
 - report 작성은 검증의 일부이지 PR 업로드의 동의가 아닙니다.
