@@ -274,6 +274,67 @@ function openHtmlInGlimpse(open: (html: string, opts: Record<string, unknown>) =
 	openHtmlStringInGlimpse(open, buildGlimpseArtifactHtml(html, resolved), title);
 }
 
+function artifactPreviewInnerHtml(filePath: string): { title: string; html: string } {
+	const ext = path.extname(filePath).toLowerCase();
+	if (ext === ".html" || ext === ".htm") {
+		const htmlDir = path.dirname(filePath);
+		const html = inlineLocalImageSrc(fs.readFileSync(filePath, "utf-8"), htmlDir);
+		return { title: artifactTitle(html, filePath), html };
+	}
+	if (ext === ".json" && filePath.startsWith(FRAME_TRANSCRIPTS_DIR)) {
+		return { title: path.basename(filePath), html: buildFrameTranscriptStandaloneHtml(filePath) };
+	}
+	if (MEDIA_EXTENSIONS.has(ext)) {
+		return { title: path.basename(filePath), html: buildMediaPreviewHtml(filePath) };
+	}
+	return { title: path.basename(filePath), html: `<pre>${escapeHtml(fs.readFileSync(filePath, "utf-8"))}</pre>` };
+}
+
+function buildArtifactPreviewHtml(filePath: string): string {
+	const { title, html } = artifactPreviewInnerHtml(filePath);
+	const artifactDataUri = `data:text/html;base64,${Buffer.from(html, "utf8").toString("base64")}`;
+	return `<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${escapeHtml(title)} Preview</title>
+<style>
+	:root { color-scheme: light dark; --bar: rgba(20,20,24,.94); --text: #f5f5f5; --muted: #b8b8b8; }
+	* { box-sizing: border-box; }
+	html, body { width: 100%; height: 100%; margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+	body { display: grid; grid-template-rows: auto 1fr; background: #111; }
+	.bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 14px; background: var(--bar); color: var(--text); border-bottom: 1px solid rgba(255,255,255,.12); }
+	.title { min-width: 0; }
+	.title strong { display: block; font-size: 14px; line-height: 1.2; }
+	.title span { display: block; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60vw; }
+	.actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+	button { border: 1px solid rgba(255,255,255,.18); border-radius: 8px; padding: 7px 10px; background: rgba(255,255,255,.08); color: var(--text); font-size: 12px; text-decoration: none; cursor: pointer; }
+	button:hover { background: rgba(255,255,255,.15); }
+	button[disabled] { opacity: .55; cursor: wait; }
+	iframe { width: 100%; height: 100%; border: 0; background: white; }
+</style>
+</head>
+<body>
+	<div class="bar">
+		<div class="title">
+			<strong>${escapeHtml(title)}</strong>
+			<span>${escapeHtml(filePath)}</span>
+		</div>
+		<div class="actions">
+			<button type="button" onclick="location.href='/'">이전</button>
+			<button type="button" data-path="${escapeAttr(filePath)}" onclick="openOriginal(this)">브라우저에서 열기</button>
+			<button type="button" onclick="window.close()">닫기</button>
+		</div>
+	</div>
+	<iframe src="${artifactDataUri}" title="${escapeAttr(title)}"></iframe>
+<script>
+async function openOriginal(button){var label=button.textContent;button.disabled=true;button.textContent='브라우저 여는 중...';try{var res=await fetch('/open?target=browser&path='+encodeURIComponent(button.dataset.path||''),{method:'POST'});if(!res.ok)throw new Error(await res.text());button.textContent='열기 요청됨';setTimeout(function(){button.textContent=label;button.disabled=false;},1400);}catch(e){button.textContent='열기 실패';button.title=String(e&&e.message||e);setTimeout(function(){button.textContent=label;button.disabled=false;},2200);}}
+</script>
+</body>
+</html>`;
+}
+
 async function openInSystemBrowser(pi: ExtensionAPI, filePath: string): Promise<void> {
 	const resolved = fs.realpathSync(filePath);
 	await openUrlOrPathInSystem(pi, resolved);
@@ -566,6 +627,19 @@ function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData,
 				res.end(buildArtifactBrowserHtml(data, cwd));
 				return;
 			}
+			if (req.method === "GET" && url.pathname === "/preview") {
+				const requested = url.searchParams.get("path") || "";
+				let resolved = "";
+				try { resolved = fs.realpathSync(requested); } catch {}
+				if (!resolved || !allowedPaths.has(resolved)) {
+					res.writeHead(403, { "content-type": "text/plain; charset=utf-8" });
+					res.end("Path is not in this Artifact Browser.");
+					return;
+				}
+				res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+				res.end(buildArtifactPreviewHtml(resolved));
+				return;
+			}
 			if (req.method === "POST" && url.pathname === "/open") {
 				const requested = url.searchParams.get("path") || "";
 				const target = url.searchParams.get("target") === "browser" ? "browser" : "glimpse";
@@ -576,7 +650,12 @@ function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData,
 					res.end(JSON.stringify({ ok: false, error: "Path is not in this Artifact Browser." }));
 					return;
 				}
-				const mode = await openAnyArtifact(pi, resolved, target === "browser");
+				if (target === "glimpse") {
+					res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+					res.end(JSON.stringify({ ok: true, mode: "glimpse", url: `/preview?path=${encodeURIComponent(resolved)}` }));
+					return;
+				}
+				const mode = await openAnyArtifact(pi, resolved, true);
 				res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
 				res.end(JSON.stringify({ ok: true, mode }));
 				return;
@@ -813,7 +892,7 @@ function buildArtifactBrowserHtml(data: ArtifactBrowserData, cwd: string): strin
 	return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>pilee Artifact Browser</title>${artifactBrowserStyle()}</head><body><main class="shell"><header class="hero"><div class="kicker">🗂️ pilee Artifact Browser</div><h1>산출물 다시 보기</h1><p>검증 리포트, Frame 기획 전문, 캡처 미디어를 탭으로 분리해서 봅니다.</p><div class="meta"><span class="badge">cwd ${escapeHtml(cwd)}</span><span class="badge">generated ${escapeHtml(data.generatedAt.toLocaleString())}</span></div></header><input id="search" class="search" type="search" placeholder="현재 탭에서 검색: 이름, 티켓, identity, source" oninput="filterCards()"><nav class="tabs"><button class="tab" data-tab="reports" onclick="showTab('reports')">검증 리포트 <strong>${data.reports.length}</strong></button><button class="tab" data-tab="frames" onclick="showTab('frames')">기획 / Frame <strong>${data.frames.length}</strong></button><button class="tab" data-tab="captures" onclick="showTab('captures')">캡처 / 미디어 <strong>${data.captures.length}</strong></button></nav><section id="tab-reports" class="panel">${renderReportCards(data.reports)}</section><section id="tab-frames" class="panel">${renderFrameCards(data.frames)}</section><section id="tab-captures" class="panel">${renderCaptureCards(data.captures)}</section></main><script>
 	function showTab(name){document.querySelectorAll('.tab').forEach(function(el){el.classList.toggle('active',el.dataset.tab===name)});document.querySelectorAll('.panel').forEach(function(el){el.classList.toggle('active',el.id==='tab-'+name)});window.currentTab=name;filterCards();}
 	function filterCards(){var q=(document.getElementById('search').value||'').toLowerCase().trim();var panel=document.getElementById('tab-'+(window.currentTab||'${initialTab}'));if(!panel)return;panel.querySelectorAll('.searchable').forEach(function(card){card.style.display=!q||String(card.dataset.search||'').indexOf(q)>=0?'':'none';});}
-	async function openArtifact(button){var path=button.dataset.path||'';var target=button.dataset.target||'glimpse';var label=button.textContent;button.disabled=true;button.textContent=target==='browser'?'브라우저 여는 중...':'Glimpse 여는 중...';try{var res=await fetch('/open?path='+encodeURIComponent(path)+'&target='+encodeURIComponent(target),{method:'POST'});if(!res.ok)throw new Error(await res.text());button.textContent='열기 요청됨';setTimeout(function(){button.textContent=label;button.disabled=false;},1400);}catch(e){button.textContent='열기 실패';button.title=String(e&&e.message||e);setTimeout(function(){button.textContent=label;button.disabled=false;},2200);}}
+	async function openArtifact(button){var path=button.dataset.path||'';var target=button.dataset.target||'glimpse';var label=button.textContent;button.disabled=true;button.textContent=target==='browser'?'브라우저 여는 중...':'Glimpse 여는 중...';try{var res=await fetch('/open?path='+encodeURIComponent(path)+'&target='+encodeURIComponent(target),{method:'POST'});if(!res.ok)throw new Error(await res.text());var payload=await res.json().catch(function(){return {}});if(payload&&payload.url){location.href=payload.url;return;}button.textContent='열기 요청됨';setTimeout(function(){button.textContent=label;button.disabled=false;},1400);}catch(e){button.textContent='열기 실패';button.title=String(e&&e.message||e);setTimeout(function(){button.textContent=label;button.disabled=false;},2200);}}
 	document.addEventListener('click',function(ev){var button=ev.target&&ev.target.closest?ev.target.closest('.open-artifact'):null;if(button){ev.preventDefault();openArtifact(button);}});
 	showTab('${initialTab}');
 	</script></body></html>`;
