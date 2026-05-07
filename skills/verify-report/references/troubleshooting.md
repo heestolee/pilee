@@ -112,7 +112,7 @@ agent-browser wait 3000 --session {session}
 - 사용자 푸시백 ("이거 좀 다르게") → **재캡처 항목만 식별** → 그 항목만 다시 (전체 재작성 X)
 - 변경 없는 항목은 그대로 보존
 
-## agent-storage 업로드 충돌
+## project artifact storage 업로드 충돌
 
 ### 증상
 - `409 Conflict` 또는 `422 Unprocessable Entity` (sha 불일치)

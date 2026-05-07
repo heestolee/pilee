@@ -163,7 +163,8 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-05-07 | d601ac0 | frame, planning, identity, home-directory, ticket, session-title |
 | [Frame Studio는 frame 질문을 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-05-07 | d12a52a | frame-studio, frame, glimpse, ask-user-question, decision-ui, co-thinking |
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-05-07 | d601ac0 | artifact, glimpse, preview, sse, upload, local-first |
-| [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 1a0093b | local-dev, server, startup, diagnosis, product, dev |
+| [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 1a0093b | local-dev, server, startup, diagnosis, dev |
+| [Private overlay package는 회사·개인 실행 맥락을 담는다](./private-overlay-package-boundary.md) | active | high | 2026-05-07 | 22bb83e | privacy, package, overlay, skill, company-context |
 | [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-05-07 | d601ac0 | queued-messages, slash-command, prefill, worktree, session, boundary |
 | [종료된 포크는 transcript 주입보다 revive가 우선이다](./revive-over-transcript-recall.md) | active | high | 2026-05-07 | d601ac0 | revive, recall, fork-panel, session, continuity, 세션 |
 | [세션 식별자는 파일명이 아니라 사람이 본 이름이다](./session-identity-over-filenames.md) | active | high | 2026-05-07 | d601ac0 | session, title, identity, session_info, worktree, revive |
@@ -227,6 +228,7 @@ graph TD
   doc_frame_studio_interactive_decision_ui["Frame Studio는 frame 질문을 작업 단위 UI로 묶는다"]
   doc_live_artifact_preview_pattern["Live artifact는 local preview first다"]
   doc_local_dev_startup_diagnosis["로컬 개발 서버 시작은 진단 가능한 절차여야 한다"]
+  doc_private_overlay_package_boundary["Private overlay package는 회사·개인 실행 맥락을 담는다"]
   doc_queued_command_prefill_boundary["Queued command는 실행 보장이 아니다"]
   doc_revive_over_transcript_recall["종료된 포크는 transcript 주입보다 revive가 우선이다"]
   doc_session_identity_over_filenames["세션 식별자는 파일명이 아니라 사람이 본 이름이다"]
@@ -254,6 +256,7 @@ graph TD
   doc_utility_surface_stays_invisible --> doc_terminal_host_integration
   doc_database_write_human_execution_gate --> doc_ask_user_question_decision_gates
   doc_database_write_human_execution_gate --> doc_evidence_first_verification_gate
+  doc_database_write_human_execution_gate --> doc_private_overlay_package_boundary
   doc_root_cause_before_fix --> doc_evidence_first_verification_gate
   doc_root_cause_before_fix --> doc_verification_invalidation_on_change
   doc_confidence_sensitive_review --> doc_deterministic_vs_ai_actions
@@ -322,6 +325,7 @@ graph TD
   doc_verify_report_workflow --> doc_evidence_first_verification_gate
   doc_verify_report_workflow --> doc_live_artifact_preview_pattern
   doc_verify_report_workflow --> doc_pilee_knowledge_system
+  doc_verify_report_workflow --> doc_private_overlay_package_boundary
   doc_verify_report_workflow --> doc_web_search_curator
   doc_curator_approved_source_selection --> doc_deterministic_fallbacks_preserve_workflow
   doc_curator_approved_source_selection --> doc_live_artifact_preview_pattern
@@ -345,6 +349,7 @@ graph TD
   doc_context_loading_minimal_surface --> doc_tool_output_noise_management
   doc_external_issue_preview_gate --> doc_ask_user_question_decision_gates
   doc_external_issue_preview_gate --> doc_live_artifact_preview_pattern
+  doc_external_issue_preview_gate --> doc_private_overlay_package_boundary
   doc_fork_panel_parent_inbox --> doc_revive_over_transcript_recall
   doc_fork_panel_parent_inbox --> doc_session_identity_over_filenames
   doc_fork_panel_parent_inbox --> doc_subagent_prompt_specificity
@@ -362,8 +367,12 @@ graph TD
   doc_live_artifact_preview_pattern --> doc_artifact_archive_reopenability
   doc_live_artifact_preview_pattern --> doc_verify_report_workflow
   doc_live_artifact_preview_pattern --> doc_web_search_curator
+  doc_local_dev_startup_diagnosis --> doc_private_overlay_package_boundary
   doc_local_dev_startup_diagnosis --> doc_root_cause_before_fix
   doc_local_dev_startup_diagnosis --> doc_worktree_execution_boundary
+  doc_private_overlay_package_boundary --> doc_database_write_human_execution_gate
+  doc_private_overlay_package_boundary --> doc_private_journal_public_doctrine
+  doc_private_overlay_package_boundary --> doc_skills_as_portable_procedures
   doc_queued_command_prefill_boundary --> doc_session_identity_over_filenames
   doc_queued_command_prefill_boundary --> doc_subagent_prompt_specificity
   doc_queued_command_prefill_boundary --> doc_worktree_execution_boundary
@@ -393,7 +402,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 58
-- Links: 152
+- Documents: 59
+- Links: 159
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

@@ -38,6 +38,7 @@ related:
   - evidence-first-verification-gate
   - live-artifact-preview-pattern
   - artifact-archive-reopenability
+  - private-overlay-package-boundary
 supersedes:
   - make-report-confirm-only-upload-flow
 ---
@@ -46,7 +47,7 @@ supersedes:
 
 Verify Report는 “완료했다고 말하기 전에 증거를 남긴다”는 원칙을 UI/로그/코드 diff까지 확장한 검증 리포트 흐름입니다. 현재 기준은 단순히 캡처 파일을 모으는 것이 아니라, 변경 리스크를 coverage axis로 쪼갠 뒤 각 축을 증거로 닫는 것입니다.
 
-기본 동작은 로컬 확인용 report를 먼저 만들고 Glimpse에서 확인한 뒤, 명시적으로 요청된 경우에만 외부 업로드나 PR 갱신으로 넘어갑니다.
+기본 동작은 로컬 확인용 report를 먼저 만들고 Glimpse에서 확인한 뒤, 명시적으로 요청된 경우에만 외부 업로드나 PR 갱신으로 넘어갑니다. 프로젝트별 preview URL, 계정 alias, artifact storage 규칙은 private/project overlay가 제공하고, public verify-report는 coverage/evidence protocol에 집중합니다.
 
 ## Current Shape
 

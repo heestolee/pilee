@@ -1,18 +1,18 @@
-# Verify Report — agent-storage 업로드 (upload 모드만)
+# Verify Report — project artifact storage 업로드 (upload 모드만)
 
 > **default는 confirm 모드** — 업로드 안 함. 이 문서는 `--upload` 명시 시에만 따라가는 절차.
 
 ## 폴더 경로
 
-`creatrip/product/{jira-ticket}/`
-- Jira 티켓은 브랜치명에서 추출 (예: `feature/COM-2164/...` → `COM-2164`)
+`{org-or-project}/{repo-or-product}/{ticket-or-run}/`
+- ticket/run id는 브랜치명, PR, frame, 또는 사용자 입력에서 추출
 - 없으면 브랜치명 slug 사용
 
 ## 일반 파일 (< 500KB)
 
 ```bash
 CONTENT=$(base64 -i .context/work/{workspace}/captures/{filename} | tr -d '\n')
-gh api repos/creatrip/agent-storage/contents/creatrip/product/{ticket}/{filename} \
+gh api repos/{owner}/{artifact-repo}/contents/{artifact-path}/{filename} \
   -X PUT -f message="upload: verify report for {ticket}" \
   -f content="$CONTENT" -f branch="main"
 ```
@@ -40,7 +40,7 @@ with open("$PAYLOAD_FILE", "w") as f:
     json.dump(payload, f)
 EOF
 
-gh api repos/creatrip/agent-storage/contents/creatrip/product/{ticket}/{filename} \
+gh api repos/{owner}/{artifact-repo}/contents/{artifact-path}/{filename} \
   -X PUT --input "$PAYLOAD_FILE"
 
 # 정리
@@ -88,7 +88,7 @@ with open(os.path.join(CAPTURES_DIR, "report-embedded.html"), "w") as f:
 
 PR 본문 / context.md 용:
 ```
-https://github.com/creatrip/agent-storage/blob/main/creatrip/product/{ticket}/{filename}?raw=true
+https://github.com/{owner}/{artifact-repo}/blob/main/{artifact-path}/{filename}?raw=true
 ```
 
 ## 업로드 한도 체크
@@ -105,7 +105,7 @@ du -h .context/work/{workspace}/captures/*.{png,gif} 2>/dev/null
 ## update 모드 — 기존 파일 처리
 
 기존 업로드된 파일과 같은 경로면:
-1. `gh api repos/creatrip/agent-storage/contents/{path}` 로 sha 조회
+1. `gh api repos/{owner}/{artifact-repo}/contents/{path}` 로 sha 조회
 2. payload에 `sha` 추가
 3. 동일 경로에 PUT (overwrite)
 

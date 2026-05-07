@@ -116,8 +116,8 @@
 ```markdown
 ### {date} Verify Report
 
-**Jira**: {ticket}
-**Screenshots**: https://github.com/creatrip/agent-storage/tree/main/creatrip/product/{ticket}
+**Issue**: {ticket}
+**Evidence archive**: {artifact-url}
 
 | # | 항목 | 분류 | 결과 | 스크린샷 |
 |---|------|------|------|---------|
@@ -130,7 +130,7 @@
 ```markdown
 ## 스크린샷 / 영상
 
-> [검증 리포트 (HTML)](https://github.com/creatrip/agent-storage/blob/main/creatrip/product/{ticket}/report-embedded.html)
+> [검증 리포트 (HTML)]({report-url})
 
 ### A1. 항목 설명
 ![A1](...?raw=true)
@@ -167,7 +167,7 @@ gh pr edit --body-file /tmp/pr-body.md
 ```json
 {
   "questions": [{
-    "question": "캡처 환경을 선택해주세요.\n\n감지된 환경:\n- Preview (admin): https://pull-request-admin-{pr}.preview.creatrip.com\n- Preview (web): https://pull-request-web-{pr}.preview.creatrip.com\n- Local: localhost:5173",
+    "question": "캡처 환경을 선택해주세요.\n\n감지된 환경:\n- Preview: {preview-url}\n- Local: {local-url}",
     "options": ["Preview 환경 사용", "로컬 환경 사용", "직접 입력"]
   }]
 }
@@ -222,7 +222,7 @@ Step 5에서 `verify_report_live action=start`를 호출하면 Glimpse live prev
     "options": [
       "/create-pr — PR 생성 (이 리포트 포함)",
       "/reflect — 학습 캡처",
-      "/verify-report --upload — agent-storage 업로드 (upload 모드)",
+      "/verify-report --upload — project artifact storage 업로드 (upload 모드)",
       "/verify-report --update — 추가 검증 항목 처리",
       "일단 멈춤"
     ]

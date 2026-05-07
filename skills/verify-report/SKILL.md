@@ -15,7 +15,7 @@ argument-hint: "[base-url] [--upload] [--update] [--ask-before]"
 - **미검증 명시**: 자동화로 확인하지 못한 항목은 PASS로 쓰지 않고 `미검증`/`blocked`/`Coverage Gap`에 남긴다.
 - **짧고 초점 있는 primary evidence**: 리포트 본문 핵심 증거는 viewport/섹션/element crop을 우선한다. 세로로 긴 full-page 캡처는 필요할 때만 보조 증거로 남기고 토글/appendix/link 뒤에 둔다.
 - **Before/After 비교는 판단해서 포함**: 기존 UI/동작이 기준점으로 의미 있는 변경은 작업 전(before)과 작업 후(after)를 같은 축/viewport/role로 캡처하고, 차이를 설명한다. 신규 화면처럼 baseline이 없거나 부작용 위험이 큰 경우는 생략 사유를 남긴다.
-- **업로드 opt-in**: 기본 `/verify-report`는 로컬 리포트 확인까지만 한다. agent-storage 업로드와 PR 본문 갱신은 `--upload` 또는 사용자의 명시적 업로드 액션이 있을 때만 한다.
+- **업로드 opt-in**: 기본 `/verify-report`는 로컬 리포트 확인까지만 한다. project artifact storage 업로드와 PR 본문 갱신은 `--upload` 또는 사용자의 명시적 업로드 액션이 있을 때만 한다.
 - **프리뷰 강제**: HTML 생성 후 Glimpse WebView로 먼저 보여주고, 사용자가 확인한 뒤 다음 행동을 정한다.
 
 ## 모드 (default: confirm-only)
@@ -23,7 +23,7 @@ argument-hint: "[base-url] [--upload] [--update] [--ask-before]"
 | 모드 | 설명 | 트리거 |
 |------|------|--------|
 | **confirm** (default) | 로컬 캡처/검증 증거 수집 + HTML 프리뷰만. 업로드 X | 기본 |
-| **upload** | confirm + agent-storage 업로드 + PR 본문 갱신 | `--upload` 인자 또는 사용자가 명시 요청 |
+| **upload** | confirm + project artifact storage 업로드 + PR 본문 갱신 | `--upload` 인자 또는 사용자가 명시 요청 |
 | **update** | 기존 리포트에 신규 검증 항목 append | `--update` 인자 또는 “추가” 키워드 감지 |
 | **ask-before** | 항목별 검증 실행 전 사전 확인 | `--ask-before` 인자 또는 사용자가 요구 |
 
@@ -38,14 +38,14 @@ argument-hint: "[base-url] [--upload] [--update] [--ask-before]"
 | 4-B | (ask-before 모드만) 항목별 사전 확인 | opt | opt | opt |
 | 5 | `verify_report_live` 시작 → 브라우저/명령 자동화로 캡처/증거 수집 | ✓ | ✓ | ✓ |
 | 6 | live preview 갱신 → 정적 HTML export → 유저 리뷰 | ✓ | ✓ | ✓ (병합) |
-| 7 | agent-storage 업로드 |  | ✓ | ✓ |
+| 7 | project artifact storage 업로드 |  | ✓ | ✓ |
 | 8 | context.md + PR 본문 업데이트 |  | ✓ | ✓ |
 | 9 | 후속 단계 AskUserQuestion | ✓ | ✓ | ✓ |
 
 > 상세 참조:
 > - [references/coverage-and-capture-quality.md](references/coverage-and-capture-quality.md) — 검증 축 도출, UI 변경 프리셋, 긴 이미지 처리 규칙
 > - [references/capture-commands.md](references/capture-commands.md) — agent-browser 명령, crop helper, ffmpeg GIF 합성, 브라우저 증거 수집
-> - [references/upload-scripts.md](references/upload-scripts.md) — agent-storage 업로드
+> - [references/upload-scripts.md](references/upload-scripts.md) — project artifact storage 업로드
 > - [references/report-templates.md](references/report-templates.md) — HTML/context.md/PR 템플릿
 > - [references/troubleshooting.md](references/troubleshooting.md) — agent-browser daemon 복구, 자주 깨지는 케이스
 
@@ -101,6 +101,8 @@ which ffmpeg          # GIF 항목이 있을 때만. 미설치 시: brew install
 ```
 
 대상 URL: `$ARGUMENTS` > Preview URL (PR 감지) > dev/staging URL > 로컬 서버 순으로 자동 감지 후 AskUserQuestion으로 확인한다. 환경 차이가 검증 결과에 영향을 주는 경우(`NODE_ENV` vs 배포 환경 등)는 리포트에 명시한다.
+
+프로젝트별 preview URL, 계정 alias, 업로드 대상 저장소 규칙이 있으면 private/project overlay skill을 추가로 로드한다.
 
 Before/After가 필요한 항목은 before 기준도 함께 정한다.
 
@@ -168,7 +170,7 @@ AskUserQuestion으로 계획 확인.
 
 ```markdown
 [V1] dev 스팟상세 GA 이벤트 미발화 — NETWORK + PNG
-URL: https://dev.creatrip.com/en/spot/13214
+URL: https://example.local/path
 액션: reload → 7초 대기 → scroll → performance resource에서 이벤트명 필터
 
 진행할까요?
@@ -265,7 +267,7 @@ Blocked / Known unrelated failures
 
 **update 모드**: 기존 run이 있으면 같은 `runId`에 항목을 append/update한다. 없으면 새 `start` 후 기존 `report.html` 내용을 참고해 필요한 항목만 보완한다.
 
-## Step 7: agent-storage 업로드 (upload 모드만)
+## Step 7: project artifact storage 업로드 (upload 모드만)
 
 [references/upload-scripts.md](references/upload-scripts.md)를 따른다.
 
@@ -288,7 +290,7 @@ Blocked / Known unrelated failures
     "options": [
       "/create-pr — PR 생성 (upload된 리포트가 있으면 포함)",
       "/reflect — 학습 캡처",
-      "/verify-report --upload — agent-storage 업로드",
+      "/verify-report --upload — project artifact storage 업로드",
       "/verify-report --update — 추가 검증 항목 처리",
       "일단 멈춤"
     ]

@@ -5,7 +5,6 @@ tags:
   - server
   - startup
   - diagnosis
-  - product
   - dev
 category: workflow
 status: active
@@ -20,6 +19,7 @@ reviewed_commit: 1a0093b1c3b3917e504de299e97d7c68ad79932b
 related:
   - root-cause-before-fix
   - worktree-execution-boundary
+  - private-overlay-package-boundary
 ---
 
 ## Judgment
@@ -29,6 +29,8 @@ related:
 ## Startup Rule
 
 서버 시작 전 repo/worktree 위치, 의존성 설치 상태, 필요한 env, codegen/schema 상태, 이미 떠 있는 프로세스를 확인합니다. 실패하면 로그의 마지막 에러만 보지 말고 어떤 단계에서 멈췄는지 기록합니다.
+
+고정 포트, 서비스 간 gRPC/REST host, repo별 start command처럼 특정 회사/프로젝트에 묶인 지식은 private/project overlay skill에 둡니다. Public `start-local-dev`는 진단 절차만 유지합니다.
 
 ## Failure Mode
 

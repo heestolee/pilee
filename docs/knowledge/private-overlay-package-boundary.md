@@ -1,0 +1,48 @@
+---
+title: Private overlay package는 회사·개인 실행 맥락을 담는다
+tags:
+  - privacy
+  - package
+  - overlay
+  - skill
+  - company-context
+category: workflow
+status: active
+confidence: high
+applies_to:
+  - package boundaries
+  - skills/db-write
+  - skills/db-write-migration
+  - skills/start-local-dev
+  - skills/jira-issue-management
+  - skills/verify-report
+source:
+  - user-direction:2026-05-07-heestolee-private
+reviewed_at: 2026-05-07
+reviewed_commit: 22bb83eea1d41f02fee0b57fa2b1db0a14fc82d9
+related:
+  - private-journal-public-doctrine
+  - skills-as-portable-procedures
+  - database-write-human-execution-gate
+---
+
+## Judgment
+
+pilee public package should keep reusable Pi infrastructure and generic operating doctrine. Company-specific commands, project paths, account aliases, Notion sync maps, and local machine conventions belong in a private overlay package loaded alongside pilee.
+
+## Boundary Rule
+
+Public skills may define the safety protocol: ask before external writes, collect evidence before PASS, use pre/post SELECTs for DB writes, keep local dev startup diagnosable. They should not embed company repo service names, internal URLs, account aliases, private Notion schemas, or organization-specific artifact storage paths.
+
+Private overlay skills carry those details with namespaced skill names such as `creatrip-db-read`, `creatrip-db-write`, and `creatrip-db-migration`. Name collisions are avoided rather than relying on package load order overrides.
+
+## Migration Rule
+
+When a public skill contains both generic doctrine and private execution context, split it into:
+
+1. a generic public skill that preserves the doctrine and points to project/private overlays, and
+2. a private skill that keeps the concrete tools, paths, examples, and logs.
+
+## Failure Mode
+
+Keeping private execution context in public pilee makes the public package stale, noisy, and potentially leaky. Keeping everything only in local unversioned files loses history and reproducibility. A private git package gives versioning without publishing private context.

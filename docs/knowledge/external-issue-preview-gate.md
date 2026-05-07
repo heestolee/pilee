@@ -19,6 +19,7 @@ reviewed_commit: 5a2bffbdabe0f5b807a48a21d5d820f6d1dd0591
 related:
   - live-artifact-preview-pattern
   - ask-user-question-decision-gates
+  - private-overlay-package-boundary
 ---
 
 ## Judgment
@@ -27,7 +28,9 @@ Jira 같은 외부 시스템에 쓰는 내용은 로컬 답변과 다릅니다. 
 
 ## Preview Rule
 
-이슈 생성/수정 전에는 Wiki markup으로 포맷한 내용을 사용자에게 preview합니다. 사용자가 확인한 뒤에만 외부 API를 호출합니다. 포맷 정리와 실제 전송은 별도 단계입니다.
+이슈 생성/수정 전에는 대상 이슈 트래커 형식으로 포맷한 내용을 사용자에게 preview합니다. 사용자가 확인한 뒤에만 외부 API를 호출합니다. 포맷 정리와 실제 전송은 별도 단계입니다.
+
+조직별 Jira URL, project key 추론, MCP 우선순위, issue type convention은 public skill에 박지 않고 private/project overlay가 담당합니다.
 
 ## Failure Mode
 
