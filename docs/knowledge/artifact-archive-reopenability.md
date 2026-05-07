@@ -22,6 +22,7 @@ source:
   - pilee-history:2026-05-05#48
   - pilee-history:2026-05-05#51
   - pilee-history:2026-05-07#74
+  - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
 reviewed_commit: b7bce3d7eb20b8477de8f4d02ccbd5a0002c3b9e
 related:
@@ -38,6 +39,10 @@ related:
 ## Archive Rule
 
 완료된 HTML report와 web search review는 workspace capture와 사용자 history archive에 저장합니다. `/show-report`는 최근 workspace 산출물과 archive를 함께 탐색할 수 있어야 하며, native viewer가 안 되면 browser fallback을 제공합니다.
+
+## Open Original Rule
+
+artifact browser에서 “원본 열기”는 static `file://` 링크에 기대지 않고 extension host가 허용한 realpath를 system opener로 여는 방식이 안전합니다. Glimpse/WebView가 외부 링크를 삼킬 수 있으므로, 열기 요청은 allowlisted local path와 host-side open 동작으로 처리합니다.
 
 ## Artifact Browser Rule
 

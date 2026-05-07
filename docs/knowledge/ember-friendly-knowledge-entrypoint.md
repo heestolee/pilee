@@ -14,6 +14,7 @@ applies_to:
   - docs/knowledge
 source:
   - user-direction:2026-05-05-ember-branding
+  - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
 reviewed_commit: 311bf8a61efbc0bf67b5fc92b42a6ea1bb42620b
 related:
@@ -34,7 +35,7 @@ related:
 - CLI: `scripts/knowledge.mjs`
 - 운영 용어: `freshness`, `confidence`, `reviewed_commit`, `review queue`
 
-`/ember`는 이 구조 위에 얹는 friendly entrypoint다. 파이리의 작은 불꽃처럼, 아직 doctrine이 되지 않은 세션의 깨달음을 후보로 모으고(`collect`), 불길을 살피고(`tend`), 검토 queue를 정리하며(`review`), stale/review_needed 문서를 로컬 맥락으로 실제 해소한다(`resolve`).
+`/ember`는 이 구조 위에 얹는 friendly entrypoint다. 파이리의 작은 불꽃처럼, 아직 doctrine이 되지 않은 세션의 깨달음을 후보로 모으고(`collect`), 불길을 살피고(`tend`), 검토 queue를 정리하며(`review`), stale/review_needed 문서를 로컬 맥락으로 실제 해소한다(`resolve`). `resolve`는 public review queue를 실제 local update PR로 바꾸는 입구이며, 민감한 resolver 산출물은 로컬에만 둔다.
 
 ## 왜 full rename이 아닌가
 

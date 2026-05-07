@@ -16,6 +16,7 @@ applies_to:
 source:
   - pilee-history:2026-05-05#39
   - pilee-history:2026-05-05#40
+  - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-05
 reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
 related:
@@ -33,6 +34,10 @@ supersedes:
 ## Continuity Rule
 
 회수의 기본 동작은 `/revive`입니다. 사용자는 닫힌 세션 목록에서 제목과 preview를 보고 선택한 뒤, 같은 세션 파일로 새 패널/탭/현재 패널에서 이어갑니다. 전문 복사는 보조 수단이며 기본 UX가 아닙니다.
+
+## Placement Rule
+
+revive는 현재 패널로 복구할지, Ghostty split/tab으로 열지 선택할 수 있어야 합니다. 위치 선택은 단순 편의가 아니라 사용자가 보던 공간 기억의 일부입니다. 세션을 되살리는 작업은 transcript 주입보다 기존 대화 객체와 화면 위치를 함께 복원하는 쪽을 우선합니다.
 
 ## Failure Mode
 

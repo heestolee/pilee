@@ -21,6 +21,7 @@ applies_to:
 source:
   - pilee-history:2026-05-03#27
   - pilee-history:2026-05-03#28
+  - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-05
 reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
 related:
@@ -39,3 +40,7 @@ related:
 ## Review Trigger
 
 새 TUI 컴포넌트나 help overlay를 추가할 때는 “흐리게 보이면 예쁘다”보다 실제 테마에서 읽히는지 확인합니다. 색 토큰을 바꾸는 작업은 accessibility 수정으로 취급합니다.
+
+## Panel Metadata Rule
+
+P0/P1/P2 같은 panel label, model name, session metadata는 본문보다 낮은 위계로 보이되 사라질 만큼 흐리면 안 됩니다. metadata는 장식이 아니라 현재 작업 위치를 알려주는 navigation cue이므로, border/muted 계열을 쓰더라도 대비와 길이 제한을 함께 확인합니다.
