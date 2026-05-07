@@ -73,10 +73,11 @@ jobs:
           console.log('## pilee knowledge freshness');
           console.log('');
           console.log(`실행 이유: ${process.env.RECENT_REASON || 'repository changed'}`);
-          console.log(`Doctrine: fresh ${data.doctrine_freshness.fresh} / review 필요 ${data.doctrine_freshness.review_needed} / 미검토 ${data.doctrine_freshness.unreviewed}`);
+          console.log(`전체 상태: ${data.summary.status === 'fresh' ? '✅ fresh' : '⚠️ stale / 검토 필요'}`);
+          console.log(`Knowledge 문서: 총 ${data.doctrine_freshness.total}개 · ✅ fresh ${data.doctrine_freshness.fresh}개 · ⚠️ stale/review_needed ${data.doctrine_freshness.review_needed}개 · ❓ unreviewed ${data.doctrine_freshness.unreviewed}개`);
           console.log(`README coverage: ${data.readme.coverage.covered_count}/${data.readme.coverage.total}`);
-          console.log(`Deterministic action: ${data.deterministic_actions.length}`);
-          console.log(`AI/사람 검토 action: ${data.ai_actions.length}`);
+          console.log(`자동 수정 action: ${data.deterministic_actions.length}개`);
+          console.log(`AI/사람 검토 action: ${data.ai_actions.length}개`);
           console.log('');
           if (data.ai_actions.length) {
             console.log('| 대상 | 이유 |');
@@ -127,6 +128,14 @@ jobs:
           if (process.env.GITHUB_OUTPUT) {
             fs.appendFileSync(process.env.GITHUB_OUTPUT, `has_review_actions=${hasActions}\n`);
             fs.appendFileSync(process.env.GITHUB_OUTPUT, `manual_review_required=${manualReviewRequired}\n`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `summary_status=${data.summary.status}\n`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `doctrine_total=${data.doctrine_freshness.total}\n`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `doctrine_fresh=${data.doctrine_freshness.fresh}\n`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `doctrine_review_needed=${data.doctrine_freshness.review_needed}\n`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `doctrine_unreviewed=${data.doctrine_freshness.unreviewed}\n`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `readme_coverage=${data.readme.coverage.covered_count}/${data.readme.coverage.total}\n`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `deterministic_actions=${data.deterministic_actions.length}\n`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `ai_actions=${data.ai_actions.length}\n`);
           }
           if (!hasActions) {
             if (fs.existsSync(path)) fs.unlinkSync(path);
@@ -145,30 +154,71 @@ jobs:
           const translateReasonDetail = (detail) => String(detail || '')
             .replace('confidence is medium; keep in review queue until user/AI review promotes it', 'confidence가 medium입니다. 사용자/AI 검토 후 승격될 때까지 review queue에 유지합니다.')
             .replace('confidence is low; keep in review queue until user/AI review promotes it', 'confidence가 low입니다. 사용자/AI 검토 후 승격될 때까지 review queue에 유지합니다.');
+          const countBy = (items, keyFn) => {
+            const counts = new Map();
+            for (const item of items) {
+              const key = keyFn(item);
+              counts.set(key, (counts.get(key) || 0) + 1);
+            }
+            return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+          };
 
           const docsById = new Map((data.doctrine || []).map((doc) => [doc.id, doc]));
+          const docReviewActions = data.ai_actions.filter((action) => action.doc);
+          const nonDocReviewActions = data.ai_actions.filter((action) => !action.doc);
+          const reasonCounts = countBy(data.ai_actions, (action) => translateActionReason(action.reason));
           const lines = [];
           lines.push('# pilee knowledge 검토 큐');
           lines.push('');
           lines.push('> daily knowledge sync workflow가 생성한 공개 검토 큐입니다. 직접 수정하지 말고, 연결된 문서를 검토한 뒤 후속 커밋에서 confidence/review metadata를 갱신하세요.');
           lines.push('');
-          lines.push(`- 기준 커밋: ${data.base.head_short}`);
-          lines.push(`- 요약 상태: ${data.summary.status}`);
-          lines.push(`- README coverage: ${data.readme.coverage.covered_count}/${data.readme.coverage.total}`);
+          lines.push('## 검토 현황');
+          lines.push('');
+          lines.push('> `stale`은 문서가 틀렸다는 확정이 아니라, `reviewed_commit` 이후 관련 변경이 있어 현재 HEAD와 동기화됐다고 아직 확인할 수 없다는 뜻입니다. 문서를 읽고 내용이 맞으면 `--confirm`, 다르면 수정 후 `--confirm`으로 해소합니다.');
+          lines.push('');
+          lines.push('| 항목 | 값 | 의미 |');
+          lines.push('|---|---:|---|');
+          lines.push(`| 기준 커밋 | ${data.base.head_short} | 이 커밋 기준으로 freshness를 계산했습니다. |`);
+          lines.push(`| 전체 상태 | ${data.summary.status === 'fresh' ? '✅ fresh' : '⚠️ stale / 검토 필요'} | 검토 action이 남아 있으면 전체 상태는 stale입니다. |`);
+          lines.push(`| Knowledge 문서 | ${data.doctrine_freshness.total}개 | active/deprecated doctrine 전체 수 |`);
+          lines.push(`| Fresh 문서 | ✅ ${data.doctrine_freshness.fresh}개 | 현재 HEAD 기준 검토 완료 |`);
+          lines.push(`| Stale / review_needed 문서 | ⚠️ ${data.doctrine_freshness.review_needed}개 | 재검토가 필요하지만 틀렸다고 확정된 것은 아님 |`);
+          lines.push(`| Unknown / unreviewed 문서 | ❓ ${data.doctrine_freshness.unreviewed}개 | reviewed_commit 기준점 없음 |`);
+          lines.push(`| README coverage | ${data.readme.coverage.covered_count}/${data.readme.coverage.total} | surface와 knowledge 문서 연결 상태 |`);
+          lines.push(`| 자동 수정 action | ${data.deterministic_actions.length}개 | generated block 재생성처럼 기계적으로 처리 가능한 항목 |`);
+          lines.push(`| AI/사람 검토 action | ${data.ai_actions.length}개 | 문서 의미를 읽고 판단해야 하는 항목 |`);
           lines.push('');
 
           if (data.ai_actions.length) {
-            lines.push('## AI / 사람 검토 action');
+            lines.push('## 검토 사유 요약');
             lines.push('');
-            lines.push('| 대상 | 이유 | 상세 |');
-            lines.push('|---|---|---|');
-            for (const action of data.ai_actions) {
-              const target = action.doc || action.target;
+            lines.push('| 사유 | 개수 |');
+            lines.push('|---|---:|');
+            for (const [reason, count] of reasonCounts) lines.push(`| ${reason} | ${count}개 |`);
+            lines.push('');
+          }
+
+          if (docReviewActions.length) {
+            lines.push(`## Stale / review_needed 문서 ${data.doctrine_freshness.review_needed}개`);
+            lines.push('');
+            lines.push('| 문서 | confidence | 검토 사유 | 근거 요약 |');
+            lines.push('|---|---|---|---|');
+            for (const action of docReviewActions) {
+              const target = action.doc;
               const doc = docsById.get(target);
               const detail = doc?.reasons?.map((reason) => `${translateReasonType(reason.type)}: ${translateReasonDetail(reason.detail)}`).join('<br>') || '';
-              const link = action.doc ? `[${target}](./knowledge/${target}.md)` : target;
-              lines.push(`| ${link} | ${translateActionReason(action.reason)} | ${detail.replace(/\|/g, '\\|')} |`);
+              const link = `[${target}](./knowledge/${target}.md)`;
+              lines.push(`| ${link} | ${doc?.confidence || 'high'} | ${translateActionReason(action.reason)} | ${detail.replace(/\|/g, '\\|')} |`);
             }
+            lines.push('');
+          }
+
+          if (nonDocReviewActions.length) {
+            lines.push('## 기타 AI / 사람 검토 action');
+            lines.push('');
+            lines.push('| 대상 | 이유 |');
+            lines.push('|---|---|');
+            for (const action of nonDocReviewActions) lines.push(`| ${action.target || action.doc} | ${translateActionReason(action.reason)} |`);
             lines.push('');
           }
 
@@ -211,6 +261,15 @@ jobs:
           title: "[AUTO] pilee knowledge 정합성 갱신"
           commit-message: "chore: sync pilee knowledge review state"
           body: |
+            ## 이번 실행 요약
+            - 전체 상태: `${{ steps.review_queue.outputs.summary_status }}`
+            - Knowledge 문서: 총 `${{ steps.review_queue.outputs.doctrine_total }}`개 / fresh `${{ steps.review_queue.outputs.doctrine_fresh }}`개 / stale·review_needed `${{ steps.review_queue.outputs.doctrine_review_needed }}`개 / unreviewed `${{ steps.review_queue.outputs.doctrine_unreviewed }}`개
+            - README coverage: `${{ steps.review_queue.outputs.readme_coverage }}`
+            - 자동 수정 action: `${{ steps.review_queue.outputs.deterministic_actions }}`개
+            - AI/사람 검토 action: `${{ steps.review_queue.outputs.ai_actions }}`개
+
+            `stale`은 문서가 틀렸다는 확정이 아니라, 현재 HEAD 기준으로 다시 읽고 확인해야 한다는 뜻입니다. 상세 목록은 `docs/knowledge-review.md`에 한국어 검토 큐로 생성됩니다.
+
             ## 개요
             pilee knowledge 정합성 workflow가 생성한 자동 PR입니다.
 
