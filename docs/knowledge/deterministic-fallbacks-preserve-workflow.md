@@ -19,7 +19,7 @@ source:
   - pilee-history:2026-05-05#45
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: ce5ea75eb6b29355731d29f547a972ee62f2e262
+reviewed_commit: 2a83750815e36068c7878c8a4ba511316d2a0352
 related:
   - curator-approved-source-selection
   - live-artifact-preview-pattern
@@ -36,6 +36,10 @@ related:
 ## Artifact Rule
 
 fallback 산출물도 workflow의 일부이므로 다시 열 수 있어야 합니다. web search, verify report, local resolver처럼 중간 모델 호출이 실패해도 사용자는 최소한 입력, deterministic 결과, 다음 행동을 확인할 수 있어야 합니다. fallback은 품질을 낮추는 대신 state loss를 막는 안전장치입니다.
+
+## Preview Fallback Rule
+
+Glimpse/native preview가 완전하지 않아도 사용자가 workflow를 계속 이어갈 수 있어야 합니다. preview 안의 top-bar 버튼이 WebView에서 동작하지 않으면 static anchor를 반복하기보다 local server route와 host-side opener로 deterministic하게 대체합니다. fallback의 목표는 “어떻게든 열림”이 아니라 같은 artifact browser 흐름 안에서 다음 행동이 보존되는 것입니다.
 
 ## Boundary
 

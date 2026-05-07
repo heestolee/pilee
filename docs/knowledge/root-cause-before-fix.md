@@ -18,7 +18,7 @@ source:
   - session-backfill:2026-05-02#setwidget-notify
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: 5474cf3424f95d56ba2f6ef04f7e7de1dcf9a8e4
+reviewed_commit: 2a83750815e36068c7878c8a4ba511316d2a0352
 related:
   - evidence-first-verification-gate
   - verification-invalidation-on-change
@@ -31,6 +31,10 @@ related:
 ## Debug Rule
 
 최근 변경, 재현 입력, 실제 출력, 기대 출력, 관련 코드 경계를 먼저 정리합니다. 가설은 명시하고, 하나씩 확인합니다. 원인이 확인되기 전의 수정은 실험으로 표시하고, 성공 여부를 검증 증거로 남깁니다.
+
+## Host Boundary Rule
+
+WebView, terminal host, OS opener처럼 외부 host가 끼는 버그는 브라우저 표준 동작만 보고 고치면 안 됩니다. static `file://` 링크가 브라우저에서는 열려도 Glimpse/WebView에서는 삼켜질 수 있으므로, 실제 host에서 버튼·route·open 요청을 재현하고 host-side boundary가 맞는지 확인합니다.
 
 ## Automation Noise Rule
 

@@ -22,7 +22,7 @@ source:
   - pilee-history:2026-05-05#48
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: 0e6c08396034c8c5f9940871083eafa1c5d39e49
+reviewed_commit: 2a83750815e36068c7878c8a4ba511316d2a0352
 related:
   - verify-report-workflow
   - web-search-curator
@@ -44,6 +44,10 @@ local preview first는 일회성 창을 뜻하지 않습니다. Verify Report, w
 ## Host Boundary Rule
 
 Glimpse/WebView preview가 열린 뒤에도 사용자는 원본 HTML/JSON/media를 열어 확인할 수 있어야 합니다. static `file://` anchor만으로는 WebView가 외부 열기를 삼킬 수 있으므로, artifact browser는 local server에서 allowlisted path를 받고 host-side opener로 여는 경계를 둡니다. local-first는 local-only가 아니라 local에서 검토 가능한 조작면을 제공한다는 뜻입니다.
+
+## In-Place Preview Rule
+
+Artifact Browser에서 preview를 열 때는 현재 browser session을 버리지 않습니다. `target=glimpse`는 같은 local server의 `/preview?path=...`로 이동하고, preview top bar에서 `이전`으로 목록에 돌아오게 합니다. 이렇게 해야 live/local preview가 “한 번 보고 닫는 창”이 아니라 탐색 가능한 artifact surface가 됩니다.
 
 ## Boundary
 

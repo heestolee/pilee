@@ -66,7 +66,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [Self-healing은 actionable item만 수정한다](./self-healing-actionable-loop.md) | active | high | 2026-05-07 | 5474cf3 | self-healing, actionable, worker, fix-class, subagent, 자동수정 |
+| [Self-healing은 actionable item만 수정한다](./self-healing-actionable-loop.md) | active | high | 2026-05-07 | 2a83750 | self-healing, actionable, worker, fix-class, subagent, 자동수정 |
 | [Stress Interview는 다축 검토다](./stress-interview-multi-axis-review.md) | active | high | 2026-05-07 | 74e15fc | stress-interview, review, verifier, reviewer, challenger, subagent |
 | [Codex-first subagent 모델 운용 정책](./subagent-model-policy.md) | active | high | 2026-05-05 | b730f16 | subagent, codex, model-policy, worker, finder, searcher |
 | [Subagent 위임은 구체 프롬프트를 요구한다](./subagent-prompt-specificity.md) | active | high | 2026-05-05 | 059f445 | subagent, prompt, delegation, worker, context, 위임 |
@@ -88,7 +88,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [수정 전에 근본 원인을 좁힌다](./root-cause-before-fix.md) | active | high | 2026-05-07 | 5474cf3 | debugging, root-cause, triage, error-recovery, systematic, 디버깅 |
+| [수정 전에 근본 원인을 좁힌다](./root-cause-before-fix.md) | active | high | 2026-05-07 | 2a83750 | debugging, root-cause, triage, error-recovery, systematic, 디버깅 |
 
 ### knowledge
 
@@ -99,7 +99,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Ember는 knowledge의 친근한 입구다](./ember-friendly-knowledge-entrypoint.md) | active | high | 2026-05-07 | 74e15fc | ember, branding, command, knowledge |
 | [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | high | 2026-05-07 | 0e6c083 | knowledge, freshness, diagnosis, review, candidate, 정합성 |
 | [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | high | 2026-05-07 | 1b5b68d | knowledge, judgment, granularity, documentation, coverage, 문서 |
-| [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | high | 2026-05-07 | c1d02c3 | pilee, knowledge, history, journal, sanitized, reviewed-at |
+| [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | high | 2026-05-07 | 2a83750 | pilee, knowledge, history, journal, sanitized, reviewed-at |
 | [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | high | 2026-05-07 | c1d02c3 | knowledge, journal, privacy, sanitized, doctrine, history |
 | [README는 knowledge coverage map이다](./readme-coverage-map.md) | active | high | 2026-05-07 | 5474cf3 | knowledge, readme, coverage, graph, surface, todo |
 | [README 철학 변경은 사용자 판단 게이트를 지난다](./readme-philosophy-user-gate.md) | active | high | 2026-05-07 | 5474cf3 | readme, philosophy, user-gate, public-facing, documentation, 판단 |
@@ -116,7 +116,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [Deterministic fallback은 workflow를 보존한다](./deterministic-fallbacks-preserve-workflow.md) | active | high | 2026-05-07 | ce5ea75 | fallback, deterministic, model-failure, resilience, web-search, report |
+| [Deterministic fallback은 workflow를 보존한다](./deterministic-fallbacks-preserve-workflow.md) | active | high | 2026-05-07 | 2a83750 | fallback, deterministic, model-failure, resilience, web-search, report |
 | [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-05-05 | 059f445 | mcp, stderr, stdio, terminal, tui, noise |
 | [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-05-05 | 059f445 | terminal, ghostty, applescript, notify, host, integration |
 
@@ -135,7 +135,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-05-07 | 0e6c083 | verify, evidence, gate, done, ready, verification |
+| [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-05-07 | 2a83750 | verify, evidence, gate, done, ready, verification |
 | [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-05-07 | 1b5b68d | frame, verify, frame-json, success-criteria, contract, verification |
 | [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-05-07 | ce5ea75 | verify, invalidation, code-change, freshness, gate, 검증 |
 | [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | active | high | 2026-05-07 | 0e6c083 | verify-report, verification, evidence, coverage, capture, crop |
@@ -151,10 +151,10 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [검토 산출물은 다시 열 수 있어야 한다](./artifact-archive-reopenability.md) | active | high | 2026-05-07 | 74e15fc | artifact, archive, show-report, history, html, reopen |
+| [검토 산출물은 다시 열 수 있어야 한다](./artifact-archive-reopenability.md) | active | high | 2026-05-07 | 2a83750 | artifact, archive, show-report, history, html, reopen |
 | [AskUserQuestion은 의사결정 게이트다](./ask-user-question-decision-gates.md) | active | high | 2026-05-07 | b6da702 | ask-user-question, tft, decision-gate, question, non-delegable, 질문 |
 | [AskUserQuestion 옵션은 행동 분기를 표현한다](./ask-user-question-option-design.md) | active | high | 2026-05-07 | b6da702 | ask-user-question, option, wording, ceremony, tft, 질문 |
-| [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | high | 2026-05-07 | ce5ea75 | backlog, tasks, provenance, source-session, session, 맥락 |
+| [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | high | 2026-05-07 | 2a83750 | backlog, tasks, provenance, source-session, session, 맥락 |
 | [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md) | active | high | 2026-05-07 | b6da702 | git, incremental, code-review, commit, quality, 통합 |
 | [자동 로드 컨텍스트는 최소 surface만 가진다](./context-loading-minimal-surface.md) | active | high | 2026-05-05 | 059f445 | context, agents-md, memory, system-prompt, token, autoload |
 | [외부 이슈 업데이트는 preview gate를 지난다](./external-issue-preview-gate.md) | active | medium | 2026-05-05 | 059f445 | jira, issue, preview, wiki-markup, external-update, approval |
@@ -162,7 +162,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-05-07 | 0e6c083 | fork-panel, revive, repanel, ghostty, spatial, panel |
 | [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-05-07 | 74e15fc | frame, planning, identity, home-directory, ticket, session-title |
 | [Frame Studio는 frame 질문을 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-05-07 | d12a52a | frame-studio, frame, glimpse, ask-user-question, decision-ui, co-thinking |
-| [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-05-07 | 0e6c083 | artifact, glimpse, preview, sse, upload, local-first |
+| [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-05-07 | 2a83750 | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | medium | 2026-05-05 | 059f445 | local-dev, server, startup, diagnosis, product, dev |
 | [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-05-07 | 74e15fc | queued-messages, slash-command, prefill, worktree, session, boundary |
 | [종료된 포크는 transcript 주입보다 revive가 우선이다](./revive-over-transcript-recall.md) | active | high | 2026-05-07 | 74e15fc | revive, recall, fork-panel, session, continuity, 세션 |
