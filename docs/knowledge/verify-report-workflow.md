@@ -71,6 +71,8 @@ Primary evidence는 검증 포인트가 바로 보이는 viewport/section/elemen
 
 완료된 report는 `/show-report`의 검증 리포트 축에서 다시 열 수 있어야 합니다. Frame transcript나 원본 media와 섞지 말고, 판정이 있는 report 자체를 재검토 가능한 artifact로 남깁니다. 원본 evidence를 열어야 할 때는 browser/WebView의 static link 동작에 기대지 않고 artifact browser의 host-side open 흐름을 사용합니다.
 
+report preview는 artifact browser 안에서 `/preview` route로 열리고, top bar의 `이전`, `브라우저에서 열기`, `닫기`로 탐색 경계를 유지해야 합니다. 검증 report는 생성 시점뿐 아니라 리뷰어가 나중에 열어 보는 시점에도 조작 가능한 증거여야 합니다.
+
 ## Decision Rules
 
 - report 작성은 검증의 일부이지 PR 업로드의 동의가 아닙니다.
