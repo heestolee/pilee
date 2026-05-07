@@ -17,7 +17,7 @@ source:
   - pilee-history:2026-05-01#analysis-db-write
   - session-backfill:2026-05-01#workflow-analysis
 reviewed_at: 2026-05-07
-reviewed_commit: 1a0093b1c3b3917e504de299e97d7c68ad79932b
+reviewed_commit: f1480c7b2a651eb5eba20709293b9839f4f91587
 related:
   - ask-user-question-decision-gates
   - evidence-first-verification-gate

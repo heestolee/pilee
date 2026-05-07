@@ -20,7 +20,7 @@ source:
   - pilee-history:2026-05-05#45
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: d601ac0041243e78871b352c51f38b50f22be4bb
+reviewed_commit: f1480c7b2a651eb5eba20709293b9839f4f91587
 related:
   - curator-approved-source-selection
   - live-artifact-preview-pattern
