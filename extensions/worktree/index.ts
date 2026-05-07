@@ -385,11 +385,304 @@ function getHotfixBaseGuardMessage(
 	return `${actionLabel}: 핫픽스/production 의도가 보이지만 production base가 지정되지 않았습니다. --hotfix 또는 hotfix: true를 명시하세요.`;
 }
 
+// ─── Dependency bootstrap worker ───────────────────────────────────────────
+
+type CompanyRepoName = "product" | "lambda";
+type BootstrapDomain = "root" | "backend" | "frontend";
+type BootstrapStatus = "running" | "success" | "failed";
+
+interface BootstrapJob {
+	cwd: string;
+	repoName: CompanyRepoName;
+	domains: BootstrapDomain[];
+	startedAt: number;
+	status: BootstrapStatus;
+	logPath: string;
+	promise: Promise<void>;
+}
+
+const dependencyBootstrapJobs = new Map<string, BootstrapJob>();
+const DEPENDENCY_BOOTSTRAP_STATUS_ID = "wt-deps";
+
+function shellQuote(value: string): string {
+	return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function normalizeRemoteUrl(url: string): string {
+	return url.trim().replace(/\.git$/, "").toLowerCase();
+}
+
+async function detectCompanyRepoName(pi: ExtensionAPI, repoRoot: string): Promise<CompanyRepoName | null> {
+	const normalizedPath = repoRoot.toLowerCase();
+	if (/\/pilee-workspaces\/product\//.test(normalizedPath) || /\/creatrip\/product$/.test(normalizedPath)) return "product";
+	if (/\/pilee-workspaces\/lambda\//.test(normalizedPath) || /\/creatrip\/lambda$/.test(normalizedPath)) return "lambda";
+
+	const remote = await pi.exec("git", ["config", "--get", "remote.origin.url"], { cwd: repoRoot });
+	if (remote.code !== 0) return null;
+	const url = normalizeRemoteUrl(remote.stdout ?? "");
+	if (url.includes("github.com/creatrip/product") || url.includes("github.com:creatrip/product")) return "product";
+	if (url.includes("github.com/creatrip/lambda") || url.includes("github.com:creatrip/lambda")) return "lambda";
+	return null;
+}
+
+function isImplementationStartPrompt(prompt: string): boolean {
+	const text = prompt.trim();
+	if (!text || text.startsWith("/")) return false;
+	if (/(확인해볼래|조사|분석|왜|어떤|궁금|찾아|알려|정리해|봐봐|look into|investigate|analy[sz]e|explain|why)/i.test(text)) {
+		return /(구현|수정|작업|진행|이어서|마무리|고쳐|반영|검증|lint|test|커밋|푸시|pr|implement|fix|edit|change|continue|work on|verify|commit|push)/i.test(text);
+	}
+	return /(구현|수정|작업|진행|이어서|마무리|고쳐|반영|검증|lint|test|커밋|푸시|pr|해줘|implement|fix|edit|change|continue|work on|verify|commit|push)/i.test(text);
+}
+
+function inferProductBootstrapDomains(prompt: string, meta: WorktreeMeta | null): BootstrapDomain[] {
+	const text = `${prompt}\n${meta?.branch ?? ""}\n${meta?.ticket ?? ""}\n${meta?.note ?? ""}`.toLowerCase();
+	const wantsBackend = /(backend|\bbe\b|api|graphql|resolver|service|repo|repository|schema|migration|db|database|trip|payment|lambda|백엔드|서버|스키마|마이그레이션|쿼리|정산\s*금액|정산액)/i.test(text);
+	const wantsFrontend = /(frontend|\bfe\b|ui|ux|admin|web|mobile|page|component|route|css|figma|screen|browser|capture|프론트|화면|어드민|모바일|컴포넌트|페이지|피그마|캡처)/i.test(text);
+	const domains: BootstrapDomain[] = ["root"];
+	if (wantsBackend) domains.push("backend");
+	if (wantsFrontend) domains.push("frontend");
+	if (!wantsBackend && !wantsFrontend) domains.push("backend", "frontend");
+	return [...new Set(domains)];
+}
+
+function getBootstrapDomains(repoName: CompanyRepoName, prompt: string, meta: WorktreeMeta | null): BootstrapDomain[] {
+	if (repoName === "lambda") return ["root"];
+	return inferProductBootstrapDomains(prompt, meta);
+}
+
+function missingBootstrapDomains(repoRoot: string, repoName: CompanyRepoName, domains: BootstrapDomain[]): BootstrapDomain[] {
+	const missing: BootstrapDomain[] = [];
+	if (domains.includes("root")) {
+		const marker = repoName === "product"
+			? join(repoRoot, "node_modules", ".bin", "lefthook")
+			: join(repoRoot, "node_modules");
+		if (!existsSync(marker)) missing.push("root");
+	}
+	if (repoName === "product" && domains.includes("backend") && !existsSync(join(repoRoot, "backend", "node_modules", ".bin", "eslint"))) {
+		missing.push("backend");
+	}
+	if (repoName === "product" && domains.includes("frontend") && !existsSync(join(repoRoot, "frontend", "node_modules", ".bin", "eslint"))) {
+		missing.push("frontend");
+	}
+	return missing;
+}
+
+function bootstrapStateDir(repoRoot: string): string {
+	return join(repoRoot, ".pi", "deps-bootstrap");
+}
+
+function buildDependencyBootstrapScript(repoName: CompanyRepoName, domains: BootstrapDomain[], logPath: string, statusPath: string): string {
+	const has = (domain: BootstrapDomain) => domains.includes(domain) ? "1" : "0";
+	if (repoName === "lambda") {
+		return `set -u
+mkdir -p ${shellQuote(dirname(logPath))}
+printf '{"status":"running","repo":"lambda","startedAt":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > ${shellQuote(statusPath)}
+echo "[deps-bootstrap] lambda root" >> ${shellQuote(logPath)}
+if [ ! -d node_modules ]; then
+  if npm install >> ${shellQuote(logPath)} 2>&1; then
+    printf '{"status":"success","repo":"lambda","finishedAt":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > ${shellQuote(statusPath)}
+    echo "lambda root installed"
+  else
+    printf '{"status":"failed","repo":"lambda","finishedAt":"%s","log":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" ${shellQuote(logPath)} > ${shellQuote(statusPath)}
+    echo "lambda root install failed; see ${logPath}"
+    exit 1
+  fi
+else
+  printf '{"status":"success","repo":"lambda","finishedAt":"%s","skipped":true}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > ${shellQuote(statusPath)}
+  echo "lambda root already ready"
+fi`;
+	}
+
+	return `set -u
+mkdir -p ${shellQuote(dirname(logPath))}
+printf '{"status":"running","repo":"product","domains":"%s","startedAt":"%s"}\n' "${domains.join(",")}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > ${shellQuote(statusPath)}
+run_step() {
+  label="$1"
+  shift
+  echo "[deps-bootstrap] $label" >> ${shellQuote(logPath)}
+  if "$@" >> ${shellQuote(logPath)} 2>&1; then
+    echo "✓ $label"
+  else
+    code=$?
+    printf '{"status":"failed","repo":"product","step":"%s","exitCode":%s,"finishedAt":"%s","log":"%s"}\n' "$label" "$code" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" ${shellQuote(logPath)} > ${shellQuote(statusPath)}
+    echo "✗ $label failed; see ${logPath}"
+    exit "$code"
+  fi
+}
+if [ "${has("root")}" = "1" ] && [ ! -x node_modules/.bin/lefthook ]; then
+  run_step "root pnpm install" pnpm install --frozen-lockfile
+elif [ "${has("root")}" = "1" ]; then
+  echo "✓ root ready"
+fi
+if [ "${has("backend")}" = "1" ] && [ ! -x backend/node_modules/.bin/eslint ]; then
+  (cd backend && run_step "backend pnpm install" env PYTHON=/usr/bin/python3 pnpm install --frozen-lockfile)
+else
+  [ "${has("backend")}" = "1" ] && echo "✓ backend ready"
+fi
+if [ "${has("frontend")}" = "1" ] && [ ! -x frontend/node_modules/.bin/eslint ]; then
+  (cd frontend && run_step "frontend pnpm install" pnpm install --frozen-lockfile)
+else
+  [ "${has("frontend")}" = "1" ] && echo "✓ frontend ready"
+fi
+printf '{"status":"success","repo":"product","domains":"%s","finishedAt":"%s","log":"%s"}\n' "${domains.join(",")}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" ${shellQuote(logPath)} > ${shellQuote(statusPath)}
+echo "product deps ready: ${domains.join(",")}"`;
+}
+
+function setDependencyBootstrapStatus(ctx: ExtensionContext | ExtensionCommandContext, status: BootstrapStatus | "ready", text: string) {
+	if ((ctx as any).hasUI === false) return;
+	const theme = ctx.ui.theme;
+	const color = status === "failed" ? "error" : status === "running" ? "warning" : "success";
+	const icon = status === "failed" ? "✗" : status === "running" ? "●" : "✓";
+	ctx.ui.setStatus(DEPENDENCY_BOOTSTRAP_STATUS_ID, theme.fg(color, icon) + theme.fg("dim", ` deps ${text}`));
+}
+
+interface DependencyBootstrapResult {
+	repoRoot?: string;
+	repoName?: CompanyRepoName;
+	domains?: BootstrapDomain[];
+	missing?: BootstrapDomain[];
+	logPath?: string;
+	statusPath?: string;
+	state: "not-company-repo" | "not-implementation" | "ready" | "running" | "started" | "failed-to-start";
+	systemNote?: string;
+}
+
+async function ensureDependencyBootstrapWorker(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext | ExtensionCommandContext,
+	prompt: string,
+	options: { force?: boolean; domains?: BootstrapDomain[]; reason?: string } = {},
+): Promise<DependencyBootstrapResult> {
+	const repoRoot = await findRepoRoot(pi, ctx.cwd);
+	if (!repoRoot) return { state: "not-company-repo" };
+
+	const repoName = await detectCompanyRepoName(pi, repoRoot);
+	if (!repoName) return { repoRoot, state: "not-company-repo" };
+	if (!options.force && !isImplementationStartPrompt(prompt)) return { repoRoot, repoName, state: "not-implementation" };
+
+	const meta = readMeta(repoRoot);
+	const domains = [...new Set(options.domains ?? getBootstrapDomains(repoName, prompt, meta))];
+	const missing = missingBootstrapDomains(repoRoot, repoName, domains);
+	const stateDir = bootstrapStateDir(repoRoot);
+	const logPath = join(stateDir, "bootstrap.log");
+	const statusPath = join(stateDir, "status.json");
+
+	if (missing.length === 0) {
+		setDependencyBootstrapStatus(ctx, "ready", "ready");
+		return { repoRoot, repoName, domains, missing, logPath, statusPath, state: "ready" };
+	}
+
+	const existing = dependencyBootstrapJobs.get(repoRoot);
+	if (existing?.status === "running") {
+		setDependencyBootstrapStatus(ctx, "running", `${existing.domains.join("+")}…`);
+		return {
+			repoRoot,
+			repoName,
+			domains: existing.domains,
+			missing,
+			logPath: existing.logPath,
+			statusPath,
+			state: "running",
+			systemNote: `A dependency bootstrap worker is already running for ${repoName} (${existing.domains.join(", ")}). Do code reading/editing while it runs; before validation, check /wt bootstrap status or wait for deps to finish. Log: ${existing.logPath}`,
+		};
+	}
+
+	mkdirSync(stateDir, { recursive: true });
+	const runDomains = domains.filter((domain) => missing.includes(domain));
+	const script = buildDependencyBootstrapScript(repoName, runDomains, logPath, statusPath);
+	setDependencyBootstrapStatus(ctx, "running", `${runDomains.join("+")}…`);
+	const promise = pi.exec("bash", ["-lc", script], { cwd: repoRoot }).then((result) => {
+		const job = dependencyBootstrapJobs.get(repoRoot);
+		if (job) job.status = result.code === 0 ? "success" : "failed";
+		if (result.code === 0) {
+			setDependencyBootstrapStatus(ctx, "success", "ready");
+			if ((ctx as any).hasUI !== false) ctx.ui.notify(`✓ Dependency bootstrap complete (${repoName}: ${runDomains.join(", ")})`, "info");
+		} else {
+			setDependencyBootstrapStatus(ctx, "failed", "failed");
+			if ((ctx as any).hasUI !== false) ctx.ui.notify(`Dependency bootstrap failed (code ${result.code}). Log: ${logPath}`, "warning");
+		}
+	}).catch((error) => {
+		const job = dependencyBootstrapJobs.get(repoRoot);
+		if (job) job.status = "failed";
+		setDependencyBootstrapStatus(ctx, "failed", "failed");
+		const message = error instanceof Error ? error.message : String(error);
+		if ((ctx as any).hasUI !== false) ctx.ui.notify(`Dependency bootstrap failed to start: ${message}`, "warning");
+	});
+
+	dependencyBootstrapJobs.set(repoRoot, {
+		cwd: repoRoot,
+		repoName,
+		domains: runDomains,
+		startedAt: Date.now(),
+		status: "running",
+		logPath,
+		promise,
+	});
+
+	return {
+		repoRoot,
+		repoName,
+		domains: runDomains,
+		missing,
+		logPath,
+		statusPath,
+		state: "started",
+		systemNote: `A background dependency bootstrap worker started for ${repoName} (${runDomains.join(", ")}). It only installs missing dependencies. Continue implementation, but before lint/test/type-check, ensure it finished or run /wt bootstrap status. Log: ${logPath}`,
+	};
+}
+
+function formatBootstrapStatus(repoRoot: string): string {
+	const job = dependencyBootstrapJobs.get(repoRoot);
+	const statusPath = join(bootstrapStateDir(repoRoot), "status.json");
+	const lines = ["Dependency bootstrap status:"];
+	if (job) {
+		lines.push(`  memory: ${job.status} — ${job.repoName} ${job.domains.join(", ")} (${Math.round((Date.now() - job.startedAt) / 1000)}s ago)`);
+		lines.push(`  log: ${job.logPath}`);
+	}
+	if (existsSync(statusPath)) {
+		lines.push(`  status file: ${statusPath}`);
+		try {
+			lines.push(`  ${readFileSync(statusPath, "utf8").trim()}`);
+		} catch {}
+	} else if (!job) {
+		lines.push("  no bootstrap job/status found for this worktree");
+	}
+	return lines.join("\n");
+}
+
+async function handleBootstrap(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
+	const tokens = tokenize(args);
+	const sub = tokens.find((token) => !token.startsWith("--")) ?? "run";
+	const repoRoot = await findRepoRoot(pi, ctx.cwd);
+	if (!repoRoot) { ctx.ui.notify("Not a git repository", "error"); return; }
+
+	if (sub === "status") {
+		ctx.ui.notify(formatBootstrapStatus(repoRoot), "info");
+		return;
+	}
+
+	const requestedDomains: BootstrapDomain[] = [];
+	if (tokens.includes("--root")) requestedDomains.push("root");
+	if (tokens.includes("--backend") || tokens.includes("--be")) requestedDomains.push("backend");
+	if (tokens.includes("--frontend") || tokens.includes("--fe")) requestedDomains.push("frontend");
+	if (tokens.includes("--all")) requestedDomains.splice(0, requestedDomains.length, "root", "backend", "frontend");
+
+	const result = await ensureDependencyBootstrapWorker(pi, ctx, args, {
+		force: true,
+		domains: requestedDomains.length > 0 ? requestedDomains : undefined,
+		reason: "manual",
+	});
+	if (result.state === "not-company-repo") { ctx.ui.notify("Dependency bootstrap is currently scoped to product/lambda worktrees.", "info"); return; }
+	if (result.state === "ready") { ctx.ui.notify(`Dependencies already ready (${result.repoName}: ${result.domains?.join(", ")}).`, "info"); return; }
+	if (result.state === "running") { ctx.ui.notify(`Dependency bootstrap already running. Log: ${result.logPath}`, "info"); return; }
+	if (result.state === "started") { ctx.ui.notify(`Dependency bootstrap started (${result.repoName}: ${result.domains?.join(", ")}). Log: ${result.logPath}`, "info"); return; }
+	ctx.ui.notify("Dependency bootstrap was not started.", "warning");
+}
+
 // ─── Ghostty integration ───────────────────────────────────────────────────
 
 async function openInGhostty(pi: ExtensionAPI, cwd: string, direction: WorktreeConfig["ghosttyDirection"]) {
 	if (process.platform !== "darwin" || process.env.TERM_PROGRAM !== "ghostty") return false;
-
 	const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 	const cmd = `cd "${esc(cwd)}" && pi`;
 
@@ -1778,6 +2071,7 @@ async function handleWt(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCon
 			`  ${t.fg("warning", "/wt fork")} ${t.fg("borderAccent", "[name] [--context-file <path>] [--repo <name>] [--hotfix|--from <branch>]  — 현재 세션 전체를 이어받아 워크트리 생성")}`,
 			`  ${t.fg("warning", "/wt switch")} ${t.fg("borderAccent", "<name> | <repo>/<name>  — 워크트리 대시보드")}`,
 			`  ${t.fg("warning", "/wt resume")} ${t.fg("borderAccent", "<conductor-workspace>  — Conductor 워크스페이스 복원")}`,
+			`  ${t.fg("warning", "/wt bootstrap")} ${t.fg("borderAccent", "[status|--backend|--frontend|--all]  — product/lambda 의존성 조건부 백그라운드 준비")}`,
 			`  ${t.fg("warning", "/wt list")} ${t.fg("borderAccent", "[--all]  \u2014 \uc6cc\ud06c\ud2b8\ub9ac \ubaa9\ub85d")}`,
 			`  ${t.fg("warning", "/wt rm")} ${t.fg("borderAccent", "<name> [--force]  \u2014 \uc6cc\ud06c\ud2b8\ub9ac \uc0ad\uc81c")}`,
 			`  ${t.fg("warning", "/wt repo")} ${t.fg("borderAccent", "[list|add|rm|rename]  \u2014 \ub808\ud3ec \ub4f1\ub85d \uad00\ub9ac")}`,
@@ -1800,6 +2094,7 @@ async function handleWt(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCon
 		case "repo": return handleRepo(pi, rest, ctx);
 		case "config": return handleConfig(pi, rest, ctx);
 		case "resume": return handleResume(pi, rest, ctx);
+		case "bootstrap": case "deps": return handleBootstrap(pi, rest, ctx);
 		case "sessions": case "ss": return handleSessions(pi, rest, ctx);
 		default:
 			ctx.ui.notify(`Unknown subcommand: ${sub}. Try /wt for help.`, "error");
@@ -1819,6 +2114,19 @@ export default function (pi: ExtensionAPI) {
 		handler: async (ctx) => {
 			ctx.ui.setEditorText("/wt switch");
 		},
+	});
+
+	pi.on("before_agent_start", async (event, ctx) => {
+		const result = await ensureDependencyBootstrapWorker(pi, ctx, event.prompt ?? "");
+		if (!result.systemNote) return undefined;
+		return {
+			message: {
+				customType: "worktree-dependency-bootstrap",
+				content: result.systemNote,
+				display: true,
+			},
+			systemPrompt: `${event.systemPrompt}\n\nWORKTREE DEPENDENCY BOOTSTRAP:\n${result.systemNote}\nDo not rerun installs manually unless the worker failed or validation still cannot find required tools.`,
+		};
 	});
 
 	pi.registerTool({
