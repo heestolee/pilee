@@ -5,13 +5,15 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ToolResultEvent } from "@mariozechner/pi-coding-agent";
-import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 import { registerVerifyReportLive } from "./verify-report-live.js";
 
 const ARCHIVE_DIR = path.join(os.homedir(), "Documents", "agent-history", "분류 전");
+const FRAME_TRANSCRIPTS_DIR = path.join(os.homedir(), ".pi", "agent", "frame-studio", "transcripts");
 const FONT_SIGNATURE = "Noto+Serif+KR";
 const REPORT_SIGNATURE = "Verify Report";
 const WEB_SEARCH_SIGNATURE = "Web Search Review";
+const MEDIA_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"]);
+const MAX_INLINE_MEDIA_BYTES = 8 * 1024 * 1024;
 
 const SVG_STYLES = `
 :root {
@@ -256,14 +258,18 @@ function buildGlimpseArtifactHtml(artifactHtml: string, artifactPath: string): s
 </html>`;
 }
 
+function openHtmlStringInGlimpse(open: (html: string, opts: Record<string, unknown>) => GlimpseWindow, html: string, title: string, width = 1280, height = 900): void {
+	const win = open(html, { width, height, title, openLinks: true });
+	artifactWindows.add(win);
+	win.on("closed", () => artifactWindows.delete(win));
+}
+
 function openHtmlInGlimpse(open: (html: string, opts: Record<string, unknown>) => GlimpseWindow, filePath: string): void {
 	const resolved = fs.realpathSync(filePath);
 	const htmlDir = path.dirname(resolved);
 	const html = inlineLocalImageSrc(fs.readFileSync(resolved, "utf-8"), htmlDir);
 	const title = artifactTitle(html, resolved);
-	const win = open(buildGlimpseArtifactHtml(html, resolved), { width: 1280, height: 900, title, openLinks: true });
-	artifactWindows.add(win);
-	win.on("closed", () => artifactWindows.delete(win));
+	openHtmlStringInGlimpse(open, buildGlimpseArtifactHtml(html, resolved), title);
 }
 
 async function openInSystemBrowser(pi: ExtensionAPI, filePath: string): Promise<void> {
@@ -277,6 +283,23 @@ async function openInSystemBrowser(pi: ExtensionAPI, filePath: string): Promise<
 	if (result.code !== 0) throw new Error(result.stderr || `Failed to open browser (${result.code})`);
 }
 
+async function openHtmlStringArtifact(pi: ExtensionAPI, html: string, title: string, browserOnly = false): Promise<"glimpse" | "browser"> {
+	if (!browserOnly) {
+		const open = await getGlimpseOpen();
+		if (open) {
+			try {
+				openHtmlStringInGlimpse(open, html, title);
+				return "glimpse";
+			} catch {}
+		}
+	}
+	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pilee-artifact-browser-"));
+	const tmpPath = path.join(tmpDir, `${slugify(title)}.html`);
+	fs.writeFileSync(tmpPath, html, "utf-8");
+	await openInSystemBrowser(pi, tmpPath);
+	return "browser";
+}
+
 async function openHtmlArtifact(pi: ExtensionAPI, filePath: string, browserOnly = false): Promise<"glimpse" | "browser"> {
 	if (!browserOnly) {
 		const open = await getGlimpseOpen();
@@ -287,6 +310,24 @@ async function openHtmlArtifact(pi: ExtensionAPI, filePath: string, browserOnly 
 			} catch {}
 		}
 	}
+	await openInSystemBrowser(pi, filePath);
+	return "browser";
+}
+
+async function openMediaArtifact(pi: ExtensionAPI, filePath: string, browserOnly = false): Promise<"glimpse" | "browser"> {
+	const resolved = fs.realpathSync(filePath);
+	const title = path.basename(resolved);
+	const html = buildMediaPreviewHtml(resolved, title);
+	return openHtmlStringArtifact(pi, html, title, browserOnly);
+}
+
+async function openAnyArtifact(pi: ExtensionAPI, filePath: string, browserOnly = false): Promise<"glimpse" | "browser"> {
+	const ext = path.extname(filePath).toLowerCase();
+	if (ext === ".html" || ext === ".htm") return openHtmlArtifact(pi, filePath, browserOnly);
+	if (ext === ".json" && filePath.startsWith(FRAME_TRANSCRIPTS_DIR)) {
+		return openHtmlStringArtifact(pi, buildFrameTranscriptStandaloneHtml(filePath), path.basename(filePath), browserOnly);
+	}
+	if (MEDIA_EXTENSIONS.has(ext)) return openMediaArtifact(pi, filePath, browserOnly);
 	await openInSystemBrowser(pi, filePath);
 	return "browser";
 }
@@ -316,92 +357,31 @@ export default function (pi: ExtensionAPI) {
 	registerVerifyReportLive(pi);
 
 	pi.registerCommand("show-report", {
-		description: "Verify/Web Search HTML 리포트를 목록에서 선택하거나 경로로 받아 Glimpse로 열기. Usage: /show-report [--browser] [path]",
+		description: "검증 리포트·Frame 기획 전문·캡처 미디어를 탭형 Artifact Browser로 열기. Usage: /show-report [--browser] [path]",
 		handler: async (args: string, ctx: ExtensionCommandContext) => {
 			if (!ctx.hasUI) return;
 
 			const parsed = parseShowReportArgs(args, ctx.cwd);
 			if (parsed.explicitPath) {
 				if (!fs.existsSync(parsed.explicitPath)) {
-					ctx.ui.notify(`리포트를 찾을 수 없습니다: ${parsed.explicitPath}`, "warning");
+					ctx.ui.notify(`artifact를 찾을 수 없습니다: ${parsed.explicitPath}`, "warning");
 					return;
 				}
-				const mode = await openHtmlArtifact(pi, parsed.explicitPath, parsed.browserOnly);
-				ctx.ui.notify(`📊 ${mode === "glimpse" ? "Glimpse" : "브라우저"} 열기 → ${path.basename(parsed.explicitPath)}`, "info");
+				const mode = await openAnyArtifact(pi, parsed.explicitPath, parsed.browserOnly);
+				ctx.ui.notify(`🗂️ ${mode === "glimpse" ? "Glimpse" : "브라우저"} 열기 → ${path.basename(parsed.explicitPath)}`, "info");
 				return;
 			}
 
-			const reports = collectReports(ctx.cwd);
-			if (reports.length === 0) {
-				ctx.ui.notify("리포트를 찾을 수 없습니다.", "warning");
+			const artifacts = collectArtifactBrowserData(ctx.cwd);
+			const total = artifacts.reports.length + artifacts.frames.length + artifacts.captures.length;
+			if (total === 0) {
+				ctx.ui.notify("표시할 artifact를 찾을 수 없습니다.", "warning");
 				return;
 			}
 
-			if (reports.length === 1) {
-				const mode = await openHtmlArtifact(pi, reports[0].path, parsed.browserOnly);
-				ctx.ui.notify(`📊 ${mode === "glimpse" ? "Glimpse" : "브라우저"} 열기 → ${reports[0].name}`, "info");
-				return;
-			}
-
-			let selectedIndex = 0;
-			let scrollOffset = 0;
-
-			const selected = await ctx.ui.custom<ReportEntry | null>(
-				(tui, theme, _kb, done) => ({
-					render: (w: number) => {
-						const rows = (tui as any).terminal?.rows ?? 30;
-						const headerH = 3;
-						const footerH = 1;
-						const bodyH = Math.max(3, rows - headerH - footerH);
-						const lines: string[] = [];
-
-						lines.push(theme.fg("accent", "─".repeat(w)));
-						lines.push(`  ${theme.fg("accent", theme.bold("REPORTS"))} ${theme.fg("accent", "|")} ${reports.length} files ${theme.fg("accent", "·")} ${theme.fg("border", "Enter: Glimpse · q/Esc: close")}`);
-						lines.push(`  ${theme.fg("border", "↑/↓ select · Enter open · /show-report --browser for browser")}`);
-
-						if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
-						if (selectedIndex >= scrollOffset + bodyH) scrollOffset = selectedIndex - bodyH + 1;
-
-						for (let i = scrollOffset; i < Math.min(reports.length, scrollOffset + bodyH); i++) {
-							const r = reports[i];
-							const sel = i === selectedIndex;
-							const cursor = sel ? theme.fg("accent", "▶") : " ";
-							const timeStr = theme.fg("borderAccent", r.time);
-							const src = r.source === "workspace"
-								? theme.fg("success", "ws")
-								: r.source === "web-search"
-									? theme.fg("accent", "web")
-									: theme.fg("warning", "ar");
-							const name = sel ? theme.fg("accent", r.name) : theme.fg("text", r.name);
-							const ticket = r.ticket ? theme.fg("warning", ` ${r.ticket}`) : "";
-							lines.push(truncateToWidth(`${cursor} ${src} ${timeStr}${ticket} ${name}`, w, ""));
-						}
-
-						while (lines.length < headerH + bodyH) lines.push("");
-						lines.push(theme.fg("accent", "─".repeat(w)));
-						return lines;
-					},
-					handleInput: (data: string) => {
-						if (data === "q" || matchesKey(data, Key.escape)) { done(null); return; }
-						if (matchesKey(data, Key.up) || data === "k") {
-							if (selectedIndex > 0) selectedIndex--;
-						} else if (matchesKey(data, Key.down) || data === "j") {
-							if (selectedIndex < reports.length - 1) selectedIndex++;
-						} else if (matchesKey(data, Key.enter)) {
-							done(reports[selectedIndex]);
-							return;
-						}
-						(tui as any).requestRender?.();
-					},
-					invalidate: () => {},
-				}),
-				{ overlay: true, overlayOptions: { width: "100%", maxHeight: "100%", anchor: "center" } },
-			);
-
-			if (selected) {
-				const mode = await openHtmlArtifact(pi, selected.path, parsed.browserOnly);
-				ctx.ui.notify(`📊 ${mode === "glimpse" ? "Glimpse" : "브라우저"} 열기 → ${selected.name}`, "info");
-			}
+			const html = buildArtifactBrowserHtml(artifacts, ctx.cwd);
+			const mode = await openHtmlStringArtifact(pi, html, "pilee Artifact Browser", parsed.browserOnly);
+			ctx.ui.notify(`🗂️ Artifact Browser ${mode === "glimpse" ? "Glimpse" : "브라우저"} 열기 · reports ${artifacts.reports.length} · frame ${artifacts.frames.length} · captures ${artifacts.captures.length}`, "info");
 		},
 	});
 
@@ -514,6 +494,237 @@ function collectReports(cwd: string): ReportEntry[] {
 	}
 
 	return results.sort((a, b) => b.mtime - a.mtime);
+}
+
+interface FrameTranscriptEntry {
+	path: string;
+	title: string;
+	identity: string;
+	mode: string;
+	time: string;
+	mtime: number;
+	updatedAt: number;
+	timeline: unknown[];
+}
+
+interface CaptureEntry {
+	path: string;
+	name: string;
+	source: string;
+	time: string;
+	mtime: number;
+	size: number;
+	mime: string;
+}
+
+interface ArtifactBrowserData {
+	reports: ReportEntry[];
+	frames: FrameTranscriptEntry[];
+	captures: CaptureEntry[];
+	generatedAt: Date;
+}
+
+function collectArtifactBrowserData(cwd: string): ArtifactBrowserData {
+	return {
+		reports: collectReports(cwd),
+		frames: collectFrameTranscripts(),
+		captures: collectCaptureMedia(cwd),
+		generatedAt: new Date(),
+	};
+}
+
+function collectFrameTranscripts(): FrameTranscriptEntry[] {
+	if (!fs.existsSync(FRAME_TRANSCRIPTS_DIR)) return [];
+	const entries: FrameTranscriptEntry[] = [];
+	try {
+		for (const file of fs.readdirSync(FRAME_TRANSCRIPTS_DIR)) {
+			if (!file.endsWith(".json")) continue;
+			const fp = path.join(FRAME_TRANSCRIPTS_DIR, file);
+			try {
+				const stat = fs.statSync(fp);
+				const parsed = JSON.parse(fs.readFileSync(fp, "utf-8")) as Record<string, unknown>;
+				const identity = valueFromRecord(parsed, "identity") as Record<string, unknown> | undefined;
+				const timeline = Array.isArray(parsed.timeline) ? parsed.timeline : [];
+				entries.push({
+					path: fp,
+					title: String(parsed.title || identity?.displayTitle || file.replace(/\.json$/, "")),
+					identity: String(identity?.displayTitle || identity?.key || "Frame Studio"),
+					mode: String(identity?.mode || "planning"),
+					time: formatMtime(stat.mtimeMs),
+					mtime: stat.mtimeMs,
+					updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : stat.mtimeMs,
+					timeline,
+				});
+			} catch {}
+		}
+	} catch {}
+	return entries.sort((a, b) => b.mtime - a.mtime).slice(0, 80);
+}
+
+function uniqueExistingDirs(dirs: Array<{ dir: string; source: string }>): Array<{ dir: string; source: string }> {
+	const seen = new Set<string>();
+	const results: Array<{ dir: string; source: string }> = [];
+	for (const item of dirs) {
+		try {
+			if (!fs.existsSync(item.dir)) continue;
+			const real = fs.realpathSync(item.dir);
+			if (seen.has(real)) continue;
+			seen.add(real);
+			results.push({ dir: real, source: item.source });
+		} catch {}
+	}
+	return results;
+}
+
+function walkMediaFiles(root: string, source: string, maxDepth = 8): CaptureEntry[] {
+	const results: CaptureEntry[] = [];
+	const visit = (dir: string, depth: number) => {
+		if (depth > maxDepth) return;
+		let entries: fs.Dirent[] = [];
+		try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+		for (const entry of entries) {
+			const fp = path.join(dir, entry.name);
+			if (entry.isDirectory()) {
+				if ([".git", "node_modules", ".next", "dist", "build"].includes(entry.name)) continue;
+				visit(fp, depth + 1);
+				continue;
+			}
+			if (!entry.isFile()) continue;
+			const ext = path.extname(entry.name).toLowerCase();
+			if (!MEDIA_EXTENSIONS.has(ext)) continue;
+			try {
+				const stat = fs.statSync(fp);
+				results.push({
+					path: fp,
+					name: path.relative(root, fp) || entry.name,
+					source,
+					time: formatMtime(stat.mtimeMs),
+					mtime: stat.mtimeMs,
+					size: stat.size,
+					mime: mimeFor(fp),
+				});
+			} catch {}
+		}
+	};
+	visit(root, 0);
+	return results;
+}
+
+function collectCaptureMedia(cwd: string): CaptureEntry[] {
+	const roots = uniqueExistingDirs([
+		{ dir: path.join(cwd, ".context", "work"), source: "workspace" },
+		{ dir: path.join(os.homedir(), ".context", "work"), source: "home" },
+		{ dir: path.join(ARCHIVE_DIR, "..", "captures"), source: "archive" },
+	]);
+	const byPath = new Map<string, CaptureEntry>();
+	for (const root of roots) {
+		for (const item of walkMediaFiles(root.dir, root.source)) {
+			try { byPath.set(fs.realpathSync(item.path), item); } catch { byPath.set(item.path, item); }
+		}
+	}
+	return [...byPath.values()].sort((a, b) => b.mtime - a.mtime).slice(0, 80);
+}
+
+function fileHref(filePath: string): string {
+	try { return pathToFileURL(fs.realpathSync(filePath)).href; } catch { return pathToFileURL(filePath).href; }
+}
+
+function formatBytes(bytes: number): string {
+	if (bytes < 1024) return `${bytes} B`;
+	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+	return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function mediaDataUri(filePath: string, maxBytes = MAX_INLINE_MEDIA_BYTES): string {
+	try {
+		const stat = fs.statSync(filePath);
+		if (stat.size > maxBytes) return "";
+		return `data:${mimeFor(filePath)};base64,${fs.readFileSync(filePath).toString("base64")}`;
+	} catch { return ""; }
+}
+
+function buildMediaPreviewHtml(filePath: string, title = path.basename(filePath)): string {
+	const src = mediaDataUri(filePath, 40 * 1024 * 1024);
+	const fileUrl = fileHref(filePath);
+	return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>
+		body{margin:0;background:#111;color:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:grid;grid-template-rows:auto 1fr;min-height:100vh}.bar{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:12px 16px;background:#18181b;border-bottom:1px solid rgba(255,255,255,.12)}.path{color:#a1a1aa;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.stage{display:grid;place-items:center;min-height:0;padding:18px}img{max-width:100%;max-height:calc(100vh - 92px);object-fit:contain;border-radius:12px;box-shadow:0 20px 80px rgba(0,0,0,.35)}a{color:#c4b5fd;text-decoration:none;border:1px solid rgba(255,255,255,.18);padding:7px 10px;border-radius:8px}
+	</style></head><body><div class="bar"><div><strong>${escapeHtml(title)}</strong><div class="path">${escapeHtml(filePath)}</div></div><a href="${escapeAttr(fileUrl)}" target="_blank" rel="noreferrer">원본 열기</a></div><div class="stage">${src ? `<img src="${src}" alt="${escapeAttr(title)}">` : `<p>파일이 커서 inline preview를 만들지 않았습니다. <a href="${escapeAttr(fileUrl)}" target="_blank" rel="noreferrer">원본 열기</a></p>`}</div></body></html>`;
+}
+
+function transcriptValue(record: unknown, key: string): unknown {
+	return record && typeof record === "object" ? (record as Record<string, unknown>)[key] : undefined;
+}
+
+function renderTranscriptMarkdownBlock(markdown: unknown): string {
+	if (typeof markdown !== "string" || !markdown.trim()) return "";
+	return `<details><summary>Markdown 전문</summary><pre>${escapeHtml(markdown)}</pre></details>`;
+}
+
+function renderFrameTimeline(timeline: unknown[]): string {
+	if (!timeline.length) return `<p class="muted">기록된 timeline이 없습니다.</p>`;
+	return timeline.map((raw) => {
+		const kind = String(transcriptValue(raw, "kind") || "entry");
+		const step = String(transcriptValue(raw, "step") || "");
+		const time = typeof transcriptValue(raw, "time") === "number" ? new Date(transcriptValue(raw, "time") as number).toLocaleString() : "";
+		const question = transcriptValue(raw, "question") as Record<string, unknown> | undefined;
+		const answer = transcriptValue(raw, "answer") as Record<string, unknown> | undefined;
+		const options = Array.isArray(question?.options) ? question.options : [];
+		const selected = Array.isArray(answer?.selectedOptions) ? answer.selectedOptions : [];
+		const text = typeof answer?.text === "string" ? answer.text : "";
+		return `<article class="timeline-item">
+			<div class="timeline-head"><span>${escapeHtml(time)}</span><strong>${escapeHtml(kind)}</strong>${step ? `<span>${escapeHtml(step)}</span>` : ""}</div>
+			${transcriptValue(raw, "message") ? `<p>${escapeHtml(String(transcriptValue(raw, "message")))}</p>` : ""}
+			${renderTranscriptMarkdownBlock(transcriptValue(raw, "markdown"))}
+			${question?.question ? `<div class="qa"><div class="label">질문</div><div>${escapeHtml(String(question.question))}</div></div>` : ""}
+			${options.length ? `<div class="qa"><div class="label">옵션</div><ol>${options.map((o) => `<li>${escapeHtml(String(o))}</li>`).join("")}</ol></div>` : ""}
+			${answer ? `<div class="answer"><div class="label">답변</div>${selected.length ? `<ol>${selected.map((o) => `<li>${escapeHtml(String(o))}</li>`).join("")}</ol>` : `<p class="muted">선택값 없음</p>`}${text ? `<p><strong>직접 입력:</strong> ${escapeHtml(text)}</p>` : ""}</div>` : ""}
+		</article>`;
+	}).join("\n");
+}
+
+function buildFrameTranscriptStandaloneHtml(filePath: string): string {
+	let parsed: Record<string, unknown> = {};
+	try { parsed = JSON.parse(fs.readFileSync(filePath, "utf-8")) as Record<string, unknown>; } catch {}
+	const identity = valueFromRecord(parsed, "identity") as Record<string, unknown> | undefined;
+	const title = String(parsed.title || identity?.displayTitle || path.basename(filePath));
+	const timeline = Array.isArray(parsed.timeline) ? parsed.timeline : [];
+	return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title>${artifactBrowserStyle()}</head><body><main class="shell"><header class="hero"><div class="kicker">🔥 Frame Transcript</div><h1>${escapeHtml(title)}</h1><p>${escapeHtml(filePath)}</p></header><section class="card"><h2>Frame 전문</h2><div class="timeline">${renderFrameTimeline(timeline)}</div></section></main></body></html>`;
+}
+
+function artifactBrowserStyle(): string {
+	return `<style>
+	:root{color-scheme:light;--bg:#fafaf9;--panel:#fff;--line:#e7e5e4;--text:#292524;--muted:#78716c;--accent:#7c3aed;--soft:#f5f3ff;--green:#166534;--amber:#92400e}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.shell{max-width:1180px;margin:0 auto;padding:24px}.hero{padding:24px;border:1px solid var(--line);border-radius:24px;background:linear-gradient(135deg,#fff,#f5f3ff);box-shadow:0 20px 60px rgba(41,37,36,.08)}.kicker{color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}h1{margin:6px 0 8px;font-size:32px;line-height:1.15}.hero p,.muted{color:var(--muted)}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}.tab{border:1px solid var(--line);border-radius:999px;background:#fff;padding:9px 13px;font-weight:800;cursor:pointer}.tab.active{background:var(--accent);border-color:var(--accent);color:#fff}.panel{display:none}.panel.active{display:block}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.card{border:1px solid var(--line);border-radius:18px;background:var(--panel);padding:16px;box-shadow:0 10px 30px rgba(41,37,36,.05);overflow:hidden}.card h2,.card h3{margin:0 0 8px}.meta{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}.badge{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 8px;background:#fff}.path{color:var(--muted);font-size:12px;word-break:break-all}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}a.button{border:1px solid var(--line);border-radius:10px;padding:7px 10px;text-decoration:none;color:var(--accent);font-weight:800;background:#fff}.thumb{display:grid;place-items:center;aspect-ratio:16/10;background:#111;border-radius:14px;overflow:hidden;margin-bottom:10px}.thumb img{width:100%;height:100%;object-fit:contain}.empty{padding:40px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:18px;background:#fff}.timeline{display:grid;gap:12px}.timeline-item{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff}.timeline-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:var(--muted);font-size:12px}.timeline-head strong{color:var(--accent);text-transform:uppercase}.qa,.answer{margin-top:8px}.label{font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}pre{white-space:pre-wrap;word-break:break-word;background:#292524;color:#fafaf9;border-radius:12px;padding:12px;max-height:360px;overflow:auto}details{margin-top:8px}summary{cursor:pointer;font-weight:800}.search{width:100%;height:40px;border:1px solid var(--line);border-radius:12px;padding:0 12px;margin:16px 0;font:inherit}
+	</style>`;
+}
+
+function reportSourceLabel(source: ReportEntry["source"]): string {
+	if (source === "workspace") return "workspace";
+	if (source === "web-search") return "web-search";
+	return "archive";
+}
+
+function renderReportCards(reports: ReportEntry[]): string {
+	if (!reports.length) return `<div class="empty">검증 리포트나 web-search review가 없습니다.</div>`;
+	return `<div class="grid">${reports.map((r) => `<article class="card searchable" data-search="${escapeAttr(`${r.name} ${r.ticket} ${r.source}`.toLowerCase())}"><h3>${escapeHtml(r.name)}</h3><div class="meta"><span class="badge">${escapeHtml(reportSourceLabel(r.source))}</span><span class="badge">${escapeHtml(r.time)}</span>${r.ticket ? `<span class="badge">${escapeHtml(r.ticket)}</span>` : ""}</div><div class="path">${escapeHtml(r.path)}</div><div class="actions"><a class="button" href="${escapeAttr(fileHref(r.path))}" target="_blank" rel="noreferrer">원본 열기</a></div></article>`).join("\n")}</div>`;
+}
+
+function renderFrameCards(frames: FrameTranscriptEntry[]): string {
+	if (!frames.length) return `<div class="empty">저장된 Frame Studio 전문이 없습니다.</div>`;
+	return `<div class="grid">${frames.map((f) => `<article class="card searchable" data-search="${escapeAttr(`${f.title} ${f.identity} ${f.mode}`.toLowerCase())}"><h3>${escapeHtml(f.title)}</h3><div class="meta"><span class="badge">${escapeHtml(f.mode)}</span><span class="badge">${escapeHtml(f.time)}</span><span class="badge">${f.timeline.length} entries</span></div><div class="path">${escapeHtml(f.identity)}</div><details><summary>Frame 전문 미리보기</summary><div class="timeline">${renderFrameTimeline(f.timeline)}</div></details><div class="actions"><a class="button" href="${escapeAttr(fileHref(f.path))}" target="_blank" rel="noreferrer">JSON 열기</a></div></article>`).join("\n")}</div>`;
+}
+
+function renderCaptureCards(captures: CaptureEntry[]): string {
+	if (!captures.length) return `<div class="empty">캡처 이미지가 없습니다. 현재 cwd와 home의 .context/work/captures를 확인합니다.</div>`;
+	return `<div class="grid">${captures.map((c) => { const src = mediaDataUri(c.path); return `<article class="card searchable" data-search="${escapeAttr(`${c.name} ${c.source}`.toLowerCase())}"><div class="thumb">${src ? `<img src="${src}" alt="${escapeAttr(c.name)}" loading="lazy">` : `<span class="muted">${escapeHtml(formatBytes(c.size))}</span>`}</div><h3>${escapeHtml(path.basename(c.path))}</h3><div class="meta"><span class="badge">${escapeHtml(c.source)}</span><span class="badge">${escapeHtml(c.time)}</span><span class="badge">${escapeHtml(formatBytes(c.size))}</span></div><div class="path">${escapeHtml(c.name)}</div><div class="actions"><a class="button" href="${escapeAttr(fileHref(c.path))}" target="_blank" rel="noreferrer">원본 열기</a></div></article>`; }).join("\n")}</div>`;
+}
+
+function buildArtifactBrowserHtml(data: ArtifactBrowserData, cwd: string): string {
+	const initialTab = data.reports.length ? "reports" : data.frames.length ? "frames" : "captures";
+	return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>pilee Artifact Browser</title>${artifactBrowserStyle()}</head><body><main class="shell"><header class="hero"><div class="kicker">🗂️ pilee Artifact Browser</div><h1>산출물 다시 보기</h1><p>검증 리포트, Frame 기획 전문, 캡처 미디어를 탭으로 분리해서 봅니다.</p><div class="meta"><span class="badge">cwd ${escapeHtml(cwd)}</span><span class="badge">generated ${escapeHtml(data.generatedAt.toLocaleString())}</span></div></header><input id="search" class="search" type="search" placeholder="현재 탭에서 검색: 이름, 티켓, identity, source" oninput="filterCards()"><nav class="tabs"><button class="tab" data-tab="reports" onclick="showTab('reports')">검증 리포트 <strong>${data.reports.length}</strong></button><button class="tab" data-tab="frames" onclick="showTab('frames')">기획 / Frame <strong>${data.frames.length}</strong></button><button class="tab" data-tab="captures" onclick="showTab('captures')">캡처 / 미디어 <strong>${data.captures.length}</strong></button></nav><section id="tab-reports" class="panel">${renderReportCards(data.reports)}</section><section id="tab-frames" class="panel">${renderFrameCards(data.frames)}</section><section id="tab-captures" class="panel">${renderCaptureCards(data.captures)}</section></main><script>
+	function showTab(name){document.querySelectorAll('.tab').forEach(function(el){el.classList.toggle('active',el.dataset.tab===name)});document.querySelectorAll('.panel').forEach(function(el){el.classList.toggle('active',el.id==='tab-'+name)});window.currentTab=name;filterCards();}
+	function filterCards(){var q=(document.getElementById('search').value||'').toLowerCase().trim();var panel=document.getElementById('tab-'+(window.currentTab||'${initialTab}'));if(!panel)return;panel.querySelectorAll('.searchable').forEach(function(card){card.style.display=!q||String(card.dataset.search||'').indexOf(q)>=0?'':'none';});}
+	showTab('${initialTab}');
+	</script></body></html>`;
 }
 
 async function archiveVerifyReport(event: ToolResultEvent, ctx: ExtensionContext, pi: ExtensionAPI) {
