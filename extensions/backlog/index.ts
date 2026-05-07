@@ -1,14 +1,14 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir, platform } from "node:os";
+import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ThemeColor } from "@mariozechner/pi-coding-agent";
 import { copyToClipboard, DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@mariozechner/pi-tui";
+import { BACKLOG_SESSION_EXPORT_DIR, displayPath, expandHome, exportSessionFileToHtml, openFile } from "../utils/session-export.js";
 
 // ─── Storage ───────────────────────────────────────────────────────────────
 
 const BACKLOG_FILE = join(homedir(), ".pi", "agent", "state", "backlog.json");
-const SESSION_EXPORT_DIR = join(homedir(), ".pi", "agent", "state", "backlog-session-exports");
 
 type Priority = "high" | "medium" | "low";
 
@@ -57,19 +57,6 @@ function sorted(items: BacklogItem[]): BacklogItem[] {
 }
 
 // ─── Source session metadata ───────────────────────────────────────────────
-
-function expandHome(filePath: string): string {
-	if (filePath === "~") return homedir();
-	if (filePath.startsWith("~/")) return join(homedir(), filePath.slice(2));
-	return filePath;
-}
-
-function displayPath(filePath: string): string {
-	const expandedHome = homedir();
-	if (filePath === expandedHome) return "~";
-	if (filePath.startsWith(`${expandedHome}/`)) return `~/${filePath.slice(expandedHome.length + 1)}`;
-	return filePath;
-}
 
 function sourceTitle(source: SourceSession | undefined): string {
 	if (source?.title?.trim()) return source.title.trim();
@@ -132,21 +119,6 @@ function itemDescription(item: BacklogItem): string {
 	return parts.join("\n\n");
 }
 
-function safeExportName(item: BacklogItem, sessionFile: string): string {
-	const sessionName = basename(sessionFile, ".jsonl").replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 80) || "session";
-	return `backlog-${item.id}-${sessionName}.html`;
-}
-
-async function openFile(pi: ExtensionAPI, filePath: string) {
-	const plat = platform();
-	const result = plat === "darwin"
-		? await pi.exec("open", [filePath])
-		: plat === "win32"
-			? await pi.exec("cmd", ["/c", "start", "", filePath])
-			: await pi.exec("xdg-open", [filePath]);
-	if (result.code !== 0) throw new Error(result.stderr || `파일 열기 실패 (${result.code})`);
-}
-
 async function exportAndOpenSourceSession(pi: ExtensionAPI, ctx: ExtensionCommandContext, item: BacklogItem) {
 	const sessionFile = sourceSessionFile(item);
 	if (!sessionFile) {
@@ -158,13 +130,7 @@ async function exportAndOpenSourceSession(pi: ExtensionAPI, ctx: ExtensionComman
 		return;
 	}
 
-	mkdirSync(SESSION_EXPORT_DIR, { recursive: true });
-	const outputPath = join(SESSION_EXPORT_DIR, safeExportName(item, sessionFile));
-	const cliPath = process.argv[1] && existsSync(process.argv[1]) ? process.argv[1] : undefined;
-	const command = cliPath ? process.execPath : "pi";
-	const args = cliPath ? [cliPath, "--export", sessionFile, outputPath] : ["--export", sessionFile, outputPath];
-	const result = await pi.exec(command, args);
-	if (result.code !== 0) throw new Error(result.stderr || result.stdout || `세션 export 실패 (${result.code})`);
+	const outputPath = await exportSessionFileToHtml(pi, sessionFile, { outputDir: BACKLOG_SESSION_EXPORT_DIR, filenamePrefix: `backlog-${item.id}` });
 	await openFile(pi, outputPath);
 	ctx.ui.notify(`세션 전문 HTML 열기 → ${displayPath(outputPath)}`, "info");
 }
