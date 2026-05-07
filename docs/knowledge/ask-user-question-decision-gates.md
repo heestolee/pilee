@@ -16,9 +16,11 @@ applies_to:
   - skills/frame
   - skills/decide
   - skills/verify
+  - extensions/frame-studio
 source:
   - pilee-history:2026-05-01#3
   - pilee-history:2026-05-01#5
+  - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-05
 reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
 related:
@@ -34,6 +36,10 @@ AskUserQuestion은 사용자의 클릭을 얻기 위한 확인창이 아니라, 
 ## Operating Rule
 
 구현 방식이 둘 이상이고 각각 다른 결과를 만들면 묻습니다. 결제, 보안, PII, 스키마, 외부 연동, 동시성, 운영 설정처럼 위임 금지 영역이면 사소해 보여도 묻습니다. 반대로 사용자가 이미 명확히 지시했거나 저장소 컨벤션상 단일 답이 명백하면 묻지 않고 `(명백: ...)`으로 판단 근거를 본문에 남깁니다.
+
+## Transport Rule
+
+AskUserQuestion의 본질은 UI가 아니라 decision gate입니다. Frame Studio처럼 버튼/체크박스/전문 저장 UI가 있어도, 그것은 선택을 더 잘 보존하는 transport일 뿐입니다. modal, 번호형 text fallback, Frame Studio 모두 “선택에 따라 이후 행동이 달라지는가”를 만족할 때만 AskUserQuestion으로 취급합니다.
 
 ## Failure Mode
 

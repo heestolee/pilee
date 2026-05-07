@@ -19,6 +19,7 @@ applies_to:
 source:
   - pilee-history:2026-05-01#6
   - pilee-history:2026-05-06#65
+  - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-06
 reviewed_commit: 8f5edeef3baff0455a7178acf07297e221029467
 related:
@@ -36,6 +37,8 @@ Frame은 구현 전 자연어 메모가 아니라, Verify가 기계적으로 읽
 ## Contract Shape
 
 `frame.json`에는 성공 기준, 검증 계획, 범위 밖 항목, 엣지 케이스 seed, 위험 register가 구조화되어야 합니다. Verify는 이 계약의 `success_criteria`를 행 단위로 PASS/FAIL 판정합니다. 새 의사결정이 필요하면 `/decide`로 분리하고, 결정 결과를 다시 계약에 반영합니다.
+
+Frame Studio transcript는 계약 자체가 아니라 계약을 만든 대화 전문입니다. transcript는 사용자가 어떤 질문과 선택을 거쳤는지 다시 열어보는 provenance이고, Verify가 기계적으로 판정할 기준은 여전히 최신 `frame.json`입니다.
 
 ## Co-thinking Boundary
 
