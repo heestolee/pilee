@@ -24,7 +24,7 @@ source:
   - pilee-history:2026-05-07#74
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: 74e15fcd9f1709efc1b06a1dbb0a1976216ad8c3
+reviewed_commit: 2a83750815e36068c7878c8a4ba511316d2a0352
 related:
   - live-artifact-preview-pattern
   - backlog-source-session-provenance

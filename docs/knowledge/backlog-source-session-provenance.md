@@ -18,7 +18,7 @@ source:
   - pilee-history:2026-05-05#51
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: ce5ea75eb6b29355731d29f547a972ee62f2e262
+reviewed_commit: 2a83750815e36068c7878c8a4ba511316d2a0352
 related:
   - session-identity-over-filenames
   - artifact-archive-reopenability
