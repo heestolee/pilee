@@ -26,58 +26,40 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check whether today has repository changes
-        id: recent
+      - name: Capture sync context
+        id: context
         shell: bash
         run: |
           KST_DATE=$(TZ=Asia/Seoul date +%F)
           SINCE_UTC=$(TZ=Asia/Seoul date -d "$KST_DATE 00:00:00" -u +"%Y-%m-%dT%H:%M:%SZ")
-          echo "kst_date=$KST_DATE" >> "$GITHUB_OUTPUT"
-          echo "since_utc=$SINCE_UTC" >> "$GITHUB_OUTPUT"
-
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "has_changes=true" >> "$GITHUB_OUTPUT"
-            echo "reason=manual workflow_dispatch" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
           COUNT=$(git log --since="$SINCE_UTC" --format=%H -- . ':(exclude)docs/knowledge-review.md' | wc -l | tr -d ' ')
 
-          if [[ "$COUNT" -gt 0 ]]; then
-            echo "has_changes=true" >> "$GITHUB_OUTPUT"
-            echo "reason=$COUNT commit(s) since $KST_DATE 00:00 KST" >> "$GITHUB_OUTPUT"
+          echo "kst_date=$KST_DATE" >> "$GITHUB_OUTPUT"
+          echo "since_utc=$SINCE_UTC" >> "$GITHUB_OUTPUT"
+          echo "recent_commit_count=$COUNT" >> "$GITHUB_OUTPUT"
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "reason=manual workflow_dispatch" >> "$GITHUB_OUTPUT"
           else
-            echo "has_changes=false" >> "$GITHUB_OUTPUT"
-            echo "reason=no commits since $KST_DATE 00:00 KST" >> "$GITHUB_OUTPUT"
+            echo "reason=$COUNT commit(s) since $KST_DATE 00:00 KST; freshness is evaluated regardless of commit count" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Skip summary
-        if: steps.recent.outputs.has_changes != 'true'
-        run: |
-          echo "## pilee knowledge sync skipped" >> "$GITHUB_STEP_SUMMARY"
-          echo "${{ steps.recent.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY"
-
       - name: Setup Node
-        if: steps.recent.outputs.has_changes == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
 
       - name: Install dependencies
-        if: steps.recent.outputs.has_changes == 'true'
         run: npm ci
 
       - name: Refresh generated knowledge graph
-        if: steps.recent.outputs.has_changes == 'true'
         run: npm run knowledge:graph
 
       - name: Validate knowledge docs
-        if: steps.recent.outputs.has_changes == 'true'
         run: npm run knowledge:validate
 
       - name: Collect freshness report
-        if: steps.recent.outputs.has_changes == 'true'
         run: |
           node scripts/knowledge.mjs --freshness --json > /tmp/pilee-knowledge-freshness.json
           node <<'NODE' >> "$GITHUB_STEP_SUMMARY"
@@ -100,12 +82,12 @@ jobs:
           }
           NODE
         env:
-          RECENT_REASON: ${{ steps.recent.outputs.reason }}
-          SINCE_UTC: ${{ steps.recent.outputs.since_utc }}
-          KST_DATE: ${{ steps.recent.outputs.kst_date }}
+          RECENT_REASON: ${{ steps.context.outputs.reason }}
+          SINCE_UTC: ${{ steps.context.outputs.since_utc }}
+          KST_DATE: ${{ steps.context.outputs.kst_date }}
 
       - name: Render public review queue
-        if: steps.recent.outputs.has_changes == 'true'
+        id: review_queue
         run: |
           node <<'NODE'
           const fs = require('fs');
@@ -136,6 +118,11 @@ jobs:
           const readmeNarrativeChanged = Boolean(baseReadme && stripGeneratedReadme(baseReadme) !== stripGeneratedReadme(currentReadme));
 
           const hasActions = data.deterministic_actions.length > 0 || data.ai_actions.length > 0 || readmeNarrativeChanged;
+          const manualReviewRequired = data.ai_actions.length > 0 || readmeNarrativeChanged;
+          if (process.env.GITHUB_OUTPUT) {
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `has_review_actions=${hasActions}\n`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `manual_review_required=${manualReviewRequired}\n`);
+          }
           if (!hasActions) {
             if (fs.existsSync(path)) fs.unlinkSync(path);
             process.exit(0);
@@ -197,7 +184,7 @@ jobs:
           NODE
 
       - name: Create PR for knowledge sync updates
-        if: steps.recent.outputs.has_changes == 'true'
+        id: cpr
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -219,3 +206,24 @@ jobs:
             docs/knowledge/README.md
             README.md
             docs/knowledge-review.md
+
+      - name: Auto-merge generated-only knowledge sync PR
+        if: steps.cpr.outputs.pull-request-number != '' && steps.review_queue.outputs.manual_review_required != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
+        run: |
+          if gh pr merge "$PR_NUMBER" --squash --delete-branch --auto; then
+            echo "Auto-merge enabled for generated-only PR #$PR_NUMBER" >> "$GITHUB_STEP_SUMMARY"
+          elif gh pr merge "$PR_NUMBER" --squash --delete-branch; then
+            echo "Generated-only PR #$PR_NUMBER merged immediately" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::Could not auto-merge generated-only PR #$PR_NUMBER; leaving it open."
+            echo "Could not auto-merge generated-only PR #$PR_NUMBER; leaving it open." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Keep manual review PR open
+        if: steps.cpr.outputs.pull-request-number != '' && steps.review_queue.outputs.manual_review_required == 'true'
+        run: |
+          echo "## Manual knowledge review required" >> "$GITHUB_STEP_SUMMARY"
+          echo "PR #${{ steps.cpr.outputs.pull-request-number }} includes AI/human review actions or README narrative review and was left open for manual merge." >> "$GITHUB_STEP_SUMMARY"
