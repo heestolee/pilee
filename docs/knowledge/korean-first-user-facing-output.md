@@ -9,6 +9,7 @@ tags:
   - 한국어
 category: ui
 status: active
+confidence: high
 applies_to:
   - extensions/web-access
   - web_search workflow=summary-review
@@ -18,7 +19,7 @@ source:
   - pilee-history:2026-05-05#46
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: 67f2836035e8cbe0cab3e659bfce37cfd013ff9e
+reviewed_commit: 50926610bb0901d4cd4dc1d7f13cb4c996ade66e
 related:
   - web-search-curator
   - curator-approved-source-selection

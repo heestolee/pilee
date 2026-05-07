@@ -8,6 +8,7 @@ tags:
   - handoff
 category: review
 status: active
+confidence: high
 applies_to:
   - extensions/diff-overlay
   - extensions/pr-comments
@@ -15,7 +16,7 @@ applies_to:
 source:
   - session-backfill:2026-05-02#diff-overlay-review-draft
 reviewed_at: 2026-05-07
-reviewed_commit: 67f2836035e8cbe0cab3e659bfce37cfd013ff9e
+reviewed_commit: 50926610bb0901d4cd4dc1d7f13cb4c996ade66e
 related:
   - change-integration-discipline
   - tool-output-noise-management

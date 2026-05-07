@@ -9,6 +9,7 @@ tags:
   - 정합성
 category: knowledge
 status: active
+confidence: high
 applies_to:
   - docs/knowledge
   - scripts/knowledge.mjs
@@ -19,7 +20,7 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-07-resolver-merge-gate
 reviewed_at: 2026-05-07
-reviewed_commit: f97db772c09fd46cee4db42c40de13d82220fec1
+reviewed_commit: 50926610bb0901d4cd4dc1d7f13cb4c996ade66e
 related:
   - freshness-diagnosis-report
   - deterministic-vs-ai-actions

@@ -10,6 +10,7 @@ tags:
   - 무효화
 category: verification
 status: active
+confidence: high
 applies_to:
   - skills/verify
   - skills/verify-report
@@ -18,7 +19,7 @@ source:
   - pilee-history:2026-05-01#4
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: 8b79c81704f67905fa6cecca9c6bb24e50c433c1
+reviewed_commit: 50926610bb0901d4cd4dc1d7f13cb4c996ade66e
 related:
   - evidence-first-verification-gate
   - frame-verify-contract

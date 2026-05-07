@@ -19,7 +19,7 @@ source:
   - pilee-history:2026-05-05#51
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: ca707e6c49f12e33dd08a0067a18ac40181121f4
+reviewed_commit: 50926610bb0901d4cd4dc1d7f13cb4c996ade66e
 related:
   - session-identity-over-filenames
   - artifact-archive-reopenability

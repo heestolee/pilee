@@ -9,6 +9,7 @@ tags:
   - 디버깅
 category: debugging
 status: active
+confidence: high
 applies_to:
   - skills/systematic-debugging
   - skills/debugging-and-error-recovery
@@ -18,7 +19,7 @@ source:
   - session-backfill:2026-05-02#setwidget-notify
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: 2a83750815e36068c7878c8a4ba511316d2a0352
+reviewed_commit: 50926610bb0901d4cd4dc1d7f13cb4c996ade66e
 related:
   - evidence-first-verification-gate
   - verification-invalidation-on-change

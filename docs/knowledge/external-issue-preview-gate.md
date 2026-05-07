@@ -15,7 +15,7 @@ applies_to:
 source:
   - session-backfill:2026-05-05#skill-surface-review
 reviewed_at: 2026-05-07
-reviewed_commit: 1a0093b1c3b3917e504de299e97d7c68ad79932b
+reviewed_commit: 50926610bb0901d4cd4dc1d7f13cb4c996ade66e
 related:
   - live-artifact-preview-pattern
   - ask-user-question-decision-gates

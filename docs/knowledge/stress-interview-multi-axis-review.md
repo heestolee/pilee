@@ -10,6 +10,7 @@ tags:
   - 검토
 category: agent
 status: active
+confidence: high
 applies_to:
   - skills/stress-interview
   - extensions/subagent
@@ -19,7 +20,7 @@ source:
   - pilee-history:2026-05-05#42
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: 8b79c81704f67905fa6cecca9c6bb24e50c433c1
+reviewed_commit: 50926610bb0901d4cd4dc1d7f13cb4c996ade66e
 related:
   - subagent-model-policy
   - self-healing-actionable-loop

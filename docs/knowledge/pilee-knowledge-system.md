@@ -13,6 +13,7 @@ tags:
   - 정합성
 category: knowledge
 status: active
+confidence: high
 applies_to:
   - docs/knowledge
   - scripts/knowledge.mjs
@@ -22,7 +23,7 @@ source:
   - pilee-history:2026-05-05#knowledge-system
   - user-direction:2026-05-07-resolver-merge-gate
 reviewed_at: 2026-05-07
-reviewed_commit: 2a83750815e36068c7878c8a4ba511316d2a0352
+reviewed_commit: 50926610bb0901d4cd4dc1d7f13cb4c996ade66e
 related:
   - verify-report-workflow
   - web-search-curator
