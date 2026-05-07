@@ -20,7 +20,7 @@ source:
   - pilee-history:2026-05-03#26
   - pilee-history:2026-05-04#35
 reviewed_at: 2026-05-07
-reviewed_commit: 8b79c81704f67905fa6cecca9c6bb24e50c433c1
+reviewed_commit: 5c159643423f4474d7aadbf3edf8481d2b09be47
 related:
   - fork-panel-spatial-continuity
   - mcp-stderr-isolation
@@ -38,6 +38,10 @@ related:
 ## WebView/Open Rule
 
 Glimpse/WebView와 OS browser도 host입니다. static `file://` anchor가 브라우저에서는 동작해도 WebView에서는 기대대로 외부 open을 넘기지 않을 수 있습니다. preview/open 기능은 local server route, allowlisted realpath, host-side opener처럼 host adapter 경계를 명시해 구현합니다.
+
+## Local Metadata Rule
+
+Artifact Browser가 worktree metadata, Pi session title, Frame transcript를 읽어 capture group label을 만들 때도 host-local filesystem을 다루는 것입니다. 파일이 없거나 JSON이 깨졌거나 workspace 이름이 맞지 않아도 UI가 실패하면 안 되며, workspace/unclassified fallback으로 내려가야 합니다.
 
 ## Failure Mode
 

@@ -24,7 +24,7 @@ source:
   - pilee-history:2026-05-07#74
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: 2a83750815e36068c7878c8a4ba511316d2a0352
+reviewed_commit: 5c159643423f4474d7aadbf3edf8481d2b09be47
 related:
   - live-artifact-preview-pattern
   - backlog-source-session-provenance
@@ -57,6 +57,12 @@ artifact 종류가 늘어나면 한 목록에 섞지 않습니다. `/show-report
 3. 캡처 / 미디어 — 아직 리포트로 묶이지 않았거나 원본 확인이 필요한 PNG/JPEG/GIF/WebP/SVG evidence
 
 이 구분은 “판정이 있는 리포트”, “생각 과정 전문”, “해석 전 원자료”를 섞지 않기 위한 정보 구조입니다.
+
+## Capture Group Rule
+
+캡처 / 미디어 축은 raw file을 평면 목록으로만 보여주지 않습니다. workspace 단위로 먼저 묶고, 가능하면 Jira ticket/title, session title, Frame identity를 label로 사용해 “어떤 작업의 원자료인가”를 보여줍니다. 사용자는 group card에서 폴더를 열듯 drill-down한 뒤 개별 이미지/GIF/WebP/SVG를 확인합니다.
+
+metadata가 없으면 workspace fallback이나 미분류 group으로 남깁니다. 그룹화는 raw evidence를 판정 리포트로 승격하는 것이 아니라, 많은 캡처가 쌓였을 때 재탐색 가능한 구조를 제공하는 것입니다.
 
 ## Failure Mode
 
