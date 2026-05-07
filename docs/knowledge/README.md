@@ -151,7 +151,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [검토 산출물은 다시 열 수 있어야 한다](./artifact-archive-reopenability.md) | active | high | 2026-05-07 | 5c15964 | artifact, archive, show-report, history, html, reopen |
+| [검토 산출물은 다시 열 수 있어야 한다](./artifact-archive-reopenability.md) | active | high | 2026-05-07 | 5a3bf15 | artifact, archive, show-report, history, html, reopen |
 | [AskUserQuestion은 의사결정 게이트다](./ask-user-question-decision-gates.md) | active | high | 2026-05-07 | b6da702 | ask-user-question, tft, decision-gate, question, non-delegable, 질문 |
 | [AskUserQuestion 옵션은 행동 분기를 표현한다](./ask-user-question-option-design.md) | active | high | 2026-05-07 | b6da702 | ask-user-question, option, wording, ceremony, tft, 질문 |
 | [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | high | 2026-05-07 | 5c15964 | backlog, tasks, provenance, source-session, session, 맥락 |
