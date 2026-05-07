@@ -668,11 +668,23 @@ function isBootstrapOrchestratorPrompt(prompt: string): boolean {
 }
 
 function setDependencyBootstrapStatus(ctx: ExtensionContext | ExtensionCommandContext, status: BootstrapStatus | "ready", text: string) {
-	if ((ctx as any).hasUI === false) return;
-	const theme = ctx.ui.theme;
-	const color = status === "failed" ? "error" : status === "running" ? "warning" : "success";
-	const icon = status === "failed" ? "✗" : status === "running" ? "●" : "✓";
-	ctx.ui.setStatus(DEPENDENCY_BOOTSTRAP_STATUS_ID, theme.fg(color, icon) + theme.fg("dim", ` deps ${text}`));
+	try {
+		if ((ctx as any).hasUI === false) return;
+		const theme = ctx.ui.theme;
+		const color = status === "failed" ? "error" : status === "running" ? "warning" : "success";
+		const icon = status === "failed" ? "✗" : status === "running" ? "●" : "✓";
+		ctx.ui.setStatus(DEPENDENCY_BOOTSTRAP_STATUS_ID, theme.fg(color, icon) + theme.fg("dim", ` deps ${text}`));
+	} catch {
+		// Background bootstrap can complete after a non-interactive/old ctx is gone.
+	}
+}
+
+function notifyDependencyBootstrap(ctx: ExtensionContext | ExtensionCommandContext, message: string, level: "info" | "warning" | "error") {
+	try {
+		if ((ctx as any).hasUI !== false) ctx.ui.notify(message, level);
+	} catch {
+		// Ignore stale UI contexts in async completion callbacks.
+	}
 }
 
 interface DependencyBootstrapResult {
@@ -782,13 +794,13 @@ async function ensureDependencyBootstrapWorker(
 					},
 					{ deliverAs: "followUp", triggerTurn: false },
 				);
-				if ((ctx as any).hasUI !== false) ctx.ui.notify(`AI dependency bootstrap ${ok ? "complete" : "blocked"} (${repoName}: ${runDomains.join(", ")})`, ok ? "info" : "warning");
+				notifyDependencyBootstrap(ctx, `AI dependency bootstrap ${ok ? "complete" : "blocked"} (${repoName}: ${runDomains.join(", ")})`, ok ? "info" : "warning");
 			}).catch((error) => {
 				const job = dependencyBootstrapJobs.get(repoRoot);
 				if (job) job.status = "failed";
 				setDependencyBootstrapStatus(ctx, "failed", "failed");
 				const message = error instanceof Error ? error.message : String(error);
-				if ((ctx as any).hasUI !== false) ctx.ui.notify(`AI dependency bootstrap orchestrator failed: ${message}`, "warning");
+				notifyDependencyBootstrap(ctx, `AI dependency bootstrap orchestrator failed: ${message}`, "warning");
 			});
 
 			dependencyBootstrapJobs.set(repoRoot, {
@@ -846,17 +858,17 @@ async function ensureDependencyBootstrapWorker(
 		if (job) job.status = result.code === 0 ? "success" : "failed";
 		if (result.code === 0) {
 			setDependencyBootstrapStatus(ctx, "success", "ready");
-			if ((ctx as any).hasUI !== false) ctx.ui.notify(`✓ Dependency bootstrap complete (${repoName}: ${runDomains.join(", ")})`, "info");
+			notifyDependencyBootstrap(ctx, `✓ Dependency bootstrap complete (${repoName}: ${runDomains.join(", ")})`, "info");
 		} else {
 			setDependencyBootstrapStatus(ctx, "failed", "failed");
-			if ((ctx as any).hasUI !== false) ctx.ui.notify(`Dependency bootstrap failed (code ${result.code}). Log: ${logPath}`, "warning");
+			notifyDependencyBootstrap(ctx, `Dependency bootstrap failed (code ${result.code}). Log: ${logPath}`, "warning");
 		}
 	}).catch((error) => {
 		const job = dependencyBootstrapJobs.get(repoRoot);
 		if (job) job.status = "failed";
 		setDependencyBootstrapStatus(ctx, "failed", "failed");
 		const message = error instanceof Error ? error.message : String(error);
-		if ((ctx as any).hasUI !== false) ctx.ui.notify(`Dependency bootstrap failed to start: ${message}`, "warning");
+		notifyDependencyBootstrap(ctx, `Dependency bootstrap failed to start: ${message}`, "warning");
 	});
 
 	dependencyBootstrapJobs.set(repoRoot, {
