@@ -16,8 +16,8 @@ applies_to:
   - skills/stress-interview
 source:
   - pilee-history:2026-05-05#42
-reviewed_at: 2026-05-05
-reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
+reviewed_at: 2026-05-07
+reviewed_commit: 8b79c81704f67905fa6cecca9c6bb24e50c433c1
 related:
   - subagent-model-policy
   - self-healing-actionable-loop
@@ -31,6 +31,10 @@ Subagent는 “똑똑한 백그라운드 모델”이 아니라 제한된 맥락
 ## Prompt Contract
 
 위임 프롬프트에는 목표, 제외 범위, 대상 파일/검색 범위, 기대 산출물, 검증 명령, 보고 형식이 있어야 합니다. 비동기 실행 후에는 바로 polling하지 않고 완료 알림을 기다리며, 이어서 작업할 때는 최신 main context를 명시적으로 제공합니다.
+
+## Async Boundary
+
+Subagent launch 자체는 작업 완료가 아닙니다. 비동기 실행을 시작한 뒤 같은 턴에서 상태를 반복 조회하면 main agent가 orchestration noise를 만들고, subagent 완료 알림 흐름과 충돌합니다. launch 후에는 사용자에게 시작 사실을 짧게 알리고, 완료 메시지가 돌아온 뒤 필요한 후속 작업을 이어갑니다.
 
 ## Failure Mode
 

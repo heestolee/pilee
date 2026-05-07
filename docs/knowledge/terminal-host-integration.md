@@ -14,12 +14,13 @@ applies_to:
   - extensions/notify
   - extensions/custom-style
   - extensions/mcp-bridge
+  - extensions/archive-to-html
 source:
   - pilee-history:2026-05-01#15
   - pilee-history:2026-05-03#26
   - pilee-history:2026-05-04#35
-reviewed_at: 2026-05-05
-reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
+reviewed_at: 2026-05-07
+reviewed_commit: 8b79c81704f67905fa6cecca9c6bb24e50c433c1
 related:
   - fork-panel-spatial-continuity
   - mcp-stderr-isolation
@@ -33,6 +34,10 @@ related:
 ## Adapter Rule
 
 새 탭, split, focus, notification, config reload는 host capability를 확인하고 fallback을 둡니다. 예를 들어 Cmd+T 동작은 working directory 설정만으로 충분하지 않고 tab inheritance 옵션도 같이 봐야 합니다. 알림은 OSC sequence보다 host에서 실제 동작하는 notifier를 우선합니다.
+
+## WebView/Open Rule
+
+Glimpse/WebView와 OS browser도 host입니다. static `file://` anchor가 브라우저에서는 동작해도 WebView에서는 기대대로 외부 open을 넘기지 않을 수 있습니다. preview/open 기능은 local server route, allowlisted realpath, host-side opener처럼 host adapter 경계를 명시해 구현합니다.
 
 ## Failure Mode
 

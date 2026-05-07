@@ -20,8 +20,8 @@ source:
   - pilee-history:2026-05-05#39
   - pilee-history:2026-05-05#51
   - pilee-history:2026-05-05#53
-reviewed_at: 2026-05-05
-reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
+reviewed_at: 2026-05-07
+reviewed_commit: 8b79c81704f67905fa6cecca9c6bb24e50c433c1
 related:
   - mcp-stderr-isolation
   - theme-information-hierarchy
@@ -35,6 +35,8 @@ TUI row에 들어가는 문자열은 저장된 preview, 외부 출력, 사용자
 ## Render Rule
 
 목록 row는 단일 행입니다. 렌더링 직전에 newline과 control char를 제거하고, 폭을 계산해 잘라야 합니다. 과거 저장 데이터가 multi-line이어도 migration에 기대지 말고 render boundary에서 정규화합니다.
+
+Panel label이나 model metadata처럼 짧아 보이는 값도 렌더링 경계에서는 문자열입니다. `P0 · model` 같은 affordance는 한 줄로 제한하고, 외부 값이 길어지거나 control char를 포함해도 editor layout을 깨지 않게 정규화합니다.
 
 ## Detail Rule
 

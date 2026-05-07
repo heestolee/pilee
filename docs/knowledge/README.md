@@ -67,9 +67,9 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [Self-healing은 actionable item만 수정한다](./self-healing-actionable-loop.md) | active | high | 2026-05-07 | 2a83750 | self-healing, actionable, worker, fix-class, subagent, 자동수정 |
-| [Stress Interview는 다축 검토다](./stress-interview-multi-axis-review.md) | active | high | 2026-05-07 | 74e15fc | stress-interview, review, verifier, reviewer, challenger, subagent |
-| [Codex-first subagent 모델 운용 정책](./subagent-model-policy.md) | active | high | 2026-05-05 | b730f16 | subagent, codex, model-policy, worker, finder, searcher |
-| [Subagent 위임은 구체 프롬프트를 요구한다](./subagent-prompt-specificity.md) | active | high | 2026-05-05 | 059f445 | subagent, prompt, delegation, worker, context, 위임 |
+| [Stress Interview는 다축 검토다](./stress-interview-multi-axis-review.md) | active | high | 2026-05-07 | 8b79c81 | stress-interview, review, verifier, reviewer, challenger, subagent |
+| [Codex-first subagent 모델 운용 정책](./subagent-model-policy.md) | active | high | 2026-05-07 | 8b79c81 | subagent, codex, model-policy, worker, finder, searcher |
+| [Subagent 위임은 구체 프롬프트를 요구한다](./subagent-prompt-specificity.md) | active | high | 2026-05-07 | 8b79c81 | subagent, prompt, delegation, worker, context, 위임 |
 | [Supervisor는 outcome guardrail이다](./supervisor-outcome-guardrail.md) | active | medium | 2026-05-05 | 059f445 | supervisor, outcome, guardrail, steering, agent |
 
 ### architecture
@@ -103,8 +103,8 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | high | 2026-05-07 | f97db77 | knowledge, journal, privacy, sanitized, doctrine, history |
 | [README는 knowledge coverage map이다](./readme-coverage-map.md) | active | high | 2026-05-07 | 67f2836 | knowledge, readme, coverage, graph, surface, todo |
 | [README 철학 변경은 사용자 판단 게이트를 지난다](./readme-philosophy-user-gate.md) | active | high | 2026-05-07 | 67f2836 | readme, philosophy, user-gate, public-facing, documentation, 판단 |
-| [Retro는 private reflection이다](./retro-private-reflection-boundary.md) | active | high | 2026-05-07 | 5474cf3 | retro, notion, reflection, private, journal, 회고 |
-| [reviewed_commit은 날짜 freshness의 빈틈을 막는다](./reviewed-commit-freshness.md) | active | high | 2026-05-07 | 5474cf3 | knowledge, reviewed-commit, reviewed-at, freshness, commit, 정합성 |
+| [Retro는 private reflection이다](./retro-private-reflection-boundary.md) | active | high | 2026-05-07 | 8b79c81 | retro, notion, reflection, private, journal, 회고 |
+| [reviewed_commit은 날짜 freshness의 빈틈을 막는다](./reviewed-commit-freshness.md) | active | high | 2026-05-07 | 8b79c81 | knowledge, reviewed-commit, reviewed-at, freshness, commit, 정합성 |
 
 ### review
 
@@ -118,7 +118,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 |---|---|---:|---:|---:|---|
 | [Deterministic fallback은 workflow를 보존한다](./deterministic-fallbacks-preserve-workflow.md) | active | high | 2026-05-07 | 2a83750 | fallback, deterministic, model-failure, resilience, web-search, report |
 | [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-05-07 | 67f2836 | mcp, stderr, stdio, terminal, tui, noise |
-| [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-05-05 | 059f445 | terminal, ghostty, applescript, notify, host, integration |
+| [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-05-07 | 8b79c81 | terminal, ghostty, applescript, notify, host, integration |
 
 ### ui
 
@@ -129,7 +129,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [User-facing 출력은 한국어를 기본으로 한다](./korean-first-user-facing-output.md) | active | high | 2026-05-07 | 67f2836 | korean-output, localization, web-search, ui, rewrite, 한국어 |
 | [색상은 정보 위계다](./theme-information-hierarchy.md) | active | high | 2026-05-07 | 74e15fc | theme, color, dim, muted, border, accent |
 | [도구 출력은 대화 흐름을 침범하지 않는다](./tool-output-noise-management.md) | active | high | 2026-05-05 | 059f445 | tool-output, collapse, noise, ui, usage, renderer |
-| [TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다](./tui-rendering-sanitization.md) | active | high | 2026-05-05 | 059f445 | tui, rendering, newline, ansi, sanitize, terminal |
+| [TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다](./tui-rendering-sanitization.md) | active | high | 2026-05-07 | 8b79c81 | tui, rendering, newline, ansi, sanitize, terminal |
 
 ### verification
 
@@ -137,7 +137,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 |---|---|---:|---:|---:|---|
 | [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-05-07 | 2a83750 | verify, evidence, gate, done, ready, verification |
 | [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-05-07 | 1b5b68d | frame, verify, frame-json, success-criteria, contract, verification |
-| [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-05-07 | ce5ea75 | verify, invalidation, code-change, freshness, gate, 검증 |
+| [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-05-07 | 8b79c81 | verify, invalidation, code-change, freshness, gate, 검증 |
 | [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | active | high | 2026-05-07 | f97db77 | verify-report, verification, evidence, coverage, capture, crop |
 
 ### web-access
