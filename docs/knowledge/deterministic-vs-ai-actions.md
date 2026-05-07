@@ -17,7 +17,7 @@ source:
   - pilee-history:2026-05-05#50
   - pilee-history:2026-05-05#52
 reviewed_at: 2026-05-07
-reviewed_commit: 311bf8a61efbc0bf67b5fc92b42a6ea1bb42620b
+reviewed_commit: 4a6253169b3af37b21490a71c773399df6e7464c
 related:
   - freshness-diagnosis-report
   - readme-coverage-map
