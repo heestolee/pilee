@@ -19,7 +19,7 @@ source:
   - pilee-history:2026-05-06#67
   - pilee-history:2026-05-07#73
 reviewed_at: 2026-05-07
-reviewed_commit: d12a52a300b52ef58f63f849a37f5b603a23ebc7
+reviewed_commit: 264ea1727c5c7defa23e8452c8c4ccd801959235
 related:
   - frame-planning-identity
   - frame-verify-contract
