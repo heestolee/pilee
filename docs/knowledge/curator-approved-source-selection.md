@@ -17,7 +17,7 @@ source:
   - pilee-history:2026-05-05#45
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: ce5ea75eb6b29355731d29f547a972ee62f2e262
+reviewed_commit: 67f2836035e8cbe0cab3e659bfce37cfd013ff9e
 related:
   - web-search-curator
   - live-artifact-preview-pattern
@@ -35,6 +35,10 @@ related:
 ## Evidence Rule
 
 승인형 검색에서 중요한 증거는 모델이 만든 요약문 자체가 아니라 사용자가 선택한 출처 집합입니다. archive나 PR 요약에는 승인된 출처와 선택 시점의 요약을 남기되, raw snippet을 길게 복사하거나 사용자가 보지 않은 결과를 근거로 섞지 않습니다.
+
+## Reopen Rule
+
+승인된 출처 집합은 나중에 다시 열 수 있어야 합니다. web-search review archive를 `/show-report`에서 열 때도 목록으로 돌아가거나 원본 HTML을 브라우저로 여는 조작이 가능해야 하며, static file link가 WebView에서 동작하지 않는 경우 host-side opener로 경계를 보강합니다.
 
 ## Failure Mode
 

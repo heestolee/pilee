@@ -16,7 +16,7 @@ source:
   - user-direction:2026-05-05-ember-branding
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: 74e15fcd9f1709efc1b06a1dbb0a1976216ad8c3
+reviewed_commit: 67f2836035e8cbe0cab3e659bfce37cfd013ff9e
 related:
   - pilee-knowledge-system
   - private-journal-public-doctrine
@@ -35,7 +35,7 @@ related:
 - CLI: `scripts/knowledge.mjs`
 - 운영 용어: `freshness`, `confidence`, `reviewed_commit`, `review queue`
 
-`/ember`는 이 구조 위에 얹는 friendly entrypoint다. 파이리의 작은 불꽃처럼, 아직 doctrine이 되지 않은 세션의 깨달음을 후보로 모으고(`collect`), 불길을 살피고(`tend`), 검토 queue를 정리하며(`review`), stale/review_needed 문서를 로컬 맥락으로 실제 해소한다(`resolve`). `resolve`는 public review queue를 실제 local update PR로 바꾸는 입구이며, 민감한 resolver 산출물은 로컬에만 둔다.
+`/ember`는 이 구조 위에 얹는 friendly entrypoint다. 파이리의 작은 불꽃처럼, 아직 doctrine이 되지 않은 세션의 깨달음을 후보로 모으고(`collect`), 불길을 살피고(`tend`), 검토 queue를 정리하며(`review`), stale/review_needed 문서를 로컬 맥락으로 실제 해소한다(`resolve`). `resolve`는 public review queue를 실제 local update PR로 바꾸는 입구이며, 민감한 resolver 산출물은 로컬에만 둔다. 초기 운영에서는 PR을 열고 사용자 review/merge를 기다리는 데서 멈춘다.
 
 ## 왜 full rename이 아닌가
 
@@ -51,6 +51,7 @@ related:
 - README의 짧은 소개 문구
 - 사용자 알림/도움말: "불씨를 knowledge 작업으로 이어갑니다"
 - 로컬 resolver 진입점: `/ember resolve`, 내부 명령은 `scripts/knowledge.mjs --resolve-stale`
+- resolver 결과 보고: PR URL, 검증 결과, 남은 freshness를 보여주고 merge는 사용자에게 맡김
 
 `knowledge`를 유지해야 하는 곳:
 

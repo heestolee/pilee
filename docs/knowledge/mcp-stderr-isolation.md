@@ -14,8 +14,8 @@ applies_to:
   - extensions/fork-panel
 source:
   - pilee-history:2026-05-05#53
-reviewed_at: 2026-05-05
-reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
+reviewed_at: 2026-05-07
+reviewed_commit: 67f2836035e8cbe0cab3e659bfce37cfd013ff9e
 related:
   - tui-rendering-sanitization
   - terminal-host-integration
