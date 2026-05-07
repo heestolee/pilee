@@ -151,7 +151,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [검토 산출물은 다시 열 수 있어야 한다](./artifact-archive-reopenability.md) | active | high | 2026-05-05 | 059f445 | artifact, archive, show-report, history, html, reopen |
+| [검토 산출물은 다시 열 수 있어야 한다](./artifact-archive-reopenability.md) | active | high | 2026-05-07 | b7bce3d | artifact, archive, show-report, history, html, reopen |
 | [AskUserQuestion은 의사결정 게이트다](./ask-user-question-decision-gates.md) | active | high | 2026-05-05 | 059f445 | ask-user-question, tft, decision-gate, question, non-delegable, 질문 |
 | [AskUserQuestion 옵션은 행동 분기를 표현한다](./ask-user-question-option-design.md) | active | high | 2026-05-06 | 8f5edee | ask-user-question, option, wording, ceremony, tft, 질문 |
 | [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | high | 2026-05-05 | 059f445 | backlog, tasks, provenance, source-session, session, 맥락 |
@@ -326,6 +326,7 @@ graph TD
   doc_web_search_curator --> doc_pilee_knowledge_system
   doc_web_search_curator --> doc_verify_report_workflow
   doc_artifact_archive_reopenability --> doc_backlog_source_session_provenance
+  doc_artifact_archive_reopenability --> doc_frame_studio_interactive_decision_ui
   doc_artifact_archive_reopenability --> doc_live_artifact_preview_pattern
   doc_artifact_archive_reopenability --> doc_verify_report_workflow
   doc_ask_user_question_decision_gates --> doc_ask_user_question_option_design
@@ -387,6 +388,6 @@ graph TD
 ## Review Metadata Summary
 
 - Documents: 57
-- Links: 147
+- Links: 148
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

@@ -7,6 +7,8 @@ tags:
   - history
   - html
   - reopen
+  - captures
+  - frame-studio
 category: workflow
 status: active
 applies_to:
@@ -19,12 +21,14 @@ source:
   - pilee-history:2026-05-05#47
   - pilee-history:2026-05-05#48
   - pilee-history:2026-05-05#51
-reviewed_at: 2026-05-05
-reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
+  - pilee-history:2026-05-07#74
+reviewed_at: 2026-05-07
+reviewed_commit: b7bce3d7eb20b8477de8f4d02ccbd5a0002c3b9e
 related:
   - live-artifact-preview-pattern
   - backlog-source-session-provenance
   - verify-report-workflow
+  - frame-studio-interactive-decision-ui
 ---
 
 ## Judgment
@@ -34,6 +38,16 @@ related:
 ## Archive Rule
 
 완료된 HTML report와 web search review는 workspace capture와 사용자 history archive에 저장합니다. `/show-report`는 최근 workspace 산출물과 archive를 함께 탐색할 수 있어야 하며, native viewer가 안 되면 browser fallback을 제공합니다.
+
+## Artifact Browser Rule
+
+artifact 종류가 늘어나면 한 목록에 섞지 않습니다. `/show-report`는 최소 세 축을 분리해서 보여줘야 합니다.
+
+1. 검증 리포트 — verify report와 web-search review 같은 HTML 판정/검토 산출물
+2. 기획 / Frame — Frame Studio transcript처럼 질문·선택·markdown 흐름이 남는 co-thinking 전문
+3. 캡처 / 미디어 — 아직 리포트로 묶이지 않았거나 원본 확인이 필요한 PNG/JPEG/GIF/WebP/SVG evidence
+
+이 구분은 “판정이 있는 리포트”, “생각 과정 전문”, “해석 전 원자료”를 섞지 않기 위한 정보 구조입니다.
 
 ## Failure Mode
 
