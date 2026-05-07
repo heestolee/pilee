@@ -14,11 +14,13 @@ applies_to:
   - extensions/web-access
   - extensions/archive-to-html
   - skills/verify-report
+  - extensions/frame-studio
   - show-report
 source:
   - pilee-history:2026-05-05#43
   - pilee-history:2026-05-05#44
   - pilee-history:2026-05-05#48
+  - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-05
 reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
 related:
@@ -34,6 +36,10 @@ related:
 ## Preview Rule
 
 진행 중 상태가 의미 있으면 local server와 SSE로 live preview를 보여주고, 완료 후에는 정적 HTML을 export합니다. 사용자는 Glimpse/브라우저에서 확인한 뒤 approve/upload/recapture/close 같은 명시 행동을 선택합니다.
+
+## Reopen Rule
+
+local preview first는 일회성 창을 뜻하지 않습니다. Verify Report, web search review, Frame Studio transcript처럼 검토·선택·증거가 남는 artifact는 `/show-report`나 identity-bound reopen 흐름으로 다시 열 수 있어야 합니다. live 상태를 보존할 수 없으면 최소한 정적 HTML/JSON transcript를 archive에 남깁니다.
 
 ## Boundary
 

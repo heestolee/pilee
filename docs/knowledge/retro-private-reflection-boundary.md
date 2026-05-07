@@ -14,6 +14,7 @@ applies_to:
   - docs/pilee-history
 source:
   - pilee-history:2026-05-01#16
+  - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-05
 reviewed_commit: 70468c2a01aa78453eb5a98cce65e9dc50822f39
 related:
@@ -28,6 +29,10 @@ Retro는 공개 doctrine을 바로 쓰는 기능이 아니라 private reflection
 ## Boundary Rule
 
 `/retro`는 불러오기, 대화로 다듬기, private 저장소 반영을 담당합니다. 그 안에서 재사용 가능한 설계 판단이 생겼을 때만 별도로 knowledge 승격을 검토합니다.
+
+## Automation Boundary
+
+회고 자동화나 resolver가 private reflection을 읽을 수는 있지만, 그 결과를 그대로 public doctrine에 옮기지 않습니다. public knowledge로 승격되는 것은 감정·사건·세션 전문이 아니라 반복 가능한 운영 판단입니다. 로컬 로그는 private reflection의 탐색 기록이고, PR은 sanitized 결론의 배포 단위입니다.
 
 ## Failure Mode
 
