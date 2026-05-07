@@ -9,6 +9,7 @@ tags:
   - reopen
   - captures
   - frame-studio
+  - conductor
 category: workflow
 status: active
 applies_to:
@@ -23,6 +24,7 @@ source:
   - pilee-history:2026-05-05#51
   - pilee-history:2026-05-07#74
   - user-direction:2026-05-07-local-resolver
+  - user-direction:2026-05-07-conductor-history-artifact-browser
 reviewed_at: 2026-05-07
 reviewed_commit: 5c159643423f4474d7aadbf3edf8481d2b09be47
 related:
@@ -63,6 +65,12 @@ artifact 종류가 늘어나면 한 목록에 섞지 않습니다. `/show-report
 캡처 / 미디어 축은 raw file을 평면 목록으로만 보여주지 않습니다. workspace 단위로 먼저 묶고, 가능하면 Jira ticket/title, session title, Frame identity를 label로 사용해 “어떤 작업의 원자료인가”를 보여줍니다. 사용자는 group card에서 폴더를 열듯 drill-down한 뒤 개별 이미지/GIF/WebP/SVG를 확인합니다.
 
 metadata가 없으면 workspace fallback이나 미분류 group으로 남깁니다. 그룹화는 raw evidence를 판정 리포트로 승격하는 것이 아니라, 많은 캡처가 쌓였을 때 재탐색 가능한 구조를 제공하는 것입니다.
+
+## Conductor History Rule
+
+Conductor에서 복구한 worktree는 artifact보다 상위의 “작업 이력 단위”로 볼 수 있어야 합니다. `/show-report`는 전역 artifact 탭을 유지하되, 별도 `컨덕터 이력` 탭에서 worktree별 보존 context를 먼저 보여주고 그 아래에 관련 검증 리포트, Frame 전문, 캡처 미디어를 하위 섹션으로 묶습니다.
+
+`/wt resume`으로 복구되어 `.pi/conductor-context.loaded.md`가 남아 있는 worktree는 workspace fallback보다 강한 provenance로 취급합니다. 이력 카드에는 ticket/title/branch/status/session id 같은 요약 metadata와 이전 사용자 요청 목록을 보여주되, 원본 Conductor JSONL은 전체 내용을 inline으로 펼치지 않고 allowlisted host-side open/preview로 연결합니다. 큰 원본 세션은 truncate preview와 browser open을 분리해 WebView가 과도한 raw transcript를 직접 삼키지 않게 합니다.
 
 ## Failure Mode
 
