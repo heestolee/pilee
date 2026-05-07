@@ -23,7 +23,7 @@ source:
   - pilee-history:2026-05-05#46
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: 5c159643423f4474d7aadbf3edf8481d2b09be47
+reviewed_commit: a71a69823804a1b6f7ffc9118a7b0c750fc066ba
 related:
   - verify-report-workflow
   - pilee-knowledge-system
