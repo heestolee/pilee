@@ -28,6 +28,7 @@ source:
   - pilee-history:2026-05-05#48
   - pilee-history:2026-05-06#68
   - pilee-history:2026-05-06#69
+  - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-06
 reviewed_commit: 39f8acfe995b16c7ca0f2693af3fb020f5148bfd
 related:
@@ -35,6 +36,7 @@ related:
   - web-search-curator
   - evidence-first-verification-gate
   - live-artifact-preview-pattern
+  - artifact-archive-reopenability
 supersedes:
   - make-report-confirm-only-upload-flow
 ---
@@ -64,6 +66,10 @@ live preview는 [web-search-curator](./web-search-curator.md)의 “작업 중 G
 Primary evidence는 검증 포인트가 바로 보이는 viewport/section/element crop이어야 합니다. Before/after가 필요한 항목은 `Before — ...`, `After — ...` label로 같은 item에 넣어 비교되게 합니다. Full-page나 세로로 긴 스크롤 캡처는 supporting context로만 사용하고, 리포트에서는 토글/details/appendix/link 뒤에 둡니다.
 
 긴 캡처를 그대로 본문에 펼치면 리뷰어가 실제 검증 지점을 찾기 어렵습니다. 따라서 Verify Report는 “전체 페이지를 찍었다”보다 “어떤 영역에서 무엇을 확인했는가”를 우선합니다.
+
+## Reopen Rule
+
+완료된 report는 `/show-report`의 검증 리포트 축에서 다시 열 수 있어야 합니다. Frame transcript나 원본 media와 섞지 말고, 판정이 있는 report 자체를 재검토 가능한 artifact로 남깁니다. 원본 evidence를 열어야 할 때는 browser/WebView의 static link 동작에 기대지 않고 artifact browser의 host-side open 흐름을 사용합니다.
 
 ## Decision Rules
 

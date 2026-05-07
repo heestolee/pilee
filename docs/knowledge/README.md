@@ -316,6 +316,7 @@ graph TD
   doc_frame_verify_contract --> doc_verification_invalidation_on_change
   doc_verification_invalidation_on_change --> doc_evidence_first_verification_gate
   doc_verification_invalidation_on_change --> doc_frame_verify_contract
+  doc_verify_report_workflow --> doc_artifact_archive_reopenability
   doc_verify_report_workflow --> doc_evidence_first_verification_gate
   doc_verify_report_workflow --> doc_live_artifact_preview_pattern
   doc_verify_report_workflow --> doc_pilee_knowledge_system
@@ -388,6 +389,6 @@ graph TD
 ## Review Metadata Summary
 
 - Documents: 57
-- Links: 148
+- Links: 149
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
