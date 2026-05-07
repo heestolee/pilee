@@ -568,6 +568,7 @@ function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData,
 			}
 			if (req.method === "POST" && url.pathname === "/open") {
 				const requested = url.searchParams.get("path") || "";
+				const target = url.searchParams.get("target") === "browser" ? "browser" : "glimpse";
 				let resolved = "";
 				try { resolved = fs.realpathSync(requested); } catch {}
 				if (!resolved || !allowedPaths.has(resolved)) {
@@ -575,9 +576,9 @@ function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData,
 					res.end(JSON.stringify({ ok: false, error: "Path is not in this Artifact Browser." }));
 					return;
 				}
-				await openInSystemBrowser(pi, resolved);
+				const mode = await openAnyArtifact(pi, resolved, target === "browser");
 				res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-				res.end(JSON.stringify({ ok: true }));
+				res.end(JSON.stringify({ ok: true, mode }));
 				return;
 			}
 			res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
@@ -787,23 +788,24 @@ function reportSourceLabel(source: ReportEntry["source"]): string {
 	return "archive";
 }
 
-function openOriginalButton(filePath: string, label = "원본 열기"): string {
-	return `<button class="button open-original" type="button" data-path="${escapeAttr(filePath)}">${escapeHtml(label)}</button>`;
+function artifactOpenButtons(filePath: string): string {
+	const escapedPath = escapeAttr(filePath);
+	return `<button class="button open-artifact" type="button" data-target="glimpse" data-path="${escapedPath}">열기</button><button class="button open-artifact" type="button" data-target="browser" data-path="${escapedPath}">브라우저에서 열기</button>`;
 }
 
 function renderReportCards(reports: ReportEntry[]): string {
 	if (!reports.length) return `<div class="empty">검증 리포트나 web-search review가 없습니다.</div>`;
-	return `<div class="grid">${reports.map((r) => `<article class="card searchable" data-search="${escapeAttr(`${r.name} ${r.ticket} ${r.source}`.toLowerCase())}"><h3>${escapeHtml(r.name)}</h3><div class="meta"><span class="badge">${escapeHtml(reportSourceLabel(r.source))}</span><span class="badge">${escapeHtml(r.time)}</span>${r.ticket ? `<span class="badge">${escapeHtml(r.ticket)}</span>` : ""}</div><div class="path">${escapeHtml(r.path)}</div><div class="actions">${openOriginalButton(r.path)}</div></article>`).join("\n")}</div>`;
+	return `<div class="grid">${reports.map((r) => `<article class="card searchable" data-search="${escapeAttr(`${r.name} ${r.ticket} ${r.source}`.toLowerCase())}"><h3>${escapeHtml(r.name)}</h3><div class="meta"><span class="badge">${escapeHtml(reportSourceLabel(r.source))}</span><span class="badge">${escapeHtml(r.time)}</span>${r.ticket ? `<span class="badge">${escapeHtml(r.ticket)}</span>` : ""}</div><div class="path">${escapeHtml(r.path)}</div><div class="actions">${artifactOpenButtons(r.path)}</div></article>`).join("\n")}</div>`;
 }
 
 function renderFrameCards(frames: FrameTranscriptEntry[]): string {
 	if (!frames.length) return `<div class="empty">저장된 Frame Studio 전문이 없습니다.</div>`;
-	return `<div class="grid">${frames.map((f) => `<article class="card searchable" data-search="${escapeAttr(`${f.title} ${f.identity} ${f.mode}`.toLowerCase())}"><h3>${escapeHtml(f.title)}</h3><div class="meta"><span class="badge">${escapeHtml(f.mode)}</span><span class="badge">${escapeHtml(f.time)}</span><span class="badge">${f.timeline.length} entries</span></div><div class="path">${escapeHtml(f.identity)}</div><details><summary>Frame 전문 미리보기</summary><div class="timeline">${renderFrameTimeline(f.timeline)}</div></details><div class="actions">${openOriginalButton(f.path, "JSON 열기")}</div></article>`).join("\n")}</div>`;
+	return `<div class="grid">${frames.map((f) => `<article class="card searchable" data-search="${escapeAttr(`${f.title} ${f.identity} ${f.mode}`.toLowerCase())}"><h3>${escapeHtml(f.title)}</h3><div class="meta"><span class="badge">${escapeHtml(f.mode)}</span><span class="badge">${escapeHtml(f.time)}</span><span class="badge">${f.timeline.length} entries</span></div><div class="path">${escapeHtml(f.identity)}</div><details><summary>Frame 전문 미리보기</summary><div class="timeline">${renderFrameTimeline(f.timeline)}</div></details><div class="actions">${artifactOpenButtons(f.path)}</div></article>`).join("\n")}</div>`;
 }
 
 function renderCaptureCards(captures: CaptureEntry[]): string {
 	if (!captures.length) return `<div class="empty">캡처 이미지가 없습니다. 현재 cwd와 home의 .context/work/captures를 확인합니다.</div>`;
-	return `<div class="grid">${captures.map((c) => { const src = mediaDataUri(c.path); return `<article class="card searchable" data-search="${escapeAttr(`${c.name} ${c.source}`.toLowerCase())}"><div class="thumb">${src ? `<img src="${src}" alt="${escapeAttr(c.name)}" loading="lazy">` : `<span class="muted">${escapeHtml(formatBytes(c.size))}</span>`}</div><h3>${escapeHtml(path.basename(c.path))}</h3><div class="meta"><span class="badge">${escapeHtml(c.source)}</span><span class="badge">${escapeHtml(c.time)}</span><span class="badge">${escapeHtml(formatBytes(c.size))}</span></div><div class="path">${escapeHtml(c.name)}</div><div class="actions">${openOriginalButton(c.path)}</div></article>`; }).join("\n")}</div>`;
+	return `<div class="grid">${captures.map((c) => { const src = mediaDataUri(c.path); return `<article class="card searchable" data-search="${escapeAttr(`${c.name} ${c.source}`.toLowerCase())}"><div class="thumb">${src ? `<img src="${src}" alt="${escapeAttr(c.name)}" loading="lazy">` : `<span class="muted">${escapeHtml(formatBytes(c.size))}</span>`}</div><h3>${escapeHtml(path.basename(c.path))}</h3><div class="meta"><span class="badge">${escapeHtml(c.source)}</span><span class="badge">${escapeHtml(c.time)}</span><span class="badge">${escapeHtml(formatBytes(c.size))}</span></div><div class="path">${escapeHtml(c.name)}</div><div class="actions">${artifactOpenButtons(c.path)}</div></article>`; }).join("\n")}</div>`;
 }
 
 function buildArtifactBrowserHtml(data: ArtifactBrowserData, cwd: string): string {
@@ -811,8 +813,8 @@ function buildArtifactBrowserHtml(data: ArtifactBrowserData, cwd: string): strin
 	return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>pilee Artifact Browser</title>${artifactBrowserStyle()}</head><body><main class="shell"><header class="hero"><div class="kicker">🗂️ pilee Artifact Browser</div><h1>산출물 다시 보기</h1><p>검증 리포트, Frame 기획 전문, 캡처 미디어를 탭으로 분리해서 봅니다.</p><div class="meta"><span class="badge">cwd ${escapeHtml(cwd)}</span><span class="badge">generated ${escapeHtml(data.generatedAt.toLocaleString())}</span></div></header><input id="search" class="search" type="search" placeholder="현재 탭에서 검색: 이름, 티켓, identity, source" oninput="filterCards()"><nav class="tabs"><button class="tab" data-tab="reports" onclick="showTab('reports')">검증 리포트 <strong>${data.reports.length}</strong></button><button class="tab" data-tab="frames" onclick="showTab('frames')">기획 / Frame <strong>${data.frames.length}</strong></button><button class="tab" data-tab="captures" onclick="showTab('captures')">캡처 / 미디어 <strong>${data.captures.length}</strong></button></nav><section id="tab-reports" class="panel">${renderReportCards(data.reports)}</section><section id="tab-frames" class="panel">${renderFrameCards(data.frames)}</section><section id="tab-captures" class="panel">${renderCaptureCards(data.captures)}</section></main><script>
 	function showTab(name){document.querySelectorAll('.tab').forEach(function(el){el.classList.toggle('active',el.dataset.tab===name)});document.querySelectorAll('.panel').forEach(function(el){el.classList.toggle('active',el.id==='tab-'+name)});window.currentTab=name;filterCards();}
 	function filterCards(){var q=(document.getElementById('search').value||'').toLowerCase().trim();var panel=document.getElementById('tab-'+(window.currentTab||'${initialTab}'));if(!panel)return;panel.querySelectorAll('.searchable').forEach(function(card){card.style.display=!q||String(card.dataset.search||'').indexOf(q)>=0?'':'none';});}
-	async function openOriginal(button){var path=button.dataset.path||'';var label=button.textContent;button.disabled=true;button.textContent='여는 중...';try{var res=await fetch('/open?path='+encodeURIComponent(path),{method:'POST'});if(!res.ok)throw new Error(await res.text());button.textContent='열기 요청됨';setTimeout(function(){button.textContent=label;button.disabled=false;},1400);}catch(e){button.textContent='열기 실패';button.title=String(e&&e.message||e);setTimeout(function(){button.textContent=label;button.disabled=false;},2200);}}
-	document.addEventListener('click',function(ev){var button=ev.target&&ev.target.closest?ev.target.closest('.open-original'):null;if(button){ev.preventDefault();openOriginal(button);}});
+	async function openArtifact(button){var path=button.dataset.path||'';var target=button.dataset.target||'glimpse';var label=button.textContent;button.disabled=true;button.textContent=target==='browser'?'브라우저 여는 중...':'Glimpse 여는 중...';try{var res=await fetch('/open?path='+encodeURIComponent(path)+'&target='+encodeURIComponent(target),{method:'POST'});if(!res.ok)throw new Error(await res.text());button.textContent='열기 요청됨';setTimeout(function(){button.textContent=label;button.disabled=false;},1400);}catch(e){button.textContent='열기 실패';button.title=String(e&&e.message||e);setTimeout(function(){button.textContent=label;button.disabled=false;},2200);}}
+	document.addEventListener('click',function(ev){var button=ev.target&&ev.target.closest?ev.target.closest('.open-artifact'):null;if(button){ev.preventDefault();openArtifact(button);}});
 	showTab('${initialTab}');
 	</script></body></html>`;
 }
