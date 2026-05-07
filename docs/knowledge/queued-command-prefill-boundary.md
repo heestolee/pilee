@@ -18,8 +18,8 @@ applies_to:
 source:
   - pilee-history:2026-05-05#41
   - user-direction:2026-05-07-local-resolver
-reviewed_at: 2026-05-05
-reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
+reviewed_at: 2026-05-07
+reviewed_commit: 74e15fcd9f1709efc1b06a1dbb0a1976216ad8c3
 related:
   - worktree-execution-boundary
   - session-identity-over-filenames
