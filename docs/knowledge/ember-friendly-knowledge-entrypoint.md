@@ -7,6 +7,7 @@ tags:
   - knowledge
 category: knowledge
 status: active
+confidence: high
 applies_to:
   - extensions/ember
   - skills/pilee-knowledge
@@ -16,7 +17,7 @@ source:
   - user-direction:2026-05-05-ember-branding
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: f1480c7b2a651eb5eba20709293b9839f4f91587
+reviewed_commit: 8d9e16032607ce07b62d1135ccf3778fdea976f8
 related:
   - pilee-knowledge-system
   - private-journal-public-doctrine

@@ -9,6 +9,7 @@ tags:
   - 문서
 category: knowledge
 status: active
+confidence: high
 applies_to:
   - docs/knowledge
   - skills/pilee-knowledge
@@ -18,7 +19,7 @@ source:
   - session-backfill:2026-05-05#judgment-unit
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: 67f2836035e8cbe0cab3e659bfce37cfd013ff9e
+reviewed_commit: 8d9e16032607ce07b62d1135ccf3778fdea976f8
 related:
   - private-journal-public-doctrine
   - readme-coverage-map

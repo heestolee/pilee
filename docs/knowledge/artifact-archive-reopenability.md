@@ -27,7 +27,7 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-07-conductor-history-artifact-browser
 reviewed_at: 2026-05-07
-reviewed_commit: ce6c2b04f7774e2da5e7aa4df9114959429b22d7
+reviewed_commit: ac006c257bd1c0be399793afd4ca1512e5ba4704
 related:
   - live-artifact-preview-pattern
   - backlog-source-session-provenance
@@ -87,6 +87,10 @@ Pi/Conductor session JSONL은 raw UTF-8 원본입니다. Artifact Browser previe
 Conductor master 탭은 profile이 지정한 원본 project JSONL만 믿지 않습니다. Conductor DB `session_messages`의 user 요청을 함께 preview로 보여줘야 원본 JSONL 파일이 없거나 일부 workspace source lookup이 실패해도 작업 의도를 잃지 않습니다. DB preview는 요청 요약/탐색 보조이고, 전체 대화 근거는 원본 Conductor 세션 전문 export/open으로 분리합니다.
 
 세션 전문 보기는 `/backlog`의 source-session export 방식과 같은 `pi --export <sessionFile> <outputPath>` 렌더러를 재사용합니다. Pi session JSONL은 그대로 export하고, Conductor/Claude JSONL은 원본 파일을 직접 export하지 않습니다. 먼저 로컬 `session-exports/show-report/normalized` 아래에 Pi-compatible session JSONL로 변환한 뒤 exporter에 넘깁니다. 이 guard가 없으면 Pi exporter가 session header 없는 raw JSONL을 열면서 원본을 새 Pi session header로 덮어쓸 수 있습니다.
+
+세션 export HTML은 사람이 읽는 기본값이 되어야 합니다. `Default`가 tool result를 거의 모두 포함해 `All`과 비슷해지는 세션에서는 `No-tools`를 기본 filter로 열고, sidebar/tree filter와 본문 path 렌더링도 같은 filter를 따라야 합니다. 사용자가 tool 결과가 필요한 순간에만 `Default`/`All`로 확장하는 것이 session 전문의 정보 위계를 지킵니다.
+
+세션 export는 source session의 realpath, size, mtime, cache version으로 캐시합니다. 원본이 바뀌지 않았고 cache version이 같으면 기존 HTML을 재사용해 반복 열기를 빠르게 합니다. exporter UI나 post-process 규칙이 바뀌면 cache version을 올려 stale HTML을 자동 무효화합니다.
 
 `브라우저에서 열기`는 macOS file association에 맡기지 않습니다. `.jsonl`처럼 기본 앱이 없어 `open <file>`이 실패할 수 있으므로, session JSONL은 export된 HTML 전문 파일을 열고, 일반 artifact는 Artifact Browser의 allowlisted localhost `/preview?path=...&full=1` URL을 외부 브라우저로 엽니다. 직접 `/show-report --browser <session.jsonl>`로 연 경우에도 원본 파일을 바로 `open`하지 않고 export된 HTML을 열어야 합니다. 이렇게 하면 원본 경계는 유지하면서도 브라우저 버튼이 파일 확장자에 의존하지 않습니다.
 

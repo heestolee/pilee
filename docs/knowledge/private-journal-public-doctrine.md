@@ -9,6 +9,7 @@ tags:
   - history
 category: knowledge
 status: active
+confidence: high
 applies_to:
   - docs/knowledge
   - skills/pilee-knowledge
@@ -17,7 +18,7 @@ source:
   - pilee-history:2026-05-05#49
   - pilee-history:2026-05-05#52
 reviewed_at: 2026-05-07
-reviewed_commit: ce6c2b04f7774e2da5e7aa4df9114959429b22d7
+reviewed_commit: 8d9e16032607ce07b62d1135ccf3778fdea976f8
 related:
   - pilee-knowledge-system
   - judgment-doc-unit

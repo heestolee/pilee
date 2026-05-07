@@ -9,6 +9,7 @@ tags:
   - renderer
 category: ui
 status: active
+confidence: high
 applies_to:
   - extensions/claude-code-ui
   - extensions/tool-group-renderer
@@ -18,7 +19,7 @@ source:
   - pilee-history:2026-05-01#13
   - pilee-history:2026-05-01#19
 reviewed_at: 2026-05-07
-reviewed_commit: ce6c2b04f7774e2da5e7aa4df9114959429b22d7
+reviewed_commit: 8d9e16032607ce07b62d1135ccf3778fdea976f8
 related:
   - tui-rendering-sanitization
   - mcp-stderr-isolation

@@ -9,6 +9,7 @@ tags:
   - 정합성
 category: knowledge
 status: active
+confidence: high
 applies_to:
   - docs/knowledge
   - scripts/knowledge.mjs
@@ -17,7 +18,7 @@ source:
   - pilee-history:2026-05-05#50
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: 8b79c81704f67905fa6cecca9c6bb24e50c433c1
+reviewed_commit: 8d9e16032607ce07b62d1135ccf3778fdea976f8
 related:
   - freshness-diagnosis-report
   - deterministic-vs-ai-actions

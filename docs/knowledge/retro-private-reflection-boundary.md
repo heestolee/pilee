@@ -9,6 +9,7 @@ tags:
   - 회고
 category: knowledge
 status: active
+confidence: high
 applies_to:
   - extensions/retro
   - docs/pilee-history
@@ -16,7 +17,7 @@ source:
   - pilee-history:2026-05-01#16
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: ce6c2b04f7774e2da5e7aa4df9114959429b22d7
+reviewed_commit: 8d9e16032607ce07b62d1135ccf3778fdea976f8
 related:
   - private-journal-public-doctrine
   - artifact-archive-reopenability
