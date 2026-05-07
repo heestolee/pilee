@@ -15,7 +15,7 @@ applies_to:
 source:
   - pilee-history:2026-05-01#workflow-analysis
 reviewed_at: 2026-05-07
-reviewed_commit: 1a0093b1c3b3917e504de299e97d7c68ad79932b
+reviewed_commit: 494055a6b74a41b899a367ba7bb22c94e978ea3c
 related:
   - ask-user-question-decision-gates
   - subagent-prompt-specificity

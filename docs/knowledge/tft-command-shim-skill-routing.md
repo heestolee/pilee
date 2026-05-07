@@ -18,7 +18,7 @@ source:
   - pilee-history:2026-05-06#63
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: ce5ea75eb6b29355731d29f547a972ee62f2e262
+reviewed_commit: 494055a6b74a41b899a367ba7bb22c94e978ea3c
 related:
   - skills-as-portable-procedures
   - frame-verify-contract
