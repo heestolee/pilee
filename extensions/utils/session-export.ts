@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { basename, join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -40,12 +40,24 @@ export function sessionExportPath(sessionFile: string, options: { outputDir?: st
 	return join(outputDir, filename);
 }
 
+export function isPiSessionFile(sessionFile: string): boolean {
+	try {
+		for (const line of readFileSync(sessionFile, "utf-8").split(/\r?\n/).slice(0, 5)) {
+			if (!line.trim()) continue;
+			const first = JSON.parse(line) as Record<string, unknown>;
+			return first.type === "session" && typeof first.id === "string";
+		}
+	} catch {}
+	return false;
+}
+
 export async function exportSessionFileToHtml(
 	pi: ExtensionAPI,
 	sessionFile: string,
 	options: { outputDir?: string; filenamePrefix?: string } = {},
 ): Promise<string> {
 	if (!existsSync(sessionFile)) throw new Error(`세션 파일을 찾을 수 없습니다: ${displayPath(sessionFile)}`);
+	if (!isPiSessionFile(sessionFile)) throw new Error(`Pi session JSONL만 HTML export할 수 있습니다: ${displayPath(sessionFile)}`);
 	const outputPath = sessionExportPath(sessionFile, options);
 	mkdirSync(options.outputDir ?? SESSION_EXPORT_DIR, { recursive: true });
 	const cliPath = process.argv[1] && existsSync(process.argv[1]) ? process.argv[1] : undefined;

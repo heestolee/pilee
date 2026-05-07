@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import { createServer, type Server } from "node:http";
 import { createRequire } from "node:module";
@@ -6,10 +7,13 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ToolResultEvent } from "@mariozechner/pi-coding-agent";
+import { exportSessionFileToHtml, isPiSessionFile, openFile, SESSION_EXPORT_DIR } from "../utils/session-export.js";
 import { registerVerifyReportLive } from "./verify-report-live.js";
 
 const ARCHIVE_DIR = path.join(os.homedir(), "Documents", "agent-history", "분류 전");
 const FRAME_TRANSCRIPTS_DIR = path.join(os.homedir(), ".pi", "agent", "frame-studio", "transcripts");
+const SHOW_REPORT_SESSION_EXPORT_DIR = path.join(SESSION_EXPORT_DIR, "show-report");
+const NORMALIZED_CONDUCTOR_SESSION_DIR = path.join(SHOW_REPORT_SESSION_EXPORT_DIR, "normalized");
 const CONDUCTOR_DB = path.join(os.homedir(), "Library", "Application Support", "com.conductor.app", "conductor.db");
 const FONT_SIGNATURE = "Noto+Serif+KR";
 const REPORT_SIGNATURE = "Verify Report";
@@ -310,6 +314,186 @@ function looksLikeSessionNoise(text: string): boolean {
 		|| trimmed.includes("<!--PI_DYNAMIC_SCOPE_START-->");
 }
 
+function isPiSessionJsonl(filePath: string): boolean {
+	return isPiSessionFile(filePath);
+}
+
+function stableHash(value: string): string {
+	return createHash("sha1").update(value).digest("hex").slice(0, 12);
+}
+
+function piEntryId(seed: string, index: number): string {
+	return createHash("sha1").update(`${seed}:${index}`).digest("hex").slice(0, 8);
+}
+
+function firstTextFromUnknown(value: unknown): string {
+	if (typeof value === "string") return value;
+	if (Array.isArray(value)) return value.map((item) => {
+		if (typeof item === "string") return item;
+		if (!item || typeof item !== "object") return "";
+		const record = item as Record<string, unknown>;
+		if (typeof record.text === "string") return record.text;
+		if (typeof record.content === "string") return record.content;
+		return "";
+	}).filter(Boolean).join("\n\n");
+	return "";
+}
+
+function conductorCwdFromPath(filePath: string): string {
+	const marker = `${path.sep}.claude${path.sep}projects${path.sep}`;
+	const idx = filePath.indexOf(marker);
+	if (idx < 0) return os.homedir();
+	const dirName = filePath.slice(idx + marker.length).split(path.sep)[0] ?? "";
+	const prefix = "-Users-changheelee-conductor-workspaces-";
+	if (!dirName.startsWith(prefix)) return os.homedir();
+	const tail = dirName.slice(prefix.length);
+	const repoMatch = tail.match(/^(product|lambda)-(.+)$/);
+	if (repoMatch) return path.join(os.homedir(), "conductor", "workspaces", repoMatch[1], repoMatch[2]);
+	return path.join(os.homedir(), "conductor", "workspaces", tail);
+}
+
+interface NormalizeState {
+	seed: string;
+	counter: number;
+	parentId: string;
+	entries: Record<string, unknown>[];
+	toolNames: Map<string, string>;
+	userTexts: Set<string>;
+}
+
+function appendPiMessage(state: NormalizeState, role: string, content: unknown, timestamp: string, extra: Record<string, unknown> = {}) {
+	const id = piEntryId(state.seed, state.counter++);
+	state.entries.push({
+		type: "message",
+		id,
+		parentId: state.parentId,
+		timestamp,
+		message: {
+			role,
+			content,
+			timestamp: Date.parse(timestamp) || undefined,
+			...extra,
+		},
+	});
+	state.parentId = id;
+}
+
+function appendPiUserText(state: NormalizeState, text: string, timestamp: string, dedupe = false) {
+	const normalized = text.trim();
+	if (looksLikeSessionNoise(normalized)) return;
+	if (dedupe && state.userTexts.has(normalized)) return;
+	state.userTexts.add(normalized);
+	appendPiMessage(state, "user", [{ type: "text", text: normalized }], timestamp);
+}
+
+function normalizeToolResultContent(content: unknown): Array<Record<string, unknown>> {
+	const text = firstTextFromUnknown(content).trim();
+	if (text) return [{ type: "text", text }];
+	return [{ type: "text", text: typeof content === "undefined" ? "" : JSON.stringify(content, null, 2) }];
+}
+
+function appendConductorUserRecord(state: NormalizeState, record: Record<string, unknown>, timestamp: string) {
+	const message = record.message && typeof record.message === "object" ? record.message as Record<string, unknown> : { content: record.content };
+	const content = message.content;
+	if (Array.isArray(content)) {
+		const textParts: string[] = [];
+		for (const block of content) {
+			if (!block || typeof block !== "object") continue;
+			const item = block as Record<string, unknown>;
+			if (item.type === "text" && typeof item.text === "string") textParts.push(item.text);
+			if (item.type === "tool_result") {
+				const toolCallId = String(item.tool_use_id || "");
+				appendPiMessage(state, "toolResult", normalizeToolResultContent(item.content), timestamp, {
+					toolCallId,
+					toolName: state.toolNames.get(toolCallId) || "",
+					isError: Boolean(item.is_error),
+				});
+			}
+		}
+		const text = textParts.join("\n\n").trim();
+		if (text) appendPiUserText(state, text, timestamp);
+		return;
+	}
+	appendPiUserText(state, firstTextFromUnknown(content), timestamp);
+}
+
+function appendConductorAssistantRecord(state: NormalizeState, record: Record<string, unknown>, timestamp: string) {
+	const message = record.message && typeof record.message === "object" ? record.message as Record<string, unknown> : { content: record.content };
+	const rawContent = message.content;
+	if (!Array.isArray(rawContent)) {
+		const text = firstTextFromUnknown(rawContent).trim();
+		if (text && !looksLikeSessionNoise(text)) appendPiMessage(state, "assistant", [{ type: "text", text }], timestamp, { model: message.model });
+		return;
+	}
+	const content: Array<Record<string, unknown>> = [];
+	for (const block of rawContent) {
+		if (!block || typeof block !== "object") continue;
+		const item = block as Record<string, unknown>;
+		if (item.type === "text" && typeof item.text === "string" && item.text.trim()) {
+			content.push({ type: "text", text: item.text });
+		} else if (item.type === "thinking" && typeof item.thinking === "string" && item.thinking.trim()) {
+			content.push({ type: "thinking", thinking: item.thinking });
+		} else if (item.type === "tool_use") {
+			const id = String(item.id || piEntryId(state.seed, state.counter));
+			const name = String(item.name || "tool");
+			state.toolNames.set(id, name);
+			content.push({ type: "toolCall", id, name, arguments: item.input ?? {} });
+		}
+	}
+	if (content.length) appendPiMessage(state, "assistant", content, timestamp, { model: message.model, stopReason: message.stop_reason });
+}
+
+function normalizeConductorJsonlForExport(filePath: string): string {
+	const stat = fs.statSync(filePath);
+	const seed = stableHash(`${filePath}:${stat.mtimeMs}:${stat.size}`);
+	fs.mkdirSync(NORMALIZED_CONDUCTOR_SESSION_DIR, { recursive: true });
+	const normalizedPath = path.join(NORMALIZED_CONDUCTOR_SESSION_DIR, `conductor-${path.basename(filePath, ".jsonl")}-${seed}.jsonl`);
+	if (fs.existsSync(normalizedPath)) return normalizedPath;
+	const header = {
+		type: "session",
+		version: 3,
+		id: `conductor-${seed}`,
+		timestamp: new Date(Number.isFinite(stat.birthtimeMs) && stat.birthtimeMs > 0 ? stat.birthtimeMs : stat.mtimeMs).toISOString(),
+		cwd: conductorCwdFromPath(filePath),
+		parentSession: filePath,
+	};
+	const state: NormalizeState = {
+		seed,
+		counter: 1,
+		parentId: header.id,
+		entries: [],
+		toolNames: new Map<string, string>(),
+		userTexts: new Set<string>(),
+	};
+	for (const line of fs.readFileSync(filePath, "utf-8").split(/\r?\n/)) {
+		if (!line.trim()) continue;
+		let record: Record<string, unknown>;
+		try { record = JSON.parse(line) as Record<string, unknown>; } catch { continue; }
+		const timestamp = typeof record.timestamp === "string" ? record.timestamp : header.timestamp;
+		if (record.type === "last-prompt" && typeof record.lastPrompt === "string") {
+			appendPiUserText(state, record.lastPrompt, timestamp, true);
+			continue;
+		}
+		const message = record.message && typeof record.message === "object" ? record.message as Record<string, unknown> : undefined;
+		const role = String(message?.role || record.type || "");
+		if (role === "user") appendConductorUserRecord(state, record, timestamp);
+		else if (role === "assistant") appendConductorAssistantRecord(state, record, timestamp);
+	}
+	const lines = [header, ...state.entries].map((entry) => JSON.stringify(entry)).join("\n");
+	fs.writeFileSync(normalizedPath, `${lines}\n`, "utf-8");
+	return normalizedPath;
+}
+
+function sessionExportInputPath(filePath: string): string {
+	return isPiSessionJsonl(filePath) ? filePath : normalizeConductorJsonlForExport(filePath);
+}
+
+async function exportSessionArtifactToHtml(pi: ExtensionAPI, filePath: string): Promise<string> {
+	const exportInput = sessionExportInputPath(filePath);
+	const prefix = isPiSessionJsonl(filePath) ? "pi-session" : "conductor-session";
+	return exportSessionFileToHtml(pi, exportInput, { outputDir: SHOW_REPORT_SESSION_EXPORT_DIR, filenamePrefix: prefix });
+}
+
 function conversationFromSessionRecord(raw: unknown): ChatPreviewEntry | null {
 	if (!raw || typeof raw !== "object") return null;
 	const record = raw as Record<string, unknown>;
@@ -501,8 +685,12 @@ async function openAnyArtifact(pi: ExtensionAPI, filePath: string, browserOnly =
 	}
 	if (MEDIA_EXTENSIONS.has(ext)) return openMediaArtifact(pi, resolved, browserOnly);
 	if (ext === ".jsonl" || isSessionJsonlPath(resolved)) {
-		const preview = artifactPreviewInnerHtml(resolved, { full: browserOnly });
-		return openHtmlStringArtifact(pi, preview.html, preview.title, browserOnly);
+		const exportPath = await exportSessionArtifactToHtml(pi, resolved);
+		if (browserOnly) {
+			await openFile(pi, exportPath);
+			return "browser";
+		}
+		return openHtmlArtifact(pi, exportPath, false);
 	}
 	await openInSystemBrowser(pi, resolved);
 	return "browser";
@@ -927,10 +1115,22 @@ function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData,
 					res.end(JSON.stringify({ ok: false, error: "Path is not in this Artifact Browser." }));
 					return;
 				}
-				const previewPath = `/preview?path=${encodeURIComponent(resolved)}`;
+				const isSession = path.extname(resolved).toLowerCase() === ".jsonl" || isSessionJsonlPath(resolved);
+				let previewResolved = resolved;
+				if (isSession) {
+					previewResolved = fs.realpathSync(await exportSessionArtifactToHtml(pi, resolved));
+					allowedPaths.add(previewResolved);
+				}
+				const previewPath = `/preview?path=${encodeURIComponent(previewResolved)}`;
 				if (target === "glimpse") {
 					res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
 					res.end(JSON.stringify({ ok: true, mode: "glimpse", previewUrl: previewPath }));
+					return;
+				}
+				if (isSession) {
+					await openFile(pi, previewResolved);
+					res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+					res.end(JSON.stringify({ ok: true, mode: "browser", path: previewResolved, url: pathToFileURL(previewResolved).href }));
 					return;
 				}
 				const host = typeof req.headers.host === "string" && req.headers.host ? req.headers.host : "127.0.0.1";
@@ -1678,7 +1878,10 @@ function planningSourceLabel(source: PlanningDocEntry["source"]): string {
 
 function artifactOpenButtons(filePath: string): string {
 	const escapedPath = escapeAttr(filePath);
-	return `<button class="button open-artifact" type="button" data-target="glimpse" data-path="${escapedPath}">열기</button><button class="button open-artifact" type="button" data-target="browser" data-path="${escapedPath}">브라우저에서 열기</button>`;
+	const session = filePath.endsWith(".jsonl") || isSessionJsonlPath(filePath);
+	const primaryLabel = session ? "세션 전문 보기" : "열기";
+	const browserLabel = session ? "브라우저에서 전문 보기" : "브라우저에서 열기";
+	return `<button class="button open-artifact" type="button" data-target="glimpse" data-path="${escapedPath}">${primaryLabel}</button><button class="button open-artifact" type="button" data-target="browser" data-path="${escapedPath}">${browserLabel}</button>`;
 }
 
 function renderReportCards(reports: ReportEntry[]): string {
