@@ -238,7 +238,7 @@ USER: /decide
 
 AI (Step 1):
 컨텍스트:
-- frame.json: atlanta-COM-1234 (goal: "Toss 부분환불 지원")
+- frame.json: atlanta-PROJ-123 (goal: "부분환불 지원")
 - frame.decision 큐 2개 pending:
   · #5 "Refund 테이블 신설 vs Order 컬럼 추가"
   · #6 "Toss 부분환불 API 한도/제약 확인"

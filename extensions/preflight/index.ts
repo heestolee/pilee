@@ -1,8 +1,9 @@
 import { existsSync, mkdirSync, appendFileSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ThemeColor } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import { expandProfileTemplate, loadPreflightProfiles, type PreflightCheckProfile, type PreflightProfile } from "../utils/private-profiles.ts";
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
@@ -17,50 +18,47 @@ interface CheckDef {
 	triggers: (changedFiles: string[]) => boolean;
 }
 
-const CHECKS: CheckDef[] = [
-	{
-		name: "lint",
-		command: "pnpm lint:quiet",
-		timeoutMs: 120_000,
-		triggers: (files) => files.some((f) => /\.(ts|tsx|js|jsx)$/.test(f)),
-	},
-	{
-		name: "typecheck-backend",
-		command: "pnpm --filter './backend/**' run typecheck",
-		timeoutMs: 180_000,
-		triggers: (files) => files.some((f) => f.startsWith("backend/") && /\.tsx?$/.test(f)),
-	},
-	{
-		name: "typecheck-frontend",
-		command: "pnpm --filter './frontend/**' run typecheck",
-		timeoutMs: 180_000,
-		triggers: (files) => files.some((f) => f.startsWith("frontend/") && /\.tsx?$/.test(f)),
-	},
-	{
-		name: "test-backend",
-		command: "pnpm turbo run test --filter='./backend/**' --output-logs=errors-only",
-		timeoutMs: 300_000,
-		triggers: (files) => files.some((f) => f.startsWith("backend/") && /\.tsx?$/.test(f)),
-	},
-	{
-		name: "test-frontend",
-		command: "pnpm turbo run test --filter='./frontend/**' --output-logs=errors-only",
-		timeoutMs: 300_000,
-		triggers: (files) => files.some((f) => f.startsWith("frontend/") && /\.tsx?$/.test(f)),
-	},
-	{
-		name: "codegen",
-		command: "pnpm codegen",
-		timeoutMs: 180_000,
-		triggers: (files) => files.some((f) => /\.(graphql|gql)$/.test(f) || f.includes("schema") || f.includes(".resolver.")),
-	},
-	{
-		name: "migration-safety",
-		command: "pnpm --filter trip migration:check 2>&1 || true", // best effort
-		timeoutMs: 120_000,
-		triggers: (files) => files.some((f) => f.includes("/migrations/") && /\.tsx?$/.test(f)),
-	},
-];
+function profileCheckTriggers(profile: PreflightCheckProfile): (changedFiles: string[]) => boolean {
+	return (changedFiles) => changedFiles.some((file) => {
+		if ((profile.triggerIncludes ?? []).some((part) => file.includes(part))) return true;
+		return (profile.triggerRegexes ?? []).some((pattern) => {
+			try { return new RegExp(pattern).test(file); } catch { return false; }
+		});
+	});
+}
+
+function preflightProfileMatches(profile: PreflightProfile, repoRoot: string, remoteUrl?: string): boolean {
+	const match = profile.match;
+	if (!match) return true;
+	const normalizedPath = repoRoot.toLowerCase();
+	const normalizedRemote = (remoteUrl ?? "").trim().toLowerCase().replace(/\.git$/, "");
+	if ((match.rootBasenames ?? []).includes(basename(repoRoot))) return true;
+	if ((match.pathIncludes ?? []).some((part) => normalizedPath.includes(expandProfileTemplate(part).toLowerCase()))) return true;
+	if ((match.pathRegexes ?? []).some((pattern) => {
+		try { return new RegExp(expandProfileTemplate(pattern), "i").test(normalizedPath); } catch { return false; }
+	})) return true;
+	if (normalizedRemote && (match.remoteIncludes ?? []).some((part) => normalizedRemote.includes(part.toLowerCase()))) return true;
+	return false;
+}
+
+function matchingPreflightProfiles(cwd?: string, remoteUrl?: string): PreflightProfile[] {
+	return loadPreflightProfiles(cwd).filter((profile) => !cwd || preflightProfileMatches(profile, cwd, remoteUrl));
+}
+
+function configuredChecks(cwd?: string, remoteUrl?: string): CheckDef[] {
+	return matchingPreflightProfiles(cwd, remoteUrl).flatMap((profile) => (profile.checks ?? []).map((check) => ({
+		name: check.name,
+		command: check.command,
+		cwd: check.cwd,
+		timeoutMs: check.timeoutMs ?? 120_000,
+		triggers: profileCheckTriggers(check),
+	})));
+}
+
+function configuredBaseBranchCandidates(cwd?: string, remoteUrl?: string): string[] {
+	const candidates = matchingPreflightProfiles(cwd, remoteUrl).flatMap((profile) => profile.baseBranchCandidates ?? []);
+	return candidates.length ? [...new Set(candidates)] : ["main", "master", "develop", "development"];
+}
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -113,7 +111,7 @@ function readAllLogs(): RunLog[] {
 
 // ─── Git helpers ───────────────────────────────────────────────────────────
 
-async function getRepoInfo(pi: ExtensionAPI, cwd: string): Promise<{ root: string; branch: string; baseBranch: string } | null> {
+async function getRepoInfo(pi: ExtensionAPI, cwd: string): Promise<{ root: string; branch: string; baseBranch: string; remoteUrl: string } | null> {
 	const rootR = await pi.exec("git", ["rev-parse", "--show-toplevel"], { cwd });
 	if (rootR.code !== 0) return null;
 	const root = rootR.stdout?.trim() ?? cwd;
@@ -121,14 +119,18 @@ async function getRepoInfo(pi: ExtensionAPI, cwd: string): Promise<{ root: strin
 	const branchR = await pi.exec("git", ["branch", "--show-current"], { cwd: root });
 	const branch = branchR.code === 0 ? branchR.stdout?.trim() ?? "HEAD" : "HEAD";
 
-	// Find base branch — try development, develop, main, master
-	let baseBranch = "development";
-	for (const candidate of ["development", "develop", "main", "master"]) {
+	const remoteR = await pi.exec("git", ["config", "--get", "remote.origin.url"], { cwd: root });
+	const remoteUrl = remoteR.code === 0 ? remoteR.stdout?.trim() ?? "" : "";
+
+	// Find base branch from configured profile candidates.
+	const candidates = configuredBaseBranchCandidates(root, remoteUrl);
+	let baseBranch = candidates[0] ?? "main";
+	for (const candidate of candidates) {
 		const checkR = await pi.exec("git", ["rev-parse", "--verify", `origin/${candidate}`], { cwd: root });
 		if (checkR.code === 0) { baseBranch = candidate; break; }
 	}
 
-	return { root, branch, baseBranch };
+	return { root, branch, baseBranch, remoteUrl };
 }
 
 async function getChangedFiles(pi: ExtensionAPI, cwd: string, baseBranch: string): Promise<string[]> {
@@ -278,7 +280,12 @@ async function handlePreflight(pi: ExtensionAPI, args: string, ctx: ExtensionCom
 		return;
 	}
 
-	const planned = all ? CHECKS : CHECKS.filter((c) => c.triggers(changedFiles));
+	const checks = configuredChecks(repo.root, repo.remoteUrl);
+	if (checks.length === 0) {
+		ctx.ui.notify("No preflight checks are configured for this repository.", "info");
+		return;
+	}
+	const planned = all ? checks : checks.filter((c) => c.triggers(changedFiles));
 	if (planned.length === 0) {
 		ctx.ui.notify(`No applicable checks for these changes (${changedFiles.length} files).`, "info");
 		return;

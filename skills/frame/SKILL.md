@@ -232,7 +232,7 @@ type FrameDoc = {
   version: 1;
   identity: {
     mode: "worktree" | "planning-ticket" | "planning-session";
-    key: string;              // worktree:<hash> | planning:ticket:COM-1234 | planning:session:<hash>
+    key: string;              // worktree:<hash> | planning:ticket:PROJ-123 | planning:session:<hash>
     displayTitle: string;     // Glimpse/보고서에 보여줄 이름
     sourceSessionFile?: string;
     sourceSessionTitle?: string;
@@ -241,7 +241,7 @@ type FrameDoc = {
   workspace: string;          // worktree 이름 또는 planning label
   worktree?: string;          // worktree mode일 때 절대 경로
   ticket?: {
-    key: string;              // "COM-1234"
+    key: string;              // "PROJ-123"
     url: string;
     summary: string;
     acceptance?: string;      // Jira AC 본문
@@ -292,15 +292,15 @@ type FrameDoc = {
 
 ## §6: 실전 흐름 예시
 
-워크트리: `~/conductor/workspaces/product/atlanta-COM-1234/`, 메타에 `ticket: "COM-1234"`.
+워크트리: `~/workspaces/service/atlanta-PROJ-123/`, 메타에 `ticket: "PROJ-123"`.
 
 ```
 USER: /frame  결제 취소 시 부분 환불 지원해줘
 
 AI (Step 1, 질문 없음):
 컨텍스트:
-- worktree: atlanta-COM-1234 (branch: feat/COM-1234/partial-refund)
-- ticket(자동): COM-1234 — "부분 환불 지원" (Jira)
+- worktree: atlanta-PROJ-123 (branch: feat/PROJ-123/partial-refund)
+- ticket(자동): PROJ-123 — "부분 환불 지원" (issue tracker)
   acceptance: ① 주문 단위 부분 환불 ② 정산 시스템에 환불 액수 반영 ③ 관리자 UI 노출
 - 변경 없음 (clean)
 

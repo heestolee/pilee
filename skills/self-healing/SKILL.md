@@ -83,7 +83,7 @@ self-healing 이어서 해
 - 모호한 주장, 근거 부족 항목, 의도된 변경으로 보이는 항목은 자동 수정하지 않는다.
 - 수정 범위를 불필요하게 넓히지 않는다.
 - 각 사이클마다 가능한 최소 수정으로 진행한다.
-- 회사 product/lambda 레포 파일을 수정해야 하면 현재 세션이 적절한 worktree인지 확인한다. 새 worktree가 필요하면 프로젝트의 worktree 규칙을 따른다.
+- 회사/업무 레포 파일을 수정해야 하면 현재 세션이 적절한 worktree인지 확인한다. 새 worktree가 필요하면 해당 repo profile/project의 worktree 규칙을 따른다.
 
 ## 사이클별 분류 표
 stress-interview 결과에서 `severity`/`priority`와 `fix_class`를 활용하여 분류한다.

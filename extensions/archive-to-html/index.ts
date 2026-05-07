@@ -7,6 +7,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ToolResultEvent } from "@mariozechner/pi-coding-agent";
+import { expandProfileTemplate, loadArtifactBrowserProfiles } from "../utils/private-profiles.ts";
 import { exportSessionFileToHtml, isPiSessionFile, openFile, SESSION_EXPORT_DIR } from "../utils/session-export.js";
 import { registerVerifyReportLive } from "./verify-report-live.js";
 
@@ -344,12 +345,17 @@ function conductorCwdFromPath(filePath: string): string {
 	const idx = filePath.indexOf(marker);
 	if (idx < 0) return os.homedir();
 	const dirName = filePath.slice(idx + marker.length).split(path.sep)[0] ?? "";
-	const prefix = "-Users-changheelee-conductor-workspaces-";
-	if (!dirName.startsWith(prefix)) return os.homedir();
-	const tail = dirName.slice(prefix.length);
-	const repoMatch = tail.match(/^(product|lambda)-(.+)$/);
-	if (repoMatch) return path.join(os.homedir(), "conductor", "workspaces", repoMatch[1], repoMatch[2]);
-	return path.join(os.homedir(), "conductor", "workspaces", tail);
+	for (const profile of loadArtifactBrowserProfiles()) {
+		for (const mapping of profile.conductorCwdMappings ?? []) {
+			try {
+				const match = dirName.match(new RegExp(mapping.dirRegex));
+				if (!match) continue;
+				const vars = Object.fromEntries(match.map((value, index) => [String(index), value]));
+				return expandProfileTemplate(mapping.cwdTemplate, vars);
+			} catch {}
+		}
+	}
+	return os.homedir();
 }
 
 interface NormalizeState {
@@ -960,18 +966,24 @@ function existingRealDirs(dirs: Array<{ dir: string; source: string }>): Array<{
 
 function collectWorktreeRoots(): WorktreeRootEntry[] {
 	const roots: WorktreeRootEntry[] = [];
-	for (const repo of ["product", "lambda"]) {
-		const repoRoot = path.join(os.homedir(), "pilee-workspaces", repo);
-		if (!fs.existsSync(repoRoot)) continue;
-		try {
-			for (const workspace of fs.readdirSync(repoRoot)) {
-				const workspacePath = path.join(repoRoot, workspace);
-				const piDir = path.join(workspacePath, ".pi");
-				if (!fs.existsSync(workspacePath) || !fs.statSync(workspacePath).isDirectory()) continue;
-				if (!fs.existsSync(piDir) && !fs.existsSync(path.join(workspacePath, ".context"))) continue;
-				roots.push({ repo, workspace, workspacePath, piDir });
-			}
-		} catch {}
+	const seen = new Set<string>();
+	for (const profile of loadArtifactBrowserProfiles()) {
+		for (const rootProfile of profile.worktreeRoots ?? []) {
+			const repoRoot = expandProfileTemplate(rootProfile.path, { repo: rootProfile.repo });
+			if (!fs.existsSync(repoRoot)) continue;
+			try {
+				for (const workspace of fs.readdirSync(repoRoot)) {
+					const workspacePath = path.join(repoRoot, workspace);
+					const piDir = path.join(workspacePath, ".pi");
+					if (!fs.existsSync(workspacePath) || !fs.statSync(workspacePath).isDirectory()) continue;
+					if (!fs.existsSync(piDir) && !fs.existsSync(path.join(workspacePath, ".context"))) continue;
+					const key = fs.realpathSync(workspacePath);
+					if (seen.has(key)) continue;
+					seen.add(key);
+					roots.push({ repo: rootProfile.repo, workspace, workspacePath, piDir });
+				}
+			} catch {}
+		}
 	}
 	return roots;
 }
@@ -1313,13 +1325,36 @@ function readJsonFile(filePath: string): Record<string, unknown> | null {
 	try { return JSON.parse(fs.readFileSync(filePath, "utf-8")) as Record<string, unknown>; } catch { return null; }
 }
 
+function reposForWorkspace(workspace: string): string[] {
+	const repos = new Set(collectWorktreeRoots().filter((root) => root.workspace === workspace).map((root) => root.repo));
+	for (const repo of configuredArtifactRepos()) repos.add(repo);
+	return [...repos];
+}
+
+function workspacePiDirs(workspace: string): string[] {
+	const candidates = new Set<string>();
+	for (const root of collectWorktreeRoots().filter((entry) => entry.workspace === workspace)) candidates.add(root.piDir);
+	for (const profile of loadArtifactBrowserProfiles()) {
+		for (const template of profile.workspacePiDirTemplates ?? []) {
+			for (const repo of reposForWorkspace(workspace)) candidates.add(expandProfileTemplate(template, { repo, workspace }));
+		}
+	}
+	return [...candidates];
+}
+
+function piSessionDirsForWorkspace(repo: string, workspace: string): string[] {
+	const candidates = new Set<string>();
+	for (const profile of loadArtifactBrowserProfiles()) {
+		for (const template of profile.piSessionDirTemplates ?? []) {
+			candidates.add(expandProfileTemplate(template, { repo, workspace }));
+		}
+	}
+	return [...candidates];
+}
+
 function worktreeInfoForWorkspace(workspace: string): { ticket: string; title: string; note: string } {
 	if (!workspace) return { ticket: "", title: "", note: "" };
-	const candidates = [
-		path.join(os.homedir(), "pilee-workspaces", "product", workspace, ".pi"),
-		path.join(os.homedir(), "pilee-workspaces", "lambda", workspace, ".pi"),
-		path.join(os.homedir(), "pilee-workspaces", workspace, ".pi"),
-	];
+	const candidates = workspacePiDirs(workspace);
 	for (const dir of candidates) {
 		if (!fs.existsSync(dir)) continue;
 		const meta = readJsonFile(path.join(dir, "worktree-meta.json"));
@@ -1341,13 +1376,8 @@ function worktreeInfoForWorkspace(workspace: string): { ticket: string; title: s
 
 function latestSessionTitleForWorkspace(workspace: string): string {
 	if (!workspace) return "";
-	const sessionsRoot = path.join(os.homedir(), ".pi", "agent", "sessions");
-	const candidates = [
-		`--Users-changheelee-pilee-workspaces-product-${workspace}--`,
-		`--Users-changheelee-pilee-workspaces-lambda-${workspace}--`,
-	];
-	for (const dirName of candidates) {
-		const sessionsDir = path.join(sessionsRoot, dirName);
+	const candidates = reposForWorkspace(workspace).flatMap((repo) => piSessionDirsForWorkspace(repo, workspace));
+	for (const sessionsDir of candidates) {
 		if (!fs.existsSync(sessionsDir)) continue;
 		try {
 			const files = fs.readdirSync(sessionsDir)
@@ -1443,14 +1473,32 @@ function extractConductorRequests(markdown: string): string[] {
 	return requests;
 }
 
+function configuredArtifactRepos(): string[] {
+	const repos = new Set<string>();
+	for (const profile of loadArtifactBrowserProfiles()) {
+		for (const root of profile.worktreeRoots ?? []) repos.add(root.repo);
+		if (profile.defaultRepo) repos.add(profile.defaultRepo);
+	}
+	return [...repos];
+}
+
+function defaultArtifactRepo(): string {
+	for (const profile of loadArtifactBrowserProfiles()) {
+		if (profile.defaultRepo) return profile.defaultRepo;
+		const firstRoot = profile.worktreeRoots?.[0];
+		if (firstRoot?.repo) return firstRoot.repo;
+	}
+	return "workspace";
+}
+
 function conductorProjectDirs(repo: string, workspace: string): string[] {
-	const base = path.join(os.homedir(), ".claude", "projects");
-	return [
-		path.join(base, `-Users-changheelee-conductor-workspaces-${repo}-${workspace}`),
-		path.join(base, `-Users-changheelee-conductor-workspaces-${workspace}`),
-		path.join(base, `-Users-changheelee-conductor-workspaces-product-${workspace}`),
-		path.join(base, `-Users-changheelee-conductor-workspaces-lambda-${workspace}`),
-	];
+	const candidates = new Set<string>();
+	for (const profile of loadArtifactBrowserProfiles()) {
+		for (const template of profile.conductorProjectDirTemplates ?? []) {
+			candidates.add(expandProfileTemplate(template, { repo, workspace }));
+		}
+	}
+	return [...candidates];
 }
 
 function findConductorSourceSessions(repo: string, workspace: string, sessionId: string): string[] {
@@ -1491,8 +1539,19 @@ function readPiSessionsFromDir(sessionsDir: string, workspace: string, limit = 1
 }
 
 function findPiSessionsForWorkspace(repo: string, workspace: string): PiSessionEntry[] {
-	const sessionsDir = path.join(os.homedir(), ".pi", "agent", "sessions", `--Users-changheelee-pilee-workspaces-${repo}-${workspace}--`);
-	return readPiSessionsFromDir(sessionsDir, workspace);
+	const seen = new Set<string>();
+	const sessions: PiSessionEntry[] = [];
+	for (const sessionsDir of piSessionDirsForWorkspace(repo, workspace)) {
+		for (const session of readPiSessionsFromDir(sessionsDir, workspace)) {
+			try {
+				const real = fs.realpathSync(session.path);
+				if (seen.has(real)) continue;
+				seen.add(real);
+			} catch {}
+			sessions.push(session);
+		}
+	}
+	return sessions.sort((a, b) => b.mtime - a.mtime);
 }
 
 function readPiSessionEntry(filePath: string, workspace: string): PiSessionEntry | null {
@@ -1722,7 +1781,7 @@ function collectConductorHistories(): ConductorHistoryEntry[] {
 		const parsedBranch = parseTicketAndTitle(branch);
 		const ticket = firstNonEmpty(parsedPr.ticket, parsedBranch.ticket);
 		const title = firstNonEmpty(parsedPr.title, workspace);
-		const sourceSessionPaths = findConductorSourceSessions(repo || "product", workspace, sessionId);
+		const sourceSessionPaths = findConductorSourceSessions(repo || defaultArtifactRepo(), workspace, sessionId);
 		const dbConversation = dbConversations.get(sessionId) ?? [];
 		const firstSession = sourceSessionPaths[0] ?? "";
 		const jsonlRequests = firstSession ? requestsFromConductorJsonl(firstSession) : [];

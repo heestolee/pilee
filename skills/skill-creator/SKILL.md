@@ -175,7 +175,7 @@ pi --no-skills -p "<same eval prompt>"
 스킬 작성/수정 후 반드시 아래를 확인한다.
 
 ```bash
-python3 /Users/creatrip/.pi/agent/skills/skill-creator/scripts/validate_skill.py /path/to/skill
+python3 ~/.pi/agent/skills/skill-creator/scripts/validate_skill.py /path/to/skill
 ```
 
 추가 확인:

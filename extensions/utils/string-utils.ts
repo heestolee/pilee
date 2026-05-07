@@ -44,8 +44,8 @@ export function normalizeText(s: string): string {
 
 /**
  * Normalize a git remote URL to a slug.
- *   https://github.com/creatrip/product.git → github-creatrip-product
- *   git@github.com:creatrip/product.git     → github-creatrip-product
+ *   https://github.com/example/service.git → github-example-service
+ *   git@github.com:example/service.git     → github-example-service
  *
  * Source: memory-layer/project-id.ts
  */

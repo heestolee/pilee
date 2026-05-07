@@ -6,6 +6,12 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ThemeColo
 import { DynamicBorder, SessionManager } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
+import {
+	expandProfileTemplate,
+	loadWorktreeRepoProfiles,
+	type WorktreeBootstrapDomainProfile,
+	type WorktreeRepoProfile,
+} from "../utils/private-profiles.ts";
 
 // ─── Repo registry ─────────────────────────────────────────────────────────
 
@@ -337,7 +343,36 @@ function prefillSwitchCommand(ctx: ExtensionContext, command: string): boolean {
 	return true;
 }
 
-const COMPANY_WORKTREE_REPOS = new Set(["product", "lambda"]);
+function getProfiledWorktreeRepos(cwd?: string): WorktreeRepoProfile[] {
+	return loadWorktreeRepoProfiles(cwd);
+}
+
+function profiledRepoLabel(): string {
+	const names = getProfiledWorktreeRepos().map((profile) => profile.displayName ?? profile.name);
+	return names.length ? names.join("/") : "profiled repos";
+}
+
+function regexTest(pattern: string, value: string): boolean {
+	try { return new RegExp(pattern, "i").test(value); } catch { return false; }
+}
+
+function repoProfileMatches(profile: WorktreeRepoProfile, repoRoot: string, registeredName?: string | null, remoteUrl?: string | null): boolean {
+	const match = profile.match ?? {};
+	const normalizedPath = repoRoot.toLowerCase();
+	const normalizedRemote = (remoteUrl ?? "").trim().toLowerCase().replace(/\.git$/, "");
+	const nameCandidates = [registeredName, basename(repoRoot)].filter((value): value is string => Boolean(value));
+	if (nameCandidates.some((name) => name === profile.name || (match.registeredNames ?? []).includes(name))) return true;
+	if ((match.rootBasenames ?? []).includes(basename(repoRoot))) return true;
+	if ((match.pathIncludes ?? []).some((part) => normalizedPath.includes(expandProfileTemplate(part).toLowerCase()))) return true;
+	if ((match.pathRegexes ?? []).some((pattern) => regexTest(expandProfileTemplate(pattern), normalizedPath))) return true;
+	if (normalizedRemote && (match.remoteIncludes ?? []).some((part) => normalizedRemote.includes(part.toLowerCase()))) return true;
+	return false;
+}
+
+function getProfiledRepoSync(repoRoot: string): WorktreeRepoProfile | null {
+	const registeredName = getKnownRepoName(repoRoot);
+	return getProfiledWorktreeRepos(repoRoot).find((profile) => repoProfileMatches(profile, repoRoot, registeredName)) ?? null;
+}
 
 function getCurrentPanelLabel(): string {
 	const raw = process.env.PI_FORK_PANEL_LABEL?.trim();
@@ -353,17 +388,13 @@ function getKnownRepoName(repoRoot: string): string {
 	return findRegisteredName(loadRegistry(), repoRoot) ?? basename(repoRoot);
 }
 
-function isCompanyWorktreeRepo(repoRoot: string): boolean {
-	const name = getKnownRepoName(repoRoot);
-	return COMPANY_WORKTREE_REPOS.has(name) || /\/creatrip\/(product|lambda)$/.test(repoRoot);
-}
-
 function getWorktreeCreationPanelGuardMessage(repoRoot: string): string | null {
 	if (!isChildForkPanel()) return null;
-	if (!isCompanyWorktreeRepo(repoRoot)) return null;
+	const profile = getProfiledRepoSync(repoRoot);
+	if (!profile?.gate?.requireParentPanel) return null;
 	const panelLabel = getCurrentPanelLabel();
-	const repoName = getKnownRepoName(repoRoot);
-	const hotfixHint = COMPANY_WORKTREE_REPOS.has(repoName) ? " 핫픽스라면 --hotfix를 함께 붙이세요." : "";
+	const repoName = profile.displayName ?? profile.name;
+	const hotfixHint = profile.gate.hotfixHint ?? (profile.gate.hotfixRequiresExplicitBase ? " 핫픽스라면 --hotfix를 함께 붙이세요." : "");
 	return [
 		`현재 패널은 ${panelLabel} fork panel입니다.`,
 		`${repoName} worktree 생성은 부모 패널(P0)에서 /wt fork로 실행해야 대화 맥락과 base 선택이 깨지지 않습니다.`,
@@ -387,13 +418,13 @@ function getHotfixBaseGuardMessage(
 
 // ─── Dependency bootstrap worker ───────────────────────────────────────────
 
-type CompanyRepoName = "product" | "lambda";
-type BootstrapDomain = "root" | "backend" | "frontend";
+type ProfiledRepoName = string;
+type BootstrapDomain = string;
 type BootstrapStatus = "running" | "success" | "failed";
 
 interface BootstrapJob {
 	cwd: string;
-	repoName: CompanyRepoName;
+	repoName: ProfiledRepoName;
 	domains: BootstrapDomain[];
 	startedAt: number;
 	status: BootstrapStatus;
@@ -403,6 +434,8 @@ interface BootstrapJob {
 
 const dependencyBootstrapJobs = new Map<string, BootstrapJob>();
 const DEPENDENCY_BOOTSTRAP_STATUS_ID = "wt-deps";
+const DEFAULT_EXPLORATORY_PROMPT_REGEX = "(확인해볼래|조사|분석|왜|어떤|궁금|찾아|알려|정리해|봐봐|look into|investigate|analy[sz]e|explain|why)";
+const DEFAULT_IMPLEMENTATION_PROMPT_REGEX = "(구현|수정|작업|진행|이어서|마무리|고쳐|반영|검증|lint|test|커밋|푸시|pr|해줘|implement|fix|edit|change|continue|work on|verify|commit|push)";
 
 function shellQuote(value: string): string {
 	return `'${value.replace(/'/g, `'\\''`)}'`;
@@ -412,57 +445,66 @@ function normalizeRemoteUrl(url: string): string {
 	return url.trim().replace(/\.git$/, "").toLowerCase();
 }
 
-async function detectCompanyRepoName(pi: ExtensionAPI, repoRoot: string): Promise<CompanyRepoName | null> {
-	const normalizedPath = repoRoot.toLowerCase();
-	if (/\/pilee-workspaces\/product\//.test(normalizedPath) || /\/creatrip\/product$/.test(normalizedPath)) return "product";
-	if (/\/pilee-workspaces\/lambda\//.test(normalizedPath) || /\/creatrip\/lambda$/.test(normalizedPath)) return "lambda";
-
+async function detectProfiledRepo(pi: ExtensionAPI, repoRoot: string): Promise<WorktreeRepoProfile | null> {
+	const registeredName = getKnownRepoName(repoRoot);
+	let remoteUrl = "";
 	const remote = await pi.exec("git", ["config", "--get", "remote.origin.url"], { cwd: repoRoot });
-	if (remote.code !== 0) return null;
-	const url = normalizeRemoteUrl(remote.stdout ?? "");
-	if (url.includes("github.com/creatrip/product") || url.includes("github.com:creatrip/product")) return "product";
-	if (url.includes("github.com/creatrip/lambda") || url.includes("github.com:creatrip/lambda")) return "lambda";
-	return null;
+	if (remote.code === 0) remoteUrl = normalizeRemoteUrl(remote.stdout ?? "");
+	return getProfiledWorktreeRepos(repoRoot).find((profile) => repoProfileMatches(profile, repoRoot, registeredName, remoteUrl)) ?? null;
 }
 
-function isImplementationStartPrompt(prompt: string): boolean {
+function textMatches(pattern: string | undefined, text: string): boolean {
+	if (!pattern) return false;
+	return regexTest(pattern, text);
+}
+
+function isImplementationStartPrompt(prompt: string, profile?: WorktreeRepoProfile): boolean {
 	const text = prompt.trim();
 	if (!text || text.startsWith("/")) return false;
-	if (/(확인해볼래|조사|분석|왜|어떤|궁금|찾아|알려|정리해|봐봐|look into|investigate|analy[sz]e|explain|why)/i.test(text)) {
-		return /(구현|수정|작업|진행|이어서|마무리|고쳐|반영|검증|lint|test|커밋|푸시|pr|implement|fix|edit|change|continue|work on|verify|commit|push)/i.test(text);
-	}
-	return /(구현|수정|작업|진행|이어서|마무리|고쳐|반영|검증|lint|test|커밋|푸시|pr|해줘|implement|fix|edit|change|continue|work on|verify|commit|push)/i.test(text);
+	const bootstrap = profile?.bootstrap;
+	const exploratoryPattern = bootstrap?.exploratoryPromptRegex ?? DEFAULT_EXPLORATORY_PROMPT_REGEX;
+	const implementationPattern = bootstrap?.implementationPromptRegex ?? DEFAULT_IMPLEMENTATION_PROMPT_REGEX;
+	if (textMatches(exploratoryPattern, text)) return textMatches(implementationPattern, text);
+	return textMatches(implementationPattern, text);
 }
 
-function inferProductBootstrapDomains(prompt: string, meta: WorktreeMeta | null): BootstrapDomain[] {
+function bootstrapDomainProfiles(profile: WorktreeRepoProfile): WorktreeBootstrapDomainProfile[] {
+	return profile.bootstrap?.domains ?? [];
+}
+
+function orderedBootstrapDomains(profile: WorktreeRepoProfile, domains: Iterable<string>): BootstrapDomain[] {
+	const requested = new Set(domains);
+	return bootstrapDomainProfiles(profile).map((domain) => domain.name).filter((name) => requested.has(name));
+}
+
+function getBootstrapDomains(profile: WorktreeRepoProfile, prompt: string, meta: WorktreeMeta | null): BootstrapDomain[] {
+	const bootstrap = profile.bootstrap;
+	const domainProfiles = bootstrapDomainProfiles(profile);
+	if (!bootstrap?.enabled || domainProfiles.length === 0) return [];
 	const text = `${prompt}\n${meta?.branch ?? ""}\n${meta?.ticket ?? ""}\n${meta?.note ?? ""}`.toLowerCase();
-	const wantsBackend = /(backend|\bbe\b|api|graphql|resolver|service|repo|repository|schema|migration|db|database|trip|payment|lambda|백엔드|서버|스키마|마이그레이션|쿼리|정산\s*금액|정산액)/i.test(text);
-	const wantsFrontend = /(frontend|\bfe\b|ui|ux|admin|web|mobile|page|component|route|css|figma|screen|browser|capture|프론트|화면|어드민|모바일|컴포넌트|페이지|피그마|캡처)/i.test(text);
-	const domains: BootstrapDomain[] = ["root"];
-	if (wantsBackend) domains.push("backend");
-	if (wantsFrontend) domains.push("frontend");
-	if (!wantsBackend && !wantsFrontend) domains.push("backend", "frontend");
-	return [...new Set(domains)];
+	const matched = new Set<string>();
+	for (const rule of bootstrap.domainPromptRules ?? []) {
+		if (regexTest(rule.regex, text)) matched.add(rule.domain);
+	}
+	const hasRoot = domainProfiles.some((domain) => domain.name === "root");
+	if (matched.size > 0 && hasRoot) matched.add("root");
+	const selected = matched.size > 0 ? matched : new Set(bootstrap.defaultDomains ?? domainProfiles.map((domain) => domain.name));
+	return orderedBootstrapDomains(profile, selected);
 }
 
-function getBootstrapDomains(repoName: CompanyRepoName, prompt: string, meta: WorktreeMeta | null): BootstrapDomain[] {
-	if (repoName === "lambda") return ["root"];
-	return inferProductBootstrapDomains(prompt, meta);
+function repoRelativePath(repoRoot: string, value: string | undefined): string {
+	const expanded = expandProfileTemplate(value ?? ".", { repoRoot });
+	return expanded.startsWith("/") ? expanded : join(repoRoot, expanded);
 }
 
-function missingBootstrapDomains(repoRoot: string, repoName: CompanyRepoName, domains: BootstrapDomain[]): BootstrapDomain[] {
+function missingBootstrapDomains(repoRoot: string, profile: WorktreeRepoProfile, domains: BootstrapDomain[]): BootstrapDomain[] {
+	const byName = new Map(bootstrapDomainProfiles(profile).map((domain) => [domain.name, domain]));
 	const missing: BootstrapDomain[] = [];
-	if (domains.includes("root")) {
-		const marker = repoName === "product"
-			? join(repoRoot, "node_modules", ".bin", "lefthook")
-			: join(repoRoot, "node_modules");
-		if (!existsSync(marker)) missing.push("root");
-	}
-	if (repoName === "product" && domains.includes("backend") && !existsSync(join(repoRoot, "backend", "node_modules", ".bin", "eslint"))) {
-		missing.push("backend");
-	}
-	if (repoName === "product" && domains.includes("frontend") && !existsSync(join(repoRoot, "frontend", "node_modules", ".bin", "eslint"))) {
-		missing.push("frontend");
+	for (const domainName of domains) {
+		const domain = byName.get(domainName);
+		if (!domain) continue;
+		const marker = repoRelativePath(repoRoot, domain.marker);
+		if (!existsSync(marker)) missing.push(domainName);
 	}
 	return missing;
 }
@@ -471,61 +513,39 @@ function bootstrapStateDir(repoRoot: string): string {
 	return join(repoRoot, ".pi", "deps-bootstrap");
 }
 
-function buildDependencyBootstrapScript(repoName: CompanyRepoName, domains: BootstrapDomain[], logPath: string, statusPath: string): string {
-	const has = (domain: BootstrapDomain) => domains.includes(domain) ? "1" : "0";
-	if (repoName === "lambda") {
-		return `set -u
-mkdir -p ${shellQuote(dirname(logPath))}
-printf '{"status":"running","repo":"lambda","startedAt":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > ${shellQuote(statusPath)}
-echo "[deps-bootstrap] lambda root" >> ${shellQuote(logPath)}
-if [ ! -d node_modules ]; then
-  if npm install >> ${shellQuote(logPath)} 2>&1; then
-    printf '{"status":"success","repo":"lambda","finishedAt":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > ${shellQuote(statusPath)}
-    echo "lambda root installed"
-  else
-    printf '{"status":"failed","repo":"lambda","finishedAt":"%s","log":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" ${shellQuote(logPath)} > ${shellQuote(statusPath)}
-    echo "lambda root install failed; see ${logPath}"
-    exit 1
-  fi
+function buildDependencyBootstrapScript(profile: WorktreeRepoProfile, domains: BootstrapDomain[], repoRoot: string, logPath: string, statusPath: string): string {
+	const domainProfiles = bootstrapDomainProfiles(profile).filter((domain) => domains.includes(domain.name));
+	const steps = domainProfiles.map((domain) => {
+		const label = domain.label ?? `${domain.name} dependency install`;
+		const marker = repoRelativePath(repoRoot, domain.marker);
+		const stepCwd = repoRelativePath(repoRoot, domain.cwd ?? ".");
+		return `if [ ! -e ${shellQuote(marker)} ]; then
+  run_step ${shellQuote(label)} ${shellQuote(stepCwd)} ${shellQuote(domain.command)}
 else
-  printf '{"status":"success","repo":"lambda","finishedAt":"%s","skipped":true}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > ${shellQuote(statusPath)}
-  echo "lambda root already ready"
+  echo "✓ ${label} ready"
 fi`;
-	}
-
+	}).join("\n");
+	const domainList = domains.join(",");
 	return `set -u
 mkdir -p ${shellQuote(dirname(logPath))}
-printf '{"status":"running","repo":"product","domains":"%s","startedAt":"%s"}\n' "${domains.join(",")}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > ${shellQuote(statusPath)}
+printf '{"status":"running","repo":"%s","domains":"%s","startedAt":"%s"}\n' ${shellQuote(profile.name)} ${shellQuote(domainList)} "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > ${shellQuote(statusPath)}
 run_step() {
   label="$1"
-  shift
+  step_cwd="$2"
+  step_cmd="$3"
   echo "[deps-bootstrap] $label" >> ${shellQuote(logPath)}
-  if "$@" >> ${shellQuote(logPath)} 2>&1; then
+  if (cd "$step_cwd" && bash -lc "$step_cmd") >> ${shellQuote(logPath)} 2>&1; then
     echo "✓ $label"
   else
     code=$?
-    printf '{"status":"failed","repo":"product","step":"%s","exitCode":%s,"finishedAt":"%s","log":"%s"}\n' "$label" "$code" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" ${shellQuote(logPath)} > ${shellQuote(statusPath)}
+    printf '{"status":"failed","repo":"%s","step":"%s","exitCode":%s,"finishedAt":"%s","log":"%s"}\n' ${shellQuote(profile.name)} "$label" "$code" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" ${shellQuote(logPath)} > ${shellQuote(statusPath)}
     echo "✗ $label failed; see ${logPath}"
     exit "$code"
   fi
 }
-if [ "${has("root")}" = "1" ] && [ ! -x node_modules/.bin/lefthook ]; then
-  run_step "root pnpm install" pnpm install --frozen-lockfile
-elif [ "${has("root")}" = "1" ]; then
-  echo "✓ root ready"
-fi
-if [ "${has("backend")}" = "1" ] && [ ! -x backend/node_modules/.bin/eslint ]; then
-  (cd backend && run_step "backend pnpm install" env PYTHON=/usr/bin/python3 pnpm install --frozen-lockfile)
-else
-  [ "${has("backend")}" = "1" ] && echo "✓ backend ready"
-fi
-if [ "${has("frontend")}" = "1" ] && [ ! -x frontend/node_modules/.bin/eslint ]; then
-  (cd frontend && run_step "frontend pnpm install" pnpm install --frozen-lockfile)
-else
-  [ "${has("frontend")}" = "1" ] && echo "✓ frontend ready"
-fi
-printf '{"status":"success","repo":"product","domains":"%s","finishedAt":"%s","log":"%s"}\n' "${domains.join(",")}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" ${shellQuote(logPath)} > ${shellQuote(statusPath)}
-echo "product deps ready: ${domains.join(",")}"`;
+${steps}
+printf '{"status":"success","repo":"%s","domains":"%s","finishedAt":"%s","log":"%s"}\n' ${shellQuote(profile.name)} ${shellQuote(domainList)} "$(date -u +%Y-%m-%dT%H:%M:%SZ)" ${shellQuote(logPath)} > ${shellQuote(statusPath)}
+echo "${profile.name} deps ready: ${domainList}"`;
 }
 
 function setDependencyBootstrapStatus(ctx: ExtensionContext | ExtensionCommandContext, status: BootstrapStatus | "ready", text: string) {
@@ -538,7 +558,7 @@ function setDependencyBootstrapStatus(ctx: ExtensionContext | ExtensionCommandCo
 
 interface DependencyBootstrapResult {
 	repoRoot?: string;
-	repoName?: CompanyRepoName;
+	repoName?: ProfiledRepoName;
 	domains?: BootstrapDomain[];
 	missing?: BootstrapDomain[];
 	logPath?: string;
@@ -556,13 +576,14 @@ async function ensureDependencyBootstrapWorker(
 	const repoRoot = await findRepoRoot(pi, ctx.cwd);
 	if (!repoRoot) return { state: "not-company-repo" };
 
-	const repoName = await detectCompanyRepoName(pi, repoRoot);
-	if (!repoName) return { repoRoot, state: "not-company-repo" };
-	if (!options.force && !isImplementationStartPrompt(prompt)) return { repoRoot, repoName, state: "not-implementation" };
+	const repoProfile = await detectProfiledRepo(pi, repoRoot);
+	if (!repoProfile?.bootstrap?.enabled) return { repoRoot, state: "not-company-repo" };
+	const repoName = repoProfile.displayName ?? repoProfile.name;
+	if (!options.force && !isImplementationStartPrompt(prompt, repoProfile)) return { repoRoot, repoName, state: "not-implementation" };
 
 	const meta = readMeta(repoRoot);
-	const domains = [...new Set(options.domains ?? getBootstrapDomains(repoName, prompt, meta))];
-	const missing = missingBootstrapDomains(repoRoot, repoName, domains);
+	const domains = [...new Set(options.domains ?? getBootstrapDomains(repoProfile, prompt, meta))];
+	const missing = missingBootstrapDomains(repoRoot, repoProfile, domains);
 	const stateDir = bootstrapStateDir(repoRoot);
 	const logPath = join(stateDir, "bootstrap.log");
 	const statusPath = join(stateDir, "status.json");
@@ -589,7 +610,7 @@ async function ensureDependencyBootstrapWorker(
 
 	mkdirSync(stateDir, { recursive: true });
 	const runDomains = domains.filter((domain) => missing.includes(domain));
-	const script = buildDependencyBootstrapScript(repoName, runDomains, logPath, statusPath);
+	const script = buildDependencyBootstrapScript(repoProfile, runDomains, repoRoot, logPath, statusPath);
 	setDependencyBootstrapStatus(ctx, "running", `${runDomains.join("+")}…`);
 	const promise = pi.exec("bash", ["-lc", script], { cwd: repoRoot }).then((result) => {
 		const job = dependencyBootstrapJobs.get(repoRoot);
@@ -672,7 +693,7 @@ async function handleBootstrap(pi: ExtensionAPI, args: string, ctx: ExtensionCom
 		domains: requestedDomains.length > 0 ? requestedDomains : undefined,
 		reason: "manual",
 	});
-	if (result.state === "not-company-repo") { ctx.ui.notify("Dependency bootstrap is currently scoped to product/lambda worktrees.", "info"); return; }
+	if (result.state === "not-company-repo") { ctx.ui.notify(`Dependency bootstrap is currently scoped to configured worktree profiles (${profiledRepoLabel()}).`, "info"); return; }
 	if (result.state === "ready") { ctx.ui.notify(`Dependencies already ready (${result.repoName}: ${result.domains?.join(", ")}).`, "info"); return; }
 	if (result.state === "running") { ctx.ui.notify(`Dependency bootstrap already running. Log: ${result.logPath}`, "info"); return; }
 	if (result.state === "started") { ctx.ui.notify(`Dependency bootstrap started (${result.repoName}: ${result.domains?.join(", ")}). Log: ${result.logPath}`, "info"); return; }
@@ -988,7 +1009,7 @@ function isGenericSessionPrompt(text: string): boolean {
 
 function shortenSessionPrompt(text: string, width = 58): string {
 	let t = normalizeSessionText(text);
-	const jira = t.match(/browse\/(COM-\d+)/i)?.[1];
+	const jira = t.match(/browse\/([A-Z][A-Z0-9]+-\d+)/i)?.[1];
 	if (t.startsWith("/frame") && jira) return `/frame ${jira}`;
 	if (t.startsWith("## Unresolved PR review comments")) return "PR 리뷰 코멘트 대응";
 	if (t.includes("migrate: run")) return "마이그레이션 실행";
@@ -2067,11 +2088,11 @@ async function handleWt(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCon
 		const t = ctx.ui.theme;
 		ctx.ui.notify([
 			t.fg("accent", "Usage:"),
-			`  ${t.fg("warning", "/wt new")} ${t.fg("borderAccent", "[name] [--repo <name>] [--hotfix|--hotfeature|--from <branch>] [--ticket COM-XXXX] [--carry-context]")}`,
+			`  ${t.fg("warning", "/wt new")} ${t.fg("borderAccent", "[name] [--repo <name>] [--hotfix|--hotfeature|--from <branch>] [--ticket PROJ-123] [--carry-context]")}`,
 			`  ${t.fg("warning", "/wt fork")} ${t.fg("borderAccent", "[name] [--context-file <path>] [--repo <name>] [--hotfix|--from <branch>]  — 현재 세션 전체를 이어받아 워크트리 생성")}`,
 			`  ${t.fg("warning", "/wt switch")} ${t.fg("borderAccent", "<name> | <repo>/<name>  — 워크트리 대시보드")}`,
 			`  ${t.fg("warning", "/wt resume")} ${t.fg("borderAccent", "<conductor-workspace>  — Conductor 워크스페이스 복원")}`,
-			`  ${t.fg("warning", "/wt bootstrap")} ${t.fg("borderAccent", "[status|--backend|--frontend|--all]  — product/lambda 의존성 조건부 백그라운드 준비")}`,
+			`  ${t.fg("warning", "/wt bootstrap")} ${t.fg("borderAccent", "[status|--backend|--frontend|--all]  — profile 기반 의존성 조건부 백그라운드 준비")}`,
 			`  ${t.fg("warning", "/wt list")} ${t.fg("borderAccent", "[--all]  \u2014 \uc6cc\ud06c\ud2b8\ub9ac \ubaa9\ub85d")}`,
 			`  ${t.fg("warning", "/wt rm")} ${t.fg("borderAccent", "<name> [--force]  \u2014 \uc6cc\ud06c\ud2b8\ub9ac \uc0ad\uc81c")}`,
 			`  ${t.fg("warning", "/wt repo")} ${t.fg("borderAccent", "[list|add|rm|rename]  \u2014 \ub808\ud3ec \ub4f1\ub85d \uad00\ub9ac")}`,
@@ -2104,6 +2125,7 @@ async function handleWt(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCon
 // ─── Extension entry ───────────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
+	const configuredRepoLabel = profiledRepoLabel();
 	pi.registerCommand("wt", {
 		description: "Git worktree management — create/list/switch/remove parallel workspaces",
 		handler: (args, ctx) => handleWt(pi, args, ctx),
@@ -2132,20 +2154,20 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "worktree_create",
 		label: "Create Worktree",
-		description: "Create a fresh git worktree for code changes. Use only when no investigation/planning context needs to be carried into product/lambda repos.",
-		promptSnippet: "Create a fresh git worktree for code changes in product/lambda repos. Required before editing files there only when context carry is not needed.",
+		description: `Create a fresh git worktree for code changes. Use only when no investigation/planning context needs to be carried into configured protected repos (${configuredRepoLabel}).`,
+		promptSnippet: `Create a fresh git worktree for code changes in configured protected repos (${configuredRepoLabel}). Required before editing files there only when context carry is not needed.`,
 		promptGuidelines: [
 			"Before any worktree creation, classify: investigation vs implementation, context-carry needed vs fresh, development vs production/hotfix base.",
 			"Use worktree_create only for a fresh implementation session with no valuable investigation/planning context. If context exists, use worktree_fork instead.",
-			"In fork/child panels (P1/P2), do not call worktree_create for product/lambda. Hand off to the parent P0 panel and have the parent run /wt fork.",
+			`In fork/child panels (P1/P2), do not call worktree_create for configured protected repos (${configuredRepoLabel}). Hand off to the parent P0 panel and have the parent run /wt fork.`,
 			"If the request mentions hotfix/production/핫픽스, pass hotfix: true. Do not create a development-based hotfix branch.",
-			"Use worktree_create before editing files in product or lambda repos. Do not manually run git worktree add.",
+			`Use worktree_create before editing files in configured protected repos (${configuredRepoLabel}). Do not manually run git worktree add.`,
 			"Tool calls cannot execute slash-command session switches directly. After worktree_create succeeds, tell the user to submit the returned /wt switch command (prefilled in interactive UI) and wait before continuing.",
 		],
 		parameters: Type.Object({
-			repo: Type.Optional(Type.String({ description: "Registered repo name (e.g. 'product', 'lambda'). Auto-detected if omitted." })),
+			repo: Type.Optional(Type.String({ description: `Registered repo name (configured examples: ${configuredRepoLabel}). Auto-detected if omitted.` })),
 			name: Type.Optional(Type.String({ description: "Worktree name. Auto-generated if omitted." })),
-			ticket: Type.Optional(Type.String({ description: "Jira ticket (e.g. 'COM-2345')" })),
+			ticket: Type.Optional(Type.String({ description: "Issue/ticket key (e.g. 'PROJ-123')" })),
 			note: Type.Optional(Type.String({ description: "Short description of the work" })),
 			hotfix: Type.Optional(Type.Boolean({ description: "Branch from production instead of development" })),
 		}),
@@ -2243,7 +2265,7 @@ export default function (pi: ExtensionAPI) {
 		promptSnippet: "Switch to an existing git worktree session, or list available worktrees.",
 		parameters: Type.Object({
 			name: Type.Optional(Type.String({ description: "Worktree name to switch to. Omit to list available worktrees." })),
-			repo: Type.Optional(Type.String({ description: "Registered repo name (e.g. 'product'). Auto-detected if only one repo registered." })),
+			repo: Type.Optional(Type.String({ description: `Registered repo name (configured examples: ${configuredRepoLabel}). Auto-detected if only one repo registered.` })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const reg = loadRegistry();
@@ -2297,16 +2319,16 @@ export default function (pi: ExtensionAPI) {
 		promptGuidelines: [
 			"Before any worktree creation, classify: investigation vs implementation, context-carry needed vs fresh, development vs production/hotfix base.",
 			"Use worktree_fork instead of worktree_create when you have valuable session context (investigation results, code analysis, plans) to carry over.",
-			"In fork/child panels (P1/P2), do not call worktree_fork for product/lambda. Hand off to the parent P0 panel and have the parent run /wt fork so the parent conversation is the source session.",
+			`In fork/child panels (P1/P2), do not call worktree_fork for configured protected repos (${configuredRepoLabel}). Hand off to the parent P0 panel and have the parent run /wt fork so the parent conversation is the source session.`,
 			"If the request mentions hotfix/production/핫픽스, pass hotfix: true. Do not create a development-based hotfix branch.",
 			"The context parameter should be a comprehensive markdown summary: goals, findings, target files, code snippets, and action items.",
 			"Tool calls cannot execute slash-command session switches directly. After worktree_fork succeeds, tell the user to submit the returned /wt switch command (prefilled in interactive UI) and wait before continuing.",
 		],
 		parameters: Type.Object({
 			context: Type.String({ description: "Markdown summary of current session context to carry over (goals, investigation results, target files, action items)" }),
-			repo: Type.Optional(Type.String({ description: "Registered repo name (e.g. 'product', 'lambda'). Auto-detected if omitted." })),
+			repo: Type.Optional(Type.String({ description: `Registered repo name (configured examples: ${configuredRepoLabel}). Auto-detected if omitted.` })),
 			name: Type.Optional(Type.String({ description: "Worktree name. Auto-generated if omitted." })),
-			ticket: Type.Optional(Type.String({ description: "Jira ticket (e.g. 'COM-2345')" })),
+			ticket: Type.Optional(Type.String({ description: "Issue/ticket key (e.g. 'PROJ-123')" })),
 			note: Type.Optional(Type.String({ description: "Short description of the work" })),
 			hotfix: Type.Optional(Type.Boolean({ description: "Branch from production instead of development" })),
 		}),

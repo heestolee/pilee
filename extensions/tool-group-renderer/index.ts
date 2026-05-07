@@ -2,9 +2,9 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Container, Spacer, Text, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { truncatePlainToWidth } from "../utils/format-utils.js";
 
-const PATCH_STATE_KEY = Symbol.for("creatrip.tool-group-renderer.patch-state");
+const PATCH_STATE_KEY = Symbol.for("pilee.tool-group-renderer.patch-state");
 const PATCH_VERSION = "2026-04-27-r1";
-const GROUP_STATE = Symbol("creatrip.tool-group-renderer.state");
+const GROUP_STATE = Symbol("pilee.tool-group-renderer.state");
 const PI_INTERACTIVE_BASE = (() => {
 	const candidates = [
 		"/usr/local/lib/node_modules/@mariozechner/pi-coding-agent/dist/modes/interactive",
