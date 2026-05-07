@@ -907,7 +907,10 @@ function actionableFiles(commit) {
 }
 
 function isKnowledgeDocFile(file) {
-	return file === "docs/knowledge/README.md" || /^docs\/knowledge\/[^/]+\.md$/.test(file);
+	return file === "README.md"
+		|| file === "docs/knowledge-review.md"
+		|| file === "docs/knowledge/README.md"
+		|| /^docs\/knowledge\/[^/]+\.md$/.test(file);
 }
 
 function readHistoryEntries() {
