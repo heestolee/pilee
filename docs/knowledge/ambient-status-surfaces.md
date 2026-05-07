@@ -17,8 +17,9 @@ applies_to:
 source:
   - pilee-history:2026-05-01#14
   - pilee-history:2026-05-02#screensaver
-reviewed_at: 2026-05-05
-reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
+  - user-direction:2026-05-07-local-resolver
+reviewed_at: 2026-05-07
+reviewed_commit: 0e6c08396034c8c5f9940871083eafa1c5d39e49
 related:
   - tool-output-noise-management
   - backlog-source-session-provenance
@@ -31,6 +32,10 @@ Idle screensaver나 spinner는 단순 장식보다 “지금 무엇을 기다리
 ## Status Rule
 
 마지막 assistant 메시지 요약, in-progress/pending task, 현재 작업 상태를 짧게 보여줍니다. 장식적 애니메이션은 정보를 방해하지 않을 때만 의미가 있습니다. task 경로처럼 상태 source가 바뀌면 UI도 실제 저장 위치를 따라가야 합니다.
+
+## Global Preference Rule
+
+ambient UI의 on/off는 패널별 임시 상태보다 사용자 전역 preference로 다룹니다. screensaver처럼 모든 패널에서 체감되는 기능은 설정 파일을 공유하고, 각 패널이 변경을 감지해 stale timer를 취소하거나 다시 예약해야 합니다. 단, 명시적인 manual preview는 설정값과 별개로 현재 화면 확인을 위해 허용할 수 있습니다.
 
 ## Failure Mode
 

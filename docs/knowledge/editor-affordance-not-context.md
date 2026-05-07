@@ -17,8 +17,9 @@ applies_to:
 source:
   - pilee-history:2026-05-03#31
   - pilee-history:2026-05-03#32
-reviewed_at: 2026-05-05
-reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
+  - user-direction:2026-05-07-local-resolver
+reviewed_at: 2026-05-07
+reviewed_commit: 0e6c08396034c8c5f9940871083eafa1c5d39e49
 related:
   - theme-information-hierarchy
   - context-loading-minimal-surface
@@ -32,6 +33,10 @@ Footer, prompt suggestion, working text 같은 editor affordance는 사용자가
 ## Boundary Rule
 
 Editor surface는 현재 모델, 패널 label, 입력 상태, suggestion처럼 사용자가 보는 정보를 표시합니다. 실제 시스템 지시나 장기 메모는 AGENTS/skill/knowledge처럼 추적 가능한 경로로 들어가야 합니다.
+
+## Panel Label Rule
+
+`P0 · model`, `P1 · model` 같은 표시는 사용자가 현재 패널의 역할을 기억하도록 돕는 visible affordance입니다. 이 label은 숨은 prompt나 권한 모델이 아니며, 중요한 실행 판단은 worktree gate·handoff·tool guard처럼 별도 경로에서 검증되어야 합니다.
 
 ## Failure Mode
 
