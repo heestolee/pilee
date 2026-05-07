@@ -22,8 +22,8 @@ source:
   - pilee-history:2026-05-04#33
   - pilee-history:2026-05-04#34
   - pilee-history:2026-05-05#42
-reviewed_at: 2026-05-05
-reviewed_commit: b730f16e977be8fa2f810038fc3aafe2c29ceea9
+reviewed_at: 2026-05-07
+reviewed_commit: 8b79c81704f67905fa6cecca9c6bb24e50c433c1
 related:
   - pilee-knowledge-system
   - worktree-session-continuity
