@@ -28,8 +28,9 @@ source:
   - pilee-history:2026-05-05#40
   - pilee-history:2026-05-05#41
   - pilee-history:2026-05-05#42
-reviewed_at: 2026-05-05
-reviewed_commit: aa0e440375a6cfcc701896552c94366ee813c171
+  - user-direction:2026-05-07-local-resolver
+reviewed_at: 2026-05-07
+reviewed_commit: 74e15fcd9f1709efc1b06a1dbb0a1976216ad8c3
 related:
   - subagent-model-policy
   - pilee-knowledge-system
@@ -51,7 +52,7 @@ fork-panel에서 종료된 대화는 transcript를 주입하는 것보다 세션
 
 fork-panel의 handoff는 패널 생명주기와 분리합니다. 자식 패널이 닫혀야만 맥락이 전달되는 구조는 사용자가 불필요하게 패널을 종료하게 만들고, 즉시 follow-up 주입은 부모 대화 흐름을 끊을 수 있습니다. 기본 handoff는 parent inbox에 unread 항목으로 저장하고, 부모가 `/panels`에서 선택해 입력창에 삽입하거나 명시적으로 follow-up 전송할 때만 대화 컨텍스트에 들어옵니다.
 
-자식 패널은 부모 기준 `P1`, `P2` 같은 주소를 갖고, 그 label을 입력창 메타 영역에 표시합니다. `/handoff --inject`와 `/done --inject`는 부모를 즉시 interrupt해도 되는 상황에서만 쓰는 강한 옵션이고, 예기치 않은 종료 fallback은 inbox 저장으로 처리합니다.
+자식 패널은 부모 기준 `P1`, `P2` 같은 주소를 갖고, 그 label을 입력창 메타 영역에 표시합니다. 부모 패널은 명시적으로 `P0`로 표시해 현재 세션이 handoff의 기준점임을 드러냅니다. `/handoff --inject`와 `/done --inject`는 부모를 즉시 interrupt해도 되는 상황에서만 쓰는 강한 옵션이고, 예기치 않은 종료 fallback은 inbox 저장으로 처리합니다.
 
 ## Display Guardrail
 

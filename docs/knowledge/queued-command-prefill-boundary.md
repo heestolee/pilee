@@ -17,8 +17,9 @@ applies_to:
   - worktree_fork
 source:
   - pilee-history:2026-05-05#41
-reviewed_at: 2026-05-05
-reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
+  - user-direction:2026-05-07-local-resolver
+reviewed_at: 2026-05-07
+reviewed_commit: 74e15fcd9f1709efc1b06a1dbb0a1976216ad8c3
 related:
   - worktree-execution-boundary
   - session-identity-over-filenames
@@ -32,6 +33,10 @@ Pi 대화에 slash command 문자열을 queue했다고 해서 그 command가 실
 ## Boundary Rule
 
 도구는 필요한 세션을 만들거나 fork하고, 사용자가 확인할 수 있는 editor prefill을 제공합니다. 자동 실행이 필요한 일은 command queue에 기대지 말고 확실한 API/함수 경로로 수행합니다.
+
+## Worktree Tool Rule
+
+`worktree_create`, `worktree_switch`, `worktree_fork` 같은 도구는 slash command를 몰래 실행하지 않습니다. 대신 세션을 준비하고 사용자가 볼 수 있는 `/wt switch ...` prefill을 남깁니다. 실행 경계가 바뀌는 작업일수록 사용자가 실제 전환을 눈으로 확인해야 합니다.
 
 ## Failure Mode
 
