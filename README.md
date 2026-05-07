@@ -184,6 +184,8 @@ Ctrl+W                       → 전체 워크트리 오버레이
 
 **불씨 / Ember**는 이 knowledge를 다루는 친근한 입구입니다. `/ember`로 세션에서 남은 깨달음을 후보로 모으고, `/ember tend`로 freshness/confidence review queue를 살핍니다. `/ember resolve`는 stale/review_needed 문서를 로컬 resolver PR 작업 단위로 바꾸며, PR body는 내용 수정·confirm-only·보류·Privacy·검증·Freshness를 구분해 작성합니다. 저장소의 canonical 용어와 구조는 계속 `knowledge`입니다.
 
+회사/개인/로컬 실행 맥락은 public pilee에 넣지 않고 private overlay package에 둡니다. 새 overlay를 만들 때는 fake ACME 예시만 담은 public-safe 템플릿 [pilee-private-overlay-template](https://github.com/heestolee/pilee-private-overlay-template)을 복사해 `pi/skills`, `pi/prompts`, `pi/profiles/*.json`을 자기 환경에 맞게 채우면 됩니다.
+
 <p align="center">
   <img src="./tmp/knowledge-map.ko.svg" alt="pilee knowledge map" width="900"/>
 </p>
