@@ -20,8 +20,8 @@ source:
   - pilee-history:2026-05-01#10
   - pilee-history:2026-05-01#19
   - pilee-history:2026-05-01#24
-reviewed_at: 2026-05-05
-reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
+reviewed_at: 2026-05-07
+reviewed_commit: f1480c7b2a651eb5eba20709293b9839f4f91587
 related:
   - private-journal-public-doctrine
   - tool-output-noise-management

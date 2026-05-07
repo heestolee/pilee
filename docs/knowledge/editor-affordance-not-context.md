@@ -19,7 +19,7 @@ source:
   - pilee-history:2026-05-03#32
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: 0e6c08396034c8c5f9940871083eafa1c5d39e49
+reviewed_commit: f1480c7b2a651eb5eba20709293b9839f4f91587
 related:
   - theme-information-hierarchy
   - context-loading-minimal-surface
