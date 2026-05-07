@@ -34,6 +34,7 @@ Pi UI가 있고 `frame_studio` tool을 사용할 수 있으면, 번호형 텍스
 - Step 3/4/6/8: 선택이 필요한 지점은 `action=ask`를 호출해 버튼/체크박스/직접입력으로 답을 받는다.
 - tool 결과가 `unavailable`, `cancelled`, `timeout`이면 `ask-user-question-rules`의 번호형 text-mode fallback으로 이어간다.
 - Frame Studio 제목과 identity는 command shim의 **Frame identity hint**를 따른다. P0/P1 panel label이 아니라 worktree/ticket/session planning identity에 귀속한다.
+- `frame_studio` 결과의 `transcriptPath`는 전체 markdown/update/question/answer 전문 저장 위치다. 사용자가 다시 보고 싶어 하면 같은 identity로 `action=open`을 호출해 저장된 전문을 Glimpse에서 다시 연다.
 
 ---
 

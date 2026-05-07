@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createRequire } from "node:module";
 import { homedir, platform } from "node:os";
@@ -34,6 +34,18 @@ type StudioAnswer = {
 	submittedAt: number;
 };
 
+type StudioTimelineEntry = {
+	id: string;
+	time: number;
+	kind: "start" | "update" | "question" | "answer" | "finish" | "abort" | "restore";
+	step?: string;
+	title?: string;
+	markdown?: string;
+	question?: StudioQuestion;
+	answer?: StudioAnswer;
+	message?: string;
+};
+
 type FrameStudioState = {
 	runId: string;
 	identity: FrameIdentity;
@@ -42,10 +54,12 @@ type FrameStudioState = {
 	step?: string;
 	status: StudioStatus;
 	url: string;
+	transcriptPath: string;
 	createdAt: number;
 	updatedAt: number;
 	question?: StudioQuestion;
 	lastAnswer?: StudioAnswer;
+	timeline: StudioTimelineEntry[];
 	logs: Array<{ time: number; message: string }>;
 };
 
@@ -73,6 +87,7 @@ type FrameStudioHandle = {
 };
 
 const STATE_DIR = join(homedir(), ".pi", "agent", "frame-studio");
+const TRANSCRIPTS_DIR = join(STATE_DIR, "transcripts");
 const ASK_TIMEOUT_MS = 30 * 60 * 1000;
 
 const runsById = new Map<string, FrameStudioHandle>();
@@ -133,6 +148,58 @@ function readBody(req: IncomingMessage): Promise<string> {
 	});
 }
 
+function safeIdentityFileName(key: string): string {
+	return key
+		.trim()
+		.replace(/[^A-Za-z0-9._-]+/g, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, 120) || "untitled";
+}
+
+function transcriptPathForIdentity(key: string): string {
+	return join(TRANSCRIPTS_DIR, `${safeIdentityFileName(key)}.json`);
+}
+
+function persistState(state: FrameStudioState): void {
+	try {
+		mkdirSync(TRANSCRIPTS_DIR, { recursive: true });
+		writeFileSync(state.transcriptPath, JSON.stringify({ ...state, url: "" }, null, 2));
+	} catch {}
+}
+
+function loadPersistedState(identity: FrameIdentity): FrameStudioState | null {
+	const transcriptPath = transcriptPathForIdentity(identity.key);
+	try {
+		if (!existsSync(transcriptPath)) return null;
+		const parsed = JSON.parse(readFileSync(transcriptPath, "utf8")) as Partial<FrameStudioState>;
+		return {
+			runId: randomUUID().slice(0, 8),
+			identity: parsed.identity ?? identity,
+			title: parsed.title || identity.displayTitle || "Frame Studio",
+			markdown: parsed.markdown || "",
+			step: parsed.step,
+			status: parsed.status === "done" || parsed.status === "aborted" ? parsed.status : "running",
+			url: "",
+			transcriptPath,
+			createdAt: parsed.createdAt || Date.now(),
+			updatedAt: Date.now(),
+			question: undefined,
+			lastAnswer: parsed.lastAnswer,
+			timeline: Array.isArray(parsed.timeline) ? parsed.timeline : [],
+			logs: Array.isArray(parsed.logs) ? parsed.logs : [],
+		};
+	} catch {
+		return null;
+	}
+}
+
+function appendTimeline(state: FrameStudioState, entry: Omit<StudioTimelineEntry, "id" | "time">): void {
+	state.timeline.push({ id: randomUUID().slice(0, 8), time: Date.now(), ...entry });
+	state.updatedAt = Date.now();
+	persistState(state);
+}
+
+
 function serializeState(state: FrameStudioState) {
 	return {
 		runId: state.runId,
@@ -142,10 +209,12 @@ function serializeState(state: FrameStudioState) {
 		step: state.step,
 		status: state.status,
 		url: state.url,
+		transcriptPath: state.transcriptPath,
 		createdAt: state.createdAt,
 		updatedAt: state.updatedAt,
 		question: state.question,
 		lastAnswer: state.lastAnswer,
+		timeline: state.timeline,
 		logs: state.logs.slice(-30),
 	};
 }
@@ -160,6 +229,7 @@ function pushState(handle: FrameStudioHandle) {
 function addLog(handle: FrameStudioHandle, message: string) {
 	handle.state.logs.push({ time: Date.now(), message });
 	handle.state.updatedAt = Date.now();
+	persistState(handle.state);
 }
 
 function listenOnLoopback(server: Server): Promise<string> {
@@ -223,6 +293,12 @@ button { border:0; border-radius:12px; padding:10px 15px; font-weight:800; curso
 .answer-row { margin:8px 0; }
 .answer-label { color:var(--muted); font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
 .answer-value { margin-top:3px; }
+.timeline { display:grid; gap:12px; }
+.timeline-item { border:1px solid var(--line); border-radius:14px; padding:12px; background:#fff; }
+.timeline-head { display:flex; gap:8px; flex-wrap:wrap; align-items:center; color:var(--muted); font-size:12px; font-weight:800; margin-bottom:8px; }
+.timeline-kind { color:var(--accent); text-transform:uppercase; letter-spacing:.04em; }
+.timeline details { margin-top:8px; }
+.timeline summary { cursor:pointer; font-weight:800; color:var(--text); }
 .logs { color:var(--muted); font-size:12px; max-height:160px; overflow:auto; }
 .empty { color:var(--muted); padding:24px; text-align:center; }
 </style>
@@ -237,6 +313,7 @@ button { border:0; border-radius:12px; padding:10px 15px; font-weight:800; curso
   <main class="layout">
     <section class="card markdown" id="markdown"><div class="empty">Frame markdown을 기다리는 중...</div></section>
     <section class="card question" id="questionCard" hidden></section>
+    <section class="card"><h2>Frame 전문</h2><div class="timeline" id="timeline"></div></section>
     <section class="card"><h2>로그</h2><div class="logs" id="logs"></div></section>
   </main>
 </div>
@@ -280,6 +357,24 @@ function renderAnswerCard(answer) {
     + textHtml
     + '<div class="status">Pi가 다음 단계를 준비 중입니다. 다음 markdown update가 오면 이 카드가 교체됩니다.</div>';
 }
+function renderTimelineEntry(entry) {
+  var head = '<div class="timeline-head"><span>' + new Date(entry.time).toLocaleTimeString() + '</span><span class="timeline-kind">' + esc(entry.kind || '') + '</span>' + (entry.step ? '<span>' + esc(entry.step) + '</span>' : '') + '</div>';
+  var body = '';
+  if (entry.message) body += '<p>' + inline(entry.message) + '</p>';
+  if (entry.markdown) body += '<details><summary>Markdown 전문</summary><div class="markdown">' + renderMarkdown(entry.markdown) + '</div></details>';
+  if (entry.question) {
+    body += '<div class="answer-row"><div class="answer-label">질문</div><div class="answer-value">' + inline(entry.question.question) + '</div></div>';
+    if ((entry.question.options || []).length) {
+      body += '<div class="answer-row"><div class="answer-label">옵션</div><ol>' + entry.question.options.map(function(opt) { return '<li>' + inline(opt) + '</li>'; }).join('') + '</ol></div>';
+    }
+  }
+  if (entry.answer) body += renderAnswerCard(entry.answer);
+  return '<div class="timeline-item">' + head + (body || '<span class="status">내용 없음</span>') + '</div>';
+}
+function renderTimeline(entries) {
+  if (!entries || !entries.length) return '<span class="status">아직 기록된 frame 전문이 없습니다.</span>';
+  return entries.map(renderTimelineEntry).join('');
+}
 function render(s) {
   state = s;
   document.title = s.title || 'Frame Studio';
@@ -315,6 +410,7 @@ function render(s) {
       + (q.allowText ? '<textarea id="answerText" placeholder="' + esc(q.placeholder || '직접 입력') + '"></textarea>' : '')
       + '<div class="actions"><button class="primary" onclick="submitAnswer()">' + esc(q.submitLabel || '선택 완료') + '</button><button class="secondary" onclick="cancelAnswer()">취소</button><span class="status" id="submitStatus"></span></div>';
   }
+  document.getElementById('timeline').innerHTML = renderTimeline(s.timeline || []);
   document.getElementById('logs').innerHTML = (s.logs || []).slice().reverse().map(function(log) {
     return '<div>' + new Date(log.time).toLocaleTimeString() + ' · ' + esc(log.message) + '</div>';
   }).join('') || '<span class="status">로그 없음</span>';
@@ -401,6 +497,7 @@ function createServerFor(state: FrameStudioState): FrameStudioHandle {
 				handle.state.lastAnswer = answer;
 				handle.state.question = undefined;
 				handle.state.status = "running";
+				appendTimeline(handle.state, { kind: "answer", step: handle.state.step, answer });
 				addLog(handle, answer.status === "cancelled" ? "Question cancelled by user." : "Question answered in Frame Studio.");
 				pushState(handle);
 				pending.resolve(answer);
@@ -466,14 +563,18 @@ async function ensureRun(pi: ExtensionAPI, ctx: ExtensionContext, params: { titl
 		if (params.markdown !== undefined) handle.state.markdown = params.markdown;
 		if (params.step) handle.state.step = params.step;
 		if (params.markdown !== undefined || params.step) handle.state.lastAnswer = undefined;
+		if (params.markdown !== undefined || params.step || params.title) {
+			appendTimeline(handle.state, { kind: "update", title: params.title, step: params.step, markdown: params.markdown });
+		}
 		handle.state.updatedAt = Date.now();
 		pushState(handle);
 		latestRunId = handle.state.runId;
 		return { handle, opened: "reused" };
 	}
 
-	const runId = randomUUID().slice(0, 8);
-	const state: FrameStudioState = {
+	const restored = loadPersistedState(identity);
+	const runId = restored?.runId ?? randomUUID().slice(0, 8);
+	const state: FrameStudioState = restored ?? {
 		runId,
 		identity,
 		title: params.title || identity.displayTitle || "Frame Studio",
@@ -481,13 +582,20 @@ async function ensureRun(pi: ExtensionAPI, ctx: ExtensionContext, params: { titl
 		step: params.step,
 		status: "running",
 		url: "",
+		transcriptPath: transcriptPathForIdentity(identity.key),
 		createdAt: Date.now(),
 		updatedAt: Date.now(),
+		timeline: [],
 		logs: [],
 	};
+	if (params.title) state.title = params.title;
+	if (params.markdown !== undefined) state.markdown = params.markdown;
+	if (params.step) state.step = params.step;
 	handle = createServerFor(state);
 	state.url = await listenOnLoopback(handle.server);
-	addLog(handle, "Frame Studio started.");
+	if (restored) appendTimeline(state, { kind: "restore", step: params.step, markdown: params.markdown, message: "Saved Frame Studio transcript restored." });
+	else appendTimeline(state, { kind: "start", title: state.title, step: state.step, markdown: state.markdown, message: "Frame Studio started." });
+	addLog(handle, restored ? "Saved Frame Studio transcript restored." : "Frame Studio started.");
 	runsById.set(runId, handle);
 	runsByIdentity.set(identity.key, handle);
 	latestRunId = runId;
@@ -507,7 +615,12 @@ function closeHandle(handle: FrameStudioHandle) {
 	try { handle.window?.close(); } catch {}
 	if (handle.pending) {
 		clearTimeout(handle.pending.timer);
-		handle.pending.resolve({ status: "cancelled", questionId: handle.pending.questionId, question: handle.state.question?.question, selectedIndices: [], selectedOptions: [], submittedAt: Date.now() });
+		const answer: StudioAnswer = { status: "cancelled", questionId: handle.pending.questionId, question: handle.state.question?.question, selectedIndices: [], selectedOptions: [], submittedAt: Date.now() };
+		handle.state.lastAnswer = answer;
+		handle.state.question = undefined;
+		handle.state.status = "running";
+		appendTimeline(handle.state, { kind: "answer", step: handle.state.step, answer });
+		handle.pending.resolve(answer);
 		handle.pending = undefined;
 	}
 	runsById.delete(handle.state.runId);
@@ -523,6 +636,7 @@ function ask(handle: FrameStudioHandle, question: StudioQuestion, signal?: Abort
 	handle.state.question = question;
 	handle.state.status = "awaiting";
 	if (question.markdown) handle.state.markdown = question.markdown;
+	appendTimeline(handle.state, { kind: "question", step: handle.state.step, markdown: question.markdown, question });
 	addLog(handle, `Awaiting answer: ${question.question}`);
 	pushState(handle);
 	return new Promise((resolve) => {
@@ -533,6 +647,7 @@ function ask(handle: FrameStudioHandle, question: StudioQuestion, signal?: Abort
 			handle.state.lastAnswer = answer;
 			handle.state.question = undefined;
 			handle.state.status = "running";
+			appendTimeline(handle.state, { kind: "answer", step: handle.state.step, answer });
 			addLog(handle, "Question timed out.");
 			pushState(handle);
 			resolve(answer);
@@ -547,6 +662,7 @@ function ask(handle: FrameStudioHandle, question: StudioQuestion, signal?: Abort
 				handle.state.lastAnswer = answer;
 				handle.state.question = undefined;
 				handle.state.status = "running";
+				appendTimeline(handle.state, { kind: "answer", step: handle.state.step, answer });
 				addLog(handle, "Question cancelled by abort signal.");
 				pushState(handle);
 				resolve(answer);
@@ -559,11 +675,11 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "frame_studio",
 		label: "Frame Studio",
-		description: "Open/update a Glimpse Frame Studio for /frame co-thinking. Supports markdown rendering and interactive option/text answers scoped to worktree/ticket/session identity.",
+		description: "Open/update a Glimpse Frame Studio for /frame co-thinking. Supports markdown rendering, interactive option/text answers, saved full transcripts, and reopening by worktree/ticket/session identity.",
 		parameters: Type.Object({
 			action: Type.String({ description: "start|update|ask|open|finish|abort" }),
 			runId: Type.Optional(Type.String({ description: "Existing Frame Studio run id. Omit to use identity/latest run." })),
-			identityKey: Type.Optional(Type.String({ description: "Override identity key. Usually use Frame identity hint key." })),
+			identityKey: Type.Optional(Type.String({ description: "Override identity key. Usually use Frame identity hint key. Also reopens the saved transcript for that identity." })),
 			displayTitle: Type.Optional(Type.String({ description: "Override display title." })),
 			args: Type.Optional(Type.String({ description: "Original /frame args used for identity inference." })),
 			title: Type.Optional(Type.String({ description: "Window/report title." })),
@@ -582,7 +698,7 @@ export default function (pi: ExtensionAPI) {
 
 			if (action === "start") {
 				const { handle, opened } = await ensureRun(pi, ctx, params);
-				return resultText(`Frame Studio started (${handle.state.runId}). ${handle.state.url}. Opened: ${opened}.`, { runId: handle.state.runId, url: handle.state.url, identity: handle.state.identity, opened });
+				return resultText(`Frame Studio started (${handle.state.runId}). ${handle.state.url}. Transcript: ${handle.state.transcriptPath}. Opened: ${opened}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, identity: handle.state.identity, opened });
 			}
 
 			let handle = params.runId ? runsById.get(params.runId) : undefined;
@@ -601,7 +717,7 @@ export default function (pi: ExtensionAPI) {
 
 			if (action === "open") {
 				const opened = await openStudio(pi, ctx, handle);
-				return resultText(`Frame Studio opened (${handle.state.runId}). ${handle.state.url}. Opened: ${opened}.`, { runId: handle.state.runId, url: handle.state.url, opened });
+				return resultText(`Frame Studio opened (${handle.state.runId}). ${handle.state.url}. Transcript: ${handle.state.transcriptPath}. Opened: ${opened}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, opened });
 			}
 
 			if (action === "update") {
@@ -609,14 +725,15 @@ export default function (pi: ExtensionAPI) {
 				if (params.step) handle.state.step = params.step;
 				if (params.markdown !== undefined) handle.state.markdown = params.markdown;
 				if (params.markdown !== undefined || params.step) handle.state.lastAnswer = undefined;
+				appendTimeline(handle.state, { kind: "update", title: params.title, step: params.step, markdown: params.markdown });
 				addLog(handle, `Updated${params.step ? `: ${params.step}` : ""}.`);
 				pushState(handle);
-				return resultText(`Frame Studio updated (${handle.state.runId}).`, { runId: handle.state.runId, url: handle.state.url });
+				return resultText(`Frame Studio updated (${handle.state.runId}). Transcript: ${handle.state.transcriptPath}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath });
 			}
 
 			if (action === "ask") {
 				if (!ctx.hasUI) {
-					return resultText("Frame Studio UI is unavailable in this context. Use numbered text-mode AskUserQuestion fallback.", { status: "unavailable" });
+					return resultText("Frame Studio UI is unavailable in this context. Use numbered text-mode AskUserQuestion fallback.", { status: "unavailable", transcriptPath: handle.state.transcriptPath });
 				}
 				if (params.title) handle.state.title = params.title;
 				if (params.step) handle.state.step = params.step;
@@ -638,23 +755,25 @@ export default function (pi: ExtensionAPI) {
 					answer.status === "answered"
 						? `Frame Studio answer: ${answer.selectedOptions.join(", ") || "(no option)"}${answer.text ? `; text: ${answer.text}` : ""}`
 						: `Frame Studio ask ended: ${answer.status}.`,
-					{ runId: handle.state.runId, url: handle.state.url, answer },
+					{ runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, answer },
 				);
 			}
 
 			if (action === "finish") {
 				if (params.markdown !== undefined) handle.state.markdown = params.markdown;
 				handle.state.status = "done";
+				appendTimeline(handle.state, { kind: "finish", step: params.step ?? handle.state.step, markdown: params.markdown, message: "Frame Studio finished." });
 				addLog(handle, "Frame Studio finished.");
 				pushState(handle);
-				return resultText(`Frame Studio finished (${handle.state.runId}).`, { runId: handle.state.runId, url: handle.state.url });
+				return resultText(`Frame Studio finished (${handle.state.runId}). Transcript: ${handle.state.transcriptPath}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath });
 			}
 
 			if (action === "abort") {
 				handle.state.status = "aborted";
+				appendTimeline(handle.state, { kind: "abort", step: handle.state.step, message: "Frame Studio aborted." });
 				addLog(handle, "Frame Studio aborted.");
 				pushState(handle);
-				return resultText(`Frame Studio aborted (${handle.state.runId}).`, { runId: handle.state.runId, url: handle.state.url });
+				return resultText(`Frame Studio aborted (${handle.state.runId}). Transcript: ${handle.state.transcriptPath}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath });
 			}
 
 			throw new Error(`Unknown frame_studio action: ${params.action}`);
