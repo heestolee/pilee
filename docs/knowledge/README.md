@@ -164,7 +164,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Frame Studio는 frame 질문을 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-05-07 | d12a52a | frame-studio, frame, glimpse, ask-user-question, decision-ui, co-thinking |
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-05-07 | d601ac0 | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 1a0093b | local-dev, server, startup, diagnosis, dev |
-| [Private overlay package는 회사·개인 실행 맥락을 담는다](./private-overlay-package-boundary.md) | active | high | 2026-05-08 | 9f8a355 | privacy, package, overlay, skill, company-context |
+| [Private overlay package는 회사·개인 실행 맥락을 담는다](./private-overlay-package-boundary.md) | active | high | 2026-05-08 | 4cea4f7 | privacy, package, overlay, skill, company-context |
 | [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-05-07 | d601ac0 | queued-messages, slash-command, prefill, worktree, session, boundary |
 | [종료된 포크는 transcript 주입보다 revive가 우선이다](./revive-over-transcript-recall.md) | active | high | 2026-05-07 | d601ac0 | revive, recall, fork-panel, session, continuity, 세션 |
 | [세션 식별자는 파일명이 아니라 사람이 본 이름이다](./session-identity-over-filenames.md) | active | high | 2026-05-07 | d601ac0 | session, title, identity, session_info, worktree, revive |

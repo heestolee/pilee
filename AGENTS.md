@@ -10,6 +10,12 @@
 - **AskUserQuestion 규칙**: 한 줄 질문, 옵션에 결론 적기 금지, 처리된 항목 메뉴화 금지, 0개면 안 띄움
 - **토큰 의식**: 안 쓰는 익스텐션 비활성화, 스킬 최소화, 시스템 프롬프트 중복 제거
 
+## Public / Private 경계
+
+- **public pilee**: 재사용 가능한 Pi 엔진, 안전 프로토콜, sanitized doctrine만 둔다.
+- **private overlay**: 회사명, repo/path/profile, 계정 alias, Notion/Conductor/local script 경로, install/check command, raw history를 둔다.
+- 판단법: 값이 “내 환경/회사/계정에서만 맞는 구체값”이면 public code에 박지 말고 profile·private skill·local config로 뺀다. public에는 interface와 generic fallback만 남긴다.
+
 ## 상세 기록
 
 설계 결정, 분석 결과, 개선 근거 → `docs/pilee-history.md` 참조

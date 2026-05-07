@@ -21,8 +21,9 @@ applies_to:
   - extensions/preflight
 source:
   - user-direction:2026-05-07-heestolee-private
+  - user-direction:2026-05-08-public-private-boundary-reminder
 reviewed_at: 2026-05-08
-reviewed_commit: 9f8a355e3256b9c8a4ab33c9f922fd5e18d976ba
+reviewed_commit: 4cea4f793ee80ceea1f1c8271dc760df6dcdc8e1
 related:
   - private-journal-public-doctrine
   - skills-as-portable-procedures
@@ -38,6 +39,13 @@ pilee public package should keep reusable Pi infrastructure and generic operatin
 Public skills may define the safety protocol: ask before external writes, collect evidence before PASS, use pre/post SELECTs for DB writes, keep local dev startup diagnosable. Public extensions may define generic engines: worktree lifecycle, dependency worker orchestration, artifact browser grouping, and preflight execution. They should not embed company repo service names, internal URLs, account aliases, private Notion schemas, organization-specific artifact storage paths, or repo-specific install/check commands.
 
 Private overlay skills carry concrete procedures with namespaced skill names such as `<org>-db-read`, `<org>-db-write`, and `<org>-db-migration`. Private overlay profiles carry concrete extension config such as protected repo names, match rules, bootstrap markers/commands, workspace roots, Conductor path mappings, and preflight checks. Name collisions are avoided rather than relying on package load order overrides.
+
+## Quick Check
+
+Before adding a path, command, URL, account alias, repo name, project key, database/tool name, or automation script path, ask: **Would this still be true for another public pilee user?**
+
+- Yes → it may stay in public pilee as generic engine/doctrine.
+- No → move the concrete value to private overlay profile, private skill, or local config; keep only the interface/fallback in public.
 
 ## Migration Rule
 
