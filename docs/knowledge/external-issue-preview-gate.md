@@ -9,13 +9,13 @@ tags:
   - approval
 category: workflow
 status: active
-confidence: medium
+confidence: high
 applies_to:
   - skills/jira-issue-management
 source:
   - session-backfill:2026-05-05#skill-surface-review
-reviewed_at: 2026-05-05
-reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
+reviewed_at: 2026-05-07
+reviewed_commit: 90cadfd2bc2c53cd6b282aa9dc52cf3e7a330b47
 related:
   - live-artifact-preview-pattern
   - ask-user-question-decision-gates

@@ -9,15 +9,15 @@ tags:
   - database
 category: database
 status: active
-confidence: medium
+confidence: high
 applies_to:
   - skills/db-write
   - skills/db-write-migration
 source:
   - pilee-history:2026-05-01#analysis-db-write
   - session-backfill:2026-05-01#workflow-analysis
-reviewed_at: 2026-05-05
-reviewed_commit: 059f44559c6838a6912d08626cfcd09d08671fb1
+reviewed_at: 2026-05-07
+reviewed_commit: 90cadfd2bc2c53cd6b282aa9dc52cf3e7a330b47
 related:
   - ask-user-question-decision-gates
   - evidence-first-verification-gate
