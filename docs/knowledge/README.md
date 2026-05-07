@@ -161,7 +161,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-05-06 | 4c927ab | fork-panel, handoff, inbox, inject, parent, panel |
 | [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-05-05 | 059f445 | fork-panel, revive, repanel, ghostty, spatial, panel |
 | [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-05-06 | d1ba5a0 | frame, planning, identity, home-directory, ticket, session-title |
-| [Frame Studio는 frame 질문을 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-05-06 | ce6b0aa | frame-studio, frame, glimpse, ask-user-question, decision-ui, co-thinking |
+| [Frame Studio는 frame 질문을 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-05-07 | d12a52a | frame-studio, frame, glimpse, ask-user-question, decision-ui, co-thinking |
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-05-05 | 059f445 | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | medium | 2026-05-05 | 059f445 | local-dev, server, startup, diagnosis, product, dev |
 | [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-05-05 | 059f445 | queued-messages, slash-command, prefill, worktree, session, boundary |

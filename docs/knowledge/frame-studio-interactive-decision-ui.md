@@ -10,14 +10,16 @@ tags:
   - planning
 category: workflow
 status: active
+confidence: high
 applies_to:
   - extensions/frame-studio
   - skills/frame
   - extensions/tft-commands
 source:
   - pilee-history:2026-05-06#67
-reviewed_at: 2026-05-06
-reviewed_commit: ce6b0aae6fdbe21a53d2766d9e4f21988806c94e
+  - pilee-history:2026-05-07#73
+reviewed_at: 2026-05-07
+reviewed_commit: d12a52a300b52ef58f63f849a37f5b603a23ebc7
 related:
   - frame-planning-identity
   - frame-verify-contract
@@ -37,7 +39,19 @@ Frame Studio의 소유자는 현재 패널이 아니라 작업 단위입니다. 
 
 Frame Studio는 markdown live view와 single/multi option, 직접 입력을 지원합니다. 사용자가 선택하거나 취소하면 tool 응답으로 돌아오고, headless/no-UI 환경에서는 blocking하지 않고 numbered text fallback으로 내려갑니다.
 
+사용자가 선택한 뒤에는 완료 카드가 선택값·직접 입력값·원 질문을 남겨 “Pi가 다음 단계를 준비 중”임을 보여줍니다. 즉 선택 직후 질문 UI가 사라져도 사용자가 방금 무엇을 제출했는지 화면에서 확인할 수 있어야 합니다.
+
 즉 Frame Studio는 AskUserQuestion 원칙을 대체하지 않습니다. 같은 decision gate를 더 읽기 쉬운 UI로 표현하는 surface입니다.
+
+## Transcript Rule
+
+Frame Studio는 UI에 렌더된 markdown/update/question/answer 흐름을 identity별 transcript JSON으로 저장합니다. tool result의 `transcriptPath`는 이 전체 전문 저장 위치이며, agent에게 돌아오는 즉시 응답은 여전히 선택값과 직접 입력값 중심입니다.
+
+이 구분이 중요합니다. LLM context에는 제출된 답이 우선 들어오고, 전체 co-thinking 전문은 필요할 때 파일 또는 다시 열린 WebView로 확인하는 artifact입니다.
+
+## Reopen Rule
+
+사용자가 이전 frame 흐름을 다시 보고 싶어 하면 같은 worktree/ticket/session identity로 `frame_studio action=open`을 호출합니다. 활성 run이 없더라도 저장된 transcript를 복원해 Glimpse/WebView에서 `Frame 전문` 섹션으로 다시 보여줘야 합니다.
 
 ## Boundary
 
