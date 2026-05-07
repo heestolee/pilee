@@ -22,8 +22,8 @@ applies_to:
 source:
   - user-direction:2026-05-07-heestolee-private
   - user-direction:2026-05-08-public-private-boundary-reminder
-reviewed_at: 2026-05-08
-reviewed_commit: 4cea4f793ee80ceea1f1c8271dc760df6dcdc8e1
+reviewed_at: 2026-05-07
+reviewed_commit: ce6c2b04f7774e2da5e7aa4df9114959429b22d7
 related:
   - private-journal-public-doctrine
   - skills-as-portable-procedures
@@ -38,7 +38,7 @@ pilee public package should keep reusable Pi infrastructure and generic operatin
 
 Public skills may define the safety protocol: ask before external writes, collect evidence before PASS, use pre/post SELECTs for DB writes, keep local dev startup diagnosable. Public extensions may define generic engines: worktree lifecycle, dependency worker orchestration, artifact browser grouping, and preflight execution. They should not embed company repo service names, internal URLs, account aliases, private Notion schemas, organization-specific artifact storage paths, or repo-specific install/check commands.
 
-Private overlay skills carry concrete procedures with namespaced skill names such as `<org>-db-read`, `<org>-db-write`, and `<org>-db-migration`. Private overlay profiles carry concrete extension config such as protected repo names, match rules, bootstrap markers/commands, workspace roots, Conductor path mappings, and preflight checks. Name collisions are avoided rather than relying on package load order overrides.
+Private overlay skills carry concrete procedures with namespaced skill names such as `<org>-db-read`, `<org>-db-write`, and `<org>-db-migration`. Private overlay profiles carry concrete extension config such as protected repo names, match rules, bootstrap markers/commands, workspace roots, Conductor path mappings, and preflight checks. Public code discovers these profiles through package/project/local profile directories and should degrade to generic fallback behavior when no profile is present. Name collisions are avoided rather than relying on package load order overrides.
 
 ## Quick Check
 
@@ -51,8 +51,9 @@ Before adding a path, command, URL, account alias, repo name, project key, datab
 
 When a public skill or extension contains both generic doctrine/engine behavior and private execution context, split it into:
 
-1. a generic public skill/extension that preserves the doctrine or engine lifecycle and points to project/private overlays, and
-2. a private skill/profile that keeps the concrete tools, paths, examples, commands, and logs.
+1. a generic public skill/extension that preserves the doctrine or engine lifecycle and points to project/private overlays,
+2. a private skill/profile that keeps the concrete tools, paths, examples, commands, and logs, and
+3. a generic fallback that is useful for non-profiled users without silently reintroducing company/local assumptions.
 
 ## Failure Mode
 

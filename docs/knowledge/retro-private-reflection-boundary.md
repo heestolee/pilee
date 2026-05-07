@@ -16,7 +16,7 @@ source:
   - pilee-history:2026-05-01#16
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: 8b79c81704f67905fa6cecca9c6bb24e50c433c1
+reviewed_commit: ce6c2b04f7774e2da5e7aa4df9114959429b22d7
 related:
   - private-journal-public-doctrine
   - artifact-archive-reopenability
@@ -28,7 +28,7 @@ Retro는 공개 doctrine을 바로 쓰는 기능이 아니라 private reflection
 
 ## Boundary Rule
 
-`/retro`는 불러오기, 대화로 다듬기, private 저장소 반영을 담당합니다. 그 안에서 재사용 가능한 설계 판단이 생겼을 때만 별도로 knowledge 승격을 검토합니다.
+`/retro`는 불러오기, 대화로 다듬기, private 저장소 반영을 담당합니다. 보고서 디렉터리, 업로드 스크립트, Notion 같은 외부 목적지는 public 코드에 박지 않고 profile/env/local config에서 옵니다. 그 안에서 재사용 가능한 설계 판단이 생겼을 때만 별도로 knowledge 승격을 검토합니다.
 
 ## Automation Boundary
 

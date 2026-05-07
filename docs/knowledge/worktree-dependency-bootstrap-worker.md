@@ -16,8 +16,8 @@ applies_to:
   - worktree_fork
 source:
   - user-direction:2026-05-07-worker-dependency-bootstrap
-reviewed_at: 2026-05-08
-reviewed_commit: 9f8a355e3256b9c8a4ab33c9f922fd5e18d976ba
+reviewed_at: 2026-05-07
+reviewed_commit: ce6c2b04f7774e2da5e7aa4df9114959429b22d7
 related:
   - worktree-execution-boundary
   - worktree-session-continuity
@@ -38,7 +38,7 @@ worker는 다음 조건을 만족할 때만 자동 시작합니다.
 2. user prompt가 조사 전용이 아니라 구현/수정/검증/마무리 흐름입니다.
 3. profile이 지정한 domain marker가 없습니다.
 
-구체적인 marker, install command, domain 추론 regex는 public extension 코드가 아니라 overlay/profile JSON에 둡니다. public pilee는 worker lifecycle, status/log, idempotent marker check만 담당합니다.
+구체적인 marker, install command, domain 추론 regex는 public extension 코드가 아니라 overlay/profile JSON에 둡니다. public pilee는 worker lifecycle, status/log, idempotent marker check만 담당합니다. Profile이 없으면 자동 bootstrap은 조용히 비활성화되고, 사용자는 일반 worktree workflow만 사용합니다.
 
 ## Main Agent Contract
 

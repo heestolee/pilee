@@ -17,7 +17,7 @@ source:
   - pilee-history:2026-05-05#49
   - pilee-history:2026-05-05#52
 reviewed_at: 2026-05-07
-reviewed_commit: f97db772c09fd46cee4db42c40de13d82220fec1
+reviewed_commit: ce6c2b04f7774e2da5e7aa4df9114959429b22d7
 related:
   - pilee-knowledge-system
   - judgment-doc-unit
