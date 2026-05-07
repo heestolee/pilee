@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
+import { createServer, type Server } from "node:http";
 import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -147,6 +148,7 @@ interface GlimpseWindow {
 
 let glimpseOpen: ((html: string, opts: Record<string, unknown>) => GlimpseWindow) | null | undefined;
 const artifactWindows = new Set<GlimpseWindow>();
+const artifactBrowserServers = new Set<Server>();
 
 function findGlimpseMjs(): string | null {
 	try {
@@ -274,13 +276,17 @@ function openHtmlInGlimpse(open: (html: string, opts: Record<string, unknown>) =
 
 async function openInSystemBrowser(pi: ExtensionAPI, filePath: string): Promise<void> {
 	const resolved = fs.realpathSync(filePath);
+	await openUrlOrPathInSystem(pi, resolved);
+}
+
+async function openUrlOrPathInSystem(pi: ExtensionAPI, target: string): Promise<void> {
 	const plat = os.platform();
 	const result = plat === "darwin"
-		? await pi.exec("open", [resolved])
+		? await pi.exec("open", [target])
 		: plat === "win32"
-			? await pi.exec("cmd", ["/c", "start", "", resolved])
-			: await pi.exec("xdg-open", [resolved]);
-	if (result.code !== 0) throw new Error(result.stderr || `Failed to open browser (${result.code})`);
+			? await pi.exec("cmd", ["/c", "start", "", target])
+			: await pi.exec("xdg-open", [target]);
+	if (result.code !== 0) throw new Error(result.stderr || `Failed to open target (${result.code})`);
 }
 
 async function openHtmlStringArtifact(pi: ExtensionAPI, html: string, title: string, browserOnly = false): Promise<"glimpse" | "browser"> {
@@ -379,10 +385,15 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			const html = buildArtifactBrowserHtml(artifacts, ctx.cwd);
-			const mode = await openHtmlStringArtifact(pi, html, "pilee Artifact Browser", parsed.browserOnly);
+			const mode = await openArtifactBrowser(pi, artifacts, ctx.cwd, parsed.browserOnly);
 			ctx.ui.notify(`🗂️ Artifact Browser ${mode === "glimpse" ? "Glimpse" : "브라우저"} 열기 · reports ${artifacts.reports.length} · frame ${artifacts.frames.length} · captures ${artifacts.captures.length}`, "info");
 		},
+	});
+
+	pi.on("session_shutdown", () => {
+		for (const server of [...artifactBrowserServers]) {
+			try { server.close(); } catch {}
+		}
 	});
 
 	pi.on("tool_result", async (event, ctx) => {
@@ -531,6 +542,79 @@ function collectArtifactBrowserData(cwd: string): ArtifactBrowserData {
 		captures: collectCaptureMedia(cwd),
 		generatedAt: new Date(),
 	};
+}
+
+function artifactBrowserAllowedPaths(data: ArtifactBrowserData): Set<string> {
+	const allowed = new Set<string>();
+	for (const filePath of [
+		...data.reports.map((item) => item.path),
+		...data.frames.map((item) => item.path),
+		...data.captures.map((item) => item.path),
+	]) {
+		try { allowed.add(fs.realpathSync(filePath)); } catch {}
+	}
+	return allowed;
+}
+
+function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData, cwd: string): Promise<string> {
+	const allowedPaths = artifactBrowserAllowedPaths(data);
+	const server = createServer(async (req, res) => {
+		try {
+			const url = new URL(req.url || "/", "http://127.0.0.1");
+			if (req.method === "GET" && url.pathname === "/") {
+				res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+				res.end(buildArtifactBrowserHtml(data, cwd));
+				return;
+			}
+			if (req.method === "POST" && url.pathname === "/open") {
+				const requested = url.searchParams.get("path") || "";
+				let resolved = "";
+				try { resolved = fs.realpathSync(requested); } catch {}
+				if (!resolved || !allowedPaths.has(resolved)) {
+					res.writeHead(403, { "content-type": "application/json; charset=utf-8" });
+					res.end(JSON.stringify({ ok: false, error: "Path is not in this Artifact Browser." }));
+					return;
+				}
+				await openInSystemBrowser(pi, resolved);
+				res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+				res.end(JSON.stringify({ ok: true }));
+				return;
+			}
+			res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+			res.end("not found");
+		} catch (error) {
+			res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
+			res.end(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }));
+		}
+	});
+	artifactBrowserServers.add(server);
+	server.on("close", () => artifactBrowserServers.delete(server));
+	setTimeout(() => {
+		try { server.close(); } catch {}
+	}, 60 * 60 * 1000).unref?.();
+	return new Promise((resolve, reject) => {
+		server.once("error", reject);
+		server.listen(0, "127.0.0.1", () => {
+			const address = server.address();
+			if (!address || typeof address === "string") return reject(new Error("Failed to bind Artifact Browser server."));
+			resolve(`http://127.0.0.1:${address.port}/`);
+		});
+	});
+}
+
+async function openArtifactBrowser(pi: ExtensionAPI, data: ArtifactBrowserData, cwd: string, browserOnly = false): Promise<"glimpse" | "browser"> {
+	const url = await startArtifactBrowserServer(pi, data, cwd);
+	if (!browserOnly) {
+		const open = await getGlimpseOpen();
+		if (open) {
+			try {
+				openHtmlStringInGlimpse(open, `<!doctype html><html><head><meta charset="utf-8"><title>pilee Artifact Browser</title></head><body><script>window.location.replace(${JSON.stringify(url)});</script></body></html>`, "pilee Artifact Browser");
+				return "glimpse";
+			} catch {}
+		}
+	}
+	await openUrlOrPathInSystem(pi, url);
+	return "browser";
 }
 
 function collectFrameTranscripts(): FrameTranscriptEntry[] {
@@ -693,7 +777,7 @@ function buildFrameTranscriptStandaloneHtml(filePath: string): string {
 
 function artifactBrowserStyle(): string {
 	return `<style>
-	:root{color-scheme:light;--bg:#fafaf9;--panel:#fff;--line:#e7e5e4;--text:#292524;--muted:#78716c;--accent:#7c3aed;--soft:#f5f3ff;--green:#166534;--amber:#92400e}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.shell{max-width:1180px;margin:0 auto;padding:24px}.hero{padding:24px;border:1px solid var(--line);border-radius:24px;background:linear-gradient(135deg,#fff,#f5f3ff);box-shadow:0 20px 60px rgba(41,37,36,.08)}.kicker{color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}h1{margin:6px 0 8px;font-size:32px;line-height:1.15}.hero p,.muted{color:var(--muted)}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}.tab{border:1px solid var(--line);border-radius:999px;background:#fff;padding:9px 13px;font-weight:800;cursor:pointer}.tab.active{background:var(--accent);border-color:var(--accent);color:#fff}.panel{display:none}.panel.active{display:block}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.card{border:1px solid var(--line);border-radius:18px;background:var(--panel);padding:16px;box-shadow:0 10px 30px rgba(41,37,36,.05);overflow:hidden}.card h2,.card h3{margin:0 0 8px}.meta{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}.badge{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 8px;background:#fff}.path{color:var(--muted);font-size:12px;word-break:break-all}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}a.button{border:1px solid var(--line);border-radius:10px;padding:7px 10px;text-decoration:none;color:var(--accent);font-weight:800;background:#fff}.thumb{display:grid;place-items:center;aspect-ratio:16/10;background:#111;border-radius:14px;overflow:hidden;margin-bottom:10px}.thumb img{width:100%;height:100%;object-fit:contain}.empty{padding:40px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:18px;background:#fff}.timeline{display:grid;gap:12px}.timeline-item{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff}.timeline-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:var(--muted);font-size:12px}.timeline-head strong{color:var(--accent);text-transform:uppercase}.qa,.answer{margin-top:8px}.label{font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}pre{white-space:pre-wrap;word-break:break-word;background:#292524;color:#fafaf9;border-radius:12px;padding:12px;max-height:360px;overflow:auto}details{margin-top:8px}summary{cursor:pointer;font-weight:800}.search{width:100%;height:40px;border:1px solid var(--line);border-radius:12px;padding:0 12px;margin:16px 0;font:inherit}
+	:root{color-scheme:light;--bg:#fafaf9;--panel:#fff;--line:#e7e5e4;--text:#292524;--muted:#78716c;--accent:#7c3aed;--soft:#f5f3ff;--green:#166534;--amber:#92400e}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.shell{max-width:1180px;margin:0 auto;padding:24px}.hero{padding:24px;border:1px solid var(--line);border-radius:24px;background:linear-gradient(135deg,#fff,#f5f3ff);box-shadow:0 20px 60px rgba(41,37,36,.08)}.kicker{color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}h1{margin:6px 0 8px;font-size:32px;line-height:1.15}.hero p,.muted{color:var(--muted)}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}.tab{border:1px solid var(--line);border-radius:999px;background:#fff;padding:9px 13px;font-weight:800;cursor:pointer}.tab.active{background:var(--accent);border-color:var(--accent);color:#fff}.panel{display:none}.panel.active{display:block}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.card{border:1px solid var(--line);border-radius:18px;background:var(--panel);padding:16px;box-shadow:0 10px 30px rgba(41,37,36,.05);overflow:hidden}.card h2,.card h3{margin:0 0 8px}.meta{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}.badge{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 8px;background:#fff}.path{color:var(--muted);font-size:12px;word-break:break-all}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.button{border:1px solid var(--line);border-radius:10px;padding:7px 10px;text-decoration:none;color:var(--accent);font-weight:800;background:#fff;cursor:pointer;font:inherit}.button:hover{background:var(--soft)}.button[disabled]{opacity:.55;cursor:wait}.thumb{display:grid;place-items:center;aspect-ratio:16/10;background:#111;border-radius:14px;overflow:hidden;margin-bottom:10px}.thumb img{width:100%;height:100%;object-fit:contain}.empty{padding:40px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:18px;background:#fff}.timeline{display:grid;gap:12px}.timeline-item{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff}.timeline-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:var(--muted);font-size:12px}.timeline-head strong{color:var(--accent);text-transform:uppercase}.qa,.answer{margin-top:8px}.label{font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}pre{white-space:pre-wrap;word-break:break-word;background:#292524;color:#fafaf9;border-radius:12px;padding:12px;max-height:360px;overflow:auto}details{margin-top:8px}summary{cursor:pointer;font-weight:800}.search{width:100%;height:40px;border:1px solid var(--line);border-radius:12px;padding:0 12px;margin:16px 0;font:inherit}
 	</style>`;
 }
 
@@ -703,19 +787,23 @@ function reportSourceLabel(source: ReportEntry["source"]): string {
 	return "archive";
 }
 
+function openOriginalButton(filePath: string, label = "원본 열기"): string {
+	return `<button class="button open-original" type="button" data-path="${escapeAttr(filePath)}">${escapeHtml(label)}</button>`;
+}
+
 function renderReportCards(reports: ReportEntry[]): string {
 	if (!reports.length) return `<div class="empty">검증 리포트나 web-search review가 없습니다.</div>`;
-	return `<div class="grid">${reports.map((r) => `<article class="card searchable" data-search="${escapeAttr(`${r.name} ${r.ticket} ${r.source}`.toLowerCase())}"><h3>${escapeHtml(r.name)}</h3><div class="meta"><span class="badge">${escapeHtml(reportSourceLabel(r.source))}</span><span class="badge">${escapeHtml(r.time)}</span>${r.ticket ? `<span class="badge">${escapeHtml(r.ticket)}</span>` : ""}</div><div class="path">${escapeHtml(r.path)}</div><div class="actions"><a class="button" href="${escapeAttr(fileHref(r.path))}" target="_blank" rel="noreferrer">원본 열기</a></div></article>`).join("\n")}</div>`;
+	return `<div class="grid">${reports.map((r) => `<article class="card searchable" data-search="${escapeAttr(`${r.name} ${r.ticket} ${r.source}`.toLowerCase())}"><h3>${escapeHtml(r.name)}</h3><div class="meta"><span class="badge">${escapeHtml(reportSourceLabel(r.source))}</span><span class="badge">${escapeHtml(r.time)}</span>${r.ticket ? `<span class="badge">${escapeHtml(r.ticket)}</span>` : ""}</div><div class="path">${escapeHtml(r.path)}</div><div class="actions">${openOriginalButton(r.path)}</div></article>`).join("\n")}</div>`;
 }
 
 function renderFrameCards(frames: FrameTranscriptEntry[]): string {
 	if (!frames.length) return `<div class="empty">저장된 Frame Studio 전문이 없습니다.</div>`;
-	return `<div class="grid">${frames.map((f) => `<article class="card searchable" data-search="${escapeAttr(`${f.title} ${f.identity} ${f.mode}`.toLowerCase())}"><h3>${escapeHtml(f.title)}</h3><div class="meta"><span class="badge">${escapeHtml(f.mode)}</span><span class="badge">${escapeHtml(f.time)}</span><span class="badge">${f.timeline.length} entries</span></div><div class="path">${escapeHtml(f.identity)}</div><details><summary>Frame 전문 미리보기</summary><div class="timeline">${renderFrameTimeline(f.timeline)}</div></details><div class="actions"><a class="button" href="${escapeAttr(fileHref(f.path))}" target="_blank" rel="noreferrer">JSON 열기</a></div></article>`).join("\n")}</div>`;
+	return `<div class="grid">${frames.map((f) => `<article class="card searchable" data-search="${escapeAttr(`${f.title} ${f.identity} ${f.mode}`.toLowerCase())}"><h3>${escapeHtml(f.title)}</h3><div class="meta"><span class="badge">${escapeHtml(f.mode)}</span><span class="badge">${escapeHtml(f.time)}</span><span class="badge">${f.timeline.length} entries</span></div><div class="path">${escapeHtml(f.identity)}</div><details><summary>Frame 전문 미리보기</summary><div class="timeline">${renderFrameTimeline(f.timeline)}</div></details><div class="actions">${openOriginalButton(f.path, "JSON 열기")}</div></article>`).join("\n")}</div>`;
 }
 
 function renderCaptureCards(captures: CaptureEntry[]): string {
 	if (!captures.length) return `<div class="empty">캡처 이미지가 없습니다. 현재 cwd와 home의 .context/work/captures를 확인합니다.</div>`;
-	return `<div class="grid">${captures.map((c) => { const src = mediaDataUri(c.path); return `<article class="card searchable" data-search="${escapeAttr(`${c.name} ${c.source}`.toLowerCase())}"><div class="thumb">${src ? `<img src="${src}" alt="${escapeAttr(c.name)}" loading="lazy">` : `<span class="muted">${escapeHtml(formatBytes(c.size))}</span>`}</div><h3>${escapeHtml(path.basename(c.path))}</h3><div class="meta"><span class="badge">${escapeHtml(c.source)}</span><span class="badge">${escapeHtml(c.time)}</span><span class="badge">${escapeHtml(formatBytes(c.size))}</span></div><div class="path">${escapeHtml(c.name)}</div><div class="actions"><a class="button" href="${escapeAttr(fileHref(c.path))}" target="_blank" rel="noreferrer">원본 열기</a></div></article>`; }).join("\n")}</div>`;
+	return `<div class="grid">${captures.map((c) => { const src = mediaDataUri(c.path); return `<article class="card searchable" data-search="${escapeAttr(`${c.name} ${c.source}`.toLowerCase())}"><div class="thumb">${src ? `<img src="${src}" alt="${escapeAttr(c.name)}" loading="lazy">` : `<span class="muted">${escapeHtml(formatBytes(c.size))}</span>`}</div><h3>${escapeHtml(path.basename(c.path))}</h3><div class="meta"><span class="badge">${escapeHtml(c.source)}</span><span class="badge">${escapeHtml(c.time)}</span><span class="badge">${escapeHtml(formatBytes(c.size))}</span></div><div class="path">${escapeHtml(c.name)}</div><div class="actions">${openOriginalButton(c.path)}</div></article>`; }).join("\n")}</div>`;
 }
 
 function buildArtifactBrowserHtml(data: ArtifactBrowserData, cwd: string): string {
@@ -723,6 +811,8 @@ function buildArtifactBrowserHtml(data: ArtifactBrowserData, cwd: string): strin
 	return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>pilee Artifact Browser</title>${artifactBrowserStyle()}</head><body><main class="shell"><header class="hero"><div class="kicker">🗂️ pilee Artifact Browser</div><h1>산출물 다시 보기</h1><p>검증 리포트, Frame 기획 전문, 캡처 미디어를 탭으로 분리해서 봅니다.</p><div class="meta"><span class="badge">cwd ${escapeHtml(cwd)}</span><span class="badge">generated ${escapeHtml(data.generatedAt.toLocaleString())}</span></div></header><input id="search" class="search" type="search" placeholder="현재 탭에서 검색: 이름, 티켓, identity, source" oninput="filterCards()"><nav class="tabs"><button class="tab" data-tab="reports" onclick="showTab('reports')">검증 리포트 <strong>${data.reports.length}</strong></button><button class="tab" data-tab="frames" onclick="showTab('frames')">기획 / Frame <strong>${data.frames.length}</strong></button><button class="tab" data-tab="captures" onclick="showTab('captures')">캡처 / 미디어 <strong>${data.captures.length}</strong></button></nav><section id="tab-reports" class="panel">${renderReportCards(data.reports)}</section><section id="tab-frames" class="panel">${renderFrameCards(data.frames)}</section><section id="tab-captures" class="panel">${renderCaptureCards(data.captures)}</section></main><script>
 	function showTab(name){document.querySelectorAll('.tab').forEach(function(el){el.classList.toggle('active',el.dataset.tab===name)});document.querySelectorAll('.panel').forEach(function(el){el.classList.toggle('active',el.id==='tab-'+name)});window.currentTab=name;filterCards();}
 	function filterCards(){var q=(document.getElementById('search').value||'').toLowerCase().trim();var panel=document.getElementById('tab-'+(window.currentTab||'${initialTab}'));if(!panel)return;panel.querySelectorAll('.searchable').forEach(function(card){card.style.display=!q||String(card.dataset.search||'').indexOf(q)>=0?'':'none';});}
+	async function openOriginal(button){var path=button.dataset.path||'';var label=button.textContent;button.disabled=true;button.textContent='여는 중...';try{var res=await fetch('/open?path='+encodeURIComponent(path),{method:'POST'});if(!res.ok)throw new Error(await res.text());button.textContent='열기 요청됨';setTimeout(function(){button.textContent=label;button.disabled=false;},1400);}catch(e){button.textContent='열기 실패';button.title=String(e&&e.message||e);setTimeout(function(){button.textContent=label;button.disabled=false;},2200);}}
+	document.addEventListener('click',function(ev){var button=ev.target&&ev.target.closest?ev.target.closest('.open-original'):null;if(button){ev.preventDefault();openOriginal(button);}});
 	showTab('${initialTab}');
 	</script></body></html>`;
 }
