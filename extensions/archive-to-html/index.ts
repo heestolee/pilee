@@ -5,7 +5,7 @@ import { createServer, type Server } from "node:http";
 import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ToolResultEvent } from "@mariozechner/pi-coding-agent";
 import { expandProfileTemplate, loadArtifactBrowserProfiles } from "../utils/private-profiles.ts";
 import { exportSessionFileToHtml, isPiSessionFile, openFile, SESSION_EXPORT_DIR } from "../utils/session-export.js";
@@ -16,6 +16,7 @@ const FRAME_TRANSCRIPTS_DIR = path.join(os.homedir(), ".pi", "agent", "frame-stu
 const SHOW_REPORT_SESSION_EXPORT_DIR = path.join(SESSION_EXPORT_DIR, "show-report");
 const NORMALIZED_CONDUCTOR_SESSION_DIR = path.join(SHOW_REPORT_SESSION_EXPORT_DIR, "normalized");
 const CONDUCTOR_DB = path.join(os.homedir(), "Library", "Application Support", "com.conductor.app", "conductor.db");
+const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const FONT_SIGNATURE = "Noto+Serif+KR";
 const REPORT_SIGNATURE = "Verify Report";
 const WEB_SEARCH_SIGNATURE = "Web Search Review";
@@ -1538,6 +1539,40 @@ function readPiSessionsFromDir(sessionsDir: string, workspace: string, limit = 1
 	} catch { return []; }
 }
 
+function piSessionDirNameForPath(cwd: string): string {
+	return `--${path.resolve(cwd).replace(/^\/+/, "").replace(/\//g, "-")}--`;
+}
+
+function piSessionDirsForPath(sessionsRoot: string, cwd: string, alias?: string): string[] {
+	const candidates = new Set<string>([path.join(sessionsRoot, piSessionDirNameForPath(cwd))]);
+	if (alias && fs.existsSync(sessionsRoot)) {
+		try {
+			for (const dirName of fs.readdirSync(sessionsRoot)) {
+				if (dirName === `--${alias}--` || dirName.endsWith(`-${alias}--`)) {
+					candidates.add(path.join(sessionsRoot, dirName));
+				}
+			}
+		} catch {}
+	}
+	return [...candidates];
+}
+
+function readPiSessionsFromDirs(sessionDirs: string[], workspace: string, limit = 10): PiSessionEntry[] {
+	const seen = new Set<string>();
+	const sessions: PiSessionEntry[] = [];
+	for (const sessionsDir of sessionDirs) {
+		for (const session of readPiSessionsFromDir(sessionsDir, workspace, limit)) {
+			try {
+				const real = fs.realpathSync(session.path);
+				if (seen.has(real)) continue;
+				seen.add(real);
+			} catch {}
+			sessions.push(session);
+		}
+	}
+	return sessions.sort((a, b) => b.mtime - a.mtime).slice(0, limit);
+}
+
 function findPiSessionsForWorkspace(repo: string, workspace: string): PiSessionEntry[] {
 	const seen = new Set<string>();
 	const sessions: PiSessionEntry[] = [];
@@ -1669,10 +1704,10 @@ function collectPiWorkUnits(reports: ReportEntry[], frames: FrameTranscriptEntry
 	}
 	const sessionsRoot = path.join(os.homedir(), ".pi", "agent", "sessions");
 	for (const special of [
-		{ key: "pi:pilee", workspace: "pilee", title: "pilee Pi 대화 세션", workspacePath: path.join(os.homedir(), ".pi", "agent", "git", "github.com", "heestolee", "pilee"), sessionsDir: path.join(sessionsRoot, "--Users-changheelee-pilee--") },
-		{ key: "pi:home", workspace: "home", title: "home Pi 대화 세션", workspacePath: os.homedir(), sessionsDir: path.join(sessionsRoot, "--Users-changheelee--") },
+		{ key: "pi:pilee", workspace: "pilee", title: "pilee Pi 대화 세션", workspacePath: PACKAGE_ROOT, sessionDirs: piSessionDirsForPath(sessionsRoot, PACKAGE_ROOT, "pilee") },
+		{ key: "pi:home", workspace: "home", title: "home Pi 대화 세션", workspacePath: os.homedir(), sessionDirs: piSessionDirsForPath(sessionsRoot, os.homedir()) },
 	]) {
-		const sessions = readPiSessionsFromDir(special.sessionsDir, special.workspace, 12);
+		const sessions = readPiSessionsFromDirs(special.sessionDirs, special.workspace, 12);
 		if (!sessions.length) continue;
 		const mtime = Math.max(...sessions.map((session) => session.mtime));
 		units.push({
