@@ -300,19 +300,48 @@ function textBlocksOnly(content: unknown): string {
 		.trim();
 }
 
-function sessionPreviewEntry(raw: unknown): string {
-	if (!raw || typeof raw !== "object") return "";
+function looksLikeSessionNoise(text: string): boolean {
+	const trimmed = text.trim();
+	if (!trimmed) return true;
+	return trimmed.startsWith("<system")
+		|| trimmed.startsWith("<local-command")
+		|| trimmed.startsWith("<command-name>")
+		|| trimmed.startsWith("Base directory for this skill:")
+		|| trimmed.includes("<!--PI_DYNAMIC_SCOPE_START-->");
+}
+
+function conversationFromSessionRecord(raw: unknown): ChatPreviewEntry | null {
+	if (!raw || typeof raw !== "object") return null;
 	const record = raw as Record<string, unknown>;
-	if (record.type !== "message") return "";
 	const timestamp = typeof record.timestamp === "string" ? record.timestamp : "";
-	const message = record.message && typeof record.message === "object" ? record.message as Record<string, unknown> : {};
-	const role = String(message.role || "message");
-	if (role !== "user" && role !== "assistant") return "";
+	if (record.type === "last-prompt" && typeof record.lastPrompt === "string") {
+		const text = record.lastPrompt.trim();
+		if (looksLikeSessionNoise(text)) return null;
+		return { role: "user", text, timestamp };
+	}
+	let message: Record<string, unknown> = {};
+	if (record.type === "message") {
+		message = record.message && typeof record.message === "object" ? record.message as Record<string, unknown> : {};
+	} else if (record.type === "user" || record.type === "assistant") {
+		message = record.message && typeof record.message === "object" ? record.message as Record<string, unknown> : { role: record.type, content: record.content };
+	} else {
+		return null;
+	}
+	const role = String(message.role || record.type || "message");
+	if (role !== "user" && role !== "assistant") return null;
 	const text = textBlocksOnly(message.content);
-	if (!text) return "";
-	const roleClass = role === "user" ? "user" : "assistant";
-	const speaker = role === "user" ? "나" : "pilee";
-	return `<article class="chat-row ${escapeAttr(roleClass)}"><div class="chat-meta"><span>${escapeHtml(speaker)}</span>${timestamp ? `<time>${escapeHtml(timestamp)}</time>` : ""}</div><div class="chat-bubble">${escapeHtml(truncatePreviewText(text, 8000))}</div></article>`;
+	if (looksLikeSessionNoise(text)) return null;
+	return { role, text, timestamp };
+}
+
+function renderChatPreviewEntry(entry: ChatPreviewEntry): string {
+	const speaker = entry.role === "user" ? "나" : "pilee";
+	return `<article class="chat-row ${escapeAttr(entry.role)}"><div class="chat-meta"><span>${escapeHtml(speaker)}</span>${entry.timestamp ? `<time>${escapeHtml(entry.timestamp)}</time>` : ""}</div><div class="chat-bubble">${escapeHtml(truncatePreviewText(entry.text, 8000))}</div></article>`;
+}
+
+function sessionPreviewEntry(raw: unknown): string {
+	const entry = conversationFromSessionRecord(raw);
+	return entry ? renderChatPreviewEntry(entry) : "";
 }
 
 function buildJsonlSessionPreviewHtml(filePath: string, full = false): string {
@@ -320,14 +349,21 @@ function buildJsonlSessionPreviewHtml(filePath: string, full = false): string {
 	const lines = preview.text.split(/\r?\n/);
 	if (preview.truncated && !preview.text.endsWith("\n")) lines.pop();
 	const entries: string[] = [];
+	const seenEntries = new Set<string>();
 	let parsed = 0;
 	const maxEntries = full ? 1000 : 160;
 	for (const line of lines) {
 		if (!line.trim()) continue;
 		try {
-			const html = sessionPreviewEntry(JSON.parse(line));
+			const entry = conversationFromSessionRecord(JSON.parse(line));
 			parsed++;
-			if (html) entries.push(html);
+			if (entry) {
+				const dedupeKey = `${entry.role}\n${entry.text}`;
+				if (!seenEntries.has(dedupeKey)) {
+					seenEntries.add(dedupeKey);
+					entries.push(renderChatPreviewEntry(entry));
+				}
+			}
 		} catch {}
 		if (entries.length >= maxEntries) break;
 	}
@@ -457,13 +493,18 @@ async function openMediaArtifact(pi: ExtensionAPI, filePath: string, browserOnly
 }
 
 async function openAnyArtifact(pi: ExtensionAPI, filePath: string, browserOnly = false): Promise<"glimpse" | "browser"> {
-	const ext = path.extname(filePath).toLowerCase();
-	if (ext === ".html" || ext === ".htm") return openHtmlArtifact(pi, filePath, browserOnly);
-	if (ext === ".json" && filePath.startsWith(FRAME_TRANSCRIPTS_DIR)) {
-		return openHtmlStringArtifact(pi, buildFrameTranscriptStandaloneHtml(filePath), path.basename(filePath), browserOnly);
+	const resolved = fs.realpathSync(filePath);
+	const ext = path.extname(resolved).toLowerCase();
+	if (ext === ".html" || ext === ".htm") return openHtmlArtifact(pi, resolved, browserOnly);
+	if (ext === ".json" && resolved.startsWith(FRAME_TRANSCRIPTS_DIR)) {
+		return openHtmlStringArtifact(pi, buildFrameTranscriptStandaloneHtml(resolved), path.basename(resolved), browserOnly);
 	}
-	if (MEDIA_EXTENSIONS.has(ext)) return openMediaArtifact(pi, filePath, browserOnly);
-	await openInSystemBrowser(pi, filePath);
+	if (MEDIA_EXTENSIONS.has(ext)) return openMediaArtifact(pi, resolved, browserOnly);
+	if (ext === ".jsonl" || isSessionJsonlPath(resolved)) {
+		const preview = artifactPreviewInnerHtml(resolved, { full: browserOnly });
+		return openHtmlStringArtifact(pi, preview.html, preview.title, browserOnly);
+	}
+	await openInSystemBrowser(pi, resolved);
 	return "browser";
 }
 
@@ -665,6 +706,12 @@ interface PiWorkUnitEntry {
 	time: string;
 }
 
+interface ChatPreviewEntry {
+	role: "user" | "assistant";
+	text: string;
+	timestamp: string;
+}
+
 interface ConductorHistoryEntry {
 	key: string;
 	repo: string;
@@ -678,6 +725,7 @@ interface ConductorHistoryEntry {
 	createdAt: string;
 	sessionId: string;
 	requests: string[];
+	dbConversation: ChatPreviewEntry[];
 	sourceSessionPaths: string[];
 	mtime: number;
 	time: string;
@@ -1394,19 +1442,67 @@ function queryConductorSync(sql: string): string {
 	try { return execFileSync("sqlite3", ["-separator", "§", CONDUCTOR_DB, sql], { encoding: "utf-8" }).trim(); } catch { return ""; }
 }
 
+function queryConductorJsonSync<T extends Record<string, unknown>>(sql: string): T[] {
+	if (!fs.existsSync(CONDUCTOR_DB)) return [];
+	try {
+		const output = execFileSync("sqlite3", ["-json", CONDUCTOR_DB, sql], { encoding: "utf-8", maxBuffer: 20 * 1024 * 1024 }).trim();
+		return output ? JSON.parse(output) as T[] : [];
+	} catch { return []; }
+}
+
+function sqlQuote(value: string): string {
+	return `'${value.replace(/'/g, "''")}'`;
+}
+
+function conversationFromDbContent(roleHint: string, content: string, timestamp: string): ChatPreviewEntry | null {
+	const trimmed = content.trim();
+	if (!trimmed) return null;
+	if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+		try {
+			const parsed = JSON.parse(trimmed);
+			const entry = conversationFromSessionRecord(parsed);
+			if (entry) return { ...entry, timestamp: entry.timestamp || timestamp };
+		} catch {}
+	}
+	if (roleHint !== "user" && roleHint !== "assistant") return null;
+	if (looksLikeSessionNoise(trimmed)) return null;
+	return { role: roleHint, text: trimmed, timestamp };
+}
+
+function conversationsFromConductorDb(sessionIds: string[]): Map<string, ChatPreviewEntry[]> {
+	const ids = [...new Set(sessionIds.filter(Boolean))];
+	const bySession = new Map<string, ChatPreviewEntry[]>();
+	if (!ids.length) return bySession;
+	const values = ids.map((id) => `(${sqlQuote(id)})`).join(",");
+	const rows = queryConductorJsonSync<{ session_id?: string; role?: string; content?: string; created_at?: string }>(`WITH selected(session_id) AS (VALUES ${values}) SELECT sm.session_id, sm.role, sm.content, sm.created_at FROM session_messages sm JOIN selected s ON sm.session_id=s.session_id WHERE sm.role='user' ORDER BY sm.session_id, sm.created_at`);
+	const seen = new Map<string, Set<string>>();
+	for (const row of rows) {
+		const sessionId = String(row.session_id || "");
+		if (!sessionId) continue;
+		const entry = conversationFromDbContent(String(row.role || ""), String(row.content || ""), String(row.created_at || ""));
+		if (!entry) continue;
+		const sessionSeen = seen.get(sessionId) ?? new Set<string>();
+		if (sessionSeen.has(entry.text)) continue;
+		sessionSeen.add(entry.text);
+		seen.set(sessionId, sessionSeen);
+		const list = bySession.get(sessionId) ?? [];
+		if (list.length >= 80) continue;
+		list.push(entry);
+		bySession.set(sessionId, list);
+	}
+	return bySession;
+}
+
 function requestsFromConductorJsonl(filePath: string): string[] {
 	const requests: string[] = [];
 	try {
 		for (const line of fs.readFileSync(filePath, "utf-8").split(/\r?\n/)) {
 			if (!line.trim()) continue;
-			let obj: any;
+			let obj: unknown;
 			try { obj = JSON.parse(line); } catch { continue; }
-			if (obj.type !== "user") continue;
-			const content = obj.message?.content;
-			let text = typeof content === "string" ? content : Array.isArray(content) ? content.filter((block: any) => block?.type === "text").map((block: any) => block.text).join(" ") : "";
-			text = text.replace(/\s+/g, " ").trim();
-			if (!text || text.startsWith("<system") || text.startsWith("<local-command")) continue;
-			requests.push(text.slice(0, 300));
+			const entry = conversationFromSessionRecord(obj);
+			if (!entry || entry.role !== "user") continue;
+			requests.push(entry.text.replace(/\s+/g, " ").slice(0, 300));
 			if (requests.length >= 30) break;
 		}
 	} catch {}
@@ -1417,15 +1513,21 @@ function collectConductorHistories(): ConductorHistoryEntry[] {
 	const rows = queryConductorSync("SELECT w.directory_name, COALESCE(r.name,''), COALESCE(w.branch,''), COALESCE(w.state,''), COALESCE(w.pr_title,''), COALESCE(w.active_session_id,''), COALESCE(w.created_at,''), COALESCE(w.updated_at,'') FROM workspaces w LEFT JOIN repos r ON w.repository_id = r.id ORDER BY w.updated_at DESC LIMIT 160");
 	if (!rows) return [];
 	const entries: ConductorHistoryEntry[] = [];
-	for (const line of rows.split("\n")) {
-		const [workspace = "", repo = "", branch = "", status = "", pr = "", sessionId = "", createdAt = "", updatedAt = ""] = line.split("§");
+	const rawRows = rows.split("\n").map((line) => line.split("§"));
+	const dbConversations = conversationsFromConductorDb(rawRows.map((row) => row[5] ?? ""));
+	for (const row of rawRows) {
+		const [workspace = "", repo = "", branch = "", status = "", pr = "", sessionId = "", createdAt = "", updatedAt = ""] = row;
 		if (!workspace) continue;
 		const parsedPr = parseTicketAndTitle(pr);
 		const parsedBranch = parseTicketAndTitle(branch);
 		const ticket = firstNonEmpty(parsedPr.ticket, parsedBranch.ticket);
 		const title = firstNonEmpty(parsedPr.title, workspace);
 		const sourceSessionPaths = findConductorSourceSessions(repo || "product", workspace, sessionId);
+		const dbConversation = dbConversations.get(sessionId) ?? [];
 		const firstSession = sourceSessionPaths[0] ?? "";
+		const jsonlRequests = firstSession ? requestsFromConductorJsonl(firstSession) : [];
+		const dbRequests = dbConversation.filter((entry) => entry.role === "user").map((entry) => entry.text.replace(/\s+/g, " ").slice(0, 300));
+		const requests = [...jsonlRequests, ...dbRequests].filter((request, index, array) => array.indexOf(request) === index).slice(0, 30);
 		let mtime = Date.parse(updatedAt || createdAt);
 		if (firstSession) { try { mtime = Math.max(mtime || 0, fs.statSync(firstSession).mtimeMs); } catch {} }
 		entries.push({
@@ -1440,7 +1542,8 @@ function collectConductorHistories(): ConductorHistoryEntry[] {
 			status,
 			createdAt,
 			sessionId,
-			requests: firstSession ? requestsFromConductorJsonl(firstSession) : [],
+			requests,
+			dbConversation,
 			sourceSessionPaths,
 			mtime: Number.isFinite(mtime) && mtime > 0 ? mtime : Date.now(),
 			time: formatMtime(Number.isFinite(mtime) && mtime > 0 ? mtime : Date.now()),
@@ -1559,7 +1662,7 @@ function buildFrameTranscriptStandaloneHtml(filePath: string): string {
 
 function artifactBrowserStyle(): string {
 	return `<style>
-	:root{color-scheme:light;--bg:#fafaf9;--panel:#fff;--line:#e7e5e4;--text:#292524;--muted:#78716c;--accent:#7c3aed;--soft:#f5f3ff;--green:#166534;--amber:#92400e}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.shell{max-width:1180px;margin:0 auto;padding:24px}.hero{padding:24px;border:1px solid var(--line);border-radius:24px;background:linear-gradient(135deg,#fff,#f5f3ff);box-shadow:0 20px 60px rgba(41,37,36,.08)}.kicker{color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}h1{margin:6px 0 8px;font-size:32px;line-height:1.15}.hero p,.muted{color:var(--muted)}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}.tab{border:1px solid var(--line);border-radius:999px;background:#fff;padding:9px 13px;font-weight:800;cursor:pointer}.tab.active{background:var(--accent);border-color:var(--accent);color:#fff}.panel{display:none}.panel.active{display:block}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.card{border:1px solid var(--line);border-radius:18px;background:var(--panel);padding:16px;box-shadow:0 10px 30px rgba(41,37,36,.05);overflow:hidden}.card h2,.card h3{margin:0 0 8px}.meta{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}.badge{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 8px;background:#fff}.path{color:var(--muted);font-size:12px;word-break:break-all}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.button{border:1px solid var(--line);border-radius:10px;padding:7px 10px;text-decoration:none;color:var(--accent);font-weight:800;background:#fff;cursor:pointer;font:inherit}.button:hover{background:var(--soft)}.button[disabled]{opacity:.55;cursor:wait}.thumb{display:grid;place-items:center;aspect-ratio:16/10;background:#111;border-radius:14px;overflow:hidden;margin-bottom:10px}.thumb img{width:100%;height:100%;object-fit:contain}.empty{padding:40px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:18px;background:#fff}.timeline{display:grid;gap:12px}.timeline-item{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff}.timeline-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:var(--muted);font-size:12px}.timeline-head strong{color:var(--accent);text-transform:uppercase}.qa,.answer{margin-top:8px}.label{font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}pre{white-space:pre-wrap;word-break:break-word;background:#292524;color:#fafaf9;border-radius:12px;padding:12px;max-height:360px;overflow:auto}details{margin-top:8px}summary{cursor:pointer;font-weight:800}.search{width:100%;height:40px;border:1px solid var(--line);border-radius:12px;padding:0 12px;margin:16px 0;font:inherit}
+	:root{color-scheme:light;--bg:#fafaf9;--panel:#fff;--line:#e7e5e4;--text:#292524;--muted:#78716c;--accent:#7c3aed;--soft:#f5f3ff;--green:#166534;--amber:#92400e}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.shell{max-width:1180px;margin:0 auto;padding:24px}.hero{padding:24px;border:1px solid var(--line);border-radius:24px;background:linear-gradient(135deg,#fff,#f5f3ff);box-shadow:0 20px 60px rgba(41,37,36,.08)}.kicker{color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}h1{margin:6px 0 8px;font-size:32px;line-height:1.15}.hero p,.muted{color:var(--muted)}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}.tab{border:1px solid var(--line);border-radius:999px;background:#fff;padding:9px 13px;font-weight:800;cursor:pointer}.tab.active{background:var(--accent);border-color:var(--accent);color:#fff}.panel{display:none}.panel.active{display:block}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.card{border:1px solid var(--line);border-radius:18px;background:var(--panel);padding:16px;box-shadow:0 10px 30px rgba(41,37,36,.05);overflow:hidden}.card h2,.card h3{margin:0 0 8px}.meta{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}.badge{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 8px;background:#fff}.path{color:var(--muted);font-size:12px;word-break:break-all}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.button{border:1px solid var(--line);border-radius:10px;padding:7px 10px;text-decoration:none;color:var(--accent);font-weight:800;background:#fff;cursor:pointer;font:inherit}.button:hover{background:var(--soft)}.button[disabled]{opacity:.55;cursor:wait}.thumb{display:grid;place-items:center;aspect-ratio:16/10;background:#111;border-radius:14px;overflow:hidden;margin-bottom:10px}.thumb img{width:100%;height:100%;object-fit:contain}.empty{padding:40px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:18px;background:#fff}.chat-preview{display:grid;gap:10px}.chat-row{display:flex;flex-direction:column;margin:6px 0}.chat-row.user{align-items:flex-end}.chat-row.assistant{align-items:flex-start}.chat-meta{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px;margin:0 8px 4px}.chat-meta span{font-weight:800;color:var(--text)}.chat-bubble{max-width:min(780px,92%);white-space:pre-wrap;word-break:break-word;border:1px solid var(--line);border-radius:16px;padding:10px 12px;background:#fff;box-shadow:0 8px 22px rgba(41,37,36,.04)}.user .chat-bubble{background:#eff6ff;border-color:#bfdbfe}.timeline{display:grid;gap:12px}.timeline-item{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff}.timeline-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:var(--muted);font-size:12px}.timeline-head strong{color:var(--accent);text-transform:uppercase}.qa,.answer{margin-top:8px}.label{font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}pre{white-space:pre-wrap;word-break:break-word;background:#292524;color:#fafaf9;border-radius:12px;padding:12px;max-height:360px;overflow:auto}details{margin-top:8px}summary{cursor:pointer;font-weight:800}.search{width:100%;height:40px;border:1px solid var(--line);border-radius:12px;padding:0 12px;margin:16px 0;font:inherit}
 	</style>`;
 }
 
@@ -1654,6 +1757,11 @@ function renderRequestList(requests: string[]): string {
 	return `<ol>${requests.slice(0, 20).map((request) => `<li>${escapeHtml(request)}</li>`).join("\n")}</ol>`;
 }
 
+function renderChatPreviewList(entries: ChatPreviewEntry[]): string {
+	if (!entries.length) return `<p class="muted">Conductor DB에서 표시할 사용자 요청 text를 찾지 못했습니다.</p>`;
+	return `<div class="chat-preview">${entries.slice(0, 40).map(renderChatPreviewEntry).join("\n")}</div>${entries.length > 40 ? `<p class="muted">앞 40개 요청만 표시합니다. 전체 원본은 원본 Conductor 세션에서 여세요.</p>` : ""}`;
+}
+
 function conductorRestoredByPi(entry: ConductorHistoryEntry, units: PiWorkUnitEntry[]): boolean {
 	const sourceSet = new Set(entry.sourceSessionPaths.map((item) => {
 		try { return fs.realpathSync(item); } catch { return item; }
@@ -1671,14 +1779,14 @@ function renderConductorCards(data: ArtifactBrowserData): string {
 		const planningDocs = planningDocsForUnit(entry, data.planningDocs).filter((doc) => doc.source !== "frame-studio");
 		const captures = capturesForUnit(entry, data.captures);
 		const restored = conductorRestoredByPi(entry, data.piUnits);
-		return `<article class="card searchable conductor-history-card" data-search="${escapeAttr(`${entry.label} ${entry.workspace} ${entry.branch} ${entry.status} ${entry.requests.slice(0, 10).join(" ")}`.toLowerCase())}"><div class="kicker">🧭 Conductor master</div><h3>${escapeHtml(entry.label)}</h3><div class="meta"><span class="badge">${escapeHtml(entry.repo)}</span>${restored ? `<span class="badge">Pi로 복구됨</span>` : ""}${entry.branch ? `<span class="badge">${escapeHtml(entry.branch)}</span>` : ""}${entry.status ? `<span class="badge">${escapeHtml(entry.status)}</span>` : ""}</div><div class="meta"><span class="badge">원본 세션 ${entry.sourceSessionPaths.length}</span><span class="badge">리포트 ${reports.length}</span><span class="badge">기획 ${planningDocs.length}</span><span class="badge">캡처 ${captures.length}</span></div><div class="path">workspace: ${escapeHtml(entry.workspace)}</div><div class="actions"><button class="button open-conductor-detail" type="button" data-conductor="${escapeAttr(entry.key)}">이력 열기</button></div></article>`;
+		return `<article class="card searchable conductor-history-card" data-search="${escapeAttr(`${entry.label} ${entry.workspace} ${entry.branch} ${entry.status} ${entry.requests.slice(0, 10).join(" ")}`.toLowerCase())}"><div class="kicker">🧭 Conductor master</div><h3>${escapeHtml(entry.label)}</h3><div class="meta"><span class="badge">${escapeHtml(entry.repo)}</span>${restored ? `<span class="badge">Pi로 복구됨</span>` : ""}${entry.branch ? `<span class="badge">${escapeHtml(entry.branch)}</span>` : ""}${entry.status ? `<span class="badge">${escapeHtml(entry.status)}</span>` : ""}</div><div class="meta"><span class="badge">원본 세션 ${entry.sourceSessionPaths.length}</span><span class="badge">DB 요청 ${entry.dbConversation.length}</span><span class="badge">리포트 ${reports.length}</span><span class="badge">기획 ${planningDocs.length}</span><span class="badge">캡처 ${captures.length}</span></div><div class="path">workspace: ${escapeHtml(entry.workspace)}</div><div class="actions"><button class="button open-conductor-detail" type="button" data-conductor="${escapeAttr(entry.key)}">이력 열기</button></div></article>`;
 	}).join("\n");
 	const detailPanels = data.conductors.map((entry) => {
 		const reports = reportsForUnit(entry, data.reports);
 		const planningDocs = planningDocsForUnit(entry, data.planningDocs).filter((doc) => doc.source !== "frame-studio");
 		const captures = capturesForUnit(entry, data.captures);
 		const restored = conductorRestoredByPi(entry, data.piUnits);
-		return `<section class="conductor-detail-panel" data-conductor-panel="${escapeAttr(entry.key)}" hidden><div class="actions"><button class="button" type="button" onclick="showConductorGroups()">← 컨덕터 이력 목록</button></div><header class="card"><div class="kicker">컨덕터 이력</div><h2>${escapeHtml(entry.label)}</h2><div class="meta"><span class="badge">Conductor master</span>${restored ? `<span class="badge">Pi로 복구됨</span>` : ""}<span class="badge">${escapeHtml(entry.repo)}</span>${entry.ticket ? `<span class="badge">${escapeHtml(entry.ticket)}</span>` : ""}${entry.createdAt ? `<span class="badge">생성 ${escapeHtml(entry.createdAt)}</span>` : ""}${entry.sessionId ? `<span class="badge">session ${escapeHtml(entry.sessionId.slice(0, 8))}</span>` : ""}</div><div class="path">${escapeHtml(entry.branch)}</div></header><section class="card"><h3>이전 요청</h3>${renderRequestList(entry.requests)}</section>${renderConductorSourceCards("원본 Conductor 세션", entry.sourceSessionPaths, restored)}<section><h3>검증 리포트 · ${reports.length}</h3>${renderReportCards(reports)}</section><section><h3>기획 / Frame · ${planningDocs.length}</h3>${renderPlanningDocCards(planningDocs)}</section><section><h3>캡처 / 미디어 · ${captures.length}</h3>${captures.length ? renderCaptureFileCards(captures) : `<div class="empty">연결된 캡처 미디어가 없습니다.</div>`}</section></section>`;
+		return `<section class="conductor-detail-panel" data-conductor-panel="${escapeAttr(entry.key)}" hidden><div class="actions"><button class="button" type="button" onclick="showConductorGroups()">← 컨덕터 이력 목록</button></div><header class="card"><div class="kicker">컨덕터 이력</div><h2>${escapeHtml(entry.label)}</h2><div class="meta"><span class="badge">Conductor master</span>${restored ? `<span class="badge">Pi로 복구됨</span>` : ""}<span class="badge">${escapeHtml(entry.repo)}</span>${entry.ticket ? `<span class="badge">${escapeHtml(entry.ticket)}</span>` : ""}${entry.createdAt ? `<span class="badge">생성 ${escapeHtml(entry.createdAt)}</span>` : ""}${entry.sessionId ? `<span class="badge">session ${escapeHtml(entry.sessionId.slice(0, 8))}</span>` : ""}</div><div class="path">${escapeHtml(entry.branch)}</div></header><section class="card"><h3>이전 요청</h3>${renderRequestList(entry.requests)}</section><section class="card"><h3>Conductor DB 요청 preview · ${entry.dbConversation.length}</h3>${renderChatPreviewList(entry.dbConversation)}</section>${renderConductorSourceCards("원본 Conductor 세션", entry.sourceSessionPaths, restored)}<section><h3>검증 리포트 · ${reports.length}</h3>${renderReportCards(reports)}</section><section><h3>기획 / Frame · ${planningDocs.length}</h3>${renderPlanningDocCards(planningDocs)}</section><section><h3>캡처 / 미디어 · ${captures.length}</h3>${captures.length ? renderCaptureFileCards(captures) : `<div class="empty">연결된 캡처 미디어가 없습니다.</div>`}</section></section>`;
 	}).join("\n");
 	return `<div id="conductor-groups"><div class="grid">${groupCards}</div></div><div id="conductor-details" hidden>${detailPanels}</div>`;
 }
