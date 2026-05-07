@@ -13,6 +13,10 @@ import {
 	type WorktreeBootstrapDomainProfile,
 	type WorktreeRepoProfile,
 } from "../utils/private-profiles.ts";
+import { discoverAgents } from "../subagent/agents.ts";
+import { getFinalOutput, runSingleAgent } from "../subagent/runner.ts";
+import { makeSubagentSessionFile } from "../subagent/session.ts";
+import type { SingleResult, SubagentDetails } from "../subagent/types.ts";
 
 // ─── Repo registry ─────────────────────────────────────────────────────────
 
@@ -457,6 +461,11 @@ interface BootstrapJob {
 	status: BootstrapStatus;
 	logPath: string;
 	promise: Promise<void>;
+	kind: "executor" | "subagent-orchestrator";
+	agentName?: string;
+	reportPath?: string;
+	executorScriptPath?: string;
+	sessionFile?: string;
 }
 
 const dependencyBootstrapJobs = new Map<string, BootstrapJob>();
@@ -575,6 +584,74 @@ printf '{"status":"success","repo":"%s","domains":"%s","finishedAt":"%s","log":"
 echo "${profile.name} deps ready: ${domainList}"`;
 }
 
+function readBootstrapStatus(statusPath: string): Record<string, unknown> | null {
+	if (!existsSync(statusPath)) return null;
+	try {
+		return JSON.parse(readFileSync(statusPath, "utf8")) as Record<string, unknown>;
+	} catch {
+		return null;
+	}
+}
+
+function bootstrapSucceeded(statusPath: string): boolean {
+	return readBootstrapStatus(statusPath)?.status === "success";
+}
+
+function bootstrapOrchestratorAgentName(profile: WorktreeRepoProfile): string {
+	return profile.bootstrap?.orchestrator?.agent?.trim() || "bootstrapper";
+}
+
+function shouldUseBootstrapOrchestrator(profile: WorktreeRepoProfile, mode?: "auto" | "executor" | "orchestrator"): boolean {
+	if (mode === "executor") return false;
+	if (mode === "orchestrator") return true;
+	return Boolean(profile.bootstrap?.orchestrator?.enabled);
+}
+
+function findBootstrapOrchestratorAgent(repoRoot: string, profile: WorktreeRepoProfile) {
+	const discovery = discoverAgents(repoRoot);
+	const agentName = bootstrapOrchestratorAgentName(profile);
+	const allowProjectAgent = profile.bootstrap?.orchestrator?.allowProjectAgent === true;
+	const agent = discovery.agents.find((candidate) => candidate.name === agentName && (allowProjectAgent || candidate.source === "user"));
+	return { discovery, agent, agentName, allowProjectAgent };
+}
+
+function buildBootstrapOrchestratorTask(args: {
+	repoRoot: string;
+	repoName: string;
+	domains: BootstrapDomain[];
+	missing: BootstrapDomain[];
+	executorScriptPath: string;
+	logPath: string;
+	statusPath: string;
+	reportPath: string;
+	prompt: string;
+}): string {
+	return [
+		"You are a dependency readiness orchestrator subagent.",
+		"Your job is to unblock the main agent by running the supplied deterministic executor, then diagnosing readiness.",
+		"Do not edit source files. Do not run unrelated installs or validation commands beyond the executor contract.",
+		"",
+		`Repo root: ${args.repoRoot}`,
+		`Repo/profile: ${args.repoName}`,
+		`Requested domains: ${args.domains.join(", ")}`,
+		`Missing domains before launch: ${args.missing.join(", ")}`,
+		`Original user prompt: ${args.prompt || "(manual bootstrap)"}`,
+		"",
+		"Executor contract:",
+		`1. Run exactly: bash ${shellQuote(args.executorScriptPath)}`,
+		`2. Read status JSON: ${args.statusPath}`,
+		`3. If the executor failed, inspect the relevant tail of: ${args.logPath}`,
+		`4. Write a concise markdown readiness report to: ${args.reportPath}`,
+		"",
+		"Final response format:",
+		"VERDICT: READY | BLOCKED",
+		"DOMAINS: <domains checked>",
+		"EXECUTOR_STATUS: <status json summary>",
+		"EVIDENCE: <commands/files checked>",
+		"NEXT: <what the main agent can safely do next>",
+	].join("\n");
+}
+
 function setDependencyBootstrapStatus(ctx: ExtensionContext | ExtensionCommandContext, status: BootstrapStatus | "ready", text: string) {
 	if ((ctx as any).hasUI === false) return;
 	const theme = ctx.ui.theme;
@@ -590,6 +667,11 @@ interface DependencyBootstrapResult {
 	missing?: BootstrapDomain[];
 	logPath?: string;
 	statusPath?: string;
+	reportPath?: string;
+	executorScriptPath?: string;
+	sessionFile?: string;
+	kind?: "executor" | "subagent-orchestrator";
+	agentName?: string;
 	state: "not-company-repo" | "not-implementation" | "ready" | "running" | "started" | "failed-to-start";
 	systemNote?: string;
 }
@@ -598,7 +680,7 @@ async function ensureDependencyBootstrapWorker(
 	pi: ExtensionAPI,
 	ctx: ExtensionContext | ExtensionCommandContext,
 	prompt: string,
-	options: { force?: boolean; domains?: BootstrapDomain[]; reason?: string } = {},
+	options: { force?: boolean; domains?: BootstrapDomain[]; reason?: string; mode?: "auto" | "executor" | "orchestrator" } = {},
 ): Promise<DependencyBootstrapResult> {
 	const repoRoot = await findRepoRoot(pi, ctx.cwd);
 	if (!repoRoot) return { state: "not-company-repo" };
@@ -638,6 +720,107 @@ async function ensureDependencyBootstrapWorker(
 	mkdirSync(stateDir, { recursive: true });
 	const runDomains = domains.filter((domain) => missing.includes(domain));
 	const script = buildDependencyBootstrapScript(repoProfile, runDomains, repoRoot, logPath, statusPath);
+	const executorScriptPath = join(stateDir, "executor.sh");
+	const reportPath = join(stateDir, "orchestrator-report.md");
+	writeFileSync(executorScriptPath, script, { mode: 0o700 });
+
+	if (shouldUseBootstrapOrchestrator(repoProfile, options.mode)) {
+		const { discovery, agent, agentName, allowProjectAgent } = findBootstrapOrchestratorAgent(repoRoot, repoProfile);
+		if (agent) {
+			setDependencyBootstrapStatus(ctx, "running", `ai:${runDomains.join("+")}…`);
+			const task = buildBootstrapOrchestratorTask({
+				repoRoot,
+				repoName,
+				domains: runDomains,
+				missing,
+				executorScriptPath,
+				logPath,
+				statusPath,
+				reportPath,
+				prompt,
+			});
+			const makeDetails = (results: SingleResult[]): SubagentDetails => ({
+				mode: "single",
+				inheritMainContext: false,
+				projectAgentsDir: discovery.projectAgentsDir,
+				results,
+			});
+			const sessionFile = makeSubagentSessionFile(Date.now() % 1_000_000_000);
+			const promise = runSingleAgent(repoRoot, [agent], agent.name, task, undefined, undefined, undefined, makeDetails, { sessionFile }).then((result) => {
+				const output = getFinalOutput(result.messages).trim();
+				if (output) writeFileSync(reportPath, `${output}\n`);
+				const ok = bootstrapSucceeded(statusPath);
+				const job = dependencyBootstrapJobs.get(repoRoot);
+				if (job) job.status = ok ? "success" : "failed";
+				setDependencyBootstrapStatus(ctx, ok ? "success" : "failed", ok ? "ready" : "blocked");
+				const summary = output || result.stderr.trim() || "(no subagent output)";
+				pi.sendMessage(
+					{
+						customType: "worktree-dependency-bootstrap",
+						content: `[dependency-bootstrap:${agent.name}] ${ok ? "READY" : "BLOCKED"}\nRepo: ${repoName}\nDomains: ${runDomains.join(", ")}\nLog: ${logPath}\nReport: ${reportPath}\n\n${summary.slice(0, 4000)}`,
+						display: true,
+						details: { repoRoot, repoName, domains: runDomains, status: ok ? "success" : "failed", logPath, reportPath, executorScriptPath, agentName: agent.name, sessionFile, exitCode: result.exitCode },
+					},
+					{ deliverAs: "followUp", triggerTurn: false },
+				);
+				if ((ctx as any).hasUI !== false) ctx.ui.notify(`AI dependency bootstrap ${ok ? "complete" : "blocked"} (${repoName}: ${runDomains.join(", ")})`, ok ? "info" : "warning");
+			}).catch((error) => {
+				const job = dependencyBootstrapJobs.get(repoRoot);
+				if (job) job.status = "failed";
+				setDependencyBootstrapStatus(ctx, "failed", "failed");
+				const message = error instanceof Error ? error.message : String(error);
+				if ((ctx as any).hasUI !== false) ctx.ui.notify(`AI dependency bootstrap orchestrator failed: ${message}`, "warning");
+			});
+
+			dependencyBootstrapJobs.set(repoRoot, {
+				cwd: repoRoot,
+				repoName,
+				domains: runDomains,
+				startedAt: Date.now(),
+				status: "running",
+				logPath,
+				promise,
+				kind: "subagent-orchestrator",
+				agentName: agent.name,
+				reportPath,
+				executorScriptPath,
+				sessionFile,
+			});
+
+			return {
+				repoRoot,
+				repoName,
+				domains: runDomains,
+				missing,
+				logPath,
+				statusPath,
+				reportPath,
+				executorScriptPath,
+				sessionFile,
+				kind: "subagent-orchestrator",
+				agentName: agent.name,
+				state: "started",
+				systemNote: `An AI dependency bootstrap orchestrator subagent (${agent.name}) started for ${repoName} (${runDomains.join(", ")}). It will run the deterministic executor, inspect logs/status, and report readiness. Continue implementation, but before lint/test/type-check, confirm it reported READY or run /wt bootstrap status. Log: ${logPath}. Report: ${reportPath}`,
+			};
+		}
+		if (options.mode === "orchestrator") {
+			return {
+				repoRoot,
+				repoName,
+				domains: runDomains,
+				missing,
+				logPath,
+				statusPath,
+				reportPath,
+				executorScriptPath,
+				kind: "subagent-orchestrator",
+				agentName,
+				state: "failed-to-start",
+				systemNote: `AI dependency bootstrap orchestrator was requested, but agent "${agentName}" was not found${allowProjectAgent ? "" : " in user agents"}. Run /subagents to inspect available agents or use /wt bootstrap --executor.`,
+			};
+		}
+	}
+
 	setDependencyBootstrapStatus(ctx, "running", `${runDomains.join("+")}…`);
 	const promise = pi.exec("bash", ["-lc", script], { cwd: repoRoot }).then((result) => {
 		const job = dependencyBootstrapJobs.get(repoRoot);
@@ -665,6 +848,8 @@ async function ensureDependencyBootstrapWorker(
 		status: "running",
 		logPath,
 		promise,
+		kind: "executor",
+		executorScriptPath,
 	});
 
 	return {
@@ -674,8 +859,10 @@ async function ensureDependencyBootstrapWorker(
 		missing,
 		logPath,
 		statusPath,
+		executorScriptPath,
+		kind: "executor",
 		state: "started",
-		systemNote: `A background dependency bootstrap worker started for ${repoName} (${runDomains.join(", ")}). It only installs missing dependencies. Continue implementation, but before lint/test/type-check, ensure it finished or run /wt bootstrap status. Log: ${logPath}`,
+		systemNote: `A background dependency bootstrap executor started for ${repoName} (${runDomains.join(", ")}). It only installs missing dependencies. Continue implementation, but before lint/test/type-check, ensure it finished or run /wt bootstrap status. Log: ${logPath}`,
 	};
 }
 
@@ -684,8 +871,12 @@ function formatBootstrapStatus(repoRoot: string): string {
 	const statusPath = join(bootstrapStateDir(repoRoot), "status.json");
 	const lines = ["Dependency bootstrap status:"];
 	if (job) {
-		lines.push(`  memory: ${job.status} — ${job.repoName} ${job.domains.join(", ")} (${Math.round((Date.now() - job.startedAt) / 1000)}s ago)`);
+		const agentLabel = job.agentName ? ` via ${job.agentName}` : "";
+		lines.push(`  memory: ${job.status} — ${job.kind}${agentLabel} — ${job.repoName} ${job.domains.join(", ")} (${Math.round((Date.now() - job.startedAt) / 1000)}s ago)`);
 		lines.push(`  log: ${job.logPath}`);
+		if (job.reportPath) lines.push(`  report: ${job.reportPath}`);
+		if (job.executorScriptPath) lines.push(`  executor: ${job.executorScriptPath}`);
+		if (job.sessionFile) lines.push(`  subagent session: ${job.sessionFile}`);
 	}
 	if (existsSync(statusPath)) {
 		lines.push(`  status file: ${statusPath}`);
@@ -715,15 +906,26 @@ async function handleBootstrap(pi: ExtensionAPI, args: string, ctx: ExtensionCom
 	if (tokens.includes("--frontend") || tokens.includes("--fe")) requestedDomains.push("frontend");
 	if (tokens.includes("--all")) requestedDomains.splice(0, requestedDomains.length, "root", "backend", "frontend");
 
+	const mode = tokens.includes("--executor")
+		? "executor"
+		: tokens.includes("--ai") || tokens.includes("--orchestrator")
+			? "orchestrator"
+			: "auto";
 	const result = await ensureDependencyBootstrapWorker(pi, ctx, args, {
 		force: true,
 		domains: requestedDomains.length > 0 ? requestedDomains : undefined,
 		reason: "manual",
+		mode,
 	});
 	if (result.state === "not-company-repo") { ctx.ui.notify(`Dependency bootstrap is currently scoped to configured worktree profiles (${profiledRepoLabel()}).`, "info"); return; }
 	if (result.state === "ready") { ctx.ui.notify(`Dependencies already ready (${result.repoName}: ${result.domains?.join(", ")}).`, "info"); return; }
 	if (result.state === "running") { ctx.ui.notify(`Dependency bootstrap already running. Log: ${result.logPath}`, "info"); return; }
-	if (result.state === "started") { ctx.ui.notify(`Dependency bootstrap started (${result.repoName}: ${result.domains?.join(", ")}). Log: ${result.logPath}`, "info"); return; }
+	if (result.state === "started") {
+		const via = result.kind === "subagent-orchestrator" ? ` via ${result.agentName}` : "";
+		ctx.ui.notify(`Dependency bootstrap started${via} (${result.repoName}: ${result.domains?.join(", ")}). Log: ${result.logPath}`, "info");
+		return;
+	}
+	if (result.state === "failed-to-start" && result.systemNote) { ctx.ui.notify(result.systemNote, "warning"); return; }
 	ctx.ui.notify("Dependency bootstrap was not started.", "warning");
 }
 
@@ -2142,7 +2344,7 @@ async function handleWt(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCon
 			`  ${t.fg("warning", "/wt fork")} ${t.fg("borderAccent", "[name] [--context-file <path>] [--repo <name>] [--hotfix|--from <branch>]  — 현재 세션 전체를 이어받아 워크트리 생성")}`,
 			`  ${t.fg("warning", "/wt switch")} ${t.fg("borderAccent", "<name> | <repo>/<name>  — 워크트리 대시보드")}`,
 			`  ${t.fg("warning", "/wt resume")} ${t.fg("borderAccent", "<conductor-workspace>  — Conductor 워크스페이스 복원")}`,
-			`  ${t.fg("warning", "/wt bootstrap")} ${t.fg("borderAccent", "[status|--backend|--frontend|--all]  — profile 기반 의존성 조건부 백그라운드 준비")}`,
+			`  ${t.fg("warning", "/wt bootstrap")} ${t.fg("borderAccent", "[status|--backend|--frontend|--all|--executor]  — profile 기반 의존성 AI orchestrator/worker 준비")}`,
 			`  ${t.fg("warning", "/wt list")} ${t.fg("borderAccent", "[--all]  \u2014 \uc6cc\ud06c\ud2b8\ub9ac \ubaa9\ub85d")}`,
 			`  ${t.fg("warning", "/wt rm")} ${t.fg("borderAccent", "<name> [--force]  \u2014 \uc6cc\ud06c\ud2b8\ub9ac \uc0ad\uc81c")}`,
 			`  ${t.fg("warning", "/wt repo")} ${t.fg("borderAccent", "[list|add|rm|rename]  \u2014 \ub808\ud3ec \ub4f1\ub85d \uad00\ub9ac")}`,
@@ -2197,7 +2399,7 @@ export default function (pi: ExtensionAPI) {
 				content: result.systemNote,
 				display: true,
 			},
-			systemPrompt: `${event.systemPrompt}\n\nWORKTREE DEPENDENCY BOOTSTRAP:\n${result.systemNote}\nDo not rerun installs manually unless the worker failed or validation still cannot find required tools.`,
+			systemPrompt: `${event.systemPrompt}\n\nWORKTREE DEPENDENCY BOOTSTRAP:\n${result.systemNote}\nDo not rerun installs manually unless the bootstrap executor/subagent failed or validation still cannot find required tools.`,
 		};
 	});
 

@@ -172,7 +172,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Command shim은 skill source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-05-07 | 494055a | command-shim, skill, tft, frame, slash-command, routing |
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
 | [Worktree 생성은 부모 패널의 게이트다](./worktree-creation-parent-gate.md) | active | high | 2026-05-07 | ce6c2b0 | worktree, fork-panel, parent-panel, hotfix, context, profile-driven |
-| [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-05-07 | ce6c2b0 | worktree, dependencies, bootstrap, profile-driven, worker |
+| [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-05-07 | f3babc7 | worktree, dependencies, bootstrap, profile-driven, worker, subagent |
 | [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-05-07 | ce6c2b0 | worktree, workspace, repo, branch, execution-boundary, 워크트리 |
 | [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-05-07 | 8d9e160 | worktree, session, revive, fork-panel, panel-inbox, handoff |
 
@@ -391,6 +391,8 @@ graph TD
   doc_until_loop_explicit_reporting --> doc_evidence_first_verification_gate
   doc_worktree_creation_parent_gate --> doc_worktree_execution_boundary
   doc_worktree_creation_parent_gate --> doc_worktree_session_continuity
+  doc_worktree_dependency_bootstrap_worker --> doc_subagent_model_policy
+  doc_worktree_dependency_bootstrap_worker --> doc_subagent_prompt_specificity
   doc_worktree_dependency_bootstrap_worker --> doc_worktree_creation_parent_gate
   doc_worktree_dependency_bootstrap_worker --> doc_worktree_execution_boundary
   doc_worktree_dependency_bootstrap_worker --> doc_worktree_session_continuity
@@ -403,6 +405,6 @@ graph TD
 ## Review Metadata Summary
 
 - Documents: 59
-- Links: 159
+- Links: 161
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

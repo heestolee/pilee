@@ -24,6 +24,12 @@ export interface WorktreeBootstrapDomainProfile {
 	cwd?: string;
 }
 
+export interface WorktreeBootstrapOrchestratorProfile {
+	enabled?: boolean;
+	agent?: string;
+	allowProjectAgent?: boolean;
+}
+
 export interface WorktreeBootstrapProfile {
 	enabled?: boolean;
 	defaultDomains?: string[];
@@ -31,6 +37,7 @@ export interface WorktreeBootstrapProfile {
 	exploratoryPromptRegex?: string;
 	domainPromptRules?: Array<{ domain: string; regex: string }>;
 	domains?: WorktreeBootstrapDomainProfile[];
+	orchestrator?: WorktreeBootstrapOrchestratorProfile;
 }
 
 export interface WorktreeRepoProfile {
