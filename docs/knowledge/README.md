@@ -97,10 +97,10 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [낮은 confidence 판단은 정합성 PR로 올린다](./confidence-sensitive-review.md) | active | high | 2026-05-05 | 70468c2 | confidence, review, freshness, ai-actions, user-review, 정합성 |
 | [Deterministic action과 AI review action은 분리한다](./deterministic-vs-ai-actions.md) | active | high | 2026-05-07 | 311bf8a | knowledge, deterministic, ai-actions, review, automation, 정합성 |
 | [Ember는 knowledge의 친근한 입구다](./ember-friendly-knowledge-entrypoint.md) | active | high | 2026-05-07 | 311bf8a | ember, branding, command, knowledge |
-| [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | high | 2026-05-07 | 311bf8a | knowledge, freshness, diagnosis, review, candidate, 정합성 |
+| [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | high | 2026-05-07 | c1d02c3 | knowledge, freshness, diagnosis, review, candidate, 정합성 |
 | [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | high | 2026-05-05 | 70468c2 | knowledge, judgment, granularity, documentation, coverage, 문서 |
-| [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | high | 2026-05-07 | 311bf8a | pilee, knowledge, history, journal, sanitized, reviewed-at |
-| [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | high | 2026-05-05 | 70468c2 | knowledge, journal, privacy, sanitized, doctrine, history |
+| [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | high | 2026-05-07 | c1d02c3 | pilee, knowledge, history, journal, sanitized, reviewed-at |
+| [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | high | 2026-05-07 | c1d02c3 | knowledge, journal, privacy, sanitized, doctrine, history |
 | [README는 knowledge coverage map이다](./readme-coverage-map.md) | active | high | 2026-05-05 | 70468c2 | knowledge, readme, coverage, graph, surface, todo |
 | [README 철학 변경은 사용자 판단 게이트를 지난다](./readme-philosophy-user-gate.md) | active | high | 2026-05-05 | 70468c2 | readme, philosophy, user-gate, public-facing, documentation, 판단 |
 | [Retro는 private reflection이다](./retro-private-reflection-boundary.md) | active | high | 2026-05-05 | 70468c2 | retro, notion, reflection, private, journal, 회고 |
