@@ -7,7 +7,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ToolResultEvent } from "@mariozechner/pi-coding-agent";
-import { expandProfileTemplate, loadArtifactBrowserProfiles } from "../utils/private-profiles.ts";
+import { expandProfileTemplate, loadArtifactBrowserProfiles, loadConductorProfiles } from "../utils/private-profiles.ts";
 import { exportSessionFileToHtml, isPiSessionFile, openFile, SESSION_EXPORT_DIR } from "../utils/session-export.js";
 import { registerVerifyReportLive } from "./verify-report-live.js";
 
@@ -15,7 +15,6 @@ const ARCHIVE_DIR = path.join(os.homedir(), "Documents", "agent-history", "분�
 const FRAME_TRANSCRIPTS_DIR = path.join(os.homedir(), ".pi", "agent", "frame-studio", "transcripts");
 const SHOW_REPORT_SESSION_EXPORT_DIR = path.join(SESSION_EXPORT_DIR, "show-report");
 const NORMALIZED_CONDUCTOR_SESSION_DIR = path.join(SHOW_REPORT_SESSION_EXPORT_DIR, "normalized");
-const CONDUCTOR_DB = path.join(os.homedir(), "Library", "Application Support", "com.conductor.app", "conductor.db");
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const FONT_SIGNATURE = "Noto+Serif+KR";
 const REPORT_SIGNATURE = "Verify Report";
@@ -281,10 +280,43 @@ function openHtmlInGlimpse(open: (html: string, opts: Record<string, unknown>) =
 	openHtmlStringInGlimpse(open, buildGlimpseArtifactHtml(html, resolved), title);
 }
 
+function conductorDbPath(): string {
+	for (const profile of loadConductorProfiles()) {
+		if (profile.dbPath) return expandProfileTemplate(profile.dbPath);
+	}
+	return "";
+}
+
+function conductorProjectRoots(): string[] {
+	const roots = new Set<string>();
+	for (const profile of loadConductorProfiles()) {
+		if (profile.projectRoot) roots.add(expandProfileTemplate(profile.projectRoot));
+		for (const template of profile.projectDirTemplates ?? []) roots.add(path.dirname(expandProfileTemplate(template, { repo: "", workspace: "" })));
+	}
+	return [...roots];
+}
+
+function isConductorSessionJsonlPath(filePath: string): boolean {
+	const resolved = path.resolve(filePath);
+	return conductorProjectRoots().some((root) => {
+		const rel = path.relative(root, resolved);
+		return rel && !rel.startsWith("..") && !path.isAbsolute(rel);
+	});
+}
+
+function conductorProjectDirNameFromPath(filePath: string): string | null {
+	const resolved = path.resolve(filePath);
+	for (const root of conductorProjectRoots()) {
+		const rel = path.relative(root, resolved);
+		if (rel && !rel.startsWith("..") && !path.isAbsolute(rel)) return rel.split(path.sep)[0] ?? null;
+	}
+	return null;
+}
+
 function isSessionJsonlPath(filePath: string): boolean {
 	return filePath.endsWith(".jsonl") && (
 		filePath.includes(`${path.sep}.pi${path.sep}agent${path.sep}sessions${path.sep}`) ||
-		filePath.includes(`${path.sep}.claude${path.sep}projects${path.sep}`)
+		isConductorSessionJsonlPath(filePath)
 	);
 }
 
@@ -342,10 +374,8 @@ function firstTextFromUnknown(value: unknown): string {
 }
 
 function conductorCwdFromPath(filePath: string): string {
-	const marker = `${path.sep}.claude${path.sep}projects${path.sep}`;
-	const idx = filePath.indexOf(marker);
-	if (idx < 0) return os.homedir();
-	const dirName = filePath.slice(idx + marker.length).split(path.sep)[0] ?? "";
+	const dirName = conductorProjectDirNameFromPath(filePath);
+	if (!dirName) return os.homedir();
 	for (const profile of loadArtifactBrowserProfiles()) {
 		for (const mapping of profile.conductorCwdMappings ?? []) {
 			try {
@@ -1494,10 +1524,11 @@ function defaultArtifactRepo(): string {
 
 function conductorProjectDirs(repo: string, workspace: string): string[] {
 	const candidates = new Set<string>();
+	for (const profile of loadConductorProfiles()) {
+		for (const template of profile.projectDirTemplates ?? []) candidates.add(expandProfileTemplate(template, { repo, workspace }));
+	}
 	for (const profile of loadArtifactBrowserProfiles()) {
-		for (const template of profile.conductorProjectDirTemplates ?? []) {
-			candidates.add(expandProfileTemplate(template, { repo, workspace }));
-		}
+		for (const template of profile.conductorProjectDirTemplates ?? []) candidates.add(expandProfileTemplate(template, { repo, workspace }));
 	}
 	return [...candidates];
 }
@@ -1732,14 +1763,16 @@ function collectPiWorkUnits(reports: ReportEntry[], frames: FrameTranscriptEntry
 }
 
 function queryConductorSync(sql: string): string {
-	if (!fs.existsSync(CONDUCTOR_DB)) return "";
-	try { return execFileSync("sqlite3", ["-separator", "§", CONDUCTOR_DB, sql], { encoding: "utf-8" }).trim(); } catch { return ""; }
+	const dbPath = conductorDbPath();
+	if (!dbPath || !fs.existsSync(dbPath)) return "";
+	try { return execFileSync("sqlite3", ["-separator", "§", dbPath, sql], { encoding: "utf-8" }).trim(); } catch { return ""; }
 }
 
 function queryConductorJsonSync<T extends Record<string, unknown>>(sql: string): T[] {
-	if (!fs.existsSync(CONDUCTOR_DB)) return [];
+	const dbPath = conductorDbPath();
+	if (!dbPath || !fs.existsSync(dbPath)) return [];
 	try {
-		const output = execFileSync("sqlite3", ["-json", CONDUCTOR_DB, sql], { encoding: "utf-8", maxBuffer: 20 * 1024 * 1024 }).trim();
+		const output = execFileSync("sqlite3", ["-json", dbPath, sql], { encoding: "utf-8", maxBuffer: 20 * 1024 * 1024 }).trim();
 		return output ? JSON.parse(output) as T[] : [];
 	} catch { return []; }
 }

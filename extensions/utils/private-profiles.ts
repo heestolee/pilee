@@ -37,6 +37,14 @@ export interface WorktreeRepoProfile {
 	name: string;
 	displayName?: string;
 	match?: WorktreeRepoMatchProfile;
+	rootDir?: string;
+	baseBranch?: string;
+	productionBranch?: string;
+	branchPrefix?: string;
+	setupScript?: string;
+	autoOpenInGhostty?: boolean;
+	ghosttyDirection?: "right" | "left" | "down" | "up" | "tab";
+	namingScheme?: "pokemon" | "city" | "none";
 	gate?: WorktreeRepoGateProfile;
 	bootstrap?: WorktreeBootstrapProfile;
 }
@@ -75,12 +83,26 @@ export interface PreflightProfile {
 	baseBranchCandidates?: string[];
 }
 
+export interface ConductorProfile {
+	dbPath?: string;
+	projectRoot?: string;
+	projectDirTemplates?: string[];
+	workspaceDirIncludes?: string[];
+}
+
+export interface RetroProfile {
+	reportDir?: string;
+	uploadScript?: string;
+}
+
 export interface PileeRuntimeProfile {
 	worktree?: {
 		repos?: WorktreeRepoProfile[];
 	};
 	artifactBrowser?: ArtifactBrowserProfile;
 	preflight?: PreflightProfile;
+	conductor?: ConductorProfile;
+	retro?: RetroProfile;
 }
 
 function safeReadDir(dir: string): string[] {
@@ -186,6 +208,14 @@ export function loadArtifactBrowserProfiles(cwd?: string): ArtifactBrowserProfil
 
 export function loadPreflightProfiles(cwd?: string): PreflightProfile[] {
 	return loadPileeRuntimeProfiles(cwd).map((profile) => profile.preflight).filter((profile): profile is PreflightProfile => Boolean(profile));
+}
+
+export function loadConductorProfiles(cwd?: string): ConductorProfile[] {
+	return loadPileeRuntimeProfiles(cwd).map((profile) => profile.conductor).filter((profile): profile is ConductorProfile => Boolean(profile));
+}
+
+export function loadRetroProfiles(cwd?: string): RetroProfile[] {
+	return loadPileeRuntimeProfiles(cwd).map((profile) => profile.retro).filter((profile): profile is RetroProfile => Boolean(profile));
 }
 
 export function expandProfileTemplate(value: string, vars: Record<string, string | undefined> = {}): string {

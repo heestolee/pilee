@@ -2,29 +2,44 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import { expandProfileTemplate, loadRetroProfiles } from "../utils/private-profiles.ts";
 
 const CONFIG_PATH = join(homedir(), ".pi", "agent", "retro-config.json");
 
-function loadRetroConfig(): { token: string; dbId: string } {
-	// Env vars first
-	if (process.env.NOTION_API_KEY && process.env.NOTION_DB_ID) {
-		return { token: process.env.NOTION_API_KEY, dbId: process.env.NOTION_DB_ID };
+interface RetroConfig {
+	token: string;
+	dbId: string;
+	reportDir: string;
+	uploadScript: string;
+}
+
+function firstRetroProfileValue(key: "reportDir" | "uploadScript"): string {
+	for (const profile of loadRetroProfiles()) {
+		const value = profile[key];
+		if (value) return expandProfileTemplate(value);
 	}
-	// Config file fallback
+	return "";
+}
+
+function loadRetroConfig(): RetroConfig {
+	let fileConfig: Record<string, unknown> = {};
 	if (existsSync(CONFIG_PATH)) {
-		try {
-			const cfg = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
-			return { token: cfg.notionToken ?? "", dbId: cfg.notionDbId ?? "" };
-		} catch {}
+		try { fileConfig = JSON.parse(readFileSync(CONFIG_PATH, "utf8")); } catch {}
 	}
-	return { token: "", dbId: "" };
+	return {
+		token: process.env.NOTION_API_KEY ?? (typeof fileConfig.notionToken === "string" ? fileConfig.notionToken : ""),
+		dbId: process.env.NOTION_DB_ID ?? (typeof fileConfig.notionDbId === "string" ? fileConfig.notionDbId : ""),
+		reportDir: process.env.RETRO_REPORT_DIR ?? (typeof fileConfig.reportDir === "string" ? expandProfileTemplate(fileConfig.reportDir) : firstRetroProfileValue("reportDir")),
+		uploadScript: process.env.RETRO_UPLOAD_SCRIPT ?? (typeof fileConfig.uploadScript === "string" ? expandProfileTemplate(fileConfig.uploadScript) : firstRetroProfileValue("uploadScript")),
+	};
 }
 
 const RETRO_CONFIG = loadRetroConfig();
 const NOTION_TOKEN = RETRO_CONFIG.token;
 const NOTION_DB = RETRO_CONFIG.dbId;
 const NOTION_API = "https://api.notion.com/v1";
-const REPORT_DIR = join(homedir(), ".claude", "script", "reports");
+const REPORT_DIR = RETRO_CONFIG.reportDir;
+const UPLOAD_SCRIPT = RETRO_CONFIG.uploadScript;
 
 async function notionRequest(method: string, path: string, body?: unknown): Promise<any> {
 	const response = await fetch(`${NOTION_API}${path}`, {
@@ -231,13 +246,13 @@ ${activeRetro.content}
 						"개발성장": "dev-growth-report",
 					};
 					const cacheSubdir = categoryMap[activeRetro!.category] ?? "";
-					if (cacheSubdir) {
+					if (REPORT_DIR && cacheSubdir) {
 						const cacheDir = join(REPORT_DIR, cacheSubdir);
 						mkdirSync(cacheDir, { recursive: true });
 						writeFileSync(join(cacheDir, `${activeRetro!.date}.md`), finalMd, "utf8");
 					}
 
-					// Upload via notion_upload.py upsert
+					// Upload via configured Notion upload helper
 					const tmpFile = join(homedir(), ".pi", "agent", "retro-save-tmp.md");
 					writeFileSync(tmpFile, finalMd, "utf8");
 
@@ -245,10 +260,13 @@ ${activeRetro.content}
 						"일간회고": "📋", "주간회고": "📅", "월간회고": "📆", "개발성장": "📊",
 					};
 					const icon = iconMap[activeRetro!.category] ?? "📋";
-					const uploadScript = join(homedir(), ".claude", "script", "notion_upload.py");
+					if (!UPLOAD_SCRIPT) {
+						ctx.ui.notify("❌ Notion upload script is not configured. Set retro.uploadScript in a runtime profile or RETRO_UPLOAD_SCRIPT.", "error");
+						return;
+					}
 
 					const result = await pi.exec("python3", [
-						uploadScript, "upsert",
+						UPLOAD_SCRIPT, "upsert",
 						"--title", activeRetro!.title,
 						"--date", activeRetro!.date,
 						"--category", activeRetro!.category,
@@ -291,10 +309,10 @@ ${activeRetro.content}
 				"월간회고": "monthly-retrospective",
 				"개발성장": "dev-growth-report",
 			};
-			const cacheDir = join(REPORT_DIR, cacheMap[resolved.category] ?? "");
-			const cacheFiles = [
+			const cacheDir = REPORT_DIR ? join(REPORT_DIR, cacheMap[resolved.category] ?? "") : "";
+			const cacheFiles = cacheDir ? [
 				join(cacheDir, `${resolved.date}.md`),
-			];
+			] : [];
 			for (const cf of cacheFiles) {
 				if (existsSync(cf)) {
 					content = readFileSync(cf, "utf8");

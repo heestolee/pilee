@@ -6,6 +6,7 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@m
 import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 import type { AutocompleteItem } from "@mariozechner/pi-tui";
 import { completeSimple } from "@mariozechner/pi-ai";
+import { expandProfileTemplate, loadArtifactBrowserProfiles } from "../utils/private-profiles.ts";
 
 const SPLIT_DIRS = ["right", "left", "down", "up"] as const;
 type SplitDirection = (typeof SPLIT_DIRS)[number];
@@ -312,14 +313,25 @@ function normalizedPath(path: string): string {
 	return path.replace(/\/+$/, "") || path;
 }
 
+function configuredWorkspaceRoots(): Array<{ repo?: string; path: string }> {
+	const roots: Array<{ repo?: string; path: string }> = [];
+	for (const profile of loadArtifactBrowserProfiles()) {
+		for (const root of profile.worktreeRoots ?? []) {
+			roots.push({ repo: root.repo, path: normalizedPath(expandProfileTemplate(root.path, { repo: root.repo })) });
+		}
+	}
+	return roots;
+}
+
 function workspaceKeyFor(cwd: string): string {
 	const home = normalizedPath(homedir());
 	const normalized = normalizedPath(cwd || home);
-	const workspacesRoot = normalizedPath(join(home, "pilee-workspaces"));
 	if (normalized === home) return home;
-	if (normalized.startsWith(`${workspacesRoot}/`)) {
-		const parts = normalized.slice(workspacesRoot.length + 1).split("/");
-		if (parts.length >= 2) return join(workspacesRoot, parts[0], parts[1]);
+	for (const root of configuredWorkspaceRoots()) {
+		if (normalized.startsWith(`${root.path}/`)) {
+			const workspace = normalized.slice(root.path.length + 1).split("/")[0];
+			if (workspace) return join(root.path, workspace);
+		}
 	}
 	return normalized;
 }
@@ -327,11 +339,12 @@ function workspaceKeyFor(cwd: string): string {
 function workspaceLabelFor(cwd: string): string {
 	const key = workspaceKeyFor(cwd);
 	const home = normalizedPath(homedir());
-	const workspacesRoot = normalizedPath(join(home, "pilee-workspaces"));
 	if (key === home) return "~";
-	if (key.startsWith(`${workspacesRoot}/`)) {
-		const parts = key.slice(workspacesRoot.length + 1).split("/");
-		if (parts.length >= 2) return `${parts[0]}/${parts[1]}`;
+	for (const root of configuredWorkspaceRoots()) {
+		if (key.startsWith(`${root.path}/`)) {
+			const workspace = key.slice(root.path.length + 1).split("/")[0];
+			if (workspace) return root.repo ? `${root.repo}/${workspace}` : workspace;
+		}
 	}
 	return key.startsWith(`${home}/`) ? `~/${relative(home, key)}` : key;
 }

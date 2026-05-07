@@ -8,6 +8,7 @@ import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
 import {
 	expandProfileTemplate,
+	loadConductorProfiles,
 	loadWorktreeRepoProfiles,
 	type WorktreeBootstrapDomainProfile,
 	type WorktreeRepoProfile,
@@ -68,8 +69,8 @@ interface WorktreeConfig {
 }
 
 const DEFAULT_CONFIG: WorktreeConfig = {
-	rootDir: join(homedir(), "pilee-workspaces"),
-	baseBranch: "development",
+	rootDir: join(homedir(), ".pi", "worktrees"),
+	baseBranch: "main",
 	productionBranch: "production",
 	branchPrefix: "feature",
 	autoOpenInGhostty: true,
@@ -94,14 +95,40 @@ function configPath(repoRoot: string): string {
 	return join(repoRoot, ".pi", "worktree.json");
 }
 
+function profileConfigDefaults(repoRoot: string): Partial<WorktreeConfig> {
+	const profile = getProfiledRepoSync(repoRoot);
+	if (!profile) return {};
+	return {
+		rootDir: profile.rootDir ? expandProfileTemplate(profile.rootDir, { repo: profile.name, repoRoot }) : undefined,
+		baseBranch: profile.baseBranch,
+		productionBranch: profile.productionBranch,
+		branchPrefix: profile.branchPrefix,
+		setupScript: profile.setupScript,
+		autoOpenInGhostty: profile.autoOpenInGhostty,
+		ghosttyDirection: profile.ghosttyDirection,
+		namingScheme: profile.namingScheme,
+	};
+}
+
+function compactWorktreeConfig(config: Partial<WorktreeConfig>): Partial<WorktreeConfig> {
+	return Object.fromEntries(Object.entries(config).filter(([, value]) => value !== undefined)) as Partial<WorktreeConfig>;
+}
+
+function defaultConfigForRepo(repoRoot: string): WorktreeConfig {
+	const profileDefaults = compactWorktreeConfig(profileConfigDefaults(repoRoot));
+	const rootDir = profileDefaults.rootDir ?? join(DEFAULT_CONFIG.rootDir, getRepoName(repoRoot));
+	return { ...DEFAULT_CONFIG, ...profileDefaults, rootDir };
+}
+
 function loadConfig(repoRoot: string): WorktreeConfig {
 	const p = configPath(repoRoot);
-	if (!existsSync(p)) return { ...DEFAULT_CONFIG, rootDir: join(DEFAULT_CONFIG.rootDir, getRepoName(repoRoot)) };
+	const defaults = defaultConfigForRepo(repoRoot);
+	if (!existsSync(p)) return defaults;
 	try {
 		const data = JSON.parse(readFileSync(p, "utf8"));
-		return { ...DEFAULT_CONFIG, ...data, rootDir: expandHome(data.rootDir ?? join(DEFAULT_CONFIG.rootDir, getRepoName(repoRoot))) };
+		return { ...defaults, ...data, rootDir: expandHome(data.rootDir ?? defaults.rootDir) };
 	} catch {
-		return { ...DEFAULT_CONFIG, rootDir: join(DEFAULT_CONFIG.rootDir, getRepoName(repoRoot)) };
+		return defaults;
 	}
 }
 
@@ -1745,7 +1772,25 @@ async function handleConfig(_pi: ExtensionAPI, args: string, ctx: ExtensionComma
 
 // ─── Conductor Bridge ───────────────────────────────────────────────────────
 
-const CONDUCTOR_DB = join(homedir(), "Library", "Application Support", "com.conductor.app", "conductor.db");
+function conductorDbPath(): string {
+	for (const profile of loadConductorProfiles()) {
+		if (profile.dbPath) return expandProfileTemplate(profile.dbPath);
+	}
+	return "";
+}
+
+function conductorProjectRoots(): string[] {
+	const roots = new Set<string>();
+	for (const profile of loadConductorProfiles()) {
+		if (profile.projectRoot) roots.add(expandProfileTemplate(profile.projectRoot));
+		for (const template of profile.projectDirTemplates ?? []) roots.add(dirname(expandProfileTemplate(template, { repo: "", workspace: "" })));
+	}
+	return [...roots];
+}
+
+function conductorWorkspaceDirIncludes(): string[] {
+	return [...new Set(loadConductorProfiles().flatMap((profile) => profile.workspaceDirIncludes ?? []))];
+}
 
 interface ConductorWorkspace {
 	directoryName: string;
@@ -1762,8 +1807,9 @@ function sanitizeSql(s: string): string {
 }
 
 async function queryConductor(pi: ExtensionAPI, sql: string): Promise<string> {
-	if (!existsSync(CONDUCTOR_DB)) return "";
-	const r = await pi.exec("sqlite3", ["-separator", "§", CONDUCTOR_DB, sql]);
+	const dbPath = conductorDbPath();
+	if (!dbPath || !existsSync(dbPath)) return "";
+	const r = await pi.exec("sqlite3", ["-separator", "§", dbPath, sql]);
 	return r.code === 0 ? (r.stdout?.trim() ?? "") : "";
 }
 
@@ -1819,17 +1865,21 @@ async function buildResumeContext(pi: ExtensionAPI, ws: ConductorWorkspace, sess
 	}
 
 	lines.push("## 전체 대화 기록", "");
-	lines.push(`JSONL: \`~/.claude/projects/*conductor-workspaces-*${ws.directoryName}/${sessionId}.jsonl\``);
+	lines.push(`JSONL: configured Conductor project roots에서 \`${ws.directoryName}/${sessionId}.jsonl\` 탐색`);
 	return lines.join("\n");
 }
 
 function findConductorJsonl(wsName: string, sessionId: string): string | null {
-	const base = join(homedir(), ".claude", "projects");
-	if (!existsSync(base)) return null;
-	for (const dir of readdirSync(base)) {
-		if (dir.includes("conductor-workspaces") && dir.endsWith(wsName)) {
-			const jsonl = join(base, dir, `${sessionId}.jsonl`);
-			if (existsSync(jsonl)) return jsonl;
+	const roots = conductorProjectRoots();
+	const dirIncludes = conductorWorkspaceDirIncludes();
+	for (const base of roots) {
+		if (!existsSync(base)) continue;
+		for (const dir of readdirSync(base)) {
+			const matchesKind = dirIncludes.length === 0 || dirIncludes.some((part) => dir.includes(part));
+			if (matchesKind && dir.endsWith(wsName)) {
+				const jsonl = join(base, dir, `${sessionId}.jsonl`);
+				if (existsSync(jsonl)) return jsonl;
+			}
 		}
 	}
 	return null;
