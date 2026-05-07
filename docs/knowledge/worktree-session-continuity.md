@@ -15,6 +15,7 @@ tags:
   - 세션
 category: workflow
 status: active
+confidence: high
 applies_to:
   - extensions/worktree
   - extensions/fork-panel
@@ -30,7 +31,7 @@ source:
   - pilee-history:2026-05-05#42
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: 74e15fcd9f1709efc1b06a1dbb0a1976216ad8c3
+reviewed_commit: be8db2fb544e2392bc0740c6993e9de60c4693e8
 related:
   - subagent-model-policy
   - pilee-knowledge-system
