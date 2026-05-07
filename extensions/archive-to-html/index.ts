@@ -583,10 +583,24 @@ interface CaptureEntry {
 	path: string;
 	name: string;
 	source: string;
+	workspace: string;
 	time: string;
 	mtime: number;
 	size: number;
 	mime: string;
+}
+
+interface CaptureGroupEntry {
+	key: string;
+	label: string;
+	fallbackLabel: string;
+	workspace: string;
+	ticket: string;
+	title: string;
+	source: "jira" | "session" | "frame" | "workspace" | "unclassified";
+	captures: CaptureEntry[];
+	latestMtime: number;
+	latestTime: string;
 }
 
 interface ArtifactBrowserData {
@@ -740,6 +754,12 @@ function uniqueExistingDirs(dirs: Array<{ dir: string; source: string }>): Array
 	return results;
 }
 
+function workspaceFromCapturePath(root: string, filePath: string): string {
+	const [first] = path.relative(root, filePath).split(path.sep).filter(Boolean);
+	if (!first || first === path.basename(filePath)) return "";
+	return first;
+}
+
 function walkMediaFiles(root: string, source: string, maxDepth = 8): CaptureEntry[] {
 	const results: CaptureEntry[] = [];
 	const visit = (dir: string, depth: number) => {
@@ -762,6 +782,7 @@ function walkMediaFiles(root: string, source: string, maxDepth = 8): CaptureEntr
 					path: fp,
 					name: path.relative(root, fp) || entry.name,
 					source,
+					workspace: workspaceFromCapturePath(root, fp),
 					time: formatMtime(stat.mtimeMs),
 					mtime: stat.mtimeMs,
 					size: stat.size,
@@ -787,6 +808,132 @@ function collectCaptureMedia(cwd: string): CaptureEntry[] {
 		}
 	}
 	return [...byPath.values()].sort((a, b) => b.mtime - a.mtime).slice(0, 80);
+}
+
+function parseTicketAndTitle(value: string): { ticket: string; title: string } {
+	const ticket = value.match(/([A-Z]+-\d+)/)?.[1] ?? "";
+	let title = value
+		.replace(/^\s*\[[A-Z]+-\d+\]\s*/, "")
+		.replace(/[()\[\]]/g, " ")
+		.replace(/\b[A-Z]+-\d+\b/g, "")
+		.replace(/\s+/g, " ")
+		.trim();
+	if (title === ticket) title = "";
+	return { ticket, title };
+}
+
+function firstNonEmpty(...values: Array<string | undefined>): string {
+	return values.find((value) => value && value.trim())?.trim() ?? "";
+}
+
+function isMeaningfulSessionTitle(value: string): boolean {
+	const normalized = value.trim().toLowerCase();
+	return Boolean(normalized) && !["untitled", "(untitled)", "새 세션"].includes(normalized);
+}
+
+function readJsonFile(filePath: string): Record<string, unknown> | null {
+	try { return JSON.parse(fs.readFileSync(filePath, "utf-8")) as Record<string, unknown>; } catch { return null; }
+}
+
+function worktreeInfoForWorkspace(workspace: string): { ticket: string; title: string; note: string } {
+	if (!workspace) return { ticket: "", title: "", note: "" };
+	const candidates = [
+		path.join(os.homedir(), "pilee-workspaces", "product", workspace, ".pi"),
+		path.join(os.homedir(), "pilee-workspaces", "lambda", workspace, ".pi"),
+		path.join(os.homedir(), "pilee-workspaces", workspace, ".pi"),
+	];
+	for (const dir of candidates) {
+		if (!fs.existsSync(dir)) continue;
+		const meta = readJsonFile(path.join(dir, "worktree-meta.json"));
+		const note = typeof meta?.note === "string" ? meta.note : "";
+		let parsed = parseTicketAndTitle(note);
+		for (const contextName of ["conductor-context.loaded.md", "conductor-context.md"]) {
+			const contextPath = path.join(dir, contextName);
+			if (!fs.existsSync(contextPath)) continue;
+			try {
+				const content = fs.readFileSync(contextPath, "utf-8");
+				const pr = content.match(/\|\s*PR\s*\|\s*\[([A-Z]+-\d+)\]\s*([^|`]+?)\s*\|/);
+				if (pr) parsed = { ticket: pr[1], title: pr[2].trim() };
+			} catch {}
+		}
+		return { ticket: parsed.ticket, title: parsed.title, note };
+	}
+	return { ticket: "", title: "", note: "" };
+}
+
+function latestSessionTitleForWorkspace(workspace: string): string {
+	if (!workspace) return "";
+	const sessionsRoot = path.join(os.homedir(), ".pi", "agent", "sessions");
+	const candidates = [
+		`--Users-changheelee-pilee-workspaces-product-${workspace}--`,
+		`--Users-changheelee-pilee-workspaces-lambda-${workspace}--`,
+	];
+	for (const dirName of candidates) {
+		const sessionsDir = path.join(sessionsRoot, dirName);
+		if (!fs.existsSync(sessionsDir)) continue;
+		try {
+			const files = fs.readdirSync(sessionsDir)
+				.filter((file) => file.endsWith(".jsonl"))
+				.map((file) => path.join(sessionsDir, file))
+				.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)
+				.slice(0, 12);
+			for (const file of files) {
+				const lines = fs.readFileSync(file, "utf-8").split(/\r?\n/).slice(0, 60);
+				for (const line of lines) {
+					if (!line.includes('"type":"session_info"')) continue;
+					try {
+						const parsed = JSON.parse(line) as { name?: string };
+						const name = typeof parsed.name === "string" ? parsed.name.trim() : "";
+						if (isMeaningfulSessionTitle(name)) return name;
+					} catch {}
+				}
+			}
+		} catch {}
+	}
+	return "";
+}
+
+function frameTitleForWorkspace(workspace: string, frames: FrameTranscriptEntry[]): string {
+	if (!workspace) return "";
+	const lower = workspace.toLowerCase();
+	const frame = frames.find((item) => `${item.title} ${item.identity}`.toLowerCase().includes(lower));
+	return frame ? firstNonEmpty(frame.title, frame.identity) : "";
+}
+
+function buildCaptureGroups(captures: CaptureEntry[], frames: FrameTranscriptEntry[]): CaptureGroupEntry[] {
+	const byWorkspace = new Map<string, CaptureEntry[]>();
+	for (const capture of captures) {
+		const key = capture.workspace || "__unclassified__";
+		const list = byWorkspace.get(key) ?? [];
+		list.push(capture);
+		byWorkspace.set(key, list);
+	}
+	const groups: CaptureGroupEntry[] = [];
+	for (const [key, groupCaptures] of byWorkspace) {
+		const workspace = key === "__unclassified__" ? "" : key;
+		const latestMtime = Math.max(...groupCaptures.map((item) => item.mtime));
+		if (!workspace) {
+			groups.push({ key, label: "미분류", fallbackLabel: "미분류", workspace: "", ticket: "", title: "", source: "unclassified", captures: groupCaptures.sort((a, b) => b.mtime - a.mtime), latestMtime, latestTime: formatMtime(latestMtime) });
+			continue;
+		}
+		const worktree = worktreeInfoForWorkspace(workspace);
+		const sessionTitle = latestSessionTitleForWorkspace(workspace);
+		const frameTitle = frameTitleForWorkspace(workspace, frames);
+		const ticket = worktree.ticket;
+		const title = firstNonEmpty(worktree.title, sessionTitle, frameTitle);
+		const label = ticket && title
+			? `${ticket} · ${title}`
+			: ticket
+				? `${ticket} · ${workspace}`
+				: title || workspace;
+		const source: CaptureGroupEntry["source"] = ticket ? "jira" : sessionTitle ? "session" : frameTitle ? "frame" : "workspace";
+		groups.push({ key, label, fallbackLabel: workspace, workspace, ticket, title, source, captures: groupCaptures.sort((a, b) => b.mtime - a.mtime), latestMtime, latestTime: formatMtime(latestMtime) });
+	}
+	return groups.sort((a, b) => {
+		if (a.source === "unclassified" && b.source !== "unclassified") return 1;
+		if (b.source === "unclassified" && a.source !== "unclassified") return -1;
+		return b.latestMtime - a.latestMtime;
+	});
 }
 
 function fileHref(filePath: string): string {
@@ -882,18 +1029,35 @@ function renderFrameCards(frames: FrameTranscriptEntry[]): string {
 	return `<div class="grid">${frames.map((f) => `<article class="card searchable" data-search="${escapeAttr(`${f.title} ${f.identity} ${f.mode}`.toLowerCase())}"><h3>${escapeHtml(f.title)}</h3><div class="meta"><span class="badge">${escapeHtml(f.mode)}</span><span class="badge">${escapeHtml(f.time)}</span><span class="badge">${f.timeline.length} entries</span></div><div class="path">${escapeHtml(f.identity)}</div><details><summary>Frame 전문 미리보기</summary><div class="timeline">${renderFrameTimeline(f.timeline)}</div></details><div class="actions">${artifactOpenButtons(f.path)}</div></article>`).join("\n")}</div>`;
 }
 
-function renderCaptureCards(captures: CaptureEntry[]): string {
+function captureSourceLabel(source: CaptureGroupEntry["source"]): string {
+	if (source === "jira") return "Jira / 작업 제목";
+	if (source === "session") return "P0 / 세션 제목";
+	if (source === "frame") return "Frame identity";
+	if (source === "workspace") return "workspace fallback";
+	return "미분류";
+}
+
+function renderCaptureFileCards(captures: CaptureEntry[]): string {
+	return `<div class="grid">${captures.map((c) => { const src = mediaDataUri(c.path); return `<article class="card searchable" data-search="${escapeAttr(`${c.name} ${c.source} ${c.workspace}`.toLowerCase())}"><div class="thumb">${src ? `<img src="${src}" alt="${escapeAttr(c.name)}" loading="lazy">` : `<span class="muted">${escapeHtml(formatBytes(c.size))}</span>`}</div><h3>${escapeHtml(path.basename(c.path))}</h3><div class="meta"><span class="badge">${escapeHtml(c.source)}</span>${c.workspace ? `<span class="badge">${escapeHtml(c.workspace)}</span>` : ""}<span class="badge">${escapeHtml(c.time)}</span><span class="badge">${escapeHtml(formatBytes(c.size))}</span></div><div class="path">${escapeHtml(c.name)}</div><div class="actions">${artifactOpenButtons(c.path)}</div></article>`; }).join("\n")}</div>`;
+}
+
+function renderCaptureCards(captures: CaptureEntry[], frames: FrameTranscriptEntry[]): string {
 	if (!captures.length) return `<div class="empty">캡처 이미지가 없습니다. 현재 cwd와 home의 .context/work/captures를 확인합니다.</div>`;
-	return `<div class="grid">${captures.map((c) => { const src = mediaDataUri(c.path); return `<article class="card searchable" data-search="${escapeAttr(`${c.name} ${c.source}`.toLowerCase())}"><div class="thumb">${src ? `<img src="${src}" alt="${escapeAttr(c.name)}" loading="lazy">` : `<span class="muted">${escapeHtml(formatBytes(c.size))}</span>`}</div><h3>${escapeHtml(path.basename(c.path))}</h3><div class="meta"><span class="badge">${escapeHtml(c.source)}</span><span class="badge">${escapeHtml(c.time)}</span><span class="badge">${escapeHtml(formatBytes(c.size))}</span></div><div class="path">${escapeHtml(c.name)}</div><div class="actions">${artifactOpenButtons(c.path)}</div></article>`; }).join("\n")}</div>`;
+	const groups = buildCaptureGroups(captures, frames);
+	const groupCards = groups.map((group) => `<article class="card searchable capture-folder-card" data-search="${escapeAttr(`${group.label} ${group.fallbackLabel} ${group.ticket} ${group.title} ${group.source}`.toLowerCase())}"><div class="kicker">📁 Capture group</div><h3>${escapeHtml(group.label)}</h3><div class="meta"><span class="badge">${escapeHtml(captureSourceLabel(group.source))}</span><span class="badge">${group.captures.length}개</span><span class="badge">최근 ${escapeHtml(group.latestTime)}</span>${group.workspace ? `<span class="badge">workspace: ${escapeHtml(group.workspace)}</span>` : ""}</div>${group.fallbackLabel && group.fallbackLabel !== group.label ? `<div class="path">fallback: ${escapeHtml(group.fallbackLabel)}</div>` : ""}<div class="actions"><button class="button open-capture-group" type="button" data-group="${escapeAttr(group.key)}">폴더 열기</button></div></article>`).join("\n");
+	const groupPanels = groups.map((group) => `<section class="capture-group-panel" data-group-panel="${escapeAttr(group.key)}" hidden><div class="actions"><button class="button" type="button" onclick="showCaptureGroups()">← 그룹 목록</button></div><header class="card"><div class="kicker">캡처 / 미디어</div><h2>${escapeHtml(group.label)}</h2><div class="meta"><span class="badge">${escapeHtml(captureSourceLabel(group.source))}</span><span class="badge">${group.captures.length}개</span>${group.ticket ? `<span class="badge">${escapeHtml(group.ticket)}</span>` : ""}${group.workspace ? `<span class="badge">workspace: ${escapeHtml(group.workspace)}</span>` : ""}</div></header>${renderCaptureFileCards(group.captures)}</section>`).join("\n");
+	return `<div id="capture-groups"><div class="grid">${groupCards}</div></div><div id="capture-files" hidden>${groupPanels}</div>`;
 }
 
 function buildArtifactBrowserHtml(data: ArtifactBrowserData, cwd: string): string {
 	const initialTab = data.reports.length ? "reports" : data.frames.length ? "frames" : "captures";
-	return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>pilee Artifact Browser</title>${artifactBrowserStyle()}</head><body><main class="shell"><header class="hero"><div class="kicker">🗂️ pilee Artifact Browser</div><h1>산출물 다시 보기</h1><p>검증 리포트, Frame 기획 전문, 캡처 미디어를 탭으로 분리해서 봅니다.</p><div class="meta"><span class="badge">cwd ${escapeHtml(cwd)}</span><span class="badge">generated ${escapeHtml(data.generatedAt.toLocaleString())}</span></div></header><input id="search" class="search" type="search" placeholder="현재 탭에서 검색: 이름, 티켓, identity, source" oninput="filterCards()"><nav class="tabs"><button class="tab" data-tab="reports" onclick="showTab('reports')">검증 리포트 <strong>${data.reports.length}</strong></button><button class="tab" data-tab="frames" onclick="showTab('frames')">기획 / Frame <strong>${data.frames.length}</strong></button><button class="tab" data-tab="captures" onclick="showTab('captures')">캡처 / 미디어 <strong>${data.captures.length}</strong></button></nav><section id="tab-reports" class="panel">${renderReportCards(data.reports)}</section><section id="tab-frames" class="panel">${renderFrameCards(data.frames)}</section><section id="tab-captures" class="panel">${renderCaptureCards(data.captures)}</section></main><script>
+	return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>pilee Artifact Browser</title>${artifactBrowserStyle()}</head><body><main class="shell"><header class="hero"><div class="kicker">🗂️ pilee Artifact Browser</div><h1>산출물 다시 보기</h1><p>검증 리포트, Frame 기획 전문, 캡처 미디어를 탭으로 분리해서 봅니다.</p><div class="meta"><span class="badge">cwd ${escapeHtml(cwd)}</span><span class="badge">generated ${escapeHtml(data.generatedAt.toLocaleString())}</span></div></header><input id="search" class="search" type="search" placeholder="현재 탭에서 검색: 이름, 티켓, identity, source" oninput="filterCards()"><nav class="tabs"><button class="tab" data-tab="reports" onclick="showTab('reports')">검증 리포트 <strong>${data.reports.length}</strong></button><button class="tab" data-tab="frames" onclick="showTab('frames')">기획 / Frame <strong>${data.frames.length}</strong></button><button class="tab" data-tab="captures" onclick="showTab('captures')">캡처 / 미디어 <strong>${data.captures.length}</strong></button></nav><section id="tab-reports" class="panel">${renderReportCards(data.reports)}</section><section id="tab-frames" class="panel">${renderFrameCards(data.frames)}</section><section id="tab-captures" class="panel">${renderCaptureCards(data.captures, data.frames)}</section></main><script>
 	function showTab(name){document.querySelectorAll('.tab').forEach(function(el){el.classList.toggle('active',el.dataset.tab===name)});document.querySelectorAll('.panel').forEach(function(el){el.classList.toggle('active',el.id==='tab-'+name)});window.currentTab=name;filterCards();}
 	function filterCards(){var q=(document.getElementById('search').value||'').toLowerCase().trim();var panel=document.getElementById('tab-'+(window.currentTab||'${initialTab}'));if(!panel)return;panel.querySelectorAll('.searchable').forEach(function(card){card.style.display=!q||String(card.dataset.search||'').indexOf(q)>=0?'':'none';});}
+	function showCaptureGroups(){var groups=document.getElementById('capture-groups');var files=document.getElementById('capture-files');if(groups)groups.hidden=false;if(files)files.hidden=true;document.querySelectorAll('[data-group-panel]').forEach(function(panel){panel.hidden=true;});filterCards();}
+	function showCaptureGroup(key){var groups=document.getElementById('capture-groups');var files=document.getElementById('capture-files');if(groups)groups.hidden=true;if(files)files.hidden=false;document.querySelectorAll('[data-group-panel]').forEach(function(panel){panel.hidden=panel.dataset.groupPanel!==key;});filterCards();}
 	async function openArtifact(button){var path=button.dataset.path||'';var target=button.dataset.target||'glimpse';var label=button.textContent;button.disabled=true;button.textContent=target==='browser'?'브라우저 여는 중...':'Glimpse 여는 중...';try{var res=await fetch('/open?path='+encodeURIComponent(path)+'&target='+encodeURIComponent(target),{method:'POST'});if(!res.ok)throw new Error(await res.text());var payload=await res.json().catch(function(){return {}});if(payload&&payload.url){location.href=payload.url;return;}button.textContent='열기 요청됨';setTimeout(function(){button.textContent=label;button.disabled=false;},1400);}catch(e){button.textContent='열기 실패';button.title=String(e&&e.message||e);setTimeout(function(){button.textContent=label;button.disabled=false;},2200);}}
-	document.addEventListener('click',function(ev){var button=ev.target&&ev.target.closest?ev.target.closest('.open-artifact'):null;if(button){ev.preventDefault();openArtifact(button);}});
+	document.addEventListener('click',function(ev){var folder=ev.target&&ev.target.closest?ev.target.closest('.open-capture-group'):null;if(folder){ev.preventDefault();showCaptureGroup(folder.dataset.group||'');return;}var button=ev.target&&ev.target.closest?ev.target.closest('.open-artifact'):null;if(button){ev.preventDefault();openArtifact(button);}});
 	showTab('${initialTab}');
 	</script></body></html>`;
 }
