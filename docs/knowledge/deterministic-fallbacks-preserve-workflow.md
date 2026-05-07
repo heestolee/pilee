@@ -9,6 +9,7 @@ tags:
   - report
 category: runtime
 status: active
+confidence: high
 applies_to:
   - extensions/web-access
   - extensions/archive-to-html
@@ -19,7 +20,7 @@ source:
   - pilee-history:2026-05-05#45
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-07
-reviewed_commit: a71a69823804a1b6f7ffc9118a7b0c750fc066ba
+reviewed_commit: ca707e6c49f12e33dd08a0067a18ac40181121f4
 related:
   - curator-approved-source-selection
   - live-artifact-preview-pattern
