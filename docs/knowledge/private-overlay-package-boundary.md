@@ -23,7 +23,7 @@ source:
   - user-direction:2026-05-07-heestolee-private
   - user-direction:2026-05-08-public-private-boundary-reminder
 reviewed_at: 2026-05-08
-reviewed_commit: 7c4941464b9205f3b9699c3b070371d82ce34e09
+reviewed_commit: 667cefb29cd3ed9dce18f7c38033167fda158331
 related:
   - private-journal-public-doctrine
   - skills-as-portable-procedures
