@@ -22,6 +22,7 @@ const REPO_ROOT = path.resolve(__dirname, "..");
 const KNOWLEDGE_DIR = path.join(REPO_ROOT, "docs", "knowledge");
 const KNOWLEDGE_README_PATH = path.join(KNOWLEDGE_DIR, "README.md");
 const ROOT_README_PATH = path.join(REPO_ROOT, "README.md");
+const ROOT_README_EN_PATH = path.join(REPO_ROOT, "README.en.md");
 const RESOLVER_DIR = path.join(REPO_ROOT, ".context", "knowledge-resolver");
 const RESOLVER_RUNS_LOG = path.join(RESOLVER_DIR, "runs.jsonl");
 const GRAPH_START = "<!-- PILEE_KNOWLEDGE_GRAPH_START -->";
@@ -419,6 +420,8 @@ function inspectReadmeFreshness(docs) {
 	const knowledgeCurrent = fs.existsSync(KNOWLEDGE_README_PATH) ? readText(KNOWLEDGE_README_PATH) : "";
 	const rootExpected = renderRootReadme(docs);
 	const rootCurrent = fs.existsSync(ROOT_README_PATH) ? readText(ROOT_README_PATH) : "";
+	const rootEnglishExpected = renderRootReadmeEnglish(docs);
+	const rootEnglishCurrent = fs.existsSync(ROOT_README_EN_PATH) ? readText(ROOT_README_EN_PATH) : "";
 	const extensionCount = countTopLevelDirs("extensions");
 	const skillCount = countTopLevelDirs("skills");
 	const declaredExtensionCount = extractDeclaredCount(rootCurrent, "Extensions");
@@ -438,6 +441,13 @@ function inspectReadmeFreshness(docs) {
 	} else if (rootCurrent !== rootExpected) {
 		issues.push("README.md knowledge link block is stale. Run `node scripts/knowledge.mjs --graph`.");
 		reasons.push({ type: "stale_generated_block", severity: "medium", detail: "README.md knowledge link block is stale", action: "regenerate_readme_tables" });
+	}
+	if (!rootEnglishCurrent) {
+		issues.push(`README missing: ${rel(ROOT_README_EN_PATH)}`);
+		reasons.push({ type: "missing_readme", severity: "high", detail: `README missing: ${rel(ROOT_README_EN_PATH)}` });
+	} else if (rootEnglishCurrent !== rootEnglishExpected) {
+		issues.push("README.en.md knowledge link block is stale. Run `node scripts/knowledge.mjs --graph`.");
+		reasons.push({ type: "stale_generated_block", severity: "medium", detail: "README.en.md knowledge link block is stale", action: "regenerate_readme_tables" });
 	}
 	if (declaredExtensionCount !== null && declaredExtensionCount !== extensionCount) {
 		issues.push(`README.md Extensions count is stale: declared ${declaredExtensionCount}, actual ${extensionCount}.`);
@@ -468,6 +478,8 @@ function inspectReadmeFreshness(docs) {
 		root_readme: {
 			path: rel(ROOT_README_PATH),
 			knowledge_links_fresh: !!rootCurrent && rootCurrent === rootExpected,
+			english_path: rel(ROOT_README_EN_PATH),
+			english_knowledge_links_fresh: !!rootEnglishCurrent && rootEnglishCurrent === rootEnglishExpected,
 			extension_count: extensionCount,
 			declared_extension_count: declaredExtensionCount,
 			extension_count_fresh: declaredExtensionCount === null || declaredExtensionCount === extensionCount,
@@ -568,6 +580,23 @@ function renderRootReadme(docs) {
 		return existing.replace("\n## Extensions\n", `${section}\n## Extensions\n`);
 	}
 	return `${existing.trim()}\n${section}\n`;
+}
+
+function renderRootReadmeEnglish(docs) {
+	const existing = fs.existsSync(ROOT_README_EN_PATH) ? readText(ROOT_README_EN_PATH) : "";
+	if (!existing) return "";
+	const generated = buildRootKnowledgeLinksSection(docs);
+	if (existing.includes(ROOT_LINKS_START) && existing.includes(ROOT_LINKS_END)) {
+		return existing.replace(
+			new RegExp(`${escapeRegex(ROOT_LINKS_START)}[\\s\\S]*?${escapeRegex(ROOT_LINKS_END)}`),
+			`${ROOT_LINKS_START}\n${generated}\n${ROOT_LINKS_END}`,
+		);
+	}
+	const block = `\n${ROOT_LINKS_START}\n${generated}\n${ROOT_LINKS_END}\n`;
+	if (existing.includes("\n---\n\n## Extensions\n")) {
+		return existing.replace("\n---\n\n## Extensions\n", `${block}\n---\n\n## Extensions\n`);
+	}
+	return `${existing.trim()}\n\n${block}`;
 }
 
 function buildRootKnowledgeLinksSection(docs) {
@@ -722,10 +751,13 @@ function cmdGraph({ check = false } = {}) {
 	const currentKnowledge = fs.existsSync(KNOWLEDGE_README_PATH) ? readText(KNOWLEDGE_README_PATH) : "";
 	const nextRoot = renderRootReadme(docs);
 	const currentRoot = fs.existsSync(ROOT_README_PATH) ? readText(ROOT_README_PATH) : "";
+	const nextRootEnglish = renderRootReadmeEnglish(docs);
+	const currentRootEnglish = fs.existsSync(ROOT_README_EN_PATH) ? readText(ROOT_README_EN_PATH) : "";
 	if (check) {
 		const stale = [];
 		if (currentKnowledge !== nextKnowledge) stale.push(rel(KNOWLEDGE_README_PATH));
 		if (currentRoot !== nextRoot) stale.push(rel(ROOT_README_PATH));
+		if (currentRootEnglish !== nextRootEnglish) stale.push(rel(ROOT_README_EN_PATH));
 		if (stale.length === 0) {
 			console.log("✅ knowledge generated README blocks are up to date.");
 			return 0;
@@ -735,8 +767,10 @@ function cmdGraph({ check = false } = {}) {
 	}
 	fs.writeFileSync(KNOWLEDGE_README_PATH, nextKnowledge);
 	if (nextRoot) fs.writeFileSync(ROOT_README_PATH, nextRoot);
+	if (nextRootEnglish) fs.writeFileSync(ROOT_README_EN_PATH, nextRootEnglish);
 	console.log(`💾 Updated ${rel(KNOWLEDGE_README_PATH)}`);
 	if (nextRoot) console.log(`💾 Updated ${rel(ROOT_README_PATH)}`);
+	if (nextRootEnglish) console.log(`💾 Updated ${rel(ROOT_README_EN_PATH)}`);
 	return 0;
 }
 
