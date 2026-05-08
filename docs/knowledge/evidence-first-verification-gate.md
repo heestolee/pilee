@@ -22,7 +22,7 @@ source:
   - pilee-history:2026-05-05#48
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-08
-reviewed_commit: be32cb7b2dbf4ad10d2343b0f453f261a5fb6270
+reviewed_commit: 7c4941464b9205f3b9699c3b070371d82ce34e09
 related:
   - verify-report-workflow
   - frame-verify-contract
