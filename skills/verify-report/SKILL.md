@@ -1,6 +1,6 @@
 ---
 name: verify-report
-description: PR/구현 검증을 위해 스크린샷/GIF 캡처와 네트워크 로그, 콘솔 출력, 코드 diff 같은 검증 근거를 HTML 리포트로 만든다. UI/이벤트/BE처럼 여러 검증 축이 있으면 증거 수집 뒤 case별 subagent fan-out으로 판정을 교차검증한다. 기본은 로컬 확인용이며 업로드/PR 업데이트는 명시 요청 시에만 한다.
+description: PR/구현 검증을 위해 스크린샷/GIF 캡처와 네트워크 로그, 콘솔 출력, 코드 diff 같은 검증 근거를 HTML 리포트로 만든다. UI/이벤트/BE처럼 여러 검증 축이 있으면 case별 subagent가 계획된 캡처·로그 수집과 1차 검증을 병렬 수행하고 main이 최종 판정한다. 기본은 로컬 확인용이며 업로드/PR 업데이트는 명시 요청 시에만 한다.
 argument-hint: "[base-url] [--upload] [--update] [--ask-before] [--no-workers]"
 ---
 
@@ -16,8 +16,8 @@ argument-hint: "[base-url] [--upload] [--update] [--ask-before] [--no-workers]"
 - **짧고 초점 있는 primary evidence**: 리포트 본문 핵심 증거는 viewport/섹션/element crop을 우선한다. 세로로 긴 full-page 캡처는 필요할 때만 보조 증거로 남기고 토글/appendix/link 뒤에 둔다.
 - **Before/After 비교는 판단해서 포함**: 기존 UI/동작이 기준점으로 의미 있는 변경은 작업 전(before)과 작업 후(after)를 같은 축/viewport/role로 캡처하고, 차이를 설명한다. 신규 화면처럼 baseline이 없거나 부작용 위험이 큰 경우는 생략 사유를 남긴다.
 - **업로드 opt-in**: 기본 `/verify-report`는 로컬 리포트 확인까지만 한다. project artifact storage 업로드와 PR 본문 갱신은 `--upload` 또는 사용자의 명시적 업로드 액션이 있을 때만 한다.
-- **Evidence-first fan-out 기본**: 증거 수집까지는 main agent가 통제하고, 여러 검증 축은 evidence bundle을 기준으로 case verifier subagent에게 병렬 검증시킨다. `--no-workers`가 있거나 단일·자명한 항목이면 main이 직접 판정한다.
-- **Main final adjudicator**: subagent는 증거 기반 의견을 반환할 뿐이다. 최종 `pass`/`fail`/`unverified` 판정, 추가 증거 수집, 사용자 질문, `verify_report_live` 업데이트는 main만 한다.
+- **Case worker fan-out 기본**: main agent가 coverage 계획·환경·허용 액션을 정의하고, 여러 검증 축은 case worker subagent가 계획된 캡처/로그/명령 실행과 1차 검증을 병렬 수행한다. `--no-workers`가 있거나 단일·자명한 항목이면 main이 직접 실행한다.
+- **Main final adjudicator**: subagent는 계획된 evidence를 만들고 의견을 반환할 뿐이다. 최종 `pass`/`fail`/`unverified` 판정, 계획 밖 추가 캡처/재캡처 승인, 사용자 질문, `verify_report_live` 업데이트는 main만 한다.
 - **프리뷰 강제**: HTML 생성 후 Glimpse WebView로 먼저 보여주고, 사용자가 확인한 뒤 다음 행동을 정한다.
 
 ## 모드 (default: confirm-only)
@@ -30,7 +30,7 @@ argument-hint: "[base-url] [--upload] [--update] [--ask-before] [--no-workers]"
 | **ask-before** | 항목별 검증 실행 전 사전 확인 | `--ask-before` 인자 또는 사용자가 요구 |
 
 Escape hatch:
-- `--no-workers`: case verifier subagent fan-out을 끄고 main agent가 모든 항목을 직접 판정한다. 캡처/증거 수집 방식과 report live/update/finish 절차는 동일하다.
+- `--no-workers`: case worker subagent fan-out을 끄고 main agent가 모든 항목의 플로우 실행과 판정을 직접 수행한다. report live/update/finish 절차는 동일하다.
 
 ## 실행 단계 개요
 
@@ -41,9 +41,9 @@ Escape hatch:
 | 3 | 로그인/권한 Credential 확보 | ✓ | ✓ | ✓ |
 | 4 | 검증 계획 수립 → 유저 확인 | ✓ | ✓ | ✓ |
 | 4-B | (ask-before 모드만) 항목별 사전 확인 | opt | opt | opt |
-| 5 | `verify_report_live` 시작 → 브라우저/명령 자동화로 캡처/증거 수집 → evidence bundle 작성 | ✓ | ✓ | ✓ |
-| 5-B | case verifier subagent fan-out으로 항목별 판정 교차검증 (`--no-workers`면 skip) | ✓ | ✓ | ✓ |
-| 6 | main 최종 판정 → live preview 갱신 → 정적 HTML export → 유저 리뷰 | ✓ | ✓ | ✓ (병합) |
+| 5 | `verify_report_live` 시작 → case worker plan/brief 작성 → 필요 시 공유 증거 수집 | ✓ | ✓ | ✓ |
+| 5-B | case worker subagent fan-out으로 계획된 캡처/로그/명령 실행 + 1차 검증 (`--no-workers`면 skip) | ✓ | ✓ | ✓ |
+| 6 | main 결과 adjudication → live preview 갱신 → 정적 HTML export → 유저 리뷰 | ✓ | ✓ | ✓ (병합) |
 | 7 | project artifact storage 업로드 |  | ✓ | ✓ |
 | 8 | context.md + PR 본문 업데이트 |  | ✓ | ✓ |
 | 9 | 후속 단계 AskUserQuestion | ✓ | ✓ | ✓ |
@@ -51,7 +51,7 @@ Escape hatch:
 > 상세 참조:
 > - [references/coverage-and-capture-quality.md](references/coverage-and-capture-quality.md) — 검증 축 도출, UI 변경 프리셋, 긴 이미지 처리 규칙
 > - [references/capture-commands.md](references/capture-commands.md) — agent-browser 명령, crop helper, ffmpeg GIF 합성, 브라우저 증거 수집
-> - [references/case-verifier-fanout.md](references/case-verifier-fanout.md) — evidence bundle, case verifier subagent protocol, main escalation/adjudication
+> - [references/case-worker-fanout.md](references/case-worker-fanout.md) — case worker subagent planned capture/log collection, escalation, main adjudication
 > - [references/upload-scripts.md](references/upload-scripts.md) — project artifact storage 업로드
 > - [references/report-templates.md](references/report-templates.md) — HTML/context.md/PR 템플릿
 > - [references/troubleshooting.md](references/troubleshooting.md) — agent-browser daemon 복구, 자주 깨지는 케이스
@@ -185,9 +185,9 @@ URL: https://example.local/path
 
 옵션: 진행 / 건너뛰기 / 다른 액션으로
 
-## Step 5: `verify_report_live` 시작 → 캡처/증거 수집
+## Step 5: `verify_report_live` 시작 → case worker plan/brief 작성
 
-[references/capture-commands.md](references/capture-commands.md)를 따른다.
+[references/capture-commands.md](references/capture-commands.md)와 [references/case-worker-fanout.md](references/case-worker-fanout.md)를 따른다.
 
 캡처 계획이 확정되면 먼저 live report를 시작한다. 이때 Glimpse가 열리고, 이후 항목별 진행 상태가 SSE로 실시간 갱신된다.
 
@@ -204,7 +204,7 @@ URL: https://example.local/path
 }
 ```
 
-각 항목 시작 시 `running`으로 갱신한다. 증거 수집 직후 main이 명백히 판단할 수 있는 `skip`/`blocked`/`fail`은 바로 기록할 수 있지만, 여러 축 검증의 `pass`는 Step 5-B case verifier fan-out 또는 `--no-workers` 직접 판정 후 Step 6에서 확정한다.
+각 항목은 main 또는 worker가 실행을 시작할 때 `running`으로 갱신한다. main이 명백히 판단할 수 있는 `skip`/`blocked`/`fail`은 바로 기록할 수 있지만, 여러 축 검증의 `pass`는 Step 5-B case worker 결과를 main이 adjudication하거나 `--no-workers` 직접 실행 후 Step 6에서 확정한다.
 
 ```json
 {
@@ -235,40 +235,44 @@ PASS 처리 조건:
 
 캡처/증거는 “무엇을 실행했는지”와 “결과가 무엇인지”를 재현 가능하게 남긴다. 예: `reload + scroll`, `targetEvents`, `matchedResourceCount`.
 
-증거 수집이 끝나면 `.context/work/{workspace}/captures/evidence-bundle/`에 최소 두 파일을 작성한다.
+Fan-out을 사용할 경우, 실행 전에 `.context/work/{workspace}/captures/verify-workers/`에 최소 세 가지를 작성한다.
 
-- `criteria.json`: 검증 항목, 필수 coverage axis, 기대 결과, evidence file path 목록
-- `evidence-index.md`: 사람이 읽는 증거 목차. 각 evidence의 생성 명령/액션, 환경, viewport, role, timestamp를 포함
+- `plan.json`: 검증 항목, 필수 coverage axis, 기대 결과, 환경(URL/viewport/role), worker별 허용 액션, output path
+- `evidence-index.md`: main이 이미 가진 공유 증거와 worker가 만들어야 할 planned evidence 목차
+- `briefs/{itemId}.md`: subagent가 읽을 case별 작업 지시. 허용/금지 액션과 result JSON path를 명시
 
-큰 이미지/영상은 복사하지 말고 기존 `.context/work/{workspace}/captures/` 경로를 참조한다. 이 bundle이 Step 5-B subagent의 유일한 판단 입력이다.
+큰 이미지/영상은 복사하지 말고 기존 `.context/work/{workspace}/captures/` 경로를 참조한다. Worker가 새로 만드는 evidence도 이 capture root 아래에 저장하게 한다.
 
-## Step 5-B: case verifier fan-out (기본, `--no-workers`면 skip)
+## Step 5-B: case worker fan-out (기본, `--no-workers`면 skip)
 
-[references/case-verifier-fanout.md](references/case-verifier-fanout.md)를 따른다.
+[references/case-worker-fanout.md](references/case-worker-fanout.md)를 따른다.
 
-기본적으로 main은 증거 수집 후 검증 항목별로 verifier subagent를 병렬 실행한다. 단, 다음 경우에는 fan-out을 생략하고 main이 직접 판정한다.
+기본적으로 main은 case별 worker subagent를 병렬 실행해 planned capture/log/test/API-read와 1차 검증을 맡긴다. 단, 다음 경우에는 fan-out을 생략하고 main이 직접 실행·판정한다.
 
 - 사용자가 `--no-workers`를 지정함
-- 검증 항목이 1개이고 evidence/기대 결과가 자명함
-- subagent 도구가 현재 환경에서 사용할 수 없거나 보안/비밀 경계상 별도 session에 증거를 넘기면 안 됨
+- 검증 항목이 1개이고 실행 플로우가 짧고 자명함
+- subagent 도구가 현재 환경에서 사용할 수 없음
+- 계정/session/evidence를 별도 subagent session으로 넘기면 안 됨
+- 결제/알림/외부 write처럼 worker가 실수하면 side effect가 생기는 플로우
 
 Subagent 규칙:
 
-- 주어진 evidence bundle만 읽고 판정한다. 새 브라우저 캡처, 로그인, DB/API side effect, `verify_report_live` update는 하지 않는다.
-- 사용자에게 직접 질문하지 않는다. 애매하면 `UNVERIFIED`와 `main_action_required`를 반환한다.
-- 출력은 `PASS` / `FAIL` / `UNVERIFIED` 중 하나와 사용한 evidence path 목록이어야 한다.
+- brief에 적힌 URL/viewport/role/action/output path 안에서 planned evidence를 직접 만든다.
+- 계획 밖 새 캡처/재캡처, 다른 계정/다른 route/다른 viewport 추가, DB/API write, `verify_report_live` update는 하지 않는다.
+- 사용자에게 직접 질문하지 않는다. 계획된 evidence가 부족하거나 새 캡처가 필요하다고 판단하면 `UNVERIFIED`와 `main_action_required`를 반환한다.
+- 출력은 result JSON 파일과 함께 `PASS` / `FAIL` / `UNVERIFIED`, 생성/사용한 evidence path 목록이어야 한다.
 
 메인 규칙:
 
-- subagent 결과를 그대로 믿지 않는다. evidence path가 존재하고 criteria를 실제로 닫는지 확인한 뒤 최종 판정한다.
-- `UNVERIFIED`는 main으로 escalation된 작업이다. main이 추가 증거 수집, 기준 재해석, 사용자 질문, Coverage Gap 기록 중 하나로 처리한다.
-- 추가 증거를 수집했다면 해당 case만 다시 subagent에 맡기거나, 자명하면 main이 직접 판정한다.
+- subagent 결과를 그대로 믿지 않는다. result JSON과 evidence path가 존재하고 criteria를 실제로 닫는지 확인한 뒤 최종 판정한다.
+- `UNVERIFIED`는 main으로 escalation된 작업이다. main이 추가 증거 수집, brief 수정 후 재위임, 기준 재해석, 사용자 질문, Coverage Gap 기록 중 하나로 처리한다.
+- 추가 증거가 필요하면 main이 직접 처리하거나, 계획을 명시적으로 갱신한 뒤 해당 case만 다시 worker에 맡긴다.
 
 Subagent launch가 필요한 경우, 현재 Pi subagent 규칙에 따라 먼저 `subagent help`를 확인하고, `subagent batch` launch 후에는 status/detail polling을 하지 말고 완료 follow-up을 기다린다.
 
-## Step 6: main 최종 판정 → live preview 갱신 → 정적 HTML export → 유저 리뷰
+## Step 6: main 결과 adjudication → live preview 갱신 → 정적 HTML export → 유저 리뷰
 
-모든 evidence와 case verifier 결과를 main이 adjudication한 뒤 `verify_report_live action=update`로 각 항목의 최종 상태를 반영하고, 마지막에 `verify_report_live action=finish`로 `.context/work/{workspace}/captures/report.html`을 export한다. live Glimpse 창은 최종 상태로 갱신되고, 이후에는 `/show-report`로 다시 열 수 있다.
+모든 case worker 결과를 main이 adjudication한 뒤 `verify_report_live action=update`로 각 항목의 최종 상태와 evidence를 반영하고, 마지막에 `verify_report_live action=finish`로 `.context/work/{workspace}/captures/report.html`을 export한다. live Glimpse 창은 최종 상태로 갱신되고, 이후에는 `/show-report`로 다시 열 수 있다.
 
 finish 전에 결과를 세 그룹으로 분리한다.
 
@@ -279,7 +283,7 @@ Verified
 Coverage gaps / Unverified
 - 필요한 축이 빠진 항목
 - 캡처는 있지만 검증 기준을 닫지 못한 항목
-- case verifier가 `UNVERIFIED`로 올렸고 main이 추가 증거/질문/보완 없이 닫지 못한 항목
+- case worker가 `UNVERIFIED`로 올렸고 main이 추가 증거/질문/보완 없이 닫지 못한 항목
 
 Blocked / Known unrelated failures
 - 권한/외부 환경/기존 실패로 막힌 항목
@@ -349,6 +353,6 @@ Blocked / Known unrelated failures
 | GA/픽셀 미발화 검증 | `targetEvents`, 필터 조건, matched count, matched requests를 JSON으로 저장한다. |
 | 사용자가 “BE는 빼” | BE/CODE_DIFF 항목을 SKIP 표시하고 사유를 남긴다. |
 | 사용자가 “추가로 X도 확인” | update 모드로 기존 리포트에 항목 append. |
-| subagent가 `UNVERIFIED` 반환 | main이 추가 evidence 수집/사용자 질문/Coverage Gap 중 하나로 처리한다. subagent가 직접 캡처·질문하지 않는다. |
+| subagent가 `UNVERIFIED` 반환 | main이 추가 evidence 수집/brief 수정 후 재위임/사용자 질문/Coverage Gap 중 하나로 처리한다. subagent가 계획 밖 새 캡처·질문을 하지 않는다. |
 | 사용자가 “업로드는 나중에” | confirm 모드로 종료하고 `/verify-report --upload` 안내. |
 | Glimpse 창이 안 뜸/닫힘 | 업로드하지 않고 `/show-report --browser report.html` 또는 `open report.html` fallback 안내. |
