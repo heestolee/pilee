@@ -16,6 +16,7 @@ applies_to:
   - extensions/custom-style
   - extensions/diff-overlay
   - extensions/backlog
+  - extensions/fork-panel
   - extensions/timestamp
   - extensions/idle-screensaver
   - skills/ask-user-question-rules
@@ -45,3 +46,5 @@ related:
 ## Panel Metadata Rule
 
 P0/P1/P2 같은 panel label, model name, session metadata는 본문보다 낮은 위계로 보이되 사라질 만큼 흐리면 안 됩니다. metadata는 장식이 아니라 현재 작업 위치를 알려주는 navigation cue이므로, border/muted 계열을 쓰더라도 대비와 길이 제한을 함께 확인합니다.
+
+패널이 많이 만들어지는 revive/panels 목록에서는 `P0`, `P1`, `P2`처럼 자주 회수하는 초기 패널 label에 안정적인 색을 부여할 수 있습니다. 단, `P3+`는 기존 muted/border 계열에 남겨 색상 수를 제한하고, 색은 상태(success/warning)가 아니라 “빠르게 찾기 위한 식별자”로만 사용합니다.

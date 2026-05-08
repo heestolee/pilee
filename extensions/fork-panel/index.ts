@@ -135,6 +135,23 @@ function panelLabelOf(record: ForkRecord | undefined, fallback?: string): string
 	return record?.panelLabel || fallback || "P?";
 }
 
+function panelColor(label: string): string {
+	const normalized = label.toUpperCase();
+	if (normalized === "P0") return "accent";
+	if (normalized === "P1") return "success";
+	if (normalized === "P2") return "warning";
+	return "borderAccent";
+}
+
+function isPriorityPanel(label: string): boolean {
+	return /^(P0|P1|P2)$/i.test(label);
+}
+
+function renderPanelLabel(theme: any, label: string, selected = false): string {
+	const text = selected || isPriorityPanel(label) ? theme.bold(label) : label;
+	return theme.fg(panelColor(label), text);
+}
+
 function shortHash(value: string): string {
 	return createHash("sha1").update(value).digest("hex").slice(0, 10);
 }
@@ -1180,7 +1197,7 @@ export default function (pi: ExtensionAPI) {
 								const cursor = sel ? theme.fg("accent", "▶") : " ";
 								const statusIcon = item.status === "unread" ? theme.fg("warning", "●") : item.status === "running" ? theme.fg("success", "●") : theme.fg("border", "●");
 								const status = item.status === "unread" ? `unread${item.unreadCount > 1 ? `(${item.unreadCount})` : ""}` : item.status;
-								const panel = sel ? theme.fg("accent", item.panelLabel) : theme.fg("borderAccent", item.panelLabel);
+								const panel = renderPanelLabel(theme, item.panelLabel, sel);
 								const workspace = theme.fg("border", truncateToWidth(item.revive.workspaceLabel, 16, "…"));
 								const titleW = Math.max(18, Math.min(42, Math.floor(w * 0.32)));
 								const title = sel ? theme.fg("accent", truncateToWidth(item.revive.title, titleW, "…")) : truncateToWidth(item.revive.title, titleW, "…");
@@ -1384,7 +1401,7 @@ export default function (pi: ExtensionAPI) {
 								const d = new Date(r.closedAt ?? r.createdAt);
 								const timeStr = theme.fg("borderAccent", `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`);
 								const status = recordSource(r) === "p0" ? theme.fg("border", "●") : r.closedAt ? "●" : theme.fg("success", "●");
-								const panel = sel ? theme.fg("accent", panelLabelOf(r)) : theme.fg(recordSource(r) === "p0" ? "border" : "borderAccent", panelLabelOf(r));
+								const panel = renderPanelLabel(theme, panelLabelOf(r), sel);
 								const workspace = theme.fg("border", truncateToWidth(item.workspaceLabel, 18, "…"));
 								const titleW = Math.max(18, Math.min(42, Math.floor(w * 0.32)));
 								const titleRaw = truncateToWidth(item.title, titleW, "…");
@@ -1433,7 +1450,7 @@ export default function (pi: ExtensionAPI) {
 				render: (w: number) => {
 					const lines = [
 						theme.fg("accent", "─".repeat(w)),
-						truncateToWidth(`  ${theme.fg("accent", theme.bold("OPEN REVIVE"))} ${theme.fg("accent", "|")} ${theme.fg("border", panelLabelOf(item.record))} ${theme.fg("accent", "·")} ${theme.fg("border", item.workspaceLabel)} ${theme.fg("accent", "·")} ${theme.fg("text", item.title)}`, w, ""),
+						truncateToWidth(`  ${theme.fg("accent", theme.bold("OPEN REVIVE"))} ${theme.fg("accent", "|")} ${renderPanelLabel(theme, panelLabelOf(item.record), true)} ${theme.fg("accent", "·")} ${theme.fg("border", item.workspaceLabel)} ${theme.fg("accent", "·")} ${theme.fg("text", item.title)}`, w, ""),
 						truncateToWidth(`  ${theme.fg("border", "Enter/h: 현재 패널 · ← left · → right · ↑ up · ↓ down · t: 새 탭")}`, w, ""),
 						truncateToWidth(`  ${theme.fg("borderAccent", "q/Esc: 취소")}`, w, ""),
 						theme.fg("accent", "─".repeat(w)),
