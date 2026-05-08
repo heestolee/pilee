@@ -550,10 +550,40 @@ function renderEvidenceIntentStatic(evidence: Evidence): string {
 	return `<dl class="evidence-intent">${rows.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("")}</dl>`;
 }
 
+const RAW_EVIDENCE_INLINE_BYTES = 80_000;
+
+function shouldRenderRawEvidenceDetails(evidence: Evidence, kind: EvidenceKind): boolean {
+	if (evidence.url || ["image", "gif", "link"].includes(kind)) return false;
+	if (evidence.role?.toLowerCase() === "raw") return true;
+	if (["json", "network", "console", "diff"].includes(kind)) return true;
+	return Boolean(evidence.path);
+}
+
+function renderRawEvidencePayload(evidence: Evidence, state: VerifyReportState): string {
+	const pathLabel = evidence.path ? relativeEvidencePath(evidence, state) ?? evidence.path : null;
+	const pathHtml = pathLabel ? `<div class="raw-evidence-path"><strong>파일</strong><code>${escapeHtml(pathLabel)}</code></div>` : "";
+	if (evidence.text) return `${pathHtml}<pre><code>${escapeHtml(evidence.text)}</code></pre>`;
+	if (!evidence.path) return `${pathHtml}<p class="raw-evidence-note">inline raw content가 없습니다.</p>`;
+	try {
+		const stats = statSync(evidence.path);
+		if (stats.size > RAW_EVIDENCE_INLINE_BYTES) {
+			return `${pathHtml}<p class="raw-evidence-note">파일이 커서 inline preview를 생략했습니다 (${Math.round(stats.size / 1024)}KB). 원본 파일을 열어 확인하세요.</p>`;
+		}
+		return `${pathHtml}<pre><code>${escapeHtml(readFileSync(evidence.path, "utf-8"))}</code></pre>`;
+	} catch (error) {
+		return `${pathHtml}<p class="raw-evidence-note">raw evidence를 읽을 수 없습니다: ${escapeHtml(error instanceof Error ? error.message : String(error))}</p>`;
+	}
+}
+
+function renderRawEvidenceDetailsStatic(evidence: Evidence, state: VerifyReportState, kind: EvidenceKind, label: string): string {
+	return `<details class="raw-evidence"><summary>Raw evidence — ${escapeHtml(label)} <span>${escapeHtml(kind)}</span></summary>${renderEvidenceIntentStatic(evidence)}${renderRawEvidencePayload(evidence, state)}</details>`;
+}
+
 function renderEvidenceStatic(evidence: Evidence, state: VerifyReportState): string {
 	const kind = evidenceKind(evidence);
 	const label = evidence.label || kind;
 	let body = "";
+	const rawDetails = shouldRenderRawEvidenceDetails(evidence, kind);
 	if (evidence.url) body = `<a href="${escapeHtml(evidence.url)}" target="_blank" rel="noreferrer">${escapeHtml(label)}</a>`;
 	else if (evidence.path && ["image", "gif"].includes(kind)) {
 		const dimensions = readImageDimensions(evidence.path);
@@ -561,11 +591,11 @@ function renderEvidenceStatic(evidence: Evidence, state: VerifyReportState): str
 		body = isTallEvidence(dimensions)
 			? `<details class="tall-evidence"><summary>긴/전체 페이지 캡처 보기 — ${escapeHtml(label)}${escapeHtml(imageDimensionLabel(dimensions))}</summary>${figure}</details>`
 			: figure;
-	} else if (evidence.path) body = `<p><strong>${escapeHtml(label)}</strong>: <code>${escapeHtml(relativeEvidencePath(evidence, state) ?? evidence.path)}</code></p>`;
+	} else if (rawDetails) body = renderRawEvidenceDetailsStatic(evidence, state, kind, label);
 	else if (evidence.text) body = `<pre><code>${escapeHtml(evidence.text)}</code></pre>`;
 	if (!body) return "";
 	const roleClass = evidence.role ? ` evidence-role-${evidence.role.replace(/[^a-z0-9_-]/gi, "-").toLowerCase()}` : "";
-	return `<article class="evidence-card${roleClass}"><div class="evidence-card-head"><strong>${escapeHtml(label)}</strong>${kind ? `<span>${escapeHtml(kind)}</span>` : ""}</div>${body}${renderEvidenceIntentStatic(evidence)}</article>`;
+	return `<article class="evidence-card${roleClass}"><div class="evidence-card-head"><strong>${escapeHtml(label)}</strong>${kind ? `<span>${escapeHtml(kind)}</span>` : ""}</div>${body}${rawDetails ? "" : renderEvidenceIntentStatic(evidence)}</article>`;
 }
 
 function generateLivePage(initialState: unknown): string {
@@ -610,6 +640,13 @@ function generateLivePage(initialState: unknown): string {
 	.evidence-intent div { border-top:1px solid var(--line); padding-top:7px; }
 	.evidence-intent dt { color:var(--muted); font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
 	.evidence-intent dd { margin:2px 0 0; color:var(--detail); font-size:12px; line-height:1.45; }
+	details.raw-evidence { border:1px solid var(--line); border-radius:12px; background:var(--panel); overflow:hidden; }
+	details.raw-evidence summary { cursor:pointer; padding:10px 12px; color:var(--detail); font-weight:800; background:var(--panel2); }
+	details.raw-evidence summary span { color:var(--muted); font-size:11px; text-transform:uppercase; margin-left:6px; }
+	details.raw-evidence .evidence-intent { margin:10px 12px; }
+	.raw-evidence-path { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:10px 12px; color:var(--muted); font-size:12px; }
+	.raw-evidence-note { margin:10px 12px; color:var(--muted); font-size:12px; }
+	details.raw-evidence pre { margin:0; border-width:1px 0 0; border-radius:0; max-height:460px; }
 	figure { margin:0; }
 	img { display:block; max-width:100%; border:1px solid var(--line); border-radius:12px; background:var(--imageBg); }
 	figcaption { color:var(--muted); font-size:12px; margin-top:6px; }
@@ -663,14 +700,25 @@ function evIntentHtml(ev) {
   if (!rows.length) return '';
   return '<dl class="evidence-intent">' + rows.map(function(row){ return '<div><dt>' + esc(row[0]) + '</dt><dd>' + esc(row[1]) + '</dd></div>'; }).join('') + '</dl>';
 }
+function shouldRawDetails(ev, kind) {
+  if (ev.url || kind === 'image' || kind === 'gif' || kind === 'link') return false;
+  if (String(ev.role || '').toLowerCase() === 'raw') return true;
+  if (['json','network','console','diff'].indexOf(kind) >= 0) return true;
+  return !!ev.path;
+}
+function rawDetailsHtml(ev, kind, label) {
+  var path = ev.path ? '<div class="raw-evidence-path"><strong>파일</strong><code>' + esc(ev.path) + '</code></div>' : '';
+  var payload = ev.text ? '<pre><code>' + esc(ev.text) + '</code></pre>' : (ev.path ? '<p class="raw-evidence-note">정적 report export에서 raw 파일 preview가 inline으로 포함됩니다. Live preview에서는 파일 경로와 intent metadata만 표시합니다.</p>' : '<p class="raw-evidence-note">inline raw content가 없습니다.</p>');
+  return '<details class="raw-evidence"><summary>Raw evidence — ' + esc(label) + ' <span>' + esc(kind) + '</span></summary>' + evIntentHtml(ev) + path + payload + '</details>';
+}
 function evHtml(ev) {
-  var kind = evKind(ev); var label = ev.label || kind; var body = '';
+  var kind = evKind(ev); var label = ev.label || kind; var body = ''; var raw = shouldRawDetails(ev, kind);
   if (ev.url) body = '<a href="' + esc(ev.url) + '" target="_blank" rel="noreferrer">' + esc(label) + '</a>';
   else if (ev.path && (kind === 'image' || kind === 'gif')) body = '<figure data-auto-collapse="true" data-label="' + esc(label) + '"><img src="/file?path=' + encodeURIComponent(ev.path) + '" alt="' + esc(label) + '" onload="maybeCollapseTallImage(this)"><figcaption>' + esc(label) + ' · ' + esc(ev.path.split('/').pop()) + '</figcaption></figure>';
-  else if (ev.path) body = '<p><strong>' + esc(label) + '</strong>: <code>' + esc(ev.path) + '</code></p>';
+  else if (raw) body = rawDetailsHtml(ev, kind, label);
   else if (ev.text) body = '<pre><code>' + esc(ev.text) + '</code></pre>';
   if (!body) return '';
-  return '<article class="evidence-card"><div class="evidence-card-head"><strong>' + esc(label) + '</strong><span>' + esc(kind) + '</span></div>' + body + evIntentHtml(ev) + '</article>';
+  return '<article class="evidence-card"><div class="evidence-card-head"><strong>' + esc(label) + '</strong><span>' + esc(kind) + '</span></div>' + body + (raw ? '' : evIntentHtml(ev)) + '</article>';
 }
 function render() {
   var items = state.items || [];
@@ -796,6 +844,13 @@ function generateStaticReportHtml(state: VerifyReportState): string {
 	.evidence-intent div { border-top: 1px solid #e5e7eb; padding-top: 7px; }
 	.evidence-intent dt { color: #6b7280; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
 	.evidence-intent dd { margin: 2px 0 0; color: #4b5563; font-size: 12px; line-height: 1.45; }
+	.raw-evidence { border: 1px solid #e5e7eb; border-radius: 10px; background: #fff; overflow: hidden; }
+	.raw-evidence summary { cursor: pointer; padding: 10px 12px; font-weight: 800; color: #374151; background: #f9fafb; }
+	.raw-evidence summary span { color: #6b7280; font-size: 11px; text-transform: uppercase; margin-left: 6px; }
+	.raw-evidence .evidence-intent { margin: 10px 12px; }
+	.raw-evidence-path { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 12px; color: #6b7280; font-size: 12px; }
+	.raw-evidence-note { margin: 10px 12px; color: #6b7280; font-size: 12px; }
+	.raw-evidence pre { margin: 0; border-radius: 0; max-height: 460px; }
 	figure { margin: 0; }
 	img { display: block; max-width: 100%; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
 	figcaption { color: #6b7280; font-size: 12px; margin-top: 6px; }

@@ -108,6 +108,26 @@
 </html>
 ```
 
+### Raw evidence 표시 원칙
+
+JSON/TXT/network/console/diff처럼 원문 확인이 필요한 evidence는 별도 “의도 인덱스” 섹션으로 분리하지 않고, 해당 raw evidence의 `<details>` 토글 안에 intent block을 함께 둔다.
+
+권장 구조:
+
+```html
+<details class="raw-evidence">
+  <summary>Raw evidence — Network resources <span>network</span></summary>
+  <dl class="evidence-intent">
+    <div><dt>왜 수집했나</dt><dd>gtm.js 중복 로드 여부 확인</dd></div>
+    <div><dt>봐야 할 것</dt><dd>matchedResourceCount=1</dd></div>
+    <div><dt>기대 결과</dt><dd>GTM bootstrap resource가 정확히 1회 관측됨</dd></div>
+    <div><dt>실제 관찰</dt><dd>matchedResourceCount=1</dd></div>
+  </dl>
+  <pre><code>{...raw json...}</code></pre>
+</details>
+```
+
+이 규칙은 정보 구조를 strict하게 고정하려는 목적이 아니라, raw 파일을 펼치는 순간 “왜/무엇/기대/관찰”을 같은 시선 흐름에서 읽게 하는 renderer default다. PASS/coverage gap 판정은 strict하게 유지하고, 레이아웃은 검증 타입에 맞게 변형할 수 있다.
 
 ## context.md `## Report` 섹션
 
