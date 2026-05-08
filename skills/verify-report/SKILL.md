@@ -234,7 +234,7 @@ URL: https://example.local/path
 
 - UI 캡처 증거: primary crop PNG/GIF를 먼저 남기고, full-page는 필요 시 supporting으로 남긴다.
 - Before/After 증거: label을 `Before — ...`, `After — ...`로 시작하고, detail에 “무엇이 달라져야 하는지 / 달라지면 안 되는지”를 설명한다.
-- Raw evidence intent: `purpose`에는 수집 이유, `inspectFor`에는 리뷰어가 봐야 할 포인트, `expected`에는 닫아야 할 기준, `observed`에는 실제 관찰, `role`에는 primary/supporting/raw, `relatedItem`에는 V1 같은 검증 항목 id를 넣는다.
+- Raw evidence intent: `purpose`에는 수집 이유, `inspectFor`에는 리뷰어가 봐야 할 포인트, `expected`에는 닫아야 할 기준, `observed`에는 실제 관찰, `role`에는 primary/supporting/raw, `relatedItem`에는 V1 같은 검증 항목 id를 넣는다. `verify_report_live finish`는 이 metadata를 `captures/evidence-intent.json` sidecar로 남겨 `/show-report` raw media preview에서도 재사용한다.
 - NETWORK 증거: 필터 조건, matched count, matched request 목록을 JSON/TXT로 남긴다.
 - CONSOLE 증거: 콘솔 error/warn/log excerpt를 남긴다.
 - CODE_DIFF 증거: 관련 파일/라인과 diff summary를 남긴다.

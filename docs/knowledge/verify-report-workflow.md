@@ -77,7 +77,7 @@ Primary evidence는 검증 포인트가 바로 보이는 viewport/section/elemen
 
 Evidence는 파일 경로가 아니라 “검증 의도를 가진 관찰 단위”여야 합니다. report item evidence와 case worker result의 `evidence_created`에는 가능한 한 `purpose`(왜 수집했나), `inspectFor`(리뷰어가 봐야 할 것), `expected`(닫아야 할 기준), `observed`(실제 관찰), `role`(primary/supporting/raw), `relatedItem`(V1 같은 항목 id)을 함께 적습니다.
 
-이 metadata는 live/static report의 evidence card와 `/show-report` 캡처/미디어 raw card·preview의 관찰 가이드로 재사용됩니다. 따라서 시간이 지난 뒤 원본 PNG/GIF/JSON만 열어도 “이 파일이 왜 남았는지”와 “어디를 봐야 하는지”를 알 수 있어야 합니다. Metadata가 없으면 artifact browser는 원자료를 보여줄 수는 있지만 판정 근거로 읽기 어렵기 때문에, main agent가 보완하거나 Coverage Gap에 남겨야 합니다.
+이 metadata는 live/static report의 evidence card와 `/show-report` 캡처/미디어 raw card·preview의 관찰 가이드로 재사용됩니다. `verify_report_live finish`는 direct evidence metadata를 `captures/evidence-intent.json` sidecar로 남기고, case worker는 `verify-workers/results/*.json`에 같은 metadata를 남깁니다. 따라서 시간이 지난 뒤 원본 PNG/GIF/JSON만 열어도 “이 파일이 왜 남았는지”와 “어디를 봐야 하는지”를 알 수 있어야 합니다. Metadata가 없으면 artifact browser는 원자료를 보여줄 수는 있지만 판정 근거로 읽기 어렵기 때문에, main agent가 보완하거나 Coverage Gap에 남겨야 합니다.
 
 ## Case Worker Fan-out Rule
 

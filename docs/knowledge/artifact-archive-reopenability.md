@@ -72,7 +72,7 @@ artifact 종류가 늘어나면 한 목록에 섞지 않습니다. `/show-report
 
 metadata가 없으면 workspace fallback이나 미분류 group으로 남깁니다. 그룹화는 raw evidence를 판정 리포트로 승격하는 것이 아니라, 많은 캡처가 쌓였을 때 재탐색 가능한 구조를 제공하는 것입니다.
 
-Raw capture가 verify-report case worker 결과에서 온 경우에는 `purpose`, `inspectFor`, `expected`, `observed`, `role`, `relatedItem` 같은 evidence intent를 card와 preview top guide에 함께 보여줍니다. 원자료 탭은 PASS 판정을 대신하지 않지만, 파일만 보고도 “왜 남긴 캡처인지 / 어디를 봐야 하는지”를 알 수 있어야 reopenability가 실제 검토 가능성으로 이어집니다.
+Raw capture가 verify-report sidecar(`captures/evidence-intent.json`)나 case worker 결과(`verify-workers/results/*.json`)에서 온 경우에는 `purpose`, `inspectFor`, `expected`, `observed`, `role`, `relatedItem` 같은 evidence intent를 card와 preview top guide에 함께 보여줍니다. 원자료 탭은 PASS 판정을 대신하지 않지만, 파일만 보고도 “왜 남긴 캡처인지 / 어디를 봐야 하는지”를 알 수 있어야 reopenability가 실제 검토 가능성으로 이어집니다.
 
 ## Pi / Conductor Provenance Rule
 

@@ -1319,8 +1319,15 @@ function valueString(record: Record<string, unknown>, ...keys: string[]): string
 	return "";
 }
 
+function capturesDirForEvidenceResult(resultPath: string): string {
+	const dir = path.dirname(resultPath);
+	if (path.basename(resultPath) === "evidence-intent.json") return dir;
+	if (path.basename(dir) === "results" && path.basename(path.dirname(dir)) === "verify-workers") return path.dirname(path.dirname(dir));
+	return dir;
+}
+
 function resolveEvidencePathFromResult(rawPath: string, resultPath: string, cwd: string): string {
-	const capturesDir = path.dirname(path.dirname(path.dirname(resultPath)));
+	const capturesDir = capturesDirForEvidenceResult(resultPath);
 	const candidates = new Set<string>();
 	if (path.isAbsolute(rawPath)) candidates.add(rawPath);
 	else {
@@ -1346,7 +1353,10 @@ function collectEvidenceIntentIndex(cwd: string): Map<string, EvidenceIntent> {
 	for (const root of contextWorkRoots(cwd)) {
 		try {
 			for (const ws of fs.readdirSync(root.dir)) {
-				const resultsDir = path.join(root.dir, ws, "captures", "verify-workers", "results");
+				const capturesDir = path.join(root.dir, ws, "captures");
+				const sidecar = path.join(capturesDir, "evidence-intent.json");
+				if (fs.existsSync(sidecar)) resultFiles.push(sidecar);
+				const resultsDir = path.join(capturesDir, "verify-workers", "results");
 				if (!fs.existsSync(resultsDir)) continue;
 				for (const file of fs.readdirSync(resultsDir)) {
 					if (file.endsWith(".json")) resultFiles.push(path.join(resultsDir, file));

@@ -860,6 +860,31 @@ ${coverageGaps.length ? `<section>
 </html>`;
 }
 
+function writeEvidenceIntentSidecar(state: VerifyReportState): void {
+	const evidence_created = state.items.flatMap((item) => item.evidence
+		.filter((evidence) => evidence.path)
+		.map((evidence) => ({
+			path: evidence.path,
+			kind: evidenceKind(evidence),
+			label: evidence.label,
+			role: evidence.role,
+			relatedItem: evidence.relatedItem || item.id,
+			purpose: evidence.purpose,
+			inspectFor: evidence.inspectFor,
+			expected: evidence.expected,
+			observed: evidence.observed,
+		})));
+	if (!evidence_created.length) return;
+	writeFileSync(join(state.capturesDir, "evidence-intent.json"), `${JSON.stringify({
+		version: 1,
+		generatedAt: new Date(state.updatedAt).toISOString(),
+		runId: state.runId,
+		title: state.title,
+		workspace: state.workspaceName,
+		evidence_created,
+	}, null, 2)}\n`, "utf-8");
+}
+
 function archiveReport(state: VerifyReportState): string {
 	mkdirSync(REPORTS_ARCHIVE_DIR, { recursive: true });
 	const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
@@ -983,6 +1008,7 @@ export function registerVerifyReportLive(pi: ExtensionAPI) {
 				state.status = "done";
 				addLog(state, "Static report.html exported.");
 				mkdirSync(dirname(state.reportPath), { recursive: true });
+				try { writeEvidenceIntentSidecar(state); } catch {}
 				writeFileSync(state.reportPath, generateStaticReportHtml(state), "utf-8");
 				try { state.archivePath = archiveReport(state); } catch {}
 				pushState(handle);
