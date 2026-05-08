@@ -108,6 +108,16 @@
 </html>
 ```
 
+### Renderer design 기준
+
+Verify Report renderer는 외부 generative UI dependency에 의존하지 않고, 좋은 시각화 패턴만 deterministic HTML/CSS 기본값으로 흡수한다.
+
+- Flat: 장식용 gradient, heavy shadow, noisy background를 피하고 border/surface/spacing으로 위계를 만든다.
+- Compact: 상단에는 핵심 판정과 coverage gap만 두고, raw 원문은 접는다.
+- Goal-oriented: 가능한 경우 항목을 “목표 → 검증 방법 → 결과 → 증거” 흐름으로 보여준다.
+- Visual only where useful: UI 변경이 없는 NETWORK/CONSOLE/CODE_DIFF 검증은 억지 스크린샷보다 count/table/diagram 같은 기계적 근거를 우선한다.
+- Deterministic: AI가 매번 report HTML을 새로 디자인하지 않고, renderer가 일관된 구조와 접근성을 보장한다.
+
 ### Raw evidence 표시 원칙
 
 JSON/TXT/network/console/diff처럼 원문 확인이 필요한 evidence는 별도 “의도 인덱스” 섹션으로 분리하지 않고, 해당 raw evidence의 `<details>` 토글 안에 intent block을 함께 둔다.

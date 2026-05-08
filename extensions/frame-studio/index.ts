@@ -260,13 +260,13 @@ function buildPageHtml(): string {
 * { box-sizing: border-box; }
 body { margin:0; background:var(--bg); color:var(--text); font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
 .app { max-width: 980px; margin:0 auto; padding:24px; }
-.hero { padding:22px 24px; border:1px solid var(--line); border-radius:22px; background:linear-gradient(135deg,#fff,#f5f3ff); box-shadow:0 20px 50px rgba(41,37,36,.08); }
+.hero { padding:22px 24px; border:1px solid var(--line); border-radius:18px; background:var(--panel); }
 .kicker { display:flex; gap:8px; align-items:center; color:var(--accent); font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:.08em; }
 h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .meta { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; color:var(--muted); }
 .badge { border:1px solid var(--line); background:rgba(255,255,255,.75); border-radius:999px; padding:4px 10px; font-size:12px; }
 .layout { display:grid; grid-template-columns:minmax(0,1fr); gap:16px; margin-top:18px; }
-.card { background:var(--panel); border:1px solid var(--line); border-radius:18px; padding:18px 20px; box-shadow:0 10px 30px rgba(41,37,36,.05); }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:18px 20px; }
 .card h2 { margin:0 0 10px; font-size:17px; }
 .markdown h1 { font-size:23px; border-bottom:1px solid var(--line); padding-bottom:8px; }
 .markdown h2 { font-size:19px; margin-top:22px; }
@@ -279,7 +279,7 @@ h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .markdown tr:nth-child(even) td { background:#fafaf9; }
 .markdown code { background:rgba(120,113,108,.13); border-radius:6px; padding:1px 5px; }
 .markdown pre { background:#292524; color:#fafaf9; border-radius:12px; padding:14px; overflow:auto; }
-.question { border-color:#ddd6fe; background:linear-gradient(180deg,#fff,#faf9ff); }
+.question { border-color:#ddd6fe; background:#faf9ff; }
 .question-title { font-size:18px; font-weight:800; margin:0 0 12px; }
 .options { display:grid; gap:10px; margin:14px 0; }
 .option { display:flex; gap:10px; align-items:flex-start; padding:12px; border:1px solid var(--line); border-radius:14px; background:#fff; cursor:pointer; }
@@ -292,7 +292,7 @@ button { border:0; border-radius:12px; padding:10px 15px; font-weight:800; curso
 .primary { background:var(--accent); color:white; }
 .secondary { background:var(--panel2); color:var(--text); }
 .status { color:var(--muted); font-size:13px; }
-.answer { border-color:#bbf7d0; background:linear-gradient(180deg,#fff,#f0fdf4); }
+.answer { border-color:#bbf7d0; background:#f0fdf4; }
 .answer-title { display:flex; gap:8px; align-items:center; font-size:18px; font-weight:850; margin:0 0 12px; color:var(--green); }
 .answer-row { margin:8px 0; }
 .answer-label { color:var(--muted); font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
@@ -310,7 +310,7 @@ button { border:0; border-radius:12px; padding:10px 15px; font-weight:800; curso
 <body>
 <div class="app">
   <section class="hero">
-    <div class="kicker">🔥 Frame Studio</div>
+    <div class="kicker">Frame Studio</div>
     <h1 id="title">Frame Studio</h1>
     <div class="meta" id="meta"></div>
   </section>

@@ -35,6 +35,7 @@ Pi UI가 있고 `frame_studio` tool을 사용할 수 있으면, 번호형 텍스
 - tool 결과가 `unavailable`, `cancelled`, `timeout`이면 `ask-user-question-rules`의 번호형 text-mode fallback으로 이어간다.
 - Frame Studio 제목과 identity는 command shim의 **Frame identity hint**를 따른다. P0/P1 panel label이 아니라 worktree/ticket/session planning identity에 귀속한다.
 - `frame_studio` 결과의 `transcriptPath`는 전체 markdown/update/question/answer 전문 저장 위치다. 사용자가 다시 보고 싶어 하면 같은 identity로 `action=open`을 호출해 저장된 전문을 Glimpse에서 다시 연다.
+- Frame Studio에는 generative-ui dependency를 붙이지 않는다. 대신 flat/compact, 표·diagram은 시각 보조로만, 질문/선택/전문 보존은 deterministic renderer가 책임지는 원칙을 따른다. `/frame`은 prose와 decision gate가 핵심이므로 “텍스트는 tool 밖에 둔다”는 generative-ui 규칙은 그대로 적용하지 않는다.
 
 ---
 

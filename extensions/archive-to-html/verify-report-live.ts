@@ -775,31 +775,31 @@ function generateStaticReportHtml(state: VerifyReportState): string {
 		font-family: -apple-system, BlinkMacSystemFont, 'Pretendard', 'Apple SD Gothic Neo', 'Segoe UI', sans-serif;
 		line-height: 1.6;
 		color: #1f2937;
-		background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+		background: #fafaf9;
 		min-height: 100vh;
 	}
 	.container { max-width: 1100px; margin: 0 auto; padding: 40px 24px; }
 	header {
-		background: linear-gradient(135deg, #10b981 0%, #047857 100%);
-		color: white;
-		padding: 40px;
+		background: #ffffff;
+		color: #111827;
+		padding: 32px;
+		border: 1px solid #e5e7eb;
 		border-radius: 14px;
-		margin-bottom: 32px;
-		box-shadow: 0 10px 25px rgba(16, 185, 129, 0.2);
+		margin-bottom: 24px;
 	}
 	header h1 { font-size: 28px; line-height: 1.25; margin-bottom: 8px; }
-	header .subtitle { font-size: 16px; opacity: 0.92; }
-	header .meta { margin-top: 16px; font-size: 14px; opacity: 0.88; display: flex; gap: 12px; flex-wrap: wrap; }
-	.badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; background: rgba(255,255,255,0.20); color: inherit; }
+	header .subtitle { font-size: 16px; color: #4b5563; }
+	header .meta { margin-top: 16px; font-size: 14px; color: #6b7280; display: flex; gap: 12px; flex-wrap: wrap; }
+	.badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border: 1px solid #e5e7eb; border-radius: 999px; font-size: 12px; font-weight: 700; background: #f9fafb; color: inherit; }
 	.badge.outcome.pass { background: rgba(209, 250, 229, .95); color: #065f46; }
 	.badge.outcome.partial { background: rgba(254, 243, 199, .95); color: #92400e; }
 	.badge.outcome.fail { background: rgba(254, 226, 226, .95); color: #991b1b; }
 	section {
 		background: white;
+		border: 1px solid #e5e7eb;
 		border-radius: 14px;
-		padding: 32px;
-		margin-bottom: 24px;
-		box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+		padding: 28px;
+		margin-bottom: 20px;
 	}
 	section h2 { font-size: 22px; margin-bottom: 16px; color: #111827; display: flex; align-items: center; gap: 8px; }
 	section h3 { font-size: 16px; margin-bottom: 8px; color: #374151; }
@@ -852,7 +852,7 @@ function generateStaticReportHtml(state: VerifyReportState): string {
 	.raw-evidence-note { margin: 10px 12px; color: #6b7280; font-size: 12px; }
 	.raw-evidence pre { margin: 0; border-radius: 0; max-height: 460px; }
 	figure { margin: 0; }
-	img { display: block; max-width: 100%; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+	img { display: block; max-width: 100%; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; }
 	figcaption { color: #6b7280; font-size: 12px; margin-top: 6px; }
 	.tall-evidence { border: 1px dashed #d1d5db; border-radius: 10px; padding: 12px 14px; background: #fff; }
 	.tall-evidence summary { cursor: pointer; font-weight: 800; color: #374151; }
