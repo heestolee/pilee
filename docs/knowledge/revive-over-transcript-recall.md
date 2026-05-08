@@ -40,6 +40,12 @@ supersedes:
 
 revive는 현재 패널로 복구할지, Ghostty split/tab으로 열지 선택할 수 있어야 합니다. 위치 선택은 단순 편의가 아니라 사용자가 보던 공간 기억의 일부입니다. 세션을 되살리는 작업은 transcript 주입보다 기존 대화 객체와 화면 위치를 함께 복원하는 쪽을 우선합니다.
 
+## P0 Inclusion Rule
+
+`/revive`는 fork-panel 자식 기록만 보여주는 도구가 되어서는 안 됩니다. 사용자가 “과거 세션”을 찾을 때는 부모 패널(P0)에서 진행한 일반 Pi 세션도 같은 회수 후보입니다. 따라서 revive 목록은 fork-panel recent metadata의 P1/P2… 세션과 `~/.pi/agent/sessions` 아래의 일반 Pi session JSONL을 함께 스캔하고, 일반 세션에는 `P0` label을 표시합니다.
+
+P0 세션을 split/tab으로 열 때는 `PI_FORK_ID`/`PI_FORK_PANEL_LABEL` 같은 child-panel env를 주입하지 않습니다. P0를 다시 여는 것은 새 fork handoff 대상을 만드는 것이 아니라 기존 부모 대화 객체를 재개하는 동작이기 때문입니다.
+
 ## Failure Mode
 
 `/recall` 같은 이름은 memory recall과도 충돌하고, “대화 객체를 되살린다”는 사용자 기대와 다릅니다. pilee에서는 종료된 세션도 주소 있는 작업 단위로 다룹니다.

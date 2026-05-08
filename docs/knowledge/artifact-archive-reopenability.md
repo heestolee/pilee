@@ -78,6 +78,8 @@ Raw capture가 verify-report sidecar(`captures/evidence-intent.json`)나 case wo
 
 `/wt resume`으로 복구되어 `.pi/conductor-context.loaded.md`가 남아 있는 worktree는 `Pi 이력`의 복구 단위입니다. 이 카드에는 원본 Conductor 세션 링크, Pi 복구 세션, 이후 Pi 대화 세션을 분리해서 보여주고, 관련 검증/기획/캡처/웹 검색 artifact를 하위 섹션으로 묶습니다.
 
+일반 Pi 세션은 fork-panel 세션만의 보조 자료가 아닙니다. Artifact Browser의 `Pi 이력`은 home/pilee/worktree/session directory에 남은 일반 P0 session JSONL까지 모두 보여줘야 하며, 임의의 “최근 12개” 같은 hidden cap으로 과거 세션을 누락시키면 안 됩니다. 각 세션 카드에는 `P0` 또는 fork-panel label(`P1`, `P2`…)과 `부모/P0`/`fork-panel` source badge를 표시해 사용자가 부모 대화와 자식 패널을 구분할 수 있게 합니다.
+
 `컨덕터 이력`은 runtime profile이 제공하는 Conductor master DB와 원본 JSONL root를 기준으로 한 보존 이력입니다. Public Artifact Browser는 특정 로컬 DB 경로나 project directory를 내장하지 않고, profile이 없으면 해당 축을 생략하거나 generic session/archive만 보여줍니다. Conductor 이력 카드에는 ticket/title/branch/status/session id 같은 요약 metadata와 이전 사용자 요청 목록을 보여주되, 원본 Conductor JSONL은 전체 내용을 inline으로 펼치지 않고 allowlisted host-side open/preview로 연결합니다. 큰 원본 세션은 truncate preview와 browser open을 분리해 WebView가 과도한 raw transcript를 직접 삼키지 않게 합니다.
 
 원본 Conductor session이 Pi worktree로 복구된 흔적과 매칭되면 `Pi로 복구됨` badge를 표시합니다. 이 badge는 원본을 대체했다는 뜻이 아니라, 같은 작업 단위가 Pi 세계에도 연결되어 있음을 알려주는 provenance bridge입니다.

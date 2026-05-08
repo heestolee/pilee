@@ -42,6 +42,8 @@ related:
 
 목록에는 workspace, 제목, 마지막 의미 있는 요청, turn 수, short id처럼 사람이 빠르게 구분할 수 있는 정보를 함께 둡니다. 중복 스냅샷은 최신/가장 긴 대화를 우선해 숨깁니다.
 
+패널 기반 회수 UI에서는 세션 제목만큼 `P0/P1/P2…` label도 중요합니다. `P0`는 부모/일반 Pi 세션, `P1+`은 fork-panel 자식 세션을 뜻합니다. `/revive`와 `/show-report`는 이 label을 표시해 “부모 대화가 안 보이는 것처럼 느껴지는” 실패를 막아야 합니다.
+
 ## Artifact Identity Rule
 
 Frame Studio transcript, resolver run, backlog source 같은 durable artifact도 사람이 본 작업 이름으로 묶여야 합니다. 파일명 hash는 저장소 내부 식별자로만 쓰고, 사용자에게는 worktree/ticket/session title과 최근 의미 있는 요청을 함께 보여줍니다. 그래야 나중에 revive, `/show-report`, resolver log가 같은 작업을 가리킨다는 것을 이해할 수 있습니다.

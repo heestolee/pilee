@@ -1,7 +1,7 @@
-import { randomUUID } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, readSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, relative } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 import type { AutocompleteItem } from "@mariozechner/pi-tui";
@@ -16,13 +16,17 @@ type OpenMode = Direction | "here";
 
 const HANDOFF_DIR = join(homedir(), ".pi", "agent", "fork-panel");
 const INBOX_DIR = join(HANDOFF_DIR, "inbox");
+const SESSIONS_ROOT = join(homedir(), ".pi", "agent", "sessions");
+const SESSION_PREVIEW_BYTES = 192 * 1024;
 
 let forkInProgress = false;
 const FORK_COOLDOWN_MS = 2000;
 const RECENT_PATH = join(HANDOFF_DIR, "recent.json");
 const HANDOFF_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 const REPANEL_MARKER_TTL_MS = 2 * 60 * 1000; // 2m
-const RECENT_KEEP = 50;
+const RECENT_KEEP = 500;
+
+type ReviveSource = "fork" | "p0";
 
 interface ForkRecord {
 	forkId: string;
@@ -34,6 +38,8 @@ interface ForkRecord {
 	createdAt: number;
 	closedAt?: number;
 	preview?: string;
+	source?: ReviveSource;
+	title?: string;
 }
 
 interface ReviveItem {
@@ -120,8 +126,17 @@ function allocatePanelLabel(parentSessionFile: string): string {
 	return `P${max + 1}`;
 }
 
+function recordSource(record: ForkRecord | undefined): ReviveSource {
+	return record?.source === "p0" ? "p0" : "fork";
+}
+
 function panelLabelOf(record: ForkRecord | undefined, fallback?: string): string {
+	if (recordSource(record) === "p0") return "P0";
 	return record?.panelLabel || fallback || "P?";
+}
+
+function shortHash(value: string): string {
+	return createHash("sha1").update(value).digest("hex").slice(0, 10);
 }
 
 function ensureInboxDir() {
@@ -269,12 +284,50 @@ function sanitizeRowText(value: string | undefined | null): string {
 		.trim();
 }
 
+function parseSessionEntries(raw: string): any[] {
+	return raw.split("\n").filter(Boolean).map((line) => {
+		try { return JSON.parse(line); } catch { return null; }
+	}).filter(Boolean);
+}
+
 function readSessionEntries(sessionFile: string): any[] {
 	try {
-		const raw = readFileSync(sessionFile, "utf8");
-		return raw.split("\n").filter(Boolean).map((line) => {
-			try { return JSON.parse(line); } catch { return null; }
-		}).filter(Boolean);
+		return parseSessionEntries(readFileSync(sessionFile, "utf8"));
+	} catch {
+		return [];
+	}
+}
+
+function readSessionSlice(sessionFile: string, start: number, length: number, trimPartialStart = false): string {
+	const fd = openSync(sessionFile, "r");
+	try {
+		const buffer = Buffer.alloc(length);
+		const bytesRead = readSync(fd, buffer, 0, length, start);
+		let text = buffer.subarray(0, bytesRead).toString("utf8");
+		if (trimPartialStart && start > 0) text = text.replace(/^[^\n]*(\n|$)/, "");
+		return text;
+	} finally {
+		closeSync(fd);
+	}
+}
+
+function readSessionPreviewEntries(sessionFile: string): any[] {
+	try {
+		const stat = statSync(sessionFile);
+		const headLength = Math.min(stat.size, SESSION_PREVIEW_BYTES);
+		const chunks = [readSessionSlice(sessionFile, 0, headLength)];
+		if (stat.size > headLength) {
+			const tailStart = Math.max(0, stat.size - SESSION_PREVIEW_BYTES);
+			chunks.push(readSessionSlice(sessionFile, tailStart, stat.size - tailStart, true));
+		}
+		const entries = parseSessionEntries(chunks.join("\n"));
+		const seen = new Set<string>();
+		return entries.filter((entry) => {
+			const key = `${entry?.type ?? ""}:${entry?.id ?? JSON.stringify(entry).slice(0, 80)}`;
+			if (seen.has(key)) return false;
+			seen.add(key);
+			return true;
+		});
 	} catch {
 		return [];
 	}
@@ -305,6 +358,24 @@ function extractLastText(entries: any[], role?: "user" | "assistant"): string {
 		if (!role && e.message?.role !== "user" && e.message?.role !== "assistant") continue;
 		const text = sanitizeRowText(messageText(e.message));
 		if (text) return text;
+	}
+	return "";
+}
+
+function extractFirstText(entries: any[], role?: "user" | "assistant"): string {
+	for (const e of entries) {
+		if (e?.type !== "message") continue;
+		if (role && e.message?.role !== role) continue;
+		if (!role && e.message?.role !== "user" && e.message?.role !== "assistant") continue;
+		const text = sanitizeRowText(messageText(e.message));
+		if (text) return text;
+	}
+	return "";
+}
+
+function extractSessionCwd(entries: any[]): string {
+	for (const entry of entries) {
+		if (entry?.type === "session" && typeof entry.cwd === "string" && entry.cwd.trim()) return entry.cwd;
 	}
 	return "";
 }
@@ -349,11 +420,73 @@ function workspaceLabelFor(cwd: string): string {
 	return key.startsWith(`${home}/`) ? `~/${relative(home, key)}` : key;
 }
 
+function isDirectory(filePath: string): boolean {
+	try { return statSync(filePath).isDirectory(); } catch { return false; }
+}
+
+function safeRealpath(filePath: string): string {
+	try { return realpathSync(filePath); } catch { return filePath; }
+}
+
+function buildP0RecordFromSession(sessionFile: string): ForkRecord | null {
+	try {
+		const real = safeRealpath(sessionFile);
+		const stat = statSync(real);
+		const entries = readSessionPreviewEntries(real);
+		const cwd = extractSessionCwd(entries) || homedir();
+		const firstUser = extractFirstText(entries, "user");
+		const title = extractLastSessionName(entries) || firstUser || basename(real, ".jsonl");
+		const preview = extractLastText(entries, "assistant") || extractLastText(entries) || firstUser;
+		return {
+			forkId: `p0_${shortHash(real)}`,
+			label: title,
+			panelLabel: "P0",
+			sessionFile: real,
+			cwd,
+			createdAt: stat.mtimeMs,
+			closedAt: stat.mtimeMs,
+			preview,
+			source: "p0",
+			title,
+		};
+	} catch {
+		return null;
+	}
+}
+
+function collectP0SessionRecords(excludeSessionFiles: Set<string>): ForkRecord[] {
+	if (!existsSync(SESSIONS_ROOT)) return [];
+	const records: ForkRecord[] = [];
+	try {
+		for (const dirName of readdirSync(SESSIONS_ROOT)) {
+			if (dirName === "subagents") continue;
+			const dir = join(SESSIONS_ROOT, dirName);
+			if (!isDirectory(dir)) continue;
+			for (const fileName of readdirSync(dir)) {
+				if (!fileName.endsWith(".jsonl")) continue;
+				const filePath = safeRealpath(join(dir, fileName));
+				if (excludeSessionFiles.has(filePath)) continue;
+				const record = buildP0RecordFromSession(filePath);
+				if (record) records.push(record);
+			}
+		}
+	} catch {}
+	return records.sort((a, b) => (b.closedAt ?? b.createdAt) - (a.closedAt ?? a.createdAt));
+}
+
+function collectReviveRecords(recent: Record<string, ForkRecord>): ForkRecord[] {
+	const forkRecords = Object.values(recent)
+		.filter((record) => existsSync(record.sessionFile))
+		.map((record) => ({ ...record, source: "fork" as ReviveSource }));
+	const forkFiles = new Set(forkRecords.map((record) => safeRealpath(record.sessionFile)));
+	return [...forkRecords, ...collectP0SessionRecords(forkFiles)];
+}
+
 function buildReviveItem(record: ForkRecord): ReviveItem {
-	const entries = readSessionEntries(record.sessionFile);
-	const lastAssistant = extractLastText(entries, "assistant");
-	const lastAny = extractLastText(entries);
-	const title = extractLastSessionName(entries) || lastAny || sanitizeRowText(record.label) || record.forkId;
+	const entries = record.title && record.preview ? [] : readSessionPreviewEntries(record.sessionFile);
+	const lastAssistant = entries.length ? extractLastText(entries, "assistant") : "";
+	const lastAny = entries.length ? extractLastText(entries) : "";
+	const title = sanitizeRowText(record.title) || extractLastSessionName(entries) || lastAny || sanitizeRowText(record.label) || record.forkId;
 	const preview = sanitizeRowText(record.preview) || lastAssistant || lastAny;
 	return {
 		record,
@@ -365,6 +498,7 @@ function buildReviveItem(record: ForkRecord): ReviveItem {
 }
 
 function collectClosedSnapshot(record: ForkRecord): InboxItem | null {
+	if (recordSource(record) === "p0") return null;
 	const snapshot = readSnapshot(record.forkId);
 	if (!isSnapshotClosed(snapshot)) return null;
 	const item = writeInboxFromHandoff({
@@ -1146,9 +1280,9 @@ export default function (pi: ExtensionAPI) {
 		handler: repanelHandler,
 	});
 
-	// /revive — reopen a previous fork panel session
+	// /revive — reopen a previous fork panel or P0 session
 	pi.registerCommand("revive", {
-		description: "fork-panel 세션을 선택하고 현재 패널/방향 패널/탭 중 어디에 열지 선택",
+		description: "fork-panel/P0 세션을 선택하고 현재 패널/방향 패널/탭 중 어디에 열지 선택",
 		handler: async (args, ctx) => {
 			const tokens = (args ?? "").trim().split(/\s+/).filter(Boolean);
 			if (tokens[0]?.toLowerCase() === "to") {
@@ -1156,8 +1290,10 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			const all = loadRecent();
-			const allItems = Object.values(all)
+			const recent = loadRecent();
+			const records = collectReviveRecords(recent);
+			const recordsById = new Map(records.map((record) => [record.forkId, record]));
+			const allItems = records
 				.filter((r) => existsSync(r.sessionFile))
 				.map(buildReviveItem)
 				.sort((a, b) => (b.record.closedAt ?? b.record.createdAt) - (a.record.closedAt ?? a.record.createdAt));
@@ -1191,18 +1327,18 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 			if (selector) {
-				const target = all[selector];
-				if (!target) { ctx.ui.notify(`포크 없음: ${selector}. /revive로 목록을 확인하세요.`, "error"); return; }
+				const target = recordsById.get(selector);
+				if (!target) { ctx.ui.notify(`세션 없음: ${selector}. /revive로 목록을 확인하세요.`, "error"); return; }
 				await openItem(buildReviveItem(target));
 				return;
 			}
 
 			if (!ctx.hasUI) {
-				ctx.ui.notify("TUI가 없는 모드에서는 /revive last here 또는 /revive <forkId> right처럼 대상과 열 위치를 지정하세요.", "warning");
+				ctx.ui.notify("TUI가 없는 모드에서는 /revive last here 또는 /revive <sessionId> right처럼 대상과 열 위치를 지정하세요.", "warning");
 				return;
 			}
 			if (allItems.length === 0) {
-				ctx.ui.notify("재개 가능한 포크 세션이 없습니다", "info");
+				ctx.ui.notify("재개 가능한 Pi 세션이 없습니다", "info");
 				return;
 			}
 
@@ -1247,15 +1383,16 @@ export default function (pi: ExtensionAPI) {
 								const pad = (n: number) => String(n).padStart(2, "0");
 								const d = new Date(r.closedAt ?? r.createdAt);
 								const timeStr = theme.fg("borderAccent", `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`);
-								const status = r.closedAt ? "●" : theme.fg("success", "●");
+								const status = recordSource(r) === "p0" ? theme.fg("border", "●") : r.closedAt ? "●" : theme.fg("success", "●");
+								const panel = sel ? theme.fg("accent", panelLabelOf(r)) : theme.fg(recordSource(r) === "p0" ? "border" : "borderAccent", panelLabelOf(r));
 								const workspace = theme.fg("border", truncateToWidth(item.workspaceLabel, 18, "…"));
 								const titleW = Math.max(18, Math.min(42, Math.floor(w * 0.32)));
 								const titleRaw = truncateToWidth(item.title, titleW, "…");
 								const titleStr = sel ? theme.fg("accent", titleRaw) : theme.fg("text", titleRaw);
-								const previewW = Math.max(0, w - titleW - 36);
+								const previewW = Math.max(0, w - titleW - 40);
 								const preview = previewW > 0 ? truncateToWidth(item.preview, previewW, "…") : "";
 								const previewStr = sel ? preview : theme.fg("borderAccent", preview);
-								lines.push(truncateToWidth(`${cursor} ${status} ${timeStr} ${workspace}  ${titleStr}  ${previewStr}`, w, ""));
+								lines.push(truncateToWidth(`${cursor} ${status} ${panel} ${timeStr} ${workspace}  ${titleStr}  ${previewStr}`, w, ""));
 							}
 						}
 
@@ -1296,7 +1433,7 @@ export default function (pi: ExtensionAPI) {
 				render: (w: number) => {
 					const lines = [
 						theme.fg("accent", "─".repeat(w)),
-						truncateToWidth(`  ${theme.fg("accent", theme.bold("OPEN REVIVE"))} ${theme.fg("accent", "|")} ${theme.fg("border", item.workspaceLabel)} ${theme.fg("accent", "·")} ${theme.fg("text", item.title)}`, w, ""),
+						truncateToWidth(`  ${theme.fg("accent", theme.bold("OPEN REVIVE"))} ${theme.fg("accent", "|")} ${theme.fg("border", panelLabelOf(item.record))} ${theme.fg("accent", "·")} ${theme.fg("border", item.workspaceLabel)} ${theme.fg("accent", "·")} ${theme.fg("text", item.title)}`, w, ""),
 						truncateToWidth(`  ${theme.fg("border", "Enter/h: 현재 패널 · ← left · → right · ↑ up · ↓ down · t: 새 탭")}`, w, ""),
 						truncateToWidth(`  ${theme.fg("borderAccent", "q/Esc: 취소")}`, w, ""),
 						theme.fg("accent", "─".repeat(w)),
@@ -1346,8 +1483,9 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		const cwd = target.cwd || ctx.cwd;
-		try { unlinkSync(join(HANDOFF_DIR, `${target.forkId}.json`)); } catch {}
-		const script = buildOpenSessionScript(mode, cwd, target.sessionFile, {
+		const isP0 = recordSource(target) === "p0";
+		if (!isP0) { try { unlinkSync(join(HANDOFF_DIR, `${target.forkId}.json`)); } catch {} }
+		const script = buildOpenSessionScript(mode, cwd, target.sessionFile, isP0 ? {} : {
 			PI_FORK_ID: target.forkId,
 			PI_FORK_PANEL_LABEL: target.panelLabel,
 			PI_FORK_PARENT: target.parentSessionFile,
@@ -1358,8 +1496,8 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 
-		watchHandoff(target.forkId, item.title || target.label, ctx);
-		ctx.ui.notify(`${item.workspaceLabel} · ${item.title} 세션 재개 → ${modeLabel(mode)}`, "info");
+		if (!isP0) watchHandoff(target.forkId, item.title || target.label, ctx);
+		ctx.ui.notify(`${panelLabelOf(target)} · ${item.workspaceLabel} · ${item.title} 세션 재개 → ${modeLabel(mode)}`, "info");
 	}
 
 	async function repanelCurrent(direction: SplitDirection, ctx: ExtensionCommandContext) {

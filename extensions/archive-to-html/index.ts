@@ -15,6 +15,7 @@ const ARCHIVE_DIR = path.join(os.homedir(), "Documents", "agent-history", "분�
 const FRAME_TRANSCRIPTS_DIR = path.join(os.homedir(), ".pi", "agent", "frame-studio", "transcripts");
 const SHOW_REPORT_SESSION_EXPORT_DIR = path.join(SESSION_EXPORT_DIR, "show-report");
 const NORMALIZED_CONDUCTOR_SESSION_DIR = path.join(SHOW_REPORT_SESSION_EXPORT_DIR, "normalized");
+const FORK_PANEL_RECENT_PATH = path.join(os.homedir(), ".pi", "agent", "fork-panel", "recent.json");
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const FONT_SIGNATURE = "Noto+Serif+KR";
 const REPORT_SIGNATURE = "Verify Report";
@@ -924,11 +925,17 @@ interface PlanningDocEntry {
 	mtime: number;
 }
 
+type PiSessionPanelSource = "p0" | "fork";
+
 interface PiSessionEntry {
 	path: string;
 	title: string;
 	workspace: string;
+	cwd: string;
 	restoredFromConductor: boolean;
+	panelLabel: string;
+	panelSource: PiSessionPanelSource;
+	forkId?: string;
 	time: string;
 	mtime: number;
 }
@@ -1680,15 +1687,16 @@ function findConductorSourceSessions(repo: string, workspace: string, sessionId:
 	return found.slice(0, 3);
 }
 
-function readPiSessionsFromDir(sessionsDir: string, workspace: string, limit = 10): PiSessionEntry[] {
+function readPiSessionsFromDir(sessionsDir: string, workspace: string, limit = Number.POSITIVE_INFINITY, panelIndex = loadForkPanelSessionIndex()): PiSessionEntry[] {
 	if (!fs.existsSync(sessionsDir)) return [];
 	try {
-		return fs.readdirSync(sessionsDir)
+		const files = fs.readdirSync(sessionsDir)
 			.filter((file) => file.endsWith(".jsonl"))
 			.map((file) => path.join(sessionsDir, file))
-			.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)
-			.slice(0, limit)
-			.map((file) => readPiSessionEntry(file, workspace))
+			.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+		const selected = Number.isFinite(limit) ? files.slice(0, limit) : files;
+		return selected
+			.map((file) => readPiSessionEntry(file, workspace, panelIndex))
 			.filter((entry): entry is PiSessionEntry => Boolean(entry));
 	} catch { return []; }
 }
@@ -1711,11 +1719,70 @@ function piSessionDirsForPath(sessionsRoot: string, cwd: string, alias?: string)
 	return [...candidates];
 }
 
-function readPiSessionsFromDirs(sessionDirs: string[], workspace: string, limit = 10): PiSessionEntry[] {
+interface ForkPanelSessionInfo {
+	panelLabel: string;
+	forkId: string;
+	parentSessionFile?: string;
+}
+
+function loadForkPanelSessionIndex(): Map<string, ForkPanelSessionInfo> {
+	const index = new Map<string, ForkPanelSessionInfo>();
+	try {
+		const parsed = JSON.parse(fs.readFileSync(FORK_PANEL_RECENT_PATH, "utf-8")) as Record<string, { forkId?: string; panelLabel?: string; parentSessionFile?: string; sessionFile?: string }>;
+		for (const [fallbackForkId, record] of Object.entries(parsed)) {
+			if (!record?.sessionFile) continue;
+			let real = record.sessionFile;
+			try { real = fs.realpathSync(record.sessionFile); } catch {}
+			index.set(real, {
+				panelLabel: record.panelLabel || "P?",
+				forkId: record.forkId || fallbackForkId,
+				parentSessionFile: record.parentSessionFile,
+			});
+		}
+	} catch {}
+	return index;
+}
+
+function panelInfoForSession(filePath: string, panelIndex: Map<string, ForkPanelSessionInfo>): { panelLabel: string; panelSource: PiSessionPanelSource; forkId?: string } {
+	let real = filePath;
+	try { real = fs.realpathSync(filePath); } catch {}
+	const fork = panelIndex.get(real);
+	if (fork) return { panelLabel: fork.panelLabel, panelSource: "fork", forkId: fork.forkId };
+	return { panelLabel: "P0", panelSource: "p0" };
+}
+
+function allPiSessionDirs(sessionsRoot: string): string[] {
+	if (!fs.existsSync(sessionsRoot)) return [];
+	try {
+		return fs.readdirSync(sessionsRoot)
+			.filter((dirName) => dirName !== "subagents")
+			.map((dirName) => path.join(sessionsRoot, dirName))
+			.filter((dir) => {
+				try { return fs.statSync(dir).isDirectory(); } catch { return false; }
+			});
+	} catch { return []; }
+}
+
+function shortDisplayPath(filePath: string): string {
+	const home = os.homedir();
+	if (filePath === home) return "~";
+	if (filePath.startsWith(`${home}/`)) return `~/${filePath.slice(home.length + 1)}`;
+	return filePath;
+}
+
+function sessionUnitWorkspaceFromDir(sessionsDir: string, sessions: PiSessionEntry[]): { workspace: string; workspacePath: string; title: string } {
+	const cwd = sessions.find((session) => session.cwd)?.cwd || "";
+	if (cwd === os.homedir()) return { workspace: "home", workspacePath: cwd, title: "home Pi 대화 세션" };
+	if (cwd && path.resolve(cwd) === PACKAGE_ROOT) return { workspace: "pilee", workspacePath: cwd, title: "pilee Pi 대화 세션" };
+	const label = cwd ? shortDisplayPath(cwd) : path.basename(sessionsDir);
+	return { workspace: label, workspacePath: cwd || sessionsDir, title: `${label} Pi 대화 세션` };
+}
+
+function readPiSessionsFromDirs(sessionDirs: string[], workspace: string, limit = Number.POSITIVE_INFINITY, panelIndex = loadForkPanelSessionIndex()): PiSessionEntry[] {
 	const seen = new Set<string>();
 	const sessions: PiSessionEntry[] = [];
 	for (const sessionsDir of sessionDirs) {
-		for (const session of readPiSessionsFromDir(sessionsDir, workspace, limit)) {
+		for (const session of readPiSessionsFromDir(sessionsDir, workspace, limit, panelIndex)) {
 			try {
 				const real = fs.realpathSync(session.path);
 				if (seen.has(real)) continue;
@@ -1724,14 +1791,15 @@ function readPiSessionsFromDirs(sessionDirs: string[], workspace: string, limit 
 			sessions.push(session);
 		}
 	}
-	return sessions.sort((a, b) => b.mtime - a.mtime).slice(0, limit);
+	const sorted = sessions.sort((a, b) => b.mtime - a.mtime);
+	return Number.isFinite(limit) ? sorted.slice(0, limit) : sorted;
 }
 
-function findPiSessionsForWorkspace(repo: string, workspace: string): PiSessionEntry[] {
+function findPiSessionsForWorkspace(repo: string, workspace: string, panelIndex = loadForkPanelSessionIndex()): PiSessionEntry[] {
 	const seen = new Set<string>();
 	const sessions: PiSessionEntry[] = [];
 	for (const sessionsDir of piSessionDirsForWorkspace(repo, workspace)) {
-		for (const session of readPiSessionsFromDir(sessionsDir, workspace)) {
+		for (const session of readPiSessionsFromDir(sessionsDir, workspace, Number.POSITIVE_INFINITY, panelIndex)) {
 			try {
 				const real = fs.realpathSync(session.path);
 				if (seen.has(real)) continue;
@@ -1743,14 +1811,22 @@ function findPiSessionsForWorkspace(repo: string, workspace: string): PiSessionE
 	return sessions.sort((a, b) => b.mtime - a.mtime);
 }
 
-function readPiSessionEntry(filePath: string, workspace: string): PiSessionEntry | null {
+function readPiSessionEntry(filePath: string, workspace: string, panelIndex: Map<string, ForkPanelSessionInfo>): PiSessionEntry | null {
 	try {
 		const stat = fs.statSync(filePath);
+		const realPath = fs.realpathSync(filePath);
 		let title = "Pi 대화 세션";
 		let restoredFromConductor = false;
-		const lines = fs.readFileSync(filePath, "utf-8").split(/\r?\n/).slice(0, 120);
+		let cwd = "";
+		const lines = readTextPreview(filePath, 256 * 1024).text.split(/\r?\n/).slice(0, 120);
 		for (const line of lines) {
 			if (line.includes('"customType":"conductor-resume"')) restoredFromConductor = true;
+			if (line.includes('"type":"session"')) {
+				try {
+					const parsed = JSON.parse(line) as { cwd?: string };
+					if (typeof parsed.cwd === "string" && parsed.cwd.trim()) cwd = parsed.cwd;
+				} catch {}
+			}
 			if (!line.includes('"type":"session_info"')) continue;
 			try {
 				const parsed = JSON.parse(line) as { name?: string };
@@ -1758,7 +1834,8 @@ function readPiSessionEntry(filePath: string, workspace: string): PiSessionEntry
 				if (isMeaningfulSessionTitle(name)) title = name;
 			} catch {}
 		}
-		return { path: fs.realpathSync(filePath), title, workspace, restoredFromConductor, time: formatMtime(stat.mtimeMs), mtime: stat.mtimeMs };
+		const panel = panelInfoForSession(realPath, panelIndex);
+		return { path: realPath, title, workspace, cwd, restoredFromConductor, ...panel, time: formatMtime(stat.mtimeMs), mtime: stat.mtimeMs };
 	} catch { return null; }
 }
 
@@ -1811,6 +1888,24 @@ function collectPlanningDocs(cwd: string, frames: FrameTranscriptEntry[]): Plann
 
 function collectPiWorkUnits(reports: ReportEntry[], frames: FrameTranscriptEntry[], planningDocs: PlanningDocEntry[], captures: CaptureEntry[], webSearches: WebSearchEntry[]): PiWorkUnitEntry[] {
 	const units: PiWorkUnitEntry[] = [];
+	const panelIndex = loadForkPanelSessionIndex();
+	const seenSessionPaths = new Set<string>();
+	const unseenSessions = (sessions: PiSessionEntry[]) => sessions.filter((session) => {
+		let real = session.path;
+		try { real = fs.realpathSync(session.path); } catch {}
+		if (seenSessionPaths.has(real)) return false;
+		return true;
+	});
+	const rememberSessions = (sessions: PiSessionEntry[]) => {
+		for (const session of sessions) {
+			try { seenSessionPaths.add(fs.realpathSync(session.path)); } catch { seenSessionPaths.add(session.path); }
+		}
+	};
+	const pushUnit = (unit: PiWorkUnitEntry) => {
+		units.push(unit);
+		rememberSessions([...unit.piRestoredSessions, ...unit.piChatSessions]);
+	};
+
 	for (const root of collectWorktreeRoots()) {
 		const meta = readJsonFile(path.join(root.piDir, "worktree-meta.json"));
 		const loadedPath = path.join(root.piDir, "conductor-context.loaded.md");
@@ -1826,7 +1921,7 @@ function collectPiWorkUnits(reports: ReportEntry[], frames: FrameTranscriptEntry
 		const parsedBranch = parseTicketAndTitle(branch);
 		const ticket = firstNonEmpty(parsedPr.ticket, parsedNote.ticket, parsedBranch.ticket);
 		const title = firstNonEmpty(parsedPr.title, parsedNote.title, latestSessionTitleForWorkspace(root.workspace), root.workspace);
-		const sessions = findPiSessionsForWorkspace(root.repo, root.workspace);
+		const sessions = unseenSessions(findPiSessionsForWorkspace(root.repo, root.workspace, panelIndex));
 		const originalConductorSessionPaths = contextPath ? findConductorSourceSessions(root.repo, root.workspace, markdownTableValue(markdown, "Session")) : [];
 		const relatedMtimes = [
 			...reportsForUnit({ ticket, workspace: root.workspace, title }, reports).map((item) => item.mtime),
@@ -1838,7 +1933,7 @@ function collectPiWorkUnits(reports: ReportEntry[], frames: FrameTranscriptEntry
 		];
 		const statMtime = contextPath ? fs.statSync(contextPath).mtimeMs : fs.statSync(root.workspacePath).mtimeMs;
 		const mtime = Math.max(statMtime, ...relatedMtimes, 0);
-		units.push({
+		pushUnit({
 			key: `${root.repo}:${root.workspace}`,
 			repo: root.repo,
 			workspace: root.workspace,
@@ -1856,15 +1951,16 @@ function collectPiWorkUnits(reports: ReportEntry[], frames: FrameTranscriptEntry
 			time: formatMtime(mtime),
 		});
 	}
+
 	const sessionsRoot = path.join(os.homedir(), ".pi", "agent", "sessions");
 	for (const special of [
 		{ key: "pi:pilee", workspace: "pilee", title: "pilee Pi 대화 세션", workspacePath: PACKAGE_ROOT, sessionDirs: piSessionDirsForPath(sessionsRoot, PACKAGE_ROOT, "pilee") },
 		{ key: "pi:home", workspace: "home", title: "home Pi 대화 세션", workspacePath: os.homedir(), sessionDirs: piSessionDirsForPath(sessionsRoot, os.homedir()) },
 	]) {
-		const sessions = readPiSessionsFromDirs(special.sessionDirs, special.workspace, 12);
+		const sessions = unseenSessions(readPiSessionsFromDirs(special.sessionDirs, special.workspace, Number.POSITIVE_INFINITY, panelIndex));
 		if (!sessions.length) continue;
 		const mtime = Math.max(...sessions.map((session) => session.mtime));
-		units.push({
+		pushUnit({
 			key: special.key,
 			repo: "pi",
 			workspace: special.workspace,
@@ -1882,7 +1978,33 @@ function collectPiWorkUnits(reports: ReportEntry[], frames: FrameTranscriptEntry
 			time: formatMtime(mtime),
 		});
 	}
-	return units.sort((a, b) => b.mtime - a.mtime).slice(0, 80);
+
+	for (const sessionsDir of allPiSessionDirs(sessionsRoot)) {
+		const rawSessions = unseenSessions(readPiSessionsFromDir(sessionsDir, "", Number.POSITIVE_INFINITY, panelIndex));
+		if (!rawSessions.length) continue;
+		const info = sessionUnitWorkspaceFromDir(sessionsDir, rawSessions);
+		const sessions = rawSessions.map((session) => ({ ...session, workspace: info.workspace }));
+		const mtime = Math.max(...sessions.map((session) => session.mtime));
+		pushUnit({
+			key: `pi:session-dir:${stableHash(sessionsDir)}`,
+			repo: "pi",
+			workspace: info.workspace,
+			workspacePath: info.workspacePath,
+			label: info.title,
+			ticket: "",
+			title: info.title,
+			branch: "",
+			contextPath: "",
+			loadedByResume: false,
+			originalConductorSessionPaths: [],
+			piRestoredSessions: sessions.filter((session) => session.restoredFromConductor),
+			piChatSessions: sessions.filter((session) => !session.restoredFromConductor),
+			mtime,
+			time: formatMtime(mtime),
+		});
+	}
+
+	return units.sort((a, b) => b.mtime - a.mtime);
 }
 
 function queryConductorSync(sql: string): string {
@@ -2169,9 +2291,13 @@ function renderPlanningDocCards(docs: PlanningDocEntry[]): string {
 	return `<div class="grid">${docs.map((doc) => `<article class="card searchable" data-search="${escapeAttr(`${doc.title} ${doc.name} ${doc.workspace} ${doc.ticket} ${doc.source}`.toLowerCase())}"><h3>${escapeHtml(doc.title)}</h3><div class="meta"><span class="badge">${escapeHtml(planningSourceLabel(doc.source))}</span>${doc.workspace ? `<span class="badge">${escapeHtml(doc.workspace)}</span>` : ""}${doc.ticket ? `<span class="badge">${escapeHtml(doc.ticket)}</span>` : ""}<span class="badge">${escapeHtml(doc.time)}</span></div><div class="path">${escapeHtml(doc.path)}</div><div class="actions">${artifactOpenButtons(doc.path)}</div></article>`).join("\n")}</div>`;
 }
 
+function sessionPanelSourceLabel(session: PiSessionEntry): string {
+	return session.panelSource === "fork" ? "fork-panel" : "부모/P0";
+}
+
 function renderSessionCards(title: string, sessions: PiSessionEntry[]): string {
 	if (!sessions.length) return `<section><h3>${escapeHtml(title)} · 0</h3><div class="empty">세션이 없습니다.</div></section>`;
-	return `<section><h3>${escapeHtml(title)} · ${sessions.length}</h3><div class="grid">${sessions.map((session) => `<article class="card searchable" data-search="${escapeAttr(`${session.title} ${session.workspace}`.toLowerCase())}"><h3>${escapeHtml(session.title)}</h3><div class="meta"><span class="badge">${session.restoredFromConductor ? "Conductor 복구" : "Pi 대화"}</span><span class="badge">${escapeHtml(session.time)}</span></div><div class="path">${escapeHtml(session.path)}</div><div class="actions">${artifactOpenButtons(session.path)}</div></article>`).join("\n")}</div></section>`;
+	return `<section><h3>${escapeHtml(title)} · ${sessions.length}</h3><div class="grid">${sessions.map((session) => `<article class="card searchable" data-search="${escapeAttr(`${session.title} ${session.workspace} ${session.panelLabel} ${session.panelSource} ${session.cwd}`.toLowerCase())}"><h3>${escapeHtml(session.title)}</h3><div class="meta"><span class="badge">${escapeHtml(session.panelLabel)}</span><span class="badge">${escapeHtml(sessionPanelSourceLabel(session))}</span><span class="badge">${session.restoredFromConductor ? "Conductor 복구" : "Pi 대화"}</span><span class="badge">${escapeHtml(session.time)}</span></div>${session.cwd ? `<div class="path">cwd: ${escapeHtml(shortDisplayPath(session.cwd))}</div>` : ""}<div class="path">${escapeHtml(session.path)}</div><div class="actions">${artifactOpenButtons(session.path)}</div></article>`).join("\n")}</div></section>`;
 }
 
 function renderConductorSourceCards(title: string, paths: string[], restored = false): string {
@@ -2213,7 +2339,10 @@ function renderPiWorkUnitCards(data: ArtifactBrowserData): string {
 		const planningDocs = planningDocsForUnit(unit, data.planningDocs);
 		const captures = capturesForUnit(unit, data.captures);
 		const webSearches = webSearchesForUnit(unit, data.webSearches);
-		return `<article class="card searchable pi-work-card" data-search="${escapeAttr(`${unit.label} ${unit.workspace} ${unit.branch}`.toLowerCase())}"><div class="kicker">🔥 Pi history</div><h3>${escapeHtml(unit.label)}</h3><div class="meta"><span class="badge">${escapeHtml(unit.repo)}</span>${unit.loadedByResume ? `<span class="badge">/wt resume</span>` : ""}${unit.branch ? `<span class="badge">${escapeHtml(unit.branch)}</span>` : ""}</div><div class="meta"><span class="badge">원본 ${unit.originalConductorSessionPaths.length}</span><span class="badge">복구 세션 ${unit.piRestoredSessions.length}</span><span class="badge">Pi 대화 ${unit.piChatSessions.length}</span><span class="badge">리포트 ${reports.length}</span><span class="badge">Frame/기획 ${planningDocs.length}</span><span class="badge">캡처 ${captures.length}</span><span class="badge">웹검색 ${webSearches.length}</span></div><div class="path">${escapeHtml(unit.workspacePath)}</div><div class="actions"><button class="button open-pi-detail" type="button" data-pi="${escapeAttr(unit.key)}">이력 열기</button></div></article>`;
+		const allSessions = [...unit.piRestoredSessions, ...unit.piChatSessions];
+		const p0Count = allSessions.filter((session) => session.panelSource === "p0").length;
+		const forkCount = allSessions.filter((session) => session.panelSource === "fork").length;
+		return `<article class="card searchable pi-work-card" data-search="${escapeAttr(`${unit.label} ${unit.workspace} ${unit.branch}`.toLowerCase())}"><div class="kicker">🔥 Pi history</div><h3>${escapeHtml(unit.label)}</h3><div class="meta"><span class="badge">${escapeHtml(unit.repo)}</span>${unit.loadedByResume ? `<span class="badge">/wt resume</span>` : ""}${unit.branch ? `<span class="badge">${escapeHtml(unit.branch)}</span>` : ""}</div><div class="meta"><span class="badge">P0 ${p0Count}</span><span class="badge">fork ${forkCount}</span><span class="badge">원본 ${unit.originalConductorSessionPaths.length}</span><span class="badge">복구 세션 ${unit.piRestoredSessions.length}</span><span class="badge">Pi 대화 ${unit.piChatSessions.length}</span><span class="badge">리포트 ${reports.length}</span><span class="badge">Frame/기획 ${planningDocs.length}</span><span class="badge">캡처 ${captures.length}</span><span class="badge">웹검색 ${webSearches.length}</span></div><div class="path">${escapeHtml(unit.workspacePath)}</div><div class="actions"><button class="button open-pi-detail" type="button" data-pi="${escapeAttr(unit.key)}">이력 열기</button></div></article>`;
 	}).join("\n");
 	const detailPanels = data.piUnits.map((unit) => {
 		const reports = reportsForUnit(unit, data.reports);
