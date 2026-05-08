@@ -81,6 +81,12 @@ interface Evidence {
 	path?: string;
 	url?: string;
 	text?: string;
+	purpose?: string;
+	inspectFor?: string[] | string;
+	expected?: string;
+	observed?: string;
+	role?: string;
+	relatedItem?: string;
 }
 
 interface ReportItem {
@@ -135,6 +141,12 @@ const evidenceSchema = Type.Object({
 	path: Type.Optional(Type.String({ description: "Local evidence file path, relative to cwd or absolute." })),
 	url: Type.Optional(Type.String({ description: "Remote evidence URL." })),
 	text: Type.Optional(Type.String({ description: "Inline evidence text or short excerpt." })),
+	purpose: Type.Optional(Type.String({ description: "Why this evidence was collected." })),
+	inspectFor: Type.Optional(Type.Union([Type.Array(Type.String()), Type.String()], { description: "What a reviewer should inspect in this evidence." })),
+	expected: Type.Optional(Type.String({ description: "Expected result this evidence should prove." })),
+	observed: Type.Optional(Type.String({ description: "Observed result in this evidence." })),
+	role: Type.Optional(Type.String({ description: "primary|supporting|raw or similar evidence role." })),
+	relatedItem: Type.Optional(Type.String({ description: "Related verification item / success criterion id." })),
 });
 
 const itemSchema = Type.Object({
@@ -524,21 +536,36 @@ function renderImageFigure(evidence: Evidence, state: VerifyReportState, label: 
 	return `<figure><img src="${escapeHtml(src)}" alt="${escapeHtml(label)}"><figcaption>${escapeHtml(label)} · ${escapeHtml(basename(evidence.path ?? src))}${escapeHtml(imageDimensionLabel(dimensions))}</figcaption></figure>`;
 }
 
+function renderEvidenceIntentStatic(evidence: Evidence): string {
+	const inspect = Array.isArray(evidence.inspectFor) ? evidence.inspectFor.filter(Boolean) : typeof evidence.inspectFor === "string" ? [evidence.inspectFor] : [];
+	const rows = [
+		evidence.relatedItem ? ["관련 기준", evidence.relatedItem] : undefined,
+		evidence.role ? ["역할", evidence.role] : undefined,
+		evidence.purpose ? ["왜 수집했나", evidence.purpose] : undefined,
+		inspect.length ? ["봐야 할 것", inspect.join(" / ")] : undefined,
+		evidence.expected ? ["기대 결과", evidence.expected] : undefined,
+		evidence.observed ? ["실제 관찰", evidence.observed] : undefined,
+	].filter(Boolean) as string[][];
+	if (!rows.length) return "";
+	return `<dl class="evidence-intent">${rows.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("")}</dl>`;
+}
+
 function renderEvidenceStatic(evidence: Evidence, state: VerifyReportState): string {
 	const kind = evidenceKind(evidence);
 	const label = evidence.label || kind;
-	if (evidence.url) return `<a href="${escapeHtml(evidence.url)}" target="_blank" rel="noreferrer">${escapeHtml(label)}</a>`;
-	if (evidence.path && ["image", "gif"].includes(kind)) {
+	let body = "";
+	if (evidence.url) body = `<a href="${escapeHtml(evidence.url)}" target="_blank" rel="noreferrer">${escapeHtml(label)}</a>`;
+	else if (evidence.path && ["image", "gif"].includes(kind)) {
 		const dimensions = readImageDimensions(evidence.path);
 		const figure = renderImageFigure(evidence, state, label, dimensions);
-		if (isTallEvidence(dimensions)) {
-			return `<details class="tall-evidence"><summary>긴/전체 페이지 캡처 보기 — ${escapeHtml(label)}${escapeHtml(imageDimensionLabel(dimensions))}</summary>${figure}</details>`;
-		}
-		return figure;
-	}
-	if (evidence.path) return `<p><strong>${escapeHtml(label)}</strong>: <code>${escapeHtml(relativeEvidencePath(evidence, state) ?? evidence.path)}</code></p>`;
-	if (evidence.text) return `<pre><code>${escapeHtml(evidence.text)}</code></pre>`;
-	return "";
+		body = isTallEvidence(dimensions)
+			? `<details class="tall-evidence"><summary>긴/전체 페이지 캡처 보기 — ${escapeHtml(label)}${escapeHtml(imageDimensionLabel(dimensions))}</summary>${figure}</details>`
+			: figure;
+	} else if (evidence.path) body = `<p><strong>${escapeHtml(label)}</strong>: <code>${escapeHtml(relativeEvidencePath(evidence, state) ?? evidence.path)}</code></p>`;
+	else if (evidence.text) body = `<pre><code>${escapeHtml(evidence.text)}</code></pre>`;
+	if (!body) return "";
+	const roleClass = evidence.role ? ` evidence-role-${evidence.role.replace(/[^a-z0-9_-]/gi, "-").toLowerCase()}` : "";
+	return `<article class="evidence-card${roleClass}"><div class="evidence-card-head"><strong>${escapeHtml(label)}</strong>${kind ? `<span>${escapeHtml(kind)}</span>` : ""}</div>${body}${renderEvidenceIntentStatic(evidence)}</article>`;
 }
 
 function generateLivePage(initialState: unknown): string {
@@ -576,7 +603,13 @@ function generateLivePage(initialState: unknown): string {
 	.status.skip, .status.blocked, .status.unverified { color:var(--yellow); border-color:var(--yellow); }
 	.detail { color:var(--detail); line-height:1.55; white-space:pre-wrap; }
 	.evidence { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap:12px; margin-top:12px; align-items:start; }
-	.evidence > p, .evidence > pre, .evidence > details, .evidence > a { grid-column:1 / -1; }
+	.evidence-card { border:1px solid var(--line); border-radius:14px; background:var(--panel2); padding:12px; min-width:0; }
+	.evidence-card-head { display:flex; justify-content:space-between; gap:8px; align-items:center; margin-bottom:8px; color:var(--detail); }
+	.evidence-card-head span { color:var(--muted); font-size:11px; text-transform:uppercase; }
+	.evidence-intent { display:grid; gap:7px; margin:10px 0 0; }
+	.evidence-intent div { border-top:1px solid var(--line); padding-top:7px; }
+	.evidence-intent dt { color:var(--muted); font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
+	.evidence-intent dd { margin:2px 0 0; color:var(--detail); font-size:12px; line-height:1.45; }
 	figure { margin:0; }
 	img { display:block; max-width:100%; border:1px solid var(--line); border-radius:12px; background:var(--imageBg); }
 	figcaption { color:var(--muted); font-size:12px; margin-top:6px; }
@@ -617,13 +650,27 @@ function collapseTallImages() {
     else img.addEventListener('load', function() { maybeCollapseTallImage(img); }, { once: true });
   });
 }
+function evIntentHtml(ev) {
+  var inspect = Array.isArray(ev.inspectFor) ? ev.inspectFor.filter(Boolean).join(' / ') : (typeof ev.inspectFor === 'string' ? ev.inspectFor : '');
+  var rows = [
+    ev.relatedItem && ['관련 기준', ev.relatedItem],
+    ev.role && ['역할', ev.role],
+    ev.purpose && ['왜 수집했나', ev.purpose],
+    inspect && ['봐야 할 것', inspect],
+    ev.expected && ['기대 결과', ev.expected],
+    ev.observed && ['실제 관찰', ev.observed]
+  ].filter(Boolean);
+  if (!rows.length) return '';
+  return '<dl class="evidence-intent">' + rows.map(function(row){ return '<div><dt>' + esc(row[0]) + '</dt><dd>' + esc(row[1]) + '</dd></div>'; }).join('') + '</dl>';
+}
 function evHtml(ev) {
-  var kind = evKind(ev); var label = ev.label || kind;
-  if (ev.url) return '<a href="' + esc(ev.url) + '" target="_blank" rel="noreferrer">' + esc(label) + '</a>';
-  if (ev.path && (kind === 'image' || kind === 'gif')) return '<figure data-auto-collapse="true" data-label="' + esc(label) + '"><img src="/file?path=' + encodeURIComponent(ev.path) + '" alt="' + esc(label) + '" onload="maybeCollapseTallImage(this)"><figcaption>' + esc(label) + ' · ' + esc(ev.path.split('/').pop()) + '</figcaption></figure>';
-  if (ev.path) return '<p><strong>' + esc(label) + '</strong>: <code>' + esc(ev.path) + '</code></p>';
-  if (ev.text) return '<pre><code>' + esc(ev.text) + '</code></pre>';
-  return '';
+  var kind = evKind(ev); var label = ev.label || kind; var body = '';
+  if (ev.url) body = '<a href="' + esc(ev.url) + '" target="_blank" rel="noreferrer">' + esc(label) + '</a>';
+  else if (ev.path && (kind === 'image' || kind === 'gif')) body = '<figure data-auto-collapse="true" data-label="' + esc(label) + '"><img src="/file?path=' + encodeURIComponent(ev.path) + '" alt="' + esc(label) + '" onload="maybeCollapseTallImage(this)"><figcaption>' + esc(label) + ' · ' + esc(ev.path.split('/').pop()) + '</figcaption></figure>';
+  else if (ev.path) body = '<p><strong>' + esc(label) + '</strong>: <code>' + esc(ev.path) + '</code></p>';
+  else if (ev.text) body = '<pre><code>' + esc(ev.text) + '</code></pre>';
+  if (!body) return '';
+  return '<article class="evidence-card"><div class="evidence-card-head"><strong>' + esc(label) + '</strong><span>' + esc(kind) + '</span></div>' + body + evIntentHtml(ev) + '</article>';
 }
 function render() {
   var items = state.items || [];
@@ -742,7 +789,13 @@ function generateStaticReportHtml(state: VerifyReportState): string {
 	.step-title { font-weight: 800; color: #1f2937; font-size: 16px; }
 	.step-meta { color: #6b7280; font-size: 13px; margin-top: 2px; }
 	.evidence { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 14px; margin-top: 14px; align-items: start; }
-	.evidence > p, .evidence > pre, .evidence > details, .evidence > a { grid-column: 1 / -1; }
+	.evidence-card { border: 1px solid #e5e7eb; border-radius: 12px; background: #fff; padding: 12px; min-width: 0; }
+	.evidence-card-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; margin-bottom: 8px; color: #1f2937; }
+	.evidence-card-head span { color: #6b7280; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+	.evidence-intent { display: grid; gap: 7px; margin: 10px 0 0; }
+	.evidence-intent div { border-top: 1px solid #e5e7eb; padding-top: 7px; }
+	.evidence-intent dt { color: #6b7280; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+	.evidence-intent dd { margin: 2px 0 0; color: #4b5563; font-size: 12px; line-height: 1.45; }
 	figure { margin: 0; }
 	img { display: block; max-width: 100%; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
 	figcaption { color: #6b7280; font-size: 12px; margin-top: 6px; }
@@ -841,6 +894,7 @@ export function registerVerifyReportLive(pi: ExtensionAPI) {
 		promptGuidelines: [
 			"Use verify_report_live for /verify-report workflows: start after defining verification coverage, update after each item with status/evidence, then finish to export report.html.",
 			"Evidence must close the stated criterion. If a required axis is not checked, keep that item unverified/blocked instead of marking pass.",
+			"Evidence should explain its intent: include purpose, inspectFor, expected, observed, role, and relatedItem when available so raw captures are readable later.",
 			"For UI evidence, prefer focused viewport or section crops as primary evidence. Tall/full-page images are auto-collapsed in the report and should be supporting context only.",
 			"When existing UI/behavior is the baseline, include Before and After image evidence in the same item when practical, with labels that state environment/viewport/role.",
 			"Do not use verify_report_live to upload reports or modify PRs; upload remains opt-in via the verify-report skill.",

@@ -594,7 +594,7 @@ function buildJsonlSessionPreviewHtml(filePath: string, full = false): string {
 	return `<style>body{margin:0;padding:18px;background:#fafaf9;color:#292524;font:15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.session-preview{max-width:980px;margin:0 auto}.session-notice{border:1px solid #f59e0b;background:#fffbeb;color:#92400e;border-radius:12px;padding:10px 12px}.chat-row{display:flex;flex-direction:column;margin:14px 0}.chat-row.user{align-items:flex-end}.chat-row.assistant{align-items:flex-start}.chat-meta{display:flex;gap:8px;align-items:center;color:#78716c;font-size:12px;margin:0 8px 4px}.chat-meta span{font-weight:800;color:#57534e}.chat-bubble{max-width:min(780px,92%);white-space:pre-wrap;word-break:break-word;border:1px solid #e7e5e4;border-radius:18px;padding:12px 14px;background:#fff;box-shadow:0 8px 24px rgba(41,37,36,.05)}.user .chat-bubble{background:#eff6ff;border-color:#bfdbfe}.assistant .chat-bubble{background:#fff}</style><main class="session-preview"><h1>${escapeHtml(path.basename(filePath))}</h1><p class="session-notice">원본 JSONL에서 실제 대화만 추려 보여줍니다. system/model/session/tool/thinking/encrypted payload는 숨기고, 사용자 메시지와 assistant의 실제 답변 text만 표시합니다.</p>${notice}${entries.length ? entries.join("\n") : `<p class="session-notice">표시할 user/assistant text 대화를 찾지 못했습니다.</p>`}<p class="session-notice">parsed lines: ${parsed}, rendered conversation entries: ${entries.length}</p></main>`;
 }
 
-function artifactPreviewInnerHtml(filePath: string, options: { full?: boolean } = {}): { title: string; html: string } {
+function artifactPreviewInnerHtml(filePath: string, options: { full?: boolean; intent?: EvidenceIntent } = {}): { title: string; html: string } {
 	const ext = path.extname(filePath).toLowerCase();
 	if (ext === ".html" || ext === ".htm") {
 		const htmlDir = path.dirname(filePath);
@@ -605,7 +605,7 @@ function artifactPreviewInnerHtml(filePath: string, options: { full?: boolean } 
 		return { title: path.basename(filePath), html: buildFrameTranscriptStandaloneHtml(filePath) };
 	}
 	if (MEDIA_EXTENSIONS.has(ext)) {
-		return { title: path.basename(filePath), html: buildMediaPreviewHtml(filePath) };
+		return { title: path.basename(filePath), html: buildMediaPreviewHtml(filePath, path.basename(filePath), options.intent) };
 	}
 	if (isSessionJsonlPath(filePath)) {
 		return { title: path.basename(filePath), html: buildJsonlSessionPreviewHtml(filePath, Boolean(options.full)) };
@@ -622,7 +622,7 @@ function sanitizePreviewReturnTo(value: string | null | undefined): string {
 	return trimmed;
 }
 
-function buildArtifactPreviewHtml(filePath: string, options: { full?: boolean; returnTo?: string } = {}): string {
+function buildArtifactPreviewHtml(filePath: string, options: { full?: boolean; returnTo?: string; intent?: EvidenceIntent } = {}): string {
 	const { title, html } = artifactPreviewInnerHtml(filePath, options);
 	const returnTo = sanitizePreviewReturnTo(options.returnTo);
 	const artifactDataUri = `data:text/html;charset=utf-8;base64,${Buffer.from(html, "utf8").toString("base64")}`;
@@ -714,21 +714,21 @@ async function openHtmlArtifact(pi: ExtensionAPI, filePath: string, browserOnly 
 	return "browser";
 }
 
-async function openMediaArtifact(pi: ExtensionAPI, filePath: string, browserOnly = false): Promise<"glimpse" | "browser"> {
+async function openMediaArtifact(pi: ExtensionAPI, filePath: string, browserOnly = false, intent?: EvidenceIntent): Promise<"glimpse" | "browser"> {
 	const resolved = fs.realpathSync(filePath);
 	const title = path.basename(resolved);
-	const html = buildMediaPreviewHtml(resolved, title);
+	const html = buildMediaPreviewHtml(resolved, title, intent);
 	return openHtmlStringArtifact(pi, html, title, browserOnly);
 }
 
-async function openAnyArtifact(pi: ExtensionAPI, filePath: string, browserOnly = false): Promise<"glimpse" | "browser"> {
+async function openAnyArtifact(pi: ExtensionAPI, filePath: string, browserOnly = false, cwd = process.cwd()): Promise<"glimpse" | "browser"> {
 	const resolved = fs.realpathSync(filePath);
 	const ext = path.extname(resolved).toLowerCase();
 	if (ext === ".html" || ext === ".htm") return openHtmlArtifact(pi, resolved, browserOnly);
 	if (ext === ".json" && resolved.startsWith(FRAME_TRANSCRIPTS_DIR)) {
 		return openHtmlStringArtifact(pi, buildFrameTranscriptStandaloneHtml(resolved), path.basename(resolved), browserOnly);
 	}
-	if (MEDIA_EXTENSIONS.has(ext)) return openMediaArtifact(pi, resolved, browserOnly);
+	if (MEDIA_EXTENSIONS.has(ext)) return openMediaArtifact(pi, resolved, browserOnly, collectEvidenceIntentIndex(cwd).get(resolved));
 	if (ext === ".jsonl" || isSessionJsonlPath(resolved)) {
 		const exportPath = await exportSessionArtifactToHtml(pi, resolved);
 		if (browserOnly) {
@@ -776,7 +776,7 @@ export default function (pi: ExtensionAPI) {
 					ctx.ui.notify(`artifact를 찾을 수 없습니다: ${parsed.explicitPath}`, "warning");
 					return;
 				}
-				const mode = await openAnyArtifact(pi, parsed.explicitPath, parsed.browserOnly);
+				const mode = await openAnyArtifact(pi, parsed.explicitPath, parsed.browserOnly, ctx.cwd);
 				ctx.ui.notify(`🗂️ ${mode === "glimpse" ? "Glimpse" : "브라우저"} 열기 → ${path.basename(parsed.explicitPath)}`, "info");
 				return;
 			}
@@ -877,6 +877,17 @@ interface FrameTranscriptEntry {
 	timeline: unknown[];
 }
 
+interface EvidenceIntent {
+	itemId?: string;
+	label?: string;
+	purpose?: string;
+	inspectFor?: string[];
+	expected?: string;
+	observed?: string;
+	role?: string;
+	kind?: string;
+}
+
 interface CaptureEntry {
 	path: string;
 	name: string;
@@ -886,6 +897,7 @@ interface CaptureEntry {
 	mtime: number;
 	size: number;
 	mime: string;
+	intent?: EvidenceIntent;
 }
 
 interface CaptureGroupEntry {
@@ -1117,6 +1129,15 @@ function collectArtifactBrowserData(cwd: string): ArtifactBrowserData {
 	};
 }
 
+function captureIntentByPath(captures: CaptureEntry[]): Map<string, EvidenceIntent> {
+	const byPath = new Map<string, EvidenceIntent>();
+	for (const capture of captures) {
+		if (!capture.intent) continue;
+		try { byPath.set(fs.realpathSync(capture.path), capture.intent); } catch { byPath.set(capture.path, capture.intent); }
+	}
+	return byPath;
+}
+
 function artifactBrowserAllowedPaths(data: ArtifactBrowserData): Set<string> {
 	const allowed = new Set<string>();
 	for (const filePath of [
@@ -1135,6 +1156,7 @@ function artifactBrowserAllowedPaths(data: ArtifactBrowserData): Set<string> {
 
 function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData, cwd: string): Promise<string> {
 	const allowedPaths = artifactBrowserAllowedPaths(data);
+	const intentByPath = captureIntentByPath(data.captures);
 	const server = createServer(async (req, res) => {
 		try {
 			const url = new URL(req.url || "/", "http://127.0.0.1");
@@ -1154,7 +1176,7 @@ function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData,
 					return;
 				}
 				res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-				res.end(buildArtifactPreviewHtml(resolved, { full: url.searchParams.get("full") === "1", returnTo }));
+				res.end(buildArtifactPreviewHtml(resolved, { full: url.searchParams.get("full") === "1", returnTo, intent: intentByPath.get(resolved) }));
 				return;
 			}
 			if (req.method === "POST" && url.pathname === "/open") {
@@ -1283,6 +1305,81 @@ function workspaceFromCapturePath(root: string, filePath: string): string {
 	return first;
 }
 
+function stringArray(value: unknown): string[] {
+	if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
+	if (typeof value === "string" && value.trim()) return [value.trim()];
+	return [];
+}
+
+function valueString(record: Record<string, unknown>, ...keys: string[]): string {
+	for (const key of keys) {
+		const value = record[key];
+		if (typeof value === "string" && value.trim()) return value.trim();
+	}
+	return "";
+}
+
+function resolveEvidencePathFromResult(rawPath: string, resultPath: string, cwd: string): string {
+	const capturesDir = path.dirname(path.dirname(path.dirname(resultPath)));
+	const candidates = new Set<string>();
+	if (path.isAbsolute(rawPath)) candidates.add(rawPath);
+	else {
+		candidates.add(path.resolve(cwd, rawPath));
+		candidates.add(path.resolve(capturesDir, rawPath));
+		candidates.add(path.resolve(path.dirname(resultPath), rawPath));
+		const marker = `${path.sep}captures${path.sep}`;
+		const idx = rawPath.indexOf(marker);
+		if (idx >= 0) candidates.add(path.join(capturesDir, rawPath.slice(idx + marker.length)));
+		const slashMarker = "/captures/";
+		const slashIdx = rawPath.indexOf(slashMarker);
+		if (slashIdx >= 0) candidates.add(path.join(capturesDir, rawPath.slice(slashIdx + slashMarker.length)));
+	}
+	for (const candidate of candidates) {
+		try { if (fs.existsSync(candidate)) return fs.realpathSync(candidate); } catch {}
+	}
+	return path.isAbsolute(rawPath) ? rawPath : path.resolve(cwd, rawPath);
+}
+
+function collectEvidenceIntentIndex(cwd: string): Map<string, EvidenceIntent> {
+	const index = new Map<string, EvidenceIntent>();
+	const resultFiles: string[] = [];
+	for (const root of contextWorkRoots(cwd)) {
+		try {
+			for (const ws of fs.readdirSync(root.dir)) {
+				const resultsDir = path.join(root.dir, ws, "captures", "verify-workers", "results");
+				if (!fs.existsSync(resultsDir)) continue;
+				for (const file of fs.readdirSync(resultsDir)) {
+					if (file.endsWith(".json")) resultFiles.push(path.join(resultsDir, file));
+				}
+			}
+		} catch {}
+	}
+	for (const resultPath of resultFiles) {
+		const data = readJsonFile(resultPath);
+		if (!data) continue;
+		const itemId = valueString(data, "itemId", "item_id", "relatedItem");
+		const created = Array.isArray(data.evidence_created) ? data.evidence_created : [];
+		for (const raw of created) {
+			if (!raw || typeof raw !== "object") continue;
+			const ev = raw as Record<string, unknown>;
+			const rawPath = valueString(ev, "path");
+			if (!rawPath) continue;
+			const resolved = resolveEvidencePathFromResult(rawPath, resultPath, cwd);
+			index.set(resolved, {
+				itemId: valueString(ev, "relatedItem", "related_item") || itemId,
+				label: valueString(ev, "label"),
+				purpose: valueString(ev, "purpose"),
+				inspectFor: stringArray(ev.inspectFor ?? ev.inspect_for),
+				expected: valueString(ev, "expected"),
+				observed: valueString(ev, "observed"),
+				role: valueString(ev, "role"),
+				kind: valueString(ev, "kind"),
+			});
+		}
+	}
+	return index;
+}
+
 function walkMediaFiles(root: string, source: string, maxDepth = 8): CaptureEntry[] {
 	const results: CaptureEntry[] = [];
 	const visit = (dir: string, depth: number) => {
@@ -1323,10 +1420,16 @@ function collectCaptureMedia(cwd: string): CaptureEntry[] {
 		...contextWorkRoots(cwd),
 		{ dir: path.join(ARCHIVE_DIR, "..", "captures"), source: "archive" },
 	]);
+	const intentIndex = collectEvidenceIntentIndex(cwd);
 	const byPath = new Map<string, CaptureEntry>();
 	for (const root of roots) {
 		for (const item of walkMediaFiles(root.dir, root.source)) {
-			try { byPath.set(fs.realpathSync(item.path), item); } catch { byPath.set(item.path, item); }
+			try {
+				const real = fs.realpathSync(item.path);
+				byPath.set(real, { ...item, intent: intentIndex.get(real) });
+			} catch {
+				byPath.set(item.path, { ...item, intent: intentIndex.get(item.path) });
+			}
 		}
 	}
 	return [...byPath.values()].sort((a, b) => b.mtime - a.mtime).slice(0, 80);
@@ -1949,12 +2052,27 @@ function readTextPreview(filePath: string, maxBytes = 256 * 1024): { text: strin
 	return { text: buffer.toString("utf-8"), truncated: stat.size > bytesToRead, size: stat.size };
 }
 
-function buildMediaPreviewHtml(filePath: string, title = path.basename(filePath)): string {
+function renderEvidenceIntentBlock(intent?: EvidenceIntent): string {
+	if (!intent) return "";
+	const inspect = intent.inspectFor?.filter(Boolean) ?? [];
+	const rows = [
+		intent.itemId ? ["관련 기준", intent.itemId] : undefined,
+		intent.role ? ["역할", intent.role] : undefined,
+		intent.purpose ? ["왜 수집했나", intent.purpose] : undefined,
+		inspect.length ? ["봐야 할 것", inspect.join(" / ")] : undefined,
+		intent.expected ? ["기대 결과", intent.expected] : undefined,
+		intent.observed ? ["실제 관찰", intent.observed] : undefined,
+	].filter(Boolean) as string[][];
+	if (!rows.length) return "";
+	return `<aside class="intent"><div class="intent-title">관찰 가이드</div>${rows.map(([label, value]) => `<div class="intent-row"><strong>${escapeHtml(label)}</strong><span>${escapeHtml(value)}</span></div>`).join("")}</aside>`;
+}
+
+function buildMediaPreviewHtml(filePath: string, title = path.basename(filePath), intent?: EvidenceIntent): string {
 	const src = mediaDataUri(filePath, 40 * 1024 * 1024);
 	const fileUrl = fileHref(filePath);
 	return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>
-		body{margin:0;background:#111;color:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:grid;grid-template-rows:auto 1fr;min-height:100vh}.bar{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:12px 16px;background:#18181b;border-bottom:1px solid rgba(255,255,255,.12)}.path{color:#a1a1aa;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.stage{display:grid;place-items:center;min-height:0;padding:18px}img{max-width:100%;max-height:calc(100vh - 92px);object-fit:contain;border-radius:12px;box-shadow:0 20px 80px rgba(0,0,0,.35)}a{color:#c4b5fd;text-decoration:none;border:1px solid rgba(255,255,255,.18);padding:7px 10px;border-radius:8px}
-	</style></head><body><div class="bar"><div><strong>${escapeHtml(title)}</strong><div class="path">${escapeHtml(filePath)}</div></div><a href="${escapeAttr(fileUrl)}" target="_blank" rel="noreferrer">원본 열기</a></div><div class="stage">${src ? `<img src="${src}" alt="${escapeAttr(title)}">` : `<p>파일이 커서 inline preview를 만들지 않았습니다. <a href="${escapeAttr(fileUrl)}" target="_blank" rel="noreferrer">원본 열기</a></p>`}</div></body></html>`;
+		body{margin:0;background:#111;color:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:grid;grid-template-rows:auto auto 1fr;min-height:100vh}.bar{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:12px 16px;background:#18181b;border-bottom:1px solid rgba(255,255,255,.12)}.path{color:#a1a1aa;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.stage{display:grid;place-items:center;min-height:0;padding:18px}.intent{margin:12px 16px 0;padding:12px 14px;border:1px solid rgba(255,255,255,.14);border-radius:12px;background:#18181b}.intent-title{color:#c4b5fd;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}.intent-row{display:grid;grid-template-columns:120px 1fr;gap:10px;padding:5px 0;border-top:1px solid rgba(255,255,255,.08)}.intent-row:first-of-type{border-top:0}.intent-row strong{color:#a1a1aa;font-size:12px}.intent-row span{color:#f5f5f5;font-size:13px;line-height:1.45}img{max-width:100%;max-height:calc(100vh - 180px);object-fit:contain;border-radius:12px;box-shadow:0 20px 80px rgba(0,0,0,.35)}a{color:#c4b5fd;text-decoration:none;border:1px solid rgba(255,255,255,.18);padding:7px 10px;border-radius:8px}
+	</style></head><body><div class="bar"><div><strong>${escapeHtml(intent?.label || title)}</strong><div class="path">${escapeHtml(filePath)}</div></div><a href="${escapeAttr(fileUrl)}" target="_blank" rel="noreferrer">원본 열기</a></div>${renderEvidenceIntentBlock(intent)}<div class="stage">${src ? `<img src="${src}" alt="${escapeAttr(title)}">` : `<p>파일이 커서 inline preview를 만들지 않았습니다. <a href="${escapeAttr(fileUrl)}" target="_blank" rel="noreferrer">원본 열기</a></p>`}</div></body></html>`;
 }
 
 function transcriptValue(record: unknown, key: string): unknown {
@@ -1999,7 +2117,7 @@ function buildFrameTranscriptStandaloneHtml(filePath: string): string {
 
 function artifactBrowserStyle(): string {
 	return `<style>
-	:root{color-scheme:light;--bg:#fafaf9;--panel:#fff;--line:#e7e5e4;--text:#292524;--muted:#78716c;--accent:#7c3aed;--soft:#f5f3ff;--green:#166534;--amber:#92400e}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.shell{max-width:1180px;margin:0 auto;padding:24px}.hero{padding:24px;border:1px solid var(--line);border-radius:24px;background:linear-gradient(135deg,#fff,#f5f3ff);box-shadow:0 20px 60px rgba(41,37,36,.08)}.kicker{color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}h1{margin:6px 0 8px;font-size:32px;line-height:1.15}.hero p,.muted{color:var(--muted)}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}.tab{border:1px solid var(--line);border-radius:999px;background:#fff;padding:9px 13px;font-weight:800;cursor:pointer}.tab.active{background:var(--accent);border-color:var(--accent);color:#fff}.panel{display:none}.panel.active{display:block}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.card{border:1px solid var(--line);border-radius:18px;background:var(--panel);padding:16px;box-shadow:0 10px 30px rgba(41,37,36,.05);overflow:hidden}.card h2,.card h3{margin:0 0 8px}.meta{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}.badge{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 8px;background:#fff}.path{color:var(--muted);font-size:12px;word-break:break-all}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.button{border:1px solid var(--line);border-radius:10px;padding:7px 10px;text-decoration:none;color:var(--accent);font-weight:800;background:#fff;cursor:pointer;font:inherit}.button:hover{background:var(--soft)}.button[disabled]{opacity:.55;cursor:wait}.thumb{display:grid;place-items:center;aspect-ratio:16/10;background:#111;border-radius:14px;overflow:hidden;margin-bottom:10px}.thumb img{width:100%;height:100%;object-fit:contain}.empty{padding:40px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:18px;background:#fff}.chat-preview{display:grid;gap:10px}.chat-row{display:flex;flex-direction:column;margin:6px 0}.chat-row.user{align-items:flex-end}.chat-row.assistant{align-items:flex-start}.chat-meta{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px;margin:0 8px 4px}.chat-meta span{font-weight:800;color:var(--text)}.chat-bubble{max-width:min(780px,92%);white-space:pre-wrap;word-break:break-word;border:1px solid var(--line);border-radius:16px;padding:10px 12px;background:#fff;box-shadow:0 8px 22px rgba(41,37,36,.04)}.user .chat-bubble{background:#eff6ff;border-color:#bfdbfe}.timeline{display:grid;gap:12px}.timeline-item{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff}.timeline-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:var(--muted);font-size:12px}.timeline-head strong{color:var(--accent);text-transform:uppercase}.qa,.answer{margin-top:8px}.label{font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}pre{white-space:pre-wrap;word-break:break-word;background:#292524;color:#fafaf9;border-radius:12px;padding:12px;max-height:360px;overflow:auto}details{margin-top:8px}summary{cursor:pointer;font-weight:800}.search{width:100%;height:40px;border:1px solid var(--line);border-radius:12px;padding:0 12px;margin:16px 0;font:inherit}
+	:root{color-scheme:light;--bg:#fafaf9;--panel:#fff;--line:#e7e5e4;--text:#292524;--muted:#78716c;--accent:#7c3aed;--soft:#f5f3ff;--green:#166534;--amber:#92400e}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.shell{max-width:1180px;margin:0 auto;padding:24px}.hero{padding:24px;border:1px solid var(--line);border-radius:24px;background:linear-gradient(135deg,#fff,#f5f3ff);box-shadow:0 20px 60px rgba(41,37,36,.08)}.kicker{color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}h1{margin:6px 0 8px;font-size:32px;line-height:1.15}.hero p,.muted{color:var(--muted)}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}.tab{border:1px solid var(--line);border-radius:999px;background:#fff;padding:9px 13px;font-weight:800;cursor:pointer}.tab.active{background:var(--accent);border-color:var(--accent);color:#fff}.panel{display:none}.panel.active{display:block}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.card{border:1px solid var(--line);border-radius:18px;background:var(--panel);padding:16px;box-shadow:0 10px 30px rgba(41,37,36,.05);overflow:hidden}.card h2,.card h3{margin:0 0 8px}.meta{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}.badge{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 8px;background:#fff}.path{color:var(--muted);font-size:12px;word-break:break-all}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.button{border:1px solid var(--line);border-radius:10px;padding:7px 10px;text-decoration:none;color:var(--accent);font-weight:800;background:#fff;cursor:pointer;font:inherit}.button:hover{background:var(--soft)}.button[disabled]{opacity:.55;cursor:wait}.thumb{display:grid;place-items:center;aspect-ratio:16/10;background:#111;border-radius:14px;overflow:hidden;margin-bottom:10px}.thumb img{width:100%;height:100%;object-fit:contain}.intent-mini{border:1px solid var(--line);border-radius:12px;background:#fafaf9;padding:10px 11px;margin:10px 0;color:var(--text)}.intent-mini.missing{color:var(--muted);font-size:12px;border-style:dashed}.intent-mini-title{font-weight:800;color:var(--accent);font-size:12px;margin-bottom:5px}.intent-mini p{margin:4px 0;font-size:12px;line-height:1.45}.intent-mini strong{color:var(--muted);margin-right:4px}.empty{padding:40px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:18px;background:#fff}.chat-preview{display:grid;gap:10px}.chat-row{display:flex;flex-direction:column;margin:6px 0}.chat-row.user{align-items:flex-end}.chat-row.assistant{align-items:flex-start}.chat-meta{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px;margin:0 8px 4px}.chat-meta span{font-weight:800;color:var(--text)}.chat-bubble{max-width:min(780px,92%);white-space:pre-wrap;word-break:break-word;border:1px solid var(--line);border-radius:16px;padding:10px 12px;background:#fff;box-shadow:0 8px 22px rgba(41,37,36,.04)}.user .chat-bubble{background:#eff6ff;border-color:#bfdbfe}.timeline{display:grid;gap:12px}.timeline-item{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff}.timeline-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:var(--muted);font-size:12px}.timeline-head strong{color:var(--accent);text-transform:uppercase}.qa,.answer{margin-top:8px}.label{font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}pre{white-space:pre-wrap;word-break:break-word;background:#292524;color:#fafaf9;border-radius:12px;padding:12px;max-height:360px;overflow:auto}details{margin-top:8px}summary{cursor:pointer;font-weight:800}.search{width:100%;height:40px;border:1px solid var(--line);border-radius:12px;padding:0 12px;margin:16px 0;font:inherit}
 	</style>`;
 }
 
@@ -2059,8 +2177,14 @@ function captureSourceLabel(source: CaptureGroupEntry["source"]): string {
 	return "미분류";
 }
 
+function renderCaptureIntentSummary(intent?: EvidenceIntent): string {
+	if (!intent) return `<div class="intent-mini missing">검증 의도 metadata 없음</div>`;
+	const inspect = intent.inspectFor?.filter(Boolean) ?? [];
+	return `<div class="intent-mini"><div class="intent-mini-title">${escapeHtml(intent.itemId ? `${intent.itemId} · ${intent.label || "원자료 evidence"}` : intent.label || "원자료 evidence")}</div>${intent.purpose ? `<p><strong>왜</strong> ${escapeHtml(intent.purpose)}</p>` : ""}${inspect.length ? `<p><strong>봐야 할 것</strong> ${escapeHtml(inspect.join(" / "))}</p>` : ""}${intent.expected ? `<p><strong>기대</strong> ${escapeHtml(intent.expected)}</p>` : ""}${intent.observed ? `<p><strong>관찰</strong> ${escapeHtml(intent.observed)}</p>` : ""}</div>`;
+}
+
 function renderCaptureFileCards(captures: CaptureEntry[]): string {
-	return `<div class="grid">${captures.map((c) => { const src = mediaDataUri(c.path); return `<article class="card searchable" data-search="${escapeAttr(`${c.name} ${c.source} ${c.workspace}`.toLowerCase())}"><div class="thumb">${src ? `<img src="${src}" alt="${escapeAttr(c.name)}" loading="lazy">` : `<span class="muted">${escapeHtml(formatBytes(c.size))}</span>`}</div><h3>${escapeHtml(path.basename(c.path))}</h3><div class="meta"><span class="badge">${escapeHtml(c.source)}</span>${c.workspace ? `<span class="badge">${escapeHtml(c.workspace)}</span>` : ""}<span class="badge">${escapeHtml(c.time)}</span><span class="badge">${escapeHtml(formatBytes(c.size))}</span></div><div class="path">${escapeHtml(c.name)}</div><div class="actions">${artifactOpenButtons(c.path)}</div></article>`; }).join("\n")}</div>`;
+	return `<div class="grid">${captures.map((c) => { const src = mediaDataUri(c.path); const search = `${c.name} ${c.source} ${c.workspace} ${c.intent?.itemId ?? ""} ${c.intent?.purpose ?? ""} ${(c.intent?.inspectFor ?? []).join(" ")}`.toLowerCase(); return `<article class="card searchable" data-search="${escapeAttr(search)}"><div class="thumb">${src ? `<img src="${src}" alt="${escapeAttr(c.name)}" loading="lazy">` : `<span class="muted">${escapeHtml(formatBytes(c.size))}</span>`}</div><h3>${escapeHtml(path.basename(c.path))}</h3><div class="meta"><span class="badge">${escapeHtml(c.source)}</span>${c.workspace ? `<span class="badge">${escapeHtml(c.workspace)}</span>` : ""}${c.intent?.itemId ? `<span class="badge">${escapeHtml(c.intent.itemId)}</span>` : ""}${c.intent?.role ? `<span class="badge">${escapeHtml(c.intent.role)}</span>` : ""}<span class="badge">${escapeHtml(c.time)}</span><span class="badge">${escapeHtml(formatBytes(c.size))}</span></div>${renderCaptureIntentSummary(c.intent)}<div class="path">${escapeHtml(c.name)}</div><div class="actions">${artifactOpenButtons(c.path)}</div></article>`; }).join("\n")}</div>`;
 }
 
 function renderCaptureCards(captures: CaptureEntry[], frames: FrameTranscriptEntry[]): string {

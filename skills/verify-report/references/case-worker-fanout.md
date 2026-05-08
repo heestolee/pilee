@@ -50,6 +50,15 @@ verify-workers/
         "viewport": "390x844",
         "role": "member"
       },
+      "plannedEvidence": [
+        {
+          "label": "After — mobile 390px",
+          "role": "primary",
+          "purpose": "모바일에서 신규 버튼이 fold 위에 노출되는지 확인",
+          "inspectFor": ["버튼 위치", "기존 sticky CTA와 겹침 없음"],
+          "expected": "버튼이 보이고 CTA와 겹치지 않는다"
+        }
+      ],
       "allowedActions": [
         "open beforeUrl and capture primary crop",
         "open afterUrl and capture primary crop",
@@ -78,8 +87,15 @@ main이 이미 가진 공유 증거와 worker가 만들어야 할 planned eviden
 - Expected: 버튼이 fold 위에 보이고 기존 CTA와 겹치지 않는다.
 - Planned evidence:
   - `v1-mobile-before.png` — before crop, 390x844, member
+    - 왜: 변경 전 기준 위치를 비교하기 위해
+    - 봐야 할 것: 기존 CTA 위치, overlap baseline
+    - 기대: 신규 버튼 없음, 기존 CTA 정상
   - `v1-mobile-after.png` — after crop, 390x844, member
+    - 왜: 모바일에서 신규 버튼이 fold 위에 노출되는지 확인
+    - 봐야 할 것: 버튼 위치, 기존 sticky CTA와 겹침 없음
+    - 기대: 버튼이 보이고 CTA와 겹치지 않음
   - `v1-mobile-console.txt` — console error excerpt
+    - 왜: 화면은 정상이어도 런타임 오류가 없는지 확인
 - Allowed actions: open URL, capture screenshot/crop, read console, no login/account mutation unless role session is already provided.
 ```
 
@@ -139,7 +155,17 @@ Return and write JSON:
   "itemId": "V1",
   "verdict": "PASS | FAIL | UNVERIFIED",
   "evidence_created": [
-    { "path": "...", "kind": "image|json|text|network|console", "label": "..." }
+    {
+      "path": "...",
+      "kind": "image|json|text|network|console",
+      "label": "After — mobile 390px",
+      "role": "primary",
+      "relatedItem": "V1",
+      "purpose": "모바일에서 신규 버튼이 fold 위에 노출되는지 확인",
+      "inspectFor": ["버튼 위치", "기존 sticky CTA와 겹침 없음"],
+      "expected": "버튼이 보이고 CTA와 겹치지 않는다",
+      "observed": "버튼이 title 아래에 보이며 overlap 없음"
+    }
   ],
   "evidence_used": ["path"],
   "reason": "...",
@@ -158,6 +184,12 @@ type CaseWorkerResult = {
     path: string;
     kind: "image" | "gif" | "json" | "text" | "network" | "console" | "diff" | "link";
     label: string;
+    role: "primary" | "supporting" | "raw" | string;
+    relatedItem: string;
+    purpose: string;
+    inspectFor: string[];
+    expected: string;
+    observed: string;
   }>;
   evidence_used: string[];
   reason: string;
@@ -176,12 +208,13 @@ Main은 worker 결과를 그대로 report에 복사하지 않는다.
 
 1. `resultPath`를 읽고 JSON이 schema를 만족하는지 확인한다.
 2. `evidence_created`/`evidence_used` 경로가 실제로 존재하는지 확인한다.
-3. evidence가 item의 `expected`와 `requiredAxes`를 닫는지 spot-check한다. 이미지면 열어보거나 crop/metadata를 확인하고, text/json이면 핵심 excerpt를 확인한다.
-4. Verdict mapping:
+3. 각 evidence에 `purpose`, `inspectFor`, `expected`, `observed`, `role`, `relatedItem`이 들어 있는지 확인한다. 누락되면 main이 보완하거나 worker에 재작성 요청한다.
+4. evidence가 item의 `expected`와 `requiredAxes`를 닫는지 spot-check한다. 이미지면 열어보거나 crop/metadata를 확인하고, text/json이면 핵심 excerpt를 확인한다.
+5. Verdict mapping:
    - `PASS`: planned evidence가 모든 필수 축을 닫을 때만 `verify_report_live update status=pass`.
    - `FAIL`: planned evidence가 기대 결과와 충돌하면 `status=fail`.
    - `UNVERIFIED`: main이 추가 evidence 수집, brief 수정 후 재위임, 기준 명확화 질문, 또는 Coverage Gap 기록 중 하나로 처리.
-5. worker 간 충돌이 있으면 main이 증거를 다시 읽고, 필요하면 challenger/reviewer를 별도로 호출한다. 충돌을 숨기고 PASS로 닫지 않는다.
+6. worker 간 충돌이 있으면 main이 증거를 다시 읽고, 필요하면 challenger/reviewer를 별도로 호출한다. 충돌을 숨기고 PASS로 닫지 않는다.
 
 ## Report detail convention
 

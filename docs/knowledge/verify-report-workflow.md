@@ -73,6 +73,12 @@ Primary evidence는 검증 포인트가 바로 보이는 viewport/section/elemen
 
 긴 캡처를 그대로 본문에 펼치면 리뷰어가 실제 검증 지점을 찾기 어렵습니다. 따라서 Verify Report는 “전체 페이지를 찍었다”보다 “어떤 영역에서 무엇을 확인했는가”를 우선합니다.
 
+## Evidence Intent Rule
+
+Evidence는 파일 경로가 아니라 “검증 의도를 가진 관찰 단위”여야 합니다. report item evidence와 case worker result의 `evidence_created`에는 가능한 한 `purpose`(왜 수집했나), `inspectFor`(리뷰어가 봐야 할 것), `expected`(닫아야 할 기준), `observed`(실제 관찰), `role`(primary/supporting/raw), `relatedItem`(V1 같은 항목 id)을 함께 적습니다.
+
+이 metadata는 live/static report의 evidence card와 `/show-report` 캡처/미디어 raw card·preview의 관찰 가이드로 재사용됩니다. 따라서 시간이 지난 뒤 원본 PNG/GIF/JSON만 열어도 “이 파일이 왜 남았는지”와 “어디를 봐야 하는지”를 알 수 있어야 합니다. Metadata가 없으면 artifact browser는 원자료를 보여줄 수는 있지만 판정 근거로 읽기 어렵기 때문에, main agent가 보완하거나 Coverage Gap에 남겨야 합니다.
+
 ## Case Worker Fan-out Rule
 
 `/verify-report`는 별도 `--workers` 모드를 노출하지 않습니다. 기본값은 “main이 검증 계약을 정하고, case worker subagent가 계획된 증거 수집과 1차 검증을 병렬 수행하며, main이 최종 판정한다”입니다. 사용자가 `--no-workers`를 지정하거나 단일·자명한 항목이면 main이 직접 실행·판정합니다.
@@ -95,6 +101,7 @@ report preview는 artifact browser 안에서 `/preview` route로 열리고, top 
 - 사용자가 upload를 명시하지 않으면 로컬 report와 archive까지만 처리합니다.
 - “화면이 바뀌지 않는다”는 이유로 검증을 생략하지 않고, 더 적절한 evidence type을 선택합니다.
 - UI evidence는 crop/section image를 primary로 두고, 긴 full-page image는 supporting으로 둡니다.
+- evidence에는 purpose/inspectFor/expected/observed/role/relatedItem을 붙여 raw artifact가 나중에도 읽히게 합니다.
 - 기존 대비 변화가 검증 포인트이면 before/after를 포함합니다.
 - before가 없거나 위험하면 생략 사유를 detail 또는 Coverage Gap에 남깁니다.
 - 여러 검증 축은 기본적으로 case worker fan-out을 사용해 planned capture/log/test flow를 병렬화하되, `--no-workers`는 main 직접 실행·판정 escape hatch입니다.

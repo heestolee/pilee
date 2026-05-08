@@ -14,6 +14,7 @@ argument-hint: "[base-url] [--upload] [--update] [--ask-before] [--no-workers]"
 - **캡처/증거 우선**: UI는 화면 캡처를 우선 증거로 삼고, 비가시 동작은 성공 기준을 어떤 로그/결과로 확인할지 먼저 정한다.
 - **미검증 명시**: 자동화로 확인하지 못한 항목은 PASS로 쓰지 않고 `미검증`/`blocked`/`Coverage Gap`에 남긴다.
 - **짧고 초점 있는 primary evidence**: 리포트 본문 핵심 증거는 viewport/섹션/element crop을 우선한다. 세로로 긴 full-page 캡처는 필요할 때만 보조 증거로 남기고 토글/appendix/link 뒤에 둔다.
+- **Raw evidence에도 의도를 붙인다**: 모든 evidence에는 가능한 한 `purpose`, `inspectFor`, `expected`, `observed`, `role`, `relatedItem`을 붙여 “왜 수집했는지 / 무엇을 봐야 하는지”가 `/show-report`의 캡처/미디어 탭에서도 보이게 한다.
 - **Before/After 비교는 판단해서 포함**: 기존 UI/동작이 기준점으로 의미 있는 변경은 작업 전(before)과 작업 후(after)를 같은 축/viewport/role로 캡처하고, 차이를 설명한다. 신규 화면처럼 baseline이 없거나 부작용 위험이 큰 경우는 생략 사유를 남긴다.
 - **업로드 opt-in**: 기본 `/verify-report`는 로컬 리포트 확인까지만 한다. project artifact storage 업로드와 PR 본문 갱신은 `--upload` 또는 사용자의 명시적 업로드 액션이 있을 때만 한다.
 - **Case worker fan-out 기본**: main agent가 coverage 계획·환경·허용 액션을 정의하고, 여러 검증 축은 case worker subagent가 계획된 캡처/로그/명령 실행과 1차 검증을 병렬 수행한다. `--no-workers`가 있거나 단일·자명한 항목이면 main이 직접 실행한다.
@@ -216,13 +217,24 @@ URL: https://example.local/path
     "type": "UI_CAPTURE",
     "status": "pass",
     "detail": "Preview 환경에서 버튼 노출 확인",
-    "evidence": [{ "label": "버튼 노출", "kind": "image", "path": ".context/work/{workspace}/captures/v1-button.png" }]
+    "evidence": [{
+      "label": "After — mobile 390px",
+      "kind": "image",
+      "path": ".context/work/{workspace}/captures/v1-button.png",
+      "role": "primary",
+      "relatedItem": "V1",
+      "purpose": "모바일에서 신규 버튼이 fold 위에 노출되는지 확인",
+      "inspectFor": ["버튼 위치", "기존 sticky CTA와 겹침 없음"],
+      "expected": "버튼이 보이고 CTA와 겹치지 않는다",
+      "observed": "버튼이 title 아래에 보이며 overlap 없음"
+    }]
   }
 }
 ```
 
 - UI 캡처 증거: primary crop PNG/GIF를 먼저 남기고, full-page는 필요 시 supporting으로 남긴다.
 - Before/After 증거: label을 `Before — ...`, `After — ...`로 시작하고, detail에 “무엇이 달라져야 하는지 / 달라지면 안 되는지”를 설명한다.
+- Raw evidence intent: `purpose`에는 수집 이유, `inspectFor`에는 리뷰어가 봐야 할 포인트, `expected`에는 닫아야 할 기준, `observed`에는 실제 관찰, `role`에는 primary/supporting/raw, `relatedItem`에는 V1 같은 검증 항목 id를 넣는다.
 - NETWORK 증거: 필터 조건, matched count, matched request 목록을 JSON/TXT로 남긴다.
 - CONSOLE 증거: 콘솔 error/warn/log excerpt를 남긴다.
 - CODE_DIFF 증거: 관련 파일/라인과 diff summary를 남긴다.
@@ -238,7 +250,7 @@ PASS 처리 조건:
 Fan-out을 사용할 경우, 실행 전에 `.context/work/{workspace}/captures/verify-workers/`에 최소 세 가지를 작성한다.
 
 - `plan.json`: 검증 항목, 필수 coverage axis, 기대 결과, 환경(URL/viewport/role), worker별 허용 액션, output path
-- `evidence-index.md`: main이 이미 가진 공유 증거와 worker가 만들어야 할 planned evidence 목차
+- `evidence-index.md`: main이 이미 가진 공유 증거와 worker가 만들어야 할 planned evidence 목차. 각 evidence마다 왜/봐야 할 것/기대/관찰/역할/관련 기준을 적는다.
 - `briefs/{itemId}.md`: subagent가 읽을 case별 작업 지시. 허용/금지 액션과 result JSON path를 명시
 
 큰 이미지/영상은 복사하지 말고 기존 `.context/work/{workspace}/captures/` 경로를 참조한다. Worker가 새로 만드는 evidence도 이 capture root 아래에 저장하게 한다.

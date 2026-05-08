@@ -72,6 +72,8 @@ artifact 종류가 늘어나면 한 목록에 섞지 않습니다. `/show-report
 
 metadata가 없으면 workspace fallback이나 미분류 group으로 남깁니다. 그룹화는 raw evidence를 판정 리포트로 승격하는 것이 아니라, 많은 캡처가 쌓였을 때 재탐색 가능한 구조를 제공하는 것입니다.
 
+Raw capture가 verify-report case worker 결과에서 온 경우에는 `purpose`, `inspectFor`, `expected`, `observed`, `role`, `relatedItem` 같은 evidence intent를 card와 preview top guide에 함께 보여줍니다. 원자료 탭은 PASS 판정을 대신하지 않지만, 파일만 보고도 “왜 남긴 캡처인지 / 어디를 봐야 하는지”를 알 수 있어야 reopenability가 실제 검토 가능성으로 이어집니다.
+
 ## Pi / Conductor Provenance Rule
 
 `/wt resume`으로 복구되어 `.pi/conductor-context.loaded.md`가 남아 있는 worktree는 `Pi 이력`의 복구 단위입니다. 이 카드에는 원본 Conductor 세션 링크, Pi 복구 세션, 이후 Pi 대화 세션을 분리해서 보여주고, 관련 검증/기획/캡처/웹 검색 artifact를 하위 섹션으로 묶습니다.
