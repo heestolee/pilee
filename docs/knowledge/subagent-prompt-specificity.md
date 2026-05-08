@@ -17,8 +17,8 @@ applies_to:
   - skills/stress-interview
 source:
   - pilee-history:2026-05-05#42
-reviewed_at: 2026-05-07
-reviewed_commit: 494055a6b74a41b899a367ba7bb22c94e978ea3c
+reviewed_at: 2026-05-08
+reviewed_commit: fdf91a44f626b47846fb59501575357657fd8ef3
 related:
   - subagent-model-policy
   - self-healing-actionable-loop

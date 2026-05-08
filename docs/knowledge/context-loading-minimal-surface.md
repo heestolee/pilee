@@ -9,6 +9,7 @@ tags:
   - autoload
 category: workflow
 status: active
+confidence: high
 applies_to:
   - AGENTS.md
   - extensions/context-loader
@@ -20,8 +21,8 @@ source:
   - pilee-history:2026-05-01#10
   - pilee-history:2026-05-01#19
   - pilee-history:2026-05-01#24
-reviewed_at: 2026-05-07
-reviewed_commit: f1480c7b2a651eb5eba20709293b9839f4f91587
+reviewed_at: 2026-05-08
+reviewed_commit: fdf91a44f626b47846fb59501575357657fd8ef3
 related:
   - private-journal-public-doctrine
   - tool-output-noise-management

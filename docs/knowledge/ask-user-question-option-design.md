@@ -12,6 +12,7 @@ tags:
   - 번호형
 category: workflow
 status: active
+confidence: high
 applies_to:
   - skills/ask-user-question-rules
   - skills/tft-guidelines
@@ -24,8 +25,8 @@ source:
   - pilee-history:2026-05-01#5
   - pilee-history:2026-05-06#65
   - user-direction:2026-05-07-local-resolver
-reviewed_at: 2026-05-07
-reviewed_commit: f1480c7b2a651eb5eba20709293b9839f4f91587
+reviewed_at: 2026-05-08
+reviewed_commit: fdf91a44f626b47846fb59501575357657fd8ef3
 related:
   - ask-user-question-decision-gates
   - evidence-first-verification-gate

@@ -18,8 +18,8 @@ applies_to:
 source:
   - pilee-history:2026-05-06#67
   - pilee-history:2026-05-07#73
-reviewed_at: 2026-05-07
-reviewed_commit: 264ea1727c5c7defa23e8452c8c4ccd801959235
+reviewed_at: 2026-05-08
+reviewed_commit: fdf91a44f626b47846fb59501575357657fd8ef3
 related:
   - frame-planning-identity
   - frame-verify-contract
@@ -37,7 +37,9 @@ Frame Studio의 소유자는 현재 패널이 아니라 작업 단위입니다. 
 
 ## Interaction Rule
 
-Frame Studio는 markdown live view와 single/multi option, 직접 입력을 지원합니다. 사용자가 선택하거나 취소하면 tool 응답으로 돌아오고, headless/no-UI 환경에서는 blocking하지 않고 numbered text fallback으로 내려갑니다.
+Frame Studio는 markdown live view와 single/multi option, 직접 입력을 지원합니다. markdown live view는 frame draft의 success criteria처럼 표가 핵심인 문서를 그대로 읽을 수 있어야 하므로 GitHub-style pipe table(`| header |`, `|---|`)을 table로 렌더링합니다. 표가 raw pipe paragraph로 깨지면 검증 기준을 함께 좁히는 UI 목적을 잃습니다.
+
+사용자가 선택하거나 취소하면 tool 응답으로 돌아오고, headless/no-UI 환경에서는 blocking하지 않고 numbered text fallback으로 내려갑니다. 질문 대기는 agent turn을 붙잡는 blocking 상태라서 무한 대기하지는 않지만, 실제 frame 검토는 긴 회의/휴식 후에도 이어질 수 있으므로 기본 timeout은 짧은 30분이 아니라 작업 세션 단위의 긴 window로 둡니다.
 
 사용자가 선택한 뒤에는 완료 카드가 선택값·직접 입력값·원 질문을 남겨 “Pi가 다음 단계를 준비 중”임을 보여줍니다. 즉 선택 직후 질문 UI가 사라져도 사용자가 방금 무엇을 제출했는지 화면에서 확인할 수 있어야 합니다.
 
