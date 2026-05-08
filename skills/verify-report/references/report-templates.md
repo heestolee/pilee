@@ -112,15 +112,16 @@
 
 Verify Report renderer는 외부 generative UI dependency에 의존하지 않고, 좋은 시각화 패턴만 deterministic HTML/CSS 기본값으로 흡수한다.
 
-- Flat: 장식용 gradient, heavy shadow, noisy background를 피하고 border/surface/spacing으로 위계를 만든다.
+- Strong verdict: 상단 PASS/PARTIAL/GAP 판정은 한눈에 보여야 한다. 색상/배너/요약 카드는 장식이 아니라 판단 방향을 잡는 장치다.
 - Compact: 상단에는 핵심 판정과 coverage gap만 두고, raw 원문은 접는다.
 - Goal-oriented: 가능한 경우 항목을 “목표 → 검증 방법 → 결과 → 증거” 흐름으로 보여준다.
 - Visual only where useful: UI 변경이 없는 NETWORK/CONSOLE/CODE_DIFF 검증은 억지 스크린샷보다 count/table/diagram 같은 기계적 근거를 우선한다.
+- Co-located raw: raw evidence는 관련 검증 item 안에 두되, full-width 세로 토글로 배치해 원문과 intent를 읽기 쉽게 한다.
 - Deterministic: AI가 매번 report HTML을 새로 디자인하지 않고, renderer가 일관된 구조와 접근성을 보장한다.
 
 ### Raw evidence 표시 원칙
 
-JSON/TXT/network/console/diff처럼 원문 확인이 필요한 evidence는 별도 “의도 인덱스” 섹션으로 분리하지 않고, 해당 raw evidence의 `<details>` 토글 안에 intent block을 함께 둔다.
+JSON/TXT/network/console/diff처럼 원문 확인이 필요한 evidence는 별도 “의도 인덱스” 섹션으로 분리하지 않고, 해당 raw evidence의 `<details>` 토글 안에 intent block을 함께 둔다. 토글은 해당 검증 item 안에 co-locate하되, 가로 grid의 반쪽 카드가 아니라 full-width 세로 카드로 표시한다.
 
 권장 구조:
 

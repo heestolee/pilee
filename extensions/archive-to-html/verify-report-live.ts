@@ -595,7 +595,8 @@ function renderEvidenceStatic(evidence: Evidence, state: VerifyReportState): str
 	else if (evidence.text) body = `<pre><code>${escapeHtml(evidence.text)}</code></pre>`;
 	if (!body) return "";
 	const roleClass = evidence.role ? ` evidence-role-${evidence.role.replace(/[^a-z0-9_-]/gi, "-").toLowerCase()}` : "";
-	return `<article class="evidence-card${roleClass}"><div class="evidence-card-head"><strong>${escapeHtml(label)}</strong>${kind ? `<span>${escapeHtml(kind)}</span>` : ""}</div>${body}${rawDetails ? "" : renderEvidenceIntentStatic(evidence)}</article>`;
+	const layoutClass = rawDetails ? " evidence-raw-card" : "";
+	return `<article class="evidence-card${roleClass}${layoutClass}"><div class="evidence-card-head"><strong>${escapeHtml(label)}</strong>${kind ? `<span>${escapeHtml(kind)}</span>` : ""}</div>${body}${rawDetails ? "" : renderEvidenceIntentStatic(evidence)}</article>`;
 }
 
 function generateLivePage(initialState: unknown): string {
@@ -634,6 +635,7 @@ function generateLivePage(initialState: unknown): string {
 	.detail { color:var(--detail); line-height:1.55; white-space:pre-wrap; }
 	.evidence { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap:12px; margin-top:12px; align-items:start; }
 	.evidence-card { border:1px solid var(--line); border-radius:14px; background:var(--panel2); padding:12px; min-width:0; }
+	.evidence-card.evidence-raw-card { grid-column:1 / -1; }
 	.evidence-card-head { display:flex; justify-content:space-between; gap:8px; align-items:center; margin-bottom:8px; color:var(--detail); }
 	.evidence-card-head span { color:var(--muted); font-size:11px; text-transform:uppercase; }
 	.evidence-intent { display:grid; gap:7px; margin:10px 0 0; }
@@ -718,7 +720,7 @@ function evHtml(ev) {
   else if (raw) body = rawDetailsHtml(ev, kind, label);
   else if (ev.text) body = '<pre><code>' + esc(ev.text) + '</code></pre>';
   if (!body) return '';
-  return '<article class="evidence-card"><div class="evidence-card-head"><strong>' + esc(label) + '</strong><span>' + esc(kind) + '</span></div>' + body + (raw ? '' : evIntentHtml(ev)) + '</article>';
+  return '<article class="evidence-card' + (raw ? ' evidence-raw-card' : '') + '"><div class="evidence-card-head"><strong>' + esc(label) + '</strong><span>' + esc(kind) + '</span></div>' + body + (raw ? '' : evIntentHtml(ev)) + '</article>';
 }
 function render() {
   var items = state.items || [];
@@ -775,31 +777,31 @@ function generateStaticReportHtml(state: VerifyReportState): string {
 		font-family: -apple-system, BlinkMacSystemFont, 'Pretendard', 'Apple SD Gothic Neo', 'Segoe UI', sans-serif;
 		line-height: 1.6;
 		color: #1f2937;
-		background: #fafaf9;
+		background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
 		min-height: 100vh;
 	}
 	.container { max-width: 1100px; margin: 0 auto; padding: 40px 24px; }
 	header {
-		background: #ffffff;
-		color: #111827;
-		padding: 32px;
-		border: 1px solid #e5e7eb;
+		background: linear-gradient(135deg, #10b981 0%, #047857 100%);
+		color: white;
+		padding: 40px;
 		border-radius: 14px;
-		margin-bottom: 24px;
+		margin-bottom: 32px;
+		box-shadow: 0 10px 25px rgba(16, 185, 129, 0.2);
 	}
 	header h1 { font-size: 28px; line-height: 1.25; margin-bottom: 8px; }
-	header .subtitle { font-size: 16px; color: #4b5563; }
-	header .meta { margin-top: 16px; font-size: 14px; color: #6b7280; display: flex; gap: 12px; flex-wrap: wrap; }
-	.badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border: 1px solid #e5e7eb; border-radius: 999px; font-size: 12px; font-weight: 700; background: #f9fafb; color: inherit; }
+	header .subtitle { font-size: 16px; opacity: 0.92; }
+	header .meta { margin-top: 16px; font-size: 14px; opacity: 0.88; display: flex; gap: 12px; flex-wrap: wrap; }
+	.badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; background: rgba(255,255,255,0.20); color: inherit; }
 	.badge.outcome.pass { background: rgba(209, 250, 229, .95); color: #065f46; }
 	.badge.outcome.partial { background: rgba(254, 243, 199, .95); color: #92400e; }
 	.badge.outcome.fail { background: rgba(254, 226, 226, .95); color: #991b1b; }
 	section {
 		background: white;
-		border: 1px solid #e5e7eb;
 		border-radius: 14px;
-		padding: 28px;
-		margin-bottom: 20px;
+		padding: 32px;
+		margin-bottom: 24px;
+		box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 	}
 	section h2 { font-size: 22px; margin-bottom: 16px; color: #111827; display: flex; align-items: center; gap: 8px; }
 	section h3 { font-size: 16px; margin-bottom: 8px; color: #374151; }
@@ -838,6 +840,7 @@ function generateStaticReportHtml(state: VerifyReportState): string {
 	.step-meta { color: #6b7280; font-size: 13px; margin-top: 2px; }
 	.evidence { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 14px; margin-top: 14px; align-items: start; }
 	.evidence-card { border: 1px solid #e5e7eb; border-radius: 12px; background: #fff; padding: 12px; min-width: 0; }
+	.evidence-card.evidence-raw-card { grid-column: 1 / -1; }
 	.evidence-card-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; margin-bottom: 8px; color: #1f2937; }
 	.evidence-card-head span { color: #6b7280; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
 	.evidence-intent { display: grid; gap: 7px; margin: 10px 0 0; }
@@ -852,7 +855,7 @@ function generateStaticReportHtml(state: VerifyReportState): string {
 	.raw-evidence-note { margin: 10px 12px; color: #6b7280; font-size: 12px; }
 	.raw-evidence pre { margin: 0; border-radius: 0; max-height: 460px; }
 	figure { margin: 0; }
-	img { display: block; max-width: 100%; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; }
+	img { display: block; max-width: 100%; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
 	figcaption { color: #6b7280; font-size: 12px; margin-top: 6px; }
 	.tall-evidence { border: 1px dashed #d1d5db; border-radius: 10px; padding: 12px 14px; background: #fff; }
 	.tall-evidence summary { cursor: pointer; font-weight: 800; color: #374151; }

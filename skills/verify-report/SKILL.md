@@ -16,7 +16,7 @@ argument-hint: "[base-url] [--upload] [--update] [--ask-before] [--no-workers]"
 - **짧고 초점 있는 primary evidence**: 리포트 본문 핵심 증거는 viewport/섹션/element crop을 우선한다. 세로로 긴 full-page 캡처는 필요할 때만 보조 증거로 남기고 토글/appendix/link 뒤에 둔다.
 - **Raw evidence에도 의도를 붙인다**: 모든 evidence에는 가능한 한 `purpose`, `inspectFor`, `expected`, `observed`, `role`, `relatedItem`을 붙여 “왜 수집했는지 / 무엇을 봐야 하는지”가 report와 `/show-report`의 캡처/미디어 탭에서도 보이게 한다. Raw 파일의 의도는 별도 섹션으로 분리하지 말고 해당 raw 토글 내부 상단에 함께 보여 시선이 흩어지지 않게 한다.
 - **판정은 엄격하게, 레이아웃은 기본값으로**: PASS/미검증/coverage gap과 evidence metadata는 strict하게 지키되, 섹션 순서·카드 수·표현 방식은 케이스에 맞게 renderer default가 흡수한다. 에이전트는 양식 채우기보다 기준을 증거로 닫는 데 집중한다.
-- **Renderer design default**: report UI는 generative-ui식 flat/compact visual pattern을 따른다. 장식용 gradient/shadow/과한 배경보다 얇은 border, 명확한 badge, 목표→방법→결과 정보 위계, raw toggle 내부 intent co-location을 우선한다. 새 dependency를 붙여 AI가 매번 HTML을 생성하게 하지 않고, 검증 artifact는 deterministic renderer가 만든다.
+- **Renderer design default**: report UI는 generative-ui식 디자인 절제를 참고하되, 사용자에게 읽고 싶을 만큼 강한 verdict/coverage hierarchy를 제공한다. 검증 report는 심심한 문서가 아니라 판단 artifact이므로 상단 verdict, PASS/GAP 색상, 핵심 증거 카드의 리듬을 살린다. 새 dependency를 붙여 AI가 매번 HTML을 생성하게 하지 않고, deterministic renderer가 일관된 구조를 만든다.
 - **Before/After 비교는 판단해서 포함**: 기존 UI/동작이 기준점으로 의미 있는 변경은 작업 전(before)과 작업 후(after)를 같은 축/viewport/role로 캡처하고, 차이를 설명한다. 신규 화면처럼 baseline이 없거나 부작용 위험이 큰 경우는 생략 사유를 남긴다.
 - **업로드 opt-in**: 기본 `/verify-report`는 로컬 리포트 확인까지만 한다. project artifact storage 업로드와 PR 본문 갱신은 `--upload` 또는 사용자의 명시적 업로드 액션이 있을 때만 한다.
 - **Case worker fan-out 기본**: main agent가 coverage 계획·환경·허용 액션을 정의하고, 여러 검증 축은 case worker subagent가 계획된 캡처/로그/명령 실행과 1차 검증을 병렬 수행한다. `--no-workers`가 있거나 단일·자명한 항목이면 main이 직접 실행한다.
@@ -236,7 +236,7 @@ URL: https://example.local/path
 
 - UI 캡처 증거: primary crop PNG/GIF를 먼저 남기고, full-page는 필요 시 supporting으로 남긴다.
 - Before/After 증거: label을 `Before — ...`, `After — ...`로 시작하고, detail에 “무엇이 달라져야 하는지 / 달라지면 안 되는지”를 설명한다.
-- Raw evidence intent: `purpose`에는 수집 이유, `inspectFor`에는 리뷰어가 봐야 할 포인트, `expected`에는 닫아야 할 기준, `observed`에는 실제 관찰, `role`에는 primary/supporting/raw, `relatedItem`에는 V1 같은 검증 항목 id를 넣는다. `verify_report_live finish`는 이 metadata를 `captures/evidence-intent.json` sidecar로 남겨 `/show-report` raw media preview에서도 재사용한다. 정적 report에서는 JSON/TXT/network/console/diff 같은 raw evidence를 기본 접힘 토글로 렌더하고, 토글 내부 상단에 intent block을 먼저 보여준 뒤 raw 원문을 둔다.
+- Raw evidence intent: `purpose`에는 수집 이유, `inspectFor`에는 리뷰어가 봐야 할 포인트, `expected`에는 닫아야 할 기준, `observed`에는 실제 관찰, `role`에는 primary/supporting/raw, `relatedItem`에는 V1 같은 검증 항목 id를 넣는다. `verify_report_live finish`는 이 metadata를 `captures/evidence-intent.json` sidecar로 남겨 `/show-report` raw media preview에서도 재사용한다. 정적 report에서는 JSON/TXT/network/console/diff 같은 raw evidence를 각 검증 item 안의 기본 접힘 토글로 렌더하고, 토글 내부 상단에 intent block을 먼저 보여준 뒤 raw 원문을 둔다. Raw evidence card는 가로 grid에 끼워 반쪽 너비가 되지 않게 full-width 세로 배치한다.
 - NETWORK 증거: 필터 조건, matched count, matched request 목록을 JSON/TXT로 남긴다.
 - CONSOLE 증거: 콘솔 error/warn/log excerpt를 남긴다.
 - CODE_DIFF 증거: 관련 파일/라인과 diff summary를 남긴다.
