@@ -615,8 +615,16 @@ function artifactPreviewInnerHtml(filePath: string, options: { full?: boolean } 
 	return { title: path.basename(filePath), html: `${notice}<pre>${escapeHtml(preview.text)}</pre>` };
 }
 
-function buildArtifactPreviewHtml(filePath: string, options: { full?: boolean } = {}): string {
+function sanitizePreviewReturnTo(value: string | null | undefined): string {
+	if (!value) return "/";
+	const trimmed = value.trim();
+	if (!trimmed.startsWith("/") || trimmed.startsWith("//") || /[\r\n]/.test(trimmed)) return "/";
+	return trimmed;
+}
+
+function buildArtifactPreviewHtml(filePath: string, options: { full?: boolean; returnTo?: string } = {}): string {
 	const { title, html } = artifactPreviewInnerHtml(filePath, options);
+	const returnTo = sanitizePreviewReturnTo(options.returnTo);
 	const artifactDataUri = `data:text/html;charset=utf-8;base64,${Buffer.from(html, "utf8").toString("base64")}`;
 	return `<!doctype html>
 <html lang="ko">
@@ -647,7 +655,7 @@ function buildArtifactPreviewHtml(filePath: string, options: { full?: boolean } 
 			<span>${escapeHtml(filePath)}</span>
 		</div>
 		<div class="actions">
-			<button type="button" onclick="location.href='/'">이전</button>
+			<button type="button" data-return-to="${escapeAttr(returnTo)}" onclick="location.href=this.dataset.returnTo||'/'">이전</button>
 			<button type="button" data-path="${escapeAttr(filePath)}" onclick="openOriginal(this)">브라우저에서 열기</button>
 			<button type="button" onclick="window.close()">닫기</button>
 		</div>
@@ -1137,6 +1145,7 @@ function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData,
 			}
 			if (req.method === "GET" && url.pathname === "/preview") {
 				const requested = url.searchParams.get("path") || "";
+				const returnTo = sanitizePreviewReturnTo(url.searchParams.get("return"));
 				let resolved = "";
 				try { resolved = fs.realpathSync(requested); } catch {}
 				if (!resolved || !allowedPaths.has(resolved)) {
@@ -1145,7 +1154,7 @@ function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData,
 					return;
 				}
 				res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-				res.end(buildArtifactPreviewHtml(resolved, { full: url.searchParams.get("full") === "1" }));
+				res.end(buildArtifactPreviewHtml(resolved, { full: url.searchParams.get("full") === "1", returnTo }));
 				return;
 			}
 			if (req.method === "POST" && url.pathname === "/open") {
@@ -1158,13 +1167,14 @@ function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData,
 					res.end(JSON.stringify({ ok: false, error: "Path is not in this Artifact Browser." }));
 					return;
 				}
+				const returnTo = sanitizePreviewReturnTo(url.searchParams.get("return"));
 				const isSession = path.extname(resolved).toLowerCase() === ".jsonl" || isSessionJsonlPath(resolved);
 				let previewResolved = resolved;
 				if (isSession) {
 					previewResolved = fs.realpathSync(await exportSessionArtifactToHtml(pi, resolved));
 					allowedPaths.add(previewResolved);
 				}
-				const previewPath = `/preview?path=${encodeURIComponent(previewResolved)}`;
+				const previewPath = `/preview?path=${encodeURIComponent(previewResolved)}&return=${encodeURIComponent(returnTo)}`;
 				if (target === "glimpse") {
 					res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
 					res.end(JSON.stringify({ ok: true, mode: "glimpse", previewUrl: previewPath }));
@@ -2136,45 +2146,63 @@ function buildArtifactBrowserHtml(data: ArtifactBrowserData, cwd: string): strin
 (function(){
 	function qs(selector, root=document){ return root.querySelector(selector); }
 	function qsa(selector, root=document){ return Array.from(root.querySelectorAll(selector)); }
-	window.showTab = function(tab){
+	function hashParams(){ return new URLSearchParams((window.location.hash || '').replace(/^#/, '')); }
+	function writeBrowserState(state){
+		const params = new URLSearchParams();
+		if (state.tab) params.set('tab', state.tab);
+		if (state.pi) params.set('pi', state.pi);
+		if (state.conductor) params.set('conductor', state.conductor);
+		if (state.capture) params.set('capture', state.capture);
+		const hash = params.toString();
+		window.history.replaceState(null, '', window.location.pathname + window.location.search + (hash ? '#' + hash : ''));
+	}
+	function currentReturnPath(){ return window.location.pathname + window.location.search + (window.location.hash || ''); }
+	window.showTab = function(tab, opts){
 		qsa('.tab').forEach((btn) => btn.classList.toggle('active', btn.dataset.tab === tab));
 		qsa('.panel').forEach((panel) => panel.classList.toggle('active', panel.id === 'tab-' + tab));
 		const search = qs('#search'); if (search) search.value = '';
 		filterCards();
+		if (!(opts && opts.skipState)) writeBrowserState({ tab: tab });
 	};
 	window.filterCards = function(){
 		const query = (qs('#search')?.value || '').toLowerCase().trim();
 		qsa('.panel.active .searchable').forEach((card) => { card.style.display = !query || (card.dataset.search || '').includes(query) ? '' : 'none'; });
 	};
-	window.showCaptureGroups = function(){
+	window.showCaptureGroups = function(opts){
 		const groups = qs('#capture-groups'); const files = qs('#capture-files');
 		if (groups) groups.hidden = false; if (files) files.hidden = true;
 		qsa('.capture-group-panel').forEach((panel) => panel.hidden = true);
+		if (!(opts && opts.skipState)) writeBrowserState({ tab: 'captures' });
 	};
-	window.showCaptureGroup = function(key){
+	window.showCaptureGroup = function(key, opts){
 		const groups = qs('#capture-groups'); const files = qs('#capture-files');
 		if (groups) groups.hidden = true; if (files) files.hidden = false;
 		qsa('.capture-group-panel').forEach((panel) => panel.hidden = panel.dataset.groupPanel !== key);
+		if (!(opts && opts.skipState)) writeBrowserState({ tab: 'captures', capture: key });
 	};
-	window.showPiGroups = function(){
+	window.showPiGroups = function(opts){
 		const groups = qs('#pi-groups'); const details = qs('#pi-details');
 		if (groups) groups.hidden = false; if (details) details.hidden = true;
 		qsa('.pi-detail-panel').forEach((panel) => panel.hidden = true);
+		if (!(opts && opts.skipState)) writeBrowserState({ tab: 'pi' });
 	};
-	window.showPiDetail = function(key){
+	window.showPiDetail = function(key, opts){
 		const groups = qs('#pi-groups'); const details = qs('#pi-details');
 		if (groups) groups.hidden = true; if (details) details.hidden = false;
 		qsa('.pi-detail-panel').forEach((panel) => panel.hidden = panel.dataset.piPanel !== key);
+		if (!(opts && opts.skipState)) writeBrowserState({ tab: 'pi', pi: key });
 	};
-	window.showConductorGroups = function(){
+	window.showConductorGroups = function(opts){
 		const groups = qs('#conductor-groups'); const details = qs('#conductor-details');
 		if (groups) groups.hidden = false; if (details) details.hidden = true;
 		qsa('.conductor-detail-panel').forEach((panel) => panel.hidden = true);
+		if (!(opts && opts.skipState)) writeBrowserState({ tab: 'conductors' });
 	};
-	window.showConductorDetail = function(key){
+	window.showConductorDetail = function(key, opts){
 		const groups = qs('#conductor-groups'); const details = qs('#conductor-details');
 		if (groups) groups.hidden = true; if (details) details.hidden = false;
 		qsa('.conductor-detail-panel').forEach((panel) => panel.hidden = panel.dataset.conductorPanel !== key);
+		if (!(opts && opts.skipState)) writeBrowserState({ tab: 'conductors', conductor: key });
 	};
 	async function requestOpen(button){
 		const path = button.dataset.path;
@@ -2184,7 +2212,7 @@ function buildArtifactBrowserHtml(data: ArtifactBrowserData, cwd: string): strin
 		button.disabled = true;
 		button.textContent = target === 'browser' ? '브라우저 여는 중...' : 'Glimpse 여는 중...';
 		try {
-			const response = await fetch('/open?target=' + encodeURIComponent(target) + '&path=' + encodeURIComponent(path), { method: 'POST' });
+			const response = await fetch('/open?target=' + encodeURIComponent(target) + '&path=' + encodeURIComponent(path) + '&return=' + encodeURIComponent(currentReturnPath()), { method: 'POST' });
 			const payload = await response.json().catch(() => ({}));
 			if (!response.ok || !payload.ok) throw new Error(payload.error || 'open failed');
 			if (payload.previewUrl && target !== 'browser') { window.location.href = payload.previewUrl; return; }
@@ -2208,7 +2236,21 @@ function buildArtifactBrowserHtml(data: ArtifactBrowserData, cwd: string): strin
 		const conductor = target.closest('.open-conductor-detail');
 		if (conductor) { showConductorDetail(conductor.dataset.conductor || ''); return; }
 	});
-	showTab('${initialTab}');
+	function restoreFromHash(){
+		const params = hashParams();
+		const tab = params.get('tab') || '${initialTab}';
+		showTab(tab, { skipState: true });
+		const pi = params.get('pi');
+		const conductor = params.get('conductor');
+		const capture = params.get('capture');
+		if (tab === 'pi' && pi) showPiDetail(pi, { skipState: true });
+		else if (tab === 'pi') showPiGroups({ skipState: true });
+		if (tab === 'conductors' && conductor) showConductorDetail(conductor, { skipState: true });
+		else if (tab === 'conductors') showConductorGroups({ skipState: true });
+		if (tab === 'captures' && capture) showCaptureGroup(capture, { skipState: true });
+		else if (tab === 'captures') showCaptureGroups({ skipState: true });
+	}
+	if (window.location.hash) restoreFromHash(); else showTab('${initialTab}');
 })();
 </script></body></html>`;
 }
