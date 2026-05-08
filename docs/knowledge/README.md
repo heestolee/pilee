@@ -138,7 +138,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-05-08 | 5f2c9ae | verify, evidence, gate, done, ready, verification |
 | [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-05-08 | 5f2c9ae | frame, verify, frame-json, success-criteria, contract, verification |
 | [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-05-08 | 5f2c9ae | verify, invalidation, code-change, freshness, gate, 검증 |
-| [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | active | high | 2026-05-08 | 5f2c9ae | verify-report, verification, evidence, coverage, capture, crop |
+| [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | active | high | 2026-05-08 | 7c7c3ca | verify-report, verification, evidence, coverage, capture, crop |
 
 ### web-access
 
@@ -151,7 +151,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [검토 산출물은 다시 열 수 있어야 한다](./artifact-archive-reopenability.md) | active | high | 2026-05-08 | 9b7ea36 | artifact, archive, show-report, history, html, reopen |
+| [검토 산출물은 다시 열 수 있어야 한다](./artifact-archive-reopenability.md) | active | high | 2026-05-08 | 7c7c3ca | artifact, archive, show-report, history, html, reopen |
 | [AskUserQuestion은 의사결정 게이트다](./ask-user-question-decision-gates.md) | active | high | 2026-05-08 | 5f2c9ae | ask-user-question, tft, decision-gate, question, non-delegable, 질문 |
 | [AskUserQuestion 옵션은 행동 분기를 표현한다](./ask-user-question-option-design.md) | active | high | 2026-05-08 | 5f2c9ae | ask-user-question, option, wording, ceremony, tft, 질문 |
 | [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | high | 2026-05-08 | 9b7ea36 | backlog, tasks, provenance, source-session, session, 맥락 |
