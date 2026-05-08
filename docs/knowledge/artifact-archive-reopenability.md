@@ -27,7 +27,7 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-07-conductor-history-artifact-browser
 reviewed_at: 2026-05-08
-reviewed_commit: 7c4941464b9205f3b9699c3b070371d82ce34e09
+reviewed_commit: a9aee68f403d5e1f9195f1ee6b6cf52d08afa28d
 related:
   - live-artifact-preview-pattern
   - backlog-source-session-provenance

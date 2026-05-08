@@ -33,7 +33,7 @@ source:
   - pilee-history:2026-05-06#69
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-08
-reviewed_commit: 7c4941464b9205f3b9699c3b070371d82ce34e09
+reviewed_commit: a9aee68f403d5e1f9195f1ee6b6cf52d08afa28d
 related:
   - pilee-knowledge-system
   - web-search-curator
