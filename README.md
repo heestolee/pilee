@@ -1,3 +1,7 @@
+<p align="right">
+  <strong>한글</strong> | <a href="./README.en.md">English</a>
+</p>
+
 # pilee 🔥
 
 > 파이리(Charmander) + pi + Lee
