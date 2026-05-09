@@ -20,7 +20,7 @@ source:
   - pilee-history:2026-05-03#25
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-09
-reviewed_commit: d54d56d58ec9f5216cc5f5858e675a0addd5233e
+reviewed_commit: 5a310afa680471d618d805ecd174b7af0ea57af0
 related:
   - worktree-session-continuity
   - session-identity-over-filenames

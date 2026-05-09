@@ -20,7 +20,7 @@ source:
   - user-direction:2026-05-09-archive-command-name
   - user-direction:2026-05-09-session-classification-select-tags
 reviewed_at: 2026-05-09
-reviewed_commit: fe53a9467301441538a51e177baa5ced674063ef
+reviewed_commit: 5a310afa680471d618d805ecd174b7af0ea57af0
 related:
   - artifact-archive-reopenability
   - session-export-source-preservation
