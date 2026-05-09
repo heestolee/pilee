@@ -19,6 +19,7 @@ applies_to:
 source:
   - pilee-history:2026-05-06#67
   - pilee-history:2026-05-07#73
+  - user-direction:2026-05-09-tft-studio-optional-stages
 reviewed_at: 2026-05-09
 reviewed_commit: b10752d9e7268f12cbd6e41ec1d9567c27073d52
 related:
@@ -32,7 +33,11 @@ related:
 
 `/frame`은 사용자가 계획을 감사하게 만드는 문서 생성 명령이 아니라, 목표·범위·검증 렌즈를 함께 좁히는 decision gate입니다. Pi text-mode fallback만으로는 이 체감이 약할 수 있으므로, UI가 가능한 환경에서는 TFT Studio가 질문 흐름을 별도 Glimpse 창에 묶어 보여줍니다.
 
-TFT Studio는 Frame/Decide/Verify/Verify Report를 탭으로 나누는 작업 단위 shell입니다. 1차 구현에서는 Frame tab이 기존 co-thinking 기능을 계속 담당하고, Decide/Verify/Verify Report tab은 같은 identity 안에서 후속 stage state를 붙일 자리로 노출합니다. 탭은 UI 구획일 뿐이고, canonical source는 각 단계의 structured data여야 합니다.
+TFT Studio는 Frame/Decide/Verify/Verify Report를 탭으로 나누는 작업 단위 shell입니다. 1차 구현에서는 Frame tab이 기존 co-thinking 기능을 계속 담당하고, Decide/Verify/Verify Report tab은 같은 identity 안에서 후속 또는 선택 stage state를 붙일 자리로 노출합니다. 탭은 UI 구획일 뿐이고, canonical source는 각 단계의 structured data여야 합니다.
+
+TFT Studio는 pipeline 강제 UI가 아닙니다. `Frame → Decide → Verify → Verify Report`는 가장 풍부한 full cycle일 뿐이며, 작업 성격에 따라 `Frame only`, `Frame → Verify`, `Frame → Verify Report`, `Verify Report only`, `Decide 없이 Verify` 같은 부분 cycle도 정상 경로입니다. 전 단계 기록이 없다는 이유로 현재 탭 사용을 막지 않습니다.
+
+Self-healing도 독립 TFT stage가 아닙니다. 검증 실패나 coverage gap 이후 실행되는 repair loop이므로 별도 탭으로 두지 않고, Studio에 표시한다면 Verify tab 안의 `Self-healing runs` / `Re-verify result` append section으로 남깁니다.
 
 ## Identity Rule
 
@@ -64,4 +69,4 @@ TFT Studio는 UI에 렌더된 markdown/update/question/answer 흐름을 identity
 
 TFT Studio는 `/frame` co-thinking에서 시작해 `/decide`, `/verify`, `/verify-report`를 같은 work unit 안에 묶는 UI 계층입니다. 구현 계획을 자동 생성하거나 검증 완료를 선언하는 도구가 아닙니다. frame 결과의 검증 가능성은 여전히 [frame-verify-contract](./frame-verify-contract.md)와 [evidence-first-verification-gate](./evidence-first-verification-gate.md)의 기준을 따릅니다.
 
-Frame tab은 `frame.json`, Decide tab은 `decisions[]`, Verify tab은 검증 결과, Verify Report tab은 evidence/report artifact refs를 보여줍니다. Decide tab은 product식 tradeoff comparison과 항상 수행되는 challenge를 보여주되, 최종 원천은 `frame.json.decisions[]`의 structured record입니다. 탭 간 이동이 canonical write 순서를 우회하면 안 됩니다.
+Frame tab은 `frame.json`, Decide tab은 `decisions[]`, Verify tab은 검증 결과, Verify Report tab은 evidence/report artifact refs를 보여줍니다. Decide tab은 product식 tradeoff comparison과 항상 수행되는 challenge를 보여주되, 최종 원천은 `frame.json.decisions[]`의 structured record입니다. Verify tab은 success criteria 판정뿐 아니라 실패 이후 self-healing run과 re-verify 결과를 append할 수 있습니다. 탭 간 이동이 canonical write 순서를 우회하면 안 되지만, 빈 이전 탭이 현재 탭 사용을 차단해서도 안 됩니다.

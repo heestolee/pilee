@@ -92,8 +92,10 @@ Pi UI가 있고 `frame_studio` tool을 사용할 수 있으면, 번호형 텍스
 - tool 결과가 `unavailable`, `cancelled`, `timeout`이면 `ask-user-question-rules`의 번호형 text-mode fallback으로 이어간다.
 - TFT Studio 제목과 identity는 command shim의 **Frame identity hint**를 따른다. P0/P1 panel label이 아니라 worktree/ticket/session planning identity에 귀속한다.
 - `frame_studio` 결과의 `transcriptPath`는 전체 markdown/update/question/answer 전문 저장 위치다. 사용자가 다시 보고 싶어 하면 같은 identity로 `action=open`을 호출해 저장된 전문을 Glimpse에서 다시 연다.
-- 현재 1차 shell은 Frame tab을 실제로 사용하고, Decide/Verify/Verify Report tab은 같은 work unit 안에서 이후 stage state를 보여줄 자리로 둔다.
-- 각 탭은 UI shell일 뿐이고 canonical source는 stage별 structured data(`frame.json`, `frame.json.decisions[]`, `frame.json.verifications[]`, verify-report artifact refs)여야 한다.
+- 현재 1차 shell은 Frame tab을 실제로 사용하고, Decide/Verify/Verify Report tab은 같은 work unit 안에서 후속 또는 선택 stage state를 보여줄 자리로 둔다.
+- 단, 후속 stage라는 말은 순서 강제가 아니다. 명확한 핫픽스/소규모 검증은 `Frame → Verify`, `Frame → Verify Report`, `Frame only`, 또는 필요한 경우 `Verify Report only`도 정상 경로다.
+- 각 탭은 UI shell일 뿐이고 canonical source는 stage별 structured data(`frame.json`, `frame.json.decisions[]`, `frame.json.verifications[]`, verify-report artifact refs)여야 한다. 전 단계 기록이 없다는 이유만으로 현재 탭 사용을 막지 않는다.
+- Self-healing은 별도 TFT Studio tab이 아니다. 검증 실패/gap 이후 실행되는 repair loop이며, Studio에 표시한다면 Verify tab의 `Self-healing runs` / `Re-verify result` append section으로 남긴다.
 - TFT Studio에는 generative-ui dependency를 붙이지 않는다. 대신 flat/compact, 표·diagram은 시각 보조로만, 질문/선택/전문 보존은 deterministic renderer가 책임진다.
 
 ---

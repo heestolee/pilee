@@ -104,7 +104,7 @@ const ASK_TIMEOUT_MS = 8 * 60 * 60 * 1000;
 const STUDIO_TABS: Array<{ key: StudioTabKey; label: string; subtitle: string }> = [
 	{ key: "frame", label: "Frame", subtitle: "목표·범위·성공 기준" },
 	{ key: "decide", label: "Decide", subtitle: "대안·challenge·mitigation" },
-	{ key: "verify", label: "Verify", subtitle: "success criteria 판정" },
+	{ key: "verify", label: "Verify", subtitle: "판정·healing 기록" },
 	{ key: "verify-report", label: "Verify Report", subtitle: "증거 리포트·artifact" },
 ];
 
@@ -411,10 +411,10 @@ button { border:0; border-radius:12px; padding:10px 15px; font-weight:800; curso
 var state = null;
 var selectedTab = null;
 var STUDIO_TABS = [
-  { key:'frame', label:'Frame', subtitle:'목표·범위·성공 기준', empty:'Frame markdown을 기다리는 중...' },
-  { key:'decide', label:'Decide', subtitle:'대안·challenge·mitigation', empty:'아직 Decide stage가 연결되지 않았습니다. /decide가 같은 identity에 decision table과 challenge를 기록하면 이 탭에서 보여줄 자리입니다.' },
-  { key:'verify', label:'Verify', subtitle:'success criteria 판정', empty:'아직 Verify stage가 연결되지 않았습니다. /verify가 frame success criteria별 판정을 기록하면 이 탭에서 보여줄 자리입니다.' },
-  { key:'verify-report', label:'Verify Report', subtitle:'증거 리포트·artifact', empty:'아직 Verify Report stage가 연결되지 않았습니다. /verify-report가 생성한 report.html과 evidence artifact refs를 보여줄 자리입니다.' }
+  { key:'frame', label:'Frame', subtitle:'목표·범위·성공 기준', empty:'아직 Frame 기록이 없습니다. /frame으로 정렬을 시작하거나, 명확한 작업이면 다른 탭부터 바로 기록할 수 있습니다.' },
+  { key:'decide', label:'Decide', subtitle:'대안·challenge·mitigation', empty:'아직 Decide 기록이 없습니다. 순서 강제가 아니므로 명확한 작업은 이 탭을 비워둔 채 Verify/Verify Report를 사용할 수 있습니다. /decide가 같은 identity에 decision table과 challenge를 기록하면 여기에 표시됩니다.' },
+  { key:'verify', label:'Verify', subtitle:'판정·healing 기록', empty:'아직 Verify 기록이 없습니다. Decide가 없어도 user request, frame success criteria, diff, evidence 기준으로 바로 검증을 기록할 수 있습니다. Self-healing은 별도 탭이 아니라 실패/gap 이후 이 탭에 run/re-verify 기록으로 append합니다.' },
+  { key:'verify-report', label:'Verify Report', subtitle:'증거 리포트·artifact', empty:'아직 Verify Report 기록이 없습니다. Verify 탭 기록이 없어도 evidence report artifact를 바로 연결할 수 있습니다. 단, 검증 축이나 coverage gap은 report에 명시해야 합니다.' }
 ];
 function esc(s) { return String(s || '').replace(/[&<>"']/g, function(c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]); }); }
 function inline(s) { var tick = String.fromCharCode(96); return esc(s).replace(new RegExp(tick + '([^' + tick + ']+)' + tick, 'g'), '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>'); }
