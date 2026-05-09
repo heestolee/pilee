@@ -19,8 +19,8 @@ source:
   - pilee-history:2026-05-01#7
   - pilee-history:2026-05-05#42
   - user-direction:2026-05-07-local-resolver
-reviewed_at: 2026-05-08
-reviewed_commit: 667cefb29cd3ed9dce18f7c38033167fda158331
+reviewed_at: 2026-05-09
+reviewed_commit: bc0f77e0329817186105ad06b89835672adf2881
 related:
   - stress-interview-multi-axis-review
   - subagent-model-policy

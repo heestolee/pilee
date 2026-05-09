@@ -26,8 +26,8 @@ source:
   - pilee-history:2026-05-07#74
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-07-conductor-history-artifact-browser
-reviewed_at: 2026-05-08
-reviewed_commit: a9aee68f403d5e1f9195f1ee6b6cf52d08afa28d
+reviewed_at: 2026-05-09
+reviewed_commit: bc0f77e0329817186105ad06b89835672adf2881
 related:
   - live-artifact-preview-pattern
   - backlog-source-session-provenance

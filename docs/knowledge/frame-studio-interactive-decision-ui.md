@@ -18,8 +18,8 @@ applies_to:
 source:
   - pilee-history:2026-05-06#67
   - pilee-history:2026-05-07#73
-reviewed_at: 2026-05-08
-reviewed_commit: a09b322e08131eedb2719317a4ab4d387f488b80
+reviewed_at: 2026-05-09
+reviewed_commit: bc0f77e0329817186105ad06b89835672adf2881
 related:
   - frame-planning-identity
   - frame-verify-contract
