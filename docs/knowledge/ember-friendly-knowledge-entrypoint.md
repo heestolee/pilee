@@ -18,7 +18,7 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-09-ember-add-workflow-contract
 reviewed_at: 2026-05-09
-reviewed_commit: 74638b0ad5c03a87a38a07c7ac140679f3680320
+reviewed_commit: a62df186632e9f1bac3bbbf953fa229501f388a8
 related:
   - pilee-knowledge-system
   - private-journal-public-doctrine
