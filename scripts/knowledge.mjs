@@ -981,6 +981,7 @@ function actionableFiles(commit) {
 
 function isKnowledgeDocFile(file) {
 	return file === "README.md"
+		|| file === "README.en.md"
 		|| file === "docs/knowledge-review.md"
 		|| file === "docs/knowledge/README.md"
 		|| /^docs\/knowledge\/[^/]+\.md$/.test(file);
