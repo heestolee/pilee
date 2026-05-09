@@ -1,12 +1,13 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
-import { createServer, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ToolResultEvent } from "@mariozechner/pi-coding-agent";
+import { complete, getModel, type Api, type Message, type Model } from "@mariozechner/pi-ai";
 import { expandProfileTemplate, loadArtifactBrowserProfiles, loadConductorProfiles } from "../utils/private-profiles.ts";
 import { exportSessionFileToHtml, isPiSessionFile, openFile, SESSION_EXPORT_DIR } from "../utils/session-export.js";
 import { registerVerifyReportLive } from "./verify-report-live.js";
@@ -16,12 +17,17 @@ const FRAME_TRANSCRIPTS_DIR = path.join(os.homedir(), ".pi", "agent", "frame-stu
 const SHOW_REPORT_SESSION_EXPORT_DIR = path.join(SESSION_EXPORT_DIR, "show-report");
 const NORMALIZED_CONDUCTOR_SESSION_DIR = path.join(SHOW_REPORT_SESSION_EXPORT_DIR, "normalized");
 const FORK_PANEL_RECENT_PATH = path.join(os.homedir(), ".pi", "agent", "fork-panel", "recent.json");
+const SESSION_CLASSIFICATION_DIR = path.join(os.homedir(), ".pi", "agent", "state", "session-classification");
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const FONT_SIGNATURE = "Noto+Serif+KR";
 const REPORT_SIGNATURE = "Verify Report";
 const WEB_SEARCH_SIGNATURE = "Web Search Review";
 const MEDIA_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"]);
 const MAX_INLINE_MEDIA_BYTES = 8 * 1024 * 1024;
+const PREFERRED_CLASSIFICATION_MODELS = [
+	{ provider: "openai-codex", id: "gpt-5.4" },
+	{ provider: "openai-codex", id: "gpt-5.5" },
+] as const;
 
 const SVG_STYLES = `
 :root {
@@ -357,6 +363,86 @@ function stableHash(value: string): string {
 	return createHash("sha1").update(value).digest("hex").slice(0, 12);
 }
 
+function sessionClassificationId(filePath: string): string {
+	let resolved = filePath;
+	try { resolved = fs.realpathSync(filePath); } catch {}
+	return stableHash(resolved);
+}
+
+function sessionClassificationPath(filePath: string): string {
+	return path.join(SESSION_CLASSIFICATION_DIR, `${sessionClassificationId(filePath)}.json`);
+}
+
+function safeText(value: unknown, max = 4000): string {
+	return typeof value === "string" ? value.trim().slice(0, max) : "";
+}
+
+function safeStringList(value: unknown, maxItems = 12): string[] {
+	const raw = Array.isArray(value)
+		? value
+		: typeof value === "string"
+			? value.split(/[,#]/)
+			: [];
+	return [...new Set(raw.map((item) => String(item).trim()).filter(Boolean))].slice(0, maxItems);
+}
+
+function sanitizeSegment(raw: unknown): SessionSegmentClassification | null {
+	if (!raw || typeof raw !== "object") return null;
+	const obj = raw as Record<string, unknown>;
+	const title = safeText(obj.title, 120);
+	const summary = safeText(obj.summary, 1200);
+	const category = safeText(obj.category, 80);
+	if (!title && !summary && !category) return null;
+	const segment: SessionSegmentClassification = {
+		title: title || category || "세션 구간",
+		category: category || "미분류",
+		tags: safeStringList(obj.tags, 10),
+		summary,
+	};
+	if (Number.isFinite(Number(obj.startIndex))) segment.startIndex = Number(obj.startIndex);
+	if (Number.isFinite(Number(obj.endIndex))) segment.endIndex = Number(obj.endIndex);
+	if (typeof obj.startTime === "string" && obj.startTime.trim()) segment.startTime = obj.startTime.trim().slice(0, 80);
+	if (typeof obj.endTime === "string" && obj.endTime.trim()) segment.endTime = obj.endTime.trim().slice(0, 80);
+	if (obj.source === "ai" || obj.source === "user" || obj.source === "fallback") segment.source = obj.source;
+	return segment;
+}
+
+function sanitizeClassification(raw: unknown, sessionPath: string, previous?: SessionClassification | null): SessionClassification {
+	const obj = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+	const now = new Date().toISOString();
+	let resolved = sessionPath;
+	try { resolved = fs.realpathSync(sessionPath); } catch {}
+	const segments = Array.isArray(obj.segments) ? obj.segments.map(sanitizeSegment).filter((item): item is SessionSegmentClassification => Boolean(item)).slice(0, 20) : [];
+	return {
+		id: sessionClassificationId(sessionPath),
+		sessionPath: resolved,
+		title: safeText(obj.title, 160) || previous?.title || path.basename(sessionPath),
+		category: safeText(obj.category, 80) || previous?.category || "미분류",
+		tags: safeStringList(obj.tags, 20),
+		summary: safeText(obj.summary, 3000),
+		segments,
+		source: obj.source === "ai-suggestion" || obj.source === "fallback" || obj.source === "user" ? obj.source : "user",
+		createdAt: previous?.createdAt || (typeof obj.createdAt === "string" ? obj.createdAt : now),
+		updatedAt: previous ? now : (typeof obj.updatedAt === "string" ? obj.updatedAt : now),
+	};
+}
+
+function loadSessionClassification(filePath: string): SessionClassification | undefined {
+	try {
+		const fp = sessionClassificationPath(filePath);
+		if (!fs.existsSync(fp)) return undefined;
+		return sanitizeClassification(JSON.parse(fs.readFileSync(fp, "utf-8")), filePath, undefined);
+	} catch { return undefined; }
+}
+
+function saveSessionClassification(filePath: string, raw: unknown): SessionClassification {
+	fs.mkdirSync(SESSION_CLASSIFICATION_DIR, { recursive: true });
+	const previous = loadSessionClassification(filePath);
+	const classification = sanitizeClassification(raw, filePath, previous);
+	fs.writeFileSync(sessionClassificationPath(filePath), `${JSON.stringify(classification, null, 2)}\n`, "utf-8");
+	return classification;
+}
+
 function piEntryId(seed: string, index: number): string {
 	return createHash("sha1").update(`${seed}:${index}`).digest("hex").slice(0, 8);
 }
@@ -595,6 +681,148 @@ function buildJsonlSessionPreviewHtml(filePath: string, full = false): string {
 	return `<style>body{margin:0;padding:18px;background:#fafaf9;color:#292524;font:15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.session-preview{max-width:980px;margin:0 auto}.session-notice{border:1px solid #f59e0b;background:#fffbeb;color:#92400e;border-radius:12px;padding:10px 12px}.chat-row{display:flex;flex-direction:column;margin:14px 0}.chat-row.user{align-items:flex-end}.chat-row.assistant{align-items:flex-start}.chat-meta{display:flex;gap:8px;align-items:center;color:#78716c;font-size:12px;margin:0 8px 4px}.chat-meta span{font-weight:800;color:#57534e}.chat-bubble{max-width:min(780px,92%);white-space:pre-wrap;word-break:break-word;border:1px solid #e7e5e4;border-radius:18px;padding:12px 14px;background:#fff;box-shadow:0 8px 24px rgba(41,37,36,.05)}.user .chat-bubble{background:#eff6ff;border-color:#bfdbfe}.assistant .chat-bubble{background:#fff}</style><main class="session-preview"><h1>${escapeHtml(path.basename(filePath))}</h1><p class="session-notice">원본 JSONL에서 실제 대화만 추려 보여줍니다. system/model/session/tool/thinking/encrypted payload는 숨기고, 사용자 메시지와 assistant의 실제 답변 text만 표시합니다.</p>${notice}${entries.length ? entries.join("\n") : `<p class="session-notice">표시할 user/assistant text 대화를 찾지 못했습니다.</p>`}<p class="session-notice">parsed lines: ${parsed}, rendered conversation entries: ${entries.length}</p></main>`;
 }
 
+function readSessionConversationEntries(filePath: string, maxBytes = 3 * 1024 * 1024): SessionConversationEntry[] {
+	let inputPath = filePath;
+	try { inputPath = sessionExportInputPath(filePath); } catch {}
+	const entries: SessionConversationEntry[] = [];
+	try {
+		const preview = readTextPreview(inputPath, maxBytes);
+		const lines = preview.text.split(/\r?\n/);
+		if (preview.truncated && !preview.text.endsWith("\n")) lines.pop();
+		let index = 0;
+		const seen = new Set<string>();
+		for (const line of lines) {
+			if (!line.trim()) continue;
+			try {
+				const entry = conversationFromSessionRecord(JSON.parse(line));
+				if (!entry) continue;
+				const key = `${entry.role}\n${entry.text}`;
+				if (seen.has(key)) continue;
+				seen.add(key);
+				entries.push({ ...entry, index: ++index });
+				if (entries.length >= 240) break;
+			} catch {}
+		}
+	} catch {}
+	return entries;
+}
+
+function detectClassificationCategory(title: string, entries: SessionConversationEntry[]): { category: string; tags: string[] } {
+	const haystack = `${title}\n${entries.map((entry) => entry.text).join("\n")}`.toLowerCase();
+	const tags = new Set<string>();
+	let category = "대화";
+	if (/youtube|youtu\.be|유튜브|영상|video/.test(haystack)) { category = "영상 분석"; tags.add("youtube"); }
+	if (/pilee|tft|studio|show-report|show report|ember|knowledge|frame|decide|verify/.test(haystack)) { category = "pilee 개선"; tags.add("pilee"); }
+	if (/verify-report|검증 리포트|evidence|capture|coverage/.test(haystack)) { category = "검증/리포트"; tags.add("verification"); }
+	if (/잡담|생각|느낌|방향성/.test(haystack)) { category = "잡담/방향성"; tags.add("thinking"); }
+	if (/debug|error|stack trace|오류|버그|실패/.test(haystack)) tags.add("debugging");
+	if (/jira|pr\b|hotfix|worktree|업무/.test(haystack)) tags.add("work");
+	return { category, tags: [...tags].slice(0, 8) };
+}
+
+function deterministicSessionClassification(filePath: string, reason = "deterministic-fallback"): SessionClassification {
+	const entries = readSessionConversationEntries(filePath);
+	const existing = loadSessionClassification(filePath);
+	const title = existing?.title || path.basename(filePath);
+	const detected = detectClassificationCategory(title, entries);
+	const first = entries[0];
+	const last = entries[entries.length - 1];
+	const userText = entries.filter((entry) => entry.role === "user").map((entry) => entry.text.replace(/\s+/g, " ")).join(" / ");
+	const summary = userText ? truncatePreviewText(userText, 420) : "대화 내용을 충분히 읽지 못해 단일 구간으로 분류했습니다.";
+	return sanitizeClassification({
+		title,
+		category: detected.category,
+		tags: [...detected.tags, reason].filter(Boolean),
+		summary,
+		source: "fallback",
+		segments: [{
+			title: detected.category,
+			category: detected.category,
+			tags: detected.tags,
+			summary,
+			startIndex: first?.index,
+			endIndex: last?.index,
+			startTime: first?.timestamp,
+			endTime: last?.timestamp,
+			source: "fallback",
+		}],
+	}, filePath, existing);
+}
+
+function buildClassificationPrompt(filePath: string, entries: SessionConversationEntry[]): string {
+	const excerpts: string[] = [];
+	let budget = 22000;
+	for (const entry of entries) {
+		const text = entry.text.replace(/\s+/g, " ").slice(0, 900);
+		const line = `[#${entry.index} ${entry.role}${entry.timestamp ? ` ${entry.timestamp}` : ""}] ${text}`;
+		if (budget - line.length < 0) break;
+		budget -= line.length;
+		excerpts.push(line);
+	}
+	return [
+		"You classify Pi coding-agent conversation sessions for a Korean-speaking user.",
+		"Return ONLY valid JSON. No markdown fence, no commentary.",
+		"Do not copy private paths, secrets, raw company/customer context, or long verbatim excerpts into summaries.",
+		"Use short Korean category labels. Prefer practical categories such as 잡담/방향성, 영상 분석, pilee 개선, knowledge/ember, 업무 검증, debugging, 문서/리포트, 기타.",
+		"Split the conversation into 1-8 meaningful segments when topic shifts are visible. A segment is a work-unit/topic range, not every message.",
+		"Schema:",
+		'{"title":"short session title","category":"primary category","tags":["tag"],"summary":"2-4 Korean sentences","segments":[{"title":"segment title","category":"category","tags":["tag"],"summary":"1-3 Korean sentences","startIndex":1,"endIndex":12,"startTime":"optional","endTime":"optional"}]}',
+		"",
+		`Session file basename: ${path.basename(filePath)}`,
+		"Conversation excerpts:",
+		...excerpts,
+	].join("\n");
+}
+
+function extractJsonObject(text: string): unknown {
+	const trimmed = text.trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+	try { return JSON.parse(trimmed); } catch {}
+	const start = trimmed.indexOf("{");
+	const end = trimmed.lastIndexOf("}");
+	if (start >= 0 && end > start) return JSON.parse(trimmed.slice(start, end + 1));
+	throw new Error("Model did not return JSON object");
+}
+
+async function resolveClassificationModel(ctx: Pick<ExtensionContext, "model" | "modelRegistry">): Promise<{ model: Model<Api>; apiKey: string }> {
+	const lookupModel = getModel as (provider: string, modelId: string) => Model<Api> | undefined;
+	for (const { provider, id } of PREFERRED_CLASSIFICATION_MODELS) {
+		const model = lookupModel(provider, id);
+		if (!model) continue;
+		const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+		if (auth.ok && auth.apiKey) return { model, apiKey: auth.apiKey };
+	}
+	if (ctx.model) {
+		const auth = await ctx.modelRegistry.getApiKeyAndHeaders(ctx.model);
+		if (auth.ok && auth.apiKey) return { model: ctx.model as Model<Api>, apiKey: auth.apiKey };
+	}
+	throw new Error("No model API key available for session classification");
+}
+
+function getTextFromModelContent(part: unknown): string {
+	if (!part || typeof part !== "object") return "";
+	const record = part as Record<string, unknown>;
+	return typeof record.text === "string" ? record.text : typeof record.refusal === "string" ? record.refusal : "";
+}
+
+async function suggestSessionClassification(filePath: string, ctx?: Pick<ExtensionContext, "model" | "modelRegistry">): Promise<{ classification: SessionClassification; model: string | null; fallbackUsed: boolean; fallbackReason?: string }> {
+	const entries = readSessionConversationEntries(filePath);
+	if (!entries.length) return { classification: deterministicSessionClassification(filePath, "no-conversation-entries"), model: null, fallbackUsed: true, fallbackReason: "no-conversation-entries" };
+	if (!ctx?.modelRegistry) return { classification: deterministicSessionClassification(filePath, "no-model-context"), model: null, fallbackUsed: true, fallbackReason: "no-model-context" };
+	try {
+		const { model, apiKey } = await resolveClassificationModel(ctx);
+		const message: Message = { role: "user", content: [{ type: "text", text: buildClassificationPrompt(filePath, entries) }], timestamp: Date.now() };
+		const response = await complete(model, { messages: [message] }, { apiKey });
+		const rawText = (Array.isArray(response.content) ? response.content : []).map(getTextFromModelContent).filter(Boolean).join("\n").trim();
+		const parsed = extractJsonObject(rawText);
+		const classification = sanitizeClassification({ ...(parsed as Record<string, unknown>), source: "ai-suggestion" }, filePath, loadSessionClassification(filePath));
+		classification.segments = classification.segments.map((segment) => ({ ...segment, source: segment.source || "ai" }));
+		return { classification, model: `${model.provider}/${model.id}`, fallbackUsed: false };
+	} catch (error) {
+		const fallbackReason = error instanceof Error ? error.message : String(error);
+		return { classification: deterministicSessionClassification(filePath, "ai-fallback"), model: null, fallbackUsed: true, fallbackReason };
+	}
+}
+
 function artifactPreviewInnerHtml(filePath: string, options: { full?: boolean; intent?: EvidenceIntent } = {}): { title: string; html: string } {
 	const ext = path.extname(filePath).toLowerCase();
 	if (ext === ".html" || ext === ".htm") {
@@ -789,7 +1017,7 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			const mode = await openArtifactBrowser(pi, artifacts, ctx.cwd, parsed.browserOnly);
+			const mode = await openArtifactBrowser(pi, artifacts, ctx.cwd, parsed.browserOnly, ctx);
 			ctx.ui.notify(`🗂️ Artifact Browser ${mode === "glimpse" ? "Glimpse" : "브라우저"} 열기 · Pi ${artifacts.piUnits.length} · Conductor ${artifacts.conductors.length} · web ${artifacts.webSearches.length} · reports ${artifacts.reports.length}`, "info");
 		},
 	});
@@ -936,6 +1164,7 @@ interface PiSessionEntry {
 	panelLabel: string;
 	panelSource: PiSessionPanelSource;
 	forkId?: string;
+	classification?: SessionClassification;
 	time: string;
 	mtime: number;
 }
@@ -962,6 +1191,35 @@ interface ChatPreviewEntry {
 	role: "user" | "assistant";
 	text: string;
 	timestamp: string;
+}
+
+interface SessionConversationEntry extends ChatPreviewEntry {
+	index: number;
+}
+
+interface SessionSegmentClassification {
+	title: string;
+	category: string;
+	tags: string[];
+	summary: string;
+	startIndex?: number;
+	endIndex?: number;
+	startTime?: string;
+	endTime?: string;
+	source?: "ai" | "user" | "fallback";
+}
+
+interface SessionClassification {
+	id: string;
+	sessionPath: string;
+	title: string;
+	category: string;
+	tags: string[];
+	summary: string;
+	segments: SessionSegmentClassification[];
+	source: "user" | "ai-suggestion" | "fallback";
+	createdAt: string;
+	updatedAt: string;
 }
 
 interface ConductorHistoryEntry {
@@ -1161,7 +1419,43 @@ function artifactBrowserAllowedPaths(data: ArtifactBrowserData): Set<string> {
 	return allowed;
 }
 
-function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData, cwd: string): Promise<string> {
+function readRequestJson(req: IncomingMessage, maxBytes = 256 * 1024): Promise<unknown> {
+	return new Promise((resolve, reject) => {
+		const chunks: Buffer[] = [];
+		let size = 0;
+		req.on("data", (chunk: Buffer) => {
+			size += chunk.length;
+			if (size > maxBytes) {
+				reject(new Error("Request body too large"));
+				req.destroy();
+				return;
+			}
+			chunks.push(chunk);
+		});
+		req.on("end", () => {
+			try {
+				const text = Buffer.concat(chunks).toString("utf-8").trim();
+				resolve(text ? JSON.parse(text) : {});
+			} catch (error) { reject(error); }
+		});
+		req.on("error", reject);
+	});
+}
+
+function resolveAllowedSessionPath(rawPath: string, allowedPaths: Set<string>): string {
+	let resolved = "";
+	try { resolved = fs.realpathSync(rawPath); } catch {}
+	if (!resolved || !allowedPaths.has(resolved)) throw new Error("Path is not in this Artifact Browser.");
+	if (!isSessionJsonlPath(resolved)) throw new Error("분류는 session JSONL artifact에만 저장할 수 있습니다.");
+	return resolved;
+}
+
+function jsonResponse(res: ServerResponse, status: number, payload: unknown) {
+	res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+	res.end(JSON.stringify(payload));
+}
+
+function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData, cwd: string, ctx?: Pick<ExtensionContext, "model" | "modelRegistry">): Promise<string> {
 	const allowedPaths = artifactBrowserAllowedPaths(data);
 	const intentByPath = captureIntentByPath(data.captures);
 	const server = createServer(async (req, res) => {
@@ -1184,6 +1478,40 @@ function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData,
 				}
 				res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
 				res.end(buildArtifactPreviewHtml(resolved, { full: url.searchParams.get("full") === "1", returnTo, intent: intentByPath.get(resolved) }));
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/classification") {
+				try {
+					const resolved = resolveAllowedSessionPath(url.searchParams.get("path") || "", allowedPaths);
+					jsonResponse(res, 200, { ok: true, classification: loadSessionClassification(resolved) ?? null });
+				} catch (error) {
+					jsonResponse(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+				}
+				return;
+			}
+			if (req.method === "POST" && url.pathname === "/classification") {
+				try {
+					const body = await readRequestJson(req);
+					const bodyPath = body && typeof body === "object" ? String((body as Record<string, unknown>).path || "") : "";
+					const resolved = resolveAllowedSessionPath(bodyPath, allowedPaths);
+					const raw = body && typeof body === "object" ? (body as Record<string, unknown>).classification : undefined;
+					const classification = saveSessionClassification(resolved, raw ?? {});
+					jsonResponse(res, 200, { ok: true, classification });
+				} catch (error) {
+					jsonResponse(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+				}
+				return;
+			}
+			if (req.method === "POST" && url.pathname === "/classification/suggest") {
+				try {
+					const body = await readRequestJson(req, 64 * 1024);
+					const bodyPath = body && typeof body === "object" ? String((body as Record<string, unknown>).path || "") : "";
+					const resolved = resolveAllowedSessionPath(bodyPath, allowedPaths);
+					const suggestion = await suggestSessionClassification(resolved, ctx);
+					jsonResponse(res, 200, { ok: true, ...suggestion });
+				} catch (error) {
+					jsonResponse(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+				}
 				return;
 			}
 			if (req.method === "POST" && url.pathname === "/open") {
@@ -1244,8 +1572,8 @@ function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData,
 	});
 }
 
-async function openArtifactBrowser(pi: ExtensionAPI, data: ArtifactBrowserData, cwd: string, browserOnly = false): Promise<"glimpse" | "browser"> {
-	const url = await startArtifactBrowserServer(pi, data, cwd);
+async function openArtifactBrowser(pi: ExtensionAPI, data: ArtifactBrowserData, cwd: string, browserOnly = false, ctx?: Pick<ExtensionContext, "model" | "modelRegistry">): Promise<"glimpse" | "browser"> {
+	const url = await startArtifactBrowserServer(pi, data, cwd, ctx);
 	if (!browserOnly) {
 		const open = await getGlimpseOpen();
 		if (open) {
@@ -1835,7 +2163,8 @@ function readPiSessionEntry(filePath: string, workspace: string, panelIndex: Map
 			} catch {}
 		}
 		const panel = panelInfoForSession(realPath, panelIndex);
-		return { path: realPath, title, workspace, cwd, restoredFromConductor, ...panel, time: formatMtime(stat.mtimeMs), mtime: stat.mtimeMs };
+		const classification = loadSessionClassification(realPath);
+		return { path: realPath, title, workspace, cwd, restoredFromConductor, ...panel, classification, time: formatMtime(stat.mtimeMs), mtime: stat.mtimeMs };
 	} catch { return null; }
 }
 
@@ -2249,7 +2578,7 @@ function buildFrameTranscriptStandaloneHtml(filePath: string): string {
 
 function artifactBrowserStyle(): string {
 	return `<style>
-	:root{color-scheme:light;--bg:#fafaf9;--panel:#fff;--line:#e7e5e4;--text:#292524;--muted:#78716c;--accent:#7c3aed;--soft:#f5f3ff;--green:#166534;--amber:#92400e}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.shell{max-width:1180px;margin:0 auto;padding:24px}.hero{padding:24px;border:1px solid var(--line);border-radius:24px;background:linear-gradient(135deg,#fff,#f5f3ff);box-shadow:0 20px 60px rgba(41,37,36,.08)}.kicker{color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}h1{margin:6px 0 8px;font-size:32px;line-height:1.15}.hero p,.muted{color:var(--muted)}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}.tab{border:1px solid var(--line);border-radius:999px;background:#fff;padding:9px 13px;font-weight:800;cursor:pointer}.tab.active{background:var(--accent);border-color:var(--accent);color:#fff}.panel{display:none}.panel.active{display:block}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.card{border:1px solid var(--line);border-radius:18px;background:var(--panel);padding:16px;box-shadow:0 10px 30px rgba(41,37,36,.05);overflow:hidden}.card h2,.card h3{margin:0 0 8px}.meta{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}.badge{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 8px;background:#fff}.path{color:var(--muted);font-size:12px;word-break:break-all}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.button{border:1px solid var(--line);border-radius:10px;padding:7px 10px;text-decoration:none;color:var(--accent);font-weight:800;background:#fff;cursor:pointer;font:inherit}.button:hover{background:var(--soft)}.button[disabled]{opacity:.55;cursor:wait}.thumb{display:grid;place-items:center;aspect-ratio:16/10;background:#111;border-radius:14px;overflow:hidden;margin-bottom:10px}.thumb img{width:100%;height:100%;object-fit:contain}.intent-mini{border:1px solid var(--line);border-radius:12px;background:#fafaf9;padding:10px 11px;margin:10px 0;color:var(--text)}.intent-mini.missing{color:var(--muted);font-size:12px;border-style:dashed}.intent-mini-title{font-weight:800;color:var(--accent);font-size:12px;margin-bottom:5px}.intent-mini p{margin:4px 0;font-size:12px;line-height:1.45}.intent-mini strong{color:var(--muted);margin-right:4px}.empty{padding:40px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:18px;background:#fff}.chat-preview{display:grid;gap:10px}.chat-row{display:flex;flex-direction:column;margin:6px 0}.chat-row.user{align-items:flex-end}.chat-row.assistant{align-items:flex-start}.chat-meta{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px;margin:0 8px 4px}.chat-meta span{font-weight:800;color:var(--text)}.chat-bubble{max-width:min(780px,92%);white-space:pre-wrap;word-break:break-word;border:1px solid var(--line);border-radius:16px;padding:10px 12px;background:#fff;box-shadow:0 8px 22px rgba(41,37,36,.04)}.user .chat-bubble{background:#eff6ff;border-color:#bfdbfe}.timeline{display:grid;gap:12px}.timeline-item{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff}.timeline-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:var(--muted);font-size:12px}.timeline-head strong{color:var(--accent);text-transform:uppercase}.qa,.answer{margin-top:8px}.label{font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}pre{white-space:pre-wrap;word-break:break-word;background:#292524;color:#fafaf9;border-radius:12px;padding:12px;max-height:360px;overflow:auto}details{margin-top:8px}summary{cursor:pointer;font-weight:800}.search{width:100%;height:40px;border:1px solid var(--line);border-radius:12px;padding:0 12px;margin:16px 0;font:inherit}
+	:root{color-scheme:light;--bg:#fafaf9;--panel:#fff;--line:#e7e5e4;--text:#292524;--muted:#78716c;--accent:#7c3aed;--soft:#f5f3ff;--green:#166534;--amber:#92400e}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.shell{max-width:1180px;margin:0 auto;padding:24px}.hero{padding:24px;border:1px solid var(--line);border-radius:24px;background:linear-gradient(135deg,#fff,#f5f3ff);box-shadow:0 20px 60px rgba(41,37,36,.08)}.kicker{color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}h1{margin:6px 0 8px;font-size:32px;line-height:1.15}.hero p,.muted{color:var(--muted)}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}.tab{border:1px solid var(--line);border-radius:999px;background:#fff;padding:9px 13px;font-weight:800;cursor:pointer}.tab.active{background:var(--accent);border-color:var(--accent);color:#fff}.panel{display:none}.panel.active{display:block}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.card{border:1px solid var(--line);border-radius:18px;background:var(--panel);padding:16px;box-shadow:0 10px 30px rgba(41,37,36,.05);overflow:hidden}.card h2,.card h3{margin:0 0 8px}.meta{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}.badge{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 8px;background:#fff}.path{color:var(--muted);font-size:12px;word-break:break-all}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.button{border:1px solid var(--line);border-radius:10px;padding:7px 10px;text-decoration:none;color:var(--accent);font-weight:800;background:#fff;cursor:pointer;font:inherit}.button:hover{background:var(--soft)}.button[disabled]{opacity:.55;cursor:wait}.thumb{display:grid;place-items:center;aspect-ratio:16/10;background:#111;border-radius:14px;overflow:hidden;margin-bottom:10px}.thumb img{width:100%;height:100%;object-fit:contain}.intent-mini{border:1px solid var(--line);border-radius:12px;background:#fafaf9;padding:10px 11px;margin:10px 0;color:var(--text)}.intent-mini.missing{color:var(--muted);font-size:12px;border-style:dashed}.intent-mini-title{font-weight:800;color:var(--accent);font-size:12px;margin-bottom:5px}.intent-mini p{margin:4px 0;font-size:12px;line-height:1.45}.intent-mini strong{color:var(--muted);margin-right:4px}.empty{padding:40px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:18px;background:#fff}.chat-preview{display:grid;gap:10px}.chat-row{display:flex;flex-direction:column;margin:6px 0}.chat-row.user{align-items:flex-end}.chat-row.assistant{align-items:flex-start}.chat-meta{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px;margin:0 8px 4px}.chat-meta span{font-weight:800;color:var(--text)}.chat-bubble{max-width:min(780px,92%);white-space:pre-wrap;word-break:break-word;border:1px solid var(--line);border-radius:16px;padding:10px 12px;background:#fff;box-shadow:0 8px 22px rgba(41,37,36,.04)}.user .chat-bubble{background:#eff6ff;border-color:#bfdbfe}.timeline{display:grid;gap:12px}.timeline-item{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff}.timeline-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:var(--muted);font-size:12px}.timeline-head strong{color:var(--accent);text-transform:uppercase}.qa,.answer{margin-top:8px}.label{font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}pre{white-space:pre-wrap;word-break:break-word;background:#292524;color:#fafaf9;border-radius:12px;padding:12px;max-height:360px;overflow:auto}details{margin-top:8px}summary{cursor:pointer;font-weight:800}.filters{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:10px;margin:16px 0}.search,.category-filter{width:100%;height:40px;border:1px solid var(--line);border-radius:12px;padding:0 12px;font:inherit;background:#fff}.classification-mini{border:1px solid var(--line);border-radius:12px;background:#fafaf9;padding:10px 11px;margin:10px 0}.classification-mini.missing{border-style:dashed;color:var(--muted);font-size:12px}.classification-title{display:flex;gap:8px;justify-content:space-between;align-items:center;color:var(--accent);font-size:12px;font-weight:900;letter-spacing:.04em;text-transform:uppercase}.classification-mini p{margin:6px 0 0;font-size:12px;color:var(--text)}.modal{position:fixed;inset:0;background:rgba(41,37,36,.45);display:grid;place-items:center;z-index:999;padding:20px}.modal[hidden]{display:none}.modal-card{width:min(760px,96vw);max-height:92vh;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:22px;padding:18px;box-shadow:0 30px 90px rgba(41,37,36,.25)}.modal-card header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}.modal-card label{display:grid;gap:5px;margin:10px 0;font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.modal-card input,.modal-card textarea{border:1px solid var(--line);border-radius:12px;padding:10px 11px;font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text);background:#fff;text-transform:none;letter-spacing:0}.modal-card textarea{resize:vertical}.modal-card h2{margin:0 0 4px}@media(max-width:720px){.filters{grid-template-columns:1fr}}
 	</style>`;
 }
 
@@ -2269,6 +2598,40 @@ function artifactOpenButtons(filePath: string): string {
 	const primaryLabel = session ? "세션 전문 보기" : "열기";
 	const browserLabel = session ? "브라우저에서 전문 보기" : "브라우저에서 열기";
 	return `<button class="button open-artifact" type="button" data-target="glimpse" data-path="${escapedPath}">${primaryLabel}</button><button class="button open-artifact" type="button" data-target="browser" data-path="${escapedPath}">${browserLabel}</button>`;
+}
+
+function classificationButton(filePath: string): string {
+	return `<button class="button classify-session" type="button" data-path="${escapeAttr(filePath)}">분류</button>`;
+}
+
+function classificationSearchText(classification?: SessionClassification): string {
+	if (!classification) return "";
+	return [
+		classification.category,
+		...classification.tags,
+		classification.summary,
+		...classification.segments.flatMap((segment) => [segment.title, segment.category, ...segment.tags, segment.summary]),
+	].filter(Boolean).join(" ");
+}
+
+function classificationCategoryData(classification?: SessionClassification): string {
+	if (!classification?.category) return "";
+	return [classification.category, ...classification.segments.map((segment) => segment.category)].filter(Boolean).join("|");
+}
+
+function renderClassificationMini(classification?: SessionClassification): string {
+	if (!classification) return `<div class="classification-mini missing">분류 metadata 없음</div>`;
+	const segmentCount = classification.segments.length;
+	return `<div class="classification-mini"><div class="classification-title"><span>${escapeHtml(classification.category)}</span>${segmentCount ? `<span>${segmentCount} segments</span>` : ""}</div>${classification.tags.length ? `<div class="meta">${classification.tags.slice(0, 6).map((tag) => `<span class="badge">#${escapeHtml(tag)}</span>`).join("")}</div>` : ""}${classification.summary ? `<p>${escapeHtml(truncatePreviewText(classification.summary, 260))}</p>` : ""}</div>`;
+}
+
+function sessionClassificationCategories(sessions: PiSessionEntry[]): string[] {
+	const categories = new Set<string>();
+	for (const session of sessions) {
+		if (session.classification?.category) categories.add(session.classification.category);
+		for (const segment of session.classification?.segments ?? []) if (segment.category) categories.add(segment.category);
+	}
+	return [...categories].sort((a, b) => a.localeCompare(b, "ko"));
 }
 
 function renderReportCards(reports: ReportEntry[]): string {
@@ -2297,7 +2660,12 @@ function sessionPanelSourceLabel(session: PiSessionEntry): string {
 
 function renderSessionCards(title: string, sessions: PiSessionEntry[]): string {
 	if (!sessions.length) return `<section><h3>${escapeHtml(title)} · 0</h3><div class="empty">세션이 없습니다.</div></section>`;
-	return `<section><h3>${escapeHtml(title)} · ${sessions.length}</h3><div class="grid">${sessions.map((session) => `<article class="card searchable" data-search="${escapeAttr(`${session.title} ${session.workspace} ${session.panelLabel} ${session.panelSource} ${session.cwd}`.toLowerCase())}"><h3>${escapeHtml(session.title)}</h3><div class="meta"><span class="badge">${escapeHtml(session.panelLabel)}</span><span class="badge">${escapeHtml(sessionPanelSourceLabel(session))}</span><span class="badge">${session.restoredFromConductor ? "Conductor 복구" : "Pi 대화"}</span><span class="badge">${escapeHtml(session.time)}</span></div>${session.cwd ? `<div class="path">cwd: ${escapeHtml(shortDisplayPath(session.cwd))}</div>` : ""}<div class="path">${escapeHtml(session.path)}</div><div class="actions">${artifactOpenButtons(session.path)}</div></article>`).join("\n")}</div></section>`;
+	return `<section><h3>${escapeHtml(title)} · ${sessions.length}</h3><div class="grid">${sessions.map((session) => {
+		const classificationText = classificationSearchText(session.classification);
+		const search = `${session.title} ${session.workspace} ${session.panelLabel} ${session.panelSource} ${session.cwd} ${classificationText}`.toLowerCase();
+		const categoryData = classificationCategoryData(session.classification);
+		return `<article class="card searchable" data-category="${escapeAttr(categoryData)}" data-search="${escapeAttr(search)}"><h3>${escapeHtml(session.title)}</h3><div class="meta"><span class="badge">${escapeHtml(session.panelLabel)}</span><span class="badge">${escapeHtml(sessionPanelSourceLabel(session))}</span><span class="badge">${session.restoredFromConductor ? "Conductor 복구" : "Pi 대화"}</span><span class="badge">${escapeHtml(session.time)}</span>${session.classification?.category ? `<span class="badge">${escapeHtml(session.classification.category)}</span>` : ""}</div>${renderClassificationMini(session.classification)}${session.cwd ? `<div class="path">cwd: ${escapeHtml(shortDisplayPath(session.cwd))}</div>` : ""}<div class="path">${escapeHtml(session.path)}</div><div class="actions">${artifactOpenButtons(session.path)}${classificationButton(session.path)}</div></article>`;
+	}).join("\n")}</div></section>`;
 }
 
 function renderConductorSourceCards(title: string, paths: string[], restored = false): string {
@@ -2342,7 +2710,9 @@ function renderPiWorkUnitCards(data: ArtifactBrowserData): string {
 		const allSessions = [...unit.piRestoredSessions, ...unit.piChatSessions];
 		const p0Count = allSessions.filter((session) => session.panelSource === "p0").length;
 		const forkCount = allSessions.filter((session) => session.panelSource === "fork").length;
-		return `<article class="card searchable pi-work-card" data-search="${escapeAttr(`${unit.label} ${unit.workspace} ${unit.branch}`.toLowerCase())}"><div class="kicker">🔥 Pi history</div><h3>${escapeHtml(unit.label)}</h3><div class="meta"><span class="badge">${escapeHtml(unit.repo)}</span>${unit.loadedByResume ? `<span class="badge">/wt resume</span>` : ""}${unit.branch ? `<span class="badge">${escapeHtml(unit.branch)}</span>` : ""}</div><div class="meta"><span class="badge">P0 ${p0Count}</span><span class="badge">fork ${forkCount}</span><span class="badge">원본 ${unit.originalConductorSessionPaths.length}</span><span class="badge">복구 세션 ${unit.piRestoredSessions.length}</span><span class="badge">Pi 대화 ${unit.piChatSessions.length}</span><span class="badge">리포트 ${reports.length}</span><span class="badge">Frame/기획 ${planningDocs.length}</span><span class="badge">캡처 ${captures.length}</span><span class="badge">웹검색 ${webSearches.length}</span></div><div class="path">${escapeHtml(unit.workspacePath)}</div><div class="actions"><button class="button open-pi-detail" type="button" data-pi="${escapeAttr(unit.key)}">이력 열기</button></div></article>`;
+		const categories = sessionClassificationCategories(allSessions);
+		const classificationText = allSessions.map((session) => classificationSearchText(session.classification)).join(" ");
+		return `<article class="card searchable pi-work-card" data-category="${escapeAttr(categories.join("|"))}" data-search="${escapeAttr(`${unit.label} ${unit.workspace} ${unit.branch} ${classificationText}`.toLowerCase())}"><div class="kicker">🔥 Pi history</div><h3>${escapeHtml(unit.label)}</h3><div class="meta"><span class="badge">${escapeHtml(unit.repo)}</span>${unit.loadedByResume ? `<span class="badge">/wt resume</span>` : ""}${unit.branch ? `<span class="badge">${escapeHtml(unit.branch)}</span>` : ""}${categories.slice(0, 3).map((category) => `<span class="badge">${escapeHtml(category)}</span>`).join("")}</div><div class="meta"><span class="badge">P0 ${p0Count}</span><span class="badge">fork ${forkCount}</span><span class="badge">원본 ${unit.originalConductorSessionPaths.length}</span><span class="badge">복구 세션 ${unit.piRestoredSessions.length}</span><span class="badge">Pi 대화 ${unit.piChatSessions.length}</span><span class="badge">리포트 ${reports.length}</span><span class="badge">Frame/기획 ${planningDocs.length}</span><span class="badge">캡처 ${captures.length}</span><span class="badge">웹검색 ${webSearches.length}</span></div><div class="path">${escapeHtml(unit.workspacePath)}</div><div class="actions"><button class="button open-pi-detail" type="button" data-pi="${escapeAttr(unit.key)}">이력 열기</button></div></article>`;
 	}).join("\n");
 	const detailPanels = data.piUnits.map((unit) => {
 		const reports = reportsForUnit(unit, data.reports);
@@ -2403,9 +2773,18 @@ function renderWebSearchPanel(data: ArtifactBrowserData): string {
 	return `<section><h2>웹 검색 기본 그룹</h2>${renderWebSearchCards(unassigned)}</section><section><h2>전체 웹 검색</h2>${renderWebSearchCards(data.webSearches)}</section>`;
 }
 
+function allClassificationCategories(data: ArtifactBrowserData): string[] {
+	return sessionClassificationCategories(data.piUnits.flatMap((unit) => [...unit.piRestoredSessions, ...unit.piChatSessions]));
+}
+
+function renderClassificationOptions(data: ArtifactBrowserData): string {
+	const categories = allClassificationCategories(data);
+	return [`<option value="">모든 분류</option>`, `<option value="__none__">분류 없음</option>`, ...categories.map((category) => `<option value="${escapeAttr(category)}">${escapeHtml(category)}</option>`)].join("");
+}
+
 function buildArtifactBrowserHtml(data: ArtifactBrowserData, cwd: string): string {
 	const initialTab = data.piUnits.length ? "pi" : data.conductors.length ? "conductors" : "web-search";
-	return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>pilee Artifact Browser</title>${artifactBrowserStyle()}</head><body><main class="shell"><header class="hero"><div class="kicker">🗂️ pilee Artifact Browser</div><h1>산출물 다시 보기</h1><p>Pi 작업 이력, Conductor master 이력, 웹 검색 review를 상위 단위로 분리해서 봅니다.</p><div class="meta"><span class="badge">cwd ${escapeHtml(cwd)}</span><span class="badge">generated ${escapeHtml(data.generatedAt.toLocaleString())}</span></div></header><input id="search" class="search" type="search" placeholder="현재 탭에서 검색: 이름, 티켓, workspace, session, source" oninput="filterCards()"><nav class="tabs"><button class="tab" data-tab="pi" onclick="showTab('pi')">Pi 이력 <strong>${data.piUnits.length}</strong></button><button class="tab" data-tab="conductors" onclick="showTab('conductors')">컨덕터 이력 <strong>${data.conductors.length}</strong></button><button class="tab" data-tab="web-search" onclick="showTab('web-search')">웹 검색 <strong>${data.webSearches.length}</strong></button><button class="tab" data-tab="reports" onclick="showTab('reports')">검증 리포트 <strong>${data.reports.length}</strong></button><button class="tab" data-tab="planning" onclick="showTab('planning')">기획 / Frame <strong>${data.planningDocs.length}</strong></button><button class="tab" data-tab="captures" onclick="showTab('captures')">캡처 / 미디어 <strong>${data.captures.length}</strong></button></nav><section id="tab-pi" class="panel">${renderPiWorkUnitCards(data)}</section><section id="tab-conductors" class="panel">${renderConductorCards(data)}</section><section id="tab-web-search" class="panel">${renderWebSearchPanel(data)}</section><section id="tab-reports" class="panel">${renderReportCards(data.reports)}</section><section id="tab-planning" class="panel">${renderPlanningDocCards(data.planningDocs)}</section><section id="tab-captures" class="panel">${renderCaptureCards(data.captures, data.frames)}</section></main><script>
+	return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>pilee Artifact Browser</title>${artifactBrowserStyle()}</head><body><main class="shell"><header class="hero"><div class="kicker">🗂️ pilee Artifact Browser</div><h1>산출물 다시 보기</h1><p>Pi 작업 이력, Conductor master 이력, 웹 검색 review를 상위 단위로 분리해서 봅니다.</p><div class="meta"><span class="badge">cwd ${escapeHtml(cwd)}</span><span class="badge">generated ${escapeHtml(data.generatedAt.toLocaleString())}</span></div></header><div class="filters"><input id="search" class="search" type="search" placeholder="현재 탭에서 검색: 이름, 티켓, workspace, session, source, classification" oninput="filterCards()"><select id="categoryFilter" class="category-filter" onchange="filterCards()">${renderClassificationOptions(data)}</select></div><nav class="tabs"><button class="tab" data-tab="pi" onclick="showTab('pi')">Pi 이력 <strong>${data.piUnits.length}</strong></button><button class="tab" data-tab="conductors" onclick="showTab('conductors')">컨덕터 이력 <strong>${data.conductors.length}</strong></button><button class="tab" data-tab="web-search" onclick="showTab('web-search')">웹 검색 <strong>${data.webSearches.length}</strong></button><button class="tab" data-tab="reports" onclick="showTab('reports')">검증 리포트 <strong>${data.reports.length}</strong></button><button class="tab" data-tab="planning" onclick="showTab('planning')">기획 / Frame <strong>${data.planningDocs.length}</strong></button><button class="tab" data-tab="captures" onclick="showTab('captures')">캡처 / 미디어 <strong>${data.captures.length}</strong></button></nav><section id="tab-pi" class="panel">${renderPiWorkUnitCards(data)}</section><section id="tab-conductors" class="panel">${renderConductorCards(data)}</section><section id="tab-web-search" class="panel">${renderWebSearchPanel(data)}</section><section id="tab-reports" class="panel">${renderReportCards(data.reports)}</section><section id="tab-planning" class="panel">${renderPlanningDocCards(data.planningDocs)}</section><section id="tab-captures" class="panel">${renderCaptureCards(data.captures, data.frames)}</section></main><div id="classificationModal" class="modal" hidden><div class="modal-card"><header><div><div class="kicker">Session classification</div><h2>대화 분류</h2><p class="muted" id="classificationPath"></p></div><button class="button" type="button" id="classificationClose">닫기</button></header><label>제목<input id="classificationTitle" type="text" placeholder="세션 제목"></label><label>분류<input id="classificationCategory" type="text" placeholder="예: pilee 개선, 영상 분석, 잡담/방향성"></label><label>태그<input id="classificationTags" type="text" placeholder="쉼표로 구분: tft-studio, show-report"></label><label>요약<textarea id="classificationSummary" rows="4" placeholder="나중에 찾기 위한 짧은 요약"></textarea></label><label>세그먼트 JSON<textarea id="classificationSegments" rows="10" placeholder="AI 추천 세그먼트를 JSON 배열로 저장합니다"></textarea></label><p class="muted" id="classificationStatus">원본 세션 JSONL은 수정하지 않고 sidecar metadata만 저장합니다.</p><div class="actions"><button class="button" type="button" id="classificationSuggest">AI 세그먼트 추천</button><button class="button" type="button" id="classificationSave">저장</button></div></div></div><script>
 (function(){
 	function qs(selector, root=document){ return root.querySelector(selector); }
 	function qsa(selector, root=document){ return Array.from(root.querySelectorAll(selector)); }
@@ -2429,7 +2808,13 @@ function buildArtifactBrowserHtml(data: ArtifactBrowserData, cwd: string): strin
 	};
 	window.filterCards = function(){
 		const query = (qs('#search')?.value || '').toLowerCase().trim();
-		qsa('.panel.active .searchable').forEach((card) => { card.style.display = !query || (card.dataset.search || '').includes(query) ? '' : 'none'; });
+		const category = qs('#categoryFilter')?.value || '';
+		qsa('.panel.active .searchable').forEach((card) => {
+			const matchesQuery = !query || (card.dataset.search || '').includes(query);
+			const categories = (card.dataset.category || '').split('|').filter(Boolean);
+			const matchesCategory = !category || (category === '__none__' ? categories.length === 0 : categories.includes(category));
+			card.style.display = matchesQuery && matchesCategory ? '' : 'none';
+		});
 	};
 	window.showCaptureGroups = function(opts){
 		const groups = qs('#capture-groups'); const files = qs('#capture-files');
@@ -2487,6 +2872,69 @@ function buildArtifactBrowserHtml(data: ArtifactBrowserData, cwd: string): strin
 			setTimeout(() => { button.textContent = previous; button.disabled = false; }, 2200);
 		}
 	}
+	let classificationPath = '';
+	function setClassificationStatus(text){ const el = qs('#classificationStatus'); if (el) el.textContent = text; }
+	function fillClassificationForm(item){
+		qs('#classificationTitle').value = item?.title || '';
+		qs('#classificationCategory').value = item?.category || '';
+		qs('#classificationTags').value = Array.isArray(item?.tags) ? item.tags.join(', ') : '';
+		qs('#classificationSummary').value = item?.summary || '';
+		qs('#classificationSegments').value = JSON.stringify(Array.isArray(item?.segments) ? item.segments : [], null, 2);
+	}
+	function readClassificationForm(){
+		let segments = [];
+		const rawSegments = qs('#classificationSegments').value.trim();
+		if (rawSegments) segments = JSON.parse(rawSegments);
+		return {
+			title: qs('#classificationTitle').value.trim(),
+			category: qs('#classificationCategory').value.trim(),
+			tags: qs('#classificationTags').value.split(/[,#]/).map((item) => item.trim()).filter(Boolean),
+			summary: qs('#classificationSummary').value.trim(),
+			segments,
+			source: 'user'
+		};
+	}
+	async function openClassification(path){
+		classificationPath = path;
+		qs('#classificationPath').textContent = path;
+		qs('#classificationModal').hidden = false;
+		fillClassificationForm(null);
+		setClassificationStatus('분류 metadata를 불러오는 중...');
+		try {
+			const response = await fetch('/classification?path=' + encodeURIComponent(path));
+			const payload = await response.json().catch(() => ({}));
+			if (!response.ok || !payload.ok) throw new Error(payload.error || 'classification load failed');
+			fillClassificationForm(payload.classification || null);
+			setClassificationStatus(payload.classification ? '저장된 분류를 불러왔습니다.' : '아직 저장된 분류가 없습니다. 직접 입력하거나 AI 추천을 사용하세요.');
+		} catch (error) { setClassificationStatus('분류 로드 실패: ' + String(error && error.message || error)); }
+	}
+	async function suggestClassification(){
+		if (!classificationPath) return;
+		const button = qs('#classificationSuggest'); const previous = button.textContent;
+		button.disabled = true; button.textContent = 'AI 추천 중...'; setClassificationStatus('세션 대화를 읽고 구간을 추천하는 중...');
+		try {
+			const response = await fetch('/classification/suggest', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: classificationPath }) });
+			const payload = await response.json().catch(() => ({}));
+			if (!response.ok || !payload.ok) throw new Error(payload.error || 'suggest failed');
+			fillClassificationForm(payload.classification || null);
+			setClassificationStatus(payload.fallbackUsed ? 'AI 추천을 만들지 못해 deterministic fallback을 채웠습니다: ' + (payload.fallbackReason || '') : 'AI 추천을 채웠습니다. 확인 후 저장하세요. model=' + (payload.model || 'unknown'));
+		} catch (error) { setClassificationStatus('AI 추천 실패: ' + String(error && error.message || error)); }
+		finally { button.disabled = false; button.textContent = previous; }
+	}
+	async function saveClassification(){
+		if (!classificationPath) return;
+		const button = qs('#classificationSave'); const previous = button.textContent;
+		button.disabled = true; button.textContent = '저장 중...';
+		try {
+			const classification = readClassificationForm();
+			const response = await fetch('/classification', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: classificationPath, classification }) });
+			const payload = await response.json().catch(() => ({}));
+			if (!response.ok || !payload.ok) throw new Error(payload.error || 'save failed');
+			setClassificationStatus('저장했습니다. 목록을 새로고침합니다...');
+			setTimeout(() => window.location.reload(), 500);
+		} catch (error) { setClassificationStatus('저장 실패: ' + String(error && error.message || error)); }
+		finally { button.disabled = false; button.textContent = previous; }
+	}
 	document.addEventListener('click', (event) => {
 		const target = event.target;
 		if (!(target instanceof HTMLElement)) return;
@@ -2498,6 +2946,11 @@ function buildArtifactBrowserHtml(data: ArtifactBrowserData, cwd: string): strin
 		if (pi) { showPiDetail(pi.dataset.pi || ''); return; }
 		const conductor = target.closest('.open-conductor-detail');
 		if (conductor) { showConductorDetail(conductor.dataset.conductor || ''); return; }
+		const classifier = target.closest('.classify-session');
+		if (classifier) { openClassification(classifier.dataset.path || ''); return; }
+		if (target.id === 'classificationClose') { qs('#classificationModal').hidden = true; return; }
+		if (target.id === 'classificationSuggest') { suggestClassification(); return; }
+		if (target.id === 'classificationSave') { saveClassification(); return; }
 	});
 	function restoreFromHash(){
 		const params = hashParams();
