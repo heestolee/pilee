@@ -1,10 +1,7 @@
-import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
-import { createRequire } from "node:module";
 import { platform } from "node:os";
-import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { getGlimpseOpen, type GlimpseOpen, type GlimpseWindow } from "../utils/glimpse.ts";
 import { startCuratorServer, type CuratorServerHandle } from "./curator-server.js";
 import { buildDeterministicSummary, generateSummaryDraft, rewriteSearchQuery } from "./summary-review.js";
 import type { QueryResultData, SummaryMeta } from "./types.js";
@@ -19,16 +16,6 @@ export interface CuratorResult {
 	summary?: string;
 	summaryMeta?: SummaryMeta;
 }
-
-interface GlimpseWindow {
-	on(event: "closed", handler: () => void): void;
-	on(event: "message", handler: (data: unknown) => void): void;
-	on(event: "ready", handler: (info: { screen?: { visibleHeight?: number } }) => void): void;
-	close(): void;
-	_write(obj: Record<string, unknown>): void;
-}
-
-let glimpseOpen: ((html: string, opts: Record<string, unknown>) => GlimpseWindow) | null | undefined;
 
 function extractDomain(url: string): string {
 	try {
@@ -67,33 +54,7 @@ function defaultSummaryModels(): Array<{ value: string; label: string }> {
 	];
 }
 
-function findGlimpseMjs(): string | null {
-	try {
-		const req = createRequire(import.meta.url);
-		return req.resolve("glimpseui");
-	} catch {}
-	try {
-		const globalRoot = execFileSync("npm", ["root", "-g"], { encoding: "utf-8" }).trim();
-		const entry = join(globalRoot, "glimpseui", "src", "glimpse.mjs");
-		if (existsSync(entry)) return entry;
-	} catch {}
-	return null;
-}
-
-async function getGlimpseOpen() {
-	if (glimpseOpen !== undefined) return glimpseOpen;
-	const resolved = findGlimpseMjs();
-	if (resolved) {
-		try {
-			glimpseOpen = (await import(resolved)).open;
-			return glimpseOpen;
-		} catch {}
-	}
-	glimpseOpen = null;
-	return glimpseOpen;
-}
-
-function openInGlimpse(open: (html: string, opts: Record<string, unknown>) => GlimpseWindow, url: string): GlimpseWindow {
+function openInGlimpse(open: GlimpseOpen, url: string): GlimpseWindow {
 	const shellHTML = `<!doctype html><html><head><meta charset="utf-8"><title>Search Curator</title></head><body style="margin:0;background:#111"><script>window.location.replace(${JSON.stringify(url)});</script></body></html>`;
 	const win = open(shellHTML, { width: 860, height: 900, title: "Search Curator", openLinks: true });
 	let maxHeight = 1200;
@@ -105,7 +66,7 @@ function openInGlimpse(open: (html: string, opts: Record<string, unknown>) => Gl
 		if (!data || typeof data !== "object") return;
 		const msg = data as Record<string, unknown>;
 		if (msg.type !== "resize" || typeof msg.height !== "number") return;
-		win._write({ type: "resize", width: 860, height: Math.max(500, Math.min(Math.round(msg.height), maxHeight)) });
+		win._write?.({ type: "resize", width: 860, height: Math.max(500, Math.min(Math.round(msg.height), maxHeight)) });
 	});
 	return win;
 }

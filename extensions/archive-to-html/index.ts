@@ -2,12 +2,12 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ToolResultEvent } from "@mariozechner/pi-coding-agent";
 import { complete, getModel, type Api, type Message, type Model } from "@mariozechner/pi-ai";
+import { getGlimpseOpen, type GlimpseWindow } from "../utils/glimpse.ts";
 import { expandProfileTemplate, loadArtifactBrowserProfiles, loadConductorProfiles } from "../utils/private-profiles.ts";
 import { exportSessionFileToHtml, isPiSessionFile, openFile, SESSION_EXPORT_DIR } from "../utils/session-export.js";
 import { registerVerifyReportLive } from "./verify-report-live.js";
@@ -169,39 +169,8 @@ input[type="text"]:focus, input[type="number"]:focus, textarea:focus, select:foc
 }
 `;
 
-interface GlimpseWindow {
-	on(event: "closed", handler: () => void): void;
-}
-
-let glimpseOpen: ((html: string, opts: Record<string, unknown>) => GlimpseWindow) | null | undefined;
 const artifactWindows = new Set<GlimpseWindow>();
 const artifactBrowserServers = new Set<Server>();
-
-function findGlimpseMjs(): string | null {
-	try {
-		const req = createRequire(import.meta.url);
-		return req.resolve("glimpseui");
-	} catch {}
-	try {
-		const globalRoot = execFileSync("npm", ["root", "-g"], { encoding: "utf-8" }).trim();
-		const entry = path.join(globalRoot, "glimpseui", "src", "glimpse.mjs");
-		if (fs.existsSync(entry)) return entry;
-	} catch {}
-	return null;
-}
-
-async function getGlimpseOpen() {
-	if (glimpseOpen !== undefined) return glimpseOpen;
-	const resolved = findGlimpseMjs();
-	if (resolved) {
-		try {
-			glimpseOpen = (await import(resolved)).open;
-			return glimpseOpen;
-		} catch {}
-	}
-	glimpseOpen = null;
-	return glimpseOpen;
-}
 
 function escapeHtml(value: string): string {
 	return value

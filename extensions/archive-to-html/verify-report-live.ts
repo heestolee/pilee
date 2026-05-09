@@ -1,12 +1,11 @@
-import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync, copyFileSync } from "node:fs";
 import { createServer, type Server, type ServerResponse } from "node:http";
-import { createRequire } from "node:module";
 import { homedir, platform } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
+import { getGlimpseOpen, type GlimpseWindow } from "../utils/glimpse.ts";
 
 const REPORT_SIGNATURE = "Verify Report";
 const DEFAULT_WORKSPACE_PREFIX = ".context/work";
@@ -118,11 +117,6 @@ interface VerifyReportState {
 	logs: Array<{ time: number; message: string }>;
 }
 
-interface GlimpseWindow {
-	on(event: "closed", handler: () => void): void;
-	close(): void;
-}
-
 interface LiveHandle {
 	state: VerifyReportState;
 	server: Server;
@@ -133,7 +127,6 @@ interface LiveHandle {
 }
 
 const liveRuns = new Map<string, LiveHandle>();
-let glimpseOpen: ((html: string, opts: Record<string, unknown>) => GlimpseWindow) | null | undefined;
 
 const evidenceSchema = Type.Object({
 	label: Type.Optional(Type.String()),
@@ -157,32 +150,6 @@ const itemSchema = Type.Object({
 	detail: Type.Optional(Type.String({ description: "What was checked and what happened." })),
 	evidence: Type.Optional(Type.Array(evidenceSchema)),
 });
-
-function findGlimpseMjs(): string | null {
-	try {
-		const req = createRequire(import.meta.url);
-		return req.resolve("glimpseui");
-	} catch {}
-	try {
-		const globalRoot = execFileSync("npm", ["root", "-g"], { encoding: "utf-8" }).trim();
-		const entry = join(globalRoot, "glimpseui", "src", "glimpse.mjs");
-		if (existsSync(entry)) return entry;
-	} catch {}
-	return null;
-}
-
-async function getGlimpseOpen() {
-	if (glimpseOpen !== undefined) return glimpseOpen;
-	const resolved = findGlimpseMjs();
-	if (resolved) {
-		try {
-			glimpseOpen = (await import(resolved)).open;
-			return glimpseOpen;
-		} catch {}
-	}
-	glimpseOpen = null;
-	return glimpseOpen;
-}
 
 function escapeHtml(value: string): string {
 	return value

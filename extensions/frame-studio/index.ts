@@ -1,13 +1,12 @@
-import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { createRequire } from "node:module";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import { buildFrameIdentity, type FrameIdentity } from "../tft-commands/frame-identity.ts";
+import { getGlimpseOpen, type GlimpseWindow } from "../utils/glimpse.ts";
 
 type StudioStatus = "running" | "awaiting" | "done" | "aborted";
 type AskStatus = "answered" | "cancelled" | "timeout" | "unavailable";
@@ -112,13 +111,6 @@ type PendingAsk = {
 	timer: ReturnType<typeof setTimeout>;
 };
 
-interface GlimpseWindow {
-	on(event: "closed", handler: () => void): void;
-	on(event: "message", handler: (data: unknown) => void): void;
-	close(): void;
-	_write?(message: Record<string, unknown>): void;
-}
-
 type FrameStudioHandle = {
 	state: FrameStudioState;
 	server: Server;
@@ -143,36 +135,9 @@ const STUDIO_TABS: Array<{ key: StudioTabKey; label: string; subtitle: string }>
 const runsById = new Map<string, FrameStudioHandle>();
 const runsByIdentity = new Map<string, FrameStudioHandle>();
 let latestRunId: string | undefined;
-let glimpseOpen: ((html: string, opts: Record<string, unknown>) => GlimpseWindow) | null | undefined;
 
 function resultText(text: string, details?: Record<string, unknown>) {
 	return { content: [{ type: "text" as const, text }], details };
-}
-
-function findGlimpseMjs(): string | null {
-	try {
-		const req = createRequire(import.meta.url);
-		return req.resolve("glimpseui");
-	} catch {}
-	try {
-		const globalRoot = execFileSync("npm", ["root", "-g"], { encoding: "utf-8" }).trim();
-		const entry = join(globalRoot, "glimpseui", "src", "glimpse.mjs");
-		if (existsSync(entry)) return entry;
-	} catch {}
-	return null;
-}
-
-async function getGlimpseOpen() {
-	if (glimpseOpen !== undefined) return glimpseOpen;
-	const resolved = findGlimpseMjs();
-	if (resolved) {
-		try {
-			glimpseOpen = (await import(resolved)).open;
-			return glimpseOpen;
-		} catch {}
-	}
-	glimpseOpen = null;
-	return glimpseOpen;
 }
 
 function escapeHtml(value: string): string {

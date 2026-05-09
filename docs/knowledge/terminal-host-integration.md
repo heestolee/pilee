@@ -16,10 +16,12 @@ applies_to:
   - extensions/custom-style
   - extensions/mcp-bridge
   - extensions/archive-to-html
+  - extensions/utils/glimpse
 source:
   - pilee-history:2026-05-01#15
   - pilee-history:2026-05-03#26
   - pilee-history:2026-05-04#35
+  - user-direction:2026-05-09-glimpse-stderr-noise
 reviewed_at: 2026-05-09
 reviewed_commit: 3ed57eb2a2ece44cbec876f620350f4fd6cd2b6b
 related:
@@ -39,6 +41,8 @@ related:
 ## WebView/Open Rule
 
 Glimpse/WebView와 OS browser도 host입니다. static `file://` anchor가 브라우저에서는 동작해도 WebView에서는 기대대로 외부 open을 넘기지 않을 수 있습니다. preview/open 기능은 local server route, allowlisted realpath, host-side opener처럼 host adapter 경계를 명시해 구현합니다.
+
+macOS WebView는 기능 실패가 아닌 Text Services/InputMethodKit stderr noise를 터미널에 흘릴 수 있습니다. 예를 들어 Caps Lock LED/IMK runloop wakeup 계열 로그는 사용자가 검토할 report/error가 아니므로 Glimpse host adapter에서 allowlisted noise만 필터링합니다. 단, actionable native host stderr는 계속 stderr로 전달해야 합니다.
 
 ## Local Metadata Rule
 
