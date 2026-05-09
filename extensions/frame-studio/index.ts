@@ -629,11 +629,13 @@ function renderTimelineEntry(entry, s) {
   if (entry.message) body += '<p>' + inline(entry.message) + '</p>';
   if (entry.markdown) body += '<div class="markdown timeline-markdown">' + renderMarkdown(entry.markdown) + '</div>';
   if (entry.question) {
-    body += '<div class="answer-row"><div class="answer-label">질문</div><div class="answer-value">' + inline(entry.question.question) + '</div></div>';
     if (isPending) {
       body += renderQuestionForm(s.question);
-    } else if ((entry.question.options || []).length) {
-      body += '<div class="answer-row"><div class="answer-label">옵션</div><ol>' + entry.question.options.map(function(opt) { return '<li>' + inline(opt) + '</li>'; }).join('') + '</ol></div>';
+    } else {
+      body += '<div class="answer-row"><div class="answer-label">질문</div><div class="answer-value">' + inline(entry.question.question) + '</div></div>';
+      if ((entry.question.options || []).length) {
+        body += '<div class="answer-row"><div class="answer-label">옵션</div><ol>' + entry.question.options.map(function(opt) { return '<li>' + inline(opt) + '</li>'; }).join('') + '</ol></div>';
+      }
     }
   }
   if (entry.answer) body += renderAnswerCard(entry.answer);

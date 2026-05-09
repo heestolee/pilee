@@ -53,7 +53,7 @@ TFT Studio는 tabbed markdown live view와 single/multi option, 직접 입력을
 
 사용자가 선택한 뒤에는 완료 카드가 선택값·직접 입력값·원 질문을 남겨 “Pi가 다음 단계를 준비 중”임을 보여줍니다. 즉 선택 직후 질문 UI가 사라져도 사용자가 방금 무엇을 제출했는지 화면에서 확인할 수 있어야 합니다.
 
-TFT Studio의 메인 화면은 최신 활성 step을 위에 따로 띄우고 그 아래에 과거 전문을 붙이는 구조가 아니라, `update → question → answer`를 시간순으로 보여주는 진행 타임라인이어야 합니다. 사용자가 Step 3에서 선택 중이면 Step 1, Step 2 다음에 Step 3 질문이 inline으로 보여야 하며, 원자료 성격의 로그만 하단에 분리합니다. 그래야 사용자가 화면을 3→1→2 순서로 읽는 인지적 역전이 발생하지 않습니다.
+TFT Studio의 메인 화면은 최신 활성 step을 위에 따로 띄우고 그 아래에 과거 전문을 붙이는 구조가 아니라, `update → question → answer`를 시간순으로 보여주는 진행 타임라인이어야 합니다. 사용자가 Step 3에서 선택 중이면 Step 1, Step 2 다음에 Step 3 질문이 inline으로 보여야 하며, pending question의 제목/옵션 UI는 한 번만 렌더링합니다. 원자료 성격의 로그만 하단에 분리합니다. 그래야 사용자가 화면을 3→1→2 순서로 읽는 인지적 역전이나 같은 질문이 두 번 보이는 혼선을 피할 수 있습니다.
 
 즉 TFT Studio는 AskUserQuestion 원칙을 대체하지 않습니다. 같은 decision gate를 더 읽기 쉬운 UI로 표현하는 surface입니다. `/frame`의 핵심 정렬 질문에서는 추천안이 명백해 보여도 묻고, `(명백: ...)` 주석으로 AI 판단 근거를 같이 보여줘야 합니다.
 
