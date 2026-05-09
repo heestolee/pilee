@@ -66,6 +66,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
+| [Worker는 readiness ownership을 가진다](./ai-worker-readiness-orchestrator.md) | active | high | 2026-05-09 | 1899d1e | worker, subagent, orchestrator, readiness, bootstrap, diagnosis |
 | [Self-healing은 actionable item만 수정한다](./self-healing-actionable-loop.md) | active | high | 2026-05-09 | ce7e63b | self-healing, actionable, worker, fix-class, subagent, 자동수정 |
 | [Stress Interview는 다축 검토다](./stress-interview-multi-axis-review.md) | active | high | 2026-05-08 | 5f2c9ae | stress-interview, review, verifier, reviewer, challenger, subagent |
 | [Codex-first subagent 모델 운용 정책](./subagent-model-policy.md) | active | high | 2026-05-08 | be32cb7 | subagent, codex, model-policy, worker, finder, searcher |
@@ -117,6 +118,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [Deterministic fallback은 workflow를 보존한다](./deterministic-fallbacks-preserve-workflow.md) | active | high | 2026-05-09 | a3707cc | fallback, deterministic, model-failure, resilience, web-search, report |
+| [Embedded WebView script는 escape 경계를 보존한다](./embedded-webview-script-escape-boundary.md) | active | high | 2026-05-09 | 1899d1e | webview, embedded-script, escape, string-raw, regex, glimpse |
 | [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-05-08 | 667cefb | mcp, stderr, stdio, terminal, tui, noise |
 | [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-05-09 | bc0f77e | terminal, ghostty, applescript, notify, host, integration |
 
@@ -168,6 +170,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Private overlay package는 회사·개인 실행 맥락을 담는다](./private-overlay-package-boundary.md) | active | high | 2026-05-09 | 67c7dc3 | privacy, package, overlay, skill, company-context |
 | [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-05-08 | 667cefb | queued-messages, slash-command, prefill, worktree, session, boundary |
 | [종료된 포크는 transcript 주입보다 revive가 우선이다](./revive-over-transcript-recall.md) | active | high | 2026-05-08 | 667cefb | revive, recall, fork-panel, session, continuity, 세션 |
+| [Session export는 원본을 보존하는 adapter를 거친다](./session-export-source-preservation.md) | active | high | 2026-05-09 | 1899d1e | session-export, source-preservation, jsonl, conductor, normalize, show-report |
 | [세션 식별자는 파일명이 아니라 사람이 본 이름이다](./session-identity-over-filenames.md) | active | high | 2026-05-08 | 667cefb | session, title, identity, session_info, worktree, revive |
 | [Skill은 재사용 가능한 절차다](./skills-as-portable-procedures.md) | active | high | 2026-05-08 | fdf91a4 | skill, skill-creator, procedure, porting, workflow, 스킬 |
 | [Command shim은 skill source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-05-09 | a3707cc | command-shim, skill, tft, frame, slash-command, routing |
@@ -181,6 +184,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 ```mermaid
 graph TD
+  doc_ai_worker_readiness_orchestrator["Worker는 readiness ownership을 가진다"]
   doc_self_healing_actionable_loop["Self-healing은 actionable item만 수정한다"]
   doc_stress_interview_multi_axis_review["Stress Interview는 다축 검토다"]
   doc_subagent_model_policy["Codex-first subagent 모델 운용 정책"]
@@ -202,6 +206,7 @@ graph TD
   doc_reviewed_commit_freshness["reviewed_commit은 날짜 freshness의 빈틈을 막는다"]
   doc_diff_review_draft_handoff["Diff review draft는 PR 코멘트 전 단계다"]
   doc_deterministic_fallbacks_preserve_workflow["Deterministic fallback은 workflow를 보존한다"]
+  doc_embedded_webview_script_escape_boundary["Embedded WebView script는 escape 경계를 보존한다"]
   doc_mcp_stderr_isolation["MCP stderr는 TUI 출력이 아니다"]
   doc_terminal_host_integration["터미널 연동은 host adapter로 다룬다"]
   doc_ambient_status_surfaces["Idle UI는 장식이 아니라 ambient status다"]
@@ -233,6 +238,7 @@ graph TD
   doc_private_overlay_package_boundary["Private overlay package는 회사·개인 실행 맥락을 담는다"]
   doc_queued_command_prefill_boundary["Queued command는 실행 보장이 아니다"]
   doc_revive_over_transcript_recall["종료된 포크는 transcript 주입보다 revive가 우선이다"]
+  doc_session_export_source_preservation["Session export는 원본을 보존하는 adapter를 거친다"]
   doc_session_identity_over_filenames["세션 식별자는 파일명이 아니라 사람이 본 이름이다"]
   doc_skills_as_portable_procedures["Skill은 재사용 가능한 절차다"]
   doc_tft_command_shim_skill_routing["Command shim은 skill source of truth를 지킨다"]
@@ -241,6 +247,11 @@ graph TD
   doc_worktree_dependency_bootstrap_worker["Worktree 의존성 준비는 조건부 worker가 맡는다"]
   doc_worktree_execution_boundary["Worktree는 실행 경계다"]
   doc_worktree_session_continuity["Worktree 세션 연속성과 식별성 원칙"]
+  doc_ai_worker_readiness_orchestrator --> doc_self_healing_actionable_loop
+  doc_ai_worker_readiness_orchestrator --> doc_stress_interview_multi_axis_review
+  doc_ai_worker_readiness_orchestrator --> doc_subagent_model_policy
+  doc_ai_worker_readiness_orchestrator --> doc_subagent_prompt_specificity
+  doc_ai_worker_readiness_orchestrator --> doc_worktree_dependency_bootstrap_worker
   doc_self_healing_actionable_loop --> doc_stress_interview_multi_axis_review
   doc_self_healing_actionable_loop --> doc_subagent_model_policy
   doc_self_healing_actionable_loop --> doc_verification_invalidation_on_change
@@ -294,6 +305,11 @@ graph TD
   doc_diff_review_draft_handoff --> doc_tool_output_noise_management
   doc_deterministic_fallbacks_preserve_workflow --> doc_curator_approved_source_selection
   doc_deterministic_fallbacks_preserve_workflow --> doc_live_artifact_preview_pattern
+  doc_embedded_webview_script_escape_boundary --> doc_artifact_archive_reopenability
+  doc_embedded_webview_script_escape_boundary --> doc_deterministic_fallbacks_preserve_workflow
+  doc_embedded_webview_script_escape_boundary --> doc_frame_studio_interactive_decision_ui
+  doc_embedded_webview_script_escape_boundary --> doc_live_artifact_preview_pattern
+  doc_embedded_webview_script_escape_boundary --> doc_tui_rendering_sanitization
   doc_mcp_stderr_isolation --> doc_terminal_host_integration
   doc_mcp_stderr_isolation --> doc_tui_rendering_sanitization
   doc_terminal_host_integration --> doc_fork_panel_spatial_continuity
@@ -386,6 +402,10 @@ graph TD
   doc_revive_over_transcript_recall --> doc_fork_panel_parent_inbox
   doc_revive_over_transcript_recall --> doc_session_identity_over_filenames
   doc_revive_over_transcript_recall --> doc_worktree_session_continuity
+  doc_session_export_source_preservation --> doc_artifact_archive_reopenability
+  doc_session_export_source_preservation --> doc_backlog_source_session_provenance
+  doc_session_export_source_preservation --> doc_deterministic_fallbacks_preserve_workflow
+  doc_session_export_source_preservation --> doc_session_identity_over_filenames
   doc_session_identity_over_filenames --> doc_backlog_source_session_provenance
   doc_session_identity_over_filenames --> doc_revive_over_transcript_recall
   doc_session_identity_over_filenames --> doc_worktree_session_continuity
@@ -411,7 +431,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 60
-- Links: 166
+- Documents: 63
+- Links: 180
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
