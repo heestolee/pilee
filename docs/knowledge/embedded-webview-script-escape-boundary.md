@@ -71,7 +71,7 @@ UI가 headless에서 실제로 열리지 않더라도 script parse smoke는 dete
 
 다음 변경이 생기면 이 doctrine을 다시 검토합니다.
 
-- Frame Studio, Artifact Browser, web-search curator, Verify Report live preview의 HTML shell을 바꿀 때
+- TFT Studio, Artifact Browser, web-search curator, Verify Report live preview의 HTML shell을 바꿀 때
 - Markdown renderer나 regex-heavy client code를 template literal에 넣을 때
 - Browser script를 external file/bundled asset으로 분리할 때
 - Glimpse/WebView runtime이 script loading 방식을 바꿀 때

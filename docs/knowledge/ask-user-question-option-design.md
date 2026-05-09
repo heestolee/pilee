@@ -61,4 +61,4 @@ AskUserQuestion은 반드시 modal UI여야 하는 것은 아닙니다. Pi처럼
 
 ## Completion Feedback Rule
 
-Frame Studio 같은 UI가 선택 완료 카드나 transcript를 보여줄 때도 옵션의 책임은 변하지 않습니다. 완료 카드는 사용자가 어떤 분기를 골랐는지 보존하는 feedback이고, 다음 단계 markdown은 그 선택을 반영해야 합니다. “선택됨”을 보여주는 UI가 있어도 옵션 자체가 행동 분기를 표현하지 못하면 의례화 문제는 해결되지 않습니다.
+TFT Studio 같은 UI가 선택 완료 카드나 transcript를 보여줄 때도 옵션의 책임은 변하지 않습니다. 완료 카드는 사용자가 어떤 분기를 골랐는지 보존하는 feedback이고, 다음 단계 markdown은 그 선택을 반영해야 합니다. “선택됨”을 보여주는 UI가 있어도 옵션 자체가 행동 분기를 표현하지 못하면 의례화 문제는 해결되지 않습니다.

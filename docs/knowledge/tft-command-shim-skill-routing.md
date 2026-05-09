@@ -38,7 +38,7 @@ The skill remains the source of truth. Do not duplicate the full workflow as Typ
 
 ## Identity Rule
 
-When a shim opens an auxiliary UI such as Frame Studio, identity still belongs to the worktree/ticket/session planning context, not to the transient panel label or command invocation. The shim may compute and pass identity hints, but the skill-level contract decides what the identity means and where durable artifacts are stored.
+When a shim opens an auxiliary UI such as TFT Studio, identity still belongs to the worktree/ticket/session planning context, not to the transient panel label or command invocation. The shim may compute and pass identity hints, but the skill-level contract decides what the identity means and where durable artifacts are stored.
 
 ## Review Trigger
 

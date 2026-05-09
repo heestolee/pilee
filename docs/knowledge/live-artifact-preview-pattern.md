@@ -40,7 +40,7 @@ related:
 
 ## Reopen Rule
 
-local preview first는 일회성 창을 뜻하지 않습니다. Verify Report, web search review, Frame Studio transcript처럼 검토·선택·증거가 남는 artifact는 `/show-report`나 identity-bound reopen 흐름으로 다시 열 수 있어야 합니다. live 상태를 보존할 수 없으면 최소한 정적 HTML/JSON transcript를 archive에 남깁니다.
+local preview first는 일회성 창을 뜻하지 않습니다. Verify Report, web search review, TFT Studio transcript처럼 검토·선택·증거가 남는 artifact는 `/show-report`나 identity-bound reopen 흐름으로 다시 열 수 있어야 합니다. live 상태를 보존할 수 없으면 최소한 정적 HTML/JSON transcript를 archive에 남깁니다.
 
 ## Host Boundary Rule
 

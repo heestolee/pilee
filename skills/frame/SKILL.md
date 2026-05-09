@@ -82,18 +82,19 @@ Productive Resistance 질문은 반드시 행동형이어야 한다:
 
 ---
 
-## Frame Studio / TFT Studio UI
+## TFT Studio UI
 
-Pi UI가 있고 `frame_studio` tool을 사용할 수 있으면, 번호형 텍스트만 출력하지 말고 Glimpse Frame Studio를 우선 사용한다.
+Pi UI가 있고 `frame_studio` tool을 사용할 수 있으면, 번호형 텍스트만 출력하지 말고 Glimpse TFT Studio를 우선 사용한다. 도구 이름은 하위 호환을 위해 `frame_studio`지만, UI는 Frame/Decide/Verify/Verify Report 탭을 가진 TFT Studio shell이다.
 
-- Step 1 직후: `frame_studio action=start`로 identity-bound Studio를 연다.
-- Step 2/6/8: 현재 markdown을 `action=update`로 렌더링한다.
-- Step 3/4/5/7/9: 선택이 필요한 지점은 `action=ask`를 호출해 버튼/체크박스/직접입력으로 답을 받는다.
+- Step 1 직후: `frame_studio action=start tab=frame`으로 identity-bound TFT Studio를 연다.
+- Step 2/6/8: 현재 markdown을 `action=update tab=frame`으로 렌더링한다.
+- Step 3/4/5/7/9: 선택이 필요한 지점은 `action=ask tab=frame`을 호출해 버튼/체크박스/직접입력으로 답을 받는다.
 - tool 결과가 `unavailable`, `cancelled`, `timeout`이면 `ask-user-question-rules`의 번호형 text-mode fallback으로 이어간다.
-- Frame Studio 제목과 identity는 command shim의 **Frame identity hint**를 따른다. P0/P1 panel label이 아니라 worktree/ticket/session planning identity에 귀속한다.
+- TFT Studio 제목과 identity는 command shim의 **Frame identity hint**를 따른다. P0/P1 panel label이 아니라 worktree/ticket/session planning identity에 귀속한다.
 - `frame_studio` 결과의 `transcriptPath`는 전체 markdown/update/question/answer 전문 저장 위치다. 사용자가 다시 보고 싶어 하면 같은 identity로 `action=open`을 호출해 저장된 전문을 Glimpse에서 다시 연다.
-- Frame Studio는 현재 “Frame tab”이다. 장기적으로 Decide/Verify/Verify Report/Self-healing 탭을 가진 TFT Studio로 확장할 수 있지만, 각 탭은 UI shell일 뿐이고 canonical source는 stage별 structured data(`frame.json.decisions[]`, verify result, report artifact refs)여야 한다.
-- Frame Studio에는 generative-ui dependency를 붙이지 않는다. 대신 flat/compact, 표·diagram은 시각 보조로만, 질문/선택/전문 보존은 deterministic renderer가 책임진다.
+- 현재 1차 shell은 Frame tab을 실제로 사용하고, Decide/Verify/Verify Report tab은 같은 work unit 안에서 이후 stage state를 보여줄 자리로 둔다.
+- 각 탭은 UI shell일 뿐이고 canonical source는 stage별 structured data(`frame.json`, `frame.json.decisions[]`, `frame.json.verifications[]`, verify-report artifact refs)여야 한다.
+- TFT Studio에는 generative-ui dependency를 붙이지 않는다. 대신 flat/compact, 표·diagram은 시각 보조로만, 질문/선택/전문 보존은 deterministic renderer가 책임진다.
 
 ---
 
@@ -320,7 +321,7 @@ Draft를 보여줄 때 맨 위에 반드시 다음을 붙인다:
    - `metadata: { kind: "frame.decision", riskRef, frameVersion }`
 11. `verify_plan.manual_checks` → 각 항목당 `TaskCreate`:
     - `metadata: { kind: "frame.verify_check" }`
-12. Frame Studio를 쓰고 있으면 `frame_studio action=update`로 저장 결과를 남긴다. Step 9의 다음 단계 질문까지 끝난 뒤 `finish`한다.
+12. TFT Studio를 쓰고 있으면 `frame_studio action=update tab=frame`으로 저장 결과를 남긴다. Step 9의 다음 단계 질문까지 끝난 뒤 `finish`한다.
     - `frame.json` path
     - `frame.md` path
     - `canonicalHash`

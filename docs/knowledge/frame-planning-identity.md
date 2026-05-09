@@ -40,4 +40,4 @@ Session title is human identity, not a stable key. It can change and collide, so
 
 ## Transcript Rule
 
-Frame Studio transcript는 planning identity에 묶입니다. 같은 ticket/session planning identity로 다시 열면 이전 질문·선택·markdown 전문을 복원할 수 있어야 하지만, 새 답변을 받을 수 있는 것은 현재 active run의 pending question뿐입니다. 저장된 transcript는 provenance이고, 현재 frame 계약은 최신 frame artifact가 담당합니다.
+TFT Studio transcript는 planning identity에 묶입니다. 같은 ticket/session planning identity로 다시 열면 이전 질문·선택·markdown 전문을 복원할 수 있어야 하지만, 새 답변을 받을 수 있는 것은 현재 active run의 pending question뿐입니다. 저장된 transcript는 provenance이고, 현재 frame 계약은 최신 frame artifact가 담당합니다.

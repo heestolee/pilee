@@ -46,4 +46,4 @@ related:
 
 ## Artifact Identity Rule
 
-Frame Studio transcript, resolver run, backlog source 같은 durable artifact도 사람이 본 작업 이름으로 묶여야 합니다. 파일명 hash는 저장소 내부 식별자로만 쓰고, 사용자에게는 worktree/ticket/session title과 최근 의미 있는 요청을 함께 보여줍니다. 그래야 나중에 revive, `/show-report`, resolver log가 같은 작업을 가리킨다는 것을 이해할 수 있습니다.
+TFT Studio transcript, resolver run, backlog source 같은 durable artifact도 사람이 본 작업 이름으로 묶여야 합니다. 파일명 hash는 저장소 내부 식별자로만 쓰고, 사용자에게는 worktree/ticket/session title과 최근 의미 있는 요청을 함께 보여줍니다. 그래야 나중에 revive, `/show-report`, resolver log가 같은 작업을 가리킨다는 것을 이해할 수 있습니다.

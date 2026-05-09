@@ -165,7 +165,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-05-08 | 667cefb | fork-panel, handoff, inbox, inject, parent, panel |
 | [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-05-08 | 667cefb | fork-panel, revive, repanel, ghostty, spatial, panel |
 | [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-05-09 | bcad70f | frame, planning, identity, home-directory, ticket, session-title |
-| [Frame Studio는 frame 질문을 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-05-09 | bcad70f | frame-studio, frame, glimpse, ask-user-question, decision-ui, co-thinking |
+| [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-05-09 | bcad70f | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-05-09 | bcad70f | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 264ea17 | local-dev, server, startup, diagnosis, dev |
 | [Private overlay package는 회사·개인 실행 맥락을 담는다](./private-overlay-package-boundary.md) | active | high | 2026-05-09 | bcad70f | privacy, package, overlay, skill, company-context |
@@ -234,7 +234,7 @@ graph TD
   doc_fork_panel_parent_inbox["Fork-panel handoff는 parent inbox로 들어간다"]
   doc_fork_panel_spatial_continuity["Fork-panel 위치는 작업 맥락의 일부다"]
   doc_frame_planning_identity["Frame identity는 cwd보다 작업 의도를 우선한다"]
-  doc_frame_studio_interactive_decision_ui["Frame Studio는 frame 질문을 작업 단위 UI로 묶는다"]
+  doc_frame_studio_interactive_decision_ui["TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다"]
   doc_live_artifact_preview_pattern["Live artifact는 local preview first다"]
   doc_local_dev_startup_diagnosis["로컬 개발 서버 시작은 진단 가능한 절차여야 한다"]
   doc_private_overlay_package_boundary["Private overlay package는 회사·개인 실행 맥락을 담는다"]

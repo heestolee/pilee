@@ -11,9 +11,17 @@ import { buildFrameIdentity, type FrameIdentity } from "../tft-commands/frame-id
 
 type StudioStatus = "running" | "awaiting" | "done" | "aborted";
 type AskStatus = "answered" | "cancelled" | "timeout" | "unavailable";
+type StudioTabKey = "frame" | "decide" | "verify" | "verify-report";
+
+type StudioTabState = {
+	markdown: string;
+	step?: string;
+	updatedAt?: number;
+};
 
 type StudioQuestion = {
 	id: string;
+	tab: StudioTabKey;
 	question: string;
 	markdown?: string;
 	options: string[];
@@ -38,6 +46,7 @@ type StudioTimelineEntry = {
 	id: string;
 	time: number;
 	kind: "start" | "update" | "question" | "answer" | "finish" | "abort" | "restore";
+	tab?: StudioTabKey;
 	step?: string;
 	title?: string;
 	markdown?: string;
@@ -52,6 +61,8 @@ type FrameStudioState = {
 	title: string;
 	markdown: string;
 	step?: string;
+	activeTab: StudioTabKey;
+	tabs: Record<StudioTabKey, StudioTabState>;
 	status: StudioStatus;
 	url: string;
 	transcriptPath: string;
@@ -89,6 +100,13 @@ type FrameStudioHandle = {
 const STATE_DIR = join(homedir(), ".pi", "agent", "frame-studio");
 const TRANSCRIPTS_DIR = join(STATE_DIR, "transcripts");
 const ASK_TIMEOUT_MS = 8 * 60 * 60 * 1000;
+
+const STUDIO_TABS: Array<{ key: StudioTabKey; label: string; subtitle: string }> = [
+	{ key: "frame", label: "Frame", subtitle: "목표·범위·성공 기준" },
+	{ key: "decide", label: "Decide", subtitle: "대안·challenge·mitigation" },
+	{ key: "verify", label: "Verify", subtitle: "success criteria 판정" },
+	{ key: "verify-report", label: "Verify Report", subtitle: "증거 리포트·artifact" },
+];
 
 const runsById = new Map<string, FrameStudioHandle>();
 const runsByIdentity = new Map<string, FrameStudioHandle>();
@@ -160,6 +178,57 @@ function transcriptPathForIdentity(key: string): string {
 	return join(TRANSCRIPTS_DIR, `${safeIdentityFileName(key)}.json`);
 }
 
+function normalizeTab(value: unknown): StudioTabKey | undefined {
+	const raw = typeof value === "string" ? value.trim().toLowerCase() : "";
+	if (!raw) return undefined;
+	if (raw === "frame") return "frame";
+	if (raw === "decide" || raw === "decision" || raw === "decisions") return "decide";
+	if (raw === "verify" || raw === "verification") return "verify";
+	if (raw === "verify-report" || raw === "report" || raw === "verify_report") return "verify-report";
+	return undefined;
+}
+
+function makeDefaultTabs(markdown = "", step?: string): Record<StudioTabKey, StudioTabState> {
+	return {
+		frame: { markdown, step, updatedAt: Date.now() },
+		decide: { markdown: "" },
+		verify: { markdown: "" },
+		"verify-report": { markdown: "" },
+	};
+}
+
+function normalizeTabs(value: unknown, markdown = "", step?: string): Record<StudioTabKey, StudioTabState> {
+	const defaults = makeDefaultTabs(markdown, step);
+	if (!value || typeof value !== "object") return defaults;
+	const parsed = value as Partial<Record<StudioTabKey, Partial<StudioTabState>>>;
+	for (const tab of STUDIO_TABS) {
+		const source = parsed[tab.key];
+		if (!source || typeof source !== "object") continue;
+		defaults[tab.key] = {
+			markdown: typeof source.markdown === "string" ? source.markdown : defaults[tab.key].markdown,
+			step: typeof source.step === "string" ? source.step : defaults[tab.key].step,
+			updatedAt: typeof source.updatedAt === "number" ? source.updatedAt : defaults[tab.key].updatedAt,
+		};
+	}
+	return defaults;
+}
+
+function updateTab(state: FrameStudioState, tab: StudioTabKey, params: { markdown?: string; step?: string }) {
+	state.activeTab = tab;
+	state.tabs = normalizeTabs(state.tabs, state.markdown, state.step);
+	const current = state.tabs[tab] ?? { markdown: "" };
+	state.tabs[tab] = {
+		...current,
+		markdown: params.markdown !== undefined ? params.markdown : current.markdown,
+		step: params.step ?? current.step,
+		updatedAt: Date.now(),
+	};
+	if (tab === "frame") {
+		if (params.markdown !== undefined) state.markdown = params.markdown;
+		if (params.step) state.step = params.step;
+	}
+}
+
 function persistState(state: FrameStudioState): void {
 	try {
 		mkdirSync(TRANSCRIPTS_DIR, { recursive: true });
@@ -172,12 +241,16 @@ function loadPersistedState(identity: FrameIdentity): FrameStudioState | null {
 	try {
 		if (!existsSync(transcriptPath)) return null;
 		const parsed = JSON.parse(readFileSync(transcriptPath, "utf8")) as Partial<FrameStudioState>;
+		const markdown = parsed.markdown || "";
+		const step = parsed.step;
 		return {
 			runId: randomUUID().slice(0, 8),
 			identity: parsed.identity ?? identity,
-			title: parsed.title || identity.displayTitle || "Frame Studio",
-			markdown: parsed.markdown || "",
-			step: parsed.step,
+			title: parsed.title || identity.displayTitle || "TFT Studio",
+			markdown,
+			step,
+			activeTab: normalizeTab(parsed.activeTab) ?? "frame",
+			tabs: normalizeTabs(parsed.tabs, markdown, step),
 			status: parsed.status === "done" || parsed.status === "aborted" ? parsed.status : "running",
 			url: "",
 			transcriptPath,
@@ -207,6 +280,8 @@ function serializeState(state: FrameStudioState) {
 		title: state.title,
 		markdown: state.markdown,
 		step: state.step,
+		activeTab: state.activeTab,
+		tabs: normalizeTabs(state.tabs, state.markdown, state.step),
 		status: state.status,
 		url: state.url,
 		transcriptPath: state.transcriptPath,
@@ -237,7 +312,7 @@ function listenOnLoopback(server: Server): Promise<string> {
 		server.once("error", reject);
 		server.listen(0, "127.0.0.1", () => {
 			const address = server.address();
-			if (!address || typeof address === "string") return reject(new Error("Failed to bind Frame Studio server."));
+			if (!address || typeof address === "string") return reject(new Error("Failed to bind TFT Studio server."));
 			resolve(`http://127.0.0.1:${address.port}/`);
 		});
 	});
@@ -249,7 +324,7 @@ function buildPageHtml(): string {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Frame Studio</title>
+<title>TFT Studio</title>
 <style>
 :root {
   color-scheme: light;
@@ -265,8 +340,18 @@ body { margin:0; background:var(--bg); color:var(--text); font:14px/1.55 -apple-
 h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .meta { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; color:var(--muted); }
 .badge { border:1px solid var(--line); background:rgba(255,255,255,.75); border-radius:999px; padding:4px 10px; font-size:12px; }
+.tabs { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:16px; }
+.tab { text-align:left; border:1px solid var(--line); background:var(--panel); border-radius:14px; padding:12px 14px; color:var(--text); cursor:pointer; }
+.tab:hover { border-color:#c4b5fd; background:#faf9ff; }
+.tab.active { border-color:var(--accent); background:var(--accent-soft); box-shadow:0 0 0 1px rgba(124,58,237,.15) inset; }
+.tab-label { display:block; font-size:14px; font-weight:900; }
+.tab-subtitle { display:block; margin-top:2px; color:var(--muted); font-size:11px; font-weight:650; }
+.tab-status { display:inline-block; margin-top:7px; border:1px solid rgba(120,113,108,.25); border-radius:999px; padding:1px 7px; color:var(--muted); font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
 .layout { display:grid; grid-template-columns:minmax(0,1fr); gap:16px; margin-top:18px; }
 .card { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:18px 20px; }
+.stage-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:12px; }
+.stage-title { margin:0; font-size:18px; font-weight:900; }
+.stage-subtitle { color:var(--muted); font-size:12px; margin-top:2px; }
 .card h2 { margin:0 0 10px; font-size:17px; }
 .markdown h1 { font-size:23px; border-bottom:1px solid var(--line); padding-bottom:8px; }
 .markdown h2 { font-size:19px; margin-top:22px; }
@@ -310,19 +395,27 @@ button { border:0; border-radius:12px; padding:10px 15px; font-weight:800; curso
 <body>
 <div class="app">
   <section class="hero">
-    <div class="kicker">Frame Studio</div>
-    <h1 id="title">Frame Studio</h1>
+    <div class="kicker">TFT Studio</div>
+    <h1 id="title">TFT Studio</h1>
     <div class="meta" id="meta"></div>
+    <nav class="tabs" id="tabs"></nav>
   </section>
   <main class="layout">
-    <section class="card markdown" id="markdown"><div class="empty">Frame markdown을 기다리는 중...</div></section>
+    <section class="card markdown" id="stagePanel"><div class="empty">TFT stage markdown을 기다리는 중...</div></section>
     <section class="card question" id="questionCard" hidden></section>
-    <section class="card"><h2>Frame 전문</h2><div class="timeline" id="timeline"></div></section>
+    <section class="card"><h2>TFT 전문</h2><div class="timeline" id="timeline"></div></section>
     <section class="card"><h2>로그</h2><div class="logs" id="logs"></div></section>
   </main>
 </div>
 <script>
 var state = null;
+var selectedTab = null;
+var STUDIO_TABS = [
+  { key:'frame', label:'Frame', subtitle:'목표·범위·성공 기준', empty:'Frame markdown을 기다리는 중...' },
+  { key:'decide', label:'Decide', subtitle:'대안·challenge·mitigation', empty:'아직 Decide stage가 연결되지 않았습니다. /decide가 같은 identity에 decision table과 challenge를 기록하면 이 탭에서 보여줄 자리입니다.' },
+  { key:'verify', label:'Verify', subtitle:'success criteria 판정', empty:'아직 Verify stage가 연결되지 않았습니다. /verify가 frame success criteria별 판정을 기록하면 이 탭에서 보여줄 자리입니다.' },
+  { key:'verify-report', label:'Verify Report', subtitle:'증거 리포트·artifact', empty:'아직 Verify Report stage가 연결되지 않았습니다. /verify-report가 생성한 report.html과 evidence artifact refs를 보여줄 자리입니다.' }
+];
 function esc(s) { return String(s || '').replace(/[&<>"']/g, function(c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]); }); }
 function inline(s) { var tick = String.fromCharCode(96); return esc(s).replace(new RegExp(tick + '([^' + tick + ']+)' + tick, 'g'), '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>'); }
 function renderMarkdown(md) {
@@ -404,7 +497,7 @@ function renderAnswerCard(answer) {
     + '<div class="status">Pi가 다음 단계를 준비 중입니다. 다음 markdown update가 오면 이 카드가 교체됩니다.</div>';
 }
 function renderTimelineEntry(entry) {
-  var head = '<div class="timeline-head"><span>' + new Date(entry.time).toLocaleTimeString() + '</span><span class="timeline-kind">' + esc(entry.kind || '') + '</span>' + (entry.step ? '<span>' + esc(entry.step) + '</span>' : '') + '</div>';
+  var head = '<div class="timeline-head"><span>' + new Date(entry.time).toLocaleTimeString() + '</span><span class="timeline-kind">' + esc(entry.kind || '') + '</span>' + (entry.tab ? '<span>' + esc(entry.tab) + '</span>' : '') + (entry.step ? '<span>' + esc(entry.step) + '</span>' : '') + '</div>';
   var body = '';
   if (entry.message) body += '<p>' + inline(entry.message) + '</p>';
   if (entry.markdown) body += '<details><summary>Markdown 전문</summary><div class="markdown">' + renderMarkdown(entry.markdown) + '</div></details>';
@@ -418,21 +511,61 @@ function renderTimelineEntry(entry) {
   return '<div class="timeline-item">' + head + (body || '<span class="status">내용 없음</span>') + '</div>';
 }
 function renderTimeline(entries) {
-  if (!entries || !entries.length) return '<span class="status">아직 기록된 frame 전문이 없습니다.</span>';
+  if (!entries || !entries.length) return '<span class="status">아직 기록된 TFT 전문이 없습니다.</span>';
   return entries.map(renderTimelineEntry).join('');
 }
+function tabData(s, key) {
+  var tabs = s.tabs || {};
+  var data = tabs[key] || {};
+  if (key === 'frame' && !data.markdown && s.markdown) data = { markdown:s.markdown, step:s.step, updatedAt:s.updatedAt };
+  return data;
+}
+function activeTabKey(s) {
+  var key = selectedTab || s.activeTab || 'frame';
+  return STUDIO_TABS.some(function(tab) { return tab.key === key; }) ? key : 'frame';
+}
+function tabStatus(s, key) {
+  var data = tabData(s, key);
+  if (s.status === 'awaiting' && s.question && s.question.tab === key) return 'awaiting';
+  if (key === 'frame' && s.status === 'done') return 'done';
+  if (data.markdown) return 'active';
+  return 'idle';
+}
+function renderTabs(s) {
+  var active = activeTabKey(s);
+  return STUDIO_TABS.map(function(tab) {
+    var status = tabStatus(s, tab.key);
+    return '<button class="tab ' + (tab.key === active ? 'active' : '') + '" onclick="selectTab(\'' + tab.key + '\')">'
+      + '<span class="tab-label">' + esc(tab.label) + '</span>'
+      + '<span class="tab-subtitle">' + esc(tab.subtitle) + '</span>'
+      + '<span class="tab-status">' + esc(status) + '</span>'
+      + '</button>';
+  }).join('');
+}
+function renderStagePanel(s) {
+  var active = activeTabKey(s);
+  var meta = STUDIO_TABS.find(function(tab) { return tab.key === active; }) || STUDIO_TABS[0];
+  var data = tabData(s, active);
+  var body = data.markdown ? renderMarkdown(data.markdown) : '<div class="empty">' + inline(meta.empty) + '</div>';
+  return '<div class="stage-head"><div><div class="stage-title">' + esc(meta.label) + '</div><div class="stage-subtitle">' + esc(meta.subtitle) + '</div></div>'
+    + '<span class="badge">' + esc(tabStatus(s, active)) + '</span></div>' + body;
+}
+function selectTab(key) { selectedTab = key; if (state) render(state); }
 function render(s) {
   state = s;
-  document.title = s.title || 'Frame Studio';
-  document.getElementById('title').textContent = s.title || 'Frame Studio';
+  if (s.status === 'awaiting' && s.question && !selectedTab) selectedTab = s.question.tab || s.activeTab || 'frame';
+  document.title = s.title || 'TFT Studio';
+  document.getElementById('title').textContent = s.title || 'TFT Studio';
   var ident = s.identity || {};
   document.getElementById('meta').innerHTML = [
+    '<span class="badge">TFT Studio</span>',
     '<span class="badge">' + esc(ident.mode || 'unknown') + '</span>',
     '<span class="badge">' + esc(ident.displayTitle || '') + '</span>',
     s.step ? '<span class="badge">' + esc(s.step) + '</span>' : '',
     '<span class="badge">' + esc(s.status || '') + '</span>'
   ].filter(Boolean).join('');
-  document.getElementById('markdown').innerHTML = s.markdown ? renderMarkdown(s.markdown) : '<div class="empty">Frame markdown을 기다리는 중...</div>';
+  document.getElementById('tabs').innerHTML = renderTabs(s);
+  document.getElementById('stagePanel').innerHTML = renderStagePanel(s);
   var q = s.question;
   var qc = document.getElementById('questionCard');
   if (!q || s.status !== 'awaiting') {
@@ -449,6 +582,7 @@ function render(s) {
     qc.className = 'card question';
     var type = q.multiSelect ? 'checkbox' : 'radio';
     qc.innerHTML = '<div class="question-title">' + esc(q.question) + '</div>'
+      + '<div class="status">stage: ' + esc(q.tab || 'frame') + '</div>'
       + (q.markdown ? '<div class="markdown">' + renderMarkdown(q.markdown) + '</div>' : '')
       + '<div class="options">' + q.options.map(function(opt, i) {
         return '<label class="option"><input name="frameOption" type="' + type + '" value="' + i + '"><span class="option-number">' + (i + 1) + '</span><span>' + inline(opt) + '</span></label>';
@@ -528,6 +662,7 @@ function createServerFor(state: FrameStudioState): FrameStudioHandle {
 				const selectedIndices = Array.isArray(body.selectedIndices)
 					? body.selectedIndices.map((n: unknown) => Number(n)).filter((n: number) => Number.isInteger(n) && n >= 0 && n < (handle.state.question?.options.length ?? 0))
 					: [];
+				const questionTab = handle.state.question?.tab ?? handle.state.activeTab;
 				const options = handle.state.question?.options ?? [];
 				const answer: StudioAnswer = {
 					status: body.cancelled ? "cancelled" : "answered",
@@ -543,8 +678,8 @@ function createServerFor(state: FrameStudioState): FrameStudioHandle {
 				handle.state.lastAnswer = answer;
 				handle.state.question = undefined;
 				handle.state.status = "running";
-				appendTimeline(handle.state, { kind: "answer", step: handle.state.step, answer });
-				addLog(handle, answer.status === "cancelled" ? "Question cancelled by user." : "Question answered in Frame Studio.");
+				appendTimeline(handle.state, { kind: "answer", tab: questionTab, step: handle.state.step, answer });
+				addLog(handle, answer.status === "cancelled" ? "Question cancelled by user." : "Question answered in TFT Studio.");
 				pushState(handle);
 				pending.resolve(answer);
 				sendJson(res, { ok: true });
@@ -597,20 +732,20 @@ async function openStudio(pi: ExtensionAPI, ctx: ExtensionContext, handle: Frame
 	return "browser";
 }
 
-async function ensureRun(pi: ExtensionAPI, ctx: ExtensionContext, params: { title?: string; markdown?: string; step?: string; identityKey?: string; displayTitle?: string; args?: string }): Promise<{ handle: FrameStudioHandle; opened: "glimpse" | "browser" | "none" | "reused" }> {
+async function ensureRun(pi: ExtensionAPI, ctx: ExtensionContext, params: { title?: string; markdown?: string; step?: string; tab?: string; identityKey?: string; displayTitle?: string; args?: string }): Promise<{ handle: FrameStudioHandle; opened: "glimpse" | "browser" | "none" | "reused" }> {
 	mkdirSync(STATE_DIR, { recursive: true });
 	const inferred = buildFrameIdentity(ctx as any, params.args ?? "");
 	const identity = params.identityKey || params.displayTitle
 		? { ...inferred, key: params.identityKey || inferred.key, displayTitle: params.displayTitle || inferred.displayTitle }
 		: inferred;
+	const tab = normalizeTab(params.tab) ?? "frame";
 	let handle = runsByIdentity.get(identity.key);
 	if (handle && !handle.closed) {
 		if (params.title) handle.state.title = params.title;
-		if (params.markdown !== undefined) handle.state.markdown = params.markdown;
-		if (params.step) handle.state.step = params.step;
+		updateTab(handle.state, tab, { markdown: params.markdown, step: params.step });
 		if (params.markdown !== undefined || params.step) handle.state.lastAnswer = undefined;
-		if (params.markdown !== undefined || params.step || params.title) {
-			appendTimeline(handle.state, { kind: "update", title: params.title, step: params.step, markdown: params.markdown });
+		if (params.markdown !== undefined || params.step || params.title || params.tab) {
+			appendTimeline(handle.state, { kind: "update", tab, title: params.title, step: params.step, markdown: params.markdown });
 		}
 		handle.state.updatedAt = Date.now();
 		pushState(handle);
@@ -623,9 +758,11 @@ async function ensureRun(pi: ExtensionAPI, ctx: ExtensionContext, params: { titl
 	const state: FrameStudioState = restored ?? {
 		runId,
 		identity,
-		title: params.title || identity.displayTitle || "Frame Studio",
+		title: params.title || identity.displayTitle || "TFT Studio",
 		markdown: params.markdown || "",
 		step: params.step,
+		activeTab: tab,
+		tabs: makeDefaultTabs(params.markdown || "", params.step),
 		status: "running",
 		url: "",
 		transcriptPath: transcriptPathForIdentity(identity.key),
@@ -635,13 +772,12 @@ async function ensureRun(pi: ExtensionAPI, ctx: ExtensionContext, params: { titl
 		logs: [],
 	};
 	if (params.title) state.title = params.title;
-	if (params.markdown !== undefined) state.markdown = params.markdown;
-	if (params.step) state.step = params.step;
+	updateTab(state, tab, { markdown: params.markdown, step: params.step });
 	handle = createServerFor(state);
 	state.url = await listenOnLoopback(handle.server);
-	if (restored) appendTimeline(state, { kind: "restore", step: params.step, markdown: params.markdown, message: "Saved Frame Studio transcript restored." });
-	else appendTimeline(state, { kind: "start", title: state.title, step: state.step, markdown: state.markdown, message: "Frame Studio started." });
-	addLog(handle, restored ? "Saved Frame Studio transcript restored." : "Frame Studio started.");
+	if (restored) appendTimeline(state, { kind: "restore", tab, step: params.step, markdown: params.markdown, message: "Saved TFT Studio transcript restored." });
+	else appendTimeline(state, { kind: "start", tab, title: state.title, step: state.step, markdown: state.markdown, message: "TFT Studio started." });
+	addLog(handle, restored ? "Saved TFT Studio transcript restored." : "TFT Studio started.");
 	runsById.set(runId, handle);
 	runsByIdentity.set(identity.key, handle);
 	latestRunId = runId;
@@ -661,11 +797,12 @@ function closeHandle(handle: FrameStudioHandle) {
 	try { handle.window?.close(); } catch {}
 	if (handle.pending) {
 		clearTimeout(handle.pending.timer);
+		const questionTab = handle.state.question?.tab ?? handle.state.activeTab;
 		const answer: StudioAnswer = { status: "cancelled", questionId: handle.pending.questionId, question: handle.state.question?.question, selectedIndices: [], selectedOptions: [], submittedAt: Date.now() };
 		handle.state.lastAnswer = answer;
 		handle.state.question = undefined;
 		handle.state.status = "running";
-		appendTimeline(handle.state, { kind: "answer", step: handle.state.step, answer });
+		appendTimeline(handle.state, { kind: "answer", tab: questionTab, step: handle.state.step, answer });
 		handle.pending.resolve(answer);
 		handle.pending = undefined;
 	}
@@ -681,8 +818,8 @@ function ask(handle: FrameStudioHandle, question: StudioQuestion, signal?: Abort
 	handle.state.lastAnswer = undefined;
 	handle.state.question = question;
 	handle.state.status = "awaiting";
-	if (question.markdown) handle.state.markdown = question.markdown;
-	appendTimeline(handle.state, { kind: "question", step: handle.state.step, markdown: question.markdown, question });
+	updateTab(handle.state, question.tab, { markdown: question.markdown, step: handle.state.step });
+	appendTimeline(handle.state, { kind: "question", tab: question.tab, step: handle.state.step, markdown: question.markdown, question });
 	addLog(handle, `Awaiting answer: ${question.question}`);
 	pushState(handle);
 	return new Promise((resolve) => {
@@ -693,7 +830,7 @@ function ask(handle: FrameStudioHandle, question: StudioQuestion, signal?: Abort
 			handle.state.lastAnswer = answer;
 			handle.state.question = undefined;
 			handle.state.status = "running";
-			appendTimeline(handle.state, { kind: "answer", step: handle.state.step, answer });
+			appendTimeline(handle.state, { kind: "answer", tab: question.tab, step: handle.state.step, answer });
 			addLog(handle, "Question timed out.");
 			pushState(handle);
 			resolve(answer);
@@ -708,7 +845,7 @@ function ask(handle: FrameStudioHandle, question: StudioQuestion, signal?: Abort
 				handle.state.lastAnswer = answer;
 				handle.state.question = undefined;
 				handle.state.status = "running";
-				appendTimeline(handle.state, { kind: "answer", step: handle.state.step, answer });
+				appendTimeline(handle.state, { kind: "answer", tab: question.tab, step: handle.state.step, answer });
 				addLog(handle, "Question cancelled by abort signal.");
 				pushState(handle);
 				resolve(answer);
@@ -720,17 +857,18 @@ function ask(handle: FrameStudioHandle, question: StudioQuestion, signal?: Abort
 export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "frame_studio",
-		label: "Frame Studio",
-		description: "Open/update a Glimpse Frame Studio for /frame co-thinking. Supports markdown rendering, interactive option/text answers, saved full transcripts, and reopening by worktree/ticket/session identity.",
+		label: "TFT Studio",
+		description: "Open/update a Glimpse TFT Studio shell for Frame/Decide/Verify/Verify Report work-unit flow. The tool name remains frame_studio for compatibility.",
 		parameters: Type.Object({
 			action: Type.String({ description: "start|update|ask|open|finish|abort" }),
-			runId: Type.Optional(Type.String({ description: "Existing Frame Studio run id. Omit to use identity/latest run." })),
+			runId: Type.Optional(Type.String({ description: "Existing TFT Studio run id. Omit to use identity/latest run." })),
 			identityKey: Type.Optional(Type.String({ description: "Override identity key. Usually use Frame identity hint key. Also reopens the saved transcript for that identity." })),
 			displayTitle: Type.Optional(Type.String({ description: "Override display title." })),
 			args: Type.Optional(Type.String({ description: "Original /frame args used for identity inference." })),
 			title: Type.Optional(Type.String({ description: "Window/report title." })),
-			step: Type.Optional(Type.String({ description: "Current frame step label." })),
-			markdown: Type.Optional(Type.String({ description: "Markdown to render in the Frame Studio." })),
+			tab: Type.Optional(Type.String({ description: "TFT Studio tab: frame|decide|verify|verify-report. Defaults to frame." })),
+			step: Type.Optional(Type.String({ description: "Current stage step label." })),
+			markdown: Type.Optional(Type.String({ description: "Markdown to render in the selected TFT Studio tab." })),
 			question: Type.Optional(Type.String({ description: "Question to ask for action=ask." })),
 			options: Type.Optional(Type.Array(Type.String(), { description: "Options for action=ask." })),
 			multiSelect: Type.Optional(Type.Boolean({ description: "Allow multiple option selection." })),
@@ -744,7 +882,7 @@ export default function (pi: ExtensionAPI) {
 
 			if (action === "start") {
 				const { handle, opened } = await ensureRun(pi, ctx, params);
-				return resultText(`Frame Studio started (${handle.state.runId}). ${handle.state.url}. Transcript: ${handle.state.transcriptPath}. Opened: ${opened}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, identity: handle.state.identity, opened });
+				return resultText(`TFT Studio started (${handle.state.runId}). ${handle.state.url}. Transcript: ${handle.state.transcriptPath}. Opened: ${opened}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, identity: handle.state.identity, activeTab: handle.state.activeTab, opened });
 			}
 
 			let handle = params.runId ? runsById.get(params.runId) : undefined;
@@ -759,34 +897,36 @@ export default function (pi: ExtensionAPI) {
 				const ensured = await ensureRun(pi, ctx, params);
 				handle = ensured.handle;
 			}
-			if (!handle) throw new Error("No active Frame Studio run. Call action=start first.");
+			if (!handle) throw new Error("No active TFT Studio run. Call action=start first.");
 
 			if (action === "open") {
 				const opened = await openStudio(pi, ctx, handle);
-				return resultText(`Frame Studio opened (${handle.state.runId}). ${handle.state.url}. Transcript: ${handle.state.transcriptPath}. Opened: ${opened}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, opened });
+				return resultText(`TFT Studio opened (${handle.state.runId}). ${handle.state.url}. Transcript: ${handle.state.transcriptPath}. Opened: ${opened}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, activeTab: handle.state.activeTab, opened });
 			}
 
 			if (action === "update") {
+				const tab = normalizeTab(params.tab) ?? handle.state.activeTab ?? "frame";
 				if (params.title) handle.state.title = params.title;
-				if (params.step) handle.state.step = params.step;
-				if (params.markdown !== undefined) handle.state.markdown = params.markdown;
+				updateTab(handle.state, tab, { markdown: params.markdown, step: params.step });
 				if (params.markdown !== undefined || params.step) handle.state.lastAnswer = undefined;
-				appendTimeline(handle.state, { kind: "update", title: params.title, step: params.step, markdown: params.markdown });
-				addLog(handle, `Updated${params.step ? `: ${params.step}` : ""}.`);
+				appendTimeline(handle.state, { kind: "update", tab, title: params.title, step: params.step, markdown: params.markdown });
+				addLog(handle, `Updated ${tab}${params.step ? `: ${params.step}` : ""}.`);
 				pushState(handle);
-				return resultText(`Frame Studio updated (${handle.state.runId}). Transcript: ${handle.state.transcriptPath}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath });
+				return resultText(`TFT Studio updated (${handle.state.runId}). Transcript: ${handle.state.transcriptPath}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, activeTab: handle.state.activeTab });
 			}
 
 			if (action === "ask") {
 				if (!ctx.hasUI) {
-					return resultText("Frame Studio UI is unavailable in this context. Use numbered text-mode AskUserQuestion fallback.", { status: "unavailable", transcriptPath: handle.state.transcriptPath });
+					return resultText("TFT Studio UI is unavailable in this context. Use numbered text-mode AskUserQuestion fallback.", { status: "unavailable", transcriptPath: handle.state.transcriptPath });
 				}
+				const tab = normalizeTab(params.tab) ?? handle.state.activeTab ?? "frame";
 				if (params.title) handle.state.title = params.title;
 				if (params.step) handle.state.step = params.step;
-				if (params.markdown !== undefined) handle.state.markdown = params.markdown;
+				updateTab(handle.state, tab, { markdown: params.markdown, step: params.step });
 				if (!handle.window) await openStudio(pi, ctx, handle);
 				const question: StudioQuestion = {
 					id: randomUUID().slice(0, 8),
+					tab,
 					question: params.question || "선택해주세요.",
 					markdown: params.markdown,
 					options: Array.isArray(params.options) ? params.options : [],
@@ -799,27 +939,28 @@ export default function (pi: ExtensionAPI) {
 				const answer = await ask(handle, question, signal);
 				return resultText(
 					answer.status === "answered"
-						? `Frame Studio answer: ${answer.selectedOptions.join(", ") || "(no option)"}${answer.text ? `; text: ${answer.text}` : ""}`
-						: `Frame Studio ask ended: ${answer.status}.`,
-					{ runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, answer },
+						? `TFT Studio answer: ${answer.selectedOptions.join(", ") || "(no option)"}${answer.text ? `; text: ${answer.text}` : ""}`
+						: `TFT Studio ask ended: ${answer.status}.`,
+					{ runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, activeTab: handle.state.activeTab, answer },
 				);
 			}
 
 			if (action === "finish") {
-				if (params.markdown !== undefined) handle.state.markdown = params.markdown;
+				const tab = normalizeTab(params.tab) ?? handle.state.activeTab ?? "frame";
+				updateTab(handle.state, tab, { markdown: params.markdown, step: params.step });
 				handle.state.status = "done";
-				appendTimeline(handle.state, { kind: "finish", step: params.step ?? handle.state.step, markdown: params.markdown, message: "Frame Studio finished." });
-				addLog(handle, "Frame Studio finished.");
+				appendTimeline(handle.state, { kind: "finish", tab, step: params.step ?? handle.state.step, markdown: params.markdown, message: "TFT Studio finished." });
+				addLog(handle, "TFT Studio finished.");
 				pushState(handle);
-				return resultText(`Frame Studio finished (${handle.state.runId}). Transcript: ${handle.state.transcriptPath}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath });
+				return resultText(`TFT Studio finished (${handle.state.runId}). Transcript: ${handle.state.transcriptPath}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, activeTab: handle.state.activeTab });
 			}
 
 			if (action === "abort") {
 				handle.state.status = "aborted";
-				appendTimeline(handle.state, { kind: "abort", step: handle.state.step, message: "Frame Studio aborted." });
-				addLog(handle, "Frame Studio aborted.");
+				appendTimeline(handle.state, { kind: "abort", tab: handle.state.activeTab, step: handle.state.step, message: "TFT Studio aborted." });
+				addLog(handle, "TFT Studio aborted.");
 				pushState(handle);
-				return resultText(`Frame Studio aborted (${handle.state.runId}). Transcript: ${handle.state.transcriptPath}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath });
+				return resultText(`TFT Studio aborted (${handle.state.runId}). Transcript: ${handle.state.transcriptPath}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, activeTab: handle.state.activeTab });
 			}
 
 			throw new Error(`Unknown frame_studio action: ${params.action}`);

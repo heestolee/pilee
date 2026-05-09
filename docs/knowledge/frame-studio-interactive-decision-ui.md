@@ -1,6 +1,7 @@
 ---
-title: Frame Studio는 frame 질문을 작업 단위 UI로 묶는다
+title: TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다
 tags:
+  - tft-studio
   - frame-studio
   - frame
   - glimpse
@@ -29,38 +30,38 @@ related:
 
 ## Judgment
 
-`/frame`은 사용자가 계획을 감사하게 만드는 문서 생성 명령이 아니라, 목표·범위·검증 렌즈를 함께 좁히는 decision gate입니다. Pi text-mode fallback만으로는 이 체감이 약할 수 있으므로, UI가 가능한 환경에서는 Frame Studio가 질문 흐름을 별도 Glimpse 창에 묶어 보여줍니다.
+`/frame`은 사용자가 계획을 감사하게 만드는 문서 생성 명령이 아니라, 목표·범위·검증 렌즈를 함께 좁히는 decision gate입니다. Pi text-mode fallback만으로는 이 체감이 약할 수 있으므로, UI가 가능한 환경에서는 TFT Studio가 질문 흐름을 별도 Glimpse 창에 묶어 보여줍니다.
 
-Frame Studio의 장기 방향은 Frame만의 별도 장난감이 아니라 Frame/Decide/Verify/Verify Report/Self-healing을 탭으로 나누는 TFT Studio입니다. 다만 탭은 UI 구획일 뿐이고, canonical source는 각 단계의 structured data여야 합니다.
+TFT Studio는 Frame/Decide/Verify/Verify Report를 탭으로 나누는 작업 단위 shell입니다. 1차 구현에서는 Frame tab이 기존 co-thinking 기능을 계속 담당하고, Decide/Verify/Verify Report tab은 같은 identity 안에서 후속 stage state를 붙일 자리로 노출합니다. 탭은 UI 구획일 뿐이고, canonical source는 각 단계의 structured data여야 합니다.
 
 ## Identity Rule
 
-Frame Studio의 소유자는 현재 패널이 아니라 작업 단위입니다. worktree가 있으면 worktree identity를 쓰고, home/planning 상태라면 ticket 또는 session planning identity를 씁니다. 이렇게 해야 P0/P1 패널 이동이나 재개가 있어도 같은 frame 대화가 같은 Studio run으로 이어집니다.
+TFT Studio의 소유자는 현재 패널이 아니라 작업 단위입니다. worktree가 있으면 worktree identity를 쓰고, home/planning 상태라면 ticket 또는 session planning identity를 씁니다. 이렇게 해야 P0/P1 패널 이동이나 재개가 있어도 같은 frame/decision/verification 대화가 같은 Studio run으로 이어집니다.
 
 ## Interaction Rule
 
-Frame Studio는 markdown live view와 single/multi option, 직접 입력을 지원합니다. markdown live view는 frame draft의 success criteria처럼 표가 핵심인 문서를 그대로 읽을 수 있어야 하므로 GitHub-style pipe table(`| header |`, `|---|`)을 table로 렌더링합니다. 표가 raw pipe paragraph로 깨지면 검증 기준을 함께 좁히는 UI 목적을 잃습니다.
+TFT Studio는 tabbed markdown live view와 single/multi option, 직접 입력을 지원합니다. markdown live view는 frame draft의 success criteria처럼 표가 핵심인 문서를 그대로 읽을 수 있어야 하므로 GitHub-style pipe table(`| header |`, `|---|`)을 table로 렌더링합니다. 표가 raw pipe paragraph로 깨지면 검증 기준을 함께 좁히는 UI 목적을 잃습니다.
 
 사용자가 선택하거나 취소하면 tool 응답으로 돌아오고, headless/no-UI 환경에서는 blocking하지 않고 numbered text fallback으로 내려갑니다. 질문 대기는 agent turn을 붙잡는 blocking 상태라서 무한 대기하지는 않지만, 실제 frame 검토는 긴 회의/휴식 후에도 이어질 수 있으므로 기본 timeout은 짧은 30분이 아니라 작업 세션 단위의 긴 window로 둡니다.
 
 사용자가 선택한 뒤에는 완료 카드가 선택값·직접 입력값·원 질문을 남겨 “Pi가 다음 단계를 준비 중”임을 보여줍니다. 즉 선택 직후 질문 UI가 사라져도 사용자가 방금 무엇을 제출했는지 화면에서 확인할 수 있어야 합니다.
 
-즉 Frame Studio는 AskUserQuestion 원칙을 대체하지 않습니다. 같은 decision gate를 더 읽기 쉬운 UI로 표현하는 surface입니다. `/frame`의 핵심 정렬 질문에서는 추천안이 명백해 보여도 묻고, `(명백: ...)` 주석으로 AI 판단 근거를 같이 보여줘야 합니다.
+즉 TFT Studio는 AskUserQuestion 원칙을 대체하지 않습니다. 같은 decision gate를 더 읽기 쉬운 UI로 표현하는 surface입니다. `/frame`의 핵심 정렬 질문에서는 추천안이 명백해 보여도 묻고, `(명백: ...)` 주석으로 AI 판단 근거를 같이 보여줘야 합니다.
 
-Generative UI 스타일의 flat/compact visual pattern은 Frame Studio에도 유용하지만, dependency나 “모델이 매번 UI를 생성하는 방식”을 붙이는 것은 맞지 않습니다. Frame Studio는 prose-heavy co-thinking artifact이므로 `텍스트는 tool 밖에, visual만 tool 안에` 같은 규칙을 그대로 적용하면 오히려 목적을 잃습니다. 대신 renderer는 deterministic하게 유지하고, 표·요약 카드·간단한 다이어그램 같은 보조 시각화만 사용해 사용자가 목표/범위/검증 렌즈를 더 빨리 읽게 합니다.
+Generative UI 스타일의 flat/compact visual pattern은 TFT Studio에도 유용하지만, dependency나 “모델이 매번 UI를 생성하는 방식”을 붙이는 것은 맞지 않습니다. TFT Studio는 prose-heavy co-thinking artifact이므로 `텍스트는 tool 밖에, visual만 tool 안에` 같은 규칙을 그대로 적용하면 오히려 목적을 잃습니다. 대신 renderer는 deterministic하게 유지하고, tab shell·표·요약 카드·간단한 다이어그램 같은 보조 시각화만 사용해 사용자가 목표/범위/검증 렌즈를 더 빨리 읽게 합니다.
 
 ## Transcript Rule
 
-Frame Studio는 UI에 렌더된 markdown/update/question/answer 흐름을 identity별 transcript JSON으로 저장합니다. tool result의 `transcriptPath`는 이 전체 전문 저장 위치이며, agent에게 돌아오는 즉시 응답은 여전히 선택값과 직접 입력값 중심입니다.
+TFT Studio는 UI에 렌더된 markdown/update/question/answer 흐름을 identity별 transcript JSON으로 저장합니다. tool result의 `transcriptPath`는 이 전체 전문 저장 위치이며, agent에게 돌아오는 즉시 응답은 여전히 선택값과 직접 입력값 중심입니다.
 
 이 구분이 중요합니다. LLM context에는 제출된 답이 우선 들어오고, 전체 co-thinking 전문은 필요할 때 파일 또는 다시 열린 WebView로 확인하는 artifact입니다. Transcript는 canonical source가 아니라 provenance입니다. 저장 완료 시 Studio 마지막 update/finish에는 `frame.json` path와 canonical hash를 남겨 사용자가 “어떤 대화가 어떤 계약으로 저장됐는지”를추적할 수 있어야 합니다.
 
 ## Reopen Rule
 
-사용자가 이전 frame 흐름을 다시 보고 싶어 하면 같은 worktree/ticket/session identity로 `frame_studio action=open`을 호출합니다. 활성 run이 없더라도 저장된 transcript를 복원해 Glimpse/WebView에서 `Frame 전문` 섹션으로 다시 보여줘야 합니다.
+사용자가 이전 TFT 흐름을 다시 보고 싶어 하면 같은 worktree/ticket/session identity로 `frame_studio action=open`을 호출합니다. 활성 run이 없더라도 저장된 transcript를 복원해 Glimpse/WebView에서 `TFT 전문` 섹션으로 다시 보여줘야 합니다.
 
 ## Boundary
 
-Frame Studio는 `/frame` co-thinking을 위한 UI 계층입니다. 구현 계획을 자동 생성하거나 검증 완료를 선언하는 도구가 아닙니다. frame 결과의 검증 가능성은 여전히 [frame-verify-contract](./frame-verify-contract.md)와 [evidence-first-verification-gate](./evidence-first-verification-gate.md)의 기준을 따릅니다.
+TFT Studio는 `/frame` co-thinking에서 시작해 `/decide`, `/verify`, `/verify-report`를 같은 work unit 안에 묶는 UI 계층입니다. 구현 계획을 자동 생성하거나 검증 완료를 선언하는 도구가 아닙니다. frame 결과의 검증 가능성은 여전히 [frame-verify-contract](./frame-verify-contract.md)와 [evidence-first-verification-gate](./evidence-first-verification-gate.md)의 기준을 따릅니다.
 
-TFT Studio로 확장하더라도 같은 boundary가 유지됩니다. Frame tab은 `frame.json`, Decide tab은 `decisions[]`, Verify tab은 검증 결과, Report tab은 evidence/report artifact refs를 보여주며, Timeline tab은 transcript/provenance를 보여줍니다. Decide tab은 product식 tradeoff comparison과 항상 수행되는 challenge를 보여주되, 최종 원천은 `frame.json.decisions[]`의 structured record입니다. 탭 간 이동이 canonical write 순서를 우회하면 안 됩니다.
+Frame tab은 `frame.json`, Decide tab은 `decisions[]`, Verify tab은 검증 결과, Verify Report tab은 evidence/report artifact refs를 보여줍니다. Decide tab은 product식 tradeoff comparison과 항상 수행되는 challenge를 보여주되, 최종 원천은 `frame.json.decisions[]`의 structured record입니다. 탭 간 이동이 canonical write 순서를 우회하면 안 됩니다.

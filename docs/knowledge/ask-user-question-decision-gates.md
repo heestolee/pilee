@@ -42,7 +42,7 @@ AskUserQuestion은 사용자의 클릭을 얻기 위한 확인창이 아니라, 
 
 ## Transport Rule
 
-AskUserQuestion의 본질은 UI가 아니라 decision gate입니다. Frame Studio처럼 버튼/체크박스/전문 저장 UI가 있어도, 그것은 선택을 더 잘 보존하는 transport일 뿐입니다. modal, 번호형 text fallback, Frame Studio 모두 “선택에 따라 이후 행동이 달라지는가”를 만족할 때만 AskUserQuestion으로 취급합니다.
+AskUserQuestion의 본질은 UI가 아니라 decision gate입니다. TFT Studio처럼 버튼/체크박스/전문 저장 UI가 있어도, 그것은 선택을 더 잘 보존하는 transport일 뿐입니다. modal, 번호형 text fallback, TFT Studio 모두 “선택에 따라 이후 행동이 달라지는가”를 만족할 때만 AskUserQuestion으로 취급합니다.
 
 ## Failure Mode
 

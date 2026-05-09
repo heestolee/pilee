@@ -61,7 +61,7 @@ artifact 종류가 늘어나면 한 목록에 섞지 않습니다. `/show-report
 2. 컨덕터 이력 — runtime profile이 지정한 Conductor master DB와 project JSONL roots에 남은 원본 이력을 보여줍니다. `/wt resume` 산출물이 아니라 원본 보존 이력이라는 의미가 중심입니다.
 3. 웹 검색 — web-search review HTML은 verify report와 섞지 않고 별도 artifact class로 둡니다. worktree/session과 연결되는 검색은 해당 Pi 이력 아래에도 노출하고, 연결되지 않는 검색은 웹 검색 기본 그룹에 남깁니다.
 4. 검증 리포트 — verify report HTML처럼 판정이 있는 검증 산출물입니다.
-5. 기획 / Frame — Frame Studio transcript와 `.context/plans`, `.context/work/**/context.md`, `todo.md` 등 planning markdown처럼 생각 과정이나 작업 계획을 남기는 문서입니다.
+5. 기획 / Frame — TFT Studio transcript와 `.context/plans`, `.context/work/**/context.md`, `todo.md` 등 planning markdown처럼 생각 과정이나 작업 계획을 남기는 문서입니다.
 6. 캡처 / 미디어 — 아직 리포트로 묶이지 않았거나 원본 확인이 필요한 PNG/JPEG/GIF/WebP/SVG evidence입니다.
 
 이 구분은 “작업 단위 이력”, “판정이 있는 리포트”, “생각 과정 전문”, “해석 전 원자료”를 섞지 않기 위한 정보 구조입니다.

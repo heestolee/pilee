@@ -1272,7 +1272,7 @@ function collectFrameTranscripts(): FrameTranscriptEntry[] {
 				const identity = valueFromRecord(parsed, "identity") as Record<string, unknown> | undefined;
 				const timeline = Array.isArray(parsed.timeline) ? parsed.timeline : [];
 				const title = String(parsed.title || identity?.displayTitle || file.replace(/\.json$/, ""));
-				const identityText = String(identity?.displayTitle || identity?.key || "Frame Studio");
+				const identityText = String(identity?.displayTitle || identity?.key || "TFT Studio");
 				entries.push({
 					path: fp,
 					title,
@@ -2258,7 +2258,7 @@ function reportSourceLabel(source: ReportEntry["source"]): string {
 }
 
 function planningSourceLabel(source: PlanningDocEntry["source"]): string {
-	if (source === "frame-studio") return "Frame Studio";
+	if (source === "frame-studio") return "TFT Studio";
 	if (source === "plan") return ".context/plans";
 	return ".context/work";
 }
@@ -2282,7 +2282,7 @@ function renderWebSearchCards(webSearches: WebSearchEntry[]): string {
 }
 
 function renderFrameCards(frames: FrameTranscriptEntry[]): string {
-	if (!frames.length) return `<div class="empty">저장된 Frame Studio 전문이 없습니다.</div>`;
+	if (!frames.length) return `<div class="empty">저장된 TFT Studio 전문이 없습니다.</div>`;
 	return `<div class="grid">${frames.map((f) => `<article class="card searchable" data-search="${escapeAttr(`${f.title} ${f.identity} ${f.mode} ${f.workspace} ${f.ticket}`.toLowerCase())}"><h3>${escapeHtml(f.title)}</h3><div class="meta"><span class="badge">${escapeHtml(f.mode)}</span>${f.workspace ? `<span class="badge">${escapeHtml(f.workspace)}</span>` : ""}${f.ticket ? `<span class="badge">${escapeHtml(f.ticket)}</span>` : ""}<span class="badge">${escapeHtml(f.time)}</span><span class="badge">${f.timeline.length} entries</span></div><div class="path">${escapeHtml(f.identity)}</div><details><summary>Frame 전문 미리보기</summary><div class="timeline">${renderFrameTimeline(f.timeline)}</div></details><div class="actions">${artifactOpenButtons(f.path)}</div></article>`).join("\n")}</div>`;
 }
 

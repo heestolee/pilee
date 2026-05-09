@@ -42,7 +42,7 @@ Frame은 구현 전 자연어 메모가 아니라, Verify가 기계적으로 읽
 
 `decisions[]`는 선택지만 저장하지 않습니다. `/decide`는 항상 tradeoff challenge를 수행하고, `challenge.intensity`, `challenge.objection`, 사용자 응답, 수용한 tradeoff와 완화책을 함께 저장합니다. 그래야 Verify가 “선택한 대안이 구현됐는가”뿐 아니라 “수용한 비용/완화책이 실제 구현과 맞는가”까지 대조할 수 있습니다.
 
-`frame.md`는 사람이 읽기 위한 mirror이고, Frame Studio transcript는 계약을 만든 대화 전문입니다. 둘 다 canonical source가 아닙니다. transcript는 사용자가 어떤 질문과 선택을 거쳤는지 다시 열어보는 provenance이고, Verify가 기계적으로 판정할 기준은 여전히 최신 `frame.json`입니다.
+`frame.md`는 사람이 읽기 위한 mirror이고, TFT Studio transcript는 계약을 만든 대화 전문입니다. 둘 다 canonical source가 아닙니다. transcript는 사용자가 어떤 질문과 선택을 거쳤는지 다시 열어보는 provenance이고, Verify가 기계적으로 판정할 기준은 여전히 최신 `frame.json`입니다.
 
 코드 구조를 건드리는 작업에서는 architecture friction도 계약의 일부가 됩니다. 별도 schema가 없더라도 `review_lenses`, `risk_register`, `verify_plan.manual_checks`, decision tradeoff에 “다음 사람/AI가 길을 잃을 구조인가”를 남기면 Verify가 구조 side-effect를 확인할 수 있습니다.
 
