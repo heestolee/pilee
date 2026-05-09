@@ -19,8 +19,8 @@ applies_to:
   - worktree_fork
 source:
   - user-direction:2026-05-07-worker-dependency-bootstrap
-reviewed_at: 2026-05-08
-reviewed_commit: 667cefb29cd3ed9dce18f7c38033167fda158331
+reviewed_at: 2026-05-09
+reviewed_commit: b10752d9e7268f12cbd6e41ec1d9567c27073d52
 related:
   - worktree-execution-boundary
   - worktree-session-continuity

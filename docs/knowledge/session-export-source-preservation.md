@@ -24,7 +24,7 @@ source:
   - pilee-history:2026-05-07#85
   - user-direction:2026-05-09-ember-backfill
 reviewed_at: 2026-05-09
-reviewed_commit: b390940095ad5a543b757f54e9799aeceddcf26e
+reviewed_commit: b10752d9e7268f12cbd6e41ec1d9567c27073d52
 related:
   - artifact-archive-reopenability
   - backlog-source-session-provenance
