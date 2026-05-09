@@ -21,7 +21,7 @@ applies_to:
 source:
   - user-direction:2026-05-09-architecture-lens
 reviewed_at: 2026-05-09
-reviewed_commit: 005774de59400fa5c2a4e3dad0f9f91a20d8f51f
+reviewed_commit: ffd4b3cc43045bb231b59099fc7c2a33e9623383
 related:
   - frame-verify-contract
   - decide-tradeoff-challenge
