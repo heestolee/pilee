@@ -77,7 +77,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [Architecture friction은 TFT의 검증 축이다](./architecture-friction-tft-lens.md) | active | high | 2026-05-09 | 7db0307 | architecture, frame, decide, verify, deep-module, shallow-module |
+| [Architecture friction은 TFT의 검증 축이다](./architecture-friction-tft-lens.md) | active | high | 2026-05-09 | 84cb232 | architecture, frame, decide, verify, deep-module, shallow-module |
 | [Utils surface는 사용자 계약을 만들지 않는다](./utility-surface-stays-invisible.md) | active | high | 2026-05-09 | bcad70f | utils, internal, surface, abstraction, extension |
 
 ### database
@@ -118,10 +118,10 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [Deterministic fallback은 workflow를 보존한다](./deterministic-fallbacks-preserve-workflow.md) | active | high | 2026-05-09 | b10752d | fallback, deterministic, model-failure, resilience, web-search, report |
-| [Embedded WebView script는 escape 경계를 보존한다](./embedded-webview-script-escape-boundary.md) | active | high | 2026-05-09 | 7db0307 | webview, embedded-script, escape, string-raw, regex, glimpse |
+| [Deterministic fallback은 workflow를 보존한다](./deterministic-fallbacks-preserve-workflow.md) | active | high | 2026-05-09 | 84cb232 | fallback, deterministic, model-failure, resilience, web-search, report |
+| [Embedded WebView script는 escape 경계를 보존한다](./embedded-webview-script-escape-boundary.md) | active | high | 2026-05-09 | 84cb232 | webview, embedded-script, escape, string-raw, regex, glimpse |
 | [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-05-08 | 667cefb | mcp, stderr, stdio, terminal, tui, noise |
-| [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-05-09 | b10752d | terminal, ghostty, applescript, notify, host, integration |
+| [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-05-09 | 84cb232 | terminal, ghostty, applescript, notify, host, integration |
 
 ### ui
 
@@ -138,48 +138,49 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-05-09 | b10752d | verify, evidence, gate, done, ready, verification |
-| [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-05-09 | 7db0307 | frame, verify, frame-json, success-criteria, contract, verification |
+| [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-05-09 | 84cb232 | verify, evidence, gate, done, ready, verification |
+| [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-05-09 | 84cb232 | frame, verify, frame-json, success-criteria, contract, verification |
 | [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-05-09 | bcad70f | verify, invalidation, code-change, freshness, gate, 검증 |
-| [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | active | high | 2026-05-09 | b10752d | verify-report, verification, evidence, coverage, capture, crop |
+| [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | active | high | 2026-05-09 | 84cb232 | verify-report, verification, evidence, coverage, capture, crop |
 
 ### web-access
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [웹 검색은 승인된 출처 선택을 거친다](./curator-approved-source-selection.md) | active | high | 2026-05-08 | 9b7ea36 | web-search, curator, source-selection, approval, tavily, 검색 |
-| [Web Search curator와 승인형 요약 흐름](./web-search-curator.md) | active | high | 2026-05-09 | b10752d | web-search, tavily, curator, glimpse, summary-review, korean-output |
+| [Web Search curator와 승인형 요약 흐름](./web-search-curator.md) | active | high | 2026-05-09 | 84cb232 | web-search, tavily, curator, glimpse, summary-review, korean-output |
 
 ### workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [검토 산출물은 다시 열 수 있어야 한다](./artifact-archive-reopenability.md) | active | high | 2026-05-09 | 7db0307 | artifact, archive, show-report, history, html, reopen |
+| [검토 산출물은 다시 열 수 있어야 한다](./artifact-archive-reopenability.md) | active | high | 2026-05-09 | 84cb232 | artifact, archive, show-report, history, html, reopen |
 | [AskUserQuestion은 의사결정 게이트다](./ask-user-question-decision-gates.md) | active | high | 2026-05-09 | 7db0307 | ask-user-question, tft, decision-gate, question, non-delegable, 질문 |
 | [AskUserQuestion 옵션은 행동 분기를 표현한다](./ask-user-question-option-design.md) | active | high | 2026-05-09 | 7db0307 | ask-user-question, option, wording, ceremony, tft, 질문 |
-| [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | high | 2026-05-09 | b10752d | backlog, tasks, provenance, source-session, session, 맥락 |
+| [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | high | 2026-05-09 | 84cb232 | backlog, tasks, provenance, source-session, session, 맥락 |
 | [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md) | active | high | 2026-05-08 | 9b7ea36 | git, incremental, code-review, commit, quality, 통합 |
 | [자동 로드 컨텍스트는 최소 surface만 가진다](./context-loading-minimal-surface.md) | active | high | 2026-05-09 | b10752d | context, agents-md, memory, system-prompt, token, autoload |
-| [Decide는 선택을 한 번 공격한다](./decide-tradeoff-challenge.md) | active | high | 2026-05-09 | 7db0307 | decide, tradeoff, challenge, productive-resistance, frame-json, decision |
+| [Decide는 선택을 한 번 공격한다](./decide-tradeoff-challenge.md) | active | high | 2026-05-09 | 84cb232 | decide, tradeoff, challenge, productive-resistance, frame-json, decision |
 | [외부 이슈 업데이트는 preview gate를 지난다](./external-issue-preview-gate.md) | active | high | 2026-05-08 | 9b7ea36 | jira, issue, preview, wiki-markup, external-update, approval |
 | [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-05-08 | 667cefb | fork-panel, handoff, inbox, inject, parent, panel |
 | [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-05-08 | 667cefb | fork-panel, revive, repanel, ghostty, spatial, panel |
 | [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-05-09 | 7db0307 | frame, planning, identity, home-directory, ticket, session-title |
 | [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-05-09 | 7db0307 | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
-| [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-05-09 | 7db0307 | artifact, glimpse, preview, sse, upload, local-first |
+| [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-05-09 | 84cb232 | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 264ea17 | local-dev, server, startup, diagnosis, dev |
-| [Private overlay package는 회사·개인 실행 맥락을 담는다](./private-overlay-package-boundary.md) | active | high | 2026-05-09 | 7db0307 | privacy, package, overlay, skill, company-context |
+| [Private overlay package는 회사·개인 실행 맥락을 담는다](./private-overlay-package-boundary.md) | active | high | 2026-05-09 | 84cb232 | privacy, package, overlay, skill, company-context |
 | [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-05-08 | 667cefb | queued-messages, slash-command, prefill, worktree, session, boundary |
 | [변경된 줄은 요청으로 추적 가능해야 한다](./request-traceability-surgical-changes.md) | active | high | 2026-05-09 | 9ec6665 | request-traceability, surgical-change, karpathy, diff, scope, review |
 | [종료된 포크는 transcript 주입보다 revive가 우선이다](./revive-over-transcript-recall.md) | active | high | 2026-05-08 | 667cefb | revive, recall, fork-panel, session, continuity, 세션 |
-| [Session export는 원본을 보존하는 adapter를 거친다](./session-export-source-preservation.md) | active | high | 2026-05-09 | 15b060f | session-export, source-preservation, jsonl, conductor, normalize, show-report |
+| [세션 분류는 원본 위의 sidecar다](./session-classification-sidecar.md) | active | high | 2026-05-09 | 84cb232 | show-report, session-classification, sidecar, session, ai-suggestion, user-confirmation |
+| [Session export는 원본을 보존하는 adapter를 거친다](./session-export-source-preservation.md) | active | high | 2026-05-09 | 84cb232 | session-export, source-preservation, jsonl, conductor, normalize, show-report |
 | [세션 식별자는 파일명이 아니라 사람이 본 이름이다](./session-identity-over-filenames.md) | active | high | 2026-05-08 | 667cefb | session, title, identity, session_info, worktree, revive |
 | [Skill은 재사용 가능한 절차다](./skills-as-portable-procedures.md) | active | high | 2026-05-09 | b10752d | skill, skill-creator, procedure, porting, workflow, 스킬 |
 | [Command shim은 skill source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-05-09 | 7db0307 | command-shim, skill, tft, frame, slash-command, routing |
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
 | [Worktree 생성은 부모 패널의 게이트다](./worktree-creation-parent-gate.md) | active | high | 2026-05-08 | 667cefb | worktree, fork-panel, parent-panel, hotfix, context, profile-driven |
 | [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-05-09 | b10752d | worktree, dependencies, bootstrap, profile-driven, worker, subagent |
-| [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-05-09 | bc0f77e | worktree, workspace, repo, branch, execution-boundary, 워크트리 |
+| [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-05-09 | 84cb232 | worktree, workspace, repo, branch, execution-boundary, 워크트리 |
 | [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-05-08 | 667cefb | worktree, session, revive, fork-panel, panel-inbox, handoff |
 
 ## Knowledge Map
@@ -242,6 +243,7 @@ graph TD
   doc_queued_command_prefill_boundary["Queued command는 실행 보장이 아니다"]
   doc_request_traceability_surgical_changes["변경된 줄은 요청으로 추적 가능해야 한다"]
   doc_revive_over_transcript_recall["종료된 포크는 transcript 주입보다 revive가 우선이다"]
+  doc_session_classification_sidecar["세션 분류는 원본 위의 sidecar다"]
   doc_session_export_source_preservation["Session export는 원본을 보존하는 adapter를 거친다"]
   doc_session_identity_over_filenames["세션 식별자는 파일명이 아니라 사람이 본 이름이다"]
   doc_skills_as_portable_procedures["Skill은 재사용 가능한 절차다"]
@@ -416,6 +418,10 @@ graph TD
   doc_revive_over_transcript_recall --> doc_fork_panel_parent_inbox
   doc_revive_over_transcript_recall --> doc_session_identity_over_filenames
   doc_revive_over_transcript_recall --> doc_worktree_session_continuity
+  doc_session_classification_sidecar --> doc_artifact_archive_reopenability
+  doc_session_classification_sidecar --> doc_backlog_source_session_provenance
+  doc_session_classification_sidecar --> doc_deterministic_fallbacks_preserve_workflow
+  doc_session_classification_sidecar --> doc_session_export_source_preservation
   doc_session_export_source_preservation --> doc_artifact_archive_reopenability
   doc_session_export_source_preservation --> doc_backlog_source_session_provenance
   doc_session_export_source_preservation --> doc_deterministic_fallbacks_preserve_workflow
@@ -445,7 +451,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 65
-- Links: 190
+- Documents: 66
+- Links: 194
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

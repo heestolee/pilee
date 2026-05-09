@@ -21,7 +21,7 @@ source:
   - pilee-history:2026-05-03#26
   - pilee-history:2026-05-04#35
 reviewed_at: 2026-05-09
-reviewed_commit: b10752d9e7268f12cbd6e41ec1d9567c27073d52
+reviewed_commit: 84cb2323104c076809462c0a0661ef5eb75d54de
 related:
   - fork-panel-spatial-continuity
   - mcp-stderr-isolation
