@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, statSync, rmSync, renameSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, statSync, rmSync, renameSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname, basename } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ThemeColor } from "@mariozechner/pi-coding-agent";
@@ -36,9 +36,17 @@ function saveRegistry(reg: RepoRegistry) {
 	writeFileSync(REGISTRY_PATH, JSON.stringify(reg, null, 2));
 }
 
+function realPathForCompare(path: string): string {
+	try { return realpathSync.native(path); } catch { return path; }
+}
+
+function samePath(a: string, b: string): boolean {
+	return realPathForCompare(a) === realPathForCompare(b);
+}
+
 function findRegisteredName(reg: RepoRegistry, repoPath: string): string | null {
 	for (const [name, path] of Object.entries(reg)) {
-		if (path === repoPath) return name;
+		if (samePath(path, repoPath)) return name;
 	}
 	return null;
 }
@@ -89,6 +97,20 @@ function expandHome(p: string): string {
 async function findRepoRoot(pi: ExtensionAPI, cwd: string): Promise<string | null> {
 	const r = await pi.exec("git", ["rev-parse", "--show-toplevel"], { cwd });
 	return r.code === 0 ? (r.stdout ?? "").trim() || null : null;
+}
+
+async function canonicalRepoRoot(pi: ExtensionAPI, repoRoot: string): Promise<string> {
+	const worktrees = await pi.exec("git", ["worktree", "list", "--porcelain"], { cwd: repoRoot });
+	if (worktrees.code === 0) {
+		const main = (worktrees.stdout ?? "").split("\n").find((line) => line.startsWith("worktree "))?.slice("worktree ".length).trim();
+		if (main && existsSync(main)) return realPathForCompare(main);
+	}
+	return realPathForCompare(repoRoot);
+}
+
+async function findCanonicalRepoRoot(pi: ExtensionAPI, cwd: string): Promise<string | null> {
+	const repoRoot = await findRepoRoot(pi, cwd);
+	return repoRoot ? canonicalRepoRoot(pi, repoRoot) : null;
 }
 
 function getRepoName(repoRoot: string): string {
@@ -1001,9 +1023,9 @@ async function resolveRepoRoot(pi: ExtensionAPI, ctx: ExtensionCommandContext, r
 			ctx.ui.notify(`Registered repo path missing: ${path}`, "error");
 			return null;
 		}
-		return path;
+		return canonicalRepoRoot(pi, path);
 	}
-	const repoRoot = await findRepoRoot(pi, ctx.cwd);
+	const repoRoot = await findCanonicalRepoRoot(pi, ctx.cwd);
 	if (repoRoot) return repoRoot;
 
 	const reg = loadRegistry();
@@ -1012,10 +1034,10 @@ async function resolveRepoRoot(pi: ExtensionAPI, ctx: ExtensionCommandContext, r
 		ctx.ui.notify("Not a git repository and no repos registered. Use /wt repo add <name> <path>", "error");
 		return null;
 	}
-	if (names.length === 1) return reg[names[0]];
+	if (names.length === 1) return canonicalRepoRoot(pi, reg[names[0]]);
 	const choice = await ctx.ui.select("어느 repo에 만들까요?", names);
 	if (!choice) return null;
-	return reg[choice];
+	return canonicalRepoRoot(pi, reg[choice]);
 }
 
 async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
@@ -1472,10 +1494,19 @@ interface DashboardWorktree {
 async function loadDashboardWorktrees(pi: ExtensionAPI): Promise<DashboardWorktree[]> {
 	const reg = loadRegistry();
 	const results: DashboardWorktree[] = [];
+	const seenRootDirs = new Set<string>();
+	const seenWorktreePaths = new Set<string>();
 	for (const [repoName, repoPath] of Object.entries(reg)) {
 		if (!existsSync(repoPath)) continue;
-		const config = loadConfig(repoPath);
+		const repoRoot = await canonicalRepoRoot(pi, repoPath);
+		const config = loadConfig(repoRoot);
+		const rootKey = realPathForCompare(config.rootDir);
+		if (seenRootDirs.has(rootKey)) continue;
+		seenRootDirs.add(rootKey);
 		for (const w of listExistingWorktrees(config.rootDir)) {
+			const pathKey = realPathForCompare(w.path);
+			if (seenWorktreePaths.has(pathKey)) continue;
+			seenWorktreePaths.add(pathKey);
 			const gs = await getWorktreeStatus(pi, w.path);
 			results.push({
 				name: w.name, path: w.path, branch: w.branch, repoName,
@@ -1947,9 +1978,15 @@ async function handleRepo(pi: ExtensionAPI, args: string, ctx: ExtensionCommandC
 		const expanded = expandHome(path);
 		const root = await findRepoRoot(pi, expanded);
 		if (!root) { ctx.ui.notify(`${expanded} is not a git repository`, "error"); return; }
-		reg[name] = root;
+		const canonicalRoot = await canonicalRepoRoot(pi, root);
+		const existingName = findRegisteredName(reg, canonicalRoot);
+		if (existingName && existingName !== name) {
+			ctx.ui.notify(`Repo already registered as "${existingName}" → ${reg[existingName]}. Not adding duplicate alias "${name}".`, "info");
+			return;
+		}
+		reg[name] = canonicalRoot;
 		saveRegistry(reg);
-		ctx.ui.notify(`Registered "${name}" → ${root}`, "info");
+		ctx.ui.notify(`Registered "${name}" → ${canonicalRoot}`, "info");
 		return;
 	}
 
