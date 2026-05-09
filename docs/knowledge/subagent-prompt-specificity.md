@@ -18,7 +18,7 @@ applies_to:
 source:
   - pilee-history:2026-05-05#42
 reviewed_at: 2026-05-09
-reviewed_commit: b10752d9e7268f12cbd6e41ec1d9567c27073d52
+reviewed_commit: 5f1411ca08dc2cf31f11a75588dd372adb6f3c1a
 related:
   - subagent-model-policy
   - self-healing-actionable-loop
