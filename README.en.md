@@ -222,6 +222,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | extension | `extensions/until` | [Until Loop Explicit Reporting](./docs/knowledge/until-loop-explicit-reporting.md) |
 | extension | `extensions/usage-analytics` | [Tool Output Noise Management](./docs/knowledge/tool-output-noise-management.md) |
 | extension | `extensions/usage-reporter` | [Ambient Status Surfaces](./docs/knowledge/ambient-status-surfaces.md)<br>[Tool Output Noise Management](./docs/knowledge/tool-output-noise-management.md) |
+| extension | `extensions/user-facing-language` | [Korean First User Facing Output](./docs/knowledge/korean-first-user-facing-output.md) |
 | extension | `extensions/utils` | [MCP Stderr Isolation](./docs/knowledge/mcp-stderr-isolation.md)<br>[Session Export Source Preservation](./docs/knowledge/session-export-source-preservation.md)<br>[Terminal Host Integration](./docs/knowledge/terminal-host-integration.md)<br>[Utility Surface Stays Invisible](./docs/knowledge/utility-surface-stays-invisible.md) |
 | extension | `extensions/web-access` | [Artifact Archive Reopenability](./docs/knowledge/artifact-archive-reopenability.md)<br>[Curator Approved Source Selection](./docs/knowledge/curator-approved-source-selection.md)<br>[Deterministic Fallbacks Preserve Workflow](./docs/knowledge/deterministic-fallbacks-preserve-workflow.md)<br>[Embedded Webview Script Escape Boundary](./docs/knowledge/embedded-webview-script-escape-boundary.md)<br>[Korean First User Facing Output](./docs/knowledge/korean-first-user-facing-output.md)<br>[Live Artifact Preview Pattern](./docs/knowledge/live-artifact-preview-pattern.md)<br>[Web Search Curator](./docs/knowledge/web-search-curator.md) |
 | extension | `extensions/working-text` | [Editor Affordance Not Context](./docs/knowledge/editor-affordance-not-context.md) |
@@ -256,7 +257,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 
 ## Extensions
 
-37 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
+38 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
 
 ### Infrastructure
 
@@ -273,6 +274,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **tool-group-renderer** | Groups and collapses related tool output |
 | **tft-commands** | Routes `/frame`, `/decide`, `/verify` to pilee skills |
 | **frame-studio** | Glimpse-based TFT Studio shell with Frame/Decide/Verify/Verify Report tabs, choices, transcript replay, Archive resume, and `/tft open` |
+| **user-facing-language** | System prompt guard that keeps user-visible progress, summaries, and answers short and Korean-first |
 
 ### Session management
 

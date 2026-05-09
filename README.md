@@ -232,6 +232,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | extension | `extensions/until` | [Until loop는 종료 조건을 명시 보고한다](./docs/knowledge/until-loop-explicit-reporting.md) |
 | extension | `extensions/usage-analytics` | [도구 출력은 대화 흐름을 침범하지 않는다](./docs/knowledge/tool-output-noise-management.md) |
 | extension | `extensions/usage-reporter` | [Idle UI는 장식이 아니라 ambient status다](./docs/knowledge/ambient-status-surfaces.md)<br>[도구 출력은 대화 흐름을 침범하지 않는다](./docs/knowledge/tool-output-noise-management.md) |
+| extension | `extensions/user-facing-language` | [User-facing 출력은 한국어를 기본으로 한다](./docs/knowledge/korean-first-user-facing-output.md) |
 | extension | `extensions/utils` | [MCP stderr는 TUI 출력이 아니다](./docs/knowledge/mcp-stderr-isolation.md)<br>[Session export는 원본을 보존하는 adapter를 거친다](./docs/knowledge/session-export-source-preservation.md)<br>[터미널 연동은 host adapter로 다룬다](./docs/knowledge/terminal-host-integration.md)<br>[Utils surface는 사용자 계약을 만들지 않는다](./docs/knowledge/utility-surface-stays-invisible.md) |
 | extension | `extensions/web-access` | [검토 산출물은 다시 열 수 있어야 한다](./docs/knowledge/artifact-archive-reopenability.md)<br>[웹 검색은 승인된 출처 선택을 거친다](./docs/knowledge/curator-approved-source-selection.md)<br>[Deterministic fallback은 workflow를 보존한다](./docs/knowledge/deterministic-fallbacks-preserve-workflow.md)<br>[Embedded WebView script는 escape 경계를 보존한다](./docs/knowledge/embedded-webview-script-escape-boundary.md)<br>[User-facing 출력은 한국어를 기본으로 한다](./docs/knowledge/korean-first-user-facing-output.md)<br>[Live artifact는 local preview first다](./docs/knowledge/live-artifact-preview-pattern.md)<br>[Web Search curator와 승인형 요약 흐름](./docs/knowledge/web-search-curator.md) |
 | extension | `extensions/working-text` | [Editor affordance는 숨은 컨텍스트가 아니다](./docs/knowledge/editor-affordance-not-context.md) |
@@ -266,7 +267,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 
 ## Extensions
 
-37개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
+38개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
 
 ### 인프라
 
@@ -281,6 +282,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | **tool-group-renderer** | 관련 도구 출력 그룹/축소 |
 | **tft-commands** | `/frame`/`/decide`/`/verify`를 pilee SKILL.md 인라인 실행으로 라우팅 |
 | **frame-studio** | Glimpse 기반 TFT Studio shell — Frame/Decide/Verify/Verify Report 탭 + 선택 UI/전문 저장 + Archive `이어하기`/`/tft open` 재진입 |
+| **user-facing-language** | 사용자에게 보이는 진행/요약/답변은 짧은 한국어를 기본으로 하는 system prompt guard |
 
 ### 세션 관리
 
