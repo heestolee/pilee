@@ -42,6 +42,38 @@ type StudioAnswer = {
 	submittedAt: number;
 };
 
+type StudioTranscriptRef = {
+	path: string;
+	openCommand: string;
+	tab: StudioTabKey;
+	step?: string;
+	note: string;
+};
+
+type StudioTabSnapshot = {
+	tab: StudioTabKey;
+	label: string;
+	step?: string;
+	updatedAt?: number;
+	hasMarkdown: boolean;
+	digest: string;
+	timelineEntries: number;
+};
+
+type StudioContextSnapshot = {
+	activeTab: StudioTabKey;
+	transcriptRef: StudioTranscriptRef;
+	tabs: StudioTabSnapshot[];
+};
+
+type StudioToolContextDetails = {
+	transcriptRef: StudioTranscriptRef;
+	tabSnapshot: StudioTabSnapshot;
+	snapshot?: StudioContextSnapshot;
+	contextDigest?: string;
+	stageOutputContract?: string;
+};
+
 type StudioTimelineEntry = {
 	id: string;
 	time: number;
@@ -227,6 +259,82 @@ function updateTab(state: FrameStudioState, tab: StudioTabKey, params: { markdow
 		if (params.markdown !== undefined) state.markdown = params.markdown;
 		if (params.step) state.step = params.step;
 	}
+}
+
+function stripMarkdownForDigest(markdown: string, max = 700): string {
+	const text = markdown
+		.replace(/```[\s\S]*?```/g, " ")
+		.replace(/`([^`]+)`/g, "$1")
+		.replace(/!\[[^\]]*\]\([^\)]*\)/g, " ")
+		.replace(/\[([^\]]+)\]\([^\)]*\)/g, "$1")
+		.replace(/^\s{0,3}#{1,6}\s*/gm, "")
+		.replace(/^\s*[-*+]\s+/gm, "- ")
+		.replace(/\|\s*-{3,}\s*/g, " ")
+		.replace(/[ \t]+/g, " ")
+		.replace(/\n{3,}/g, "\n\n")
+		.trim();
+	return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function transcriptRef(state: FrameStudioState, tab = state.activeTab): StudioTranscriptRef {
+	const tabState = state.tabs?.[tab];
+	return {
+		path: state.transcriptPath,
+		openCommand: `/archive ${state.transcriptPath}`,
+		tab,
+		step: tabState?.step ?? state.step,
+		note: "Transcript is provenance. Persist stage outputs to canonical structured data before treating the work as complete.",
+	};
+}
+
+function stageOutputContract(tab: StudioTabKey): string {
+	if (tab === "frame") return "If /frame was performed, persist the agreed goal/scope/success criteria to frame.json first; frame.md and transcript are mirror/provenance.";
+	if (tab === "decide") return "If /decide was performed, persist the selected option, tradeoffs, challenge, and mitigations to frame.json.decisions[] (or an explicit planning canonical record).";
+	if (tab === "verify") return "If /verify was performed, persist PASS/FAIL/GAP evidence, side effects, self-healing runs, and re-verify result to frame.json.verifications[] (or an explicit verification record).";
+	return "If /verify-report was performed, persist report/evidence artifact refs with the verification item they prove; report HTML is evidence/provenance, not the only canonical result.";
+}
+
+function tabLabel(tab: StudioTabKey): string {
+	return STUDIO_TABS.find((item) => item.key === tab)?.label ?? tab;
+}
+
+function tabSnapshot(state: FrameStudioState, tab: StudioTabKey): StudioTabSnapshot {
+	const tabs = normalizeTabs(state.tabs, state.markdown, state.step);
+	const tabState = tabs[tab] ?? { markdown: "" };
+	const digest = stripMarkdownForDigest(tabState.markdown || "");
+	return {
+		tab,
+		label: tabLabel(tab),
+		step: tabState.step,
+		updatedAt: tabState.updatedAt,
+		hasMarkdown: Boolean((tabState.markdown || "").trim()),
+		digest: digest || "No tab markdown recorded yet.",
+		timelineEntries: state.timeline.filter((entry) => entry.tab === tab).length,
+	};
+}
+
+function studioSnapshot(state: FrameStudioState, tab = state.activeTab): StudioContextSnapshot {
+	return {
+		activeTab: state.activeTab,
+		transcriptRef: transcriptRef(state, tab),
+		tabs: STUDIO_TABS.map((item) => tabSnapshot(state, item.key)),
+	};
+}
+
+function answerDigest(question: StudioQuestion, answer: StudioAnswer, tabState: StudioTabSnapshot): string {
+	if (answer.status !== "answered") return `${tabLabel(question.tab)} ask ended with status=${answer.status}. See ${tabState.digest ? "tab snapshot" : "transcript"} for context.`;
+	const selected = answer.selectedOptions.length ? answer.selectedOptions.join(", ") : "no option selected";
+	const text = answer.text?.trim() ? ` Direct input: ${answer.text.trim()}` : "";
+	return `${tabLabel(question.tab)} answer for "${question.question}": ${selected}.${text} Current tab context: ${tabState.digest}`;
+}
+
+function toolContextDetails(state: FrameStudioState, tab = state.activeTab, contextDigest?: string): StudioToolContextDetails {
+	return {
+		transcriptRef: transcriptRef(state, tab),
+		tabSnapshot: tabSnapshot(state, tab),
+		contextDigest,
+		stageOutputContract: stageOutputContract(tab),
+	};
 }
 
 function persistState(state: FrameStudioState): void {
@@ -882,7 +990,9 @@ export default function (pi: ExtensionAPI) {
 
 			if (action === "start") {
 				const { handle, opened } = await ensureRun(pi, ctx, params);
-				return resultText(`TFT Studio started (${handle.state.runId}). ${handle.state.url}. Transcript: ${handle.state.transcriptPath}. Opened: ${opened}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, identity: handle.state.identity, activeTab: handle.state.activeTab, opened });
+				const tab = handle.state.activeTab;
+				const context = toolContextDetails(handle.state, tab, `TFT Studio started on ${tabLabel(tab)}.`);
+				return resultText(`TFT Studio started (${handle.state.runId}). ${handle.state.url}. Transcript ref: ${context.transcriptRef.openCommand}. Opened: ${opened}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, identity: handle.state.identity, activeTab: handle.state.activeTab, opened, ...context, snapshot: studioSnapshot(handle.state, tab) });
 			}
 
 			let handle = params.runId ? runsById.get(params.runId) : undefined;
@@ -901,7 +1011,9 @@ export default function (pi: ExtensionAPI) {
 
 			if (action === "open") {
 				const opened = await openStudio(pi, ctx, handle);
-				return resultText(`TFT Studio opened (${handle.state.runId}). ${handle.state.url}. Transcript: ${handle.state.transcriptPath}. Opened: ${opened}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, activeTab: handle.state.activeTab, opened });
+				const tab = handle.state.activeTab;
+				const context = toolContextDetails(handle.state, tab, `TFT Studio reopened. Active tab: ${tabLabel(tab)}.`);
+				return resultText(`TFT Studio opened (${handle.state.runId}). ${handle.state.url}. Transcript ref: ${context.transcriptRef.openCommand}. Opened: ${opened}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, activeTab: handle.state.activeTab, opened, ...context, snapshot: studioSnapshot(handle.state, tab) });
 			}
 
 			if (action === "update") {
@@ -912,12 +1024,15 @@ export default function (pi: ExtensionAPI) {
 				appendTimeline(handle.state, { kind: "update", tab, title: params.title, step: params.step, markdown: params.markdown });
 				addLog(handle, `Updated ${tab}${params.step ? `: ${params.step}` : ""}.`);
 				pushState(handle);
-				return resultText(`TFT Studio updated (${handle.state.runId}). Transcript: ${handle.state.transcriptPath}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, activeTab: handle.state.activeTab });
+				const context = toolContextDetails(handle.state, tab, `${tabLabel(tab)} tab updated${params.step ? `: ${params.step}` : ""}.`);
+				return resultText(`TFT Studio updated (${handle.state.runId}). Transcript ref: ${context.transcriptRef.openCommand}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, activeTab: handle.state.activeTab, ...context });
 			}
 
 			if (action === "ask") {
 				if (!ctx.hasUI) {
-					return resultText("TFT Studio UI is unavailable in this context. Use numbered text-mode AskUserQuestion fallback.", { status: "unavailable", transcriptPath: handle.state.transcriptPath });
+					const tab = normalizeTab(params.tab) ?? handle.state.activeTab ?? "frame";
+					const context = toolContextDetails(handle.state, tab, "TFT Studio UI unavailable; use numbered text-mode fallback and persist any stage output manually.");
+					return resultText("TFT Studio UI is unavailable in this context. Use numbered text-mode AskUserQuestion fallback.", { status: "unavailable", transcriptPath: handle.state.transcriptPath, activeTab: handle.state.activeTab, ...context });
 				}
 				const tab = normalizeTab(params.tab) ?? handle.state.activeTab ?? "frame";
 				if (params.title) handle.state.title = params.title;
@@ -937,11 +1052,14 @@ export default function (pi: ExtensionAPI) {
 					createdAt: Date.now(),
 				};
 				const answer = await ask(handle, question, signal);
+				const currentTabSnapshot = tabSnapshot(handle.state, tab);
+				const contextDigest = answerDigest(question, answer, currentTabSnapshot);
+				const context = toolContextDetails(handle.state, tab, contextDigest);
 				return resultText(
 					answer.status === "answered"
-						? `TFT Studio answer: ${answer.selectedOptions.join(", ") || "(no option)"}${answer.text ? `; text: ${answer.text}` : ""}`
-						: `TFT Studio ask ended: ${answer.status}.`,
-					{ runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, activeTab: handle.state.activeTab, answer },
+						? `TFT Studio answer (${tabLabel(tab)}): ${answer.selectedOptions.join(", ") || "(no option)"}${answer.text ? `; text: ${answer.text}` : ""}. Transcript ref: ${context.transcriptRef.openCommand}.`
+						: `TFT Studio ask ended: ${answer.status}. Transcript ref: ${context.transcriptRef.openCommand}.`,
+					{ runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, activeTab: handle.state.activeTab, answer, ...context },
 				);
 			}
 
@@ -952,7 +1070,8 @@ export default function (pi: ExtensionAPI) {
 				appendTimeline(handle.state, { kind: "finish", tab, step: params.step ?? handle.state.step, markdown: params.markdown, message: "TFT Studio finished." });
 				addLog(handle, "TFT Studio finished.");
 				pushState(handle);
-				return resultText(`TFT Studio finished (${handle.state.runId}). Transcript: ${handle.state.transcriptPath}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, activeTab: handle.state.activeTab });
+				const context = toolContextDetails(handle.state, tab, `${tabLabel(tab)} stage finished. Review the stage output contract before continuing.`);
+				return resultText(`TFT Studio finished (${handle.state.runId}). Transcript ref: ${context.transcriptRef.openCommand}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, activeTab: handle.state.activeTab, ...context, snapshot: studioSnapshot(handle.state, tab) });
 			}
 
 			if (action === "abort") {
@@ -960,7 +1079,8 @@ export default function (pi: ExtensionAPI) {
 				appendTimeline(handle.state, { kind: "abort", tab: handle.state.activeTab, step: handle.state.step, message: "TFT Studio aborted." });
 				addLog(handle, "TFT Studio aborted.");
 				pushState(handle);
-				return resultText(`TFT Studio aborted (${handle.state.runId}). Transcript: ${handle.state.transcriptPath}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, activeTab: handle.state.activeTab });
+				const context = toolContextDetails(handle.state, handle.state.activeTab, "TFT Studio aborted; transcript remains available as provenance only.");
+				return resultText(`TFT Studio aborted (${handle.state.runId}). Transcript ref: ${context.transcriptRef.openCommand}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, activeTab: handle.state.activeTab, ...context });
 			}
 
 			throw new Error(`Unknown frame_studio action: ${params.action}`);

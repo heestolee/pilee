@@ -67,7 +67,7 @@ Challenge 결과는 prose 메모가 아니라 `frame.json.decisions[]`에 구조
 - `challenge.userSelection`: 사용자가 고른 challenge 응답
 - `challenged: true`: `/decide`는 항상 challenge를 수행했다는 불변식
 
-이 구조는 [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md)의 일부입니다. `frame.md`나 transcript는 사람이 읽는 view이고, Verify가 읽는 원천은 최신 `frame.json`입니다.
+이 구조는 [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md)의 일부입니다. `frame.md`나 transcript는 사람이 읽는 view이고, Verify가 읽는 원천은 최신 `frame.json`입니다. TFT Studio에서 `/decide`를 진행했다면 tool result의 `contextDigest`와 `tabSnapshot`은 현재 turn의 요약 맥락으로 쓰고, `transcriptRef.openCommand`는 전문 provenance 링크로만 남깁니다. 최종 판단은 반드시 `decisions[]` 또는 즉석 결정 파일에 구조화합니다.
 
 ## Verify Implication
 

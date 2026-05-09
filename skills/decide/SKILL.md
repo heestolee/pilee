@@ -48,6 +48,14 @@ description: 기술적 의사결정이 필요할 때 대안 비교·트레이드
 
 선택, 반론, 사용자 응답, 완화책, challenge intensity를 `frame.json.decisions[]`에 남긴다. `frame.md`는 사람이 읽는 mirror이며, context prose만을 원천으로 삼지 않는다.
 
+### 4. Decide는 선택 stage지만, 실행했다면 산출물은 남긴다
+
+TFT 전체 cycle을 강제하지 않는다. `Frame → Decide → Verify → Verify Report`는 rich path일 뿐이고, Decide 없이 Verify를 해도 된다. 단, `/decide`를 실제로 수행했다면 결과가 Studio transcript에만 남으면 안 된다.
+
+- `frame_studio`의 `answer`, `contextDigest`, `tabSnapshot`은 현재 Pi turn의 working context다.
+- `transcriptRef.openCommand`(`/archive <transcriptPath>`)는 전문 provenance다.
+- 최종 decision record는 `frame.json.decisions[]` 또는 frame이 없는 즉석 결정 파일에 남겨야 한다.
+
 ---
 
 ## 호출 방식
@@ -210,6 +218,11 @@ frame.decisions.push({
     userSelection: <Step 5 선택 텍스트>
   },
   challenged: true,
+  tftStudio: {
+    transcriptPath: <path>,
+    transcriptRef: "/archive <path>",
+    tab: "decide"
+  },
   decidedAt: Date.now()
 });
 frame.updatedAt = Date.now();
@@ -310,6 +323,11 @@ type Decision = {
     userSelection: string;
   };
   challenged: true;                // /decide는 항상 challenge 수행
+  tftStudio?: {
+    transcriptPath: string;
+    transcriptRef: string;          // /archive <path>
+    tab: "decide";
+  };
   decidedAt: number;
 };
 ```
