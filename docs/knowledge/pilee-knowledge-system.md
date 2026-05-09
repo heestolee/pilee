@@ -23,7 +23,7 @@ source:
   - pilee-history:2026-05-05#knowledge-system
   - user-direction:2026-05-07-resolver-merge-gate
 reviewed_at: 2026-05-09
-reviewed_commit: a62df186632e9f1bac3bbbf953fa229501f388a8
+reviewed_commit: 15b060f549d5d396c38819a5845b46a3b84d539d
 related:
   - verify-report-workflow
   - web-search-curator
