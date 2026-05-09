@@ -18,6 +18,7 @@ applies_to:
 source:
   - pilee-history:2026-05-01#13
   - pilee-history:2026-05-01#19
+  - user-direction:2026-05-09-glimpse-stderr-noise
 reviewed_at: 2026-05-09
 reviewed_commit: bc0f77e0329817186105ad06b89835672adf2881
 related:
@@ -33,6 +34,8 @@ related:
 ## Display Rule
 
 기본은 접힘입니다. 관련 도구 호출은 그룹으로 묶고, 요약/상태를 먼저 보여준 뒤 필요할 때 상세를 펼칩니다. usage나 telemetry도 입력 흐름 위에 직접 끼어들지 않고 footer/status 같은 별도 위치에서만 의미가 있어야 합니다.
+
+외부 host가 stderr에 내는 known-noise도 같은 원칙을 따릅니다. MCP banner나 macOS WebView InputMethod 로그처럼 사용자가 조치할 수 없는 반복 noise는 runtime adapter에서 막고, 실제 실패·경고·open error처럼 조치 가능한 stderr는 숨기지 않습니다.
 
 ## Failure Mode
 

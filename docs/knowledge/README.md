@@ -120,7 +120,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 |---|---|---:|---:|---:|---|
 | [Deterministic fallback은 workflow를 보존한다](./deterministic-fallbacks-preserve-workflow.md) | active | high | 2026-05-09 | 3ed57eb | fallback, deterministic, model-failure, resilience, web-search, report |
 | [Embedded WebView script는 escape 경계를 보존한다](./embedded-webview-script-escape-boundary.md) | active | high | 2026-05-09 | 3ed57eb | webview, embedded-script, escape, string-raw, regex, glimpse |
-| [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-05-08 | 667cefb | mcp, stderr, stdio, terminal, tui, noise |
+| [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-05-09 | 667cefb | mcp, stderr, stdio, terminal, tui, noise |
 | [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-05-09 | 3ed57eb | terminal, ghostty, applescript, notify, host, integration |
 
 ### ui

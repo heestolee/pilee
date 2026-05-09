@@ -12,9 +12,11 @@ status: active
 applies_to:
   - extensions/mcp-bridge
   - extensions/fork-panel
+  - extensions/utils/glimpse
 source:
   - pilee-history:2026-05-05#53
-reviewed_at: 2026-05-08
+  - user-direction:2026-05-09-glimpse-stderr-noise
+reviewed_at: 2026-05-09
 reviewed_commit: 667cefb29cd3ed9dce18f7c38033167fda158331
 related:
   - tui-rendering-sanitization
@@ -28,6 +30,8 @@ MCP server의 stderr 배너와 경고는 JSON-RPC 통신이 아니며, Pi TUI에
 ## Transport Rule
 
 MCP transport는 stdout을 JSON-RPC 채널로 유지하되 stderr는 pipe로 열고 drain합니다. telemetry나 banner를 끌 수 있는 환경변수는 기본으로 꺼두고, 서버별 설정이 필요하면 명시적으로 override합니다.
+
+같은 원칙은 Glimpse/WebView native host에도 적용됩니다. stdout이 protocol이면 보존하고, stderr는 전체를 삼키지 말고 allowlisted harmless noise만 필터링합니다. 이렇게 해야 반복 noise는 TUI를 오염시키지 않으면서도 실제 native host 실패는 여전히 보입니다.
 
 ## Failure Mode
 
