@@ -21,6 +21,7 @@ source:
   - pilee-history:2026-05-01#10
   - pilee-history:2026-05-01#19
   - pilee-history:2026-05-01#24
+  - user-direction:2026-05-09-tft-studio-context-return
 reviewed_at: 2026-05-09
 reviewed_commit: b10752d9e7268f12cbd6e41ec1d9567c27073d52
 related:
@@ -35,6 +36,8 @@ related:
 ## Loading Rule
 
 AGENTS.md에는 핵심 원칙만 짧게 두고, 긴 history/knowledge는 필요할 때 검색하거나 read합니다. 동적으로 AGENTS.md를 주입하더라도 파일 탐색 결과와 관련된 범위로 제한합니다. cc-system-prompt처럼 매 턴 큰 비용을 만드는 일반 프롬프트는 제거하거나 skill로 분리합니다.
+
+TFT Studio transcript처럼 긴 전문도 같은 원칙을 따릅니다. 전문 전체를 매 tool result마다 LLM context에 주입하지 말고, 현재 turn에 필요한 `contextDigest`/`tabSnapshot`과 `/archive <transcriptPath>` reopen reference만 반환합니다. 중요한 판단은 전문에만 두지 않고 canonical structured data에 반영합니다.
 
 ## Failure Mode
 

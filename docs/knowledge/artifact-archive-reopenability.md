@@ -44,7 +44,7 @@ related:
 
 ## Archive Rule
 
-완료된 HTML report와 web search review는 workspace capture와 사용자 history archive에 저장합니다. `/archive`는 최근 workspace 산출물, archive, TFT Studio transcript, planning markdown, Pi/Conductor session provenance를 함께 탐색하는 primary command입니다. 기존 `/show-report`는 compatibility alias로 남기며, native viewer가 안 되면 browser fallback을 제공합니다.
+완료된 HTML report와 web search review는 workspace capture와 사용자 history archive에 저장합니다. `/archive`는 최근 workspace 산출물, archive, TFT Studio transcript, planning markdown, Pi/Conductor session provenance를 함께 탐색하는 primary command입니다. 기존 `/show-report`는 compatibility alias로 남기며, native viewer가 안 되면 browser fallback을 제공합니다. TFT Studio tool result가 `transcriptRef.openCommand`를 반환할 때도 `/archive <transcriptPath>`를 사용해 전문을 context에 붙이지 않고 재개 가능한 artifact로 연결합니다.
 
 ## Open Original Rule
 
