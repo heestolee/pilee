@@ -27,6 +27,7 @@ related:
   - ask-user-question-decision-gates
   - evidence-first-verification-gate
   - verification-invalidation-on-change
+  - architecture-friction-tft-lens
 supersedes:
   - freeform-context-md-verification
 ---
@@ -43,11 +44,13 @@ Frame은 구현 전 자연어 메모가 아니라, Verify가 기계적으로 읽
 
 `frame.md`는 사람이 읽기 위한 mirror이고, Frame Studio transcript는 계약을 만든 대화 전문입니다. 둘 다 canonical source가 아닙니다. transcript는 사용자가 어떤 질문과 선택을 거쳤는지 다시 열어보는 provenance이고, Verify가 기계적으로 판정할 기준은 여전히 최신 `frame.json`입니다.
 
+코드 구조를 건드리는 작업에서는 architecture friction도 계약의 일부가 됩니다. 별도 schema가 없더라도 `review_lenses`, `risk_register`, `verify_plan.manual_checks`, decision tradeoff에 “다음 사람/AI가 길을 잃을 구조인가”를 남기면 Verify가 구조 side-effect를 확인할 수 있습니다.
+
 ## Co-thinking Boundary
 
 Frame은 구현 plan을 대신 만들지 않습니다. 먼저 사용자가 볼 사고 렌즈와 실제 목표/범위 분기를 드러내고, 그 선택을 바탕으로 검증 계약을 작성합니다. `/frame`에서 목표·범위·성공 기준·검증 축은 명백해 보여도 묻고, `(명백: ...)`으로 AI 판단 근거를 표시합니다. 사용자가 검수해야 할 초점이 보이지 않으면 frame은 정교한 문서여도 TFT로는 실패입니다.
 
-Productive Resistance는 독립 단계입니다. 성공 기준이 모호한지, 롤백 비용 큰 선택이 숨어 있는지, 이번 작업에서 무엇을 안 할지 1~2개의 행동형 질문으로 흔든 뒤 draft를 작성합니다.
+Productive Resistance는 독립 단계입니다. 성공 기준이 모호한지, 롤백 비용 큰 선택이 숨어 있는지, 이번 작업에서 무엇을 안 할지, 빠른 구현이 shallow module/분산 조건을 늘리는지 1~2개의 행동형 질문으로 흔든 뒤 draft를 작성합니다.
 
 ## Canonical-first Rule
 

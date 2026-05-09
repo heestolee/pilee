@@ -30,6 +30,7 @@ related:
   - frame-verify-contract
   - frame-studio-interactive-decision-ui
   - evidence-first-verification-gate
+  - architecture-friction-tft-lens
 supersedes:
   - conditional-productive-resistance-in-decide
 ---
@@ -38,7 +39,7 @@ supersedes:
 
 `/decide`는 선택지를 기록하는 명령이 아니라, 사용자의 선택을 한 번 공격해서 수용한 비용을 명확히 하는 판단 도구입니다. 대안 비교표와 사용자 선택만으로 끝나면 “왜 이 선택이 더 낫다고 봤는가”는 남지만, “무엇을 포기하기로 했는가”와 “어떤 실패를 감수했는가”가 흐려집니다.
 
-따라서 `/decide`는 모든 결정에서 Productive Resistance를 수행합니다. 위험도는 challenge를 생략할지 말지를 정하지 않고, challenge의 강도만 정합니다.
+따라서 `/decide`는 모든 결정에서 Productive Resistance를 수행합니다. 위험도는 challenge를 생략할지 말지를 정하지 않고, challenge의 강도만 정합니다. 코드 구조를 건드리는 결정에서는 비교표에 구조 비용/AI 탐색성 행을 넣어 빠른 구현이 shallow module이나 복잡한 interface를 늘리는지 드러냅니다.
 
 ## Challenge Intensity Rule
 
@@ -72,7 +73,7 @@ Challenge 결과는 prose 메모가 아니라 `frame.json.decisions[]`에 구조
 
 `/verify`는 결정이 코드에 반영됐는지만 보면 부족합니다. 결정 시 수용한 tradeoff와 challenge에서 약속한 완화책도 실제 코드, 테스트, 문서, 검증 증거에 반영됐는지 대조해야 합니다.
 
-예를 들어 “선택은 유지하되 rollback test를 추가한다”를 고른 결정이라면, Verify는 선택한 구현이 존재하는지와 별개로 rollback test 또는 그에 준하는 검증 근거가 있는지 확인해야 합니다. 완화책이 빠졌다면 결정 자체는 존재해도 검증은 부분 또는 미달성입니다.
+예를 들어 “선택은 유지하되 rollback test를 추가한다”를 고른 결정이라면, Verify는 선택한 구현이 존재하는지와 별개로 rollback test 또는 그에 준하는 검증 근거가 있는지 확인해야 합니다. “빠른 복구를 위해 wrapper 증가를 수용하되 follow-up을 남긴다”를 고른 결정이라면, Verify는 diff가 수용 범위를 넘지 않았는지와 follow-up/backlog가 남았는지도 확인합니다. 완화책이 빠졌다면 결정 자체는 존재해도 검증은 부분 또는 미달성입니다.
 
 ## Writing Rule
 

@@ -77,6 +77,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
+| [Architecture friction은 TFT의 검증 축이다](./architecture-friction-tft-lens.md) | active | high | 2026-05-09 | c2ad5ef | architecture, frame, decide, verify, deep-module, shallow-module |
 | [Utils surface는 사용자 계약을 만들지 않는다](./utility-surface-stays-invisible.md) | active | high | 2026-05-08 | fdf91a4 | utils, internal, surface, abstraction, extension |
 
 ### database
@@ -190,6 +191,7 @@ graph TD
   doc_subagent_model_policy["Codex-first subagent 모델 운용 정책"]
   doc_subagent_prompt_specificity["Subagent 위임은 구체 프롬프트를 요구한다"]
   doc_supervisor_outcome_guardrail["Supervisor는 outcome guardrail이다"]
+  doc_architecture_friction_tft_lens["Architecture friction은 TFT의 검증 축이다"]
   doc_utility_surface_stays_invisible["Utils surface는 사용자 계약을 만들지 않는다"]
   doc_database_write_human_execution_gate["DB write는 인간 실행 게이트를 가진다"]
   doc_root_cause_before_fix["수정 전에 근본 원인을 좁힌다"]
@@ -265,6 +267,9 @@ graph TD
   doc_subagent_prompt_specificity --> doc_worktree_session_continuity
   doc_supervisor_outcome_guardrail --> doc_ask_user_question_decision_gates
   doc_supervisor_outcome_guardrail --> doc_subagent_prompt_specificity
+  doc_architecture_friction_tft_lens --> doc_decide_tradeoff_challenge
+  doc_architecture_friction_tft_lens --> doc_evidence_first_verification_gate
+  doc_architecture_friction_tft_lens --> doc_frame_verify_contract
   doc_utility_surface_stays_invisible --> doc_deterministic_fallbacks_preserve_workflow
   doc_utility_surface_stays_invisible --> doc_terminal_host_integration
   doc_database_write_human_execution_gate --> doc_ask_user_question_decision_gates
@@ -331,9 +336,11 @@ graph TD
   doc_tui_rendering_sanitization --> doc_mcp_stderr_isolation
   doc_tui_rendering_sanitization --> doc_terminal_host_integration
   doc_tui_rendering_sanitization --> doc_theme_information_hierarchy
+  doc_evidence_first_verification_gate --> doc_architecture_friction_tft_lens
   doc_evidence_first_verification_gate --> doc_frame_verify_contract
   doc_evidence_first_verification_gate --> doc_verification_invalidation_on_change
   doc_evidence_first_verification_gate --> doc_verify_report_workflow
+  doc_frame_verify_contract --> doc_architecture_friction_tft_lens
   doc_frame_verify_contract --> doc_ask_user_question_decision_gates
   doc_frame_verify_contract --> doc_evidence_first_verification_gate
   doc_frame_verify_contract --> doc_verification_invalidation_on_change
@@ -365,6 +372,7 @@ graph TD
   doc_change_integration_discipline --> doc_stress_interview_multi_axis_review
   doc_context_loading_minimal_surface --> doc_private_journal_public_doctrine
   doc_context_loading_minimal_surface --> doc_tool_output_noise_management
+  doc_decide_tradeoff_challenge --> doc_architecture_friction_tft_lens
   doc_decide_tradeoff_challenge --> doc_ask_user_question_decision_gates
   doc_decide_tradeoff_challenge --> doc_ask_user_question_option_design
   doc_decide_tradeoff_challenge --> doc_evidence_first_verification_gate
@@ -431,7 +439,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 63
-- Links: 180
+- Documents: 64
+- Links: 186
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
