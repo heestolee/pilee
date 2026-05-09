@@ -24,7 +24,7 @@ source:
   - pilee-history:2026-05-07#89
   - user-direction:2026-05-09-ember-backfill
 reviewed_at: 2026-05-09
-reviewed_commit: 50bb3d73482e74ecf39899326b54d12562acdce4
+reviewed_commit: fe53a9467301441538a51e177baa5ced674063ef
 related:
   - frame-studio-interactive-decision-ui
   - live-artifact-preview-pattern
