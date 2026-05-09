@@ -456,9 +456,14 @@ button { border:0; border-radius:12px; padding:10px 15px; font-weight:800; curso
 .answer-label { color:var(--muted); font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
 .answer-value { margin-top:3px; }
 .timeline { display:grid; gap:12px; }
-.timeline-item { border:1px solid var(--line); border-radius:14px; padding:12px; background:#fff; }
+.timeline-item { border:1px solid var(--line); border-radius:14px; padding:14px 16px; background:#fff; }
+.timeline-item.pending { border-color:#ddd6fe; background:#faf9ff; box-shadow:0 0 0 1px rgba(124,58,237,.10) inset; }
+.timeline-item.answer-entry { border-color:#bbf7d0; background:#f0fdf4; }
 .timeline-head { display:flex; gap:8px; flex-wrap:wrap; align-items:center; color:var(--muted); font-size:12px; font-weight:800; margin-bottom:8px; }
 .timeline-kind { color:var(--accent); text-transform:uppercase; letter-spacing:.04em; }
+.timeline-body { display:grid; gap:10px; }
+.timeline-markdown { margin-top:4px; }
+.inline-question { border:1px solid #ddd6fe; border-radius:14px; background:#fff; padding:14px; }
 .timeline details { margin-top:8px; }
 .timeline summary { cursor:pointer; font-weight:800; color:var(--text); }
 .logs { color:var(--muted); font-size:12px; max-height:160px; overflow:auto; }
@@ -474,9 +479,16 @@ button { border:0; border-radius:12px; padding:10px 15px; font-weight:800; curso
     <nav class="tabs" id="tabs"></nav>
   </section>
   <main class="layout">
-    <section class="card markdown" id="stagePanel"><div class="empty">TFT stage markdown을 기다리는 중...</div></section>
-    <section class="card question" id="questionCard" hidden></section>
-    <section class="card"><h2>TFT 전문</h2><div class="timeline" id="timeline"></div></section>
+    <section class="card">
+      <div class="stage-head">
+        <div>
+          <h2 class="stage-title" id="flowTitle">TFT 진행</h2>
+          <div class="stage-subtitle" id="flowSubtitle">업데이트·질문·답변을 시간순으로 표시합니다.</div>
+        </div>
+        <span class="badge" id="flowStatus">running</span>
+      </div>
+      <div class="timeline" id="timeline"></div>
+    </section>
     <section class="card"><h2>로그</h2><div class="logs" id="logs"></div></section>
   </main>
 </div>
@@ -569,23 +581,44 @@ function renderAnswerCard(answer) {
     + textHtml
     + '<div class="status">Pi가 다음 단계를 준비 중입니다. 다음 markdown update가 오면 이 카드가 교체됩니다.</div>';
 }
-function renderTimelineEntry(entry) {
-  var head = '<div class="timeline-head"><span>' + new Date(entry.time).toLocaleTimeString() + '</span><span class="timeline-kind">' + esc(entry.kind || '') + '</span>' + (entry.tab ? '<span>' + esc(entry.tab) + '</span>' : '') + (entry.step ? '<span>' + esc(entry.step) + '</span>' : '') + '</div>';
+function renderQuestionForm(q) {
+  var type = q.multiSelect ? 'checkbox' : 'radio';
+  return '<div class="inline-question">'
+    + '<div class="question-title">' + esc(q.question) + '</div>'
+    + '<div class="options">' + q.options.map(function(opt, i) {
+      return '<label class="option"><input name="frameOption" type="' + type + '" value="' + i + '"><span class="option-number">' + (i + 1) + '</span><span>' + inline(opt) + '</span></label>';
+    }).join('') + '</div>'
+    + (q.allowText ? '<textarea id="answerText" placeholder="' + esc(q.placeholder || '직접 입력') + '"></textarea>' : '')
+    + '<div class="actions"><button class="primary" onclick="submitAnswer()">' + esc(q.submitLabel || '선택 완료') + '</button><button class="secondary" onclick="cancelAnswer()">취소</button><span class="status" id="submitStatus"></span></div>'
+    + '</div>';
+}
+function renderTimelineEntry(entry, s) {
+  var isPending = !!(s && s.status === 'awaiting' && s.question && entry.question && entry.question.id === s.question.id);
+  var classes = ['timeline-item'];
+  if (isPending) classes.push('pending');
+  if (entry.answer) classes.push('answer-entry');
+  var head = '<div class="timeline-head"><span>' + new Date(entry.time).toLocaleTimeString() + '</span><span class="timeline-kind">' + esc(entry.kind || '') + '</span>' + (entry.tab ? '<span>' + esc(entry.tab) + '</span>' : '') + (entry.step ? '<span>' + esc(entry.step) + '</span>' : '') + (isPending ? '<span class="badge">선택 대기</span>' : '') + '</div>';
   var body = '';
   if (entry.message) body += '<p>' + inline(entry.message) + '</p>';
-  if (entry.markdown) body += '<details><summary>Markdown 전문</summary><div class="markdown">' + renderMarkdown(entry.markdown) + '</div></details>';
+  if (entry.markdown) body += '<div class="markdown timeline-markdown">' + renderMarkdown(entry.markdown) + '</div>';
   if (entry.question) {
     body += '<div class="answer-row"><div class="answer-label">질문</div><div class="answer-value">' + inline(entry.question.question) + '</div></div>';
-    if ((entry.question.options || []).length) {
+    if (isPending) {
+      body += renderQuestionForm(s.question);
+    } else if ((entry.question.options || []).length) {
       body += '<div class="answer-row"><div class="answer-label">옵션</div><ol>' + entry.question.options.map(function(opt) { return '<li>' + inline(opt) + '</li>'; }).join('') + '</ol></div>';
     }
   }
   if (entry.answer) body += renderAnswerCard(entry.answer);
-  return '<div class="timeline-item">' + head + (body || '<span class="status">내용 없음</span>') + '</div>';
+  return '<div class="' + classes.join(' ') + '">' + head + '<div class="timeline-body">' + (body || '<span class="status">내용 없음</span>') + '</div></div>';
 }
-function renderTimeline(entries) {
+function visibleTimelineEntries(s) {
+  var active = activeTabKey(s);
+  return (s.timeline || []).filter(function(entry) { return !entry.tab || entry.tab === active; });
+}
+function renderTimeline(entries, s) {
   if (!entries || !entries.length) return '<span class="status">아직 기록된 TFT 전문이 없습니다.</span>';
-  return entries.map(renderTimelineEntry).join('');
+  return entries.map(function(entry) { return renderTimelineEntry(entry, s); }).join('');
 }
 function tabData(s, key) {
   var tabs = s.tabs || {};
@@ -615,14 +648,6 @@ function renderTabs(s) {
       + '</button>';
   }).join('');
 }
-function renderStagePanel(s) {
-  var active = activeTabKey(s);
-  var meta = STUDIO_TABS.find(function(tab) { return tab.key === active; }) || STUDIO_TABS[0];
-  var data = tabData(s, active);
-  var body = data.markdown ? renderMarkdown(data.markdown) : '<div class="empty">' + inline(meta.empty) + '</div>';
-  return '<div class="stage-head"><div><div class="stage-title">' + esc(meta.label) + '</div><div class="stage-subtitle">' + esc(meta.subtitle) + '</div></div>'
-    + '<span class="badge">' + esc(tabStatus(s, active)) + '</span></div>' + body;
-}
 function selectTab(key) { selectedTab = key; if (state) render(state); }
 function render(s) {
   state = s;
@@ -638,32 +663,12 @@ function render(s) {
     '<span class="badge">' + esc(s.status || '') + '</span>'
   ].filter(Boolean).join('');
   document.getElementById('tabs').innerHTML = renderTabs(s);
-  document.getElementById('stagePanel').innerHTML = renderStagePanel(s);
-  var q = s.question;
-  var qc = document.getElementById('questionCard');
-  if (!q || s.status !== 'awaiting') {
-    if (s.lastAnswer) {
-      qc.hidden = false;
-      qc.className = 'card answer';
-      qc.innerHTML = renderAnswerCard(s.lastAnswer);
-    } else {
-      qc.hidden = true;
-    }
-  }
-  else {
-    qc.hidden = false;
-    qc.className = 'card question';
-    var type = q.multiSelect ? 'checkbox' : 'radio';
-    qc.innerHTML = '<div class="question-title">' + esc(q.question) + '</div>'
-      + '<div class="status">stage: ' + esc(q.tab || 'frame') + '</div>'
-      + (q.markdown ? '<div class="markdown">' + renderMarkdown(q.markdown) + '</div>' : '')
-      + '<div class="options">' + q.options.map(function(opt, i) {
-        return '<label class="option"><input name="frameOption" type="' + type + '" value="' + i + '"><span class="option-number">' + (i + 1) + '</span><span>' + inline(opt) + '</span></label>';
-      }).join('') + '</div>'
-      + (q.allowText ? '<textarea id="answerText" placeholder="' + esc(q.placeholder || '직접 입력') + '"></textarea>' : '')
-      + '<div class="actions"><button class="primary" onclick="submitAnswer()">' + esc(q.submitLabel || '선택 완료') + '</button><button class="secondary" onclick="cancelAnswer()">취소</button><span class="status" id="submitStatus"></span></div>';
-  }
-  document.getElementById('timeline').innerHTML = renderTimeline(s.timeline || []);
+  var active = activeTabKey(s);
+  var activeMeta = STUDIO_TABS.find(function(tab) { return tab.key === active; }) || STUDIO_TABS[0];
+  document.getElementById('flowTitle').textContent = activeMeta.label + ' 진행';
+  document.getElementById('flowSubtitle').textContent = '업데이트·질문·답변을 시간순으로 표시합니다. 현재 선택도 해당 step 안에 표시됩니다.';
+  document.getElementById('flowStatus').textContent = tabStatus(s, active);
+  document.getElementById('timeline').innerHTML = renderTimeline(visibleTimelineEntries(s), s);
   document.getElementById('logs').innerHTML = (s.logs || []).slice().reverse().map(function(log) {
     return '<div>' + new Date(log.time).toLocaleTimeString() + ' · ' + esc(log.message) + '</div>';
   }).join('') || '<span class="status">로그 없음</span>';

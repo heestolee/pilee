@@ -87,8 +87,9 @@ Productive Resistance 질문은 반드시 행동형이어야 한다:
 Pi UI가 있고 `frame_studio` tool을 사용할 수 있으면, 번호형 텍스트만 출력하지 말고 Glimpse TFT Studio를 우선 사용한다. 도구 이름은 하위 호환을 위해 `frame_studio`지만, UI는 Frame/Decide/Verify/Verify Report 탭을 가진 TFT Studio shell이다.
 
 - Step 1 직후: `frame_studio action=start tab=frame`으로 identity-bound TFT Studio를 연다.
-- Step 2/6/8: 현재 markdown을 `action=update tab=frame`으로 렌더링한다.
+- Step 2: 목표 fingerprint/가정/렌즈 markdown을 `action=update tab=frame`으로 렌더링한 뒤, `action=ask tab=frame`으로 `ok` 또는 정정 입력을 받는다. 버튼 없는 `ok` 문장을 markdown에만 남기지 않는다.
 - Step 3/4/5/7/9: 선택이 필요한 지점은 `action=ask tab=frame`을 호출해 버튼/체크박스/직접입력으로 답을 받는다.
+- Step 6/8: 현재 markdown을 `action=update tab=frame`으로 렌더링한다.
 - tool 결과가 `unavailable`, `cancelled`, `timeout`이면 `ask-user-question-rules`의 번호형 text-mode fallback으로 이어간다.
 - TFT Studio 제목과 identity는 command shim의 **Frame identity hint**를 따른다. P0/P1 panel label이 아니라 worktree/ticket/session planning identity에 귀속한다.
 - `frame_studio` 결과는 선택값뿐 아니라 `contextDigest`, `tabSnapshot`, `transcriptRef.openCommand`(`/archive <transcriptPath>`)를 반환한다. 전문 전체를 LLM context에 주입하지 말고, 확정 의미는 canonical에 쓰고 전문은 reference/provenance로 연결한다.
@@ -161,7 +162,7 @@ planning frame은 나중에 worktree가 만들어지면 해당 worktree의 `.pi/
 틀린 가정이 있으면 번호로 정정해주세요. 없으면 `ok`.
 ```
 
-이 단계는 자유 텍스트 정정 턴이다. 아직 draft를 쓰지 않는다.
+이 단계는 자유 텍스트 정정 턴이다. TFT Studio를 쓰면 카드를 `update`로 보여준 뒤 `ask`로 `ok`/정정 입력을 받아야 한다. 아직 draft를 쓰지 않는다.
 
 ### Step 3: AskUserQuestion — 목표/범위 구체화
 
