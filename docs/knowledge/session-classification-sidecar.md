@@ -18,6 +18,7 @@ applies_to:
 source:
   - user-direction:2026-05-09-show-report-session-classification
   - user-direction:2026-05-09-archive-command-name
+  - user-direction:2026-05-09-session-classification-select-tags
 reviewed_at: 2026-05-09
 reviewed_commit: 8f4b01cde92ee9c363d85cfc7e8dffaaa48c9fce
 related:
@@ -57,6 +58,10 @@ AI는 분류의 최종 결정자가 아니라 초안 작성자입니다. `/archi
 ## UI Rule
 
 `/archive`는 session card에 `분류` action을 제공하고, category/tag/summary/segments를 사용자가 직접 수정할 수 있게 합니다. 목록에는 category filter를 제공해 `pilee 개선`, `영상 분석`, `잡담/방향성`, `업무 검증`처럼 사용자가 만든 맥락으로 세션을 찾을 수 있어야 합니다.
+
+분류(category)는 1차 보관함입니다. 자유 입력만 두면 기준이 흩어지므로 UI는 selectbox를 기본으로 하고, 마지막 옵션에서 직접 입력을 열어 예외를 허용합니다. 이 값은 `/archive` 상단 필터와 카드 grouping에 바로 쓰입니다.
+
+태그(tags)는 같은 분류 안에서 나중에 찾기 위한 보조 검색 키워드입니다. category보다 작은 cross-cutting facet이므로 필수 판단 축처럼 보이게 하지 말고, 쉼표 구분 입력과 짧은 설명으로 선택 항목임을 드러냅니다.
 
 세그먼트 분류는 검색과 탐색을 돕는 색인입니다. 세그먼트가 있다고 해서 세션을 실제로 쪼개거나 revive/export 대상이 바뀌는 것은 아닙니다.
 
