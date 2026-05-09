@@ -25,7 +25,7 @@ source:
   - pilee-history:2026-05-03#28
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-09
-reviewed_commit: a3707cc4e16876381f979b5e197e66fc8b5bc984
+reviewed_commit: 8050064c8c98da577174208778fc7d9f8d6025f5
 related:
   - tui-rendering-sanitization
   - terminal-host-integration
