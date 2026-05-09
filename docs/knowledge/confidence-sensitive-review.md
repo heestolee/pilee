@@ -20,7 +20,7 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-07-resolver-merge-gate
 reviewed_at: 2026-05-09
-reviewed_commit: bc0f77e0329817186105ad06b89835672adf2881
+reviewed_commit: a3707cc4e16876381f979b5e197e66fc8b5bc984
 related:
   - freshness-diagnosis-report
   - deterministic-vs-ai-actions
