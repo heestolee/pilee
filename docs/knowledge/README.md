@@ -98,7 +98,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 |---|---|---:|---:|---:|---|
 | [낮은 confidence 판단은 정합성 PR로 올린다](./confidence-sensitive-review.md) | active | high | 2026-05-09 | b390940 | confidence, review, freshness, ai-actions, user-review, 정합성 |
 | [Deterministic action과 AI review action은 분리한다](./deterministic-vs-ai-actions.md) | active | high | 2026-05-09 | b390940 | knowledge, deterministic, ai-actions, review, automation, 정합성 |
-| [Ember는 knowledge의 친근한 입구다](./ember-friendly-knowledge-entrypoint.md) | active | high | 2026-05-09 | b390940 | ember, branding, command, knowledge |
+| [Ember는 knowledge의 친근한 입구다](./ember-friendly-knowledge-entrypoint.md) | active | high | 2026-05-09 | 74638b0 | ember, branding, command, knowledge |
 | [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | high | 2026-05-09 | b390940 | knowledge, freshness, diagnosis, review, candidate, 정합성 |
 | [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | high | 2026-05-09 | b390940 | knowledge, judgment, granularity, documentation, coverage, 문서 |
 | [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | high | 2026-05-09 | b390940 | pilee, knowledge, history, journal, sanitized, reviewed-at |
@@ -282,6 +282,7 @@ graph TD
   doc_confidence_sensitive_review --> doc_readme_philosophy_user_gate
   doc_deterministic_vs_ai_actions --> doc_freshness_diagnosis_report
   doc_deterministic_vs_ai_actions --> doc_readme_coverage_map
+  doc_ember_friendly_knowledge_entrypoint --> doc_judgment_doc_unit
   doc_ember_friendly_knowledge_entrypoint --> doc_pilee_knowledge_system
   doc_ember_friendly_knowledge_entrypoint --> doc_private_journal_public_doctrine
   doc_ember_friendly_knowledge_entrypoint --> doc_readme_philosophy_user_gate
@@ -440,6 +441,6 @@ graph TD
 ## Review Metadata Summary
 
 - Documents: 64
-- Links: 186
+- Links: 187
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

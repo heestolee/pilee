@@ -16,12 +16,14 @@ applies_to:
 source:
   - user-direction:2026-05-05-ember-branding
   - user-direction:2026-05-07-local-resolver
+  - user-direction:2026-05-09-ember-add-workflow-contract
 reviewed_at: 2026-05-09
-reviewed_commit: b390940095ad5a543b757f54e9799aeceddcf26e
+reviewed_commit: 74638b0ad5c03a87a38a07c7ac140679f3680320
 related:
   - pilee-knowledge-system
   - private-journal-public-doctrine
   - readme-philosophy-user-gate
+  - judgment-doc-unit
 ---
 
 # Ember는 knowledge의 친근한 입구다
@@ -37,6 +39,21 @@ related:
 - 운영 용어: `freshness`, `confidence`, `reviewed_commit`, `review queue`
 
 `/ember`는 이 구조 위에 얹는 friendly entrypoint다. 파이리의 작은 불꽃처럼, 아직 doctrine이 되지 않은 세션의 깨달음을 후보로 모으고(`collect`), 사용자가 고른 후보를 public knowledge로 추가하거나 기존 문서에 접목하며(`add`), 불길을 살피고(`tend`), 검토 queue를 정리하며(`review`), stale/review_needed 문서를 로컬 맥락으로 실제 해소한다(`resolve`). `add`는 product식 `/add-knowledge`의 검색·범위 정렬·작성 계획·검증 단계를 pilee의 judgment-document 모델에 맞춘 진입점이고, `resolve`는 public review queue를 실제 local update PR로 바꾸는 입구다. 민감한 resolver 산출물은 로컬에만 둔다. 초기 운영에서는 PR을 열고 사용자 review/merge를 기다리는 데서 멈춘다.
+
+## `/ember add` workflow contract
+
+`/ember add`는 새 문서를 만드는 명령이 아니라 **불씨를 public/sanitized reusable judgment로 정렬하는 절차**다. 따라서 파일을 쓰기 전에 다음 순서를 지킨다.
+
+1. `git status`로 무관 WIP나 충돌을 확인한다. 안전하게 분리할 수 없으면 중단한다.
+2. 주제를 정규화한다: 핵심 judgment 1문장, 검색어 3~6개, 예상 `applies_to` surface.
+3. `node scripts/knowledge.mjs "<검색어>"`로 기존 knowledge를 먼저 검색한다.
+4. 기존 문서가 답하면 신규 문서를 만들지 않고 그 문서를 갱신한다.
+5. 신규 문서는 독립적으로 검색될 판단 단위일 때만 만든다. 문서 단위는 코드 scope가 아니라 [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md)의 reusable judgment다.
+6. 관련 public 파일은 필요한 만큼 읽되, private history/session은 로컬 근거로만 쓰고 원문·경로·민감 맥락을 공개 문서에 복사하지 않는다.
+7. 신규 vs 기존 갱신, 문서 분할, confidence처럼 의미 있는 분기가 있으면 번호형 작성 계획을 먼저 확인한다. 단일 후보와 전략이 명백하면 `(명백: ...)` 근거를 보고하고 진행할 수 있다.
+8. 작성 후 `node scripts/knowledge.mjs --graph`, `--validate`, `--freshness`로 검증한다. 실제 검토가 끝난 문서만 `--confirm <doc-id>`로 reviewed 기준을 갱신한다.
+
+이 계약은 `/ember add`가 product식 `/add-knowledge`의 좋은 작업 리듬을 가져오되, pilee의 canonical 모델(`docs/knowledge`, freshness, confidence, reviewed_commit)을 흐리지 않게 한다.
 
 ## 왜 full rename이 아닌가
 
