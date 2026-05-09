@@ -20,7 +20,7 @@ source:
   - pilee-history:2026-05-01#19
   - user-direction:2026-05-09-glimpse-stderr-noise
 reviewed_at: 2026-05-09
-reviewed_commit: bc0f77e0329817186105ad06b89835672adf2881
+reviewed_commit: d54d56d58ec9f5216cc5f5858e675a0addd5233e
 related:
   - tui-rendering-sanitization
   - mcp-stderr-isolation

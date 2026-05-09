@@ -14,7 +14,7 @@ applies_to:
 source:
   - pilee-history:2026-05-03#32
 reviewed_at: 2026-05-09
-reviewed_commit: bcad70f6b593d38cf4179e35c83c6f7510eceeed
+reviewed_commit: d54d56d58ec9f5216cc5f5858e675a0addd5233e
 related:
   - deterministic-fallbacks-preserve-workflow
   - terminal-host-integration

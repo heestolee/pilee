@@ -31,7 +31,7 @@ source:
   - pilee-history:2026-05-05#42
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-09
-reviewed_commit: 5f1411ca08dc2cf31f11a75588dd372adb6f3c1a
+reviewed_commit: d54d56d58ec9f5216cc5f5858e675a0addd5233e
 related:
   - subagent-model-policy
   - pilee-knowledge-system

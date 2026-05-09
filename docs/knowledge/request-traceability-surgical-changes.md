@@ -21,7 +21,7 @@ applies_to:
 source:
   - user-direction:2026-05-09-karpathy-guardrails
 reviewed_at: 2026-05-09
-reviewed_commit: 5f1411ca08dc2cf31f11a75588dd372adb6f3c1a
+reviewed_commit: d54d56d58ec9f5216cc5f5858e675a0addd5233e
 related:
   - change-integration-discipline
   - evidence-first-verification-gate
