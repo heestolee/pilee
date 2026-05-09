@@ -124,6 +124,7 @@ type FrameStudioHandle = {
 const STATE_DIR = join(homedir(), ".pi", "agent", "frame-studio");
 const TRANSCRIPTS_DIR = join(STATE_DIR, "transcripts");
 const ASK_TIMEOUT_MS = 8 * 60 * 60 * 1000;
+const TFT_RESUME_CUSTOM_TYPE = "pilee-tft-studio-resume";
 
 const STUDIO_TABS: Array<{ key: StudioTabKey; label: string; subtitle: string }> = [
 	{ key: "frame", label: "Frame", subtitle: "목표·범위·성공 기준" },
@@ -958,6 +959,76 @@ function ask(handle: FrameStudioHandle, question: StudioQuestion, signal?: Abort
 	});
 }
 
+function latestRecoverableQuestion(state: FrameStudioState): StudioQuestion | undefined {
+	let latestQuestionIndex = -1;
+	let latestQuestion: StudioQuestion | undefined;
+	for (let i = state.timeline.length - 1; i >= 0; i--) {
+		const entry = state.timeline[i];
+		if (entry.kind === "question" && entry.question) {
+			latestQuestionIndex = i;
+			latestQuestion = entry.question;
+			break;
+		}
+	}
+	if (!latestQuestion || latestQuestionIndex < 0) return undefined;
+	const answer = state.timeline
+		.slice(latestQuestionIndex + 1)
+		.find((entry) => entry.kind === "answer" && entry.answer?.questionId === latestQuestion?.id)
+		?.answer;
+	return !answer || answer.status !== "answered" ? latestQuestion : undefined;
+}
+
+function buildResumeAnswerPrompt(state: FrameStudioState, question: StudioQuestion, answer: StudioAnswer): string {
+	const selected = answer.selectedOptions.length ? answer.selectedOptions.map((option) => `- ${option}`).join("\n") : "- (no option selected)";
+	const text = answer.text?.trim() ? `\n\nDirect input:\n${answer.text.trim()}` : "";
+	return [
+		"# TFT Studio resume answer",
+		"",
+		"A previously unanswered TFT Studio question was reactivated and the user answered it.",
+		"Continue the same TFT workflow from this answer. Do not restart the frame or create a new Studio transcript.",
+		"Use the transcript as provenance, and persist any canonical stage output as required by the relevant TFT skill.",
+		"",
+		`Transcript: ${state.transcriptPath}`,
+		`Identity: ${state.identity.key}`,
+		`Title: ${state.title}`,
+		`Tab: ${question.tab}`,
+		`Step: ${state.step ?? ""}`,
+		"",
+		`Question: ${question.question}`,
+		"",
+		"Selected:",
+		selected,
+		text,
+	].join("\n");
+}
+
+function reactivateLatestQuestionForResume(pi: ExtensionAPI, handle: FrameStudioHandle): boolean {
+	if (handle.pending || handle.state.question) return false;
+	const sourceQuestion = latestRecoverableQuestion(handle.state);
+	if (!sourceQuestion) return false;
+	const question: StudioQuestion = { ...sourceQuestion, id: randomUUID().slice(0, 8), createdAt: Date.now() };
+	void ask(handle, question).then((answer) => {
+		if (answer.status !== "answered") return;
+		pi.sendMessage(
+			{
+				customType: TFT_RESUME_CUSTOM_TYPE,
+				content: buildResumeAnswerPrompt(handle.state, question, answer),
+				display: false,
+				details: {
+					transcriptPath: handle.state.transcriptPath,
+					identity: handle.state.identity,
+					question,
+					answer,
+				},
+			},
+			{ deliverAs: "followUp", triggerTurn: true },
+		);
+	});
+	addLog(handle, `Reactivated unanswered question: ${question.question}`);
+	pushState(handle);
+	return true;
+}
+
 function registerTftStudioCommand(pi: ExtensionAPI): void {
 	pi.registerCommand("tft", {
 		description: "TFT Studio 열기/재진입. Usage: /tft [open|resume] [transcriptPath|identityKey]",
@@ -984,8 +1055,9 @@ function registerTftStudioCommand(pi: ExtensionAPI): void {
 					addLog(handle, "TFT Studio re-entered.");
 					pushState(handle);
 				}
+				const reactivated = reactivateLatestQuestionForResume(pi, handle);
 				const opened = ensured.opened === "reused" ? await openStudio(pi, ctx, handle) : ensured.opened;
-				ctx.ui.notify(`TFT Studio 재진입: ${handle.state.title} (${opened})`, "info");
+				ctx.ui.notify(`TFT Studio 재진입: ${handle.state.title} (${opened})${reactivated ? " · 미응답 질문 활성화" : ""}`, "info");
 			} catch (error) {
 				ctx.ui.notify(`TFT Studio 재진입 실패: ${error instanceof Error ? error.message : String(error)}`, "error");
 			}
