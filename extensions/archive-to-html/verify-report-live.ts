@@ -6,6 +6,7 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import { getGlimpseOpen, type GlimpseWindow } from "../utils/glimpse.ts";
+import { webviewCopyCss, webviewCopyScript } from "../utils/webview-copy.ts";
 
 const REPORT_SIGNATURE = "Verify Report";
 const DEFAULT_WORKSPACE_PREFIX = ".context/work";
@@ -576,6 +577,7 @@ function generateLivePage(initialState: unknown): string {
 <style>
 	:root { ${reportRootVariablesCss()} }
 	* { box-sizing: border-box; }
+	${webviewCopyCss()}
 	body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 	.header { position: sticky; top: 0; z-index: 2; background: rgba(250,250,249,.94); border-bottom: 1px solid var(--line); padding: 16px 22px; backdrop-filter: blur(8px); }
 	.header-row { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; }
@@ -633,6 +635,7 @@ function generateLivePage(initialState: unknown): string {
 <body>
 <div id="app"></div>
 <script>
+${webviewCopyScript()}
 var state = ${JSON.stringify(initialState)};
 function esc(v) { return String(v == null ? '' : v).replace(/[&<>\"]/g, function(ch) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]; }); }
 function statusLabel(s) { return ({draft:'준비',running:'진행 중',done:'완료',aborted:'중단',pending:'대기',pass:'PASS',fail:'FAIL',skip:'SKIP',blocked:'BLOCKED',unverified:'미검증'})[s] || s; }
@@ -740,6 +743,7 @@ function generateStaticReportHtml(state: VerifyReportState): string {
 <title>${escapeHtml(title)}</title>
 <style>
 	* { box-sizing: border-box; margin: 0; padding: 0; }
+	${webviewCopyCss()}
 	body {
 		font-family: -apple-system, BlinkMacSystemFont, 'Pretendard', 'Apple SD Gothic Neo', 'Segoe UI', sans-serif;
 		line-height: 1.6;
@@ -881,6 +885,9 @@ ${coverageGaps.length ? `<section>
 	${state.items.map((item) => `<div class="step"><div class="step-header"><div class="step-num">${escapeHtml(item.id)}</div><div><div class="step-title">${escapeHtml(item.title)}</div><div class="step-meta">${escapeHtml(item.type || "-")} · <span class="${escapeHtml(statusClass(item.status))}">${escapeHtml(statusLabel(item.status))}</span></div></div></div>${item.detail ? `<p class="detail">${escapeHtml(item.detail)}</p>` : ""}<div class="evidence">${item.evidence.map((evidence) => renderEvidenceStatic(evidence, state)).join("\n")}</div></div>`).join("\n")}
 </section>
 </div>
+<script>
+${webviewCopyScript()}
+</script>
 </body>
 </html>`;
 }

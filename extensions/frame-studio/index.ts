@@ -7,6 +7,7 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@m
 import { Type } from "typebox";
 import { buildFrameIdentity, type FrameIdentity } from "../tft-commands/frame-identity.ts";
 import { getGlimpseOpen, type GlimpseWindow } from "../utils/glimpse.ts";
+import { webviewCopyCss, webviewCopyScript } from "../utils/webview-copy.ts";
 
 type StudioStatus = "running" | "awaiting" | "done" | "aborted";
 type AskStatus = "answered" | "cancelled" | "timeout" | "unavailable";
@@ -433,6 +434,7 @@ function buildPageHtml(): string {
   --green:#166534; --red:#991b1b; --amber:#92400e;
 }
 * { box-sizing: border-box; }
+${webviewCopyCss()}
 body { margin:0; background:var(--bg); color:var(--text); font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
 .app { max-width: 980px; margin:0 auto; padding:24px; }
 .hero { padding:22px 24px; border:1px solid var(--line); border-radius:18px; background:var(--panel); }
@@ -522,6 +524,7 @@ button { border:0; border-radius:12px; padding:10px 15px; font-weight:800; curso
   </main>
 </div>
 <script>
+${webviewCopyScript()}
 var state = null;
 var selectedTab = null;
 var STUDIO_TABS = [

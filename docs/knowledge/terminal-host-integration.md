@@ -42,6 +42,8 @@ related:
 
 Glimpse/WebView와 OS browser도 host입니다. static `file://` anchor가 브라우저에서는 동작해도 WebView에서는 기대대로 외부 open을 넘기지 않을 수 있습니다. preview/open 기능은 local server route, allowlisted realpath, host-side opener처럼 host adapter 경계를 명시해 구현합니다.
 
+WebView의 native edit menu가 `Cmd+C`를 항상 페이지 selection에 전달한다고 가정하지 않습니다. 사용자가 검토/계획/리포트 텍스트를 복사해야 하는 Glimpse artifact는 `user-select:text`와 selection 기반 copy shim(`copy` event + `Cmd/Ctrl+C` keydown + clipboard/execCommand fallback)을 함께 넣습니다. 복사는 artifact 검토의 기본 affordance이지 브라우저 전용 편의 기능이 아닙니다.
+
 macOS WebView는 기능 실패가 아닌 Text Services/InputMethodKit stderr noise를 터미널에 흘릴 수 있습니다. 예를 들어 Caps Lock LED/IMK runloop wakeup 계열 로그는 사용자가 검토할 report/error가 아니므로 Glimpse host adapter에서 allowlisted noise만 필터링합니다. 단, actionable native host stderr는 계속 stderr로 전달해야 합니다.
 
 ## Local Metadata Rule
