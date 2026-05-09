@@ -10,6 +10,13 @@
 - **AskUserQuestion 규칙**: 한 줄 질문, 옵션에 결론 적기 금지, 처리된 항목 메뉴화 금지, 0개면 안 띄움
 - **토큰 의식**: 안 쓰는 익스텐션 비활성화, 스킬 최소화, 시스템 프롬프트 중복 제거
 
+## Karpathy-style coding guardrails
+
+- **요청 추적성**: 모든 변경된 줄은 사용자 요청, frame success criteria, decision mitigation, 또는 검증 실패와 직접 연결돼야 한다.
+- **단순한 해법 우선**: 요청되지 않은 기능, 옵션, 확장성, 추상화는 넣지 않는다.
+- **외과수술식 변경**: 인접 코드 정리·취향 리팩터링·포맷 변경은 별도 요청 없이는 하지 않는다.
+- **오류는 추측하지 말고 읽는다**: 실패하면 전체 에러/로그/exit code를 먼저 읽고 원인을 확인한 뒤 수정한다.
+
 ## Public / Private 경계
 
 - **public pilee**: 재사용 가능한 Pi 엔진, 안전 프로토콜, sanitized doctrine만 둔다.
