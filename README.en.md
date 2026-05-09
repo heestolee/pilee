@@ -174,7 +174,7 @@ The `(obvious)` pattern is the third option between “ask everything” and “
 
 Public, sanitized design knowledge lives in [`docs/knowledge/README.md`](./docs/knowledge/README.md).
 
-**Ember** is the friendly entrypoint for that knowledge layer. `/ember` collects reusable insights from a session, `/ember tend` checks freshness/confidence review queues, and `/ember resolve` turns stale or review-needed docs into local resolver PR work.
+**Ember** is the friendly entrypoint for that knowledge layer. `/ember` collects reusable insights from a session, `/ember add` turns a selected insight into a new or updated public knowledge doc, `/ember tend` checks freshness/confidence review queues, and `/ember resolve` turns stale or review-needed docs into local resolver PR work.
 
 Company, account, local path, and private operating context do not belong in public pilee. They live in private overlay packages. To create one safely, start from [`pilee-private-overlay-template`](https://github.com/heestolee/pilee-private-overlay-template), which uses fake ACME examples only.
 
@@ -305,7 +305,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **tasks** | Task CRUD and `Ctrl+Shift+T` |
 | **web-access** | Tavily web search, URL extraction, and curator workflow |
 | **memory-layer** | Long-term memory save/search |
-| **ember** | Friendly entrypoint for knowledge collection and review |
+| **ember** | Friendly entrypoint for knowledge collection, add, and review |
 | **backlog** | Persistent backlog TUI |
 | **preflight** | Pre-commit lint/type-check hooks |
 | **pr-comments** | PR comment workflow helpers |

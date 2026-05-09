@@ -51,12 +51,14 @@ node scripts/knowledge.mjs "<검색어>"
 - private 쪽: `docs/pilee-history.md`, `docs/pilee-history.sync.local.md`는 로컬 근거로만 사용하고 원문을 공개 문서에 복사하지 않는다.
 - freshness report: `node scripts/knowledge.mjs --freshness`
 - 자동 후보: `node scripts/knowledge.mjs --review-candidates`
+- 신규/갱신 작성 진입점: `/ember add <topic>`
 - stale 해소용 로컬 plan: `node scripts/knowledge.mjs --resolve-stale` 또는 `/ember resolve`
 
 ### 3. 작성/수정 결정
 
 - 기존 문서가 현재 질문에 답하면 기존 문서를 수정한다.
 - 새 기능/원칙이 독립적으로 검색될 주제면 새 문서를 만든다.
+- `/ember add`는 product식 `/add-knowledge`처럼 기존 문서 검색 → 판단/범위 정렬 → 작성 계획 → 작성 → graph/validate/freshness 검증 순서를 따른다. 단 pilee 문서 단위는 코드 scope가 아니라 public/sanitized reusable judgment다.
 - 문서가 분리되면 `related`와 본문 inline link로 그래프를 연결한다.
 
 ### 4. 문서 작성 형식
@@ -101,7 +103,7 @@ node scripts/knowledge.mjs --graph
 node scripts/knowledge.mjs --validate
 node scripts/knowledge.mjs --freshness
 node scripts/knowledge.mjs --freshness --json --output .context/knowledge-freshness.json
-node scripts/knowledge.mjs --resolve-stale --limit 8
+node scripts/knowledge.mjs --resolve-stale --limit 8 # /ember resolve 내부 진입점
 node scripts/knowledge.mjs --resolver-log
 node scripts/knowledge.mjs --confirm <doc-id>
 node scripts/knowledge.mjs --confirm <doc-id> --confidence high

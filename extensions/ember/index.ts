@@ -5,6 +5,7 @@ const HELP = `불씨 / Ember — pilee knowledge friendly entrypoint
 Usage:
   /ember [topic]        현재 세션에서 knowledge 후보를 찾기
   /ember collect [q]    같은 동작. 불씨 후보 수집
+  /ember add [q]        후보를 docs/knowledge 문서로 추가/갱신
   /ember tend           freshness / confidence review queue 점검
   /ember resolve [opts] stale/review_needed 문서를 로컬 맥락으로 실제 해소
   /ember review         medium/low confidence 문서 검토 준비
@@ -17,8 +18,8 @@ function normalizeArgs(args: string): { sub: string; rest: string } {
 	if (!trimmed) return { sub: "collect", rest: "" };
 	const [first = "", ...restParts] = trimmed.split(/\s+/);
 	const sub = first.toLowerCase();
-	if (["collect", "ignite", "tend", "resolve", "review", "graph", "help"].includes(sub)) {
-		return { sub, rest: restParts.join(" ").trim() };
+	if (["collect", "add", "ignite", "tend", "resolve", "review", "graph", "help"].includes(sub)) {
+		return { sub: sub === "ignite" ? "add" : sub, rest: restParts.join(" ").trim() };
 	}
 	return { sub: "collect", rest: trimmed };
 }
@@ -31,6 +32,32 @@ function buildPrompt(sub: string, rest: string): string {
 - 저장소 구조는 \`docs/knowledge\`, \`scripts/knowledge.mjs\`, freshness, confidence, reviewed_commit 용어를 사용한다.
 - private history 원문은 공개 문서에 복사하지 말고 public/sanitized doctrine으로 재작성한다.
 - 바로 큰 rename을 하지 말고, 필요하면 기존 knowledge 문서 갱신 또는 신규 판단 문서 생성을 제안한다.`;
+
+	if (sub === "add") {
+		return `불씨를 pilee knowledge로 추가하거나 기존 문서에 접목해줘.${topicLine}
+
+이 흐름은 product \`/add-knowledge\`의 좋은 점(기존 문서 검색 → 범위/판단 정렬 → 작성 계획 → 검증)을 가져오되, pilee의 canonical 모델에 맞춘다. pilee knowledge 문서의 단위는 코드 scope가 아니라 public/sanitized reusable judgment다.
+
+해야 할 일:
+1. 먼저 git status를 확인하고, 충돌/무관 WIP가 있으면 중단하고 보고한다.
+2. 주제를 정규화한다: 핵심 judgment 1문장, 검색어 3~6개, 예상 \`applies_to\` surface를 정리한다.
+3. 반드시 \`node scripts/knowledge.mjs "<검색어>"\`로 기존 knowledge를 검색한다. 기존 문서로 충분하면 신규 문서를 만들지 않고 갱신한다.
+4. 관련 public 파일(knowledge 문서, skill/extension/script)을 필요한 만큼 읽는다. private history/session은 로컬 근거로만 사용하고 원문·경로·민감 맥락은 공개 문서/PR body에 복사하지 않는다.
+5. 문서 전략을 고른다: 기존 문서 수정 / 신규 1개 / 여러 문서 분리. 신규 문서는 독립 검색될 reusable judgment일 때만 만든다.
+6. 의미 있는 분기(신규 vs 기존, 문서 분할, confidence)가 있으면 파일 쓰기 전에 번호형 작성 계획을 사용자에게 확인한다. 단, 직전 \`/ember collect\` 후보를 사용자가 명시적으로 “추가”하라고 했고 전략이 하나로 명백하면 \`(명백: collect에서 확인된 단일 후보)\`를 보고하고 진행한다.
+7. \`docs/knowledge/*.md\`를 작성/수정한다. frontmatter는 title/tags/category/status/confidence/applies_to/source/reviewed_at/reviewed_commit/related를 갖춘다. 본문은 구현 파일 나열보다 판단 기준, 대체된 결정, review trigger를 우선한다.
+8. \`node scripts/knowledge.mjs --graph\`, \`node scripts/knowledge.mjs --validate\`, \`node scripts/knowledge.mjs --freshness\`로 검증한다. 검토가 실제로 끝난 문서는 필요 시 \`node scripts/knowledge.mjs --confirm <doc-id>\`를 사용한다.
+9. 완료 보고에는 주제, 전략, 수정 파일, 연결 문서, 검증 결과, 보류/사용자 판단 필요 항목을 짧게 적는다.
+
+Red flags:
+- 기존 knowledge 검색 없이 새 문서를 만든다.
+- private journal 원문을 public doctrine에 붙여넣는다.
+- README generated block을 수동 편집한다.
+- related 없이 고립 문서를 만든다.
+- 실제 검토 없이 reviewed_at/reviewed_commit만 갱신한다.
+- 구현 파일/함수 목록을 knowledge 본문으로 대체한다.
+${commonRules}`;
+	}
 
 	if (sub === "tend") {
 		return `불씨의 불길을 살펴줘. pilee knowledge freshness/confidence 상태를 점검하고 다음 action만 짧게 정리해줘.${topicLine}

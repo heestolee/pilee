@@ -36,7 +36,7 @@ related:
 - CLI: `scripts/knowledge.mjs`
 - 운영 용어: `freshness`, `confidence`, `reviewed_commit`, `review queue`
 
-`/ember`는 이 구조 위에 얹는 friendly entrypoint다. 파이리의 작은 불꽃처럼, 아직 doctrine이 되지 않은 세션의 깨달음을 후보로 모으고(`collect`), 불길을 살피고(`tend`), 검토 queue를 정리하며(`review`), stale/review_needed 문서를 로컬 맥락으로 실제 해소한다(`resolve`). `resolve`는 public review queue를 실제 local update PR로 바꾸는 입구이며, 민감한 resolver 산출물은 로컬에만 둔다. 초기 운영에서는 PR을 열고 사용자 review/merge를 기다리는 데서 멈춘다.
+`/ember`는 이 구조 위에 얹는 friendly entrypoint다. 파이리의 작은 불꽃처럼, 아직 doctrine이 되지 않은 세션의 깨달음을 후보로 모으고(`collect`), 사용자가 고른 후보를 public knowledge로 추가하거나 기존 문서에 접목하며(`add`), 불길을 살피고(`tend`), 검토 queue를 정리하며(`review`), stale/review_needed 문서를 로컬 맥락으로 실제 해소한다(`resolve`). `add`는 product식 `/add-knowledge`의 검색·범위 정렬·작성 계획·검증 단계를 pilee의 judgment-document 모델에 맞춘 진입점이고, `resolve`는 public review queue를 실제 local update PR로 바꾸는 입구다. 민감한 resolver 산출물은 로컬에만 둔다. 초기 운영에서는 PR을 열고 사용자 review/merge를 기다리는 데서 멈춘다.
 
 ## 왜 full rename이 아닌가
 
@@ -51,8 +51,9 @@ related:
 - slash command: `/ember`
 - README의 짧은 소개 문구
 - 사용자 알림/도움말: "불씨를 knowledge 작업으로 이어갑니다"
+- 신규/갱신 작성 진입점: `/ember add`, product식 `/add-knowledge` 감각을 가져오되 문서 단위는 public/sanitized judgment로 유지
 - 로컬 resolver 진입점: `/ember resolve`, 내부 명령은 `scripts/knowledge.mjs --resolve-stale`
-- resolver 결과 보고: PR URL, 검증 결과, 남은 freshness를 보여주고 merge는 사용자에게 맡김
+- add/resolve 결과 보고: 수정 파일, 연결 문서, 검증 결과, 남은 freshness를 보여주고 merge는 사용자에게 맡김
 
 `knowledge`를 유지해야 하는 곳:
 
