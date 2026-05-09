@@ -57,6 +57,8 @@ AskUserQuestion은 반드시 modal UI여야 하는 것은 아닙니다. Pi처럼
 
 `/frame`의 Productive Resistance 질문은 “정말 괜찮나요?”가 아니라 계약을 바꾸는 행동 옵션이어야 합니다. 예를 들어 성공 기준에 추가, 범위 밖으로 명시, 먼저 탐색, ask_first로 올리기처럼 선택 후 `frame.json`이 달라져야 합니다.
 
+`/decide`는 모든 결정에 tradeoff challenge를 수행합니다. 다만 강도는 low/medium/high/ask_first로 조절합니다. low risk라도 skip하지 않고 한 줄 반론을 던지며, 옵션은 `선택 유지`, `보완 후 유지`, `재고`, `frame으로 돌아가기`처럼 선택 후 `decisions[].challenge`, `tradeoffs_accepted`, `mitigations`가 달라져야 합니다.
+
 ## Completion Feedback Rule
 
 Frame Studio 같은 UI가 선택 완료 카드나 transcript를 보여줄 때도 옵션의 책임은 변하지 않습니다. 완료 카드는 사용자가 어떤 분기를 골랐는지 보존하는 feedback이고, 다음 단계 markdown은 그 선택을 반영해야 합니다. “선택됨”을 보여주는 UI가 있어도 옵션 자체가 행동 분기를 표현하지 못하면 의례화 문제는 해결되지 않습니다.

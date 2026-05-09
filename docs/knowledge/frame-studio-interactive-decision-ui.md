@@ -63,4 +63,4 @@ Frame Studio는 UI에 렌더된 markdown/update/question/answer 흐름을 identi
 
 Frame Studio는 `/frame` co-thinking을 위한 UI 계층입니다. 구현 계획을 자동 생성하거나 검증 완료를 선언하는 도구가 아닙니다. frame 결과의 검증 가능성은 여전히 [frame-verify-contract](./frame-verify-contract.md)와 [evidence-first-verification-gate](./evidence-first-verification-gate.md)의 기준을 따릅니다.
 
-TFT Studio로 확장하더라도 같은 boundary가 유지됩니다. Frame tab은 `frame.json`, Decide tab은 `decisions[]`, Verify tab은 검증 결과, Report tab은 evidence/report artifact refs를 보여주며, Timeline tab은 transcript/provenance를 보여줍니다. 탭 간 이동이 canonical write 순서를 우회하면 안 됩니다.
+TFT Studio로 확장하더라도 같은 boundary가 유지됩니다. Frame tab은 `frame.json`, Decide tab은 `decisions[]`, Verify tab은 검증 결과, Report tab은 evidence/report artifact refs를 보여주며, Timeline tab은 transcript/provenance를 보여줍니다. Decide tab은 product식 tradeoff comparison과 항상 수행되는 challenge를 보여주되, 최종 원천은 `frame.json.decisions[]`의 structured record입니다. 탭 간 이동이 canonical write 순서를 우회하면 안 됩니다.

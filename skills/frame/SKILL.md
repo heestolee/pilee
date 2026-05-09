@@ -416,7 +416,14 @@ type FrameDoc = {
     selected: string;
     rationale: string;
     tradeoffs_accepted: string;
-    challenged: boolean;
+    mitigations?: string[];
+    challenge: {
+      intensity: "low" | "medium" | "high" | "ask_first";
+      objection: string;
+      response: "accepted" | "accepted_with_mitigation" | "reconsidered" | "returned_to_frame";
+      userSelection: string;
+    };
+    challenged: true;         // /decide는 항상 challenge 수행
     decidedAt: number;
   }>;
   decision_queue: Array<{

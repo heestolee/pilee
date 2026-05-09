@@ -38,6 +38,8 @@ AskUserQuestion은 사용자의 클릭을 얻기 위한 확인창이 아니라, 
 
 구현 방식이 둘 이상이고 각각 다른 결과를 만들면 묻습니다. 결제, 보안, PII, 스키마, 외부 연동, 동시성, 운영 설정처럼 위임 금지 영역이면 사소해 보여도 묻습니다. 반대로 사용자가 이미 명확히 지시했거나 저장소 컨벤션상 단일 답이 명백하면 묻지 않고 `(명백: ...)`으로 판단 근거를 본문에 남깁니다.
 
+`/decide`에서는 선택 질문 뒤에 항상 Productive Resistance를 둡니다. 이 challenge는 “정말 괜찮나요?” 확인이 아니라 선택한 대안의 가장 중요한 비용을 드러내고, 사용자가 유지/보완/재고/frame 복귀 중 하나를 고르게 하는 두 번째 decision gate입니다. 위험도는 challenge 생략 여부가 아니라 low/medium/high/ask_first 강도를 결정합니다.
+
 ## Transport Rule
 
 AskUserQuestion의 본질은 UI가 아니라 decision gate입니다. Frame Studio처럼 버튼/체크박스/전문 저장 UI가 있어도, 그것은 선택을 더 잘 보존하는 transport일 뿐입니다. modal, 번호형 text fallback, Frame Studio 모두 “선택에 따라 이후 행동이 달라지는가”를 만족할 때만 AskUserQuestion으로 취급합니다.
