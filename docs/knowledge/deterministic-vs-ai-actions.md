@@ -19,7 +19,7 @@ source:
   - pilee-history:2026-05-05#52
   - user-direction:2026-05-07-resolver-merge-gate
 reviewed_at: 2026-05-09
-reviewed_commit: 67c7dc3d215888ee9ddcfd8dea42ea72058fbbae
+reviewed_commit: ce7e63b0fb6ed42383fd23760d10e4b9f72851dd
 related:
   - freshness-diagnosis-report
   - readme-coverage-map
@@ -43,7 +43,7 @@ Deterministic/generated-only PR을 자동 병합한다면 merge actor도 determi
 
 ## Generated Artifact Boundary
 
-`README.md`의 generated knowledge block, `docs/knowledge/README.md`, `docs/knowledge-review.md`, doctrine markdown 자체 변경은 freshness 후보의 원인에서 제외합니다. 이런 파일은 knowledge 상태를 보여주거나 검토 결과를 기록하는 산출물이며, 그 변경만으로 다른 doctrine이 다시 stale해지면 review queue가 자기 자신을 증폭합니다. 실제 stale 후보는 스크립트, 스킬, 확장, 워크플로우처럼 운영 판단을 바꿀 수 있는 입력 파일에서 나와야 합니다.
+`README.md`와 `README.en.md`의 generated knowledge block, `docs/knowledge/README.md`, `docs/knowledge-review.md`, doctrine markdown 자체 변경은 freshness 후보의 원인에서 제외합니다. 이런 파일은 knowledge 상태를 보여주거나 검토 결과를 기록하는 산출물이며, 그 변경만으로 다른 doctrine이 다시 stale해지면 review queue가 자기 자신을 증폭합니다. 실제 stale 후보는 스크립트, 스킬, 확장, 워크플로우처럼 운영 판단을 바꿀 수 있는 입력 파일에서 나와야 합니다.
 
 ## Failure Mode
 

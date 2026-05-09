@@ -66,7 +66,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [Self-healing은 actionable item만 수정한다](./self-healing-actionable-loop.md) | active | high | 2026-05-09 | bc0f77e | self-healing, actionable, worker, fix-class, subagent, 자동수정 |
+| [Self-healing은 actionable item만 수정한다](./self-healing-actionable-loop.md) | active | high | 2026-05-09 | ce7e63b | self-healing, actionable, worker, fix-class, subagent, 자동수정 |
 | [Stress Interview는 다축 검토다](./stress-interview-multi-axis-review.md) | active | high | 2026-05-08 | 5f2c9ae | stress-interview, review, verifier, reviewer, challenger, subagent |
 | [Codex-first subagent 모델 운용 정책](./subagent-model-policy.md) | active | high | 2026-05-08 | be32cb7 | subagent, codex, model-policy, worker, finder, searcher |
 | [Subagent 위임은 구체 프롬프트를 요구한다](./subagent-prompt-specificity.md) | active | high | 2026-05-08 | be32cb7 | subagent, prompt, delegation, worker, context, 위임 |
@@ -88,23 +88,23 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [수정 전에 근본 원인을 좁힌다](./root-cause-before-fix.md) | active | high | 2026-05-09 | bc0f77e | debugging, root-cause, triage, error-recovery, systematic, 디버깅 |
+| [수정 전에 근본 원인을 좁힌다](./root-cause-before-fix.md) | active | high | 2026-05-09 | ce7e63b | debugging, root-cause, triage, error-recovery, systematic, 디버깅 |
 
 ### knowledge
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [낮은 confidence 판단은 정합성 PR로 올린다](./confidence-sensitive-review.md) | active | high | 2026-05-09 | 67c7dc3 | confidence, review, freshness, ai-actions, user-review, 정합성 |
-| [Deterministic action과 AI review action은 분리한다](./deterministic-vs-ai-actions.md) | active | high | 2026-05-09 | 67c7dc3 | knowledge, deterministic, ai-actions, review, automation, 정합성 |
-| [Ember는 knowledge의 친근한 입구다](./ember-friendly-knowledge-entrypoint.md) | active | high | 2026-05-09 | 67c7dc3 | ember, branding, command, knowledge |
-| [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | high | 2026-05-09 | 67c7dc3 | knowledge, freshness, diagnosis, review, candidate, 정합성 |
-| [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | high | 2026-05-09 | 67c7dc3 | knowledge, judgment, granularity, documentation, coverage, 문서 |
-| [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | high | 2026-05-09 | 67c7dc3 | pilee, knowledge, history, journal, sanitized, reviewed-at |
-| [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | high | 2026-05-09 | 67c7dc3 | knowledge, journal, privacy, sanitized, doctrine, history |
-| [README는 knowledge coverage map이다](./readme-coverage-map.md) | active | high | 2026-05-09 | 67c7dc3 | knowledge, readme, coverage, graph, surface, todo |
-| [README 철학 변경은 사용자 판단 게이트를 지난다](./readme-philosophy-user-gate.md) | active | high | 2026-05-09 | 67c7dc3 | readme, philosophy, user-gate, public-facing, documentation, 판단 |
-| [Retro는 private reflection이다](./retro-private-reflection-boundary.md) | active | high | 2026-05-09 | 67c7dc3 | retro, notion, reflection, private, journal, 회고 |
-| [reviewed_commit은 날짜 freshness의 빈틈을 막는다](./reviewed-commit-freshness.md) | active | high | 2026-05-09 | 67c7dc3 | knowledge, reviewed-commit, reviewed-at, freshness, commit, 정합성 |
+| [낮은 confidence 판단은 정합성 PR로 올린다](./confidence-sensitive-review.md) | active | high | 2026-05-09 | ce7e63b | confidence, review, freshness, ai-actions, user-review, 정합성 |
+| [Deterministic action과 AI review action은 분리한다](./deterministic-vs-ai-actions.md) | active | high | 2026-05-09 | ce7e63b | knowledge, deterministic, ai-actions, review, automation, 정합성 |
+| [Ember는 knowledge의 친근한 입구다](./ember-friendly-knowledge-entrypoint.md) | active | high | 2026-05-09 | ce7e63b | ember, branding, command, knowledge |
+| [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | high | 2026-05-09 | ce7e63b | knowledge, freshness, diagnosis, review, candidate, 정합성 |
+| [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | high | 2026-05-09 | ce7e63b | knowledge, judgment, granularity, documentation, coverage, 문서 |
+| [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | high | 2026-05-09 | ce7e63b | pilee, knowledge, history, journal, sanitized, reviewed-at |
+| [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | high | 2026-05-09 | ce7e63b | knowledge, journal, privacy, sanitized, doctrine, history |
+| [README는 knowledge coverage map이다](./readme-coverage-map.md) | active | high | 2026-05-09 | ce7e63b | knowledge, readme, coverage, graph, surface, todo |
+| [README 철학 변경은 사용자 판단 게이트를 지난다](./readme-philosophy-user-gate.md) | active | high | 2026-05-09 | ce7e63b | readme, philosophy, user-gate, public-facing, documentation, 판단 |
+| [Retro는 private reflection이다](./retro-private-reflection-boundary.md) | active | high | 2026-05-09 | ce7e63b | retro, notion, reflection, private, journal, 회고 |
+| [reviewed_commit은 날짜 freshness의 빈틈을 막는다](./reviewed-commit-freshness.md) | active | high | 2026-05-09 | ce7e63b | knowledge, reviewed-commit, reviewed-at, freshness, commit, 정합성 |
 
 ### review
 
@@ -137,7 +137,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 |---|---|---:|---:|---:|---|
 | [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-05-09 | a3707cc | verify, evidence, gate, done, ready, verification |
 | [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-05-09 | 67c7dc3 | frame, verify, frame-json, success-criteria, contract, verification |
-| [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-05-09 | a3707cc | verify, invalidation, code-change, freshness, gate, 검증 |
+| [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-05-09 | ce7e63b | verify, invalidation, code-change, freshness, gate, 검증 |
 | [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | active | high | 2026-05-09 | a3707cc | verify-report, verification, evidence, coverage, capture, crop |
 
 ### web-access
