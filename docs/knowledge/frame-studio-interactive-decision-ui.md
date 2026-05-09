@@ -47,7 +47,7 @@ TFT Studio의 소유자는 현재 패널이 아니라 작업 단위입니다. wo
 
 ## Interaction Rule
 
-TFT Studio는 tabbed markdown live view와 single/multi option, 직접 입력을 지원합니다. markdown live view는 frame draft의 success criteria처럼 표가 핵심인 문서를 그대로 읽을 수 있어야 하므로 GitHub-style pipe table(`| header |`, `|---|`)을 table로 렌더링합니다. 표가 raw pipe paragraph로 깨지면 검증 기준을 함께 좁히는 UI 목적을 잃습니다.
+TFT Studio는 tabbed markdown live view와 single/multi option, 직접 입력을 지원합니다. markdown live view는 frame draft의 success criteria처럼 표가 핵심인 문서를 그대로 읽을 수 있어야 하므로 GitHub-style pipe table(`| header |`, `|---|`)을 table로 렌더링합니다. Decide/Verify 문서는 `####` 같은 깊은 heading을 자주 쓰므로 `#`~`######` heading도 literal markdown이 보이지 않게 렌더링해야 합니다. 표나 heading이 raw pipe/`####` paragraph로 깨지면 검증 기준을 함께 좁히는 UI 목적을 잃습니다.
 
 사용자가 선택하거나 취소하면 tool 응답으로 돌아오고, headless/no-UI 환경에서는 blocking하지 않고 numbered text fallback으로 내려갑니다. 질문 대기는 agent turn을 붙잡는 blocking 상태라서 무한 대기하지는 않지만, 실제 frame 검토는 긴 회의/휴식 후에도 이어질 수 있으므로 기본 timeout은 짧은 30분이 아니라 작업 세션 단위의 긴 window로 둡니다.
 

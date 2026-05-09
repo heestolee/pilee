@@ -456,6 +456,8 @@ h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .markdown h1 { font-size:23px; border-bottom:1px solid var(--line); padding-bottom:8px; }
 .markdown h2 { font-size:19px; margin-top:22px; }
 .markdown h3 { font-size:16px; margin-top:18px; }
+.markdown h4 { font-size:14px; margin:16px 0 6px; font-weight:900; }
+.markdown h5, .markdown h6 { font-size:13px; margin:14px 0 5px; font-weight:850; color:var(--muted); }
 .markdown p { margin:8px 0; }
 .markdown ul, .markdown ol { padding-left:24px; }
 .markdown table { width:100%; border-collapse:collapse; margin:14px 0; display:block; overflow-x:auto; white-space:normal; }
@@ -579,9 +581,7 @@ function renderMarkdown(md) {
     if (/^\s*/.test(line) && line.trim().indexOf(String.fromCharCode(96).repeat(3)) === 0) { closeList(); if (inCode) html.push('</code></pre>'); else html.push('<pre><code>'); inCode = !inCode; continue; }
     if (inCode) { html.push(esc(line) + '\n'); continue; }
     var table = renderTable(idx); if (table) { closeList(); html.push(table.html); idx = table.next - 1; continue; }
-    if (/^###\s+/.test(line)) { closeList(); html.push('<h3>' + inline(line.replace(/^###\s+/, '')) + '</h3>'); continue; }
-    if (/^##\s+/.test(line)) { closeList(); html.push('<h2>' + inline(line.replace(/^##\s+/, '')) + '</h2>'); continue; }
-    if (/^#\s+/.test(line)) { closeList(); html.push('<h1>' + inline(line.replace(/^#\s+/, '')) + '</h1>'); continue; }
+    var heading = line.match(/^(#{1,6})\s+(.+)$/); if (heading) { closeList(); var level = heading[1].length; html.push('<h' + level + '>' + inline(heading[2]) + '</h' + level + '>'); continue; }
     var ol = line.match(/^\s*(\d+)\.\s+(.*)$/); if (ol) { if (list !== 'ol') { closeList(); list = 'ol'; html.push('<ol>'); } html.push('<li>' + inline(ol[2]) + '</li>'); continue; }
     var ul = line.match(/^\s*[-*]\s+(.*)$/); if (ul) { if (list !== 'ul') { closeList(); list = 'ul'; html.push('<ul>'); } html.push('<li>' + inline(ul[1]) + '</li>'); continue; }
     closeList();
