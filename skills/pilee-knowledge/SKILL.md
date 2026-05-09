@@ -63,8 +63,11 @@ node scripts/knowledge.mjs "<검색어>"
 - private 쪽: `docs/pilee-history.md`, `docs/pilee-history.sync.local.md`는 로컬 근거로만 사용하고 원문을 공개 문서에 복사하지 않는다.
 - freshness report: `node scripts/knowledge.mjs --freshness`
 - 자동 후보: `node scripts/knowledge.mjs --review-candidates`
+- 후보 수집/선택 진입점: `/ember <topic>`
 - 신규/갱신 작성 진입점: `/ember add <topic>`
-- stale 해소용 로컬 plan: `node scripts/knowledge.mjs --resolve-stale` 또는 `/ember resolve`
+- 상태 점검 진입점: `/ember check` — freshness/confidence를 보고 필요 action(refresh/resolve)을 제안
+- generated surface 갱신 진입점: `/ember refresh` — `node scripts/knowledge.mjs --graph` 기반 README table/docs knowledge README/SVG map 재생성·검증
+- stale 해소용 로컬 plan: `node scripts/knowledge.mjs --resolve-stale` 또는 advanced direct `/ember resolve`
 
 ### 3. 작성/수정 결정
 
@@ -72,7 +75,7 @@ node scripts/knowledge.mjs "<검색어>"
 - 새 기능/원칙이 독립적으로 검색될 주제면 새 문서를 만든다.
 - `/ember add`는 product식 `/add-knowledge`처럼 git 상태 점검 → 기존 문서 검색 → 판단/범위 정렬 → 작성 계획 → 작성 → graph/validate/freshness 검증 순서를 따른다. 단 pilee 문서 단위는 코드 scope가 아니라 public/sanitized reusable judgment다.
 - 의미 있는 분기(신규 vs 기존 갱신, 문서 분할, confidence)가 있으면 파일 쓰기 전에 번호형 작성 계획을 사용자에게 확인한다.
-- 직전 `/ember collect` 후보를 사용자가 명시적으로 추가하라고 했고 전략이 하나로 명백하면 `(명백: collect에서 확인된 단일 후보)`처럼 근거를 보고하고 진행할 수 있다.
+- 직전 `/ember` 후보를 사용자가 명시적으로 추가하라고 했고 전략이 하나로 명백하면 `(명백: /ember에서 확인된 단일 후보)`처럼 근거를 보고하고 진행할 수 있다.
 - 문서가 분리되면 `related`와 본문 inline link로 그래프를 연결한다.
 
 ### 4. 문서 작성 형식

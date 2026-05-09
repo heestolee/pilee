@@ -3,13 +3,19 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-cod
 const HELP = `불씨 / Ember — pilee knowledge friendly entrypoint
 
 Usage:
-  /ember [topic]        현재 세션에서 knowledge 후보를 찾기
-  /ember collect [q]    같은 동작. 불씨 후보 수집
-  /ember add [q]        후보를 docs/knowledge 문서로 추가/갱신
-  /ember tend           freshness / confidence review queue 점검
-  /ember resolve [opts] stale/review_needed 문서를 로컬 맥락으로 실제 해소
-  /ember review         medium/low confidence 문서 검토 준비
-  /ember graph          knowledge graph/index 재생성·검증
+  /ember [topic]        불씨 찾기 → 후보 보여주기 → add 여부 질문
+  /ember add [topic]    명시적으로 바로 knowledge 작성/갱신 플로우
+  /ember check          freshness/confidence 상태 점검 → 필요 action 제안
+  /ember refresh        README table + knowledge README + SVG map 재생성·검증
+  /ember help           도움말
+
+Advanced / compatibility aliases:
+  collect → /ember
+  ignite  → /ember add
+  tend    → /ember check
+  review  → /ember check
+  graph   → /ember refresh
+  resolve → stale/review_needed 직접 해소
 
 Canonical storage remains docs/knowledge and scripts/knowledge.mjs.`;
 
@@ -18,9 +24,13 @@ function normalizeArgs(args: string): { sub: string; rest: string } {
 	if (!trimmed) return { sub: "collect", rest: "" };
 	const [first = "", ...restParts] = trimmed.split(/\s+/);
 	const sub = first.toLowerCase();
-	if (["collect", "add", "ignite", "tend", "resolve", "review", "graph", "help"].includes(sub)) {
-		return { sub: sub === "ignite" ? "add" : sub, rest: restParts.join(" ").trim() };
+	if (["add", "check", "refresh", "resolve", "help"].includes(sub)) {
+		return { sub, rest: restParts.join(" ").trim() };
 	}
+	if (sub === "collect") return { sub: "collect", rest: restParts.join(" ").trim() };
+	if (sub === "ignite") return { sub: "add", rest: restParts.join(" ").trim() };
+	if (sub === "tend" || sub === "review") return { sub: "check", rest: restParts.join(" ").trim() };
+	if (sub === "graph") return { sub: "refresh", rest: restParts.join(" ").trim() };
 	return { sub: "collect", rest: trimmed };
 }
 
@@ -44,7 +54,7 @@ function buildPrompt(sub: string, rest: string): string {
 3. 반드시 \`node scripts/knowledge.mjs "<검색어>"\`로 기존 knowledge를 검색한다. 기존 문서로 충분하면 신규 문서를 만들지 않고 갱신한다.
 4. 관련 public 파일(knowledge 문서, skill/extension/script)을 필요한 만큼 읽는다. private history/session은 로컬 근거로만 사용하고 원문·경로·민감 맥락은 공개 문서/PR body에 복사하지 않는다.
 5. 문서 전략을 고른다: 기존 문서 수정 / 신규 1개 / 여러 문서 분리. 신규 문서는 독립 검색될 reusable judgment일 때만 만든다.
-6. 의미 있는 분기(신규 vs 기존, 문서 분할, confidence)가 있으면 파일 쓰기 전에 번호형 작성 계획을 사용자에게 확인한다. 단, 직전 \`/ember collect\` 후보를 사용자가 명시적으로 “추가”하라고 했고 전략이 하나로 명백하면 \`(명백: collect에서 확인된 단일 후보)\`를 보고하고 진행한다.
+6. 의미 있는 분기(신규 vs 기존, 문서 분할, confidence)가 있으면 파일 쓰기 전에 번호형 작성 계획을 사용자에게 확인한다. 단, 직전 \`/ember\` 후보를 사용자가 명시적으로 “추가”하라고 했고 전략이 하나로 명백하면 \`(명백: /ember에서 확인된 단일 후보)\`를 보고하고 진행한다.
 7. \`docs/knowledge/*.md\`를 작성/수정한다. frontmatter는 title/tags/category/status/confidence/applies_to/source/reviewed_at/reviewed_commit/related를 갖춘다. 본문은 구현 파일 나열보다 판단 기준, 대체된 결정, review trigger를 우선한다.
 8. \`node scripts/knowledge.mjs --graph\`, \`node scripts/knowledge.mjs --validate\`, \`node scripts/knowledge.mjs --freshness\`로 검증한다. 검토가 실제로 끝난 문서는 필요 시 \`node scripts/knowledge.mjs --confirm <doc-id>\`를 사용한다.
 9. 완료 보고에는 주제, 전략, 수정 파일, 연결 문서, 검증 결과, 보류/사용자 판단 필요 항목을 짧게 적는다.
@@ -59,13 +69,16 @@ Red flags:
 ${commonRules}`;
 	}
 
-	if (sub === "tend") {
-		return `불씨의 불길을 살펴줘. pilee knowledge freshness/confidence 상태를 점검하고 다음 action만 짧게 정리해줘.${topicLine}
+	if (sub === "check") {
+		return `불씨 상태를 점검해줘. pilee knowledge freshness/confidence 상태를 확인하고, 필요하면 refresh/resolve로 이어질 다음 action을 제안해줘.${topicLine}
 
 해야 할 일:
 1. \`node scripts/knowledge.mjs --freshness\`를 실행한다.
-2. deterministic action과 AI/human review action을 분리해서 요약한다.
-3. medium/low confidence 문서는 사용자 review queue로 남기고, 임의로 \`--confirm\`하지 않는다.
+2. deterministic action(README/knowledge README/SVG generated stale 등)과 AI/human review action(stale/review_needed/confidence)을 분리해서 요약한다.
+3. deterministic generated stale가 있으면 \`/ember refresh\`를 제안한다. 사용자가 명시하지 않았으면 바로 파일을 수정하지 않는다.
+4. stale/review_needed 문서가 있으면 resolve 대상 수와 추천 범위를 정리하고, \`/ember resolve --limit N\` 같은 다음 action을 제안한다.
+5. 문제가 없으면 “fresh / action 없음”으로 짧게 보고한다.
+6. medium/low confidence 문서는 사용자 review queue로 남기고, 임의로 \`--confirm\`하지 않는다.
 ${commonRules}`;
 	}
 
@@ -85,23 +98,15 @@ ${commonRules}`;
 ${commonRules}`;
 	}
 
-	if (sub === "review") {
-		return `불씨 review queue를 정리해줘. medium/low confidence knowledge 문서를 검토할 수 있게 후보와 판단 포인트를 요약해줘.${topicLine}
+	if (sub === "refresh") {
+		return `knowledge generated surfaces를 새로고침해줘. README table, docs/knowledge README, SVG map을 CLI로 갱신하고 검증해줘.${topicLine}
 
 해야 할 일:
-1. \`node scripts/knowledge.mjs --freshness\`와 필요하면 \`node scripts/knowledge.mjs --review-candidates\`를 실행한다.
-2. 각 후보별로 확인해야 할 사용자 판단, 관련 파일, 추천 action을 정리한다.
-3. 사용자가 명시 승인하기 전에는 confidence를 high로 승격하지 않는다.
-${commonRules}`;
-	}
-
-	if (sub === "graph") {
-		return `knowledge graph/index를 정리해줘. generated block을 CLI로 갱신하고 검증해줘.${topicLine}
-
-해야 할 일:
-1. \`node scripts/knowledge.mjs --graph\`를 실행한다.
-2. \`node scripts/knowledge.mjs --validate\`와 \`node scripts/knowledge.mjs --freshness\`로 검증한다.
-3. README generated block은 수동 편집하지 않는다.
+1. 먼저 git status를 확인하고, 충돌/무관 WIP가 있으면 중단하고 보고한다.
+2. \`node scripts/knowledge.mjs --graph\`를 실행한다.
+3. \`node scripts/knowledge.mjs --validate\`와 \`node scripts/knowledge.mjs --freshness\`로 검증한다.
+4. README generated block과 SVG는 수동 편집하지 않는다.
+5. 변경이 생기면 generated surface 변경으로만 분리해 보고한다.
 ${commonRules}`;
 	}
 
@@ -112,12 +117,14 @@ ${commonRules}`;
 2. 기존 문서로 충분하면 신규 문서를 만들지 말고 갱신 후보로 표시한다.
 3. 바로 파일을 수정하지 말고, 먼저 후보와 추천 action을 보고한다.
 4. 필요하면 \`node scripts/knowledge.mjs \"<query>\"\`로 기존 knowledge를 검색한다.
+5. 후보를 보여준 뒤 “어떤 불씨를 knowledge로 반영할까요?”를 번호형으로 묻는다. 옵션에는 \`선택 후보 add 진행\`, \`여러 후보 add 진행\`, \`지금은 보류\`처럼 이후 행동이 달라지는 선택지만 둔다.
+6. 사용자가 add를 선택하면 \`/ember add\`와 같은 계약(검색 → 전략 → 작성 계획 → 작성 → graph/validate/freshness)으로 이어간다.
 ${commonRules}`;
 }
 
 export default function (pi: ExtensionAPI) {
 	pi.registerCommand("ember", {
-		description: "불씨 — pilee knowledge 후보 수집/정합성 점검 friendly entrypoint",
+		description: "불씨 — pilee knowledge 후보 찾기/add/check/refresh friendly entrypoint",
 		handler: async (args: string, ctx: ExtensionCommandContext) => {
 			const { sub, rest } = normalizeArgs(args);
 			if (sub === "help") {

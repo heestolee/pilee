@@ -186,7 +186,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 
 공개 가능한 최신 설계 지식은 [docs/knowledge/README.md](./docs/knowledge/README.md)에서 검색/그래프 형태로 확인합니다.
 
-**불씨 / Ember**는 이 knowledge를 다루는 친근한 입구입니다. `/ember`로 세션에서 남은 깨달음을 후보로 모으고, `/ember add`로 선택한 불씨를 public knowledge 문서로 추가/갱신합니다. `/ember tend`는 freshness/confidence review queue를 살피고, `/ember resolve`는 stale/review_needed 문서를 로컬 resolver PR 작업 단위로 바꿉니다. 저장소의 canonical 용어와 구조는 계속 `knowledge`입니다.
+**불씨 / Ember**는 이 knowledge를 다루는 친근한 입구입니다. `/ember`로 세션에서 남은 깨달음을 후보로 모으고 add 여부를 선택합니다. `/ember add`는 명시적으로 바로 public knowledge 작성/갱신 플로우로 들어갑니다. `/ember check`는 freshness/confidence 상태를 살피고 필요 action을 제안하며, `/ember refresh`는 README table, docs/knowledge README, SVG map 같은 generated surface를 재생성·검증합니다. 저장소의 canonical 용어와 구조는 계속 `knowledge`입니다.
 
 회사/개인/로컬 실행 맥락은 public pilee에 넣지 않고 private overlay package에 둡니다. 새 overlay를 만들 때는 fake ACME 예시만 담은 public-safe 템플릿 [pilee-private-overlay-template](https://github.com/heestolee/pilee-private-overlay-template)을 복사해 `pi/skills`, `pi/prompts`, `pi/profiles/*.json`을 자기 환경에 맞게 채우면 됩니다.
 
@@ -313,7 +313,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | **tasks** | 태스크 CRUD + `Ctrl+Shift+T` |
 | **web-access** | Tavily 웹 검색 + URL 콘텐츠 추출 |
 | **memory-layer** | 장기 기억 저장/검색 |
-| **ember** | 불씨(`/ember`) — pilee knowledge 후보 수집/add/정합성 점검 friendly entrypoint |
+| **ember** | 불씨(`/ember`) — knowledge 후보 찾기/add/check/refresh friendly entrypoint |
 | **backlog** | `/backlog` TUI — 작업 백로그 관리 |
 | **preflight** | 커밋 전 자동 lint/type-check |
 | **pr-comments** | PR 코멘트 관리 |
