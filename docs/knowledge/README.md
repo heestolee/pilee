@@ -157,6 +157,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | high | 2026-05-09 | bc0f77e | backlog, tasks, provenance, source-session, session, 맥락 |
 | [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md) | active | high | 2026-05-08 | 9b7ea36 | git, incremental, code-review, commit, quality, 통합 |
 | [자동 로드 컨텍스트는 최소 surface만 가진다](./context-loading-minimal-surface.md) | active | high | 2026-05-08 | fdf91a4 | context, agents-md, memory, system-prompt, token, autoload |
+| [Decide는 선택을 한 번 공격한다](./decide-tradeoff-challenge.md) | active | high | 2026-05-09 | 950aee4 | decide, tradeoff, challenge, productive-resistance, frame-json, decision |
 | [외부 이슈 업데이트는 preview gate를 지난다](./external-issue-preview-gate.md) | active | high | 2026-05-08 | 9b7ea36 | jira, issue, preview, wiki-markup, external-update, approval |
 | [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-05-08 | 667cefb | fork-panel, handoff, inbox, inject, parent, panel |
 | [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-05-08 | 667cefb | fork-panel, revive, repanel, ghostty, spatial, panel |
@@ -221,6 +222,7 @@ graph TD
   doc_backlog_source_session_provenance["Backlog는 원 세션 출처를 보존한다"]
   doc_change_integration_discipline["변경 통합은 작은 단위와 검증을 요구한다"]
   doc_context_loading_minimal_surface["자동 로드 컨텍스트는 최소 surface만 가진다"]
+  doc_decide_tradeoff_challenge["Decide는 선택을 한 번 공격한다"]
   doc_external_issue_preview_gate["외부 이슈 업데이트는 preview gate를 지난다"]
   doc_fork_panel_parent_inbox["Fork-panel handoff는 parent inbox로 들어간다"]
   doc_fork_panel_spatial_continuity["Fork-panel 위치는 작업 맥락의 일부다"]
@@ -347,6 +349,11 @@ graph TD
   doc_change_integration_discipline --> doc_stress_interview_multi_axis_review
   doc_context_loading_minimal_surface --> doc_private_journal_public_doctrine
   doc_context_loading_minimal_surface --> doc_tool_output_noise_management
+  doc_decide_tradeoff_challenge --> doc_ask_user_question_decision_gates
+  doc_decide_tradeoff_challenge --> doc_ask_user_question_option_design
+  doc_decide_tradeoff_challenge --> doc_evidence_first_verification_gate
+  doc_decide_tradeoff_challenge --> doc_frame_studio_interactive_decision_ui
+  doc_decide_tradeoff_challenge --> doc_frame_verify_contract
   doc_external_issue_preview_gate --> doc_ask_user_question_decision_gates
   doc_external_issue_preview_gate --> doc_live_artifact_preview_pattern
   doc_external_issue_preview_gate --> doc_private_overlay_package_boundary
@@ -404,7 +411,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 59
-- Links: 161
+- Documents: 60
+- Links: 166
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
