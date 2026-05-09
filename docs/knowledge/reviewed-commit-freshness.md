@@ -18,7 +18,7 @@ source:
   - pilee-history:2026-05-05#50
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-09
-reviewed_commit: 8008a92dddb6de7430712c36d9dee0dc53b09f8f
+reviewed_commit: a689ebdaa5e2d2fd4845c4abe2d124d3af2c911d
 related:
   - freshness-diagnosis-report
   - deterministic-vs-ai-actions
