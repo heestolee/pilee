@@ -170,6 +170,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 264ea17 | local-dev, server, startup, diagnosis, dev |
 | [Private overlay package는 회사·개인 실행 맥락을 담는다](./private-overlay-package-boundary.md) | active | high | 2026-05-09 | b10752d | privacy, package, overlay, skill, company-context |
 | [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-05-08 | 667cefb | queued-messages, slash-command, prefill, worktree, session, boundary |
+| [변경된 줄은 요청으로 추적 가능해야 한다](./request-traceability-surgical-changes.md) | active | high | 2026-05-09 | 9ec6665 | request-traceability, surgical-change, karpathy, diff, scope, review |
 | [종료된 포크는 transcript 주입보다 revive가 우선이다](./revive-over-transcript-recall.md) | active | high | 2026-05-08 | 667cefb | revive, recall, fork-panel, session, continuity, 세션 |
 | [Session export는 원본을 보존하는 adapter를 거친다](./session-export-source-preservation.md) | active | high | 2026-05-09 | a62df18 | session-export, source-preservation, jsonl, conductor, normalize, show-report |
 | [세션 식별자는 파일명이 아니라 사람이 본 이름이다](./session-identity-over-filenames.md) | active | high | 2026-05-08 | 667cefb | session, title, identity, session_info, worktree, revive |
@@ -239,6 +240,7 @@ graph TD
   doc_local_dev_startup_diagnosis["로컬 개발 서버 시작은 진단 가능한 절차여야 한다"]
   doc_private_overlay_package_boundary["Private overlay package는 회사·개인 실행 맥락을 담는다"]
   doc_queued_command_prefill_boundary["Queued command는 실행 보장이 아니다"]
+  doc_request_traceability_surgical_changes["변경된 줄은 요청으로 추적 가능해야 한다"]
   doc_revive_over_transcript_recall["종료된 포크는 transcript 주입보다 revive가 우선이다"]
   doc_session_export_source_preservation["Session export는 원본을 보존하는 adapter를 거친다"]
   doc_session_identity_over_filenames["세션 식별자는 파일명이 아니라 사람이 본 이름이다"]
@@ -408,6 +410,9 @@ graph TD
   doc_queued_command_prefill_boundary --> doc_session_identity_over_filenames
   doc_queued_command_prefill_boundary --> doc_subagent_prompt_specificity
   doc_queued_command_prefill_boundary --> doc_worktree_execution_boundary
+  doc_request_traceability_surgical_changes --> doc_change_integration_discipline
+  doc_request_traceability_surgical_changes --> doc_evidence_first_verification_gate
+  doc_request_traceability_surgical_changes --> doc_frame_verify_contract
   doc_revive_over_transcript_recall --> doc_fork_panel_parent_inbox
   doc_revive_over_transcript_recall --> doc_session_identity_over_filenames
   doc_revive_over_transcript_recall --> doc_worktree_session_continuity
@@ -440,7 +445,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 64
-- Links: 187
+- Documents: 65
+- Links: 190
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

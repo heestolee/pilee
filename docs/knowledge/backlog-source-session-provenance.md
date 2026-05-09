@@ -33,6 +33,22 @@ Backlog item은 제목과 노트만 저장하면 시간이 지난 뒤 왜 생겼
 
 새 backlog item에는 session file, session title, cwd, leaf entry, capturedAt을 `sourceSession`으로 저장합니다. 사람이 읽는 `sourceReference`도 함께 남겨 미래 에이전트가 “이 세션 전문에서 확인”이라는 경로를 바로 이해하게 합니다.
 
+## Manual Edit Fallback Rule
+
+가능하면 `/backlog add`를 사용해 provenance capture를 자동으로 태웁니다. 수동으로 local backlog JSON을 편집해야 하는 예외 상황에서도 `sourceSession`과 `sourceReference`를 생략하지 않습니다.
+
+수동 편집 시 최소로 남길 것:
+
+- `sourceSession.title`
+- `sourceSession.sessionFile`
+- `sourceSession.cwd`
+- `sourceSession.entryId` 또는 그에 준하는 leaf reference
+- `sourceSession.capturedAt`
+- 사람이 읽는 `sourceReference`
+- 발단이 된 외부 자료가 있으면 note 안의 URL/제목
+
+공개 문서나 PR body에는 개인 session path나 private 원문을 복사하지 않습니다. 이 정보는 로컬 backlog 회수성만을 위한 provenance입니다.
+
 ## Promotion Rule
 
 Backlog에서 task로 옮겨도 provenance를 버리지 않습니다. 단기 작업 추적 시스템으로 승격될수록 오히려 원 세션을 열 수 있는 링크와 전문 export가 중요해집니다.
