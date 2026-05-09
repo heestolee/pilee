@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { homedir, platform } from "node:os";
-import { join } from "node:path";
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { isAbsolute, join, resolve as resolvePath, sep } from "node:path";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import { buildFrameIdentity, type FrameIdentity } from "../tft-commands/frame-identity.ts";
 import { getGlimpseOpen, type GlimpseWindow } from "../utils/glimpse.ts";
@@ -173,6 +173,32 @@ function safeIdentityFileName(key: string): string {
 
 function transcriptPathForIdentity(key: string): string {
 	return join(TRANSCRIPTS_DIR, `${safeIdentityFileName(key)}.json`);
+}
+
+function stripOuterQuotes(value: string): string {
+	return value.trim().replace(/^['"]|['"]$/g, "");
+}
+
+function parseTftOpenTarget(args: string): string {
+	const trimmed = args.trim();
+	if (!trimmed || /^(?:open|resume|reopen)$/i.test(trimmed)) return "";
+	const match = trimmed.match(/^(?:open|resume|reopen)\s+(.+)$/i);
+	return stripOuterQuotes(match ? match[1] : trimmed);
+}
+
+function transcriptIdentityFromPath(rawTarget: string, cwd: string): { identityKey: string; displayTitle?: string; title?: string } | null {
+	if (!rawTarget) return null;
+	const candidate = isAbsolute(rawTarget) ? rawTarget : resolvePath(cwd, rawTarget);
+	if (!existsSync(candidate)) return null;
+	const base = realpathSync(TRANSCRIPTS_DIR);
+	const resolved = realpathSync(candidate);
+	if (resolved !== base && !resolved.startsWith(`${base}${sep}`)) {
+		throw new Error("TFT Studio transcript path must be under ~/.pi/agent/frame-studio/transcripts.");
+	}
+	const parsed = JSON.parse(readFileSync(resolved, "utf-8")) as Partial<FrameStudioState>;
+	const identity = parsed.identity;
+	if (!identity?.key) throw new Error("Transcript does not include a TFT Studio identity key.");
+	return { identityKey: identity.key, displayTitle: identity.displayTitle, title: parsed.title };
 }
 
 function normalizeTab(value: unknown): StudioTabKey | undefined {
@@ -932,7 +958,44 @@ function ask(handle: FrameStudioHandle, question: StudioQuestion, signal?: Abort
 	});
 }
 
+function registerTftStudioCommand(pi: ExtensionAPI): void {
+	pi.registerCommand("tft", {
+		description: "TFT Studio 열기/재진입. Usage: /tft [open|resume] [transcriptPath|identityKey]",
+		handler: async (args: string, ctx: ExtensionCommandContext) => {
+			try {
+				const target = parseTftOpenTarget(args);
+				const fromPath = transcriptIdentityFromPath(target, ctx.cwd);
+				const params: { tab: string; args?: string; identityKey?: string; displayTitle?: string; title?: string } = {
+					tab: "frame",
+					args,
+				};
+				if (fromPath) {
+					params.identityKey = fromPath.identityKey;
+					params.displayTitle = fromPath.displayTitle;
+					params.title = fromPath.title || fromPath.displayTitle;
+				} else if (target && target.includes(":")) {
+					params.identityKey = target;
+				}
+				const ensured = await ensureRun(pi, ctx, params);
+				const handle = ensured.handle;
+				if (handle.state.status === "done" || handle.state.status === "aborted") {
+					handle.state.status = "running";
+					appendTimeline(handle.state, { kind: "restore", tab: handle.state.activeTab, step: handle.state.step, message: "TFT Studio re-entered for continued work." });
+					addLog(handle, "TFT Studio re-entered.");
+					pushState(handle);
+				}
+				const opened = ensured.opened === "reused" ? await openStudio(pi, ctx, handle) : ensured.opened;
+				ctx.ui.notify(`TFT Studio 재진입: ${handle.state.title} (${opened})`, "info");
+			} catch (error) {
+				ctx.ui.notify(`TFT Studio 재진입 실패: ${error instanceof Error ? error.message : String(error)}`, "error");
+			}
+		},
+	});
+}
+
 export default function (pi: ExtensionAPI) {
+	registerTftStudioCommand(pi);
+
 	pi.registerTool({
 		name: "frame_studio",
 		label: "TFT Studio",

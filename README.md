@@ -280,7 +280,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | **dynamic-agents-md** | 파일 탐색 결과에 AGENTS.md 자동 주입 |
 | **tool-group-renderer** | 관련 도구 출력 그룹/축소 |
 | **tft-commands** | `/frame`/`/decide`/`/verify`를 pilee SKILL.md 인라인 실행으로 라우팅 |
-| **frame-studio** | Glimpse 기반 TFT Studio shell — Frame/Decide/Verify/Verify Report 탭 + 선택 UI/전문 저장 |
+| **frame-studio** | Glimpse 기반 TFT Studio shell — Frame/Decide/Verify/Verify Report 탭 + 선택 UI/전문 저장 + `/tft open` 재진입 |
 
 ### 세션 관리
 
