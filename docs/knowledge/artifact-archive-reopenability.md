@@ -46,7 +46,7 @@ related:
 
 완료된 HTML report와 web search review는 workspace capture와 사용자 history archive에 저장합니다. `/archive`는 최근 workspace 산출물, archive, TFT Studio transcript, planning markdown, Pi/Conductor session provenance를 함께 탐색하는 primary command입니다. 기존 `/show-report`는 compatibility alias로 남기며, native viewer가 안 되면 browser fallback을 제공합니다. TFT Studio tool result가 `transcriptRef.openCommand`를 반환할 때도 `/archive <transcriptPath>`를 사용해 전문을 context에 붙이지 않고 재개 가능한 artifact로 연결합니다.
 
-Archive의 `기획 / Frame`은 재진입 가능한 기획 artifact만 보여줍니다. `.context/work/**/Session <id>.md`처럼 fork-panel/Pi 대화 전문을 markdown으로 내보낸 파일은 session provenance이며, 기획 문서가 아니므로 `Pi 이력` 쪽에 남기고 planning tab에서는 제외합니다. TFT Studio transcript 카드에는 `/tft open <transcriptPath>` 재진입 명령을 노출해, 닫힌 기획을 새로 만들지 않고 같은 identity/timeline으로 이어갈 수 있게 합니다.
+Archive의 `기획 / Frame`은 재진입 가능한 기획 artifact만 보여줍니다. `.context/work/**/Session <id>.md`처럼 fork-panel/Pi 대화 전문을 markdown으로 내보낸 파일은 session provenance이며, 기획 문서가 아니므로 `Pi 이력` 쪽에 남기고 planning tab에서는 제외합니다. TFT Studio transcript 카드에는 `이어하기` 버튼을 노출해, 사용자가 JSON path나 `/tft open ...` 명령을 직접 입력하지 않아도 archive를 실행한 현재 Pi session에서 같은 identity/timeline으로 이어갈 수 있게 합니다.
 
 ## Open Original Rule
 

@@ -7,6 +7,7 @@ import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ToolResultEvent } from "@mariozechner/pi-coding-agent";
 import { complete, getModel, type Api, type Message, type Model } from "@mariozechner/pi-ai";
+import { resumeTftStudioFromTranscript } from "../frame-studio/index.ts";
 import { getGlimpseOpen, type GlimpseWindow } from "../utils/glimpse.ts";
 import { expandProfileTemplate, loadArtifactBrowserProfiles, loadConductorProfiles } from "../utils/private-profiles.ts";
 import { exportSessionFileToHtml, isPiSessionFile, openFile, SESSION_EXPORT_DIR } from "../utils/session-export.js";
@@ -1445,12 +1446,23 @@ function resolveAllowedSessionPath(rawPath: string, allowedPaths: Set<string>): 
 	return resolved;
 }
 
+function resolveAllowedFrameTranscriptPath(rawPath: string, allowedPaths: Set<string>): string {
+	let resolved = "";
+	try { resolved = fs.realpathSync(rawPath); } catch {}
+	if (!resolved || !allowedPaths.has(resolved)) throw new Error("Path is not in this Artifact Browser.");
+	const base = fs.realpathSync(FRAME_TRANSCRIPTS_DIR);
+	if (path.extname(resolved).toLowerCase() !== ".json" || (resolved !== base && !resolved.startsWith(`${base}${path.sep}`))) {
+		throw new Error("이어하기는 TFT Studio transcript artifact에서만 사용할 수 있습니다.");
+	}
+	return resolved;
+}
+
 function jsonResponse(res: ServerResponse, status: number, payload: unknown) {
 	res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
 	res.end(JSON.stringify(payload));
 }
 
-function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData, cwd: string, ctx?: Pick<ExtensionContext, "model" | "modelRegistry">): Promise<string> {
+function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData, cwd: string, ctx?: ExtensionCommandContext): Promise<string> {
 	const allowedPaths = artifactBrowserAllowedPaths(data);
 	const intentByPath = captureIntentByPath(data.captures);
 	const server = createServer(async (req, res) => {
@@ -1504,6 +1516,17 @@ function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData,
 					const resolved = resolveAllowedSessionPath(bodyPath, allowedPaths);
 					const suggestion = await suggestSessionClassification(resolved, ctx);
 					jsonResponse(res, 200, { ok: true, ...suggestion });
+				} catch (error) {
+					jsonResponse(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+				}
+				return;
+			}
+			if (req.method === "POST" && url.pathname === "/resume-tft") {
+				try {
+					if (!ctx) throw new Error("Archive command context is unavailable.");
+					const resolved = resolveAllowedFrameTranscriptPath(url.searchParams.get("path") || "", allowedPaths);
+					const resumed = await resumeTftStudioFromTranscript(pi, ctx, resolved);
+					jsonResponse(res, 200, { ok: true, ...resumed });
 				} catch (error) {
 					jsonResponse(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
 				}
@@ -1567,7 +1590,7 @@ function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData,
 	});
 }
 
-async function openArtifactBrowser(pi: ExtensionAPI, data: ArtifactBrowserData, cwd: string, browserOnly = false, ctx?: Pick<ExtensionContext, "model" | "modelRegistry">): Promise<"glimpse" | "browser"> {
+async function openArtifactBrowser(pi: ExtensionAPI, data: ArtifactBrowserData, cwd: string, browserOnly = false, ctx?: ExtensionCommandContext): Promise<"glimpse" | "browser"> {
 	const url = await startArtifactBrowserServer(pi, data, cwd, ctx);
 	if (!browserOnly) {
 		const open = await getGlimpseOpen();
@@ -2583,7 +2606,7 @@ function buildFrameTranscriptStandaloneHtml(filePath: string): string {
 
 function artifactBrowserStyle(): string {
 	return `<style>
-	:root{color-scheme:light;--bg:#fafaf9;--panel:#fff;--line:#e7e5e4;--text:#292524;--muted:#78716c;--accent:#7c3aed;--soft:#f5f3ff;--green:#166534;--amber:#92400e}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.shell{max-width:1180px;margin:0 auto;padding:24px}.hero{padding:24px;border:1px solid var(--line);border-radius:24px;background:linear-gradient(135deg,#fff,#f5f3ff);box-shadow:0 20px 60px rgba(41,37,36,.08)}.kicker{color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}h1{margin:6px 0 8px;font-size:32px;line-height:1.15}.hero p,.muted{color:var(--muted)}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}.tab{border:1px solid var(--line);border-radius:999px;background:#fff;padding:9px 13px;font-weight:800;cursor:pointer}.tab.active{background:var(--accent);border-color:var(--accent);color:#fff}.panel{display:none}.panel.active{display:block}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.card{border:1px solid var(--line);border-radius:18px;background:var(--panel);padding:16px;box-shadow:0 10px 30px rgba(41,37,36,.05);overflow:hidden}.card h2,.card h3{margin:0 0 8px}.meta{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}.badge{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 8px;background:#fff}.path{color:var(--muted);font-size:12px;word-break:break-all}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.command-hint{display:grid;gap:6px;margin-top:10px;border:1px dashed var(--line);border-radius:12px;background:#fafaf9;padding:10px}.command-hint code{word-break:break-all;color:var(--text);font-size:12px}.command-hint .button{width:max-content}.button{border:1px solid var(--line);border-radius:10px;padding:7px 10px;text-decoration:none;color:var(--accent);font-weight:800;background:#fff;cursor:pointer;font:inherit}.button:hover{background:var(--soft)}.button[disabled]{opacity:.55;cursor:wait}.thumb{display:grid;place-items:center;aspect-ratio:16/10;background:#111;border-radius:14px;overflow:hidden;margin-bottom:10px}.thumb img{width:100%;height:100%;object-fit:contain}.intent-mini{border:1px solid var(--line);border-radius:12px;background:#fafaf9;padding:10px 11px;margin:10px 0;color:var(--text)}.intent-mini.missing{color:var(--muted);font-size:12px;border-style:dashed}.intent-mini-title{font-weight:800;color:var(--accent);font-size:12px;margin-bottom:5px}.intent-mini p{margin:4px 0;font-size:12px;line-height:1.45}.intent-mini strong{color:var(--muted);margin-right:4px}.empty{padding:40px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:18px;background:#fff}.chat-preview{display:grid;gap:10px}.chat-row{display:flex;flex-direction:column;margin:6px 0}.chat-row.user{align-items:flex-end}.chat-row.assistant{align-items:flex-start}.chat-meta{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px;margin:0 8px 4px}.chat-meta span{font-weight:800;color:var(--text)}.chat-bubble{max-width:min(780px,92%);white-space:pre-wrap;word-break:break-word;border:1px solid var(--line);border-radius:16px;padding:10px 12px;background:#fff;box-shadow:0 8px 22px rgba(41,37,36,.04)}.user .chat-bubble{background:#eff6ff;border-color:#bfdbfe}.timeline{display:grid;gap:12px}.timeline-item{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff}.timeline-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:var(--muted);font-size:12px}.timeline-head strong{color:var(--accent);text-transform:uppercase}.qa,.answer{margin-top:8px}.label{font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}pre{white-space:pre-wrap;word-break:break-word;background:#292524;color:#fafaf9;border-radius:12px;padding:12px;max-height:360px;overflow:auto}details{margin-top:8px}summary{cursor:pointer;font-weight:800}.filters{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:10px;margin:16px 0}.search,.category-filter{width:100%;height:40px;border:1px solid var(--line);border-radius:12px;padding:0 12px;font:inherit;background:#fff}.classification-mini{border:1px solid var(--line);border-radius:12px;background:#fafaf9;padding:10px 11px;margin:10px 0}.classification-mini.missing{border-style:dashed;color:var(--muted);font-size:12px}.classification-title{display:flex;gap:8px;justify-content:space-between;align-items:center;color:var(--accent);font-size:12px;font-weight:900;letter-spacing:.04em;text-transform:uppercase}.classification-mini p{margin:6px 0 0;font-size:12px;color:var(--text)}.modal{position:fixed;inset:0;background:rgba(41,37,36,.45);display:grid;place-items:center;z-index:999;padding:20px}.modal[hidden]{display:none}.modal-card{width:min(760px,96vw);max-height:92vh;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:22px;padding:18px;box-shadow:0 30px 90px rgba(41,37,36,.25)}.modal-card header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}.modal-card label{display:grid;gap:5px;margin:10px 0;font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.modal-card input,.modal-card textarea,.modal-card select{border:1px solid var(--line);border-radius:12px;padding:10px 11px;font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text);background:#fff;text-transform:none;letter-spacing:0}.modal-card textarea{resize:vertical}.field-help{font-size:12px;font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0;line-height:1.45}.modal-card h2{margin:0 0 4px}@media(max-width:720px){.filters{grid-template-columns:1fr}}
+	:root{color-scheme:light;--bg:#fafaf9;--panel:#fff;--line:#e7e5e4;--text:#292524;--muted:#78716c;--accent:#7c3aed;--soft:#f5f3ff;--green:#166534;--amber:#92400e}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.shell{max-width:1180px;margin:0 auto;padding:24px}.hero{padding:24px;border:1px solid var(--line);border-radius:24px;background:linear-gradient(135deg,#fff,#f5f3ff);box-shadow:0 20px 60px rgba(41,37,36,.08)}.kicker{color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}h1{margin:6px 0 8px;font-size:32px;line-height:1.15}.hero p,.muted{color:var(--muted)}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}.tab{border:1px solid var(--line);border-radius:999px;background:#fff;padding:9px 13px;font-weight:800;cursor:pointer}.tab.active{background:var(--accent);border-color:var(--accent);color:#fff}.panel{display:none}.panel.active{display:block}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.card{border:1px solid var(--line);border-radius:18px;background:var(--panel);padding:16px;box-shadow:0 10px 30px rgba(41,37,36,.05);overflow:hidden}.card h2,.card h3{margin:0 0 8px}.meta{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}.badge{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 8px;background:#fff}.path{color:var(--muted);font-size:12px;word-break:break-all}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.button{border:1px solid var(--line);border-radius:10px;padding:7px 10px;text-decoration:none;color:var(--accent);font-weight:800;background:#fff;cursor:pointer;font:inherit}.button:hover{background:var(--soft)}.button[disabled]{opacity:.55;cursor:wait}.thumb{display:grid;place-items:center;aspect-ratio:16/10;background:#111;border-radius:14px;overflow:hidden;margin-bottom:10px}.thumb img{width:100%;height:100%;object-fit:contain}.intent-mini{border:1px solid var(--line);border-radius:12px;background:#fafaf9;padding:10px 11px;margin:10px 0;color:var(--text)}.intent-mini.missing{color:var(--muted);font-size:12px;border-style:dashed}.intent-mini-title{font-weight:800;color:var(--accent);font-size:12px;margin-bottom:5px}.intent-mini p{margin:4px 0;font-size:12px;line-height:1.45}.intent-mini strong{color:var(--muted);margin-right:4px}.empty{padding:40px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:18px;background:#fff}.chat-preview{display:grid;gap:10px}.chat-row{display:flex;flex-direction:column;margin:6px 0}.chat-row.user{align-items:flex-end}.chat-row.assistant{align-items:flex-start}.chat-meta{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px;margin:0 8px 4px}.chat-meta span{font-weight:800;color:var(--text)}.chat-bubble{max-width:min(780px,92%);white-space:pre-wrap;word-break:break-word;border:1px solid var(--line);border-radius:16px;padding:10px 12px;background:#fff;box-shadow:0 8px 22px rgba(41,37,36,.04)}.user .chat-bubble{background:#eff6ff;border-color:#bfdbfe}.timeline{display:grid;gap:12px}.timeline-item{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff}.timeline-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:var(--muted);font-size:12px}.timeline-head strong{color:var(--accent);text-transform:uppercase}.qa,.answer{margin-top:8px}.label{font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}pre{white-space:pre-wrap;word-break:break-word;background:#292524;color:#fafaf9;border-radius:12px;padding:12px;max-height:360px;overflow:auto}details{margin-top:8px}summary{cursor:pointer;font-weight:800}.filters{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:10px;margin:16px 0}.search,.category-filter{width:100%;height:40px;border:1px solid var(--line);border-radius:12px;padding:0 12px;font:inherit;background:#fff}.classification-mini{border:1px solid var(--line);border-radius:12px;background:#fafaf9;padding:10px 11px;margin:10px 0}.classification-mini.missing{border-style:dashed;color:var(--muted);font-size:12px}.classification-title{display:flex;gap:8px;justify-content:space-between;align-items:center;color:var(--accent);font-size:12px;font-weight:900;letter-spacing:.04em;text-transform:uppercase}.classification-mini p{margin:6px 0 0;font-size:12px;color:var(--text)}.modal{position:fixed;inset:0;background:rgba(41,37,36,.45);display:grid;place-items:center;z-index:999;padding:20px}.modal[hidden]{display:none}.modal-card{width:min(760px,96vw);max-height:92vh;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:22px;padding:18px;box-shadow:0 30px 90px rgba(41,37,36,.25)}.modal-card header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}.modal-card label{display:grid;gap:5px;margin:10px 0;font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.modal-card input,.modal-card textarea,.modal-card select{border:1px solid var(--line);border-radius:12px;padding:10px 11px;font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text);background:#fff;text-transform:none;letter-spacing:0}.modal-card textarea{resize:vertical}.field-help{font-size:12px;font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0;line-height:1.45}.modal-card h2{margin:0 0 4px}@media(max-width:720px){.filters{grid-template-columns:1fr}}
 	</style>`;
 }
 
@@ -2605,17 +2628,8 @@ function artifactOpenButtons(filePath: string): string {
 	return `<button class="button open-artifact" type="button" data-target="glimpse" data-path="${escapedPath}">${primaryLabel}</button><button class="button open-artifact" type="button" data-target="browser" data-path="${escapedPath}">${browserLabel}</button>`;
 }
 
-function shellQuote(value: string): string {
-	return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-}
-
-function frameResumeCommand(filePath: string): string {
-	return `/tft open ${shellQuote(filePath)}`;
-}
-
-function frameResumeCommandBlock(filePath: string): string {
-	const command = frameResumeCommand(filePath);
-	return `<div class="command-hint"><div class="label">재진입 명령</div><code>${escapeHtml(command)}</code><button class="button copy-command" type="button" data-command="${escapeAttr(command)}">명령 복사</button></div>`;
+function frameResumeButton(filePath: string): string {
+	return `<button class="button resume-tft" type="button" data-path="${escapeAttr(filePath)}">이어하기</button>`;
 }
 
 function classificationButton(filePath: string): string {
@@ -2669,7 +2683,7 @@ function renderFrameCards(frames: FrameTranscriptEntry[]): string {
 
 function renderPlanningDocCards(docs: PlanningDocEntry[]): string {
 	if (!docs.length) return `<div class="empty">기획/컨텍스트 markdown이 없습니다.</div>`;
-	return `<div class="grid">${docs.map((doc) => `<article class="card searchable" data-search="${escapeAttr(`${doc.title} ${doc.name} ${doc.workspace} ${doc.ticket} ${doc.source}`.toLowerCase())}"><h3>${escapeHtml(doc.title)}</h3><div class="meta"><span class="badge">${escapeHtml(planningSourceLabel(doc.source))}</span>${doc.workspace ? `<span class="badge">${escapeHtml(doc.workspace)}</span>` : ""}${doc.ticket ? `<span class="badge">${escapeHtml(doc.ticket)}</span>` : ""}<span class="badge">${escapeHtml(doc.time)}</span></div><div class="path">${escapeHtml(doc.path)}</div>${doc.source === "frame-studio" ? frameResumeCommandBlock(doc.path) : ""}<div class="actions">${artifactOpenButtons(doc.path)}</div></article>`).join("\n")}</div>`;
+	return `<div class="grid">${docs.map((doc) => `<article class="card searchable" data-search="${escapeAttr(`${doc.title} ${doc.name} ${doc.workspace} ${doc.ticket} ${doc.source}`.toLowerCase())}"><h3>${escapeHtml(doc.title)}</h3><div class="meta"><span class="badge">${escapeHtml(planningSourceLabel(doc.source))}</span>${doc.workspace ? `<span class="badge">${escapeHtml(doc.workspace)}</span>` : ""}${doc.ticket ? `<span class="badge">${escapeHtml(doc.ticket)}</span>` : ""}<span class="badge">${escapeHtml(doc.time)}</span></div><div class="path">${escapeHtml(doc.path)}</div><div class="actions">${doc.source === "frame-studio" ? frameResumeButton(doc.path) : ""}${artifactOpenButtons(doc.path)}</div></article>`).join("\n")}</div>`;
 }
 
 function sessionPanelSourceLabel(session: PiSessionEntry): string {
@@ -2878,18 +2892,22 @@ function buildArtifactBrowserHtml(data: ArtifactBrowserData, cwd: string): strin
 		qsa('.conductor-detail-panel').forEach((panel) => panel.hidden = panel.dataset.conductorPanel !== key);
 		if (!(opts && opts.skipState)) writeBrowserState({ tab: 'conductors', conductor: key });
 	};
-	async function copyCommand(button){
-		const command = button.dataset.command || '';
+	async function requestResumeTft(button){
+		const path = button.dataset.path;
+		if (!path) return;
 		const previous = button.textContent;
-		if (!command) return;
+		button.disabled = true;
+		button.textContent = '이어가는 중...';
 		try {
-			await navigator.clipboard.writeText(command);
-			button.textContent = '복사됨';
-			setTimeout(() => { button.textContent = previous; }, 1200);
+			const response = await fetch('/resume-tft?path=' + encodeURIComponent(path), { method: 'POST' });
+			const payload = await response.json().catch(() => ({}));
+			if (!response.ok || !payload.ok) throw new Error(payload.error || 'resume failed');
+			button.textContent = payload.reactivated ? '질문 활성화됨' : 'Studio 열림';
+			setTimeout(() => { button.textContent = previous; button.disabled = false; }, 1600);
 		} catch (error) {
-			button.textContent = '복사 실패';
-			button.title = command;
-			setTimeout(() => { button.textContent = previous; }, 2200);
+			button.textContent = '이어하기 실패';
+			button.title = String(error && error.message || error);
+			setTimeout(() => { button.textContent = previous; button.disabled = false; }, 2400);
 		}
 	}
 	async function requestOpen(button){
@@ -3002,8 +3020,8 @@ function buildArtifactBrowserHtml(data: ArtifactBrowserData, cwd: string): strin
 	document.addEventListener('click', (event) => {
 		const target = event.target;
 		if (!(target instanceof HTMLElement)) return;
-		const copier = target.closest('.copy-command');
-		if (copier) { copyCommand(copier); return; }
+		const resumer = target.closest('.resume-tft');
+		if (resumer) { requestResumeTft(resumer); return; }
 		const opener = target.closest('.open-artifact');
 		if (opener) { requestOpen(opener); return; }
 		const capture = target.closest('.open-capture-group');

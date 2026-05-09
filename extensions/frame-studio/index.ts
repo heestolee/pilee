@@ -1029,32 +1029,45 @@ function reactivateLatestQuestionForResume(pi: ExtensionAPI, handle: FrameStudio
 	return true;
 }
 
+export async function resumeTftStudioFromTranscript(pi: ExtensionAPI, ctx: ExtensionCommandContext | ExtensionContext, transcriptPath: string): Promise<{ runId: string; title: string; opened: "glimpse" | "browser" | "none" | "reused"; reactivated: boolean; transcriptPath: string }> {
+	const fromPath = transcriptIdentityFromPath(transcriptPath, ctx.cwd ?? process.cwd());
+	if (!fromPath) throw new Error("TFT Studio transcript를 찾을 수 없습니다.");
+	const ensured = await ensureRun(pi, ctx as ExtensionContext, {
+		tab: "frame",
+		identityKey: fromPath.identityKey,
+		displayTitle: fromPath.displayTitle,
+		title: fromPath.title || fromPath.displayTitle,
+	});
+	const handle = ensured.handle;
+	if (handle.state.status === "done" || handle.state.status === "aborted") {
+		handle.state.status = "running";
+		appendTimeline(handle.state, { kind: "restore", tab: handle.state.activeTab, step: handle.state.step, message: "TFT Studio re-entered for continued work." });
+		addLog(handle, "TFT Studio re-entered.");
+		pushState(handle);
+	}
+	const reactivated = reactivateLatestQuestionForResume(pi, handle);
+	const opened = ensured.opened === "reused" ? await openStudio(pi, ctx as ExtensionContext, handle) : ensured.opened;
+	return { runId: handle.state.runId, title: handle.state.title, opened, reactivated, transcriptPath: handle.state.transcriptPath };
+}
+
 function registerTftStudioCommand(pi: ExtensionAPI): void {
 	pi.registerCommand("tft", {
 		description: "TFT Studio 열기/재진입. Usage: /tft [open|resume] [transcriptPath|identityKey]",
 		handler: async (args: string, ctx: ExtensionCommandContext) => {
 			try {
 				const target = parseTftOpenTarget(args);
-				const fromPath = transcriptIdentityFromPath(target, ctx.cwd);
-				const params: { tab: string; args?: string; identityKey?: string; displayTitle?: string; title?: string } = {
+				if (target && existsSync(isAbsolute(target) ? target : resolvePath(ctx.cwd, target))) {
+					const resumed = await resumeTftStudioFromTranscript(pi, ctx, target);
+					ctx.ui.notify(`TFT Studio 재진입: ${resumed.title} (${resumed.opened})${resumed.reactivated ? " · 미응답 질문 활성화" : ""}`, "info");
+					return;
+				}
+				const params: { tab: string; args?: string; identityKey?: string } = {
 					tab: "frame",
 					args,
 				};
-				if (fromPath) {
-					params.identityKey = fromPath.identityKey;
-					params.displayTitle = fromPath.displayTitle;
-					params.title = fromPath.title || fromPath.displayTitle;
-				} else if (target && target.includes(":")) {
-					params.identityKey = target;
-				}
+				if (target && target.includes(":")) params.identityKey = target;
 				const ensured = await ensureRun(pi, ctx, params);
 				const handle = ensured.handle;
-				if (handle.state.status === "done" || handle.state.status === "aborted") {
-					handle.state.status = "running";
-					appendTimeline(handle.state, { kind: "restore", tab: handle.state.activeTab, step: handle.state.step, message: "TFT Studio re-entered for continued work." });
-					addLog(handle, "TFT Studio re-entered.");
-					pushState(handle);
-				}
 				const reactivated = reactivateLatestQuestionForResume(pi, handle);
 				const opened = ensured.opened === "reused" ? await openStudio(pi, ctx, handle) : ensured.opened;
 				ctx.ui.notify(`TFT Studio 재진입: ${handle.state.title} (${opened})${reactivated ? " · 미응답 질문 활성화" : ""}`, "info");

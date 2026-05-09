@@ -272,7 +272,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **context-loader** | Minimal contextual loading surface |
 | **tool-group-renderer** | Groups and collapses related tool output |
 | **tft-commands** | Routes `/frame`, `/decide`, `/verify` to pilee skills |
-| **frame-studio** | Glimpse-based TFT Studio shell with Frame/Decide/Verify/Verify Report tabs, choices, transcript replay, and `/tft open` resume |
+| **frame-studio** | Glimpse-based TFT Studio shell with Frame/Decide/Verify/Verify Report tabs, choices, transcript replay, Archive resume, and `/tft open` |
 
 ### Session management
 
