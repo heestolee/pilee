@@ -94,17 +94,17 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [낮은 confidence 판단은 정합성 PR로 올린다](./confidence-sensitive-review.md) | active | high | 2026-05-09 | a3707cc | confidence, review, freshness, ai-actions, user-review, 정합성 |
-| [Deterministic action과 AI review action은 분리한다](./deterministic-vs-ai-actions.md) | active | high | 2026-05-09 | bc0f77e | knowledge, deterministic, ai-actions, review, automation, 정합성 |
-| [Ember는 knowledge의 친근한 입구다](./ember-friendly-knowledge-entrypoint.md) | active | high | 2026-05-09 | bc0f77e | ember, branding, command, knowledge |
-| [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | high | 2026-05-09 | bc0f77e | knowledge, freshness, diagnosis, review, candidate, 정합성 |
-| [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | high | 2026-05-09 | bc0f77e | knowledge, judgment, granularity, documentation, coverage, 문서 |
-| [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | high | 2026-05-09 | bc0f77e | pilee, knowledge, history, journal, sanitized, reviewed-at |
-| [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | high | 2026-05-09 | bc0f77e | knowledge, journal, privacy, sanitized, doctrine, history |
-| [README는 knowledge coverage map이다](./readme-coverage-map.md) | active | high | 2026-05-09 | bc0f77e | knowledge, readme, coverage, graph, surface, todo |
-| [README 철학 변경은 사용자 판단 게이트를 지난다](./readme-philosophy-user-gate.md) | active | high | 2026-05-09 | a3707cc | readme, philosophy, user-gate, public-facing, documentation, 판단 |
-| [Retro는 private reflection이다](./retro-private-reflection-boundary.md) | active | high | 2026-05-09 | bc0f77e | retro, notion, reflection, private, journal, 회고 |
-| [reviewed_commit은 날짜 freshness의 빈틈을 막는다](./reviewed-commit-freshness.md) | active | high | 2026-05-09 | bc0f77e | knowledge, reviewed-commit, reviewed-at, freshness, commit, 정합성 |
+| [낮은 confidence 판단은 정합성 PR로 올린다](./confidence-sensitive-review.md) | active | high | 2026-05-09 | 67c7dc3 | confidence, review, freshness, ai-actions, user-review, 정합성 |
+| [Deterministic action과 AI review action은 분리한다](./deterministic-vs-ai-actions.md) | active | high | 2026-05-09 | 67c7dc3 | knowledge, deterministic, ai-actions, review, automation, 정합성 |
+| [Ember는 knowledge의 친근한 입구다](./ember-friendly-knowledge-entrypoint.md) | active | high | 2026-05-09 | 67c7dc3 | ember, branding, command, knowledge |
+| [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | high | 2026-05-09 | 67c7dc3 | knowledge, freshness, diagnosis, review, candidate, 정합성 |
+| [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | high | 2026-05-09 | 67c7dc3 | knowledge, judgment, granularity, documentation, coverage, 문서 |
+| [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | high | 2026-05-09 | 67c7dc3 | pilee, knowledge, history, journal, sanitized, reviewed-at |
+| [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | high | 2026-05-09 | 67c7dc3 | knowledge, journal, privacy, sanitized, doctrine, history |
+| [README는 knowledge coverage map이다](./readme-coverage-map.md) | active | high | 2026-05-09 | 67c7dc3 | knowledge, readme, coverage, graph, surface, todo |
+| [README 철학 변경은 사용자 판단 게이트를 지난다](./readme-philosophy-user-gate.md) | active | high | 2026-05-09 | 67c7dc3 | readme, philosophy, user-gate, public-facing, documentation, 판단 |
+| [Retro는 private reflection이다](./retro-private-reflection-boundary.md) | active | high | 2026-05-09 | 67c7dc3 | retro, notion, reflection, private, journal, 회고 |
+| [reviewed_commit은 날짜 freshness의 빈틈을 막는다](./reviewed-commit-freshness.md) | active | high | 2026-05-09 | 67c7dc3 | knowledge, reviewed-commit, reviewed-at, freshness, commit, 정합성 |
 
 ### review
 
@@ -136,7 +136,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-05-09 | a3707cc | verify, evidence, gate, done, ready, verification |
-| [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-05-09 | a3707cc | frame, verify, frame-json, success-criteria, contract, verification |
+| [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-05-09 | 67c7dc3 | frame, verify, frame-json, success-criteria, contract, verification |
 | [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-05-09 | a3707cc | verify, invalidation, code-change, freshness, gate, 검증 |
 | [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | active | high | 2026-05-09 | a3707cc | verify-report, verification, evidence, coverage, capture, crop |
 
@@ -164,7 +164,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Frame Studio는 frame 질문을 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-05-09 | a3707cc | frame-studio, frame, glimpse, ask-user-question, decision-ui, co-thinking |
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-05-09 | a3707cc | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 264ea17 | local-dev, server, startup, diagnosis, dev |
-| [Private overlay package는 회사·개인 실행 맥락을 담는다](./private-overlay-package-boundary.md) | active | high | 2026-05-09 | a3707cc | privacy, package, overlay, skill, company-context |
+| [Private overlay package는 회사·개인 실행 맥락을 담는다](./private-overlay-package-boundary.md) | active | high | 2026-05-09 | 67c7dc3 | privacy, package, overlay, skill, company-context |
 | [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-05-08 | 667cefb | queued-messages, slash-command, prefill, worktree, session, boundary |
 | [종료된 포크는 transcript 주입보다 revive가 우선이다](./revive-over-transcript-recall.md) | active | high | 2026-05-08 | 667cefb | revive, recall, fork-panel, session, continuity, 세션 |
 | [세션 식별자는 파일명이 아니라 사람이 본 이름이다](./session-identity-over-filenames.md) | active | high | 2026-05-08 | 667cefb | session, title, identity, session_info, worktree, revive |

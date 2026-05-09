@@ -17,7 +17,7 @@ source:
   - user-direction:2026-05-05-ember-branding
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-09
-reviewed_commit: bc0f77e0329817186105ad06b89835672adf2881
+reviewed_commit: 67c7dc3d215888ee9ddcfd8dea42ea72058fbbae
 related:
   - pilee-knowledge-system
   - private-journal-public-doctrine
