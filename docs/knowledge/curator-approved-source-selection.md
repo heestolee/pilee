@@ -39,7 +39,7 @@ related:
 
 ## Reopen Rule
 
-승인된 출처 집합은 나중에 다시 열 수 있어야 합니다. web-search review archive를 `/show-report`에서 열 때도 목록으로 돌아가거나 원본 HTML을 브라우저로 여는 조작이 가능해야 하며, static file link가 WebView에서 동작하지 않는 경우 host-side opener로 경계를 보강합니다.
+승인된 출처 집합은 나중에 다시 열 수 있어야 합니다. web-search review archive를 `/archive`에서 열 때도 목록으로 돌아가거나 원본 HTML을 브라우저로 여는 조작이 가능해야 하며, static file link가 WebView에서 동작하지 않는 경우 host-side opener로 경계를 보강합니다.
 
 ## Failure Mode
 

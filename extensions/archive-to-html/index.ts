@@ -712,7 +712,7 @@ function detectClassificationCategory(title: string, entries: SessionConversatio
 	const tags = new Set<string>();
 	let category = "대화";
 	if (/youtube|youtu\.be|유튜브|영상|video/.test(haystack)) { category = "영상 분석"; tags.add("youtube"); }
-	if (/pilee|tft|studio|show-report|show report|ember|knowledge|frame|decide|verify/.test(haystack)) { category = "pilee 개선"; tags.add("pilee"); }
+	if (/pilee|tft|studio|show-report|show report|archive|ember|knowledge|frame|decide|verify/.test(haystack)) { category = "pilee 개선"; tags.add("pilee"); }
 	if (/verify-report|검증 리포트|evidence|capture|coverage/.test(haystack)) { category = "검증/리포트"; tags.add("verification"); }
 	if (/잡담|생각|느낌|방향성/.test(haystack)) { category = "잡담/방향성"; tags.add("thinking"); }
 	if (/debug|error|stack trace|오류|버그|실패/.test(haystack)) tags.add("debugging");
@@ -994,32 +994,39 @@ function wrapArchivedWidgetHTML(code: string, isSVG = false): string {
 export default function (pi: ExtensionAPI) {
 	registerVerifyReportLive(pi);
 
+	const openArchiveCommand = async (args: string, ctx: ExtensionCommandContext) => {
+		if (!ctx.hasUI) return;
+
+		const parsed = parseShowReportArgs(args, ctx.cwd);
+		if (parsed.explicitPath) {
+			if (!fs.existsSync(parsed.explicitPath)) {
+				ctx.ui.notify(`artifact를 찾을 수 없습니다: ${parsed.explicitPath}`, "warning");
+				return;
+			}
+			const mode = await openAnyArtifact(pi, parsed.explicitPath, parsed.browserOnly, ctx.cwd);
+			ctx.ui.notify(`🗂️ ${mode === "glimpse" ? "Glimpse" : "브라우저"} 열기 → ${path.basename(parsed.explicitPath)}`, "info");
+			return;
+		}
+
+		const artifacts = collectArtifactBrowserData(ctx.cwd);
+		const total = artifacts.piUnits.length + artifacts.conductors.length + artifacts.webSearches.length + artifacts.reports.length + artifacts.planningDocs.length + artifacts.captures.length;
+		if (total === 0) {
+			ctx.ui.notify("표시할 artifact를 찾을 수 없습니다.", "warning");
+			return;
+		}
+
+		const mode = await openArtifactBrowser(pi, artifacts, ctx.cwd, parsed.browserOnly, ctx);
+		ctx.ui.notify(`🗂️ Archive ${mode === "glimpse" ? "Glimpse" : "브라우저"} 열기 · Pi ${artifacts.piUnits.length} · Conductor ${artifacts.conductors.length} · web ${artifacts.webSearches.length} · reports ${artifacts.reports.length}`, "info");
+	};
+
+	pi.registerCommand("archive", {
+		description: "Pi 이력·Conductor 이력·웹 검색·검증 리포트·TFT/기획·캡처 미디어를 Artifact Browser로 열기. Usage: /archive [--browser] [path]",
+		handler: openArchiveCommand,
+	});
+
 	pi.registerCommand("show-report", {
-		description: "Pi 이력·Conductor 이력·웹 검색·검증 리포트·Frame/기획·캡처 미디어를 Artifact Browser로 열기. Usage: /show-report [--browser] [path]",
-		handler: async (args: string, ctx: ExtensionCommandContext) => {
-			if (!ctx.hasUI) return;
-
-			const parsed = parseShowReportArgs(args, ctx.cwd);
-			if (parsed.explicitPath) {
-				if (!fs.existsSync(parsed.explicitPath)) {
-					ctx.ui.notify(`artifact를 찾을 수 없습니다: ${parsed.explicitPath}`, "warning");
-					return;
-				}
-				const mode = await openAnyArtifact(pi, parsed.explicitPath, parsed.browserOnly, ctx.cwd);
-				ctx.ui.notify(`🗂️ ${mode === "glimpse" ? "Glimpse" : "브라우저"} 열기 → ${path.basename(parsed.explicitPath)}`, "info");
-				return;
-			}
-
-			const artifacts = collectArtifactBrowserData(ctx.cwd);
-			const total = artifacts.piUnits.length + artifacts.conductors.length + artifacts.webSearches.length + artifacts.reports.length + artifacts.planningDocs.length + artifacts.captures.length;
-			if (total === 0) {
-				ctx.ui.notify("표시할 artifact를 찾을 수 없습니다.", "warning");
-				return;
-			}
-
-			const mode = await openArtifactBrowser(pi, artifacts, ctx.cwd, parsed.browserOnly, ctx);
-			ctx.ui.notify(`🗂️ Artifact Browser ${mode === "glimpse" ? "Glimpse" : "브라우저"} 열기 · Pi ${artifacts.piUnits.length} · Conductor ${artifacts.conductors.length} · web ${artifacts.webSearches.length} · reports ${artifacts.reports.length}`, "info");
-		},
+		description: "Compatibility alias for /archive. Usage: /show-report [--browser] [path]",
+		handler: openArchiveCommand,
 	});
 
 	pi.on("session_shutdown", () => {

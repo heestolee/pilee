@@ -296,7 +296,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **queued-messages** | Queue visualization and idle watchdog |
 | **diff-overlay** | `/diff` TUI with commit mode, file tree, and syntax highlight |
 | **timestamp** | `/timestamp` conversation timeline |
-| **archive-to-html** | Verify/Web Search HTML archive, Artifact Browser, and live Verify preview |
+| **archive-to-html** | Verify/Web Search HTML archive, `/archive` Artifact Browser (`/show-report` alias), and live Verify preview |
 
 ### Tools and data
 

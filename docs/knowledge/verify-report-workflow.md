@@ -77,7 +77,7 @@ Primary evidence는 검증 포인트가 바로 보이는 viewport/section/elemen
 
 Evidence는 파일 경로가 아니라 “검증 의도를 가진 관찰 단위”여야 합니다. report item evidence와 case worker result의 `evidence_created`에는 가능한 한 `purpose`(왜 수집했나), `inspectFor`(리뷰어가 봐야 할 것), `expected`(닫아야 할 기준), `observed`(실제 관찰), `role`(primary/supporting/raw), `relatedItem`(V1 같은 항목 id)을 함께 적습니다.
 
-이 metadata는 live/static report의 evidence card와 `/show-report` 캡처/미디어 raw card·preview의 관찰 가이드로 재사용됩니다. `verify_report_live finish`는 direct evidence metadata를 `captures/evidence-intent.json` sidecar로 남기고, case worker는 `verify-workers/results/*.json`에 같은 metadata를 남깁니다. 따라서 시간이 지난 뒤 원본 PNG/GIF/JSON만 열어도 “이 파일이 왜 남았는지”와 “어디를 봐야 하는지”를 알 수 있어야 합니다. Metadata가 없으면 artifact browser는 원자료를 보여줄 수는 있지만 판정 근거로 읽기 어렵기 때문에, main agent가 보완하거나 Coverage Gap에 남겨야 합니다.
+이 metadata는 live/static report의 evidence card와 `/archive` 캡처/미디어 raw card·preview의 관찰 가이드로 재사용됩니다. `verify_report_live finish`는 direct evidence metadata를 `captures/evidence-intent.json` sidecar로 남기고, case worker는 `verify-workers/results/*.json`에 같은 metadata를 남깁니다. 따라서 시간이 지난 뒤 원본 PNG/GIF/JSON만 열어도 “이 파일이 왜 남았는지”와 “어디를 봐야 하는지”를 알 수 있어야 합니다. Metadata가 없으면 artifact browser는 원자료를 보여줄 수는 있지만 판정 근거로 읽기 어렵기 때문에, main agent가 보완하거나 Coverage Gap에 남겨야 합니다.
 
 Raw evidence intent는 별도 “의도 인덱스” 섹션으로 분리하기보다 해당 raw evidence 토글 내부에 함께 둡니다. JSON/TXT/network/console/diff를 펼치는 순간 상단에서 `purpose → inspectFor → expected → observed`를 읽고 바로 아래 raw 원문을 확인하는 구조가 시선 분산을 줄입니다. 이 raw 토글은 관련 검증 item 안에 co-locate하되, 가로 grid의 반쪽 너비 카드가 아니라 full-width 세로 배치로 보여야 원문 가독성이 유지됩니다.
 
@@ -93,7 +93,7 @@ Subagent verdict는 untrusted input입니다. Main은 result JSON, evidence path
 
 ## Reopen Rule
 
-완료된 report는 `/show-report`의 검증 리포트 축에서 다시 열 수 있어야 합니다. Frame transcript나 원본 media와 섞지 말고, 판정이 있는 report 자체를 재검토 가능한 artifact로 남깁니다. 원본 evidence를 열어야 할 때는 browser/WebView의 static link 동작에 기대지 않고 artifact browser의 host-side open 흐름을 사용합니다.
+완료된 report는 `/archive`의 검증 리포트 축에서 다시 열 수 있어야 합니다. Frame transcript나 원본 media와 섞지 말고, 판정이 있는 report 자체를 재검토 가능한 artifact로 남깁니다. 원본 evidence를 열어야 할 때는 browser/WebView의 static link 동작에 기대지 않고 artifact browser의 host-side open 흐름을 사용합니다.
 
 report preview는 artifact browser 안에서 `/preview` route로 열리고, top bar의 `이전`, `브라우저에서 열기`, `닫기`로 탐색 경계를 유지해야 합니다. 검증 report는 생성 시점뿐 아니라 리뷰어가 나중에 열어 보는 시점에도 조작 가능한 증거여야 합니다.
 

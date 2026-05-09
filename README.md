@@ -304,7 +304,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | **queued-messages** | 메시지 큐 시각화 + idle watchdog |
 | **diff-overlay** | `/diff` TUI — 커밋 모드, 파일 트리, 구문 하이라이팅 |
 | **timestamp** | `/timestamp` TUI — 대화 타임라인 |
-| **archive-to-html** | Verify/Web Search HTML 아카이브 + `/show-report`/live Verify Glimpse viewer |
+| **archive-to-html** | Verify/Web Search HTML 아카이브 + `/archive` Artifact Browser(`/show-report` alias) + live Verify Glimpse viewer |
 
 ### 도구
 

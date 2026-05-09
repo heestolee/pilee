@@ -2,7 +2,7 @@
 
 ## HTML 리포트 구조 (로컬 프리뷰용)
 
-이미지 참조: 로컬 상대 경로 (현재 디렉토리 기준). `/show-report`의 Glimpse 프리뷰가 로컬 이미지 경로를 data URI로 인라인 처리하므로, report.html 자체는 상대 경로를 유지한다.
+이미지 참조: 로컬 상대 경로 (현재 디렉토리 기준). `/archive`의 Glimpse 프리뷰가 로컬 이미지 경로를 data URI로 인라인 처리하므로, report.html 자체는 상대 경로를 유지한다.
 
 ```html
 <!DOCTYPE html>
@@ -230,19 +230,19 @@ Step 5에서 `verify_report_live action=start`를 호출하면 Glimpse live prev
 {"action":"finish","runId":"{runId}","finalSummary":"..."}
 ```
 
-다시 열 때는 `/show-report`를 사용한다.
+다시 열 때는 `/archive`를 사용한다.
 
 ```text
-/show-report .context/work/{workspace}/captures/report.html
-/show-report                          # 목록에서 선택
-/show-report --browser report.html    # 시스템 브라우저 fallback
+/archive .context/work/{workspace}/captures/report.html
+/archive                              # 목록에서 선택
+/archive --browser report.html    # 시스템 브라우저 fallback
 ```
 
 처리 규칙:
 - 로컬 확인 완료: 업로드하지 않고 종료.
 - 업로드 명시: Step 7 upload 진행.
 - 보완 필요: 필요한 항목 재캡처 또는 `/verify-report --update`로 보완.
-- Glimpse 실패: `/show-report --browser` 또는 시스템 브라우저 open fallback.
+- Glimpse 실패: `/archive --browser` 또는 시스템 브라우저 open fallback.
 
 ## 후속 단계 AskUserQuestion 템플릿 (Step 9)
 
