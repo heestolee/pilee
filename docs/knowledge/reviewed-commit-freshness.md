@@ -38,4 +38,4 @@ Knowledge 문서 자체를 고친 commit은 freshness stale의 직접 원인이 
 
 ## Actionable Range Rule
 
-`reviewed_commit..HEAD`를 볼 때 모든 파일 변경을 같은 무게로 보지 않습니다. `docs/knowledge/*.md`, `docs/knowledge/README.md`, `docs/knowledge-review.md`, root `README.md`/`README.en.md`의 generated block 같은 knowledge 산출물은 다른 doctrine을 stale하게 만드는 입력에서 제외합니다. 그렇지 않으면 검토 큐 PR이나 confirm-only commit이 다음 검토 큐를 계속 만들어냅니다.
+`reviewed_commit..HEAD`를 볼 때 모든 파일 변경을 같은 무게로 보지 않습니다. `docs/knowledge/*.md`, `docs/knowledge/README.md`, `docs/knowledge-review.md`, `tmp/knowledge-map.ko.svg`, root `README.md`/`README.en.md`의 generated block 같은 knowledge 산출물은 다른 doctrine을 stale하게 만드는 입력에서 제외합니다. 그렇지 않으면 검토 큐 PR이나 confirm-only commit이 다음 검토 큐를 계속 만들어냅니다.
