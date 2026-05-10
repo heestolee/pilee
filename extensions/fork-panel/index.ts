@@ -628,6 +628,17 @@ function ensureSessionHeaderCwd(sessionFile: string, cwd: string): { updated: bo
 	}
 }
 
+function chdirForCurrentPanelRevive(cwd: string): { previous: string; changed: boolean; error?: string } {
+	const previous = process.cwd();
+	if (safeRealpath(previous) === safeRealpath(cwd)) return { previous, changed: false };
+	try {
+		process.chdir(cwd);
+		return { previous, changed: true };
+	} catch (error) {
+		return { previous, changed: false, error: error instanceof Error ? error.message : String(error) };
+	}
+}
+
 function buildOpenSessionScript(mode: Direction, cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}): string {
 	const cmd = buildSessionLaunchCommand(cwd, sessionFile, env);
 	if (mode === "tab") {
@@ -1520,17 +1531,24 @@ export default function (pi: ExtensionAPI) {
 			const reviveCwd = resolveReviveCwd(target, ctx.cwd);
 			const headerSync = reviveCwd.fallback ? { updated: false } : ensureSessionHeaderCwd(target.sessionFile, reviveCwd.cwd);
 			if (headerSync.error) ctx.ui.notify(`revive cwd header 보정 실패: ${headerSync.error}`, "warning");
+			const chdirResult = reviveCwd.fallback ? { previous: process.cwd(), changed: false } : chdirForCurrentPanelRevive(reviveCwd.cwd);
+			if (chdirResult.error) ctx.ui.notify(`현재 패널 cwd 이동 실패: ${chdirResult.error}`, "warning");
 			try {
 				const result = await ctx.switchSession(target.sessionFile, {
 					cwdOverride: reviveCwd.cwd,
 					withSession: async (nextCtx) => {
 						const headerNote = headerSync.updated ? " · header cwd 보정" : "";
-						const cwdNote = reviveCwd.fallback ? ` · cwd fallback: ${reviveCwd.reason}` : ` · cwd ${workspaceLabelFor(reviveCwd.cwd)}${headerNote}`;
+						const processNote = chdirResult.changed ? " · process cwd 이동" : "";
+						const cwdNote = reviveCwd.fallback ? ` · cwd fallback: ${reviveCwd.reason}` : ` · cwd ${workspaceLabelFor(reviveCwd.cwd)}${headerNote}${processNote}`;
 						nextCtx.ui.notify(`${item.workspaceLabel} · ${item.title} 세션 재개 → 현재 패널${cwdNote}`, reviveCwd.fallback ? "warning" : "info");
 					},
 				});
-				if (result.cancelled) ctx.ui.notify("세션 전환이 취소되었습니다", "warning");
+				if (result.cancelled) {
+					if (chdirResult.changed) process.chdir(chdirResult.previous);
+					ctx.ui.notify("세션 전환이 취소되었습니다", "warning");
+				}
 			} catch (e) {
+				if (chdirResult.changed) process.chdir(chdirResult.previous);
 				ctx.ui.notify(`세션 전환 실패: ${e instanceof Error ? e.message : e}`, "error");
 			}
 			return;
