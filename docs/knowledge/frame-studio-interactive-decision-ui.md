@@ -26,7 +26,7 @@ source:
   - user-direction:2026-05-10-tft-visual-db-structure
   - user-direction:2026-05-10-deep-interview-frame
 reviewed_at: 2026-05-10
-reviewed_commit: eef013759f36cb9625b3d555bf2f8a55d3580ee3
+reviewed_commit: f4109788b9fc477320607c5f51038e36a08ac1bb
 related:
   - frame-planning-identity
   - frame-verify-contract
