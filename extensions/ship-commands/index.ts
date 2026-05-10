@@ -16,7 +16,7 @@ const SKILLS_DIR = join(PACKAGE_ROOT, "skills");
 const SHIM_CUSTOM_TYPE = "pilee-ship-command-shim";
 const MAX_COLLECTED_CONTEXT_CHARS = 18_000;
 
-type ShipCommandName = "ship" | "pr-ship";
+type ShipCommandName = "ship" | "pr-ship" | "ci-ship";
 
 interface RepoInfo {
 	owner: string;
@@ -42,6 +42,22 @@ interface ReviewCommentDetail {
 	author: string | null;
 	commitId: string | null;
 	inReplyToId: number | null;
+}
+
+interface ActionsJobTarget {
+	runId: string;
+	jobId: string;
+	url: string;
+}
+
+interface CiCheckSummary {
+	name: string;
+	workflowName: string | null;
+	status: string | null;
+	conclusion: string | null;
+	detailsUrl: string | null;
+	startedAt: string | null;
+	completedAt: string | null;
 }
 
 function skillPath(skillName: string): string {
@@ -73,6 +89,11 @@ function truncateText(text: string, maxChars = MAX_COLLECTED_CONTEXT_CHARS): str
 	return `${text.slice(0, maxChars)}\n\n[truncated: ${text.length - maxChars} chars omitted; run gh commands again if more context is needed]`;
 }
 
+function truncateTailText(text: string, maxChars = MAX_COLLECTED_CONTEXT_CHARS): string {
+	if (text.length <= maxChars) return text;
+	return `[truncated: first ${text.length - maxChars} chars omitted; showing log tail]\n\n${text.slice(-maxChars)}`;
+}
+
 function fence(text: string, language = ""): string {
 	const safe = text.replace(/```/gu, "```\u200b");
 	return `\`\`\`${language}\n${safe}\n\`\`\``;
@@ -88,6 +109,12 @@ function parseCommentUrl(args: string): CommentTarget | null {
 		commentId: Number(match[4]),
 		url: match[0],
 	};
+}
+
+function parseActionsJobUrl(args: string): ActionsJobTarget | null {
+	const match = args.match(/https:\/\/github\.com\/[^/]+\/[^/]+\/actions\/runs\/(\d+)\/job\/(\d+)/u);
+	if (!match) return null;
+	return { runId: match[1], jobId: match[2], url: match[0] };
 }
 
 function parseBareNumber(args: string): number | null {
@@ -278,6 +305,117 @@ async function buildPrShipCollectedContext(pi: ExtensionAPI, ctx: ExtensionComma
 	return sections.join("\n\n---\n\n");
 }
 
+function isFailingCheck(check: CiCheckSummary): boolean {
+	const conclusion = check.conclusion?.toUpperCase();
+	if (conclusion && !["SUCCESS", "SKIPPED", "NEUTRAL"].includes(conclusion)) return true;
+	const status = check.status?.toUpperCase();
+	return status === "FAILURE" || status === "ERROR";
+}
+
+function parseCiChecks(snapshot: Record<string, unknown> | null): CiCheckSummary[] {
+	const rollup = Array.isArray(snapshot?.statusCheckRollup) ? snapshot.statusCheckRollup : [];
+	return rollup
+		.filter((item): item is Record<string, unknown> => !!item && typeof item === "object" && !Array.isArray(item))
+		.map((item) => ({
+			name: readString(item.name) ?? "(unnamed check)",
+			workflowName: readString(item.workflowName),
+			status: readString(item.status),
+			conclusion: readString(item.conclusion),
+			detailsUrl: readString(item.detailsUrl) ?? readString(item.targetUrl),
+			startedAt: readString(item.startedAt),
+			completedAt: readString(item.completedAt),
+		}));
+}
+
+async function fetchPrStatusSnapshot(pi: ExtensionAPI, cwd: string, pullRequest: PullRequestInfo): Promise<Record<string, unknown> | null> {
+	const result = await pi.exec("gh", [
+		"pr",
+		"view",
+		pullRequest.url,
+		"--json",
+		"number,title,url,headRefName,headRefOid,baseRefName,mergeStateStatus,reviewDecision,statusCheckRollup",
+	], { cwd });
+	if (result.code !== 0) return null;
+	try {
+		return JSON.parse(result.stdout ?? "") as Record<string, unknown>;
+	} catch {
+		return null;
+	}
+}
+
+async function fetchFailedJobLog(pi: ExtensionAPI, cwd: string, target: ActionsJobTarget): Promise<string> {
+	const result = await pi.exec("gh", ["run", "view", target.runId, "--job", target.jobId, "--log-failed"], { cwd, timeout: 120_000 });
+	const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+	if (!output) return `(no failed log output; exit code ${result.code})`;
+	return truncateTailText(output, 12_000);
+}
+
+function formatCiChecks(checks: CiCheckSummary[]): string {
+	if (checks.length === 0) return "(no checks found)";
+	return checks.map((check, index) => [
+		`### ${index + 1}. ${check.workflowName ? `${check.workflowName} / ` : ""}${check.name}`,
+		`- status: ${check.status ?? "unknown"}`,
+		`- conclusion: ${check.conclusion ?? "unknown"}`,
+		check.detailsUrl ? `- details: ${check.detailsUrl}` : "- details: (none)",
+		check.startedAt ? `- started: ${check.startedAt}` : null,
+		check.completedAt ? `- completed: ${check.completedAt}` : null,
+	].filter(Boolean).join("\n")).join("\n\n");
+}
+
+async function buildCiShipCollectedContext(pi: ExtensionAPI, ctx: ExtensionCommandContext, args: string): Promise<string> {
+	const explicitJob = parseActionsJobUrl(args.trim());
+	const pullRequest = await resolvePullRequestFromArgs(pi, ctx, args);
+	const sections: string[] = [formatSessionRefs(ctx)];
+
+	if (!pullRequest) {
+		sections.push([
+			"## PR / CI context",
+			"",
+			"PR을 자동 식별하지 못했습니다. `gh pr view` 또는 사용자가 준 PR URL/job URL로 다시 확인하세요.",
+		].join("\n"));
+	} else {
+		const snapshot = await fetchPrStatusSnapshot(pi, ctx.cwd, pullRequest);
+		const checks = parseCiChecks(snapshot);
+		const failingChecks = checks.filter(isFailingCheck);
+		sections.push([
+			"## PR status check snapshot",
+			"",
+			snapshot ? fence(JSON.stringify(snapshot, null, 2), "json") : `PR status check 조회 실패: ${pullRequest.url}`,
+		].join("\n"));
+		sections.push([
+			"## Failing / non-success checks",
+			"",
+			formatCiChecks(failingChecks),
+		].join("\n"));
+
+		const logTargets = failingChecks
+			.map((check) => check.detailsUrl ? parseActionsJobUrl(check.detailsUrl) : null)
+			.filter((target): target is ActionsJobTarget => target !== null)
+			.slice(0, 4);
+		for (const target of logTargets) {
+			sections.push([
+				`## Failed job log excerpt — run ${target.runId} job ${target.jobId}`,
+				"",
+				`URL: ${target.url}`,
+				"",
+				fence(await fetchFailedJobLog(pi, ctx.cwd, target), "text"),
+			].join("\n"));
+		}
+	}
+
+	if (explicitJob) {
+		sections.push([
+			`## Explicit job log excerpt — run ${explicitJob.runId} job ${explicitJob.jobId}`,
+			"",
+			`URL: ${explicitJob.url}`,
+			"",
+			fence(await fetchFailedJobLog(pi, ctx.cwd, explicitJob), "text"),
+		].join("\n"));
+	}
+
+	return sections.join("\n\n---\n\n");
+}
+
 function buildShipPrompt(command: ShipCommandName, args: string, cwd: string, collectedContext = ""): string {
 	const skill = readSkill(command);
 	return [
@@ -340,6 +478,19 @@ export default function shipCommands(pi: ExtensionAPI) {
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				notify(ctx, `/pr-ship 실행 준비 실패: ${message}`, "error");
+			}
+		},
+	});
+
+	pi.registerCommand("ci-ship", {
+		description: "pilee /ci-ship — PR CI 실패 check/log를 분석하고 근본 대응·검증·커밋·push 진행",
+		handler: async (args, ctx) => {
+			try {
+				const collectedContext = await buildCiShipCollectedContext(pi, ctx, args);
+				sendPrompt(pi, ctx, "ci-ship", args, buildShipPrompt("ci-ship", args, ctx.cwd, collectedContext));
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				notify(ctx, `/ci-ship 실행 준비 실패: ${message}`, "error");
 			}
 		},
 	});

@@ -160,6 +160,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [AskUserQuestion 옵션은 행동 분기를 표현한다](./ask-user-question-option-design.md) | active | high | 2026-05-10 | ba9a88b | ask-user-question, option, wording, ceremony, tft, 질문 |
 | [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | high | 2026-05-10 | 79e2bc8 | backlog, tasks, provenance, source-session, session, 맥락 |
 | [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md) | active | high | 2026-05-10 | 636a431 | git, incremental, code-review, commit, quality, 통합 |
+| [CI-Ship은 PR 후 검증 실패 대응 단계다](./ci-ship-failure-response-boundary.md) | active | high | 2026-05-10 | e85cee2 | ci-ship, ci, github-actions, pull-request, failure-analysis, ship |
 | [자동 로드 컨텍스트는 최소 surface만 가진다](./context-loading-minimal-surface.md) | active | high | 2026-05-09 | 5f1411c | context, agents-md, memory, system-prompt, token, autoload |
 | [Decide는 선택을 한 번 공격한다](./decide-tradeoff-challenge.md) | active | high | 2026-05-10 | ba9a88b | decide, tradeoff, challenge, productive-resistance, frame-json, decision |
 | [외부 이슈 업데이트는 preview gate를 지난다](./external-issue-preview-gate.md) | active | high | 2026-05-10 | db21ec7 | jira, issue, preview, wiki-markup, external-update, approval |
@@ -234,6 +235,7 @@ graph TD
   doc_ask_user_question_option_design["AskUserQuestion 옵션은 행동 분기를 표현한다"]
   doc_backlog_source_session_provenance["Backlog는 원 세션 출처를 보존한다"]
   doc_change_integration_discipline["변경 통합은 작은 단위와 검증을 요구한다"]
+  doc_ci_ship_failure_response_boundary["CI-Ship은 PR 후 검증 실패 대응 단계다"]
   doc_context_loading_minimal_surface["자동 로드 컨텍스트는 최소 surface만 가진다"]
   doc_decide_tradeoff_challenge["Decide는 선택을 한 번 공격한다"]
   doc_external_issue_preview_gate["외부 이슈 업데이트는 preview gate를 지난다"]
@@ -387,6 +389,10 @@ graph TD
   doc_backlog_source_session_provenance --> doc_session_identity_over_filenames
   doc_change_integration_discipline --> doc_evidence_first_verification_gate
   doc_change_integration_discipline --> doc_stress_interview_multi_axis_review
+  doc_ci_ship_failure_response_boundary --> doc_change_integration_discipline
+  doc_ci_ship_failure_response_boundary --> doc_evidence_first_verification_gate
+  doc_ci_ship_failure_response_boundary --> doc_root_cause_before_fix
+  doc_ci_ship_failure_response_boundary --> doc_ship_pr_ship_review_boundary
   doc_context_loading_minimal_surface --> doc_private_journal_public_doctrine
   doc_context_loading_minimal_surface --> doc_tool_output_noise_management
   doc_decide_tradeoff_challenge --> doc_architecture_friction_tft_lens
@@ -472,7 +478,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 69
-- Links: 209
+- Documents: 70
+- Links: 213
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

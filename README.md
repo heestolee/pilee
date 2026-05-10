@@ -222,7 +222,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | extension | `extensions/queued-messages` | [Queued command는 실행 보장이 아니다](./docs/knowledge/queued-command-prefill-boundary.md) |
 | extension | `extensions/retro` | [Retro는 private reflection이다](./docs/knowledge/retro-private-reflection-boundary.md) |
 | extension | `extensions/session-title` | [Backlog는 원 세션 출처를 보존한다](./docs/knowledge/backlog-source-session-provenance.md)<br>[세션 식별자는 파일명이 아니라 사람이 본 이름이다](./docs/knowledge/session-identity-over-filenames.md) |
-| extension | `extensions/ship-commands` | [Ship과 PR-Ship은 서로 다른 통합 단계다](./docs/knowledge/ship-pr-ship-review-boundary.md) |
+| extension | `extensions/ship-commands` | [CI-Ship은 PR 후 검증 실패 대응 단계다](./docs/knowledge/ci-ship-failure-response-boundary.md)<br>[Ship과 PR-Ship은 서로 다른 통합 단계다](./docs/knowledge/ship-pr-ship-review-boundary.md) |
 | extension | `extensions/spinner` | [Idle UI는 장식이 아니라 ambient status다](./docs/knowledge/ambient-status-surfaces.md) |
 | extension | `extensions/subagent` | [Worker는 readiness ownership을 가진다](./docs/knowledge/ai-worker-readiness-orchestrator.md)<br>[Self-healing은 actionable item만 수정한다](./docs/knowledge/self-healing-actionable-loop.md)<br>[Stress Interview는 다축 검토다](./docs/knowledge/stress-interview-multi-axis-review.md)<br>[Codex-first subagent 모델 운용 정책](./docs/knowledge/subagent-model-policy.md)<br>[Subagent 위임은 구체 프롬프트를 요구한다](./docs/knowledge/subagent-prompt-specificity.md) |
 | extension | `extensions/supervisor` | [Supervisor는 outcome guardrail이다](./docs/knowledge/supervisor-outcome-guardrail.md) |
@@ -239,6 +239,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | extension | `extensions/working-text` | [Editor affordance는 숨은 컨텍스트가 아니다](./docs/knowledge/editor-affordance-not-context.md) |
 | extension | `extensions/worktree` | [Worker는 readiness ownership을 가진다](./docs/knowledge/ai-worker-readiness-orchestrator.md)<br>[Private overlay package는 회사·개인 실행 맥락을 담는다](./docs/knowledge/private-overlay-package-boundary.md)<br>[Queued command는 실행 보장이 아니다](./docs/knowledge/queued-command-prefill-boundary.md)<br>[종료된 포크는 transcript 주입보다 revive가 우선이다](./docs/knowledge/revive-over-transcript-recall.md)<br>[세션 식별자는 파일명이 아니라 사람이 본 이름이다](./docs/knowledge/session-identity-over-filenames.md)<br>[Worktree 생성은 부모 패널의 게이트다](./docs/knowledge/worktree-creation-parent-gate.md)<br>[Worktree 의존성 준비는 조건부 worker가 맡는다](./docs/knowledge/worktree-dependency-bootstrap-worker.md)<br>[Worktree는 실행 경계다](./docs/knowledge/worktree-execution-boundary.md)<br>[Worktree 세션 연속성과 식별성 원칙](./docs/knowledge/worktree-session-continuity.md) |
 | skill | `skills/ask-user-question-rules` | [AskUserQuestion은 의사결정 게이트다](./docs/knowledge/ask-user-question-decision-gates.md)<br>[AskUserQuestion 옵션은 행동 분기를 표현한다](./docs/knowledge/ask-user-question-option-design.md)<br>[색상은 정보 위계다](./docs/knowledge/theme-information-hierarchy.md) |
+| skill | `skills/ci-ship` | [CI-Ship은 PR 후 검증 실패 대응 단계다](./docs/knowledge/ci-ship-failure-response-boundary.md) |
 | skill | `skills/code-review-and-quality` | [변경 통합은 작은 단위와 검증을 요구한다](./docs/knowledge/change-integration-discipline.md)<br>[Diff review draft는 PR 코멘트 전 단계다](./docs/knowledge/diff-review-draft-handoff.md)<br>[변경된 줄은 요청으로 추적 가능해야 한다](./docs/knowledge/request-traceability-surgical-changes.md)<br>[검증 중 코드 변경은 이전 검증을 무효화한다](./docs/knowledge/verification-invalidation-on-change.md) |
 | skill | `skills/db-write` | [DB write는 인간 실행 게이트를 가진다](./docs/knowledge/database-write-human-execution-gate.md)<br>[Private overlay package는 회사·개인 실행 맥락을 담는다](./docs/knowledge/private-overlay-package-boundary.md) |
 | skill | `skills/db-write-migration` | [DB write는 인간 실행 게이트를 가진다](./docs/knowledge/database-write-human-execution-gate.md)<br>[Private overlay package는 회사·개인 실행 맥락을 담는다](./docs/knowledge/private-overlay-package-boundary.md) |
@@ -289,7 +290,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | **context-loader** | 세션 시작 시 필요한 최소 컨텍스트 로딩 surface |
 | **tool-group-renderer** | 관련 도구 출력 그룹/축소 |
 | **tft-commands** | `/frame`/`/decide`/`/verify`를 pilee SKILL.md 인라인 실행으로 라우팅 |
-| **ship-commands** | `/ship`/`/pr-ship`을 pilee SKILL.md 인라인 실행으로 라우팅하고 PR 리뷰 컨텍스트를 수집 |
+| **ship-commands** | `/ship`/`/pr-ship`/`/ci-ship`을 pilee SKILL.md 인라인 실행으로 라우팅하고 PR 리뷰·CI 컨텍스트를 수집 |
 | **frame-studio** | Glimpse 기반 TFT Studio shell — Frame/Decide/Verify/Verify Report 탭 + 선택 UI/전문 저장 + Archive `이어하기`/`/tft open` 재진입 |
 | **user-facing-language** | 사용자에게 보이는 진행/요약/답변은 짧은 한국어를 기본으로 하는 system prompt guard |
 
@@ -340,7 +341,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 ## Skills
 
 <!-- PILEE_README_SKILLS_START -->
-21개. 글로벌 워크플로 스킬만 pilee에 포함. 프로젝트 고유 스킬(create-pr, self-review)은 해당 레포/private overlay에 위치.
+22개. 글로벌 워크플로 스킬만 pilee에 포함. 프로젝트 고유 스킬(create-pr, self-review)은 해당 레포/private overlay에 위치.
 
 > `skills/*/SKILL.md`와 `scripts/knowledge.mjs`의 inventory metadata에서 생성됩니다. 변경 후 `node scripts/knowledge.mjs --graph`로 갱신합니다.
 
@@ -377,6 +378,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | **jira-issue-management** | Jira 이슈 작성/수정 preview gate |
 | **ship** | PR 전 변경사항을 의도 단위 커밋·검증·push로 정리 |
 | **pr-ship** | PR 리뷰 코멘트를 근본 대응하고 커밋·push·스레드 답글까지 수행 |
+| **ci-ship** | PR CI 실패를 check/log 기반으로 분석해 수정·검증·push |
 | **verify-report** | 캡처/네트워크/콘솔/코드 diff 기반 검증 리포트 |
 | **start-local-dev** | 로컬 dev 서버 구동과 진단 |
 <!-- PILEE_README_SKILLS_END -->

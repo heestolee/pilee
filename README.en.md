@@ -212,7 +212,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | extension | `extensions/queued-messages` | [Queued Command Prefill Boundary](./docs/knowledge/queued-command-prefill-boundary.md) |
 | extension | `extensions/retro` | [Retro Private Reflection Boundary](./docs/knowledge/retro-private-reflection-boundary.md) |
 | extension | `extensions/session-title` | [Backlog Source Session Provenance](./docs/knowledge/backlog-source-session-provenance.md)<br>[Session Identity Over Filenames](./docs/knowledge/session-identity-over-filenames.md) |
-| extension | `extensions/ship-commands` | [Ship PR Ship Review Boundary](./docs/knowledge/ship-pr-ship-review-boundary.md) |
+| extension | `extensions/ship-commands` | [Ci Ship Failure Response Boundary](./docs/knowledge/ci-ship-failure-response-boundary.md)<br>[Ship PR Ship Review Boundary](./docs/knowledge/ship-pr-ship-review-boundary.md) |
 | extension | `extensions/spinner` | [Ambient Status Surfaces](./docs/knowledge/ambient-status-surfaces.md) |
 | extension | `extensions/subagent` | [AI Worker Readiness Orchestrator](./docs/knowledge/ai-worker-readiness-orchestrator.md)<br>[Self Healing Actionable Loop](./docs/knowledge/self-healing-actionable-loop.md)<br>[Stress Interview Multi Axis Review](./docs/knowledge/stress-interview-multi-axis-review.md)<br>[Subagent Model Policy](./docs/knowledge/subagent-model-policy.md)<br>[Subagent Prompt Specificity](./docs/knowledge/subagent-prompt-specificity.md) |
 | extension | `extensions/supervisor` | [Supervisor Outcome Guardrail](./docs/knowledge/supervisor-outcome-guardrail.md) |
@@ -229,6 +229,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | extension | `extensions/working-text` | [Editor Affordance Not Context](./docs/knowledge/editor-affordance-not-context.md) |
 | extension | `extensions/worktree` | [AI Worker Readiness Orchestrator](./docs/knowledge/ai-worker-readiness-orchestrator.md)<br>[Private Overlay Package Boundary](./docs/knowledge/private-overlay-package-boundary.md)<br>[Queued Command Prefill Boundary](./docs/knowledge/queued-command-prefill-boundary.md)<br>[Revive Over Transcript Recall](./docs/knowledge/revive-over-transcript-recall.md)<br>[Session Identity Over Filenames](./docs/knowledge/session-identity-over-filenames.md)<br>[Worktree Creation Parent Gate](./docs/knowledge/worktree-creation-parent-gate.md)<br>[Worktree Dependency Bootstrap Worker](./docs/knowledge/worktree-dependency-bootstrap-worker.md)<br>[Worktree Execution Boundary](./docs/knowledge/worktree-execution-boundary.md)<br>[Worktree Session Continuity](./docs/knowledge/worktree-session-continuity.md) |
 | skill | `skills/ask-user-question-rules` | [Ask User Question Decision Gates](./docs/knowledge/ask-user-question-decision-gates.md)<br>[Ask User Question Option Design](./docs/knowledge/ask-user-question-option-design.md)<br>[Theme Information Hierarchy](./docs/knowledge/theme-information-hierarchy.md) |
+| skill | `skills/ci-ship` | [Ci Ship Failure Response Boundary](./docs/knowledge/ci-ship-failure-response-boundary.md) |
 | skill | `skills/code-review-and-quality` | [Change Integration Discipline](./docs/knowledge/change-integration-discipline.md)<br>[Diff Review Draft Handoff](./docs/knowledge/diff-review-draft-handoff.md)<br>[Request Traceability Surgical Changes](./docs/knowledge/request-traceability-surgical-changes.md)<br>[Verification Invalidation On Change](./docs/knowledge/verification-invalidation-on-change.md) |
 | skill | `skills/db-write` | [Database Write Human Execution Gate](./docs/knowledge/database-write-human-execution-gate.md)<br>[Private Overlay Package Boundary](./docs/knowledge/private-overlay-package-boundary.md) |
 | skill | `skills/db-write-migration` | [Database Write Human Execution Gate](./docs/knowledge/database-write-human-execution-gate.md)<br>[Private Overlay Package Boundary](./docs/knowledge/private-overlay-package-boundary.md) |
@@ -279,7 +280,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **context-loader** | Minimal contextual loading surface |
 | **tool-group-renderer** | Groups and collapses related tool output |
 | **tft-commands** | Routes `/frame`, `/decide`, `/verify` to pilee skills |
-| **ship-commands** | Routes `/ship` and `/pr-ship` to pilee skills and collects PR review context |
+| **ship-commands** | Routes `/ship`, `/pr-ship`, and `/ci-ship` to pilee skills and collects PR review/CI context |
 | **frame-studio** | Glimpse-based TFT Studio shell with Frame/Decide/Verify/Verify Report tabs, choices, transcript replay, Archive resume, and `/tft open` |
 | **user-facing-language** | System prompt guard that keeps user-visible progress, summaries, and answers short and Korean-first |
 
@@ -330,7 +331,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 ## Skills
 
 <!-- PILEE_README_SKILLS_START -->
-21 global workflow skills. Project-specific skills belong in project/private overlays.
+22 global workflow skills. Project-specific skills belong in project/private overlays.
 
 > Generated from `skills/*/SKILL.md` plus inventory metadata in `scripts/knowledge.mjs`; refresh with `node scripts/knowledge.mjs --graph`.
 
@@ -367,6 +368,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **jira-issue-management** | Jira issue preparation with preview gate |
 | **ship** | Pre-PR commit, verification, and push workflow |
 | **pr-ship** | Post-PR review response with root-cause fix, commit, push, and thread reply |
+| **ci-ship** | Post-PR CI failure analysis, fix, verification, and push workflow |
 | **verify-report** | Capture/evidence-based verification reports |
 | **start-local-dev** | Local dev server startup diagnosis |
 <!-- PILEE_README_SKILLS_END -->
