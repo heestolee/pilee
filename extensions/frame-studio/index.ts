@@ -337,6 +337,31 @@ function persistState(state: FrameStudioState): void {
 	} catch {}
 }
 
+function timelineContentSignature(entry: Partial<StudioTimelineEntry>): string {
+	return JSON.stringify({
+		kind: entry.kind,
+		tab: entry.tab,
+		title: entry.title,
+		step: entry.step,
+		markdown: entry.markdown,
+		message: entry.message,
+		question: entry.question,
+		answer: entry.answer,
+	});
+}
+
+function normalizeTimelineEntries(entries: unknown[]): StudioTimelineEntry[] {
+	const normalized: StudioTimelineEntry[] = [];
+	for (const entry of entries) {
+		if (!entry || typeof entry !== "object") continue;
+		const current = entry as StudioTimelineEntry;
+		const previous = normalized[normalized.length - 1];
+		if (previous && current.kind === "update" && previous.kind === "update" && timelineContentSignature(previous) === timelineContentSignature(current)) continue;
+		normalized.push(current);
+	}
+	return normalized;
+}
+
 function loadPersistedState(identity: FrameIdentity): FrameStudioState | null {
 	const transcriptPath = transcriptPathForIdentity(identity.key);
 	try {
@@ -359,7 +384,7 @@ function loadPersistedState(identity: FrameIdentity): FrameStudioState | null {
 			updatedAt: Date.now(),
 			question: undefined,
 			lastAnswer: parsed.lastAnswer,
-			timeline: Array.isArray(parsed.timeline) ? parsed.timeline : [],
+			timeline: Array.isArray(parsed.timeline) ? normalizeTimelineEntries(parsed.timeline) : [],
 			logs: Array.isArray(parsed.logs) ? parsed.logs : [],
 		};
 	} catch {
@@ -368,6 +393,8 @@ function loadPersistedState(identity: FrameIdentity): FrameStudioState | null {
 }
 
 function appendTimeline(state: FrameStudioState, entry: Omit<StudioTimelineEntry, "id" | "time">): void {
+	const previous = state.timeline[state.timeline.length - 1];
+	if (entry.kind === "update" && previous?.kind === "update" && timelineContentSignature(previous) === timelineContentSignature(entry)) return;
 	state.timeline.push({ id: randomUUID().slice(0, 8), time: Date.now(), ...entry });
 	state.updatedAt = Date.now();
 	persistState(state);
@@ -842,7 +869,7 @@ async function openStudio(pi: ExtensionAPI, ctx: ExtensionContext, handle: Frame
 	return "browser";
 }
 
-async function ensureRun(pi: ExtensionAPI, ctx: ExtensionContext, params: { title?: string; markdown?: string; step?: string; tab?: string; identityKey?: string; displayTitle?: string; args?: string }): Promise<{ handle: FrameStudioHandle; opened: "glimpse" | "browser" | "none" | "reused" }> {
+async function ensureRun(pi: ExtensionAPI, ctx: ExtensionContext, params: { title?: string; markdown?: string; step?: string; tab?: string; identityKey?: string; displayTitle?: string; args?: string }, options: { recordReuseUpdate?: boolean } = {}): Promise<{ handle: FrameStudioHandle; opened: "glimpse" | "browser" | "none" | "reused" }> {
 	mkdirSync(STATE_DIR, { recursive: true });
 	const inferred = buildFrameIdentity(ctx as any, params.args ?? "");
 	const identity = params.identityKey || params.displayTitle
@@ -854,7 +881,7 @@ async function ensureRun(pi: ExtensionAPI, ctx: ExtensionContext, params: { titl
 		if (params.title) handle.state.title = params.title;
 		updateTab(handle.state, tab, { markdown: params.markdown, step: params.step });
 		if (params.markdown !== undefined || params.step) handle.state.lastAnswer = undefined;
-		if (params.markdown !== undefined || params.step || params.title || params.tab) {
+		if (options.recordReuseUpdate !== false && (params.markdown !== undefined || params.step || params.title || params.tab)) {
 			appendTimeline(handle.state, { kind: "update", tab, title: params.title, step: params.step, markdown: params.markdown });
 		}
 		handle.state.updatedAt = Date.now();
@@ -1120,7 +1147,7 @@ export default function (pi: ExtensionAPI) {
 
 			let handle = params.runId ? runsById.get(params.runId) : undefined;
 			if (!handle && (params.identityKey || params.displayTitle || params.args)) {
-				const ensured = await ensureRun(pi, ctx, params);
+				const ensured = await ensureRun(pi, ctx, params, { recordReuseUpdate: action === "start" });
 				handle = ensured.handle;
 			} else if (!handle) {
 				handle = latestHandle();

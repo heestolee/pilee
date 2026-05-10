@@ -2574,9 +2574,33 @@ function renderTranscriptMarkdownBlock(markdown: unknown): string {
 	return `<details><summary>Markdown 전문</summary><pre>${escapeHtml(markdown)}</pre></details>`;
 }
 
+function frameTimelineSignature(raw: unknown): string {
+	return JSON.stringify({
+		kind: transcriptValue(raw, "kind"),
+		tab: transcriptValue(raw, "tab"),
+		title: transcriptValue(raw, "title"),
+		step: transcriptValue(raw, "step"),
+		markdown: transcriptValue(raw, "markdown"),
+		message: transcriptValue(raw, "message"),
+		question: transcriptValue(raw, "question"),
+		answer: transcriptValue(raw, "answer"),
+	});
+}
+
+function normalizeFrameTimeline(timeline: unknown[]): unknown[] {
+	const normalized: unknown[] = [];
+	for (const raw of timeline) {
+		const previous = normalized[normalized.length - 1];
+		if (previous && transcriptValue(raw, "kind") === "update" && transcriptValue(previous, "kind") === "update" && frameTimelineSignature(previous) === frameTimelineSignature(raw)) continue;
+		normalized.push(raw);
+	}
+	return normalized;
+}
+
 function renderFrameTimeline(timeline: unknown[]): string {
-	if (!timeline.length) return `<p class="muted">기록된 timeline이 없습니다.</p>`;
-	return timeline.map((raw) => {
+	const normalized = normalizeFrameTimeline(timeline);
+	if (!normalized.length) return `<p class="muted">기록된 timeline이 없습니다.</p>`;
+	return normalized.map((raw) => {
 		const kind = String(transcriptValue(raw, "kind") || "entry");
 		const step = String(transcriptValue(raw, "step") || "");
 		const time = typeof transcriptValue(raw, "time") === "number" ? new Date(transcriptValue(raw, "time") as number).toLocaleString() : "";
@@ -2680,7 +2704,7 @@ function renderWebSearchCards(webSearches: WebSearchEntry[]): string {
 
 function renderFrameCards(frames: FrameTranscriptEntry[]): string {
 	if (!frames.length) return `<div class="empty">저장된 TFT Studio 전문이 없습니다.</div>`;
-	return `<div class="grid">${frames.map((f) => `<article class="card searchable" data-search="${escapeAttr(`${f.title} ${f.identity} ${f.mode} ${f.workspace} ${f.ticket}`.toLowerCase())}"><h3>${escapeHtml(f.title)}</h3><div class="meta"><span class="badge">${escapeHtml(f.mode)}</span>${f.workspace ? `<span class="badge">${escapeHtml(f.workspace)}</span>` : ""}${f.ticket ? `<span class="badge">${escapeHtml(f.ticket)}</span>` : ""}<span class="badge">${escapeHtml(f.time)}</span><span class="badge">${f.timeline.length} entries</span></div><div class="path">${escapeHtml(f.identity)}</div><details><summary>Frame 전문 미리보기</summary><div class="timeline">${renderFrameTimeline(f.timeline)}</div></details><div class="actions">${artifactOpenButtons(f.path)}</div></article>`).join("\n")}</div>`;
+	return `<div class="grid">${frames.map((f) => { const timeline = normalizeFrameTimeline(f.timeline); return `<article class="card searchable" data-search="${escapeAttr(`${f.title} ${f.identity} ${f.mode} ${f.workspace} ${f.ticket}`.toLowerCase())}"><h3>${escapeHtml(f.title)}</h3><div class="meta"><span class="badge">${escapeHtml(f.mode)}</span>${f.workspace ? `<span class="badge">${escapeHtml(f.workspace)}</span>` : ""}${f.ticket ? `<span class="badge">${escapeHtml(f.ticket)}</span>` : ""}<span class="badge">${escapeHtml(f.time)}</span><span class="badge">${timeline.length} entries</span></div><div class="path">${escapeHtml(f.identity)}</div><details><summary>Frame 전문 미리보기</summary><div class="timeline">${renderFrameTimeline(timeline)}</div></details><div class="actions">${artifactOpenButtons(f.path)}</div></article>`; }).join("\n")}</div>`;
 }
 
 function renderPlanningDocCards(docs: PlanningDocEntry[]): string {
