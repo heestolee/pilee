@@ -22,7 +22,7 @@ source:
   - pilee-history:2026-05-06#65
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-10
-reviewed_commit: db21ec7f73ef8c9ad581bd8610f8203799defb7b
+reviewed_commit: a0027b0040174b51ad658f244c97b88d350f00c2
 related:
   - ask-user-question-decision-gates
   - evidence-first-verification-gate

@@ -19,7 +19,7 @@ applies_to:
 source:
   - user-direction:2026-05-10-verify-risk-lens-overlay
 reviewed_at: 2026-05-10
-reviewed_commit: 777018e060f2287f7888a19ca2a4d32d9720b6db
+reviewed_commit: a0027b0040174b51ad658f244c97b88d350f00c2
 related:
   - frame-verify-contract
   - evidence-first-verification-gate
