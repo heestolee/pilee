@@ -606,6 +606,28 @@ function resolveReviveCwd(target: ForkRecord, fallbackCwd: string): { cwd: strin
 	};
 }
 
+function ensureSessionHeaderCwd(sessionFile: string, cwd: string): { updated: boolean; error?: string } {
+	try {
+		const raw = readFileSync(sessionFile, "utf8");
+		const lines = raw.split("\n");
+		for (let i = 0; i < lines.length; i++) {
+			const line = lines[i];
+			if (!line.trim()) continue;
+			let entry: any;
+			try { entry = JSON.parse(line); } catch { continue; }
+			if (entry?.type !== "session") continue;
+			if (entry.cwd === cwd) return { updated: false };
+			entry.cwd = cwd;
+			lines[i] = JSON.stringify(entry);
+			writeFileSync(sessionFile, lines.join("\n"));
+			return { updated: true };
+		}
+		return { updated: false, error: "session header를 찾지 못했습니다" };
+	} catch (error) {
+		return { updated: false, error: error instanceof Error ? error.message : String(error) };
+	}
+}
+
 function buildOpenSessionScript(mode: Direction, cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}): string {
 	const cmd = buildSessionLaunchCommand(cwd, sessionFile, env);
 	if (mode === "tab") {
@@ -1496,11 +1518,14 @@ export default function (pi: ExtensionAPI) {
 		const item = buildReviveItem(target);
 		if (mode === "here") {
 			const reviveCwd = resolveReviveCwd(target, ctx.cwd);
+			const headerSync = reviveCwd.fallback ? { updated: false } : ensureSessionHeaderCwd(target.sessionFile, reviveCwd.cwd);
+			if (headerSync.error) ctx.ui.notify(`revive cwd header 보정 실패: ${headerSync.error}`, "warning");
 			try {
 				const result = await ctx.switchSession(target.sessionFile, {
 					cwdOverride: reviveCwd.cwd,
 					withSession: async (nextCtx) => {
-						const cwdNote = reviveCwd.fallback ? ` · cwd fallback: ${reviveCwd.reason}` : ` · cwd ${workspaceLabelFor(reviveCwd.cwd)}`;
+						const headerNote = headerSync.updated ? " · header cwd 보정" : "";
+						const cwdNote = reviveCwd.fallback ? ` · cwd fallback: ${reviveCwd.reason}` : ` · cwd ${workspaceLabelFor(reviveCwd.cwd)}${headerNote}`;
 						nextCtx.ui.notify(`${item.workspaceLabel} · ${item.title} 세션 재개 → 현재 패널${cwdNote}`, reviveCwd.fallback ? "warning" : "info");
 					},
 				});
@@ -1518,6 +1543,10 @@ export default function (pi: ExtensionAPI) {
 
 		const reviveCwd = resolveReviveCwd(target, ctx.cwd);
 		if (reviveCwd.fallback) ctx.ui.notify(`${reviveCwd.reason}. 현재 cwd로 엽니다: ${reviveCwd.cwd}`, "warning");
+		else {
+			const headerSync = ensureSessionHeaderCwd(target.sessionFile, reviveCwd.cwd);
+			if (headerSync.error) ctx.ui.notify(`revive cwd header 보정 실패: ${headerSync.error}`, "warning");
+		}
 		const cwd = reviveCwd.cwd;
 		const isP0 = recordSource(target) === "p0";
 		if (!isP0) { try { unlinkSync(join(HANDOFF_DIR, `${target.forkId}.json`)); } catch {} }
