@@ -25,7 +25,7 @@ source:
   - user-direction:2026-05-10-tft-stage-run-cards
   - user-direction:2026-05-10-tft-visual-db-structure
 reviewed_at: 2026-05-10
-reviewed_commit: 205c12153350ccd4d81aaab74b94ed44965270b1
+reviewed_commit: eef013759f36cb9625b3d555bf2f8a55d3580ee3
 related:
   - frame-planning-identity
   - frame-verify-contract
