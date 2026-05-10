@@ -513,6 +513,15 @@ button { border:0; border-radius:12px; padding:10px 15px; font-weight:800; curso
 .answer-row { margin:8px 0; }
 .answer-label { color:var(--muted); font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
 .answer-value { margin-top:3px; }
+.stage-runs { display:grid; gap:16px; }
+.stage-run { border:1px solid var(--line); border-radius:16px; background:#fafaf9; padding:12px; }
+.stage-run.running, .stage-run.awaiting { border-color:#c4b5fd; background:#faf9ff; }
+.stage-run.done { border-color:#bbf7d0; background:#f0fdf4; }
+.stage-run.aborted { border-color:#fecaca; background:#fef2f2; }
+.stage-run-head { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start; margin-bottom:10px; }
+.stage-run-title { font-weight:900; font-size:15px; }
+.stage-run-meta { display:flex; flex-wrap:wrap; gap:6px; color:var(--muted); font-size:12px; }
+.stage-run-body { display:grid; gap:12px; }
 .timeline { display:grid; gap:12px; }
 .timeline-item { border:1px solid var(--line); border-radius:14px; padding:14px 16px; background:#fff; }
 .timeline-item.pending { border-color:#ddd6fe; background:#faf9ff; box-shadow:0 0 0 1px rgba(124,58,237,.10) inset; }
@@ -671,13 +680,56 @@ function renderTimelineEntry(entry, s) {
   if (entry.answer) body += renderAnswerCard(entry.answer);
   return '<div class="' + classes.join(' ') + '">' + head + '<div class="timeline-body">' + (body || '<span class="status">내용 없음</span>') + '</div></div>';
 }
+function timelineEntriesForTab(s, key) {
+  return (s.timeline || []).filter(function(entry) { return (!entry.tab && key === 'frame') || entry.tab === key; });
+}
 function visibleTimelineEntries(s) {
-  var active = activeTabKey(s);
-  return (s.timeline || []).filter(function(entry) { return !entry.tab || entry.tab === active; });
+  return timelineEntriesForTab(s, activeTabKey(s));
 }
 function renderTimeline(entries, s) {
   if (!entries || !entries.length) return '<span class="status">아직 기록된 TFT 전문이 없습니다.</span>';
   return entries.map(function(entry) { return renderTimelineEntry(entry, s); }).join('');
+}
+function stageLabel(key) {
+  var tab = STUDIO_TABS.find(function(item) { return item.key === key; });
+  return tab ? tab.label : key;
+}
+function groupStageRuns(entries, active) {
+  var runs = []; var current = null; var index = 0;
+  function startRun(entry) {
+    index += 1;
+    current = { index:index, tab:active, entries:[], status:'running', startedAt:entry && entry.time, endedAt:null };
+    runs.push(current);
+  }
+  (entries || []).forEach(function(entry) {
+    var kind = entry.kind || 'entry';
+    if (!current || (current.entries.length && (kind === 'start' || current.status !== 'running'))) startRun(entry);
+    current.entries.push(entry);
+    if (!current.startedAt || (entry.time && entry.time < current.startedAt)) current.startedAt = entry.time;
+    if (kind === 'finish') { current.status = 'done'; current.endedAt = entry.time; }
+    else if (kind === 'abort') { current.status = 'aborted'; current.endedAt = entry.time; }
+  });
+  return runs;
+}
+function stageRunStatus(run, s) {
+  var pending = !!(s && s.status === 'awaiting' && s.question && run.entries.some(function(entry) { return entry.question && entry.question.id === s.question.id; }));
+  return pending ? 'awaiting' : run.status;
+}
+function renderStageRun(run, s, active) {
+  var status = stageRunStatus(run, s);
+  var start = run.startedAt ? new Date(run.startedAt).toLocaleTimeString() : '';
+  var end = run.endedAt ? new Date(run.endedAt).toLocaleTimeString() : '';
+  var title = stageLabel(active) + ' Run #' + run.index;
+  var range = start && end ? start + ' → ' + end : (start || '시간 미상');
+  return '<article class="stage-run ' + esc(status) + '">'
+    + '<div class="stage-run-head"><div><div class="stage-run-title">' + esc(title) + '</div><div class="stage-run-meta"><span>' + esc(range) + '</span><span>' + run.entries.length + ' entries</span></div></div><span class="badge">' + esc(status) + '</span></div>'
+    + '<div class="stage-run-body timeline">' + renderTimeline(run.entries, s) + '</div>'
+    + '</article>';
+}
+function renderStageRuns(entries, s, active) {
+  if (!entries || !entries.length) return '<span class="status">아직 기록된 TFT 전문이 없습니다.</span>';
+  var runs = groupStageRuns(entries, active);
+  return '<div class="stage-runs">' + runs.map(function(run) { return renderStageRun(run, s, active); }).join('') + '</div>';
 }
 function tabData(s, key) {
   var tabs = s.tabs || {};
@@ -692,7 +744,8 @@ function activeTabKey(s) {
 function tabStatus(s, key) {
   var data = tabData(s, key);
   if (s.status === 'awaiting' && s.question && s.question.tab === key) return 'awaiting';
-  if (key === 'frame' && s.status === 'done') return 'done';
+  var runs = groupStageRuns(timelineEntriesForTab(s, key), key);
+  if (runs.length) return stageRunStatus(runs[runs.length - 1], s);
   if (data.markdown) return 'active';
   return 'idle';
 }
@@ -727,7 +780,7 @@ function render(s) {
   document.getElementById('flowTitle').textContent = activeMeta.label + ' 진행';
   document.getElementById('flowSubtitle').textContent = '업데이트·질문·답변을 시간순으로 표시합니다. 현재 선택도 해당 step 안에 표시됩니다.';
   document.getElementById('flowStatus').textContent = tabStatus(s, active);
-  document.getElementById('timeline').innerHTML = renderTimeline(visibleTimelineEntries(s), s);
+  document.getElementById('timeline').innerHTML = renderStageRuns(visibleTimelineEntries(s), s, active);
   document.getElementById('logs').innerHTML = (s.logs || []).slice().reverse().map(function(log) {
     return '<div>' + new Date(log.time).toLocaleTimeString() + ' · ' + esc(log.message) + '</div>';
   }).join('') || '<span class="status">로그 없음</span>';
@@ -869,7 +922,7 @@ async function openStudio(pi: ExtensionAPI, ctx: ExtensionContext, handle: Frame
 	return "browser";
 }
 
-async function ensureRun(pi: ExtensionAPI, ctx: ExtensionContext, params: { title?: string; markdown?: string; step?: string; tab?: string; identityKey?: string; displayTitle?: string; args?: string }, options: { recordReuseUpdate?: boolean } = {}): Promise<{ handle: FrameStudioHandle; opened: "glimpse" | "browser" | "none" | "reused" }> {
+async function ensureRun(pi: ExtensionAPI, ctx: ExtensionContext, params: { title?: string; markdown?: string; step?: string; tab?: string; identityKey?: string; displayTitle?: string; args?: string }, options: { recordReuseUpdate?: boolean; reactivate?: boolean; startStage?: boolean } = {}): Promise<{ handle: FrameStudioHandle; opened: "glimpse" | "browser" | "none" | "reused" }> {
 	mkdirSync(STATE_DIR, { recursive: true });
 	const inferred = buildFrameIdentity(ctx as any, params.args ?? "");
 	const identity = params.identityKey || params.displayTitle
@@ -878,11 +931,20 @@ async function ensureRun(pi: ExtensionAPI, ctx: ExtensionContext, params: { titl
 	const tab = normalizeTab(params.tab) ?? "frame";
 	let handle = runsByIdentity.get(identity.key);
 	if (handle && !handle.closed) {
+		const wasTerminal = handle.state.status === "done" || handle.state.status === "aborted";
+		if (options.reactivate && wasTerminal) handle.state.status = "running";
 		if (params.title) handle.state.title = params.title;
 		updateTab(handle.state, tab, { markdown: params.markdown, step: params.step });
 		if (params.markdown !== undefined || params.step) handle.state.lastAnswer = undefined;
 		if (options.recordReuseUpdate !== false && (params.markdown !== undefined || params.step || params.title || params.tab)) {
-			appendTimeline(handle.state, { kind: "update", tab, title: params.title, step: params.step, markdown: params.markdown });
+			appendTimeline(handle.state, {
+				kind: options.startStage && wasTerminal ? "start" : "update",
+				tab,
+				title: params.title,
+				step: params.step,
+				markdown: params.markdown,
+				message: options.startStage && wasTerminal ? `${tabLabel(tab)} stage restarted in the same work-unit transcript.` : undefined,
+			});
 		}
 		handle.state.updatedAt = Date.now();
 		pushState(handle);
@@ -908,12 +970,18 @@ async function ensureRun(pi: ExtensionAPI, ctx: ExtensionContext, params: { titl
 		timeline: [],
 		logs: [],
 	};
+	const restoredWasTerminal = restored?.status === "done" || restored?.status === "aborted";
+	if (restoredWasTerminal && options.reactivate) state.status = "running";
 	if (params.title) state.title = params.title;
 	updateTab(state, tab, { markdown: params.markdown, step: params.step });
 	handle = createServerFor(state);
 	state.url = await listenOnLoopback(handle.server);
-	if (restored) appendTimeline(state, { kind: "restore", tab, step: params.step, markdown: params.markdown, message: "Saved TFT Studio transcript restored." });
-	else appendTimeline(state, { kind: "start", tab, title: state.title, step: state.step, markdown: state.markdown, message: "TFT Studio started." });
+	if (restored) {
+		appendTimeline(state, { kind: "restore", tab, step: params.step, markdown: params.markdown, message: "Saved TFT Studio transcript restored." });
+		if (restoredWasTerminal && options.startStage) {
+			appendTimeline(state, { kind: "start", tab, title: state.title, step: params.step, markdown: params.markdown, message: `${tabLabel(tab)} stage restarted in the same work-unit transcript.` });
+		}
+	} else appendTimeline(state, { kind: "start", tab, title: state.title, step: state.step, markdown: state.markdown, message: "TFT Studio started." });
 	addLog(handle, restored ? "Saved TFT Studio transcript restored." : "TFT Studio started.");
 	runsById.set(runId, handle);
 	runsByIdentity.set(identity.key, handle);
@@ -1139,7 +1207,7 @@ export default function (pi: ExtensionAPI) {
 			if (!action) throw new Error("frame_studio action is required.");
 
 			if (action === "start") {
-				const { handle, opened } = await ensureRun(pi, ctx, params);
+				const { handle, opened } = await ensureRun(pi, ctx, params, { reactivate: true, startStage: true });
 				const tab = handle.state.activeTab;
 				const context = toolContextDetails(handle.state, tab, `TFT Studio started on ${tabLabel(tab)}.`);
 				return resultText(`TFT Studio started (${handle.state.runId}). ${handle.state.url}. Transcript ref: ${context.transcriptRef.openCommand}. Opened: ${opened}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, identity: handle.state.identity, activeTab: handle.state.activeTab, opened, ...context, snapshot: studioSnapshot(handle.state, tab) });
@@ -1147,14 +1215,14 @@ export default function (pi: ExtensionAPI) {
 
 			let handle = params.runId ? runsById.get(params.runId) : undefined;
 			if (!handle && (params.identityKey || params.displayTitle || params.args)) {
-				const ensured = await ensureRun(pi, ctx, params, { recordReuseUpdate: action === "start" });
+				const ensured = await ensureRun(pi, ctx, params, { recordReuseUpdate: action === "start", reactivate: action !== "open", startStage: action === "start" });
 				handle = ensured.handle;
 			} else if (!handle) {
 				handle = latestHandle();
 			}
 
 			if (!handle && ["update", "ask", "open"].includes(action)) {
-				const ensured = await ensureRun(pi, ctx, params);
+				const ensured = await ensureRun(pi, ctx, params, { reactivate: action !== "open" });
 				handle = ensured.handle;
 			}
 			if (!handle) throw new Error("No active TFT Studio run. Call action=start first.");

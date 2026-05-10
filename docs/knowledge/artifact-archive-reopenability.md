@@ -48,6 +48,8 @@ related:
 
 Archive의 `기획 / Frame`은 재진입 가능한 기획 artifact만 보여줍니다. `.context/work/**/Session <id>.md`처럼 fork-panel/Pi 대화 전문을 markdown으로 내보낸 파일은 session provenance이며, 기획 문서가 아니므로 `Pi 이력` 쪽에 남기고 planning tab에서는 제외합니다. TFT Studio transcript 카드에는 `이어하기` 버튼을 노출해, 사용자가 JSON path나 `/tft open ...` 명령을 직접 입력하지 않아도 archive를 실행한 현재 Pi session에서 같은 identity/timeline으로 이어갈 수 있게 합니다.
 
+TFT Studio transcript preview도 live Studio와 같은 stage run grouping을 사용합니다. 같은 work unit에서 Frame/Decide/Verify를 여러 번 수행한 경우 `Frame Run #1`, `Frame Run #2`, `Verify Run #1`처럼 run 카드로 묶어 보여줘야, reopen 시 “같은 tab의 어느 반복 검증/결정인가”를 잃지 않습니다.
+
 ## Open Original Rule
 
 artifact browser에서 “원본 열기”는 static `file://` 링크에 기대지 않고 extension host가 허용한 realpath를 system opener로 여는 방식이 안전합니다. Glimpse/WebView가 외부 링크를 삼킬 수 있으므로, 열기 요청은 allowlisted local path와 host-side open 동작으로 처리합니다.

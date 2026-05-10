@@ -2597,27 +2597,84 @@ function normalizeFrameTimeline(timeline: unknown[]): unknown[] {
 	return normalized;
 }
 
-function renderFrameTimeline(timeline: unknown[]): string {
+function frameTabLabel(tab: string): string {
+	if (tab === "frame") return "Frame";
+	if (tab === "decide") return "Decide";
+	if (tab === "verify") return "Verify";
+	if (tab === "verify-report") return "Verify Report";
+	return tab || "TFT";
+}
+
+function renderFrameTimelineEntry(raw: unknown): string {
+	const kind = String(transcriptValue(raw, "kind") || "entry");
+	const step = String(transcriptValue(raw, "step") || "");
+	const time = typeof transcriptValue(raw, "time") === "number" ? new Date(transcriptValue(raw, "time") as number).toLocaleString() : "";
+	const question = transcriptValue(raw, "question") as Record<string, unknown> | undefined;
+	const answer = transcriptValue(raw, "answer") as Record<string, unknown> | undefined;
+	const options = Array.isArray(question?.options) ? question.options : [];
+	const selected = Array.isArray(answer?.selectedOptions) ? answer.selectedOptions : [];
+	const text = typeof answer?.text === "string" ? answer.text : "";
+	return `<article class="timeline-item">
+		<div class="timeline-head"><span>${escapeHtml(time)}</span><strong>${escapeHtml(kind)}</strong>${step ? `<span>${escapeHtml(step)}</span>` : ""}</div>
+		${transcriptValue(raw, "message") ? `<p>${escapeHtml(String(transcriptValue(raw, "message")))}</p>` : ""}
+		${renderTranscriptMarkdownBlock(transcriptValue(raw, "markdown"))}
+		${question?.question ? `<div class="qa"><div class="label">질문</div><div>${escapeHtml(String(question.question))}</div></div>` : ""}
+		${options.length ? `<div class="qa"><div class="label">옵션</div><ol>${options.map((o) => `<li>${escapeHtml(String(o))}</li>`).join("")}</ol></div>` : ""}
+		${answer ? `<div class="answer"><div class="label">답변</div>${selected.length ? `<ol>${selected.map((o) => `<li>${escapeHtml(String(o))}</li>`).join("")}</ol>` : `<p class="muted">선택값 없음</p>`}${text ? `<p><strong>직접 입력:</strong> ${escapeHtml(text)}</p>` : ""}</div>` : ""}
+	</article>`;
+}
+
+type FrameStageRun = {
+	tab: string;
+	index: number;
+	status: "running" | "done" | "aborted";
+	startedAt?: number;
+	endedAt?: number;
+	entries: unknown[];
+};
+
+function groupFrameTimelineRuns(timeline: unknown[]): FrameStageRun[] {
 	const normalized = normalizeFrameTimeline(timeline);
-	if (!normalized.length) return `<p class="muted">기록된 timeline이 없습니다.</p>`;
-	return normalized.map((raw) => {
+	const runs: FrameStageRun[] = [];
+	const currentByTab = new Map<string, FrameStageRun>();
+	const countsByTab = new Map<string, number>();
+	for (const raw of normalized) {
+		const tab = String(transcriptValue(raw, "tab") || "frame");
 		const kind = String(transcriptValue(raw, "kind") || "entry");
-		const step = String(transcriptValue(raw, "step") || "");
-		const time = typeof transcriptValue(raw, "time") === "number" ? new Date(transcriptValue(raw, "time") as number).toLocaleString() : "";
-		const question = transcriptValue(raw, "question") as Record<string, unknown> | undefined;
-		const answer = transcriptValue(raw, "answer") as Record<string, unknown> | undefined;
-		const options = Array.isArray(question?.options) ? question.options : [];
-		const selected = Array.isArray(answer?.selectedOptions) ? answer.selectedOptions : [];
-		const text = typeof answer?.text === "string" ? answer.text : "";
-		return `<article class="timeline-item">
-			<div class="timeline-head"><span>${escapeHtml(time)}</span><strong>${escapeHtml(kind)}</strong>${step ? `<span>${escapeHtml(step)}</span>` : ""}</div>
-			${transcriptValue(raw, "message") ? `<p>${escapeHtml(String(transcriptValue(raw, "message")))}</p>` : ""}
-			${renderTranscriptMarkdownBlock(transcriptValue(raw, "markdown"))}
-			${question?.question ? `<div class="qa"><div class="label">질문</div><div>${escapeHtml(String(question.question))}</div></div>` : ""}
-			${options.length ? `<div class="qa"><div class="label">옵션</div><ol>${options.map((o) => `<li>${escapeHtml(String(o))}</li>`).join("")}</ol></div>` : ""}
-			${answer ? `<div class="answer"><div class="label">답변</div>${selected.length ? `<ol>${selected.map((o) => `<li>${escapeHtml(String(o))}</li>`).join("")}</ol>` : `<p class="muted">선택값 없음</p>`}${text ? `<p><strong>직접 입력:</strong> ${escapeHtml(text)}</p>` : ""}</div>` : ""}
+		let current = currentByTab.get(tab);
+		if (!current || (current.entries.length > 0 && (kind === "start" || current.status !== "running"))) {
+			const index = (countsByTab.get(tab) || 0) + 1;
+			countsByTab.set(tab, index);
+			current = { tab, index, status: "running", startedAt: transcriptValue(raw, "time") as number | undefined, entries: [] };
+			currentByTab.set(tab, current);
+			runs.push(current);
+		}
+		current.entries.push(raw);
+		const time = transcriptValue(raw, "time");
+		if (typeof time === "number" && (!current.startedAt || time < current.startedAt)) current.startedAt = time;
+		if (kind === "finish") {
+			current.status = "done";
+			current.endedAt = typeof time === "number" ? time : undefined;
+		} else if (kind === "abort") {
+			current.status = "aborted";
+			current.endedAt = typeof time === "number" ? time : undefined;
+		}
+	}
+	return runs;
+}
+
+function renderFrameTimeline(timeline: unknown[]): string {
+	const runs = groupFrameTimelineRuns(timeline);
+	if (!runs.length) return `<p class="muted">기록된 timeline이 없습니다.</p>`;
+	return `<div class="stage-runs">${runs.map((run) => {
+		const start = run.startedAt ? new Date(run.startedAt).toLocaleString() : "시간 미상";
+		const end = run.endedAt ? new Date(run.endedAt).toLocaleString() : "";
+		const range = end ? `${start} → ${end}` : start;
+		return `<article class="stage-run ${escapeAttr(run.status)}">
+			<div class="stage-run-head"><div><h3>${escapeHtml(frameTabLabel(run.tab))} Run #${run.index}</h3><div class="meta"><span class="badge">${escapeHtml(run.status)}</span><span class="badge">${escapeHtml(range)}</span><span class="badge">${run.entries.length} entries</span></div></div></div>
+			<div class="timeline">${run.entries.map(renderFrameTimelineEntry).join("\n")}</div>
 		</article>`;
-	}).join("\n");
+	}).join("\n")}</div>`;
 }
 
 function buildFrameTranscriptStandaloneHtml(filePath: string): string {
@@ -2632,7 +2689,7 @@ function buildFrameTranscriptStandaloneHtml(filePath: string): string {
 function artifactBrowserStyle(): string {
 	return `<style>
 	${webviewCopyCss()}
-	:root{color-scheme:light;--bg:#fafaf9;--panel:#fff;--line:#e7e5e4;--text:#292524;--muted:#78716c;--accent:#7c3aed;--soft:#f5f3ff;--green:#166534;--amber:#92400e}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.shell{max-width:1180px;margin:0 auto;padding:24px}.hero{padding:24px;border:1px solid var(--line);border-radius:24px;background:linear-gradient(135deg,#fff,#f5f3ff);box-shadow:0 20px 60px rgba(41,37,36,.08)}.kicker{color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}h1{margin:6px 0 8px;font-size:32px;line-height:1.15}.hero p,.muted{color:var(--muted)}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}.tab{border:1px solid var(--line);border-radius:999px;background:#fff;padding:9px 13px;font-weight:800;cursor:pointer}.tab.active{background:var(--accent);border-color:var(--accent);color:#fff}.panel{display:none}.panel.active{display:block}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.card{border:1px solid var(--line);border-radius:18px;background:var(--panel);padding:16px;box-shadow:0 10px 30px rgba(41,37,36,.05);overflow:hidden}.card h2,.card h3{margin:0 0 8px}.meta{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}.badge{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 8px;background:#fff}.path{color:var(--muted);font-size:12px;word-break:break-all}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.button{border:1px solid var(--line);border-radius:10px;padding:7px 10px;text-decoration:none;color:var(--accent);font-weight:800;background:#fff;cursor:pointer;font:inherit}.button:hover{background:var(--soft)}.button[disabled]{opacity:.55;cursor:wait}.thumb{display:grid;place-items:center;aspect-ratio:16/10;background:#111;border-radius:14px;overflow:hidden;margin-bottom:10px}.thumb img{width:100%;height:100%;object-fit:contain}.intent-mini{border:1px solid var(--line);border-radius:12px;background:#fafaf9;padding:10px 11px;margin:10px 0;color:var(--text)}.intent-mini.missing{color:var(--muted);font-size:12px;border-style:dashed}.intent-mini-title{font-weight:800;color:var(--accent);font-size:12px;margin-bottom:5px}.intent-mini p{margin:4px 0;font-size:12px;line-height:1.45}.intent-mini strong{color:var(--muted);margin-right:4px}.empty{padding:40px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:18px;background:#fff}.chat-preview{display:grid;gap:10px}.chat-row{display:flex;flex-direction:column;margin:6px 0}.chat-row.user{align-items:flex-end}.chat-row.assistant{align-items:flex-start}.chat-meta{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px;margin:0 8px 4px}.chat-meta span{font-weight:800;color:var(--text)}.chat-bubble{max-width:min(780px,92%);white-space:pre-wrap;word-break:break-word;border:1px solid var(--line);border-radius:16px;padding:10px 12px;background:#fff;box-shadow:0 8px 22px rgba(41,37,36,.04)}.user .chat-bubble{background:#eff6ff;border-color:#bfdbfe}.timeline{display:grid;gap:12px}.timeline-item{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff}.timeline-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:var(--muted);font-size:12px}.timeline-head strong{color:var(--accent);text-transform:uppercase}.qa,.answer{margin-top:8px}.label{font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}pre{white-space:pre-wrap;word-break:break-word;background:#292524;color:#fafaf9;border-radius:12px;padding:12px;max-height:360px;overflow:auto}details{margin-top:8px}summary{cursor:pointer;font-weight:800}.filters{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:10px;margin:16px 0}.search,.category-filter{width:100%;height:40px;border:1px solid var(--line);border-radius:12px;padding:0 12px;font:inherit;background:#fff}.classification-mini{border:1px solid var(--line);border-radius:12px;background:#fafaf9;padding:10px 11px;margin:10px 0}.classification-mini.missing{border-style:dashed;color:var(--muted);font-size:12px}.classification-title{display:flex;gap:8px;justify-content:space-between;align-items:center;color:var(--accent);font-size:12px;font-weight:900;letter-spacing:.04em;text-transform:uppercase}.classification-mini p{margin:6px 0 0;font-size:12px;color:var(--text)}.modal{position:fixed;inset:0;background:rgba(41,37,36,.45);display:grid;place-items:center;z-index:999;padding:20px}.modal[hidden]{display:none}.modal-card{width:min(760px,96vw);max-height:92vh;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:22px;padding:18px;box-shadow:0 30px 90px rgba(41,37,36,.25)}.modal-card header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}.modal-card label{display:grid;gap:5px;margin:10px 0;font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.modal-card input,.modal-card textarea,.modal-card select{border:1px solid var(--line);border-radius:12px;padding:10px 11px;font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text);background:#fff;text-transform:none;letter-spacing:0}.modal-card textarea{resize:vertical}.field-help{font-size:12px;font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0;line-height:1.45}.modal-card h2{margin:0 0 4px}@media(max-width:720px){.filters{grid-template-columns:1fr}}
+	:root{color-scheme:light;--bg:#fafaf9;--panel:#fff;--line:#e7e5e4;--text:#292524;--muted:#78716c;--accent:#7c3aed;--soft:#f5f3ff;--green:#166534;--amber:#92400e}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.shell{max-width:1180px;margin:0 auto;padding:24px}.hero{padding:24px;border:1px solid var(--line);border-radius:24px;background:linear-gradient(135deg,#fff,#f5f3ff);box-shadow:0 20px 60px rgba(41,37,36,.08)}.kicker{color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}h1{margin:6px 0 8px;font-size:32px;line-height:1.15}.hero p,.muted{color:var(--muted)}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}.tab{border:1px solid var(--line);border-radius:999px;background:#fff;padding:9px 13px;font-weight:800;cursor:pointer}.tab.active{background:var(--accent);border-color:var(--accent);color:#fff}.panel{display:none}.panel.active{display:block}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.card{border:1px solid var(--line);border-radius:18px;background:var(--panel);padding:16px;box-shadow:0 10px 30px rgba(41,37,36,.05);overflow:hidden}.card h2,.card h3{margin:0 0 8px}.meta{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}.badge{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 8px;background:#fff}.path{color:var(--muted);font-size:12px;word-break:break-all}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.button{border:1px solid var(--line);border-radius:10px;padding:7px 10px;text-decoration:none;color:var(--accent);font-weight:800;background:#fff;cursor:pointer;font:inherit}.button:hover{background:var(--soft)}.button[disabled]{opacity:.55;cursor:wait}.thumb{display:grid;place-items:center;aspect-ratio:16/10;background:#111;border-radius:14px;overflow:hidden;margin-bottom:10px}.thumb img{width:100%;height:100%;object-fit:contain}.intent-mini{border:1px solid var(--line);border-radius:12px;background:#fafaf9;padding:10px 11px;margin:10px 0;color:var(--text)}.intent-mini.missing{color:var(--muted);font-size:12px;border-style:dashed}.intent-mini-title{font-weight:800;color:var(--accent);font-size:12px;margin-bottom:5px}.intent-mini p{margin:4px 0;font-size:12px;line-height:1.45}.intent-mini strong{color:var(--muted);margin-right:4px}.empty{padding:40px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:18px;background:#fff}.chat-preview{display:grid;gap:10px}.chat-row{display:flex;flex-direction:column;margin:6px 0}.chat-row.user{align-items:flex-end}.chat-row.assistant{align-items:flex-start}.chat-meta{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px;margin:0 8px 4px}.chat-meta span{font-weight:800;color:var(--text)}.chat-bubble{max-width:min(780px,92%);white-space:pre-wrap;word-break:break-word;border:1px solid var(--line);border-radius:16px;padding:10px 12px;background:#fff;box-shadow:0 8px 22px rgba(41,37,36,.04)}.user .chat-bubble{background:#eff6ff;border-color:#bfdbfe}.stage-runs{display:grid;gap:16px}.stage-run{border:1px solid var(--line);border-radius:16px;padding:14px;background:#fafaf9}.stage-run.running{border-color:#c4b5fd;background:#faf9ff}.stage-run.done{border-color:#bbf7d0;background:#f0fdf4}.stage-run.aborted{border-color:#fecaca;background:#fef2f2}.stage-run-head{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;margin-bottom:10px}.timeline{display:grid;gap:12px}.timeline-item{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff}.timeline-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:var(--muted);font-size:12px}.timeline-head strong{color:var(--accent);text-transform:uppercase}.qa,.answer{margin-top:8px}.label{font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}pre{white-space:pre-wrap;word-break:break-word;background:#292524;color:#fafaf9;border-radius:12px;padding:12px;max-height:360px;overflow:auto}details{margin-top:8px}summary{cursor:pointer;font-weight:800}.filters{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:10px;margin:16px 0}.search,.category-filter{width:100%;height:40px;border:1px solid var(--line);border-radius:12px;padding:0 12px;font:inherit;background:#fff}.classification-mini{border:1px solid var(--line);border-radius:12px;background:#fafaf9;padding:10px 11px;margin:10px 0}.classification-mini.missing{border-style:dashed;color:var(--muted);font-size:12px}.classification-title{display:flex;gap:8px;justify-content:space-between;align-items:center;color:var(--accent);font-size:12px;font-weight:900;letter-spacing:.04em;text-transform:uppercase}.classification-mini p{margin:6px 0 0;font-size:12px;color:var(--text)}.modal{position:fixed;inset:0;background:rgba(41,37,36,.45);display:grid;place-items:center;z-index:999;padding:20px}.modal[hidden]{display:none}.modal-card{width:min(760px,96vw);max-height:92vh;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:22px;padding:18px;box-shadow:0 30px 90px rgba(41,37,36,.25)}.modal-card header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}.modal-card label{display:grid;gap:5px;margin:10px 0;font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.modal-card input,.modal-card textarea,.modal-card select{border:1px solid var(--line);border-radius:12px;padding:10px 11px;font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text);background:#fff;text-transform:none;letter-spacing:0}.modal-card textarea{resize:vertical}.field-help{font-size:12px;font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0;line-height:1.45}.modal-card h2{margin:0 0 4px}@media(max-width:720px){.filters{grid-template-columns:1fr}}
 	</style>`;
 }
 
