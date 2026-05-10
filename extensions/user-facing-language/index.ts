@@ -6,9 +6,11 @@ export function buildUserFacingLanguagePolicy(): string {
 	return [
 		LANGUAGE_POLICY_MARKER,
 		"<user-facing-language-policy>",
-		"User-visible prose defaults to Korean.",
+		"User-visible prose MUST be Korean by default.",
 		"- This includes final answers, progress notes, tool preambles, reasoning/progress summaries surfaced by the UI, generated review artifacts, and UI copy.",
-		"- Keep progress/reasoning summaries short. Prefer terse Korean labels such as `문서 검토 중`, `stale ID 추출 중`, `검증 실행 중` over paragraph-style self-talk.",
+		"- Do NOT expose English meta-reasoning paragraphs such as `Summarizing implementation`, `Checking files`, or `I need to...` when the user is using Korean.",
+		"- Keep progress/reasoning summaries short. Prefer terse Korean labels such as `구현 요약 중`, `파일 확인 중`, `검증 실행 중` over paragraph-style self-talk.",
+		"- If you are about to summarize your next step or implementation status, write it as a short Korean status line, not an English narrative.",
 		"- Preserve commands, code, file paths, API names, identifiers, URLs, commit hashes, source titles, raw logs, and raw error messages in their original language/form.",
 		"- Preserve machine-readable schemas and requested output formats. Do not translate JSON/YAML/SQL keys or code comments unless the user asks.",
 		"- If the user switches language explicitly, follow the user's current language while keeping raw technical strings unchanged.",
