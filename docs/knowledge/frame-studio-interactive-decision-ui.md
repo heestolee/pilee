@@ -23,6 +23,7 @@ source:
   - user-direction:2026-05-09-tft-studio-context-return
   - user-direction:2026-05-10-tft-studio-chronological-flow
   - user-direction:2026-05-10-tft-stage-run-cards
+  - user-direction:2026-05-10-tft-visual-db-structure
 reviewed_at: 2026-05-10
 reviewed_commit: 205c12153350ccd4d81aaab74b94ed44965270b1
 related:
@@ -30,6 +31,7 @@ related:
   - frame-verify-contract
   - ask-user-question-option-design
   - live-artifact-preview-pattern
+  - tft-visual-structure-renderer
 ---
 
 ## Judgment
@@ -63,6 +65,8 @@ TFT Studio의 메인 화면은 최신 활성 step을 위에 따로 띄우고 그
 즉 TFT Studio는 AskUserQuestion 원칙을 대체하지 않습니다. 같은 decision gate를 더 읽기 쉬운 UI로 표현하는 surface입니다. `/frame`의 핵심 정렬 질문에서는 추천안이 명백해 보여도 묻고, `(명백: ...)` 주석으로 AI 판단 근거를 같이 보여줘야 합니다.
 
 Generative UI 스타일의 flat/compact visual pattern은 TFT Studio에도 유용하지만, dependency나 “모델이 매번 UI를 생성하는 방식”을 붙이는 것은 맞지 않습니다. TFT Studio는 prose-heavy co-thinking artifact이므로 `텍스트는 tool 밖에, visual만 tool 안에` 같은 규칙을 그대로 적용하면 오히려 목적을 잃습니다. 대신 renderer는 deterministic하게 유지하고, tab shell·표·요약 카드·간단한 다이어그램 같은 보조 시각화만 사용해 사용자가 목표/범위/검증 렌즈를 더 빨리 읽게 합니다.
+
+DB schema, API shape, state ownership, source-of-truth처럼 구조 변화가 이해·선택·검증의 핵심이면 `tft-visual` fenced block을 사용합니다. TFT Studio는 이를 `elkjs` 기반 top-down 구조 그림으로 렌더링하고, 신규/변경/삭제/FK/UNIQUE badge, 관계선, relation card, 학습용 설명을 함께 보여줍니다. 이 visual은 Frame/Decide 전용이 아니라 맥락 기반 visual primitive입니다.
 
 ## Transcript Rule
 

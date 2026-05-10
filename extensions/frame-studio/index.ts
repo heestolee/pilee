@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { createRequire } from "node:module";
 import { homedir, platform } from "node:os";
 import { isAbsolute, join, resolve as resolvePath, sep } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
@@ -126,6 +127,18 @@ const STATE_DIR = join(homedir(), ".pi", "agent", "frame-studio");
 const TRANSCRIPTS_DIR = join(STATE_DIR, "transcripts");
 const ASK_TIMEOUT_MS = 8 * 60 * 60 * 1000;
 const TFT_RESUME_CUSTOM_TYPE = "pilee-tft-studio-resume";
+const nodeRequire = createRequire(import.meta.url);
+let elkBundlePath: string | undefined;
+
+function resolveElkBundlePath(): string | undefined {
+	if (elkBundlePath !== undefined) return elkBundlePath || undefined;
+	try {
+		elkBundlePath = nodeRequire.resolve("elkjs/lib/elk.bundled.js");
+	} catch {
+		elkBundlePath = "";
+	}
+	return elkBundlePath || undefined;
+}
 
 const STUDIO_TABS: Array<{ key: StudioTabKey; label: string; subtitle: string }> = [
 	{ key: "frame", label: "Frame", subtitle: "목표·범위·성공 기준" },
@@ -495,6 +508,38 @@ h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .markdown tr:nth-child(even) td { background:#fafaf9; }
 .markdown code { background:rgba(120,113,108,.13); border-radius:6px; padding:1px 5px; }
 .markdown pre { background:#292524; color:#fafaf9; border-radius:12px; padding:14px; overflow:auto; }
+.tft-visual { border:1px solid var(--line); border-radius:18px; background:#fbfdff; margin:16px 0; padding:14px; overflow:hidden; }
+.tft-visual-head { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start; margin-bottom:12px; }
+.tft-visual-title { font-weight:950; font-size:16px; }
+.tft-visual-subtitle { color:var(--muted); font-size:12px; margin-top:2px; }
+.tft-visual-diagram { display:flex; justify-content:center; overflow:hidden; border:1px dashed #cbd5e1; border-radius:16px; background:#fff; padding:12px; }
+.tft-elk-canvas { position:relative; flex:0 0 auto; max-width:100%; }
+.tft-elk-canvas svg { position:absolute; inset:0; z-index:1; }
+.tft-elk-table { position:absolute; z-index:2; background:#fff; border:1px solid #cbd5e1; border-radius:14px; overflow:hidden; box-shadow:0 10px 24px rgba(15,23,42,.07); }
+.tft-elk-table.new { border-color:#86efac; }
+.tft-elk-table.changed { border-color:#fcd34d; }
+.tft-elk-table.removed, .tft-elk-table.deleted { border-color:#fca5a5; }
+.tft-elk-head { height:42px; background:#f8fafc; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:8px; padding:0 10px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; }
+.tft-elk-table.new .tft-elk-head { background:#f0fdf4; }
+.tft-elk-table.changed .tft-elk-head { background:#fffbeb; }
+.tft-elk-table.removed .tft-elk-head, .tft-elk-table.deleted .tft-elk-head { background:#fef2f2; }
+.tft-elk-row { height:48px; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:0 10px; border-top:1px solid #f1f5f9; }
+.tft-elk-row:first-of-type { border-top:0; }
+.tft-elk-row b { display:block; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; }
+.tft-elk-row small { display:block; color:var(--muted); font-size:10px; margin-top:1px; }
+.tft-pill { display:inline-flex; border:1px solid var(--line); border-radius:999px; padding:3px 7px; font-size:10px; font-weight:900; white-space:nowrap; }
+.tft-pill.new, .tft-pill.rate { background:#f0fdf4; border-color:#bbf7d0; color:#166534; }
+.tft-pill.changed, .tft-pill.semantic, .tft-pill.unique-part { background:#fffbeb; border-color:#fde68a; color:#92400e; }
+.tft-pill.removed, .tft-pill.deleted, .tft-pill.risk { background:#fef2f2; border-color:#fecaca; color:#991b1b; }
+.tft-pill.fk, .tft-pill.relation { background:#eff6ff; border-color:#bfdbfe; color:#1d4ed8; }
+.tft-pill.unique { background:#f5f3ff; border-color:#ddd6fe; color:#6d28d9; }
+.tft-pill.same, .tft-pill.default { background:#f8fafc; color:#64748b; }
+.tft-edge-label { font-size:12px; font-weight:900; fill:#334155; paint-order:stroke; stroke:#fff; stroke-width:5px; }
+.tft-visual-legend { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:8px; margin-top:12px; }
+.tft-relation-card, .tft-note-card { border:1px solid var(--line); border-radius:13px; background:#fff; padding:10px 11px; }
+.tft-relation-card strong, .tft-note-card strong { display:block; margin-bottom:4px; }
+.tft-relation-card p, .tft-note-card p { margin:4px 0; color:var(--muted); font-size:12px; line-height:1.45; }
+.tft-visual-error { border:1px solid #fecaca; background:#fef2f2; color:#991b1b; border-radius:14px; padding:12px; white-space:pre-wrap; }
 .question { border-color:#ddd6fe; background:#faf9ff; }
 .question-title { font-size:18px; font-weight:800; margin:0 0 12px; }
 .options { display:grid; gap:10px; margin:14px 0; }
@@ -559,6 +604,7 @@ button { border:0; border-radius:12px; padding:10px 15px; font-weight:800; curso
     <section class="card"><h2>로그</h2><div class="logs" id="logs"></div></section>
   </main>
 </div>
+<script src="/elk.bundled.js"></script>
 <script>
 ${webviewCopyScript()}
 var state = null;
@@ -571,6 +617,107 @@ var STUDIO_TABS = [
 ];
 function esc(s) { return String(s || '').replace(/[&<>"']/g, function(c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]); }); }
 function inline(s) { var tick = String.fromCharCode(96); return esc(s).replace(new RegExp(tick + '([^' + tick + ']+)' + tick, 'g'), '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>'); }
+function simpleHash(s) { var h = 5381; for (var i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i); return (h >>> 0).toString(36); }
+function visualPlaceholder(source) {
+  var id = 'tftv-' + simpleHash(source) + '-' + Math.random().toString(36).slice(2, 7);
+  return '<div id="' + id + '" class="tft-visual" data-source="' + encodeURIComponent(source) + '"><div class="status">TFT visual 렌더링 중...</div></div>';
+}
+function normalizeVisualStatus(value, fallback) { return String(value || fallback || 'same').trim().toLowerCase().replace(/_/g, '-'); }
+function pillClass(value) {
+  var v = normalizeVisualStatus(value, 'default');
+  if (v.indexOf('new') >= 0) return 'new';
+  if (v.indexOf('delete') >= 0 || v.indexOf('remove') >= 0) return 'removed';
+  if (v.indexOf('change') >= 0 || v.indexOf('semantic') >= 0) return 'changed';
+  if (v.indexOf('unique-part') >= 0) return 'unique-part';
+  if (v.indexOf('unique') >= 0) return 'unique';
+  if (v.indexOf('fk') >= 0 || v.indexOf('relation') >= 0) return 'fk';
+  if (v.indexOf('rate') >= 0) return 'rate';
+  if (v.indexOf('risk') >= 0) return 'risk';
+  if (v.indexOf('same') >= 0) return 'same';
+  return 'default';
+}
+function renderPill(value) { return '<span class="tft-pill ' + pillClass(value) + '">' + esc(value || 'same') + '</span>'; }
+function tableWidth(table) { return Math.max(220, Math.min(Number(table.width) || 280, 360)); }
+function tableHeight(table) { return 42 + Math.max(1, (table.columns || []).length) * 48; }
+function relationNodeId(ref) { return String(ref || '').split('.')[0]; }
+function renderRelationCards(relations) {
+  if (!relations || !relations.length) return '';
+  return '<div class="tft-visual-legend">' + relations.map(function(r, i) {
+    var id = r.id || ('R' + (i + 1));
+    var title = (r.from || '?') + ' → ' + (r.to || '?');
+    return '<div class="tft-relation-card"><strong>' + esc(id) + ' · ' + inline(title) + '</strong>' + (r.description ? '<p>' + inline(r.description) + '</p>' : '') + (r.why ? '<p><b>왜:</b> ' + inline(r.why) + '</p>' : '') + '</div>';
+  }).join('') + '</div>';
+}
+function renderLearningNotes(notes) {
+  if (!notes || !notes.length) return '';
+  return '<div class="tft-visual-legend">' + notes.map(function(n) {
+    var body = Array.isArray(n.body) ? '<ul>' + n.body.map(function(item) { return '<li>' + inline(item) + '</li>'; }).join('') + '</ul>' : '<p>' + inline(n.body || n.text || '') + '</p>';
+    return '<div class="tft-note-card"><strong>' + esc(n.title || '설명') + '</strong>' + body + '</div>';
+  }).join('') + '</div>';
+}
+function renderElkTable(table, node, scale, pad) {
+  var status = table.status || 'same';
+  var rows = (table.columns || []).map(function(col) {
+    var badges = (col.badges && col.badges.length ? col.badges : [col.status || 'same']).map(renderPill).join('');
+    return '<div class="tft-elk-row"><div><b>' + esc(col.name || col.id || '') + '</b>' + (col.description ? '<small>' + esc(col.description) + '</small>' : '') + '</div><div>' + badges + '</div></div>';
+  }).join('');
+  return '<div class="tft-elk-table ' + pillClass(status) + '" style="left:' + ((pad + node.x) * scale) + 'px;top:' + ((pad + node.y) * scale) + 'px;width:' + (node.width * scale) + 'px;height:' + (node.height * scale) + 'px"><div class="tft-elk-head"><b>' + esc(table.name || table.id) + '</b>' + renderPill(status) + '</div>' + rows + '</div>';
+}
+function edgePath(section, scale, pad) {
+  var pts = [section.startPoint].concat(section.bendPoints || [], [section.endPoint]);
+  return pts.map(function(p, i) { return (i ? 'L' : 'M') + ((pad + p.x) * scale) + ' ' + ((pad + p.y) * scale); }).join(' ');
+}
+async function renderTftVisualElement(el) {
+  if (el.getAttribute('data-rendered') === '1') return;
+  el.setAttribute('data-rendered', '1');
+  var source = decodeURIComponent(el.getAttribute('data-source') || '');
+  var spec;
+  try { spec = JSON.parse(source); } catch (e) { el.innerHTML = '<div class="tft-visual-error">tft-visual JSON parse failed:\\n' + esc(e.message || e) + '</div>'; return; }
+  if (!window.ELK) { el.innerHTML = '<div class="tft-visual-error">ELK renderer를 불러오지 못했습니다.</div>'; return; }
+  var tables = Array.isArray(spec.tables) ? spec.tables : [];
+  if (!tables.length) { el.innerHTML = '<div class="tft-visual-error">tft-visual에는 tables 배열이 필요합니다.</div>'; return; }
+  var relations = Array.isArray(spec.relations) ? spec.relations : [];
+  var direction = String(spec.direction || spec.layout || 'DOWN').toUpperCase();
+  if (direction !== 'RIGHT') direction = 'DOWN';
+  var children = tables.map(function(t) { return { id:String(t.id || t.name), width:tableWidth(t), height:tableHeight(t) }; });
+  var edges = relations.map(function(r, i) { return { id:String(r.id || ('R' + (i + 1))), sources:[relationNodeId(r.from)], targets:[relationNodeId(r.to)] }; }).filter(function(e) { return e.sources[0] && e.targets[0]; });
+  try {
+    var elk = new window.ELK();
+    var laid = await elk.layout({ id:'root', layoutOptions:{
+      'elk.algorithm':'layered',
+      'elk.direction':direction,
+      'elk.spacing.nodeNode':String(spec.nodeSpacing || 32),
+      'elk.layered.spacing.nodeNodeBetweenLayers':String(spec.layerSpacing || 70),
+      'elk.edgeRouting':'ORTHOGONAL',
+      'elk.layered.nodePlacement.strategy':'NETWORK_SIMPLEX',
+      'elk.layered.crossingMinimization.strategy':'LAYER_SWEEP'
+    }, children:children, edges:edges });
+    var pad = 24;
+    var maxWidth = Math.max(320, el.clientWidth - 28);
+    var rawWidth = (laid.width || 900) + pad * 2;
+    var scale = Math.min(1, maxWidth / rawWidth);
+    if (spec.scale) scale = Math.min(scale, Number(spec.scale) || scale);
+    var width = Math.ceil(rawWidth * scale);
+    var height = Math.ceil(((laid.height || 420) + pad * 2) * scale);
+    var nodeById = {}; (laid.children || []).forEach(function(n) { nodeById[n.id] = n; });
+    var markerId = el.id + '-arrow';
+    var edgeSvg = (laid.edges || []).map(function(e) {
+      var section = e.sections && e.sections[0]; if (!section) return '';
+      var rel = relations.find(function(r, i) { return String(r.id || ('R' + (i + 1))) === e.id; }) || {};
+      var color = rel.color || (e.id === 'R1' ? '#2563eb' : '#7c3aed');
+      var label = rel.shortLabel || e.id;
+      var midX = (pad + (section.startPoint.x + section.endPoint.x) / 2) * scale;
+      var midY = (pad + (section.startPoint.y + section.endPoint.y) / 2) * scale - 8;
+      return '<path d="' + edgePath(section, scale, pad) + '" fill="none" stroke="' + esc(color) + '" stroke-width="2.5" marker-end="url(#' + markerId + ')"/><text x="' + midX + '" y="' + midY + '" class="tft-edge-label">' + esc(label) + '</text>';
+    }).join('');
+    var tableHtml = tables.map(function(t) { return renderElkTable(t, nodeById[String(t.id || t.name)], scale, pad); }).join('');
+    var svg = '<svg width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '"><defs><marker id="' + markerId + '" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker></defs>' + edgeSvg + '</svg>';
+    el.innerHTML = '<div class="tft-visual-head"><div><div class="tft-visual-title">' + esc(spec.title || 'TFT visual') + '</div>' + (spec.subtitle ? '<div class="tft-visual-subtitle">' + esc(spec.subtitle) + '</div>' : '') + '</div>' + renderPill(direction === 'DOWN' ? 'top-down' : 'left-right') + '</div><div class="tft-visual-diagram"><div class="tft-elk-canvas" style="width:' + width + 'px;height:' + height + 'px">' + svg + tableHtml + '</div></div>' + renderRelationCards(relations) + renderLearningNotes(spec.notes || spec.explanations);
+  } catch (e) {
+    el.innerHTML = '<div class="tft-visual-error">ELK layout failed:\\n' + esc(e && e.message ? e.message : e) + '</div>';
+  }
+}
+function renderPendingTftVisuals() { Array.prototype.slice.call(document.querySelectorAll('.tft-visual[data-source]')).forEach(function(el) { renderTftVisualElement(el); }); }
 function renderMarkdown(md) {
   var lines = String(md || '').split(/\r?\n/);
   var html = []; var inCode = false; var list = null;
@@ -617,7 +764,16 @@ function renderMarkdown(md) {
   }
   for (var idx = 0; idx < lines.length; idx++) {
     var line = lines[idx];
-    if (/^\s*/.test(line) && line.trim().indexOf(String.fromCharCode(96).repeat(3)) === 0) { closeList(); if (inCode) html.push('</code></pre>'); else html.push('<pre><code>'); inCode = !inCode; continue; }
+    var fence = line.trim();
+    if (!inCode && fence.indexOf(String.fromCharCode(96).repeat(3) + 'tft-visual') === 0) {
+      closeList();
+      var visualLines = [];
+      idx++;
+      while (idx < lines.length && lines[idx].trim().indexOf(String.fromCharCode(96).repeat(3)) !== 0) { visualLines.push(lines[idx]); idx++; }
+      html.push(visualPlaceholder(visualLines.join('\n')));
+      continue;
+    }
+    if (/^\s*/.test(line) && fence.indexOf(String.fromCharCode(96).repeat(3)) === 0) { closeList(); if (inCode) html.push('</code></pre>'); else html.push('<pre><code>'); inCode = !inCode; continue; }
     if (inCode) { html.push(esc(line) + '\n'); continue; }
     var table = renderTable(idx); if (table) { closeList(); html.push(table.html); idx = table.next - 1; continue; }
     var heading = line.match(/^(#{1,6})\s+(.+)$/); if (heading) { closeList(); var level = heading[1].length; html.push('<h' + level + '>' + inline(heading[2]) + '</h' + level + '>'); continue; }
@@ -781,6 +937,7 @@ function render(s) {
   document.getElementById('flowSubtitle').textContent = '업데이트·질문·답변을 시간순으로 표시합니다. 현재 선택도 해당 step 안에 표시됩니다.';
   document.getElementById('flowStatus').textContent = tabStatus(s, active);
   document.getElementById('timeline').innerHTML = renderStageRuns(visibleTimelineEntries(s), s, active);
+  setTimeout(renderPendingTftVisuals, 0);
   document.getElementById('logs').innerHTML = (s.logs || []).slice().reverse().map(function(log) {
     return '<div>' + new Date(log.time).toLocaleTimeString() + ' · ' + esc(log.message) + '</div>';
   }).join('') || '<span class="status">로그 없음</span>';
@@ -829,6 +986,17 @@ function createServerFor(state: FrameStudioState): FrameStudioHandle {
 			}
 			if (req.method === "GET" && url.pathname === "/state") {
 				sendJson(res, serializeState(handle.state));
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/elk.bundled.js") {
+				const bundle = resolveElkBundlePath();
+				if (!bundle) {
+					res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+					res.end("elkjs bundle not found");
+					return;
+				}
+				res.writeHead(200, { "content-type": "application/javascript; charset=utf-8", "cache-control": "public, max-age=3600" });
+				res.end(readFileSync(bundle, "utf-8"));
 				return;
 			}
 			if (req.method === "GET" && url.pathname === "/events") {
