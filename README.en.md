@@ -206,12 +206,13 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | extension | `extensions/mcp-bridge` | [Deterministic Fallbacks Preserve Workflow](./docs/knowledge/deterministic-fallbacks-preserve-workflow.md)<br>[MCP Stderr Isolation](./docs/knowledge/mcp-stderr-isolation.md)<br>[Terminal Host Integration](./docs/knowledge/terminal-host-integration.md) |
 | extension | `extensions/memory-layer` | [Context Loading Minimal Surface](./docs/knowledge/context-loading-minimal-surface.md) |
 | extension | `extensions/notify` | [Terminal Host Integration](./docs/knowledge/terminal-host-integration.md) |
-| extension | `extensions/pr-comments` | [Diff Review Draft Handoff](./docs/knowledge/diff-review-draft-handoff.md) |
+| extension | `extensions/pr-comments` | [Diff Review Draft Handoff](./docs/knowledge/diff-review-draft-handoff.md)<br>[Ship PR Ship Review Boundary](./docs/knowledge/ship-pr-ship-review-boundary.md) |
 | extension | `extensions/preflight` | [Private Overlay Package Boundary](./docs/knowledge/private-overlay-package-boundary.md)<br>[Root Cause Before Fix](./docs/knowledge/root-cause-before-fix.md) |
 | extension | `extensions/prompt-suggest-lite` | [Editor Affordance Not Context](./docs/knowledge/editor-affordance-not-context.md) |
 | extension | `extensions/queued-messages` | [Queued Command Prefill Boundary](./docs/knowledge/queued-command-prefill-boundary.md) |
 | extension | `extensions/retro` | [Retro Private Reflection Boundary](./docs/knowledge/retro-private-reflection-boundary.md) |
 | extension | `extensions/session-title` | [Backlog Source Session Provenance](./docs/knowledge/backlog-source-session-provenance.md)<br>[Session Identity Over Filenames](./docs/knowledge/session-identity-over-filenames.md) |
+| extension | `extensions/ship-commands` | [Ship PR Ship Review Boundary](./docs/knowledge/ship-pr-ship-review-boundary.md) |
 | extension | `extensions/spinner` | [Ambient Status Surfaces](./docs/knowledge/ambient-status-surfaces.md) |
 | extension | `extensions/subagent` | [AI Worker Readiness Orchestrator](./docs/knowledge/ai-worker-readiness-orchestrator.md)<br>[Self Healing Actionable Loop](./docs/knowledge/self-healing-actionable-loop.md)<br>[Stress Interview Multi Axis Review](./docs/knowledge/stress-interview-multi-axis-review.md)<br>[Subagent Model Policy](./docs/knowledge/subagent-model-policy.md)<br>[Subagent Prompt Specificity](./docs/knowledge/subagent-prompt-specificity.md) |
 | extension | `extensions/supervisor` | [Supervisor Outcome Guardrail](./docs/knowledge/supervisor-outcome-guardrail.md) |
@@ -238,7 +239,9 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | skill | `skills/incremental-implementation` | [Change Integration Discipline](./docs/knowledge/change-integration-discipline.md)<br>[Request Traceability Surgical Changes](./docs/knowledge/request-traceability-surgical-changes.md) |
 | skill | `skills/jira-issue-management` | [External Issue Preview Gate](./docs/knowledge/external-issue-preview-gate.md)<br>[Private Overlay Package Boundary](./docs/knowledge/private-overlay-package-boundary.md) |
 | skill | `skills/pilee-knowledge` | [Confidence Sensitive Review](./docs/knowledge/confidence-sensitive-review.md)<br>[Ember Friendly Knowledge Entrypoint](./docs/knowledge/ember-friendly-knowledge-entrypoint.md)<br>[Freshness Diagnosis Report](./docs/knowledge/freshness-diagnosis-report.md)<br>[Judgment Doc Unit](./docs/knowledge/judgment-doc-unit.md)<br>[Pilee Knowledge System](./docs/knowledge/pilee-knowledge-system.md)<br>[Private Journal Public Doctrine](./docs/knowledge/private-journal-public-doctrine.md)<br>[README Philosophy User Gate](./docs/knowledge/readme-philosophy-user-gate.md)<br>[Reviewed Commit Freshness](./docs/knowledge/reviewed-commit-freshness.md) |
+| skill | `skills/pr-ship` | [Ship PR Ship Review Boundary](./docs/knowledge/ship-pr-ship-review-boundary.md) |
 | skill | `skills/self-healing` | [AI Worker Readiness Orchestrator](./docs/knowledge/ai-worker-readiness-orchestrator.md)<br>[Self Healing Actionable Loop](./docs/knowledge/self-healing-actionable-loop.md)<br>[Subagent Model Policy](./docs/knowledge/subagent-model-policy.md)<br>[Subagent Prompt Specificity](./docs/knowledge/subagent-prompt-specificity.md) |
+| skill | `skills/ship` | [Ship PR Ship Review Boundary](./docs/knowledge/ship-pr-ship-review-boundary.md) |
 | skill | `skills/skill-creator` | [Skills As Portable Procedures](./docs/knowledge/skills-as-portable-procedures.md) |
 | skill | `skills/start-local-dev` | [Local Dev Startup Diagnosis](./docs/knowledge/local-dev-startup-diagnosis.md)<br>[Private Overlay Package Boundary](./docs/knowledge/private-overlay-package-boundary.md) |
 | skill | `skills/stress-interview` | [AI Worker Readiness Orchestrator](./docs/knowledge/ai-worker-readiness-orchestrator.md)<br>[Self Healing Actionable Loop](./docs/knowledge/self-healing-actionable-loop.md)<br>[Stress Interview Multi Axis Review](./docs/knowledge/stress-interview-multi-axis-review.md)<br>[Subagent Model Policy](./docs/knowledge/subagent-model-policy.md)<br>[Subagent Prompt Specificity](./docs/knowledge/subagent-prompt-specificity.md) |
@@ -258,7 +261,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 ## Extensions
 
 <!-- PILEE_README_EXTENSIONS_START -->
-38 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
+39 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
 
 > Generated from `extensions/*` plus inventory metadata in `scripts/knowledge.mjs`; refresh with `node scripts/knowledge.mjs --graph`.
 
@@ -276,6 +279,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **context-loader** | Minimal contextual loading surface |
 | **tool-group-renderer** | Groups and collapses related tool output |
 | **tft-commands** | Routes `/frame`, `/decide`, `/verify` to pilee skills |
+| **ship-commands** | Routes `/ship` and `/pr-ship` to pilee skills and collects PR review context |
 | **frame-studio** | Glimpse-based TFT Studio shell with Frame/Decide/Verify/Verify Report tabs, choices, transcript replay, Archive resume, and `/tft open` |
 | **user-facing-language** | System prompt guard that keeps user-visible progress, summaries, and answers short and Korean-first |
 
@@ -326,7 +330,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 ## Skills
 
 <!-- PILEE_README_SKILLS_START -->
-19 global workflow skills. Project-specific skills belong in project/private overlays.
+21 global workflow skills. Project-specific skills belong in project/private overlays.
 
 > Generated from `skills/*/SKILL.md` plus inventory metadata in `scripts/knowledge.mjs`; refresh with `node scripts/knowledge.mjs --graph`.
 
@@ -361,6 +365,8 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **db-write** | Human-gated DB write guidance |
 | **db-write-migration** | Migration design and verification guidance |
 | **jira-issue-management** | Jira issue preparation with preview gate |
+| **ship** | Pre-PR commit, verification, and push workflow |
+| **pr-ship** | Post-PR review response with root-cause fix, commit, push, and thread reply |
 | **verify-report** | Capture/evidence-based verification reports |
 | **start-local-dev** | Local dev server startup diagnosis |
 <!-- PILEE_README_SKILLS_END -->

@@ -216,12 +216,13 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | extension | `extensions/mcp-bridge` | [Deterministic fallback은 workflow를 보존한다](./docs/knowledge/deterministic-fallbacks-preserve-workflow.md)<br>[MCP stderr는 TUI 출력이 아니다](./docs/knowledge/mcp-stderr-isolation.md)<br>[터미널 연동은 host adapter로 다룬다](./docs/knowledge/terminal-host-integration.md) |
 | extension | `extensions/memory-layer` | [자동 로드 컨텍스트는 최소 surface만 가진다](./docs/knowledge/context-loading-minimal-surface.md) |
 | extension | `extensions/notify` | [터미널 연동은 host adapter로 다룬다](./docs/knowledge/terminal-host-integration.md) |
-| extension | `extensions/pr-comments` | [Diff review draft는 PR 코멘트 전 단계다](./docs/knowledge/diff-review-draft-handoff.md) |
+| extension | `extensions/pr-comments` | [Diff review draft는 PR 코멘트 전 단계다](./docs/knowledge/diff-review-draft-handoff.md)<br>[Ship과 PR-Ship은 서로 다른 통합 단계다](./docs/knowledge/ship-pr-ship-review-boundary.md) |
 | extension | `extensions/preflight` | [Private overlay package는 회사·개인 실행 맥락을 담는다](./docs/knowledge/private-overlay-package-boundary.md)<br>[수정 전에 근본 원인을 좁힌다](./docs/knowledge/root-cause-before-fix.md) |
 | extension | `extensions/prompt-suggest-lite` | [Editor affordance는 숨은 컨텍스트가 아니다](./docs/knowledge/editor-affordance-not-context.md) |
 | extension | `extensions/queued-messages` | [Queued command는 실행 보장이 아니다](./docs/knowledge/queued-command-prefill-boundary.md) |
 | extension | `extensions/retro` | [Retro는 private reflection이다](./docs/knowledge/retro-private-reflection-boundary.md) |
 | extension | `extensions/session-title` | [Backlog는 원 세션 출처를 보존한다](./docs/knowledge/backlog-source-session-provenance.md)<br>[세션 식별자는 파일명이 아니라 사람이 본 이름이다](./docs/knowledge/session-identity-over-filenames.md) |
+| extension | `extensions/ship-commands` | [Ship과 PR-Ship은 서로 다른 통합 단계다](./docs/knowledge/ship-pr-ship-review-boundary.md) |
 | extension | `extensions/spinner` | [Idle UI는 장식이 아니라 ambient status다](./docs/knowledge/ambient-status-surfaces.md) |
 | extension | `extensions/subagent` | [Worker는 readiness ownership을 가진다](./docs/knowledge/ai-worker-readiness-orchestrator.md)<br>[Self-healing은 actionable item만 수정한다](./docs/knowledge/self-healing-actionable-loop.md)<br>[Stress Interview는 다축 검토다](./docs/knowledge/stress-interview-multi-axis-review.md)<br>[Codex-first subagent 모델 운용 정책](./docs/knowledge/subagent-model-policy.md)<br>[Subagent 위임은 구체 프롬프트를 요구한다](./docs/knowledge/subagent-prompt-specificity.md) |
 | extension | `extensions/supervisor` | [Supervisor는 outcome guardrail이다](./docs/knowledge/supervisor-outcome-guardrail.md) |
@@ -248,7 +249,9 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | skill | `skills/incremental-implementation` | [변경 통합은 작은 단위와 검증을 요구한다](./docs/knowledge/change-integration-discipline.md)<br>[변경된 줄은 요청으로 추적 가능해야 한다](./docs/knowledge/request-traceability-surgical-changes.md) |
 | skill | `skills/jira-issue-management` | [외부 이슈 업데이트는 preview gate를 지난다](./docs/knowledge/external-issue-preview-gate.md)<br>[Private overlay package는 회사·개인 실행 맥락을 담는다](./docs/knowledge/private-overlay-package-boundary.md) |
 | skill | `skills/pilee-knowledge` | [낮은 confidence 판단은 정합성 PR로 올린다](./docs/knowledge/confidence-sensitive-review.md)<br>[Ember는 knowledge의 친근한 입구다](./docs/knowledge/ember-friendly-knowledge-entrypoint.md)<br>[Freshness는 진단서다](./docs/knowledge/freshness-diagnosis-report.md)<br>[Knowledge 문서 단위는 판단 하나다](./docs/knowledge/judgment-doc-unit.md)<br>[pilee 지식 계층과 정합성 갱신](./docs/knowledge/pilee-knowledge-system.md)<br>[Private journal과 public doctrine은 분리한다](./docs/knowledge/private-journal-public-doctrine.md)<br>[README 철학 변경은 사용자 판단 게이트를 지난다](./docs/knowledge/readme-philosophy-user-gate.md)<br>[reviewed_commit은 날짜 freshness의 빈틈을 막는다](./docs/knowledge/reviewed-commit-freshness.md) |
+| skill | `skills/pr-ship` | [Ship과 PR-Ship은 서로 다른 통합 단계다](./docs/knowledge/ship-pr-ship-review-boundary.md) |
 | skill | `skills/self-healing` | [Worker는 readiness ownership을 가진다](./docs/knowledge/ai-worker-readiness-orchestrator.md)<br>[Self-healing은 actionable item만 수정한다](./docs/knowledge/self-healing-actionable-loop.md)<br>[Codex-first subagent 모델 운용 정책](./docs/knowledge/subagent-model-policy.md)<br>[Subagent 위임은 구체 프롬프트를 요구한다](./docs/knowledge/subagent-prompt-specificity.md) |
+| skill | `skills/ship` | [Ship과 PR-Ship은 서로 다른 통합 단계다](./docs/knowledge/ship-pr-ship-review-boundary.md) |
 | skill | `skills/skill-creator` | [Skill은 재사용 가능한 절차다](./docs/knowledge/skills-as-portable-procedures.md) |
 | skill | `skills/start-local-dev` | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./docs/knowledge/local-dev-startup-diagnosis.md)<br>[Private overlay package는 회사·개인 실행 맥락을 담는다](./docs/knowledge/private-overlay-package-boundary.md) |
 | skill | `skills/stress-interview` | [Worker는 readiness ownership을 가진다](./docs/knowledge/ai-worker-readiness-orchestrator.md)<br>[Self-healing은 actionable item만 수정한다](./docs/knowledge/self-healing-actionable-loop.md)<br>[Stress Interview는 다축 검토다](./docs/knowledge/stress-interview-multi-axis-review.md)<br>[Codex-first subagent 모델 운용 정책](./docs/knowledge/subagent-model-policy.md)<br>[Subagent 위임은 구체 프롬프트를 요구한다](./docs/knowledge/subagent-prompt-specificity.md) |
@@ -268,7 +271,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 ## Extensions
 
 <!-- PILEE_README_EXTENSIONS_START -->
-38개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
+39개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
 
 > `extensions/*`와 `scripts/knowledge.mjs`의 inventory metadata에서 생성됩니다. 변경 후 `node scripts/knowledge.mjs --graph`로 갱신합니다.
 
@@ -286,6 +289,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | **context-loader** | 세션 시작 시 필요한 최소 컨텍스트 로딩 surface |
 | **tool-group-renderer** | 관련 도구 출력 그룹/축소 |
 | **tft-commands** | `/frame`/`/decide`/`/verify`를 pilee SKILL.md 인라인 실행으로 라우팅 |
+| **ship-commands** | `/ship`/`/pr-ship`을 pilee SKILL.md 인라인 실행으로 라우팅하고 PR 리뷰 컨텍스트를 수집 |
 | **frame-studio** | Glimpse 기반 TFT Studio shell — Frame/Decide/Verify/Verify Report 탭 + 선택 UI/전문 저장 + Archive `이어하기`/`/tft open` 재진입 |
 | **user-facing-language** | 사용자에게 보이는 진행/요약/답변은 짧은 한국어를 기본으로 하는 system prompt guard |
 
@@ -336,7 +340,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 ## Skills
 
 <!-- PILEE_README_SKILLS_START -->
-19개. 글로벌 워크플로 스킬만 pilee에 포함. 프로젝트 고유 스킬(create-pr, self-review)은 해당 레포/private overlay에 위치.
+21개. 글로벌 워크플로 스킬만 pilee에 포함. 프로젝트 고유 스킬(create-pr, self-review)은 해당 레포/private overlay에 위치.
 
 > `skills/*/SKILL.md`와 `scripts/knowledge.mjs`의 inventory metadata에서 생성됩니다. 변경 후 `node scripts/knowledge.mjs --graph`로 갱신합니다.
 
@@ -371,6 +375,8 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | **db-write** | 인간 실행 게이트를 둔 DB write guidance |
 | **db-write-migration** | 마이그레이션 설계와 검증 guidance |
 | **jira-issue-management** | Jira 이슈 작성/수정 preview gate |
+| **ship** | PR 전 변경사항을 의도 단위 커밋·검증·push로 정리 |
+| **pr-ship** | PR 리뷰 코멘트를 근본 대응하고 커밋·push·스레드 답글까지 수행 |
 | **verify-report** | 캡처/네트워크/콘솔/코드 diff 기반 검증 리포트 |
 | **start-local-dev** | 로컬 dev 서버 구동과 진단 |
 <!-- PILEE_README_SKILLS_END -->

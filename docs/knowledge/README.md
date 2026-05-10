@@ -176,6 +176,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [세션 분류는 원본 위의 sidecar다](./session-classification-sidecar.md) | active | high | 2026-05-10 | 79e2bc8 | archive, show-report, session-classification, sidecar, session, ai-suggestion |
 | [Session export는 원본을 보존하는 adapter를 거친다](./session-export-source-preservation.md) | active | high | 2026-05-10 | 79e2bc8 | session-export, source-preservation, jsonl, conductor, normalize, show-report |
 | [세션 식별자는 파일명이 아니라 사람이 본 이름이다](./session-identity-over-filenames.md) | active | high | 2026-05-10 | 79e2bc8 | session, title, identity, session_info, worktree, revive |
+| [Ship과 PR-Ship은 서로 다른 통합 단계다](./ship-pr-ship-review-boundary.md) | active | high | 2026-05-10 | 9052c3c | ship, pr-ship, pr-review, github, commit, push |
 | [Skill은 재사용 가능한 절차다](./skills-as-portable-procedures.md) | active | high | 2026-05-09 | b10752d | skill, skill-creator, procedure, porting, workflow, 스킬 |
 | [Command shim은 skill source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-05-10 | ba9a88b | command-shim, skill, tft, frame, slash-command, routing |
 | [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-05-10 | eef0137 | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
@@ -249,6 +250,7 @@ graph TD
   doc_session_classification_sidecar["세션 분류는 원본 위의 sidecar다"]
   doc_session_export_source_preservation["Session export는 원본을 보존하는 adapter를 거친다"]
   doc_session_identity_over_filenames["세션 식별자는 파일명이 아니라 사람이 본 이름이다"]
+  doc_ship_pr_ship_review_boundary["Ship과 PR-Ship은 서로 다른 통합 단계다"]
   doc_skills_as_portable_procedures["Skill은 재사용 가능한 절차다"]
   doc_tft_command_shim_skill_routing["Command shim은 skill source of truth를 지킨다"]
   doc_tft_visual_structure_renderer["TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다"]
@@ -441,6 +443,10 @@ graph TD
   doc_session_identity_over_filenames --> doc_backlog_source_session_provenance
   doc_session_identity_over_filenames --> doc_revive_over_transcript_recall
   doc_session_identity_over_filenames --> doc_worktree_session_continuity
+  doc_ship_pr_ship_review_boundary --> doc_change_integration_discipline
+  doc_ship_pr_ship_review_boundary --> doc_diff_review_draft_handoff
+  doc_ship_pr_ship_review_boundary --> doc_evidence_first_verification_gate
+  doc_ship_pr_ship_review_boundary --> doc_request_traceability_surgical_changes
   doc_skills_as_portable_procedures --> doc_context_loading_minimal_surface
   doc_skills_as_portable_procedures --> doc_judgment_doc_unit
   doc_tft_command_shim_skill_routing --> doc_frame_verify_contract
@@ -466,7 +472,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 68
-- Links: 205
+- Documents: 69
+- Links: 209
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
