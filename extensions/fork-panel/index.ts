@@ -13,7 +13,7 @@ type SplitDirection = (typeof SPLIT_DIRS)[number];
 const VALID_DIRS = [...SPLIT_DIRS, "tab"] as const;
 type Direction = (typeof VALID_DIRS)[number];
 type OpenMode = Direction | "here";
-type ReviveHereMismatchAction = "fast" | "worktree-here" | "worktree-right";
+type ReviveHereMismatchAction = "fast" | "worktree-here" | Direction;
 
 const HANDOFF_DIR = join(homedir(), ".pi", "agent", "fork-panel");
 const INBOX_DIR = join(HANDOFF_DIR, "inbox");
@@ -1599,7 +1599,6 @@ export default function (pi: ExtensionAPI) {
 		const options: Array<{ action: ReviveHereMismatchAction; title: string; detail: string }> = [
 			{ action: "fast", title: "현재 cwd에서 세션만 빠르게 열기", detail: "워크트리 이동을 보장하지 않습니다. 참고/읽기용에 가깝습니다." },
 			{ action: "worktree-here", title: "해당 worktree에서 현재 패널로 열기", detail: "현재 Pi를 재실행해 shell/Pi/tool cwd를 세션 worktree로 맞춥니다." },
-			{ action: "worktree-right", title: "새 오른쪽 패널에서 해당 worktree로 열기", detail: "현재 패널은 유지하고 새 패널을 원 worktree에서 엽니다." },
 		];
 		return ctx.ui.custom<ReviveHereMismatchAction | null>(
 			(tui, theme, _kb, done) => ({
@@ -1608,7 +1607,7 @@ export default function (pi: ExtensionAPI) {
 						theme.fg("accent", "─".repeat(w)),
 						truncateToWidth(`  ${theme.fg("accent", theme.bold("WORKTREE MISMATCH"))} ${theme.fg("accent", "|")} ${theme.fg("text", item.title)}`, w, ""),
 						truncateToWidth(`  현재 cwd: ${theme.fg("border", workspaceLabelFor(currentCwd))}  →  세션 worktree: ${theme.fg("accent", workspaceLabelFor(reviveCwd))}`, w, ""),
-						truncateToWidth(`  ${theme.fg("borderAccent", "↑/↓ 선택 · Enter 확정 · q/Esc 취소")}`, w, ""),
+						truncateToWidth(`  ${theme.fg("borderAccent", "j/k 선택 · Enter 확정 · ←/→/↑/↓/t: 해당 worktree 새 패널/탭 · q/Esc 취소")}`, w, ""),
 					];
 					for (let i = 0; i < options.length; i++) {
 						const option = options[i];
@@ -1622,9 +1621,14 @@ export default function (pi: ExtensionAPI) {
 				},
 				handleInput: (data: string) => {
 					if (data === "q" || matchesKey(data, Key.escape)) { done(null); return; }
-					if (matchesKey(data, Key.up) || data === "k") selectedIndex = Math.max(0, selectedIndex - 1);
-					else if (matchesKey(data, Key.down) || data === "j") selectedIndex = Math.min(options.length - 1, selectedIndex + 1);
-					else if (/^[1-3]$/.test(data)) { done(options[Number(data) - 1].action); return; }
+					if (matchesKey(data, Key.left) || data === "l") { done("left"); return; }
+					if (matchesKey(data, Key.right) || data === "r") { done("right"); return; }
+					if (matchesKey(data, Key.up) || data === "u") { done("up"); return; }
+					if (matchesKey(data, Key.down) || data === "d") { done("down"); return; }
+					if (data === "t") { done("tab"); return; }
+					if (data === "k") selectedIndex = Math.max(0, selectedIndex - 1);
+					else if (data === "j") selectedIndex = Math.min(options.length - 1, selectedIndex + 1);
+					else if (/^[1-2]$/.test(data)) { done(options[Number(data) - 1].action); return; }
 					else if (matchesKey(data, Key.enter)) { done(options[selectedIndex].action); return; }
 					(tui as any).requestRender?.();
 				},
@@ -1708,8 +1712,8 @@ export default function (pi: ExtensionAPI) {
 					await openReviveFast(target, ctx, item, currentCwd, reviveCwd.cwd);
 					return;
 				}
-				if (action === "worktree-right") {
-					await openRevive(target, ctx, "right");
+				if (action !== "worktree-here") {
+					await openRevive(target, ctx, action);
 					return;
 				}
 			}
