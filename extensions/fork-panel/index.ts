@@ -592,6 +592,20 @@ function buildSessionLaunchCommand(cwd: string, sessionFile: string, env: Record
 	return `cd \\"${esc(cwd)}\\" && ${buildEnvPrefix(env)}pi --session \\"${esc(sessionFile)}\\"`;
 }
 
+function resolveReviveCwd(target: ForkRecord, fallbackCwd: string): { cwd: string; fallback: boolean; reason?: string } {
+	const candidates = [target.cwd, extractSessionCwd(readSessionPreviewEntries(target.sessionFile))]
+		.filter((cwd): cwd is string => typeof cwd === "string" && cwd.trim().length > 0);
+	for (const cwd of candidates) {
+		const resolved = safeRealpath(cwd);
+		if (isDirectory(resolved)) return { cwd: resolved, fallback: false };
+	}
+	return {
+		cwd: fallbackCwd,
+		fallback: true,
+		reason: candidates[0] ? `세션 cwd가 존재하지 않습니다: ${candidates[0]}` : "세션 cwd를 찾지 못했습니다",
+	};
+}
+
 function buildOpenSessionScript(mode: Direction, cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}): string {
 	const cmd = buildSessionLaunchCommand(cwd, sessionFile, env);
 	if (mode === "tab") {
@@ -1481,10 +1495,13 @@ export default function (pi: ExtensionAPI) {
 
 		const item = buildReviveItem(target);
 		if (mode === "here") {
+			const reviveCwd = resolveReviveCwd(target, ctx.cwd);
 			try {
 				const result = await ctx.switchSession(target.sessionFile, {
+					cwdOverride: reviveCwd.cwd,
 					withSession: async (nextCtx) => {
-						nextCtx.ui.notify(`${item.workspaceLabel} · ${item.title} 세션 재개 → 현재 패널`, "info");
+						const cwdNote = reviveCwd.fallback ? ` · cwd fallback: ${reviveCwd.reason}` : ` · cwd ${workspaceLabelFor(reviveCwd.cwd)}`;
+						nextCtx.ui.notify(`${item.workspaceLabel} · ${item.title} 세션 재개 → 현재 패널${cwdNote}`, reviveCwd.fallback ? "warning" : "info");
 					},
 				});
 				if (result.cancelled) ctx.ui.notify("세션 전환이 취소되었습니다", "warning");
@@ -1499,7 +1516,9 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 
-		const cwd = target.cwd || ctx.cwd;
+		const reviveCwd = resolveReviveCwd(target, ctx.cwd);
+		if (reviveCwd.fallback) ctx.ui.notify(`${reviveCwd.reason}. 현재 cwd로 엽니다: ${reviveCwd.cwd}`, "warning");
+		const cwd = reviveCwd.cwd;
 		const isP0 = recordSource(target) === "p0";
 		if (!isP0) { try { unlinkSync(join(HANDOFF_DIR, `${target.forkId}.json`)); } catch {} }
 		const script = buildOpenSessionScript(mode, cwd, target.sessionFile, isP0 ? {} : {

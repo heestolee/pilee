@@ -34,7 +34,7 @@ supersedes:
 
 ## Continuity Rule
 
-회수의 기본 동작은 `/revive`입니다. 사용자는 닫힌 세션 목록에서 제목과 preview를 보고 선택한 뒤, 같은 세션 파일로 새 패널/탭/현재 패널에서 이어갑니다. 전문 복사는 보조 수단이며 기본 UX가 아닙니다.
+회수의 기본 동작은 `/revive`입니다. 사용자는 닫힌 세션 목록에서 제목과 preview를 보고 선택한 뒤, 같은 세션 파일로 새 패널/탭/현재 패널에서 이어갑니다. 이때 세션 파일만 바꾸면 안 되고, 해당 세션이 대화하던 cwd/worktree도 함께 복원합니다. worktree-bound session을 현재 패널에서 열 때도 `cwdOverride`를 명시해 tool 실행 기준이 원 세션의 worktree가 되게 합니다. 전문 복사는 보조 수단이며 기본 UX가 아닙니다.
 
 ## Placement Rule
 
