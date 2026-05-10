@@ -13,6 +13,7 @@ type SplitDirection = (typeof SPLIT_DIRS)[number];
 const VALID_DIRS = [...SPLIT_DIRS, "tab"] as const;
 type Direction = (typeof VALID_DIRS)[number];
 type OpenMode = Direction | "here";
+type ReviveHereMismatchAction = "fast" | "worktree-here" | "worktree-right";
 
 const HANDOFF_DIR = join(homedir(), ".pi", "agent", "fork-panel");
 const INBOX_DIR = join(HANDOFF_DIR, "inbox");
@@ -435,6 +436,10 @@ function workspaceLabelFor(cwd: string): string {
 		}
 	}
 	return key.startsWith(`${home}/`) ? `~/${relative(home, key)}` : key;
+}
+
+function sameWorkspaceCwd(a: string, b: string): boolean {
+	return safeRealpath(workspaceKeyFor(a)) === safeRealpath(workspaceKeyFor(b));
 }
 
 function isDirectory(filePath: string): boolean {
@@ -1566,7 +1571,7 @@ export default function (pi: ExtensionAPI) {
 					const lines = [
 						theme.fg("accent", "─".repeat(w)),
 						truncateToWidth(`  ${theme.fg("accent", theme.bold("OPEN REVIVE"))} ${theme.fg("accent", "|")} ${renderPanelLabel(theme, panelLabelOf(item.record), true)} ${theme.fg("accent", "·")} ${theme.fg("border", item.workspaceLabel)} ${theme.fg("accent", "·")} ${theme.fg("text", item.title)}`, w, ""),
-						truncateToWidth(`  ${theme.fg("border", "Enter/h: 현재 패널 · ← left · → right · ↑ up · ↓ down · t: 새 탭")}`, w, ""),
+						truncateToWidth(`  ${theme.fg("border", "Enter/h: 현재 패널(다른 worktree면 선택) · ← left · → right · ↑ up · ↓ down · t: 새 탭")}`, w, ""),
 						truncateToWidth(`  ${theme.fg("borderAccent", "q/Esc: 취소")}`, w, ""),
 						theme.fg("accent", "─".repeat(w)),
 					];
@@ -1588,6 +1593,104 @@ export default function (pi: ExtensionAPI) {
 		);
 	}
 
+	async function chooseReviveHereMismatchAction(item: ReviveItem, currentCwd: string, reviveCwd: string, ctx: ExtensionCommandContext): Promise<ReviveHereMismatchAction | null> {
+		if (!ctx.hasUI) return "worktree-here";
+		let selectedIndex = 1;
+		const options: Array<{ action: ReviveHereMismatchAction; title: string; detail: string }> = [
+			{ action: "fast", title: "현재 cwd에서 세션만 빠르게 열기", detail: "워크트리 이동을 보장하지 않습니다. 참고/읽기용에 가깝습니다." },
+			{ action: "worktree-here", title: "해당 worktree에서 현재 패널로 열기", detail: "현재 Pi를 재실행해 shell/Pi/tool cwd를 세션 worktree로 맞춥니다." },
+			{ action: "worktree-right", title: "새 오른쪽 패널에서 해당 worktree로 열기", detail: "현재 패널은 유지하고 새 패널을 원 worktree에서 엽니다." },
+		];
+		return ctx.ui.custom<ReviveHereMismatchAction | null>(
+			(tui, theme, _kb, done) => ({
+				render: (w: number) => {
+					const lines = [
+						theme.fg("accent", "─".repeat(w)),
+						truncateToWidth(`  ${theme.fg("accent", theme.bold("WORKTREE MISMATCH"))} ${theme.fg("accent", "|")} ${theme.fg("text", item.title)}`, w, ""),
+						truncateToWidth(`  현재 cwd: ${theme.fg("border", workspaceLabelFor(currentCwd))}  →  세션 worktree: ${theme.fg("accent", workspaceLabelFor(reviveCwd))}`, w, ""),
+						truncateToWidth(`  ${theme.fg("borderAccent", "↑/↓ 선택 · Enter 확정 · q/Esc 취소")}`, w, ""),
+					];
+					for (let i = 0; i < options.length; i++) {
+						const option = options[i];
+						const cursor = i === selectedIndex ? theme.fg("accent", "▶") : " ";
+						const title = i === selectedIndex ? theme.fg("accent", option.title) : theme.fg("text", option.title);
+						lines.push(truncateToWidth(`${cursor} ${i + 1}. ${title}`, w, ""));
+						lines.push(truncateToWidth(`     ${theme.fg("border", option.detail)}`, w, ""));
+					}
+					lines.push(theme.fg("accent", "─".repeat(w)));
+					return lines;
+				},
+				handleInput: (data: string) => {
+					if (data === "q" || matchesKey(data, Key.escape)) { done(null); return; }
+					if (matchesKey(data, Key.up) || data === "k") selectedIndex = Math.max(0, selectedIndex - 1);
+					else if (matchesKey(data, Key.down) || data === "j") selectedIndex = Math.min(options.length - 1, selectedIndex + 1);
+					else if (/^[1-3]$/.test(data)) { done(options[Number(data) - 1].action); return; }
+					else if (matchesKey(data, Key.enter)) { done(options[selectedIndex].action); return; }
+					(tui as any).requestRender?.();
+				},
+				invalidate: () => {},
+			}),
+			{ overlay: true, overlayOptions: { width: "82%", minWidth: 64, maxHeight: 13, anchor: "center" } },
+		);
+	}
+
+	async function openReviveFast(target: ForkRecord, ctx: ExtensionCommandContext, item: ReviveItem, currentCwd: string, reviveCwd: string) {
+		try {
+			const result = await ctx.switchSession(target.sessionFile, {
+				withSession: async (nextCtx) => {
+					nextCtx.ui.notify(`${item.title} 세션만 빠르게 열림 · 현재 ${workspaceLabelFor(currentCwd)} / 세션 ${workspaceLabelFor(reviveCwd)}`, "warning");
+				},
+			});
+			if (result.cancelled) ctx.ui.notify("세션 전환이 취소되었습니다", "warning");
+		} catch (e) {
+			ctx.ui.notify(`세션 전환 실패: ${e instanceof Error ? e.message : e}`, "error");
+		}
+	}
+
+	async function openReviveHereAtCwd(target: ForkRecord, ctx: ExtensionCommandContext, item: ReviveItem, reviveCwd: { cwd: string; fallback: boolean; reason?: string }) {
+		const headerSync = reviveCwd.fallback ? { updated: false } : ensureSessionHeaderCwd(target.sessionFile, reviveCwd.cwd);
+		if (headerSync.error) ctx.ui.notify(`revive cwd header 보정 실패: ${headerSync.error}`, "warning");
+		const isP0 = recordSource(target) === "p0";
+		const env = isP0 ? {} : {
+			PI_FORK_ID: target.forkId,
+			PI_FORK_PANEL_LABEL: target.panelLabel,
+			PI_FORK_PARENT: target.parentSessionFile,
+		};
+		if (process.platform === "darwin" && process.env.TERM_PROGRAM === "ghostty") {
+			const terminalId = await getGhosttyFocusedTerminalId(pi);
+			const script = buildReplaceCurrentSessionScript(reviveCwd.cwd, target.sessionFile, env, terminalId);
+			const launch = await runDetachedOsa(pi, script);
+			if (launch.code === 0) {
+				if (!isP0) { try { unlinkSync(join(HANDOFF_DIR, `${target.forkId}.json`)); } catch {} }
+				ctx.ui.notify(`${item.workspaceLabel} · ${item.title} 세션 재개 → 현재 패널 재실행`, reviveCwd.fallback ? "warning" : "info");
+				ctx.shutdown();
+				return;
+			}
+			ctx.ui.notify(`현재 패널 재실행 실패: ${launch.stderr?.trim() || "unknown"}. in-process 전환으로 fallback합니다.`, "warning");
+		}
+
+		const chdirResult = reviveCwd.fallback ? { previous: process.cwd(), changed: false } : chdirForCurrentPanelRevive(reviveCwd.cwd);
+		if (chdirResult.error) ctx.ui.notify(`현재 패널 cwd 이동 실패: ${chdirResult.error}`, "warning");
+		try {
+			const result = await ctx.switchSession(target.sessionFile, {
+				cwdOverride: reviveCwd.cwd,
+				withSession: async (nextCtx) => {
+					const headerNote = headerSync.updated ? " · header cwd 보정" : "";
+					const processNote = chdirResult.changed ? " · process cwd 이동" : "";
+					const cwdNote = reviveCwd.fallback ? ` · cwd fallback: ${reviveCwd.reason}` : ` · cwd ${workspaceLabelFor(reviveCwd.cwd)}${headerNote}${processNote}`;
+					nextCtx.ui.notify(`${item.workspaceLabel} · ${item.title} 세션 재개 → 현재 패널${cwdNote}`, reviveCwd.fallback ? "warning" : "info");
+				},
+			});
+			if (result.cancelled) {
+				if (chdirResult.changed) process.chdir(chdirResult.previous);
+				ctx.ui.notify("세션 전환이 취소되었습니다", "warning");
+			}
+		} catch (e) {
+			if (chdirResult.changed) process.chdir(chdirResult.previous);
+			ctx.ui.notify(`세션 전환 실패: ${e instanceof Error ? e.message : e}`, "error");
+		}
+	}
+
 	async function openRevive(target: ForkRecord, ctx: ExtensionCommandContext, mode: OpenMode) {
 		if (!existsSync(target.sessionFile)) {
 			ctx.ui.notify(`세션 파일 없음: ${target.sessionFile}`, "error");
@@ -1597,47 +1700,20 @@ export default function (pi: ExtensionAPI) {
 		const item = buildReviveItem(target);
 		if (mode === "here") {
 			const reviveCwd = resolveReviveCwd(target, ctx.cwd);
-			const headerSync = reviveCwd.fallback ? { updated: false } : ensureSessionHeaderCwd(target.sessionFile, reviveCwd.cwd);
-			if (headerSync.error) ctx.ui.notify(`revive cwd header 보정 실패: ${headerSync.error}`, "warning");
-			const isP0 = recordSource(target) === "p0";
-			const env = isP0 ? {} : {
-				PI_FORK_ID: target.forkId,
-				PI_FORK_PANEL_LABEL: target.panelLabel,
-				PI_FORK_PARENT: target.parentSessionFile,
-			};
-			if (process.platform === "darwin" && process.env.TERM_PROGRAM === "ghostty") {
-				const terminalId = await getGhosttyFocusedTerminalId(pi);
-				const script = buildReplaceCurrentSessionScript(reviveCwd.cwd, target.sessionFile, env, terminalId);
-				const launch = await runDetachedOsa(pi, script);
-				if (launch.code === 0) {
-					if (!isP0) { try { unlinkSync(join(HANDOFF_DIR, `${target.forkId}.json`)); } catch {} }
-					ctx.ui.notify(`${item.workspaceLabel} · ${item.title} 세션 재개 → 현재 패널 재실행`, reviveCwd.fallback ? "warning" : "info");
-					ctx.shutdown();
+			const currentCwd = ctx.cwd || process.cwd();
+			if (!reviveCwd.fallback && !sameWorkspaceCwd(currentCwd, reviveCwd.cwd)) {
+				const action = await chooseReviveHereMismatchAction(item, currentCwd, reviveCwd.cwd, ctx);
+				if (!action) return;
+				if (action === "fast") {
+					await openReviveFast(target, ctx, item, currentCwd, reviveCwd.cwd);
 					return;
 				}
-				ctx.ui.notify(`현재 패널 재실행 실패: ${launch.stderr?.trim() || "unknown"}. in-process 전환으로 fallback합니다.`, "warning");
-			}
-
-			const chdirResult = reviveCwd.fallback ? { previous: process.cwd(), changed: false } : chdirForCurrentPanelRevive(reviveCwd.cwd);
-			if (chdirResult.error) ctx.ui.notify(`현재 패널 cwd 이동 실패: ${chdirResult.error}`, "warning");
-			try {
-				const result = await ctx.switchSession(target.sessionFile, {
-					cwdOverride: reviveCwd.cwd,
-					withSession: async (nextCtx) => {
-						const headerNote = headerSync.updated ? " · header cwd 보정" : "";
-						const processNote = chdirResult.changed ? " · process cwd 이동" : "";
-						const cwdNote = reviveCwd.fallback ? ` · cwd fallback: ${reviveCwd.reason}` : ` · cwd ${workspaceLabelFor(reviveCwd.cwd)}${headerNote}${processNote}`;
-						nextCtx.ui.notify(`${item.workspaceLabel} · ${item.title} 세션 재개 → 현재 패널${cwdNote}`, reviveCwd.fallback ? "warning" : "info");
-					},
-				});
-				if (result.cancelled) {
-					if (chdirResult.changed) process.chdir(chdirResult.previous);
-					ctx.ui.notify("세션 전환이 취소되었습니다", "warning");
+				if (action === "worktree-right") {
+					await openRevive(target, ctx, "right");
+					return;
 				}
-			} catch (e) {
-				if (chdirResult.changed) process.chdir(chdirResult.previous);
-				ctx.ui.notify(`세션 전환 실패: ${e instanceof Error ? e.message : e}`, "error");
 			}
+			await openReviveHereAtCwd(target, ctx, item, reviveCwd);
 			return;
 		}
 
