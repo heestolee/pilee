@@ -18,6 +18,8 @@ AI가 기본으로 할 수 있는 것:
 - 실패 원인 분류
 - 관련 코드·generated artifact·테스트 수정
 - 로컬 재현/검증
+- stale base / branch-behind 여부 판단
+- 안전 조건을 만족하는 base branch merge update + push
 - 커밋 및 push
 - 최종 보고로 원인/대응/검증 요약 남기기
 
@@ -25,12 +27,14 @@ AI가 사용자 명시 승인 없이 하면 안 되는 것:
 
 - workflow run rerun/re-run jobs
 - review re-request
-- merge, auto-merge, merge queue
-- force push, amend, history rewrite
+- PR merge, auto-merge, merge queue
+- rebase update, force push, amend, history rewrite
 - CI 설정 자체를 우회하거나 required check를 약화
 - flaky로 단정하고 무시
 
-CI rerun은 write side effect다. 새 commit push로 자동 재실행되는 CI는 괜찮지만, `gh run rerun`은 사용자가 명시 요청한 경우에만 수행한다.
+CI rerun은 write side effect다. 새 commit push나 안전한 base-merge update push로 자동 재실행되는 CI는 괜찮지만, `gh run rerun`은 사용자가 명시 요청한 경우에만 수행한다.
+
+Base branch update도 write side effect지만, 아래 **Branch Freshness / Update Branch Decision** 조건을 만족하면 `ci-ship`의 CI 복구 행위로 간주하고 별도 확인 없이 수행할 수 있다. 단 rebase/force-push는 금지하며, merge conflict가 나면 즉시 abort하고 사용자에게 차단 사유를 보고한다.
 
 ## Input Forms
 
@@ -74,6 +78,7 @@ gh run view <run-id> --job <job-id> --log-failed
 |---|---|---|
 | PR 변경으로 인한 코드 실패 | 타입/테스트/빌드가 변경 파일·새 API·새 behavior와 직접 연결 | 코드 수정 + 로컬 검증 + 커밋 |
 | generated artifact stale | schema/codegen/i18n/snapshot/lockfile diff 요구 | 정식 generator 실행 + generated diff 확인 + 커밋 |
+| stale base / branch behind | base가 앞서 있고 실패 로그·mergeState·로컬 재현이 base 최신화 필요성을 가리킴 | 안전 조건 확인 후 base merge update + 검증 + push |
 | 테스트 기대값 stale | product behavior는 맞고 테스트가 이전 계약을 가정 | 테스트를 새 계약에 맞게 수정, 근거 기록 |
 | flaky/timeout | 동일 commit 재시도/known flaky 근거가 있고 코드 원인 없음 | 근거 보고 또는 사용자 승인 후 rerun 제안 |
 | infra/external | registry, network, secret, runner, third-party 장애 | 근거 수집 후 사용자/담당자 action 제시 |
@@ -92,7 +97,53 @@ gh run view <run-id> --job <job-id> --log-failed
 
 항상 실패한 step → 명령 → 실제 에러 → 관련 diff/파일 → 재현 명령 순서로 연결한다.
 
-### 4. Decide Whether to Modify
+### 4. Branch Freshness / Update Branch Decision
+
+실패 로그를 보기 전후로 branch freshness를 함께 판단한다. CI 실패가 PR 코드 문제가 아니라 base 최신화 문제일 수 있기 때문이다.
+
+Read-only 확인:
+
+```bash
+git fetch origin <baseRefName> <headRefName>
+git status --short
+git rev-parse HEAD
+git rev-list --left-right --count origin/<baseRefName>...HEAD
+```
+
+판단 기준:
+
+| 신호 | 의미 | 처리 |
+|---|---|---|
+| `mergeStateStatus`가 `BEHIND`/out-of-date 계열 | GitHub가 branch update를 요구 | update 후보 |
+| base-only commit 수가 1 이상이고 CI 로그가 base 변경 영향(스키마/락파일/테스트/merge ref)을 가리킴 | stale base 가능성 높음 | update 후보 |
+| local HEAD에서는 통과하지만 PR merge ref/base 최신 상태에서만 실패 | stale base 가능성 높음 | update 후보 |
+| merge conflict 또는 dirty worktree | 자동 update 불가 | abort/report |
+| 실패가 변경 파일의 타입/테스트 오류로 명확함 | base update로 덮지 않음 | 코드 수정 우선 |
+| check가 아직 `IN_PROGRESS`이고 실패 로그가 없음 | 실패 아님 | 기다림/보고, update하지 않음 |
+
+자동 update 안전 조건을 모두 만족해야 한다.
+
+1. 현재 작업트리가 clean이다.
+2. 현재 branch가 PR `headRefName`이거나, push 대상이 명확하다.
+3. `git rev-parse HEAD`가 PR `headRefOid`와 일치한다. 다르면 먼저 fetch/상태를 다시 보고 remote divergence를 설명한다.
+4. base-only commit 수가 1 이상이다.
+5. CI 실패/mergeState가 stale base와 연결된다.
+6. rebase/force-push 없이 merge commit으로 해결 가능하다.
+
+수행 방식:
+
+```bash
+git merge --no-edit origin/<baseRefName>
+# conflict 발생 시:
+#   git merge --abort
+#   최종 보고에 blocked로 기록
+# conflict 없으면 CI 실패와 가장 가까운 로컬 검증 실행
+git push origin HEAD:<headRefName>
+```
+
+GitHub의 `Update branch` 버튼과 같은 효과가 필요하더라도 기본은 로컬 merge + push로 수행한다. `gh pr update-branch`는 로컬 branch 상태 추적이 어렵기 때문에, 사용자가 명시 요청하거나 로컬 merge가 불가능한 특수 상황에서만 고려한다. `--rebase`는 사용하지 않는다.
+
+### 5. Decide Whether to Modify
 
 수정이 필요한 경우:
 
@@ -109,14 +160,14 @@ gh run view <run-id> --job <job-id> --log-failed
 
 수정하지 않는 경우에도 “왜 코드 변경이 아닌지”를 최종 보고에 근거와 함께 남긴다. PR 코멘트는 사용자가 명시적으로 요청한 경우에만 남긴다.
 
-### 5. Implement Fix
+### 6. Implement Fix
 
 - 관련 파일만 수정한다.
 - generated artifact는 프로젝트 generator로 생성한다.
 - lockfile/schema/snapshot은 diff를 읽고 의도한 변화인지 확인한다.
 - unrelated cleanup은 하지 않는다.
 
-### 6. Local Verification
+### 7. Local Verification
 
 CI의 실패 명령과 가장 가까운 로컬 명령을 실행한다.
 
@@ -130,7 +181,7 @@ CI의 실패 명령과 가장 가까운 로컬 명령을 실행한다.
 
 CI와 로컬 환경 차이가 있으면 차이를 명시한다.
 
-### 7. Commit + Push
+### 8. Commit + Push
 
 ```bash
 git status --short
@@ -142,7 +193,7 @@ git push
 
 커밋 메시지는 실패 원인 중심으로 쓴다.
 
-### 8. PR Comment Exception Policy
+### 9. PR Comment Exception Policy
 
 `ci-ship`의 기본 완료 조건은 commit + push + 최종 보고다. PR comment는 기본 동작이 아니다.
 
@@ -184,8 +235,9 @@ CI 실패 확인 결과 코드 변경은 하지 않았습니다.
 - 대응: <수정/생성/보류>
 - 커밋: `<sha>` <message>
 - Push: <branch>
+- Base update: <수행/불필요/차단> (<근거>)
 - 검증: `<command>` ✅ / ⚠️ <reason>
-- 하지 않은 것: rerun/re-request/merge는 수행하지 않음
+- 하지 않은 것: rerun/re-request/PR merge는 수행하지 않음
 ```
 
 ## Red Flags
@@ -194,5 +246,9 @@ CI 실패 확인 결과 코드 변경은 하지 않았습니다.
 - CI required check 약화
 - generated file 수동 편집
 - “flaky 같다”만으로 종료
+- branch가 뒤처졌는지 확인하지 않고 코드만 수정
+- 실패가 PR 코드 원인인데 base update로 덮으려 함
+- dirty worktree/remote divergence 상태에서 update branch 수행
+- rebase/force-push로 branch update 수행
 - 로컬 재현 없이 push
 - unrelated failure를 현재 PR 성공처럼 포장
