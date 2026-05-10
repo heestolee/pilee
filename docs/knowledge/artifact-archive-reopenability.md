@@ -30,7 +30,7 @@ source:
   - user-direction:2026-05-07-conductor-history-artifact-browser
   - user-direction:2026-05-09-archive-command-name
 reviewed_at: 2026-05-10
-reviewed_commit: 4371da5160406ac4931fb3f137b9768b9ad17fec
+reviewed_commit: 79e2bc8b8ee4dbb629d11fe43e59b2ee59b58e77
 related:
   - live-artifact-preview-pattern
   - backlog-source-session-provenance
