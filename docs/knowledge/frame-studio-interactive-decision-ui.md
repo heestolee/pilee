@@ -24,7 +24,7 @@ source:
   - user-direction:2026-05-10-tft-studio-chronological-flow
   - user-direction:2026-05-10-tft-stage-run-cards
 reviewed_at: 2026-05-10
-reviewed_commit: c871711faf0db968a44b77a528a11f4944114a60
+reviewed_commit: 205c12153350ccd4d81aaab74b94ed44965270b1
 related:
   - frame-planning-identity
   - frame-verify-contract
