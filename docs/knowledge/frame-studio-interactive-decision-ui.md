@@ -24,6 +24,7 @@ source:
   - user-direction:2026-05-10-tft-studio-chronological-flow
   - user-direction:2026-05-10-tft-stage-run-cards
   - user-direction:2026-05-10-tft-visual-db-structure
+  - user-direction:2026-05-10-deep-interview-frame
 reviewed_at: 2026-05-10
 reviewed_commit: eef013759f36cb9625b3d555bf2f8a55d3580ee3
 related:
@@ -63,6 +64,8 @@ TFT Studio의 메인 화면은 최신 활성 step을 위에 따로 띄우고 그
 같은 work unit 안에서 Frame, Decide, Verify, Verify Report는 여러 번 수행될 수 있습니다. 따라서 tab timeline은 단순 flat list가 아니라 `Frame Run #1`, `Frame Run #2`, `Verify Run #1`처럼 stage run 카드로 묶어 보여줘야 합니다. 새 transcript 파일을 만들지는 않고 같은 identity transcript에 append하되, `finish`/`abort` 이후 같은 tab에 새 update/start가 오면 새 run 카드로 보이게 합니다.
 
 즉 TFT Studio는 AskUserQuestion 원칙을 대체하지 않습니다. 같은 decision gate를 더 읽기 쉬운 UI로 표현하는 surface입니다. `/frame`의 핵심 정렬 질문에서는 추천안이 명백해 보여도 묻고, `(명백: ...)` 주석으로 AI 판단 근거를 같이 보여줘야 합니다.
+
+Frame 질문 UI는 deep-interview식으로 “현재 이해 / 막힌 결정 / 추천 답안 / 질문”을 한 카드에 담는 것이 좋습니다. 이 구조는 사용자가 전체 계획을 감사하게 만드는 대신, 지금 풀어야 하는 불확실성 하나와 선택 후 달라질 계약을 바로 보게 합니다. 단, 카드가 길어져 여러 결정을 한 번에 묻는다면 실패입니다.
 
 Generative UI 스타일의 flat/compact visual pattern은 TFT Studio에도 유용하지만, dependency나 “모델이 매번 UI를 생성하는 방식”을 붙이는 것은 맞지 않습니다. TFT Studio는 prose-heavy co-thinking artifact이므로 `텍스트는 tool 밖에, visual만 tool 안에` 같은 규칙을 그대로 적용하면 오히려 목적을 잃습니다. 대신 renderer는 deterministic하게 유지하고, tab shell·표·요약 카드·간단한 다이어그램 같은 보조 시각화만 사용해 사용자가 목표/범위/검증 렌즈를 더 빨리 읽게 합니다.
 
