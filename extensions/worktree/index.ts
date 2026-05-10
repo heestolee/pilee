@@ -17,6 +17,7 @@ import { discoverAgents } from "../subagent/agents.ts";
 import { getFinalOutput, runSingleAgent } from "../subagent/runner.ts";
 import { makeSubagentSessionFile } from "../subagent/session.ts";
 import type { SingleResult, SubagentDetails } from "../subagent/types.ts";
+import { resolveForkPanelIdentity } from "../utils/fork-panel-identity.ts";
 
 // ─── Repo registry ─────────────────────────────────────────────────────────
 
@@ -427,13 +428,17 @@ function getProfiledRepoSync(repoRoot: string): WorktreeRepoProfile | null {
 	return getProfiledWorktreeRepos(repoRoot).find((profile) => repoProfileMatches(profile, repoRoot, registeredName)) ?? null;
 }
 
-function getCurrentPanelLabel(): string {
-	const raw = process.env.PI_FORK_PANEL_LABEL?.trim();
-	return raw || "P0";
+function getSessionFileFromContext(ctx?: unknown): string | null {
+	const sessionManager = (ctx as { sessionManager?: { getSessionFile?: () => string | null } } | undefined)?.sessionManager;
+	try { return sessionManager?.getSessionFile?.() ?? null; } catch { return null; }
 }
 
-function isChildForkPanel(): boolean {
-	const label = getCurrentPanelLabel();
+function getCurrentPanelLabel(ctx?: unknown): string {
+	return resolveForkPanelIdentity({ sessionFile: getSessionFileFromContext(ctx) }).panelLabel;
+}
+
+function isChildForkPanel(ctx?: unknown): boolean {
+	const label = getCurrentPanelLabel(ctx);
 	return /^P\d+$/i.test(label) && label.toUpperCase() !== "P0";
 }
 
@@ -441,11 +446,11 @@ function getKnownRepoName(repoRoot: string): string {
 	return findRegisteredName(loadRegistry(), repoRoot) ?? basename(repoRoot);
 }
 
-function getWorktreeCreationPanelGuardMessage(repoRoot: string): string | null {
-	if (!isChildForkPanel()) return null;
+function getWorktreeCreationPanelGuardMessage(repoRoot: string, ctx?: unknown): string | null {
+	if (!isChildForkPanel(ctx)) return null;
 	const profile = getProfiledRepoSync(repoRoot);
 	if (!profile?.gate?.requireParentPanel) return null;
-	const panelLabel = getCurrentPanelLabel();
+	const panelLabel = getCurrentPanelLabel(ctx);
 	const repoName = profile.displayName ?? profile.name;
 	const hotfixHint = profile.gate.hotfixHint ?? (profile.gate.hotfixRequiresExplicitBase ? " 핫픽스라면 --hotfix를 함께 붙이세요." : "");
 	return [
@@ -1045,7 +1050,7 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 	const repoRoot = await resolveRepoRoot(pi, ctx, parsed.repo);
 	if (!repoRoot) return;
 
-	const panelGuard = getWorktreeCreationPanelGuardMessage(repoRoot);
+	const panelGuard = getWorktreeCreationPanelGuardMessage(repoRoot, ctx);
 	if (panelGuard) { ctx.ui.notify(panelGuard, "error"); return; }
 	const hotfixGuard = getHotfixBaseGuardMessage(parsed, "/wt new");
 	if (hotfixGuard) { ctx.ui.notify(hotfixGuard, "error"); return; }
@@ -1821,7 +1826,7 @@ async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandC
 	const repoRoot = await resolveRepoRoot(pi, ctx, parsed.repo);
 	if (!repoRoot) return;
 
-	const panelGuard = getWorktreeCreationPanelGuardMessage(repoRoot);
+	const panelGuard = getWorktreeCreationPanelGuardMessage(repoRoot, ctx);
 	if (panelGuard) { ctx.ui.notify(panelGuard, "error"); return; }
 	const hotfixGuard = getHotfixBaseGuardMessage(parsed, "/wt fork");
 	if (hotfixGuard) { ctx.ui.notify(hotfixGuard, "error"); return; }
@@ -2510,7 +2515,7 @@ export default function (pi: ExtensionAPI) {
 
 			if (!existsSync(repoRoot)) throw new Error(`Repo path missing: ${repoRoot}`);
 
-			const panelGuard = getWorktreeCreationPanelGuardMessage(repoRoot);
+			const panelGuard = getWorktreeCreationPanelGuardMessage(repoRoot, ctx);
 			if (panelGuard) throw new Error(panelGuard);
 			const hotfixGuard = getHotfixBaseGuardMessage(
 				{ hotfix: Boolean(params.hotfix), hotfeature: false, from: undefined, branch: undefined, note: params.note },
@@ -2669,7 +2674,7 @@ export default function (pi: ExtensionAPI) {
 
 			if (!existsSync(repoRoot)) throw new Error(`Repo path missing: ${repoRoot}`);
 
-			const panelGuard = getWorktreeCreationPanelGuardMessage(repoRoot);
+			const panelGuard = getWorktreeCreationPanelGuardMessage(repoRoot, ctx);
 			if (panelGuard) throw new Error(panelGuard);
 			const hotfixGuard = getHotfixBaseGuardMessage(
 				{ hotfix: Boolean(params.hotfix), hotfeature: false, from: undefined, branch: undefined, note: params.note },

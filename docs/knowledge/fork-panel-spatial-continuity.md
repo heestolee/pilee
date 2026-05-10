@@ -36,7 +36,7 @@ related:
 
 ## Orientation Rule
 
-공간 기억은 화면 위치만으로 닫히지 않습니다. 부모는 `P0`, 자식은 `P1`, `P2`처럼 visible label을 가져야 하며, revive/repanel 이후에도 사용자가 어느 패널이 기준 세션인지 즉시 알아볼 수 있어야 합니다. label은 위치 이동의 안전벨트입니다.
+공간 기억은 화면 위치만으로 닫히지 않습니다. 부모는 `P0`, 자식은 `P1`, `P2`처럼 visible label을 가져야 하며, revive/repanel 이후에도 사용자가 어느 패널이 기준 세션인지 즉시 알아볼 수 있어야 합니다. label은 위치 이동의 안전벨트입니다. 따라서 panel label은 process env만 신뢰하지 않고, 현재 session file이 fork-panel recent record와 일치하면 그 기록의 `panelLabel`로 복구합니다.
 
 ## Guardrail
 

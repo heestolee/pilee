@@ -1,3 +1,5 @@
-export function getForkPanelLabel(env: Record<string, string | undefined> = process.env): string {
-	return env.PI_FORK_PANEL_LABEL?.trim() || "P0";
+import { getForkPanelLabel as resolveForkPanelLabel } from "../utils/fork-panel-identity.ts";
+
+export function getForkPanelLabel(env: Record<string, string | undefined> = process.env, sessionFile?: string | null): string {
+	return resolveForkPanelLabel({ env, sessionFile });
 }

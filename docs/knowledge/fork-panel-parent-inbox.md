@@ -38,4 +38,4 @@ supersedes:
 
 ## Identity Rule
 
-최초/부모 패널은 `P0`로 표시하고, 자식 패널은 `P1`, `P2`처럼 부모 기준 주소를 갖습니다. 이 label은 입력창 메타에 표시해 현재 패널의 위치를 즉시 식별하게 하고, inbox item도 panel label, parent session, title, summary를 함께 보존합니다.
+최초/부모 패널은 `P0`로 표시하고, 자식 패널은 `P1`, `P2`처럼 부모 기준 주소를 갖습니다. 이 label은 입력창 메타에 표시해 현재 패널의 위치를 즉시 식별하게 하고, inbox item도 panel label, parent session, title, summary를 함께 보존합니다. revive나 in-process session switch로 `PI_FORK_PANEL_LABEL` env가 유실될 수 있으므로, 현재 session file이 fork-panel recent metadata에 남아 있으면 그 `panelLabel`을 fallback identity로 사용합니다.

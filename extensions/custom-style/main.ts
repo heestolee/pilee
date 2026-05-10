@@ -15,7 +15,7 @@ type SyncedState = {
 function syncState(ctx: ExtensionContext): SyncedState {
 	return {
 		modelLabel: ctx.model?.id ?? "no-model",
-		panelLabel: getForkPanelLabel(),
+		panelLabel: getForkPanelLabel(process.env, ctx.sessionManager.getSessionFile()),
 	};
 }
 
