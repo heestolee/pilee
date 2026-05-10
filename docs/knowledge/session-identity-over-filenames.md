@@ -22,8 +22,8 @@ source:
   - pilee-history:2026-05-05#41
   - pilee-history:2026-05-05#42
   - user-direction:2026-05-07-local-resolver
-reviewed_at: 2026-05-09
-reviewed_commit: d54d56d58ec9f5216cc5f5858e675a0addd5233e
+reviewed_at: 2026-05-10
+reviewed_commit: e60cef803efe1f1013b209297c6704fc0fdfbad0
 related:
   - worktree-session-continuity
   - revive-over-transcript-recall

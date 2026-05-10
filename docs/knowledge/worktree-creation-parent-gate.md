@@ -20,8 +20,8 @@ applies_to:
   - /wt fork
 source:
   - pilee-history:2026-05-06#67
-reviewed_at: 2026-05-09
-reviewed_commit: d54d56d58ec9f5216cc5f5858e675a0addd5233e
+reviewed_at: 2026-05-10
+reviewed_commit: e60cef803efe1f1013b209297c6704fc0fdfbad0
 related:
   - worktree-execution-boundary
   - worktree-session-continuity

@@ -21,8 +21,8 @@ source:
   - pilee-history:2026-05-01#6
   - pilee-history:2026-05-06#65
   - user-direction:2026-05-07-local-resolver
-reviewed_at: 2026-05-09
-reviewed_commit: 8050064c8c98da577174208778fc7d9f8d6025f5
+reviewed_at: 2026-05-10
+reviewed_commit: e60cef803efe1f1013b209297c6704fc0fdfbad0
 related:
   - ask-user-question-decision-gates
   - evidence-first-verification-gate
