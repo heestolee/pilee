@@ -23,7 +23,7 @@ source:
   - pilee-history:2026-05-04#35
   - user-direction:2026-05-09-glimpse-stderr-noise
 reviewed_at: 2026-05-10
-reviewed_commit: 3d5b2f2c2fc1554d9f34628af27c70d38b511182
+reviewed_commit: 636a43145119d118752bb118758e030d932990df
 related:
   - fork-panel-spatial-continuity
   - mcp-stderr-isolation

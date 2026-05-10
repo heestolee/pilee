@@ -29,8 +29,8 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-07-conductor-history-artifact-browser
   - user-direction:2026-05-09-archive-command-name
-reviewed_at: 2026-05-09
-reviewed_commit: 5a310afa680471d618d805ecd174b7af0ea57af0
+reviewed_at: 2026-05-10
+reviewed_commit: 636a43145119d118752bb118758e030d932990df
 related:
   - live-artifact-preview-pattern
   - backlog-source-session-provenance

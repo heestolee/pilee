@@ -20,7 +20,7 @@ source:
   - pilee-history:2026-05-05#42
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-10
-reviewed_commit: 335351fe327052d2a3f3e4f05081d38de37abefb
+reviewed_commit: 636a43145119d118752bb118758e030d932990df
 related:
   - stress-interview-multi-axis-review
   - subagent-model-policy

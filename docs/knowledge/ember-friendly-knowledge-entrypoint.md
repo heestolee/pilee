@@ -17,8 +17,8 @@ source:
   - user-direction:2026-05-05-ember-branding
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-09-ember-add-workflow-contract
-reviewed_at: 2026-05-09
-reviewed_commit: 15b060f549d5d396c38819a5845b46a3b84d539d
+reviewed_at: 2026-05-10
+reviewed_commit: 636a43145119d118752bb118758e030d932990df
 related:
   - pilee-knowledge-system
   - private-journal-public-doctrine

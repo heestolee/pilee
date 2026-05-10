@@ -15,8 +15,8 @@ applies_to:
   - skills/code-review-and-quality
 source:
   - session-backfill:2026-05-02#diff-overlay-review-draft
-reviewed_at: 2026-05-08
-reviewed_commit: 9b7ea36d62a7eb3ada47dff7915bf30e9ec6ac16
+reviewed_at: 2026-05-10
+reviewed_commit: 636a43145119d118752bb118758e030d932990df
 related:
   - change-integration-discipline
   - tool-output-noise-management

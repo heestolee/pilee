@@ -18,8 +18,8 @@ source:
   - pilee-history:2026-05-01#7
   - pilee-history:2026-05-02#24
   - user-direction:2026-05-07-local-resolver
-reviewed_at: 2026-05-08
-reviewed_commit: 9b7ea36d62a7eb3ada47dff7915bf30e9ec6ac16
+reviewed_at: 2026-05-10
+reviewed_commit: 636a43145119d118752bb118758e030d932990df
 related:
   - evidence-first-verification-gate
   - stress-interview-multi-axis-review
