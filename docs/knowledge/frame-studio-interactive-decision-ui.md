@@ -52,6 +52,8 @@ TFT Studio는 tabbed markdown live view와 single/multi option, 직접 입력을
 
 사용자가 선택하거나 취소하면 tool 응답으로 돌아오고, headless/no-UI 환경에서는 blocking하지 않고 numbered text fallback으로 내려갑니다. 질문 대기는 agent turn을 붙잡는 blocking 상태라서 무한 대기하지는 않지만, 실제 frame 검토는 긴 회의/휴식 후에도 이어질 수 있으므로 기본 timeout은 짧은 30분이 아니라 작업 세션 단위의 긴 window로 둡니다.
 
+UI가 가능한 환경에서 Frame/Decide/Verify의 사용자 선택 질문을 일반 채팅 본문에만 번호형 메뉴로 출력하면 TFT Studio가 co-thinking surface라는 목적을 잃습니다. 따라서 stage 질문은 먼저 `frame_studio action=ask tab=<stage>`로 열고, numbered text fallback은 Studio ask가 unavailable/cancelled/timeout일 때만 사용합니다.
+
 사용자가 선택한 뒤에는 완료 카드가 선택값·직접 입력값·원 질문을 남겨 “Pi가 다음 단계를 준비 중”임을 보여줍니다. 즉 선택 직후 질문 UI가 사라져도 사용자가 방금 무엇을 제출했는지 화면에서 확인할 수 있어야 합니다.
 
 TFT Studio의 메인 화면은 최신 활성 step을 위에 따로 띄우고 그 아래에 과거 전문을 붙이는 구조가 아니라, `update → question → answer`를 시간순으로 보여주는 진행 타임라인이어야 합니다. 사용자가 Step 3에서 선택 중이면 Step 1, Step 2 다음에 Step 3 질문이 inline으로 보여야 하며, pending question의 제목/옵션 UI는 한 번만 렌더링합니다. 원자료 성격의 로그만 하단에 분리합니다. 그래야 사용자가 화면을 3→1→2 순서로 읽는 인지적 역전이나 같은 질문이 두 번 보이는 혼선을 피할 수 있습니다.

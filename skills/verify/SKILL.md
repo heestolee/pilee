@@ -55,6 +55,18 @@ TFT Studio는 Verify를 강제로 요구하지 않는다. 하지만 `/verify`를
 
 ---
 
+## TFT Studio UI
+
+Pi UI가 있고 `frame_studio` tool을 사용할 수 있으면, `/verify`의 사용자 선택 질문은 현재 채팅 본문이 아니라 TFT Studio Verify tab에서 처리한다.
+
+- 검증 진행/요약은 `frame_studio action=update tab=verify`로 렌더링한다.
+- Step 8의 결정 필요한 엣지 케이스와 Step 10의 다음 단계 선택은 `frame_studio action=ask tab=verify`로 묻는다.
+- 질문 본문을 채팅에 번호형 메뉴로 출력하는 것은 `frame_studio ask` 결과가 `unavailable`, `cancelled`, `timeout`일 때만 허용한다.
+- 사용자가 Studio에서 답하면 그 답변을 기준으로 바로 이어가고, 같은 질문을 채팅에서 다시 확인하지 않는다.
+- canonical verification 저장 후 Step 10 답변까지 같은 Verify run에 남기고, 마지막에는 `frame_studio action=finish tab=verify`로 닫는다.
+
+---
+
 ## 실행 단계
 
 ### Step 1: 변경사항 파악
@@ -214,7 +226,7 @@ frame.json `edge_case_seeds`와 verify 중 발견된 엣지 케이스를 다음 
 | 결정 필요 항목 수 | 동작 |
 |---|---|
 | **0개** | **AskUserQuestion 건너뛰기.** Step 9로 직행. (메뉴 안 띄움) |
-| **1~4개** | 그 항목들만 옵션화 |
+| **1~4개** | 그 항목들만 옵션화. TFT Studio를 사용할 수 있으면 `frame_studio action=ask tab=verify`로 묻는다. |
 | **5개 이상** | verify 너무 커진 신호 → /frame이나 /decide 권유 |
 
 #### 3단계: 옵션 작성 (필요할 때만)
@@ -318,7 +330,7 @@ frame.json `verify_plan.manual_checks` 중 처리 안 된 항목이 있거나, G
 
 **미검증 항목 있을 때:**
 
-미검증이 있으면 다음 행동이 달라지므로 AskUserQuestion/text-mode fallback을 사용한다. 추천 경로가 명백하면 질문 앞에 `(명백: ...)` 근거를 붙인다.
+미검증이 있으면 다음 행동이 달라지므로 AskUserQuestion을 사용한다. TFT Studio를 사용할 수 있으면 `frame_studio action=ask tab=verify`로 묻고, text-mode fallback은 Studio ask가 `unavailable`, `cancelled`, `timeout`일 때만 쓴다. 추천 경로가 명백하면 질문 앞에 `(명백: ...)` 근거를 붙인다.
 
 ```markdown
 (명백: UI 캡처와 운영 post-SELECT가 남아 있어 PR보다 검증 보강이 우선입니다.)
