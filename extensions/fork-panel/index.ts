@@ -445,12 +445,66 @@ function safeRealpath(filePath: string): string {
 	try { return realpathSync(filePath); } catch { return filePath; }
 }
 
+function collectTextFragments(value: unknown, output: string[] = []): string[] {
+	if (typeof value === "string") {
+		output.push(value);
+		return output;
+	}
+	if (Array.isArray(value)) {
+		for (const item of value) collectTextFragments(item, output);
+		return output;
+	}
+	if (value && typeof value === "object") {
+		for (const item of Object.values(value as Record<string, unknown>)) collectTextFragments(item, output);
+	}
+	return output;
+}
+
+function inferWorkspaceCwdFromSessionEntries(entries: any[], fallbackCwd = ""): string {
+	const roots = configuredWorkspaceRoots();
+	if (roots.length === 0) return "";
+	const counts = new Map<string, number>();
+	const countCandidate = (candidate: string, weight = 1) => {
+		const resolved = safeRealpath(candidate);
+		if (!isDirectory(resolved)) return;
+		counts.set(resolved, (counts.get(resolved) ?? 0) + weight);
+	};
+
+	for (const root of roots) {
+		if (fallbackCwd && normalizedPath(fallbackCwd).startsWith(`${root.path}/`)) countCandidate(workspaceKeyFor(fallbackCwd), 100);
+	}
+
+	for (const entry of entries) {
+		const fragments = collectTextFragments(entry);
+		for (const text of fragments) {
+			for (const root of roots) {
+				const marker = `${root.path}/`;
+				let index = text.indexOf(marker);
+				while (index >= 0) {
+					const rest = text.slice(index + marker.length);
+					const workspace = rest.split(/[\s"'`<>\\\]|),]+/)[0]?.split("/")[0];
+					if (workspace) countCandidate(join(root.path, workspace));
+					index = text.indexOf(marker, index + marker.length);
+				}
+			}
+		}
+	}
+
+	return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
+}
+
+function resolveRecordCwdFromSession(record: ForkRecord): string {
+	const entries = readSessionPreviewEntries(record.sessionFile);
+	return inferWorkspaceCwdFromSessionEntries(entries, record.cwd) || record.cwd;
+}
+
 function buildP0RecordFromSession(sessionFile: string): ForkRecord | null {
 	try {
 		const real = safeRealpath(sessionFile);
 		const stat = statSync(real);
 		const entries = readSessionPreviewEntries(real);
-		const cwd = extractSessionCwd(entries) || homedir();
+		const headerCwd = extractSessionCwd(entries) || homedir();
+		const cwd = inferWorkspaceCwdFromSessionEntries(entries, headerCwd) || headerCwd;
 		const firstUser = extractFirstText(entries, "user");
 		const title = extractLastSessionName(entries) || firstUser || basename(real, ".jsonl");
 		const preview = extractLastText(entries, "assistant") || extractLastText(entries) || firstUser;
@@ -494,7 +548,7 @@ function collectP0SessionRecords(excludeSessionFiles: Set<string>): ForkRecord[]
 function collectReviveRecords(recent: Record<string, ForkRecord>): ForkRecord[] {
 	const forkRecords = Object.values(recent)
 		.filter((record) => existsSync(record.sessionFile))
-		.map((record) => ({ ...record, source: "fork" as ReviveSource }));
+		.map((record) => ({ ...record, cwd: resolveRecordCwdFromSession(record), source: "fork" as ReviveSource }));
 	const forkFiles = new Set(forkRecords.map((record) => safeRealpath(record.sessionFile)));
 	return [...forkRecords, ...collectP0SessionRecords(forkFiles)];
 }
