@@ -28,6 +28,7 @@ related:
   - private-journal-public-doctrine
   - skills-as-portable-procedures
   - database-write-human-execution-gate
+  - verify-risk-lens-overlay
 ---
 
 ## Judgment
@@ -38,7 +39,9 @@ pilee public package should keep reusable Pi infrastructure and generic operatin
 
 Public skills may define the safety protocol: ask before external writes, collect evidence before PASS, use pre/post SELECTs for DB writes, keep local dev startup diagnosable. Public extensions may define generic engines: worktree lifecycle, dependency worker orchestration, artifact browser grouping, and preflight execution. They should not embed company repo service names, internal URLs, account aliases, private Notion schemas, organization-specific artifact storage paths, or repo-specific install/check commands.
 
-Private overlay skills carry concrete procedures with namespaced skill names such as `<org>-db-read`, `<org>-db-write`, and `<org>-db-migration`. Private overlay profiles carry concrete extension config such as protected repo names, match rules, bootstrap markers/commands, workspace roots, Conductor path mappings, and preflight checks. Public code discovers these profiles through package/project/local profile directories and should degrade to generic fallback behavior when no profile is present. Name collisions are avoided rather than relying on package load order overrides.
+Private overlay skills carry concrete procedures with namespaced skill names such as `<org>-db-read`, `<org>-db-write`, `<org>-db-migration`, and `<org>-verify-lenses`. Private overlay profiles carry concrete extension config such as protected repo names, match rules, bootstrap markers/commands, workspace roots, Conductor path mappings, and preflight checks. Public code discovers these profiles through package/project/local profile directories and should degrade to generic fallback behavior when no profile is present. Name collisions are avoided rather than relying on package load order overrides.
+
+Verification overlays follow the same boundary. Public `/verify` owns generic risk lens categories; project/private overlays provide repo-specific commands, ORM conventions, account/preview context, and domain evidence requirements without putting those details in public pilee.
 
 ## Quick Check
 

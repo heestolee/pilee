@@ -142,6 +142,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-05-10 | db21ec7 | frame, verify, frame-json, success-criteria, contract, verification |
 | [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-05-10 | 636a431 | verify, invalidation, code-change, freshness, gate, 검증 |
 | [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | active | high | 2026-05-10 | db21ec7 | verify-report, verification, evidence, coverage, capture, crop |
+| [Verify risk lens는 generic core와 private overlay로 나눈다](./verify-risk-lens-overlay.md) | active | high | 2026-05-10 | 777018e | verify, risk-lens, overlay, private-overlay, verification, domain-check |
 
 ### web-access
 
@@ -223,6 +224,7 @@ graph TD
   doc_frame_verify_contract["Frame과 Verify는 구조화 계약이다"]
   doc_verification_invalidation_on_change["검증 중 코드 변경은 이전 검증을 무효화한다"]
   doc_verify_report_workflow["Verify Report와 coverage-aware 증거 검증 흐름"]
+  doc_verify_risk_lens_overlay["Verify risk lens는 generic core와 private overlay로 나눈다"]
   doc_curator_approved_source_selection["웹 검색은 승인된 출처 선택을 거친다"]
   doc_web_search_curator["Web Search curator와 승인형 요약 흐름"]
   doc_artifact_archive_reopenability["검토 산출물은 다시 열 수 있어야 한다"]
@@ -349,6 +351,7 @@ graph TD
   doc_frame_verify_contract --> doc_ask_user_question_decision_gates
   doc_frame_verify_contract --> doc_evidence_first_verification_gate
   doc_frame_verify_contract --> doc_verification_invalidation_on_change
+  doc_frame_verify_contract --> doc_verify_risk_lens_overlay
   doc_verification_invalidation_on_change --> doc_evidence_first_verification_gate
   doc_verification_invalidation_on_change --> doc_frame_verify_contract
   doc_verify_report_workflow --> doc_artifact_archive_reopenability
@@ -357,6 +360,11 @@ graph TD
   doc_verify_report_workflow --> doc_pilee_knowledge_system
   doc_verify_report_workflow --> doc_private_overlay_package_boundary
   doc_verify_report_workflow --> doc_web_search_curator
+  doc_verify_risk_lens_overlay --> doc_evidence_first_verification_gate
+  doc_verify_risk_lens_overlay --> doc_frame_verify_contract
+  doc_verify_risk_lens_overlay --> doc_private_overlay_package_boundary
+  doc_verify_risk_lens_overlay --> doc_verification_invalidation_on_change
+  doc_verify_risk_lens_overlay --> doc_verify_report_workflow
   doc_curator_approved_source_selection --> doc_deterministic_fallbacks_preserve_workflow
   doc_curator_approved_source_selection --> doc_live_artifact_preview_pattern
   doc_curator_approved_source_selection --> doc_web_search_curator
@@ -409,6 +417,7 @@ graph TD
   doc_private_overlay_package_boundary --> doc_database_write_human_execution_gate
   doc_private_overlay_package_boundary --> doc_private_journal_public_doctrine
   doc_private_overlay_package_boundary --> doc_skills_as_portable_procedures
+  doc_private_overlay_package_boundary --> doc_verify_risk_lens_overlay
   doc_queued_command_prefill_boundary --> doc_session_identity_over_filenames
   doc_queued_command_prefill_boundary --> doc_subagent_prompt_specificity
   doc_queued_command_prefill_boundary --> doc_worktree_execution_boundary
@@ -451,7 +460,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 66
-- Links: 194
+- Documents: 67
+- Links: 201
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
