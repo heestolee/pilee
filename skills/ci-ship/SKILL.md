@@ -1,6 +1,6 @@
 ---
 name: ci-ship
-description: 열린 PR의 GitHub Actions/CI 실패를 분석해 원인을 분류하고, 코드·generated artifact·테스트·환경 문제를 근본 대응한 뒤 검증, 커밋, push, 필요 시 PR 코멘트까지 수행해야 할 때 사용한다. "CI 실패 대응", "체크 실패 봐줘", "Actions 실패 고쳐줘", "pr-checks 실패", "ci-ship" 요청에 사용한다.
+description: 열린 PR의 GitHub Actions/CI 실패를 분석해 원인을 분류하고, 코드·generated artifact·테스트·환경 문제를 근본 대응한 뒤 검증, 커밋, push까지 수행해야 할 때 사용한다. "CI 실패 대응", "체크 실패 봐줘", "Actions 실패 고쳐줘", "pr-checks 실패", "ci-ship" 요청에 사용한다.
 argument-hint: "[PR URL | PR number | check/job URL]"
 disable-model-invocation: false
 ---
@@ -19,7 +19,7 @@ AI가 기본으로 할 수 있는 것:
 - 관련 코드·generated artifact·테스트 수정
 - 로컬 재현/검증
 - 커밋 및 push
-- 필요 시 PR 코멘트로 원인/대응/검증 요약 남기기
+- 최종 보고로 원인/대응/검증 요약 남기기
 
 AI가 사용자 명시 승인 없이 하면 안 되는 것:
 
@@ -75,7 +75,7 @@ gh run view <run-id> --job <job-id> --log-failed
 | PR 변경으로 인한 코드 실패 | 타입/테스트/빌드가 변경 파일·새 API·새 behavior와 직접 연결 | 코드 수정 + 로컬 검증 + 커밋 |
 | generated artifact stale | schema/codegen/i18n/snapshot/lockfile diff 요구 | 정식 generator 실행 + generated diff 확인 + 커밋 |
 | 테스트 기대값 stale | product behavior는 맞고 테스트가 이전 계약을 가정 | 테스트를 새 계약에 맞게 수정, 근거 기록 |
-| flaky/timeout | 동일 commit 재시도/known flaky 근거가 있고 코드 원인 없음 | 근거 코멘트 또는 사용자 승인 후 rerun 제안 |
+| flaky/timeout | 동일 commit 재시도/known flaky 근거가 있고 코드 원인 없음 | 근거 보고 또는 사용자 승인 후 rerun 제안 |
 | infra/external | registry, network, secret, runner, third-party 장애 | 근거 수집 후 사용자/담당자 action 제시 |
 | unrelated baseline | base branch에서도 실패하거나 PR 변경과 무관 | 근거를 남기고 현재 PR 영향 범위 분리 |
 | unknown | 로그가 부족하거나 재현 불가 | 추가 로그/로컬 재현부터 수행 |
@@ -107,7 +107,7 @@ gh run view <run-id> --job <job-id> --log-failed
 - baseline failure
 - 사용자 판단이 필요한 product/UX/security/DB 정책 문제
 
-수정하지 않는 경우에도 “왜 코드 변경이 아닌지”를 PR 코멘트 또는 최종 보고에 근거와 함께 남긴다.
+수정하지 않는 경우에도 “왜 코드 변경이 아닌지”를 최종 보고에 근거와 함께 남긴다. PR 코멘트는 사용자가 명시적으로 요청한 경우에만 남긴다.
 
 ### 5. Implement Fix
 
@@ -142,16 +142,17 @@ git push
 
 커밋 메시지는 실패 원인 중심으로 쓴다.
 
-### 8. PR Comment Policy
+### 8. PR Comment Exception Policy
 
-코드 수정 후 새 commit을 push한 경우 PR comment는 선택이다. 다음 경우에는 코멘트를 남긴다.
+`ci-ship`의 기본 완료 조건은 commit + push + 최종 보고다. PR comment는 기본 동작이 아니다.
 
-- 사용자가 “코멘트까지”를 요청했다.
-- 실패 원인이 CI 로그만 보면 헷갈릴 수 있다.
-- 코드 수정 없이 infra/flaky/baseline 근거만 남긴다.
-- reviewer/author가 알아야 할 follow-up이 있다.
+다음처럼 사용자가 명시한 경우에만 코멘트를 남긴다.
 
-코멘트 형식:
+- “코멘트까지 남겨줘”
+- “PR에 원인/대응 적어줘”
+- “수정할 게 없으면 PR에 근거 남겨줘”
+
+명시 요청이 있을 때의 코멘트 형식:
 
 ```markdown
 CI 실패 대응 완료 (`<SHORT_SHA>`):
@@ -163,7 +164,7 @@ CI 실패 대응 완료 (`<SHORT_SHA>`):
 - 비고: <rerun은 새 push로 자동 진행 / 수동 rerun은 하지 않음>
 ```
 
-수정하지 않는 경우:
+명시 요청이 있고 수정하지 않는 경우:
 
 ```markdown
 CI 실패 확인 결과 코드 변경은 하지 않았습니다.
@@ -180,7 +181,7 @@ CI 실패 확인 결과 코드 변경은 하지 않았습니다.
 완료했습니다.
 - PR: <url>
 - 실패 분류: <code/generated/flaky/infra/baseline>
-- 대응: <수정/생성/코멘트/보류>
+- 대응: <수정/생성/보류>
 - 커밋: `<sha>` <message>
 - Push: <branch>
 - 검증: `<command>` ✅ / ⚠️ <reason>

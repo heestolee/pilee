@@ -45,9 +45,23 @@ interface ReviewCommentDetail {
 }
 
 interface ActionsJobTarget {
+	owner: string;
+	repo: string;
 	runId: string;
 	jobId: string;
 	url: string;
+}
+
+interface ActionsRunContext {
+	databaseId: number | null;
+	displayTitle: string | null;
+	event: string | null;
+	headBranch: string | null;
+	headSha: string | null;
+	workflowName: string | null;
+	status: string | null;
+	conclusion: string | null;
+	url: string | null;
 }
 
 interface CiCheckSummary {
@@ -112,9 +126,9 @@ function parseCommentUrl(args: string): CommentTarget | null {
 }
 
 function parseActionsJobUrl(args: string): ActionsJobTarget | null {
-	const match = args.match(/https:\/\/github\.com\/[^/]+\/[^/]+\/actions\/runs\/(\d+)\/job\/(\d+)/u);
+	const match = args.match(/https:\/\/github\.com\/([^/]+)\/([^/]+)\/actions\/runs\/(\d+)\/job\/(\d+)/u);
 	if (!match) return null;
-	return { runId: match[1], jobId: match[2], url: match[0] };
+	return { owner: match[1], repo: match[2], runId: match[3], jobId: match[4], url: match[0] };
 }
 
 function parseBareNumber(args: string): number | null {
@@ -185,6 +199,8 @@ async function resolvePullRequestFromArgs(pi: ExtensionAPI, ctx: ExtensionComman
 			repo: commentTarget.repo,
 		};
 	}
+
+	if (parseActionsJobUrl(trimmed)) return null;
 
 	const prUrl = parseGitHubPullUrl(trimmed);
 	if (prUrl) {
@@ -343,8 +359,76 @@ async function fetchPrStatusSnapshot(pi: ExtensionAPI, cwd: string, pullRequest:
 	}
 }
 
+async function fetchActionsRunContext(pi: ExtensionAPI, cwd: string, target: ActionsJobTarget): Promise<ActionsRunContext | null> {
+	const result = await pi.exec("gh", [
+		"run",
+		"view",
+		target.runId,
+		"--repo",
+		`${target.owner}/${target.repo}`,
+		"--json",
+		"databaseId,displayTitle,event,headBranch,headSha,workflowName,status,conclusion,url",
+	], { cwd, timeout: 60_000 });
+	if (result.code !== 0) return null;
+	try {
+		const parsed = JSON.parse(result.stdout ?? "") as Record<string, unknown>;
+		return {
+			databaseId: readNumber(parsed.databaseId),
+			displayTitle: readString(parsed.displayTitle),
+			event: readString(parsed.event),
+			headBranch: readString(parsed.headBranch),
+			headSha: readString(parsed.headSha),
+			workflowName: readString(parsed.workflowName),
+			status: readString(parsed.status),
+			conclusion: readString(parsed.conclusion),
+			url: readString(parsed.url),
+		};
+	} catch {
+		return null;
+	}
+}
+
+async function resolvePullRequestFromJob(pi: ExtensionAPI, cwd: string, target: ActionsJobTarget): Promise<PullRequestInfo | null> {
+	const run = await fetchActionsRunContext(pi, cwd, target);
+	if (!run?.headBranch) return null;
+	const result = await pi.exec("gh", [
+		"pr",
+		"list",
+		"--repo",
+		`${target.owner}/${target.repo}`,
+		"--head",
+		run.headBranch,
+		"--state",
+		"all",
+		"--limit",
+		"20",
+		"--json",
+		"number,title,url,headRefName,headRefOid,baseRefName,state",
+	], { cwd, timeout: 60_000 });
+	if (result.code !== 0) return null;
+	try {
+		const prs = JSON.parse(result.stdout ?? "[]") as Array<Record<string, unknown>>;
+		const best = prs.find((pr) => readString(pr.state) === "OPEN" && (!run.headSha || readString(pr.headRefOid) === run.headSha))
+			?? prs.find((pr) => readString(pr.state) === "OPEN")
+			?? prs.find((pr) => !run.headSha || readString(pr.headRefOid) === run.headSha)
+			?? prs[0];
+		const url = readString(best?.url);
+		const parsed = parseGitHubPullUrl(url);
+		if (!best || !url || !parsed) return null;
+		return {
+			number: readNumber(best.number) ?? parsed.number,
+			title: readString(best.title),
+			url,
+			owner: parsed.owner,
+			repo: parsed.repo,
+		};
+	} catch {
+		return null;
+	}
+}
+
 async function fetchFailedJobLog(pi: ExtensionAPI, cwd: string, target: ActionsJobTarget): Promise<string> {
-	const result = await pi.exec("gh", ["run", "view", target.runId, "--job", target.jobId, "--log-failed"], { cwd, timeout: 120_000 });
+	const result = await pi.exec("gh", ["run", "view", target.runId, "--repo", `${target.owner}/${target.repo}`, "--job", target.jobId, "--log-failed"], { cwd, timeout: 120_000 });
 	const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
 	if (!output) return `(no failed log output; exit code ${result.code})`;
 	return truncateTailText(output, 12_000);
@@ -362,9 +446,23 @@ function formatCiChecks(checks: CiCheckSummary[]): string {
 	].filter(Boolean).join("\n")).join("\n\n");
 }
 
+function formatRunContext(run: ActionsRunContext | null): string {
+	if (!run) return "(run metadata fetch failed)";
+	return [
+		`- run: ${run.databaseId ?? "unknown"}`,
+		`- workflow: ${run.workflowName ?? "unknown"}`,
+		`- title: ${run.displayTitle ?? "unknown"}`,
+		`- event: ${run.event ?? "unknown"}`,
+		`- head: ${run.headBranch ?? "unknown"}${run.headSha ? ` @ ${run.headSha}` : ""}`,
+		`- status: ${run.status ?? "unknown"}`,
+		`- conclusion: ${run.conclusion ?? "unknown"}`,
+		run.url ? `- url: ${run.url}` : null,
+	].filter(Boolean).join("\n");
+}
+
 async function buildCiShipCollectedContext(pi: ExtensionAPI, ctx: ExtensionCommandContext, args: string): Promise<string> {
 	const explicitJob = parseActionsJobUrl(args.trim());
-	const pullRequest = await resolvePullRequestFromArgs(pi, ctx, args);
+	const pullRequest = await resolvePullRequestFromArgs(pi, ctx, args) ?? (explicitJob ? await resolvePullRequestFromJob(pi, ctx.cwd, explicitJob) : null);
 	const sections: string[] = [formatSessionRefs(ctx)];
 
 	if (!pullRequest) {
@@ -404,6 +502,13 @@ async function buildCiShipCollectedContext(pi: ExtensionAPI, ctx: ExtensionComma
 	}
 
 	if (explicitJob) {
+		sections.push([
+			`## Explicit job metadata — run ${explicitJob.runId} job ${explicitJob.jobId}`,
+			"",
+			`URL: ${explicitJob.url}`,
+			"",
+			formatRunContext(await fetchActionsRunContext(pi, ctx.cwd, explicitJob)),
+		].join("\n"));
 		sections.push([
 			`## Explicit job log excerpt — run ${explicitJob.runId} job ${explicitJob.jobId}`,
 			"",
