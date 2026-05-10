@@ -369,7 +369,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **db-write-migration** | Migration design and verification guidance |
 | **jira-issue-management** | Jira issue preparation with preview gate |
 | **ship** | Pre-PR commit, verification, and push workflow |
-| **pr-ship** | Post-PR review response with root-cause fix, commit, push, thread reply, and review re-request |
+| **pr-ship** | Post-PR review response with commit, push, thread reply, review re-request, and `--push-only` mode |
 | **ci-ship** | Post-PR CI failure analysis, fix, verification, and push workflow |
 | **verify-report** | Capture/evidence-based verification reports |
 | **start-local-dev** | Local dev server startup diagnosis |

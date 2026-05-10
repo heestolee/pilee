@@ -1079,7 +1079,7 @@ const README_SKILL_GROUPS = [
 		{ name: "db-write-migration", ko: "마이그레이션 설계와 검증 guidance", en: "Migration design and verification guidance" },
 		{ name: "jira-issue-management", ko: "Jira 이슈 작성/수정 preview gate", en: "Jira issue preparation with preview gate" },
 		{ name: "ship", ko: "PR 전 변경사항을 의도 단위 커밋·검증·push로 정리", en: "Pre-PR commit, verification, and push workflow" },
-		{ name: "pr-ship", ko: "PR 리뷰 코멘트를 근본 대응하고 커밋·push·스레드 답글·review re-request까지 수행", en: "Post-PR review response with root-cause fix, commit, push, thread reply, and review re-request" },
+		{ name: "pr-ship", ko: "PR 리뷰 코멘트 대응 후 커밋·push·스레드 답글·review re-request까지 수행 (`--push-only` 지원)", en: "Post-PR review response with commit, push, thread reply, review re-request, and `--push-only` mode" },
 		{ name: "ci-ship", ko: "PR CI 실패를 check/log 기반으로 분석해 수정·검증·push", en: "Post-PR CI failure analysis, fix, verification, and push workflow" },
 		{ name: "verify-report", ko: "캡처/네트워크/콘솔/코드 diff 기반 검증 리포트", en: "Capture/evidence-based verification reports" },
 		{ name: "start-local-dev", ko: "로컬 dev 서버 구동과 진단", en: "Local dev server startup diagnosis" },

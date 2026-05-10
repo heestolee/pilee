@@ -379,7 +379,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | **db-write-migration** | 마이그레이션 설계와 검증 guidance |
 | **jira-issue-management** | Jira 이슈 작성/수정 preview gate |
 | **ship** | PR 전 변경사항을 의도 단위 커밋·검증·push로 정리 |
-| **pr-ship** | PR 리뷰 코멘트를 근본 대응하고 커밋·push·스레드 답글·review re-request까지 수행 |
+| **pr-ship** | PR 리뷰 코멘트 대응 후 커밋·push·스레드 답글·review re-request까지 수행 (`--push-only` 지원) |
 | **ci-ship** | PR CI 실패를 check/log 기반으로 분석해 수정·검증·push |
 | **verify-report** | 캡처/네트워크/콘솔/코드 diff 기반 검증 리포트 |
 | **start-local-dev** | 로컬 dev 서버 구동과 진단 |

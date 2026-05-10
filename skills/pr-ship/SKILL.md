@@ -1,7 +1,7 @@
 ---
 name: pr-ship
-description: 열린 PR의 리뷰 코멘트나 changes requested에 대해 부모/현재 대화와 작업 내역을 확인한 뒤, 표면적 답변이 아니라 근본 원인을 판단해 코드 수정·커밋·푸시·스레드 답글·review re-request까지 수행해야 할 때 사용한다. "PR 코멘트 대응", "리뷰 대응", "이거 대응작업-커밋-푸시-코멘트까지", "근본적으로 대응", "대응할 게 없으면 근거 코멘트" 요청에 사용한다.
-argument-hint: "[PR URL | review comment URL | PR number]"
+description: 열린 PR의 리뷰 코멘트나 changes requested에 대해 부모/현재 대화와 작업 내역을 확인한 뒤, 표면적 답변이 아니라 근본 원인을 판단해 코드 수정·커밋·푸시·스레드 답글·review re-request까지 수행해야 할 때 사용한다. `--push-only` 모드에서는 코멘트/re-request 없이 커밋·푸시 후 수동 게시용 답글 초안을 세션에서 다듬는다. "PR 코멘트 대응", "리뷰 대응", "이거 대응작업-커밋-푸시-코멘트까지", "근본적으로 대응", "대응할 게 없으면 근거 코멘트" 요청에 사용한다.
+argument-hint: "[--push-only] [PR URL | review comment URL | PR number]"
 disable-model-invocation: false
 ---
 
@@ -19,8 +19,9 @@ AI가 기본으로 할 수 있는 것:
 - 의도 단위 커밋
 - 관련 검증 실행
 - push
-- 해당 review conversation에 커밋 SHA 또는 근거가 포함된 답글 작성
-- 답글 후 승인되지 않은 리뷰어에게 review re-request
+- 기본 모드: 해당 review conversation에 커밋 SHA 또는 근거가 포함된 답글 작성
+- 기본 모드: 답글 후 승인되지 않은 리뷰어에게 review re-request
+- `--push-only` 모드: GitHub 코멘트/re-request 없이 수동 게시용 답글 초안을 세션에 작성
 
 AI가 사용자 명시 승인 없이 하면 안 되는 것:
 
@@ -29,16 +30,32 @@ AI가 사용자 명시 승인 없이 하면 안 되는 것:
 - reviewer가 이미 바꾼 상태 되돌리기
 - force push, amend, history rewrite
 
-`resolve`/`unresolve`는 “사용자가 지금 이 동작을 해달라”고 명시한 경우에만 별도 단계로 수행한다. 리뷰 대응 완료 보고에 “thread resolve는 리뷰어/작성자 판단”이라고 남긴다. 반대로 review re-request는 `pr-ship`의 기본 마무리 동작이다. 단, 승인되지 않은 리뷰어/팀이 없으면 skip하고, API 실패 시 실패 사유를 보고한다.
+`resolve`/`unresolve`는 “사용자가 지금 이 동작을 해달라”고 명시한 경우에만 별도 단계로 수행한다. 리뷰 대응 완료 보고에 “thread resolve는 리뷰어/작성자 판단”이라고 남긴다. 반대로 review re-request는 `pr-ship` 기본 모드의 마무리 동작이다. 단, 승인되지 않은 리뷰어/팀이 없으면 skip하고, API 실패 시 실패 사유를 보고한다. `--push-only` 모드에서는 GitHub 코멘트와 review re-request를 모두 수행하지 않는다.
 
 ## Input Forms
 
 - `/pr-ship` — 현재 branch의 PR unresolved review comments 수집 후 대응
 - `/pr-ship <PR URL>` — 특정 PR의 unresolved review comments 대응
 - `/pr-ship <review comment URL>` — 특정 comment/thread 우선 대응
+- `/pr-ship --push-only [PR URL | review comment URL | PR number]` — 코드 수정·검증·커밋·푸시까지만 수행하고, 코멘트는 수동 게시용 초안만 작성
 - 자연어: “이거 대응작업-커밋-푸시-코멘트까지 해줘”
 
 ## Workflow
+
+### 0. Mode Selection
+
+기본 모드는 `full-response`다.
+
+- `full-response`: 수정/검증 → commit → push → 해당 thread 답글 작성 → review re-request
+- `push-only`: 수정/검증 → commit → push → 세션에 수동 게시용 답글 초안 작성
+
+`--push-only`, `--no-comment`, `--draft-only`, `--manual-comment` 플래그가 있으면 `push-only`로 처리한다. 이 모드에서는 다음을 실행하지 않는다.
+
+- GitHub review comment/reply 작성
+- `requested_reviewers` API 호출 또는 review re-request
+- thread resolve/unresolve
+
+대신 최종 응답에 사용자가 복사해 붙일 수 있는 polished comment draft를 포함하고, 사용자가 원하면 그 자리에서 문구를 함께 다듬는다.
 
 ### 1. Context Reconstruction
 
@@ -78,11 +95,11 @@ Severity badge가 있어도 맹목적으로 따르지 않는다. `Must_Fix`/`Sho
 - 변경이 실제 사용자 행동/데이터/권한/viewport/상태 전이에 미치는 영향을 확인한다.
 - “답글만 달기”도 근거 파일, 커밋, 테스트, API/문서 링크 같은 evidence가 있어야 한다.
 
-수정할 게 없으면 변경하지 않는다. 대신 해당 thread에 근거를 코멘트로 남긴다.
+수정할 게 없으면 변경하지 않는다. 기본 모드에서는 해당 thread에 근거를 코멘트로 남기고, `push-only` 모드에서는 같은 내용을 수동 게시용 초안으로 남긴다.
 
 ### 4. Plan Gate
 
-사용자가 특정 코멘트에 대해 “대응해줘/해줘”라고 명시했다면 일반적인 코드 수정·검증·답글까지 승인된 것으로 본다.
+사용자가 특정 코멘트에 대해 “대응해줘/해줘”라고 명시했다면 일반적인 코드 수정·검증·답글까지 승인된 것으로 본다. 단, `--push-only`가 있으면 답글 게시 승인은 포함하지 않고 초안 작성까지만 승인된 것으로 본다.
 
 다만 아래는 반드시 사용자 확인 후 진행한다.
 
@@ -125,9 +142,11 @@ git push
 
 답글에 넣을 short SHA를 기록한다.
 
-### 8. Reply to Review Conversation
+### 8. Reply to Review Conversation or Draft
 
-각 thread의 **해당 conversation**에 답글을 단다. 전체 PR comment 하나로 여러 line thread를 대체하지 않는다.
+기본 모드에서는 각 thread의 **해당 conversation**에 답글을 단다. 전체 PR comment 하나로 여러 line thread를 대체하지 않는다.
+
+`push-only` 모드에서는 GitHub에 답글을 달지 않는다. 대신 아래 형식을 바탕으로 수동 게시용 초안을 최종 응답에 포함한다. 초안에는 commit SHA, 근본 원인, 대응, 검증을 포함하되 “반영 완료”처럼 게시 사실을 암시하는 표현은 사용자가 실제 게시하기 전까지 조심한다.
 
 코드 수정 답글:
 
@@ -164,7 +183,9 @@ git push
 
 ### 9. Re-request Review
 
-push와 thread 답글이 끝나면 승인되지 않은 리뷰어/팀에게 review를 재요청한다.
+기본 모드에서는 push와 thread 답글이 끝나면 승인되지 않은 리뷰어/팀에게 review를 재요청한다.
+
+`push-only` 모드에서는 이 단계를 건너뛴다. 최종 보고에 `Re-request: skipped (--push-only)`라고 남긴다.
 
 권장 흐름:
 
@@ -191,13 +212,15 @@ push와 thread 답글이 끝나면 승인되지 않은 리뷰어/팀에게 revie
 ```markdown
 완료했습니다.
 - PR/comment: <url>
-- 대응: <수정/근거 코멘트/보류>
+- 대응: <수정/근거 코멘트/근거 초안/보류>
 - 커밋: `<sha>` <message>
 - Push: <branch>
-- 답글: <thread reply url>
+- 모드: <full-response | push-only>
+- 답글: <thread reply url | skipped (--push-only)>
+- 코멘트 초안: <push-only일 때 수동 게시용 markdown>
 - Re-request: <targets | skipped reason | failed reason>
 - 검증: <command> ✅ / ⚠️ <reason>
-- 하지 않은 것: resolve/merge는 수행하지 않음
+- 하지 않은 것: <resolve/merge | push-only면 comment/re-request/resolve/merge>는 수행하지 않음
 ```
 
 ## Red Flags
@@ -207,4 +230,5 @@ push와 thread 답글이 끝나면 승인되지 않은 리뷰어/팀에게 revie
 - commit SHA 없는 “반영했습니다” 답글
 - 검증 없이 push/comment
 - 사용자가 요청하지 않은 thread resolve/unresolve
+- `--push-only`인데 GitHub comment/re-request 실행
 - reviewer가 처리한 상태를 되돌림

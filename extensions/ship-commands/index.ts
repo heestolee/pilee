@@ -44,6 +44,12 @@ interface ReviewCommentDetail {
 	inReplyToId: number | null;
 }
 
+interface PrShipOptions {
+	pushOnly: boolean;
+	remainingArgs: string;
+	matchedFlags: string[];
+}
+
 interface ActionsJobTarget {
 	owner: string;
 	repo: string;
@@ -123,6 +129,45 @@ function parseCommentUrl(args: string): CommentTarget | null {
 		commentId: Number(match[4]),
 		url: match[0],
 	};
+}
+
+function parsePrShipOptions(args: string): PrShipOptions {
+	const tokens = args.trim().split(/\s+/u).filter(Boolean);
+	const pushOnlyFlags = new Set(["--push-only", "--no-comment", "--draft-only", "--manual-comment"]);
+	const matchedFlags: string[] = [];
+	const remainingTokens: string[] = [];
+	for (const token of tokens) {
+		if (pushOnlyFlags.has(token)) {
+			matchedFlags.push(token);
+			continue;
+		}
+		remainingTokens.push(token);
+	}
+	return {
+		pushOnly: matchedFlags.length > 0,
+		remainingArgs: remainingTokens.join(" "),
+		matchedFlags,
+	};
+}
+
+function formatPrShipMode(options: PrShipOptions): string {
+	if (!options.pushOnly) {
+		return [
+			"## pr-ship mode",
+			"",
+			"- mode: full-response",
+			"- expected finish: code/docs fix if needed → verification → commit → push → thread reply → review re-request.",
+		].join("\n");
+	}
+	return [
+		"## pr-ship mode",
+		"",
+		"- mode: push-only / manual-comment",
+		`- flags: ${options.matchedFlags.join(", ")}`,
+		"- expected finish: code/docs fix if needed → verification → commit → push → draft reply in the session.",
+		"- do not post GitHub review comments, do not call requested_reviewers/re-request, and do not resolve/unresolve threads.",
+		"- include a polished manual-posting comment draft in the final response so the user can edit/post it manually.",
+	].join("\n");
 }
 
 function parseActionsJobUrl(args: string): ActionsJobTarget | null {
@@ -274,9 +319,11 @@ function formatCommentDetail(target: CommentTarget, detail: ReviewCommentDetail 
 }
 
 async function buildPrShipCollectedContext(pi: ExtensionAPI, ctx: ExtensionCommandContext, args: string): Promise<string> {
-	const commentTarget = parseCommentUrl(args.trim());
-	const pullRequest = await resolvePullRequestFromArgs(pi, ctx, args);
-	const sections: string[] = [formatSessionRefs(ctx)];
+	const options = parsePrShipOptions(args);
+	const lookupArgs = options.remainingArgs || args;
+	const commentTarget = parseCommentUrl(lookupArgs.trim());
+	const pullRequest = await resolvePullRequestFromArgs(pi, ctx, lookupArgs);
+	const sections: string[] = [formatSessionRefs(ctx), formatPrShipMode(options)];
 
 	if (!pullRequest) {
 		sections.push(
@@ -575,7 +622,7 @@ export default function shipCommands(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("pr-ship", {
-		description: "pilee /pr-ship — PR 리뷰 코멘트를 근본 대응하고 커밋·push·스레드 답글까지 진행",
+		description: "pilee /pr-ship — PR 리뷰 코멘트를 근본 대응하고 커밋·push·스레드 답글/re-request까지 진행 (--push-only 지원)",
 		handler: async (args, ctx) => {
 			try {
 				const collectedContext = await buildPrShipCollectedContext(pi, ctx, args);
