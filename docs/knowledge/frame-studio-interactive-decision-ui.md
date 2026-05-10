@@ -68,6 +68,8 @@ TFT Studio는 UI에 렌더된 markdown/update/question/answer 흐름을 identity
 
 Transcript identity는 작업 단위 기준으로 유지합니다. Re-frame, 추가 decide, self-healing 후 re-verify처럼 같은 작업 안의 반복 stage는 새 transcript 파일이 아니라 같은 transcript timeline의 새 stage run으로 표현합니다. Canonical 기록은 별도로 `frame.json`의 success criteria, `decisions[]`, `verifications[]`에 새 항목으로 남기고, transcript는 그 반복의 provenance를 run 카드로 읽기 쉽게 보여줍니다.
 
+Frame/Decide/Verify stage를 실제로 수행했다면 canonical 저장 후 해당 stage run은 반드시 `finish`로 닫힙니다. 다음 단계 질문이 취소·timeout·UI unavailable이어도 canonical write가 성공했으면 “다음 단계 미선택”을 기록하고 finish해야 합니다. 다시 `/frame`, `/decide`, `/verify`가 호출되면 그것은 새 trigger이므로 같은 work-unit transcript 안의 다음 stage run으로 시작합니다.
+
 이 구분이 중요합니다. LLM context에 전체 co-thinking 전문을 매번 주입하면 context budget과 attention이 무너집니다. 대신 tool result는 `contextDigest`, `tabSnapshot`, `transcriptRef`를 반환해야 합니다. `transcriptRef.openCommand`는 `/archive <transcriptPath>` 형태로 전문을 다시 여는 참조이며, 전문은 필요할 때 파일 또는 WebView로 확인하는 artifact입니다.
 
 Transcript는 canonical source가 아니라 provenance입니다. 중요한 판단/결정/검증 결과가 transcript에만 있으면 실패입니다. 저장 완료 시 Studio 마지막 update/finish에는 `frame.json` path와 canonical hash 또는 해당 stage canonical reference를 남겨 사용자가 “어떤 대화가 어떤 계약으로 저장됐는지”를 추적할 수 있어야 합니다.

@@ -325,11 +325,17 @@ Draft를 보여줄 때 맨 위에 반드시 다음을 붙인다:
    - `metadata: { kind: "frame.decision", riskRef, frameVersion }`
 11. `verify_plan.manual_checks` → 각 항목당 `TaskCreate`:
     - `metadata: { kind: "frame.verify_check" }`
-12. TFT Studio를 쓰고 있으면 `frame_studio action=update tab=frame`으로 저장 결과를 남긴다. Step 9의 다음 단계 질문까지 끝난 뒤 `finish`한다.
+12. TFT Studio를 쓰고 있으면 `frame_studio action=update tab=frame`으로 저장 결과를 남긴다. Step 9의 다음 단계 질문까지 끝난 뒤 **반드시** `frame_studio action=finish tab=frame`으로 닫는다.
     - `frame.json` path
     - `frame.md` path
     - `canonicalHash`
     - queued task count
+
+TFT Studio finish invariant:
+- canonical `frame.json`과 `frame.md` 저장이 성공한 뒤에만 finish한다.
+- Step 9 다음 단계 선택을 받았으면 선택 결과를 final markdown에 포함하고 finish한다.
+- Step 9 질문이 `unavailable`, `cancelled`, `timeout`이어도 frame 저장 자체가 끝났다면 “다음 단계 미선택”을 기록하고 finish한다.
+- finish를 생략하면 Studio에서 해당 Frame run이 `running`으로 남으므로, `/frame` 완료 보고 전에 반드시 tool result를 확인한다.
 
 실패 처리:
 - canonical write가 실패하면 `frame.md`, task, worktree-meta를 만들지 않는다.
