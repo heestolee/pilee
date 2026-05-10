@@ -24,7 +24,7 @@ source:
   - pilee-history:2026-05-05#46
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-10
-reviewed_commit: 335351fe327052d2a3f3e4f05081d38de37abefb
+reviewed_commit: db21ec7f73ef8c9ad581bd8610f8203799defb7b
 related:
   - verify-report-workflow
   - pilee-knowledge-system
