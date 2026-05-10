@@ -267,18 +267,23 @@ Ctrl+W                       → 전체 워크트리 오버레이
 
 ## Extensions
 
+<!-- PILEE_README_EXTENSIONS_START -->
 38개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
+
+> `extensions/*`와 `scripts/knowledge.mjs`의 inventory metadata에서 생성됩니다. 변경 후 `node scripts/knowledge.mjs --graph`로 갱신합니다.
 
 ### 인프라
 
 | 이름 | 설명 |
-|------|------|
-| **subagent** | `>>` 백그라운드 에이전트 위임 — hang 감지 5min, auto-retry 3x, `ask_master` 에스컬레이션, `/subagents` TUI |
-| **claude-code-ui** | Read/Write/Edit/Bash 렌더링 커스텀 |
+|---|---|
+| **subagent** | `>>` 백그라운드 에이전트 위임 — hang 감지, auto-retry, `ask_master` 에스컬레이션, `/subagents` TUI |
 | **supervisor** | 대화 방향 감시 + 자동 스티어링 |
+| **cc-system-prompt** | 최소 Claude Code system prompt bridge |
+| **claude-code-ui** | Read/Write/Edit/Bash 렌더링 커스텀 |
 | **claude-hooks-bridge** | Claude hooks 이벤트 브릿지 |
-| **mcp-bridge** | `~/.claude.json` mcpServers 프록시 (figma/github/sentry 등) |
-| **dynamic-agents-md** | 파일 탐색 결과에 AGENTS.md 자동 주입 |
+| **mcp-bridge** | 기존 MCP server config 기반 MCP 프록시 |
+| **dynamic-agents-md** | 파일 탐색 결과에 관련 AGENTS.md 자동 주입 |
+| **context-loader** | 세션 시작 시 필요한 최소 컨텍스트 로딩 surface |
 | **tool-group-renderer** | 관련 도구 출력 그룹/축소 |
 | **tft-commands** | `/frame`/`/decide`/`/verify`를 pilee SKILL.md 인라인 실행으로 라우팅 |
 | **frame-studio** | Glimpse 기반 TFT Studio shell — Frame/Decide/Verify/Verify Report 탭 + 선택 UI/전문 저장 + Archive `이어하기`/`/tft open` 재진입 |
@@ -287,20 +292,20 @@ Ctrl+W                       → 전체 워크트리 오버레이
 ### 세션 관리
 
 | 이름 | 설명 |
-|------|------|
-| **worktree** | Git worktree 대시보드 — backlog/active/done/archive, 태그, 필터, `Ctrl+W` |
+|---|---|
+| **worktree** | Git worktree 대시보드 — backlog/active/done/archive, 태그, 필터, bootstrapper, 전환 |
 | **fork-panel** | Ghostty 패널 분할 포크 + `P0/P1/P2` 식별자 + parent inbox(`/panels`) + `/handoff`/`/done` + `/revive`/`/repanel` |
 | **session-title** | 세션 제목 자동 설정 |
 
 ### UI / UX
 
 | 이름 | 설명 |
-|------|------|
+|---|---|
 | **footer** | 커스텀 푸터 — 브랜치, 모델, thinking 레벨, 컨텍스트 바 |
 | **custom-style** | PolishedEditor — `>>` 모드 표시, 에디터 테두리, ghost text |
 | **prompt-suggest-lite** | 입력 중 프롬프트 자동완성 제안 |
-| **notify** | 작업 완료 시 widget 바 표시 + macOS 알림 (입력 시 자동 해제) |
-| **idle-screensaver** | 5분 비활성 → 포켓몬 스프라이트 + 마지막 맥락 표시 |
+| **notify** | 작업 완료 시 widget 바 표시 + macOS 알림 |
+| **idle-screensaver** | 비활성 상태에서 포켓몬 스프라이트 + 마지막 맥락 표시 |
 | **spinner** | 스트리밍 중 애니메이션 |
 | **working-text** | 작업 상태 텍스트 |
 | **queued-messages** | 메시지 큐 시각화 + idle watchdog |
@@ -311,9 +316,9 @@ Ctrl+W                       → 전체 워크트리 오버레이
 ### 도구
 
 | 이름 | 설명 |
-|------|------|
+|---|---|
 | **tasks** | 태스크 CRUD + `Ctrl+Shift+T` |
-| **web-access** | Tavily 웹 검색 + URL 콘텐츠 추출 |
+| **web-access** | Tavily 웹 검색 + URL 콘텐츠 추출 + curator workflow |
 | **memory-layer** | 장기 기억 저장/검색 |
 | **ember** | 불씨(`/ember`) — knowledge 후보 찾기/add/check/refresh friendly entrypoint |
 | **backlog** | `/backlog` TUI — 작업 백로그 관리 |
@@ -323,45 +328,52 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | **usage-analytics** | 에이전트/스킬 사용량 통계 |
 | **usage-reporter** | 사용량 리포트 |
 | **retro** | 일간/주간/월간 회고 Notion 연동 |
+| **utils** | 공유 내부 helper — 사용자-facing 계약이 아닌 utility surface |
+<!-- PILEE_README_EXTENSIONS_END -->
 
 ---
 
 ## Skills
 
-19개. 글로벌 워크플로 스킬만 pilee에 포함. 프로젝트 고유 스킬(create-pr, self-review)은 해당 레포에 위치.
+<!-- PILEE_README_SKILLS_START -->
+19개. 글로벌 워크플로 스킬만 pilee에 포함. 프로젝트 고유 스킬(create-pr, self-review)은 해당 레포/private overlay에 위치.
+
+> `skills/*/SKILL.md`와 `scripts/knowledge.mjs`의 inventory metadata에서 생성됩니다. 변경 후 `node scripts/knowledge.mjs --graph`로 갱신합니다.
 
 ### 핵심 사이클
 
 | 스킬 | 역할 |
-|------|------|
+|---|---|
 | **tft-guidelines** | TFT 4 철칙 + `(명백)` 패턴 + 양방향 합리화 차단 |
-| **ask-user-question-rules** | 질문 작성 규칙 — 50자 이내, 옵션에 결론 금지, 자가 점검 8개 (공통 prerequisite) |
-| **frame** | 구조화된 frame.json 생성 |
-| **decide** | frame.decision 큐 처리 |
-| **verify** | frame.json mechanical reader — 14개 어색함 패턴 차단 |
+| **ask-user-question-rules** | 질문 작성 규칙 — 옵션 설계와 text-mode fallback의 공통 prerequisite |
+| **frame** | 구현 전 목표·범위·검증 렌즈를 구조화하고 frame data를 생성 |
+| **decide** | frame decision 큐의 대안 비교와 challenge 처리 |
+| **verify** | frame data mechanical reader — evidence 기반 검증 |
 
 ### 리뷰
 
 | 스킬 | 역할 |
-|------|------|
+|---|---|
 | **stress-interview** | 3 병렬 에이전트 코드 리뷰 (verifier + reviewer + challenger) |
-| **self-healing** | stress-interview + 자동 수정 2사이클 |
+| **self-healing** | stress-interview 결과를 actionable fix cycle로 연결 |
 | **code-review-and-quality** | 코드 리뷰 품질 기준 |
 
 ### 워크플로
 
 | 스킬 | 역할 |
-|------|------|
+|---|---|
 | **systematic-debugging** | 버그 근본원인 파악 → 수정 프로세스 |
+| **debugging-and-error-recovery** | 실패한 테스트/빌드/런타임 오류 복구 |
+| **git-workflow-and-versioning** | Git 워크플로와 변경 단위 discipline |
+| **incremental-implementation** | 검증 가능한 얇은 vertical slice로 점진 구현 |
 | **skill-creator** | 스킬 생성/개선/평가 워크플로 |
 | **pilee-knowledge** | private history → public/sanitized knowledge 승격 + 정합성 갱신 |
-| **db-write / db-write-migration** | DB 쓰기 + 마이그레이션 가이드 |
-| **jira-issue-management** | Jira 이슈 CRUD |
-| **verify-report** | PR 캡처/검증 리포트 + live Glimpse 프리뷰 |
-| **start-local-dev** | 로컬 dev 서버 구동 |
-| **debugging-and-error-recovery** | 디버깅 패턴 |
-| **git-workflow-and-versioning** | Git 워크플로 |
-| **incremental-implementation** | 점진적 구현 패턴 |
+| **db-write** | 인간 실행 게이트를 둔 DB write guidance |
+| **db-write-migration** | 마이그레이션 설계와 검증 guidance |
+| **jira-issue-management** | Jira 이슈 작성/수정 preview gate |
+| **verify-report** | 캡처/네트워크/콘솔/코드 diff 기반 검증 리포트 |
+| **start-local-dev** | 로컬 dev 서버 구동과 진단 |
+<!-- PILEE_README_SKILLS_END -->
 
 ---
 

@@ -257,7 +257,10 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 
 ## Extensions
 
+<!-- PILEE_README_EXTENSIONS_START -->
 38 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
+
+> Generated from `extensions/*` plus inventory metadata in `scripts/knowledge.mjs`; refresh with `node scripts/knowledge.mjs --graph`.
 
 ### Infrastructure
 
@@ -316,12 +319,16 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **usage-reporter** | Usage reports |
 | **retro** | Daily/weekly/monthly retrospective integration |
 | **utils** | Shared internal helpers, not a user-facing contract |
+<!-- PILEE_README_EXTENSIONS_END -->
 
 ---
 
 ## Skills
 
+<!-- PILEE_README_SKILLS_START -->
 19 global workflow skills. Project-specific skills belong in project/private overlays.
+
+> Generated from `skills/*/SKILL.md` plus inventory metadata in `scripts/knowledge.mjs`; refresh with `node scripts/knowledge.mjs --graph`.
 
 ### Core cycle
 
@@ -356,6 +363,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **jira-issue-management** | Jira issue preparation with preview gate |
 | **verify-report** | Capture/evidence-based verification reports |
 | **start-local-dev** | Local dev server startup diagnosis |
+<!-- PILEE_README_SKILLS_END -->
 
 ---
 

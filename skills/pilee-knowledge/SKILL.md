@@ -66,7 +66,7 @@ node scripts/knowledge.mjs "<검색어>"
 - 후보 수집/선택 진입점: `/ember <topic>`
 - 신규/갱신 작성 진입점: `/ember add <topic>`
 - 상태 점검 진입점: `/ember check` — freshness/confidence를 보고 필요 action(refresh/resolve)을 제안
-- generated surface 갱신 진입점: `/ember refresh` — `node scripts/knowledge.mjs --graph` 기반 README table/docs knowledge README/SVG map 재생성·검증
+- generated surface 갱신 진입점: `/ember refresh` — `node scripts/knowledge.mjs --graph` 기반 README knowledge table, README Extension/Skill inventory, docs knowledge README, SVG map 재생성·검증
 - stale 해소용 로컬 plan: `node scripts/knowledge.mjs --resolve-stale` 또는 advanced direct `/ember resolve`
 
 ### 3. 작성/수정 결정
