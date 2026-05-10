@@ -36,7 +36,7 @@ related:
 
 ## Adapter Rule
 
-새 탭, split, focus, notification, config reload는 host capability를 확인하고 fallback을 둡니다. 예를 들어 Cmd+T 동작은 working directory 설정만으로 충분하지 않고 tab inheritance 옵션도 같이 봐야 합니다. 알림은 OSC sequence보다 host에서 실제 동작하는 notifier를 우선합니다.
+새 탭, split, focus, notification, config reload는 host capability를 확인하고 fallback을 둡니다. 예를 들어 Cmd+T 동작은 working directory 설정만으로 충분하지 않고 tab inheritance 옵션도 같이 봐야 합니다. 알림은 OSC sequence보다 host에서 실제 동작하는 notifier를 우선합니다. 새 terminal에 Pi를 다시 띄우는 명령은 bare `pi`나 자동 `pi update`에 의존하지 않습니다. 새 shell의 PATH가 현재 Pi 프로세스와 다를 수 있으므로, 현재 프로세스의 `process.execPath` + `process.argv[1]` 또는 명시적 wrapper 경로를 보존해 `--session`을 실행해야 합니다.
 
 ## WebView/Open Rule
 

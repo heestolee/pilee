@@ -32,7 +32,7 @@ related:
 
 ## Spatial Rule
 
-`/revive`는 현재 패널, 좌/우/상/하 split, tab 같은 open target을 선택할 수 있어야 합니다. 이미 열린 세션의 위치를 바꾸는 `/repanel`은 같은 `pi --session`을 새 split에서 다시 열어 세션 정체성을 유지합니다.
+`/revive`는 현재 패널, 좌/우/상/하 split, tab 같은 open target을 선택할 수 있어야 합니다. 이미 열린 세션의 위치를 바꾸는 `/repanel`은 같은 session file을 새 split에서 다시 열어 세션 정체성을 유지합니다. 이때 launch command는 bare `pi`가 아니라 현재 Pi command/wrapper를 보존해야 새 shell의 PATH 차이로 다른 설치본을 실행하지 않습니다.
 
 ## Orientation Rule
 

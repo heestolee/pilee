@@ -647,8 +647,19 @@ function buildEnvPrefix(env: Record<string, string | undefined>): string {
 	return entries.length > 0 ? `${entries.map(([key, value]) => `${key}=${shellQuote(value!)}`).join(" ")} ` : "";
 }
 
+function currentPiCommand(): string {
+	const envPi = process.env.PILEE_PI_BIN || process.env.PI_BIN;
+	if (envPi && existsSync(envPi)) return shellQuote(envPi);
+	const cliPath = process.argv[1] && existsSync(process.argv[1]) ? process.argv[1] : "";
+	if (cliPath) return `${shellQuote(process.execPath)} ${shellQuote(cliPath)}`;
+	const userWrapper = join(homedir(), ".local", "bin", "pi");
+	if (existsSync(userWrapper)) return shellQuote(userWrapper);
+	return "pi";
+}
+
 function buildSessionLaunchCommand(cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}): string {
-	return `cd \\"${esc(cwd)}\\" && ${buildEnvPrefix(env)}pi --session \\"${esc(sessionFile)}\\"`;
+	const command = `cd ${shellQuote(cwd)} && ${buildEnvPrefix(env)}${currentPiCommand()} --session ${shellQuote(sessionFile)}`;
+	return esc(command);
 }
 
 function resolveReviveCwd(target: ForkRecord, fallbackCwd: string): { cwd: string; fallback: boolean; reason?: string } {
@@ -905,12 +916,11 @@ function assemblePayload(opts: { mode: "summary" | "full" | "last"; lastMessage:
 }
 
 function buildScript(direction: Direction, cwd: string, sessionFile: string, forkId: string, panelLabel: string, parentSessionFile: string, prompt?: string): string {
-	const envPrefix = buildEnvPrefix({
+	const cmd = buildSessionLaunchCommand(cwd, sessionFile, {
 		PI_FORK_ID: forkId,
 		PI_FORK_PANEL_LABEL: panelLabel,
 		PI_FORK_PARENT: parentSessionFile,
 	});
-	const cmd = `cd \\"${esc(cwd)}\\" && pi update && ${envPrefix}pi --session \\"${esc(sessionFile)}\\"`;
 
 	if (direction === "tab") {
 		return `tell application "System Events"
