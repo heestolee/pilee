@@ -155,7 +155,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [검토 산출물은 다시 열 수 있어야 한다](./artifact-archive-reopenability.md) | active | high | 2026-05-10 | db21ec7 | artifact, archive, show-report, archive-command, history, html |
+| [검토 산출물은 다시 열 수 있어야 한다](./artifact-archive-reopenability.md) | active | high | 2026-05-10 | 4371da5 | artifact, archive, show-report, archive-command, history, html |
 | [AskUserQuestion은 의사결정 게이트다](./ask-user-question-decision-gates.md) | active | high | 2026-05-10 | db21ec7 | ask-user-question, tft, decision-gate, question, non-delegable, 질문 |
 | [AskUserQuestion 옵션은 행동 분기를 표현한다](./ask-user-question-option-design.md) | active | high | 2026-05-10 | db21ec7 | ask-user-question, option, wording, ceremony, tft, 질문 |
 | [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | high | 2026-05-10 | db21ec7 | backlog, tasks, provenance, source-session, session, 맥락 |
@@ -166,7 +166,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-05-10 | 636a431 | fork-panel, handoff, inbox, inject, parent, panel |
 | [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-05-10 | 636a431 | fork-panel, revive, repanel, ghostty, spatial, panel |
 | [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-05-10 | db21ec7 | frame, planning, identity, home-directory, ticket, session-title |
-| [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-05-10 | db21ec7 | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
+| [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-05-10 | 4371da5 | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-05-10 | db21ec7 | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 264ea17 | local-dev, server, startup, diagnosis, dev |
 | [Private overlay package는 회사·개인 실행 맥락을 담는다](./private-overlay-package-boundary.md) | active | high | 2026-05-10 | a0027b0 | privacy, package, overlay, skill, company-context |
