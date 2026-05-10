@@ -1,11 +1,11 @@
 ---
 name: pr-ship
-description: 열린 PR의 리뷰 코멘트나 changes requested에 대해 부모/현재 대화와 작업 내역을 확인한 뒤, 표면적 답변이 아니라 근본 원인을 판단해 코드 수정·커밋·푸시·스레드 답글까지 수행해야 할 때 사용한다. "PR 코멘트 대응", "리뷰 대응", "이거 대응작업-커밋-푸시-코멘트까지", "근본적으로 대응", "대응할 게 없으면 근거 코멘트" 요청에 사용한다.
+description: 열린 PR의 리뷰 코멘트나 changes requested에 대해 부모/현재 대화와 작업 내역을 확인한 뒤, 표면적 답변이 아니라 근본 원인을 판단해 코드 수정·커밋·푸시·스레드 답글·review re-request까지 수행해야 할 때 사용한다. "PR 코멘트 대응", "리뷰 대응", "이거 대응작업-커밋-푸시-코멘트까지", "근본적으로 대응", "대응할 게 없으면 근거 코멘트" 요청에 사용한다.
 argument-hint: "[PR URL | review comment URL | PR number]"
 disable-model-invocation: false
 ---
 
-# pr-ship — PR 후 리뷰 대응 + commit + push + comment
+# pr-ship — PR 후 리뷰 대응 + commit + push + comment + re-request
 
 열린 PR에 달린 리뷰 코멘트를 실제로 해결한다. 목표는 “답글을 달았다”가 아니라 **리뷰가 지적한 근본 문제가 코드/문서/검증 근거로 닫혔는가**다.
 
@@ -20,17 +20,16 @@ AI가 기본으로 할 수 있는 것:
 - 관련 검증 실행
 - push
 - 해당 review conversation에 커밋 SHA 또는 근거가 포함된 답글 작성
+- 답글 후 승인되지 않은 리뷰어에게 review re-request
 
 AI가 사용자 명시 승인 없이 하면 안 되는 것:
 
 - review thread `resolve` / `unresolve`
-- re-request review
-- review request 상태 변경
 - merge, auto-merge, merge queue
 - reviewer가 이미 바꾼 상태 되돌리기
 - force push, amend, history rewrite
 
-`resolve`/`unresolve`/`re-request review`는 “사용자가 지금 이 동작을 해달라”고 명시한 경우에만 별도 단계로 수행한다. 리뷰 대응 완료 보고에 “사용자/리뷰어가 resolve 판단”이라고 남긴다.
+`resolve`/`unresolve`는 “사용자가 지금 이 동작을 해달라”고 명시한 경우에만 별도 단계로 수행한다. 리뷰 대응 완료 보고에 “thread resolve는 리뷰어/작성자 판단”이라고 남긴다. 반대로 review re-request는 `pr-ship`의 기본 마무리 동작이다. 단, 승인되지 않은 리뷰어/팀이 없으면 skip하고, API 실패 시 실패 사유를 보고한다.
 
 ## Input Forms
 
@@ -163,12 +162,27 @@ git push
 - 추가 대응 여부: <없음 또는 후속 제안>
 ```
 
+### 9. Re-request Review
+
+push와 thread 답글이 끝나면 승인되지 않은 리뷰어/팀에게 review를 재요청한다.
+
+권장 흐름:
+
+1. `latestReviews`와 `reviewRequests`를 조회한다.
+2. `APPROVED` 상태가 아닌 user reviewer와 team reviewer를 target으로 삼는다.
+3. target이 없으면 “재요청 대상 없음”으로 skip한다.
+4. target이 있으면 GitHub requested reviewers API로 re-request한다.
+5. 실패하면 실패 사유를 보고하되, 이미 수행한 코드 수정/답글을 되돌리지 않는다.
+
+수동 명령이 필요하면 `/github:pr-review-re-request`를 사용할 수 있다.
+
 ## GitHub API Guidance
 
 - 댓글 조회: `gh api repos/<owner>/<repo>/pulls/comments/<comment_id>`
 - thread 목록: GraphQL `pullRequest.reviewThreads`
 - 답글 작성: `gh api repos/<owner>/<repo>/pulls/<pr>/comments/<comment_id>/replies --method POST -f body=...`
-- `resolveReviewThread`, `unresolveReviewThread`, `requested_reviewers` mutation/API는 사용자 명시 승인 없이는 사용하지 않는다.
+- review re-request: `gh api --method POST repos/<owner>/<repo>/pulls/<pr>/requested_reviewers -f reviewers[]=<login>` 또는 `team_reviewers[]=<slug>`
+- `resolveReviewThread`, `unresolveReviewThread` mutation은 사용자 명시 승인 없이는 사용하지 않는다.
 
 ## Final Report
 
@@ -181,8 +195,9 @@ git push
 - 커밋: `<sha>` <message>
 - Push: <branch>
 - 답글: <thread reply url>
+- Re-request: <targets | skipped reason | failed reason>
 - 검증: <command> ✅ / ⚠️ <reason>
-- 하지 않은 것: resolve/re-request/merge는 수행하지 않음
+- 하지 않은 것: resolve/merge는 수행하지 않음
 ```
 
 ## Red Flags

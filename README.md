@@ -217,6 +217,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | extension | `extensions/memory-layer` | [자동 로드 컨텍스트는 최소 surface만 가진다](./docs/knowledge/context-loading-minimal-surface.md) |
 | extension | `extensions/notify` | [터미널 연동은 host adapter로 다룬다](./docs/knowledge/terminal-host-integration.md) |
 | extension | `extensions/pr-comments` | [Diff review draft는 PR 코멘트 전 단계다](./docs/knowledge/diff-review-draft-handoff.md)<br>[Ship과 PR-Ship은 서로 다른 통합 단계다](./docs/knowledge/ship-pr-ship-review-boundary.md) |
+| extension | `extensions/pr-review-re-request` | [Ship과 PR-Ship은 서로 다른 통합 단계다](./docs/knowledge/ship-pr-ship-review-boundary.md) |
 | extension | `extensions/preflight` | [Private overlay package는 회사·개인 실행 맥락을 담는다](./docs/knowledge/private-overlay-package-boundary.md)<br>[수정 전에 근본 원인을 좁힌다](./docs/knowledge/root-cause-before-fix.md) |
 | extension | `extensions/prompt-suggest-lite` | [Editor affordance는 숨은 컨텍스트가 아니다](./docs/knowledge/editor-affordance-not-context.md) |
 | extension | `extensions/queued-messages` | [Queued command는 실행 보장이 아니다](./docs/knowledge/queued-command-prefill-boundary.md) |
@@ -272,7 +273,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 ## Extensions
 
 <!-- PILEE_README_EXTENSIONS_START -->
-39개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
+40개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
 
 > `extensions/*`와 `scripts/knowledge.mjs`의 inventory metadata에서 생성됩니다. 변경 후 `node scripts/knowledge.mjs --graph`로 갱신합니다.
 
@@ -328,7 +329,8 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | **ember** | 불씨(`/ember`) — knowledge 후보 찾기/add/check/refresh friendly entrypoint |
 | **backlog** | `/backlog` TUI — 작업 백로그 관리 |
 | **preflight** | 커밋 전 자동 lint/type-check |
-| **pr-comments** | PR 코멘트 관리 |
+| **pr-comments** | PR unresolved review comment를 editor에 붙이는 helper |
+| **pr-review-re-request** | 승인되지 않은 PR reviewer/team에게 review re-request |
 | **until** | 반복 작업 추적 |
 | **usage-analytics** | 에이전트/스킬 사용량 통계 |
 | **usage-reporter** | 사용량 리포트 |
@@ -377,7 +379,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | **db-write-migration** | 마이그레이션 설계와 검증 guidance |
 | **jira-issue-management** | Jira 이슈 작성/수정 preview gate |
 | **ship** | PR 전 변경사항을 의도 단위 커밋·검증·push로 정리 |
-| **pr-ship** | PR 리뷰 코멘트를 근본 대응하고 커밋·push·스레드 답글까지 수행 |
+| **pr-ship** | PR 리뷰 코멘트를 근본 대응하고 커밋·push·스레드 답글·review re-request까지 수행 |
 | **ci-ship** | PR CI 실패를 check/log 기반으로 분석해 수정·검증·push |
 | **verify-report** | 캡처/네트워크/콘솔/코드 diff 기반 검증 리포트 |
 | **start-local-dev** | 로컬 dev 서버 구동과 진단 |

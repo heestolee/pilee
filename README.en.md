@@ -207,6 +207,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | extension | `extensions/memory-layer` | [Context Loading Minimal Surface](./docs/knowledge/context-loading-minimal-surface.md) |
 | extension | `extensions/notify` | [Terminal Host Integration](./docs/knowledge/terminal-host-integration.md) |
 | extension | `extensions/pr-comments` | [Diff Review Draft Handoff](./docs/knowledge/diff-review-draft-handoff.md)<br>[Ship PR Ship Review Boundary](./docs/knowledge/ship-pr-ship-review-boundary.md) |
+| extension | `extensions/pr-review-re-request` | [Ship PR Ship Review Boundary](./docs/knowledge/ship-pr-ship-review-boundary.md) |
 | extension | `extensions/preflight` | [Private Overlay Package Boundary](./docs/knowledge/private-overlay-package-boundary.md)<br>[Root Cause Before Fix](./docs/knowledge/root-cause-before-fix.md) |
 | extension | `extensions/prompt-suggest-lite` | [Editor Affordance Not Context](./docs/knowledge/editor-affordance-not-context.md) |
 | extension | `extensions/queued-messages` | [Queued Command Prefill Boundary](./docs/knowledge/queued-command-prefill-boundary.md) |
@@ -262,7 +263,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 ## Extensions
 
 <!-- PILEE_README_EXTENSIONS_START -->
-39 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
+40 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
 
 > Generated from `extensions/*` plus inventory metadata in `scripts/knowledge.mjs`; refresh with `node scripts/knowledge.mjs --graph`.
 
@@ -318,7 +319,8 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **ember** | Friendly entrypoint for knowledge collect/add/check/refresh |
 | **backlog** | Persistent backlog TUI |
 | **preflight** | Pre-commit lint/type-check hooks |
-| **pr-comments** | PR comment workflow helpers |
+| **pr-comments** | PR unresolved review comment collection helper |
+| **pr-review-re-request** | Re-request review from non-approved PR reviewers/teams |
 | **until** | Explicit until-loop progress reporting |
 | **usage-analytics** | Agent and skill usage statistics |
 | **usage-reporter** | Usage reports |
@@ -367,7 +369,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **db-write-migration** | Migration design and verification guidance |
 | **jira-issue-management** | Jira issue preparation with preview gate |
 | **ship** | Pre-PR commit, verification, and push workflow |
-| **pr-ship** | Post-PR review response with root-cause fix, commit, push, and thread reply |
+| **pr-ship** | Post-PR review response with root-cause fix, commit, push, thread reply, and review re-request |
 | **ci-ship** | Post-PR CI failure analysis, fix, verification, and push workflow |
 | **verify-report** | Capture/evidence-based verification reports |
 | **start-local-dev** | Local dev server startup diagnosis |
