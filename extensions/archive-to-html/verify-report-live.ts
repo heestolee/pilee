@@ -160,6 +160,73 @@ function escapeHtml(value: string): string {
 		.replaceAll('"', "&quot;");
 }
 
+function renderEscapedTextWithLinks(value: string): string {
+	const urlPattern = /https?:\/\/[^\s<>"]+/g;
+	let html = "";
+	let lastIndex = 0;
+	for (const match of value.matchAll(urlPattern)) {
+		const rawUrl = match[0] ?? "";
+		const index = match.index ?? 0;
+		const trailing = rawUrl.match(/[),.;:!?]+$/)?.[0] ?? "";
+		const url = trailing ? rawUrl.slice(0, -trailing.length) : rawUrl;
+		html += escapeHtml(value.slice(lastIndex, index));
+		html += `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(url)}</a>${escapeHtml(trailing)}`;
+		lastIndex = index + rawUrl.length;
+	}
+	html += escapeHtml(value.slice(lastIndex));
+	return html;
+}
+
+function renderInlineRichText(value: string): string {
+	const parts = value.split(/(`[^`]*`)/g);
+	return parts.map((part) => {
+		if (part.startsWith("`") && part.endsWith("`") && part.length >= 2) {
+			return `<code>${escapeHtml(part.slice(1, -1))}</code>`;
+		}
+		return renderEscapedTextWithLinks(part);
+	}).join("");
+}
+
+function splitDetailSentences(value: string): string[] {
+	return value
+		.replace(/\s+/g, " ")
+		.trim()
+		.split(/(?<=[.!?。])\s+/)
+		.map((part) => part.trim())
+		.filter(Boolean);
+}
+
+function renderDetailHtml(value?: string): string {
+	const trimmed = value?.trim();
+	if (!trimmed) return "";
+	const lines = trimmed.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+	if (lines.length > 1) {
+		let listItems: string[] = [];
+		let html = "";
+		const flushList = () => {
+			if (!listItems.length) return;
+			html += `<ul class="detail-list">${listItems.join("")}</ul>`;
+			listItems = [];
+		};
+		for (const line of lines) {
+			const bullet = line.match(/^[-*•]\s+(.*)$/);
+			if (bullet) {
+				listItems.push(`<li>${renderInlineRichText(bullet[1] ?? "")}</li>`);
+				continue;
+			}
+			flushList();
+			html += `<p>${renderInlineRichText(line)}</p>`;
+		}
+		flushList();
+		return `<div class="detail detail-readable">${html}</div>`;
+	}
+	const sentences = splitDetailSentences(trimmed);
+	if (trimmed.length >= 180 && sentences.length >= 2) {
+		return `<div class="detail detail-readable"><ul class="detail-list">${sentences.map((sentence) => `<li>${renderInlineRichText(sentence)}</li>`).join("")}</ul></div>`;
+	}
+	return `<p class="detail">${renderInlineRichText(trimmed)}</p>`;
+}
+
 function mimeFor(filePath: string): string {
 	const ext = extname(filePath).toLowerCase();
 	if (ext === ".png") return "image/png";
@@ -601,7 +668,12 @@ function generateLivePage(initialState: unknown): string {
 	.status.fail { color:var(--red); border-color:var(--red); }
 	.status.running { color:var(--accentText); border-color:var(--accent); }
 	.status.skip, .status.blocked, .status.unverified { color:var(--yellow); border-color:var(--yellow); }
-	.detail { color:var(--detail); line-height:1.55; white-space:pre-wrap; }
+	.detail { color:var(--detail); line-height:1.62; white-space:pre-wrap; }
+	.detail-readable { white-space:normal; margin:14px 0; padding:13px 15px; border:1px solid var(--line); border-left:4px solid var(--accent); border-radius:13px; background:rgba(255,255,255,.58); }
+	.detail-readable p { margin:0 0 9px; color:inherit; }
+	.detail-readable p:last-child { margin-bottom:0; }
+	.detail-list { margin:0; padding-left:1.15em; display:grid; gap:8px; }
+	.detail-list li { padding-left:2px; }
 	.evidence { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap:12px; margin-top:12px; align-items:start; }
 	.evidence-card { border:1px solid var(--line); border-radius:14px; background:var(--panel2); padding:12px; min-width:0; }
 	.evidence-card.evidence-raw-card { grid-column:1 / -1; }
@@ -692,6 +764,65 @@ function evHtml(ev) {
   if (!body) return '';
   return '<article class="evidence-card' + (raw ? ' evidence-raw-card' : '') + '"><div class="evidence-card-head"><strong>' + esc(label) + '</strong><span>' + esc(kind) + '</span></div>' + body + (raw ? '' : evIntentHtml(ev)) + '</article>';
 }
+function escapedTextWithLinks(v) {
+  var text = String(v == null ? '' : v);
+  var re = /(https?:\\/\\/[^\\s<>"']+)/g;
+  var html = '';
+  var last = 0;
+  var match;
+  while ((match = re.exec(text))) {
+    var raw = match[0] || '';
+    var trailingMatch = raw.match(/[),.;:!?]+$/);
+    var trailing = trailingMatch ? trailingMatch[0] : '';
+    var url = trailing ? raw.slice(0, -trailing.length) : raw;
+    html += esc(text.slice(last, match.index));
+    html += '<a href="' + esc(url) + '" target="_blank" rel="noreferrer">' + esc(url) + '</a>' + esc(trailing);
+    last = match.index + raw.length;
+  }
+  html += esc(text.slice(last));
+  return html;
+}
+function inlineHtml(v) {
+  var text = String(v == null ? '' : v);
+  var out = '';
+  var i = 0;
+  while (i < text.length) {
+    var start = text.indexOf('\`', i);
+    if (start < 0) { out += escapedTextWithLinks(text.slice(i)); break; }
+    var end = text.indexOf('\`', start + 1);
+    if (end < 0) { out += escapedTextWithLinks(text.slice(i)); break; }
+    out += escapedTextWithLinks(text.slice(i, start));
+    out += '<code>' + esc(text.slice(start + 1, end)) + '</code>';
+    i = end + 1;
+  }
+  return out;
+}
+function splitDetailSentences(v) {
+  return String(v == null ? '' : v).replace(/\\s+/g, ' ').trim().split(/(?<=[.!?。])\\s+/).map(function(part){ return part.trim(); }).filter(Boolean);
+}
+function detailHtml(v) {
+  var trimmed = String(v == null ? '' : v).trim();
+  if (!trimmed) return '';
+  var lines = trimmed.split(/\\r?\\n/).map(function(line){ return line.trim(); }).filter(Boolean);
+  if (lines.length > 1) {
+    var html = '';
+    var list = [];
+    var flush = function(){ if (!list.length) return; html += '<ul class="detail-list">' + list.join('') + '</ul>'; list = []; };
+    lines.forEach(function(line){
+      var bullet = line.match(/^[-*•]\\s+(.*)$/);
+      if (bullet) { list.push('<li>' + inlineHtml(bullet[1] || '') + '</li>'); return; }
+      flush();
+      html += '<p>' + inlineHtml(line) + '</p>';
+    });
+    flush();
+    return '<div class="detail detail-readable">' + html + '</div>';
+  }
+  var sentences = splitDetailSentences(trimmed);
+  if (trimmed.length >= 180 && sentences.length >= 2) {
+    return '<div class="detail detail-readable"><ul class="detail-list">' + sentences.map(function(sentence){ return '<li>' + inlineHtml(sentence) + '</li>'; }).join('') + '</ul></div>';
+  }
+  return '<p class="detail">' + inlineHtml(trimmed) + '</p>';
+}
 function render() {
   var items = state.items || [];
   var html = '<div class="header"><div class="header-row"><div><h1>' + esc(state.title || 'Verify Report Live') + '</h1><div class="meta">' +
@@ -700,12 +831,12 @@ function render() {
     '<span class="badge">workspace=' + esc(state.workspaceName || '') + '</span>' +
     '<span class="badge">runId=' + esc(state.runId || '') + '</span>' +
     '</div></div><div class="meta"><span class="badge">updated ' + new Date(state.updatedAt || Date.now()).toLocaleTimeString() + '</span></div></div></div>';
-  html += '<main><section class="summary"><h2>요약</h2>' + (state.summary ? '<p class="detail">' + esc(state.summary) + '</p>' : '') + (state.finalSummary ? '<p class="detail">' + esc(state.finalSummary) + '</p>' : '') +
+  html += '<main><section class="summary"><h2>요약</h2>' + detailHtml(state.summary) + detailHtml(state.finalSummary) +
     '<div class="grid"><div class="stat"><strong>' + items.length + '</strong>전체</div><div class="stat"><strong>' + count('pass') + '</strong>PASS</div><div class="stat"><strong>' + count('fail') + '</strong>FAIL</div><div class="stat"><strong>' + (count('skip') + count('blocked') + count('unverified')) + '</strong>SKIP/미검증</div></div>' +
     (state.reportPath ? '<p><strong>report.html</strong>: <code>' + esc(state.reportPath) + '</code></p>' : '') + '</section>';
   for (var i=0; i<items.length; i++) { var item = items[i];
     html += '<section class="item"><div class="item-head"><div><h3>' + esc(item.id) + '. ' + esc(item.title) + '</h3>' + (item.type ? '<div class="type">' + esc(item.type) + '</div>' : '') + '</div><span class="status ' + esc(item.status || 'pending') + '">' + statusLabel(item.status || 'pending') + '</span></div>' +
-      (item.detail ? '<p class="detail">' + esc(item.detail) + '</p>' : '') +
+      detailHtml(item.detail) +
       '<div class="evidence">' + (item.evidence || []).map(evHtml).join('') + '</div></section>';
   }
   if (state.logs && state.logs.length) {
@@ -804,6 +935,12 @@ function generateStaticReportHtml(state: VerifyReportState): string {
 	.skip { color: #d97706; font-weight: 800; }
 	.running, .pending { color: #2563eb; font-weight: 800; }
 	.detail { white-space: pre-wrap; line-height: 1.65; color: #4b5563; }
+	.detail-readable { white-space: normal; margin: 14px 0; padding: 14px 16px; border: 1px solid #e5e7eb; border-left: 4px solid #8b5cf6; border-radius: 12px; background: #f8fafc; }
+	.detail-readable p { margin: 0 0 9px; color: inherit; }
+	.detail-readable p:last-child { margin-bottom: 0; }
+	.detail-list { margin: 0; padding-left: 1.15em; display: grid; gap: 8px; }
+	.detail-list li { padding-left: 2px; }
+	.gap-detail { margin-top: 8px; }
 	.step { background: #f9fafb; border-radius: 10px; padding: 20px; margin-bottom: 16px; border: 1px solid #e5e7eb; }
 	.step-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 	.step-num { background: #10b981; color: white; min-width: 32px; height: 32px; padding: 0 9px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; flex-shrink: 0; }
@@ -853,7 +990,7 @@ function generateStaticReportHtml(state: VerifyReportState): string {
 <section>
 	<h2>📋 요약</h2>
 	<div class="pass-banner ${outcomeClass}">${outcomeIcon} <strong>${counts.pass} passed</strong> · ${counts.fail} failed · ${counts.skipped} skipped/unverified</div>
-	${state.finalSummary ? `<p class="detail">${escapeHtml(state.finalSummary)}</p>` : state.summary ? `<p class="detail">${escapeHtml(state.summary)}</p>` : ""}
+	${state.finalSummary ? renderDetailHtml(state.finalSummary) : state.summary ? renderDetailHtml(state.summary) : ""}
 	<div class="info-grid">
 		<div class="info-item"><div class="label">report</div><div class="value">${escapeHtml(state.reportPath)}</div></div>
 		<div class="info-item"><div class="label">run id</div><div class="value">${escapeHtml(state.runId)}</div></div>
@@ -866,7 +1003,7 @@ ${coverageGaps.length ? `<section>
 	<h2>⚠️ Coverage Gaps</h2>
 	<p>아래 항목은 리포트에 포함됐지만 PASS로 닫히지 않았습니다. 추가 캡처/로그/환경 검증이 필요합니다.</p>
 	<div class="gap-list">
-	${coverageGaps.map((item) => `<div class="gap-item"><strong>${escapeHtml(item.id)} · ${escapeHtml(statusLabel(item.status))}</strong>${escapeHtml(item.title)}${item.detail ? `<br>${escapeHtml(item.detail)}` : ""}</div>`).join("\n")}
+	${coverageGaps.map((item) => `<div class="gap-item"><strong>${escapeHtml(item.id)} · ${escapeHtml(statusLabel(item.status))}</strong>${escapeHtml(item.title)}${item.detail ? `<div class="gap-detail">${renderDetailHtml(item.detail)}</div>` : ""}</div>`).join("\n")}
 	</div>
 </section>` : ""}
 
@@ -882,7 +1019,7 @@ ${coverageGaps.length ? `<section>
 
 <section>
 	<h2>📸 상세 증거</h2>
-	${state.items.map((item) => `<div class="step"><div class="step-header"><div class="step-num">${escapeHtml(item.id)}</div><div><div class="step-title">${escapeHtml(item.title)}</div><div class="step-meta">${escapeHtml(item.type || "-")} · <span class="${escapeHtml(statusClass(item.status))}">${escapeHtml(statusLabel(item.status))}</span></div></div></div>${item.detail ? `<p class="detail">${escapeHtml(item.detail)}</p>` : ""}<div class="evidence">${item.evidence.map((evidence) => renderEvidenceStatic(evidence, state)).join("\n")}</div></div>`).join("\n")}
+	${state.items.map((item) => `<div class="step"><div class="step-header"><div class="step-num">${escapeHtml(item.id)}</div><div><div class="step-title">${escapeHtml(item.title)}</div><div class="step-meta">${escapeHtml(item.type || "-")} · <span class="${escapeHtml(statusClass(item.status))}">${escapeHtml(statusLabel(item.status))}</span></div></div></div>${renderDetailHtml(item.detail)}<div class="evidence">${item.evidence.map((evidence) => renderEvidenceStatic(evidence, state)).join("\n")}</div></div>`).join("\n")}
 </section>
 </div>
 <script>

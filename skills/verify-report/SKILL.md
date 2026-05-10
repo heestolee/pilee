@@ -15,6 +15,7 @@ argument-hint: "[base-url] [--upload] [--update] [--ask-before] [--no-workers]"
 - **미검증 명시**: 자동화로 확인하지 못한 항목은 PASS로 쓰지 않고 `미검증`/`blocked`/`Coverage Gap`에 남긴다.
 - **짧고 초점 있는 primary evidence**: 리포트 본문 핵심 증거는 viewport/섹션/element crop을 우선한다. 세로로 긴 full-page 캡처는 필요할 때만 보조 증거로 남기고 토글/appendix/link 뒤에 둔다.
 - **Raw evidence에도 의도를 붙인다**: 모든 evidence에는 가능한 한 `purpose`, `inspectFor`, `expected`, `observed`, `role`, `relatedItem`을 붙여 “왜 수집했는지 / 무엇을 봐야 하는지”가 report와 `/archive`의 캡처/미디어 탭에서도 보이게 한다. Raw 파일의 의도는 별도 섹션으로 분리하지 말고 해당 raw 토글 내부 상단에 함께 보여 시선이 흩어지지 않게 한다.
+- **Item detail은 읽히는 설명이어야 한다**: `detail`에는 긴 한 문단을 넣지 말고 조건/관찰/제약을 문장 단위나 줄바꿈 bullet로 나눈다. renderer는 긴 detail을 자동 bullet card로 정리하고 backtick inline code와 URL link를 강조하지만, agent도 “왜 직접 캡처하지 못했는지 / 무엇으로 대체 검증했는지 / 남은 gap은 무엇인지”가 눈에 들어오게 작성한다.
 - **판정은 엄격하게, 레이아웃은 기본값으로**: PASS/미검증/coverage gap과 evidence metadata는 strict하게 지키되, 섹션 순서·카드 수·표현 방식은 케이스에 맞게 renderer default가 흡수한다. 에이전트는 양식 채우기보다 기준을 증거로 닫는 데 집중한다.
 - **Renderer design default**: report UI는 generative-ui식 디자인 절제를 참고하되, 사용자에게 읽고 싶을 만큼 강한 verdict/coverage hierarchy를 제공한다. 검증 report는 심심한 문서가 아니라 판단 artifact이므로 상단 verdict, PASS/GAP 색상, 핵심 증거 카드의 리듬을 살린다. 새 dependency를 붙여 AI가 매번 HTML을 생성하게 하지 않고, deterministic renderer가 일관된 구조를 만든다.
 - **Before/After 비교는 판단해서 포함**: 기존 UI/동작이 기준점으로 의미 있는 변경은 작업 전(before)과 작업 후(after)를 같은 축/viewport/role로 캡처하고, 차이를 설명한다. 신규 화면처럼 baseline이 없거나 부작용 위험이 큰 경우는 생략 사유를 남긴다.
