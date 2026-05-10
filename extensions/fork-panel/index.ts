@@ -7,6 +7,7 @@ import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 import type { AutocompleteItem } from "@mariozechner/pi-tui";
 import { completeSimple } from "@mariozechner/pi-ai";
 import { expandProfileTemplate, loadArtifactBrowserProfiles } from "../utils/private-profiles.ts";
+import { resolveForkPanelIdentity, type ForkPanelIdentity } from "../utils/fork-panel-identity.ts";
 
 const SPLIT_DIRS = ["right", "left", "down", "up"] as const;
 type SplitDirection = (typeof SPLIT_DIRS)[number];
@@ -1108,6 +1109,111 @@ export default function (pi: ExtensionAPI) {
 			},
 		});
 		// Continue to register fork-panel command/shortcuts so child can fork further
+	} else {
+		const recoverIdentity = (ctx: ExtensionContext): ForkPanelIdentity | null => {
+			const identity = resolveForkPanelIdentity({ sessionFile: ctx.sessionManager.getSessionFile() });
+			if (identity.source !== "recent" || !identity.forkId || identity.panelLabel.toUpperCase() === "P0") return null;
+			return identity;
+		};
+
+		const buildRecoveredHandoff = async (args: string | undefined, ctx: ExtensionContext, source: HandoffSource) => {
+			const identity = recoverIdentity(ctx);
+			if (!identity) {
+				ctx.ui.notify("현재 세션은 fork-panel recent record와 연결되지 않아 /handoff를 사용할 수 없습니다.", "warning");
+				return { noHandoff: true, mode: "summary" as const, item: null as InboxItem | null, identity: null as ForkPanelIdentity | null };
+			}
+
+			const tokens = (args ?? "").trim().split(/\s+/).filter(Boolean);
+			let mode: "summary" | "full" | "last" = "summary";
+			let inject = false;
+			let noHandoff = false;
+			const noteParts: string[] = [];
+			for (const t of tokens) {
+				if (t === "--full") mode = "full";
+				else if (t === "--last") mode = "last";
+				else if (t === "--summary") mode = "summary";
+				else if (t === "--inject") inject = true;
+				else if (t === "--no-handoff") noHandoff = true;
+				else noteParts.push(t);
+			}
+			if (noHandoff) return { noHandoff: true, mode, item: null as InboxItem | null, identity };
+
+			const entries = ctx.sessionManager.getEntries();
+			const lastMsg = extractLastAssistant(entries);
+			if (!lastMsg) {
+				ctx.ui.notify("전송할 응답이 없습니다 (assistant 메시지가 아직 없음)", "warning");
+				return null;
+			}
+
+			let payload: string;
+			if (mode === "full") {
+				payload = assemblePayload({ mode: "full", lastMessage: lastMsg, transcript: extractFullTranscript(entries) });
+			} else if (mode === "summary") {
+				ctx.ui.notify("요약 생성 중…", "info");
+				const summary = await generateSummary(entries, ctx);
+				payload = assemblePayload({ mode: summary ? "summary" : "last", lastMessage: lastMsg, summary });
+			} else {
+				payload = lastMsg;
+			}
+
+			const ts = Date.now();
+			const data: HandoffData = {
+				forkId: identity.forkId,
+				panelLabel: identity.panelLabel,
+				parentSessionFile: identity.parentSessionFile,
+				parentSessionId: identity.parentSessionFile,
+				title: extractLastSessionName(entries) || extractLastText(entries) || identity.panelLabel || identity.forkId,
+				pid: process.pid,
+				updatedAt: ts,
+				summary: payload,
+				mode: source === "done" ? "done" : "manual",
+				delivery: inject ? "inject" : "inbox",
+				customNote: noteParts.join(" ").trim() || undefined,
+			};
+			const item = writeInboxFromHandoff(data, source, inject ? "inject" : "inbox");
+			return { noHandoff: false, mode, item, identity };
+		};
+
+		pi.on("session_start", async (_e, ctx) => {
+			const identity = recoverIdentity(ctx);
+			if (!identity) return;
+			ctx.ui.notify(`${identity.panelLabel} fork panel identity 복구됨 · revive env fallback`, "info");
+		});
+
+		pi.registerCommand("handoff", {
+			description: "Recovered fork-panel handoff when revive lost PI_FORK_* env. Options: --inject, --full, --last, --summary.",
+			handler: async (args, ctx) => {
+				try {
+					const result = await buildRecoveredHandoff(args, ctx, "manual");
+					if (!result || result.noHandoff || !result.item || !result.identity) return;
+					ctx.ui.notify(`${result.identity.panelLabel} handoff ${result.item.delivery === "inject" ? "즉시 주입 요청" : "parent inbox 저장"} (recovered, mode: ${result.mode})`, "info");
+				} catch (e) {
+					ctx.ui.notify(`handoff 실패: ${e instanceof Error ? e.message : e}`, "error");
+				}
+			},
+		});
+
+		pi.registerCommand("done", {
+			description: "Recovered fork-panel done when revive lost PI_FORK_* env. Options: --inject, --no-handoff, --full, --last, --summary.",
+			handler: async (args, ctx) => {
+				try {
+					const result = await buildRecoveredHandoff(args, ctx, "done");
+					if (result?.identity?.forkId) {
+						if (result.noHandoff) {
+							markForkClosed(result.identity.forkId, "closed without handoff");
+							ctx.ui.notify(`${result.identity.panelLabel} 종료 (handoff 없음, recovered)`, "info");
+						} else if (result.item) {
+							markForkClosed(result.identity.forkId, result.item.summary);
+							ctx.ui.notify(`${result.identity.panelLabel} ${result.item.delivery === "inject" ? "handoff 즉시 주입 요청 후" : "handoff inbox 저장 후"} 종료 (recovered)`, "info");
+						}
+						try { unlinkSync(join(HANDOFF_DIR, `${result.identity.forkId}.json`)); } catch {}
+						await closeCurrentForkPanel(pi);
+					}
+				} catch (e) {
+					ctx.ui.notify(`done 실패: ${e instanceof Error ? e.message : e}`, "error");
+				}
+			},
+		});
 	}
 
 	// All sessions (parent or child fork): can spawn new forks
