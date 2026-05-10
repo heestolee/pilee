@@ -34,7 +34,7 @@ supersedes:
 
 ## Continuity Rule
 
-회수의 기본 동작은 `/revive`입니다. 사용자는 닫힌 세션 목록에서 제목과 preview를 보고 선택한 뒤, 같은 세션 파일로 새 패널/탭/현재 패널에서 이어갑니다. 이때 세션 파일만 바꾸면 안 되고, 해당 세션이 대화하던 cwd/worktree도 함께 복원합니다. fork-panel이 과거 세션 파일을 복사해 만들면 session header의 cwd가 record cwd와 다를 수 있으므로, revive 직전에 실제 존재하는 record/session cwd로 header cwd를 보정합니다. 현재 패널에서 여는 경우에는 Pi runtime뿐 아니라 살아 있는 Node process cwd도 `process.chdir()`로 맞춥니다. worktree-bound session을 현재 패널에서 열 때도 tool 실행 기준이 원 세션의 worktree가 되게 합니다. 전문 복사는 보조 수단이며 기본 UX가 아닙니다.
+회수의 기본 동작은 `/revive`입니다. 사용자는 닫힌 세션 목록에서 제목과 preview를 보고 선택한 뒤, 같은 세션 파일로 새 패널/탭/현재 패널에서 이어갑니다. 이때 세션 파일만 바꾸면 안 되고, 해당 세션이 대화하던 cwd/worktree도 함께 복원합니다. fork-panel이 과거 세션 파일을 복사해 만들면 session header의 cwd가 record cwd와 다를 수 있으므로, revive 직전에 실제 존재하는 record/session cwd로 header cwd를 보정합니다. 현재 패널에서 여는 경우에는 in-process `switchSession`에만 기대지 않고 현재 Pi를 종료한 뒤 같은 Ghostty terminal에 `cd <cwd> && pi --session <file>`을 다시 입력해 재실행합니다. 그래야 terminal shell cwd, Pi process cwd, session cwd가 같은 worktree로 정렬됩니다. 전문 복사는 보조 수단이며 기본 UX가 아닙니다.
 
 ## Placement Rule
 

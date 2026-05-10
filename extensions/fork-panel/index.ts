@@ -639,6 +639,20 @@ function chdirForCurrentPanelRevive(cwd: string): { previous: string; changed: b
 	}
 }
 
+function buildReplaceCurrentSessionScript(cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}, terminalId?: string | null): string {
+	const cmd = buildSessionLaunchCommand(cwd, sessionFile, env);
+	const targetTermSelector = terminalId
+		? `set targetTerm to first terminal whose id is "${esc(terminalId)}"`
+		: "set targetTerm to focused terminal of selected tab of front window";
+	return `delay 0.8
+tell application "Ghostty"
+  activate
+  ${targetTermSelector}
+  input text "${cmd}" to targetTerm
+  send key "enter" to targetTerm
+end tell`;
+}
+
 function buildOpenSessionScript(mode: Direction, cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}): string {
 	const cmd = buildSessionLaunchCommand(cwd, sessionFile, env);
 	if (mode === "tab") {
@@ -1531,6 +1545,25 @@ export default function (pi: ExtensionAPI) {
 			const reviveCwd = resolveReviveCwd(target, ctx.cwd);
 			const headerSync = reviveCwd.fallback ? { updated: false } : ensureSessionHeaderCwd(target.sessionFile, reviveCwd.cwd);
 			if (headerSync.error) ctx.ui.notify(`revive cwd header 보정 실패: ${headerSync.error}`, "warning");
+			const isP0 = recordSource(target) === "p0";
+			const env = isP0 ? {} : {
+				PI_FORK_ID: target.forkId,
+				PI_FORK_PANEL_LABEL: target.panelLabel,
+				PI_FORK_PARENT: target.parentSessionFile,
+			};
+			if (process.platform === "darwin" && process.env.TERM_PROGRAM === "ghostty") {
+				const terminalId = await getGhosttyFocusedTerminalId(pi);
+				const script = buildReplaceCurrentSessionScript(reviveCwd.cwd, target.sessionFile, env, terminalId);
+				const launch = await runDetachedOsa(pi, script);
+				if (launch.code === 0) {
+					if (!isP0) { try { unlinkSync(join(HANDOFF_DIR, `${target.forkId}.json`)); } catch {} }
+					ctx.ui.notify(`${item.workspaceLabel} · ${item.title} 세션 재개 → 현재 패널 재실행`, reviveCwd.fallback ? "warning" : "info");
+					ctx.shutdown();
+					return;
+				}
+				ctx.ui.notify(`현재 패널 재실행 실패: ${launch.stderr?.trim() || "unknown"}. in-process 전환으로 fallback합니다.`, "warning");
+			}
+
 			const chdirResult = reviveCwd.fallback ? { previous: process.cwd(), changed: false } : chdirForCurrentPanelRevive(reviveCwd.cwd);
 			if (chdirResult.error) ctx.ui.notify(`현재 패널 cwd 이동 실패: ${chdirResult.error}`, "warning");
 			try {
