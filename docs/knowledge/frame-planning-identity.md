@@ -22,6 +22,7 @@ related:
   - frame-verify-contract
   - session-identity-over-filenames
   - worktree-session-continuity
+  - frame-plan-synthesis-continuity
 ---
 
 ## Judgment
@@ -36,7 +37,7 @@ Frame identity should follow the user's work unit, not the current directory alo
 
 ## Boundary Rule
 
-Session title is human identity, not a stable key. It can change and collide, so it should be shown in Glimpse/report titles but backed by a session file hash. When a worktree is later created, the planning frame should be promotable into that worktree's `.pi/frame.json`.
+Session title is human identity, not a stable key. It can change and collide, so it should be shown in Glimpse/report titles but backed by a session file hash. When a worktree is later created, the planning frame should be promoted into that worktree's `.pi/frame.json` automatically when a matching ticket-bound planning frame exists. The user should not have to remember a separate copy/승격 step.
 
 ## Transcript Rule
 

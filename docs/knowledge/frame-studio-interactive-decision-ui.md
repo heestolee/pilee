@@ -34,13 +34,14 @@ related:
   - ask-user-question-option-design
   - live-artifact-preview-pattern
   - tft-visual-structure-renderer
+  - frame-plan-synthesis-continuity
 ---
 
 ## Judgment
 
 `/frame`은 사용자가 계획을 감사하게 만드는 문서 생성 명령이 아니라, 목표·범위·검증 렌즈를 함께 좁히는 decision gate입니다. Pi text-mode fallback만으로는 이 체감이 약할 수 있으므로, UI가 가능한 환경에서는 TFT Studio가 질문 흐름을 별도 Glimpse 창에 묶어 보여줍니다.
 
-TFT Studio는 Frame/Decide/Verify/Verify Report를 탭으로 나누는 작업 단위 shell입니다. 1차 구현에서는 Frame tab이 기존 co-thinking 기능을 계속 담당하고, Decide/Verify/Verify Report tab은 같은 identity 안에서 후속 또는 선택 stage state를 붙일 자리로 노출합니다. 탭은 UI 구획일 뿐이고, canonical source는 각 단계의 structured data여야 합니다.
+TFT Studio는 Frame/Decide/Verify/Verify Report를 탭으로 나누는 작업 단위 shell입니다. Frame tab은 기존 co-thinking 기능뿐 아니라, 결정이 닫힌 뒤 `Implementation plan synthesis`까지 담당합니다. Plan은 별도 탭으로 사용자를 밀어내기보다 Frame의 마지막 섹션으로 보여야 흐름이 끊기지 않습니다. Decide/Verify/Verify Report tab은 같은 identity 안에서 후속 또는 선택 stage state를 붙일 자리로 노출합니다. 탭은 UI 구획일 뿐이고, canonical source는 각 단계의 structured data여야 합니다.
 
 TFT Studio는 pipeline 강제 UI가 아닙니다. `Frame → Decide → Verify → Verify Report`는 가장 풍부한 full cycle일 뿐이며, 작업 성격에 따라 `Frame only`, `Frame → Verify`, `Frame → Verify Report`, `Verify Report only`, `Decide 없이 Verify` 같은 부분 cycle도 정상 경로입니다. 전 단계 기록이 없다는 이유로 현재 탭 사용을 막지 않습니다.
 

@@ -217,6 +217,13 @@ interface WorktreeMeta {
 	status?: WorktreeStatus;
 	tags?: string[];
 	doneAt?: number;
+	frame?: {
+		path: string;
+		updatedAt: number;
+		summary?: string;
+		canonicalHash?: string;
+		sourcePlanningFrame?: string;
+	};
 }
 
 function metaPath(worktreePath: string): string {
@@ -233,6 +240,162 @@ function writeMeta(worktreePath: string, meta: WorktreeMeta) {
 	const p = metaPath(worktreePath);
 	mkdirSync(dirname(p), { recursive: true });
 	writeFileSync(p, JSON.stringify(meta, null, 2));
+}
+
+const FRAME_PLANNING_ROOT = join(homedir(), ".pi", "agent", "frame-planning");
+
+type FrameDocLoose = Record<string, any>;
+
+type FramePromotionResult =
+	| { status: "promoted"; framePath: string; frameMdPath: string; sourcePath: string; canonicalHash?: string }
+	| { status: "exists"; framePath: string }
+	| { status: "missing-source" }
+	| { status: "error"; error: string };
+
+function safeFrameSlug(text: string): string {
+	return text
+		.trim()
+		.replace(/[^A-Za-z0-9._-]+/g, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, 80) || "untitled";
+}
+
+function planningFramePathForTicket(ticket: string | undefined): string | null {
+	if (!ticket?.trim()) return null;
+	return join(FRAME_PLANNING_ROOT, safeFrameSlug(`planning:ticket:${ticket.trim()}`), "frame.json");
+}
+
+function stableStringify(value: unknown): string {
+	if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+	if (value && typeof value === "object") {
+		const object = value as Record<string, unknown>;
+		return `{${Object.keys(object).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(object[key])}`).join(",")}}`;
+	}
+	return JSON.stringify(value);
+}
+
+function frameCanonicalHash(frame: FrameDocLoose): string {
+	const copy = JSON.parse(JSON.stringify(frame));
+	if (copy.provenance && typeof copy.provenance === "object") copy.provenance.canonicalHash = "";
+	return createHash("sha256").update(stableStringify(copy)).digest("hex");
+}
+
+function worktreeFrameIdentityKey(worktreePath: string): string {
+	return `worktree:${createHash("sha1").update(worktreePath).digest("hex").slice(0, 10)}`;
+}
+
+function renderFrameMirror(frame: FrameDocLoose): string {
+	const list = (items: unknown[] | undefined) => (items?.length ? items.map((item) => `- ${String(item)}`).join("\n") : "- (none)");
+	const successCriteria = Array.isArray(frame.success_criteria) ? frame.success_criteria : [];
+	const risks = Array.isArray(frame.risk_register) ? frame.risk_register : [];
+	const commands = Array.isArray(frame.verify_plan?.commands) ? frame.verify_plan.commands : [];
+	const manualChecks = Array.isArray(frame.verify_plan?.manual_checks) ? frame.verify_plan.manual_checks : [];
+	const plan = frame.implementation_plan;
+	const planLines = plan && typeof plan === "object"
+		? [
+			"## Implementation plan synthesis",
+			`- status: \`${plan.status ?? "draft"}\``,
+			plan.firstSafeStep ? `- firstSafeStep: ${plan.firstSafeStep}` : undefined,
+			Array.isArray(plan.gates) && plan.gates.length ? `- gates:\n${list(plan.gates)}` : undefined,
+		].filter(Boolean).join("\n")
+		: "";
+	return [
+		`# Frame — ${frame.ticket?.key ?? frame.identity?.displayTitle ?? frame.workspace ?? "worktree"}`,
+		"",
+		"> Generated from frame.json. Do not edit as source.",
+		"",
+		`- canonicalHash: \`${frame.provenance?.canonicalHash ?? ""}\``,
+		`- updatedAt: \`${frame.updatedAt ?? ""}\``,
+		frame.provenance?.transcriptPath ? `- transcriptPath: \`${frame.provenance.transcriptPath}\`` : undefined,
+		frame.links?.jira ? `- Jira: ${frame.links.jira}` : undefined,
+		"",
+		"## Goal",
+		frame.goal ?? "",
+		"",
+		"## Success criteria",
+		...successCriteria.map((sc: any) => `- **${sc.id ?? "SC"}**: ${sc.statement ?? ""}${sc.evidence_locator ? `  \\\n  Evidence: \`${sc.evidence_locator}\`` : ""}${sc.verify_command ? `  \\\n  Verify: \`${sc.verify_command}\`` : ""}`),
+		"",
+		"## Out of scope",
+		list(frame.out_of_scope),
+		"",
+		"## Risks",
+		...(risks.length ? risks.map((risk: any) => `- **${risk.id ?? "RISK"}** (${risk.severity ?? "?"}): ${risk.risk ?? ""}  \\\n  Mitigation: ${risk.mitigation ?? ""}`) : ["- (none)"]),
+		"",
+		"## Verify plan",
+		"### Commands",
+		list(commands),
+		"",
+		"### Manual checks",
+		list(manualChecks),
+		"",
+		planLines || undefined,
+	].filter((line): line is string => line !== undefined).join("\n");
+}
+
+function promotePlanningFrameToWorktree(worktreePath: string, meta: WorktreeMeta): FramePromotionResult {
+	const targetFramePath = join(worktreePath, ".pi", "frame.json");
+	const targetMdPath = join(worktreePath, ".pi", "frame.md");
+	if (existsSync(targetFramePath)) return { status: "exists", framePath: targetFramePath };
+
+	const sourcePath = planningFramePathForTicket(meta.ticket);
+	if (!sourcePath || !existsSync(sourcePath)) return { status: "missing-source" };
+
+	try {
+		const frame = JSON.parse(readFileSync(sourcePath, "utf8")) as FrameDocLoose;
+		const now = Date.now();
+		const originalIdentity = frame.identity && typeof frame.identity === "object" ? { ...frame.identity } : undefined;
+		frame.identity = {
+			...(originalIdentity ?? {}),
+			mode: "worktree",
+			key: worktreeFrameIdentityKey(worktreePath),
+			displayTitle: `Frame · ${meta.name}${meta.ticket ? ` · ${meta.ticket}` : ""}`,
+			promotedToWorktree: worktreePath,
+		};
+		frame.workspace = meta.name;
+		frame.worktree = worktreePath;
+		frame.updatedAt = now;
+		frame.provenance = {
+			...(frame.provenance ?? {}),
+			canonicalHash: "",
+			generatedMirrors: {
+				...(frame.provenance?.generatedMirrors ?? {}),
+				frame_md: targetMdPath,
+			},
+			notes: [
+				...((Array.isArray(frame.provenance?.notes) ? frame.provenance.notes : []) as string[]),
+				`Promoted from planning frame ${sourcePath} to worktree ${worktreePath}.`,
+				originalIdentity?.key ? `Original planning identity: ${originalIdentity.key}.` : undefined,
+			].filter((note): note is string => Boolean(note)),
+		};
+		frame.provenance.canonicalHash = frameCanonicalHash(frame);
+
+		mkdirSync(dirname(targetFramePath), { recursive: true });
+		const tmp = `${targetFramePath}.tmp`;
+		writeFileSync(tmp, `${JSON.stringify(frame, null, 2)}\n`);
+		renameSync(tmp, targetFramePath);
+		writeFileSync(targetMdPath, renderFrameMirror(frame));
+
+		const nextMeta = readMeta(worktreePath) ?? meta;
+		writeMeta(worktreePath, {
+			...nextMeta,
+			frame: {
+				path: targetFramePath,
+				updatedAt: now,
+				summary: typeof frame.goal === "string" ? frame.goal.slice(0, 160) : undefined,
+				canonicalHash: frame.provenance.canonicalHash,
+				sourcePlanningFrame: sourcePath,
+			},
+		});
+
+		return { status: "promoted", framePath: targetFramePath, frameMdPath: targetMdPath, sourcePath, canonicalHash: frame.provenance.canonicalHash };
+	} catch (error) {
+		return { status: "error", error: error instanceof Error ? error.message : String(error) };
+	}
+}
+
+function framePromotionContextLabel(result: FramePromotionResult): string {
+	if (result.status === "promoted") return " — frame promoted";
+	return "";
 }
 
 // ─── Worktree operations ───────────────────────────────────────────────────
@@ -1152,6 +1315,16 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 		ticket: parsed.ticket,
 		note: parsed.note,
 	});
+	const framePromotion = promotePlanningFrameToWorktree(worktreePath, readMeta(worktreePath) ?? {
+		name,
+		branch: branchName,
+		baseBranch,
+		createdAt: Date.now(),
+		ticket: parsed.ticket,
+		note: parsed.note,
+	});
+	if (framePromotion.status === "promoted") ctx.ui.notify(`✓ planning frame promoted to ${name}/.pi/frame.json`, "info");
+	else if (framePromotion.status === "error") ctx.ui.notify(`Frame promotion skipped: ${framePromotion.error}`, "warning");
 
 	ctx.ui.notify(`✓ ${name} created (${branchName})`, "info");
 
@@ -1172,7 +1345,7 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 		contextContent,
 		sessionName: `${name} (${branchName})`,
 	});
-	const contextLabel = session.carriedContext ? " — context carried" : session.appendedContext ? " — context loaded" : "";
+	const contextLabel = `${session.carriedContext ? " — context carried" : session.appendedContext ? " — context loaded" : ""}${framePromotionContextLabel(framePromotion)}`;
 
 	try {
 		await switchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, contextLabel);
@@ -1472,6 +1645,11 @@ function buildUniqueSessionChoiceOptions(choices: SessionChoiceInfo[]): SessionC
 }
 
 async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string, ctx: ExtensionCommandContext) {
+	const meta = readMeta(wtPath);
+	const framePromotion = meta ? promotePlanningFrameToWorktree(wtPath, meta) : { status: "missing-source" as const };
+	if (framePromotion.status === "promoted") ctx.ui.notify(`✓ planning frame promoted to ${wtName}/.pi/frame.json`, "info");
+	else if (framePromotion.status === "error") ctx.ui.notify(`Frame promotion skipped: ${framePromotion.error}`, "warning");
+
 	const pathEncoded = "--" + wtPath.slice(1).replace(/\//g, "-") + "--";
 	const sessionDir = join(homedir(), ".pi", "agent", "sessions", pathEncoded);
 	let sessionFile: string | null = null;
@@ -1504,7 +1682,7 @@ async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string
 	}
 
 	try {
-		await switchSessionToWorktree(ctx, sessionFile, wtName, wtPath);
+		await switchSessionToWorktree(ctx, sessionFile, wtName, wtPath, framePromotionContextLabel(framePromotion));
 	} catch {
 		ctx.ui.notify(`Switch to: cd ${wtPath}`, "info");
 	}
@@ -1911,6 +2089,16 @@ async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandC
 		ticket: parsed.ticket,
 		note: parsed.note,
 	});
+	const framePromotion = promotePlanningFrameToWorktree(worktreePath, readMeta(worktreePath) ?? {
+		name,
+		branch: branchName,
+		baseBranch,
+		createdAt: Date.now(),
+		ticket: parsed.ticket,
+		note: parsed.note,
+	});
+	if (framePromotion.status === "promoted") ctx.ui.notify(`✓ planning frame promoted to ${name}/.pi/frame.json`, "info");
+	else if (framePromotion.status === "error") ctx.ui.notify(`Frame promotion skipped: ${framePromotion.error}`, "warning");
 
 	ctx.ui.notify(`✓ ${name} forked (${branchName})`, "info");
 
@@ -1929,7 +2117,7 @@ async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandC
 		contextContent,
 		sessionName: `${name} (${branchName})`,
 	});
-	const contextLabel = session.carriedContext ? " — context carried" : session.appendedContext ? " — context loaded" : "";
+	const contextLabel = `${session.carriedContext ? " — context carried" : session.appendedContext ? " — context loaded" : ""}${framePromotionContextLabel(framePromotion)}`;
 
 	try {
 		await switchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, contextLabel);
@@ -2582,6 +2770,14 @@ export default function (pi: ExtensionAPI) {
 				ticket: params.ticket,
 				note: params.note,
 			});
+			const framePromotion = promotePlanningFrameToWorktree(worktreePath, readMeta(worktreePath) ?? {
+				name,
+				branch: branchName,
+				baseBranch,
+				createdAt: Date.now(),
+				ticket: params.ticket,
+				note: params.note,
+			});
 
 			if (config.setupScript) {
 				onUpdate?.({
@@ -2596,9 +2792,10 @@ export default function (pi: ExtensionAPI) {
 			const switchCommand = `/wt switch ${registeredName}/${name}`;
 			const prefilled = prefillSwitchCommand(ctx, switchCommand);
 
+			const frameText = framePromotion.status === "promoted" ? ` Planning frame promoted to ${framePromotion.framePath}.` : "";
 			return {
-				content: [{ type: "text", text: `✓ Worktree "${name}" created (${branchName}) at ${worktreePath}. Run ${switchCommand} to switch${prefilled ? " (prefilled in editor)" : ""}.` }],
-				details: { name, branch: branchName, path: worktreePath, switchCommand, prefilled },
+				content: [{ type: "text", text: `✓ Worktree "${name}" created (${branchName}) at ${worktreePath}.${frameText} Run ${switchCommand} to switch${prefilled ? " (prefilled in editor)" : ""}.` }],
+				details: { name, branch: branchName, path: worktreePath, switchCommand, prefilled, framePromotion },
 			};
 		},
 	});
@@ -2741,6 +2938,14 @@ export default function (pi: ExtensionAPI) {
 				ticket: params.ticket,
 				note: params.note,
 			});
+			const framePromotion = promotePlanningFrameToWorktree(worktreePath, readMeta(worktreePath) ?? {
+				name,
+				branch: branchName,
+				baseBranch,
+				createdAt: Date.now(),
+				ticket: params.ticket,
+				note: params.note,
+			});
 
 			createWorktreeSession(ctx, worktreePath, {
 				carryContext: true,
@@ -2760,9 +2965,10 @@ export default function (pi: ExtensionAPI) {
 			const switchCommand = `/wt switch ${registeredName}/${name}`;
 			const prefilled = prefillSwitchCommand(ctx, switchCommand);
 
+			const frameText = framePromotion.status === "promoted" ? ` Planning frame promoted to ${framePromotion.framePath}.` : "";
 			return {
-				content: [{ type: "text", text: `✓ Worktree "${name}" forked (${branchName}) at ${worktreePath}. Context attached (${params.context.length} chars). Run ${switchCommand} to switch${prefilled ? " (prefilled in editor)" : ""}.` }],
-				details: { name, branch: branchName, path: worktreePath, contextLength: params.context.length, switchCommand, prefilled },
+				content: [{ type: "text", text: `✓ Worktree "${name}" forked (${branchName}) at ${worktreePath}. Context attached (${params.context.length} chars).${frameText} Run ${switchCommand} to switch${prefilled ? " (prefilled in editor)" : ""}.` }],
+				details: { name, branch: branchName, path: worktreePath, contextLength: params.context.length, switchCommand, prefilled, framePromotion },
 			};
 		},
 	});

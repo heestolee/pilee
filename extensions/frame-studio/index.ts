@@ -141,7 +141,7 @@ function resolveElkBundlePath(): string | undefined {
 }
 
 const STUDIO_TABS: Array<{ key: StudioTabKey; label: string; subtitle: string }> = [
-	{ key: "frame", label: "Frame", subtitle: "목표·범위·성공 기준" },
+	{ key: "frame", label: "Frame", subtitle: "계약·계획 합성" },
 	{ key: "decide", label: "Decide", subtitle: "대안·challenge·mitigation" },
 	{ key: "verify", label: "Verify", subtitle: "판정·healing 기록" },
 	{ key: "verify-report", label: "Verify Report", subtitle: "증거 리포트·artifact" },
@@ -294,7 +294,7 @@ function transcriptRef(state: FrameStudioState, tab = state.activeTab): StudioTr
 }
 
 function stageOutputContract(tab: StudioTabKey): string {
-	if (tab === "frame") return "If /frame was performed, persist the agreed goal/scope/success criteria to frame.json first; frame.md and transcript are mirror/provenance.";
+	if (tab === "frame") return "If /frame was performed, persist the agreed goal/scope/success criteria to frame.json first, then synthesize implementation_plan when decisions are closed; frame.md and transcript are mirror/provenance.";
 	if (tab === "decide") return "If /decide was performed, persist the selected option, tradeoffs, challenge, and mitigations to frame.json.decisions[] (or an explicit planning canonical record).";
 	if (tab === "verify") return "If /verify was performed, persist PASS/FAIL/GAP evidence, side effects, self-healing runs, and re-verify result to frame.json.verifications[] (or an explicit verification record).";
 	return "If /verify-report was performed, persist report/evidence artifact refs with the verification item they prove; report HTML is evidence/provenance, not the only canonical result.";
@@ -610,7 +610,7 @@ ${webviewCopyScript()}
 var state = null;
 var selectedTab = null;
 var STUDIO_TABS = [
-  { key:'frame', label:'Frame', subtitle:'목표·범위·성공 기준', empty:'아직 Frame 기록이 없습니다. /frame으로 정렬을 시작하거나, 명확한 작업이면 다른 탭부터 바로 기록할 수 있습니다.' },
+  { key:'frame', label:'Frame', subtitle:'계약·계획 합성', empty:'아직 Frame 기록이 없습니다. /frame으로 목표·범위·성공 기준을 정렬하고, 결정이 닫히면 같은 Frame 안에서 구현 계획을 합성합니다.' },
   { key:'decide', label:'Decide', subtitle:'대안·challenge·mitigation', empty:'아직 Decide 기록이 없습니다. 순서 강제가 아니므로 명확한 작업은 이 탭을 비워둔 채 Verify/Verify Report를 사용할 수 있습니다. /decide가 같은 identity에 decision table과 challenge를 기록하면 여기에 표시됩니다.' },
   { key:'verify', label:'Verify', subtitle:'판정·healing 기록', empty:'아직 Verify 기록이 없습니다. Decide가 없어도 user request, frame success criteria, diff, evidence 기준으로 바로 검증을 기록할 수 있습니다. Self-healing은 별도 탭이 아니라 실패/gap 이후 이 탭에 run/re-verify 기록으로 append합니다.' },
   { key:'verify-report', label:'Verify Report', subtitle:'증거 리포트·artifact', empty:'아직 Verify Report 기록이 없습니다. Verify 탭 기록이 없어도 evidence report artifact를 바로 연결할 수 있습니다. 단, 검증 축이나 coverage gap은 report에 명시해야 합니다.' }

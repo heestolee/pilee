@@ -166,6 +166,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [외부 이슈 업데이트는 preview gate를 지난다](./external-issue-preview-gate.md) | active | high | 2026-05-11 | 55766aa | jira, issue, preview, wiki-markup, external-update, approval |
 | [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-05-11 | 55766aa | fork-panel, handoff, inbox, inject, parent, panel |
 | [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-05-11 | 55766aa | fork-panel, revive, repanel, ghostty, spatial, panel |
+| [Frame은 마지막에 Plan을 합성한다](./frame-plan-synthesis-continuity.md) | active | high | 2026-05-11 | 3be5254 | frame, implementation-plan, tft-studio, worktree, continuity, planning |
 | [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-05-11 | 55766aa | frame, planning, identity, home-directory, ticket, session-title |
 | [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-05-11 | 55766aa | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-05-11 | 55766aa | artifact, glimpse, preview, sse, upload, local-first |
@@ -241,6 +242,7 @@ graph TD
   doc_external_issue_preview_gate["외부 이슈 업데이트는 preview gate를 지난다"]
   doc_fork_panel_parent_inbox["Fork-panel handoff는 parent inbox로 들어간다"]
   doc_fork_panel_spatial_continuity["Fork-panel 위치는 작업 맥락의 일부다"]
+  doc_frame_plan_synthesis_continuity["Frame은 마지막에 Plan을 합성한다"]
   doc_frame_planning_identity["Frame identity는 cwd보다 작업 의도를 우선한다"]
   doc_frame_studio_interactive_decision_ui["TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다"]
   doc_live_artifact_preview_pattern["Live artifact는 local preview first다"]
@@ -356,6 +358,7 @@ graph TD
   doc_frame_verify_contract --> doc_architecture_friction_tft_lens
   doc_frame_verify_contract --> doc_ask_user_question_decision_gates
   doc_frame_verify_contract --> doc_evidence_first_verification_gate
+  doc_frame_verify_contract --> doc_frame_plan_synthesis_continuity
   doc_frame_verify_contract --> doc_verification_invalidation_on_change
   doc_frame_verify_contract --> doc_verify_risk_lens_overlay
   doc_verification_invalidation_on_change --> doc_evidence_first_verification_gate
@@ -410,11 +413,17 @@ graph TD
   doc_fork_panel_spatial_continuity --> doc_revive_over_transcript_recall
   doc_fork_panel_spatial_continuity --> doc_session_identity_over_filenames
   doc_fork_panel_spatial_continuity --> doc_terminal_host_integration
+  doc_frame_plan_synthesis_continuity --> doc_frame_planning_identity
+  doc_frame_plan_synthesis_continuity --> doc_frame_studio_interactive_decision_ui
+  doc_frame_plan_synthesis_continuity --> doc_frame_verify_contract
+  doc_frame_plan_synthesis_continuity --> doc_worktree_session_continuity
+  doc_frame_planning_identity --> doc_frame_plan_synthesis_continuity
   doc_frame_planning_identity --> doc_frame_verify_contract
   doc_frame_planning_identity --> doc_session_identity_over_filenames
   doc_frame_planning_identity --> doc_worktree_session_continuity
   doc_frame_studio_interactive_decision_ui --> doc_ask_user_question_option_design
   doc_frame_studio_interactive_decision_ui --> doc_evidence_first_verification_gate
+  doc_frame_studio_interactive_decision_ui --> doc_frame_plan_synthesis_continuity
   doc_frame_studio_interactive_decision_ui --> doc_frame_planning_identity
   doc_frame_studio_interactive_decision_ui --> doc_frame_verify_contract
   doc_frame_studio_interactive_decision_ui --> doc_live_artifact_preview_pattern
@@ -472,13 +481,14 @@ graph TD
   doc_worktree_dependency_bootstrap_worker --> doc_worktree_session_continuity
   doc_worktree_execution_boundary --> doc_session_identity_over_filenames
   doc_worktree_execution_boundary --> doc_worktree_session_continuity
+  doc_worktree_session_continuity --> doc_frame_plan_synthesis_continuity
   doc_worktree_session_continuity --> doc_pilee_knowledge_system
   doc_worktree_session_continuity --> doc_subagent_model_policy
 ```
 
 ## Review Metadata Summary
 
-- Documents: 70
-- Links: 213
+- Documents: 71
+- Links: 221
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
