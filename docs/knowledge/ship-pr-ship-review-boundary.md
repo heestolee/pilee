@@ -21,12 +21,13 @@ source:
   - external-reference:my-pi-skills-ship
   - backlog:22
 reviewed_at: 2026-05-11
-reviewed_commit: 55766aa7231850e0c715240fe796224a9dac843c
+reviewed_commit: cc28c22511766310a6658107869fb264e5cf476e
 related:
   - change-integration-discipline
   - diff-review-draft-handoff
   - request-traceability-surgical-changes
   - evidence-first-verification-gate
+  - subagent-skill-delegation
 ---
 
 ## Judgment
@@ -52,6 +53,8 @@ PR 리뷰 대응에서 AI가 기본으로 바꾸는 외부 상태는 commit, pus
 Skill은 판단과 행동 계약을 담습니다. 근본 원인 분석, 수정 여부 판단, 검증 선택, reply format, 금지 동작은 skill이 책임집니다.
 
 Extension은 결정적 수집과 routing을 맡습니다. `/pr-ship` command shim은 current PR/comment URL, unresolved review comment snapshot, current/parent session path, invocation mode를 모아 skill을 인라인 실행합니다. `--push-only`/`--no-comment`/`--draft-only`/`--manual-comment`는 manual-comment mode로 전달됩니다. `github:get-pr-comments`는 editor에 unresolved thread를 붙이고, `github:pr-review-re-request`는 승인되지 않은 reviewer/team만 재요청하는 별도 finishing command입니다. Extension은 thread resolve/unresolve를 하지 않습니다.
+
+Subagent delegation에서도 같은 split을 유지합니다. `>> /ship`, `>> /pr-ship`, `>> /ci-ship`은 slash command를 subagent 안에서 실행하는 것이 아니라, 부모 extension이 동일한 read-only context와 inlined skill prompt를 만들어 subagent task로 넘기는 방식입니다.
 
 ## Failure Mode
 

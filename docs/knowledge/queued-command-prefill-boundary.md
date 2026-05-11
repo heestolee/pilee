@@ -16,15 +16,18 @@ applies_to:
   - worktree_create
   - worktree_switch
   - worktree_fork
+  - extensions/subagent
 source:
   - pilee-history:2026-05-05#41
   - user-direction:2026-05-07-local-resolver
+  - user-direction:2026-05-11-subagent-skill-delegation
 reviewed_at: 2026-05-11
-reviewed_commit: 55766aa7231850e0c715240fe796224a9dac843c
+reviewed_commit: cc28c22511766310a6658107869fb264e5cf476e
 related:
   - worktree-execution-boundary
   - session-identity-over-filenames
   - subagent-prompt-specificity
+  - subagent-skill-delegation
 ---
 
 ## Judgment
@@ -34,6 +37,8 @@ Pi 대화에 slash command 문자열을 queue했다고 해서 그 command가 실
 ## Boundary Rule
 
 도구는 필요한 세션을 만들거나 fork하고, 사용자가 확인할 수 있는 editor prefill을 제공합니다. 자동 실행이 필요한 일은 command queue에 기대지 말고 확실한 API/함수 경로로 수행합니다.
+
+Subagent에 slash command 문자열을 그대로 넘기는 것도 command 실행이 아닙니다. 필요한 경우 command shim이 만드는 context와 `SKILL.md` prompt를 명시적으로 구성해 subagent task로 위임합니다.
 
 ## Worktree Tool Rule
 

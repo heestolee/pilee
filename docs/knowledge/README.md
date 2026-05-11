@@ -71,6 +71,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Stress Interview는 다축 검토다](./stress-interview-multi-axis-review.md) | active | high | 2026-05-11 | 55766aa | stress-interview, review, verifier, reviewer, challenger, subagent |
 | [Codex-first subagent 모델 운용 정책](./subagent-model-policy.md) | active | high | 2026-05-11 | 55766aa | subagent, codex, model-policy, worker, finder, searcher |
 | [Subagent 위임은 구체 프롬프트를 요구한다](./subagent-prompt-specificity.md) | active | high | 2026-05-11 | 55766aa | subagent, prompt, delegation, worker, context, 위임 |
+| [Subagent는 slash command가 아니라 skill prompt를 위임받는다](./subagent-skill-delegation.md) | active | high | 2026-05-11 | cc28c22 | subagent, skill, slash-command, delegation, ship, ci-ship |
 | [Supervisor는 outcome guardrail이다](./supervisor-outcome-guardrail.md) | active | high | 2026-05-09 | b10752d | supervisor, outcome, guardrail, steering, agent |
 
 ### architecture
@@ -173,13 +174,13 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-05-11 | 55766aa | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 264ea17 | local-dev, server, startup, diagnosis, dev |
 | [Private overlay package는 회사·개인 실행 맥락을 담는다](./private-overlay-package-boundary.md) | active | high | 2026-05-11 | 55766aa | privacy, package, overlay, skill, company-context |
-| [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-05-11 | 55766aa | queued-messages, slash-command, prefill, worktree, session, boundary |
+| [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-05-11 | cc28c22 | queued-messages, slash-command, prefill, worktree, session, boundary |
 | [변경된 줄은 요청으로 추적 가능해야 한다](./request-traceability-surgical-changes.md) | active | high | 2026-05-11 | 55766aa | request-traceability, surgical-change, karpathy, diff, scope, review |
 | [종료된 포크는 transcript 주입보다 revive가 우선이다](./revive-over-transcript-recall.md) | active | high | 2026-05-11 | 55766aa | revive, recall, fork-panel, session, continuity, 세션 |
 | [세션 분류는 원본 위의 sidecar다](./session-classification-sidecar.md) | active | high | 2026-05-11 | 55766aa | archive, show-report, session-classification, sidecar, session, ai-suggestion |
 | [Session export는 원본을 보존하는 adapter를 거친다](./session-export-source-preservation.md) | active | high | 2026-05-11 | 55766aa | session-export, source-preservation, jsonl, conductor, normalize, show-report |
 | [세션 식별자는 파일명이 아니라 사람이 본 이름이다](./session-identity-over-filenames.md) | active | high | 2026-05-11 | 55766aa | session, title, identity, session_info, worktree, revive |
-| [Ship과 PR-Ship은 서로 다른 통합 단계다](./ship-pr-ship-review-boundary.md) | active | high | 2026-05-11 | 55766aa | ship, pr-ship, pr-review, github, commit, push |
+| [Ship과 PR-Ship은 서로 다른 통합 단계다](./ship-pr-ship-review-boundary.md) | active | high | 2026-05-11 | cc28c22 | ship, pr-ship, pr-review, github, commit, push |
 | [Skill은 재사용 가능한 절차다](./skills-as-portable-procedures.md) | active | high | 2026-05-09 | b10752d | skill, skill-creator, procedure, porting, workflow, 스킬 |
 | [Command shim은 skill source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-05-11 | 55766aa | command-shim, skill, tft, frame, slash-command, routing |
 | [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-05-11 | 55766aa | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
@@ -198,6 +199,7 @@ graph TD
   doc_stress_interview_multi_axis_review["Stress Interview는 다축 검토다"]
   doc_subagent_model_policy["Codex-first subagent 모델 운용 정책"]
   doc_subagent_prompt_specificity["Subagent 위임은 구체 프롬프트를 요구한다"]
+  doc_subagent_skill_delegation["Subagent는 slash command가 아니라 skill prompt를 위임받는다"]
   doc_supervisor_outcome_guardrail["Supervisor는 outcome guardrail이다"]
   doc_architecture_friction_tft_lens["Architecture friction은 TFT의 검증 축이다"]
   doc_utility_surface_stays_invisible["Utils surface는 사용자 계약을 만들지 않는다"]
@@ -281,6 +283,10 @@ graph TD
   doc_subagent_prompt_specificity --> doc_self_healing_actionable_loop
   doc_subagent_prompt_specificity --> doc_subagent_model_policy
   doc_subagent_prompt_specificity --> doc_worktree_session_continuity
+  doc_subagent_skill_delegation --> doc_ci_ship_failure_response_boundary
+  doc_subagent_skill_delegation --> doc_queued_command_prefill_boundary
+  doc_subagent_skill_delegation --> doc_ship_pr_ship_review_boundary
+  doc_subagent_skill_delegation --> doc_subagent_prompt_specificity
   doc_supervisor_outcome_guardrail --> doc_ask_user_question_decision_gates
   doc_supervisor_outcome_guardrail --> doc_subagent_prompt_specificity
   doc_architecture_friction_tft_lens --> doc_decide_tradeoff_challenge
@@ -446,6 +452,7 @@ graph TD
   doc_private_overlay_package_boundary --> doc_verify_risk_lens_overlay
   doc_queued_command_prefill_boundary --> doc_session_identity_over_filenames
   doc_queued_command_prefill_boundary --> doc_subagent_prompt_specificity
+  doc_queued_command_prefill_boundary --> doc_subagent_skill_delegation
   doc_queued_command_prefill_boundary --> doc_worktree_execution_boundary
   doc_request_traceability_surgical_changes --> doc_change_integration_discipline
   doc_request_traceability_surgical_changes --> doc_evidence_first_verification_gate
@@ -468,6 +475,7 @@ graph TD
   doc_ship_pr_ship_review_boundary --> doc_diff_review_draft_handoff
   doc_ship_pr_ship_review_boundary --> doc_evidence_first_verification_gate
   doc_ship_pr_ship_review_boundary --> doc_request_traceability_surgical_changes
+  doc_ship_pr_ship_review_boundary --> doc_subagent_skill_delegation
   doc_skills_as_portable_procedures --> doc_context_loading_minimal_surface
   doc_skills_as_portable_procedures --> doc_judgment_doc_unit
   doc_tft_command_shim_skill_routing --> doc_frame_verify_contract
@@ -494,7 +502,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 72
-- Links: 225
+- Documents: 73
+- Links: 231
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
