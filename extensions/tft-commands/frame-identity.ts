@@ -16,6 +16,11 @@ type WorktreeHit = {
 	meta: WorktreeMeta;
 };
 
+type SessionHeader = {
+	type?: string;
+	cwd?: string;
+};
+
 export type FrameIdentityMode = "worktree" | "planning-ticket" | "planning-session";
 
 export type FrameIdentity = {
@@ -57,6 +62,33 @@ function readJson<T>(path: string): T | null {
 	}
 }
 
+function readSessionHeaderCwd(sessionFile: string | undefined): string | undefined {
+	if (!sessionFile) return undefined;
+	try {
+		if (!existsSync(sessionFile)) return undefined;
+		const text = readFileSync(sessionFile, "utf8");
+		for (const line of text.split(/\r?\n/).slice(0, 20)) {
+			if (!line.trim()) continue;
+			const entry = JSON.parse(line) as SessionHeader;
+			if (entry.type === "session" && entry.cwd?.trim()) return entry.cwd;
+		}
+	} catch {
+		return undefined;
+	}
+	return undefined;
+}
+
+export function resolveEffectiveCwd(ctx: ExtensionCommandContext): { cwd: string; source: "session" | "context"; contextCwd: string } {
+	const contextCwd = resolve(ctx.cwd);
+	const sessionFile = ctx.sessionManager.getSessionFile?.();
+	const sessionCwd = readSessionHeaderCwd(sessionFile);
+	if (sessionCwd?.trim()) {
+		const resolvedSessionCwd = resolve(sessionCwd);
+		if (existsSync(resolvedSessionCwd)) return { cwd: resolvedSessionCwd, source: "session", contextCwd };
+	}
+	return { cwd: contextCwd, source: "context", contextCwd };
+}
+
 function findWorktree(cwd: string): WorktreeHit | null {
 	let current = resolve(cwd);
 	while (true) {
@@ -91,7 +123,8 @@ function shortLabel(text: string | undefined, fallback: string): string {
 }
 
 export function buildFrameIdentity(ctx: ExtensionCommandContext, args: string): FrameIdentity {
-	const cwd = resolve(ctx.cwd);
+	const effectiveCwd = resolveEffectiveCwd(ctx);
+	const cwd = effectiveCwd.cwd;
 	const sessionFile = ctx.sessionManager.getSessionFile?.();
 	const sessionTitle = meaningfulTitle(ctx.sessionManager.getSessionName?.());
 	const worktree = findWorktree(cwd);
@@ -106,7 +139,9 @@ export function buildFrameIdentity(ctx: ExtensionCommandContext, args: string): 
 			displayTitle: `Frame · ${name}${ticket ? ` · ${ticket}` : ""}`,
 			storageDir: join(worktree.root, ".pi"),
 			cwd,
-			reason: "현재 cwd 또는 상위 디렉토리에서 .pi/worktree-meta.json을 찾음",
+			reason: effectiveCwd.source === "session"
+				? `session header cwd에서 .pi/worktree-meta.json을 찾음 (ctx.cwd: ${effectiveCwd.contextCwd})`
+				: "현재 cwd 또는 상위 디렉토리에서 .pi/worktree-meta.json을 찾음",
 			ticket,
 			sessionTitle,
 			sessionFile,
@@ -125,7 +160,9 @@ export function buildFrameIdentity(ctx: ExtensionCommandContext, args: string): 
 			displayTitle: `Planning · ${ticket}${sessionTitle ? ` · ${shortLabel(sessionTitle, "")}` : ""}`,
 			storageDir: join(PLANNING_ROOT, safeSlug(key)),
 			cwd,
-			reason: "worktree 밖 planning 세션에서 티켓을 찾음",
+			reason: effectiveCwd.source === "session"
+				? `session header cwd 기준 worktree 밖 planning 세션에서 티켓을 찾음 (ctx.cwd: ${effectiveCwd.contextCwd})`
+				: "worktree 밖 planning 세션에서 티켓을 찾음",
 			ticket,
 			sessionTitle,
 			sessionFile,
@@ -141,7 +178,9 @@ export function buildFrameIdentity(ctx: ExtensionCommandContext, args: string): 
 		displayTitle: `Planning · ${label}`,
 		storageDir: join(PLANNING_ROOT, safeSlug(key)),
 		cwd,
-		reason: "worktree와 티켓이 없어 session title/session file을 planning identity로 사용",
+		reason: effectiveCwd.source === "session"
+			? `session header cwd 기준 worktree와 티켓이 없어 session title/session file을 planning identity로 사용 (ctx.cwd: ${effectiveCwd.contextCwd})`
+			: "worktree와 티켓이 없어 session title/session file을 planning identity로 사용",
 		sessionTitle,
 		sessionFile,
 	};

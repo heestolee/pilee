@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
-import { buildFrameIdentity, type FrameIdentity, formatFrameIdentityHint } from "./frame-identity.ts";
+import { buildFrameIdentity, type FrameIdentity, formatFrameIdentityHint, resolveEffectiveCwd } from "./frame-identity.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = resolve(__dirname, "../..");
@@ -92,7 +92,8 @@ function registerTftCommand(pi: ExtensionAPI, command: TftCommandName): void {
 		handler: async (args: string, ctx: ExtensionCommandContext) => {
 			try {
 				const frameIdentity = command === "frame" ? buildFrameIdentity(ctx, args) : undefined;
-				const prompt = buildPileeTftPrompt(command, args, ctx.cwd, frameIdentity);
+				const cwd = frameIdentity?.cwd ?? resolveEffectiveCwd(ctx).cwd;
+				const prompt = buildPileeTftPrompt(command, args, cwd, frameIdentity);
 				ctx.ui.notify(`pilee /${command}: SKILL.md를 인라인해 실행합니다.`, "info");
 				pi.sendMessage(
 					{

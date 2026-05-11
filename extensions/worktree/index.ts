@@ -397,6 +397,38 @@ function prefillSwitchCommand(ctx: ExtensionContext, command: string): boolean {
 	return true;
 }
 
+function worktreeCwdBindingMessage(wtName: string, wtPath: string, branch: string, contextLabel = ""): string {
+	return [
+		"## Worktree cwd binding",
+		"",
+		`활성 worktree: ${wtName}`,
+		`절대경로: ${wtPath}`,
+		`브랜치: ${branch}`,
+		contextLabel ? `컨텍스트: ${contextLabel.replace(/^\s+—\s+/, "")}` : undefined,
+		"",
+		"세션 전환 후 특정 tool runner가 이전 `pwd`를 계속 보고하더라도, 위 절대경로를 source of truth로 보고 read/edit/bash/frame/verify artifact는 해당 경로 아래에서 수행한다. 세션 전환 자체가 실패한 경우가 아니라면 사용자에게 `/wt switch`를 다시 요구하지 않는다.",
+	].filter(Boolean).join("\n");
+}
+
+async function switchSessionToWorktree(ctx: ExtensionCommandContext, sessionFile: string, wtName: string, wtPath: string, contextLabel = "") {
+	const branch = readMeta(wtPath)?.branch ?? "unknown";
+	await (ctx as any).switchSession(sessionFile, {
+		cwdOverride: wtPath,
+		withSession: async (newCtx: any) => {
+			newCtx.ui.notify(`✓ ${wtName} (${branch})${contextLabel}`, "info");
+			await newCtx.sendMessage?.(
+				{
+					customType: "worktree-cwd-binding",
+					content: worktreeCwdBindingMessage(wtName, wtPath, branch, contextLabel),
+					display: true,
+					details: { name: wtName, path: wtPath, branch, contextLabel },
+				},
+				{ triggerTurn: false },
+			);
+		},
+	});
+}
+
 function getProfiledWorktreeRepos(cwd?: string): WorktreeRepoProfile[] {
 	return loadWorktreeRepoProfiles(cwd);
 }
@@ -1143,11 +1175,7 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 	const contextLabel = session.carriedContext ? " — context carried" : session.appendedContext ? " — context loaded" : "";
 
 	try {
-		await ctx.switchSession(session.sessionFile, {
-			withSession: async (newCtx: any) => {
-				newCtx.ui.notify(`✓ ${name} ready (${branchName})${contextLabel}`, "info");
-			},
-		});
+		await switchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, contextLabel);
 	} catch (error) {
 		const reason = error instanceof Error ? ` (${error.message})` : "";
 		ctx.ui.notify(`✓ Created. cwd: ${worktreePath}${reason}`, "info");
@@ -1476,11 +1504,7 @@ async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string
 	}
 
 	try {
-		await ctx.switchSession(sessionFile, {
-			withSession: async (newCtx: any) => {
-				newCtx.ui.notify(`✓ ${wtName} (${readMeta(wtPath)?.branch ?? "unknown"})`, "info");
-			},
-		});
+		await switchSessionToWorktree(ctx, sessionFile, wtName, wtPath);
 	} catch {
 		ctx.ui.notify(`Switch to: cd ${wtPath}`, "info");
 	}
@@ -1908,11 +1932,7 @@ async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandC
 	const contextLabel = session.carriedContext ? " — context carried" : session.appendedContext ? " — context loaded" : "";
 
 	try {
-		await ctx.switchSession(session.sessionFile, {
-			withSession: async (newCtx: any) => {
-				newCtx.ui.notify(`✓ ${name} ready (${branchName})${contextLabel}`, "info");
-			},
-		});
+		await switchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, contextLabel);
 	} catch (error) {
 		const reason = error instanceof Error ? ` (${error.message})` : "";
 		ctx.ui.notify(`✓ Created. cwd: ${worktreePath}${reason}`, "info");
