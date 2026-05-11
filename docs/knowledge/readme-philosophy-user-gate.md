@@ -17,8 +17,8 @@ applies_to:
 source:
   - session-backfill:2026-05-05#readme-philosophy-discussion
   - user-direction:2026-05-07-local-resolver
-reviewed_at: 2026-05-10
-reviewed_commit: 79e2bc8b8ee4dbb629d11fe43e59b2ee59b58e77
+reviewed_at: 2026-05-11
+reviewed_commit: 55766aa7231850e0c715240fe796224a9dac843c
 related:
   - readme-coverage-map
   - ask-user-question-decision-gates

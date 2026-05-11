@@ -20,8 +20,8 @@ source:
   - user-direction:2026-05-10-pr-ship-boundary
   - external-reference:my-pi-skills-ship
   - backlog:22
-reviewed_at: 2026-05-10
-reviewed_commit: 9052c3c
+reviewed_at: 2026-05-11
+reviewed_commit: 55766aa7231850e0c715240fe796224a9dac843c
 related:
   - change-integration-discipline
   - diff-review-draft-handoff

@@ -20,8 +20,8 @@ applies_to:
   - .pi/frame.json
 source:
   - user-direction:2026-05-09-architecture-lens
-reviewed_at: 2026-05-10
-reviewed_commit: ba9a88b2e604e9e12cbc7580b8b7dbe040594904
+reviewed_at: 2026-05-11
+reviewed_commit: 55766aa7231850e0c715240fe796224a9dac843c
 related:
   - frame-verify-contract
   - decide-tradeoff-challenge

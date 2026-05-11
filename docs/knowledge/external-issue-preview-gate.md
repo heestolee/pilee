@@ -14,8 +14,8 @@ applies_to:
   - skills/jira-issue-management
 source:
   - session-backfill:2026-05-05#skill-surface-review
-reviewed_at: 2026-05-10
-reviewed_commit: db21ec7f73ef8c9ad581bd8610f8203799defb7b
+reviewed_at: 2026-05-11
+reviewed_commit: 55766aa7231850e0c715240fe796224a9dac843c
 related:
   - live-artifact-preview-pattern
   - ask-user-question-decision-gates
