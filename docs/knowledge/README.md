@@ -123,7 +123,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Embedded WebView script는 escape 경계를 보존한다](./embedded-webview-script-escape-boundary.md) | active | high | 2026-05-11 | 55766aa | webview, embedded-script, escape, string-raw, regex, glimpse |
 | [MCP 결과는 큰 출력만 digest-first로 다룬다](./mcp-digest-first-artifacts.md) | active | high | 2026-05-11 | ce3a598 | mcp, digest-first, artifact, tool-output, lazy-retrieval |
 | [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-05-11 | 55766aa | mcp, stderr, stdio, terminal, tui, noise |
-| [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-05-11 | 55766aa | terminal, ghostty, applescript, notify, host, integration |
+| [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-05-11 | 7b420a7 | terminal, ghostty, applescript, notify, host, integration |
 
 ### ui
 
