@@ -811,7 +811,7 @@ function renderQuestionForm(q) {
       return '<label class="option"><input name="frameOption" type="' + type + '" value="' + i + '"><span class="option-number">' + (i + 1) + '</span><span>' + inline(opt) + '</span></label>';
     }).join('') + '</div>'
     + (q.allowText ? '<textarea id="answerText" placeholder="' + esc(q.placeholder || '직접 입력') + '"></textarea>' : '')
-    + '<div class="actions"><button class="primary" onclick="submitAnswer()">' + esc(q.submitLabel || '선택 완료') + '</button><button class="secondary" onclick="cancelAnswer()">취소</button><span class="status" id="submitStatus"></span></div>'
+    + '<div class="actions"><button class="primary" onclick="submitAnswer()">' + esc(q.submitLabel || '선택 완료 ⌥↵') + '</button><button class="secondary" onclick="cancelAnswer()">취소</button><span class="status" id="submitStatus"></span></div>'
     + '</div>';
 }
 function renderTimelineEntry(entry, s) {
@@ -919,6 +919,8 @@ function renderTabs(s) {
 function selectTab(key) { selectedTab = key; if (state) render(state); }
 function render(s) {
   state = s;
+  if (!s.status || s.status !== 'awaiting' || !s.question) { submitInFlight = false; submittedQuestionId = ''; }
+  else if (submittedQuestionId && s.question.id !== submittedQuestionId) { submitInFlight = false; submittedQuestionId = ''; }
   if (s.status === 'awaiting' && s.question && !selectedTab) selectedTab = s.question.tab || s.activeTab || 'frame';
   document.title = s.title || 'TFT Studio';
   document.getElementById('title').textContent = s.title || 'TFT Studio';
@@ -942,8 +944,12 @@ function render(s) {
     return '<div>' + new Date(log.time).toLocaleTimeString() + ' · ' + esc(log.message) + '</div>';
   }).join('') || '<span class="status">로그 없음</span>';
 }
+var submitInFlight = false;
+var submittedQuestionId = '';
 async function submitAnswer(cancelled) {
-  if (!state || !state.question) return;
+  if (submitInFlight || !state || !state.question) return;
+  submitInFlight = true;
+  submittedQuestionId = state.question.id;
   var checked = Array.prototype.slice.call(document.querySelectorAll('input[name="frameOption"]:checked')).map(function(el) { return Number(el.value); });
   var textEl = document.getElementById('answerText');
   setStatus('전송 중...');
@@ -951,9 +957,21 @@ async function submitAnswer(cancelled) {
     var res = await fetch('/submit', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ questionId: state.question.id, cancelled: !!cancelled, selectedIndices: checked, text: textEl ? textEl.value : '' }) });
     if (!res.ok) throw new Error(await res.text());
     setStatus('Pi로 전송됨');
-  } catch (e) { setStatus('전송 실패: ' + e.message); }
+  } catch (e) { setStatus('전송 실패: ' + e.message); submitInFlight = false; }
 }
 function cancelAnswer() { submitAnswer(true); }
+function isSubmitShortcut(event) {
+  if (!event || event.isComposing) return false;
+  var key = event.key || '';
+  var code = event.code || '';
+  return event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey && (key === 'Enter' || key === 'NumpadEnter' || code === 'Enter' || code === 'NumpadEnter');
+}
+document.addEventListener('keydown', function(event) {
+  if (!isSubmitShortcut(event)) return;
+  if (!state || state.status !== 'awaiting' || !state.question) return;
+  event.preventDefault();
+  submitAnswer(false);
+});
 var es = new EventSource('/events');
 es.onmessage = function(ev) { render(JSON.parse(ev.data)); };
 es.onerror = function() { setTimeout(function(){ location.reload(); }, 2000); };
