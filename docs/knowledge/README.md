@@ -149,7 +149,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [웹 검색은 승인된 출처 선택을 거친다](./curator-approved-source-selection.md) | active | high | 2026-05-11 | 55766aa | web-search, curator, source-selection, approval, tavily, 검색 |
-| [Web Search curator와 승인형 요약 흐름](./web-search-curator.md) | active | high | 2026-05-11 | 55766aa | web-search, tavily, curator, glimpse, summary-review, korean-output |
+| [Web Search curator와 승인형 요약 흐름](./web-search-curator.md) | active | high | 2026-05-11 | c340ade | web-search, tavily, curator, glimpse, summary-review, korean-output |
 
 ### workflow
 
