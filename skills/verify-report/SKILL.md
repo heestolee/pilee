@@ -13,7 +13,8 @@ argument-hint: "[base-url] [--upload] [--update] [--ask-before] [--no-workers]"
 - **Coverage 먼저, 캡처는 그 다음**: 리포트 시작 전에 변경 diff/요구사항으로 검증 축을 정의한다. 캡처가 있어도 해당 축을 닫지 못하면 PASS가 아니다.
 - **캡처/증거 우선**: UI는 화면 캡처를 우선 증거로 삼고, 비가시 동작은 성공 기준을 어떤 로그/결과로 확인할지 먼저 정한다.
 - **미검증 명시**: 자동화로 확인하지 못한 항목은 PASS로 쓰지 않고 `미검증`/`blocked`/`Coverage Gap`에 남긴다.
-- **짧고 초점 있는 primary evidence**: 리포트 본문 핵심 증거는 viewport/섹션/element crop을 우선한다. 세로로 긴 full-page 캡처는 필요할 때만 보조 증거로 남기고 토글/appendix/link 뒤에 둔다.
+- **짧고 초점 있는 primary evidence**: 리포트 본문 핵심 증거는 viewport/섹션/element crop을 우선한다. 세로로 긴 full-page 캡처는 필요할 때만 보조 증거로 남기고 토글/appendix/link 뒤에 둔다. `role: "primary"`인 이미지/GIF는 renderer가 full-width로 보여주므로, 한 항목의 핵심 before/after 합성 이미지나 단일 핵심 crop에는 반드시 primary role을 붙인다.
+- **텍스트 합성 캡처는 glyph 확인**: 메시지 본문·알림톡·TUI처럼 실제 텍스트를 이미지로 렌더링할 때는 대상 언어 glyph가 있는 폰트(예: 한글은 Apple SD Gothic Neo/AppleGothic/Noto Sans CJK)를 사용한다. `□`/tofu box가 보이면 인코딩 문제가 아니라 폰트 fallback 실패일 가능성이 높으므로 리포트 확정 전에 재렌더링한다.
 - **Raw evidence에도 의도를 붙인다**: 모든 evidence에는 가능한 한 `purpose`, `inspectFor`, `expected`, `observed`, `role`, `relatedItem`을 붙여 “왜 수집했는지 / 무엇을 봐야 하는지”가 report와 `/archive`의 캡처/미디어 탭에서도 보이게 한다. Raw 파일의 의도는 별도 섹션으로 분리하지 말고 해당 raw 토글 내부 상단에 함께 보여 시선이 흩어지지 않게 한다.
 - **Item detail은 읽히는 설명이어야 한다**: `detail`에는 긴 한 문단을 넣지 말고 조건/관찰/제약을 문장 단위나 줄바꿈 bullet로 나눈다. renderer는 긴 detail을 자동 bullet card로 정리하고 backtick inline code와 URL link를 강조하지만, agent도 “왜 직접 캡처하지 못했는지 / 무엇으로 대체 검증했는지 / 남은 gap은 무엇인지”가 눈에 들어오게 작성한다.
 - **판정은 엄격하게, 레이아웃은 기본값으로**: PASS/미검증/coverage gap과 evidence metadata는 strict하게 지키되, 섹션 순서·카드 수·표현 방식은 케이스에 맞게 renderer default가 흡수한다. 에이전트는 양식 채우기보다 기준을 증거로 닫는 데 집중한다.
@@ -156,6 +157,7 @@ UI 캡처 계획은 primary/supporting과 before/after 여부를 분리한다.
 |------|-----------|-------------|
 | primary before | 변경 전 기준 상태의 viewport/section/element crop | after와 같은 항목에 나란히 표시 |
 | primary after | 변경 후 검증 상태의 viewport/section/element crop | before와 같은 항목에 나란히 표시 |
+| primary combined | before/after를 한 이미지 안에 합성한 핵심 비교 crop | `role: "primary"`로 full-width 단일 카드 표시 |
 | supporting context | full-page, 긴 스크롤 캡처, raw debug screenshot | 토글/details/appendix/link 뒤에 표시 |
 
 Before/After는 다음 조건이면 포함한다.

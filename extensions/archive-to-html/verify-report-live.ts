@@ -629,8 +629,10 @@ function renderEvidenceStatic(evidence: Evidence, state: VerifyReportState): str
 	} else if (rawDetails) body = renderRawEvidenceDetailsStatic(evidence, state, kind, label);
 	else if (evidence.text) body = `<pre><code>${escapeHtml(evidence.text)}</code></pre>`;
 	if (!body) return "";
-	const roleClass = evidence.role ? ` evidence-role-${evidence.role.replace(/[^a-z0-9_-]/gi, "-").toLowerCase()}` : "";
-	const layoutClass = rawDetails ? " evidence-raw-card" : "";
+	const normalizedRole = evidence.role?.replace(/[^a-z0-9_-]/gi, "-").toLowerCase();
+	const roleClass = normalizedRole ? ` evidence-role-${normalizedRole}` : "";
+	const primaryImageClass = normalizedRole === "primary" && ["image", "gif"].includes(kind) ? " evidence-primary-image-card" : "";
+	const layoutClass = rawDetails ? " evidence-raw-card" : primaryImageClass;
 	return `<article class="evidence-card${roleClass}${layoutClass}"><div class="evidence-card-head"><strong>${escapeHtml(label)}</strong>${kind ? `<span>${escapeHtml(kind)}</span>` : ""}</div>${body}${rawDetails ? "" : renderEvidenceIntentStatic(evidence)}</article>`;
 }
 
@@ -676,7 +678,8 @@ function generateLivePage(initialState: unknown): string {
 	.detail-list li { padding-left:2px; }
 	.evidence { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap:12px; margin-top:12px; align-items:start; }
 	.evidence-card { border:1px solid var(--line); border-radius:14px; background:var(--panel2); padding:12px; min-width:0; }
-	.evidence-card.evidence-raw-card { grid-column:1 / -1; }
+	.evidence-card.evidence-raw-card, .evidence-card.evidence-primary-image-card { grid-column:1 / -1; }
+	.evidence-card.evidence-primary-image-card img { width:100%; height:auto; }
 	.evidence-card-head { display:flex; justify-content:space-between; gap:8px; align-items:center; margin-bottom:8px; color:var(--detail); }
 	.evidence-card-head span { color:var(--muted); font-size:11px; text-transform:uppercase; }
 	.evidence-intent { display:grid; gap:7px; margin:10px 0 0; }
@@ -762,7 +765,10 @@ function evHtml(ev) {
   else if (raw) body = rawDetailsHtml(ev, kind, label);
   else if (ev.text) body = '<pre><code>' + esc(ev.text) + '</code></pre>';
   if (!body) return '';
-  return '<article class="evidence-card' + (raw ? ' evidence-raw-card' : '') + '"><div class="evidence-card-head"><strong>' + esc(label) + '</strong><span>' + esc(kind) + '</span></div>' + body + (raw ? '' : evIntentHtml(ev)) + '</article>';
+  var role = String(ev.role || '').replace(/[^a-z0-9_-]/gi, '-').toLowerCase();
+  var roleClass = role ? ' evidence-role-' + role : '';
+  var primaryImageClass = role === 'primary' && (kind === 'image' || kind === 'gif') ? ' evidence-primary-image-card' : '';
+  return '<article class="evidence-card' + roleClass + (raw ? ' evidence-raw-card' : primaryImageClass) + '"><div class="evidence-card-head"><strong>' + esc(label) + '</strong><span>' + esc(kind) + '</span></div>' + body + (raw ? '' : evIntentHtml(ev)) + '</article>';
 }
 function escapedTextWithLinks(v) {
   var text = String(v == null ? '' : v);
@@ -948,7 +954,8 @@ function generateStaticReportHtml(state: VerifyReportState): string {
 	.step-meta { color: #6b7280; font-size: 13px; margin-top: 2px; }
 	.evidence { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 14px; margin-top: 14px; align-items: start; }
 	.evidence-card { border: 1px solid #e5e7eb; border-radius: 12px; background: #fff; padding: 12px; min-width: 0; }
-	.evidence-card.evidence-raw-card { grid-column: 1 / -1; }
+	.evidence-card.evidence-raw-card, .evidence-card.evidence-primary-image-card { grid-column: 1 / -1; }
+	.evidence-card.evidence-primary-image-card img { width: 100%; height: auto; }
 	.evidence-card-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; margin-bottom: 8px; color: #1f2937; }
 	.evidence-card-head span { color: #6b7280; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
 	.evidence-intent { display: grid; gap: 7px; margin: 10px 0 0; }

@@ -71,9 +71,11 @@ live preview는 [web-search-curator](./web-search-curator.md)의 “작업 중 G
 
 ## Capture Quality Rule
 
-Primary evidence는 검증 포인트가 바로 보이는 viewport/section/element crop이어야 합니다. Before/after가 필요한 항목은 `Before — ...`, `After — ...` label로 같은 item에 넣어 비교되게 합니다. Full-page나 세로로 긴 스크롤 캡처는 supporting context로만 사용하고, 리포트에서는 토글/details/appendix/link 뒤에 둡니다.
+Primary evidence는 검증 포인트가 바로 보이는 viewport/section/element crop이어야 합니다. Before/after가 필요한 항목은 `Before — ...`, `After — ...` label로 같은 item에 넣어 비교되게 합니다. 두 이미지를 나란히 보아야만 변화가 분명한 경우에는 before/after를 한 장으로 합성한 핵심 비교 이미지를 `role: "primary"`로 남기며, renderer는 primary 이미지/GIF evidence를 full-width 단일 카드로 표시합니다. Full-page나 세로로 긴 스크롤 캡처는 supporting context로만 사용하고, 리포트에서는 토글/details/appendix/link 뒤에 둡니다.
 
 긴 캡처를 그대로 본문에 펼치면 리뷰어가 실제 검증 지점을 찾기 어렵습니다. 따라서 Verify Report는 “전체 페이지를 찍었다”보다 “어떤 영역에서 무엇을 확인했는가”를 우선합니다.
+
+메시지 본문, 알림톡, 터미널/TUI처럼 실제 텍스트를 합성 이미지로 렌더링할 때는 대상 언어 glyph가 있는 폰트를 명시해야 합니다. 한글 예시는 Apple SD Gothic Neo, AppleGothic, Noto Sans CJK입니다. `□`/tofu box가 보이면 인코딩이 아니라 glyph fallback 실패일 가능성이 높으므로, report를 확정하기 전에 폰트를 바꿔 재렌더링해야 합니다.
 
 ## Evidence Intent Rule
 
@@ -113,6 +115,8 @@ report preview는 artifact browser 안에서 `/preview` route로 열리고, top 
 - 사용자가 upload를 명시하지 않으면 로컬 report와 archive까지만 처리합니다.
 - “화면이 바뀌지 않는다”는 이유로 검증을 생략하지 않고, 더 적절한 evidence type을 선택합니다.
 - UI evidence는 crop/section image를 primary로 두고, 긴 full-page image는 supporting으로 둡니다.
+- before/after 합성 이미지처럼 한 장이 핵심 비교 증거이면 `role: "primary"`를 붙여 full-width 단일 카드로 보이게 합니다.
+- 텍스트 합성 이미지는 대상 언어 glyph가 있는 폰트로 렌더링하고 tofu box가 보이면 재생성합니다.
 - evidence에는 purpose/inspectFor/expected/observed/role/relatedItem을 붙여 raw artifact가 나중에도 읽히게 합니다.
 - raw evidence intent는 raw 토글 안에 co-locate해 원문과 관찰 가이드가 분리되지 않게 합니다.
 - raw evidence 토글은 각 검증 item 안에서 full-width 세로 배치해 원문 읽기 폭을 확보합니다.
