@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
@@ -26,6 +27,32 @@ interface Connection {
 	status: "connected" | "disconnected" | "error";
 	error?: string;
 	lastUsedAt: number;
+}
+
+interface StoredMcpResult {
+	id: string;
+	server: string;
+	tool: string;
+	action: string;
+	args?: Record<string, unknown>;
+	timestamp: number;
+	output: string;
+	rawData: unknown;
+	artifactPath?: string;
+	rawJsonPath?: string;
+	fullTextPath?: string;
+}
+
+interface McpArtifactRef {
+	path: string;
+	rawJsonPath: string;
+	fullTextPath: string;
+	openCommand: string;
+}
+
+interface McpFormattedResult {
+	text: string;
+	details?: Record<string, unknown>;
 }
 
 // --- Failure Tracker (in-memory, resets on session start) ---
@@ -90,6 +117,12 @@ function formatTimeAgo(timestamp: number): string {
 
 const NPX_CACHE_PATH = join(homedir(), ".pi", "agent", "state", "mcp-npx-cache.json");
 const NPX_CACHE_TTL = 24 * 60 * 60 * 1000;
+const MCP_ARTIFACT_DIR = join(homedir(), "Documents", "agent-history", "mcp");
+const MCP_RESULT_SIGNATURE = "MCP Result";
+const MCP_DIGEST_THRESHOLD_CHARS = 12_000;
+const MCP_DIGEST_THRESHOLD_LINES = 240;
+const MCP_DIGEST_PREVIEW_CHARS = 700;
+const MCP_DIGEST_MAX_REFERENCES = 24;
 
 interface NpxCacheData {
 	[key: string]: { resolvedAt: number };
@@ -144,6 +177,7 @@ function updateNpxCache(config: ServerConfig) {
 // --- Core ---
 
 const connections = new Map<string, Connection>();
+const storedMcpResults = new Map<string, StoredMcpResult>();
 let serverConfigs: Record<string, ServerConfig> = {};
 let idleCheckInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -280,8 +314,334 @@ function stopIdleChecker() {
 	}
 }
 
-function text(msg: string) {
-	return { content: [{ type: "text" as const, text: msg }], details: {} };
+function text(msg: string, details: Record<string, unknown> = {}) {
+	return { content: [{ type: "text" as const, text: msg }], details };
+}
+
+function escapeHtml(value: string): string {
+	return value
+		.replaceAll("&", "&amp;")
+		.replaceAll("<", "&lt;")
+		.replaceAll(">", "&gt;")
+		.replaceAll('"', "&quot;");
+}
+
+function slugify(value: string): string {
+	return value
+		.toLowerCase()
+		.replace(/https?:\/\//g, "")
+		.replace(/[^a-z0-9가-힣_-]+/gi, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, 72) || "mcp";
+}
+
+function pathSegment(value: string): string {
+	return slugify(value).replace(/\.+/g, "-") || "mcp";
+}
+
+function quoteArchivePath(filePath: string): string {
+	return `/archive "${filePath.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+}
+
+function truncateCompact(value: string, maxChars = MCP_DIGEST_PREVIEW_CHARS): string {
+	const text = value.replace(/\s+/g, " ").trim();
+	if (text.length <= maxChars) return text;
+	return `${text.slice(0, maxChars - 1).trim()}…`;
+}
+
+function safeStringify(value: unknown): string {
+	try {
+		return JSON.stringify(value, null, 2);
+	} catch {
+		return String(value);
+	}
+}
+
+function redactSensitiveForDigest(value: string): string {
+	return value
+		.replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [redacted]")
+		.replace(/("?(?:password|passwd|token|secret|authorization|cookie|api[_-]?key|access[_-]?token|refresh[_-]?token)"?\s*[:=]\s*")([^"\n]{4,})(")/gi, "$1[redacted]$3")
+		.replace(/((?:password|passwd|token|secret|authorization|cookie|api[_-]?key|access[_-]?token|refresh[_-]?token)\s*[:=]\s*)([^\s,}\]]{4,})/gi, "$1[redacted]");
+}
+
+function tryParseJson(value: string): unknown | undefined {
+	const trimmed = value.trim();
+	if (!trimmed || (!trimmed.startsWith("{") && !trimmed.startsWith("["))) return undefined;
+	try {
+		return JSON.parse(trimmed);
+	} catch {
+		return undefined;
+	}
+}
+
+function previewJsonValue(value: unknown): string {
+	if (value === null) return "null";
+	if (typeof value === "string") return JSON.stringify(truncateCompact(value, 120));
+	if (typeof value === "number" || typeof value === "boolean") return String(value);
+	if (Array.isArray(value)) return `[${value.length} items]`;
+	if (typeof value === "object") return `{${Object.keys(value as Record<string, unknown>).slice(0, 6).join(", ")}${Object.keys(value as Record<string, unknown>).length > 6 ? ", …" : ""}}`;
+	return String(value);
+}
+
+const IMPORTANT_JSON_KEYS = new Set([
+	"id",
+	"key",
+	"node_id",
+	"issueKey",
+	"issue_key",
+	"number",
+	"title",
+	"name",
+	"summary",
+	"status",
+	"state",
+	"url",
+	"html_url",
+	"web_url",
+	"created_at",
+	"updated_at",
+	"author",
+	"user",
+	"login",
+	"email",
+]);
+
+function summarizeJsonObject(value: Record<string, unknown>): string {
+	const entries = Object.entries(value);
+	const important = entries.filter(([key]) => IMPORTANT_JSON_KEYS.has(key)).slice(0, 8);
+	const selected = important.length > 0 ? important : entries.slice(0, 6);
+	return selected.map(([key, val]) => `${key}=${previewJsonValue(val)}`).join(", ") || "(empty object)";
+}
+
+function summarizeJson(value: unknown): string[] {
+	if (Array.isArray(value)) {
+		const lines = [`JSON array · ${value.length} items`];
+		value.slice(0, 10).forEach((item, index) => {
+			if (item && typeof item === "object" && !Array.isArray(item)) lines.push(`- [${index}] ${summarizeJsonObject(item as Record<string, unknown>)}`);
+			else lines.push(`- [${index}] ${previewJsonValue(item)}`);
+		});
+		if (value.length > 10) lines.push(`- … 외 ${value.length - 10}개`);
+		return lines;
+	}
+	if (value && typeof value === "object") {
+		const obj = value as Record<string, unknown>;
+		const keys = Object.keys(obj);
+		const lines = [`JSON object · ${keys.length} keys: ${keys.slice(0, 18).join(", ")}${keys.length > 18 ? ", …" : ""}`];
+		const important = Object.entries(obj).filter(([key]) => IMPORTANT_JSON_KEYS.has(key));
+		if (important.length > 0) lines.push(`중요 필드: ${important.slice(0, 10).map(([key, val]) => `${key}=${previewJsonValue(val)}`).join(", ")}`);
+		for (const [key, val] of Object.entries(obj).slice(0, 8)) {
+			if (Array.isArray(val)) lines.push(`- ${key}: array(${val.length})`);
+			else if (val && typeof val === "object") lines.push(`- ${key}: object(${Object.keys(val as Record<string, unknown>).length} keys)`);
+		}
+		return lines;
+	}
+	return [`JSON scalar: ${previewJsonValue(value)}`];
+}
+
+function extractImportantReferences(output: string): string[] {
+	const refs = new Set<string>();
+	const redacted = redactSensitiveForDigest(output);
+	const urlMatches = redacted.match(/https?:\/\/[^\s)"'<>]+/g) ?? [];
+	for (const url of urlMatches.slice(0, MCP_DIGEST_MAX_REFERENCES)) refs.add(`URL: ${truncateCompact(url, 180)}`);
+	const ticketMatches = redacted.match(/\b[A-Z][A-Z0-9]+-\d+\b/g) ?? [];
+	for (const key of ticketMatches.slice(0, MCP_DIGEST_MAX_REFERENCES)) refs.add(`key: ${key}`);
+	for (const line of redacted.split(/\r?\n/)) {
+		if (refs.size >= MCP_DIGEST_MAX_REFERENCES) break;
+		if (/\b(id|key|number|title|name|status|state|url|html_url|web_url)\b/i.test(line)) refs.add(truncateCompact(line, 220));
+	}
+	return [...refs].slice(0, MCP_DIGEST_MAX_REFERENCES);
+}
+
+function firstLastLinePreview(output: string): string[] {
+	const lines = redactSensitiveForDigest(output).split(/\r?\n/).filter((line) => line.trim().length > 0);
+	if (lines.length <= 12) return lines.map((line) => truncateCompact(line, 220));
+	return [
+		...lines.slice(0, 6).map((line) => truncateCompact(line, 220)),
+		`… 중간 ${Math.max(0, lines.length - 12)}줄 생략 …`,
+		...lines.slice(-6).map((line) => truncateCompact(line, 220)),
+	];
+}
+
+function shouldDigestMcpOutput(output: string): boolean {
+	if (output.length > MCP_DIGEST_THRESHOLD_CHARS) return true;
+	return output.split(/\r?\n/).length > MCP_DIGEST_THRESHOLD_LINES;
+}
+
+function buildMcpArtifactHtml(args: {
+	responseId: string;
+	server: string;
+	tool: string;
+	action: string;
+	output: string;
+	digest: string;
+	createdAt: Date;
+}): string {
+	return `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${MCP_RESULT_SIGNATURE} — ${escapeHtml(args.server)} / ${escapeHtml(args.tool)}</title>
+<style>
+	:root { color-scheme: light dark; --bg:#111827; --panel:#1f2937; --panel2:#0f172a; --text:#f9fafb; --muted:#9ca3af; --line:#374151; --accent:#a78bfa; }
+	body { margin:0; padding:28px; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+	main { max-width:1080px; margin:0 auto; }
+	header { border-bottom:1px solid var(--line); margin-bottom:24px; padding-bottom:18px; }
+	h1 { margin:0 0 8px; font-size:28px; }
+	.meta { display:flex; flex-wrap:wrap; gap:8px; color:var(--muted); font-size:13px; }
+	.badge { border:1px solid var(--line); border-radius:999px; padding:4px 9px; background:rgba(255,255,255,.04); }
+	section { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:20px; margin-bottom:18px; }
+	pre { white-space:pre-wrap; overflow:auto; background:var(--panel2); border:1px solid var(--line); border-radius:12px; padding:16px; line-height:1.55; }
+	details summary { cursor:pointer; color:var(--accent); font-weight:700; }
+</style>
+</head>
+<body>
+<main>
+<header>
+	<h1>${MCP_RESULT_SIGNATURE}</h1>
+	<div class="meta">
+		<span class="badge">${escapeHtml(args.createdAt.toLocaleString())}</span>
+		<span class="badge">server=${escapeHtml(args.server)}</span>
+		<span class="badge">tool=${escapeHtml(args.tool)}</span>
+		<span class="badge">action=${escapeHtml(args.action)}</span>
+		<span class="badge">responseId=${escapeHtml(args.responseId)}</span>
+	</div>
+</header>
+<section>
+	<h2>Digest returned to Pi</h2>
+	<pre>${escapeHtml(args.digest)}</pre>
+</section>
+<section>
+	<details open>
+		<summary>Full MCP text output</summary>
+		<pre>${escapeHtml(args.output)}</pre>
+	</details>
+</section>
+</main>
+</body>
+</html>`;
+}
+
+function writeMcpArtifact(args: {
+	responseId: string;
+	server: string;
+	tool: string;
+	action: string;
+	output: string;
+	digest: string;
+	rawData: unknown;
+}): McpArtifactRef | undefined {
+	try {
+		const createdAt = new Date();
+		const timestamp = createdAt.toISOString().replace(/[:.]/g, "-").slice(0, 19);
+		const dir = join(MCP_ARTIFACT_DIR, pathSegment(args.server), pathSegment(args.tool));
+		const baseName = `${timestamp}_${args.responseId}_${slugify(`${args.server}-${args.tool}`)}`;
+		const rawDir = join(dir, `${baseName}.raw`);
+		mkdirSync(rawDir, { recursive: true });
+		const rawJsonPath = join(rawDir, "raw.json");
+		const fullTextPath = join(rawDir, "full.txt");
+		const htmlPath = join(dir, `${baseName}.html`);
+		writeFileSync(rawJsonPath, `${safeStringify(args.rawData)}\n`, "utf8");
+		writeFileSync(fullTextPath, args.output.endsWith("\n") ? args.output : `${args.output}\n`, "utf8");
+		writeFileSync(htmlPath, buildMcpArtifactHtml({ ...args, createdAt }), "utf8");
+		return { path: htmlPath, rawJsonPath, fullTextPath, openCommand: quoteArchivePath(htmlPath) };
+	} catch {
+		return undefined;
+	}
+}
+
+function artifactLines(artifact: McpArtifactRef | undefined): string[] {
+	if (!artifact) return ["원문 artifact 저장 실패: 이번 세션의 get_mcp_content로만 원문을 재조회할 수 있습니다."];
+	return [
+		`원문 artifact: ${artifact.openCommand}`,
+		`raw json: ${artifact.rawJsonPath}`,
+		`full text: ${artifact.fullTextPath}`,
+	];
+}
+
+function rewriteMcpArtifactDigest(args: {
+	artifact: McpArtifactRef | undefined;
+	responseId: string;
+	server: string;
+	tool: string;
+	action: string;
+	output: string;
+	digest: string;
+}) {
+	if (!args.artifact) return;
+	try {
+		writeFileSync(args.artifact.path, buildMcpArtifactHtml({ ...args, createdAt: new Date() }), "utf8");
+	} catch {}
+}
+
+function buildMcpDigest(args: { responseId: string; server: string; tool: string; action: string; output: string; artifact?: McpArtifactRef }): string {
+	const parsed = tryParseJson(args.output);
+	const lines: string[] = [
+		"🔌 MCP 결과 — digest-first",
+		`server: ${args.server}`,
+		`tool: ${args.tool}`,
+		`action: ${args.action}`,
+		`responseId: ${args.responseId}`,
+		`원문 크기: ${args.output.length.toLocaleString()} chars / ${args.output.split(/\r?\n/).length.toLocaleString()} lines`,
+		"",
+		"## 요약",
+	];
+	if (parsed !== undefined) lines.push(...summarizeJson(parsed));
+	else lines.push(...firstLastLinePreview(args.output).map((line) => `- ${line}`));
+	const refs = extractImportantReferences(args.output);
+	if (refs.length > 0) {
+		lines.push("", "## 보존한 식별자/URL preview");
+		for (const ref of refs) lines.push(`- ${ref}`);
+	}
+	lines.push("", "원문은 대화 context에 넣지 않고 artifact로 저장했습니다.");
+	lines.push(...artifactLines(args.artifact));
+	lines.push(`필요 시: get_mcp_content(responseId="${args.responseId}")`);
+	return lines.join("\n").trim();
+}
+
+function formatMcpOutput(args: {
+	server: string;
+	tool: string;
+	action: string;
+	output: string;
+	rawData: unknown;
+	args?: Record<string, unknown>;
+}): McpFormattedResult {
+	if (!shouldDigestMcpOutput(args.output)) {
+		return { text: args.output || "(empty response)", details: { mcpDigest: false, server: args.server, tool: args.tool, action: args.action } };
+	}
+	const responseId = `mcp_${randomUUID().slice(0, 8)}`;
+	const placeholderDigest = buildMcpDigest({ responseId, server: args.server, tool: args.tool, action: args.action, output: args.output });
+	const artifact = writeMcpArtifact({ ...args, responseId, digest: placeholderDigest });
+	const digest = buildMcpDigest({ responseId, server: args.server, tool: args.tool, action: args.action, output: args.output, artifact });
+	rewriteMcpArtifactDigest({ artifact, responseId, server: args.server, tool: args.tool, action: args.action, output: args.output, digest });
+	storedMcpResults.set(responseId, {
+		id: responseId,
+		server: args.server,
+		tool: args.tool,
+		action: args.action,
+		args: args.args,
+		timestamp: Date.now(),
+		output: args.output,
+		rawData: args.rawData,
+		artifactPath: artifact?.path,
+		rawJsonPath: artifact?.rawJsonPath,
+		fullTextPath: artifact?.fullTextPath,
+	});
+	return {
+		text: digest,
+		details: {
+			mcpDigest: true,
+			responseId,
+			server: args.server,
+			tool: args.tool,
+			action: args.action,
+			artifactPath: artifact?.path,
+			rawJsonPath: artifact?.rawJsonPath,
+			fullTextPath: artifact?.fullTextPath,
+			originalChars: args.output.length,
+		},
+	};
 }
 
 function statusText(): string {
@@ -353,25 +713,29 @@ function searchTools(query?: string): string {
 	return results.length > 0 ? results.join("\n") : `No tools matching "${query}".`;
 }
 
-function findToolServer(toolName: string): { server: string; conn: Connection } | null {
+function findToolServer(toolName: string, preferredServer?: string): { server: string; conn: Connection } | null {
+	if (preferredServer) {
+		const conn = connections.get(preferredServer);
+		if (conn?.tools.some((t) => t.name === toolName)) return { server: preferredServer, conn };
+	}
 	for (const [server, conn] of connections) {
 		if (conn.tools.some((t) => t.name === toolName)) return { server, conn };
 	}
 	return null;
 }
 
-async function callTool(toolName: string, args?: Record<string, unknown>): Promise<string> {
-	const found = findToolServer(toolName);
-	if (!found) return `Tool "${toolName}" not found. Use action:"status" or action:"list" to see available tools.`;
+async function callTool(toolName: string, args?: Record<string, unknown>, preferredServer?: string): Promise<McpFormattedResult> {
+	const found = findToolServer(toolName, preferredServer);
+	if (!found) return { text: `Tool "${toolName}" not found. Use action:"status" or action:"list" to see available tools.` };
 
 	if (found.conn.status === "disconnected") {
 		const config = serverConfigs[found.server];
-		if (!config) return `Server "${found.server}" config not found, cannot auto-reconnect.`;
+		if (!config) return { text: `Server "${found.server}" config not found, cannot auto-reconnect.` };
 		try {
 			const reconnected = await connectServer(found.server, config);
 			found.conn = reconnected;
 		} catch (e) {
-			return `Auto-reconnect to "${found.server}" failed: ${e instanceof Error ? e.message : e}`;
+			return { text: `Auto-reconnect to "${found.server}" failed: ${e instanceof Error ? e.message : e}` };
 		}
 	}
 
@@ -379,18 +743,34 @@ async function callTool(toolName: string, args?: Record<string, unknown>): Promi
 
 	try {
 		const result = await found.conn.client.callTool({ name: toolName, arguments: args ?? {} });
-		const parts = (result.content as Array<{ type: string; text?: string }>)
+		const content = Array.isArray((result as any).content) ? (result as any).content as Array<{ type: string; text?: string }> : [];
+		const parts = content
 			.filter((c) => c.type === "text" && c.text)
 			.map((c) => c.text!);
-		const output = parts.join("\n");
-		if (output.length > 30000) {
-			return `${output.slice(0, 30000)}\n\n… (truncated, total ${output.length} chars)`;
-		}
-		return output || "(empty response)";
+		const nonText = content
+			.filter((c) => c.type !== "text")
+			.map((c) => `[${c.type} content stored in raw json]`);
+		const output = [...parts, ...nonText].join("\n") || "(empty response)";
+		recordSuccess(found.server);
+		return formatMcpOutput({
+			server: found.server,
+			tool: toolName,
+			action: "call",
+			output,
+			rawData: { result, arguments: args ?? {} },
+			args,
+		});
 	} catch (e) {
 		const errorMsg = e instanceof Error ? e.message : String(e);
 		recordFailure(found.server, errorMsg);
-		return `Error calling ${toolName}: ${errorMsg}`;
+		return formatMcpOutput({
+			server: found.server,
+			tool: toolName,
+			action: "call-error",
+			output: `Error calling ${toolName}: ${errorMsg}`,
+			rawData: { error: errorMsg, arguments: args ?? {} },
+			args,
+		});
 	}
 }
 
@@ -430,12 +810,18 @@ export default function (pi: ExtensionAPI) {
 			switch (params.action) {
 				case "status":
 					return text(statusText());
-				case "list":
-					return text(listTools(params.server));
-				case "describe":
-					return text(describeTool(params.tool));
-				case "search":
-					return text(searchTools(params.query));
+				case "list": {
+					const result = formatMcpOutput({ server: params.server ?? "all", tool: "list", action: "list", output: listTools(params.server), rawData: { server: params.server } });
+					return text(result.text, result.details);
+				}
+				case "describe": {
+					const result = formatMcpOutput({ server: "all", tool: params.tool ?? "describe", action: "describe", output: describeTool(params.tool), rawData: { tool: params.tool } });
+					return text(result.text, result.details);
+				}
+				case "search": {
+					const result = formatMcpOutput({ server: "all", tool: "search", action: "search", output: searchTools(params.query), rawData: { query: params.query } });
+					return text(result.text, result.details);
+				}
 				case "connect": {
 					const name = params.server;
 					if (!name) return text('Server name is required. Use action:"status" to see available servers.');
@@ -458,10 +844,42 @@ export default function (pi: ExtensionAPI) {
 							return text(`Invalid JSON in args: ${params.args}`);
 						}
 					}
-					const result = await callTool(params.tool, args);
-					return text(result);
+					const result = await callTool(params.tool, args, params.server);
+					return text(result.text, result.details);
 				}
 			}
+		},
+	});
+
+	pi.registerTool({
+		name: "get_mcp_content",
+		label: "Get MCP Content",
+		description: "Retrieve full content from a digest-first MCP result in the current session.",
+		parameters: Type.Object({
+			responseId: Type.String({ description: "The responseId returned by a digest-first MCP result, e.g. mcp_ab12cd34" }),
+		}),
+		async execute(_id, params) {
+			const stored = storedMcpResults.get(params.responseId);
+			if (!stored) return text(`No stored MCP result for responseId "${params.responseId}". Open the artifact path from the digest if this is an older session.`);
+			const lines = [
+				`MCP full content`,
+				`responseId: ${stored.id}`,
+				`server: ${stored.server}`,
+				`tool: ${stored.tool}`,
+				`action: ${stored.action}`,
+				stored.artifactPath ? `artifact: ${stored.artifactPath}` : "",
+				"",
+				stored.output,
+			].filter(Boolean);
+			return text(lines.join("\n"), {
+				responseId: stored.id,
+				server: stored.server,
+				tool: stored.tool,
+				action: stored.action,
+				artifactPath: stored.artifactPath,
+				rawJsonPath: stored.rawJsonPath,
+				fullTextPath: stored.fullTextPath,
+			});
 		},
 	});
 
@@ -545,6 +963,7 @@ export default function (pi: ExtensionAPI) {
 	// Cleanup on shutdown
 	pi.on("session_shutdown", async () => {
 		stopIdleChecker();
+		storedMcpResults.clear();
 		await disconnectAll();
 	});
 }

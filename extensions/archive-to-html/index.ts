@@ -38,6 +38,7 @@ const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
 const FONT_SIGNATURE = "Noto+Serif+KR";
 const REPORT_SIGNATURE = "Verify Report";
 const WEB_SEARCH_SIGNATURE = "Web Search Review";
+const MCP_RESULT_SIGNATURE = "MCP Result";
 const MEDIA_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"]);
 const MAX_INLINE_MEDIA_BYTES = 8 * 1024 * 1024;
 const PREFERRED_CLASSIFICATION_MODELS = [
@@ -999,14 +1000,14 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		const artifacts = collectArtifactBrowserData(ctx.cwd);
-		const total = artifacts.piUnits.length + artifacts.conductors.length + artifacts.webSearches.length + artifacts.reports.length + artifacts.planningDocs.length + artifacts.captures.length;
+		const total = artifacts.piUnits.length + artifacts.conductors.length + artifacts.webSearches.length + artifacts.mcpArtifacts.length + artifacts.reports.length + artifacts.planningDocs.length + artifacts.captures.length;
 		if (total === 0) {
 			ctx.ui.notify("표시할 artifact를 찾을 수 없습니다.", "warning");
 			return;
 		}
 
 		const mode = await openArtifactBrowser(pi, artifacts, ctx.cwd, parsed.browserOnly, ctx);
-		ctx.ui.notify(`🗂️ Archive ${mode === "glimpse" ? "Glimpse" : "브라우저"} 열기 · Pi ${artifacts.piUnits.length} · Conductor ${artifacts.conductors.length} · web ${artifacts.webSearches.length} · reports ${artifacts.reports.length}`, "info");
+		ctx.ui.notify(`🗂️ Archive ${mode === "glimpse" ? "Glimpse" : "브라우저"} 열기 · Pi ${artifacts.piUnits.length} · Conductor ${artifacts.conductors.length} · web ${artifacts.webSearches.length} · MCP ${artifacts.mcpArtifacts.length} · reports ${artifacts.reports.length}`, "info");
 	};
 
 	pi.registerCommand("archive", {
@@ -1086,6 +1087,17 @@ interface WebSearchEntry {
 	time: string;
 	queries: string[];
 	workspace: string;
+	ticket: string;
+	mtime: number;
+}
+
+interface McpArtifactEntry {
+	path: string;
+	name: string;
+	time: string;
+	server: string;
+	tool: string;
+	responseId: string;
 	ticket: string;
 	mtime: number;
 }
@@ -1243,6 +1255,7 @@ interface ArtifactBrowserData {
 	conductors: ConductorHistoryEntry[];
 	reports: ReportEntry[];
 	webSearches: WebSearchEntry[];
+	mcpArtifacts: McpArtifactEntry[];
 	frames: FrameTranscriptEntry[];
 	planningDocs: PlanningDocEntry[];
 	captures: CaptureEntry[];
@@ -1373,17 +1386,63 @@ function collectWebSearchReviews(): WebSearchEntry[] {
 	return results.sort((a, b) => b.mtime - a.mtime).slice(0, 120);
 }
 
+function collectHtmlFilesRecursive(dir: string, limit = 240): string[] {
+	const files: string[] = [];
+	const walk = (current: string) => {
+		if (files.length >= limit) return;
+		let entries: string[] = [];
+		try { entries = fs.readdirSync(current); } catch { return; }
+		for (const entry of entries) {
+			if (files.length >= limit) return;
+			const fp = path.join(current, entry);
+			let stat: fs.Stats;
+			try { stat = fs.statSync(fp); } catch { continue; }
+			if (stat.isDirectory()) walk(fp);
+			else if (entry.endsWith(".html")) files.push(fp);
+		}
+	};
+	walk(dir);
+	return files;
+}
+
+function extractBadgeValue(html: string, key: string): string {
+	const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const match = html.match(new RegExp(`<span class="badge">${escapedKey}=([^<]+)<\\/span>`, "i"));
+	return match?.[1]?.replace(/<[^>]*>/g, "").trim() ?? "";
+}
+
+function collectMcpArtifacts(): McpArtifactEntry[] {
+	const results: McpArtifactEntry[] = [];
+	const mcpDir = path.join(ARCHIVE_DIR, "..", "mcp");
+	if (!fs.existsSync(mcpDir)) return results;
+	try {
+		for (const fp of collectHtmlFilesRecursive(mcpDir, 360)) {
+			const content = fs.readFileSync(fp, "utf-8");
+			if (!content.includes(MCP_RESULT_SIGNATURE)) continue;
+			const stat = fs.statSync(fp);
+			const server = extractBadgeValue(content, "server") || path.basename(path.dirname(path.dirname(fp)));
+			const tool = extractBadgeValue(content, "tool") || path.basename(path.dirname(fp));
+			const responseId = extractBadgeValue(content, "responseId") || path.basename(fp).match(/mcp_[a-f0-9]+/)?.[0] || "";
+			const ticket = content.match(/\b[A-Z]+-\d+\b/)?.[0] ?? "";
+			results.push({ path: fp, name: path.relative(mcpDir, fp), time: formatMtime(stat.mtimeMs), server, tool, responseId, ticket, mtime: stat.mtimeMs });
+		}
+	} catch {}
+	return results.sort((a, b) => b.mtime - a.mtime).slice(0, 160);
+}
+
 function collectArtifactBrowserData(cwd: string): ArtifactBrowserData {
 	const reports = collectReports(cwd);
 	const frames = collectFrameTranscripts();
 	const captures = collectCaptureMedia(cwd);
 	const webSearches = collectWebSearchReviews();
+	const mcpArtifacts = collectMcpArtifacts();
 	const planningDocs = collectPlanningDocs(cwd, frames);
 	return {
 		piUnits: collectPiWorkUnits(reports, frames, planningDocs, captures, webSearches),
 		conductors: collectConductorHistories(),
 		reports,
 		webSearches,
+		mcpArtifacts,
 		frames,
 		planningDocs,
 		captures,
@@ -1405,6 +1464,7 @@ function artifactBrowserAllowedPaths(data: ArtifactBrowserData): Set<string> {
 	for (const filePath of [
 		...data.reports.map((item) => item.path),
 		...data.webSearches.map((item) => item.path),
+		...data.mcpArtifacts.map((item) => item.path),
 		...data.frames.map((item) => item.path),
 		...data.planningDocs.map((item) => item.path),
 		...data.captures.map((item) => item.path),
@@ -2759,6 +2819,11 @@ function renderWebSearchCards(webSearches: WebSearchEntry[]): string {
 	return `<div class="grid">${webSearches.map((entry) => `<article class="card searchable" data-search="${escapeAttr(`${entry.name} ${entry.queries.join(" ")} ${entry.ticket} ${entry.workspace}`.toLowerCase())}"><div class="kicker">🔎 Web Search</div><h3>${escapeHtml(entry.queries[0] || entry.name)}</h3><div class="meta">${entry.workspace ? `<span class="badge">${escapeHtml(entry.workspace)}</span>` : `<span class="badge">미분류</span>`}${entry.ticket ? `<span class="badge">${escapeHtml(entry.ticket)}</span>` : ""}<span class="badge">${escapeHtml(entry.time)}</span></div>${entry.queries.length > 1 ? `<ol>${entry.queries.map((q) => `<li>${escapeHtml(q)}</li>`).join("\n")}</ol>` : ""}<div class="path">${escapeHtml(entry.path)}</div><div class="actions">${artifactOpenButtons(entry.path)}</div></article>`).join("\n")}</div>`;
 }
 
+function renderMcpArtifactCards(items: McpArtifactEntry[]): string {
+	if (!items.length) return `<div class="empty">MCP result artifact가 없습니다.</div>`;
+	return `<div class="grid">${items.map((entry) => `<article class="card searchable" data-search="${escapeAttr(`${entry.name} ${entry.server} ${entry.tool} ${entry.responseId} ${entry.ticket}`.toLowerCase())}"><div class="kicker">🔌 MCP Result</div><h3>${escapeHtml(entry.tool || entry.name)}</h3><div class="meta"><span class="badge">${escapeHtml(entry.server || "server unknown")}</span>${entry.responseId ? `<span class="badge">${escapeHtml(entry.responseId)}</span>` : ""}${entry.ticket ? `<span class="badge">${escapeHtml(entry.ticket)}</span>` : ""}<span class="badge">${escapeHtml(entry.time)}</span></div><div class="path">${escapeHtml(entry.path)}</div><div class="actions">${artifactOpenButtons(entry.path)}</div></article>`).join("\n")}</div>`;
+}
+
 function renderFrameCards(frames: FrameTranscriptEntry[]): string {
 	if (!frames.length) return `<div class="empty">저장된 TFT Studio 전문이 없습니다.</div>`;
 	return `<div class="grid">${frames.map((f) => { const timeline = normalizeFrameTimeline(f.timeline); return `<article class="card searchable" data-search="${escapeAttr(`${f.title} ${f.identity} ${f.mode} ${f.workspace} ${f.ticket}`.toLowerCase())}"><h3>${escapeHtml(f.title)}</h3><div class="meta"><span class="badge">${escapeHtml(f.mode)}</span>${f.workspace ? `<span class="badge">${escapeHtml(f.workspace)}</span>` : ""}${f.ticket ? `<span class="badge">${escapeHtml(f.ticket)}</span>` : ""}<span class="badge">${escapeHtml(f.time)}</span><span class="badge">${timeline.length} entries</span></div><div class="path">${escapeHtml(f.identity)}</div><details><summary>Frame 전문 미리보기</summary><div class="timeline">${renderFrameTimeline(timeline)}</div></details><div class="actions">${artifactOpenButtons(f.path)}</div></article>`; }).join("\n")}</div>`;
@@ -2888,6 +2953,10 @@ function renderWebSearchPanel(data: ArtifactBrowserData): string {
 	return `<section><h2>웹 검색 기본 그룹</h2>${renderWebSearchCards(unassigned)}</section><section><h2>전체 웹 검색</h2>${renderWebSearchCards(data.webSearches)}</section>`;
 }
 
+function renderMcpPanel(data: ArtifactBrowserData): string {
+	return `<section><h2>MCP 결과</h2>${renderMcpArtifactCards(data.mcpArtifacts)}</section>`;
+}
+
 function allClassificationCategories(data: ArtifactBrowserData): string[] {
 	return sessionClassificationCategories(data.piUnits.flatMap((unit) => [...unit.piRestoredSessions, ...unit.piChatSessions]));
 }
@@ -2906,8 +2975,8 @@ function renderSessionClassificationCategoryOptions(): string {
 }
 
 function buildArtifactBrowserHtml(data: ArtifactBrowserData, cwd: string): string {
-	const initialTab = data.piUnits.length ? "pi" : data.conductors.length ? "conductors" : "web-search";
-	return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>pilee Artifact Browser</title>${artifactBrowserStyle()}</head><body><main class="shell"><header class="hero"><div class="kicker">🗂️ pilee Artifact Browser</div><h1>산출물 다시 보기</h1><p>Pi 작업 이력, Conductor master 이력, 웹 검색 review를 상위 단위로 분리해서 봅니다.</p><div class="meta"><span class="badge">cwd ${escapeHtml(cwd)}</span><span class="badge">generated ${escapeHtml(data.generatedAt.toLocaleString())}</span></div></header><div class="filters"><input id="search" class="search" type="search" placeholder="현재 탭에서 검색: 이름, 티켓, workspace, session, source, classification" oninput="filterCards()"><select id="categoryFilter" class="category-filter" onchange="filterCards()">${renderClassificationOptions(data)}</select></div><nav class="tabs"><button class="tab" data-tab="pi" onclick="showTab('pi')">Pi 이력 <strong>${data.piUnits.length}</strong></button><button class="tab" data-tab="conductors" onclick="showTab('conductors')">컨덕터 이력 <strong>${data.conductors.length}</strong></button><button class="tab" data-tab="web-search" onclick="showTab('web-search')">웹 검색 <strong>${data.webSearches.length}</strong></button><button class="tab" data-tab="reports" onclick="showTab('reports')">검증 리포트 <strong>${data.reports.length}</strong></button><button class="tab" data-tab="planning" onclick="showTab('planning')">기획 / Frame <strong>${data.planningDocs.length}</strong></button><button class="tab" data-tab="captures" onclick="showTab('captures')">캡처 / 미디어 <strong>${data.captures.length}</strong></button></nav><section id="tab-pi" class="panel">${renderPiWorkUnitCards(data)}</section><section id="tab-conductors" class="panel">${renderConductorCards(data)}</section><section id="tab-web-search" class="panel">${renderWebSearchPanel(data)}</section><section id="tab-reports" class="panel">${renderReportCards(data.reports)}</section><section id="tab-planning" class="panel">${renderPlanningDocCards(data.planningDocs)}</section><section id="tab-captures" class="panel">${renderCaptureCards(data.captures, data.frames)}</section></main><div id="classificationModal" class="modal" hidden><div class="modal-card"><header><div><div class="kicker">Session classification</div><h2>대화 분류</h2><p class="muted" id="classificationPath"></p></div><button class="button" type="button" id="classificationClose">닫기</button></header><label>제목<input id="classificationTitle" type="text" placeholder="세션 제목"></label><label>분류<select id="classificationCategorySelect">${renderSessionClassificationCategoryOptions()}</select><input id="classificationCategoryCustom" type="text" placeholder="직접 입력할 분류" hidden><span class="field-help">1차 보관함입니다. /archive 상단 필터와 카드 그룹핑에 사용됩니다.</span></label><label>태그 / 검색 키워드<input id="classificationTags" type="text" placeholder="쉼표로 구분: tft-studio, ui-ux, verify-report"><span class="field-help">같은 분류 안에서 나중에 찾기 위한 보조 키워드입니다.</span></label><label>요약<textarea id="classificationSummary" rows="4" placeholder="나중에 찾기 위한 짧은 요약"></textarea></label><label>세그먼트 JSON<textarea id="classificationSegments" rows="10" placeholder="AI 추천 세그먼트를 JSON 배열로 저장합니다"></textarea></label><p class="muted" id="classificationStatus">원본 세션 JSONL은 수정하지 않고 sidecar metadata만 저장합니다.</p><div class="actions"><button class="button" type="button" id="classificationSuggest">AI 세그먼트 추천</button><button class="button" type="button" id="classificationSave">저장</button></div></div></div><script>
+	const initialTab = data.piUnits.length ? "pi" : data.conductors.length ? "conductors" : data.webSearches.length ? "web-search" : data.mcpArtifacts.length ? "mcp" : "reports";
+	return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>pilee Artifact Browser</title>${artifactBrowserStyle()}</head><body><main class="shell"><header class="hero"><div class="kicker">🗂️ pilee Artifact Browser</div><h1>산출물 다시 보기</h1><p>Pi 작업 이력, Conductor master 이력, 웹 검색 review, MCP digest artifact를 상위 단위로 분리해서 봅니다.</p><div class="meta"><span class="badge">cwd ${escapeHtml(cwd)}</span><span class="badge">generated ${escapeHtml(data.generatedAt.toLocaleString())}</span></div></header><div class="filters"><input id="search" class="search" type="search" placeholder="현재 탭에서 검색: 이름, 티켓, workspace, session, source, classification" oninput="filterCards()"><select id="categoryFilter" class="category-filter" onchange="filterCards()">${renderClassificationOptions(data)}</select></div><nav class="tabs"><button class="tab" data-tab="pi" onclick="showTab('pi')">Pi 이력 <strong>${data.piUnits.length}</strong></button><button class="tab" data-tab="conductors" onclick="showTab('conductors')">컨덕터 이력 <strong>${data.conductors.length}</strong></button><button class="tab" data-tab="web-search" onclick="showTab('web-search')">웹 검색 <strong>${data.webSearches.length}</strong></button><button class="tab" data-tab="mcp" onclick="showTab('mcp')">MCP <strong>${data.mcpArtifacts.length}</strong></button><button class="tab" data-tab="reports" onclick="showTab('reports')">검증 리포트 <strong>${data.reports.length}</strong></button><button class="tab" data-tab="planning" onclick="showTab('planning')">기획 / Frame <strong>${data.planningDocs.length}</strong></button><button class="tab" data-tab="captures" onclick="showTab('captures')">캡처 / 미디어 <strong>${data.captures.length}</strong></button></nav><section id="tab-pi" class="panel">${renderPiWorkUnitCards(data)}</section><section id="tab-conductors" class="panel">${renderConductorCards(data)}</section><section id="tab-web-search" class="panel">${renderWebSearchPanel(data)}</section><section id="tab-mcp" class="panel">${renderMcpPanel(data)}</section><section id="tab-reports" class="panel">${renderReportCards(data.reports)}</section><section id="tab-planning" class="panel">${renderPlanningDocCards(data.planningDocs)}</section><section id="tab-captures" class="panel">${renderCaptureCards(data.captures, data.frames)}</section></main><div id="classificationModal" class="modal" hidden><div class="modal-card"><header><div><div class="kicker">Session classification</div><h2>대화 분류</h2><p class="muted" id="classificationPath"></p></div><button class="button" type="button" id="classificationClose">닫기</button></header><label>제목<input id="classificationTitle" type="text" placeholder="세션 제목"></label><label>분류<select id="classificationCategorySelect">${renderSessionClassificationCategoryOptions()}</select><input id="classificationCategoryCustom" type="text" placeholder="직접 입력할 분류" hidden><span class="field-help">1차 보관함입니다. /archive 상단 필터와 카드 그룹핑에 사용됩니다.</span></label><label>태그 / 검색 키워드<input id="classificationTags" type="text" placeholder="쉼표로 구분: tft-studio, ui-ux, verify-report"><span class="field-help">같은 분류 안에서 나중에 찾기 위한 보조 키워드입니다.</span></label><label>요약<textarea id="classificationSummary" rows="4" placeholder="나중에 찾기 위한 짧은 요약"></textarea></label><label>세그먼트 JSON<textarea id="classificationSegments" rows="10" placeholder="AI 추천 세그먼트를 JSON 배열로 저장합니다"></textarea></label><p class="muted" id="classificationStatus">원본 세션 JSONL은 수정하지 않고 sidecar metadata만 저장합니다.</p><div class="actions"><button class="button" type="button" id="classificationSuggest">AI 세그먼트 추천</button><button class="button" type="button" id="classificationSave">저장</button></div></div></div><script>
 ${webviewCopyScript()}
 (function(){
 	function qs(selector, root=document){ return root.querySelector(selector); }
