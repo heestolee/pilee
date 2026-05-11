@@ -40,6 +40,7 @@ import {
 	evictStalePendingGroupCompletions,
 	upsertPendingGroupCompletion,
 } from "./group-pending.js";
+import { buildShipCommandPromptForSubagent, type ShipCommandName } from "../ship-commands/index.ts";
 import { enqueueSubagentInvocation } from "./invocation-queue.js";
 import { appendDisplayTaskUpdate, getSessionFileSize } from "./persisted-session.js";
 import { readSessionReplayItems, SubagentSessionReplayOverlay } from "./replay.js";
@@ -1953,6 +1954,44 @@ export function registerAll(pi: ExtensionAPI, store: SubagentStore): void {
 		},
 	});
 
+	const parseDelegatedShipShortcut = (raw: string, ctx: ExtensionContext, explicitAgent?: string): { agent: string; command: ShipCommandName; args: string } | null => {
+		const input = raw.trim();
+		const parseCommand = (value: string): { command: ShipCommandName; args: string } | null => {
+			const match = /^\/(ship|pr-ship|ci-ship)(?:\s+([\s\S]*))?$/u.exec(value.trim());
+			if (!match) return null;
+			return { command: match[1] as ShipCommandName, args: match[2]?.trim() ?? "" };
+		};
+
+		const direct = parseCommand(input);
+		if (direct) return { agent: explicitAgent ?? "worker", ...direct };
+		if (explicitAgent) return null;
+
+		const firstSpace = input.indexOf(" ");
+		if (firstSpace === -1) return null;
+		const firstToken = input.slice(0, firstSpace);
+		const rest = input.slice(firstSpace + 1).trim();
+		const command = parseCommand(rest);
+		if (!command) return null;
+		const agents = discoverAgents(ctx.cwd).agents;
+		const { matchedAgent, ambiguousAgents } = matchSubCommandAgent(agents, firstToken);
+		if (!matchedAgent || ambiguousAgents.length > 1) return null;
+		return { agent: matchedAgent.name, ...command };
+	};
+
+	const runDelegatedShipShortcut = async (raw: string, ctx: ExtensionContext, hiddenFromMain: boolean, explicitAgent?: string): Promise<boolean> => {
+		const parsed = parseDelegatedShipShortcut(raw, ctx, explicitAgent);
+		if (!parsed) return false;
+		try {
+			const prompt = await buildShipCommandPromptForSubagent(pi, ctx, parsed.command, parsed.args);
+			await subCommand.handler(`${parsed.agent} ${prompt}`, ctx, true, hiddenFromMain);
+			ctx.ui.notify(`/${parsed.command}를 ${parsed.agent} subagent에 위임했습니다.`, "info");
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			ctx.ui.notify(`/${parsed.command} subagent 위임 준비 실패: ${message}`, "error");
+		}
+		return true;
+	};
+
 	// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: >> / > / >>> shortcuts intentionally share one stateful input router.
 	pi.on("input", async (event, ctx) => {
 		if (event.source === "extension") {
@@ -1984,11 +2023,13 @@ export function registerAll(pi: ExtensionAPI, store: SubagentStore): void {
 			const forwardedArgs = text.slice(prefix.length).trim();
 			if (!forwardedArgs) {
 				ctx.ui.notify(
-					`${prefix} [agent] <task> | ${prefix} <runId> <task> | ${prefix}<symbol> <task>\n${formatSymbolHints(prefix)}`,
+					`${prefix} [agent] <task> | ${prefix} <runId> <task> | ${prefix}<symbol> <task>\n${formatSymbolHints(prefix)}\n${prefix} /ci-ship also delegates pilee ship skills to a subagent.`,
 					"info",
 				);
 				return;
 			}
+
+			if (await runDelegatedShipShortcut(forwardedArgs, ctx, true)) return;
 
 			const dedicatedSymbol = AGENT_SYMBOL_MAP[forwardedArgs[0]];
 			if (dedicatedSymbol) {
@@ -1997,6 +2038,7 @@ export function registerAll(pi: ExtensionAPI, store: SubagentStore): void {
 					ctx.ui.notify(formatSymbolHints(prefix), "info");
 					return;
 				}
+				if (await runDelegatedShipShortcut(task, ctx, true, dedicatedSymbol)) return;
 				await subCommand.handler(`${dedicatedSymbol} ${task}`, ctx, true, true);
 				return;
 			}
@@ -2029,6 +2071,7 @@ export function registerAll(pi: ExtensionAPI, store: SubagentStore): void {
 					ctx.ui.notify(formatSymbolHints(), "info");
 					return { action: "handled" as const };
 				}
+				if (await runDelegatedShipShortcut(task, ctx, false, symbolAgent)) return { action: "handled" as const };
 				await subCommand.handler(`${symbolAgent} ${task}`, ctx, true);
 				return { action: "handled" as const };
 			}
@@ -2041,9 +2084,11 @@ export function registerAll(pi: ExtensionAPI, store: SubagentStore): void {
 
 		const forwardedArgs = text.slice(3).trim();
 		if (!forwardedArgs) {
-			ctx.ui.notify(`>> [agent] <task> | >> <runId> <task> | >><symbol> <task>\n${formatSymbolHints()}`, "info");
+			ctx.ui.notify(`>> [agent] <task> | >> <runId> <task> | >><symbol> <task>\n${formatSymbolHints()}\n>> /ci-ship also delegates pilee ship skills to a subagent.`, "info");
 			return { action: "handled" as const };
 		}
+
+		if (await runDelegatedShipShortcut(forwardedArgs, ctx, false)) return { action: "handled" as const };
 
 		const firstSpace = forwardedArgs.indexOf(" ");
 		const firstToken = firstSpace === -1 ? forwardedArgs : forwardedArgs.slice(0, firstSpace);

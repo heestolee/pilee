@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import {
 	fetchCurrentPullRequestInfo,
 	fetchUnresolvedPullRequestReviewComments,
@@ -16,7 +16,8 @@ const SKILLS_DIR = join(PACKAGE_ROOT, "skills");
 const SHIM_CUSTOM_TYPE = "pilee-ship-command-shim";
 const MAX_COLLECTED_CONTEXT_CHARS = 18_000;
 
-type ShipCommandName = "ship" | "pr-ship" | "ci-ship";
+export type ShipCommandName = "ship" | "pr-ship" | "ci-ship";
+type ShipContext = Pick<ExtensionContext, "cwd" | "sessionManager"> & { hasUI?: boolean; ui?: ExtensionCommandContext["ui"] };
 
 interface RepoInfo {
 	owner: string;
@@ -100,8 +101,8 @@ function formatInlinedSkill(skill: { name: string; path: string; content: string
 	].join("\n");
 }
 
-function notify(ctx: ExtensionCommandContext, message: string, level: "info" | "warning" | "error"): void {
-	if (ctx.hasUI) ctx.ui.notify(message, level);
+function notify(ctx: ShipContext, message: string, level: "info" | "warning" | "error"): void {
+	if (ctx.hasUI) ctx.ui?.notify(message, level);
 }
 
 function truncateText(text: string, maxChars = MAX_COLLECTED_CONTEXT_CHARS): string {
@@ -232,7 +233,7 @@ async function fetchReviewCommentDetail(pi: ExtensionAPI, cwd: string, target: C
 	}
 }
 
-async function resolvePullRequestFromArgs(pi: ExtensionAPI, ctx: ExtensionCommandContext, args: string): Promise<PullRequestInfo | null> {
+async function resolvePullRequestFromArgs(pi: ExtensionAPI, ctx: ShipContext, args: string): Promise<PullRequestInfo | null> {
 	const trimmed = args.trim();
 	const commentTarget = parseCommentUrl(trimmed);
 	if (commentTarget) {
@@ -275,7 +276,7 @@ async function resolvePullRequestFromArgs(pi: ExtensionAPI, ctx: ExtensionComman
 	return currentPrResult.ok ? currentPrResult.pullRequest : null;
 }
 
-function formatSessionRefs(ctx: ExtensionCommandContext): string {
+function formatSessionRefs(ctx: ShipContext): string {
 	const currentSessionFile = ctx.sessionManager.getSessionFile() ?? "(unknown)";
 	const currentSessionName = ctx.sessionManager.getSessionName?.() ?? "(unnamed)";
 	const parentSessionFile = process.env.PI_FORK_PARENT?.trim() || "(none)";
@@ -318,7 +319,7 @@ function formatCommentDetail(target: CommentTarget, detail: ReviewCommentDetail 
 	return lines.join("\n");
 }
 
-async function buildPrShipCollectedContext(pi: ExtensionAPI, ctx: ExtensionCommandContext, args: string): Promise<string> {
+async function buildPrShipCollectedContext(pi: ExtensionAPI, ctx: ShipContext, args: string): Promise<string> {
 	const options = parsePrShipOptions(args);
 	const lookupArgs = options.remainingArgs || args;
 	const commentTarget = parseCommentUrl(lookupArgs.trim());
@@ -507,7 +508,7 @@ function formatRunContext(run: ActionsRunContext | null): string {
 	].filter(Boolean).join("\n");
 }
 
-async function buildCiShipCollectedContext(pi: ExtensionAPI, ctx: ExtensionCommandContext, args: string): Promise<string> {
+async function buildCiShipCollectedContext(pi: ExtensionAPI, ctx: ShipContext, args: string): Promise<string> {
 	const explicitJob = parseActionsJobUrl(args.trim());
 	const pullRequest = await resolvePullRequestFromArgs(pi, ctx, args) ?? (explicitJob ? await resolvePullRequestFromJob(pi, ctx.cwd, explicitJob) : null);
 	const sections: string[] = [formatSessionRefs(ctx)];
@@ -568,17 +569,25 @@ async function buildCiShipCollectedContext(pi: ExtensionAPI, ctx: ExtensionComma
 	return sections.join("\n\n---\n\n");
 }
 
-function buildShipPrompt(command: ShipCommandName, args: string, cwd: string, collectedContext = ""): string {
+function buildShipPrompt(command: ShipCommandName, args: string, cwd: string, collectedContext = "", delegationMode: "main" | "subagent" = "main"): string {
 	const skill = readSkill(command);
+	const isSubagent = delegationMode === "subagent";
 	return [
-		"# pilee ship command shim",
+		isSubagent ? "# pilee delegated ship skill for subagent" : "# pilee ship command shim",
 		"",
-		`You are executing \`/${command}${args.trim() ? ` ${args.trim()}` : ""}\` through pilee's extension command shim.`,
+		`You are executing \`/${command}${args.trim() ? ` ${args.trim()}` : ""}\` through pilee's ${isSubagent ? "subagent skill delegation" : "extension command shim"}.`,
 		"",
 		"Hard routing rules:",
 		`- Use the inlined pilee \`${command}\` SKILL.md below as the authoritative workflow for this invocation.`,
 		"- Do not ask the user to re-invoke `/skill:*`; continue now using the inlined instructions.",
+		"- Do not treat this prompt as a literal slash command; slash commands are not executed inside subagent prompt text.",
 		"- Preserve commands, file paths, URLs, and raw logs exactly; user-facing prose should be Korean.",
+		...(isSubagent
+			? [
+				"- You are a subagent branch. Work independently, report concise progress/final result back to the parent, and avoid asking the parent to do mechanical steps you can do yourself.",
+				"- Respect the target skill's write boundaries. If the skill permits commit/push for this workflow, you may perform it; never merge, force-push, resolve review threads, or run external side effects beyond the skill contract.",
+			]
+			: []),
 		"",
 		`Current cwd: ${cwd}`,
 		"",
@@ -595,7 +604,17 @@ function buildShipPrompt(command: ShipCommandName, args: string, cwd: string, co
 	].join("\n");
 }
 
-function sendPrompt(pi: ExtensionAPI, ctx: ExtensionCommandContext, command: ShipCommandName, args: string, prompt: string): void {
+export async function buildShipCommandPromptForSubagent(pi: ExtensionAPI, ctx: ShipContext, command: ShipCommandName, args: string): Promise<string> {
+	if (command === "ship") return buildShipPrompt(command, args, ctx.cwd, "", "subagent");
+	if (command === "pr-ship") {
+		const collectedContext = await buildPrShipCollectedContext(pi, ctx, args);
+		return buildShipPrompt(command, args, ctx.cwd, collectedContext, "subagent");
+	}
+	const collectedContext = await buildCiShipCollectedContext(pi, ctx, args);
+	return buildShipPrompt(command, args, ctx.cwd, collectedContext, "subagent");
+}
+
+function sendPrompt(pi: ExtensionAPI, ctx: ShipContext, command: ShipCommandName, args: string, prompt: string): void {
 	pi.sendMessage(
 		{
 			customType: SHIM_CUSTOM_TYPE,
