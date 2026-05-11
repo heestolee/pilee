@@ -20,6 +20,7 @@ applies_to:
   - show-report
   - extensions/backlog
   - extensions/web-access
+  - extensions/mcp-bridge
 source:
   - pilee-history:2026-05-01#17
   - pilee-history:2026-05-05#47
@@ -29,8 +30,9 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-07-conductor-history-artifact-browser
   - user-direction:2026-05-09-archive-command-name
+  - user-direction:2026-05-11-mcp-digest-first-artifacts
 reviewed_at: 2026-05-11
-reviewed_commit: 55766aa7231850e0c715240fe796224a9dac843c
+reviewed_commit: ce3a59874a681af92ce8276ac799633660a65a8f
 related:
   - live-artifact-preview-pattern
   - backlog-source-session-provenance
@@ -67,11 +69,12 @@ artifact 종류가 늘어나면 한 목록에 섞지 않습니다. `/archive`는
 1. Pi 이력 — `/wt resume`으로 복구한 worktree와 일반 Pi worktree/session을 작업 단위로 묶습니다. 원본 Conductor 세션, Pi 복구 세션, Pi 대화 세션, 복구 컨텍스트, 관련 검증 리포트/Frame/기획 markdown/캡처/웹 검색을 하위 섹션으로 보여줍니다.
 2. 컨덕터 이력 — runtime profile이 지정한 Conductor master DB와 project JSONL roots에 남은 원본 이력을 보여줍니다. `/wt resume` 산출물이 아니라 원본 보존 이력이라는 의미가 중심입니다.
 3. 웹 검색 — web-search review HTML은 verify report와 섞지 않고 별도 artifact class로 둡니다. worktree/session과 연결되는 검색은 해당 Pi 이력 아래에도 노출하고, 연결되지 않는 검색은 웹 검색 기본 그룹에 남깁니다.
-4. 검증 리포트 — verify report HTML처럼 판정이 있는 검증 산출물입니다.
-5. 기획 / Frame — TFT Studio transcript와 `.context/plans`, `.context/work/**/context.md`, `todo.md` 등 planning markdown처럼 생각 과정이나 작업 계획을 남기는 문서입니다.
-6. 캡처 / 미디어 — 아직 리포트로 묶이지 않았거나 원본 확인이 필요한 PNG/JPEG/GIF/WebP/SVG evidence입니다.
+4. MCP — digest-first로 저장된 MCP result artifact입니다. 웹 검색과 같은 “원문 snapshot” 성격이지만, 후속 action identifier를 포함할 수 있으므로 별도 탭으로 둡니다.
+5. 검증 리포트 — verify report HTML처럼 판정이 있는 검증 산출물입니다.
+6. 기획 / Frame — TFT Studio transcript와 `.context/plans`, `.context/work/**/context.md`, `todo.md` 등 planning markdown처럼 생각 과정이나 작업 계획을 남기는 문서입니다.
+7. 캡처 / 미디어 — 아직 리포트로 묶이지 않았거나 원본 확인이 필요한 PNG/JPEG/GIF/WebP/SVG evidence입니다.
 
-이 구분은 “작업 단위 이력”, “판정이 있는 리포트”, “생각 과정 전문”, “해석 전 원자료”를 섞지 않기 위한 정보 구조입니다.
+이 구분은 “작업 단위 이력”, “판정이 있는 리포트”, “생각 과정 전문”, “해석 전 원자료”, “외부 tool 원문 snapshot”을 섞지 않기 위한 정보 구조입니다.
 
 ## Capture Group Rule
 

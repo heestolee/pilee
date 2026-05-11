@@ -120,6 +120,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 |---|---|---:|---:|---:|---|
 | [Deterministic fallback은 workflow를 보존한다](./deterministic-fallbacks-preserve-workflow.md) | active | high | 2026-05-11 | 55766aa | fallback, deterministic, model-failure, resilience, web-search, report |
 | [Embedded WebView script는 escape 경계를 보존한다](./embedded-webview-script-escape-boundary.md) | active | high | 2026-05-11 | 55766aa | webview, embedded-script, escape, string-raw, regex, glimpse |
+| [MCP 결과는 큰 출력만 digest-first로 다룬다](./mcp-digest-first-artifacts.md) | active | high | 2026-05-11 | ce3a598 | mcp, digest-first, artifact, tool-output, lazy-retrieval |
 | [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-05-11 | 55766aa | mcp, stderr, stdio, terminal, tui, noise |
 | [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-05-11 | 55766aa | terminal, ghostty, applescript, notify, host, integration |
 
@@ -131,7 +132,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Editor affordance는 숨은 컨텍스트가 아니다](./editor-affordance-not-context.md) | active | high | 2026-05-11 | 55766aa | editor, footer, prompt-suggest, working-text, affordance, ui |
 | [User-facing 출력은 한국어를 기본으로 한다](./korean-first-user-facing-output.md) | active | high | 2026-05-11 | 55766aa | korean-output, localization, web-search, ui, rewrite, 한국어 |
 | [색상은 정보 위계다](./theme-information-hierarchy.md) | active | high | 2026-05-11 | 55766aa | theme, color, dim, muted, border, accent |
-| [도구 출력은 대화 흐름을 침범하지 않는다](./tool-output-noise-management.md) | active | high | 2026-05-09 | d54d56d | tool-output, collapse, noise, ui, usage, renderer |
+| [도구 출력은 대화 흐름을 침범하지 않는다](./tool-output-noise-management.md) | active | high | 2026-05-11 | ce3a598 | tool-output, collapse, noise, ui, usage, renderer |
 | [TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다](./tui-rendering-sanitization.md) | active | high | 2026-05-11 | 55766aa | tui, rendering, newline, ansi, sanitize, terminal |
 
 ### verification
@@ -155,7 +156,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [검토 산출물은 다시 열 수 있어야 한다](./artifact-archive-reopenability.md) | active | high | 2026-05-11 | 55766aa | artifact, archive, show-report, archive-command, history, html |
+| [검토 산출물은 다시 열 수 있어야 한다](./artifact-archive-reopenability.md) | active | high | 2026-05-11 | ce3a598 | artifact, archive, show-report, archive-command, history, html |
 | [AskUserQuestion은 의사결정 게이트다](./ask-user-question-decision-gates.md) | active | high | 2026-05-11 | 55766aa | ask-user-question, tft, decision-gate, question, non-delegable, 질문 |
 | [AskUserQuestion 옵션은 행동 분기를 표현한다](./ask-user-question-option-design.md) | active | high | 2026-05-11 | 55766aa | ask-user-question, option, wording, ceremony, tft, 질문 |
 | [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | high | 2026-05-11 | 55766aa | backlog, tasks, provenance, source-session, session, 맥락 |
@@ -216,6 +217,7 @@ graph TD
   doc_diff_review_draft_handoff["Diff review draft는 PR 코멘트 전 단계다"]
   doc_deterministic_fallbacks_preserve_workflow["Deterministic fallback은 workflow를 보존한다"]
   doc_embedded_webview_script_escape_boundary["Embedded WebView script는 escape 경계를 보존한다"]
+  doc_mcp_digest_first_artifacts["MCP 결과는 큰 출력만 digest-first로 다룬다"]
   doc_mcp_stderr_isolation["MCP stderr는 TUI 출력이 아니다"]
   doc_terminal_host_integration["터미널 연동은 host adapter로 다룬다"]
   doc_ambient_status_surfaces["Idle UI는 장식이 아니라 ambient status다"]
@@ -330,6 +332,10 @@ graph TD
   doc_embedded_webview_script_escape_boundary --> doc_frame_studio_interactive_decision_ui
   doc_embedded_webview_script_escape_boundary --> doc_live_artifact_preview_pattern
   doc_embedded_webview_script_escape_boundary --> doc_tui_rendering_sanitization
+  doc_mcp_digest_first_artifacts --> doc_artifact_archive_reopenability
+  doc_mcp_digest_first_artifacts --> doc_mcp_stderr_isolation
+  doc_mcp_digest_first_artifacts --> doc_tool_output_noise_management
+  doc_mcp_digest_first_artifacts --> doc_web_search_curator
   doc_mcp_stderr_isolation --> doc_terminal_host_integration
   doc_mcp_stderr_isolation --> doc_tui_rendering_sanitization
   doc_terminal_host_integration --> doc_fork_panel_spatial_continuity
@@ -488,7 +494,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 71
-- Links: 221
+- Documents: 72
+- Links: 225
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
