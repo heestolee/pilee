@@ -3327,6 +3327,7 @@ function buildWebSearchReviewHtml(args: {
 function archiveWebSearchResult(event: ToolResultEvent, ctx: ExtensionContext) {
 	const workflow = String(valueFromRecord(event.details, "workflow") ?? valueFromRecord(event.input, "workflow") ?? "none");
 	if (workflow !== "summary-review") return;
+	if (typeof valueFromRecord(event.details, "artifactPath") === "string") return;
 
 	const content = textContentFromToolResult(event);
 	if (!content) return;

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
@@ -13,6 +13,9 @@ import type { ExtractedContent, QueryResultData, SearchResponse, SearchResult } 
 const TAVILY_SEARCH = "https://api.tavily.com/search";
 const FETCH_TIMEOUT_MS = 30000;
 const CONFIG_PATH = join(homedir(), ".pi", "web-search.json");
+const WEB_ACCESS_ARCHIVE_DIR = join(homedir(), "Documents", "agent-history", "web-search");
+const WEB_SEARCH_SIGNATURE = "Web Search Review";
+const DIGEST_PREVIEW_CHARS = 520;
 
 type SearchWorkflow = "none" | "summary-review";
 
@@ -28,6 +31,16 @@ interface StoredQuery {
 	timestamp: number;
 	response?: SearchResponse;
 	content?: ExtractedContent;
+	artifactPath?: string;
+	rawJsonPath?: string;
+	fullMarkdownPath?: string;
+}
+
+interface WebAccessArtifactRef {
+	path: string;
+	rawJsonPath: string;
+	fullMarkdownPath: string;
+	openCommand: string;
 }
 
 const storedResults = new Map<string, StoredQuery>();
@@ -90,6 +103,190 @@ function formatQueryResults(queryResults: QueryResultData[]): string {
 
 function flattenSources(queryResults: QueryResultData[]): SearchResult[] {
 	return queryResults.flatMap((result) => result.results);
+}
+
+function truncateText(value: string | undefined, maxChars = DIGEST_PREVIEW_CHARS): string {
+	const text = (value ?? "").replace(/\s+/g, " ").trim();
+	if (text.length <= maxChars) return text;
+	return `${text.slice(0, maxChars - 1).trim()}…`;
+}
+
+function escapeHtml(value: string): string {
+	return value
+		.replaceAll("&", "&amp;")
+		.replaceAll("<", "&lt;")
+		.replaceAll(">", "&gt;")
+		.replaceAll('"', "&quot;");
+}
+
+function slugify(value: string): string {
+	return value
+		.toLowerCase()
+		.replace(/https?:\/\//g, "")
+		.replace(/[^a-z0-9가-힣_-]+/gi, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, 72) || "web-access";
+}
+
+function quoteArchivePath(filePath: string): string {
+	return `/archive "${filePath.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+}
+
+function renderPlainMarkdownHtml(markdown: string): string {
+	return `<pre>${escapeHtml(markdown)}</pre>`;
+}
+
+function buildArtifactHtml(args: {
+	title: string;
+	kind: "web_search" | "fetch_content";
+	responseId: string;
+	workflow?: string;
+	queries?: string[];
+	urls?: string[];
+	digest: string;
+	fullText: string;
+	createdAt: Date;
+}): string {
+	const items = args.queries?.length ? args.queries : args.urls ?? [];
+	return `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${WEB_SEARCH_SIGNATURE} — ${escapeHtml(args.title)}</title>
+<style>
+	:root { color-scheme: light dark; --bg:#111827; --panel:#1f2937; --panel2:#0f172a; --text:#f9fafb; --muted:#9ca3af; --line:#374151; --accent:#60a5fa; }
+	body { margin:0; padding:28px; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+	main { max-width:1080px; margin:0 auto; }
+	header { border-bottom:1px solid var(--line); margin-bottom:24px; padding-bottom:18px; }
+	h1 { margin:0 0 8px; font-size:28px; }
+	.meta { display:flex; flex-wrap:wrap; gap:8px; color:var(--muted); font-size:13px; }
+	.badge { border:1px solid var(--line); border-radius:999px; padding:4px 9px; background:rgba(255,255,255,.04); }
+	section { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:20px; margin-bottom:18px; }
+	a { color:var(--accent); }
+	pre { white-space:pre-wrap; overflow:auto; background:var(--panel2); border:1px solid var(--line); border-radius:12px; padding:16px; line-height:1.55; }
+	li { margin:7px 0; }
+	details summary { cursor:pointer; color:var(--accent); font-weight:700; }
+</style>
+</head>
+<body>
+<main>
+<header>
+	<h1>${WEB_SEARCH_SIGNATURE}</h1>
+	<div class="meta">
+		<span class="badge">${escapeHtml(args.createdAt.toLocaleString())}</span>
+		<span class="badge">kind=${escapeHtml(args.kind)}</span>
+		<span class="badge">responseId=${escapeHtml(args.responseId)}</span>
+		${args.workflow ? `<span class="badge">workflow=${escapeHtml(args.workflow)}</span>` : ""}
+	</div>
+</header>
+<section>
+	<h2>${args.queries?.length ? "Queries" : "URLs"}</h2>
+	<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("\n")}</ul>
+</section>
+<section>
+	<h2>Digest returned to Pi</h2>
+	${renderPlainMarkdownHtml(args.digest)}
+</section>
+<section>
+	<details open>
+		<summary>Full stored content / raw-readable text</summary>
+		${renderPlainMarkdownHtml(args.fullText)}
+	</details>
+</section>
+</main>
+</body>
+</html>`;
+}
+
+function writeWebAccessArtifact(args: {
+	responseId: string;
+	kind: "web_search" | "fetch_content";
+	title: string;
+	queries?: string[];
+	urls?: string[];
+	workflow?: string;
+	digest: string;
+	fullText: string;
+	rawData: unknown;
+}): WebAccessArtifactRef | undefined {
+	try {
+		const createdAt = new Date();
+		const timestamp = createdAt.toISOString().replace(/[:.]/g, "-").slice(0, 19);
+		const safeSlug = slugify(args.title || args.responseId);
+		const baseName = `${timestamp}_${args.responseId}_${safeSlug}`;
+		const rawDir = join(WEB_ACCESS_ARCHIVE_DIR, `${baseName}.raw`);
+		mkdirSync(rawDir, { recursive: true });
+		mkdirSync(WEB_ACCESS_ARCHIVE_DIR, { recursive: true });
+		const rawJsonPath = join(rawDir, "raw.json");
+		const fullMarkdownPath = join(rawDir, "full.md");
+		const htmlPath = join(WEB_ACCESS_ARCHIVE_DIR, `${baseName}.html`);
+		writeFileSync(rawJsonPath, `${JSON.stringify(args.rawData, null, 2)}\n`, "utf8");
+		writeFileSync(fullMarkdownPath, args.fullText.endsWith("\n") ? args.fullText : `${args.fullText}\n`, "utf8");
+		writeFileSync(htmlPath, buildArtifactHtml({ ...args, createdAt }), "utf8");
+		return { path: htmlPath, rawJsonPath, fullMarkdownPath, openCommand: quoteArchivePath(htmlPath) };
+	} catch {
+		return undefined;
+	}
+}
+
+function artifactLines(artifact: WebAccessArtifactRef | undefined): string[] {
+	if (!artifact) return ["원문 artifact 저장 실패: 메모리 저장 결과는 이번 세션의 get_search_content로만 조회할 수 있습니다."];
+	return [
+		`원문 artifact: ${artifact.openCommand}`,
+		`raw json: ${artifact.rawJsonPath}`,
+		`full markdown: ${artifact.fullMarkdownPath}`,
+	];
+}
+
+function attachArtifact(responseId: string, artifact: WebAccessArtifactRef | undefined): void {
+	if (!artifact) return;
+	for (const [key, value] of storedResults.entries()) {
+		if (!key.startsWith(`${responseId}:`)) continue;
+		storedResults.set(key, { ...value, artifactPath: artifact.path, rawJsonPath: artifact.rawJsonPath, fullMarkdownPath: artifact.fullMarkdownPath });
+	}
+}
+
+function formatQueryDigest(queryResults: QueryResultData[], responseId: string, artifact?: WebAccessArtifactRef): string {
+	const lines: string[] = ["🔎 웹 검색 완료 — digest-first", `responseId: ${responseId}`, ""];
+	for (const result of queryResults) {
+		lines.push(`### ${result.query}`);
+		if (result.error) {
+			lines.push(`- 오류: ${result.error}`, "");
+			continue;
+		}
+		const preview = truncateText(result.answer);
+		if (preview) lines.push(`- 요약: ${preview}`);
+		else lines.push(`- 요약: Tavily answer 없이 출처 ${result.results.length}개가 반환되었습니다.`);
+		const sources = result.results.slice(0, 6);
+		if (sources.length > 0) {
+			lines.push("- 출처:");
+			for (const source of sources) lines.push(`  - ${source.title} — ${source.url}`);
+			if (result.results.length > sources.length) lines.push(`  - … 외 ${result.results.length - sources.length}개`);
+		}
+		lines.push("");
+	}
+	lines.push("원문/스니펫은 대화 context에 넣지 않고 artifact로 저장했습니다.");
+	lines.push(...artifactLines(artifact));
+	lines.push(`필요 시: get_search_content(responseId="${responseId}", query="...")`);
+	return lines.join("\n").trim();
+}
+
+function formatFetchDigest(results: ExtractedContent[], responseId: string, artifact?: WebAccessArtifactRef): string {
+	const lines: string[] = ["📄 URL fetch 완료 — digest-first", `responseId: ${responseId}`, ""];
+	for (const result of results) {
+		const content = result.content ?? "";
+		const isError = content.startsWith("(fetch error:");
+		lines.push(`### ${result.title ?? result.url}`);
+		lines.push(`- URL: ${result.url}`);
+		lines.push(`- 상태: ${isError ? content : `readable markdown ${content.length.toLocaleString()} chars 저장됨`}`);
+		if (!isError) lines.push(`- 미리보기: ${truncateText(content, 360) || "(본문 없음)"}`);
+		lines.push("");
+	}
+	lines.push("전체 본문은 대화 context에 넣지 않고 artifact로 저장했습니다.");
+	lines.push(...artifactLines(artifact));
+	lines.push(`필요 시: get_search_content(responseId="${responseId}", url="...")`);
+	return lines.join("\n").trim();
 }
 
 async function searchTavily(
@@ -212,38 +409,105 @@ export default function (pi: ExtensionAPI) {
 				});
 
 				if (curated.status === "approved" && curated.summary) {
-					return text(curated.summary, {
+					const selected = curated.selectedResults ?? [];
+					const fullText = [curated.summary, "", "---", "", formatQueryResults(selected)].join("\n");
+					const artifact = writeWebAccessArtifact({
+						responseId,
+						kind: "web_search",
+						title: queries.join(" ") || responseId,
+						queries,
+						workflow,
+						digest: curated.summary,
+						fullText,
+						rawData: { status: curated.status, selected: curated.selected, summaryMeta: curated.summaryMeta, results: selected },
+					});
+					attachArtifact(responseId, artifact);
+					const summaryWithArtifact = `${curated.summary}\n\n---\n${artifactLines(artifact).join("\n")}\n필요 시: get_search_content(responseId="${responseId}", query="...")`;
+					return text(summaryWithArtifact, {
 						responseId,
 						provider: "tavily",
 						workflow,
 						summaryMeta: curated.summaryMeta,
 						selectedCount: curated.selected.length,
+						artifactPath: artifact?.path,
+						rawJsonPath: artifact?.rawJsonPath,
+						fullMarkdownPath: artifact?.fullMarkdownPath,
 					});
 				}
 
 				if (curated.status === "raw") {
 					const selected = curated.selectedResults ?? [];
-					return text(formatQueryResults(selected), {
+					const digest = formatQueryDigest(selected, responseId);
+					const artifact = writeWebAccessArtifact({
+						responseId,
+						kind: "web_search",
+						title: queries.join(" ") || responseId,
+						queries,
+						workflow,
+						digest,
+						fullText: formatQueryResults(selected),
+						rawData: { status: curated.status, selected: curated.selected, results: selected },
+					});
+					attachArtifact(responseId, artifact);
+					return text(formatQueryDigest(selected, responseId, artifact), {
 						responseId,
 						totalResults: flattenSources(selected).length,
 						provider: "tavily",
 						workflow,
 						selectedCount: selected.length,
+						artifactPath: artifact?.path,
+						rawJsonPath: artifact?.rawJsonPath,
+						fullMarkdownPath: artifact?.fullMarkdownPath,
 					});
 				}
 
 				const completedResults = curated.selectedResults ?? [];
-				return text(`Curator ${curated.status}; 완료된 Tavily 결과를 반환합니다.\n\n${formatQueryResults(completedResults)}`, {
+				const digest = `Curator ${curated.status}; 완료된 Tavily 결과 digest입니다.\n\n${formatQueryDigest(completedResults, responseId)}`;
+				const artifact = writeWebAccessArtifact({
+					responseId,
+					kind: "web_search",
+					title: queries.join(" ") || responseId,
+					queries,
+					workflow,
+					digest,
+					fullText: formatQueryResults(completedResults),
+					rawData: { status: curated.status, results: completedResults },
+				});
+				attachArtifact(responseId, artifact);
+				return text(`Curator ${curated.status}; 완료된 Tavily 결과 digest를 반환합니다.\n\n${formatQueryDigest(completedResults, responseId, artifact)}`, {
 					responseId,
 					totalResults: flattenSources(completedResults).length,
 					provider: "tavily",
 					workflow,
+					artifactPath: artifact?.path,
+					rawJsonPath: artifact?.rawJsonPath,
+					fullMarkdownPath: artifact?.fullMarkdownPath,
 				});
 			}
 
 			const queryResults: QueryResultData[] = [];
 			for (const q of queries) queryResults.push(await executeSearch(q));
-			return text(formatQueryResults(queryResults), { responseId, totalResults: flattenSources(queryResults).length, provider: "tavily", workflow: "none" });
+			const digest = formatQueryDigest(queryResults, responseId);
+			const artifact = writeWebAccessArtifact({
+				responseId,
+				kind: "web_search",
+				title: queries.join(" ") || responseId,
+				queries,
+				workflow: "none",
+				digest,
+				fullText: formatQueryResults(queryResults),
+				rawData: { results: queryResults },
+			});
+			attachArtifact(responseId, artifact);
+			return text(formatQueryDigest(queryResults, responseId, artifact), {
+				responseId,
+				totalResults: flattenSources(queryResults).length,
+				provider: "tavily",
+				workflow: "none",
+				artifactPath: artifact?.path,
+				rawJsonPath: artifact?.rawJsonPath,
+				fullMarkdownPath: artifact?.fullMarkdownPath,
+			});
 		},
 	});
 
@@ -266,7 +530,24 @@ export default function (pi: ExtensionAPI) {
 				storedResults.set(`${responseId}:${r.url}`, { id: responseId, url: r.url, timestamp: Date.now(), content: r });
 				sections.push(`## ${r.title ?? r.url}\nURL: ${r.url}\n\n${r.content}`);
 			}
-			return text(sections.join("\n\n---\n\n"), { responseId, urlCount: urls.length });
+			const digest = formatFetchDigest(results, responseId);
+			const artifact = writeWebAccessArtifact({
+				responseId,
+				kind: "fetch_content",
+				title: urls.join(" ") || responseId,
+				urls,
+				digest,
+				fullText: sections.join("\n\n---\n\n"),
+				rawData: { results },
+			});
+			attachArtifact(responseId, artifact);
+			return text(formatFetchDigest(results, responseId, artifact), {
+				responseId,
+				urlCount: urls.length,
+				artifactPath: artifact?.path,
+				rawJsonPath: artifact?.rawJsonPath,
+				fullMarkdownPath: artifact?.fullMarkdownPath,
+			});
 		},
 	});
 
