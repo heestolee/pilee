@@ -807,6 +807,11 @@ function renderMarkdown(md) {
   return html.join('');
 }
 function setStatus(text) { var el = document.getElementById('submitStatus'); if (el) el.textContent = text; }
+function submitShortcutLabel(label) {
+  var base = String(label || '선택 완료').trim() || '선택 완료';
+  if (/⌥|↵|Option\s*\+\s*Enter|Alt\s*\+\s*Enter/i.test(base)) return base;
+  return base + ' (⌥↵)';
+}
 function answerStatusLabel(status) {
   if (status === 'answered') return '선택 완료됨';
   if (status === 'cancelled') return '선택 취소됨';
@@ -832,7 +837,7 @@ function renderQuestionForm(q) {
       return '<label class="option"><input name="frameOption" type="' + type + '" value="' + i + '"><span class="option-number">' + (i + 1) + '</span><span>' + inline(opt) + '</span></label>';
     }).join('') + '</div>'
     + (q.allowText ? '<textarea id="answerText" placeholder="' + esc(q.placeholder || '직접 입력') + '"></textarea>' : '')
-    + '<div class="actions"><button class="primary" onclick="submitAnswer()">' + esc(q.submitLabel || '선택 완료 ⌥↵') + '</button><button class="secondary" onclick="cancelAnswer()">취소</button><span class="status" id="submitStatus"></span></div>'
+    + '<div class="actions"><button class="primary" onclick="submitAnswer()">' + esc(submitShortcutLabel(q.submitLabel)) + '</button><button class="secondary" onclick="cancelAnswer()">취소</button><span class="status" id="submitStatus"></span></div>'
     + '</div>';
 }
 function renderTimelineEntry(entry, s) {
