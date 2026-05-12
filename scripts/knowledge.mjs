@@ -1023,6 +1023,7 @@ const README_EXTENSION_GROUPS = [
 	{ ko: "세션 관리", en: "Session management", items: [
 		{ name: "worktree", ko: "Git worktree 대시보드 — backlog/active/done/archive, 태그, 필터, bootstrapper, 전환", en: "Git worktree dashboard, tags, filters, bootstrapper, and switching" },
 		{ name: "fork-panel", ko: "Ghostty 패널 분할 포크 + `P0/P1/P2` 식별자 + parent inbox(`/panels`) + `/handoff`/`/done` + `/revive`/`/repanel`", en: "Ghostty split panels, `P0/P1/P2` labels, handoff inbox, revive, and repanel" },
+		{ name: "workspace", ko: "Ghostty window/tab/split 작업공간 snapshot 저장·append 복원", en: "Ghostty window/tab/split workspace snapshots and append restore" },
 		{ name: "session-title", ko: "세션 제목 자동 설정", en: "Automatic session titles" },
 	] },
 	{ ko: "UI / UX", en: "UI / UX", items: [

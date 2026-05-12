@@ -130,7 +130,8 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Embedded WebView script는 escape 경계를 보존한다](./embedded-webview-script-escape-boundary.md) | active | high | 2026-05-11 | 55766aa | webview, embedded-script, escape, string-raw, regex, glimpse |
 | [MCP 결과는 큰 출력만 digest-first로 다룬다](./mcp-digest-first-artifacts.md) | active | high | 2026-05-11 | ce3a598 | mcp, digest-first, artifact, tool-output, lazy-retrieval |
 | [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-05-11 | 55766aa | mcp, stderr, stdio, terminal, tui, noise |
-| [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-05-11 | 7b420a7 | terminal, ghostty, applescript, notify, host, integration |
+| [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-05-12 | e6ef5c6 | terminal, ghostty, applescript, notify, host, integration |
+| [터미널 workspace 복원은 snapshot과 host adapter를 분리한다](./terminal-workspace-restore.md) | active | high | 2026-05-12 | e6ef5c6 | workspace, terminal, ghostty, snapshot, restore, session |
 
 ### ui
 
@@ -231,6 +232,7 @@ graph TD
   doc_mcp_digest_first_artifacts["MCP 결과는 큰 출력만 digest-first로 다룬다"]
   doc_mcp_stderr_isolation["MCP stderr는 TUI 출력이 아니다"]
   doc_terminal_host_integration["터미널 연동은 host adapter로 다룬다"]
+  doc_terminal_workspace_restore["터미널 workspace 복원은 snapshot과 host adapter를 분리한다"]
   doc_ambient_status_surfaces["Idle UI는 장식이 아니라 ambient status다"]
   doc_editor_affordance_not_context["Editor affordance는 숨은 컨텍스트가 아니다"]
   doc_korean_first_user_facing_output["User-facing 출력은 한국어를 기본으로 한다"]
@@ -362,7 +364,11 @@ graph TD
   doc_mcp_stderr_isolation --> doc_tui_rendering_sanitization
   doc_terminal_host_integration --> doc_fork_panel_spatial_continuity
   doc_terminal_host_integration --> doc_mcp_stderr_isolation
+  doc_terminal_host_integration --> doc_terminal_workspace_restore
   doc_terminal_host_integration --> doc_theme_information_hierarchy
+  doc_terminal_workspace_restore --> doc_fork_panel_spatial_continuity
+  doc_terminal_workspace_restore --> doc_session_identity_over_filenames
+  doc_terminal_workspace_restore --> doc_terminal_host_integration
   doc_ambient_status_surfaces --> doc_backlog_source_session_provenance
   doc_ambient_status_surfaces --> doc_tool_output_noise_management
   doc_editor_affordance_not_context --> doc_context_loading_minimal_surface
@@ -519,7 +525,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 75
-- Links: 239
+- Documents: 76
+- Links: 243
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
