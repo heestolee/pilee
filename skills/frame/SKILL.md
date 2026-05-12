@@ -23,6 +23,7 @@ description: 작업 시작 전에 구체 질문으로 목표·성공 기준·범
 - `frame.json`에 검증 가능한 성공 기준과 verify plan이 박제됐다.
 - `frame.md`는 `frame.json`에서 재생성 가능한 사람용 mirror다.
 - 의사결정이 필요한 항목은 `kind="frame.decision"` 태스크로 큐잉됐다.
+- work-unit scoped Working Context Card와 work-task board가 현재 slice/결정/검증 초점을 외부 기억장치로 갖는다.
 - Non-delegable / Ask-first 영역이 명시됐다.
 
 **핵심 원칙: frame.json이 없으면 /verify는 의미 있게 동작하지 못한다.**
@@ -169,7 +170,7 @@ Productive Resistance 질문은 반드시 행동형이어야 한다:
 3. `frame.json.tmp`에 쓰고 rename으로 atomic write한다.
 4. `frame.md`는 `frame.json`을 읽어 재생성한다. 직접 편집 원천이 아니다.
 5. `provenance.canonicalHash`를 제외한 canonical payload hash를 계산해 `provenance.canonicalHash`와 Studio transcript 마지막 markdown에 남긴다.
-6. `worktree-meta.json`과 TaskCreate는 canonical write 성공 후 수행한다.
+6. `worktree-meta.json`, `work_context refresh`, TaskCreate는 canonical write 성공 후 수행한다.
 
 불일치가 발견되면 `frame.json`이 우선이다. `frame.md`/transcript는 mirror/provenance로 다시 생성하거나 경고한다.
 
@@ -452,16 +453,28 @@ Draft를 보여줄 때 맨 위에 반드시 다음을 붙인다:
    - decision queue 개수가 맞는지 확인
    - `implementation_plan.status`와 남은 decision queue 상태가 모순되지 않는지 확인
 10. `worktree-meta.json`에 `frame: { path, updatedAt, summary, canonicalHash }` 키 추가
-11. `risk_register` 중 `needs_decision: true` 항목 → 각 항목당 `TaskCreate`:
+11. `work_context action=refresh`로 work-unit scoped Working Context Card를 만든다.
+   - 저장 위치: worktree면 `<worktree>/.pi/work-context.json`, planning/session이면 identity별 state dir
+   - 내용: goal, currentSlice, mustKeep, mustNot, openQuestions, verifyFocus, frame/transcript/tasks refs
+   - 원칙: 전체 transcript를 주입하지 않고 `transcriptRef`/`/archive`는 refs로만 남긴다.
+12. `implementation_plan.slices[]` → 각 항목당 `TaskCreate`:
+   - `kind: "slice"`, `owner: "agent"`
+   - `acceptance`: slice validation
+   - `refs: { sliceId, frame, successCriteria? }`
+13. `risk_register` 중 `needs_decision: true` 항목 → 각 항목당 `TaskCreate`:
+   - `kind: "decision"`, `owner: "user"`
    - `subject`: 결정 제목
    - `description`: 리스크 설명 + 후보 옵션
    - `metadata: { kind: "frame.decision", riskRef, frameVersion }`
-12. `verify_plan.manual_checks` → 각 항목당 `TaskCreate`:
+14. `verify_plan.manual_checks` → 각 항목당 `TaskCreate`:
+    - `kind: "verify"`, `owner: "agent"`
     - `metadata: { kind: "frame.verify_check" }`
-13. TFT Studio를 쓰고 있으면 `frame_studio action=update tab=frame`으로 저장 결과와 Plan synthesis를 남긴다. Step 9의 다음 단계 질문까지 끝난 뒤 **반드시** `frame_studio action=finish tab=frame`으로 닫는다.
+15. TFT Studio를 쓰고 있으면 `frame_studio action=update tab=frame`으로 저장 결과와 Plan synthesis, Working Context Card 요약을 남긴다. Step 9의 다음 단계 질문까지 끝난 뒤 **반드시** `frame_studio action=finish tab=frame`으로 닫는다.
     - `frame.json` path
     - `frame.md` path
     - `canonicalHash`
+    - work-context path
+    - work-task board path
     - queued task count
 
 TFT Studio finish invariant:
@@ -506,6 +519,7 @@ TFT Studio finish invariant:
 | "Productive Resistance는 시간 낭비" | 빈틈 질문 1개가 잘못된 성공 기준으로 1시간 구현하는 것을 막는다. |
 | "테스트만 통과하면 구조 비용은 나중 문제" | AI가 다시 찾기 어려운 shallow module 증가는 다음 변경 비용이다. 지금 고치지 않아도 risk/out_of_scope/follow-up으로 남긴다. |
 | "frame.md만 있으면 충분" | frame.md는 mirror다. `/verify`와 `/decide`가 읽는 단일 원천은 frame.json이다. |
+| "tasks는 agent 내부 todo라 사용자가 안 봐도 됨" | work-task board는 현재 slice/사용자 결정/검증 대기 상태를 외부화하는 인지 도구다. 사용자에게 필요한 항목(owner=user, kind=decision/blocked)을 먼저 보이게 한다. |
 | "Ask first 영역까지 매번 적는 건 과하다" | 결제/보안/PII가 ask_first에 없으면 합리화로 우회된다. 5초로 가장 비싼 사고를 막는다. |
 | "AI가 draft를 잘 만들었으니 사용자는 OK만 누르면 됨" | TFT 실패다. draft 전에 사용자가 볼 렌즈와 실제 분기를 번호형 질문으로 좁힌다. |
 | "모호하니 질문을 여러 개 한 번에 던지자" | Deep Interview 실패다. 가장 큰 불확실성 하나만 골라 `현재 이해 / 막힌 결정 / 추천 답안 / 질문` 카드로 묻는다. |
