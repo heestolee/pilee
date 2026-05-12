@@ -16,8 +16,8 @@ applies_to:
   - skills/systematic-debugging
 source:
   - pilee-history:2026-05-03#32
-reviewed_at: 2026-05-09
-reviewed_commit: b10752d9e7268f12cbd6e41ec1d9567c27073d52
+reviewed_at: 2026-05-12
+reviewed_commit: b3d4dce30c72c41269198130989e0d306ed787a1
 related:
   - context-loading-minimal-surface
   - judgment-doc-unit
