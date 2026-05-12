@@ -97,7 +97,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [백엔드 레이어 맵은 Frame의 초기 이해 게이트다](./backend-layer-map-frame-gate.md) | active | high | 2026-05-12 | ccd8fd9 | frame, tft, backend, resolver, usecase, service |
+| [백엔드 레이어 맵은 Frame의 초기 이해 게이트다](./backend-layer-map-frame-gate.md) | active | high | 2026-05-12 | ce9aacb | frame, tft, backend, resolver, usecase, service |
 | [정책축 스캔은 Frame의 초기 게이트다](./policy-axis-frame-gate.md) | active | high | 2026-05-12 | cdc7362 | frame, tft, policy-axis, campaign, benefits, time-basis |
 
 ### knowledge
@@ -190,7 +190,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Ship과 PR-Ship은 서로 다른 통합 단계다](./ship-pr-ship-review-boundary.md) | active | high | 2026-05-11 | cc28c22 | ship, pr-ship, pr-review, github, commit, push |
 | [Skill은 재사용 가능한 절차다](./skills-as-portable-procedures.md) | active | high | 2026-05-09 | b10752d | skill, skill-creator, procedure, porting, workflow, 스킬 |
 | [Command shim은 skill source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-05-11 | 55766aa | command-shim, skill, tft, frame, slash-command, routing |
-| [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-05-11 | 55766aa | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
+| [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-05-12 | ce9aacb | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
 | [Worktree 생성은 부모 패널의 게이트다](./worktree-creation-parent-gate.md) | active | high | 2026-05-11 | 55766aa | worktree, fork-panel, parent-panel, hotfix, context, profile-driven |
 | [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-05-11 | 55766aa | worktree, dependencies, bootstrap, profile-driven, worker, subagent |

@@ -15,8 +15,8 @@ applies_to:
   - skills/tft-guidelines
 source:
   - user-direction:2026-05-10-tft-visual-db-structure
-reviewed_at: 2026-05-11
-reviewed_commit: 55766aa7231850e0c715240fe796224a9dac843c
+reviewed_at: 2026-05-12
+reviewed_commit: ce9aacb8b2f2cf5d4ec3db510401e63dd4933d5a
 related:
   - frame-studio-interactive-decision-ui
   - frame-verify-contract
