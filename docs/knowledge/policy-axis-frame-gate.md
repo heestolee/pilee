@@ -25,7 +25,7 @@ applies_to:
 source:
   - user-direction:2026-05-12-com-2421-retro
 reviewed_at: 2026-05-12
-reviewed_commit: ee0dc5404f3d8fb60d5103f9d7c9d4d790fef66a
+reviewed_commit: cdc736268af25c65b288e73a1e0d6cb3bd3d1205
 related:
   - frame-verify-contract
   - architecture-friction-tft-lens
