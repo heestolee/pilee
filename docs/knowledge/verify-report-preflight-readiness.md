@@ -17,7 +17,7 @@ applies_to:
 source:
   - user-direction:2026-05-12-verify-report-preflight-skill
 reviewed_at: 2026-05-12
-reviewed_commit: 2be696fa13794936001ee570d3a055c51abef0ac
+reviewed_commit: e7f77ebb96ec0863c3e1fac5007b01d1b25ff186
 related:
   - verify-report-workflow
   - evidence-first-verification-gate
