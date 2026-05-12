@@ -110,6 +110,15 @@ Before every commit:
    - type check command
 ```
 
+If the same validation failure has already been proven unrelated to the current branch, record it as a short-lived known baseline instead of re-debugging it in every worktree.
+
+```bash
+/preflight baseline list
+/preflight baseline add-last "unrelated baseline: <reason>" --expires 14d
+```
+
+A baseline cache entry only separates noise from actionable failures. It does not make a required check pass and must not hide a failure that changed with the current diff.
+
 ## Change Summaries
 
 After finishing a set of changes, provide a structured summary:

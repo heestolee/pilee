@@ -25,6 +25,16 @@ argument-hint: "[base-url] [--upload] [--update] [--ask-before] [--no-workers]"
 - **Main final adjudicator**: subagent는 계획된 evidence를 만들고 의견을 반환할 뿐이다. 최종 `pass`/`fail`/`unverified` 판정, 계획 밖 추가 캡처/재캡처 승인, 사용자 질문, `verify_report_live` 업데이트는 main만 한다.
 - **프리뷰 강제**: HTML 생성 후 Glimpse WebView로 먼저 보여주고, 사용자가 확인한 뒤 다음 행동을 정한다.
 
+## Preflight 선택
+
+검증 축은 필요하지만 데이터/계정/preview/before 기준이 불명확하거나, 작은 hotfix에 full report가 과할 수 있으면 먼저 `/verify-report-preflight`를 사용한다.
+
+- `light`: focused screenshot/log/test 1~2개 또는 `/verify-report --no-workers`로 닫는다.
+- `standard/full`: coverage plan을 확정한 뒤 이 스킬의 live report 흐름으로 들어간다.
+- `blocked`: 캡처를 시작하지 말고 필요한 URL/role/data/side-effect 승인만 사용자에게 요청한다.
+
+Preflight는 PASS 증거가 아니며, 최종 판정은 여전히 이 스킬의 evidence/coverage gate 또는 `/verify` 결과로 닫는다.
+
 ## 모드 (default: confirm-only)
 
 | 모드 | 설명 | 트리거 |

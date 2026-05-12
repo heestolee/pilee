@@ -73,6 +73,20 @@ If slice 1 fails, you discover it before investing in slices 2 and 3.
 
 ## Rules
 
+### Workflow Weight Calibration
+
+작업 절차도 구현처럼 작은 단위여야 한다. 단일 copy/hotfix/리뷰 반영처럼 영향 축이 좁은 작업에 full TFT cycle, 대형 worker fan-out, capture-heavy report를 기본값으로 얹지 않는다.
+
+먼저 작업 무게를 정한다.
+
+| 무게 | 신호 | 절차 |
+|---|---|---|
+| light | 파일 1~2개, route/role/data 1개, side effect 없음 | 짧은 scope lock → focused 수정 → 가장 가까운 검증 1개 → 커밋 |
+| standard | UI/BE/event 중 2~5개 축 | frame/verify 또는 verify-report를 축 수만큼 사용 |
+| full | 다중 role/viewport/before-after/DB/정책 판단 | TFT + worker fan-out + report를 명시 계획 뒤에 사용 |
+
+큰 절차를 쓰는 이유를 한 문장으로 설명할 수 없으면 절차를 줄인다. 반대로 light로 시작했는데 검증 축이 늘어나면 그때 standard/full로 승격한다.
+
 ### Simplicity First
 
 Before writing code, ask: "What is the simplest thing that could work?"

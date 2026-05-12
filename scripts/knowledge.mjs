@@ -1047,7 +1047,7 @@ const README_EXTENSION_GROUPS = [
 		{ name: "memory-layer", ko: "장기 기억 저장/검색", en: "Long-term memory save/search" },
 		{ name: "ember", ko: "불씨(`/ember`) — knowledge 후보 찾기/add/check/refresh friendly entrypoint", en: "Friendly entrypoint for knowledge collect/add/check/refresh" },
 		{ name: "backlog", ko: "`/backlog` TUI — 작업 백로그 관리", en: "Persistent backlog TUI" },
-		{ name: "preflight", ko: "커밋 전 자동 lint/type-check", en: "Pre-commit lint/type-check hooks" },
+		{ name: "preflight", ko: "커밋 전 자동 lint/type-check + known baseline 실패 cache", en: "Pre-commit lint/type-check hooks plus known baseline failure cache" },
 		{ name: "pr-comments", ko: "PR unresolved review comment를 editor에 붙이는 helper", en: "PR unresolved review comment collection helper" },
 		{ name: "pr-review-re-request", ko: "승인되지 않은 PR reviewer/team에게 review re-request", en: "Re-request review from non-approved PR reviewers/teams" },
 		{ name: "until", ko: "반복 작업 추적", en: "Explicit until-loop progress reporting" },
@@ -1086,6 +1086,7 @@ const README_SKILL_GROUPS = [
 		{ name: "pr-ship", ko: "PR 리뷰 코멘트 대응 후 커밋·push·스레드 답글·review re-request까지 수행 (`--push-only` 지원)", en: "Post-PR review response with commit, push, thread reply, review re-request, and `--push-only` mode" },
 		{ name: "ci-ship", ko: "PR CI 실패를 check/log 기반으로 분석해 수정·검증·push", en: "Post-PR CI failure analysis, fix, verification, and push workflow" },
 		{ name: "verify-report", ko: "캡처/네트워크/콘솔/코드 diff 기반 검증 리포트", en: "Capture/evidence-based verification reports" },
+		{ name: "verify-report-preflight", ko: "검증 리포트 전 readiness·작업 무게·차단 조건 점검", en: "Readiness, workflow weight, and blocker check before Verify Report" },
 		{ name: "start-local-dev", ko: "로컬 dev 서버 구동과 진단", en: "Local dev server startup diagnosis" },
 	] },
 ];

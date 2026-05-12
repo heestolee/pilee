@@ -75,6 +75,8 @@ Pi UI가 있고 `frame_studio` tool을 사용할 수 있으면, `/verify`의 사
 2. frame.json 로드 (없으면 사전 조건 동작)
 3. 변경 파일의 diff를 읽음
 
+반복되는 unrelated validation 실패가 있으면 먼저 `/preflight baseline list`로 known baseline인지 확인한다. Known baseline은 최종 보고에서 별도 분리하되, 이번 diff가 같은 실패를 건드렸다면 baseline으로 취급하지 말고 새 실패로 재검증한다.
+
 ### Step 1.5: Generic Risk Lens 선택 + overlay 로드
 
 `references/risk-lenses.md`를 읽고 diff trigger에 맞는 lens를 고른다. 예:

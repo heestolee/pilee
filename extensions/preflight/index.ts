@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, appendFileSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, appendFileSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ThemeColor } from "@mariozechner/pi-coding-agent";
@@ -8,7 +9,9 @@ import { expandProfileTemplate, loadPreflightProfiles, type PreflightCheckProfil
 // ─── Config ────────────────────────────────────────────────────────────────
 
 const LOG_FILE = join(homedir(), ".pi", "agent", "state", "preflight-analytics.jsonl");
+const BASELINE_CACHE_FILE = join(homedir(), ".pi", "agent", "state", "preflight-baseline-cache.json");
 const MAX_LOG_AGE_DAYS = 180;
+const DEFAULT_BASELINE_TTL_DAYS = 30;
 
 interface CheckDef {
 	name: string;
@@ -62,7 +65,7 @@ function configuredBaseBranchCandidates(cwd?: string, remoteUrl?: string): strin
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
-type CheckStatus = "pass" | "fail" | "timeout" | "skip";
+type CheckStatus = "pass" | "fail" | "timeout" | "skip" | "baseline";
 
 interface CheckResult {
 	check: string;
@@ -70,6 +73,23 @@ interface CheckResult {
 	durationMs: number;
 	failSummary?: string;
 	stderr?: string;
+	signature?: string;
+	baselineId?: string;
+	baselineNote?: string;
+}
+
+interface KnownBaselineFailure {
+	id: string;
+	repoKey: string;
+	check: string;
+	signature: string;
+	failSummary: string;
+	note?: string;
+	sourceBranch?: string;
+	createdAt: string;
+	updatedAt: string;
+	expiresAt?: string;
+	hits: number;
 }
 
 interface RunLog {
@@ -77,6 +97,7 @@ interface RunLog {
 	epoch: number;
 	type: "preflight_run";
 	repo: string;
+	repoKey?: string;
 	branch: string;
 	filesChanged: number;
 	filesChangedAreas: string[];
@@ -107,6 +128,202 @@ function readAllLogs(): RunLog[] {
 	} catch {
 		return [];
 	}
+}
+
+
+// ─── Baseline failure cache ────────────────────────────────────────────────
+
+function repoKeyFor(repoRoot: string, remoteUrl?: string): string {
+	const normalizedRemote = (remoteUrl ?? "").trim().toLowerCase().replace(/\.git$/, "");
+	return normalizedRemote || basename(repoRoot).toLowerCase();
+}
+
+function readBaselineCache(): KnownBaselineFailure[] {
+	if (!existsSync(BASELINE_CACHE_FILE)) return [];
+	try {
+		const parsed = JSON.parse(readFileSync(BASELINE_CACHE_FILE, "utf8"));
+		if (!Array.isArray(parsed)) return [];
+		return parsed.filter((entry): entry is KnownBaselineFailure => {
+			return typeof entry?.id === "string" && typeof entry.repoKey === "string" && typeof entry.check === "string" && typeof entry.signature === "string";
+		});
+	} catch {
+		return [];
+	}
+}
+
+function writeBaselineCache(entries: KnownBaselineFailure[]) {
+	try {
+		mkdirSync(dirname(BASELINE_CACHE_FILE), { recursive: true });
+		writeFileSync(BASELINE_CACHE_FILE, `${JSON.stringify(entries, null, 2)}\n`);
+	} catch {}
+}
+
+function baselineExpired(entry: KnownBaselineFailure, now = Date.now()): boolean {
+	if (!entry.expiresAt) return false;
+	const ts = Date.parse(entry.expiresAt);
+	return Number.isFinite(ts) && ts < now;
+}
+
+function normalizeFailureText(text: string): string {
+	const home = homedir().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	return text
+		.replace(/\x1b\[[0-9;]*m/g, "")
+		.replace(new RegExp(home, "g"), "~")
+		.replace(/\b\d+:\d+\b/g, "<line:col>")
+		.replace(/\bline\s+\d+/gi, "line <n>")
+		.replace(/\bcolumn\s+\d+/gi, "column <n>")
+		.replace(/\b0x[0-9a-f]+\b/gi, "<hex>")
+		.replace(/\s+/g, " ")
+		.trim()
+		.slice(0, 1600);
+}
+
+function failureSignature(result: CheckResult): string {
+	const normalized = normalizeFailureText(`${result.check}\n${result.failSummary ?? ""}\n${result.stderr ?? ""}`);
+	return createHash("sha1").update(normalized).digest("hex").slice(0, 16);
+}
+
+function baselineIdFor(check: string, signature: string): string {
+	const prefix = check.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 28) || "check";
+	return `${prefix}-${signature.slice(0, 8)}`;
+}
+
+function annotateBaselineResult(result: CheckResult, repoKey: string, cache: KnownBaselineFailure[], now = Date.now()): CheckResult {
+	if (result.status !== "fail" && result.status !== "timeout") return result;
+	const signature = failureSignature(result);
+	const match = cache.find((entry) => entry.repoKey === repoKey && entry.check === result.check && entry.signature === signature && !baselineExpired(entry, now));
+	if (!match) return { ...result, signature };
+	match.hits = (match.hits ?? 0) + 1;
+	match.updatedAt = new Date(now).toISOString();
+	return {
+		...result,
+		status: "baseline",
+		signature,
+		baselineId: match.id,
+		baselineNote: match.note,
+	};
+}
+
+function defaultBaselineExpiresAt(now = Date.now()): string {
+	return new Date(now + DEFAULT_BASELINE_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function parseExpiresFlag(args: string, now = Date.now()): { cleanedArgs: string; expiresAt: string | undefined } {
+	const match = args.match(/(?:^|\s)--expires(?:=|\s+)(\d+)([dw])?/i);
+	if (!match) return { cleanedArgs: args.trim(), expiresAt: defaultBaselineExpiresAt(now) };
+	const amount = Number(match[1]);
+	const unit = (match[2] ?? "d").toLowerCase();
+	const days = unit === "w" ? amount * 7 : amount;
+	const cleanedArgs = `${args.slice(0, match.index).trim()} ${args.slice((match.index ?? 0) + match[0].length).trim()}`.trim();
+	return { cleanedArgs, expiresAt: Number.isFinite(days) && days > 0 ? new Date(now + days * 24 * 60 * 60 * 1000).toISOString() : undefined };
+}
+
+function upsertBaselineEntry(cache: KnownBaselineFailure[], repoKey: string, result: CheckResult, sourceBranch: string, note?: string, expiresAt?: string): KnownBaselineFailure {
+	const signature = result.signature ?? failureSignature(result);
+	const nowIso = new Date().toISOString();
+	const existing = cache.find((entry) => entry.repoKey === repoKey && entry.check === result.check && entry.signature === signature);
+	if (existing) {
+		existing.updatedAt = nowIso;
+		existing.sourceBranch = sourceBranch;
+		existing.failSummary = result.failSummary ?? existing.failSummary;
+		existing.note = note || existing.note;
+		existing.expiresAt = expiresAt;
+		return existing;
+	}
+	const entry: KnownBaselineFailure = {
+		id: baselineIdFor(result.check, signature),
+		repoKey,
+		check: result.check,
+		signature,
+		failSummary: result.failSummary ?? "Unknown failure",
+		note: note || undefined,
+		sourceBranch,
+		createdAt: nowIso,
+		updatedAt: nowIso,
+		expiresAt,
+		hits: 0,
+	};
+	cache.push(entry);
+	return entry;
+}
+
+function formatBaselineEntry(entry: KnownBaselineFailure): string {
+	const expires = entry.expiresAt ? entry.expiresAt.slice(0, 10) : "no-expiry";
+	const note = entry.note ? ` — ${entry.note}` : "";
+	return `${entry.id} · ${entry.check} · hits ${entry.hits ?? 0} · expires ${expires}\n  ${entry.failSummary.slice(0, 140)}${note}`;
+}
+
+async function handleBaselineCommand(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
+	const trimmed = args.trim();
+	const [subcommandRaw, ...rest] = trimmed.split(/\s+/).filter(Boolean);
+	const subcommand = subcommandRaw || "list";
+	const repo = await getRepoInfo(pi, ctx.cwd);
+	const repoKey = repo ? repoKeyFor(repo.root, repo.remoteUrl) : undefined;
+	const repoLabel = repo ? basename(repo.root) : undefined;
+	let cache = readBaselineCache();
+	const now = Date.now();
+
+	if (subcommand === "help" || subcommand === "--help" || subcommand === "-h") {
+		ctx.ui.notify([
+			"/preflight baseline list — 현재 repo의 known baseline 실패 목록",
+			"/preflight baseline add-last [note] [--expires 14d|2w] — 마지막 preflight 실패를 baseline으로 기록",
+			"/preflight baseline clear <id> — baseline 기록 삭제",
+			"/preflight baseline prune — 만료된 기록 삭제",
+		].join("\n"), "info");
+		return;
+	}
+
+	if (subcommand === "list") {
+		const active = cache.filter((entry) => !baselineExpired(entry, now) && (!repoKey || entry.repoKey === repoKey));
+		if (active.length === 0) {
+			ctx.ui.notify(repoKey ? "현재 repo에 known baseline preflight 실패가 없습니다." : "known baseline preflight 실패가 없습니다.", "info");
+			return;
+		}
+		ctx.ui.notify([`Known baseline failures${repoLabel ? ` — ${repoLabel}` : ""}:`, "", ...active.map(formatBaselineEntry)].join("\n"), "info");
+		return;
+	}
+
+	if (subcommand === "prune") {
+		const before = cache.length;
+		cache = cache.filter((entry) => !baselineExpired(entry, now));
+		writeBaselineCache(cache);
+		ctx.ui.notify(`만료된 baseline ${before - cache.length}개를 정리했습니다.`, "info");
+		return;
+	}
+
+	if (subcommand === "clear") {
+		const id = rest[0];
+		if (!id) { ctx.ui.notify("삭제할 baseline id를 입력하세요. 예: /preflight baseline clear typecheck-abcdef12", "warning"); return; }
+		const before = cache.length;
+		cache = cache.filter((entry) => entry.id !== id);
+		writeBaselineCache(cache);
+		ctx.ui.notify(before === cache.length ? `baseline id를 찾지 못했습니다: ${id}` : `baseline 삭제: ${id}`, before === cache.length ? "warning" : "info");
+		return;
+	}
+
+	if (subcommand === "add-last") {
+		if (!repo || !repoKey) { ctx.ui.notify("baseline add-last는 git repository 안에서 실행해야 합니다.", "error"); return; }
+		const logs = readAllLogs();
+		const lastRun = [...logs].reverse().find((log) => {
+			return (log.repoKey && log.repoKey === repoKey) || (!log.repoKey && log.repo === repoLabel);
+		});
+		if (!lastRun) { ctx.ui.notify("현재 repo의 preflight 실행 기록이 없습니다.", "warning"); return; }
+		const failures = lastRun.results.filter((result) => result.status === "fail" || result.status === "timeout");
+		if (failures.length === 0) { ctx.ui.notify("마지막 preflight에 baseline으로 기록할 실패가 없습니다.", "info"); return; }
+		const noteArgs = parseExpiresFlag(rest.join(" "), now);
+		const note = noteArgs.cleanedArgs || undefined;
+		const added = failures.map((result) => upsertBaselineEntry(cache, repoKey, result, lastRun.branch || repo.branch, note, noteArgs.expiresAt));
+		writeBaselineCache(cache);
+		ctx.ui.notify([
+			`${added.length}개 preflight 실패를 known baseline으로 기록했습니다.`,
+			`다음 실행부터 같은 signature는 자동 분석 대상에서 제외됩니다.`,
+			"",
+			...added.map(formatBaselineEntry),
+		].join("\n"), "info");
+		return;
+	}
+
+	ctx.ui.notify(`알 수 없는 baseline subcommand: ${subcommand}\n/preflight baseline help를 확인하세요.`, "warning");
 }
 
 // ─── Git helpers ───────────────────────────────────────────────────────────
@@ -236,21 +453,25 @@ function formatDuration(ms: number): string {
 
 function formatResults(results: CheckResult[], totalDuration: number): string {
 	const passed = results.filter((r) => r.status === "pass").length;
+	const baseline = results.filter((r) => r.status === "baseline").length;
 	const total = results.length;
+	const failures = results.filter((r) => r.status === "fail" || r.status === "timeout");
 
 	const lines: string[] = [];
-	lines.push(`✅ Preflight ${passed}/${total} passed (${formatDuration(totalDuration)})`);
+	const prefix = failures.length === 0 ? "✅" : "⚠️";
+	lines.push(`${prefix} Preflight ${passed}/${total} passed${baseline ? ` · ${baseline} known baseline` : ""} (${formatDuration(totalDuration)})`);
 	lines.push("");
 
 	for (const r of results) {
-		const icon = r.status === "pass" ? "✓" : r.status === "skip" ? "⊘" : "✗";
-		lines.push(`${icon} ${r.check.padEnd(22)} ${formatDuration(r.durationMs).padStart(8)}${r.failSummary ? ` — ${r.failSummary.slice(0, 100)}` : ""}`);
+		const icon = r.status === "pass" ? "✓" : r.status === "skip" ? "⊘" : r.status === "baseline" ? "≈" : "✗";
+		const baselineSuffix = r.status === "baseline" ? ` [baseline:${r.baselineId ?? r.signature ?? "known"}]${r.baselineNote ? ` ${r.baselineNote}` : ""}` : "";
+		lines.push(`${icon} ${r.check.padEnd(22)} ${formatDuration(r.durationMs).padStart(8)}${r.failSummary ? ` — ${r.failSummary.slice(0, 100)}` : ""}${baselineSuffix}`);
 	}
 
-	const failures = results.filter((r) => r.status === "fail" || r.status === "timeout");
 	if (failures.length > 0) {
 		lines.push("");
 		lines.push(`Failed: ${failures.map((f) => f.check).join(", ")}`);
+		lines.push(`반복되는 baseline 실패라면: /preflight baseline add-last <이유>`);
 	}
 
 	return lines.join("\n");
@@ -263,6 +484,11 @@ async function handlePreflight(pi: ExtensionAPI, args: string, ctx: ExtensionCom
 
 	if (trimmed === "stats") {
 		await showStatsOverlay(ctx);
+		return;
+	}
+
+	if (trimmed === "baseline" || trimmed.startsWith("baseline ")) {
+		await handleBaselineCommand(pi, trimmed.replace(/^baseline\s*/, ""), ctx);
 		return;
 	}
 
@@ -299,14 +525,17 @@ async function handlePreflight(pi: ExtensionAPI, args: string, ctx: ExtensionCom
 
 	const start = Date.now();
 	const results: CheckResult[] = [];
+	const baselineCache = readBaselineCache();
+	const repoKey = repoKeyFor(repo.root, repo.remoteUrl);
 
 	// Run sequentially with progress notification
 	for (const check of planned) {
 		ctx.ui.setStatus("preflight", `running ${check.name}…`);
 		const result = await runCheck(pi, check, repo.root);
-		results.push(result);
+		results.push(annotateBaselineResult(result, repoKey, baselineCache));
 		ctx.ui.setStatus("preflight", undefined);
 	}
+	if (results.some((result) => result.status === "baseline")) writeBaselineCache(baselineCache);
 
 	const totalDuration = Date.now() - start;
 	const repoName = repo.root.split("/").pop() ?? "unknown";
@@ -317,6 +546,7 @@ async function handlePreflight(pi: ExtensionAPI, args: string, ctx: ExtensionCom
 		epoch: Date.now(),
 		type: "preflight_run",
 		repo: repoName,
+		repoKey,
 		branch: repo.branch,
 		filesChanged: changedFiles.length,
 		filesChangedAreas: areas,
@@ -327,10 +557,11 @@ async function handlePreflight(pi: ExtensionAPI, args: string, ctx: ExtensionCom
 
 	// Display summary
 	const summary = formatResults(results, totalDuration);
-	ctx.ui.notify(summary, results.every((r) => r.status === "pass") ? "info" : "warning");
+	const actionableFailures = results.filter((r) => r.status === "fail" || r.status === "timeout");
+	ctx.ui.notify(summary, actionableFailures.length === 0 ? "info" : "warning");
 
-	// Auto-analysis if failures
-	const failures = results.filter((r) => r.status === "fail" || r.status === "timeout");
+	// Auto-analysis if actionable failures remain. Known baseline failures stay visible but do not re-open the repair loop.
+	const failures = actionableFailures;
 	if (failures.length > 0 && !skipAnalysis) {
 		const analysisPrompt = buildAnalysisPrompt(failures, changedFiles, repo.branch);
 		pi.sendUserMessage(analysisPrompt, { deliverAs: "followUp" });
@@ -393,7 +624,7 @@ function renderOverview(logs: RunLog[], period: Period, theme: { fg: (c: ThemeCo
 
 	const total = filtered.length;
 	const allResults = filtered.flatMap((l) => l.results);
-	const passed = filtered.filter((l) => l.results.every((r) => r.status === "pass")).length;
+	const passed = filtered.filter((l) => l.results.every((r) => r.status === "pass" || r.status === "baseline")).length;
 	const avgDuration = filtered.reduce((s, l) => s + l.durationTotalMs, 0) / total;
 
 	const lines: string[] = [];
@@ -442,11 +673,12 @@ function renderChecks(logs: RunLog[], period: Period, theme: { fg: (c: ThemeColo
 	const filtered = filterByPeriod(logs, period);
 	const allResults = filtered.flatMap((l) => l.results);
 
-	const stats = new Map<string, { count: number; pass: number; fail: number; totalMs: number; minMs: number; maxMs: number }>();
+	const stats = new Map<string, { count: number; pass: number; baseline: number; fail: number; totalMs: number; minMs: number; maxMs: number }>();
 	for (const r of allResults) {
-		const cur = stats.get(r.check) ?? { count: 0, pass: 0, fail: 0, totalMs: 0, minMs: Number.POSITIVE_INFINITY, maxMs: 0 };
+		const cur = stats.get(r.check) ?? { count: 0, pass: 0, baseline: 0, fail: 0, totalMs: 0, minMs: Number.POSITIVE_INFINITY, maxMs: 0 };
 		cur.count++;
 		if (r.status === "pass") cur.pass++;
+		else if (r.status === "baseline") cur.baseline++;
 		else cur.fail++;
 		cur.totalMs += r.durationMs;
 		cur.minMs = Math.min(cur.minMs, r.durationMs);
@@ -457,13 +689,14 @@ function renderChecks(logs: RunLog[], period: Period, theme: { fg: (c: ThemeColo
 	const lines: string[] = [];
 	if (stats.size === 0) return [theme.fg("border", `데이터 없음`)];
 
-	lines.push("체크".padEnd(22) + "실행".padStart(6) + "성공".padStart(6) + "실패".padStart(6) + "평균".padStart(10) + "최소".padStart(10) + "최대".padStart(10));
+	lines.push("체크".padEnd(22) + "실행".padStart(6) + "성공".padStart(6) + "베이스".padStart(8) + "실패".padStart(6) + "평균".padStart(10) + "최소".padStart(10) + "최대".padStart(10));
 	for (const [name, s] of [...stats.entries()].sort((a, b) => b[1].count - a[1].count)) {
 		const avg = s.totalMs / s.count;
 		lines.push(
 			name.padEnd(22) +
 			String(s.count).padStart(6) +
 			theme.fg("success", String(s.pass).padStart(6)) +
+			theme.fg("warning", String(s.baseline).padStart(8)) +
 			theme.fg(s.fail > 0 ? "error" : "muted", String(s.fail).padStart(6)) +
 			formatDuration(avg).padStart(10) +
 			formatDuration(s.minMs).padStart(10) +
@@ -581,7 +814,7 @@ async function showStatsOverlay(ctx: ExtensionCommandContext) {
 
 export default function (pi: ExtensionAPI) {
 	pi.registerCommand("preflight", {
-		description: "Run CI-equivalent checks locally (smart selection by changed files). Subcommand: stats",
+		description: "Run CI-equivalent checks locally. Subcommands: stats, baseline list/add-last/clear/prune",
 		handler: (args, ctx) => handlePreflight(pi, args, ctx),
 	});
 }

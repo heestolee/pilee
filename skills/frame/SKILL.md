@@ -31,6 +31,18 @@ description: 작업 시작 전에 구체 질문으로 목표·성공 기준·범
 
 ## Invariants
 
+### 0-0. 작업 무게 보정 게이트
+
+`/frame`은 모든 작업을 full TFT로 키우는 명령이 아니다. 시작할 때 먼저 작업 무게를 가볍게 분류한다.
+
+| 무게 | 신호 | frame 깊이 |
+|---|---|---|
+| light | 단일 hotfix/copy/style, 영향 파일·route가 작고 side effect 없음 | 목표/범위/검증 축 한 번만 잠그고 바로 실행 |
+| standard | UI/BE/event 중 여러 축이 있음 | 기본 frame + 필요한 결정/verify plan |
+| full | 정책·DB·다중 role/viewport/before-after·릴리즈 리스크 | 정책축/레이어맵/decide/verify-report까지 풍부하게 사용 |
+
+사용자가 “간단한 hotfix”, “빨리”, “문구만”, “이거 하나만”처럼 좁은 의도를 주면, 먼저 light frame으로 시작한다. 진행 중 검증 축이나 위험이 늘어나면 standard/full로 승격하되, 승격 이유를 한 문장으로 적는다.
+
 ### 0-A. 정책축 스캔 게이트
 
 `/frame`은 티켓의 개별 룰을 나열하기 전에, 그 룰들이 충돌하거나 확장될 **정책축**을 먼저 스캔한다. 다음 도메인이 보이면 Step 2에서 정책축 스캔을 반드시 수행하고, Step 3/4 질문 후보에 반영한다.

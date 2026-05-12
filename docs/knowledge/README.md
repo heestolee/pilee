@@ -150,7 +150,9 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 |---|---|---:|---:|---:|---|
 | [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-05-11 | 55766aa | verify, evidence, gate, done, ready, verification |
 | [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-05-11 | 55766aa | frame, verify, frame-json, success-criteria, contract, verification |
+| [반복 검증 실패는 baseline cache로 분리한다](./validation-baseline-failure-cache.md) | active | high | 2026-05-12 | 3698bb2 | preflight, validation, baseline, failure, cache, verification |
 | [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-05-11 | 55766aa | verify, invalidation, code-change, freshness, gate, 검증 |
+| [Verify Report 전에는 readiness를 먼저 잠근다](./verify-report-preflight-readiness.md) | active | high | 2026-05-12 | 3698bb2 | verify-report, preflight, readiness, capture, data, account |
 | [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | active | high | 2026-05-11 | f1efffe | verify-report, verification, evidence, coverage, capture, crop |
 | [Verify risk lens는 generic core와 private overlay로 나눈다](./verify-risk-lens-overlay.md) | active | high | 2026-05-11 | 55766aa | verify, risk-lens, overlay, private-overlay, verification, domain-check |
 
@@ -196,6 +198,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-05-12 | 0dfb4c8 | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
 | [TUI 질문은 작은 의사결정 게이트다](./tui-ask-decision-overlay.md) | active | high | 2026-05-12 | 1b80abf | tui, ask-user-question, decision-gate, tool, overlay |
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
+| [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-05-12 | 3698bb2 | workflow, frame, tft, hotfix, scope, incremental |
 | [Worktree 생성은 부모 패널의 게이트다](./worktree-creation-parent-gate.md) | active | high | 2026-05-12 | b50b0ef | worktree, fork-panel, parent-panel, hotfix, context, profile-driven |
 | [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-05-12 | b168291 | worktree, dependencies, bootstrap, profile-driven, worker, subagent |
 | [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-05-11 | 55766aa | worktree, workspace, repo, branch, execution-boundary, cwd-binding |
@@ -244,7 +247,9 @@ graph TD
   doc_tui_rendering_sanitization["TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다"]
   doc_evidence_first_verification_gate["완료 선언은 증거 뒤에만 온다"]
   doc_frame_verify_contract["Frame과 Verify는 구조화 계약이다"]
+  doc_validation_baseline_failure_cache["반복 검증 실패는 baseline cache로 분리한다"]
   doc_verification_invalidation_on_change["검증 중 코드 변경은 이전 검증을 무효화한다"]
+  doc_verify_report_preflight_readiness["Verify Report 전에는 readiness를 먼저 잠근다"]
   doc_verify_report_workflow["Verify Report와 coverage-aware 증거 검증 흐름"]
   doc_verify_risk_lens_overlay["Verify risk lens는 generic core와 private overlay로 나눈다"]
   doc_curator_approved_source_selection["웹 검색은 승인된 출처 선택을 거친다"]
@@ -280,6 +285,7 @@ graph TD
   doc_tft_visual_structure_renderer["TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다"]
   doc_tui_ask_decision_overlay["TUI 질문은 작은 의사결정 게이트다"]
   doc_until_loop_explicit_reporting["Until loop는 종료 조건을 명시 보고한다"]
+  doc_workflow_weight_proportionality["작업 절차의 무게는 변경 리스크에 비례해야 한다"]
   doc_worktree_creation_parent_gate["Worktree 생성은 부모 패널의 게이트다"]
   doc_worktree_dependency_bootstrap_worker["Worktree 의존성 준비는 조건부 worker가 맡는다"]
   doc_worktree_execution_boundary["Worktree는 실행 경계다"]
@@ -401,8 +407,16 @@ graph TD
   doc_frame_verify_contract --> doc_frame_plan_synthesis_continuity
   doc_frame_verify_contract --> doc_verification_invalidation_on_change
   doc_frame_verify_contract --> doc_verify_risk_lens_overlay
+  doc_validation_baseline_failure_cache --> doc_deterministic_fallbacks_preserve_workflow
+  doc_validation_baseline_failure_cache --> doc_evidence_first_verification_gate
+  doc_validation_baseline_failure_cache --> doc_root_cause_before_fix
+  doc_validation_baseline_failure_cache --> doc_worktree_session_continuity
   doc_verification_invalidation_on_change --> doc_evidence_first_verification_gate
   doc_verification_invalidation_on_change --> doc_frame_verify_contract
+  doc_verify_report_preflight_readiness --> doc_evidence_first_verification_gate
+  doc_verify_report_preflight_readiness --> doc_live_artifact_preview_pattern
+  doc_verify_report_preflight_readiness --> doc_private_overlay_package_boundary
+  doc_verify_report_preflight_readiness --> doc_verify_report_workflow
   doc_verify_report_workflow --> doc_artifact_archive_reopenability
   doc_verify_report_workflow --> doc_evidence_first_verification_gate
   doc_verify_report_workflow --> doc_live_artifact_preview_pattern
@@ -525,6 +539,10 @@ graph TD
   doc_tui_ask_decision_overlay --> doc_tui_rendering_sanitization
   doc_until_loop_explicit_reporting --> doc_deterministic_vs_ai_actions
   doc_until_loop_explicit_reporting --> doc_evidence_first_verification_gate
+  doc_workflow_weight_proportionality --> doc_frame_verify_contract
+  doc_workflow_weight_proportionality --> doc_request_traceability_surgical_changes
+  doc_workflow_weight_proportionality --> doc_verify_report_preflight_readiness
+  doc_workflow_weight_proportionality --> doc_worktree_session_continuity
   doc_worktree_creation_parent_gate --> doc_worktree_execution_boundary
   doc_worktree_creation_parent_gate --> doc_worktree_session_continuity
   doc_worktree_dependency_bootstrap_worker --> doc_subagent_model_policy
@@ -541,7 +559,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 79
-- Links: 253
+- Documents: 82
+- Links: 265
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
