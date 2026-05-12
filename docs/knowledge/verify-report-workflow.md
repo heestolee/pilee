@@ -35,7 +35,7 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-feedback:2026-05-11-detail-readability
 reviewed_at: 2026-05-12
-reviewed_commit: 7a09453bb3b9bb95c36883f55ccdc6210cd59959
+reviewed_commit: fc6ffa9aaa2a87275a50c2888d6ca4bbe0255cf6
 related:
   - pilee-knowledge-system
   - web-search-curator
