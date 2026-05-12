@@ -18,7 +18,7 @@ applies_to:
 source:
   - user-direction:2026-05-12-pilee-final-check
 reviewed_at: 2026-05-12
-reviewed_commit: fd5aaa5192e7bb7ddb0fe9197983780a83f3b16f
+reviewed_commit: 7c7b8a50645214e2034727b7b0bc9c07589dc360
 related:
   - request-traceability-surgical-changes
   - evidence-first-verification-gate
