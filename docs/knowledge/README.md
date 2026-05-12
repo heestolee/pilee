@@ -162,7 +162,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [웹 검색은 승인된 출처 선택을 거친다](./curator-approved-source-selection.md) | active | high | 2026-05-12 | b01add4 | web-search, curator, source-selection, approval, tavily, 검색 |
-| [Web Search curator와 승인형 요약 흐름](./web-search-curator.md) | active | high | 2026-05-11 | c340ade | web-search, tavily, curator, glimpse, summary-review, korean-output |
+| [Web Search curator와 승인형 요약 흐름](./web-search-curator.md) | active | high | 2026-05-12 | 9048804 | web-search, tavily, curator, glimpse, summary-review, korean-output |
 
 ### workflow
 
@@ -200,10 +200,10 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [TUI 질문은 작은 의사결정 게이트다](./tui-ask-decision-overlay.md) | active | high | 2026-05-12 | 1b80abf | tui, ask-user-question, decision-gate, tool, overlay |
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
 | [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-05-12 | 566dc2a | workflow, guard, intent, audit, hotfix, continuation |
-| [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-05-12 | 7a09453 | workflow, frame, tft, hotfix, scope, incremental |
+| [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-05-12 | 9048804 | workflow, frame, tft, hotfix, scope, incremental |
 | [Worktree 생성은 부모 패널의 게이트다](./worktree-creation-parent-gate.md) | active | high | 2026-05-12 | b50b0ef | worktree, fork-panel, parent-panel, hotfix, context, profile-driven |
-| [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-05-12 | b168291 | worktree, dependencies, bootstrap, profile-driven, worker, subagent |
-| [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-05-11 | 55766aa | worktree, workspace, repo, branch, execution-boundary, cwd-binding |
+| [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-05-12 | 9048804 | worktree, dependencies, bootstrap, profile-driven, worker, subagent |
+| [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-05-12 | 9048804 | worktree, workspace, repo, branch, execution-boundary, cwd-binding |
 | [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-05-12 | b50b0ef | worktree, session, revive, fork-panel, panel-inbox, handoff |
 
 ## Knowledge Map
