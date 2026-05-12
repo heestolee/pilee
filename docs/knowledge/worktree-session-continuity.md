@@ -62,7 +62,7 @@ fork-panel에서 종료된 대화는 transcript를 주입하는 것보다 세션
 
 기본 진입점은 `/wt switch`입니다. 사용자가 작업공간으로 돌아간다는 것은 “워크트리만 이동”이 아니라 “그 워크트리 안에서 이어갈 세션을 고른다”는 뜻이므로, `/wt switch`는 워크트리 선택 다음에 해당 worktree session picker까지 이어져야 합니다. `/wt sessions`는 독립 UX가 아니라 호환 alias로 남겨 같은 session picker 흐름을 호출합니다.
 
-`/wt resume <workspace>`는 Conductor workspace 하나를 선택한 세션만 복구하지 않습니다. 해당 workspace의 Conductor 세션 전체를 Pi session으로 hydrate하고, 각 변환 세션에 source metadata를 남겨 재실행 시 중복 변환을 피합니다. hydrate가 끝나면 `/wt switch <workspace>`와 같은 세션 선택 흐름으로 이어져야 합니다.
+`/wt resume <workspace>`는 Conductor workspace 하나를 선택한 세션만 복구하지 않습니다. 해당 workspace의 Conductor 세션 전체를 Pi session으로 hydrate하고, 각 변환 세션에 source metadata를 남겨 재실행 시 중복 변환을 피합니다. hydrate가 끝나면 `/wt switch <workspace>`와 같은 세션 선택 흐름으로 이어져야 합니다. 복구된 Pi session 자체가 원본 transcript를 갖고 있으므로, workspace-level `conductor-context.md`가 특정 active Conductor session 요약을 다음 turn에 잘못 주입하지 않도록 `.loaded.md`로 보존 처리합니다.
 
 `/revive`는 전역 회수 도구입니다. P0/P1/P2 패널, 전체 Pi 세션, split/tab 복구처럼 “어디 있던 세션인지 모르지만 되살린다”가 목적입니다. 반면 `/wt switch`는 “이 worktree로 돌아가 이어 한다”는 작업공간 중심 진입점입니다. 세션 목록 기능이 겹치더라도 사용자가 기억해야 할 기본 명령은 `/wt switch`와 `/revive` 두 개로 줄입니다.
 

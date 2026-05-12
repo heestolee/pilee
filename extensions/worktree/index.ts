@@ -564,6 +564,19 @@ function prefillSwitchCommand(ctx: ExtensionContext, command: string): boolean {
 	return true;
 }
 
+function markConductorContextLoaded(worktreePath: string): boolean {
+	const contextFile = join(worktreePath, ".pi", "conductor-context.md");
+	if (!existsSync(contextFile)) return false;
+	const loadedFile = contextFile.replace(".md", ".loaded.md");
+	try {
+		rmSync(loadedFile, { force: true });
+		renameSync(contextFile, loadedFile);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 function worktreeCwdBindingMessage(wtName: string, wtPath: string, branch: string, contextLabel = ""): string {
 	return [
 		"## Worktree cwd binding",
@@ -1654,8 +1667,12 @@ async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string
 	if (framePromotion.status === "promoted") ctx.ui.notify(`✓ planning frame promoted to ${wtName}/.pi/frame.json`, "info");
 	else if (framePromotion.status === "error") ctx.ui.notify(`Frame promotion skipped: ${framePromotion.error}`, "warning");
 
+	let conductorHydration: ConductorHydrationResult | null = null;
 	if (options.hydrateConductor !== false) {
-		await hydrateConductorSessionsForWorktree(pi, ctx, wtName, wtPath, { notifyAlways: options.notifyConductorHydration });
+		conductorHydration = await hydrateConductorSessionsForWorktree(pi, ctx, wtName, wtPath, { notifyAlways: options.notifyConductorHydration });
+		if (conductorHydration.created.length > 0 || conductorHydration.existing.length > 0) {
+			markConductorContextLoaded(wtPath);
+		}
 	}
 
 	const sessionDir = sessionDirForWorktree(wtPath);
