@@ -810,8 +810,10 @@ function renderMarkdown(md) {
 function setStatus(text) { var el = document.getElementById('submitStatus'); if (el) el.textContent = text; }
 function submitShortcutLabel(label) {
   var base = String(label || '선택 완료').trim() || '선택 완료';
-  if (/⌥|↵|Option\s*\+\s*Enter|Alt\s*\+\s*Enter/i.test(base)) return base;
-  return base + ' (⌥↵)';
+  base = base.replace(/\s*\((?:⌥↵|Option\s*\+\s*Enter|Alt\s*\+\s*Enter)\)\s*$/i, '');
+  base = base.replace(/⌥↵|Option\s*\+\s*Enter|Alt\s*\+\s*Enter/ig, '⌘↵');
+  if (/⌘|Command\s*\+\s*Enter|Cmd\s*\+\s*Enter|Meta\s*\+\s*Enter/i.test(base)) return base;
+  return base + ' (⌘↵)';
 }
 function answerStatusLabel(status) {
   if (status === 'answered') return '선택 완료됨';
@@ -987,18 +989,45 @@ async function submitAnswer(cancelled) {
   } catch (e) { setStatus('전송 실패: ' + e.message); submitInFlight = false; }
 }
 function cancelAnswer() { submitAnswer(true); }
-function isSubmitShortcut(event) {
-  if (!event || event.isComposing) return false;
+function isEnterKey(event) {
+  if (!event) return false;
   var key = event.key || '';
   var code = event.code || '';
-  return event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey && (key === 'Enter' || key === 'NumpadEnter' || code === 'Enter' || code === 'NumpadEnter');
+  return key === 'Enter' || key === 'NumpadEnter' || code === 'Enter' || code === 'NumpadEnter';
+}
+function isSubmitShortcut(event) {
+  if (!event || event.isComposing || !isEnterKey(event)) return false;
+  return event.metaKey && !event.altKey && !event.ctrlKey && !event.shiftKey;
+}
+function isLegacyAltSubmitShortcut(event) {
+  if (!event || event.isComposing || !isEnterKey(event)) return false;
+  return event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey;
+}
+function suppressShortcutEvent(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+}
+function hasPendingQuestion() {
+  return !!(state && state.status === 'awaiting' && state.question);
 }
 document.addEventListener('keydown', function(event) {
-  if (!isSubmitShortcut(event)) return;
-  if (!state || state.status !== 'awaiting' || !state.question) return;
-  event.preventDefault();
-  submitAnswer(false);
-});
+  if (!hasPendingQuestion()) return;
+  if (isSubmitShortcut(event)) {
+    suppressShortcutEvent(event);
+    submitAnswer(false);
+    return;
+  }
+  if (isLegacyAltSubmitShortcut(event)) {
+    suppressShortcutEvent(event);
+    var active = document.activeElement;
+    if (active && typeof active.blur === 'function') active.blur();
+    setTimeout(function() { submitAnswer(false); }, 0);
+  }
+}, true);
+document.addEventListener('keyup', function(event) {
+  if (hasPendingQuestion() && isLegacyAltSubmitShortcut(event)) suppressShortcutEvent(event);
+}, true);
 var es = new EventSource('/events');
 es.onmessage = function(ev) { render(JSON.parse(ev.data)); };
 es.onerror = function() { setTimeout(function(){ location.reload(); }, 2000); };
