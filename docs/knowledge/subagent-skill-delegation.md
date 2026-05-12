@@ -18,8 +18,8 @@ applies_to:
   - skills/ci-ship
 source:
   - user-direction:2026-05-11-subagent-skill-delegation
-reviewed_at: 2026-05-11
-reviewed_commit: cc28c22511766310a6658107869fb264e5cf476e
+reviewed_at: 2026-05-12
+reviewed_commit: c82cbb080aa012fe0dfd135d37d099821dd70e23
 related:
   - queued-command-prefill-boundary
   - ship-pr-ship-review-boundary
