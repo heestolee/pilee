@@ -15,7 +15,7 @@ applies_to:
   - skills/tft-guidelines
 source: public
 reviewed_at: 2026-05-12
-reviewed_commit: d046a701ec838ba23a2f30dde2ea962cc215ecf3
+reviewed_commit: 1b80abf242fd77f85d0a3146d68edec3f92780a5
 related:
   - ask-user-question-decision-gates
   - ask-user-question-option-design
