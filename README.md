@@ -133,9 +133,10 @@ Ctrl+W                       → 전체 워크트리 오버레이
 /wt new                      → 새 워크트리 (깨끗한 세션)
 /wt new --carry-context      → 현재 세션 전체를 이어받아 새 워크트리
 /wt fork                     → /wt new --carry-context 별도 UX
-/wt resume <name>            → Conductor 워크스페이스 복원
+/wt resume <name>            → Conductor 워크스페이스 복원 + 전체 세션 hydrate
 /wt bootstrap [status]       → profile 기반 의존성 AI orchestrator + executor
-/wt switch                   → 워크트리 전환 (세션 + cwd 자동 변경)
+/wt switch                   → 워크트리 선택 → 세션 선택 → cwd 전환
+/wt sessions                 → 호환 alias: 현재/선택 워크트리의 /wt switch 세션 선택 흐름
 ```
 
 에이전트 tool(`worktree_create`/`worktree_fork`)은 slash command를 직접 실행할 수 없으므로

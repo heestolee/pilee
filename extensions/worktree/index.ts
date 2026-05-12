@@ -489,10 +489,14 @@ function parseNewArgs(args: string): NewArgs {
 	return result;
 }
 
+function sessionDirForWorktree(worktreePath: string): string {
+	const pathEncoded = "--" + worktreePath.slice(1).replace(/\//g, "-") + "--";
+	return join(homedir(), ".pi", "agent", "sessions", pathEncoded);
+}
+
 function createEmptySessionFile(worktreePath: string): string {
 	const sessionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-	const pathEncoded = "--" + worktreePath.slice(1).replace(/\//g, "-") + "--";
-	const sessionDir = join(homedir(), ".pi", "agent", "sessions", pathEncoded);
+	const sessionDir = sessionDirForWorktree(worktreePath);
 	mkdirSync(sessionDir, { recursive: true });
 	const sessionFile = join(sessionDir, `${Date.now()}_${sessionId}.jsonl`);
 	writeFileSync(sessionFile, JSON.stringify({
@@ -1644,14 +1648,17 @@ function buildUniqueSessionChoiceOptions(choices: SessionChoiceInfo[]): SessionC
 	});
 }
 
-async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string, ctx: ExtensionCommandContext) {
+async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string, ctx: ExtensionCommandContext, options: { hydrateConductor?: boolean; notifyConductorHydration?: boolean } = {}) {
 	const meta = readMeta(wtPath);
 	const framePromotion = meta ? promotePlanningFrameToWorktree(wtPath, meta) : { status: "missing-source" as const };
 	if (framePromotion.status === "promoted") ctx.ui.notify(`✓ planning frame promoted to ${wtName}/.pi/frame.json`, "info");
 	else if (framePromotion.status === "error") ctx.ui.notify(`Frame promotion skipped: ${framePromotion.error}`, "warning");
 
-	const pathEncoded = "--" + wtPath.slice(1).replace(/\//g, "-") + "--";
-	const sessionDir = join(homedir(), ".pi", "agent", "sessions", pathEncoded);
+	if (options.hydrateConductor !== false) {
+		await hydrateConductorSessionsForWorktree(pi, ctx, wtName, wtPath, { notifyAlways: options.notifyConductorHydration });
+	}
+
+	const sessionDir = sessionDirForWorktree(wtPath);
 	let sessionFile: string | null = null;
 
 	if (existsSync(sessionDir)) {
@@ -1662,10 +1669,10 @@ async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string
 			const choices = dedupeSessionChoices(
 				files.map((file) => parseSessionChoiceInfo(join(sessionDir, file))),
 			);
-			const options = buildUniqueSessionChoiceOptions(choices);
-			const choice = await ctx.ui.select(`${wtName} 세션 선택:`, options.map((option) => option.displayLabel));
+			const sessionOptions = buildUniqueSessionChoiceOptions(choices);
+			const choice = await ctx.ui.select(`${wtName} 세션 선택:`, sessionOptions.map((option) => option.displayLabel));
 			if (!choice) return;
-			const selected = options.find((option) => option.displayLabel === choice)?.choice;
+			const selected = sessionOptions.find((option) => option.displayLabel === choice)?.choice;
 			if (!selected) return;
 			sessionFile = join(sessionDir, selected.file);
 		}
@@ -1800,7 +1807,7 @@ async function showDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Pr
 				lines.push(`  ${theme.bold("KEYBINDINGS")}`);
 				lines.push("");
 				lines.push(`  ${theme.fg("warning", "↑/↓, k/j")}  ${theme.fg("border", "항목 이동")}`);
-				lines.push(`  ${theme.fg("warning", "Enter")}     ${theme.fg("border", "워크트리 전환")}`);
+				lines.push(`  ${theme.fg("warning", "Enter")}     ${theme.fg("border", "워크트리 세션 선택/전환")}`);
 				lines.push(`  ${theme.fg("warning", "Tab")}       ${theme.fg("border", "메인 ↔ 아카이브 탭 전환")}`);
 				lines.push(`  ${theme.fg("warning", "Space")}     ${theme.fg("border", "상태 순환 (backlog → active → done)")}`);
 				lines.push(`  ${theme.fg("warning", "a")}         ${theme.fg("border", "아카이브 ↔ 메인 이동")}`);
@@ -2368,24 +2375,51 @@ function findConductorJsonl(wsName: string, sessionId: string): string | null {
 	return null;
 }
 
-function convertConductorToPiSession(jsonlPath: string, worktreePath: string, title?: string): string | null {
+interface ConductorSessionSource {
+	workspaceName: string;
+	sessionId: string;
+	jsonlPath?: string;
+	title?: string;
+	createdAt?: string;
+	model?: string;
+}
+
+function parseOptionalDate(value?: string): Date | null {
+	if (!value) return null;
+	const parsed = new Date(value);
+	return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function convertConductorToPiSession(jsonlPath: string, worktreePath: string, title?: string, source?: ConductorSessionSource): string | null {
 	const raw = readFileSync(jsonlPath, "utf8");
 	const lines = raw.split("\n").filter(Boolean);
 
-	const sessionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+	const sourceCreatedAt = parseOptionalDate(source?.createdAt);
+	const sessionTimestampMs = sourceCreatedAt?.getTime() ?? Date.now();
+	const sessionId = `${sessionTimestampMs.toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 	const entries: string[] = [];
 	const nowIso = new Date().toISOString();
+	const sessionIso = sourceCreatedAt?.toISOString() ?? nowIso;
 	const titleText = normalizeSessionText(title ?? "");
 	const normalizedTitle = titleText && !["untitled", "(untitled)"].includes(titleText.toLowerCase()) ? titleText : "";
 
 	entries.push(JSON.stringify({
 		type: "session", version: 3, id: sessionId,
-		timestamp: nowIso, cwd: worktreePath,
+		timestamp: sessionIso, cwd: worktreePath,
+		source: source ? {
+			type: "conductor",
+			workspaceName: source.workspaceName,
+			sessionId: source.sessionId,
+			jsonlPath: source.jsonlPath,
+			title: source.title,
+			createdAt: source.createdAt,
+			model: source.model,
+		} : undefined,
 	}));
 	if (normalizedTitle) {
 		entries.push(JSON.stringify({
 			type: "session_info", id: "00000000", parentId: null,
-			timestamp: nowIso, name: normalizedTitle,
+			timestamp: sessionIso, name: normalizedTitle,
 		}));
 	}
 
@@ -2432,10 +2466,9 @@ function convertConductorToPiSession(jsonlPath: string, worktreePath: string, ti
 
 	if (counter === 0) return null;
 
-	const pathEncoded = "--" + worktreePath.slice(1).replace(/\//g, "-") + "--";
-	const sessionDir = join(homedir(), ".pi", "agent", "sessions", pathEncoded);
+	const sessionDir = sessionDirForWorktree(worktreePath);
 	mkdirSync(sessionDir, { recursive: true });
-	const sessionFile = join(sessionDir, `${Date.now()}_${sessionId}.jsonl`);
+	const sessionFile = join(sessionDir, `${sessionTimestampMs}_${sessionId}.jsonl`);
 	writeFileSync(sessionFile, entries.join("\n") + "\n");
 	return sessionFile;
 }
@@ -2449,13 +2482,156 @@ interface ConductorSession {
 
 async function listConductorSessions(pi: ExtensionAPI, wsName: string): Promise<ConductorSession[]> {
 	const result = await queryConductor(pi,
-		`SELECT s.id, COALESCE(s.title,'(untitled)'), substr(s.created_at,1,16), COALESCE(s.model,'') FROM sessions s JOIN workspaces w ON s.workspace_id = w.id WHERE w.directory_name='${sanitizeSql(wsName)}' ORDER BY s.created_at DESC`
+		`SELECT s.id, COALESCE(s.title,'(untitled)'), COALESCE(s.created_at,''), COALESCE(s.model,'') FROM sessions s JOIN workspaces w ON s.workspace_id = w.id WHERE w.directory_name='${sanitizeSql(wsName)}' ORDER BY s.created_at DESC`
 	);
 	if (!result) return [];
 	return result.split("\n").map(line => {
 		const p = line.split("§");
 		return { id: p[0], title: p[1], createdAt: p[2], model: p[3] };
 	});
+}
+
+function sessionHasConductorSource(sessionPath: string, workspaceName: string, sessionId: string): boolean {
+	try {
+		const raw = readFileSync(sessionPath, "utf8");
+		for (const line of raw.split("\n")) {
+			if (!line.trim()) continue;
+			let entry: any;
+			try { entry = JSON.parse(line); } catch { continue; }
+			const source = entry?.source;
+			if (source?.type === "conductor" && source.workspaceName === workspaceName && source.sessionId === sessionId) return true;
+		}
+	} catch {
+		// Missing/corrupt sessions are ignored by the hydrate idempotency check.
+	}
+	return false;
+}
+
+function sortedWorktreeSessionFiles(worktreePath: string): string[] {
+	const sessionDir = sessionDirForWorktree(worktreePath);
+	if (!existsSync(sessionDir)) return [];
+	return readdirSync(sessionDir)
+		.filter((file) => file.endsWith(".jsonl"))
+		.map((file) => join(sessionDir, file))
+		.sort((a, b) => {
+			try { return statSync(b).mtimeMs - statSync(a).mtimeMs; } catch { return basename(b).localeCompare(basename(a)); }
+		});
+}
+
+function findExistingConductorPiSession(worktreePath: string, workspaceName: string, sessionId: string, transcriptKey?: string): string | null {
+	const files = sortedWorktreeSessionFiles(worktreePath);
+	const sourceMatch = files.find((file) => sessionHasConductorSource(file, workspaceName, sessionId));
+	if (sourceMatch) return sourceMatch;
+	if (!transcriptKey) return null;
+	return files.find((file) => parseSessionChoiceInfo(file).transcriptKey === transcriptKey) ?? null;
+}
+
+function conductorTranscriptKey(jsonlPath: string): string | undefined {
+	const transcriptHash = createHash("sha1");
+	let count = 0;
+	try {
+		const raw = readFileSync(jsonlPath, "utf8");
+		for (const line of raw.split("\n")) {
+			if (!line.trim()) continue;
+			let obj: any;
+			try { obj = JSON.parse(line); } catch { continue; }
+
+			if (obj.type === "user") {
+				let text = "";
+				const c = obj.message?.content;
+				if (typeof c === "string") text = c;
+				else if (Array.isArray(c)) text = c.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n");
+				if (!text || text.length < 5 || text.startsWith("<system") || text.startsWith("<local-command")) continue;
+				const messageKey = createHash("sha1")
+					.update(JSON.stringify({ role: "user", content: [{ type: "text", text }] }))
+					.digest("hex");
+				transcriptHash.update(messageKey).update("\n");
+				count += 1;
+			} else if (obj.type === "assistant" && obj.message?.content) {
+				const content = obj.message.content;
+				if (!Array.isArray(content)) continue;
+				const textBlocks = content.filter((b: any) => b.type === "text" && b.text).map((b: any) => ({ type: "text", text: b.text }));
+				if (textBlocks.length === 0) continue;
+				const messageKey = createHash("sha1")
+					.update(JSON.stringify({ role: "assistant", content: textBlocks }))
+					.digest("hex");
+				transcriptHash.update(messageKey).update("\n");
+				count += 1;
+			}
+		}
+	} catch {
+		return undefined;
+	}
+	return count > 0 ? transcriptHash.digest("hex") : undefined;
+}
+
+interface ConductorHydrationResult {
+	total: number;
+	created: string[];
+	existing: string[];
+	missingJsonl: ConductorSession[];
+	empty: ConductorSession[];
+}
+
+function conductorHydrationSummary(wsName: string, result: ConductorHydrationResult): string {
+	const parts = [`전체 ${result.total}`];
+	if (result.created.length > 0) parts.push(`새로 복구 ${result.created.length}`);
+	if (result.existing.length > 0) parts.push(`기존 ${result.existing.length}`);
+	if (result.missingJsonl.length > 0) parts.push(`JSONL 없음 ${result.missingJsonl.length}`);
+	if (result.empty.length > 0) parts.push(`빈 세션 ${result.empty.length}`);
+	return `Conductor 세션 동기화 — ${wsName}: ${parts.join(" · ")}`;
+}
+
+async function hydrateConductorSessionsForWorktree(
+	pi: ExtensionAPI,
+	ctx: ExtensionCommandContext,
+	wsName: string,
+	worktreePath: string,
+	options: { notifyAlways?: boolean } = {},
+): Promise<ConductorHydrationResult> {
+	const sessions = await listConductorSessions(pi, wsName);
+	const result: ConductorHydrationResult = { total: sessions.length, created: [], existing: [], missingJsonl: [], empty: [] };
+	if (sessions.length === 0) return result;
+
+	for (const session of sessions) {
+		const sourceExisting = findExistingConductorPiSession(worktreePath, wsName, session.id);
+		if (sourceExisting) {
+			result.existing.push(sourceExisting);
+			continue;
+		}
+
+		const jsonlPath = findConductorJsonl(wsName, session.id);
+		if (!jsonlPath) {
+			result.missingJsonl.push(session);
+			continue;
+		}
+
+		const transcriptExisting = findExistingConductorPiSession(worktreePath, wsName, session.id, conductorTranscriptKey(jsonlPath));
+		if (transcriptExisting) {
+			result.existing.push(transcriptExisting);
+			continue;
+		}
+
+		const sessionFile = convertConductorToPiSession(jsonlPath, worktreePath, session.title, {
+			workspaceName: wsName,
+			sessionId: session.id,
+			jsonlPath,
+			title: session.title,
+			createdAt: session.createdAt,
+			model: session.model,
+		});
+		if (sessionFile) result.created.push(sessionFile);
+		else result.empty.push(session);
+	}
+
+	const hasChangeOrGap = result.created.length > 0 || result.missingJsonl.length > 0 || result.empty.length > 0;
+	if (options.notifyAlways || hasChangeOrGap) {
+		ctx.ui.notify(
+			conductorHydrationSummary(wsName, result),
+			result.missingJsonl.length > 0 || result.empty.length > 0 ? "warning" : "info",
+		);
+	}
+	return result;
 }
 
 async function handleResume(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
@@ -2503,7 +2679,7 @@ async function handleResume(pi: ExtensionAPI, args: string, ctx: ExtensionComman
 
 	if (existsSync(worktreePath)) {
 		ctx.ui.notify(`✓ "${name}" already exists (${ws.branch})`, "info");
-		return handleSessions(pi, name, ctx, worktreePath);
+		return switchToWorktree(pi, name, worktreePath, ctx, { notifyConductorHydration: true });
 	}
 
 	ctx.ui.notify(`Fetching branch ${ws.branch}…`, "info");
@@ -2562,55 +2738,57 @@ async function handleResume(pi: ExtensionAPI, args: string, ctx: ExtensionComman
 		if (setupR.code !== 0) ctx.ui.notify(`Setup failed (code ${setupR.code}).`, "warning");
 	}
 
-	return handleSessions(pi, name, ctx, worktreePath);
+	return switchToWorktree(pi, name, worktreePath, ctx, { notifyConductorHydration: true });
+}
+
+async function resolveSessionsWorktree(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext, overrideCwd?: string): Promise<{ wtName: string; wtPath: string } | null> {
+	const tokens = tokenize(args);
+	const target = tokens[0];
+
+	if (overrideCwd) {
+		const meta = readMeta(overrideCwd);
+		return { wtName: target || meta?.name || basename(overrideCwd), wtPath: overrideCwd };
+	}
+
+	if (!target) {
+		const currentRoot = await findRepoRoot(pi, ctx.cwd) ?? ctx.cwd;
+		const meta = readMeta(currentRoot);
+		return { wtName: meta?.name ?? basename(currentRoot), wtPath: currentRoot };
+	}
+
+	let repoRoot: string;
+	let wtName: string;
+	if (target.includes("/")) {
+		const slashIdx = target.indexOf("/");
+		const repoName = target.slice(0, slashIdx);
+		wtName = target.slice(slashIdx + 1);
+		const reg = loadRegistry();
+		if (!reg[repoName]) {
+			ctx.ui.notify(`Repo "${repoName}" not registered. Available: ${Object.keys(reg).join(", ") || "(none)"}`, "error");
+			return null;
+		}
+		repoRoot = reg[repoName];
+	} else {
+		const resolved = await resolveRepoRoot(pi, ctx);
+		if (!resolved) return null;
+		repoRoot = resolved;
+		wtName = target;
+	}
+
+	const config = loadConfig(repoRoot);
+	const wtPath = join(config.rootDir, wtName);
+	if (!existsSync(wtPath)) {
+		ctx.ui.notify(`Worktree "${wtName}" not found at ${wtPath}`, "error");
+		return null;
+	}
+	return { wtName, wtPath };
 }
 
 async function handleSessions(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext, overrideCwd?: string) {
-	const tokens = tokenize(args);
-
-	// Determine workspace name: from arg, or from current worktree meta
-	let wsName = tokens[0];
-	if (!wsName) {
-		const meta = readMeta(ctx.cwd);
-		wsName = meta?.name ?? basename(ctx.cwd);
-	}
-
-	const sessions = await listConductorSessions(pi, wsName);
-	if (sessions.length === 0) {
-		ctx.ui.notify(`No Conductor sessions found for "${wsName}".`, "info");
-		return;
-	}
-
-	const options = sessions.map(s => `${s.title}  (${s.createdAt}, ${s.model})`);
-	const choice = await ctx.ui.select(`Conductor sessions — ${wsName}:`, options);
-	if (!choice) return;
-
-	const idx = options.indexOf(choice);
-	const selected = sessions[idx];
-
-	const jsonlPath = findConductorJsonl(wsName, selected.id);
-	if (!jsonlPath) {
-		ctx.ui.notify(`JSONL not found for session "${selected.title}" (${selected.id}).`, "error");
-		return;
-	}
-
-	ctx.ui.notify(`Converting "${selected.title}"…`, "info");
-	const resolvedCwd = overrideCwd ?? ctx.cwd;
-	const sessionFile = convertConductorToPiSession(jsonlPath, resolvedCwd, selected.title);
-	if (!sessionFile) {
-		ctx.ui.notify("Conversion failed (no messages found).", "error");
-		return;
-	}
-
-	try {
-		await (ctx as any).switchSession(sessionFile, {
-			withSession: async (newCtx: any) => {
-				newCtx.ui.notify(`✓ Loaded: ${selected.title}`, "info");
-			},
-		});
-	} catch {
-		ctx.ui.notify(`✓ Session saved. Use /resume to load it.`, "info");
-	}
+	const resolved = await resolveSessionsWorktree(pi, args, ctx, overrideCwd);
+	if (!resolved) return;
+	ctx.ui.notify("/wt sessions는 /wt switch의 세션 선택 흐름으로 통합되었습니다.", "info");
+	return switchToWorktree(pi, resolved.wtName, resolved.wtPath, ctx, { notifyConductorHydration: true });
 }
 
 // ─── Subcommand dispatch ───────────────────────────────────────────────────
@@ -2623,8 +2801,8 @@ async function handleWt(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCon
 			t.fg("accent", "Usage:"),
 			`  ${t.fg("warning", "/wt new")} ${t.fg("borderAccent", "[name] [--repo <name>] [--hotfix|--hotfeature|--from <branch>] [--ticket PROJ-123] [--carry-context]")}`,
 			`  ${t.fg("warning", "/wt fork")} ${t.fg("borderAccent", "[name] [--context-file <path>] [--repo <name>] [--hotfix|--from <branch>]  — 현재 세션 전체를 이어받아 워크트리 생성")}`,
-			`  ${t.fg("warning", "/wt switch")} ${t.fg("borderAccent", "<name> | <repo>/<name>  — 워크트리 대시보드")}`,
-			`  ${t.fg("warning", "/wt resume")} ${t.fg("borderAccent", "<conductor-workspace>  — Conductor 워크스페이스 복원")}`,
+			`  ${t.fg("warning", "/wt switch")} ${t.fg("borderAccent", "<name> | <repo>/<name>  — 워크트리 선택 후 세션 선택")}`,
+			`  ${t.fg("warning", "/wt resume")} ${t.fg("borderAccent", "<conductor-workspace>  — Conductor 워크스페이스 전체 세션 복원")}`,
 			`  ${t.fg("warning", "/wt bootstrap")} ${t.fg("borderAccent", "[status|--backend|--frontend|--all|--executor]  — profile 기반 의존성 AI orchestrator/worker 준비")}`,
 			`  ${t.fg("warning", "/wt list")} ${t.fg("borderAccent", "[--all]  \u2014 \uc6cc\ud06c\ud2b8\ub9ac \ubaa9\ub85d")}`,
 			`  ${t.fg("warning", "/wt rm")} ${t.fg("borderAccent", "<name> [--force]  \u2014 \uc6cc\ud06c\ud2b8\ub9ac \uc0ad\uc81c")}`,
