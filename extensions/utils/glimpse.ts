@@ -34,7 +34,7 @@ function shellQuote(value: string): string {
 	return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
-function patchDarwinPasteSupport(source: string): string | null {
+function patchDarwinWebViewShortcutSupport(source: string): string | null {
 	const originalPanel = `class GlimpsePanel: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
@@ -80,19 +80,53 @@ function patchDarwinPasteSupport(source: string): string | null {
         return true
     }
 
+    private func emitPageZoom(_ zoom: CGFloat) {
+        let value = String(format: "%.4f", Double(zoom))
+        let js = "window.dispatchEvent(new CustomEvent('glimpse:pageZoom', { detail: { zoom: \\(value) } }));"
+        targetWebView?.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    private func adjustPageZoom(_ factor: CGFloat) -> Bool {
+        guard let webView = targetWebView else { return false }
+        let nextZoom = min(max(webView.pageZoom * factor, 0.5), 3.0)
+        webView.pageZoom = nextZoom
+        emitPageZoom(nextZoom)
+        return true
+    }
+
+    private func resetPageZoom() -> Bool {
+        guard let webView = targetWebView else { return false }
+        webView.pageZoom = 1.0
+        emitPageZoom(1.0)
+        return true
+    }
+
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard event.type == .keyDown else { return super.performKeyEquivalent(with: event) }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        guard flags == .command else { return super.performKeyEquivalent(with: event) }
+        guard flags.contains(.command), flags.subtracting([.command, .shift]).isEmpty else { return super.performKeyEquivalent(with: event) }
+        let key = event.charactersIgnoringModifiers?.lowercased()
+        if key == "+" || key == "=" || event.keyCode == 24 {
+            if adjustPageZoom(1.1) { return true }
+        }
+        if key == "-" || key == "_" || event.keyCode == 27 {
+            if adjustPageZoom(1.0 / 1.1) { return true }
+        }
+        if key == "0" || event.keyCode == 29 {
+            if resetPageZoom() { return true }
+        }
         let action: Selector?
-        switch event.charactersIgnoringModifiers?.lowercased() {
-        case "v":
+        if key == "v" || event.keyCode == 9 {
             if pastePlainTextIntoFocusedElement() { return true }
             action = #selector(NSText.paste(_:))
-        case "x": action = #selector(NSText.cut(_:))
-        case "c": action = #selector(NSText.copy(_:))
-        case "a": action = #selector(NSText.selectAll(_:))
-        default: action = nil
+        } else if key == "x" || event.keyCode == 7 {
+            action = #selector(NSText.cut(_:))
+        } else if key == "c" || event.keyCode == 8 {
+            action = #selector(NSText.copy(_:))
+        } else if key == "a" || event.keyCode == 0 {
+            action = #selector(NSText.selectAll(_:))
+        } else {
+            action = nil
         }
         guard let action else { return super.performKeyEquivalent(with: event) }
         if targetWebView?.tryToPerform(action, with: nil) == true { return true }
@@ -128,7 +162,36 @@ function patchDarwinPasteSupport(source: string): string | null {
         editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editMenuItem.submenu = editMenu
 
+        let viewMenuItem = NSMenuItem()
+        mainMenu.addItem(viewMenuItem)
+        let viewMenu = NSMenu(title: "View")
+        let zoomInItem = NSMenuItem(title: "Zoom In", action: #selector(zoomIn(_:)), keyEquivalent: "=")
+        zoomInItem.keyEquivalentModifierMask = [.command]
+        zoomInItem.target = self
+        viewMenu.addItem(zoomInItem)
+        let zoomOutItem = NSMenuItem(title: "Zoom Out", action: #selector(zoomOut(_:)), keyEquivalent: "-")
+        zoomOutItem.keyEquivalentModifierMask = [.command]
+        zoomOutItem.target = self
+        viewMenu.addItem(zoomOutItem)
+        let actualSizeItem = NSMenuItem(title: "Actual Size", action: #selector(resetZoom(_:)), keyEquivalent: "0")
+        actualSizeItem.keyEquivalentModifierMask = [.command]
+        actualSizeItem.target = self
+        viewMenu.addItem(actualSizeItem)
+        viewMenuItem.submenu = viewMenu
+
         NSApp.mainMenu = mainMenu
+    }
+
+    @objc private func zoomIn(_ sender: Any?) {
+        _ = adjustPageZoom(1.1)
+    }
+
+    @objc private func zoomOut(_ sender: Any?) {
+        _ = adjustPageZoom(1.0 / 1.1)
+    }
+
+    @objc private func resetZoom(_ sender: Any?) {
+        _ = resetPageZoom()
     }
 
     private func setupWindow() {`;
@@ -168,22 +231,56 @@ function patchDarwinPasteSupport(source: string): string | null {
         return true
     }
 
+    private func emitPageZoom(_ zoom: CGFloat) {
+        let value = String(format: "%.4f", Double(zoom))
+        let js = "window.dispatchEvent(new CustomEvent('glimpse:pageZoom', { detail: { zoom: \\(value) } }));"
+        webView.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    private func adjustPageZoom(_ factor: CGFloat) -> Bool {
+        guard webView != nil else { return false }
+        let nextZoom = min(max(webView.pageZoom * factor, 0.5), 3.0)
+        webView.pageZoom = nextZoom
+        emitPageZoom(nextZoom)
+        return true
+    }
+
+    private func resetPageZoom() -> Bool {
+        guard webView != nil else { return false }
+        webView.pageZoom = 1.0
+        emitPageZoom(1.0)
+        return true
+    }
+
     private func installWebViewEditKeyMonitor() {
         if editKeyMonitor != nil { return }
         editKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            guard flags == .command else { return event }
+            guard flags.contains(.command), flags.subtracting([.command, .shift]).isEmpty else { return event }
             guard self.window?.isKeyWindow == true || self.webView?.window?.isKeyWindow == true else { return event }
+            let key = event.charactersIgnoringModifiers?.lowercased()
+            if key == "+" || key == "=" || event.keyCode == 24 {
+                if self.adjustPageZoom(1.1) { return nil }
+            }
+            if key == "-" || key == "_" || event.keyCode == 27 {
+                if self.adjustPageZoom(1.0 / 1.1) { return nil }
+            }
+            if key == "0" || event.keyCode == 29 {
+                if self.resetPageZoom() { return nil }
+            }
             let action: Selector?
-            switch event.charactersIgnoringModifiers?.lowercased() {
-            case "v":
+            if key == "v" || event.keyCode == 9 {
                 if self.pastePlainTextIntoFocusedElement() { return nil }
                 action = #selector(NSText.paste(_:))
-            case "x": action = #selector(NSText.cut(_:))
-            case "c": action = #selector(NSText.copy(_:))
-            case "a": action = #selector(NSText.selectAll(_:))
-            default: action = nil
+            } else if key == "x" || event.keyCode == 7 {
+                action = #selector(NSText.cut(_:))
+            } else if key == "c" || event.keyCode == 8 {
+                action = #selector(NSText.copy(_:))
+            } else if key == "a" || event.keyCode == 0 {
+                action = #selector(NSText.selectAll(_:))
+            } else {
+                action = nil
             }
             guard let action else { return event }
             if self.webView?.tryToPerform(action, with: nil) == true { return nil }
@@ -212,16 +309,16 @@ function patchDarwinPasteSupport(source: string): string | null {
 		.replace(originalDelegate, patchedDelegate);
 }
 
-function resolveDarwinHostWithPasteSupport(resolvedGlimpseMjs: string, dir: string): string | null {
+function resolveDarwinHostWithShortcutSupport(resolvedGlimpseMjs: string, dir: string): string | null {
 	const sourcePath = join(dirname(resolvedGlimpseMjs), "glimpse.swift");
 	const originalHost = join(dirname(resolvedGlimpseMjs), "glimpse");
 	if (!existsSync(sourcePath) || !existsSync(originalHost)) return existsSync(originalHost) ? originalHost : null;
 	try {
 		const originalSource = readFileSync(sourcePath, "utf-8");
-		const patchedSource = patchDarwinPasteSupport(originalSource);
+		const patchedSource = patchDarwinWebViewShortcutSupport(originalSource);
 		if (!patchedSource) return originalHost;
 		const hash = createHash("sha1").update(patchedSource).digest("hex").slice(0, 12);
-		const buildDir = join(dir, `darwin-paste-${hash}`);
+		const buildDir = join(dir, `darwin-webview-shortcuts-${hash}`);
 		const patchedSourcePath = join(buildDir, "glimpse.swift");
 		const patchedHost = join(buildDir, "glimpse");
 		mkdirSync(buildDir, { recursive: true });
@@ -241,7 +338,7 @@ function installDarwinHostAdapter(resolvedGlimpseMjs: string): void {
 	if (process.env.GLIMPSE_BINARY_PATH || process.env.GLIMPSE_HOST_PATH) return;
 
 	const dir = join(homedir(), ".pi", "agent", "glimpse");
-	const realHost = resolveDarwinHostWithPasteSupport(resolvedGlimpseMjs, dir);
+	const realHost = resolveDarwinHostWithShortcutSupport(resolvedGlimpseMjs, dir);
 	if (!realHost) return;
 
 	const wrapper = join(dir, "glimpse-host-adapter.sh");
