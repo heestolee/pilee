@@ -8,6 +8,7 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@m
 import { Type } from "typebox";
 import { buildFrameIdentity, type FrameIdentity } from "../tft-commands/frame-identity.ts";
 import { getGlimpseOpen, type GlimpseWindow } from "../utils/glimpse.ts";
+import { loadOrDeriveWorkContext } from "../utils/work-context.ts";
 import { webviewCopyCss, webviewCopyScript } from "../utils/webview-copy.ts";
 
 type StudioStatus = "running" | "awaiting" | "done" | "aborted";
@@ -67,12 +68,24 @@ type StudioContextSnapshot = {
 	tabs: StudioTabSnapshot[];
 };
 
+type StudioWorkContextSnapshot = {
+	path: string;
+	tasksPath: string;
+	displayName: string;
+	mode: string;
+	goal?: string;
+	currentSlice?: { id: string; title: string; scope: string[] };
+	openQuestions: Array<{ id: string; text: string; owner: string }>;
+	verifyFocus: string[];
+};
+
 type StudioToolContextDetails = {
 	transcriptRef: StudioTranscriptRef;
 	tabSnapshot: StudioTabSnapshot;
 	snapshot?: StudioContextSnapshot;
 	contextDigest?: string;
 	stageOutputContract?: string;
+	workContext?: StudioWorkContextSnapshot;
 };
 
 type StudioTimelineEntry = {
@@ -103,6 +116,7 @@ type FrameStudioState = {
 	updatedAt: number;
 	question?: StudioQuestion;
 	lastAnswer?: StudioAnswer;
+	workContext?: StudioWorkContextSnapshot;
 	timeline: StudioTimelineEntry[];
 	logs: Array<{ time: number; message: string }>;
 };
@@ -340,7 +354,23 @@ function toolContextDetails(state: FrameStudioState, tab = state.activeTab, cont
 		tabSnapshot: tabSnapshot(state, tab),
 		contextDigest,
 		stageOutputContract: stageOutputContract(tab),
+		workContext: state.workContext,
 	};
+}
+
+function refreshStudioWorkContext(state: FrameStudioState, ctx: ExtensionContext): StudioWorkContextSnapshot | undefined {
+	const card = loadOrDeriveWorkContext(ctx.cwd, ctx.sessionManager?.getSessionFile?.());
+	state.workContext = card ? {
+		path: card.identity.contextPath,
+		tasksPath: card.identity.tasksPath,
+		displayName: card.identity.displayName,
+		mode: card.mode,
+		goal: card.goal,
+		currentSlice: card.currentSlice ? { id: card.currentSlice.id, title: card.currentSlice.title, scope: card.currentSlice.scope } : undefined,
+		openQuestions: card.openQuestions.slice(0, 4).map((question) => ({ id: question.id, text: question.text, owner: question.owner })),
+		verifyFocus: card.verifyFocus.slice(0, 5),
+	} : undefined;
+	return state.workContext;
 }
 
 function persistState(state: FrameStudioState): void {
@@ -397,6 +427,7 @@ function loadPersistedState(identity: FrameIdentity): FrameStudioState | null {
 			updatedAt: Date.now(),
 			question: undefined,
 			lastAnswer: parsed.lastAnswer,
+			workContext: parsed.workContext as StudioWorkContextSnapshot | undefined,
 			timeline: Array.isArray(parsed.timeline) ? normalizeTimelineEntries(parsed.timeline) : [],
 			logs: Array.isArray(parsed.logs) ? parsed.logs : [],
 		};
@@ -430,6 +461,7 @@ function serializeState(state: FrameStudioState) {
 		updatedAt: state.updatedAt,
 		question: state.question,
 		lastAnswer: state.lastAnswer,
+		workContext: state.workContext,
 		timeline: state.timeline,
 		logs: state.logs.slice(-30),
 	};
@@ -482,6 +514,13 @@ body { margin:0; background:var(--bg); color:var(--text); font:14px/1.55 -apple-
 h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .meta { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; color:var(--muted); }
 .badge { border:1px solid var(--line); background:rgba(255,255,255,.75); border-radius:999px; padding:4px 10px; font-size:12px; }
+.work-context { display:none; margin-top:16px; border:1px solid #ddd6fe; background:#faf9ff; border-radius:16px; padding:14px 16px; }
+.work-context.visible { display:block; }
+.work-context-title { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; font-weight:950; color:var(--accent); }
+.work-context-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; margin-top:10px; }
+.work-context-cell { border:1px solid rgba(124,58,237,.14); background:#fff; border-radius:12px; padding:9px 10px; min-width:0; }
+.work-context-label { color:var(--muted); font-size:11px; font-weight:850; text-transform:uppercase; letter-spacing:.04em; }
+.work-context-value { margin-top:3px; font-size:12px; overflow-wrap:anywhere; }
 .tabs { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:16px; }
 .tab { text-align:left; border:1px solid var(--line); background:var(--panel); border-radius:14px; padding:12px 14px; color:var(--text); cursor:pointer; }
 .tab:hover { border-color:#c4b5fd; background:#faf9ff; }
@@ -590,6 +629,7 @@ button { border:0; border-radius:12px; padding:10px 15px; font-weight:800; curso
     <h1 id="title">TFT Studio</h1>
     <div class="meta" id="meta"></div>
     <nav class="tabs" id="tabs"></nav>
+    <div class="work-context" id="workContext"></div>
   </section>
   <main class="layout">
     <section class="card">
@@ -946,6 +986,20 @@ function renderTabs(s) {
   }).join('');
 }
 function selectTab(key) { selectedTab = key; if (state) render(state); }
+function renderWorkContext(ctx) {
+  if (!ctx) return '';
+  var slice = ctx.currentSlice;
+  var cells = [
+    ['Goal', ctx.goal || '(목표 미기록)'],
+    ['Current slice', slice ? (slice.id + ' · ' + slice.title + (slice.scope && slice.scope.length ? ' · ' + slice.scope.join(', ') : '')) : '(slice 미선택)'],
+    ['Needs user', ctx.openQuestions && ctx.openQuestions.length ? ctx.openQuestions.map(function(q) { return q.id + ': ' + q.text; }).join(' / ') : '없음'],
+    ['Verify focus', ctx.verifyFocus && ctx.verifyFocus.length ? ctx.verifyFocus.join(' / ') : '미기록']
+  ];
+  return '<div class="work-context-title"><span>Working Context Card</span><span class="badge">' + esc(ctx.mode || 'unknown') + '</span></div>'
+    + '<div class="work-context-grid">' + cells.map(function(pair) {
+      return '<div class="work-context-cell"><div class="work-context-label">' + esc(pair[0]) + '</div><div class="work-context-value">' + esc(pair[1]) + '</div></div>';
+    }).join('') + '</div>';
+}
 function render(s) {
   state = s;
   if (!s.status || s.status !== 'awaiting' || !s.question) { submitInFlight = false; submittedQuestionId = ''; }
@@ -962,6 +1016,9 @@ function render(s) {
     '<span class="badge">' + esc(s.status || '') + '</span>'
   ].filter(Boolean).join('');
   document.getElementById('tabs').innerHTML = renderTabs(s);
+  var wc = document.getElementById('workContext');
+  wc.innerHTML = renderWorkContext(s.workContext);
+  wc.className = 'work-context' + (s.workContext ? ' visible' : '');
   var active = activeTabKey(s);
   var activeMeta = STUDIO_TABS.find(function(tab) { return tab.key === active; }) || STUDIO_TABS[0];
   document.getElementById('flowTitle').textContent = activeMeta.label + ' 진행';
@@ -1188,6 +1245,7 @@ async function ensureRun(pi: ExtensionAPI, ctx: ExtensionContext, params: { titl
 				message: options.startStage && wasTerminal ? `${tabLabel(tab)} stage restarted in the same work-unit transcript.` : undefined,
 			});
 		}
+		refreshStudioWorkContext(handle.state, ctx);
 		handle.state.updatedAt = Date.now();
 		pushState(handle);
 		latestRunId = handle.state.runId;
@@ -1218,6 +1276,7 @@ async function ensureRun(pi: ExtensionAPI, ctx: ExtensionContext, params: { titl
 	updateTab(state, tab, { markdown: params.markdown, step: params.step });
 	handle = createServerFor(state);
 	state.url = await listenOnLoopback(handle.server);
+	refreshStudioWorkContext(state, ctx);
 	if (restored) {
 		appendTimeline(state, { kind: "restore", tab, step: params.step, markdown: params.markdown, message: "Saved TFT Studio transcript restored." });
 		if (restoredWasTerminal && options.startStage) {
@@ -1450,6 +1509,7 @@ export default function (pi: ExtensionAPI) {
 
 			if (action === "start") {
 				const { handle, opened } = await ensureRun(pi, ctx, params, { reactivate: true, startStage: true });
+				refreshStudioWorkContext(handle.state, ctx);
 				const tab = handle.state.activeTab;
 				const context = toolContextDetails(handle.state, tab, `TFT Studio started on ${tabLabel(tab)}.`);
 				return resultText(`TFT Studio started (${handle.state.runId}). ${handle.state.url}. Transcript ref: ${context.transcriptRef.openCommand}. Opened: ${opened}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, identity: handle.state.identity, activeTab: handle.state.activeTab, opened, ...context, snapshot: studioSnapshot(handle.state, tab) });
@@ -1470,6 +1530,7 @@ export default function (pi: ExtensionAPI) {
 			if (!handle) throw new Error("No active TFT Studio run. Call action=start first.");
 
 			if (action === "open") {
+				refreshStudioWorkContext(handle.state, ctx);
 				const opened = await openStudio(pi, ctx, handle);
 				const tab = handle.state.activeTab;
 				const context = toolContextDetails(handle.state, tab, `TFT Studio reopened. Active tab: ${tabLabel(tab)}.`);
@@ -1483,12 +1544,14 @@ export default function (pi: ExtensionAPI) {
 				if (params.markdown !== undefined || params.step) handle.state.lastAnswer = undefined;
 				appendTimeline(handle.state, { kind: "update", tab, title: params.title, step: params.step, markdown: params.markdown });
 				addLog(handle, `Updated ${tab}${params.step ? `: ${params.step}` : ""}.`);
+				refreshStudioWorkContext(handle.state, ctx);
 				pushState(handle);
 				const context = toolContextDetails(handle.state, tab, `${tabLabel(tab)} tab updated${params.step ? `: ${params.step}` : ""}.`);
 				return resultText(`TFT Studio updated (${handle.state.runId}). Transcript ref: ${context.transcriptRef.openCommand}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, activeTab: handle.state.activeTab, ...context });
 			}
 
 			if (action === "ask") {
+				refreshStudioWorkContext(handle.state, ctx);
 				if (!ctx.hasUI) {
 					const tab = normalizeTab(params.tab) ?? handle.state.activeTab ?? "frame";
 					const context = toolContextDetails(handle.state, tab, "TFT Studio UI unavailable; use numbered text-mode fallback and persist any stage output manually.");
@@ -1512,6 +1575,7 @@ export default function (pi: ExtensionAPI) {
 					createdAt: Date.now(),
 				};
 				const answer = await ask(handle, question, signal);
+				refreshStudioWorkContext(handle.state, ctx);
 				const currentTabSnapshot = tabSnapshot(handle.state, tab);
 				const contextDigest = answerDigest(question, answer, currentTabSnapshot);
 				const context = toolContextDetails(handle.state, tab, contextDigest);
@@ -1529,6 +1593,7 @@ export default function (pi: ExtensionAPI) {
 				handle.state.status = "done";
 				appendTimeline(handle.state, { kind: "finish", tab, step: params.step ?? handle.state.step, markdown: params.markdown, message: "TFT Studio finished." });
 				addLog(handle, "TFT Studio finished.");
+				refreshStudioWorkContext(handle.state, ctx);
 				pushState(handle);
 				const context = toolContextDetails(handle.state, tab, `${tabLabel(tab)} stage finished. Review the stage output contract before continuing.`);
 				return resultText(`TFT Studio finished (${handle.state.runId}). Transcript ref: ${context.transcriptRef.openCommand}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, activeTab: handle.state.activeTab, ...context, snapshot: studioSnapshot(handle.state, tab) });
@@ -1538,6 +1603,7 @@ export default function (pi: ExtensionAPI) {
 				handle.state.status = "aborted";
 				appendTimeline(handle.state, { kind: "abort", tab: handle.state.activeTab, step: handle.state.step, message: "TFT Studio aborted." });
 				addLog(handle, "TFT Studio aborted.");
+				refreshStudioWorkContext(handle.state, ctx);
 				pushState(handle);
 				const context = toolContextDetails(handle.state, handle.state.activeTab, "TFT Studio aborted; transcript remains available as provenance only.");
 				return resultText(`TFT Studio aborted (${handle.state.runId}). Transcript ref: ${context.transcriptRef.openCommand}.`, { runId: handle.state.runId, url: handle.state.url, transcriptPath: handle.state.transcriptPath, activeTab: handle.state.activeTab, ...context });
