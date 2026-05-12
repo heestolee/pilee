@@ -78,7 +78,7 @@ Pi UI가 있고 `frame_studio` tool을 사용할 수 있으면, `/decide`의 모
 - Step 4 대안 선택, Step 5 challenge 응답, Step 7 다음 단계 선택은 `frame_studio action=ask tab=decide`로 묻는다.
 - 질문 본문을 채팅에 번호형 메뉴로 출력하는 것은 `frame_studio ask` 결과가 `unavailable`, `cancelled`, `timeout`일 때만 허용한다.
 - 사용자가 Studio에서 답하면 그 답변을 기준으로 바로 이어가고, 같은 질문을 채팅에서 다시 확인하지 않는다.
-- canonical decision 저장 후 Step 7 답변까지 같은 Decide run에 남기고, 마지막에는 `frame_studio action=finish tab=decide`로 닫는다.
+- canonical decision 저장 후 Step 7 답변까지 같은 Decide run에 남기되, Step 7에서 `Plan 모드`가 선택되면 **그 선택을 완료 보고로 끝내지 않는다**. 같은 Decide tab에서 implementation plan을 즉시 합성·렌더링하고, `구현 시작 / 부모에 handoff / 계획 수정 / 일단 멈춤` 같은 실제 다음 행동 gate까지 처리한 뒤 finish한다.
 
 ---
 
@@ -326,12 +326,61 @@ TFT Studio를 쓰고 있으면 canonical 저장 직후 `frame_studio action=upda
 }
 ```
 
-다음 단계 질문 처리 후 TFT Studio를 쓰고 있으면 **반드시** `frame_studio action=finish tab=decide`를 호출한다.
+Step 7의 선택은 **라벨 보고가 아니라 행동으로 소비**한다.
+
+### Step 7-A: `Plan 모드` 선택 시 — 같은 Studio에서 plan 완결
+
+사용자가 `Plan 모드`를 선택하면 다음을 즉시 수행한다.
+
+1. **finish하지 않는다.** `"Plan 모드가 선택됐습니다"` 같은 최종 답변은 금지다.
+2. `frame.json.implementation_plan`과 방금 저장한 `decisions[]`를 읽어 같은 Decide tab에 `Implementation plan synthesis`를 렌더링한다.
+3. plan은 최소한 아래를 포함한다.
+   - 구현 slice 순서
+   - 각 slice의 목표와 예상 파일
+   - 첫 안전 행동
+   - validation 전에 확인해야 할 bootstrap/readiness 조건
+   - ask_first gate, 특히 DB/migration/outbox/보안/외부 연동 경계
+   - fork-panel이면 현재 패널에서 해도 되는 일과 부모 `P0`로 넘겨야 하는 일
+4. plan 렌더링 후 다시 `frame_studio action=ask tab=decide`로 실제 다음 행동을 묻는다.
+
+```json
+{
+  "questions": [{
+    "question": "이 계획으로 다음 행동은?",
+    "options": [
+      "구현 시작 — 현재 패널에서 바로 착수",
+      "부모에 handoff — fork panel 결과를 P0로 넘김",
+      "계획 수정 — slice/검증/gate 보완",
+      "일단 멈춤"
+    ]
+  }]
+}
+```
+
+Panel-aware rule:
+- 현재 세션이 fork child(`P1`, `P2`, …)이면 `구현 시작`을 자동으로 실행하지 않는다. 사용자가 명시적으로 현재 패널 구현을 선택한 경우에만 진행한다.
+- protected/profiled worktree 생성·전환이 필요하면 child panel에서 실행하지 말고 `부모에 handoff`를 우선한다.
+- `부모에 handoff`가 선택되면 Studio와 최종 응답에 handoff summary를 남기고, 사용자가 바로 `/handoff` 또는 `/done`으로 부모 inbox에 넘길 수 있게 한다. 가능한 경우 현재 extension/tool이 제공하는 handoff 수단을 사용하고, 불가능하면 “선택됨”으로 끝내지 말고 copy-ready handoff 본문을 제공한다.
+
+### Step 7-B: `바로 구현 시작` 선택 시 — 시작 gate 소비
+
+사용자가 `바로 구현 시작`을 선택하면 다음 중 하나로 반드시 이어진다.
+
+- 현재 패널에서 구현 가능한 상황: 첫 안전 행동을 수행한다.
+- bootstrap/readiness가 필요한 상황: readiness 확인을 먼저 수행하거나, 확인 전에는 lint/test/type-check/local-dev를 실행하지 않는다고 명시하고 코드 조사/작은 편집부터 시작한다.
+- fork child에서 부모 handoff가 맞는 상황: handoff summary를 만들고 `/handoff`/`/done` 경로로 연결한다.
+
+`바로 구현 시작`을 선택했는데 최종 답변이 “구현 시작이 선택됐습니다”로 끝나면 실패다.
+
+### Step 7-C: finish 조건
+
+TFT Studio를 쓰고 있으면 실제 다음 행동 gate를 소비한 뒤에만 **반드시** `frame_studio action=finish tab=decide`를 호출한다.
 
 Finish markdown에는 다음을 포함한다:
 - 저장된 decision id/path
 - 남은 decision task 수
-- 선택된 다음 단계 또는 “다음 단계 미선택”
+- 선택된 다음 단계가 아니라 **실제로 수행한 다음 행동**
+- Plan mode를 거쳤다면 plan summary와 start/handoff/stop 결과
 - canonical 저장 확인
 
 질문이 `unavailable`, `cancelled`, `timeout`이어도 canonical decision 저장이 끝났다면 그 상태를 기록하고 finish한다. finish를 생략하면 같은 Decide run이 `running`으로 남아 다음 `/decide`와 구분이 흐려진다.
