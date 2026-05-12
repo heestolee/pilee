@@ -16,8 +16,8 @@ applies_to:
 source:
   - pilee-history:2026-05-05#53
   - user-direction:2026-05-09-glimpse-stderr-noise
-reviewed_at: 2026-05-11
-reviewed_commit: 55766aa7231850e0c715240fe796224a9dac843c
+reviewed_at: 2026-05-12
+reviewed_commit: d98008aad8f6049883436cb079597282efde6fc0
 related:
   - tui-rendering-sanitization
   - terminal-host-integration

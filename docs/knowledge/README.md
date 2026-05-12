@@ -98,7 +98,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [백엔드 레이어 맵은 Frame의 초기 이해 게이트다](./backend-layer-map-frame-gate.md) | active | high | 2026-05-12 | a2019c2 | frame, tft, backend, resolver, usecase, service |
-| [정책축 스캔은 Frame의 초기 게이트다](./policy-axis-frame-gate.md) | active | high | 2026-05-12 | cdc7362 | frame, tft, policy-axis, campaign, benefits, time-basis |
+| [정책축 스캔은 Frame의 초기 게이트다](./policy-axis-frame-gate.md) | active | high | 2026-05-12 | d98008a | frame, tft, policy-axis, campaign, benefits, time-basis |
 
 ### knowledge
 
@@ -110,8 +110,8 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Ember Ship은 knowledge 정합성을 release train으로 닫는다](./ember-ship-release-train.md) | active | high | 2026-05-12 | bc001a0 | ember, knowledge, release-train, freshness, merge-gate |
 | [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | high | 2026-05-12 | 4d1ff26 | knowledge, freshness, diagnosis, review, candidate, 정합성 |
 | [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | high | 2026-05-12 | 4d1ff26 | knowledge, judgment, granularity, documentation, coverage, 문서 |
-| [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | high | 2026-05-11 | 55766aa | pilee, knowledge, history, journal, sanitized, reviewed-at |
-| [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | high | 2026-05-11 | 55766aa | knowledge, journal, privacy, sanitized, doctrine, history |
+| [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | high | 2026-05-12 | d98008a | pilee, knowledge, history, journal, sanitized, reviewed-at |
+| [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | high | 2026-05-12 | d98008a | knowledge, journal, privacy, sanitized, doctrine, history |
 | [README는 knowledge coverage map이다](./readme-coverage-map.md) | active | high | 2026-05-12 | 7a09453 | knowledge, readme, coverage, graph, surface, todo |
 | [README 철학 변경은 사용자 판단 게이트를 지난다](./readme-philosophy-user-gate.md) | active | high | 2026-05-11 | 55766aa | readme, philosophy, user-gate, public-facing, documentation, 판단 |
 | [Retro는 private reflection이다](./retro-private-reflection-boundary.md) | active | high | 2026-05-11 | 55766aa | retro, notion, reflection, private, journal, 회고 |
@@ -129,8 +129,8 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 |---|---|---:|---:|---:|---|
 | [Deterministic fallback은 workflow를 보존한다](./deterministic-fallbacks-preserve-workflow.md) | active | high | 2026-05-12 | b01add4 | fallback, deterministic, model-failure, resilience, web-search, report |
 | [Embedded WebView script는 escape 경계를 보존한다](./embedded-webview-script-escape-boundary.md) | active | high | 2026-05-12 | bc001a0 | webview, embedded-script, escape, string-raw, regex, glimpse |
-| [MCP 결과는 큰 출력만 digest-first로 다룬다](./mcp-digest-first-artifacts.md) | active | high | 2026-05-11 | ce3a598 | mcp, digest-first, artifact, tool-output, lazy-retrieval |
-| [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-05-11 | 55766aa | mcp, stderr, stdio, terminal, tui, noise |
+| [MCP 결과는 큰 출력만 digest-first로 다룬다](./mcp-digest-first-artifacts.md) | active | high | 2026-05-12 | d98008a | mcp, digest-first, artifact, tool-output, lazy-retrieval |
+| [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-05-12 | d98008a | mcp, stderr, stdio, terminal, tui, noise |
 | [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-05-12 | 9a03265 | terminal, ghostty, applescript, notify, host, integration |
 | [터미널 workspace 복원은 snapshot과 host adapter를 분리한다](./terminal-workspace-restore.md) | active | high | 2026-05-12 | 238e1cc | workspace, terminal, ghostty, snapshot, restore, session |
 
@@ -140,7 +140,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 |---|---|---:|---:|---:|---|
 | [Idle UI는 장식이 아니라 ambient status다](./ambient-status-surfaces.md) | active | high | 2026-05-07 | 0e6c083 | idle-screensaver, tasks, spinner, status, ambient, ui |
 | [Editor affordance는 숨은 컨텍스트가 아니다](./editor-affordance-not-context.md) | active | high | 2026-05-12 | bc001a0 | editor, footer, prompt-suggest, working-text, affordance, ui |
-| [User-facing 출력은 한국어를 기본으로 한다](./korean-first-user-facing-output.md) | active | high | 2026-05-11 | 55766aa | korean-output, localization, web-search, ui, rewrite, 한국어 |
+| [User-facing 출력은 한국어를 기본으로 한다](./korean-first-user-facing-output.md) | active | high | 2026-05-12 | d98008a | korean-output, localization, web-search, ui, rewrite, 한국어 |
 | [색상은 정보 위계다](./theme-information-hierarchy.md) | active | high | 2026-05-11 | 55766aa | theme, color, dim, muted, border, accent |
 | [도구 출력은 대화 흐름을 침범하지 않는다](./tool-output-noise-management.md) | active | high | 2026-05-11 | ce3a598 | tool-output, collapse, noise, ui, usage, renderer |
 | [TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다](./tui-rendering-sanitization.md) | active | high | 2026-05-11 | 55766aa | tui, rendering, newline, ansi, sanitize, terminal |
@@ -183,9 +183,9 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Frame은 마지막에 Plan을 합성한다](./frame-plan-synthesis-continuity.md) | active | high | 2026-05-12 | 4d1ff26 | frame, implementation-plan, tft-studio, worktree, continuity, planning |
 | [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-05-12 | 4d1ff26 | frame, planning, identity, home-directory, ticket, session-title |
 | [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-05-12 | 4d1ff26 | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
-| [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-05-11 | 55766aa | artifact, glimpse, preview, sse, upload, local-first |
+| [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-05-12 | d98008a | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 264ea17 | local-dev, server, startup, diagnosis, dev |
-| [pilee 변경은 final-check gate로 닫는다](./pilee-final-check-gate.md) | active | high | 2026-05-12 | 7c7b8a5 | pilee, final-check, verification, skill, workflow, 마무리 |
+| [pilee 변경은 final-check gate로 닫는다](./pilee-final-check-gate.md) | active | high | 2026-05-12 | d98008a | pilee, final-check, verification, skill, workflow, 마무리 |
 | [Private overlay package는 회사·개인 실행 맥락을 담는다](./private-overlay-package-boundary.md) | active | high | 2026-05-11 | 55766aa | privacy, package, overlay, skill, company-context |
 | [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-05-11 | cc28c22 | queued-messages, slash-command, prefill, worktree, session, boundary |
 | [변경된 줄은 요청으로 추적 가능해야 한다](./request-traceability-surgical-changes.md) | active | high | 2026-05-11 | 55766aa | request-traceability, surgical-change, karpathy, diff, scope, review |
