@@ -1,6 +1,5 @@
 ---
 title: TUI 질문은 작은 의사결정 게이트다
-title_en: TUI Ask is a lightweight decision gate
 tags:
   - tui
   - ask-user-question
@@ -16,11 +15,12 @@ applies_to:
   - skills/tft-guidelines
 source: public
 reviewed_at: 2026-05-12
-reviewed_commit: bdf382a
+reviewed_commit: d046a701ec838ba23a2f30dde2ea962cc215ecf3
 related:
   - ask-user-question-decision-gates
   - ask-user-question-option-design
   - tui-rendering-sanitization
+title_en: TUI Ask is a lightweight decision gate
 ---
 
 # TUI 질문은 작은 의사결정 게이트다
