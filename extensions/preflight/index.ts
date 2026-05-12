@@ -380,11 +380,11 @@ function buildPreflightSystemPrompt(cache: KnownBaselineFailure[]): string {
 // ─── Extension entry ───────────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
-	pi.on("before_agent_start", async (_event, ctx) => {
+	pi.on("before_agent_start", async (event, ctx) => {
 		const repoInfo = await currentRepoKey(pi, ctx.cwd);
 		if (!repoInfo) return;
 		const cache = readBaselineCache().filter((entry) => entry.repoKey === repoInfo.repoKey);
-		return { systemPrompt: buildPreflightSystemPrompt(cache) };
+		return { systemPrompt: `${event.systemPrompt}\n\n${buildPreflightSystemPrompt(cache)}` };
 	});
 
 	pi.on("tool_result", async (event, ctx) => annotateBashValidationFailure(pi, event, ctx));

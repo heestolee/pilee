@@ -1019,6 +1019,7 @@ const README_EXTENSION_GROUPS = [
 		{ name: "ship-commands", ko: "`/ship`/`/pr-ship`/`/ci-ship`을 pilee SKILL.md 인라인 실행으로 라우팅하고 PR 리뷰·CI 컨텍스트를 수집", en: "Routes `/ship`, `/pr-ship`, and `/ci-ship` to pilee skills and collects PR review/CI context" },
 		{ name: "frame-studio", ko: "Glimpse 기반 TFT Studio shell — Frame/Decide/Verify/Verify Report 탭 + 선택 UI/전문 저장 + Archive `이어하기`/`/tft open` 재진입", en: "Glimpse-based TFT Studio shell with Frame/Decide/Verify/Verify Report tabs, choices, transcript replay, Archive resume, and `/tft open`" },
 		{ name: "user-facing-language", ko: "사용자에게 보이는 진행/요약/답변은 짧은 한국어를 기본으로 하는 system prompt guard", en: "System prompt guard that keeps user-visible progress, summaries, and answers short and Korean-first" },
+		{ name: "workflow-guard", ko: "요청 의도·작업 무게·audit·선택 후 실행 흐름을 turn 단위로 강제하는 guard", en: "Turn-level guard for request intent, workflow weight, audits, and post-choice continuation" },
 	] },
 	{ ko: "세션 관리", en: "Session management", items: [
 		{ name: "worktree", ko: "Git worktree 대시보드 — backlog/active/done/archive, 태그, 필터, bootstrapper, 전환", en: "Git worktree dashboard, tags, filters, bootstrapper, and switching" },
