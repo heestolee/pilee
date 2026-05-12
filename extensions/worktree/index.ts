@@ -772,14 +772,21 @@ function repoRelativePath(repoRoot: string, value: string | undefined): string {
 	return expanded.startsWith("/") ? expanded : join(repoRoot, expanded);
 }
 
+function bootstrapDomainMarkers(domain: WorktreeBootstrapDomainProfile): string[] {
+	return [domain.marker, ...(domain.markers ?? [])].filter((marker, index, all) => marker && all.indexOf(marker) === index);
+}
+
+function bootstrapDomainReady(repoRoot: string, domain: WorktreeBootstrapDomainProfile): boolean {
+	return bootstrapDomainMarkers(domain).every((marker) => existsSync(repoRelativePath(repoRoot, marker)));
+}
+
 function missingBootstrapDomains(repoRoot: string, profile: WorktreeRepoProfile, domains: BootstrapDomain[]): BootstrapDomain[] {
 	const byName = new Map(bootstrapDomainProfiles(profile).map((domain) => [domain.name, domain]));
 	const missing: BootstrapDomain[] = [];
 	for (const domainName of domains) {
 		const domain = byName.get(domainName);
 		if (!domain) continue;
-		const marker = repoRelativePath(repoRoot, domain.marker);
-		if (!existsSync(marker)) missing.push(domainName);
+		if (!bootstrapDomainReady(repoRoot, domain)) missing.push(domainName);
 	}
 	return missing;
 }
@@ -792,12 +799,13 @@ function buildDependencyBootstrapScript(profile: WorktreeRepoProfile, domains: B
 	const domainProfiles = bootstrapDomainProfiles(profile).filter((domain) => domains.includes(domain.name));
 	const steps = domainProfiles.map((domain) => {
 		const label = domain.label ?? `${domain.name} dependency install`;
-		const marker = repoRelativePath(repoRoot, domain.marker);
+		const markers = bootstrapDomainMarkers(domain).map((marker) => repoRelativePath(repoRoot, marker));
+		const markerChecks = markers.map((marker) => `[ -e ${shellQuote(marker)} ]`).join(" && ") || "true";
 		const stepCwd = repoRelativePath(repoRoot, domain.cwd ?? ".");
-		return `if [ ! -e ${shellQuote(marker)} ]; then
-  run_step ${shellQuote(label)} ${shellQuote(stepCwd)} ${shellQuote(domain.command)}
-else
+		return `if ${markerChecks}; then
   echo "✓ ${label} ready"
+else
+  run_step ${shellQuote(label)} ${shellQuote(stepCwd)} ${shellQuote(domain.command)}
 fi`;
 	}).join("\n");
 	const domainList = domains.join(",");
@@ -1152,10 +1160,12 @@ async function formatBootstrapStatus(pi: ExtensionAPI, repoRoot: string): Promis
 	if (repoProfile?.bootstrap?.enabled) {
 		lines.push(`  profile: ${repoProfile.displayName ?? repoProfile.name}`);
 		for (const domain of bootstrapDomainProfiles(repoProfile)) {
-			const marker = repoRelativePath(repoRoot, domain.marker);
-			const ready = existsSync(marker);
+			const markers = bootstrapDomainMarkers(domain);
+			const missingMarkers = markers.filter((marker) => !existsSync(repoRelativePath(repoRoot, marker)));
+			const ready = missingMarkers.length === 0;
 			const label = domain.label ?? domain.name;
-			lines.push(`  ${ready ? "✓" : "✗"} ${domain.name} — ${label} — ${ready ? "ready" : "missing"} (${domain.marker})`);
+			const markerSummary = ready ? markers.join(", ") : `missing: ${missingMarkers.join(", ")}`;
+			lines.push(`  ${ready ? "✓" : "✗"} ${domain.name} — ${label} — ${ready ? "ready" : "missing"} (${markerSummary})`);
 		}
 	}
 	if (existsSync(statusPath)) {

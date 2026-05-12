@@ -20,6 +20,7 @@ export interface WorktreeBootstrapDomainProfile {
 	name: string;
 	label?: string;
 	marker: string;
+	markers?: string[];
 	command: string;
 	cwd?: string;
 }
