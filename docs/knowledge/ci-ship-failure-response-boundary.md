@@ -17,8 +17,8 @@ source:
   - user-direction:2026-05-10-ci-ship
   - user-direction:2026-05-11-ci-ship-update-branch
   - pr-context:github-actions-failure
-reviewed_at: 2026-05-11
-reviewed_commit: 7142974
+reviewed_at: 2026-05-12
+reviewed_commit: b01add434d2f69298be700bc39f1cb664de9f025
 related:
   - ship-pr-ship-review-boundary
   - root-cause-before-fix

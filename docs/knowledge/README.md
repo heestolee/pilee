@@ -85,7 +85,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [DB write는 인간 실행 게이트를 가진다](./database-write-human-execution-gate.md) | active | high | 2026-05-07 | f1480c7 | db-write, migration, sql, approval, transaction, database |
+| [DB write는 인간 실행 게이트를 가진다](./database-write-human-execution-gate.md) | active | high | 2026-05-12 | b01add4 | db-write, migration, sql, approval, transaction, database |
 
 ### debugging
 
@@ -104,7 +104,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [낮은 confidence 판단은 정합성 PR로 올린다](./confidence-sensitive-review.md) | active | high | 2026-05-11 | 55766aa | confidence, review, freshness, ai-actions, user-review, 정합성 |
+| [낮은 confidence 판단은 정합성 PR로 올린다](./confidence-sensitive-review.md) | active | high | 2026-05-12 | b01add4 | confidence, review, freshness, ai-actions, user-review, 정합성 |
 | [Deterministic action과 AI review action은 분리한다](./deterministic-vs-ai-actions.md) | active | high | 2026-05-11 | 55766aa | knowledge, deterministic, ai-actions, review, automation, 정합성 |
 | [Ember는 knowledge의 친근한 입구다](./ember-friendly-knowledge-entrypoint.md) | active | high | 2026-05-12 | 421f803 | ember, branding, command, knowledge |
 | [Ember Ship은 knowledge 정합성을 release train으로 닫는다](./ember-ship-release-train.md) | active | high | 2026-05-12 | 421f803 | ember, knowledge, release-train, freshness, merge-gate |
@@ -127,7 +127,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [Deterministic fallback은 workflow를 보존한다](./deterministic-fallbacks-preserve-workflow.md) | active | high | 2026-05-11 | 55766aa | fallback, deterministic, model-failure, resilience, web-search, report |
+| [Deterministic fallback은 workflow를 보존한다](./deterministic-fallbacks-preserve-workflow.md) | active | high | 2026-05-12 | b01add4 | fallback, deterministic, model-failure, resilience, web-search, report |
 | [Embedded WebView script는 escape 경계를 보존한다](./embedded-webview-script-escape-boundary.md) | active | high | 2026-05-11 | 55766aa | webview, embedded-script, escape, string-raw, regex, glimpse |
 | [MCP 결과는 큰 출력만 digest-first로 다룬다](./mcp-digest-first-artifacts.md) | active | high | 2026-05-11 | ce3a598 | mcp, digest-first, artifact, tool-output, lazy-retrieval |
 | [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-05-11 | 55766aa | mcp, stderr, stdio, terminal, tui, noise |
@@ -161,7 +161,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [웹 검색은 승인된 출처 선택을 거친다](./curator-approved-source-selection.md) | active | high | 2026-05-11 | 55766aa | web-search, curator, source-selection, approval, tavily, 검색 |
+| [웹 검색은 승인된 출처 선택을 거친다](./curator-approved-source-selection.md) | active | high | 2026-05-12 | b01add4 | web-search, curator, source-selection, approval, tavily, 검색 |
 | [Web Search curator와 승인형 요약 흐름](./web-search-curator.md) | active | high | 2026-05-11 | c340ade | web-search, tavily, curator, glimpse, summary-review, korean-output |
 
 ### workflow
@@ -173,10 +173,10 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [AskUserQuestion 옵션은 행동 분기를 표현한다](./ask-user-question-option-design.md) | active | high | 2026-05-12 | a2019c2 | ask-user-question, option, wording, ceremony, tft, 질문 |
 | [Auto-commit은 명시 계획만 실행한다](./auto-commit-explicit-plan-gate.md) | active | high | 2026-05-12 | a2019c2 | auto-commit, git, commit, plan, safety |
 | [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | high | 2026-05-12 | a2019c2 | backlog, tasks, provenance, source-session, session, 맥락 |
-| [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md) | active | high | 2026-05-11 | 55766aa | git, incremental, code-review, commit, quality, 통합 |
-| [CI-Ship은 PR 후 검증 실패 대응 단계다](./ci-ship-failure-response-boundary.md) | active | high | 2026-05-11 | 7142974 | ci-ship, ci, github-actions, pull-request, failure-analysis, ship |
-| [자동 로드 컨텍스트는 최소 surface만 가진다](./context-loading-minimal-surface.md) | active | high | 2026-05-09 | 5f1411c | context, agents-md, memory, system-prompt, token, autoload |
-| [Decide는 선택을 한 번 공격한다](./decide-tradeoff-challenge.md) | active | high | 2026-05-11 | 55766aa | decide, tradeoff, challenge, productive-resistance, frame-json, decision |
+| [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md) | active | high | 2026-05-12 | b01add4 | git, incremental, code-review, commit, quality, 통합 |
+| [CI-Ship은 PR 후 검증 실패 대응 단계다](./ci-ship-failure-response-boundary.md) | active | high | 2026-05-12 | b01add4 | ci-ship, ci, github-actions, pull-request, failure-analysis, ship |
+| [자동 로드 컨텍스트는 최소 surface만 가진다](./context-loading-minimal-surface.md) | active | high | 2026-05-12 | b01add4 | context, agents-md, memory, system-prompt, token, autoload |
+| [Decide는 선택을 한 번 공격한다](./decide-tradeoff-challenge.md) | active | high | 2026-05-12 | b01add4 | decide, tradeoff, challenge, productive-resistance, frame-json, decision |
 | [외부 이슈 업데이트는 preview gate를 지난다](./external-issue-preview-gate.md) | active | high | 2026-05-11 | 55766aa | jira, issue, preview, wiki-markup, external-update, approval |
 | [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-05-11 | 55766aa | fork-panel, handoff, inbox, inject, parent, panel |
 | [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-05-11 | 55766aa | fork-panel, revive, repanel, ghostty, spatial, panel |
