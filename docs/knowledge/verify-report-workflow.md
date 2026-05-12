@@ -34,8 +34,8 @@ source:
   - pilee-history:2026-05-06#69
   - user-direction:2026-05-07-local-resolver
   - user-feedback:2026-05-11-detail-readability
-reviewed_at: 2026-05-11
-reviewed_commit: f1efffef4f6d1772fe8696054b9f325afcdd186f
+reviewed_at: 2026-05-12
+reviewed_commit: 7a09453bb3b9bb95c36883f55ccdc6210cd59959
 related:
   - pilee-knowledge-system
   - web-search-curator

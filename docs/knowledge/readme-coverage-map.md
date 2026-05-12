@@ -20,8 +20,8 @@ source:
   - pilee-history:2026-05-05#50
   - pilee-history:2026-05-05#52
   - user-direction:2026-05-07-local-resolver
-reviewed_at: 2026-05-11
-reviewed_commit: 55766aa7231850e0c715240fe796224a9dac843c
+reviewed_at: 2026-05-12
+reviewed_commit: 7a09453bb3b9bb95c36883f55ccdc6210cd59959
 related:
   - freshness-diagnosis-report
   - judgment-doc-unit

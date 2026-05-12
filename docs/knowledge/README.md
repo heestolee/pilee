@@ -111,7 +111,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | high | 2026-05-11 | 55766aa | knowledge, judgment, granularity, documentation, coverage, 문서 |
 | [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | high | 2026-05-11 | 55766aa | pilee, knowledge, history, journal, sanitized, reviewed-at |
 | [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | high | 2026-05-11 | 55766aa | knowledge, journal, privacy, sanitized, doctrine, history |
-| [README는 knowledge coverage map이다](./readme-coverage-map.md) | active | high | 2026-05-11 | 55766aa | knowledge, readme, coverage, graph, surface, todo |
+| [README는 knowledge coverage map이다](./readme-coverage-map.md) | active | high | 2026-05-12 | 7a09453 | knowledge, readme, coverage, graph, surface, todo |
 | [README 철학 변경은 사용자 판단 게이트를 지난다](./readme-philosophy-user-gate.md) | active | high | 2026-05-11 | 55766aa | readme, philosophy, user-gate, public-facing, documentation, 판단 |
 | [Retro는 private reflection이다](./retro-private-reflection-boundary.md) | active | high | 2026-05-11 | 55766aa | retro, notion, reflection, private, journal, 회고 |
 | [reviewed_commit은 날짜 freshness의 빈틈을 막는다](./reviewed-commit-freshness.md) | active | high | 2026-05-11 | 55766aa | knowledge, reviewed-commit, reviewed-at, freshness, commit, 정합성 |
@@ -150,10 +150,10 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 |---|---|---:|---:|---:|---|
 | [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-05-11 | 55766aa | verify, evidence, gate, done, ready, verification |
 | [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-05-11 | 55766aa | frame, verify, frame-json, success-criteria, contract, verification |
-| [반복 검증 실패는 baseline cache로 분리한다](./validation-baseline-failure-cache.md) | active | high | 2026-05-12 | 3698bb2 | preflight, validation, baseline, failure, cache, verification |
+| [반복 검증 실패는 baseline cache로 분리한다](./validation-baseline-failure-cache.md) | active | high | 2026-05-12 | 7a09453 | preflight, validation, baseline, failure, cache, verification |
 | [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-05-11 | 55766aa | verify, invalidation, code-change, freshness, gate, 검증 |
-| [Verify Report 전에는 readiness를 먼저 잠근다](./verify-report-preflight-readiness.md) | active | high | 2026-05-12 | 3698bb2 | verify-report, preflight, readiness, capture, data, account |
-| [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | active | high | 2026-05-11 | f1efffe | verify-report, verification, evidence, coverage, capture, crop |
+| [Verify Report 전에는 readiness를 먼저 잠근다](./verify-report-preflight-readiness.md) | active | high | 2026-05-12 | 7a09453 | verify-report, preflight, readiness, capture, data, account |
+| [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | active | high | 2026-05-12 | 7a09453 | verify-report, verification, evidence, coverage, capture, crop |
 | [Verify risk lens는 generic core와 private overlay로 나눈다](./verify-risk-lens-overlay.md) | active | high | 2026-05-11 | 55766aa | verify, risk-lens, overlay, private-overlay, verification, domain-check |
 
 ### web-access
@@ -198,7 +198,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-05-12 | 0dfb4c8 | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
 | [TUI 질문은 작은 의사결정 게이트다](./tui-ask-decision-overlay.md) | active | high | 2026-05-12 | 1b80abf | tui, ask-user-question, decision-gate, tool, overlay |
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
-| [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-05-12 | 3698bb2 | workflow, frame, tft, hotfix, scope, incremental |
+| [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-05-12 | 7a09453 | workflow, frame, tft, hotfix, scope, incremental |
 | [Worktree 생성은 부모 패널의 게이트다](./worktree-creation-parent-gate.md) | active | high | 2026-05-12 | b50b0ef | worktree, fork-panel, parent-panel, hotfix, context, profile-driven |
 | [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-05-12 | b168291 | worktree, dependencies, bootstrap, profile-driven, worker, subagent |
 | [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-05-11 | 55766aa | worktree, workspace, repo, branch, execution-boundary, cwd-binding |
