@@ -75,7 +75,7 @@ Pi UI가 있고 `frame_studio` tool을 사용할 수 있으면, `/verify`의 사
 2. frame.json 로드 (없으면 사전 조건 동작)
 3. 변경 파일의 diff를 읽음
 
-반복되는 unrelated validation 실패가 있으면 먼저 `/preflight baseline list`로 known baseline인지 확인한다. Known baseline은 최종 보고에서 별도 분리하되, 이번 diff가 같은 실패를 건드렸다면 baseline으로 취급하지 말고 새 실패로 재검증한다.
+반복되는 unrelated validation 실패는 agent가 자동 preflight baseline 흐름으로 분리한다. Bash validation 결과가 `[preflight] Known baseline failure`로 주석 처리되면 최종 보고에서 별도 분리하되, 이번 diff가 같은 실패를 건드렸다면 baseline으로 취급하지 말고 새 실패로 재검증한다. 새 unrelated baseline이라고 판단되면 사용자에게 slash command를 요구하지 말고 `preflight_baseline` tool로 기록한다.
 
 ### Step 1.5: Generic Risk Lens 선택 + overlay 로드
 

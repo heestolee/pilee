@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ThemeColor } from "@mariozechner/pi-coding-agent";
+import { Type } from "typebox";
 import { Key, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { expandProfileTemplate, loadPreflightProfiles, type PreflightCheckProfile, type PreflightProfile } from "../utils/private-profiles.ts";
 
@@ -12,6 +13,7 @@ const LOG_FILE = join(homedir(), ".pi", "agent", "state", "preflight-analytics.j
 const BASELINE_CACHE_FILE = join(homedir(), ".pi", "agent", "state", "preflight-baseline-cache.json");
 const MAX_LOG_AGE_DAYS = 180;
 const DEFAULT_BASELINE_TTL_DAYS = 30;
+const MAX_RECENT_VALIDATION_FAILURES = 20;
 
 interface CheckDef {
 	name: string;
@@ -105,6 +107,30 @@ interface RunLog {
 	durationTotalMs: number;
 	results: CheckResult[];
 }
+
+interface ObservedValidationFailure {
+	repoKey: string;
+	repoRoot: string;
+	branch: string;
+	command: string;
+	result: CheckResult;
+	observedAt: string;
+}
+
+const recentValidationFailures = new Map<string, ObservedValidationFailure[]>();
+
+const preflightBaselineToolSchema = Type.Object({
+	action: Type.Union([
+		Type.Literal("list"),
+		Type.Literal("add_last"),
+		Type.Literal("clear"),
+		Type.Literal("prune"),
+	], { description: "Baseline cache action. Use add_last after you have determined the latest validation failure is unrelated baseline noise." }),
+	note: Type.Optional(Type.String({ description: "Why this failure is unrelated baseline noise. Required for add_last." })),
+	check: Type.Optional(Type.String({ description: "Optional check name filter, e.g. typecheck, lint, test, build." })),
+	expiresDays: Type.Optional(Type.Number({ description: "Optional expiration in days. Default 30." })),
+	id: Type.Optional(Type.String({ description: "Baseline id for clear." })),
+});
 
 // ─── Logging ───────────────────────────────────────────────────────────────
 
@@ -326,6 +352,165 @@ async function handleBaselineCommand(pi: ExtensionAPI, args: string, ctx: Extens
 	ctx.ui.notify(`알 수 없는 baseline subcommand: ${subcommand}\n/preflight baseline help를 확인하세요.`, "warning");
 }
 
+
+function validationCheckNameFromCommand(command: string): string | null {
+	const compact = command.toLowerCase().replace(/\s+/g, " ").trim();
+	if (!compact) return null;
+	if (/\b(git diff --check)\b/.test(compact)) return "diff-check";
+	if (/\b(biome|eslint|lint)(:|\b)/.test(compact)) return "lint";
+	if (/\b(typecheck|type-check|check-types|tsc|vue-tsc)\b/.test(compact) || /\btsc\b.*--noemit/.test(compact)) return "typecheck";
+	if (/\b(test|vitest|jest|playwright|cypress|mocha|ava)(:|\b)/.test(compact)) return "test";
+	if (/\b(build|next build|turbo build|tsup|vite build)(:|\b)/.test(compact)) return "build";
+	if (/\b(check|verify|preflight)(:|\b)/.test(compact)) return "validation";
+	return null;
+}
+
+function contentToText(content: Array<{ type: string; text?: string }>): string {
+	return content
+		.map((part) => part.type === "text" && typeof part.text === "string" ? part.text : "")
+		.filter(Boolean)
+		.join("\n");
+}
+
+function rememberObservedValidationFailure(observed: ObservedValidationFailure) {
+	const entries = recentValidationFailures.get(observed.repoKey) ?? [];
+	entries.unshift(observed);
+	recentValidationFailures.set(observed.repoKey, entries.slice(0, MAX_RECENT_VALIDATION_FAILURES));
+}
+
+function recentFailuresFor(repoKey: string, check?: string): ObservedValidationFailure[] {
+	const entries = recentValidationFailures.get(repoKey) ?? [];
+	return check ? entries.filter((entry) => entry.result.check === check) : entries;
+}
+
+function formatObservedFailure(entry: ObservedValidationFailure): string {
+	const status = entry.result.status === "baseline" ? `baseline:${entry.result.baselineId ?? entry.result.signature ?? "known"}` : entry.result.status;
+	return `${entry.result.check} · ${status} · ${entry.result.failSummary ?? "Unknown failure"}\n  command: ${entry.command.slice(0, 160)}`;
+}
+
+function toolText(text: string, details: Record<string, unknown> = {}) {
+	return { content: [{ type: "text" as const, text }], details };
+}
+
+async function currentRepoKey(pi: ExtensionAPI, cwd: string): Promise<{ repoKey: string; repo: Awaited<ReturnType<typeof getRepoInfo>> } | null> {
+	const repo = await getRepoInfo(pi, cwd);
+	if (!repo) return null;
+	return { repoKey: repoKeyFor(repo.root, repo.remoteUrl), repo };
+}
+
+async function handlePreflightBaselineTool(pi: ExtensionAPI, params: any, cwd: string) {
+	const repoInfo = await currentRepoKey(pi, cwd);
+	if (!repoInfo || !repoInfo.repo) throw new Error("preflight_baseline requires a git repository");
+	const { repoKey, repo } = repoInfo;
+	let cache = readBaselineCache();
+	const now = Date.now();
+
+	if (params.action === "list") {
+		const active = cache.filter((entry) => entry.repoKey === repoKey && !baselineExpired(entry, now));
+		const recent = recentFailuresFor(repoKey, params.check);
+		return toolText([
+			active.length ? "Known baseline failures:" : "Known baseline failures: none",
+			...active.map(formatBaselineEntry),
+			"",
+			recent.length ? "Recent observed validation failures:" : "Recent observed validation failures: none",
+			...recent.slice(0, 8).map(formatObservedFailure),
+		].join("\n"), { action: params.action, repoKey, known: active.length, recent: recent.length });
+	}
+
+	if (params.action === "prune") {
+		const before = cache.length;
+		cache = cache.filter((entry) => !baselineExpired(entry, now));
+		writeBaselineCache(cache);
+		return toolText(`만료된 baseline ${before - cache.length}개를 정리했습니다.`, { action: params.action, pruned: before - cache.length });
+	}
+
+	if (params.action === "clear") {
+		if (!params.id) throw new Error("id is required for clear");
+		const before = cache.length;
+		cache = cache.filter((entry) => entry.id !== params.id);
+		writeBaselineCache(cache);
+		return toolText(before === cache.length ? `baseline id를 찾지 못했습니다: ${params.id}` : `baseline 삭제: ${params.id}`, { action: params.action, removed: before - cache.length });
+	}
+
+	if (params.action === "add_last") {
+		const note = String(params.note ?? "").trim();
+		if (!note) throw new Error("note is required for add_last; explain why this failure is unrelated baseline noise");
+		const recent = recentFailuresFor(repoKey, params.check).filter((entry) => entry.result.status === "fail" || entry.result.status === "timeout");
+		if (recent.length === 0) throw new Error("No recent non-baseline validation failure found for this repository/check");
+		const expiresDays = Number.isFinite(params.expiresDays) && params.expiresDays > 0 ? params.expiresDays : DEFAULT_BASELINE_TTL_DAYS;
+		const expiresAt = new Date(now + expiresDays * 24 * 60 * 60 * 1000).toISOString();
+		const target = recent[0];
+		const added = upsertBaselineEntry(cache, repoKey, target.result, repo.branch, note, expiresAt);
+		writeBaselineCache(cache);
+		return toolText([
+			`최근 validation failure 1개를 known baseline으로 기록했습니다.`,
+			"다음 동일 signature 실패는 bash/preflight 결과에서 baseline으로 자동 주석 처리됩니다.",
+			"",
+			formatBaselineEntry(added),
+		].join("\n"), { action: params.action, added: [added.id], repoKey });
+	}
+
+	throw new Error(`Unsupported action: ${params.action}`);
+}
+
+async function annotateBashValidationFailure(pi: ExtensionAPI, event: any, ctx: { cwd: string }) {
+	if (event.toolName !== "bash" || !event.isError) return undefined;
+	const command = String(event.input?.command ?? "");
+	const check = validationCheckNameFromCommand(command);
+	if (!check) return undefined;
+	const repoInfo = await currentRepoKey(pi, ctx.cwd);
+	if (!repoInfo || !repoInfo.repo) return undefined;
+	const output = contentToText(event.content ?? []);
+	const result: CheckResult = {
+		check,
+		status: "fail",
+		durationMs: 0,
+		failSummary: extractFailSummary(output, check),
+		stderr: output.slice(-2000),
+	};
+	const cache = readBaselineCache();
+	const annotated = annotateBaselineResult(result, repoInfo.repoKey, cache);
+	rememberObservedValidationFailure({
+		repoKey: repoInfo.repoKey,
+		repoRoot: repoInfo.repo.root,
+		branch: repoInfo.repo.branch,
+		command,
+		result: annotated,
+		observedAt: new Date().toISOString(),
+	});
+
+	if (annotated.status === "baseline") {
+		writeBaselineCache(cache);
+		const note = [
+			"",
+			"[preflight] Known baseline failure detected.",
+			`- check: ${annotated.check}`,
+			`- baseline: ${annotated.baselineId ?? annotated.signature}`,
+			annotated.baselineNote ? `- note: ${annotated.baselineNote}` : "",
+			"- Treat as unrelated unless the current diff changes this failure signature or affected area.",
+		].filter(Boolean).join("\n");
+		return {
+			content: [...(event.content ?? []), { type: "text" as const, text: note }],
+			details: { ...(event.details ?? {}), preflightBaseline: { id: annotated.baselineId, signature: annotated.signature, note: annotated.baselineNote } },
+			isError: event.isError,
+		};
+	}
+	return undefined;
+}
+
+function buildPreflightSystemPrompt(cache: KnownBaselineFailure[]): string {
+	const active = cache.filter((entry) => !baselineExpired(entry)).slice(0, 5);
+	return [
+		"Preflight baseline automation:",
+		"- Do not ask the user to run /preflight baseline commands during normal work.",
+		"- When validation/lint/typecheck/test/build fails, read the full output first and decide whether it is caused by the current diff.",
+		"- If the bash result is annotated as [preflight] Known baseline failure, separate it as Known baseline/unrelated instead of re-debugging it, unless the current diff changes its signature or affected area.",
+		"- If you determine a new validation failure is unrelated baseline noise after root-cause review, call the preflight_baseline tool with action=add_last and a concise note. Do not ask the user to type a slash command.",
+		"- Never record a failure as baseline if it may be caused by the current diff or if required evidence is missing.",
+		active.length ? `Active known baselines: ${active.map((entry) => `${entry.check}:${entry.id}`).join(", ")}` : "Active known baselines: none for this repo/session yet.",
+	].join("\n");
+}
+
 // ─── Git helpers ───────────────────────────────────────────────────────────
 
 async function getRepoInfo(pi: ExtensionAPI, cwd: string): Promise<{ root: string; branch: string; baseBranch: string; remoteUrl: string } | null> {
@@ -471,7 +656,7 @@ function formatResults(results: CheckResult[], totalDuration: number): string {
 	if (failures.length > 0) {
 		lines.push("");
 		lines.push(`Failed: ${failures.map((f) => f.check).join(", ")}`);
-		lines.push(`반복되는 baseline 실패라면: /preflight baseline add-last <이유>`);
+		lines.push(`반복 baseline이면 원인 확인 후 agent가 baseline cache에 기록합니다.`);
 	}
 
 	return lines.join("\n");
@@ -813,6 +998,31 @@ async function showStatsOverlay(ctx: ExtensionCommandContext) {
 // ─── Extension entry ───────────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
+	pi.on("before_agent_start", async (_event, ctx) => {
+		const repoInfo = await currentRepoKey(pi, ctx.cwd);
+		if (!repoInfo) return;
+		const cache = readBaselineCache().filter((entry) => entry.repoKey === repoInfo.repoKey);
+		return { systemPrompt: buildPreflightSystemPrompt(cache) };
+	});
+
+	pi.on("tool_result", async (event, ctx) => annotateBashValidationFailure(pi, event, ctx));
+
+	pi.registerTool({
+		name: "preflight_baseline",
+		label: "Preflight Baseline",
+		description: "Automatically inspect/list or record known unrelated validation baseline failures after lint/typecheck/test/build failures. Use this tool yourself; do not ask the user to run /preflight baseline.",
+		promptSnippet: "Use preflight_baseline after validation failure triage to separate known unrelated baseline failures from actionable failures.",
+		promptGuidelines: [
+			"Do not use this tool to hide a failure that may be caused by the current diff.",
+			"Use action=list before re-debugging repeated validation failures if the bash result was not already annotated.",
+			"Use action=add_last only after reading the full failure and deciding it is unrelated baseline noise.",
+		],
+		parameters: preflightBaselineToolSchema,
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			return handlePreflightBaselineTool(pi, params, ctx.cwd);
+		},
+	});
+
 	pi.registerCommand("preflight", {
 		description: "Run CI-equivalent checks locally. Subcommands: stats, baseline list/add-last/clear/prune",
 		handler: (args, ctx) => handlePreflight(pi, args, ctx),

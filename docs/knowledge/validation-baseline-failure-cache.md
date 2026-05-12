@@ -33,14 +33,9 @@ title_en: Repeated validation failures are separated by a baseline cache
 
 ## Rule
 
-`/preflight`가 실패하면 실패 signature를 남깁니다. 같은 repo/check/signature가 known baseline으로 등록되어 있으면 다음 실행에서 `baseline` 상태로 표시하고, 자동 repair 분석 follow-up을 띄우지 않습니다.
+검증 명령이 실패하면 preflight extension이 bash tool result를 관찰해 실패 signature를 남깁니다. 같은 repo/check/signature가 known baseline으로 등록되어 있으면 결과에 `[preflight] Known baseline failure` 주석을 붙이고, agent는 이를 `Known baseline / unrelated`로 분리합니다.
 
-```bash
-/preflight baseline list
-/preflight baseline add-last "unrelated baseline: <reason>" --expires 14d
-/preflight baseline clear <id>
-/preflight baseline prune
-```
+새 실패를 처음 본 경우에는 agent가 전체 로그를 읽고 current diff와의 관련성을 판단합니다. unrelated baseline이라고 판단했을 때는 사용자에게 slash command를 요구하지 않고 `preflight_baseline` tool의 `action="add_last"`로 기록합니다. `/preflight baseline list/add-last/clear/prune`은 사람이 수동으로 점검하거나 정리할 때의 escape hatch입니다.
 
 Baseline entry는 state sidecar(`~/.pi/agent/state/preflight-baseline-cache.json`)이며 repository source나 public docs에 raw 로그를 복사하지 않습니다.
 
@@ -49,7 +44,7 @@ Baseline entry는 state sidecar(`~/.pi/agent/state/preflight-baseline-cache.json
 - Baseline은 required check를 통과로 만들지 않습니다.
 - 현재 diff가 실패 signature나 원인을 바꿨으면 새 failure로 분석합니다.
 - 만료 기간을 둡니다. 기본 30일이며, hotfix 반복 노이즈는 보통 `--expires 14d`처럼 더 짧게 둡니다.
-- 실패를 처음 본 경우에는 root cause를 읽고 unrelated라는 근거를 확보한 뒤 baseline으로 등록합니다.
+- 실패를 처음 본 경우에는 root cause를 읽고 unrelated라는 근거를 확보한 뒤 agent가 tool로 baseline을 등록합니다.
 - Baseline으로 분리한 실패는 최종 보고의 `Known baseline / unrelated` 섹션에 남깁니다.
 
 ## Why It Matters

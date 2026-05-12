@@ -110,12 +110,9 @@ Before every commit:
    - type check command
 ```
 
-If the same validation failure has already been proven unrelated to the current branch, record it as a short-lived known baseline instead of re-debugging it in every worktree.
+If the same validation failure has already been proven unrelated to the current branch, record it as a short-lived known baseline instead of re-debugging it in every worktree. This should happen through automatic preflight handling while the agent works: bash validation failures are checked against the cache, and after root-cause review the agent can call `preflight_baseline` with `action="add_last"` to record unrelated baseline noise.
 
-```bash
-/preflight baseline list
-/preflight baseline add-last "unrelated baseline: <reason>" --expires 14d
-```
+The `/preflight baseline ...` slash command remains only a manual escape hatch for inspection/cleanup. The user should not have to run it during normal implementation.
 
 A baseline cache entry only separates noise from actionable failures. It does not make a required check pass and must not hide a failure that changed with the current diff.
 
