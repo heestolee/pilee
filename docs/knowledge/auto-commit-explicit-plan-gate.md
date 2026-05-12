@@ -1,6 +1,5 @@
 ---
 title: Auto-commit은 명시 계획만 실행한다
-title_en: Auto-commit executes only explicit plans
 tags:
   - auto-commit
   - git
@@ -14,11 +13,12 @@ applies_to:
   - extensions/auto-commit
 source: public
 reviewed_at: 2026-05-12
-reviewed_commit: 35d1650
+reviewed_commit: d411d5d276bdc741aac238d4a8460d4986ff0787
 related:
   - change-integration-discipline
   - request-traceability-surgical-changes
   - deterministic-vs-ai-actions
+title_en: Auto-commit executes only explicit plans
 ---
 
 # Auto-commit은 명시 계획만 실행한다
