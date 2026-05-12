@@ -19,7 +19,7 @@ applies_to:
 source:
   - user-direction:2026-05-12-ember-ship
 reviewed_at: 2026-05-12
-reviewed_commit: b2d30013a45baf78cff06a5df6756640f686731d
+reviewed_commit: 421f803e0f7ffc1e083d15928d6f7477adcc2429
 related:
   - ember-friendly-knowledge-entrypoint
   - pilee-knowledge-system
