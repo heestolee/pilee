@@ -93,6 +93,12 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 |---|---|---:|---:|---:|---|
 | [수정 전에 근본 원인을 좁힌다](./root-cause-before-fix.md) | active | high | 2026-05-11 | 55766aa | debugging, root-cause, triage, error-recovery, systematic, 디버깅 |
 
+### frame
+
+| Topic | Status | Confidence | Reviewed | Commit | Tags |
+|---|---|---:|---:|---:|---|
+| [정책축 스캔은 Frame의 초기 게이트다](./policy-axis-frame-gate.md) | active | high | 2026-05-12 | c6b160f | frame, tft, policy-axis, campaign, benefits, time-basis |
+
 ### knowledge
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
@@ -205,6 +211,7 @@ graph TD
   doc_utility_surface_stays_invisible["Utils surface는 사용자 계약을 만들지 않는다"]
   doc_database_write_human_execution_gate["DB write는 인간 실행 게이트를 가진다"]
   doc_root_cause_before_fix["수정 전에 근본 원인을 좁힌다"]
+  doc_policy_axis_frame_gate["정책축 스캔은 Frame의 초기 게이트다"]
   doc_confidence_sensitive_review["낮은 confidence 판단은 정합성 PR로 올린다"]
   doc_deterministic_vs_ai_actions["Deterministic action과 AI review action은 분리한다"]
   doc_ember_friendly_knowledge_entrypoint["Ember는 knowledge의 친근한 입구다"]
@@ -299,6 +306,9 @@ graph TD
   doc_database_write_human_execution_gate --> doc_private_overlay_package_boundary
   doc_root_cause_before_fix --> doc_evidence_first_verification_gate
   doc_root_cause_before_fix --> doc_verification_invalidation_on_change
+  doc_policy_axis_frame_gate --> doc_architecture_friction_tft_lens
+  doc_policy_axis_frame_gate --> doc_frame_verify_contract
+  doc_policy_axis_frame_gate --> doc_tft_visual_structure_renderer
   doc_confidence_sensitive_review --> doc_deterministic_vs_ai_actions
   doc_confidence_sensitive_review --> doc_freshness_diagnosis_report
   doc_confidence_sensitive_review --> doc_readme_philosophy_user_gate
@@ -502,7 +512,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 73
-- Links: 231
+- Documents: 74
+- Links: 234
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

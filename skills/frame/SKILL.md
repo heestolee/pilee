@@ -31,6 +31,32 @@ description: 작업 시작 전에 구체 질문으로 목표·성공 기준·범
 
 ## Invariants
 
+### 0-A. 정책축 스캔 게이트
+
+`/frame`은 티켓의 개별 룰을 나열하기 전에, 그 룰들이 충돌하거나 확장될 **정책축**을 먼저 스캔한다. 다음 도메인이 보이면 Step 2에서 정책축 스캔을 반드시 수행하고, Step 3/4 질문 후보에 반영한다.
+
+트리거:
+- 혜택, 쿠폰, 캠페인, 멤버십, 포인트, 환급률, 가격, 정산, 예약, 영수증처럼 사용자/운영 결과가 정책에 의해 달라지는 작업
+- 현재 시점과 생성/예약/구매 시점이 다를 수 있는 작업
+- DEFAULT/fallback, override, multi-mapping, priority, merge, sum, block 같은 적용 규칙이 있는 작업
+- Web/Admin/Slack/알림/예약 후 화면/API처럼 같은 정책을 여러 채널이 소비하는 작업
+- migration/seed/runbook/cache identity가 정책 결과 재현성에 영향을 주는 작업
+
+필수 스캔 축:
+1. 시간 기준 — 현재 시점인가, 예약/구매/생성 시점 기준으로 과거 정책을 재현해야 하는가
+2. 적용 대상 수 — 한 대상에 정책 1개만 붙는가, 여러 개면 우선순위/합산/병합/차단 중 무엇인가
+3. DEFAULT/fallback — fallback인가, non-default와 병합되는가, non-default가 있으면 숨기는가
+4. 소비 채널 — Web 목록/상세, Admin, 예약 후 화면, Slack/알림, 영수증/가이드/API의 기준 시간과 표시 규칙이 같은가
+5. 데이터/마이그레이션 — 운영 이력 보존, seed 책임, idempotent 재실행, rollback/restore 조건이 있는가
+6. API/cache identity — GraphQL id/cache key/loader key가 정책 조합과 기간을 안정적으로 표현하는가
+
+규칙:
+- 코드/문서/티켓으로 답할 수 있는 축은 먼저 직접 확인하고, 확인한 결론을 `정책축 스캔` 카드에 적는다.
+- 남은 축 중 frame 계약을 바꾸는 가장 큰 불확실성 하나는 Step 3 또는 Step 4에서 AskUserQuestion으로 묻는다.
+- 모든 축을 사용자에게 체크리스트처럼 묻지 않는다. **스캔은 AI의 의무, 질문은 미해결 정책 분기 하나만**이다.
+- 스캔 결과는 `policy_axis_scan`에 구조화하거나, 최소한 `review_lenses`, `risk_register`, `success_criteria`, `verify_plan.manual_checks`에 반영한다.
+- 세부 체크리스트와 채널 매트릭스 템플릿은 `references/policy-axis-scan.md`를 따른다.
+
 ### 0. Deep Interview 질문 규율
 
 `/frame`은 Plan Mode나 구현 전에 사용자의 모호한 요청을 **실행 가능한 계약**으로 좁히는 인터뷰 단계다. 질문을 많이 하는 것이 목적이 아니라, 가장 큰 불확실성 하나를 골라 한 번에 하나씩 푼다.
@@ -116,7 +142,7 @@ Productive Resistance 질문은 반드시 행동형이어야 한다:
 Pi UI가 있고 `frame_studio` tool을 사용할 수 있으면, 번호형 텍스트만 출력하지 말고 Glimpse TFT Studio를 우선 사용한다. 도구 이름은 하위 호환을 위해 `frame_studio`지만, UI는 Frame/Decide/Verify/Verify Report 탭을 가진 TFT Studio shell이다.
 
 - Step 1 직후: `frame_studio action=start tab=frame`으로 identity-bound TFT Studio를 연다.
-- Step 2: 목표 fingerprint/가정/렌즈 markdown을 `frame_studio action=update tab=frame`으로 렌더링한 뒤, `frame_studio action=ask tab=frame`으로 `ok` 또는 정정 입력을 받는다. 버튼 없는 `ok` 문장을 markdown에만 남기지 않는다.
+- Step 2: 목표 fingerprint/가정/렌즈/정책축 스캔 markdown을 `frame_studio action=update tab=frame`으로 렌더링한 뒤, `frame_studio action=ask tab=frame`으로 `ok` 또는 정정 입력을 받는다. 버튼 없는 `ok` 문장을 markdown에만 남기지 않는다.
 - Step 3/4/5/7/9: 선택이 필요한 지점은 `frame_studio action=ask tab=frame`을 호출해 버튼/체크박스/직접입력으로 답을 받는다. 질문 본문은 가능하면 `현재 이해 / 막힌 결정 / 추천 답안 / 질문` 카드 구조로 만든다.
 - Step 6/8: 현재 markdown을 `frame_studio action=update tab=frame`으로 렌더링한다. 구현 계획은 별도 Plan 탭이 아니라 Frame 탭 마지막의 `Implementation plan synthesis` 섹션으로 보여준다.
 - 질문 본문을 채팅에 번호형 메뉴로 출력하는 것은 `frame_studio ask` 결과가 `unavailable`, `cancelled`, `timeout`일 때만 허용한다.
@@ -168,7 +194,8 @@ planning frame은 나중에 worktree가 만들어지면 해당 worktree의 `.pi/
 2. **명백해 보이는 추천 범위/검증 초점** — `(명백: ...)` 근거 포함
 3. **가정 4~6개** — 틀리면 사용자가 번호로 정정할 수 있는 문장
 4. **같이 볼 렌즈 3~4개** — 사용자가 무엇을 신경 써야 하는지 알려주는 구체 항목
-5. **남은 불확실성 1개** — 다음 질문에서 풀 가장 큰 빈칸
+5. **정책축 스캔** — 트리거된 경우 시간 기준/적용 수/DEFAULT/채널/마이그레이션/cache 축의 확인값과 빈칸
+6. **남은 불확실성 1개** — 다음 질문에서 풀 가장 큰 빈칸
 
 예:
 
@@ -189,6 +216,9 @@ planning frame은 나중에 worktree가 만들어지면 해당 worktree의 `.pi/
 2. UX 실패 경로 — 취소 실패 시 메시지/복구가 보이는가
 3. 검증 증거 — 테스트만으로 충분한가, 화면 캡처가 필요한가
 4. 구조 경계 — 조건/모듈이 흩어져 다음 AI가 길을 잃을 구조인가
+
+정책축 스캔:
+- 트리거 없음 — 혜택/캠페인/가격/기간/DEFAULT/다중 채널 정책 변경이 아니다.
 
 틀린 가정이 있으면 번호로 정정해주세요. 없으면 `ok`.
 ```
@@ -230,7 +260,8 @@ planning frame은 나중에 worktree가 만들어지면 해당 worktree의 `.pi/
 2. 롤백 비용이 큰 선택(DB/API/상태 모델/외부 계약)이 숨어 있는가?
 3. 이번 작업에서 명시적으로 제외해야 할 항목이 있는가?
 4. 사용자가 나중에 “그건 당연히 포함이라고 생각했다”고 말할 수 있는 영역이 있는가?
-5. 변경을 빠르게 붙이면 shallow module, 분산 조건, 복잡한 public interface가 늘어나는가?
+5. 정책축 스캔에서 시간 기준/다중 적용/DEFAULT/채널별 표시/마이그레이션 책임이 미해결인가?
+6. 변경을 빠르게 붙이면 shallow module, 분산 조건, 복잡한 public interface가 늘어나는가?
 
 예:
 
@@ -275,6 +306,7 @@ planning frame은 나중에 worktree가 만들어지면 해당 worktree의 `.pi/
 3. 권한·보안 — 접근 가능/불가 경계
 4. 회귀 방지 — 기존 정상 흐름 유지
 5. 구조 비용 — 모듈 경계/인터페이스 복잡도/다음 AI의 탐색 가능성
+6. 정책축 — 기준 시간/다중 적용/DEFAULT/채널 매트릭스/마이그레이션 재현성
 
 답은 번호로 주세요. 예: `1,4`
 ```
@@ -300,7 +332,9 @@ AI가 frame draft를 작성한다. `/frame` 초반에는 구현 계획을 만들
 - `risk_register[]`: `{ risk, severity, mitigation, needs_decision }`
   - 롤백 비용 큰 결정 우선
   - 여러 파일/모듈에 걸친 변경이면 shallow module 증가, public interface 복잡도, 용어 분산 같은 architecture friction을 risk 또는 follow-up으로 기록
+  - 정책축 스캔에서 미해결인 시간 기준/다중 적용/DEFAULT/채널별 표시/마이그레이션/cache identity는 `needs_decision` 또는 mitigation으로 남김
   - `needs_decision: true` 항목은 Step 8에서 task로 큐잉됨
+- `policy_axis_scan`: 트리거된 작업이면 시간 기준, 적용 대상 수, DEFAULT/fallback, 소비 채널 매트릭스, 데이터/마이그레이션, API/cache identity의 결론과 열린 질문
 - `edge_case_seeds[]`: Step 4/5 초점에 맞춘 3~5개
   - 구조 렌즈를 선택했다면 “다음 AI/사람이 변경 지점을 찾을 수 있는가” 같은 탐색성 edge도 포함
 - `verify_plan`: `{ commands[], manual_checks[] }`
@@ -317,7 +351,8 @@ Draft를 보여줄 때 맨 위에 반드시 다음을 붙인다:
 2. 이번 작업에서 제외할 범위가 충분히 명시됐는가
 3. 검증 증거가 테스트/캡처/로그 중 무엇인지 분명한가
 4. 내가 선택한 답변이 frame 계약에 정확히 반영됐는가
-5. implementation plan이 frame/decide 결정에서 파생됐는가
+5. 정책축 스캔이 필요한 작업인데 시간 기준/DEFAULT/다중 적용/채널별 규칙이 빠지지 않았는가
+6. implementation plan이 frame/decide 결정에서 파생됐는가
 ```
 
 ### Step 7: AskUserQuestion — 구체 patch 메뉴
@@ -353,6 +388,7 @@ Draft를 보여줄 때 맨 위에 반드시 다음을 붙인다:
    - 이 Plan은 frame contract를 대체하지 않고, `derivedFrom.frameHash`와 `derivedFrom.decisionIds`로 출처를 남긴다.
 3. 필수 필드 점검:
    - `identity`, `goal`, `success_criteria`, `out_of_scope`, `boundaries`, `risk_register`, `verify_plan`, `implementation_plan`, `provenance`
+   - 정책축 스캔 트리거 작업이면 `policy_axis_scan` 또는 이에 준하는 `review_lenses`/`risk_register`/`verify_plan` 반영 여부
    - `decisions[]`는 없으면 빈 배열
    - `decision_queue[]`는 없으면 빈 배열
 4. canonical JSON을 먼저 쓴다.
@@ -456,6 +492,24 @@ type FrameDoc = {
   scope_size: "small" | "standard" | "risky";  // Non-delegable 감지 시 자동 risky
   assumptions: string[];
   review_lenses: string[];
+  policy_axis_scan?: {
+    triggered: boolean;
+    triggerDomains: string[];
+    axes: Array<{
+      axis: "time_basis" | "application_cardinality" | "default_fallback" | "channel_matrix" | "data_migration" | "api_cache_identity";
+      decision: string;
+      source: "code" | "ticket" | "user" | "assumption" | "open_question";
+      unresolved: boolean;
+    }>;
+    channel_matrix?: Array<{
+      channel: string;
+      timeBasis: string;
+      campaignSelection?: string;
+      defaultPolicy?: string;
+      displayPolicy?: string;
+      verification: string;
+    }>;
+  };
   productive_resistance: Array<{
     question: string;
     selected: string;
