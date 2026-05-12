@@ -26,7 +26,7 @@ source:
   - user-direction:2026-05-11-glimpse-cmd-v-paste
   - user-direction:2026-05-12-workspace-save-restore
 reviewed_at: 2026-05-12
-reviewed_commit: e6ef5c6fe908828c5731428051c4886fa3559372
+reviewed_commit: 238e1ccc237624573c3d7c1b542722f8fd9022d4
 related:
   - fork-panel-spatial-continuity
   - mcp-stderr-isolation
