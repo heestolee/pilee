@@ -338,7 +338,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | **memory-layer** | 장기 기억 저장/검색 |
 | **ember** | 불씨(`/ember`) — knowledge 후보 찾기/add/check/refresh friendly entrypoint |
 | **backlog** | `/backlog` TUI — 작업 백로그 관리 |
-| **preflight** | 커밋 전 자동 lint/type-check + known baseline 실패 cache |
+| **preflight** | validation 실패 관찰 + known baseline 자동 분리 tool |
 | **pr-comments** | PR unresolved review comment를 editor에 붙이는 helper |
 | **pr-review-re-request** | 승인되지 않은 PR reviewer/team에게 review re-request |
 | **until** | 반복 작업 추적 |

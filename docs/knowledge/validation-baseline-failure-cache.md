@@ -35,7 +35,7 @@ title_en: Repeated validation failures are separated by a baseline cache
 
 검증 명령이 실패하면 preflight extension이 bash tool result를 관찰해 실패 signature를 남깁니다. 같은 repo/check/signature가 known baseline으로 등록되어 있으면 결과에 `[preflight] Known baseline failure` 주석을 붙이고, agent는 이를 `Known baseline / unrelated`로 분리합니다.
 
-새 실패를 처음 본 경우에는 agent가 전체 로그를 읽고 current diff와의 관련성을 판단합니다. unrelated baseline이라고 판단했을 때는 사용자에게 slash command를 요구하지 않고 `preflight_baseline` tool의 `action="add_last"`로 기록합니다. `/preflight baseline list/add-last/clear/prune`은 사람이 수동으로 점검하거나 정리할 때의 escape hatch입니다.
+새 실패를 처음 본 경우에는 agent가 전체 로그를 읽고 current diff와의 관련성을 판단합니다. unrelated baseline이라고 판단했을 때는 사용자에게 slash command를 요구하지 않고 `preflight_baseline` tool의 `action="add_last"`로 기록합니다. 별도 사용자-facing `/preflight` command는 제공하지 않습니다. 사람이 점검하거나 정리하고 싶으면 자연어로 요청하고, agent가 `preflight_baseline` tool의 `list`/`clear`/`prune`을 호출합니다.
 
 Baseline entry는 state sidecar(`~/.pi/agent/state/preflight-baseline-cache.json`)이며 repository source나 public docs에 raw 로그를 복사하지 않습니다.
 

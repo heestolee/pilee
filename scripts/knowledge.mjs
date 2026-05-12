@@ -1047,7 +1047,7 @@ const README_EXTENSION_GROUPS = [
 		{ name: "memory-layer", ko: "장기 기억 저장/검색", en: "Long-term memory save/search" },
 		{ name: "ember", ko: "불씨(`/ember`) — knowledge 후보 찾기/add/check/refresh friendly entrypoint", en: "Friendly entrypoint for knowledge collect/add/check/refresh" },
 		{ name: "backlog", ko: "`/backlog` TUI — 작업 백로그 관리", en: "Persistent backlog TUI" },
-		{ name: "preflight", ko: "커밋 전 자동 lint/type-check + known baseline 실패 cache", en: "Pre-commit lint/type-check hooks plus known baseline failure cache" },
+		{ name: "preflight", ko: "validation 실패 관찰 + known baseline 자동 분리 tool", en: "Validation failure observer plus known-baseline separation tool" },
 		{ name: "pr-comments", ko: "PR unresolved review comment를 editor에 붙이는 helper", en: "PR unresolved review comment collection helper" },
 		{ name: "pr-review-re-request", ko: "승인되지 않은 PR reviewer/team에게 review re-request", en: "Re-request review from non-approved PR reviewers/teams" },
 		{ name: "until", ko: "반복 작업 추적", en: "Explicit until-loop progress reporting" },

@@ -326,7 +326,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **memory-layer** | Long-term memory save/search |
 | **ember** | Friendly entrypoint for knowledge collect/add/check/refresh |
 | **backlog** | Persistent backlog TUI |
-| **preflight** | Pre-commit lint/type-check hooks plus known baseline failure cache |
+| **preflight** | Validation failure observer plus known-baseline separation tool |
 | **pr-comments** | PR unresolved review comment collection helper |
 | **pr-review-re-request** | Re-request review from non-approved PR reviewers/teams |
 | **until** | Explicit until-loop progress reporting |

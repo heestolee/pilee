@@ -112,7 +112,7 @@ Before every commit:
 
 If the same validation failure has already been proven unrelated to the current branch, record it as a short-lived known baseline instead of re-debugging it in every worktree. This should happen through automatic preflight handling while the agent works: bash validation failures are checked against the cache, and after root-cause review the agent can call `preflight_baseline` with `action="add_last"` to record unrelated baseline noise.
 
-The `/preflight baseline ...` slash command remains only a manual escape hatch for inspection/cleanup. The user should not have to run it during normal implementation.
+There is no normal user-facing `/preflight` command. If the user wants to inspect or clean cache state, they can ask in natural language and the agent should use `preflight_baseline` with `list`, `clear`, or `prune`.
 
 A baseline cache entry only separates noise from actionable failures. It does not make a required check pass and must not hide a failure that changed with the current diff.
 
