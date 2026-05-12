@@ -193,6 +193,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Skill은 재사용 가능한 절차다](./skills-as-portable-procedures.md) | active | high | 2026-05-09 | b10752d | skill, skill-creator, procedure, porting, workflow, 스킬 |
 | [Command shim은 skill source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-05-11 | 55766aa | command-shim, skill, tft, frame, slash-command, routing |
 | [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-05-12 | 0dfb4c8 | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
+| [TUI 질문은 작은 의사결정 게이트다](./tui-ask-decision-overlay.md) | active | high | 2026-05-12 | bdf382a | tui, ask-user-question, decision-gate, tool, overlay |
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
 | [Worktree 생성은 부모 패널의 게이트다](./worktree-creation-parent-gate.md) | active | high | 2026-05-11 | 55766aa | worktree, fork-panel, parent-panel, hotfix, context, profile-driven |
 | [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-05-12 | b168291 | worktree, dependencies, bootstrap, profile-driven, worker, subagent |
@@ -275,6 +276,7 @@ graph TD
   doc_skills_as_portable_procedures["Skill은 재사용 가능한 절차다"]
   doc_tft_command_shim_skill_routing["Command shim은 skill source of truth를 지킨다"]
   doc_tft_visual_structure_renderer["TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다"]
+  doc_tui_ask_decision_overlay["TUI 질문은 작은 의사결정 게이트다"]
   doc_until_loop_explicit_reporting["Until loop는 종료 조건을 명시 보고한다"]
   doc_worktree_creation_parent_gate["Worktree 생성은 부모 패널의 게이트다"]
   doc_worktree_dependency_bootstrap_worker["Worktree 의존성 준비는 조건부 worker가 맡는다"]
@@ -513,6 +515,9 @@ graph TD
   doc_tft_visual_structure_renderer --> doc_evidence_first_verification_gate
   doc_tft_visual_structure_renderer --> doc_frame_studio_interactive_decision_ui
   doc_tft_visual_structure_renderer --> doc_frame_verify_contract
+  doc_tui_ask_decision_overlay --> doc_ask_user_question_decision_gates
+  doc_tui_ask_decision_overlay --> doc_ask_user_question_option_design
+  doc_tui_ask_decision_overlay --> doc_tui_rendering_sanitization
   doc_until_loop_explicit_reporting --> doc_deterministic_vs_ai_actions
   doc_until_loop_explicit_reporting --> doc_evidence_first_verification_gate
   doc_worktree_creation_parent_gate --> doc_worktree_execution_boundary
@@ -531,7 +536,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 77
-- Links: 247
+- Documents: 78
+- Links: 250
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

@@ -1041,6 +1041,7 @@ const README_EXTENSION_GROUPS = [
 	] },
 	{ ko: "도구", en: "Tools and data", items: [
 		{ name: "tasks", ko: "태스크 CRUD + `Ctrl+Shift+T`", en: "Task CRUD and `Ctrl+Shift+T`" },
+		{ name: "tui-ask", ko: "터미널 overlay 질문 도구 — single/multi/text decision gate", en: "Terminal overlay question tool for single/multi/text decision gates" },
 		{ name: "web-access", ko: "Tavily 웹 검색 + URL 콘텐츠 추출 + curator workflow", en: "Tavily web search, URL extraction, and curator workflow" },
 		{ name: "memory-layer", ko: "장기 기억 저장/검색", en: "Long-term memory save/search" },
 		{ name: "ember", ko: "불씨(`/ember`) — knowledge 후보 찾기/add/check/refresh friendly entrypoint", en: "Friendly entrypoint for knowledge collect/add/check/refresh" },
