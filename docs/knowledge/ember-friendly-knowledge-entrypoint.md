@@ -38,7 +38,7 @@ related:
 - CLI: `scripts/knowledge.mjs`
 - 운영 용어: `freshness`, `confidence`, `reviewed_commit`, `review queue`
 
-`/ember`는 이 구조 위에 얹는 friendly entrypoint다. 파이리의 작은 불꽃처럼, 아직 doctrine이 되지 않은 세션의 깨달음을 후보로 모으고, 후보를 보여준 뒤 add 여부를 묻는다. 사용자가 고른 후보는 public knowledge로 추가하거나 기존 문서에 접목한다(`/ember add`). knowledge 상태 점검은 `/ember check`가 맡고, generated README table/docs knowledge README/SVG map 갱신은 `/ember refresh`가 맡는다. stale/review_needed 직접 해소는 power-user용 `/ember resolve`로 남긴다. `add`는 product식 `/add-knowledge`의 검색·범위 정렬·작성 계획·검증 단계를 pilee의 judgment-document 모델에 맞춘 진입점이고, `resolve`는 public review queue를 실제 local update PR 작업 단위로 바꾸는 입구다. 민감한 resolver 산출물은 로컬에만 둔다. 초기 운영에서는 PR을 열고 사용자 review/merge를 기다리는 데서 멈춘다.
+`/ember`는 이 구조 위에 얹는 friendly entrypoint다. 파이리의 작은 불꽃처럼, 아직 doctrine이 되지 않은 세션의 깨달음을 후보로 모으고, 후보를 보여준 뒤 add 여부를 묻는다. 사용자가 고른 후보는 public knowledge로 추가하거나 기존 문서에 접목한다(`/ember add`). knowledge 상태 점검은 `/ember check`가 맡고, generated README table/docs knowledge README/SVG map 갱신은 `/ember refresh`가 맡는다. stale/review_needed 직접 해소는 power-user용 `/ember resolve`로 남긴다. 반복적인 resolve batch, generated sync, local history/Notion sync, final-check, merge/push까지 한 release 단위로 닫을 때는 `/ember-ship`을 쓴다. `add`는 product식 `/add-knowledge`의 검색·범위 정렬·작성 계획·검증 단계를 pilee의 judgment-document 모델에 맞춘 진입점이고, `resolve`는 public review queue를 실제 local update PR 작업 단위로 바꾸는 입구다. 민감한 resolver 산출물은 로컬에만 둔다. `/ember-ship`은 명시 실행 시 merge 의도가 있다고 보되, 사용자 판단·private boundary·Notion sync·validation 문제가 있으면 BLOCKED PR로 멈춘다.
 
 ## `/ember add` workflow contract
 
@@ -73,7 +73,8 @@ related:
 - 상태 점검 진입점: `/ember check`, freshness/confidence 상태를 보고 필요하면 refresh/resolve를 제안
 - generated surface 갱신 진입점: `/ember refresh`, README table/docs knowledge README/SVG map을 한 번에 재생성·검증
 - 로컬 resolver direct 진입점: `/ember resolve`, 내부 명령은 `scripts/knowledge.mjs --resolve-stale`이며 advanced alias로 둠
-- add/resolve 결과 보고: 수정 파일, 연결 문서, 검증 결과, 남은 freshness를 보여주고 merge는 사용자에게 맡김
+- release train 진입점: `/ember-ship`, stale batch 해소부터 generated/history/Notion sync, final-check, SAFE merge 또는 BLOCKED PR까지 한 사이클로 닫음
+- add/resolve 결과 보고: 수정 파일, 연결 문서, 검증 결과, 남은 freshness를 보여주고 일반 resolver merge는 사용자에게 맡김. 단 `/ember-ship`은 명시 실행된 release train이라 SAFE 조건에서 main merge까지 진행 가능
 
 `knowledge`를 유지해야 하는 곳:
 

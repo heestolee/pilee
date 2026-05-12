@@ -7,6 +7,7 @@ Usage:
   /ember add [topic]    명시적으로 바로 knowledge 작성/갱신 플로우
   /ember check          freshness/confidence 상태 점검 → 필요 action 제안
   /ember refresh        README table + knowledge README + SVG map 재생성·검증
+  /ember-ship           stale 해소 + generated/history sync + merge release train
   /ember help           도움말
 
 Advanced / compatibility aliases:

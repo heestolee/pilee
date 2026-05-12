@@ -107,6 +107,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [낮은 confidence 판단은 정합성 PR로 올린다](./confidence-sensitive-review.md) | active | high | 2026-05-11 | 55766aa | confidence, review, freshness, ai-actions, user-review, 정합성 |
 | [Deterministic action과 AI review action은 분리한다](./deterministic-vs-ai-actions.md) | active | high | 2026-05-11 | 55766aa | knowledge, deterministic, ai-actions, review, automation, 정합성 |
 | [Ember는 knowledge의 친근한 입구다](./ember-friendly-knowledge-entrypoint.md) | active | high | 2026-05-11 | 55766aa | ember, branding, command, knowledge |
+| [Ember Ship은 knowledge 정합성을 release train으로 닫는다](./ember-ship-release-train.md) | active | high | 2026-05-12 | b2d3001 | ember, knowledge, release-train, freshness, merge-gate |
 | [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | high | 2026-05-11 | 55766aa | knowledge, freshness, diagnosis, review, candidate, 정합성 |
 | [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | high | 2026-05-11 | 55766aa | knowledge, judgment, granularity, documentation, coverage, 문서 |
 | [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | high | 2026-05-11 | 55766aa | pilee, knowledge, history, journal, sanitized, reviewed-at |
@@ -224,6 +225,7 @@ graph TD
   doc_confidence_sensitive_review["낮은 confidence 판단은 정합성 PR로 올린다"]
   doc_deterministic_vs_ai_actions["Deterministic action과 AI review action은 분리한다"]
   doc_ember_friendly_knowledge_entrypoint["Ember는 knowledge의 친근한 입구다"]
+  doc_ember_ship_release_train["Ember Ship은 knowledge 정합성을 release train으로 닫는다"]
   doc_freshness_diagnosis_report["Freshness는 진단서다"]
   doc_judgment_doc_unit["Knowledge 문서 단위는 판단 하나다"]
   doc_pilee_knowledge_system["pilee 지식 계층과 정합성 갱신"]
@@ -338,6 +340,12 @@ graph TD
   doc_ember_friendly_knowledge_entrypoint --> doc_pilee_knowledge_system
   doc_ember_friendly_knowledge_entrypoint --> doc_private_journal_public_doctrine
   doc_ember_friendly_knowledge_entrypoint --> doc_readme_philosophy_user_gate
+  doc_ember_ship_release_train --> doc_deterministic_vs_ai_actions
+  doc_ember_ship_release_train --> doc_ember_friendly_knowledge_entrypoint
+  doc_ember_ship_release_train --> doc_freshness_diagnosis_report
+  doc_ember_ship_release_train --> doc_pilee_final_check_gate
+  doc_ember_ship_release_train --> doc_pilee_knowledge_system
+  doc_ember_ship_release_train --> doc_private_journal_public_doctrine
   doc_freshness_diagnosis_report --> doc_deterministic_vs_ai_actions
   doc_freshness_diagnosis_report --> doc_judgment_doc_unit
   doc_freshness_diagnosis_report --> doc_readme_coverage_map
@@ -559,7 +567,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 82
-- Links: 265
+- Documents: 83
+- Links: 271
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
