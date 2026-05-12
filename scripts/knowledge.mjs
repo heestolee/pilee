@@ -1076,6 +1076,7 @@ const README_SKILL_GROUPS = [
 		{ name: "incremental-implementation", ko: "검증 가능한 얇은 vertical slice로 점진 구현", en: "Thin vertical slices with verification between steps" },
 		{ name: "skill-creator", ko: "스킬 생성/개선/평가 워크플로", en: "Skill creation, improvement, and evaluation" },
 		{ name: "pilee-knowledge", ko: "private history → public/sanitized knowledge 승격 + 정합성 갱신", en: "Promote private history into public/sanitized knowledge" },
+		{ name: "pilee-final-check", ko: "pilee 변경 마무리 전 구멍 리뷰·재검증·기록/push 상태 점검", en: "Final gate for pilee changes: gap review, re-verification, history, and push status" },
 		{ name: "db-write", ko: "인간 실행 게이트를 둔 DB write guidance", en: "Human-gated DB write guidance" },
 		{ name: "db-write-migration", ko: "마이그레이션 설계와 검증 guidance", en: "Migration design and verification guidance" },
 		{ name: "jira-issue-management", ko: "Jira 이슈 작성/수정 preview gate", en: "Jira issue preparation with preview gate" },

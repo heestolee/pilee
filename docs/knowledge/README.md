@@ -181,6 +181,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-05-12 | 3de356e | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-05-11 | 55766aa | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 264ea17 | local-dev, server, startup, diagnosis, dev |
+| [pilee 변경은 final-check gate로 닫는다](./pilee-final-check-gate.md) | active | high | 2026-05-12 | 7c7b8a5 | pilee, final-check, verification, skill, workflow, 마무리 |
 | [Private overlay package는 회사·개인 실행 맥락을 담는다](./private-overlay-package-boundary.md) | active | high | 2026-05-11 | 55766aa | privacy, package, overlay, skill, company-context |
 | [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-05-11 | cc28c22 | queued-messages, slash-command, prefill, worktree, session, boundary |
 | [변경된 줄은 요청으로 추적 가능해야 한다](./request-traceability-surgical-changes.md) | active | high | 2026-05-11 | 55766aa | request-traceability, surgical-change, karpathy, diff, scope, review |
@@ -262,6 +263,7 @@ graph TD
   doc_frame_studio_interactive_decision_ui["TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다"]
   doc_live_artifact_preview_pattern["Live artifact는 local preview first다"]
   doc_local_dev_startup_diagnosis["로컬 개발 서버 시작은 진단 가능한 절차여야 한다"]
+  doc_pilee_final_check_gate["pilee 변경은 final-check gate로 닫는다"]
   doc_private_overlay_package_boundary["Private overlay package는 회사·개인 실행 맥락을 담는다"]
   doc_queued_command_prefill_boundary["Queued command는 실행 보장이 아니다"]
   doc_request_traceability_surgical_changes["변경된 줄은 요청으로 추적 가능해야 한다"]
@@ -468,6 +470,10 @@ graph TD
   doc_local_dev_startup_diagnosis --> doc_private_overlay_package_boundary
   doc_local_dev_startup_diagnosis --> doc_root_cause_before_fix
   doc_local_dev_startup_diagnosis --> doc_worktree_execution_boundary
+  doc_pilee_final_check_gate --> doc_change_integration_discipline
+  doc_pilee_final_check_gate --> doc_evidence_first_verification_gate
+  doc_pilee_final_check_gate --> doc_pilee_knowledge_system
+  doc_pilee_final_check_gate --> doc_request_traceability_surgical_changes
   doc_private_overlay_package_boundary --> doc_database_write_human_execution_gate
   doc_private_overlay_package_boundary --> doc_private_journal_public_doctrine
   doc_private_overlay_package_boundary --> doc_skills_as_portable_procedures
@@ -525,7 +531,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 76
-- Links: 243
+- Documents: 77
+- Links: 247
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
