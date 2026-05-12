@@ -5,6 +5,7 @@ import { formatNameStatus } from "../utils/auto-name-utils.ts";
 import { formatContextUsageBar } from "../utils/format-utils.ts";
 import type { CheckSummary } from "../utils/git-utils.ts";
 import type { RepoStatusSnapshot } from "../utils/repo-status.ts";
+import { buildContextPressure, type ContextPressure } from "./context-pressure.ts";
 import { NAME_STATUS_KEY } from "../utils/status-keys.ts";
 import { type CustomStyleConfig, colorize } from "./config.ts";
 import { createFooterStateManager, type FooterStateManager } from "./footer-state.ts";
@@ -77,7 +78,8 @@ function formatCwdLabel(cwd: string, cwdIcon: string): string {
 	return cwdIcon ? `${cwdIcon} ${last}` : last;
 }
 
-function getContextColor(config: CustomStyleConfig, percent: number): string {
+function getContextColor(config: CustomStyleConfig, percent: number | null): string {
+	if (percent === null) return "dim";
 	const remaining = 100 - percent;
 	if (remaining <= 15) return config.colors.contextError;
 	if (remaining <= 40) return config.colors.contextWarning;
@@ -104,16 +106,29 @@ function buildLine1Left(
 	);
 }
 
-function splitContextBarParts(percent: number): { bar: string; percentLabel: string } {
-	const [bar = "", percentLabel = ""] = formatContextUsageBar(percent, BAR_WIDTH).split(/ (?=\d+%$)/u);
+function formatUnknownContextBar(width: number): string {
+	const barWidth = Math.max(4, width);
+	return `[${"?".repeat(barWidth)}] ?%`;
+}
+
+function splitContextBarParts(percent: number | null): { bar: string; percentLabel: string } {
+	const rendered = percent === null ? formatUnknownContextBar(BAR_WIDTH) : formatContextUsageBar(percent, BAR_WIDTH);
+	const [bar = "", percentLabel = ""] = rendered.split(/ (?=(?:\d+|\?)%$)/u);
 	return { bar, percentLabel };
+}
+
+function buildContextBarSegment(config: CustomStyleConfig, theme: Theme, pressure: ContextPressure): string {
+	const { bar, percentLabel } = splitContextBarParts(pressure.percent);
+	const contextColor = getContextColor(config, pressure.percent);
+	const text = [pressure.label, bar, percentLabel].filter(Boolean).join(" ");
+	return text ? colorize(theme, contextColor, text) : "";
 }
 
 function buildLine1Right(
 	config: CustomStyleConfig,
 	theme: Theme,
 	statusEntries: ReadonlyArray<readonly [string, string]>,
-	percent: number,
+	pressure: ContextPressure,
 ): string {
 	const mcpStatusEntry = statusEntries.find(([, text]) => /\bMCP\b/i.test(text));
 	const auxiliaryStatuses = statusEntries
@@ -121,13 +136,10 @@ function buildLine1Right(
 		.map(([key, text]) => styleStatus(theme, key, text))
 		.filter(Boolean)
 		.join(theme.fg("dim", "  "));
-	const { bar, percentLabel } = splitContextBarParts(percent);
-	const contextColor = getContextColor(config, percent);
 	return [
 		auxiliaryStatuses,
 		mcpStatusEntry ? colorize(theme, "dim", mcpStatusEntry[1]) : "",
-		bar ? colorize(theme, contextColor, bar) : "",
-		percentLabel ? colorize(theme, contextColor, percentLabel) : "",
+		buildContextBarSegment(config, theme, pressure),
 	]
 		.filter(Boolean)
 		.join(CONTEXT_SEPARATOR);
@@ -239,9 +251,12 @@ export function installFooter(pi: ExtensionAPI, ctx: ExtensionContext, config: C
 				const state = stateManager.getState();
 				const branch = state.repoStatus.branch ?? footerData.getGitBranch();
 				const statusEntries = buildFooterStatusEntries(ctx, footerData);
-				const percent = clamp(Math.round(ctx.getContextUsage()?.percent ?? 0), 0, 100);
+				const pressure = buildContextPressure(ctx.getContextUsage(), ctx.sessionManager.getCwd());
+				if (pressure.percent !== null) {
+					pressure.percent = clamp(Math.round(pressure.percent), 0, 100);
+				}
 				const line1Left = buildLine1Left(ctx, config, theme, state.repoName, statusEntries);
-				const line1Right = buildLine1Right(config, theme, statusEntries, percent);
+				const line1Right = buildLine1Right(config, theme, statusEntries, pressure);
 				const line2Left = buildLine2Left(config, theme, state.repoStatus, branch);
 				const line2Right = buildLine2Right(theme, state.repoStatus);
 				const lines = [renderAlignedLine(theme, width, line1Left, line1Right)];

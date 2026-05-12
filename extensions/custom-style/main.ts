@@ -4,6 +4,7 @@ import { type CustomStyleConfig, ensureConfigExists, loadConfig } from "./config
 import { installFooter } from "./footer.ts";
 import { isCodexFastModeEnabled, shouldUseCodexFastBadge } from "./footer-state.ts";
 import { promptSuggestLiteStore } from "../prompt-suggest-lite/shared.ts";
+import { readCompactionDisplaySettings, formatCompactionStatus } from "./context-pressure.ts";
 import { getForkPanelLabel } from "./panel-label.ts";
 import { PolishedEditor } from "./ui.ts";
 
@@ -19,7 +20,33 @@ function syncState(ctx: ExtensionContext): SyncedState {
 	};
 }
 
+const COMPACTION_STATUS_KEY = "custom-style:compaction";
+const COMPACTION_STATUS_CLEAR_MS = 8_000;
+
 let currentEditor: PolishedEditor | undefined;
+let compactionStatusClearTimer: ReturnType<typeof setTimeout> | undefined;
+
+function setFooterStatus(ctx: ExtensionContext, text: string | undefined) {
+	try {
+		ctx.ui.setStatus(COMPACTION_STATUS_KEY, text);
+	} catch {
+		// Ignore stale UI contexts after reload/session replacement.
+	}
+}
+
+function clearCompactionStatusLater(ctx: ExtensionContext) {
+	if (compactionStatusClearTimer) clearTimeout(compactionStatusClearTimer);
+	compactionStatusClearTimer = setTimeout(() => {
+		setFooterStatus(ctx, undefined);
+		compactionStatusClearTimer = undefined;
+	}, COMPACTION_STATUS_CLEAR_MS);
+}
+
+function setCompactionStatus(ctx: ExtensionContext, prefix: string, tokensBefore: number, reserveTokens: number) {
+	if (!ctx.hasUI) return;
+	const status = formatCompactionStatus(tokensBefore, ctx.model?.contextWindow, reserveTokens);
+	setFooterStatus(ctx, `${prefix} · ${status}`);
+}
 
 function installEditor(pi: ExtensionAPI, ctx: ExtensionContext, getState: () => SyncedState) {
 	if (!ctx.hasUI) return;
@@ -121,14 +148,26 @@ export default function (pi: ExtensionAPI) {
 		doSync(ctx);
 	});
 
-	pi.on("session_compact", async (_event, ctx) => {
+	pi.on("session_before_compact", async (event, ctx) => {
+		setCompactionStatus(ctx, "압축 중", event.preparation.tokensBefore, event.preparation.settings.reserveTokens);
+	});
+
+	pi.on("session_compact", async (event, ctx) => {
+		const settings = readCompactionDisplaySettings(ctx.sessionManager.getCwd());
+		setCompactionStatus(ctx, "압축 완료", event.compactionEntry.tokensBefore, settings.reserveTokens);
+		clearCompactionStatusLater(ctx);
 		doSync(ctx);
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
 		currentEditor?.dispose();
 		currentEditor = undefined;
+		if (compactionStatusClearTimer) {
+			clearTimeout(compactionStatusClearTimer);
+			compactionStatusClearTimer = undefined;
+		}
 		if (!ctx.hasUI) return;
+		setFooterStatus(ctx, undefined);
 		ctx.ui.setFooter(undefined);
 		ctx.ui.setEditorComponent(undefined);
 	});
