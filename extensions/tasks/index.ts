@@ -5,6 +5,10 @@ import type { ExtensionAPI, ExtensionContext, ExtensionCommandContext, ThemeColo
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
+import { resolveWorkUnit } from "../utils/work-context.ts";
+
+type TaskKind = "slice" | "decision" | "verify" | "blocked" | "followup" | "general";
+type TaskOwner = "agent" | "user" | "reviewer" | "subagent" | "external";
 
 interface Task {
 	id: string;
@@ -12,7 +16,11 @@ interface Task {
 	description: string;
 	activeForm?: string;
 	status: "pending" | "in_progress" | "completed";
-	owner?: string;
+	kind?: TaskKind;
+	owner?: TaskOwner | string;
+	acceptance?: string[];
+	refs?: Record<string, unknown>;
+	evidence?: string[];
 	blocks: string[];
 	blockedBy: string[];
 	metadata: Record<string, unknown>;
@@ -25,16 +33,26 @@ interface TaskStore {
 	tasks: Task[];
 }
 
-function storePath(ctx: ExtensionContext): string {
+function legacyStorePath(ctx: ExtensionContext): string {
 	const sessionId = ctx.sessionManager?.getSessionId?.() ?? "default";
-	const dir = join(ctx.cwd, ".pi", "tasks");
-	if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-	return join(dir, `tasks-${sessionId}.json`);
+	return join(ctx.cwd, ".pi", "tasks", `tasks-${sessionId}.json`);
+}
+
+function storePath(ctx: ExtensionContext): string {
+	const unit = resolveWorkUnit(ctx.cwd, ctx.sessionManager?.getSessionFile?.());
+	mkdirSync(dirname(unit.tasksPath), { recursive: true });
+	return unit.tasksPath;
 }
 
 function load(ctx: ExtensionContext): TaskStore {
 	const p = storePath(ctx);
-	if (!existsSync(p)) return { nextId: 1, tasks: [] };
+	if (!existsSync(p)) {
+		const legacy = legacyStorePath(ctx);
+		if (existsSync(legacy)) {
+			try { return JSON.parse(readFileSync(legacy, "utf8")); } catch {}
+		}
+		return { nextId: 1, tasks: [] };
+	}
 	try {
 		return JSON.parse(readFileSync(p, "utf8"));
 	} catch {
@@ -57,11 +75,31 @@ function openBlockers(store: TaskStore, task: Task): string[] {
 	});
 }
 
+function taskKind(t: Task): TaskKind {
+	const metaKind = typeof t.metadata?.kind === "string" ? t.metadata.kind : undefined;
+	return (t.kind || metaKind || "general") as TaskKind;
+}
+
+function taskPriority(t: Task): number {
+	if (t.status === "completed") return 9;
+	if (t.owner === "user" || taskKind(t) === "decision") return 0;
+	if (t.status === "in_progress") return 1;
+	if (taskKind(t) === "blocked") return 2;
+	if (taskKind(t) === "slice") return 3;
+	if (taskKind(t) === "verify") return 4;
+	return 5;
+}
+
+function sortTasks(tasks: Task[]): Task[] {
+	return [...tasks].sort((a, b) => taskPriority(a) - taskPriority(b) || a.createdAt - b.createdAt);
+}
+
 function formatTask(store: TaskStore, t: Task): string {
 	const blockers = openBlockers(store, t);
 	const blocked = blockers.length > 0 ? ` [blocked by: ${blockers.join(", ")}]` : "";
 	const owner = t.owner ? ` (owner: ${t.owner})` : "";
-	return `#${t.id} [${t.status}] ${t.subject}${owner}${blocked}`;
+	const kind = taskKind(t) !== "general" ? ` <${taskKind(t)}>` : "";
+	return `#${t.id} [${t.status}]${kind} ${t.subject}${owner}${blocked}`;
 }
 
 const BACKLOG_FILE = join(homedir(), ".pi", "agent", "state", "backlog.json");
@@ -76,8 +114,8 @@ function saveBacklog(store: { nextId: number; items: any[] }) {
 	writeFileSync(BACKLOG_FILE, JSON.stringify(store, null, 2));
 }
 
-function text(t: string) {
-	return { content: [{ type: "text" as const, text: t }], details: {} };
+function text(t: string, details: Record<string, unknown> = {}) {
+	return { content: [{ type: "text" as const, text: t }], details };
 }
 
 export default function (pi: ExtensionAPI) {
@@ -89,27 +127,39 @@ export default function (pi: ExtensionAPI) {
 			subject: Type.String({ description: "Brief task title" }),
 			description: Type.String({ description: "Detailed description" }),
 			activeForm: Type.Optional(Type.String({ description: "Present continuous form for spinner" })),
+			kind: Type.Optional(Type.Union([Type.Literal("slice"), Type.Literal("decision"), Type.Literal("verify"), Type.Literal("blocked"), Type.Literal("followup"), Type.Literal("general")])),
+			owner: Type.Optional(Type.Union([Type.Literal("agent"), Type.Literal("user"), Type.Literal("reviewer"), Type.Literal("subagent"), Type.Literal("external")])),
+			acceptance: Type.Optional(Type.Array(Type.String(), { description: "Done-when checks for this task" })),
+			refs: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "Frame/success criteria/slice/file references" })),
+			evidence: Type.Optional(Type.Array(Type.String(), { description: "Evidence refs collected for this task" })),
 			agentType: Type.Optional(Type.String({ description: "Agent type for subagent execution" })),
 			metadata: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "Arbitrary metadata" })),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			const store = load(ctx);
+			const metadata = params.metadata ?? {};
 			const task: Task = {
 				id: String(store.nextId++),
 				subject: params.subject,
 				description: params.description,
 				activeForm: params.activeForm,
 				status: "pending",
+				kind: params.kind ?? (typeof metadata.kind === "string" ? metadata.kind as TaskKind : undefined),
+				owner: params.owner,
+				acceptance: params.acceptance,
+				refs: params.refs,
+				evidence: params.evidence,
 				blocks: [],
 				blockedBy: [],
-				metadata: params.metadata ?? {},
+				metadata,
 				createdAt: Date.now(),
 				updatedAt: Date.now(),
 			};
 			if (params.agentType) task.metadata.agentType = params.agentType;
 			store.tasks.push(task);
 			save(ctx, store);
-			return text(`Task #${task.id} created successfully: ${task.subject}`);
+			const unit = resolveWorkUnit(ctx.cwd, ctx.sessionManager?.getSessionFile?.());
+			return text(`Task #${task.id} created successfully: ${task.subject}`, { task, tasksPath: unit.tasksPath });
 		},
 	});
 
@@ -123,9 +173,10 @@ export default function (pi: ExtensionAPI) {
 			const active = store.tasks.filter((t) => t.status !== "completed");
 			const completed = store.tasks.filter((t) => t.status === "completed");
 			if (store.tasks.length === 0) return text("No tasks.");
-			const lines = active.map((t) => formatTask(store, t));
+			const lines = sortTasks(active).map((t) => formatTask(store, t));
 			if (completed.length > 0) lines.push(`\n${completed.length} completed task(s)`);
-			return text(lines.join("\n"));
+			const unit = resolveWorkUnit(ctx.cwd, ctx.sessionManager?.getSessionFile?.());
+			return text(lines.join("\n"), { tasksPath: unit.tasksPath, active: active.length, completed: completed.length });
 		},
 	});
 
@@ -144,12 +195,16 @@ export default function (pi: ExtensionAPI) {
 			const lines = [
 				`#${task.id} — ${task.subject}`,
 				`Status: ${task.status}`,
+				`Kind: ${taskKind(task)}`,
 				task.owner ? `Owner: ${task.owner}` : null,
 				`Description: ${task.description}`,
+				task.acceptance?.length ? `Acceptance:\n${task.acceptance.map((item) => `- ${item}`).join("\n")}` : null,
+				task.refs ? `Refs: ${JSON.stringify(task.refs)}` : null,
+				task.evidence?.length ? `Evidence:\n${task.evidence.map((item) => `- ${item}`).join("\n")}` : null,
 				task.blocks.length > 0 ? `Blocks: ${task.blocks.join(", ")}` : null,
 				blockers.length > 0 ? `Blocked by (open): ${blockers.join(", ")}` : null,
 			].filter(Boolean);
-			return text(lines.join("\n"));
+			return text(lines.join("\n"), { task });
 		},
 	});
 
@@ -168,7 +223,11 @@ export default function (pi: ExtensionAPI) {
 			subject: Type.Optional(Type.String()),
 			description: Type.Optional(Type.String()),
 			activeForm: Type.Optional(Type.String()),
+			kind: Type.Optional(Type.Union([Type.Literal("slice"), Type.Literal("decision"), Type.Literal("verify"), Type.Literal("blocked"), Type.Literal("followup"), Type.Literal("general")])),
 			owner: Type.Optional(Type.String()),
+			acceptance: Type.Optional(Type.Array(Type.String())),
+			refs: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+			evidence: Type.Optional(Type.Array(Type.String())),
 			metadata: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
 			addBlocks: Type.Optional(Type.Array(Type.String())),
 			addBlockedBy: Type.Optional(Type.Array(Type.String())),
@@ -192,7 +251,11 @@ export default function (pi: ExtensionAPI) {
 			if (params.subject) task.subject = params.subject;
 			if (params.description) task.description = params.description;
 			if (params.activeForm) task.activeForm = params.activeForm;
+			if (params.kind) task.kind = params.kind;
 			if (params.owner) task.owner = params.owner;
+			if (params.acceptance) task.acceptance = params.acceptance;
+			if (params.refs) task.refs = params.refs;
+			if (params.evidence) task.evidence = params.evidence;
 			if (params.metadata) {
 				for (const [k, v] of Object.entries(params.metadata)) {
 					if (v === null) delete task.metadata[k];
@@ -215,7 +278,8 @@ export default function (pi: ExtensionAPI) {
 			}
 			task.updatedAt = Date.now();
 			save(ctx, store);
-			return text(`Updated task #${params.taskId} status`);
+			const unit = resolveWorkUnit(ctx.cwd, ctx.sessionManager?.getSessionFile?.());
+			return text(`Updated task #${params.taskId} status`, { task, tasksPath: unit.tasksPath });
 		},
 	});
 
@@ -234,12 +298,14 @@ export default function (pi: ExtensionAPI) {
 		}
 		const inProgress = active.filter((t) => t.status === "in_progress");
 		const pending = active.filter((t) => t.status === "pending");
+		const needsUser = active.filter((t) => t.owner === "user" || taskKind(t) === "decision");
 		ctx.ui.setWidget(WIDGET_KEY, (_tui, theme) => {
 			const lines: string[] = [];
-			const header = `${theme.fg("accent", "☐")} Tasks: ${theme.fg("success", String(inProgress.length))} in progress · ${String(pending.length)} pending`;
+			const header = `${theme.fg("accent", "☐")} Tasks: ${theme.fg("success", String(inProgress.length))} in progress · ${String(pending.length)} pending · ${theme.fg(needsUser.length ? "warning" : "border", String(needsUser.length))} needs user`;
 			lines.push(header);
-			for (const t of inProgress.slice(0, 3)) {
-				lines.push(`  ${theme.fg("warning", "▸")} ${t.activeForm ?? t.subject}`);
+			for (const t of sortTasks(active).slice(0, 3)) {
+				const marker = t.owner === "user" || taskKind(t) === "decision" ? "?" : t.status === "in_progress" ? "▸" : "·";
+				lines.push(`  ${theme.fg(marker === "?" ? "warning" : "borderAccent", marker)} ${t.activeForm ?? t.subject}`);
 			}
 			return { render: (width: number) => lines.map(l => truncateToWidth(l, width)), invalidate() {}, handleInput() {} };
 		});
@@ -278,7 +344,7 @@ export default function (pi: ExtensionAPI) {
 		let inputMode: null | "new" | "edit" = null;
 		let inputBuffer = "";
 
-		const getVisible = () => showCompleted ? store.tasks : store.tasks.filter((t) => t.status !== "completed");
+		const getVisible = () => sortTasks(showCompleted ? store.tasks : store.tasks.filter((t) => t.status !== "completed"));
 
 		await ctx.ui.custom<void>(
 			(tui, theme, _kb, done) => {
@@ -308,7 +374,8 @@ export default function (pi: ExtensionAPI) {
 
 						const lines: string[] = [];
 						lines.push(theme.fg("accent", "─".repeat(w)));
-						lines.push(`  ${theme.bold("Tasks")} (${total - completed}/${total} active)        ${inputMode ? theme.fg("warning", `[${inputMode === "new" ? "새 태스크" : "수정"}]`) : ""}`);
+						const needsUser = store.tasks.filter((t) => t.status !== "completed" && (t.owner === "user" || taskKind(t) === "decision")).length;
+						lines.push(`  ${theme.bold("Work Tasks")} (${total - completed}/${total} active · ${needsUser} needs user)        ${inputMode ? theme.fg("warning", `[${inputMode === "new" ? "새 태스크" : "수정"}]`) : ""}`);
 						lines.push(theme.fg("accent", "─".repeat(w)));
 
 						if (inputMode) {
@@ -327,8 +394,11 @@ export default function (pi: ExtensionAPI) {
 								const cursor = sel ? theme.fg("accent", "▶") : " ";
 								const icon = t.status === "completed" ? theme.fg("success", "✓") : t.status === "in_progress" ? theme.fg("warning", "●") : "○";
 								const subject = t.status === "completed" ? theme.fg("border", t.subject) : sel ? theme.fg("accent", t.subject) : t.subject;
-								const meta = t.metadata?.ticket ? ` [${t.metadata.ticket}]` : "";
-								lines.push(truncateToWidth(`${cursor} ${icon} #${t.id} ${subject}${meta}`, w, ""));
+								const kind = taskKind(t);
+								const metaParts = [kind !== "general" ? kind : undefined, t.owner ? `@${t.owner}` : undefined, t.metadata?.ticket ? String(t.metadata.ticket) : undefined].filter(Boolean);
+								const meta = metaParts.length ? ` [${metaParts.join(" · ")}]` : "";
+								const lineColor: ThemeColor = t.owner === "user" || kind === "decision" ? "warning" : t.status === "in_progress" ? "accent" : "text";
+								lines.push(truncateToWidth(`${cursor} ${icon} #${t.id} ${theme.fg(lineColor, subject)}${meta}`, w, ""));
 							}
 						}
 
@@ -369,6 +439,7 @@ export default function (pi: ExtensionAPI) {
 											subject: inputBuffer.trim(),
 											description: "",
 											status: "pending",
+											kind: "general",
 											blocks: [],
 											blockedBy: [],
 											metadata: {},
