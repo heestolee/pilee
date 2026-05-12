@@ -16,7 +16,7 @@ applies_to:
 source:
   - user-direction:2026-05-10-tft-visual-db-structure
 reviewed_at: 2026-05-12
-reviewed_commit: ce9aacb8b2f2cf5d4ec3db510401e63dd4933d5a
+reviewed_commit: 3ba5eafa08fc7419e6b9ae66cbdba672c37147b4
 related:
   - frame-studio-interactive-decision-ui
   - frame-verify-contract
@@ -60,6 +60,12 @@ TFT Studio는 `elkjs` 기반 top-down renderer를 기본으로 사용합니다. 
 4. 무엇을 검증해야 하는가
 
 예를 들어 `UNIQUE`는 “중복 방지”라고만 쓰지 말고, “한 spot이 override campaign을 하나만 갖게 해서 조회 결과 모호성을 없애고 rollback 대상을 단순화한다”처럼 작업 맥락에 연결합니다. backend layer map에서는 “repository는 조회 조건만 소유하고, usecase는 기준 시간/권한/transaction을 조합하며, VO는 계산·불변식을 소유한다”처럼 레이어 책임을 작업 맥락에 연결합니다.
+
+## Layout Containment Rule
+
+`tft-visual`의 내부 diagram canvas는 내용에 따라 넓어질 수 있지만, timeline/stage run 같은 바깥 카드 자체를 고정 폭으로 밀어내면 안 됩니다. 바깥 카드와 timeline 계층은 `min-width: 0`과 `max-width: 100%`로 부모 폭에 맞게 줄어들고, 실제 넓은 diagram은 `.tft-visual-diagram` 내부 가로 스크롤로만 처리합니다.
+
+즉 “보라색 stage frame”은 흰 카드 폭에 맞춰 반응형으로 줄어들고, ELK canvas만 scrollable overflow를 가집니다. 이 규칙이 깨지면 사용자는 white frame과 purple frame이 서로 다른 기준 폭을 가진 것처럼 보게 됩니다.
 
 ## Boundary
 
