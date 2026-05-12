@@ -199,6 +199,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-05-12 | 0dfb4c8 | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
 | [TUI 질문은 작은 의사결정 게이트다](./tui-ask-decision-overlay.md) | active | high | 2026-05-12 | 1b80abf | tui, ask-user-question, decision-gate, tool, overlay |
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
+| [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-05-12 | 566dc2a | workflow, guard, intent, audit, hotfix, continuation |
 | [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-05-12 | 7a09453 | workflow, frame, tft, hotfix, scope, incremental |
 | [Worktree 생성은 부모 패널의 게이트다](./worktree-creation-parent-gate.md) | active | high | 2026-05-12 | b50b0ef | worktree, fork-panel, parent-panel, hotfix, context, profile-driven |
 | [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-05-12 | b168291 | worktree, dependencies, bootstrap, profile-driven, worker, subagent |
@@ -287,6 +288,7 @@ graph TD
   doc_tft_visual_structure_renderer["TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다"]
   doc_tui_ask_decision_overlay["TUI 질문은 작은 의사결정 게이트다"]
   doc_until_loop_explicit_reporting["Until loop는 종료 조건을 명시 보고한다"]
+  doc_workflow_guard_enforced_flow["반복 워크플로 실패는 guard/flow로 고정한다"]
   doc_workflow_weight_proportionality["작업 절차의 무게는 변경 리스크에 비례해야 한다"]
   doc_worktree_creation_parent_gate["Worktree 생성은 부모 패널의 게이트다"]
   doc_worktree_dependency_bootstrap_worker["Worktree 의존성 준비는 조건부 worker가 맡는다"]
@@ -547,6 +549,12 @@ graph TD
   doc_tui_ask_decision_overlay --> doc_tui_rendering_sanitization
   doc_until_loop_explicit_reporting --> doc_deterministic_vs_ai_actions
   doc_until_loop_explicit_reporting --> doc_evidence_first_verification_gate
+  doc_workflow_guard_enforced_flow --> doc_ask_user_question_decision_gates
+  doc_workflow_guard_enforced_flow --> doc_change_integration_discipline
+  doc_workflow_guard_enforced_flow --> doc_frame_studio_interactive_decision_ui
+  doc_workflow_guard_enforced_flow --> doc_tui_ask_decision_overlay
+  doc_workflow_guard_enforced_flow --> doc_validation_baseline_failure_cache
+  doc_workflow_guard_enforced_flow --> doc_workflow_weight_proportionality
   doc_workflow_weight_proportionality --> doc_frame_verify_contract
   doc_workflow_weight_proportionality --> doc_request_traceability_surgical_changes
   doc_workflow_weight_proportionality --> doc_verify_report_preflight_readiness
@@ -567,7 +575,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 83
-- Links: 271
+- Documents: 84
+- Links: 277
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
