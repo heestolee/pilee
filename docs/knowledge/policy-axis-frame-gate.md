@@ -16,13 +16,16 @@ status: active
 confidence: high
 applies_to:
   - skills/frame
+  - skills/decide
+  - skills/verify
+  - skills/verify-report
   - skills/tft-guidelines
   - .pi/frame.json
   - frame-studio
 source:
   - user-direction:2026-05-12-com-2421-retro
 reviewed_at: 2026-05-12
-reviewed_commit: 4d4482f77093251abcf68e206a96ffbc3e6c991d
+reviewed_commit: ee0dc5404f3d8fb60d5103f9d7c9d4d790fef66a
 related:
   - frame-verify-contract
   - architecture-friction-tft-lens
@@ -64,6 +67,29 @@ related:
 
 질문은 `현재 이해 / 막힌 결정 / 추천 답안 / 질문` 카드로 작성합니다. 예를 들어 “한 spot에 여러 campaign이 붙을 수 있는가?”는 단순 선호가 아니라 DB unique constraint, guide merge, refund rate calculation, cache identity를 바꾸므로 AskUserQuestion 대상입니다.
 
+## Decide Rule
+
+`/decide`가 정책형 작업의 대안을 비교할 때는 `정책축 영향` 행을 포함합니다. 시간 기준, 다중 적용, DEFAULT/fallback, 채널별 표시, migration/cache identity가 대안별로 어떻게 달라지는지 비교하지 않으면, 선택은 구현 편의만 보고 장기 정책 비용을 숨길 수 있습니다.
+
+정책축 선택이 DB 제약, migration, API shape, cache key, 검증 범위를 바꾸면 challenge intensity는 최소 `high`입니다. 선택한 대안의 정책축 비용은 `tradeoffs_accepted`나 `mitigations`에 남깁니다.
+
+## Verify Rule
+
+`/verify`는 success criteria만 보지 말고 `policy_axis_scan`을 별도 lens로 읽습니다. frame에 정책축이 있으면 다음 여섯 축을 행 단위로 PASS/GAP 판단합니다.
+
+- time_basis
+- application_cardinality
+- default_fallback
+- channel_matrix
+- data_migration
+- api_cache_identity
+
+미해결 axis가 있으면 success criteria가 통과해도 `부분` 또는 `GAP`으로 보고합니다. 이 규칙은 “문구는 맞지만 예약 시점 기준이 아니라 현재 기준으로 동작함” 같은 결함을 검증 단계에서 다시 잡기 위한 장치입니다.
+
+## Verify Report Rule
+
+`/verify-report`는 `policy_axis_scan.channel_matrix`가 있으면 각 채널을 coverage item으로 승격합니다. UI 화면은 캡처로 닫고, Slack/API/DB/cache처럼 비가시 축은 BE/API/SQL/log/code diff evidence로 닫습니다. 화면 캡처가 없는 축도 PASS하려면 해당 정책축을 닫는 근거가 co-located evidence로 남아야 합니다.
+
 ## Canonical Rule
 
 스캔 결과는 canonical에 남아야 합니다. 가장 좋은 형태는 `frame.json.policy_axis_scan`이며, 최소한 다음 필드 중 하나에는 반영되어야 합니다.
@@ -89,3 +115,4 @@ related:
 - `/frame`이 정책축 스캔을 너무 자주 켜 사용자를 방해할 때
 - 정책형 작업에서 여전히 시간 기준/DEFAULT/다중 적용/채널 차이가 PR 후반에 발견될 때
 - `frame.json` schema에 더 엄격한 policy axis validation을 extension 수준에서 넣을지 결정할 때
+- `/decide`, `/verify`, `/verify-report`가 policy_axis_scan을 과하게 반복하거나 반대로 누락할 때

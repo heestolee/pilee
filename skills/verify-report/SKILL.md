@@ -67,6 +67,7 @@ Escape hatch:
 1. **PR test plan** — `gh pr view` body의 `## Test plan`
 2. **Verify 체크리스트** — `.context/work/{workspace}/context.md`의 `## Verifications`
 3. **자체 도출** — Frame 성공 기준 + 구현 코드 분석
+4. **정책축 스캔** — frame.json `policy_axis_scan`의 channel_matrix/axes가 있으면 채널·기준 시간·DEFAULT·다중 적용·migration/cache identity를 검증 축으로 승격
 
 수집 직후 각 항목을 **검증 축(coverage axis)** 으로 쪼개고, 축마다 **화면 캡처로 검증할지, 다른 증거로 검증할지** 분류한다.
 
@@ -80,6 +81,7 @@ Escape hatch:
 | table/card/overflow 변경 | empty state + data state + overflow/scroll state |
 | option/default selection 변경 | no data + data exists + stale/refresh selection 유지 |
 | 기존 UI/동작을 바꾸는 수정 | 같은 route/action/viewport/role의 before + after 비교 |
+| 정책축 스캔이 있는 작업 | channel_matrix의 각 채널 + time_basis/default_fallback/application_cardinality/data_migration/api_cache_identity 축 |
 
 > 더 자세한 프리셋은 [references/coverage-and-capture-quality.md](references/coverage-and-capture-quality.md)를 따른다.
 
@@ -91,6 +93,8 @@ Escape hatch:
 | **CODE_DIFF** | 코드 구조 자체가 근거 | 관련 diff/파일/라인 요약 |
 | **BE** | API/권한/DB만 영향 | API 응답, SQL 결과, 로그 또는 CODE_DIFF |
 | **SKIP** | 이번 리포트에서 제외 | 제외 사유 |
+
+정책축 스캔이 있는 작업은 “보이는 화면”만 캡처하지 말고, 각 채널이 올바른 기준 시간을 쓰는지와 DEFAULT/다중 적용 규칙이 실제 결과에 반영되는지를 항목으로 분리한다. 화면 증거가 없는 축은 BE/API/SQL/log/code diff 증거로 닫고, 닫지 못하면 Coverage Gap으로 남긴다.
 
 분류 결과를 사용자에게 보여주고 확인한다.
 
