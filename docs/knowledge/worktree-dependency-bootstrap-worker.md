@@ -31,9 +31,9 @@ related:
 
 ## Judgment
 
-Profile이 bootstrap 대상으로 지정한 worktree의 dependency 준비는 구현 agent가 lint 실패를 맞고 뒤늦게 처리하는 일이 아니라, 구현 시작 시점에 조건부 readiness workflow가 맡아야 합니다.
+Profile이 bootstrap 대상으로 지정한 worktree의 dependency/runtime 준비는 구현 agent가 lint·migration·local-dev 실패를 맞고 뒤늦게 처리하는 일이 아니라, 구현 시작 시점에 조건부 readiness workflow가 맡아야 합니다.
 
-기본 구조는 **AI subagent orchestrator + deterministic executor**입니다. subagent는 현재 작업 의도와 repo profile로 필요한 domain을 확인하고, extension이 생성한 executor script를 실행한 뒤 status/log를 읽어 READY/BLOCKED를 판정합니다. executor는 이미 준비된 marker를 다시 설치하지 않고 누락된 dependency만 설치합니다.
+기본 구조는 **AI subagent orchestrator + deterministic executor**입니다. subagent는 현재 작업 의도와 repo profile로 필요한 domain을 확인하고, extension이 생성한 executor script를 실행한 뒤 status/log를 읽어 READY/BLOCKED를 판정합니다. executor는 이미 준비된 marker를 다시 설치하거나 생성하지 않고 누락된 domain만 실행합니다. Domain은 dependency install뿐 아니라 local env 생성처럼 repo/profile마다 다른 runtime readiness도 표현할 수 있습니다.
 
 ## Conditional Rule
 
@@ -43,17 +43,17 @@ orchestrator/worker는 다음 조건을 만족할 때만 자동 시작합니다.
 2. user prompt가 조사 전용이 아니라 구현/수정/검증/마무리 흐름입니다.
 3. profile이 지정한 domain marker가 없습니다.
 
-구체적인 marker, install command, domain 추론 regex는 public extension 코드가 아니라 overlay/profile JSON에 둡니다. public pilee는 orchestration lifecycle, status/log, idempotent marker check, executor script 생성만 담당합니다. Profile이 없으면 자동 bootstrap은 조용히 비활성화되고, 사용자는 일반 worktree workflow만 사용합니다.
+구체적인 marker, command, domain 추론 regex는 public extension 코드가 아니라 overlay/profile JSON에 둡니다. public pilee는 orchestration lifecycle, status/log, idempotent marker check, executor script 생성만 담당합니다. Profile이 없으면 자동 bootstrap은 조용히 비활성화되고, 사용자는 일반 worktree workflow만 사용합니다.
 
 ## Main Agent Contract
 
 subagent orchestrator가 시작되면 extension은 해당 turn의 system prompt와 visible message에 bootstrap 상태를 주입합니다. main agent는 코드를 읽고 수정할 수 있지만, lint/type-check/test를 실행하기 전에는 orchestrator의 READY 보고, `/wt bootstrap status`, 또는 status/log/report를 확인해야 합니다.
 
-수동으로는 `/wt bootstrap`, `/wt bootstrap --backend`, `/wt bootstrap --frontend`, `/wt bootstrap --all`, `/wt bootstrap status`를 사용할 수 있습니다. AI orchestrator를 우회해야 하면 `/wt bootstrap --executor`로 deterministic executor만 실행합니다.
+수동으로는 `/wt bootstrap`, `/wt bootstrap --backend`, `/wt bootstrap --frontend`, `/wt bootstrap --<profile-domain>`, `/wt bootstrap --domain <name>`, `/wt bootstrap --env`, `/wt bootstrap --all`, `/wt bootstrap status`를 사용할 수 있습니다. AI orchestrator를 우회해야 하면 `/wt bootstrap --executor`로 deterministic executor만 실행합니다. `/wt bootstrap status`는 profile domain marker별 ready/missing 상태를 함께 보여줘서 dependency READY와 runtime env READY를 구분할 수 있어야 합니다.
 
 ## Boundary
 
-이 workflow는 dependency bootstrap과 readiness diagnosis만 담당합니다. schema/codegen, DB migration, local dev server, verification capture는 각 작업의 명시적 validation 단계에서 별도로 실행해야 합니다.
+이 workflow는 bootstrap과 readiness diagnosis만 담당합니다. 실제 schema/codegen, DB migration 적용, local dev server 실행, verification capture는 각 작업의 명시적 validation 단계에서 별도로 실행해야 합니다.
 
 AI subagent는 source code를 수정하지 않습니다. 설치/준비 동작은 profile이 지정한 deterministic executor script 안에 제한하고, 실패 시에는 원인과 다음 조치를 보고합니다.
 

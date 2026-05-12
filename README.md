@@ -134,7 +134,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 /wt new --carry-context      → 현재 세션 전체를 이어받아 새 워크트리
 /wt fork                     → /wt new --carry-context 별도 UX
 /wt resume <name>            → Conductor 워크스페이스 복원 + 전체 세션 hydrate
-/wt bootstrap [status]       → profile 기반 의존성 AI orchestrator + executor
+/wt bootstrap [status]       → profile 기반 readiness AI orchestrator + executor
 /wt switch                   → 워크트리 선택 → 세션 선택 → cwd 전환
 /wt sessions                 → 호환 alias: 현재/선택 워크트리의 /wt switch 세션 선택 흐름
 ```
@@ -147,7 +147,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 - 조사/계획 맥락이 있으면 `worktree_create`가 아니라 부모 패널(P0)의 `/wt fork`로 만든다.
 - 핫픽스/production 작업은 반드시 `--hotfix` / `hotfix: true`로 production 기반에서 만든다.
 - fork child 패널(P1/P2)은 profile이 보호 대상으로 지정한 worktree를 만들지 않고 `/handoff`로 부모에 넘긴다.
-- profile이 bootstrap 대상으로 지정한 worktree에서 구현이 시작되면 `/wt`가 AI subagent orchestrator를 띄워 deterministic executor를 실행·진단하게 한다. 수동 확인은 `/wt bootstrap status`, deterministic fallback은 `/wt bootstrap --executor`.
+- profile이 bootstrap 대상으로 지정한 worktree에서 구현이 시작되면 `/wt`가 AI subagent orchestrator를 띄워 deterministic executor를 실행·진단하게 한다. domain은 profile이 정의한 dependency/env 등 marker로 확장할 수 있고, 수동 실행은 `/wt bootstrap --<domain>`, `/wt bootstrap --domain <name>`, `/wt bootstrap --env`, `/wt bootstrap --all`을 지원한다. 상태 확인은 `/wt bootstrap status`, deterministic fallback은 `/wt bootstrap --executor`.
 
 대시보드 상태: `backlog` / `active` / `done` / `archive`
 - `Space`: backlog → active → done 순환
