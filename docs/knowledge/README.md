@@ -97,6 +97,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
+| [백엔드 레이어 맵은 Frame의 초기 이해 게이트다](./backend-layer-map-frame-gate.md) | active | high | 2026-05-12 | ccd8fd9 | frame, tft, backend, resolver, usecase, service |
 | [정책축 스캔은 Frame의 초기 게이트다](./policy-axis-frame-gate.md) | active | high | 2026-05-12 | cdc7362 | frame, tft, policy-axis, campaign, benefits, time-basis |
 
 ### knowledge
@@ -211,6 +212,7 @@ graph TD
   doc_utility_surface_stays_invisible["Utils surface는 사용자 계약을 만들지 않는다"]
   doc_database_write_human_execution_gate["DB write는 인간 실행 게이트를 가진다"]
   doc_root_cause_before_fix["수정 전에 근본 원인을 좁힌다"]
+  doc_backend_layer_map_frame_gate["백엔드 레이어 맵은 Frame의 초기 이해 게이트다"]
   doc_policy_axis_frame_gate["정책축 스캔은 Frame의 초기 게이트다"]
   doc_confidence_sensitive_review["낮은 confidence 판단은 정합성 PR로 올린다"]
   doc_deterministic_vs_ai_actions["Deterministic action과 AI review action은 분리한다"]
@@ -306,6 +308,10 @@ graph TD
   doc_database_write_human_execution_gate --> doc_private_overlay_package_boundary
   doc_root_cause_before_fix --> doc_evidence_first_verification_gate
   doc_root_cause_before_fix --> doc_verification_invalidation_on_change
+  doc_backend_layer_map_frame_gate --> doc_architecture_friction_tft_lens
+  doc_backend_layer_map_frame_gate --> doc_frame_verify_contract
+  doc_backend_layer_map_frame_gate --> doc_policy_axis_frame_gate
+  doc_backend_layer_map_frame_gate --> doc_tft_visual_structure_renderer
   doc_policy_axis_frame_gate --> doc_architecture_friction_tft_lens
   doc_policy_axis_frame_gate --> doc_frame_verify_contract
   doc_policy_axis_frame_gate --> doc_tft_visual_structure_renderer
@@ -491,6 +497,7 @@ graph TD
   doc_tft_command_shim_skill_routing --> doc_frame_verify_contract
   doc_tft_command_shim_skill_routing --> doc_queued_command_prefill_boundary
   doc_tft_command_shim_skill_routing --> doc_skills_as_portable_procedures
+  doc_tft_visual_structure_renderer --> doc_backend_layer_map_frame_gate
   doc_tft_visual_structure_renderer --> doc_evidence_first_verification_gate
   doc_tft_visual_structure_renderer --> doc_frame_studio_interactive_decision_ui
   doc_tft_visual_structure_renderer --> doc_frame_verify_contract
@@ -512,7 +519,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 74
-- Links: 234
+- Documents: 75
+- Links: 239
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

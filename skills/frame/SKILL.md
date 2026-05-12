@@ -57,6 +57,32 @@ description: 작업 시작 전에 구체 질문으로 목표·성공 기준·범
 - 스캔 결과는 `policy_axis_scan`에 구조화하거나, 최소한 `review_lenses`, `risk_register`, `success_criteria`, `verify_plan.manual_checks`에 반영한다.
 - 세부 체크리스트와 채널 매트릭스 템플릿은 `references/policy-axis-scan.md`를 따른다.
 
+### 0-B. 백엔드 레이어 맵 게이트
+
+`/frame`은 backend 계층 구조가 작업 이해를 좌우하면 구현 plan 전에 **레이어 책임 지도**를 먼저 그린다. 사용자가 backend 세부 레이어에 익숙하지 않다고 밝혔거나, 작업이 resolver/usecase/service/repository/entity/VO/loader/cache/migration을 건드리면 이 게이트를 켠다.
+
+트리거:
+- GraphQL resolver, REST controller, usecase, service, repository, entity, VO/value object, loader/DataLoader, ORM relation, migration 중 2개 이상이 영향 범위에 보임
+- “어디에 로직을 둬야 하는지”가 성공 기준이나 구조 비용을 바꿈
+- 사용자가 해당 backend 구조를 잘 모른다고 말했거나, PR review에서 레이어 책임 질문이 나올 가능성이 있음
+- API 응답 값이 여러 소비 채널(Web/Admin/Slack 등)로 흘러가거나, cache/loader가 기준 시간·권한·정책을 바꿀 수 있음
+
+필수 맵:
+1. Entry point — Resolver/Controller/Handler가 어떤 API field/action을 받는가
+2. Application flow — Usecase/Service가 사용자 행동과 transaction/정책 선택을 조합하는가
+3. Domain rule — VO/Domain service/Entity method가 어떤 계산·불변식을 소유하는가
+4. Data access — Repository/ORM query가 어떤 where/include/order/lock 조건을 소유하는가
+5. Cache/batching — Loader/cache key가 어떤 기준 값과 scope를 포함해야 하는가
+6. Persistence — Entity/Migration/Schema가 어떤 source-of-truth와 제약을 소유하는가
+7. Consumers — Web/Admin/Slack/job 등 결과를 소비하는 경로가 무엇인가
+
+규칙:
+- 모든 레이어를 억지로 채우지 않는다. 해당 없으면 `N/A`로 표시한다.
+- 파일 목록 plan을 쓰기 전에 “어느 책임이 어느 레이어에 있어야 하는지”를 표나 call-flow로 먼저 보여준다.
+- 구조 이해가 핵심이면 `tft-visual` 또는 간단한 ASCII flow를 함께 사용한다. 단, visual은 설명용이고 canonical 원천은 `backend_layer_map`이다.
+- 레이어 책임이 미해결이면 Step 3/4에서 “repo 조건인가, usecase 정책인가, VO 불변식인가”처럼 한 가지 분기로 묻는다.
+- 세부 템플릿은 `references/backend-layer-map.md`를 따른다.
+
 ### 0. Deep Interview 질문 규율
 
 `/frame`은 Plan Mode나 구현 전에 사용자의 모호한 요청을 **실행 가능한 계약**으로 좁히는 인터뷰 단계다. 질문을 많이 하는 것이 목적이 아니라, 가장 큰 불확실성 하나를 골라 한 번에 하나씩 푼다.
@@ -142,7 +168,7 @@ Productive Resistance 질문은 반드시 행동형이어야 한다:
 Pi UI가 있고 `frame_studio` tool을 사용할 수 있으면, 번호형 텍스트만 출력하지 말고 Glimpse TFT Studio를 우선 사용한다. 도구 이름은 하위 호환을 위해 `frame_studio`지만, UI는 Frame/Decide/Verify/Verify Report 탭을 가진 TFT Studio shell이다.
 
 - Step 1 직후: `frame_studio action=start tab=frame`으로 identity-bound TFT Studio를 연다.
-- Step 2: 목표 fingerprint/가정/렌즈/정책축 스캔 markdown을 `frame_studio action=update tab=frame`으로 렌더링한 뒤, `frame_studio action=ask tab=frame`으로 `ok` 또는 정정 입력을 받는다. 버튼 없는 `ok` 문장을 markdown에만 남기지 않는다.
+- Step 2: 목표 fingerprint/가정/렌즈/정책축 스캔/백엔드 레이어 맵 markdown을 `frame_studio action=update tab=frame`으로 렌더링한 뒤, `frame_studio action=ask tab=frame`으로 `ok` 또는 정정 입력을 받는다. 버튼 없는 `ok` 문장을 markdown에만 남기지 않는다.
 - Step 3/4/5/7/9: 선택이 필요한 지점은 `frame_studio action=ask tab=frame`을 호출해 버튼/체크박스/직접입력으로 답을 받는다. 질문 본문은 가능하면 `현재 이해 / 막힌 결정 / 추천 답안 / 질문` 카드 구조로 만든다.
 - Step 6/8: 현재 markdown을 `frame_studio action=update tab=frame`으로 렌더링한다. 구현 계획은 별도 Plan 탭이 아니라 Frame 탭 마지막의 `Implementation plan synthesis` 섹션으로 보여준다.
 - 질문 본문을 채팅에 번호형 메뉴로 출력하는 것은 `frame_studio ask` 결과가 `unavailable`, `cancelled`, `timeout`일 때만 허용한다.
@@ -195,7 +221,8 @@ planning frame은 나중에 worktree가 만들어지면 해당 worktree의 `.pi/
 3. **가정 4~6개** — 틀리면 사용자가 번호로 정정할 수 있는 문장
 4. **같이 볼 렌즈 3~4개** — 사용자가 무엇을 신경 써야 하는지 알려주는 구체 항목
 5. **정책축 스캔** — 트리거된 경우 시간 기준/적용 수/DEFAULT/채널/마이그레이션/cache 축의 확인값과 빈칸
-6. **남은 불확실성 1개** — 다음 질문에서 풀 가장 큰 빈칸
+6. **백엔드 레이어 맵** — 트리거된 경우 resolver/usecase/service/repository/entity/VO/loader/consumer 책임과 call-flow
+7. **남은 불확실성 1개** — 다음 질문에서 풀 가장 큰 빈칸
 
 예:
 
@@ -219,6 +246,9 @@ planning frame은 나중에 worktree가 만들어지면 해당 worktree의 `.pi/
 
 정책축 스캔:
 - 트리거 없음 — 혜택/캠페인/가격/기간/DEFAULT/다중 채널 정책 변경이 아니다.
+
+백엔드 레이어 맵:
+- 트리거 없음 — backend resolver/usecase/repository/entity/VO/loader 책임 변경이 아니다.
 
 틀린 가정이 있으면 번호로 정정해주세요. 없으면 `ok`.
 ```
@@ -261,7 +291,8 @@ planning frame은 나중에 worktree가 만들어지면 해당 worktree의 `.pi/
 3. 이번 작업에서 명시적으로 제외해야 할 항목이 있는가?
 4. 사용자가 나중에 “그건 당연히 포함이라고 생각했다”고 말할 수 있는 영역이 있는가?
 5. 정책축 스캔에서 시간 기준/다중 적용/DEFAULT/채널별 표시/마이그레이션 책임이 미해결인가?
-6. 변경을 빠르게 붙이면 shallow module, 분산 조건, 복잡한 public interface가 늘어나는가?
+6. 백엔드 레이어 맵에서 책임 위치(repo/usecase/VO/service/loader)가 미해결인가?
+7. 변경을 빠르게 붙이면 shallow module, 분산 조건, 복잡한 public interface가 늘어나는가?
 
 예:
 
@@ -307,6 +338,7 @@ planning frame은 나중에 worktree가 만들어지면 해당 worktree의 `.pi/
 4. 회귀 방지 — 기존 정상 흐름 유지
 5. 구조 비용 — 모듈 경계/인터페이스 복잡도/다음 AI의 탐색 가능성
 6. 정책축 — 기준 시간/다중 적용/DEFAULT/채널 매트릭스/마이그레이션 재현성
+7. 백엔드 레이어 경계 — resolver/usecase/repository/VO/loader 중 책임 위치
 
 답은 번호로 주세요. 예: `1,4`
 ```
@@ -335,6 +367,7 @@ AI가 frame draft를 작성한다. `/frame` 초반에는 구현 계획을 만들
   - 정책축 스캔에서 미해결인 시간 기준/다중 적용/DEFAULT/채널별 표시/마이그레이션/cache identity는 `needs_decision` 또는 mitigation으로 남김
   - `needs_decision: true` 항목은 Step 8에서 task로 큐잉됨
 - `policy_axis_scan`: 트리거된 작업이면 시간 기준, 적용 대상 수, DEFAULT/fallback, 소비 채널 매트릭스, 데이터/마이그레이션, API/cache identity의 결론과 열린 질문
+- `backend_layer_map`: 트리거된 작업이면 entry point, application flow, domain rule, data access, cache/batching, persistence, consumers의 책임과 call-flow
 - `edge_case_seeds[]`: Step 4/5 초점에 맞춘 3~5개
   - 구조 렌즈를 선택했다면 “다음 AI/사람이 변경 지점을 찾을 수 있는가” 같은 탐색성 edge도 포함
 - `verify_plan`: `{ commands[], manual_checks[] }`
@@ -352,7 +385,8 @@ Draft를 보여줄 때 맨 위에 반드시 다음을 붙인다:
 3. 검증 증거가 테스트/캡처/로그 중 무엇인지 분명한가
 4. 내가 선택한 답변이 frame 계약에 정확히 반영됐는가
 5. 정책축 스캔이 필요한 작업인데 시간 기준/DEFAULT/다중 적용/채널별 규칙이 빠지지 않았는가
-6. implementation plan이 frame/decide 결정에서 파생됐는가
+6. 백엔드 레이어 맵이 필요한 작업인데 resolver/usecase/repository/VO/loader 책임이 빠지지 않았는가
+7. implementation plan이 frame/decide 결정에서 파생됐는가
 ```
 
 ### Step 7: AskUserQuestion — 구체 patch 메뉴
@@ -389,6 +423,7 @@ Draft를 보여줄 때 맨 위에 반드시 다음을 붙인다:
 3. 필수 필드 점검:
    - `identity`, `goal`, `success_criteria`, `out_of_scope`, `boundaries`, `risk_register`, `verify_plan`, `implementation_plan`, `provenance`
    - 정책축 스캔 트리거 작업이면 `policy_axis_scan` 또는 이에 준하는 `review_lenses`/`risk_register`/`verify_plan` 반영 여부
+   - 백엔드 레이어 맵 트리거 작업이면 `backend_layer_map` 또는 이에 준하는 `review_lenses`/`risk_register`/`verify_plan` 반영 여부
    - `decisions[]`는 없으면 빈 배열
    - `decision_queue[]`는 없으면 빈 배열
 4. canonical JSON을 먼저 쓴다.
@@ -509,6 +544,20 @@ type FrameDoc = {
       displayPolicy?: string;
       verification: string;
     }>;
+  };
+  backend_layer_map?: {
+    triggered: boolean;
+    triggerReason: string;
+    callFlow: string[];
+    layers: Array<{
+      layer: "entry_point" | "application_flow" | "domain_rule" | "data_access" | "cache_batching" | "persistence" | "consumer" | "external";
+      names: string[];
+      responsibility: string;
+      ownsDecision?: string;
+      verification?: string;
+      status: "confirmed" | "assumption" | "open_question" | "not_applicable";
+    }>;
+    openQuestions?: string[];
   };
   productive_resistance: Array<{
     question: string;

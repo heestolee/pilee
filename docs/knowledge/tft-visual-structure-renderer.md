@@ -21,11 +21,12 @@ related:
   - frame-studio-interactive-decision-ui
   - frame-verify-contract
   - evidence-first-verification-gate
+  - backend-layer-map-frame-gate
 ---
 
 ## Judgment
 
-DB schema, API shape, state ownership, source-of-truth처럼 구조 이해가 작업의 핵심이면 텍스트 표만으로 충분하지 않습니다. 사용자가 “기존에는 어떤 형태였고 어떻게 변하는지”, “대안마다 테이블/컬럼이 어떻게 달라지는지”, “어느 컬럼이 어느 컬럼을 참조하는지”를 물으면 TFT Studio는 `tft-visual` fenced block을 구조 그림으로 렌더링해야 합니다.
+DB schema, API shape, backend layer call-flow, state ownership, source-of-truth처럼 구조 이해가 작업의 핵심이면 텍스트 표만으로 충분하지 않습니다. 사용자가 “기존에는 어떤 형태였고 어떻게 변하는지”, “대안마다 테이블/컬럼이 어떻게 달라지는지”, “어느 컬럼이 어느 컬럼을 참조하는지”, “resolver/usecase/repository/VO/loader가 어떻게 이어지는지”를 물으면 TFT Studio는 `tft-visual` fenced block이나 call-flow diagram을 구조 그림으로 렌더링해야 합니다.
 
 이 visual은 `/frame`이나 `/decide`에만 묶인 stage 기능이 아닙니다. Frame, Decide, Verify, 일반 구현 대화 어디서든 맥락상 구조 그림이 이해·선택·검증을 돕는다면 사용할 수 있는 시각화 primitive입니다.
 
@@ -58,7 +59,7 @@ TFT Studio는 `elkjs` 기반 top-down renderer를 기본으로 사용합니다. 
 3. 어떤 실수를 막는가
 4. 무엇을 검증해야 하는가
 
-예를 들어 `UNIQUE`는 “중복 방지”라고만 쓰지 말고, “한 spot이 override campaign을 하나만 갖게 해서 조회 결과 모호성을 없애고 rollback 대상을 단순화한다”처럼 작업 맥락에 연결합니다.
+예를 들어 `UNIQUE`는 “중복 방지”라고만 쓰지 말고, “한 spot이 override campaign을 하나만 갖게 해서 조회 결과 모호성을 없애고 rollback 대상을 단순화한다”처럼 작업 맥락에 연결합니다. backend layer map에서는 “repository는 조회 조건만 소유하고, usecase는 기준 시간/권한/transaction을 조합하며, VO는 계산·불변식을 소유한다”처럼 레이어 책임을 작업 맥락에 연결합니다.
 
 ## Boundary
 
