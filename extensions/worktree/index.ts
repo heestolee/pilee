@@ -2913,12 +2913,17 @@ export default function (pi: ExtensionAPI) {
 	pi.on("before_agent_start", async (event, ctx) => {
 		const result = await ensureDependencyBootstrapWorker(pi, ctx, event.prompt ?? "");
 		if (!result.systemNote) return undefined;
+		const shouldDisplayBootstrapNote = result.state === "failed-to-start";
 		return {
-			message: {
-				customType: "worktree-dependency-bootstrap",
-				content: result.systemNote,
-				display: true,
-			},
+			...(shouldDisplayBootstrapNote
+				? {
+					message: {
+						customType: "worktree-dependency-bootstrap",
+						content: result.systemNote,
+						display: true,
+					},
+				}
+				: {}),
 			systemPrompt: `${event.systemPrompt}\n\nWORKTREE DEPENDENCY BOOTSTRAP:\n${result.systemNote}\nDo not rerun installs manually unless the bootstrap executor/subagent failed or validation still cannot find required tools.`,
 		};
 	});
