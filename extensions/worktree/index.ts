@@ -443,6 +443,7 @@ interface NewArgs {
 	hotfix: boolean;
 	hotfeature: boolean;
 	carryContext: boolean;
+	fullContext: boolean;
 	from?: string;
 	ticket?: string;
 	note?: string;
@@ -470,13 +471,14 @@ function tokenize(args: string): string[] {
 
 function parseNewArgs(args: string): NewArgs {
 	const tokens = tokenize(args);
-	const result: NewArgs = { hotfix: false, hotfeature: false, carryContext: false };
+	const result: NewArgs = { hotfix: false, hotfeature: false, carryContext: false, fullContext: false };
 	const positional: string[] = [];
 	for (let i = 0; i < tokens.length; i++) {
 		const t = tokens[i];
 		if (t === "--hotfix") result.hotfix = true;
 		else if (t === "--hotfeature") result.hotfeature = true;
 		else if (t === "--carry-context" || t === "--context" || t === "--fork-current") result.carryContext = true;
+		else if (t === "--full-context" || t === "--full-transcript") { result.fullContext = true; result.carryContext = true; }
 		else if (t === "--from" && i + 1 < tokens.length) result.from = tokens[++i];
 		else if (t === "--ticket" && i + 1 < tokens.length) result.ticket = tokens[++i];
 		else if (t === "--note" && i + 1 < tokens.length) result.note = tokens[++i];
@@ -516,8 +518,62 @@ function appendWorktreeContext(session: SessionManager, context: string, source:
 	);
 }
 
+function entryText(entry: any): string {
+	const content = entry?.message?.content ?? entry?.content;
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return "";
+	return content.map((part) => {
+		if (!part || typeof part !== "object") return "";
+		if (typeof part.text === "string") return part.text;
+		if (typeof part.content === "string") return part.content;
+		return "";
+	}).filter(Boolean).join(" ");
+}
+
+function recentUserPrompts(sessionFile: string, limit = 8, maxChars = 1800): string[] {
+	if (!existsSync(sessionFile)) return [];
+	const prompts: string[] = [];
+	for (const line of readFileSync(sessionFile, "utf8").split(/\r?\n/)) {
+		if (!line.trim()) continue;
+		try {
+			const entry = JSON.parse(line);
+			const role = entry?.message?.role ?? entry?.role;
+			if (role !== "user") continue;
+			const text = entryText(entry).replace(/\s+/g, " ").trim();
+			if (!text) continue;
+			prompts.push(text.length > maxChars ? `${text.slice(0, maxChars)}…` : text);
+		} catch {
+			// Ignore malformed legacy lines; context pack is best-effort only.
+		}
+	}
+	return prompts.slice(-limit);
+}
+
+function buildMinimalContextPack(ctx: ExtensionContext, reason = "worktree fork"): string | null {
+	const sourceSessionFile = ctx.sessionManager.getSessionFile();
+	if (!sourceSessionFile || !existsSync(sourceSessionFile)) return null;
+	const prompts = recentUserPrompts(sourceSessionFile);
+	const lines = [
+		"### Minimal handoff",
+		`- Reason: ${reason}`,
+		"- Full transcript was not copied. Reopen the source only if needed.",
+		`- Source session: ${sourceSessionFile}`,
+		`- Reopen command: /archive ${sourceSessionFile}`,
+	];
+	if (prompts.length > 0) {
+		lines.push("", "### Recent user prompts");
+		prompts.forEach((prompt, index) => lines.push(`${index + 1}. ${prompt}`));
+	}
+	return lines.join("\n");
+}
+
+function joinContextParts(...parts: Array<string | null | undefined>): string | null {
+	const joined = parts.map((part) => part?.trim()).filter(Boolean).join("\n\n---\n\n");
+	return joined || null;
+}
+
 function createWorktreeSession(ctx: ExtensionContext, worktreePath: string, options: {
-	carryContext?: boolean;
+	fullContext?: boolean;
 	contextContent?: string | null;
 	sessionName?: string;
 } = {}): { sessionFile: string; carriedContext: boolean; appendedContext: boolean } {
@@ -526,7 +582,7 @@ function createWorktreeSession(ctx: ExtensionContext, worktreePath: string, opti
 	let carriedContext = false;
 
 	const sourceSessionFile = ctx.sessionManager.getSessionFile();
-	if (options.carryContext && sourceSessionFile && existsSync(sourceSessionFile)) {
+	if (options.fullContext && sourceSessionFile && existsSync(sourceSessionFile)) {
 		try {
 			session = SessionManager.forkFrom(sourceSessionFile, worktreePath);
 			sessionFile = session.getSessionFile();
@@ -1401,12 +1457,15 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 	}
 
 	// Step 5: switch to new session with worktree cwd
+	const minimalContext = parsed.carryContext
+		? buildMinimalContextPack(ctx, "/wt new --carry-context")
+		: null;
 	const session = createWorktreeSession(ctx, worktreePath, {
-		carryContext: parsed.carryContext,
-		contextContent,
+		fullContext: parsed.fullContext,
+		contextContent: joinContextParts(contextContent, minimalContext),
 		sessionName: `${name} (${branchName})`,
 	});
-	const contextLabel = `${session.carriedContext ? " — context carried" : session.appendedContext ? " — context loaded" : ""}${framePromotionContextLabel(framePromotion)}`;
+	const contextLabel = `${session.carriedContext ? " — full transcript carried" : session.appendedContext ? " — context pack loaded" : ""}${framePromotionContextLabel(framePromotion)}`;
 
 	try {
 		await switchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, contextLabel);
@@ -2135,7 +2194,7 @@ async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandC
 	const contextContent = readContextFileOption(ctx, parsed.contextFile);
 	if (parsed.contextFile && contextContent === null) return;
 
-	ctx.ui.notify(`Forking current session into "${name}" from origin/${baseBranch}…`, "info");
+	ctx.ui.notify(`Forking "${name}" from origin/${baseBranch} with ${parsed.fullContext ? "full transcript" : "minimal context pack"}…`, "info");
 
 	const fetchR = await pi.exec("git", ["fetch", "origin", baseBranch], { cwd: repoRoot });
 	if (fetchR.code !== 0) {
@@ -2181,11 +2240,11 @@ async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandC
 	}
 
 	const session = createWorktreeSession(ctx, worktreePath, {
-		carryContext: true,
-		contextContent,
+		fullContext: parsed.fullContext,
+		contextContent: joinContextParts(contextContent, buildMinimalContextPack(ctx, "/wt fork")),
 		sessionName: `${name} (${branchName})`,
 	});
-	const contextLabel = `${session.carriedContext ? " — context carried" : session.appendedContext ? " — context loaded" : ""}${framePromotionContextLabel(framePromotion)}`;
+	const contextLabel = `${session.carriedContext ? " — full transcript carried" : session.appendedContext ? " — minimal context pack" : ""}${framePromotionContextLabel(framePromotion)}`;
 
 	try {
 		await switchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, contextLabel);
@@ -2860,8 +2919,8 @@ async function handleWt(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCon
 		const t = ctx.ui.theme;
 		ctx.ui.notify([
 			t.fg("accent", "Usage:"),
-			`  ${t.fg("warning", "/wt new")} ${t.fg("borderAccent", "[name] [--repo <name>] [--hotfix|--hotfeature|--from <branch>] [--ticket PROJ-123] [--carry-context]")}`,
-			`  ${t.fg("warning", "/wt fork")} ${t.fg("borderAccent", "[name] [--context-file <path>] [--repo <name>] [--hotfix|--from <branch>]  — 현재 세션 전체를 이어받아 워크트리 생성")}`,
+			`  ${t.fg("warning", "/wt new")} ${t.fg("borderAccent", "[name] [--repo <name>] [--hotfix|--hotfeature|--from <branch>] [--ticket PROJ-123] [--carry-context|--full-context]")}`,
+			`  ${t.fg("warning", "/wt fork")} ${t.fg("borderAccent", "[name] [--context-file <path>] [--repo <name>] [--hotfix|--from <branch>] [--full-context] — 기본은 최소 handoff, full transcript는 명시 옵션")}`,
 			`  ${t.fg("warning", "/wt switch")} ${t.fg("borderAccent", "<name> | <repo>/<name>  — 워크트리 선택 후 세션 선택")}`,
 			`  ${t.fg("warning", "/wt resume")} ${t.fg("borderAccent", "<conductor-workspace>  — Conductor 워크스페이스 전체 세션 복원")}`,
 			`  ${t.fg("warning", "/wt bootstrap")} ${t.fg("borderAccent", "[status|--backend|--frontend|--all|--executor]  — profile 기반 의존성 AI orchestrator/worker 준비")}`,
@@ -3100,23 +3159,25 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "worktree_fork",
 		label: "Fork Worktree",
-		description: "Create a new worktree with current session context carried over. Use when investigation/planning is done in the current parent session and you want to hand off to a new implementation session.",
-		promptSnippet: "Fork current session into a new worktree, carrying over investigation context and conversation summary.",
+		description: "Create a new worktree with a summarized context pack by default. Full transcript copy is opt-in via fullContext only.",
+		promptSnippet: "Create a worktree and attach a concise investigation/planning handoff summary. Do not copy the full transcript unless explicitly requested.",
 		promptGuidelines: [
 			"Before any worktree creation, classify: investigation vs implementation, context-carry needed vs fresh, development vs production/hotfix base.",
-			"Use worktree_fork instead of worktree_create when you have valuable session context (investigation results, code analysis, plans) to carry over.",
+			"Use worktree_fork instead of worktree_create when valuable context exists, but carry it as a concise markdown summary by default.",
+			"Do not copy the current session transcript by default. Use fullContext: true only when the user explicitly requests full transcript carry or '아까 하던 작업 그대로' continuity.",
 			`In fork/child panels (P1/P2), do not call worktree_fork for configured protected repos (${configuredRepoLabel}). Hand off to the parent P0 panel and have the parent run /wt fork so the parent conversation is the source session.`,
 			"If the request mentions hotfix/production/핫픽스, pass hotfix: true. Do not create a development-based hotfix branch.",
-			"The context parameter should be a comprehensive markdown summary: goals, findings, target files, code snippets, and action items.",
+			"The context parameter should be a compact markdown summary: goal, findings, target files, non-goals, validation focus, and action items.",
 			"Tool calls cannot execute slash-command session switches directly. After worktree_fork succeeds, tell the user to submit the returned /wt switch command (prefilled in interactive UI) and wait before continuing.",
 		],
 		parameters: Type.Object({
-			context: Type.String({ description: "Markdown summary of current session context to carry over (goals, investigation results, target files, action items)" }),
+			context: Type.String({ description: "Compact markdown summary of session context to attach (goals, findings, target files, action items). This is not a full transcript." }),
 			repo: Type.Optional(Type.String({ description: `Registered repo name (configured examples: ${configuredRepoLabel}). Auto-detected if omitted.` })),
 			name: Type.Optional(Type.String({ description: "Worktree name. Auto-generated if omitted." })),
 			ticket: Type.Optional(Type.String({ description: "Issue/ticket key (e.g. 'PROJ-123')" })),
 			note: Type.Optional(Type.String({ description: "Short description of the work" })),
 			hotfix: Type.Optional(Type.Boolean({ description: "Branch from production instead of development" })),
+			fullContext: Type.Optional(Type.Boolean({ description: "Explicit opt-in to copy the entire current session transcript. Default false." })),
 		}),
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			const repoName = params.repo;
@@ -3192,8 +3253,8 @@ export default function (pi: ExtensionAPI) {
 			});
 
 			createWorktreeSession(ctx, worktreePath, {
-				carryContext: true,
-				contextContent: params.context,
+				fullContext: Boolean(params.fullContext),
+				contextContent: joinContextParts(params.context, buildMinimalContextPack(ctx, "worktree_fork")),
 				sessionName: `${name} (${branchName})`,
 			});
 
@@ -3210,9 +3271,10 @@ export default function (pi: ExtensionAPI) {
 			const prefilled = prefillSwitchCommand(ctx, switchCommand);
 
 			const frameText = framePromotion.status === "promoted" ? ` Planning frame promoted to ${framePromotion.framePath}.` : "";
+			const contextMode = params.fullContext ? "full transcript + context pack" : "context pack";
 			return {
-				content: [{ type: "text", text: `✓ Worktree "${name}" forked (${branchName}) at ${worktreePath}. Context attached (${params.context.length} chars).${frameText} Run ${switchCommand} to switch${prefilled ? " (prefilled in editor)" : ""}.` }],
-				details: { name, branch: branchName, path: worktreePath, contextLength: params.context.length, switchCommand, prefilled, framePromotion },
+				content: [{ type: "text", text: `✓ Worktree "${name}" forked (${branchName}) at ${worktreePath}. Attached ${contextMode} (${params.context.length} summary chars).${frameText} Run ${switchCommand} to switch${prefilled ? " (prefilled in editor)" : ""}.` }],
+				details: { name, branch: branchName, path: worktreePath, contextLength: params.context.length, contextMode, switchCommand, prefilled, framePromotion },
 			};
 		},
 	});

@@ -136,7 +136,7 @@ The "NOT TOUCHED" section shows scope discipline and helps reviewers.
 For repos that a runtime profile marks as protected, do not jump from “this might need a fix” to creating a worktree. Before any worktree creation, classify three things:
 
 1. **Stage** — investigation vs implementation. “확인해볼래?” means investigate first; do not create a worktree yet.
-2. **Context carry** — if this session already contains investigation, code paths, decisions, or a plan, use `/wt fork` / `worktree_fork`, not `/wt new` / `worktree_create`.
+2. **Context carry** — if this session already contains investigation, code paths, decisions, or a plan, use `/wt fork` / `worktree_fork`, not `/wt new` / `worktree_create`. Carry a concise handoff summary by default; copy the full transcript only when the user explicitly asks for `--full-context` / `fullContext: true` or exact “continue the whole previous session” continuity.
 3. **Base branch** — hotfix/production work must be created with `--hotfix` / `hotfix: true`; do not create a development-based hotfix branch.
 
 Fork-panel rule: child panels (`P1`, `P2`, …) must not create protected/profiled worktrees. Hand off findings to the parent panel (`/handoff`), then the parent (`P0`) runs `/wt fork` so the parent conversation becomes the source session. This keeps worktree history, base branch, and session continuity clean.
