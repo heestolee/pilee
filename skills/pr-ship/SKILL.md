@@ -19,7 +19,7 @@ AI가 기본으로 할 수 있는 것:
 - 의도 단위 커밋
 - 관련 검증 실행
 - push
-- 기본 모드: 해당 review conversation에 커밋 SHA 또는 근거가 포함된 답글 작성
+- 기본 모드: 해당 review conversation에 관련 커밋 링크 또는 근거가 포함된 답글 작성
 - 기본 모드: 답글 후 승인되지 않은 리뷰어에게 review re-request
 - `--push-only` 모드: GitHub 코멘트/re-request 없이 수동 게시용 답글 초안을 세션에 작성
 
@@ -30,7 +30,7 @@ AI가 사용자 명시 승인 없이 하면 안 되는 것:
 - reviewer가 이미 바꾼 상태 되돌리기
 - force push, amend, history rewrite
 
-`resolve`/`unresolve`는 “사용자가 지금 이 동작을 해달라”고 명시한 경우에만 별도 단계로 수행한다. 리뷰 대응 완료 보고에 “thread resolve는 리뷰어/작성자 판단”이라고 남긴다. 반대로 review re-request는 `pr-ship` 기본 모드의 마무리 동작이다. 단, 승인되지 않은 리뷰어/팀이 없으면 skip하고, API 실패 시 실패 사유를 보고한다. `--push-only` 모드에서는 GitHub 코멘트와 review re-request를 모두 수행하지 않는다.
+`resolve`/`unresolve`는 “사용자가 지금 이 동작을 해달라”고 명시한 경우에만 별도 단계로 수행한다. 답글에는 `resolve`를 하지 않았다는 당연한 문구를 반복하지 않는다. 반대로 review re-request는 `pr-ship` 기본 모드의 마무리 동작이다. 단, 승인되지 않은 리뷰어/팀이 없으면 skip하고, API 실패 시 실패 사유를 보고한다. `--push-only` 모드에서는 GitHub 코멘트와 review re-request를 모두 수행하지 않는다.
 
 ## Input Forms
 
@@ -111,7 +111,8 @@ Severity badge가 있어도 맹목적으로 따르지 않는다. `Must_Fix`/`Sho
 ### 5. Implement
 
 - 관련 파일을 읽고 최소 변경으로 수정한다.
-- 같은 원인의 여러 thread는 하나의 coherent commit으로 묶을 수 있다.
+- 가능하면 리뷰 코멘트/thread 단위로 커밋을 쪼갠다. 답글만 봐도 어떤 작업인지 알 수 있도록 commit message가 코멘트의 해결 내용을 드러내야 한다.
+- 같은 원인의 여러 thread만 하나의 coherent commit으로 묶을 수 있다. 이 경우 답글에서 해당 커밋이 어떤 thread들을 함께 닫는지 짧게 설명한다.
 - unrelated cleanup은 하지 않는다.
 - generated file이 필요하면 프로젝트 규칙에 맞는 codegen/schema 명령을 사용한다.
 
@@ -130,7 +131,7 @@ Severity badge가 있어도 맹목적으로 따르지 않는다. `Must_Fix`/`Sho
 
 ### 7. Commit + Push
 
-리뷰 대응 단위로 커밋한다.
+리뷰 대응 단위로 커밋한다. 기본은 “코멘트 1개 = 커밋 1개”이며, 같은 원인의 thread만 묶는다.
 
 ```bash
 git status --short
@@ -140,25 +141,25 @@ git commit -m "fix: address PR review <summary>"
 git push
 ```
 
-답글에 넣을 short SHA를 기록한다.
+답글에 넣을 commit URL과 commit message를 기록한다. 답글에서는 raw SHA만 쓰지 말고 `[커밋메시지](https://github.com/<owner>/<repo>/commit/<sha>)` 형태로 링크한다.
 
 ### 8. Reply to Review Conversation or Draft
 
 기본 모드에서는 각 thread의 **해당 conversation**에 답글을 단다. 전체 PR comment 하나로 여러 line thread를 대체하지 않는다.
 
-`push-only` 모드에서는 GitHub에 답글을 달지 않는다. 대신 아래 형식을 바탕으로 수동 게시용 초안을 최종 응답에 포함한다. 초안에는 commit SHA, 근본 원인, 대응, 검증을 포함하되 “반영 완료”처럼 게시 사실을 암시하는 표현은 사용자가 실제 게시하기 전까지 조심한다.
+`push-only` 모드에서는 GitHub에 답글을 달지 않는다. 대신 아래 형식을 바탕으로 수동 게시용 초안을 최종 응답에 포함한다. 초안에는 commit 링크, 근본 원인, 대응, 검증을 포함하되 “반영 완료”처럼 게시 사실을 암시하는 표현은 사용자가 실제 게시하기 전까지 조심한다.
 
 코드 수정 답글:
 
 ```markdown
-반영 완료 (`<SHORT_SHA>`):
+반영했습니다: [<커밋메시지>](<COMMIT_URL>)
 
 - 근본 원인: <왜 문제가 생겼는지>
 - 대응: <무엇을 바꿨는지>
-- 검증: `<command>` / <evidence>
-
-스레드 resolve는 리뷰어/작성자 판단에 맡기겠습니다.
+- 검증: 관련 unit test / lint / build 통과
 ```
+
+검증은 기본적으로 요약한다. 긴 명령어 나열은 코멘트 노이즈가 되므로 피하고, reviewer가 재현 명령을 요청했거나 실패 원인 구분에 명령 자체가 중요한 경우에만 접힌 세부 목록이나 짧은 명령 1~2개로 제한한다. 답글에 “스레드 resolve는 리뷰어/작성자 판단” 같은 당연한 문구를 넣지 않는다.
 
 수정할 게 없는 답글:
 
@@ -213,21 +214,21 @@ git push
 완료했습니다.
 - PR/comment: <url>
 - 대응: <수정/근거 코멘트/근거 초안/보류>
-- 커밋: `<sha>` <message>
+- 커밋: `[<message>](<commit-url>)`
 - Push: <branch>
 - 모드: <full-response | push-only>
 - 답글: <thread reply url | skipped (--push-only)>
 - 코멘트 초안: <push-only일 때 수동 게시용 markdown>
 - Re-request: <targets | skipped reason | failed reason>
-- 검증: <command> ✅ / ⚠️ <reason>
-- 하지 않은 것: <resolve/merge | push-only면 comment/re-request/resolve/merge>는 수행하지 않음
+- 검증: <요약> ✅ / ⚠️ <reason>
+- 하지 않은 것: <merge/force-push | push-only면 comment/re-request/merge>는 수행하지 않음
 ```
 
 ## Red Flags
 
 - 리뷰 문구만 맞추고 실제 원인을 확인하지 않음
 - comment URL이 있는데 전체 PR comment로만 답변
-- commit SHA 없는 “반영했습니다” 답글
+- commit message 링크 없는 raw SHA만 있는 “반영했습니다” 답글
 - 검증 없이 push/comment
 - 사용자가 요청하지 않은 thread resolve/unresolve
 - `--push-only`인데 GitHub comment/re-request 실행
