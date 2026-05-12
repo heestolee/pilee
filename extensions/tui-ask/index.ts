@@ -84,7 +84,7 @@ export default function tuiAsk(pi: ExtensionAPI) {
 						defaultSelectedIndices: params.defaultSelectedIndices ?? [],
 						done,
 					}),
-				{ overlay: true, overlayOptions: { width: "82%", minWidth: 56, maxHeight: "80%", anchor: "center" } },
+				{ overlay: true, overlayOptions: { width: "94%", minWidth: 64, maxHeight: "90%", anchor: "center" } },
 			);
 
 			return toolResult(
@@ -245,16 +245,24 @@ class TuiAskOverlay implements Focusable {
 			const option = this.options.options[i] ?? "";
 			const selected = this.selectedIndex === i;
 			const checked = this.options.multiSelect ? (this.selected.has(i) ? "☑" : "☐") : `${i + 1}.`;
-			const cursor = selected ? this.theme.fg("accent", "▶") : " ";
-			const label = selected ? this.theme.fg("accent", option) : this.theme.fg("text", option);
-			add(`${cursor} ${checked} ${label}`);
+			this.addWrappedChoice(lines, w, {
+				cursor: selected ? "▶" : " ",
+				checked,
+				label: option,
+				selected,
+			});
 		}
 
 		if (this.options.allowText) {
 			const directIndex = this.options.options.length;
 			const selected = this.selectedIndex === directIndex || this.textMode;
 			const label = this.textValue ? `직접 입력: ${this.textValue}` : this.options.placeholder;
-			add(`${selected ? this.theme.fg("accent", "▶") : " "} ${directIndex + 1}. ${selected ? this.theme.fg("accent", label) : this.theme.fg("text", label)}`);
+			this.addWrappedChoice(lines, w, {
+				cursor: selected ? "▶" : " ",
+				checked: `${directIndex + 1}.`,
+				label,
+				selected,
+			});
 		}
 
 		if (this.textMode) {
@@ -302,6 +310,23 @@ class TuiAskOverlay implements Focusable {
 		this.options.done(this.buildResult("submitted", null));
 	}
 
+	private addWrappedChoice(
+		lines: string[],
+		width: number,
+		choice: { cursor: string; checked: string; label: string; selected: boolean },
+	): void {
+		const plainPrefix = `${choice.cursor} ${choice.checked} `;
+		const styledPrefix = `${choice.selected ? this.theme.fg("accent", choice.cursor) : choice.cursor} ${choice.checked} `;
+		const continuationPrefix = " ".repeat(Math.max(0, visibleWidth(plainPrefix)));
+		const contentWidth = Math.max(8, width - visibleWidth(plainPrefix));
+		const wrapped = wrapPlainText(choice.label, contentWidth);
+		for (let lineIndex = 0; lineIndex < wrapped.length; lineIndex++) {
+			const prefix = lineIndex === 0 ? styledPrefix : continuationPrefix;
+			const label = choice.selected ? this.theme.fg("accent", wrapped[lineIndex] ?? "") : this.theme.fg("text", wrapped[lineIndex] ?? "");
+			lines.push(truncateToWidth(`${prefix}${label}`, width, ""));
+		}
+	}
+
 	private buildResult(status: TuiAskStatus, text: string | null): TuiAskResult {
 		const selectedIndices = [...this.selected].sort((a, b) => a - b);
 		return {
@@ -332,18 +357,44 @@ function normalizeOptions(options: string[] | undefined): string[] {
 }
 
 function wrapPlainText(text: string, width: number): string[] {
+	const safeWidth = Math.max(1, width);
 	const words = String(text).replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
 	if (words.length === 0) return [""];
 	const lines: string[] = [];
 	let current = "";
 	for (const word of words) {
+		if (visibleWidth(word) > safeWidth) {
+			if (current) {
+				lines.push(current);
+				current = "";
+			}
+			lines.push(...splitToWidth(word, safeWidth));
+			continue;
+		}
 		const candidate = current ? `${current} ${word}` : word;
-		if (visibleWidth(candidate) <= width) {
+		if (visibleWidth(candidate) <= safeWidth) {
 			current = candidate;
 			continue;
 		}
 		if (current) lines.push(current);
 		current = word;
+	}
+	if (current) lines.push(current);
+	return lines.length > 0 ? lines : [""];
+}
+
+function splitToWidth(text: string, width: number): string[] {
+	const safeWidth = Math.max(1, width);
+	const lines: string[] = [];
+	let current = "";
+	for (const char of [...text]) {
+		const candidate = `${current}${char}`;
+		if (current && visibleWidth(candidate) > safeWidth) {
+			lines.push(current);
+			current = char;
+		} else {
+			current = candidate;
+		}
 	}
 	if (current) lines.push(current);
 	return lines;

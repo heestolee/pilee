@@ -32,6 +32,7 @@ title_en: TUI Ask is a lightweight decision gate
 ## 규칙
 
 - `tui_ask`는 Pi terminal 안에서 single choice, multi choice, direct text를 받는다.
+- 옵션/직접입력 라벨은 terminal 폭 안에서 줄바꿈해야 하며, 긴 문구를 primary evidence처럼 사용자가 읽는 상태에서 오른쪽으로 잘라내지 않는다.
 - UI가 없는 실행 컨텍스트에서는 실패로 간주하지 않고 `unavailable`과 numbered text fallback을 반환한다.
 - 옵션은 행동 분기 중심으로 작성한다. “충분하다” 같은 의례적 옵션보다 “branch rename”, “현재 branch 유지”, “직접 입력”처럼 다음 작업이 달라지는 표현을 쓴다.
 - Frame/Decide/Verify처럼 긴 사고 전문과 artifact가 필요한 작업은 TFT Studio를 쓸 수 있지만, 단발성 PR/create-pr 게이트는 TUI 질문을 우선한다.
