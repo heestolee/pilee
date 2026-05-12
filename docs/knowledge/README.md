@@ -108,8 +108,8 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Deterministic action과 AI review action은 분리한다](./deterministic-vs-ai-actions.md) | active | high | 2026-05-12 | bc001a0 | knowledge, deterministic, ai-actions, review, automation, 정합성 |
 | [Ember는 knowledge의 친근한 입구다](./ember-friendly-knowledge-entrypoint.md) | active | high | 2026-05-12 | bc001a0 | ember, branding, command, knowledge |
 | [Ember Ship은 knowledge 정합성을 release train으로 닫는다](./ember-ship-release-train.md) | active | high | 2026-05-12 | bc001a0 | ember, knowledge, release-train, freshness, merge-gate |
-| [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | high | 2026-05-11 | 55766aa | knowledge, freshness, diagnosis, review, candidate, 정합성 |
-| [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | high | 2026-05-11 | 55766aa | knowledge, judgment, granularity, documentation, coverage, 문서 |
+| [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | high | 2026-05-12 | 4d1ff26 | knowledge, freshness, diagnosis, review, candidate, 정합성 |
+| [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | high | 2026-05-12 | 4d1ff26 | knowledge, judgment, granularity, documentation, coverage, 문서 |
 | [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | high | 2026-05-11 | 55766aa | pilee, knowledge, history, journal, sanitized, reviewed-at |
 | [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | high | 2026-05-11 | 55766aa | knowledge, journal, privacy, sanitized, doctrine, history |
 | [README는 knowledge coverage map이다](./readme-coverage-map.md) | active | high | 2026-05-12 | 7a09453 | knowledge, readme, coverage, graph, surface, todo |
@@ -150,7 +150,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-05-12 | bc001a0 | verify, evidence, gate, done, ready, verification |
-| [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-05-11 | 55766aa | frame, verify, frame-json, success-criteria, contract, verification |
+| [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-05-12 | 4d1ff26 | frame, verify, frame-json, success-criteria, contract, verification |
 | [반복 검증 실패는 baseline cache로 분리한다](./validation-baseline-failure-cache.md) | active | high | 2026-05-12 | e7f77eb | preflight, validation, baseline, failure, cache, verification |
 | [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-05-11 | 55766aa | verify, invalidation, code-change, freshness, gate, 검증 |
 | [Verify Report 전에는 readiness를 먼저 잠근다](./verify-report-preflight-readiness.md) | active | high | 2026-05-12 | e7f77eb | verify-report, preflight, readiness, capture, data, account |
@@ -178,11 +178,11 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [자동 로드 컨텍스트는 최소 surface만 가진다](./context-loading-minimal-surface.md) | active | high | 2026-05-12 | b01add4 | context, agents-md, memory, system-prompt, token, autoload |
 | [Decide는 선택을 한 번 공격한다](./decide-tradeoff-challenge.md) | active | high | 2026-05-12 | b01add4 | decide, tradeoff, challenge, productive-resistance, frame-json, decision |
 | [외부 이슈 업데이트는 preview gate를 지난다](./external-issue-preview-gate.md) | active | high | 2026-05-12 | bc001a0 | jira, issue, preview, wiki-markup, external-update, approval |
-| [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-05-11 | 55766aa | fork-panel, handoff, inbox, inject, parent, panel |
-| [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-05-11 | 55766aa | fork-panel, revive, repanel, ghostty, spatial, panel |
-| [Frame은 마지막에 Plan을 합성한다](./frame-plan-synthesis-continuity.md) | active | high | 2026-05-11 | 3be5254 | frame, implementation-plan, tft-studio, worktree, continuity, planning |
-| [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-05-11 | 55766aa | frame, planning, identity, home-directory, ticket, session-title |
-| [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-05-12 | 7a9d642 | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
+| [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-05-12 | 4d1ff26 | fork-panel, handoff, inbox, inject, parent, panel |
+| [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-05-12 | 4d1ff26 | fork-panel, revive, repanel, ghostty, spatial, panel |
+| [Frame은 마지막에 Plan을 합성한다](./frame-plan-synthesis-continuity.md) | active | high | 2026-05-12 | 4d1ff26 | frame, implementation-plan, tft-studio, worktree, continuity, planning |
+| [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-05-12 | 4d1ff26 | frame, planning, identity, home-directory, ticket, session-title |
+| [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-05-12 | 4d1ff26 | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-05-11 | 55766aa | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 264ea17 | local-dev, server, startup, diagnosis, dev |
 | [pilee 변경은 final-check gate로 닫는다](./pilee-final-check-gate.md) | active | high | 2026-05-12 | 7c7b8a5 | pilee, final-check, verification, skill, workflow, 마무리 |
