@@ -16,7 +16,7 @@ applies_to:
 source:
   - user-direction:2026-05-10-tft-visual-db-structure
 reviewed_at: 2026-05-12
-reviewed_commit: 3ba5eafa08fc7419e6b9ae66cbdba672c37147b4
+reviewed_commit: 0dfb4c80f7943bff942a8fb5fbb4771d001e59a6
 related:
   - frame-studio-interactive-decision-ui
   - frame-verify-contract
