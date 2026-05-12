@@ -318,7 +318,7 @@ export function loadOrDeriveWorkContext(cwd: string, sessionFile?: string): Work
 
 export function relativeToWorkUnit(card: WorkContextCard, path: string): string {
 	const root = card.identity.root || card.identity.cwd;
-	const absolute = isAbsolute(path) ? resolve(path) : resolve(card.identity.cwd, path);
+	const absolute = isAbsolute(path) ? resolve(path) : resolve(root, path);
 	const rel = relative(root, absolute).replace(/\\/g, "/");
 	return rel.startsWith("..") ? path.replace(/\\/g, "/") : rel;
 }

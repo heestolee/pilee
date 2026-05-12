@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
+import { formatWorkContextCard, gateWorkContext, loadOrDeriveWorkContext, type WorkContextCard, type WorkContextGateResult } from "../utils/work-context.ts";
 
 type Intent = "answer" | "investigate" | "implement" | "hotfix" | "verify_report" | "audit" | "ship" | "knowledge" | "unknown";
 type WorkflowWeight = "none" | "light" | "standard" | "full";
@@ -248,6 +249,26 @@ function heavyToolBlockReason(state: GuardState, toolName: string): string {
 	].join("\n");
 }
 
+function formatWorkContextBlock(result: WorkContextGateResult, toolName: string): string {
+	return [
+		`workflow_guard blocked ${toolName}: Working Context Card gate failed.`,
+		...result.reasons.map((reason) => `- ${reason}`),
+		"",
+		"Set or refresh the current slice with work_context before retrying, or explicitly update the card if scope changed.",
+		result.card ? formatWorkContextCard(result.card) : "",
+	].filter(Boolean).join("\n");
+}
+
+function workContextSection(card?: WorkContextCard): string {
+	if (!card) return "";
+	return [
+		"",
+		"Compact work context for this turn:",
+		formatWorkContextCard(card),
+		"- Rule: carry this compact card in working memory; reopen transcript/frame/archive only when needed. Do not treat old raw transcript as current truth.",
+	].join("\n");
+}
+
 function keywordTokens(text: string): string[] {
 	const normalized = text
 		.replace(/[`*_#[\](){}.,:;!?"']/g, " ")
@@ -371,13 +392,15 @@ export default function workflowGuard(pi: ExtensionAPI) {
 		const state = classifyPrompt(event.prompt, sessionFile);
 		rememberGuardState(key, state);
 		const audit = state.auditRequired ? buildAuditSnapshot({ prompt: event.prompt }) : undefined;
+		const card = loadOrDeriveWorkContext(ctx.cwd, sessionFile);
+		const guardPrompt = `${buildSystemPrompt(state)}${workContextSection(card)}`;
 		return {
-			systemPrompt: `${event.systemPrompt}\n\n${buildSystemPrompt(state)}`,
+			systemPrompt: `${event.systemPrompt}\n\n${guardPrompt}`,
 			message: {
 				customType: "workflow_guard",
-				content: audit ? `${buildSystemPrompt(state)}\n\n${audit.text}` : buildSystemPrompt(state),
+				content: audit ? `${guardPrompt}\n\n${audit.text}` : guardPrompt,
 				display: false,
-				details: { state, audit: audit?.details },
+				details: { state, audit: audit?.details, workContext: card ? { path: card.identity.contextPath, currentSlice: card.currentSlice?.id, mode: card.mode } : undefined },
 			},
 		};
 	});
@@ -385,10 +408,15 @@ export default function workflowGuard(pi: ExtensionAPI) {
 	pi.on("tool_call", async (event, ctx) => {
 		const state = guardBySession.get(sessionKey(ctx));
 		if (!state) return undefined;
+		const card = loadOrDeriveWorkContext(ctx.cwd, ctx.sessionManager?.getSessionFile?.());
 
 		if ((event.toolName === "edit" || event.toolName === "write") && !isTempPath(String(event.input?.path ?? ""))) {
 			const reason = mutationBlockReason(state, event.toolName);
 			if (reason) return { block: true, reason };
+			if (state.explicitMutation && card && (state.weight === "standard" || state.weight === "full")) {
+				const result = gateWorkContext(card, { action: "mutate", paths: [String(event.input?.path ?? "")], requireSlice: true });
+				if (result.level === "block") return { block: true, reason: formatWorkContextBlock(result, event.toolName) };
+			}
 		}
 
 		if ((event.toolName === "worktree_create" || event.toolName === "worktree_fork") && !state.explicitMutation) {
@@ -405,6 +433,10 @@ export default function workflowGuard(pi: ExtensionAPI) {
 			if (isGitCommitCommand(command) && !state.explicitSingleCommit && !isExplicitCommitBypass(command)) {
 				const summary = await stagedDiffSummary(pi, ctx.cwd);
 				if (summary?.large) return { block: true, reason: formatLargeCommitBlock(summary) };
+				if (card && summary?.files.length && !/WORK_CONTEXT_ALLOW_SCOPE=1|work-context:allow-scope/.test(command)) {
+					const result = gateWorkContext(card, { action: "commit", paths: summary.files, requireSlice: state.weight === "standard" || state.weight === "full" });
+					if (result.level === "block") return { block: true, reason: formatWorkContextBlock(result, "git commit") };
+				}
 			}
 		}
 
