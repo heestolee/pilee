@@ -27,7 +27,7 @@ source:
   - user-direction:2026-05-12-workspace-save-restore
   - user-direction:2026-05-11-glimpse-zoom-shortcuts
 reviewed_at: 2026-05-12
-reviewed_commit: 72e1fd937231fd5125a85764953247d3d4b65340
+reviewed_commit: 9a032653d19db5c95f836557183b5b6c6387007f
 related:
   - fork-panel-spatial-continuity
   - mcp-stderr-isolation

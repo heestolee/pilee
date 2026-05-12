@@ -130,7 +130,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Embedded WebView script는 escape 경계를 보존한다](./embedded-webview-script-escape-boundary.md) | active | high | 2026-05-11 | 55766aa | webview, embedded-script, escape, string-raw, regex, glimpse |
 | [MCP 결과는 큰 출력만 digest-first로 다룬다](./mcp-digest-first-artifacts.md) | active | high | 2026-05-11 | ce3a598 | mcp, digest-first, artifact, tool-output, lazy-retrieval |
 | [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-05-11 | 55766aa | mcp, stderr, stdio, terminal, tui, noise |
-| [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-05-12 | 72e1fd9 | terminal, ghostty, applescript, notify, host, integration |
+| [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-05-12 | 9a03265 | terminal, ghostty, applescript, notify, host, integration |
 | [터미널 workspace 복원은 snapshot과 host adapter를 분리한다](./terminal-workspace-restore.md) | active | high | 2026-05-12 | 238e1cc | workspace, terminal, ghostty, snapshot, restore, session |
 
 ### ui
@@ -178,7 +178,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-05-11 | 55766aa | fork-panel, revive, repanel, ghostty, spatial, panel |
 | [Frame은 마지막에 Plan을 합성한다](./frame-plan-synthesis-continuity.md) | active | high | 2026-05-11 | 3be5254 | frame, implementation-plan, tft-studio, worktree, continuity, planning |
 | [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-05-11 | 55766aa | frame, planning, identity, home-directory, ticket, session-title |
-| [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-05-12 | 3de356e | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
+| [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-05-12 | 9a03265 | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-05-11 | 55766aa | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 264ea17 | local-dev, server, startup, diagnosis, dev |
 | [pilee 변경은 final-check gate로 닫는다](./pilee-final-check-gate.md) | active | high | 2026-05-12 | 7c7b8a5 | pilee, final-check, verification, skill, workflow, 마무리 |
@@ -197,7 +197,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Worktree 생성은 부모 패널의 게이트다](./worktree-creation-parent-gate.md) | active | high | 2026-05-11 | 55766aa | worktree, fork-panel, parent-panel, hotfix, context, profile-driven |
 | [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-05-11 | 55766aa | worktree, dependencies, bootstrap, profile-driven, worker, subagent |
 | [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-05-11 | 55766aa | worktree, workspace, repo, branch, execution-boundary, cwd-binding |
-| [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-05-12 | f8d788f | worktree, session, revive, fork-panel, panel-inbox, handoff |
+| [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-05-12 | 9a03265 | worktree, session, revive, fork-panel, panel-inbox, handoff |
 
 ## Knowledge Map
 

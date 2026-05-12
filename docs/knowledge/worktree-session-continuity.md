@@ -37,7 +37,7 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-12-wt-switch-session-unification
 reviewed_at: 2026-05-12
-reviewed_commit: f8d788f7f5d641107ca1b6194a5baf7a77add650
+reviewed_commit: 9a032653d19db5c95f836557183b5b6c6387007f
 related:
   - subagent-model-policy
   - pilee-knowledge-system

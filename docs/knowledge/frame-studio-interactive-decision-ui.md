@@ -29,7 +29,7 @@ source:
   - user-direction:2026-05-11-tft-studio-shortcut-label
   - user-direction:2026-05-12-tft-studio-ime-shortcut-conflict
 reviewed_at: 2026-05-12
-reviewed_commit: 3de356e6e96882261b03513e4df4271b7d47c8dc
+reviewed_commit: 9a032653d19db5c95f836557183b5b6c6387007f
 related:
   - frame-planning-identity
   - frame-verify-contract
