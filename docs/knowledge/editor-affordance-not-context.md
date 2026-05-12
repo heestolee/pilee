@@ -20,7 +20,7 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-12-context-bar-compaction-progress
 reviewed_at: 2026-05-12
-reviewed_commit: a50b184
+reviewed_commit: bc001a0c1d05af581aeb986d5e10924d6dad8d2a
 related:
   - theme-information-hierarchy
   - context-loading-minimal-surface

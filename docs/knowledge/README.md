@@ -105,9 +105,9 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [낮은 confidence 판단은 정합성 PR로 올린다](./confidence-sensitive-review.md) | active | high | 2026-05-12 | b01add4 | confidence, review, freshness, ai-actions, user-review, 정합성 |
-| [Deterministic action과 AI review action은 분리한다](./deterministic-vs-ai-actions.md) | active | high | 2026-05-11 | 55766aa | knowledge, deterministic, ai-actions, review, automation, 정합성 |
-| [Ember는 knowledge의 친근한 입구다](./ember-friendly-knowledge-entrypoint.md) | active | high | 2026-05-12 | 421f803 | ember, branding, command, knowledge |
-| [Ember Ship은 knowledge 정합성을 release train으로 닫는다](./ember-ship-release-train.md) | active | high | 2026-05-12 | 421f803 | ember, knowledge, release-train, freshness, merge-gate |
+| [Deterministic action과 AI review action은 분리한다](./deterministic-vs-ai-actions.md) | active | high | 2026-05-12 | bc001a0 | knowledge, deterministic, ai-actions, review, automation, 정합성 |
+| [Ember는 knowledge의 친근한 입구다](./ember-friendly-knowledge-entrypoint.md) | active | high | 2026-05-12 | bc001a0 | ember, branding, command, knowledge |
+| [Ember Ship은 knowledge 정합성을 release train으로 닫는다](./ember-ship-release-train.md) | active | high | 2026-05-12 | bc001a0 | ember, knowledge, release-train, freshness, merge-gate |
 | [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | high | 2026-05-11 | 55766aa | knowledge, freshness, diagnosis, review, candidate, 정합성 |
 | [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | high | 2026-05-11 | 55766aa | knowledge, judgment, granularity, documentation, coverage, 문서 |
 | [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | high | 2026-05-11 | 55766aa | pilee, knowledge, history, journal, sanitized, reviewed-at |
@@ -121,14 +121,14 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [Diff review draft는 PR 코멘트 전 단계다](./diff-review-draft-handoff.md) | active | high | 2026-05-11 | 55766aa | diff-overlay, review-draft, pr-comments, code-review, handoff |
+| [Diff review draft는 PR 코멘트 전 단계다](./diff-review-draft-handoff.md) | active | high | 2026-05-12 | bc001a0 | diff-overlay, review-draft, pr-comments, code-review, handoff |
 
 ### runtime
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [Deterministic fallback은 workflow를 보존한다](./deterministic-fallbacks-preserve-workflow.md) | active | high | 2026-05-12 | b01add4 | fallback, deterministic, model-failure, resilience, web-search, report |
-| [Embedded WebView script는 escape 경계를 보존한다](./embedded-webview-script-escape-boundary.md) | active | high | 2026-05-11 | 55766aa | webview, embedded-script, escape, string-raw, regex, glimpse |
+| [Embedded WebView script는 escape 경계를 보존한다](./embedded-webview-script-escape-boundary.md) | active | high | 2026-05-12 | bc001a0 | webview, embedded-script, escape, string-raw, regex, glimpse |
 | [MCP 결과는 큰 출력만 digest-first로 다룬다](./mcp-digest-first-artifacts.md) | active | high | 2026-05-11 | ce3a598 | mcp, digest-first, artifact, tool-output, lazy-retrieval |
 | [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-05-11 | 55766aa | mcp, stderr, stdio, terminal, tui, noise |
 | [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-05-12 | 9a03265 | terminal, ghostty, applescript, notify, host, integration |
@@ -139,7 +139,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [Idle UI는 장식이 아니라 ambient status다](./ambient-status-surfaces.md) | active | high | 2026-05-07 | 0e6c083 | idle-screensaver, tasks, spinner, status, ambient, ui |
-| [Editor affordance는 숨은 컨텍스트가 아니다](./editor-affordance-not-context.md) | active | high | 2026-05-12 | a50b184 | editor, footer, prompt-suggest, working-text, affordance, ui |
+| [Editor affordance는 숨은 컨텍스트가 아니다](./editor-affordance-not-context.md) | active | high | 2026-05-12 | bc001a0 | editor, footer, prompt-suggest, working-text, affordance, ui |
 | [User-facing 출력은 한국어를 기본으로 한다](./korean-first-user-facing-output.md) | active | high | 2026-05-11 | 55766aa | korean-output, localization, web-search, ui, rewrite, 한국어 |
 | [색상은 정보 위계다](./theme-information-hierarchy.md) | active | high | 2026-05-11 | 55766aa | theme, color, dim, muted, border, accent |
 | [도구 출력은 대화 흐름을 침범하지 않는다](./tool-output-noise-management.md) | active | high | 2026-05-11 | ce3a598 | tool-output, collapse, noise, ui, usage, renderer |
@@ -149,7 +149,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-05-11 | 55766aa | verify, evidence, gate, done, ready, verification |
+| [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-05-12 | bc001a0 | verify, evidence, gate, done, ready, verification |
 | [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-05-11 | 55766aa | frame, verify, frame-json, success-criteria, contract, verification |
 | [반복 검증 실패는 baseline cache로 분리한다](./validation-baseline-failure-cache.md) | active | high | 2026-05-12 | e7f77eb | preflight, validation, baseline, failure, cache, verification |
 | [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-05-11 | 55766aa | verify, invalidation, code-change, freshness, gate, 검증 |
@@ -177,7 +177,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [CI-Ship은 PR 후 검증 실패 대응 단계다](./ci-ship-failure-response-boundary.md) | active | high | 2026-05-12 | b01add4 | ci-ship, ci, github-actions, pull-request, failure-analysis, ship |
 | [자동 로드 컨텍스트는 최소 surface만 가진다](./context-loading-minimal-surface.md) | active | high | 2026-05-12 | b01add4 | context, agents-md, memory, system-prompt, token, autoload |
 | [Decide는 선택을 한 번 공격한다](./decide-tradeoff-challenge.md) | active | high | 2026-05-12 | b01add4 | decide, tradeoff, challenge, productive-resistance, frame-json, decision |
-| [외부 이슈 업데이트는 preview gate를 지난다](./external-issue-preview-gate.md) | active | high | 2026-05-11 | 55766aa | jira, issue, preview, wiki-markup, external-update, approval |
+| [외부 이슈 업데이트는 preview gate를 지난다](./external-issue-preview-gate.md) | active | high | 2026-05-12 | bc001a0 | jira, issue, preview, wiki-markup, external-update, approval |
 | [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-05-11 | 55766aa | fork-panel, handoff, inbox, inject, parent, panel |
 | [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-05-11 | 55766aa | fork-panel, revive, repanel, ghostty, spatial, panel |
 | [Frame은 마지막에 Plan을 합성한다](./frame-plan-synthesis-continuity.md) | active | high | 2026-05-11 | 3be5254 | frame, implementation-plan, tft-studio, worktree, continuity, planning |
