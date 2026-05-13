@@ -8,6 +8,7 @@
 - **frame.json 사이클**: frame → decide → verify가 하나의 구조화된 흐름. verify는 frame.json의 mechanical reader
 - **양방향 합리화 차단**: "안 묻기" 합리화 + "과하게 묻기" 합리화 둘 다 차단
 - **AskUserQuestion 규칙**: 짧은 질문 제목 + 충분한 판단 맥락 카드, 옵션에 결론 적기 금지, 처리된 항목 메뉴화 금지, 0개면 안 띄움
+- **Preference regression gate**: frame/decide/verify/ask/tft 규칙 변경은 사용자가 이미 말한 선호를 다시 뒤집지 않는지 확인
 - **토큰 의식**: 안 쓰는 익스텐션 비활성화, 스킬 최소화, 시스템 프롬프트 중복 제거
 
 ## Karpathy-style coding guardrails

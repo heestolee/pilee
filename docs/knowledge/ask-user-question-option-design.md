@@ -27,11 +27,12 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-10-deep-interview-frame
 reviewed_at: 2026-05-13
-reviewed_commit: 00466bb
+reviewed_commit: 9152c3541fcb65b16a73b411af145bda742a59be
 related:
   - ask-user-question-decision-gates
   - evidence-first-verification-gate
   - atomic-evidence-workflow
+  - tft-preference-regression-gate
 supersedes:
   - ritual-confirmation-options
   - processed-sufficient-options

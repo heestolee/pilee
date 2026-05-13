@@ -25,6 +25,7 @@
     "knowledge:validate": "node scripts/knowledge.mjs --validate",
     "knowledge:graph": "node scripts/knowledge.mjs --graph",
     "knowledge:freshness": "node scripts/knowledge.mjs --freshness",
+    "tft:regression-audit": "node scripts/tft-regression-audit.mjs",
     "knowledge:review": "node scripts/knowledge.mjs --review-candidates",
     "knowledge:resolve": "node scripts/knowledge.mjs --resolve-stale",
     "knowledge:resolver-log": "node scripts/knowledge.mjs --resolver-log"

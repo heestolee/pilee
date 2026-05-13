@@ -23,7 +23,7 @@ source:
   - user-direction:2026-05-09-decide-tradeoff-challenge
   - pilee-history:2026-05-09#102
 reviewed_at: 2026-05-13
-reviewed_commit: 00466bb
+reviewed_commit: 9152c3541fcb65b16a73b411af145bda742a59be
 related:
   - ask-user-question-decision-gates
   - ask-user-question-option-design
@@ -32,6 +32,7 @@ related:
   - evidence-first-verification-gate
   - architecture-friction-tft-lens
   - atomic-evidence-workflow
+  - tft-preference-regression-gate
 supersedes:
   - conditional-productive-resistance-in-decide
 ---

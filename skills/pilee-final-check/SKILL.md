@@ -89,6 +89,38 @@ git diff --stat origin/main...HEAD
 - 코드 독해만으로 user-facing claim을 PASS 처리하지 않는다.
 - 증거가 과하거나 비용이 크면 일단 GAP/보류로 표시하고, 다른 작업을 닫은 뒤 사용자에게 묻는다.
 
+### 2.6 TFT Preference Regression Gate
+
+TFT/질문/검증 계약을 바꾸는 파일이 포함되면 사용자가 이미 말한 선호가 다시 뒤집히지 않는지 먼저 본다.
+
+대상 예시:
+- `AGENTS.md`
+- `skills/ask-user-question-rules/**`
+- `skills/frame/**`
+- `skills/decide/**`
+- `skills/verify/**`
+- `skills/tft-guidelines/**`
+- `skills/pilee-final-check/**`
+- 관련 `docs/knowledge/**`
+
+필수 매핑:
+
+| friction | response evidence | current state | remaining gap |
+|---|---|---|---|
+| 사용자가 불편을 말한 지점 | 이후 커밋/문서/히스토리에서 대응한 증거 | 현재 파일/스크립트 상태 | 아직 뒤집힐 수 있는 지점 |
+
+규칙:
+- 오래된 friction이 보인다고 바로 미대응이라고 말하지 않는다. 이후 커밋/히스토리와 현재 파일 상태를 먼저 확인한다.
+- `frame`, `decide`, `verify`, `ask-user-question`, `tft-guidelines`가 서로 반대 방향을 말하면 수정 전에는 완료하지 않는다.
+- 질문 규칙은 “짧은 질문 제목 + 판단 맥락 카드”를 source of truth로 삼는다.
+- deterministic gate를 실행한다.
+
+```bash
+npm run tft:regression-audit
+```
+
+이 명령이 실패하면 pilee 변경을 완료하거나 push하지 않는다. 스크립트가 PASS해도 품질 검토가 끝난 것은 아니며, 위 friction 매핑과 claim/evidence 판정은 별도로 수행한다.
+
 ### 3. pilee-specific 구멍 리뷰
 
 변경 유형별로 최소 하나 이상의 실제 failure mode를 확인한다.
