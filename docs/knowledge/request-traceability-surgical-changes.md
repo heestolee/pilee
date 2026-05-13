@@ -20,8 +20,8 @@ applies_to:
   - skills/git-workflow-and-versioning
 source:
   - user-direction:2026-05-09-karpathy-guardrails
-reviewed_at: 2026-05-12
-reviewed_commit: ca8ae9e32d7b25f2fd5290bb5a25f57bba3dc0e2
+reviewed_at: 2026-05-13
+reviewed_commit: 74c8c2864511fcfc7236861e875eb5c59d220f2f
 related:
   - change-integration-discipline
   - evidence-first-verification-gate
