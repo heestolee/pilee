@@ -37,8 +37,8 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-12-wt-switch-session-unification
   - user-direction:2026-05-12-minimal-worktree-handoff
-reviewed_at: 2026-05-12
-reviewed_commit: b50b0efd366c2e36933411231bfe6a598102be7b
+reviewed_at: 2026-05-13
+reviewed_commit: 062f9f271759452705f233b16503967c1287d4c7
 related:
   - subagent-model-policy
   - pilee-knowledge-system

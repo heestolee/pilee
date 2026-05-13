@@ -24,8 +24,8 @@ applies_to:
   - frame-studio
 source:
   - user-direction:2026-05-12-backend-layer-map
-reviewed_at: 2026-05-12
-reviewed_commit: a2019c265063b83bd105305ee32920342c8e3213
+reviewed_at: 2026-05-13
+reviewed_commit: ca6dec9d7f8a3eeda24ee5b0d35c64752d02a76a
 related:
   - architecture-friction-tft-lens
   - frame-verify-contract

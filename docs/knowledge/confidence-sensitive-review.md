@@ -19,8 +19,8 @@ source:
   - session-backfill:2026-05-05#confidence-review-policy
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-07-resolver-merge-gate
-reviewed_at: 2026-05-12
-reviewed_commit: b01add434d2f69298be700bc39f1cb664de9f025
+reviewed_at: 2026-05-13
+reviewed_commit: 49eb5f7591aa355f1022ea1e7fe2659a181cfb63
 related:
   - freshness-diagnosis-report
   - deterministic-vs-ai-actions
@@ -33,7 +33,7 @@ related:
 
 ## Confidence Rule
 
-Knowledge frontmatter는 필요할 때 `confidence: medium` 또는 `confidence: low`를 가질 수 있습니다. `high`가 아니면 freshness report의 AI/human review action이 되고, 자동 정합성 workflow의 검토 큐로 올라갑니다. 검토 큐 PR은 문서를 대신 고치는 PR이 아니라, 로컬 resolver가 실제 확인 작업을 시작하게 하는 공개 알림입니다. 이런 항목은 사용자가 확인해 받아들인 뒤에만 `--confirm <doc-id> --confidence high`로 승격합니다.
+Knowledge frontmatter는 필요할 때 `confidence: medium` 또는 `confidence: low`를 가질 수 있습니다. `high`가 아니면 freshness report의 AI/human review action이 되고, 자동 정합성 workflow의 검토 큐로 올라갑니다. 검토 큐 PR은 문서를 대신 고치는 PR이 아니라, 로컬 resolver가 실제 확인 작업을 시작하게 하는 공개 알림입니다. 검토 큐 상세는 repo markdown 파일이 아니라 PR body에 둡니다. 이런 항목은 사용자가 확인해 받아들인 뒤에만 `--confirm <doc-id> --confidence high`로 승격합니다.
 
 ## Merge Review Rule
 

@@ -31,8 +31,8 @@ source:
   - user-direction:2026-05-07-conductor-history-artifact-browser
   - user-direction:2026-05-09-archive-command-name
   - user-direction:2026-05-11-mcp-digest-first-artifacts
-reviewed_at: 2026-05-12
-reviewed_commit: a2019c265063b83bd105305ee32920342c8e3213
+reviewed_at: 2026-05-13
+reviewed_commit: ca6dec9d7f8a3eeda24ee5b0d35c64752d02a76a
 related:
   - live-artifact-preview-pattern
   - backlog-source-session-provenance

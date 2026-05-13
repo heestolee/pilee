@@ -17,8 +17,8 @@ applies_to:
 source:
   - pilee-history:2026-05-05#50
   - user-direction:2026-05-07-local-resolver
-reviewed_at: 2026-05-12
-reviewed_commit: ca8ae9e32d7b25f2fd5290bb5a25f57bba3dc0e2
+reviewed_at: 2026-05-13
+reviewed_commit: 74c8c2864511fcfc7236861e875eb5c59d220f2f
 related:
   - freshness-diagnosis-report
   - deterministic-vs-ai-actions
@@ -38,4 +38,4 @@ Knowledge 문서 자체를 고친 commit은 freshness stale의 직접 원인이 
 
 ## Actionable Range Rule
 
-`reviewed_commit..HEAD`를 볼 때 모든 파일 변경을 같은 무게로 보지 않습니다. `docs/knowledge/*.md`, `docs/knowledge/README.md`, `docs/knowledge-review.md`, `tmp/knowledge-map.ko.svg`, root `README.md`/`README.en.md`의 generated block 같은 knowledge 산출물은 다른 doctrine을 stale하게 만드는 입력에서 제외합니다. 그렇지 않으면 검토 큐 PR이나 confirm-only commit이 다음 검토 큐를 계속 만들어냅니다.
+`reviewed_commit..HEAD`를 볼 때 모든 파일 변경을 같은 무게로 보지 않습니다. `docs/knowledge/*.md`, `docs/knowledge/README.md`, legacy `docs/knowledge-review.md`, `tmp/knowledge-map.ko.svg`, root `README.md`/`README.en.md`의 generated block 같은 knowledge 산출물은 다른 doctrine을 stale하게 만드는 입력에서 제외합니다. 그렇지 않으면 검토 큐 PR이나 confirm-only commit이 다음 검토 큐를 계속 만들어냅니다. 현재 검토 큐 상세는 PR body에 두므로 repo markdown 변경으로 review queue를 만들지 않습니다.

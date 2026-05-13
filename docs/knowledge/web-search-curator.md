@@ -26,8 +26,8 @@ source:
   - pilee-history:2026-05-05#46
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-11-digest-first-web-access
-reviewed_at: 2026-05-12
-reviewed_commit: 9048804ef2db58a1b05f8731a411fb69432147c6
+reviewed_at: 2026-05-13
+reviewed_commit: 062f9f271759452705f233b16503967c1287d4c7
 related:
   - verify-report-workflow
   - pilee-knowledge-system
