@@ -43,10 +43,12 @@ disable-model-invocation: false
 5. `node scripts/knowledge.mjs --validate`가 통과한다.
 6. `node scripts/knowledge.mjs --freshness --json` 결과가 fresh다.
 7. README/generated block, `docs/knowledge/README.md`, `README.en.md`, `tmp/knowledge-map.ko.svg`가 CLI 생성 결과와 일치한다.
-8. package version/lockstep이 변경 필요 없거나 일치한다.
-9. pilee-history local 기록과 Notion sync가 완료됐다. 로컬 sync 환경이 없으면 SAFE가 아니라 BLOCKED다.
-10. `pilee-final-check` 관점에서 요청 의도와 diff가 매핑되고, public/private boundary 문제가 없다.
-11. branch가 push 가능하고 main merge 충돌이 없다.
+8. merge/PR 생성 직전 최신 `origin/main`을 다시 fetch하고 branch를 최신 base에 맞춘 뒤 freshness를 다시 확인했다.
+9. package version/lockstep이 변경 필요 없거나 일치한다.
+10. pilee-history local 기록과 Notion sync가 완료됐다. 로컬 sync 환경이 없으면 SAFE가 아니라 BLOCKED다.
+11. `pilee-final-check` 관점에서 요청 의도와 diff가 매핑되고, public/private boundary 문제가 없다.
+12. branch가 push 가능하고 main merge 충돌이 없다.
+13. 성공 후 기존 `auto/pilee-knowledge-sync` 검토 큐 PR이 남아 있으면 superseded로 닫거나 최신 상태에 맞게 갱신했다.
 
 ### BLOCKED 조건
 
@@ -162,7 +164,7 @@ node scripts/knowledge.mjs --freshness --json --output .context/ember-ship/fresh
 변경이 남으면 별도 commit으로 둔다.
 
 ```bash
-git add README.md README.en.md docs/knowledge/README.md tmp/knowledge-map.ko.svg docs/knowledge-review.md
+git add README.md README.en.md docs/knowledge/README.md tmp/knowledge-map.ko.svg
 if ! git diff --cached --quiet; then
   git commit -m "docs: ember ship generated knowledge 갱신"
 fi
@@ -210,7 +212,31 @@ git diff --check
 - description 1024자 이하
 - 위험한 자동 merge 조건이 SAFE/BLOCKED gate 없이 쓰이지 않았는지
 
-### 7. Push / merge
+### 7. 최신 base 재확인
+
+`/ember-ship`은 stale을 닫는 작업이므로 outdated base에서 confirm-only PR을 만들면 안 된다. push/merge 또는 BLOCKED PR 생성 직전에 최신 main을 다시 확인한다.
+
+```bash
+git fetch origin main
+```
+
+- `origin/main`이 ember-ship branch의 base 이후로 전진했다면 branch에 merge/rebase하고 Step 2~6 freshness/final-check를 다시 수행한다.
+- 최신 base에 새 코드/문서 커밋이 있어 다시 review_needed가 생기면 추가 batch를 만든다.
+- 최신 base를 반영할 수 없으면 BLOCKED로 멈추고, PR body에 “base advanced; rerun required”를 적는다.
+
+### 8. 자동 검토 큐 PR 정리
+
+`/ember-ship`이 freshness를 fresh로 닫았다면 기존 GitHub Actions 검토 큐 PR은 더 이상 source of truth가 아니다.
+
+```bash
+if gh pr view auto/pilee-knowledge-sync --json number >/tmp/knowledge-pr.json 2>/dev/null; then
+  gh pr close <number> --delete-branch --comment "Superseded by /ember-ship freshness update."
+fi
+```
+
+닫지 못하면 SAFE가 아니라 BLOCKED다. 열린 auto queue PR이 남아 있으면 사용자는 같은 stale 목록을 다시 보게 된다.
+
+### 9. Push / merge
 
 #### SAFE + merge 허용
 
@@ -264,6 +290,8 @@ BLOCKED로 끝난 경우:
 - 8개 초과 문서를 한 commit에 몰아넣는다.
 - private session path나 raw history를 PR body/public docs에 붙인다.
 - freshness가 stale인데 “generated만 갱신하면 됨”으로 오판한다.
+- outdated base에서 confirm-only PR을 만든 뒤 최신 main 재확인을 하지 않는다.
+- `/ember-ship`이 freshness를 닫았는데 기존 `auto/pilee-knowledge-sync` PR을 열어 둔다.
 - Notion sync 실패를 무시하고 SAFE merge한다.
 - `--no-merge`인데 main을 merge/push한다.
 - BLOCKED인데 PR URL 없이 끝낸다.

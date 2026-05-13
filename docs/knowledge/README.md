@@ -110,6 +110,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Ember Ship은 knowledge 정합성을 release train으로 닫는다](./ember-ship-release-train.md) | active | high | 2026-05-12 | bc001a0 | ember, knowledge, release-train, freshness, merge-gate |
 | [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | high | 2026-05-12 | 4d1ff26 | knowledge, freshness, diagnosis, review, candidate, 정합성 |
 | [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | high | 2026-05-12 | 4d1ff26 | knowledge, judgment, granularity, documentation, coverage, 문서 |
+| [Knowledge review queue는 PR body에 남긴다](./knowledge-review-queue-pr-body.md) | active | high | 2026-05-13 | bb45d1b | knowledge, review-queue, github-actions, pr-body, ember-ship |
 | [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | high | 2026-05-12 | d98008a | pilee, knowledge, history, journal, sanitized, reviewed-at |
 | [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | high | 2026-05-12 | d98008a | knowledge, journal, privacy, sanitized, doctrine, history |
 | [README는 knowledge coverage map이다](./readme-coverage-map.md) | active | high | 2026-05-12 | ca8ae9e | knowledge, readme, coverage, graph, surface, todo |
@@ -230,6 +231,7 @@ graph TD
   doc_ember_ship_release_train["Ember Ship은 knowledge 정합성을 release train으로 닫는다"]
   doc_freshness_diagnosis_report["Freshness는 진단서다"]
   doc_judgment_doc_unit["Knowledge 문서 단위는 판단 하나다"]
+  doc_knowledge_review_queue_pr_body["Knowledge review queue는 PR body에 남긴다"]
   doc_pilee_knowledge_system["pilee 지식 계층과 정합성 갱신"]
   doc_private_journal_public_doctrine["Private journal과 public doctrine은 분리한다"]
   doc_readme_coverage_map["README는 knowledge coverage map이다"]
@@ -356,6 +358,11 @@ graph TD
   doc_judgment_doc_unit --> doc_freshness_diagnosis_report
   doc_judgment_doc_unit --> doc_private_journal_public_doctrine
   doc_judgment_doc_unit --> doc_readme_coverage_map
+  doc_knowledge_review_queue_pr_body --> doc_deterministic_vs_ai_actions
+  doc_knowledge_review_queue_pr_body --> doc_ember_ship_release_train
+  doc_knowledge_review_queue_pr_body --> doc_freshness_diagnosis_report
+  doc_knowledge_review_queue_pr_body --> doc_pilee_knowledge_system
+  doc_knowledge_review_queue_pr_body --> doc_reviewed_commit_freshness
   doc_pilee_knowledge_system --> doc_subagent_model_policy
   doc_pilee_knowledge_system --> doc_verify_report_workflow
   doc_pilee_knowledge_system --> doc_web_search_curator
@@ -582,7 +589,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 85
-- Links: 282
+- Documents: 86
+- Links: 287
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

@@ -40,7 +40,7 @@ freshness가 제안한 후보는 자동 수정 명령이 아닙니다. 문서를
 
 ## Generated Artifact Rule
 
-README의 generated block, `docs/knowledge/README.md`, `docs/knowledge-review.md` 같은 review queue 산출물은 doctrine의 근거 파일이 아니라 진단 결과입니다. 이 파일들이 바뀌었다는 이유만으로 모든 knowledge doc을 다시 stale 처리하면 검토 큐가 자기 자신을 증폭합니다. freshness는 generated artifact 변경을 deterministic/generated 문제로 분리하고, doctrine stale 사유에서는 제외해야 합니다.
+README의 generated block, `docs/knowledge/README.md`, `tmp/knowledge-map.ko.svg`, legacy `docs/knowledge-review.md` 같은 review queue 산출물은 doctrine의 근거 파일이 아니라 진단 결과입니다. 이 파일들이 바뀌었다는 이유만으로 모든 knowledge doc을 다시 stale 처리하면 검토 큐가 자기 자신을 증폭합니다. freshness는 generated artifact 변경을 deterministic/generated 문제로 분리하고, doctrine stale 사유에서는 제외해야 합니다. 현재 review queue의 상세 목록은 repo markdown이 아니라 PR body나 workflow summary에 둡니다.
 
 ## Local Resolver Shape
 

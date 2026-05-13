@@ -98,7 +98,7 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
           const { execFileSync } = require('child_process');
-          const path = 'docs/knowledge-review.md';
+          const reviewBodyPath = '/tmp/pilee-knowledge-review-pr-body.md';
           const data = JSON.parse(fs.readFileSync('/tmp/pilee-knowledge-freshness.json', 'utf8'));
 
           const ROOT_LINKS_START = '<!-- PILEE_ROOT_KNOWLEDGE_LINKS_START -->';
@@ -138,7 +138,11 @@ jobs:
             fs.appendFileSync(process.env.GITHUB_OUTPUT, `ai_actions=${data.ai_actions.length}\n`);
           }
           if (!hasActions) {
-            if (fs.existsSync(path)) fs.unlinkSync(path);
+            const lines = [];
+            lines.push('## 이번 실행 요약');
+            lines.push('- 전체 상태: `fresh`');
+            lines.push('- Knowledge 검토 action이 없습니다.');
+            fs.writeFileSync(reviewBodyPath, `${lines.join('\n')}\n`);
             process.exit(0);
           }
 
@@ -168,9 +172,21 @@ jobs:
           const nonDocReviewActions = data.ai_actions.filter((action) => !action.doc);
           const reasonCounts = countBy(data.ai_actions, (action) => translateActionReason(action.reason));
           const lines = [];
-          lines.push('# pilee knowledge 검토 큐');
+          lines.push('## 이번 실행 요약');
+          lines.push(`- 전체 상태: \`${data.summary.status}\``);
+          lines.push(`- Knowledge 문서: 총 \`${data.doctrine_freshness.total}\`개 / fresh \`${data.doctrine_freshness.fresh}\`개 / stale·review_needed \`${data.doctrine_freshness.review_needed}\`개 / unreviewed \`${data.doctrine_freshness.unreviewed}\`개`);
+          lines.push(`- README coverage: \`${data.readme.coverage.covered_count}/${data.readme.coverage.total}\``);
+          lines.push(`- 자동 수정 action: \`${data.deterministic_actions.length}\`개`);
+          lines.push(`- AI/사람 검토 action: \`${data.ai_actions.length}\`개`);
           lines.push('');
-          lines.push('> daily knowledge sync workflow가 생성한 공개 검토 큐입니다. 직접 수정하지 말고, 연결된 문서를 검토한 뒤 후속 커밋에서 confidence/review metadata를 갱신하세요.');
+          lines.push('`stale`은 문서가 틀렸다는 확정이 아니라, 현재 HEAD 기준으로 다시 읽고 확인해야 한다는 뜻입니다. 상세 검토 큐는 이 PR 본문에만 렌더링하고 repo markdown 파일로 커밋하지 않습니다.');
+          lines.push('');
+          lines.push('## 개요');
+          lines.push('pilee knowledge review queue workflow가 생성한 자동 PR입니다.');
+          lines.push('');
+          lines.push('이 PR은 stale/review_needed 문서를 직접 수정하는 PR이 아니라, 로컬 resolver나 `/ember-ship`이 실제 문서 갱신 PR을 만들 수 있도록 공개 검토 큐를 보여줍니다.');
+          lines.push('');
+          lines.push('Private/local journal은 GitHub Actions에서 의도적으로 읽지 않습니다. 실제 stale 해소는 로컬에서 session/private history 맥락을 확인한 뒤 sanitized 문서 수정 또는 `--confirm`으로 처리하세요.');
           lines.push('');
           lines.push('## 검토 현황');
           lines.push('');
@@ -248,43 +264,67 @@ jobs:
           lines.push('node scripts/knowledge.mjs --confirm <doc-id> --confidence high');
           lines.push('```');
           lines.push('');
-          fs.writeFileSync(path, `${lines.join('\n')}\n`);
+          fs.writeFileSync(reviewBodyPath, `${lines.join('\n')}\n`);
           NODE
 
-      - name: Create PR for knowledge review queue
+      - name: Detect generated file changes
+        id: generated_changes
+        shell: bash
+        run: |
+          if git status --porcelain -- README.md README.en.md docs/knowledge/README.md tmp/knowledge-map.ko.svg | grep -q .; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create PR for generated knowledge changes
         id: cpr
+        if: steps.generated_changes.outputs.has_changes == 'true'
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: auto/pilee-knowledge-sync
           delete-branch: true
           title: "[AUTO] pilee knowledge 검토 큐"
-          commit-message: "chore: render pilee knowledge review queue"
-          body: |
-            ## 이번 실행 요약
-            - 전체 상태: `${{ steps.review_queue.outputs.summary_status }}`
-            - Knowledge 문서: 총 `${{ steps.review_queue.outputs.doctrine_total }}`개 / fresh `${{ steps.review_queue.outputs.doctrine_fresh }}`개 / stale·review_needed `${{ steps.review_queue.outputs.doctrine_review_needed }}`개 / unreviewed `${{ steps.review_queue.outputs.doctrine_unreviewed }}`개
-            - README coverage: `${{ steps.review_queue.outputs.readme_coverage }}`
-            - 자동 수정 action: `${{ steps.review_queue.outputs.deterministic_actions }}`개
-            - AI/사람 검토 action: `${{ steps.review_queue.outputs.ai_actions }}`개
-
-            `stale`은 문서가 틀렸다는 확정이 아니라, 현재 HEAD 기준으로 다시 읽고 확인해야 한다는 뜻입니다. 상세 목록은 `docs/knowledge-review.md`에 한국어 검토 큐로 생성됩니다.
-
-            ## 개요
-            pilee knowledge review queue workflow가 생성한 자동 PR입니다.
-
-            이 PR은 stale/review_needed 문서를 직접 수정하는 PR이 아니라, 로컬 resolver가 실제 문서 갱신 PR을 만들 수 있도록 공개 검토 큐를 갱신합니다.
-
-            이 PR에는 다음 변경이 포함될 수 있습니다.
-            - `docs/knowledge/README.md`와 root `README.md`의 deterministic generated block 갱신
-            - stale 또는 medium/low confidence doctrine에 대한 공개 `docs/knowledge-review.md` 검토 큐
-            - generated block이 아닌 README 공개 서사가 바뀐 경우의 수동 검토 요청
-
-            Private/local journal은 GitHub Actions에서 의도적으로 읽지 않습니다. 실제 stale 해소는 로컬에서 session/private history 맥락을 확인한 뒤 sanitized 문서 수정 또는 `--confirm`으로 처리하세요.
+          commit-message: "chore: refresh generated pilee knowledge surfaces"
+          body-path: /tmp/pilee-knowledge-review-pr-body.md
           add-paths: |
             docs/knowledge/README.md
             README.md
-            docs/knowledge-review.md
+            README.en.md
+            tmp/knowledge-map.ko.svg
+
+      - name: Create body-only knowledge review queue PR
+        id: body_only_pr
+        if: steps.generated_changes.outputs.has_changes != 'true' && steps.review_queue.outputs.manual_review_required == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BRANCH="auto/pilee-knowledge-sync"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main "$BRANCH" || true
+          git switch -C "$BRANCH" origin/main
+          git commit --allow-empty -m "chore: render pilee knowledge review queue"
+          git push --force origin "$BRANCH"
+          if gh pr view "$BRANCH" --json number --jq .number >/tmp/knowledge-pr-number 2>/dev/null; then
+            PR_NUMBER=$(cat /tmp/knowledge-pr-number)
+            gh pr edit "$PR_NUMBER" --title "[AUTO] pilee knowledge 검토 큐" --body-file /tmp/pilee-knowledge-review-pr-body.md
+          else
+            gh pr create --base main --head "$BRANCH" --title "[AUTO] pilee knowledge 검토 큐" --body-file /tmp/pilee-knowledge-review-pr-body.md >/tmp/knowledge-pr-url
+          fi
+
+      - name: Close stale knowledge review queue PR
+        if: steps.generated_changes.outputs.has_changes != 'true' && steps.review_queue.outputs.manual_review_required != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          if PR_NUMBER=$(gh pr view auto/pilee-knowledge-sync --json number --jq .number 2>/dev/null); then
+            gh pr close "$PR_NUMBER" --delete-branch --comment "Knowledge freshness is fresh; closing stale review queue PR."
+          fi
 
       - name: Auto-merge generated-only knowledge PR
         if: steps.cpr.outputs.pull-request-number != '' && steps.review_queue.outputs.manual_review_required != 'true'
@@ -302,7 +342,7 @@ jobs:
           fi
 
       - name: Keep knowledge review queue PR open
-        if: steps.cpr.outputs.pull-request-number != '' && steps.review_queue.outputs.manual_review_required == 'true'
+        if: (steps.cpr.outputs.pull-request-number != '' || steps.body_only_pr.outcome == 'success') && steps.review_queue.outputs.manual_review_required == 'true'
         run: |
           echo "## 수동 knowledge 검토 필요" >> "$GITHUB_STEP_SUMMARY"
-          echo "PR #${{ steps.cpr.outputs.pull-request-number }} 에 AI/사람 검토 action 또는 README 서사 검토가 포함되어 검토 큐 PR로 남겼습니다." >> "$GITHUB_STEP_SUMMARY"
+          echo "AI/사람 검토 action 또는 README 서사 검토가 있어 검토 큐 PR을 열어 둡니다. 상세 큐는 PR 본문에만 있습니다." >> "$GITHUB_STEP_SUMMARY"
