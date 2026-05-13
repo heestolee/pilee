@@ -417,10 +417,16 @@ function resolveSnapshot(target?: string): { snapshot?: WorkspaceSnapshot; summa
 	let summary: WorkspaceSummary | undefined;
 	if (target) {
 		const normalized = target.toLowerCase();
-		summary = summaries.find((item) => item.id.toLowerCase() === normalized)
-			?? summaries.find((item) => item.name.toLowerCase() === normalized)
-			?? summaries.find((item) => item.id.toLowerCase().includes(normalized) || item.name.toLowerCase().includes(normalized));
-		if (!summary) return { error: `snapshot을 찾지 못했습니다: ${target}` };
+		if (/^[1-9]\d*$/u.test(normalized)) {
+			const index = Number.parseInt(normalized, 10) - 1;
+			summary = summaries[index];
+			if (!summary) return { error: `snapshot 번호를 찾지 못했습니다: ${target} (범위: 1-${summaries.length})` };
+		} else {
+			summary = summaries.find((item) => item.id.toLowerCase() === normalized)
+				?? summaries.find((item) => item.name.toLowerCase() === normalized)
+				?? summaries.find((item) => item.id.toLowerCase().includes(normalized) || item.name.toLowerCase().includes(normalized));
+			if (!summary) return { error: `snapshot을 찾지 못했습니다: ${target}` };
+		}
 	} else {
 		summary = summaries[0];
 	}
@@ -759,7 +765,7 @@ async function handleStatus(pi: ExtensionAPI, ctx: ExtensionCommandContext) {
 		"",
 		"commands:",
 		"  /workspace save [name]",
-		"  /workspace restore [name-or-id] [--dry-run] [--append]",
+		"  /workspace restore [number|name-or-id] [--dry-run] [--append]",
 		"  /workspace list",
 		"  /workspace status",
 	].join("\n");
@@ -803,11 +809,13 @@ const HELP = `Ghostty workspace snapshot/restore
 Usage:
   /workspace status
   /workspace save [name]
-  /workspace restore [name-or-id] [--dry-run] [--append]
+  /workspace restore [number|name-or-id] [--dry-run] [--append]
   /workspace list
 
 Notes:
 - 기본 restore mode는 append입니다. 현재 창을 닫거나 대체하지 않습니다.
+- /workspace list의 번호를 그대로 /workspace restore <번호>에 사용할 수 있습니다.
+- autosave는 session 시작 5~10초 뒤 첫 저장 후 약 30초마다 갱신됩니다.
 - Ghostty AppleScript가 split tree/비율을 제공하지 않아 split panel은 순차 right split으로 근사 복원합니다.
 - Pi session 매핑은 active session registry를 우선하고, 수동 save에서는 최근 session fallback을 보조로 사용합니다.`;
 
