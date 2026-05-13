@@ -19,7 +19,7 @@ applies_to:
 source:
   - user-direction:2026-05-13-working-context-card
 reviewed_at: 2026-05-13
-reviewed_commit: 062f9f271759452705f233b16503967c1287d4c7
+reviewed_commit: 999ee95695e62e9bd2f6eefeb81e11a5ba9f179e
 related:
   - frame-studio-interactive-decision-ui
   - frame-plan-synthesis-continuity

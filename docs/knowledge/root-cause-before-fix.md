@@ -19,7 +19,7 @@ source:
   - session-backfill:2026-05-02#setwidget-notify
   - user-direction:2026-05-07-local-resolver
 reviewed_at: 2026-05-13
-reviewed_commit: 74c8c2864511fcfc7236861e875eb5c59d220f2f
+reviewed_commit: 999ee95695e62e9bd2f6eefeb81e11a5ba9f179e
 related:
   - evidence-first-verification-gate
   - verification-invalidation-on-change

@@ -23,7 +23,7 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-10-deep-interview-frame
 reviewed_at: 2026-05-13
-reviewed_commit: 1f5c3acfcb23b01a3fc6bc30592dbe0156748c4f
+reviewed_commit: 999ee95695e62e9bd2f6eefeb81e11a5ba9f179e
 related:
   - ask-user-question-decision-gates
   - evidence-first-verification-gate

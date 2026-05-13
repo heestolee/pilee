@@ -25,7 +25,7 @@ applies_to:
 source:
   - user-direction:2026-05-12-backend-layer-map
 reviewed_at: 2026-05-13
-reviewed_commit: ca6dec9d7f8a3eeda24ee5b0d35c64752d02a76a
+reviewed_commit: 999ee95695e62e9bd2f6eefeb81e11a5ba9f179e
 related:
   - architecture-friction-tft-lens
   - frame-verify-contract

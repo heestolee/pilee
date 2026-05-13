@@ -15,8 +15,8 @@ applies_to:
   - extensions/fork-panel
 source:
   - user-direction:2026-05-12-workspace-save-restore
-reviewed_at: 2026-05-12
-reviewed_commit: c82cbb080aa012fe0dfd135d37d099821dd70e23
+reviewed_at: 2026-05-13
+reviewed_commit: 999ee95695e62e9bd2f6eefeb81e11a5ba9f179e
 related:
   - terminal-host-integration
   - fork-panel-spatial-continuity
@@ -31,9 +31,13 @@ related:
 
 snapshot에는 Ghostty window/tab/terminal id, tab 순서, terminal title, cwd, 연결된 Pi session file, panel label, fork metadata를 저장합니다. session 매핑은 terminal title/cwd만 믿지 말고 현재 떠 있는 Pi session registry를 우선합니다. registry가 없는 오래된 패널은 수동 save에서 최근 session fallback으로 보조하되, 매칭 실패를 숨기지 않고 restore plan에 `SKIP`으로 표시합니다.
 
+## Autosave Rule
+
+autosave는 명시 save를 대체하는 주 복원 경로가 아니라 안전망입니다. Ghostty/macOS 세션에서 시작 5~10초 뒤 첫 snapshot을 만들고 이후 약 30초마다 `autosave` snapshot을 갱신합니다. 작업공간 크기 수준의 Ghostty AppleScript와 작은 JSON write만 수행하므로 일반적인 탭/패널 수에서는 큰 성능 부담을 기대하지 않지만, 사용자가 의도한 복원 지점은 `/workspace save`로 남긴 수동 snapshot이 기준이어야 합니다.
+
 ## Restore Rule
 
-기본 restore mode는 append입니다. workspace 복원은 사용자의 현재 창을 닫거나 대체하지 않고, 새 tab을 추가한 뒤 저장된 session을 `pi --session`으로 다시 엽니다. 새 shell의 PATH는 현재 Pi 프로세스와 다를 수 있으므로 bare `pi`에 의존하지 않고 현재 실행 중인 Pi command 또는 명시 wrapper를 사용합니다.
+기본 restore mode는 append입니다. workspace 복원은 사용자의 현재 창을 닫거나 대체하지 않고, 새 tab을 추가한 뒤 저장된 session을 `pi --session`으로 다시 엽니다. 새 shell의 PATH는 현재 Pi 프로세스와 다를 수 있으므로 bare `pi`에 의존하지 않고 현재 실행 중인 Pi command 또는 명시 wrapper를 사용합니다. `/workspace list`가 보여주는 번호는 복원 대상 선택 UI의 일부이므로 `/workspace restore 2`처럼 그대로 사용할 수 있어야 합니다.
 
 ## Layout Fidelity Rule
 
