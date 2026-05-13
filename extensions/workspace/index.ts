@@ -13,7 +13,7 @@ const SNAPSHOT_DIR = join(WORKSPACE_DIR, "snapshots");
 const ACTIVE_PATH = join(WORKSPACE_DIR, "active-sessions.json");
 const AUTOSAVE_ID = "autosave";
 const ACTIVE_TTL_MS = 24 * 60 * 60 * 1000;
-const AUTOSAVE_INTERVAL_MS = 30_000;
+const AUTOSAVE_INTERVAL_MS = 60 * 60 * 1000;
 const AUTOSAVE_MIN_GAP_MS = 20_000;
 const AUTOSAVE_STATE_PATH = join(WORKSPACE_DIR, "autosave-state.json");
 
@@ -815,7 +815,7 @@ Usage:
 Notes:
 - 기본 restore mode는 append입니다. 현재 창을 닫거나 대체하지 않습니다.
 - /workspace list의 번호를 그대로 /workspace restore <번호>에 사용할 수 있습니다.
-- autosave는 session 시작 5~10초 뒤 첫 저장 후 약 30초마다 갱신됩니다.
+- autosave는 session 시작 5~10초 뒤 첫 저장 후 약 1시간마다 갱신됩니다.
 - Ghostty AppleScript가 split tree/비율을 제공하지 않아 split panel은 순차 right split으로 근사 복원합니다.
 - Pi session 매핑은 active session registry를 우선하고, 수동 save에서는 최근 session fallback을 보조로 사용합니다.`;
 
