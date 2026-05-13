@@ -19,7 +19,7 @@ applies_to:
   - worktree_fork
 source:
   - user-direction:2026-05-07-worker-dependency-bootstrap
-reviewed_at: 2026-05-12
+reviewed_at: 2026-05-13
 reviewed_commit: 9048804ef2db58a1b05f8731a411fb69432147c6
 related:
   - worktree-execution-boundary
@@ -47,7 +47,7 @@ orchestrator/worker는 다음 조건을 만족할 때만 자동 시작합니다.
 
 ## Main Agent Contract
 
-subagent orchestrator가 시작되면 extension은 해당 turn의 system prompt와 상태바에 bootstrap 상태를 주입합니다. 시작/이미 실행 중 안내는 채팅에 visible block으로 반복 노출하지 않고, READY/BLOCKED 같은 최종 판정이나 failed-to-start처럼 사용자가 개입해야 하는 상태만 visible하게 보고합니다. main agent는 코드를 읽고 수정할 수 있지만, lint/type-check/test를 실행하기 전에는 orchestrator의 READY 보고, `/wt bootstrap status`, 또는 status/log/report를 확인해야 합니다.
+subagent orchestrator가 시작되면 extension은 해당 turn의 system prompt와 상태바에 bootstrap 상태를 주입합니다. 시작/이미 실행 중 안내는 채팅에 visible block으로 반복 노출하지 않습니다. READY/BLOCKED 최종 판정도 사용자가 raw executor 증거를 읽을 필요가 없도록 한 줄 요약만 visible하게 보고하고, log/report/raw summary는 message details와 `/wt bootstrap status`로 이동합니다. 같은 repo/domain/status 알림은 짧은 시간 안에 중복 노출하지 않습니다. failed-to-start처럼 사용자가 개입해야 하는 상태만 상세 visible message를 남깁니다. main agent는 코드를 읽고 수정할 수 있지만, lint/type-check/test를 실행하기 전에는 orchestrator의 READY 보고, `/wt bootstrap status`, 또는 status/log/report를 확인해야 합니다.
 
 수동으로는 `/wt bootstrap`, `/wt bootstrap --backend`, `/wt bootstrap --frontend`, `/wt bootstrap --<profile-domain>`, `/wt bootstrap --domain <name>`, `/wt bootstrap --env`, `/wt bootstrap --all`, `/wt bootstrap status`를 사용할 수 있습니다. AI orchestrator를 우회해야 하면 `/wt bootstrap --executor`로 deterministic executor만 실행합니다. `/wt bootstrap status`는 profile domain marker별 ready/missing 상태를 함께 보여줘서 dependency READY와 runtime env READY를 구분할 수 있어야 합니다. 다중 marker domain은 누락된 marker 목록을 직접 보여줘 partial env copy 같은 false-ready를 막습니다.
 

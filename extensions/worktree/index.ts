@@ -764,6 +764,8 @@ interface BootstrapJob {
 }
 
 const dependencyBootstrapJobs = new Map<string, BootstrapJob>();
+const dependencyBootstrapVisibleNotifications = new Map<string, number>();
+const DEPENDENCY_BOOTSTRAP_VISIBLE_NOTIFICATION_TTL_MS = 5 * 60 * 1000;
 const DEPENDENCY_BOOTSTRAP_STATUS_ID = "wt-deps";
 const DEFAULT_EXPLORATORY_PROMPT_REGEX = "(확인해볼래|조사|분석|왜|어떤|궁금|찾아|알려|정리해|봐봐|look into|investigate|analy[sz]e|explain|why)";
 const DEFAULT_IMPLEMENTATION_PROMPT_REGEX = "(구현|수정|작업|진행|이어서|마무리|고쳐|반영|검증|lint|test|커밋|푸시|pr|해줘|implement|fix|edit|change|continue|work on|verify|commit|push)";
@@ -797,6 +799,24 @@ function isImplementationStartPrompt(prompt: string, profile?: WorktreeRepoProfi
 	const implementationPattern = bootstrap?.implementationPromptRegex ?? DEFAULT_IMPLEMENTATION_PROMPT_REGEX;
 	if (textMatches(exploratoryPattern, text)) return textMatches(implementationPattern, text);
 	return textMatches(implementationPattern, text);
+}
+
+function shouldSendDependencyBootstrapVisibleNotification(repoRoot: string, domains: string[], status: "ready" | "blocked"): boolean {
+	const now = Date.now();
+	for (const [key, timestamp] of dependencyBootstrapVisibleNotifications) {
+		if (now - timestamp > DEPENDENCY_BOOTSTRAP_VISIBLE_NOTIFICATION_TTL_MS) dependencyBootstrapVisibleNotifications.delete(key);
+	}
+	const key = `${repoRoot}:${status}:${[...domains].sort().join(",")}`;
+	const lastSentAt = dependencyBootstrapVisibleNotifications.get(key);
+	if (lastSentAt && now - lastSentAt < DEPENDENCY_BOOTSTRAP_VISIBLE_NOTIFICATION_TTL_MS) return false;
+	dependencyBootstrapVisibleNotifications.set(key, now);
+	return true;
+}
+
+function formatDependencyBootstrapVisibleNotification(repoName: string, domains: string[], status: "ready" | "blocked"): string {
+	const domainLabel = domains.join(", ");
+	if (status === "ready") return `[dependency-bootstrap] READY — ${repoName}: ${domainLabel} 준비 완료`;
+	return `[dependency-bootstrap] BLOCKED — ${repoName}: ${domainLabel} 준비 실패. /wt bootstrap status로 상세 확인`;
 }
 
 function bootstrapDomainProfiles(profile: WorktreeRepoProfile): WorktreeBootstrapDomainProfile[] {
@@ -1088,15 +1108,18 @@ async function ensureDependencyBootstrapWorker(
 				if (job) job.status = ok ? "success" : "failed";
 				setDependencyBootstrapStatus(ctx, ok ? "success" : "failed", ok ? "ready" : "blocked");
 				const summary = output || result.stderr.trim() || "(no subagent output)";
-				pi.sendMessage(
-					{
-						customType: "worktree-dependency-bootstrap",
-						content: `[dependency-bootstrap:${agent.name}] ${ok ? "READY" : "BLOCKED"}\nRepo: ${repoName}\nDomains: ${runDomains.join(", ")}\nLog: ${logPath}\nReport: ${reportPath}\n\n${summary.slice(0, 4000)}`,
-						display: true,
-						details: { repoRoot, repoName, domains: runDomains, status: ok ? "success" : "failed", logPath, reportPath, executorScriptPath, agentName: agent.name, sessionFile, exitCode: result.exitCode },
-					},
-					{ deliverAs: "followUp", triggerTurn: false },
-				);
+				const visibleStatus = ok ? "ready" : "blocked";
+				if (shouldSendDependencyBootstrapVisibleNotification(repoRoot, runDomains, visibleStatus)) {
+					pi.sendMessage(
+						{
+							customType: "worktree-dependency-bootstrap",
+							content: formatDependencyBootstrapVisibleNotification(repoName, runDomains, visibleStatus),
+							display: true,
+							details: { repoRoot, repoName, domains: runDomains, status: ok ? "success" : "failed", logPath, reportPath, executorScriptPath, agentName: agent.name, sessionFile, exitCode: result.exitCode, summary: summary.slice(0, 4000) },
+						},
+						{ deliverAs: "followUp", triggerTurn: false },
+					);
+				}
 				notifyDependencyBootstrap(ctx, `AI worktree bootstrap ${ok ? "complete" : "blocked"} (${repoName}: ${runDomains.join(", ")})`, ok ? "info" : "warning");
 			}).catch((error) => {
 				const job = dependencyBootstrapJobs.get(repoRoot);
