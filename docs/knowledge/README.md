@@ -179,6 +179,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [자동 로드 컨텍스트는 최소 surface만 가진다](./context-loading-minimal-surface.md) | active | high | 2026-05-13 | 49eb5f7 | context, agents-md, memory, system-prompt, token, autoload |
 | [Decide는 선택을 한 번 공격한다](./decide-tradeoff-challenge.md) | active | high | 2026-05-13 | e0dc999 | decide, tradeoff, challenge, productive-resistance, frame-json, decision |
 | [외부 이슈 업데이트는 preview gate를 지난다](./external-issue-preview-gate.md) | active | high | 2026-05-13 | f89a0f6 | jira, issue, preview, wiki-markup, external-update, approval |
+| [최종 검증은 메인 세션을 막지 않고 병렬화한다](./final-verification-parallelization.md) | active | high | 2026-05-13 | cdaedbd | verification, ship, final-check, subagent, background, parallel |
 | [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-05-12 | 4d1ff26 | fork-panel, handoff, inbox, inject, parent, panel |
 | [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-05-12 | 4d1ff26 | fork-panel, revive, repanel, ghostty, spatial, panel |
 | [Frame은 마지막에 Plan을 합성한다](./frame-plan-synthesis-continuity.md) | active | high | 2026-05-13 | e0dc999 | frame, implementation-plan, tft-studio, worktree, continuity, planning |
@@ -270,6 +271,7 @@ graph TD
   doc_context_loading_minimal_surface["자동 로드 컨텍스트는 최소 surface만 가진다"]
   doc_decide_tradeoff_challenge["Decide는 선택을 한 번 공격한다"]
   doc_external_issue_preview_gate["외부 이슈 업데이트는 preview gate를 지난다"]
+  doc_final_verification_parallelization["최종 검증은 메인 세션을 막지 않고 병렬화한다"]
   doc_fork_panel_parent_inbox["Fork-panel handoff는 parent inbox로 들어간다"]
   doc_fork_panel_spatial_continuity["Fork-panel 위치는 작업 맥락의 일부다"]
   doc_frame_plan_synthesis_continuity["Frame은 마지막에 Plan을 합성한다"]
@@ -483,6 +485,11 @@ graph TD
   doc_external_issue_preview_gate --> doc_ask_user_question_decision_gates
   doc_external_issue_preview_gate --> doc_live_artifact_preview_pattern
   doc_external_issue_preview_gate --> doc_private_overlay_package_boundary
+  doc_final_verification_parallelization --> doc_ai_worker_readiness_orchestrator
+  doc_final_verification_parallelization --> doc_change_integration_discipline
+  doc_final_verification_parallelization --> doc_evidence_first_verification_gate
+  doc_final_verification_parallelization --> doc_subagent_prompt_specificity
+  doc_final_verification_parallelization --> doc_subagent_skill_delegation
   doc_fork_panel_parent_inbox --> doc_revive_over_transcript_recall
   doc_fork_panel_parent_inbox --> doc_session_identity_over_filenames
   doc_fork_panel_parent_inbox --> doc_subagent_prompt_specificity
@@ -589,7 +596,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 86
-- Links: 287
+- Documents: 87
+- Links: 292
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

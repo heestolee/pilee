@@ -97,7 +97,15 @@ git diff --stat origin/main...HEAD
 
 ### 5. 표준 검증 세트
 
-변경 파일에 맞게 실행한다.
+변경 파일에 맞게 실행하되, 메인 세션을 오래 막지 않도록 먼저 검증을 분리한다.
+
+| 구분 | 예시 | 원칙 |
+|---|---|---|
+| foreground | `git diff --check`, 변경 TS 파일 `node --experimental-strip-types --check`, skill frontmatter smoke | 빠르고 final-check 판정에 즉시 필요한 것은 메인 세션에서 실행 |
+| parallel | `npm run knowledge:freshness`, 전체 knowledge graph/validate, 여러 extension syntax check, 오래 걸리는 package build/test | 순수 검증이고 파일을 바꾸지 않는 명령은 `>> verifier ...`로 병렬 위임하거나 background artifact로 남김 |
+| deferred | 외부 CI/수동 UI 확인이 더 적합하거나 비용이 큰 검증 | `남은 gap`에 조건과 재개 방법을 명시 |
+
+parallel 검증을 위임할 때는 subagent에게 현재 `HEAD`, `git status --short`, 정확한 명령, read-only 금지선, 보고 형식을 넘긴다. 완료 전에는 “parallel 검증 진행 중”이지 “문제없음”이 아니다. 완료 follow-up이 오면 main이 결과를 읽고 PASS/FAIL/PARTIAL을 다시 판정한다.
 
 기본:
 

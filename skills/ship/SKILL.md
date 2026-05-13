@@ -72,6 +72,14 @@ git log --oneline --decorate -5
 4. build
 5. domain-specific validation
 
+검증은 시작 전에 **foreground / parallel / deferred**로 나눈다.
+
+| 구분 | 기준 | 실행 방식 |
+|---|---|---|
+| foreground | `git diff --check`, 변경 파일 대상 unit test, 짧은 syntax/type smoke처럼 빠르고 결과가 commit 전 판단에 직접 필요한 것 | 메인 세션에서 실행 |
+| parallel | 전체 lint/build/test, 오래 걸리는 app/package 검증, 이미 commit 이후 재확인하는 검증처럼 순수 read-only이고 사용자를 오래 막는 것 | `>> verifier ...` 또는 `>> /ship ...` 위임으로 별도 subagent에서 실행 |
+| deferred | 외부 CI가 더 강하게 검증하거나 로컬 실행 비용이 과도한 것 | 최종 보고에 deferred/gap과 CI 확인 조건을 남김 |
+
 자동 감지 우선순위:
 
 - `package.json` scripts: `typecheck`, `check`, `lint`, `test`, `build`
@@ -89,6 +97,9 @@ git log --oneline --decorate -5
 - 자동 포맷/기계적 lint fix가 생기면 diff를 다시 확인한다.
 - 검증 실패 시 에러 전체와 exit code를 읽고 근본 원인을 확인한다.
 - 검증 실패를 숨기거나 unrelated failure를 현재 작업 성공처럼 포장하지 않는다.
+- 긴 검증을 parallel로 넘길 때는 현재 `HEAD`, `git status --short` 결과, 정확한 명령, 기대 산출물을 subagent prompt에 적는다.
+- parallel 검증 subagent는 코드/포맷/codegen을 수정하지 않고 read-only 검증 결과만 보고해야 한다. 수정이 필요하면 main이 원인을 읽고 별도 slice로 처리한다.
+- 이미 foreground 검증과 commit이 끝났다면 사용자를 기다리게 하지 말고, parallel 검증 시작 사실과 완료 후 follow-up 기준을 짧게 알린 뒤 다음 대화가 가능하게 한다.
 
 ### 5. 커밋
 
@@ -138,7 +149,7 @@ git push -u origin "$(git branch --show-current)"
 완료했습니다.
 - 커밋: `<sha>` <message>
 - Push: `<branch>` → `origin/<branch>`
-- 검증: `<command>` ✅ / `<command>` ⚠️ reason
+- 검증: foreground `<command>` ✅ / parallel `<worker/run>` 진행 중·완료·실패 / deferred `<reason>`
 - 남은 리스크: 없음 또는 구체적 항목
 ```
 
