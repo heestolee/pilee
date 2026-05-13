@@ -23,7 +23,7 @@ source:
   - user-direction:2026-05-09-decide-tradeoff-challenge
   - pilee-history:2026-05-09#102
 reviewed_at: 2026-05-13
-reviewed_commit: e0dc999e580d0ff1f1940470f7a8f2a20d2920f5
+reviewed_commit: 00466bb
 related:
   - ask-user-question-decision-gates
   - ask-user-question-option-design
@@ -31,6 +31,7 @@ related:
   - frame-studio-interactive-decision-ui
   - evidence-first-verification-gate
   - architecture-friction-tft-lens
+  - atomic-evidence-workflow
 supersedes:
   - conditional-productive-resistance-in-decide
 ---
@@ -47,12 +48,12 @@ Challenge intensity는 다음처럼 해석합니다.
 
 | intensity | 의미 | 질문 방식 |
 |---|---|---|
-| `low` | 되돌리기 쉽고 영향이 작다 | 한 줄 반론으로 선택 유지/보완/재고를 묻습니다. |
+| `low` | 되돌리기 쉽고 영향이 작다 | 짧은 반론 카드로 선택 유지/보완/재고를 묻습니다. |
 | `medium` | 여러 모듈이나 테스트 비용이 생긴다 | 비교표의 약점을 짚고 완화책 여부를 묻습니다. |
 | `high` | 데이터 의미, 상태 모델, 외부 계약, 운영 위험이 크다 | 가장 비싼 실패 시나리오와 rollback 비용을 중심으로 묻습니다. |
 | `ask_first` | 사용자가 위임하면 안 되는 영역이다 | 사용자 선택을 필수로 받고, 근거와 완화책을 명시합니다. |
 
-이 규칙은 [AskUserQuestion은 의사결정 게이트다](./ask-user-question-decision-gates.md)의 특수한 적용입니다. `/decide`의 challenge는 “정말 괜찮나요?”라는 확인창이 아니라, 선택 후 실제 행동이 달라지는 두 번째 decision gate입니다.
+이 규칙은 [AskUserQuestion은 의사결정 게이트다](./ask-user-question-decision-gates.md)의 특수한 적용입니다. `/decide`의 challenge는 “정말 괜찮나요?”라는 확인창이 아니라, 선택 후 실제 행동이 달라지는 두 번째 decision gate입니다. challenge 질문도 짧은 제목만 던지지 않고 `현재 이해 / 막힌 결정 / 왜 중요한가 / 선택 후 달라지는 것`을 포함한 판단 맥락 카드로 제시합니다.
 
 ## Canonical Record
 

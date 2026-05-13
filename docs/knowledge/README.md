@@ -171,14 +171,14 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 |---|---|---:|---:|---:|---|
 | [검토 산출물은 다시 열 수 있어야 한다](./artifact-archive-reopenability.md) | active | high | 2026-05-13 | ca6dec9 | artifact, archive, show-report, archive-command, history, html |
 | [AskUserQuestion은 의사결정 게이트다](./ask-user-question-decision-gates.md) | active | high | 2026-05-13 | ca6dec9 | ask-user-question, tft, decision-gate, question, non-delegable, 질문 |
-| [AskUserQuestion 옵션은 행동 분기를 표현한다](./ask-user-question-option-design.md) | active | high | 2026-05-13 | ca6dec9 | ask-user-question, option, wording, ceremony, tft, 질문 |
+| [AskUserQuestion 옵션은 행동 분기를 표현한다](./ask-user-question-option-design.md) | active | high | 2026-05-13 | 00466bb | ask-user-question, option, wording, ceremony, tft, 질문 |
 | [Atomic evidence workflow는 작은 claim을 증거로 닫는다](./atomic-evidence-workflow.md) | active | high | 2026-05-13 | e6c131d | atomic, evidence, claim, slice, verification, frame |
 | [Auto-commit은 명시 계획만 실행한다](./auto-commit-explicit-plan-gate.md) | active | high | 2026-05-13 | e0dc999 | auto-commit, git, commit, plan, safety |
 | [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | high | 2026-05-13 | ca6dec9 | backlog, tasks, provenance, source-session, session, 맥락 |
 | [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md) | active | high | 2026-05-13 | 49eb5f7 | git, incremental, code-review, commit, quality, 통합 |
 | [CI-Ship은 PR 후 검증 실패 대응 단계다](./ci-ship-failure-response-boundary.md) | active | high | 2026-05-13 | 49eb5f7 | ci-ship, ci, github-actions, pull-request, failure-analysis, ship |
 | [자동 로드 컨텍스트는 최소 surface만 가진다](./context-loading-minimal-surface.md) | active | high | 2026-05-13 | 49eb5f7 | context, agents-md, memory, system-prompt, token, autoload |
-| [Decide는 선택을 한 번 공격한다](./decide-tradeoff-challenge.md) | active | high | 2026-05-13 | e0dc999 | decide, tradeoff, challenge, productive-resistance, frame-json, decision |
+| [Decide는 선택을 한 번 공격한다](./decide-tradeoff-challenge.md) | active | high | 2026-05-13 | 00466bb | decide, tradeoff, challenge, productive-resistance, frame-json, decision |
 | [외부 이슈 업데이트는 preview gate를 지난다](./external-issue-preview-gate.md) | active | high | 2026-05-13 | f89a0f6 | jira, issue, preview, wiki-markup, external-update, approval |
 | [최종 검증은 메인 세션을 막지 않고 병렬화한다](./final-verification-parallelization.md) | active | high | 2026-05-13 | cdaedbd | verification, ship, final-check, subagent, background, parallel |
 | [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-05-12 | 4d1ff26 | fork-panel, handoff, inbox, inject, parent, panel |
@@ -464,6 +464,7 @@ graph TD
   doc_ask_user_question_decision_gates --> doc_evidence_first_verification_gate
   doc_ask_user_question_decision_gates --> doc_frame_verify_contract
   doc_ask_user_question_option_design --> doc_ask_user_question_decision_gates
+  doc_ask_user_question_option_design --> doc_atomic_evidence_workflow
   doc_ask_user_question_option_design --> doc_evidence_first_verification_gate
   doc_atomic_evidence_workflow --> doc_evidence_first_verification_gate
   doc_atomic_evidence_workflow --> doc_frame_studio_interactive_decision_ui
@@ -486,6 +487,7 @@ graph TD
   doc_decide_tradeoff_challenge --> doc_architecture_friction_tft_lens
   doc_decide_tradeoff_challenge --> doc_ask_user_question_decision_gates
   doc_decide_tradeoff_challenge --> doc_ask_user_question_option_design
+  doc_decide_tradeoff_challenge --> doc_atomic_evidence_workflow
   doc_decide_tradeoff_challenge --> doc_evidence_first_verification_gate
   doc_decide_tradeoff_challenge --> doc_frame_studio_interactive_decision_ui
   doc_decide_tradeoff_challenge --> doc_frame_verify_contract
@@ -604,6 +606,6 @@ graph TD
 ## Review Metadata Summary
 
 - Documents: 88
-- Links: 297
+- Links: 299
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
