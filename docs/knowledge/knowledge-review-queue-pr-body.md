@@ -17,7 +17,7 @@ applies_to:
 source:
   - user-direction:2026-05-13-knowledge-review-pr-body
 reviewed_at: 2026-05-13
-reviewed_commit: bb45d1bc9062ac6aa25ee42d18d736cc323cad07
+reviewed_commit: 1f5c3acfcb23b01a3fc6bc30592dbe0156748c4f
 related:
   - ember-ship-release-train
   - pilee-knowledge-system
