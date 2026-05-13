@@ -18,8 +18,8 @@ source:
   - pilee-history:2026-05-01#14
   - pilee-history:2026-05-02#screensaver
   - user-direction:2026-05-07-local-resolver
-reviewed_at: 2026-05-07
-reviewed_commit: 0e6c08396034c8c5f9940871083eafa1c5d39e49
+reviewed_at: 2026-05-13
+reviewed_commit: ca6dec9d7f8a3eeda24ee5b0d35c64752d02a76a
 related:
   - tool-output-noise-management
   - backlog-source-session-provenance
