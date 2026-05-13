@@ -70,8 +70,8 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Self-healing은 actionable item만 수정한다](./self-healing-actionable-loop.md) | active | high | 2026-05-13 | 74c8c28 | self-healing, actionable, worker, fix-class, subagent, 자동수정 |
 | [Stress Interview는 다축 검토다](./stress-interview-multi-axis-review.md) | active | high | 2026-05-13 | 74c8c28 | stress-interview, review, verifier, reviewer, challenger, subagent |
 | [Codex-first subagent 모델 운용 정책](./subagent-model-policy.md) | active | high | 2026-05-12 | c82cbb0 | subagent, codex, model-policy, worker, finder, searcher |
-| [Subagent 위임은 구체 프롬프트를 요구한다](./subagent-prompt-specificity.md) | active | high | 2026-05-12 | c82cbb0 | subagent, prompt, delegation, worker, context, 위임 |
-| [Subagent는 slash command가 아니라 skill prompt를 위임받는다](./subagent-skill-delegation.md) | active | high | 2026-05-12 | c82cbb0 | subagent, skill, slash-command, delegation, ship, ci-ship |
+| [Subagent 위임은 구체 프롬프트를 요구한다](./subagent-prompt-specificity.md) | active | high | 2026-05-13 | 10e0874 | subagent, prompt, delegation, worker, context, 위임 |
+| [Subagent는 slash command가 아니라 skill prompt를 위임받는다](./subagent-skill-delegation.md) | active | high | 2026-05-13 | 10e0874 | subagent, skill, slash-command, delegation, ship, ci-ship |
 | [Supervisor는 outcome guardrail이다](./supervisor-outcome-guardrail.md) | active | high | 2026-05-12 | c82cbb0 | supervisor, outcome, guardrail, steering, agent |
 
 ### architecture
@@ -79,7 +79,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [Architecture friction은 TFT의 검증 축이다](./architecture-friction-tft-lens.md) | active | high | 2026-05-13 | ca6dec9 | architecture, frame, decide, verify, deep-module, shallow-module |
-| [Utils surface는 사용자 계약을 만들지 않는다](./utility-surface-stays-invisible.md) | active | high | 2026-05-12 | fc6ffa9 | utils, internal, surface, abstraction, extension |
+| [Utils surface는 사용자 계약을 만들지 않는다](./utility-surface-stays-invisible.md) | active | high | 2026-05-13 | 10e0874 | utils, internal, surface, abstraction, extension |
 
 ### database
 
@@ -132,7 +132,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Embedded WebView script는 escape 경계를 보존한다](./embedded-webview-script-escape-boundary.md) | active | high | 2026-05-13 | f89a0f6 | webview, embedded-script, escape, string-raw, regex, glimpse |
 | [MCP 결과는 큰 출력만 digest-first로 다룬다](./mcp-digest-first-artifacts.md) | active | high | 2026-05-12 | d98008a | mcp, digest-first, artifact, tool-output, lazy-retrieval |
 | [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-05-13 | 1a6aa93 | mcp, stderr, stdio, terminal, tui, noise |
-| [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-05-12 | c82cbb0 | terminal, ghostty, applescript, notify, host, integration |
+| [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-05-13 | 10e0874 | terminal, ghostty, applescript, notify, host, integration |
 | [터미널 workspace 복원은 snapshot과 host adapter를 분리한다](./terminal-workspace-restore.md) | active | high | 2026-05-12 | c82cbb0 | workspace, terminal, ghostty, snapshot, restore, session |
 
 ### ui
@@ -142,7 +142,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Idle UI는 장식이 아니라 ambient status다](./ambient-status-surfaces.md) | active | high | 2026-05-13 | ca6dec9 | idle-screensaver, tasks, spinner, status, ambient, ui |
 | [Editor affordance는 숨은 컨텍스트가 아니다](./editor-affordance-not-context.md) | active | high | 2026-05-13 | f89a0f6 | editor, footer, prompt-suggest, working-text, affordance, ui |
 | [User-facing 출력은 한국어를 기본으로 한다](./korean-first-user-facing-output.md) | active | high | 2026-05-13 | 1f5c3ac | korean-output, localization, web-search, ui, rewrite, 한국어 |
-| [색상은 정보 위계다](./theme-information-hierarchy.md) | active | high | 2026-05-12 | fc6ffa9 | theme, color, dim, muted, border, accent |
+| [색상은 정보 위계다](./theme-information-hierarchy.md) | active | high | 2026-05-13 | 10e0874 | theme, color, dim, muted, border, accent |
 | [도구 출력은 대화 흐름을 침범하지 않는다](./tool-output-noise-management.md) | active | high | 2026-05-11 | ce3a598 | tool-output, collapse, noise, ui, usage, renderer |
 | [TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다](./tui-rendering-sanitization.md) | active | high | 2026-05-12 | fc6ffa9 | tui, rendering, newline, ansi, sanitize, terminal |
 
@@ -196,9 +196,9 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [세션 식별자는 파일명이 아니라 사람이 본 이름이다](./session-identity-over-filenames.md) | active | high | 2026-05-12 | b3d4dce | session, title, identity, session_info, worktree, revive |
 | [Ship과 PR-Ship은 서로 다른 통합 단계다](./ship-pr-ship-review-boundary.md) | active | high | 2026-05-13 | 74c8c28 | ship, pr-ship, pr-review, github, commit, push |
 | [Skill은 재사용 가능한 절차다](./skills-as-portable-procedures.md) | active | high | 2026-05-12 | b3d4dce | skill, skill-creator, procedure, porting, workflow, 스킬 |
-| [Command shim은 skill source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-05-12 | c82cbb0 | command-shim, skill, tft, frame, slash-command, routing |
-| [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-05-12 | c82cbb0 | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
-| [TUI 질문은 작은 의사결정 게이트다](./tui-ask-decision-overlay.md) | active | high | 2026-05-12 | 1b80abf | tui, ask-user-question, decision-gate, tool, overlay |
+| [Command shim은 skill source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-05-13 | 10e0874 | command-shim, skill, tft, frame, slash-command, routing |
+| [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-05-13 | 10e0874 | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
+| [TUI 질문은 작은 의사결정 게이트다](./tui-ask-decision-overlay.md) | active | high | 2026-05-13 | 10e0874 | tui, ask-user-question, decision-gate, tool, overlay |
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
 | [Working Context Card는 큰 맥락을 현재 slice로 압축한다](./work-context-card-task-board.md) | active | high | 2026-05-13 | 1621ef1 | work-context, tasks, workflow, context, guard |
 | [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-05-12 | 566dc2a | workflow, guard, intent, audit, hotfix, continuation |
