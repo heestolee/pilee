@@ -13,7 +13,7 @@ applies_to:
   - extensions/auto-commit
 source: public
 reviewed_at: 2026-05-13
-reviewed_commit: ca6dec9d7f8a3eeda24ee5b0d35c64752d02a76a
+reviewed_commit: e0dc999e580d0ff1f1940470f7a8f2a20d2920f5
 related:
   - change-integration-discipline
   - request-traceability-surgical-changes

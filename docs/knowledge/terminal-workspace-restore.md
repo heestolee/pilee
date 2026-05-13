@@ -16,7 +16,7 @@ applies_to:
 source:
   - user-direction:2026-05-12-workspace-save-restore
 reviewed_at: 2026-05-13
-reviewed_commit: 999ee95695e62e9bd2f6eefeb81e11a5ba9f179e
+reviewed_commit: e0dc999e580d0ff1f1940470f7a8f2a20d2920f5
 related:
   - terminal-host-integration
   - fork-panel-spatial-continuity
@@ -33,7 +33,7 @@ snapshot에는 Ghostty window/tab/terminal id, tab 순서, terminal title, cwd, 
 
 ## Autosave Rule
 
-autosave는 명시 save를 대체하는 주 복원 경로가 아니라 안전망입니다. Ghostty/macOS 세션에서 시작 5~10초 뒤 첫 snapshot을 만들고 이후 약 30초마다 `autosave` snapshot을 갱신합니다. 작업공간 크기 수준의 Ghostty AppleScript와 작은 JSON write만 수행하므로 일반적인 탭/패널 수에서는 큰 성능 부담을 기대하지 않지만, 사용자가 의도한 복원 지점은 `/workspace save`로 남긴 수동 snapshot이 기준이어야 합니다.
+autosave는 명시 save를 대체하는 주 복원 경로가 아니라 안전망입니다. Ghostty/macOS 세션에서 시작 5~10초 뒤 첫 snapshot을 만들고 이후 약 1시간마다 `autosave` snapshot을 갱신합니다. 작업공간 크기 수준의 Ghostty AppleScript와 작은 JSON write만 수행하므로 일반적인 탭/패널 수에서는 큰 성능 부담을 기대하지 않지만, 사용자가 의도한 복원 지점은 `/workspace save`로 남긴 수동 snapshot이 기준이어야 합니다.
 
 ## Restore Rule
 
