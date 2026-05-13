@@ -828,11 +828,11 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("workspace", {
 		description: "Ghostty 작업공간 저장/복원",
 		getArgumentCompletions: async (): Promise<AutocompleteItem[]> => [
-			{ value: "status", description: "현재 Ghostty workspace 상태" },
-			{ value: "save", description: "현재 Ghostty window snapshot 저장" },
-			{ value: "restore --dry-run", description: "최신 snapshot 복원 계획만 보기" },
-			{ value: "restore", description: "최신 snapshot을 append mode로 복원" },
-			{ value: "list", description: "저장된 snapshots 목록" },
+			{ value: "status", label: "status", description: "현재 Ghostty workspace 상태" },
+			{ value: "save", label: "save", description: "현재 Ghostty window snapshot 저장" },
+			{ value: "restore --dry-run", label: "restore --dry-run", description: "최신 snapshot 복원 계획만 보기" },
+			{ value: "restore", label: "restore", description: "최신 snapshot을 append mode로 복원" },
+			{ value: "list", label: "list", description: "저장된 snapshots 목록" },
 		],
 		handler: async (rawArgs: string, ctx: ExtensionCommandContext) => {
 			const args = parseWorkspaceArgs(rawArgs);
