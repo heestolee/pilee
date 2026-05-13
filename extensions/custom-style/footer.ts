@@ -251,7 +251,7 @@ export function installFooter(pi: ExtensionAPI, ctx: ExtensionContext, config: C
 				const state = stateManager.getState();
 				const branch = state.repoStatus.branch ?? footerData.getGitBranch();
 				const statusEntries = buildFooterStatusEntries(ctx, footerData);
-				const pressure = buildContextPressure(ctx.getContextUsage(), ctx.sessionManager.getCwd());
+				const pressure = buildContextPressure(ctx.getContextUsage(), ctx.sessionManager.getCwd(), ctx.model);
 				if (pressure.percent !== null) {
 					pressure.percent = clamp(Math.round(pressure.percent), 0, 100);
 				}

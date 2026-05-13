@@ -44,7 +44,7 @@ function clearCompactionStatusLater(ctx: ExtensionContext) {
 
 function setCompactionStatus(ctx: ExtensionContext, prefix: string, tokensBefore: number, reserveTokens: number) {
 	if (!ctx.hasUI) return;
-	const status = formatCompactionStatus(tokensBefore, ctx.model?.contextWindow, reserveTokens);
+	const status = formatCompactionStatus(tokensBefore, ctx.model?.contextWindow, reserveTokens, ctx.model);
 	setFooterStatus(ctx, `${prefix} · ${status}`);
 }
 

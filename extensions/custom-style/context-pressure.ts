@@ -6,6 +6,17 @@ const DEFAULT_COMPACTION_ENABLED = true;
 const DEFAULT_COMPACTION_RESERVE_TOKENS = 16_384;
 const SETTINGS_CACHE_MS = 1_000;
 
+const KNOWN_EFFECTIVE_CONTEXT_WINDOWS = new Map<string, number>([
+	["openai-codex/gpt-5.5", 272_000],
+	["openai-codex/gpt-5.4", 272_000],
+]);
+
+type ContextModelSnapshot = {
+	provider?: string;
+	id?: string;
+	contextWindow?: number;
+};
+
 export type ContextUsageSnapshot = {
 	tokens: number | null;
 	contextWindow: number;
@@ -76,9 +87,30 @@ export function readCompactionDisplaySettings(cwd: string): CompactionDisplaySet
 	return settings;
 }
 
+function getKnownEffectiveContextWindow(model: ContextModelSnapshot | undefined): number | undefined {
+	if (!model?.provider || !model.id) return undefined;
+	return KNOWN_EFFECTIVE_CONTEXT_WINDOWS.get(`${model.provider}/${model.id}`);
+}
+
+export function getEffectiveContextWindow(
+	reportedContextWindow: number,
+	model?: ContextModelSnapshot,
+): number {
+	const knownEffectiveContextWindow = getKnownEffectiveContextWindow(model);
+	if (!knownEffectiveContextWindow) return reportedContextWindow;
+	if (!Number.isFinite(reportedContextWindow) || reportedContextWindow <= 0) return knownEffectiveContextWindow;
+	return Math.min(reportedContextWindow, knownEffectiveContextWindow);
+}
+
 export function getCompactionThresholdTokens(contextWindow: number, reserveTokens: number): number | null {
 	if (!Number.isFinite(contextWindow) || contextWindow <= 0) return null;
 	return Math.max(1, contextWindow - Math.max(0, reserveTokens));
+}
+
+function getContextUsagePercent(tokens: number | null | undefined, contextWindow: number): number | null {
+	if (tokens === null || tokens === undefined || !Number.isFinite(tokens) || tokens < 0) return null;
+	if (!Number.isFinite(contextWindow) || contextWindow <= 0) return null;
+	return Math.max(0, Math.min(100, (tokens / contextWindow) * 100));
 }
 
 export function getCompactionPressurePercent(
@@ -95,9 +127,11 @@ export function getCompactionPressurePercent(
 export function buildContextPressure(
 	usage: ContextUsageSnapshot | undefined,
 	cwd: string,
+	model?: ContextModelSnapshot,
 ): ContextPressure {
 	const settings = readCompactionDisplaySettings(cwd);
-	const contextWindow = usage?.contextWindow ?? 0;
+	const reportedContextWindow = usage?.contextWindow ?? model?.contextWindow ?? 0;
+	const contextWindow = getEffectiveContextWindow(reportedContextWindow, model);
 	const thresholdTokens = getCompactionThresholdTokens(contextWindow, settings.reserveTokens);
 	if (!usage) {
 		return {
@@ -112,7 +146,7 @@ export function buildContextPressure(
 	if (!settings.enabled) {
 		return {
 			label: "ctx",
-			percent: usage.percent,
+			percent: getContextUsagePercent(usage.tokens, contextWindow) ?? usage.percent,
 			thresholdTokens,
 			reserveTokens: settings.reserveTokens,
 			contextWindow,
@@ -121,14 +155,20 @@ export function buildContextPressure(
 
 	return {
 		label: "압축",
-		percent: getCompactionPressurePercent(usage.tokens, usage.contextWindow, settings.reserveTokens),
+		percent: getCompactionPressurePercent(usage.tokens, contextWindow, settings.reserveTokens),
 		thresholdTokens,
 		reserveTokens: settings.reserveTokens,
-		contextWindow: usage.contextWindow,
+		contextWindow,
 	};
 }
 
-export function formatCompactionStatus(tokensBefore: number, contextWindow: number | undefined, reserveTokens: number): string {
-	const percent = getCompactionPressurePercent(tokensBefore, contextWindow ?? 0, reserveTokens);
+export function formatCompactionStatus(
+	tokensBefore: number,
+	contextWindow: number | undefined,
+	reserveTokens: number,
+	model?: ContextModelSnapshot,
+): string {
+	const effectiveContextWindow = getEffectiveContextWindow(contextWindow ?? 0, model);
+	const percent = getCompactionPressurePercent(tokensBefore, effectiveContextWindow, reserveTokens);
 	return percent === null ? "직전 ?%" : `직전 ${Math.round(percent)}%`;
 }
