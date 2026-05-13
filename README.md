@@ -217,6 +217,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | extension | `extensions/archive-to-html` | [검토 산출물은 다시 열 수 있어야 한다](./docs/knowledge/artifact-archive-reopenability.md)<br>[Backlog는 원 세션 출처를 보존한다](./docs/knowledge/backlog-source-session-provenance.md)<br>[Deterministic fallback은 workflow를 보존한다](./docs/knowledge/deterministic-fallbacks-preserve-workflow.md)<br>[Embedded WebView script는 escape 경계를 보존한다](./docs/knowledge/embedded-webview-script-escape-boundary.md)<br>[완료 선언은 증거 뒤에만 온다](./docs/knowledge/evidence-first-verification-gate.md)<br>[Live artifact는 local preview first다](./docs/knowledge/live-artifact-preview-pattern.md)<br>[Private overlay package는 회사·개인 실행 맥락을 담는다](./docs/knowledge/private-overlay-package-boundary.md)<br>[세션 분류는 원본 위의 sidecar다](./docs/knowledge/session-classification-sidecar.md)<br>[Session export는 원본을 보존하는 adapter를 거친다](./docs/knowledge/session-export-source-preservation.md)<br>[터미널 연동은 host adapter로 다룬다](./docs/knowledge/terminal-host-integration.md)<br>[Verify Report와 coverage-aware 증거 검증 흐름](./docs/knowledge/verify-report-workflow.md) |
 | extension | `extensions/auto-commit` | [Auto-commit은 명시 계획만 실행한다](./docs/knowledge/auto-commit-explicit-plan-gate.md) |
 | extension | `extensions/backlog` | [검토 산출물은 다시 열 수 있어야 한다](./docs/knowledge/artifact-archive-reopenability.md)<br>[Backlog는 원 세션 출처를 보존한다](./docs/knowledge/backlog-source-session-provenance.md)<br>[Session export는 원본을 보존하는 adapter를 거친다](./docs/knowledge/session-export-source-preservation.md)<br>[색상은 정보 위계다](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다](./docs/knowledge/tui-rendering-sanitization.md) |
+| extension | `extensions/bash-tool-override` | [Bash tool override는 명령 의도와 출력 노이즈를 분리한다](./docs/knowledge/bash-tool-title-output-override.md) |
 | extension | `extensions/cc-system-prompt` | [자동 로드 컨텍스트는 최소 surface만 가진다](./docs/knowledge/context-loading-minimal-surface.md) |
 | extension | `extensions/claude-code-ui` | [도구 출력은 대화 흐름을 침범하지 않는다](./docs/knowledge/tool-output-noise-management.md)<br>[TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다](./docs/knowledge/tui-rendering-sanitization.md) |
 | extension | `extensions/claude-hooks-bridge` | [자동 로드 컨텍스트는 최소 surface만 가진다](./docs/knowledge/context-loading-minimal-surface.md) |
@@ -297,7 +298,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 ## Extensions
 
 <!-- PILEE_README_EXTENSIONS_START -->
-46개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
+47개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
 
 > `extensions/*`와 `scripts/knowledge.mjs`의 inventory metadata에서 생성됩니다. 변경 후 `node scripts/knowledge.mjs --graph`로 갱신합니다.
 
@@ -349,6 +350,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 
 | 이름 | 설명 |
 |---|---|
+| **bash-tool-override** | Bash tool 제목/출력 렌더링 override — 명령 의도 중심으로 표시 |
 | **tasks** | 태스크 CRUD + `Ctrl+Shift+T` |
 | **auto-commit** | 명시 JSON plan 기반 commit/push 실행 도구 |
 | **tui-ask** | 터미널 overlay 질문 도구 — single/multi/text decision gate |

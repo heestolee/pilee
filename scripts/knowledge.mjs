@@ -1041,6 +1041,7 @@ const README_EXTENSION_GROUPS = [
 		{ name: "archive-to-html", ko: "Verify/Web Search HTML 아카이브 + `/archive` Artifact Browser(`/show-report` alias) + live Verify Glimpse viewer", en: "Verify/Web Search HTML archive, `/archive` Artifact Browser (`/show-report` alias), and live Verify preview" },
 	] },
 	{ ko: "도구", en: "Tools and data", items: [
+		{ name: "bash-tool-override", ko: "Bash tool 제목/출력 렌더링 override — 명령 의도 중심으로 표시", en: "Bash tool title and output rendering override focused on command intent" },
 		{ name: "tasks", ko: "태스크 CRUD + `Ctrl+Shift+T`", en: "Task CRUD and `Ctrl+Shift+T`" },
 		{ name: "auto-commit", ko: "명시 JSON plan 기반 commit/push 실행 도구", en: "Executes commit/push from an explicit JSON plan" },
 		{ name: "tui-ask", ko: "터미널 overlay 질문 도구 — single/multi/text decision gate", en: "Terminal overlay question tool for single/multi/text decision gates" },

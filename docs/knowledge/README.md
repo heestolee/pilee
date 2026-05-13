@@ -175,6 +175,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Atomic evidence workflow는 작은 claim을 증거로 닫는다](./atomic-evidence-workflow.md) | active | high | 2026-05-13 | e6c131d | atomic, evidence, claim, slice, verification, frame |
 | [Auto-commit은 명시 계획만 실행한다](./auto-commit-explicit-plan-gate.md) | active | high | 2026-05-13 | e0dc999 | auto-commit, git, commit, plan, safety |
 | [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | high | 2026-05-13 | ca6dec9 | backlog, tasks, provenance, source-session, session, 맥락 |
+| [Bash tool override는 명령 의도와 출력 노이즈를 분리한다](./bash-tool-title-output-override.md) | active | high | 2026-05-13 | 62d55bb | bash, tool, override, ui, output, title |
 | [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md) | active | high | 2026-05-13 | 49eb5f7 | git, incremental, code-review, commit, quality, 통합 |
 | [CI-Ship은 PR 후 검증 실패 대응 단계다](./ci-ship-failure-response-boundary.md) | active | high | 2026-05-13 | 49eb5f7 | ci-ship, ci, github-actions, pull-request, failure-analysis, ship |
 | [자동 로드 컨텍스트는 최소 surface만 가진다](./context-loading-minimal-surface.md) | active | high | 2026-05-13 | 49eb5f7 | context, agents-md, memory, system-prompt, token, autoload |
@@ -269,6 +270,7 @@ graph TD
   doc_atomic_evidence_workflow["Atomic evidence workflow는 작은 claim을 증거로 닫는다"]
   doc_auto_commit_explicit_plan_gate["Auto-commit은 명시 계획만 실행한다"]
   doc_backlog_source_session_provenance["Backlog는 원 세션 출처를 보존한다"]
+  doc_bash_tool_title_output_override["Bash tool override는 명령 의도와 출력 노이즈를 분리한다"]
   doc_change_integration_discipline["변경 통합은 작은 단위와 검증을 요구한다"]
   doc_ci_ship_failure_response_boundary["CI-Ship은 PR 후 검증 실패 대응 단계다"]
   doc_context_loading_minimal_surface["자동 로드 컨텍스트는 최소 surface만 가진다"]
@@ -479,6 +481,9 @@ graph TD
   doc_auto_commit_explicit_plan_gate --> doc_request_traceability_surgical_changes
   doc_backlog_source_session_provenance --> doc_artifact_archive_reopenability
   doc_backlog_source_session_provenance --> doc_session_identity_over_filenames
+  doc_bash_tool_title_output_override --> doc_atomic_evidence_workflow
+  doc_bash_tool_title_output_override --> doc_korean_first_user_facing_output
+  doc_bash_tool_title_output_override --> doc_tool_output_noise_management
   doc_change_integration_discipline --> doc_evidence_first_verification_gate
   doc_change_integration_discipline --> doc_stress_interview_multi_axis_review
   doc_ci_ship_failure_response_boundary --> doc_change_integration_discipline
@@ -614,7 +619,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 89
-- Links: 306
+- Documents: 90
+- Links: 309
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

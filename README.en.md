@@ -192,6 +192,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | extension | `extensions/archive-to-html` | [Artifact Archive Reopenability](./docs/knowledge/artifact-archive-reopenability.md)<br>[Backlog Source Session Provenance](./docs/knowledge/backlog-source-session-provenance.md)<br>[Deterministic Fallbacks Preserve Workflow](./docs/knowledge/deterministic-fallbacks-preserve-workflow.md)<br>[Embedded Webview Script Escape Boundary](./docs/knowledge/embedded-webview-script-escape-boundary.md)<br>[Evidence First Verification Gate](./docs/knowledge/evidence-first-verification-gate.md)<br>[Live Artifact Preview Pattern](./docs/knowledge/live-artifact-preview-pattern.md)<br>[Private Overlay Package Boundary](./docs/knowledge/private-overlay-package-boundary.md)<br>[Session Classification Sidecar](./docs/knowledge/session-classification-sidecar.md)<br>[Session Export Source Preservation](./docs/knowledge/session-export-source-preservation.md)<br>[Terminal Host Integration](./docs/knowledge/terminal-host-integration.md)<br>[Verify Report Workflow](./docs/knowledge/verify-report-workflow.md) |
 | extension | `extensions/auto-commit` | [Auto-commit executes only explicit plans](./docs/knowledge/auto-commit-explicit-plan-gate.md) |
 | extension | `extensions/backlog` | [Artifact Archive Reopenability](./docs/knowledge/artifact-archive-reopenability.md)<br>[Backlog Source Session Provenance](./docs/knowledge/backlog-source-session-provenance.md)<br>[Session Export Source Preservation](./docs/knowledge/session-export-source-preservation.md)<br>[Theme Information Hierarchy](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI Rendering Sanitization](./docs/knowledge/tui-rendering-sanitization.md) |
+| extension | `extensions/bash-tool-override` | [Bash Tool Title Output Override](./docs/knowledge/bash-tool-title-output-override.md) |
 | extension | `extensions/cc-system-prompt` | [Context Loading Minimal Surface](./docs/knowledge/context-loading-minimal-surface.md) |
 | extension | `extensions/claude-code-ui` | [Tool Output Noise Management](./docs/knowledge/tool-output-noise-management.md)<br>[TUI Rendering Sanitization](./docs/knowledge/tui-rendering-sanitization.md) |
 | extension | `extensions/claude-hooks-bridge` | [Context Loading Minimal Surface](./docs/knowledge/context-loading-minimal-surface.md) |
@@ -272,7 +273,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 ## Extensions
 
 <!-- PILEE_README_EXTENSIONS_START -->
-46 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
+47 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
 
 > Generated from `extensions/*` plus inventory metadata in `scripts/knowledge.mjs`; refresh with `node scripts/knowledge.mjs --graph`.
 
@@ -324,6 +325,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 
 | Name | Role |
 |---|---|
+| **bash-tool-override** | Bash tool title and output rendering override focused on command intent |
 | **tasks** | Task CRUD and `Ctrl+Shift+T` |
 | **auto-commit** | Executes commit/push from an explicit JSON plan |
 | **tui-ask** | Terminal overlay question tool for single/multi/text decision gates |
