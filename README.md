@@ -225,12 +225,14 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | extension | `extensions/custom-style` | [Editor affordance는 숨은 컨텍스트가 아니다](./docs/knowledge/editor-affordance-not-context.md)<br>[User-facing 출력은 한국어를 기본으로 한다](./docs/knowledge/korean-first-user-facing-output.md)<br>[터미널 연동은 host adapter로 다룬다](./docs/knowledge/terminal-host-integration.md)<br>[색상은 정보 위계다](./docs/knowledge/theme-information-hierarchy.md) |
 | extension | `extensions/diff-overlay` | [Diff review draft는 PR 코멘트 전 단계다](./docs/knowledge/diff-review-draft-handoff.md)<br>[색상은 정보 위계다](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다](./docs/knowledge/tui-rendering-sanitization.md) |
 | extension | `extensions/dynamic-agents-md` | [자동 로드 컨텍스트는 최소 surface만 가진다](./docs/knowledge/context-loading-minimal-surface.md)<br>[Skill은 재사용 가능한 절차다](./docs/knowledge/skills-as-portable-procedures.md) |
+| extension | `extensions/edit-tool-override` | [Read/Edit tool override는 필요한 증거만 펼친다](./docs/knowledge/read-edit-tool-output-override.md) |
 | extension | `extensions/ember` | [Ember는 knowledge의 친근한 입구다](./docs/knowledge/ember-friendly-knowledge-entrypoint.md)<br>[Ember Ship은 knowledge 정합성을 release train으로 닫는다](./docs/knowledge/ember-ship-release-train.md) |
 | extension | `extensions/ember-ship` | [Ember Ship은 knowledge 정합성을 release train으로 닫는다](./docs/knowledge/ember-ship-release-train.md) |
 | extension | `extensions/footer` | [Editor affordance는 숨은 컨텍스트가 아니다](./docs/knowledge/editor-affordance-not-context.md) |
 | extension | `extensions/fork-panel` | [Fork-panel handoff는 parent inbox로 들어간다](./docs/knowledge/fork-panel-parent-inbox.md)<br>[Fork-panel 위치는 작업 맥락의 일부다](./docs/knowledge/fork-panel-spatial-continuity.md)<br>[MCP stderr는 TUI 출력이 아니다](./docs/knowledge/mcp-stderr-isolation.md)<br>[종료된 포크는 transcript 주입보다 revive가 우선이다](./docs/knowledge/revive-over-transcript-recall.md)<br>[세션 식별자는 파일명이 아니라 사람이 본 이름이다](./docs/knowledge/session-identity-over-filenames.md)<br>[터미널 연동은 host adapter로 다룬다](./docs/knowledge/terminal-host-integration.md)<br>[터미널 workspace 복원은 snapshot과 host adapter를 분리한다](./docs/knowledge/terminal-workspace-restore.md)<br>[색상은 정보 위계다](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다](./docs/knowledge/tui-rendering-sanitization.md)<br>[Worktree 생성은 부모 패널의 게이트다](./docs/knowledge/worktree-creation-parent-gate.md)<br>[Worktree 세션 연속성과 식별성 원칙](./docs/knowledge/worktree-session-continuity.md) |
 | extension | `extensions/frame-studio` | [AskUserQuestion은 의사결정 게이트다](./docs/knowledge/ask-user-question-decision-gates.md)<br>[AskUserQuestion 옵션은 행동 분기를 표현한다](./docs/knowledge/ask-user-question-option-design.md)<br>[Decide는 선택을 한 번 공격한다](./docs/knowledge/decide-tradeoff-challenge.md)<br>[Embedded WebView script는 escape 경계를 보존한다](./docs/knowledge/embedded-webview-script-escape-boundary.md)<br>[Frame은 마지막에 Plan을 합성한다](./docs/knowledge/frame-plan-synthesis-continuity.md)<br>[TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./docs/knowledge/frame-studio-interactive-decision-ui.md)<br>[Live artifact는 local preview first다](./docs/knowledge/live-artifact-preview-pattern.md)<br>[TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./docs/knowledge/tft-visual-structure-renderer.md)<br>[Working Context Card는 큰 맥락을 현재 slice로 압축한다](./docs/knowledge/work-context-card-task-board.md)<br>[반복 워크플로 실패는 guard/flow로 고정한다](./docs/knowledge/workflow-guard-enforced-flow.md) |
 | extension | `extensions/idle-screensaver` | [Idle UI는 장식이 아니라 ambient status다](./docs/knowledge/ambient-status-surfaces.md)<br>[색상은 정보 위계다](./docs/knowledge/theme-information-hierarchy.md) |
+| extension | `extensions/interactive-shell` | [Interactive shell은 bash가 아닌 터미널 세션이다](./docs/knowledge/interactive-shell-overlay-tool.md) |
 | extension | `extensions/mcp-bridge` | [검토 산출물은 다시 열 수 있어야 한다](./docs/knowledge/artifact-archive-reopenability.md)<br>[Deterministic fallback은 workflow를 보존한다](./docs/knowledge/deterministic-fallbacks-preserve-workflow.md)<br>[MCP 결과는 큰 출력만 digest-first로 다룬다](./docs/knowledge/mcp-digest-first-artifacts.md)<br>[MCP stderr는 TUI 출력이 아니다](./docs/knowledge/mcp-stderr-isolation.md)<br>[터미널 연동은 host adapter로 다룬다](./docs/knowledge/terminal-host-integration.md)<br>[도구 출력은 대화 흐름을 침범하지 않는다](./docs/knowledge/tool-output-noise-management.md) |
 | extension | `extensions/memory-layer` | [자동 로드 컨텍스트는 최소 surface만 가진다](./docs/knowledge/context-loading-minimal-surface.md) |
 | extension | `extensions/notify` | [터미널 연동은 host adapter로 다룬다](./docs/knowledge/terminal-host-integration.md) |
@@ -239,6 +241,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | extension | `extensions/preflight` | [Private overlay package는 회사·개인 실행 맥락을 담는다](./docs/knowledge/private-overlay-package-boundary.md)<br>[수정 전에 근본 원인을 좁힌다](./docs/knowledge/root-cause-before-fix.md)<br>[반복 검증 실패는 baseline cache로 분리한다](./docs/knowledge/validation-baseline-failure-cache.md)<br>[반복 워크플로 실패는 guard/flow로 고정한다](./docs/knowledge/workflow-guard-enforced-flow.md) |
 | extension | `extensions/prompt-suggest-lite` | [Editor affordance는 숨은 컨텍스트가 아니다](./docs/knowledge/editor-affordance-not-context.md) |
 | extension | `extensions/queued-messages` | [Queued command는 실행 보장이 아니다](./docs/knowledge/queued-command-prefill-boundary.md) |
+| extension | `extensions/read-tool-override` | [Read/Edit tool override는 필요한 증거만 펼친다](./docs/knowledge/read-edit-tool-output-override.md) |
 | extension | `extensions/retro` | [Retro는 private reflection이다](./docs/knowledge/retro-private-reflection-boundary.md) |
 | extension | `extensions/session-title` | [Backlog는 원 세션 출처를 보존한다](./docs/knowledge/backlog-source-session-provenance.md)<br>[세션 식별자는 파일명이 아니라 사람이 본 이름이다](./docs/knowledge/session-identity-over-filenames.md) |
 | extension | `extensions/ship-commands` | [CI-Ship은 PR 후 검증 실패 대응 단계다](./docs/knowledge/ci-ship-failure-response-boundary.md)<br>[Ship과 PR-Ship은 서로 다른 통합 단계다](./docs/knowledge/ship-pr-ship-review-boundary.md)<br>[Subagent는 slash command가 아니라 skill prompt를 위임받는다](./docs/knowledge/subagent-skill-delegation.md) |
@@ -254,7 +257,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | extension | `extensions/usage-analytics` | [도구 출력은 대화 흐름을 침범하지 않는다](./docs/knowledge/tool-output-noise-management.md) |
 | extension | `extensions/usage-reporter` | [Idle UI는 장식이 아니라 ambient status다](./docs/knowledge/ambient-status-surfaces.md)<br>[도구 출력은 대화 흐름을 침범하지 않는다](./docs/knowledge/tool-output-noise-management.md) |
 | extension | `extensions/user-facing-language` | [User-facing 출력은 한국어를 기본으로 한다](./docs/knowledge/korean-first-user-facing-output.md) |
-| extension | `extensions/utils` | [MCP stderr는 TUI 출력이 아니다](./docs/knowledge/mcp-stderr-isolation.md)<br>[Session export는 원본을 보존하는 adapter를 거친다](./docs/knowledge/session-export-source-preservation.md)<br>[터미널 연동은 host adapter로 다룬다](./docs/knowledge/terminal-host-integration.md)<br>[Utils surface는 사용자 계약을 만들지 않는다](./docs/knowledge/utility-surface-stays-invisible.md)<br>[Working Context Card는 큰 맥락을 현재 slice로 압축한다](./docs/knowledge/work-context-card-task-board.md) |
+| extension | `extensions/utils` | [MCP stderr는 TUI 출력이 아니다](./docs/knowledge/mcp-stderr-isolation.md)<br>[Read/Edit tool override는 필요한 증거만 펼친다](./docs/knowledge/read-edit-tool-output-override.md)<br>[Session export는 원본을 보존하는 adapter를 거친다](./docs/knowledge/session-export-source-preservation.md)<br>[터미널 연동은 host adapter로 다룬다](./docs/knowledge/terminal-host-integration.md)<br>[Utils surface는 사용자 계약을 만들지 않는다](./docs/knowledge/utility-surface-stays-invisible.md)<br>[Working Context Card는 큰 맥락을 현재 slice로 압축한다](./docs/knowledge/work-context-card-task-board.md) |
 | extension | `extensions/web-access` | [검토 산출물은 다시 열 수 있어야 한다](./docs/knowledge/artifact-archive-reopenability.md)<br>[웹 검색은 승인된 출처 선택을 거친다](./docs/knowledge/curator-approved-source-selection.md)<br>[Deterministic fallback은 workflow를 보존한다](./docs/knowledge/deterministic-fallbacks-preserve-workflow.md)<br>[Embedded WebView script는 escape 경계를 보존한다](./docs/knowledge/embedded-webview-script-escape-boundary.md)<br>[User-facing 출력은 한국어를 기본으로 한다](./docs/knowledge/korean-first-user-facing-output.md)<br>[Live artifact는 local preview first다](./docs/knowledge/live-artifact-preview-pattern.md)<br>[Web Search curator와 승인형 요약 흐름](./docs/knowledge/web-search-curator.md) |
 | extension | `extensions/work-context` | [Working Context Card는 큰 맥락을 현재 slice로 압축한다](./docs/knowledge/work-context-card-task-board.md) |
 | extension | `extensions/workflow-guard` | [Working Context Card는 큰 맥락을 현재 slice로 압축한다](./docs/knowledge/work-context-card-task-board.md)<br>[반복 워크플로 실패는 guard/flow로 고정한다](./docs/knowledge/workflow-guard-enforced-flow.md) |
@@ -272,6 +275,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | skill | `skills/frame` | [Architecture friction은 TFT의 검증 축이다](./docs/knowledge/architecture-friction-tft-lens.md)<br>[AskUserQuestion은 의사결정 게이트다](./docs/knowledge/ask-user-question-decision-gates.md)<br>[AskUserQuestion 옵션은 행동 분기를 표현한다](./docs/knowledge/ask-user-question-option-design.md)<br>[Atomic evidence workflow는 작은 claim을 증거로 닫는다](./docs/knowledge/atomic-evidence-workflow.md)<br>[백엔드 레이어 맵은 Frame의 초기 이해 게이트다](./docs/knowledge/backend-layer-map-frame-gate.md)<br>[Decide는 선택을 한 번 공격한다](./docs/knowledge/decide-tradeoff-challenge.md)<br>[Frame은 마지막에 Plan을 합성한다](./docs/knowledge/frame-plan-synthesis-continuity.md)<br>[Frame identity는 cwd보다 작업 의도를 우선한다](./docs/knowledge/frame-planning-identity.md)<br>[TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./docs/knowledge/frame-studio-interactive-decision-ui.md)<br>[Frame과 Verify는 구조화 계약이다](./docs/knowledge/frame-verify-contract.md)<br>[정책축 스캔은 Frame의 초기 게이트다](./docs/knowledge/policy-axis-frame-gate.md)<br>[Command shim은 skill source of truth를 지킨다](./docs/knowledge/tft-command-shim-skill-routing.md)<br>[TFT Preference Regression Gate는 사용자 선호 역전을 막는다](./docs/knowledge/tft-preference-regression-gate.md)<br>[Working Context Card는 큰 맥락을 현재 slice로 압축한다](./docs/knowledge/work-context-card-task-board.md)<br>[작업 절차의 무게는 변경 리스크에 비례해야 한다](./docs/knowledge/workflow-weight-proportionality.md) |
 | skill | `skills/git-workflow-and-versioning` | [변경 통합은 작은 단위와 검증을 요구한다](./docs/knowledge/change-integration-discipline.md)<br>[변경된 줄은 요청으로 추적 가능해야 한다](./docs/knowledge/request-traceability-surgical-changes.md)<br>[반복 검증 실패는 baseline cache로 분리한다](./docs/knowledge/validation-baseline-failure-cache.md) |
 | skill | `skills/incremental-implementation` | [Atomic evidence workflow는 작은 claim을 증거로 닫는다](./docs/knowledge/atomic-evidence-workflow.md)<br>[변경 통합은 작은 단위와 검증을 요구한다](./docs/knowledge/change-integration-discipline.md)<br>[변경된 줄은 요청으로 추적 가능해야 한다](./docs/knowledge/request-traceability-surgical-changes.md)<br>[작업 절차의 무게는 변경 리스크에 비례해야 한다](./docs/knowledge/workflow-weight-proportionality.md) |
+| skill | `skills/interactive-shell` | [Interactive shell은 bash가 아닌 터미널 세션이다](./docs/knowledge/interactive-shell-overlay-tool.md) |
 | skill | `skills/jira-issue-management` | [외부 이슈 업데이트는 preview gate를 지난다](./docs/knowledge/external-issue-preview-gate.md)<br>[Private overlay package는 회사·개인 실행 맥락을 담는다](./docs/knowledge/private-overlay-package-boundary.md) |
 | skill | `skills/pilee-final-check` | [Atomic evidence workflow는 작은 claim을 증거로 닫는다](./docs/knowledge/atomic-evidence-workflow.md)<br>[Ember Ship은 knowledge 정합성을 release train으로 닫는다](./docs/knowledge/ember-ship-release-train.md)<br>[최종 검증은 메인 세션을 막지 않고 병렬화한다](./docs/knowledge/final-verification-parallelization.md)<br>[pilee 변경은 final-check gate로 닫는다](./docs/knowledge/pilee-final-check-gate.md)<br>[TFT Preference Regression Gate는 사용자 선호 역전을 막는다](./docs/knowledge/tft-preference-regression-gate.md) |
 | skill | `skills/pilee-knowledge` | [낮은 confidence 판단은 정합성 PR로 올린다](./docs/knowledge/confidence-sensitive-review.md)<br>[Ember는 knowledge의 친근한 입구다](./docs/knowledge/ember-friendly-knowledge-entrypoint.md)<br>[Ember Ship은 knowledge 정합성을 release train으로 닫는다](./docs/knowledge/ember-ship-release-train.md)<br>[Freshness는 진단서다](./docs/knowledge/freshness-diagnosis-report.md)<br>[Knowledge 문서 단위는 판단 하나다](./docs/knowledge/judgment-doc-unit.md)<br>[Knowledge review queue는 PR body에 남긴다](./docs/knowledge/knowledge-review-queue-pr-body.md)<br>[pilee 지식 계층과 정합성 갱신](./docs/knowledge/pilee-knowledge-system.md)<br>[Private journal과 public doctrine은 분리한다](./docs/knowledge/private-journal-public-doctrine.md)<br>[README 철학 변경은 사용자 판단 게이트를 지난다](./docs/knowledge/readme-philosophy-user-gate.md)<br>[reviewed_commit은 날짜 freshness의 빈틈을 막는다](./docs/knowledge/reviewed-commit-freshness.md) |
@@ -298,7 +302,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 ## Extensions
 
 <!-- PILEE_README_EXTENSIONS_START -->
-47개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
+50개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
 
 > `extensions/*`와 `scripts/knowledge.mjs`의 inventory metadata에서 생성됩니다. 변경 후 `node scripts/knowledge.mjs --graph`로 갱신합니다.
 
@@ -351,6 +355,9 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | 이름 | 설명 |
 |---|---|
 | **bash-tool-override** | Bash tool 제목/출력 렌더링 override — 명령 의도 중심으로 표시 |
+| **read-tool-override** | Read tool 출력 preview/range 렌더링 override |
+| **edit-tool-override** | Edit tool 사전 diff preview와 side-by-side 결과 렌더링 override |
+| **interactive-shell** | 인터랙티브/장시간 셸을 overlay·hands-free·dispatch 모드로 실행 |
 | **tasks** | 태스크 CRUD + `Ctrl+Shift+T` |
 | **auto-commit** | 명시 JSON plan 기반 commit/push 실행 도구 |
 | **tui-ask** | 터미널 overlay 질문 도구 — single/multi/text decision gate |
@@ -380,7 +387,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 ## Skills
 
 <!-- PILEE_README_SKILLS_START -->
-25개. 글로벌 워크플로 스킬만 pilee에 포함. 프로젝트 고유 스킬(create-pr, self-review)은 해당 레포/private overlay에 위치.
+26개. 글로벌 워크플로 스킬만 pilee에 포함. 프로젝트 고유 스킬(create-pr, self-review)은 해당 레포/private overlay에 위치.
 
 > `skills/*/SKILL.md`와 `scripts/knowledge.mjs`의 inventory metadata에서 생성됩니다. 변경 후 `node scripts/knowledge.mjs --graph`로 갱신합니다.
 
@@ -406,6 +413,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 
 | 스킬 | 역할 |
 |---|---|
+| **interactive-shell** | dev server/TUI/REPL/log viewer를 `interactive_shell`로 다루는 사용 가이드 |
 | **systematic-debugging** | 버그 근본원인 파악 → 수정 프로세스 |
 | **debugging-and-error-recovery** | 실패한 테스트/빌드/런타임 오류 복구 |
 | **git-workflow-and-versioning** | Git 워크플로와 변경 단위 discipline |

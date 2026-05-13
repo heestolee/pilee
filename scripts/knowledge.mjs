@@ -1042,6 +1042,9 @@ const README_EXTENSION_GROUPS = [
 	] },
 	{ ko: "도구", en: "Tools and data", items: [
 		{ name: "bash-tool-override", ko: "Bash tool 제목/출력 렌더링 override — 명령 의도 중심으로 표시", en: "Bash tool title and output rendering override focused on command intent" },
+		{ name: "read-tool-override", ko: "Read tool 출력 preview/range 렌더링 override", en: "Read tool compact preview and range rendering override" },
+		{ name: "edit-tool-override", ko: "Edit tool 사전 diff preview와 side-by-side 결과 렌더링 override", en: "Edit tool preflight diff preview and side-by-side result rendering override" },
+		{ name: "interactive-shell", ko: "인터랙티브/장시간 셸을 overlay·hands-free·dispatch 모드로 실행", en: "Runs interactive or long-running shells in overlay, hands-free, or dispatch modes" },
 		{ name: "tasks", ko: "태스크 CRUD + `Ctrl+Shift+T`", en: "Task CRUD and `Ctrl+Shift+T`" },
 		{ name: "auto-commit", ko: "명시 JSON plan 기반 commit/push 실행 도구", en: "Executes commit/push from an explicit JSON plan" },
 		{ name: "tui-ask", ko: "터미널 overlay 질문 도구 — single/multi/text decision gate", en: "Terminal overlay question tool for single/multi/text decision gates" },
@@ -1075,6 +1078,7 @@ const README_SKILL_GROUPS = [
 		{ name: "code-review-and-quality", ko: "코드 리뷰 품질 기준", en: "Code review quality checklist" },
 	] },
 	{ ko: "워크플로", en: "Workflow", items: [
+		{ name: "interactive-shell", ko: "dev server/TUI/REPL/log viewer를 `interactive_shell`로 다루는 사용 가이드", en: "Usage guide for dev servers, TUIs, REPLs, and log viewers via `interactive_shell`" },
 		{ name: "systematic-debugging", ko: "버그 근본원인 파악 → 수정 프로세스", en: "Root-cause-first debugging process" },
 		{ name: "debugging-and-error-recovery", ko: "실패한 테스트/빌드/런타임 오류 복구", en: "Error recovery and failed-check triage" },
 		{ name: "git-workflow-and-versioning", ko: "Git 워크플로와 변경 단위 discipline", en: "Git discipline, commits, branches, and worktrees" },

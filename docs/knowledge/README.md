@@ -187,11 +187,13 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Frame은 마지막에 Plan을 합성한다](./frame-plan-synthesis-continuity.md) | active | high | 2026-05-13 | e0dc999 | frame, implementation-plan, tft-studio, worktree, continuity, planning |
 | [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-05-13 | 1f5c3ac | frame, planning, identity, home-directory, ticket, session-title |
 | [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-05-13 | 1f5c3ac | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
+| [Interactive shell은 bash가 아닌 터미널 세션이다](./interactive-shell-overlay-tool.md) | active | high | 2026-05-13 | f3fe380 | interactive-shell, shell, tui, dev-server, overlay, dispatch |
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-05-13 | 1f5c3ac | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 264ea17 | local-dev, server, startup, diagnosis, dev |
 | [pilee 변경은 final-check gate로 닫는다](./pilee-final-check-gate.md) | active | high | 2026-05-13 | 1a6aa93 | pilee, final-check, verification, skill, workflow, 마무리 |
 | [Private overlay package는 회사·개인 실행 맥락을 담는다](./private-overlay-package-boundary.md) | active | high | 2026-05-13 | e0dc999 | privacy, package, overlay, skill, company-context |
 | [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-05-12 | ca8ae9e | queued-messages, slash-command, prefill, worktree, session, boundary |
+| [Read/Edit tool override는 필요한 증거만 펼친다](./read-edit-tool-output-override.md) | active | high | 2026-05-13 | f3fe380 | read, edit, tool, override, diff, preview |
 | [변경된 줄은 요청으로 추적 가능해야 한다](./request-traceability-surgical-changes.md) | active | high | 2026-05-13 | 74c8c28 | request-traceability, surgical-change, karpathy, diff, scope, review |
 | [종료된 포크는 transcript 주입보다 revive가 우선이다](./revive-over-transcript-recall.md) | active | high | 2026-05-12 | ca8ae9e | revive, recall, fork-panel, session, continuity, 세션 |
 | [세션 분류는 원본 위의 sidecar다](./session-classification-sidecar.md) | active | high | 2026-05-12 | b3d4dce | archive, show-report, session-classification, sidecar, session, ai-suggestion |
@@ -282,11 +284,13 @@ graph TD
   doc_frame_plan_synthesis_continuity["Frame은 마지막에 Plan을 합성한다"]
   doc_frame_planning_identity["Frame identity는 cwd보다 작업 의도를 우선한다"]
   doc_frame_studio_interactive_decision_ui["TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다"]
+  doc_interactive_shell_overlay_tool["Interactive shell은 bash가 아닌 터미널 세션이다"]
   doc_live_artifact_preview_pattern["Live artifact는 local preview first다"]
   doc_local_dev_startup_diagnosis["로컬 개발 서버 시작은 진단 가능한 절차여야 한다"]
   doc_pilee_final_check_gate["pilee 변경은 final-check gate로 닫는다"]
   doc_private_overlay_package_boundary["Private overlay package는 회사·개인 실행 맥락을 담는다"]
   doc_queued_command_prefill_boundary["Queued command는 실행 보장이 아니다"]
+  doc_read_edit_tool_output_override["Read/Edit tool override는 필요한 증거만 펼친다"]
   doc_request_traceability_surgical_changes["변경된 줄은 요청으로 추적 가능해야 한다"]
   doc_revive_over_transcript_recall["종료된 포크는 transcript 주입보다 revive가 우선이다"]
   doc_session_classification_sidecar["세션 분류는 원본 위의 sidecar다"]
@@ -529,6 +533,9 @@ graph TD
   doc_frame_studio_interactive_decision_ui --> doc_frame_verify_contract
   doc_frame_studio_interactive_decision_ui --> doc_live_artifact_preview_pattern
   doc_frame_studio_interactive_decision_ui --> doc_tft_visual_structure_renderer
+  doc_interactive_shell_overlay_tool --> doc_bash_tool_title_output_override
+  doc_interactive_shell_overlay_tool --> doc_terminal_host_integration
+  doc_interactive_shell_overlay_tool --> doc_tool_output_noise_management
   doc_live_artifact_preview_pattern --> doc_artifact_archive_reopenability
   doc_live_artifact_preview_pattern --> doc_verify_report_workflow
   doc_live_artifact_preview_pattern --> doc_web_search_curator
@@ -547,6 +554,9 @@ graph TD
   doc_queued_command_prefill_boundary --> doc_subagent_prompt_specificity
   doc_queued_command_prefill_boundary --> doc_subagent_skill_delegation
   doc_queued_command_prefill_boundary --> doc_worktree_execution_boundary
+  doc_read_edit_tool_output_override --> doc_atomic_evidence_workflow
+  doc_read_edit_tool_output_override --> doc_bash_tool_title_output_override
+  doc_read_edit_tool_output_override --> doc_tool_output_noise_management
   doc_request_traceability_surgical_changes --> doc_change_integration_discipline
   doc_request_traceability_surgical_changes --> doc_evidence_first_verification_gate
   doc_request_traceability_surgical_changes --> doc_frame_verify_contract
@@ -619,7 +629,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 90
-- Links: 309
+- Documents: 92
+- Links: 315
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

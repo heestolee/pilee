@@ -200,12 +200,14 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | extension | `extensions/custom-style` | [Editor Affordance Not Context](./docs/knowledge/editor-affordance-not-context.md)<br>[Korean First User Facing Output](./docs/knowledge/korean-first-user-facing-output.md)<br>[Terminal Host Integration](./docs/knowledge/terminal-host-integration.md)<br>[Theme Information Hierarchy](./docs/knowledge/theme-information-hierarchy.md) |
 | extension | `extensions/diff-overlay` | [Diff Review Draft Handoff](./docs/knowledge/diff-review-draft-handoff.md)<br>[Theme Information Hierarchy](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI Rendering Sanitization](./docs/knowledge/tui-rendering-sanitization.md) |
 | extension | `extensions/dynamic-agents-md` | [Context Loading Minimal Surface](./docs/knowledge/context-loading-minimal-surface.md)<br>[Skills As Portable Procedures](./docs/knowledge/skills-as-portable-procedures.md) |
+| extension | `extensions/edit-tool-override` | [Read Edit Tool Output Override](./docs/knowledge/read-edit-tool-output-override.md) |
 | extension | `extensions/ember` | [Ember Friendly Knowledge Entrypoint](./docs/knowledge/ember-friendly-knowledge-entrypoint.md)<br>[Ember Ship Release Train](./docs/knowledge/ember-ship-release-train.md) |
 | extension | `extensions/ember-ship` | [Ember Ship Release Train](./docs/knowledge/ember-ship-release-train.md) |
 | extension | `extensions/footer` | [Editor Affordance Not Context](./docs/knowledge/editor-affordance-not-context.md) |
 | extension | `extensions/fork-panel` | [Fork Panel Parent Inbox](./docs/knowledge/fork-panel-parent-inbox.md)<br>[Fork Panel Spatial Continuity](./docs/knowledge/fork-panel-spatial-continuity.md)<br>[MCP Stderr Isolation](./docs/knowledge/mcp-stderr-isolation.md)<br>[Revive Over Transcript Recall](./docs/knowledge/revive-over-transcript-recall.md)<br>[Session Identity Over Filenames](./docs/knowledge/session-identity-over-filenames.md)<br>[Terminal Host Integration](./docs/knowledge/terminal-host-integration.md)<br>[Terminal Workspace Restore](./docs/knowledge/terminal-workspace-restore.md)<br>[Theme Information Hierarchy](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI Rendering Sanitization](./docs/knowledge/tui-rendering-sanitization.md)<br>[Worktree Creation Parent Gate](./docs/knowledge/worktree-creation-parent-gate.md)<br>[Worktree Session Continuity](./docs/knowledge/worktree-session-continuity.md) |
 | extension | `extensions/frame-studio` | [Ask User Question Decision Gates](./docs/knowledge/ask-user-question-decision-gates.md)<br>[Ask User Question Option Design](./docs/knowledge/ask-user-question-option-design.md)<br>[Decide Tradeoff Challenge](./docs/knowledge/decide-tradeoff-challenge.md)<br>[Embedded Webview Script Escape Boundary](./docs/knowledge/embedded-webview-script-escape-boundary.md)<br>[Frame Plan Synthesis Continuity](./docs/knowledge/frame-plan-synthesis-continuity.md)<br>[Frame Studio Interactive Decision UI](./docs/knowledge/frame-studio-interactive-decision-ui.md)<br>[Live Artifact Preview Pattern](./docs/knowledge/live-artifact-preview-pattern.md)<br>[TFT Visual Structure Renderer](./docs/knowledge/tft-visual-structure-renderer.md)<br>[Working Context Card compresses large context into the current slice](./docs/knowledge/work-context-card-task-board.md)<br>[Repeated workflow failures become enforced guard flows](./docs/knowledge/workflow-guard-enforced-flow.md) |
 | extension | `extensions/idle-screensaver` | [Ambient Status Surfaces](./docs/knowledge/ambient-status-surfaces.md)<br>[Theme Information Hierarchy](./docs/knowledge/theme-information-hierarchy.md) |
+| extension | `extensions/interactive-shell` | [Interactive Shell Overlay Tool](./docs/knowledge/interactive-shell-overlay-tool.md) |
 | extension | `extensions/mcp-bridge` | [Artifact Archive Reopenability](./docs/knowledge/artifact-archive-reopenability.md)<br>[Deterministic Fallbacks Preserve Workflow](./docs/knowledge/deterministic-fallbacks-preserve-workflow.md)<br>[MCP Digest First Artifacts](./docs/knowledge/mcp-digest-first-artifacts.md)<br>[MCP Stderr Isolation](./docs/knowledge/mcp-stderr-isolation.md)<br>[Terminal Host Integration](./docs/knowledge/terminal-host-integration.md)<br>[Tool Output Noise Management](./docs/knowledge/tool-output-noise-management.md) |
 | extension | `extensions/memory-layer` | [Context Loading Minimal Surface](./docs/knowledge/context-loading-minimal-surface.md) |
 | extension | `extensions/notify` | [Terminal Host Integration](./docs/knowledge/terminal-host-integration.md) |
@@ -214,6 +216,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | extension | `extensions/preflight` | [Private Overlay Package Boundary](./docs/knowledge/private-overlay-package-boundary.md)<br>[Root Cause Before Fix](./docs/knowledge/root-cause-before-fix.md)<br>[Repeated validation failures are separated by a baseline cache](./docs/knowledge/validation-baseline-failure-cache.md)<br>[Repeated workflow failures become enforced guard flows](./docs/knowledge/workflow-guard-enforced-flow.md) |
 | extension | `extensions/prompt-suggest-lite` | [Editor Affordance Not Context](./docs/knowledge/editor-affordance-not-context.md) |
 | extension | `extensions/queued-messages` | [Queued Command Prefill Boundary](./docs/knowledge/queued-command-prefill-boundary.md) |
+| extension | `extensions/read-tool-override` | [Read Edit Tool Output Override](./docs/knowledge/read-edit-tool-output-override.md) |
 | extension | `extensions/retro` | [Retro Private Reflection Boundary](./docs/knowledge/retro-private-reflection-boundary.md) |
 | extension | `extensions/session-title` | [Backlog Source Session Provenance](./docs/knowledge/backlog-source-session-provenance.md)<br>[Session Identity Over Filenames](./docs/knowledge/session-identity-over-filenames.md) |
 | extension | `extensions/ship-commands` | [Ci Ship Failure Response Boundary](./docs/knowledge/ci-ship-failure-response-boundary.md)<br>[Ship PR Ship Review Boundary](./docs/knowledge/ship-pr-ship-review-boundary.md)<br>[Subagent Skill Delegation](./docs/knowledge/subagent-skill-delegation.md) |
@@ -229,7 +232,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | extension | `extensions/usage-analytics` | [Tool Output Noise Management](./docs/knowledge/tool-output-noise-management.md) |
 | extension | `extensions/usage-reporter` | [Ambient Status Surfaces](./docs/knowledge/ambient-status-surfaces.md)<br>[Tool Output Noise Management](./docs/knowledge/tool-output-noise-management.md) |
 | extension | `extensions/user-facing-language` | [Korean First User Facing Output](./docs/knowledge/korean-first-user-facing-output.md) |
-| extension | `extensions/utils` | [MCP Stderr Isolation](./docs/knowledge/mcp-stderr-isolation.md)<br>[Session Export Source Preservation](./docs/knowledge/session-export-source-preservation.md)<br>[Terminal Host Integration](./docs/knowledge/terminal-host-integration.md)<br>[Utility Surface Stays Invisible](./docs/knowledge/utility-surface-stays-invisible.md)<br>[Working Context Card compresses large context into the current slice](./docs/knowledge/work-context-card-task-board.md) |
+| extension | `extensions/utils` | [MCP Stderr Isolation](./docs/knowledge/mcp-stderr-isolation.md)<br>[Read Edit Tool Output Override](./docs/knowledge/read-edit-tool-output-override.md)<br>[Session Export Source Preservation](./docs/knowledge/session-export-source-preservation.md)<br>[Terminal Host Integration](./docs/knowledge/terminal-host-integration.md)<br>[Utility Surface Stays Invisible](./docs/knowledge/utility-surface-stays-invisible.md)<br>[Working Context Card compresses large context into the current slice](./docs/knowledge/work-context-card-task-board.md) |
 | extension | `extensions/web-access` | [Artifact Archive Reopenability](./docs/knowledge/artifact-archive-reopenability.md)<br>[Curator Approved Source Selection](./docs/knowledge/curator-approved-source-selection.md)<br>[Deterministic Fallbacks Preserve Workflow](./docs/knowledge/deterministic-fallbacks-preserve-workflow.md)<br>[Embedded Webview Script Escape Boundary](./docs/knowledge/embedded-webview-script-escape-boundary.md)<br>[Korean First User Facing Output](./docs/knowledge/korean-first-user-facing-output.md)<br>[Live Artifact Preview Pattern](./docs/knowledge/live-artifact-preview-pattern.md)<br>[Web Search Curator](./docs/knowledge/web-search-curator.md) |
 | extension | `extensions/work-context` | [Working Context Card compresses large context into the current slice](./docs/knowledge/work-context-card-task-board.md) |
 | extension | `extensions/workflow-guard` | [Working Context Card compresses large context into the current slice](./docs/knowledge/work-context-card-task-board.md)<br>[Repeated workflow failures become enforced guard flows](./docs/knowledge/workflow-guard-enforced-flow.md) |
@@ -247,6 +250,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | skill | `skills/frame` | [Architecture Friction TFT Lens](./docs/knowledge/architecture-friction-tft-lens.md)<br>[Ask User Question Decision Gates](./docs/knowledge/ask-user-question-decision-gates.md)<br>[Ask User Question Option Design](./docs/knowledge/ask-user-question-option-design.md)<br>[Atomic Evidence Workflow](./docs/knowledge/atomic-evidence-workflow.md)<br>[Backend Layer Map Frame Gate](./docs/knowledge/backend-layer-map-frame-gate.md)<br>[Decide Tradeoff Challenge](./docs/knowledge/decide-tradeoff-challenge.md)<br>[Frame Plan Synthesis Continuity](./docs/knowledge/frame-plan-synthesis-continuity.md)<br>[Frame Planning Identity](./docs/knowledge/frame-planning-identity.md)<br>[Frame Studio Interactive Decision UI](./docs/knowledge/frame-studio-interactive-decision-ui.md)<br>[Frame Verify Contract](./docs/knowledge/frame-verify-contract.md)<br>[Policy Axis Frame Gate](./docs/knowledge/policy-axis-frame-gate.md)<br>[TFT Command Shim Skill Routing](./docs/knowledge/tft-command-shim-skill-routing.md)<br>[TFT Preference Regression Gate](./docs/knowledge/tft-preference-regression-gate.md)<br>[Working Context Card compresses large context into the current slice](./docs/knowledge/work-context-card-task-board.md)<br>[Workflow weight must match change risk](./docs/knowledge/workflow-weight-proportionality.md) |
 | skill | `skills/git-workflow-and-versioning` | [Change Integration Discipline](./docs/knowledge/change-integration-discipline.md)<br>[Request Traceability Surgical Changes](./docs/knowledge/request-traceability-surgical-changes.md)<br>[Repeated validation failures are separated by a baseline cache](./docs/knowledge/validation-baseline-failure-cache.md) |
 | skill | `skills/incremental-implementation` | [Atomic Evidence Workflow](./docs/knowledge/atomic-evidence-workflow.md)<br>[Change Integration Discipline](./docs/knowledge/change-integration-discipline.md)<br>[Request Traceability Surgical Changes](./docs/knowledge/request-traceability-surgical-changes.md)<br>[Workflow weight must match change risk](./docs/knowledge/workflow-weight-proportionality.md) |
+| skill | `skills/interactive-shell` | [Interactive Shell Overlay Tool](./docs/knowledge/interactive-shell-overlay-tool.md) |
 | skill | `skills/jira-issue-management` | [External Issue Preview Gate](./docs/knowledge/external-issue-preview-gate.md)<br>[Private Overlay Package Boundary](./docs/knowledge/private-overlay-package-boundary.md) |
 | skill | `skills/pilee-final-check` | [Atomic Evidence Workflow](./docs/knowledge/atomic-evidence-workflow.md)<br>[Ember Ship Release Train](./docs/knowledge/ember-ship-release-train.md)<br>[Final Verification Parallelization](./docs/knowledge/final-verification-parallelization.md)<br>[Pilee Final Check Gate](./docs/knowledge/pilee-final-check-gate.md)<br>[TFT Preference Regression Gate](./docs/knowledge/tft-preference-regression-gate.md) |
 | skill | `skills/pilee-knowledge` | [Confidence Sensitive Review](./docs/knowledge/confidence-sensitive-review.md)<br>[Ember Friendly Knowledge Entrypoint](./docs/knowledge/ember-friendly-knowledge-entrypoint.md)<br>[Ember Ship Release Train](./docs/knowledge/ember-ship-release-train.md)<br>[Freshness Diagnosis Report](./docs/knowledge/freshness-diagnosis-report.md)<br>[Judgment Doc Unit](./docs/knowledge/judgment-doc-unit.md)<br>[Knowledge Review Queue PR Body](./docs/knowledge/knowledge-review-queue-pr-body.md)<br>[Pilee Knowledge System](./docs/knowledge/pilee-knowledge-system.md)<br>[Private Journal Public Doctrine](./docs/knowledge/private-journal-public-doctrine.md)<br>[README Philosophy User Gate](./docs/knowledge/readme-philosophy-user-gate.md)<br>[Reviewed Commit Freshness](./docs/knowledge/reviewed-commit-freshness.md) |
@@ -273,7 +277,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 ## Extensions
 
 <!-- PILEE_README_EXTENSIONS_START -->
-47 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
+50 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
 
 > Generated from `extensions/*` plus inventory metadata in `scripts/knowledge.mjs`; refresh with `node scripts/knowledge.mjs --graph`.
 
@@ -326,6 +330,9 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | Name | Role |
 |---|---|
 | **bash-tool-override** | Bash tool title and output rendering override focused on command intent |
+| **read-tool-override** | Read tool compact preview and range rendering override |
+| **edit-tool-override** | Edit tool preflight diff preview and side-by-side result rendering override |
+| **interactive-shell** | Runs interactive or long-running shells in overlay, hands-free, or dispatch modes |
 | **tasks** | Task CRUD and `Ctrl+Shift+T` |
 | **auto-commit** | Executes commit/push from an explicit JSON plan |
 | **tui-ask** | Terminal overlay question tool for single/multi/text decision gates |
@@ -355,7 +362,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 ## Skills
 
 <!-- PILEE_README_SKILLS_START -->
-25 global workflow skills. Project-specific skills belong in project/private overlays.
+26 global workflow skills. Project-specific skills belong in project/private overlays.
 
 > Generated from `skills/*/SKILL.md` plus inventory metadata in `scripts/knowledge.mjs`; refresh with `node scripts/knowledge.mjs --graph`.
 
@@ -381,6 +388,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 
 | Skill | Role |
 |---|---|
+| **interactive-shell** | Usage guide for dev servers, TUIs, REPLs, and log viewers via `interactive_shell` |
 | **systematic-debugging** | Root-cause-first debugging process |
 | **debugging-and-error-recovery** | Error recovery and failed-check triage |
 | **git-workflow-and-versioning** | Git discipline, commits, branches, and worktrees |
