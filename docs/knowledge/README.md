@@ -152,8 +152,8 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 |---|---|---:|---:|---:|---|
 | [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-05-13 | f89a0f6 | verify, evidence, gate, done, ready, verification |
 | [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-05-13 | 1f5c3ac | frame, verify, frame-json, success-criteria, contract, verification |
-| [반복 검증 실패는 baseline cache로 분리한다](./validation-baseline-failure-cache.md) | active | high | 2026-05-12 | fc6ffa9 | preflight, validation, baseline, failure, cache, verification |
-| [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-05-12 | fc6ffa9 | verify, invalidation, code-change, freshness, gate, 검증 |
+| [반복 검증 실패는 baseline cache로 분리한다](./validation-baseline-failure-cache.md) | active | high | 2026-05-13 | 062f9f2 | preflight, validation, baseline, failure, cache, verification |
+| [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-05-13 | 062f9f2 | verify, invalidation, code-change, freshness, gate, 검증 |
 | [Verify Report 전에는 readiness를 먼저 잠근다](./verify-report-preflight-readiness.md) | active | high | 2026-05-12 | fc6ffa9 | verify-report, preflight, readiness, capture, data, account |
 | [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | active | high | 2026-05-12 | fc6ffa9 | verify-report, verification, evidence, coverage, capture, crop |
 | [Verify risk lens는 generic core와 private overlay로 나눈다](./verify-risk-lens-overlay.md) | active | high | 2026-05-12 | fc6ffa9 | verify, risk-lens, overlay, private-overlay, verification, domain-check |
@@ -163,7 +163,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [웹 검색은 승인된 출처 선택을 거친다](./curator-approved-source-selection.md) | active | high | 2026-05-13 | 49eb5f7 | web-search, curator, source-selection, approval, tavily, 검색 |
-| [Web Search curator와 승인형 요약 흐름](./web-search-curator.md) | active | high | 2026-05-12 | 9048804 | web-search, tavily, curator, glimpse, summary-review, korean-output |
+| [Web Search curator와 승인형 요약 흐름](./web-search-curator.md) | active | high | 2026-05-13 | 062f9f2 | web-search, tavily, curator, glimpse, summary-review, korean-output |
 
 ### workflow
 
@@ -200,13 +200,13 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-05-13 | 10e0874 | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
 | [TUI 질문은 작은 의사결정 게이트다](./tui-ask-decision-overlay.md) | active | high | 2026-05-13 | 10e0874 | tui, ask-user-question, decision-gate, tool, overlay |
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
-| [Working Context Card는 큰 맥락을 현재 slice로 압축한다](./work-context-card-task-board.md) | active | high | 2026-05-13 | 1621ef1 | work-context, tasks, workflow, context, guard |
-| [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-05-12 | 566dc2a | workflow, guard, intent, audit, hotfix, continuation |
-| [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-05-12 | 9048804 | workflow, frame, tft, hotfix, scope, incremental |
-| [Worktree 생성은 부모 패널의 게이트다](./worktree-creation-parent-gate.md) | active | high | 2026-05-12 | b50b0ef | worktree, fork-panel, parent-panel, hotfix, context, profile-driven |
+| [Working Context Card는 큰 맥락을 현재 slice로 압축한다](./work-context-card-task-board.md) | active | high | 2026-05-13 | 062f9f2 | work-context, tasks, workflow, context, guard |
+| [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-05-13 | 062f9f2 | workflow, guard, intent, audit, hotfix, continuation |
+| [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-05-13 | 062f9f2 | workflow, frame, tft, hotfix, scope, incremental |
+| [Worktree 생성은 부모 패널의 게이트다](./worktree-creation-parent-gate.md) | active | high | 2026-05-13 | 062f9f2 | worktree, fork-panel, parent-panel, hotfix, context, profile-driven |
 | [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-05-12 | 9048804 | worktree, dependencies, bootstrap, profile-driven, worker, subagent |
 | [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-05-12 | 9048804 | worktree, workspace, repo, branch, execution-boundary, cwd-binding |
-| [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-05-12 | b50b0ef | worktree, session, revive, fork-panel, panel-inbox, handoff |
+| [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-05-13 | 062f9f2 | worktree, session, revive, fork-panel, panel-inbox, handoff |
 
 ## Knowledge Map
 
