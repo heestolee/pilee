@@ -35,6 +35,13 @@ pilee가 아닌 product/lambda/외부 프로젝트 변경에는 해당 프로젝
 5. **무의미한 확인 질문 금지**
    - 결과가 정해진 “충분할까요?” 질문은 하지 않는다.
    - 사용자의 선택이 다음 행동을 바꾸는 경우에만 묻는다.
+6. **Claim/evidence 최종 대조**
+   - 완료 보고 전에 이번 변경의 claim을 나열한다.
+   - 각 claim마다 실제 증거를 붙인다.
+   - 증거 없는 claim은 PASS가 아니라 GAP이다.
+7. **도구 성공과 사용자 성공 분리**
+   - TypeScript syntax check, Studio update, HTML 생성 성공은 중간 증거일 뿐이다.
+   - 사용자가 보는 화면/리포트/동작이 핵심이면 실제 렌더 결과를 확인한다.
 
 ## Workflow
 
@@ -68,6 +75,20 @@ git diff --stat origin/main...HEAD
 - package version만 바꾸고 package-lock을 놓침
 - public/private boundary 위반
 
+### 2.5 Claim inventory 작성
+
+완료 주장 전에 이번 변경이 참이어야 하는 문장을 작게 나눈다.
+
+| Claim | 관련 파일 | 필요한 증거 | 현재 증거 | 판정 |
+|---|---|---|---|---|
+| 예: Frame Studio에서 그림이 보인다 | `extensions/frame-studio/index.ts` | 실제 WebView 캡처 | 없음 | GAP |
+
+규칙:
+- claim은 요청 의도, diff, README/skill 설명, 사용자-facing 동작에서 뽑는다.
+- 각 claim은 test/build/syntax/runtime/capture/artifact 중 하나 이상의 증거와 연결한다.
+- 코드 독해만으로 user-facing claim을 PASS 처리하지 않는다.
+- 증거가 과하거나 비용이 크면 일단 GAP/보류로 표시하고, 다른 작업을 닫은 뒤 사용자에게 묻는다.
+
 ### 3. pilee-specific 구멍 리뷰
 
 변경 유형별로 최소 하나 이상의 실제 failure mode를 확인한다.
@@ -94,6 +115,14 @@ git diff --stat origin/main...HEAD
 - knowledge 변경은 `knowledge:graph -- --check`, `knowledge:validate`
 
 실제 UI/host 동작이 핵심이면 가능한 범위에서 실제 capture/smoke를 수행하고, 불가능하면 왜 불가능한지 gap으로 남긴다.
+
+#### verifier lens 적용
+
+light 변경은 main이 claim/evidence 표를 직접 닫는다. standard/full 변경, UI/WebView/render/tool contract 변경, 또는 완료 주장이 많아진 변경은 read-only `verifier` subagent를 병렬로 호출해 독립 증거 수집을 맡긴다.
+
+- subagent에게는 현재 `HEAD`, `git status --short`, 변경 파일, claim inventory, 정확한 검증 명령, read-only 금지선을 넘긴다.
+- verifier 결과는 최종 판정이 아니라 evidence input이다. main은 결과의 command output/artifact를 읽고 PASS/FAIL/PARTIAL을 다시 판정한다.
+- verifier가 증거를 못 만들면 해당 claim은 PASS가 아니라 GAP이다.
 
 ### 5. 표준 검증 세트
 

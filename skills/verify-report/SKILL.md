@@ -13,6 +13,7 @@ argument-hint: "[base-url] [--upload] [--update] [--ask-before] [--no-workers]"
 - **Coverage 먼저, 캡처는 그 다음**: 리포트 시작 전에 변경 diff/요구사항으로 검증 축을 정의한다. 캡처가 있어도 해당 축을 닫지 못하면 PASS가 아니다.
 - **캡처/증거 우선**: UI는 화면 캡처를 우선 증거로 삼고, 비가시 동작은 성공 기준을 어떤 로그/결과로 확인할지 먼저 정한다.
 - **미검증 명시**: 자동화로 확인하지 못한 항목은 PASS로 쓰지 않고 `미검증`/`blocked`/`Coverage Gap`에 남긴다.
+- **렌더링 claim은 실제 렌더로 닫는다**: 구조도, TUI, WebView, Markdown/HTML preview, SVG/이미지 생성처럼 “보인다”가 성공 기준인 작업은 source text, Mermaid codeblock, raw inline SVG, HTML 파일 생성만으로 PASS가 아니다. 실제 artifact를 열어 렌더링된 결과를 확인하고, 가능하면 캡처를 evidence로 남긴다.
 - **짧고 초점 있는 primary evidence**: 리포트 본문 핵심 증거는 viewport/섹션/element crop을 우선한다. 세로로 긴 full-page 캡처는 필요할 때만 보조 증거로 남기고 토글/appendix/link 뒤에 둔다. `role: "primary"`인 이미지/GIF는 renderer가 full-width로 보여주므로, 한 항목의 핵심 before/after 합성 이미지나 단일 핵심 crop에는 반드시 primary role을 붙인다.
 - **텍스트 합성 캡처는 glyph 확인**: 메시지 본문·알림톡·TUI처럼 실제 텍스트를 이미지로 렌더링할 때는 대상 언어 glyph가 있는 폰트(예: 한글은 Apple SD Gothic Neo/AppleGothic/Noto Sans CJK)를 사용한다. `□`/tofu box가 보이면 인코딩 문제가 아니라 폰트 fallback 실패일 가능성이 높으므로 리포트 확정 전에 재렌더링한다.
 - **Raw evidence에도 의도를 붙인다**: 모든 evidence에는 가능한 한 `purpose`, `inspectFor`, `expected`, `observed`, `role`, `relatedItem`을 붙여 “왜 수집했는지 / 무엇을 봐야 하는지”가 report와 `/archive`의 캡처/미디어 탭에서도 보이게 한다. Raw 파일의 의도는 별도 섹션으로 분리하지 말고 해당 raw 토글 내부 상단에 함께 보여 시선이 흩어지지 않게 한다.
@@ -94,6 +95,7 @@ Escape hatch:
 | 기존 UI/동작을 바꾸는 수정 | 같은 route/action/viewport/role의 before + after 비교 |
 | 정책축 스캔이 있는 작업 | channel_matrix의 각 채널 + time_basis/default_fallback/application_cardinality/data_migration/api_cache_identity 축 |
 | 백엔드 레이어 맵이 있는 작업 | entry_point/application_flow/domain_rule/data_access/cache_batching/persistence/consumer 책임 축 |
+| rendered artifact / diagram / Studio UI 변경 | UI_CAPTURE 또는 artifact preview capture. source text/HTML 생성만으로 PASS 금지 |
 
 > 더 자세한 프리셋은 [references/coverage-and-capture-quality.md](references/coverage-and-capture-quality.md)를 따른다.
 

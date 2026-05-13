@@ -172,6 +172,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [검토 산출물은 다시 열 수 있어야 한다](./artifact-archive-reopenability.md) | active | high | 2026-05-13 | ca6dec9 | artifact, archive, show-report, archive-command, history, html |
 | [AskUserQuestion은 의사결정 게이트다](./ask-user-question-decision-gates.md) | active | high | 2026-05-13 | ca6dec9 | ask-user-question, tft, decision-gate, question, non-delegable, 질문 |
 | [AskUserQuestion 옵션은 행동 분기를 표현한다](./ask-user-question-option-design.md) | active | high | 2026-05-13 | ca6dec9 | ask-user-question, option, wording, ceremony, tft, 질문 |
+| [Atomic evidence workflow는 작은 claim을 증거로 닫는다](./atomic-evidence-workflow.md) | active | high | 2026-05-13 | e6c131d | atomic, evidence, claim, slice, verification, frame |
 | [Auto-commit은 명시 계획만 실행한다](./auto-commit-explicit-plan-gate.md) | active | high | 2026-05-13 | e0dc999 | auto-commit, git, commit, plan, safety |
 | [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | high | 2026-05-13 | ca6dec9 | backlog, tasks, provenance, source-session, session, 맥락 |
 | [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md) | active | high | 2026-05-13 | 49eb5f7 | git, incremental, code-review, commit, quality, 통합 |
@@ -264,6 +265,7 @@ graph TD
   doc_artifact_archive_reopenability["검토 산출물은 다시 열 수 있어야 한다"]
   doc_ask_user_question_decision_gates["AskUserQuestion은 의사결정 게이트다"]
   doc_ask_user_question_option_design["AskUserQuestion 옵션은 행동 분기를 표현한다"]
+  doc_atomic_evidence_workflow["Atomic evidence workflow는 작은 claim을 증거로 닫는다"]
   doc_auto_commit_explicit_plan_gate["Auto-commit은 명시 계획만 실행한다"]
   doc_backlog_source_session_provenance["Backlog는 원 세션 출처를 보존한다"]
   doc_change_integration_discipline["변경 통합은 작은 단위와 검증을 요구한다"]
@@ -463,6 +465,11 @@ graph TD
   doc_ask_user_question_decision_gates --> doc_frame_verify_contract
   doc_ask_user_question_option_design --> doc_ask_user_question_decision_gates
   doc_ask_user_question_option_design --> doc_evidence_first_verification_gate
+  doc_atomic_evidence_workflow --> doc_evidence_first_verification_gate
+  doc_atomic_evidence_workflow --> doc_frame_studio_interactive_decision_ui
+  doc_atomic_evidence_workflow --> doc_frame_verify_contract
+  doc_atomic_evidence_workflow --> doc_verify_report_workflow
+  doc_atomic_evidence_workflow --> doc_worktree_session_continuity
   doc_auto_commit_explicit_plan_gate --> doc_change_integration_discipline
   doc_auto_commit_explicit_plan_gate --> doc_deterministic_vs_ai_actions
   doc_auto_commit_explicit_plan_gate --> doc_request_traceability_surgical_changes
@@ -596,7 +603,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 87
-- Links: 292
+- Documents: 88
+- Links: 297
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

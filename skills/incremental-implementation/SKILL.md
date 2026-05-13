@@ -33,6 +33,19 @@ For each slice:
 4. **Commit** — save progress with a descriptive message
 5. **Continue** to the next slice
 
+### Context hoarding보다 slice closure
+
+큰 transcript를 오래 들고 가는 것보다, 현재 slice를 작게 닫는 것이 우선이다.
+
+각 slice는 다음을 가져야 한다.
+
+- **Claim**: 무엇이 true여야 하는가
+- **Scope**: 어떤 파일/경로만 건드리는가
+- **Evidence**: 어떤 명령/캡처/로그/artifact로 닫는가
+- **Gap**: 지금 닫지 못한 것은 무엇인가
+
+이 네 가지가 없으면 다음 slice로 넘어가지 않는다. 오래된 맥락은 참고자료일 뿐이고, 현재 slice의 claim/evidence가 현재 truth다.
+
 ## Slicing Strategies
 
 ### Vertical Slices (Preferred)

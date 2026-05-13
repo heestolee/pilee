@@ -17,6 +17,14 @@
 - **외과수술식 변경**: 인접 코드 정리·취향 리팩터링·포맷 변경은 별도 요청 없이는 하지 않는다.
 - **오류는 추측하지 말고 읽는다**: 실패하면 전체 에러/로그/exit code를 먼저 읽고 원인을 확인한 뒤 수정한다.
 
+## Atomic evidence workflow
+
+- **컨텍스트는 보조 장치다**: 오래된 transcript나 많은 맥락을 현재 truth로 보지 않는다. 현재 작업의 truth는 작은 claim, scope, evidence다.
+- **작게 닫는다**: 큰 작업은 claim/slice 단위로 쪼개고, 각 slice는 독립적으로 검증 가능한 결과를 가져야 한다.
+- **증거 없이는 완료가 아니다**: 도구 호출 성공, 파일 생성, Studio update 성공은 사용자-facing 성공과 다르다.
+- **도구 성공은 사용자 성공이 아니다**: UI/TUI/렌더링/리포트 claim은 실제 화면·artifact·캡처로 확인해야 한다.
+- **근본원인 없이 수정하지 않는다**: 실패하면 전체 로그/출력/실제 렌더 상태를 먼저 읽고 원인을 좁힌다.
+
 ## Public / Private 경계
 
 - **public pilee**: 재사용 가능한 Pi 엔진, 안전 프로토콜, sanitized doctrine만 둔다.

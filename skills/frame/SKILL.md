@@ -125,6 +125,18 @@ description: 작업 시작 전에 구체 질문으로 목표·성공 기준·범
 
 `deep-interview`를 별도 명령으로 만들지 않는다. 이 규율은 `/frame`의 질문 품질을 높이는 내부 규칙이다.
 
+### 0-C. Design-first는 문서 승인이 아니라 합의 축소다
+
+`/frame`은 긴 설계 문서를 승인받는 절차가 아니다. 목표는 묵시적 합의를 줄이고, 구현 전에 결과가 달라지는 결정을 작게 확인하는 것이다.
+
+규칙:
+- 질문은 한 번에 하나만 한다.
+- 질문은 다음 행동이나 성공 기준을 실제로 바꾸는 경우에만 한다.
+- light 작업은 2~3문장 design lock으로 충분하다.
+- standard/full 작업은 claim/slice 단위로 나눠서 합의한다.
+- 사용자가 이미 준 절차/제약이 있으면 일반론으로 덮지 말고 그 목적을 먼저 확인한다.
+- 과한 명령·schema 확장이 필요해 보이면 1차 보류하고, 나머지 명확한 작업을 닫은 뒤 사용자에게 묻는다.
+
 ### 1. `(명백)` 질문 원칙
 
 `/frame`의 목표·범위·성공 기준·검증 축은 후속 계약을 바꾸는 선택이다. AI가 보기에 추천안이 명백해도 **묻는다**. 대신 질문 앞에 `(명백: ...)`으로 왜 그렇게 보이는지 표시한다.
@@ -396,10 +408,11 @@ Draft를 보여줄 때 맨 위에 반드시 다음을 붙인다:
 1. 성공 기준이 실제 사용자/시스템 결과를 말하는가
 2. 이번 작업에서 제외할 범위가 충분히 명시됐는가
 3. 검증 증거가 테스트/캡처/로그 중 무엇인지 분명한가
-4. 내가 선택한 답변이 frame 계약에 정확히 반영됐는가
-5. 정책축 스캔이 필요한 작업인데 시간 기준/DEFAULT/다중 적용/채널별 규칙이 빠지지 않았는가
-6. 백엔드 레이어 맵이 필요한 작업인데 resolver/usecase/repository/VO/loader 책임이 빠지지 않았는가
-7. implementation plan이 frame/decide 결정에서 파생됐는가
+4. claim/slice가 작게 닫히고, 각 slice의 evidence가 분명한가
+5. 내가 선택한 답변이 frame 계약에 정확히 반영됐는가
+6. 정책축 스캔이 필요한 작업인데 시간 기준/DEFAULT/다중 적용/채널별 규칙이 빠지지 않았는가
+7. 백엔드 레이어 맵이 필요한 작업인데 resolver/usecase/repository/VO/loader 책임이 빠지지 않았는가
+8. implementation plan이 frame/decide 결정에서 파생됐는가
 ```
 
 ### Step 7: AskUserQuestion — 구체 patch 메뉴
@@ -432,6 +445,7 @@ Draft를 보여줄 때 맨 위에 반드시 다음을 붙인다:
 2. `implementation_plan`을 frame/decide 결정에서 합성한다.
    - `decision_queue[]`가 남아 있으면 `status="blocked_by_decision"`으로 저장하고, Plan을 ready로 선언하지 않는다.
    - 닫힌 결정만으로 실행 방향이 충분하면 `status="ready"`로 두고 `slices`, `firstSafeStep`, `readiness`, `gates`를 채운다.
+   - 각 slice는 최소한 `claim`, `scope`, `evidence_needed`, `done_when`이 읽히게 작성한다. 별도 schema 확장이 과하면 기존 slice description/acceptance에 이 네 가지를 넣는다.
    - 이 Plan은 frame contract를 대체하지 않고, `derivedFrom.frameHash`와 `derivedFrom.decisionIds`로 출처를 남긴다.
 3. 필수 필드 점검:
    - `identity`, `goal`, `success_criteria`, `out_of_scope`, `boundaries`, `risk_register`, `verify_plan`, `implementation_plan`, `provenance`

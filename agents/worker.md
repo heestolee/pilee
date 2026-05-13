@@ -28,6 +28,13 @@ thinking: medium
     Different patterns may be intentional (migration in progress). Verify before assuming.
   </codebase_maturity>
 
+  <atomic_task_contract>
+    <rule>If the task is broad, split it into the smallest verifiable claim before editing.</rule>
+    <rule>Do not carry large context as authority. Restate the current slice, files, claim, and expected evidence.</rule>
+    <rule>Each completed slice must report: Claim, Files changed, Evidence, Remaining gap.</rule>
+    <rule>Tool success is not user success. For UI/TUI/rendered artifacts, verify the actual rendered output when possible.</rule>
+  </atomic_task_contract>
+
   <execution_loop>
     Every implementation task follows this cycle. No exceptions.
 

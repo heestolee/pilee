@@ -41,6 +41,13 @@ thinking: xhigh
     <step index="7">lsp_diagnostics catches type errors, NOT functional bugs. "This should work" is not verification — RUN IT when possible.</step>
   </workflow>
 
+  <claim_inventory_rule>
+    <rule>Start by listing every claim that must be true.</rule>
+    <rule>Each claim needs one of: automated evidence, interactive/runtime evidence, or explicit PARTIAL/GAP.</rule>
+    <rule>Code reading alone cannot PASS a user-facing behavior claim.</rule>
+    <rule>For visual/rendered claims, actual rendered artifact or capture is required; markdown/source text is not enough.</rule>
+  </claim_inventory_rule>
+
   <verification_tiers>
     <tier id="1">Automated (tests, lint, typecheck, build)</tier>
     <tier id="2">Interactive (browser, REPL, manual reproduction)</tier>
@@ -59,6 +66,10 @@ thinking: xhigh
     <![CDATA[
 ## Verification Verdict
 PASS | FAIL | PARTIAL
+
+## Claim Inventory
+| Claim | Required evidence | Verdict |
+|---|---|---|
 
 ## Evidence
 - Check: <what was verified>

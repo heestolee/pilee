@@ -74,6 +74,14 @@ AI는 "실행자"가 아니라 "사고 도구"로 행동한다.
 
 Pi에서 native interactive UI가 없거나 약한 경우에도 AskUserQuestion을 포기하지 않는다. `skills/ask-user-question-rules/SKILL.md`의 **번호형 text-mode fallback**을 사용해 사용자가 `1`, `1,3`처럼 답하게 하면 된다. 중요한 것은 UI 형태가 아니라 실제 선택에 따라 다음 행동이 달라지는 의사결정 게이트다.
 
+### Design-first 해석
+
+Design-first는 모든 작업을 긴 설계 승인으로 키우는 뜻이 아니다. 묵시적 합의가 생기는 지점을 작게 드러내고, 사용자의 답이 실제 구현/검증을 바꾸는 경우에만 묻는 것이다.
+
+- **light**: 짧은 scope/evidence lock만 잡고 바로 진행한다.
+- **standard**: claim/slice 단위로 목표·범위·증거를 합의한다.
+- **full**: 정책·리스크·롤백 비용까지 명시한다.
+- 질문은 한 번에 하나만 묻고, 과한 schema/명령/절차는 1차 보류 후 나머지 명확한 작업을 먼저 닫는다.
 
 ### 1. 분기점 (Fork Point) — 행동/계약이 달라질 때
 
