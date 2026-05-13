@@ -16,7 +16,7 @@ applies_to:
 source:
   - user-direction:2026-05-12-workspace-save-restore
 reviewed_at: 2026-05-12
-reviewed_commit: 238e1ccc237624573c3d7c1b542722f8fd9022d4
+reviewed_commit: c82cbb080aa012fe0dfd135d37d099821dd70e23
 related:
   - terminal-host-integration
   - fork-panel-spatial-continuity

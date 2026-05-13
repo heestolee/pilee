@@ -19,8 +19,8 @@ source:
   - user-direction:2026-05-09-show-report-session-classification
   - user-direction:2026-05-09-archive-command-name
   - user-direction:2026-05-09-session-classification-select-tags
-reviewed_at: 2026-05-11
-reviewed_commit: 55766aa7231850e0c715240fe796224a9dac843c
+reviewed_at: 2026-05-12
+reviewed_commit: b3d4dce30c72c41269198130989e0d306ed787a1
 related:
   - artifact-archive-reopenability
   - session-export-source-preservation

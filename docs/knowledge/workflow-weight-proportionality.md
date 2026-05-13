@@ -18,7 +18,7 @@ applies_to:
 source:
   - user-direction:2026-05-12-worktree-speed-analysis
 reviewed_at: 2026-05-12
-reviewed_commit: 7a09453bb3b9bb95c36883f55ccdc6210cd59959
+reviewed_commit: 9048804ef2db58a1b05f8731a411fb69432147c6
 related:
   - request-traceability-surgical-changes
   - frame-verify-contract

@@ -14,8 +14,8 @@ applies_to:
   - get_mcp_content
 source:
   - user-direction:2026-05-11-mcp-digest-first-artifacts
-reviewed_at: 2026-05-11
-reviewed_commit: ce3a59874a681af92ce8276ac799633660a65a8f
+reviewed_at: 2026-05-12
+reviewed_commit: d98008aad8f6049883436cb079597282efde6fc0
 related:
   - tool-output-noise-management
   - artifact-archive-reopenability

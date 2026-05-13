@@ -22,8 +22,8 @@ source:
   - pilee-history:2026-05-01#3
   - pilee-history:2026-05-01#5
   - user-direction:2026-05-07-local-resolver
-reviewed_at: 2026-05-11
-reviewed_commit: 55766aa7231850e0c715240fe796224a9dac843c
+reviewed_at: 2026-05-12
+reviewed_commit: a2019c265063b83bd105305ee32920342c8e3213
 related:
   - ask-user-question-option-design
   - frame-verify-contract

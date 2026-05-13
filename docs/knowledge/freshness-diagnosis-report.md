@@ -18,8 +18,8 @@ source:
   - pilee-history:2026-05-05#50
   - pilee-history:2026-05-05#52
   - user-direction:2026-05-07-local-resolver
-reviewed_at: 2026-05-11
-reviewed_commit: 55766aa7231850e0c715240fe796224a9dac843c
+reviewed_at: 2026-05-12
+reviewed_commit: 4d1ff268e27626a227ef1f2e25f2871278918e25
 related:
   - judgment-doc-unit
   - readme-coverage-map

@@ -17,8 +17,8 @@ applies_to:
   - .pi/frame.json
 source:
   - user-direction:2026-05-11-frame-plan-synthesis
-reviewed_at: 2026-05-11
-reviewed_commit: 3be52546aeabe2589557e8e37ef22298ef4590f7
+reviewed_at: 2026-05-12
+reviewed_commit: 4d1ff268e27626a227ef1f2e25f2871278918e25
 related:
   - frame-verify-contract
   - frame-planning-identity
