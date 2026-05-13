@@ -140,7 +140,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [Idle UI는 장식이 아니라 ambient status다](./ambient-status-surfaces.md) | active | high | 2026-05-13 | ca6dec9 | idle-screensaver, tasks, spinner, status, ambient, ui |
-| [Editor affordance는 숨은 컨텍스트가 아니다](./editor-affordance-not-context.md) | active | high | 2026-05-14 | f1585ae | editor, footer, prompt-suggest, working-text, affordance, ui |
+| [Editor affordance는 숨은 컨텍스트가 아니다](./editor-affordance-not-context.md) | active | high | 2026-05-13 | dea80b9 | editor, footer, prompt-suggest, working-text, affordance, ui |
 | [User-facing 출력은 한국어를 기본으로 한다](./korean-first-user-facing-output.md) | active | high | 2026-05-13 | 1f5c3ac | korean-output, localization, web-search, ui, rewrite, 한국어 |
 | [색상은 정보 위계다](./theme-information-hierarchy.md) | active | high | 2026-05-13 | 10e0874 | theme, color, dim, muted, border, accent |
 | [도구 출력은 대화 흐름을 침범하지 않는다](./tool-output-noise-management.md) | active | high | 2026-05-11 | ce3a598 | tool-output, collapse, noise, ui, usage, renderer |
