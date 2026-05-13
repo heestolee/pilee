@@ -22,8 +22,8 @@ applies_to:
 source:
   - pilee-history:2026-05-05#knowledge-system
   - user-direction:2026-05-07-resolver-merge-gate
-reviewed_at: 2026-05-12
-reviewed_commit: d98008aad8f6049883436cb079597282efde6fc0
+reviewed_at: 2026-05-13
+reviewed_commit: 1a6aa9354f3807dd800ed7e8ef2bf656b68383c9
 related:
   - verify-report-workflow
   - web-search-curator
