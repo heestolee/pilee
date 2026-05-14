@@ -19,7 +19,7 @@ applies_to:
 source:
   - user-direction:2026-05-14-continue-clean
 reviewed_at: 2026-05-14
-reviewed_commit: 08724ed1a80213d2eb5a10918512c07f1d63c0e9
+reviewed_commit: ae89856c5bb21333695fc8f1a5179dc866b58c23
 related:
   - worktree-session-continuity
   - session-identity-over-filenames
