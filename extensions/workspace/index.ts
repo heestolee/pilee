@@ -390,6 +390,55 @@ function readSnapshot(path: string): WorkspaceSnapshot | null {
 	}
 }
 
+export function workspaceSnapshotStats(snapshot: Pick<WorkspaceSnapshot, "tabs">): { tabs: number; terminals: number; matched: number; score: number } {
+	const terminals = snapshot.tabs.flatMap((tab) => tab.terminals);
+	const matched = terminals.filter((term) => term.sessionFile).length;
+	return {
+		tabs: snapshot.tabs.length,
+		terminals: terminals.length,
+		matched,
+		score: matched * 100 + terminals.length * 10 + snapshot.tabs.length,
+	};
+}
+
+function isRecoverableSummary(summary: WorkspaceSummary): boolean {
+	return summary.matched > 0;
+}
+
+export function compareWorkspaceSummaries(a: WorkspaceSummary, b: WorkspaceSummary): number {
+	const aRecoverable = isRecoverableSummary(a);
+	const bRecoverable = isRecoverableSummary(b);
+	if (aRecoverable !== bRecoverable) return aRecoverable ? -1 : 1;
+	if (a.updatedAt !== b.updatedAt) return b.updatedAt - a.updatedAt;
+	return a.name.localeCompare(b.name, "ko");
+}
+
+export function autosaveReplacementReason(existing: Pick<WorkspaceSnapshot, "tabs"> | null, next: Pick<WorkspaceSnapshot, "tabs">): string | undefined {
+	if (!existing) return undefined;
+	const previous = workspaceSnapshotStats(existing);
+	const incoming = workspaceSnapshotStats(next);
+	if (previous.matched > 0 && incoming.matched === 0) {
+		return `기존 autosave는 session ${previous.matched}/${previous.terminals}인데 새 autosave는 session 0/${incoming.terminals}입니다.`;
+	}
+	if (previous.terminals >= 2 && incoming.terminals <= 1 && incoming.score < previous.score) {
+		return `기존 autosave는 panel ${previous.terminals}개인데 새 autosave는 panel ${incoming.terminals}개입니다.`;
+	}
+	if (previous.score >= 100 && incoming.score < previous.score * 0.6) {
+		return `새 autosave 복원 점수(${incoming.score})가 기존(${previous.score})보다 크게 낮습니다.`;
+	}
+	return undefined;
+}
+
+function saveAutosaveSnapshot(snapshot: WorkspaceSnapshot): { path: string; saved: boolean; reason?: string } {
+	ensureWorkspaceDirs();
+	const path = snapshotPath(AUTOSAVE_ID);
+	const existing = readSnapshot(path);
+	const reason = autosaveReplacementReason(existing, snapshot);
+	if (reason) return { path, saved: false, reason };
+	writeFileSync(path, JSON.stringify(snapshot, null, 2));
+	return { path, saved: true };
+}
+
 function listSnapshots(): WorkspaceSummary[] {
 	ensureWorkspaceDirs();
 	return readdirSync(SNAPSHOT_DIR)
@@ -398,20 +447,20 @@ function listSnapshots(): WorkspaceSummary[] {
 			const path = join(SNAPSHOT_DIR, entry);
 			const snapshot = readSnapshot(path);
 			if (!snapshot) return null;
-			const terminals = snapshot.tabs.flatMap((tab) => tab.terminals);
+			const stats = workspaceSnapshotStats(snapshot);
 			return {
 				id: snapshot.id,
 				name: snapshot.name,
 				source: snapshot.source,
 				updatedAt: snapshot.updatedAt,
-				tabs: snapshot.tabs.length,
-				terminals: terminals.length,
-				matched: terminals.filter((term) => term.sessionFile).length,
+				tabs: stats.tabs,
+				terminals: stats.terminals,
+				matched: stats.matched,
 				path,
 			};
 		})
 		.filter((summary): summary is WorkspaceSummary => Boolean(summary))
-		.sort((a, b) => b.updatedAt - a.updatedAt);
+		.sort(compareWorkspaceSummaries);
 }
 
 function resolveSnapshot(target?: string): { snapshot?: WorkspaceSnapshot; summary?: WorkspaceSummary; error?: string } {
@@ -819,8 +868,15 @@ async function autosave(pi: ExtensionAPI, ctx: ExtensionContext) {
 		writeActiveRecord(ctx);
 		const window = await captureGhosttyWindow(pi);
 		const snapshot = buildSnapshot(window, "auto", "autosave", false);
-		saveSnapshot(snapshot);
-		writeJson(AUTOSAVE_STATE_PATH, { lastSavedAt: Date.now(), pid: process.pid, ok: true });
+		const saved = saveAutosaveSnapshot(snapshot);
+		writeJson(AUTOSAVE_STATE_PATH, {
+			lastSavedAt: Date.now(),
+			pid: process.pid,
+			ok: true,
+			saved: saved.saved,
+			skippedReason: saved.reason,
+			stats: workspaceSnapshotStats(snapshot),
+		});
 	} catch (error) {
 		writeJson(AUTOSAVE_STATE_PATH, {
 			lastSavedAt: Date.now(),
@@ -853,7 +909,8 @@ Usage:
 Notes:
 - 기본 restore mode는 append입니다. 현재 창을 닫거나 대체하지 않습니다.
 - /workspace list의 번호를 그대로 /workspace <번호> 또는 /workspace restore <번호>에 사용할 수 있습니다.
-- autosave는 session 시작 5~10초 뒤 첫 저장 후 약 1시간마다 갱신됩니다.
+- 복원 가능한 session이 연결된 snapshot을 번호 목록에서 우선 표시합니다.
+- autosave는 session 시작 5~10초 뒤 첫 저장 후 약 1시간마다 갱신되며, 복원성이 크게 낮은 snapshot으로 기존 autosave를 덮어쓰지 않습니다.
 - Ghostty AppleScript가 split tree/비율을 제공하지 않아 split panel은 순차 right split으로 근사 복원합니다.
 - Pi session 매핑은 active session registry를 우선하고, restore 시점에도 최근 session fallback을 보조로 재확인합니다.`;
 
