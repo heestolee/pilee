@@ -189,7 +189,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 
 | Type | Surface | Knowledge docs |
 |---|---|---|
-| extension | `extensions/archive-to-html` | [Artifact Archive Reopenability](./docs/knowledge/artifact-archive-reopenability.md)<br>[Backlog Source Session Provenance](./docs/knowledge/backlog-source-session-provenance.md)<br>[Deterministic Fallbacks Preserve Workflow](./docs/knowledge/deterministic-fallbacks-preserve-workflow.md)<br>[Embedded Webview Script Escape Boundary](./docs/knowledge/embedded-webview-script-escape-boundary.md)<br>[Evidence First Verification Gate](./docs/knowledge/evidence-first-verification-gate.md)<br>[Live Artifact Preview Pattern](./docs/knowledge/live-artifact-preview-pattern.md)<br>[Private Overlay Package Boundary](./docs/knowledge/private-overlay-package-boundary.md)<br>[Session Classification Sidecar](./docs/knowledge/session-classification-sidecar.md)<br>[Session Export Source Preservation](./docs/knowledge/session-export-source-preservation.md)<br>[Terminal Host Integration](./docs/knowledge/terminal-host-integration.md)<br>[Verify Report Workflow](./docs/knowledge/verify-report-workflow.md) |
+| extension | `extensions/archive-to-html` | [Artifact Archive Reopenability](./docs/knowledge/artifact-archive-reopenability.md)<br>[Backlog Source Session Provenance](./docs/knowledge/backlog-source-session-provenance.md)<br>[Clean Handoff Session Continuation](./docs/knowledge/clean-handoff-session-continuation.md)<br>[Deterministic Fallbacks Preserve Workflow](./docs/knowledge/deterministic-fallbacks-preserve-workflow.md)<br>[Embedded Webview Script Escape Boundary](./docs/knowledge/embedded-webview-script-escape-boundary.md)<br>[Evidence First Verification Gate](./docs/knowledge/evidence-first-verification-gate.md)<br>[Live Artifact Preview Pattern](./docs/knowledge/live-artifact-preview-pattern.md)<br>[Private Overlay Package Boundary](./docs/knowledge/private-overlay-package-boundary.md)<br>[Session Classification Sidecar](./docs/knowledge/session-classification-sidecar.md)<br>[Session Export Source Preservation](./docs/knowledge/session-export-source-preservation.md)<br>[Terminal Host Integration](./docs/knowledge/terminal-host-integration.md)<br>[Verify Report Workflow](./docs/knowledge/verify-report-workflow.md) |
 | extension | `extensions/auto-commit` | [Auto-commit executes only explicit plans](./docs/knowledge/auto-commit-explicit-plan-gate.md) |
 | extension | `extensions/backlog` | [Artifact Archive Reopenability](./docs/knowledge/artifact-archive-reopenability.md)<br>[Backlog Source Session Provenance](./docs/knowledge/backlog-source-session-provenance.md)<br>[Session Export Source Preservation](./docs/knowledge/session-export-source-preservation.md)<br>[Theme Information Hierarchy](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI Rendering Sanitization](./docs/knowledge/tui-rendering-sanitization.md) |
 | extension | `extensions/bash-tool-override` | [Bash Tool Title Output Override](./docs/knowledge/bash-tool-title-output-override.md) |
@@ -197,6 +197,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | extension | `extensions/claude-code-ui` | [Tool Output Noise Management](./docs/knowledge/tool-output-noise-management.md)<br>[TUI Rendering Sanitization](./docs/knowledge/tui-rendering-sanitization.md) |
 | extension | `extensions/claude-hooks-bridge` | [Context Loading Minimal Surface](./docs/knowledge/context-loading-minimal-surface.md) |
 | extension | `extensions/context-loader` | [Context Loading Minimal Surface](./docs/knowledge/context-loading-minimal-surface.md) |
+| extension | `extensions/continue-clean` | [Clean Handoff Session Continuation](./docs/knowledge/clean-handoff-session-continuation.md) |
 | extension | `extensions/custom-style` | [Editor Affordance Not Context](./docs/knowledge/editor-affordance-not-context.md)<br>[Korean First User Facing Output](./docs/knowledge/korean-first-user-facing-output.md)<br>[Terminal Host Integration](./docs/knowledge/terminal-host-integration.md)<br>[Theme Information Hierarchy](./docs/knowledge/theme-information-hierarchy.md) |
 | extension | `extensions/diff-overlay` | [Diff Review Draft Handoff](./docs/knowledge/diff-review-draft-handoff.md)<br>[Theme Information Hierarchy](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI Rendering Sanitization](./docs/knowledge/tui-rendering-sanitization.md) |
 | extension | `extensions/dynamic-agents-md` | [Context Loading Minimal Surface](./docs/knowledge/context-loading-minimal-surface.md)<br>[Skills As Portable Procedures](./docs/knowledge/skills-as-portable-procedures.md) |
@@ -277,7 +278,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 ## Extensions
 
 <!-- PILEE_README_EXTENSIONS_START -->
-50 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
+51 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
 
 > Generated from `extensions/*` plus inventory metadata in `scripts/knowledge.mjs`; refresh with `node scripts/knowledge.mjs --graph`.
 
@@ -307,6 +308,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **worktree** | Git worktree dashboard, tags, filters, bootstrapper, and switching |
 | **fork-panel** | Ghostty split panels, `P0/P1/P2` labels, handoff inbox, revive, and repanel |
 | **workspace** | Ghostty window/tab/split workspace snapshots and append restore |
+| **continue-clean** | Continue in a clean new session with only a minimal handoff |
 | **session-title** | Automatic session titles |
 
 ### UI / UX

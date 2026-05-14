@@ -178,6 +178,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Bash tool override는 명령 의도와 출력 노이즈를 분리한다](./bash-tool-title-output-override.md) | active | high | 2026-05-13 | 62d55bb | bash, tool, override, ui, output, title |
 | [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md) | active | high | 2026-05-13 | 49eb5f7 | git, incremental, code-review, commit, quality, 통합 |
 | [CI-Ship은 PR 후 검증 실패 대응 단계다](./ci-ship-failure-response-boundary.md) | active | high | 2026-05-13 | 49eb5f7 | ci-ship, ci, github-actions, pull-request, failure-analysis, ship |
+| [Clean handoff는 compact와 새 세션 사이의 전환 계약이다](./clean-handoff-session-continuation.md) | active | high | 2026-05-14 | 08724ed | session, handoff, compact, context, archive, continue-clean |
 | [자동 로드 컨텍스트는 최소 surface만 가진다](./context-loading-minimal-surface.md) | active | high | 2026-05-13 | 49eb5f7 | context, agents-md, memory, system-prompt, token, autoload |
 | [Decide는 선택을 한 번 공격한다](./decide-tradeoff-challenge.md) | active | high | 2026-05-13 | 9152c35 | decide, tradeoff, challenge, productive-resistance, frame-json, decision |
 | [외부 이슈 업데이트는 preview gate를 지난다](./external-issue-preview-gate.md) | active | high | 2026-05-13 | f89a0f6 | jira, issue, preview, wiki-markup, external-update, approval |
@@ -275,6 +276,7 @@ graph TD
   doc_bash_tool_title_output_override["Bash tool override는 명령 의도와 출력 노이즈를 분리한다"]
   doc_change_integration_discipline["변경 통합은 작은 단위와 검증을 요구한다"]
   doc_ci_ship_failure_response_boundary["CI-Ship은 PR 후 검증 실패 대응 단계다"]
+  doc_clean_handoff_session_continuation["Clean handoff는 compact와 새 세션 사이의 전환 계약이다"]
   doc_context_loading_minimal_surface["자동 로드 컨텍스트는 최소 surface만 가진다"]
   doc_decide_tradeoff_challenge["Decide는 선택을 한 번 공격한다"]
   doc_external_issue_preview_gate["외부 이슈 업데이트는 preview gate를 지난다"]
@@ -494,6 +496,9 @@ graph TD
   doc_ci_ship_failure_response_boundary --> doc_evidence_first_verification_gate
   doc_ci_ship_failure_response_boundary --> doc_root_cause_before_fix
   doc_ci_ship_failure_response_boundary --> doc_ship_pr_ship_review_boundary
+  doc_clean_handoff_session_continuation --> doc_artifact_archive_reopenability
+  doc_clean_handoff_session_continuation --> doc_session_identity_over_filenames
+  doc_clean_handoff_session_continuation --> doc_worktree_session_continuity
   doc_context_loading_minimal_surface --> doc_private_journal_public_doctrine
   doc_context_loading_minimal_surface --> doc_tool_output_noise_management
   doc_decide_tradeoff_challenge --> doc_architecture_friction_tft_lens
@@ -629,7 +634,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 92
-- Links: 315
+- Documents: 93
+- Links: 318
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
