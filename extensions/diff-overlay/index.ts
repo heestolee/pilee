@@ -889,62 +889,25 @@ interface MergeBaseInfo {
 	baseBranch: string;
 }
 
-async function mergeBaseWithRemoteBranch(
-	pi: ExtensionAPI,
-	cwd: string,
-	branch: string,
-	baseBranch: string,
-): Promise<MergeBaseInfo | null> {
-	if (!baseBranch || baseBranch === branch) return null;
-	const r = await pi.exec("git", ["merge-base", branch, `origin/${baseBranch}`], { cwd });
-	if (r.code === 0 && r.stdout?.trim()) {
-		return { commit: r.stdout.trim(), baseBranch };
-	}
-	return null;
-}
-
-async function findPullRequestBaseBranch(
-	pi: ExtensionAPI,
-	cwd: string,
-	branch: string,
-): Promise<string | null> {
-	const r = await pi.exec("gh", ["pr", "view", branch, "--json", "baseRefName", "--jq", ".baseRefName"], {
-		cwd,
-	});
-	if (r.code !== 0) return null;
-	return r.stdout?.trim() || null;
-}
-
-function inferredBaseBranches(branch: string): string[] {
-	if (branch.startsWith("hotfix/") || branch.startsWith("hotfeature/")) return ["production"];
-	return [];
-}
-
 async function findMergeBase(pi: ExtensionAPI, cwd: string, branch: string): Promise<MergeBaseInfo | null> {
-	const defaults = ["main", "master", "develop", "development", "production"];
+	const defaults = ["main", "master", "develop"];
 	if (defaults.includes(branch) || branch === "HEAD") return null;
-
-	const prBaseBranch = await findPullRequestBaseBranch(pi, cwd, branch);
-	const prMergeBase = prBaseBranch
-		? await mergeBaseWithRemoteBranch(pi, cwd, branch, prBaseBranch)
-		: null;
-	if (prMergeBase) return prMergeBase;
-
-	for (const base of inferredBaseBranches(branch)) {
-		const inferredMergeBase = await mergeBaseWithRemoteBranch(pi, cwd, branch, base);
-		if (inferredMergeBase) return inferredMergeBase;
-	}
 
 	const symRef = await pi.exec("git", ["symbolic-ref", "refs/remotes/origin/HEAD", "--short"], { cwd });
 	if (symRef.code === 0 && symRef.stdout?.trim()) {
 		const defaultBranch = symRef.stdout.trim().replace(/^origin\//, "");
-		const defaultMergeBase = await mergeBaseWithRemoteBranch(pi, cwd, branch, defaultBranch);
-		if (defaultMergeBase) return defaultMergeBase;
+		if (defaultBranch !== branch) {
+			const r = await pi.exec("git", ["merge-base", branch, `origin/${defaultBranch}`], { cwd });
+			if (r.code === 0 && r.stdout?.trim()) {
+				return { commit: r.stdout.trim(), baseBranch: defaultBranch };
+			}
+		}
 	}
 
 	for (const base of defaults) {
-		const fallbackMergeBase = await mergeBaseWithRemoteBranch(pi, cwd, branch, base);
-		if (fallbackMergeBase) return fallbackMergeBase;
+		if (base === branch) continue;
+		const r = await pi.exec("git", ["merge-base", branch, `origin/${base}`], { cwd });
+		if (r.code === 0 && r.stdout?.trim()) return { commit: r.stdout.trim(), baseBranch: base };
 	}
 	return null;
 }
