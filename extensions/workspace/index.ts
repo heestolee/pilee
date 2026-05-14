@@ -185,10 +185,10 @@ function slugify(value: string): string {
 function currentPiCommand(): string {
 	const envPi = process.env.PILEE_PI_BIN || process.env.PI_BIN;
 	if (envPi && existsSync(envPi)) return shellQuote(envPi);
-	const cliPath = process.argv[1] && existsSync(process.argv[1]) ? process.argv[1] : "";
-	if (cliPath) return `${shellQuote(process.execPath)} ${shellQuote(cliPath)}`;
 	const userWrapper = join(homedir(), ".local", "bin", "pi");
 	if (existsSync(userWrapper)) return shellQuote(userWrapper);
+	const cliPath = process.argv[1] && existsSync(process.argv[1]) ? process.argv[1] : "";
+	if (cliPath) return `${shellQuote(process.execPath)} ${shellQuote(cliPath)}`;
 	return "pi";
 }
 
@@ -244,10 +244,12 @@ function scoreActiveRecord(term: GhosttyTerminal, record: ActiveSessionRecord): 
 	const terminalTitle = normalizeTitle(term.name);
 	const recordTitle = normalizeTitle(record.title);
 	if (terminalTitle && recordTitle) {
-		if (terminalTitle === recordTitle) score += 60;
-		else if (terminalTitle.includes(recordTitle) || recordTitle.includes(terminalTitle)) score += 35;
+		if (terminalTitle === recordTitle) score += 70;
+		else if (terminalTitle.includes(recordTitle) || recordTitle.includes(terminalTitle)) {
+			score += recordTitle.length >= 6 || terminalTitle.length >= 6 ? 55 : 35;
+		}
 	}
-	if (term.name.includes(record.title)) score += 15;
+	if (record.title && term.name.includes(record.title)) score += 15;
 	return score;
 }
 
@@ -287,17 +289,16 @@ function readSessionSample(sessionFile: string, bytes = 128 * 1024): string {
 }
 
 function parseSessionInfo(sessionFile: string): { title?: string; cwd?: string } {
-	const sample = readSessionSample(sessionFile);
+	const sample = readSessionSample(sessionFile, 8 * 1024 * 1024);
 	if (!sample) return {};
-	const lines = sample.split(/\r?\n/u).filter(Boolean).slice(0, 400);
+	const lines = sample.split(/\r?\n/u).filter(Boolean);
 	let title: string | undefined;
 	let cwd: string | undefined;
 	for (const line of lines) {
 		try {
 			const entry = JSON.parse(line);
-			if (entry?.type === "session" && typeof entry.cwd === "string") cwd = entry.cwd;
+			if (entry?.type === "session" && typeof entry.cwd === "string" && !cwd) cwd = entry.cwd;
 			if (entry?.type === "session_info" && typeof entry.name === "string") title = entry.name;
-			if (title && cwd) break;
 		} catch {}
 	}
 	return { title, cwd };
@@ -307,15 +308,17 @@ function collectRecentSessionFallbacks(limit = 500): ActiveSessionRecord[] {
 	const sessionsRoot = join(getAgentDir(), "sessions");
 	const files: string[] = [];
 	function walk(dir: string, depth: number) {
-		if (depth > 3 || files.length > limit * 3) return;
+		if (depth > 3) return;
 		let entries: string[] = [];
 		try { entries = readdirSync(dir); } catch { return; }
 		for (const entry of entries) {
 			const path = join(dir, entry);
 			let st;
 			try { st = statSync(path); } catch { continue; }
-			if (st.isDirectory()) walk(path, depth + 1);
-			else if (entry.endsWith(".jsonl")) files.push(path);
+			if (st.isDirectory()) {
+				if (entry === "subagents") continue;
+				walk(path, depth + 1);
+			} else if (entry.endsWith(".jsonl")) files.push(path);
 		}
 	}
 	walk(sessionsRoot, 0);
@@ -578,11 +581,13 @@ function tokenizeArgs(args: string): string[] {
 
 export function parseWorkspaceArgs(args: string): WorkspaceArgs {
 	const tokens = tokenizeArgs(args);
-	const first = (tokens.shift() || "status").toLowerCase();
-	const sub = ["save", "restore", "list", "status", "help"].includes(first)
+	const firstToken = tokens.shift();
+	const first = (firstToken || "status").toLowerCase();
+	const knownSubs = ["save", "restore", "list", "status", "help"];
+	const sub = knownSubs.includes(first)
 		? first as WorkspaceArgs["sub"]
-		: "status";
-	const rest = sub === "status" && first !== "status" ? [first, ...tokens] : tokens;
+		: firstToken ? "restore" : "status";
+	const rest = sub === "restore" && firstToken && !knownSubs.includes(first) ? [firstToken, ...tokens] : tokens;
 	let dryRun = false;
 	let append = true;
 	const positional: string[] = [];
@@ -596,8 +601,39 @@ export function parseWorkspaceArgs(args: string): WorkspaceArgs {
 	return { sub, target: positional.join(" ").trim() || undefined, dryRun, append };
 }
 
+function dedupeRecords(records: ActiveSessionRecord[]): ActiveSessionRecord[] {
+	const byFile = new Map<string, ActiveSessionRecord>();
+	for (const record of records) {
+		const key = safeRealpath(record.sessionFile);
+		const previous = byFile.get(key);
+		if (!previous || record.updatedAt > previous.updatedAt) byFile.set(key, record);
+	}
+	return [...byFile.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+function restoreLookupRecords(): ActiveSessionRecord[] {
+	return dedupeRecords([...readActiveRecords(), ...collectRecentSessionFallbacks(10_000)]);
+}
+
+function resolveTerminalForRestore(term: WorkspaceTerminalSnapshot, records: ActiveSessionRecord[]): WorkspaceTerminalSnapshot {
+	if (term.sessionFile && existsSync(term.sessionFile)) return term;
+	const match = findActiveMatch(term, records);
+	if (!match) return term;
+	return {
+		...term,
+		sessionFile: match.sessionFile,
+		sessionTitle: match.title,
+		panelLabel: match.panelLabel,
+		forkId: match.forkId,
+		parentSessionFile: match.parentSessionFile,
+		match: "fallback",
+	};
+}
+
 export function buildRestorePlan(snapshot: WorkspaceSnapshot): RestorePlan {
-	const actions = snapshot.tabs.map((tab) => tab.terminals.map((term) => {
+	const records = restoreLookupRecords();
+	const actions = snapshot.tabs.map((tab) => tab.terminals.map((originalTerm) => {
+		const term = resolveTerminalForRestore(originalTerm, records);
 		const command = buildSessionLaunchCommand(term);
 		return {
 			tabName: tab.name || `tab ${tab.index}`,
@@ -764,6 +800,7 @@ async function handleStatus(pi: ExtensionAPI, ctx: ExtensionCommandContext) {
 		`latest snapshot: ${latest}`,
 		"",
 		"commands:",
+		"  /workspace [number|name-or-id]",
 		"  /workspace save [name]",
 		"  /workspace restore [number|name-or-id] [--dry-run] [--append]",
 		"  /workspace list",
@@ -807,6 +844,7 @@ function scheduleAutosave(pi: ExtensionAPI, ctx: ExtensionContext) {
 const HELP = `Ghostty workspace snapshot/restore
 
 Usage:
+  /workspace [number|name-or-id]
   /workspace status
   /workspace save [name]
   /workspace restore [number|name-or-id] [--dry-run] [--append]
@@ -814,10 +852,42 @@ Usage:
 
 Notes:
 - 기본 restore mode는 append입니다. 현재 창을 닫거나 대체하지 않습니다.
-- /workspace list의 번호를 그대로 /workspace restore <번호>에 사용할 수 있습니다.
+- /workspace list의 번호를 그대로 /workspace <번호> 또는 /workspace restore <번호>에 사용할 수 있습니다.
 - autosave는 session 시작 5~10초 뒤 첫 저장 후 약 1시간마다 갱신됩니다.
 - Ghostty AppleScript가 split tree/비율을 제공하지 않아 split panel은 순차 right split으로 근사 복원합니다.
-- Pi session 매핑은 active session registry를 우선하고, 수동 save에서는 최근 session fallback을 보조로 사용합니다.`;
+- Pi session 매핑은 active session registry를 우선하고, restore 시점에도 최근 session fallback을 보조로 재확인합니다.`;
+
+function workspaceArgumentCompletions(argumentPrefix: string): AutocompleteItem[] | null {
+	const prefix = argumentPrefix.trimStart();
+	const hasTrailingSpace = /\s$/u.test(argumentPrefix);
+	const tokens = tokenizeArgs(prefix);
+	const commandItems: AutocompleteItem[] = [
+		{ value: "status", label: "status", description: "현재 Ghostty workspace 상태" },
+		{ value: "save", label: "save", description: "현재 Ghostty window snapshot 저장" },
+		{ value: "restore", label: "restore", description: "최신 snapshot을 append mode로 복원" },
+		{ value: "list", label: "list", description: "저장된 snapshots 목록" },
+	];
+
+	if (tokens.length === 0) return commandItems;
+	if (/^[1-9]\d*$/u.test(tokens[0] || "")) return null;
+
+	const first = (tokens[0] || "").toLowerCase();
+	if (first === "restore") {
+		const hasTarget = tokens.slice(1).some((token) => !token.startsWith("-"));
+		if (hasTarget) return null;
+		if (!hasTrailingSpace) return null;
+		return listSnapshots().map((summary, index) => ({
+			value: `restore ${index + 1}`,
+			label: `restore ${index + 1}`,
+			description: `${summary.name} · ${displayDate(summary.updatedAt)} · session ${summary.matched}/${summary.terminals}`,
+		}));
+	}
+
+	if (["status", "save", "list", "help"].includes(first)) return null;
+	if (tokens.length > 1 || hasTrailingSpace) return null;
+	const filtered = commandItems.filter((item) => item.value.startsWith(first));
+	return filtered.length > 0 ? filtered : null;
+}
 
 export default function (pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx) => {
@@ -835,13 +905,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerCommand("workspace", {
 		description: "Ghostty 작업공간 저장/복원",
-		getArgumentCompletions: async (): Promise<AutocompleteItem[]> => [
-			{ value: "status", label: "status", description: "현재 Ghostty workspace 상태" },
-			{ value: "save", label: "save", description: "현재 Ghostty window snapshot 저장" },
-			{ value: "restore --dry-run", label: "restore --dry-run", description: "최신 snapshot 복원 계획만 보기" },
-			{ value: "restore", label: "restore", description: "최신 snapshot을 append mode로 복원" },
-			{ value: "list", label: "list", description: "저장된 snapshots 목록" },
-		],
+		getArgumentCompletions: async (argumentPrefix: string): Promise<AutocompleteItem[] | null> => workspaceArgumentCompletions(argumentPrefix),
 		handler: async (rawArgs: string, ctx: ExtensionCommandContext) => {
 			const args = parseWorkspaceArgs(rawArgs);
 			try {
