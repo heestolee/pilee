@@ -6,7 +6,8 @@
   "type": "module",
   "pi": {
     "extensions": [
-      "extensions"
+      "extensions",
+      "!extensions/claude-code-ui/**"
     ],
     "skills": [
       "skills"
