@@ -16,7 +16,7 @@ applies_to:
 source:
   - user-direction:2026-05-12-workspace-save-restore
 reviewed_at: 2026-05-15
-reviewed_commit: 3a8951bbdbf1076d61ac167486fd8c9ce1454de6
+reviewed_commit: 7496d7e50acb04cfc337ae17aa2ff3d94e04a3ba
 related:
   - terminal-host-integration
   - fork-panel-spatial-continuity
@@ -41,7 +41,7 @@ autosave는 명시 save를 대체하는 주 복원 경로가 아니라 안전망
 
 기본 restore mode는 append입니다. workspace 복원은 사용자의 현재 창을 닫거나 대체하지 않고, 새 tab을 추가한 뒤 저장된 session을 `pi --session`으로 다시 엽니다. 새 shell의 PATH는 현재 Pi 프로세스와 다를 수 있으므로 bare `pi`에 의존하지 않고 현재 실행 중인 Pi command 또는 명시 wrapper를 사용합니다. `/workspace list`가 보여주는 번호는 복원 대상 선택 UI의 일부이므로 `/workspace restore 2`처럼 그대로 사용할 수 있어야 합니다.
 
-번호 선택은 “저장 시각”만이 아니라 “복원 가능한 session이 실제로 연결됐는가”를 우선합니다. sessionFile이 없는 최신 snapshot이 목록 1번을 차지하면 `/workspace 1`이 사용자 기대와 달리 아무것도 복원하지 못하므로, 복원 가능한 snapshot을 먼저 정렬하고 복원 불가능한 snapshot은 뒤로 보냅니다.
+번호 선택은 “저장 시각”만이 아니라 “복원 가능한 session이 실제로 연결됐는가”와 “얼마나 많은 session/panel을 되살릴 수 있는가”를 우선합니다. 단일 패널 최신 autosave가 목록 1번이나 기본 restore를 차지하면 사용자가 되살리려던 다중 패널 작업공간 대신 현재 디버깅 세션만 열릴 수 있습니다. 따라서 복원 가능한 snapshot을 먼저 정렬하고, 그 안에서는 session/panel 수 기반 복원성 점수가 높은 snapshot을 먼저 둡니다. restore report에는 requested target, resolved snapshot id/path를 함께 표시해 번호 매핑 오류를 즉시 볼 수 있어야 합니다.
 
 ## Layout Fidelity Rule
 
