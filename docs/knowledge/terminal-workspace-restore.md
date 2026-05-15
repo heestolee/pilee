@@ -16,7 +16,7 @@ applies_to:
 source:
   - user-direction:2026-05-12-workspace-save-restore
 reviewed_at: 2026-05-15
-reviewed_commit: 2f869e8f98f114fa48ae57d7a61d87d688a1d940
+reviewed_commit: 3a8951bbdbf1076d61ac167486fd8c9ce1454de6
 related:
   - terminal-host-integration
   - fork-panel-spatial-continuity
@@ -35,7 +35,7 @@ snapshot에는 Ghostty window/tab/terminal id, tab 순서, terminal title, cwd, 
 
 autosave는 명시 save를 대체하는 주 복원 경로가 아니라 안전망입니다. Ghostty/macOS 세션에서 시작 5~10초 뒤 첫 snapshot을 만들고 이후 약 1시간마다 `autosave` snapshot을 갱신합니다. 작업공간 크기 수준의 Ghostty AppleScript와 작은 JSON write만 수행하므로 일반적인 탭/패널 수에서는 큰 성능 부담을 기대하지 않지만, 사용자가 의도한 복원 지점은 `/workspace save`로 남긴 수동 snapshot이 기준이어야 합니다.
 
-전역 `autosave`는 새 Pi 세션이나 단일 패널 창에서도 실행될 수 있으므로, 복원성이 크게 낮은 snapshot으로 기존 autosave를 덮어쓰면 안 됩니다. 기존 autosave에 연결된 session이 있는데 새 snapshot은 session 0개이거나, 기존 다중 panel autosave를 단일 panel snapshot이 크게 낮은 복원 점수로 대체하려는 경우에는 갱신을 건너뛰고 상태 파일에 skip reason을 남깁니다.
+전역 `autosave`는 새 Pi 세션이나 단일 패널 창에서도 실행될 수 있으므로, 단일 alias 파일만 덮어쓰면 사용자가 부활시키려던 작업공간을 잃습니다. alias 갱신 전 기존 autosave는 `autosave-YYYYMMDDTHHMMSS` 형태의 versioned archive로 먼저 보존합니다. 또한 기존 autosave에 연결된 session이 있는데 새 snapshot은 session 0개이거나, 기존 다중 panel autosave를 단일 panel snapshot이 크게 낮은 복원 점수로 대체하려는 경우에는 alias 갱신을 건너뛰고 상태 파일에 skip reason을 남깁니다.
 
 ## Restore Rule
 

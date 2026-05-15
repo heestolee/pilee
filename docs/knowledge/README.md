@@ -133,7 +133,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [MCP 결과는 큰 출력만 digest-first로 다룬다](./mcp-digest-first-artifacts.md) | active | high | 2026-05-12 | d98008a | mcp, digest-first, artifact, tool-output, lazy-retrieval |
 | [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-05-13 | 1a6aa93 | mcp, stderr, stdio, terminal, tui, noise |
 | [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-05-13 | e0dc999 | terminal, ghostty, applescript, notify, host, integration |
-| [터미널 workspace 복원은 snapshot과 host adapter를 분리한다](./terminal-workspace-restore.md) | active | high | 2026-05-15 | 2f869e8 | workspace, terminal, ghostty, snapshot, restore, session |
+| [터미널 workspace 복원은 snapshot과 host adapter를 분리한다](./terminal-workspace-restore.md) | active | high | 2026-05-15 | 3a8951b | workspace, terminal, ghostty, snapshot, restore, session |
 
 ### ui
 
