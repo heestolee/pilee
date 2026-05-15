@@ -407,10 +407,16 @@ function isRecoverableSummary(summary: WorkspaceSummary): boolean {
 	return summary.matched > 0;
 }
 
+function workspaceSummaryScore(summary: Pick<WorkspaceSummary, "tabs" | "terminals" | "matched">): number {
+	return summary.matched * 100 + summary.terminals * 10 + summary.tabs;
+}
+
 export function compareWorkspaceSummaries(a: WorkspaceSummary, b: WorkspaceSummary): number {
 	const aRecoverable = isRecoverableSummary(a);
 	const bRecoverable = isRecoverableSummary(b);
 	if (aRecoverable !== bRecoverable) return aRecoverable ? -1 : 1;
+	const scoreDelta = workspaceSummaryScore(b) - workspaceSummaryScore(a);
+	if (scoreDelta !== 0) return scoreDelta;
 	if (a.updatedAt !== b.updatedAt) return b.updatedAt - a.updatedAt;
 	return a.name.localeCompare(b.name, "ko");
 }
@@ -862,7 +868,13 @@ async function handleRestore(pi: ExtensionAPI, ctx: ExtensionCommandContext, arg
 		return;
 	}
 	const plan = buildRestorePlan(resolved.snapshot);
-	const report = renderPlan(plan);
+	const report = [
+		`requested target: ${args.target || "<default>"}`,
+		resolved.summary ? `resolved snapshot: ${resolved.summary.name} (${resolved.summary.id})` : undefined,
+		resolved.summary ? `snapshot path: ${resolved.summary.path}` : undefined,
+		"",
+		renderPlan(plan),
+	].filter((line): line is string => line !== undefined).join("\n");
 	if (args.dryRun) {
 		ctx.ui.notify("workspace restore dry-run plan을 표시했습니다.", "info");
 		sendReport(pi, "Workspace restore dry-run", report);
@@ -954,7 +966,7 @@ Usage:
 Notes:
 - 기본 restore mode는 append입니다. 현재 창을 닫거나 대체하지 않습니다.
 - /workspace list의 번호를 그대로 /workspace <번호> 또는 /workspace restore <번호>에 사용할 수 있습니다.
-- 복원 가능한 session이 연결된 snapshot을 번호 목록에서 우선 표시합니다.
+- 복원 가능한 session이 연결된 snapshot을 번호 목록에서 우선 표시하고, 그 안에서는 session/panel이 많은 복원성 높은 snapshot을 먼저 표시합니다.
 - autosave는 session 시작 5~10초 뒤 첫 저장 후 약 1시간마다 갱신됩니다.
 - autosave alias를 갱신하기 전 기존 autosave를 버전 보관본으로 보존하고, 복원성이 크게 낮은 snapshot으로는 덮어쓰지 않습니다.
 - Ghostty AppleScript가 split tree/비율을 제공하지 않아 split panel은 순차 right split으로 근사 복원합니다.
