@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { getAgentDir, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@mariozechner/pi-coding-agent";
@@ -12,6 +12,8 @@ const WORKSPACE_DIR = join(getAgentDir(), "workspaces");
 const SNAPSHOT_DIR = join(WORKSPACE_DIR, "snapshots");
 const ACTIVE_PATH = join(WORKSPACE_DIR, "active-sessions.json");
 const AUTOSAVE_ID = "autosave";
+const AUTOSAVE_ARCHIVE_PREFIX = "autosave-";
+const AUTOSAVE_ARCHIVE_LIMIT = 72;
 const ACTIVE_TTL_MS = 24 * 60 * 60 * 1000;
 const AUTOSAVE_INTERVAL_MS = 60 * 60 * 1000;
 const AUTOSAVE_MIN_GAP_MS = 20_000;
@@ -429,14 +431,56 @@ export function autosaveReplacementReason(existing: Pick<WorkspaceSnapshot, "tab
 	return undefined;
 }
 
-function saveAutosaveSnapshot(snapshot: WorkspaceSnapshot): { path: string; saved: boolean; reason?: string } {
+function timestampId(ts: number): string {
+	return new Date(ts).toISOString().replace(/[-:.]/gu, "").slice(0, 15);
+}
+
+function autosaveArchivePath(snapshot: WorkspaceSnapshot): string {
+	return snapshotPath(`${AUTOSAVE_ARCHIVE_PREFIX}${timestampId(snapshot.updatedAt)}`);
+}
+
+function isAutosaveArchive(snapshot: WorkspaceSnapshot): boolean {
+	return snapshot.source === "auto" && /^autosave-\d{8}T\d{6}$/u.test(snapshot.id);
+}
+
+function archiveAutosaveSnapshot(snapshot: WorkspaceSnapshot | null): string | undefined {
+	if (!snapshot || snapshot.id !== AUTOSAVE_ID) return undefined;
+	const archive = { ...snapshot, id: `${AUTOSAVE_ARCHIVE_PREFIX}${timestampId(snapshot.updatedAt)}` };
+	const path = autosaveArchivePath(archive);
+	if (!existsSync(path)) writeFileSync(path, JSON.stringify(archive, null, 2));
+	pruneAutosaveArchives();
+	return path;
+}
+
+function pruneAutosaveArchives() {
+	let archives: Array<{ path: string; updatedAt: number }> = [];
+	try {
+		archives = readdirSync(SNAPSHOT_DIR)
+			.filter((entry) => entry.endsWith(".json"))
+			.map((entry) => {
+				const path = join(SNAPSHOT_DIR, entry);
+				const snapshot = readSnapshot(path);
+				return snapshot && isAutosaveArchive(snapshot) ? { path, updatedAt: snapshot.updatedAt } : null;
+			})
+			.filter((entry): entry is { path: string; updatedAt: number } => Boolean(entry))
+			.sort((a, b) => b.updatedAt - a.updatedAt);
+	} catch {
+		return;
+	}
+	for (const archive of archives.slice(AUTOSAVE_ARCHIVE_LIMIT)) {
+		try { unlinkSync(archive.path); } catch {}
+	}
+}
+
+function saveAutosaveSnapshot(snapshot: WorkspaceSnapshot): { path: string; saved: boolean; reason?: string; archivedPath?: string } {
 	ensureWorkspaceDirs();
 	const path = snapshotPath(AUTOSAVE_ID);
 	const existing = readSnapshot(path);
 	const reason = autosaveReplacementReason(existing, snapshot);
 	if (reason) return { path, saved: false, reason };
+	const archivedPath = existing?.updatedAt !== snapshot.updatedAt ? archiveAutosaveSnapshot(existing) : undefined;
 	writeFileSync(path, JSON.stringify(snapshot, null, 2));
-	return { path, saved: true };
+	return { path, saved: true, archivedPath };
 }
 
 function listSnapshots(): WorkspaceSummary[] {
@@ -874,6 +918,7 @@ async function autosave(pi: ExtensionAPI, ctx: ExtensionContext) {
 			pid: process.pid,
 			ok: true,
 			saved: saved.saved,
+			archivedPath: saved.archivedPath,
 			skippedReason: saved.reason,
 			stats: workspaceSnapshotStats(snapshot),
 		});
@@ -910,7 +955,8 @@ Notes:
 - 기본 restore mode는 append입니다. 현재 창을 닫거나 대체하지 않습니다.
 - /workspace list의 번호를 그대로 /workspace <번호> 또는 /workspace restore <번호>에 사용할 수 있습니다.
 - 복원 가능한 session이 연결된 snapshot을 번호 목록에서 우선 표시합니다.
-- autosave는 session 시작 5~10초 뒤 첫 저장 후 약 1시간마다 갱신되며, 복원성이 크게 낮은 snapshot으로 기존 autosave를 덮어쓰지 않습니다.
+- autosave는 session 시작 5~10초 뒤 첫 저장 후 약 1시간마다 갱신됩니다.
+- autosave alias를 갱신하기 전 기존 autosave를 버전 보관본으로 보존하고, 복원성이 크게 낮은 snapshot으로는 덮어쓰지 않습니다.
 - Ghostty AppleScript가 split tree/비율을 제공하지 않아 split panel은 순차 right split으로 근사 복원합니다.
 - Pi session 매핑은 active session registry를 우선하고, restore 시점에도 최근 session fallback을 보조로 재확인합니다.`;
 
