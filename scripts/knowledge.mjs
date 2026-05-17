@@ -1026,6 +1026,7 @@ const README_EXTENSION_GROUPS = [
 		{ name: "fork-panel", ko: "Ghostty 패널 분할 포크 + `P0/P1/P2` 식별자 + parent inbox(`/panels`) + `/handoff`/`/done` + `/revive`/`/repanel`", en: "Ghostty split panels, `P0/P1/P2` labels, handoff inbox, revive, and repanel" },
 		{ name: "workspace", ko: "Ghostty window/tab/split 작업공간 snapshot 저장·append 복원", en: "Ghostty window/tab/split workspace snapshots and append restore" },
 		{ name: "continue-clean", ko: "현재 세션의 최소 handoff만 새 세션에 주입해 깨끗하게 이어가기", en: "Continue in a clean new session with only a minimal handoff" },
+		{ name: "to-production", ko: "현재 worktree 변경을 source 보존 방식으로 최신 production 기반 target worktree/branch에 이식", en: "Moves current worktree changes to a fresh production-based target worktree/branch without mutating the source" },
 		{ name: "session-title", ko: "세션 제목 자동 설정", en: "Automatic session titles" },
 	] },
 	{ ko: "UI / UX", en: "UI / UX", items: [
@@ -1092,6 +1093,7 @@ const README_SKILL_GROUPS = [
 		{ name: "db-write-migration", ko: "마이그레이션 설계와 검증 guidance", en: "Migration design and verification guidance" },
 		{ name: "jira-issue-management", ko: "Jira 이슈 작성/수정 preview gate", en: "Jira issue preparation with preview gate" },
 		{ name: "ship", ko: "PR 전 변경사항을 의도 단위 커밋·검증·push로 정리", en: "Pre-PR commit, verification, and push workflow" },
+		{ name: "to-production", ko: "현재 worktree 변경을 source 보존 방식으로 production 기반 hotfix target에 이식", en: "Source-preserving migration of current worktree changes to a production-based hotfix target" },
 		{ name: "pr-ship", ko: "PR 리뷰 코멘트 대응 후 커밋·push·스레드 답글·review re-request까지 수행 (`--push-only` 지원)", en: "Post-PR review response with commit, push, thread reply, review re-request, and `--push-only` mode" },
 		{ name: "ci-ship", ko: "PR CI 실패를 check/log 기반으로 분석해 수정·검증·push", en: "Post-PR CI failure analysis, fix, verification, and push workflow" },
 		{ name: "verify-report", ko: "캡처/네트워크/콘솔/코드 diff 기반 검증 리포트", en: "Capture/evidence-based verification reports" },

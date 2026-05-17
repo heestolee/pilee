@@ -253,6 +253,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | extension | `extensions/tasks` | [Idle UI는 장식이 아니라 ambient status다](./docs/knowledge/ambient-status-surfaces.md)<br>[Backlog는 원 세션 출처를 보존한다](./docs/knowledge/backlog-source-session-provenance.md)<br>[Working Context Card는 큰 맥락을 현재 slice로 압축한다](./docs/knowledge/work-context-card-task-board.md) |
 | extension | `extensions/tft-commands` | [Frame identity는 cwd보다 작업 의도를 우선한다](./docs/knowledge/frame-planning-identity.md)<br>[TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./docs/knowledge/frame-studio-interactive-decision-ui.md)<br>[Command shim은 skill source of truth를 지킨다](./docs/knowledge/tft-command-shim-skill-routing.md) |
 | extension | `extensions/timestamp` | [색상은 정보 위계다](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다](./docs/knowledge/tui-rendering-sanitization.md) |
+| extension | `extensions/to-production` | [To-production은 source-preserving hotfix 이식이다](./docs/knowledge/to-production-source-preserving-hotfix.md) |
 | extension | `extensions/tool-group-renderer` | [도구 출력은 대화 흐름을 침범하지 않는다](./docs/knowledge/tool-output-noise-management.md) |
 | extension | `extensions/tui-ask` | [TUI 질문은 작은 의사결정 게이트다](./docs/knowledge/tui-ask-decision-overlay.md)<br>[반복 워크플로 실패는 guard/flow로 고정한다](./docs/knowledge/workflow-guard-enforced-flow.md) |
 | extension | `extensions/until` | [Until loop는 종료 조건을 명시 보고한다](./docs/knowledge/until-loop-explicit-reporting.md) |
@@ -289,6 +290,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | skill | `skills/stress-interview` | [Worker는 readiness ownership을 가진다](./docs/knowledge/ai-worker-readiness-orchestrator.md)<br>[Self-healing은 actionable item만 수정한다](./docs/knowledge/self-healing-actionable-loop.md)<br>[Stress Interview는 다축 검토다](./docs/knowledge/stress-interview-multi-axis-review.md)<br>[Codex-first subagent 모델 운용 정책](./docs/knowledge/subagent-model-policy.md)<br>[Subagent 위임은 구체 프롬프트를 요구한다](./docs/knowledge/subagent-prompt-specificity.md) |
 | skill | `skills/systematic-debugging` | [수정 전에 근본 원인을 좁힌다](./docs/knowledge/root-cause-before-fix.md)<br>[Skill은 재사용 가능한 절차다](./docs/knowledge/skills-as-portable-procedures.md) |
 | skill | `skills/tft-guidelines` | [AskUserQuestion은 의사결정 게이트다](./docs/knowledge/ask-user-question-decision-gates.md)<br>[AskUserQuestion 옵션은 행동 분기를 표현한다](./docs/knowledge/ask-user-question-option-design.md)<br>[백엔드 레이어 맵은 Frame의 초기 이해 게이트다](./docs/knowledge/backend-layer-map-frame-gate.md)<br>[정책축 스캔은 Frame의 초기 게이트다](./docs/knowledge/policy-axis-frame-gate.md)<br>[TFT Preference Regression Gate는 사용자 선호 역전을 막는다](./docs/knowledge/tft-preference-regression-gate.md)<br>[TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./docs/knowledge/tft-visual-structure-renderer.md)<br>[TUI 질문은 작은 의사결정 게이트다](./docs/knowledge/tui-ask-decision-overlay.md) |
+| skill | `skills/to-production` | [To-production은 source-preserving hotfix 이식이다](./docs/knowledge/to-production-source-preserving-hotfix.md) |
 | skill | `skills/verify` | [Architecture friction은 TFT의 검증 축이다](./docs/knowledge/architecture-friction-tft-lens.md)<br>[AskUserQuestion은 의사결정 게이트다](./docs/knowledge/ask-user-question-decision-gates.md)<br>[AskUserQuestion 옵션은 행동 분기를 표현한다](./docs/knowledge/ask-user-question-option-design.md)<br>[Atomic evidence workflow는 작은 claim을 증거로 닫는다](./docs/knowledge/atomic-evidence-workflow.md)<br>[백엔드 레이어 맵은 Frame의 초기 이해 게이트다](./docs/knowledge/backend-layer-map-frame-gate.md)<br>[Decide는 선택을 한 번 공격한다](./docs/knowledge/decide-tradeoff-challenge.md)<br>[완료 선언은 증거 뒤에만 온다](./docs/knowledge/evidence-first-verification-gate.md)<br>[Frame과 Verify는 구조화 계약이다](./docs/knowledge/frame-verify-contract.md)<br>[정책축 스캔은 Frame의 초기 게이트다](./docs/knowledge/policy-axis-frame-gate.md)<br>[변경된 줄은 요청으로 추적 가능해야 한다](./docs/knowledge/request-traceability-surgical-changes.md)<br>[Command shim은 skill source of truth를 지킨다](./docs/knowledge/tft-command-shim-skill-routing.md)<br>[TFT Preference Regression Gate는 사용자 선호 역전을 막는다](./docs/knowledge/tft-preference-regression-gate.md)<br>[반복 검증 실패는 baseline cache로 분리한다](./docs/knowledge/validation-baseline-failure-cache.md)<br>[검증 중 코드 변경은 이전 검증을 무효화한다](./docs/knowledge/verification-invalidation-on-change.md)<br>[Verify risk lens는 generic core와 private overlay로 나눈다](./docs/knowledge/verify-risk-lens-overlay.md) |
 | skill | `skills/verify-report` | [Atomic evidence workflow는 작은 claim을 증거로 닫는다](./docs/knowledge/atomic-evidence-workflow.md)<br>[백엔드 레이어 맵은 Frame의 초기 이해 게이트다](./docs/knowledge/backend-layer-map-frame-gate.md)<br>[Deterministic fallback은 workflow를 보존한다](./docs/knowledge/deterministic-fallbacks-preserve-workflow.md)<br>[완료 선언은 증거 뒤에만 온다](./docs/knowledge/evidence-first-verification-gate.md)<br>[User-facing 출력은 한국어를 기본으로 한다](./docs/knowledge/korean-first-user-facing-output.md)<br>[Live artifact는 local preview first다](./docs/knowledge/live-artifact-preview-pattern.md)<br>[정책축 스캔은 Frame의 초기 게이트다](./docs/knowledge/policy-axis-frame-gate.md)<br>[Private overlay package는 회사·개인 실행 맥락을 담는다](./docs/knowledge/private-overlay-package-boundary.md)<br>[검증 중 코드 변경은 이전 검증을 무효화한다](./docs/knowledge/verification-invalidation-on-change.md)<br>[Verify Report 전에는 readiness를 먼저 잠근다](./docs/knowledge/verify-report-preflight-readiness.md)<br>[Verify Report와 coverage-aware 증거 검증 흐름](./docs/knowledge/verify-report-workflow.md) |
 | skill | `skills/verify-report-preflight` | [Verify Report 전에는 readiness를 먼저 잠근다](./docs/knowledge/verify-report-preflight-readiness.md)<br>[작업 절차의 무게는 변경 리스크에 비례해야 한다](./docs/knowledge/workflow-weight-proportionality.md) |
@@ -304,7 +306,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 ## Extensions
 
 <!-- PILEE_README_EXTENSIONS_START -->
-51개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
+52개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
 
 > `extensions/*`와 `scripts/knowledge.mjs`의 inventory metadata에서 생성됩니다. 변경 후 `node scripts/knowledge.mjs --graph`로 갱신합니다.
 
@@ -335,6 +337,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | **fork-panel** | Ghostty 패널 분할 포크 + `P0/P1/P2` 식별자 + parent inbox(`/panels`) + `/handoff`/`/done` + `/revive`/`/repanel` |
 | **workspace** | Ghostty window/tab/split 작업공간 snapshot 저장·append 복원 |
 | **continue-clean** | 현재 세션의 최소 handoff만 새 세션에 주입해 깨끗하게 이어가기 |
+| **to-production** | 현재 worktree 변경을 source 보존 방식으로 최신 production 기반 target worktree/branch에 이식 |
 | **session-title** | 세션 제목 자동 설정 |
 
 ### UI / UX
@@ -390,7 +393,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 ## Skills
 
 <!-- PILEE_README_SKILLS_START -->
-26개. 글로벌 워크플로 스킬만 pilee에 포함. 프로젝트 고유 스킬(create-pr, self-review)은 해당 레포/private overlay에 위치.
+27개. 글로벌 워크플로 스킬만 pilee에 포함. 프로젝트 고유 스킬(create-pr, self-review)은 해당 레포/private overlay에 위치.
 
 > `skills/*/SKILL.md`와 `scripts/knowledge.mjs`의 inventory metadata에서 생성됩니다. 변경 후 `node scripts/knowledge.mjs --graph`로 갱신합니다.
 
@@ -429,6 +432,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | **db-write-migration** | 마이그레이션 설계와 검증 guidance |
 | **jira-issue-management** | Jira 이슈 작성/수정 preview gate |
 | **ship** | PR 전 변경사항을 의도 단위 커밋·검증·push로 정리 |
+| **to-production** | 현재 worktree 변경을 source 보존 방식으로 production 기반 hotfix target에 이식 |
 | **pr-ship** | PR 리뷰 코멘트 대응 후 커밋·push·스레드 답글·review re-request까지 수행 (`--push-only` 지원) |
 | **ci-ship** | PR CI 실패를 check/log 기반으로 분석해 수정·검증·push |
 | **verify-report** | 캡처/네트워크/콘솔/코드 diff 기반 검증 리포트 |

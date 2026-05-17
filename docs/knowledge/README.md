@@ -205,6 +205,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Command shim은 skill source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-05-13 | 10e0874 | command-shim, skill, tft, frame, slash-command, routing |
 | [TFT Preference Regression Gate는 사용자 선호 역전을 막는다](./tft-preference-regression-gate.md) | active | high | 2026-05-13 | 9152c35 | tft, frame, decide, verify, ask-user-question, regression |
 | [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-05-13 | 10e0874 | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
+| [To-production은 source-preserving hotfix 이식이다](./to-production-source-preserving-hotfix.md) | active | high | 2026-05-18 | d1f71ab | to-production, hotfix, production, git, worktree, source-preserving |
 | [TUI 질문은 작은 의사결정 게이트다](./tui-ask-decision-overlay.md) | active | high | 2026-05-13 | 10e0874 | tui, ask-user-question, decision-gate, tool, overlay |
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
 | [Working Context Card는 큰 맥락을 현재 slice로 압축한다](./work-context-card-task-board.md) | active | high | 2026-05-13 | e0dc999 | work-context, tasks, workflow, context, guard |
@@ -303,6 +304,7 @@ graph TD
   doc_tft_command_shim_skill_routing["Command shim은 skill source of truth를 지킨다"]
   doc_tft_preference_regression_gate["TFT Preference Regression Gate는 사용자 선호 역전을 막는다"]
   doc_tft_visual_structure_renderer["TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다"]
+  doc_to_production_source_preserving_hotfix["To-production은 source-preserving hotfix 이식이다"]
   doc_tui_ask_decision_overlay["TUI 질문은 작은 의사결정 게이트다"]
   doc_until_loop_explicit_reporting["Until loop는 종료 조건을 명시 보고한다"]
   doc_work_context_card_task_board["Working Context Card는 큰 맥락을 현재 slice로 압축한다"]
@@ -598,6 +600,8 @@ graph TD
   doc_tft_visual_structure_renderer --> doc_evidence_first_verification_gate
   doc_tft_visual_structure_renderer --> doc_frame_studio_interactive_decision_ui
   doc_tft_visual_structure_renderer --> doc_frame_verify_contract
+  doc_to_production_source_preserving_hotfix --> doc_worktree_creation_parent_gate
+  doc_to_production_source_preserving_hotfix --> doc_worktree_execution_boundary
   doc_tui_ask_decision_overlay --> doc_ask_user_question_decision_gates
   doc_tui_ask_decision_overlay --> doc_ask_user_question_option_design
   doc_tui_ask_decision_overlay --> doc_tui_rendering_sanitization
@@ -634,7 +638,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 93
-- Links: 318
+- Documents: 94
+- Links: 320
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

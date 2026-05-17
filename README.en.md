@@ -227,6 +227,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | extension | `extensions/tasks` | [Ambient Status Surfaces](./docs/knowledge/ambient-status-surfaces.md)<br>[Backlog Source Session Provenance](./docs/knowledge/backlog-source-session-provenance.md)<br>[Working Context Card compresses large context into the current slice](./docs/knowledge/work-context-card-task-board.md) |
 | extension | `extensions/tft-commands` | [Frame Planning Identity](./docs/knowledge/frame-planning-identity.md)<br>[Frame Studio Interactive Decision UI](./docs/knowledge/frame-studio-interactive-decision-ui.md)<br>[TFT Command Shim Skill Routing](./docs/knowledge/tft-command-shim-skill-routing.md) |
 | extension | `extensions/timestamp` | [Theme Information Hierarchy](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI Rendering Sanitization](./docs/knowledge/tui-rendering-sanitization.md) |
+| extension | `extensions/to-production` | [To Production Source Preserving Hotfix](./docs/knowledge/to-production-source-preserving-hotfix.md) |
 | extension | `extensions/tool-group-renderer` | [Tool Output Noise Management](./docs/knowledge/tool-output-noise-management.md) |
 | extension | `extensions/tui-ask` | [TUI Ask is a lightweight decision gate](./docs/knowledge/tui-ask-decision-overlay.md)<br>[Repeated workflow failures become enforced guard flows](./docs/knowledge/workflow-guard-enforced-flow.md) |
 | extension | `extensions/until` | [Until Loop Explicit Reporting](./docs/knowledge/until-loop-explicit-reporting.md) |
@@ -263,6 +264,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | skill | `skills/stress-interview` | [AI Worker Readiness Orchestrator](./docs/knowledge/ai-worker-readiness-orchestrator.md)<br>[Self Healing Actionable Loop](./docs/knowledge/self-healing-actionable-loop.md)<br>[Stress Interview Multi Axis Review](./docs/knowledge/stress-interview-multi-axis-review.md)<br>[Subagent Model Policy](./docs/knowledge/subagent-model-policy.md)<br>[Subagent Prompt Specificity](./docs/knowledge/subagent-prompt-specificity.md) |
 | skill | `skills/systematic-debugging` | [Root Cause Before Fix](./docs/knowledge/root-cause-before-fix.md)<br>[Skills As Portable Procedures](./docs/knowledge/skills-as-portable-procedures.md) |
 | skill | `skills/tft-guidelines` | [Ask User Question Decision Gates](./docs/knowledge/ask-user-question-decision-gates.md)<br>[Ask User Question Option Design](./docs/knowledge/ask-user-question-option-design.md)<br>[Backend Layer Map Frame Gate](./docs/knowledge/backend-layer-map-frame-gate.md)<br>[Policy Axis Frame Gate](./docs/knowledge/policy-axis-frame-gate.md)<br>[TFT Preference Regression Gate](./docs/knowledge/tft-preference-regression-gate.md)<br>[TFT Visual Structure Renderer](./docs/knowledge/tft-visual-structure-renderer.md)<br>[TUI Ask is a lightweight decision gate](./docs/knowledge/tui-ask-decision-overlay.md) |
+| skill | `skills/to-production` | [To Production Source Preserving Hotfix](./docs/knowledge/to-production-source-preserving-hotfix.md) |
 | skill | `skills/verify` | [Architecture Friction TFT Lens](./docs/knowledge/architecture-friction-tft-lens.md)<br>[Ask User Question Decision Gates](./docs/knowledge/ask-user-question-decision-gates.md)<br>[Ask User Question Option Design](./docs/knowledge/ask-user-question-option-design.md)<br>[Atomic Evidence Workflow](./docs/knowledge/atomic-evidence-workflow.md)<br>[Backend Layer Map Frame Gate](./docs/knowledge/backend-layer-map-frame-gate.md)<br>[Decide Tradeoff Challenge](./docs/knowledge/decide-tradeoff-challenge.md)<br>[Evidence First Verification Gate](./docs/knowledge/evidence-first-verification-gate.md)<br>[Frame Verify Contract](./docs/knowledge/frame-verify-contract.md)<br>[Policy Axis Frame Gate](./docs/knowledge/policy-axis-frame-gate.md)<br>[Request Traceability Surgical Changes](./docs/knowledge/request-traceability-surgical-changes.md)<br>[TFT Command Shim Skill Routing](./docs/knowledge/tft-command-shim-skill-routing.md)<br>[TFT Preference Regression Gate](./docs/knowledge/tft-preference-regression-gate.md)<br>[Repeated validation failures are separated by a baseline cache](./docs/knowledge/validation-baseline-failure-cache.md)<br>[Verification Invalidation On Change](./docs/knowledge/verification-invalidation-on-change.md)<br>[Verify Risk Lens Overlay](./docs/knowledge/verify-risk-lens-overlay.md) |
 | skill | `skills/verify-report` | [Atomic Evidence Workflow](./docs/knowledge/atomic-evidence-workflow.md)<br>[Backend Layer Map Frame Gate](./docs/knowledge/backend-layer-map-frame-gate.md)<br>[Deterministic Fallbacks Preserve Workflow](./docs/knowledge/deterministic-fallbacks-preserve-workflow.md)<br>[Evidence First Verification Gate](./docs/knowledge/evidence-first-verification-gate.md)<br>[Korean First User Facing Output](./docs/knowledge/korean-first-user-facing-output.md)<br>[Live Artifact Preview Pattern](./docs/knowledge/live-artifact-preview-pattern.md)<br>[Policy Axis Frame Gate](./docs/knowledge/policy-axis-frame-gate.md)<br>[Private Overlay Package Boundary](./docs/knowledge/private-overlay-package-boundary.md)<br>[Verification Invalidation On Change](./docs/knowledge/verification-invalidation-on-change.md)<br>[Verify Report starts after readiness is locked](./docs/knowledge/verify-report-preflight-readiness.md)<br>[Verify Report Workflow](./docs/knowledge/verify-report-workflow.md) |
 | skill | `skills/verify-report-preflight` | [Verify Report starts after readiness is locked](./docs/knowledge/verify-report-preflight-readiness.md)<br>[Workflow weight must match change risk](./docs/knowledge/workflow-weight-proportionality.md) |
@@ -278,7 +280,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 ## Extensions
 
 <!-- PILEE_README_EXTENSIONS_START -->
-51 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
+52 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
 
 > Generated from `extensions/*` plus inventory metadata in `scripts/knowledge.mjs`; refresh with `node scripts/knowledge.mjs --graph`.
 
@@ -309,6 +311,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **fork-panel** | Ghostty split panels, `P0/P1/P2` labels, handoff inbox, revive, and repanel |
 | **workspace** | Ghostty window/tab/split workspace snapshots and append restore |
 | **continue-clean** | Continue in a clean new session with only a minimal handoff |
+| **to-production** | Moves current worktree changes to a fresh production-based target worktree/branch without mutating the source |
 | **session-title** | Automatic session titles |
 
 ### UI / UX
@@ -364,7 +367,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 ## Skills
 
 <!-- PILEE_README_SKILLS_START -->
-26 global workflow skills. Project-specific skills belong in project/private overlays.
+27 global workflow skills. Project-specific skills belong in project/private overlays.
 
 > Generated from `skills/*/SKILL.md` plus inventory metadata in `scripts/knowledge.mjs`; refresh with `node scripts/knowledge.mjs --graph`.
 
@@ -403,6 +406,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **db-write-migration** | Migration design and verification guidance |
 | **jira-issue-management** | Jira issue preparation with preview gate |
 | **ship** | Pre-PR commit, verification, and push workflow |
+| **to-production** | Source-preserving migration of current worktree changes to a production-based hotfix target |
 | **pr-ship** | Post-PR review response with commit, push, thread reply, review re-request, and `--push-only` mode |
 | **ci-ship** | Post-PR CI failure analysis, fix, verification, and push workflow |
 | **verify-report** | Capture/evidence-based verification reports |
