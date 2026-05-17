@@ -210,10 +210,10 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Working Context Card는 큰 맥락을 현재 slice로 압축한다](./work-context-card-task-board.md) | active | high | 2026-05-13 | e0dc999 | work-context, tasks, workflow, context, guard |
 | [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-05-13 | 062f9f2 | workflow, guard, intent, audit, hotfix, continuation |
 | [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-05-13 | 062f9f2 | workflow, frame, tft, hotfix, scope, incremental |
-| [Worktree 생성은 부모 패널의 게이트다](./worktree-creation-parent-gate.md) | active | high | 2026-05-17 | d674c80 | worktree, fork-panel, parent-panel, hotfix, context, profile-driven |
+| [Worktree 생성은 부모 패널의 게이트다](./worktree-creation-parent-gate.md) | active | high | 2026-05-17 | 13fe99c | worktree, fork-panel, parent-panel, hotfix, context, profile-driven |
 | [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-05-13 | 9048804 | worktree, dependencies, bootstrap, profile-driven, worker, subagent |
 | [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-05-13 | e0dc999 | worktree, workspace, repo, branch, execution-boundary, cwd-binding |
-| [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-05-17 | d674c80 | worktree, session, revive, fork-panel, panel-inbox, handoff |
+| [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-05-17 | 13fe99c | worktree, session, revive, fork-panel, panel-inbox, handoff |
 
 ## Knowledge Map
 
