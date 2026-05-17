@@ -205,7 +205,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Command shim은 skill source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-05-13 | 10e0874 | command-shim, skill, tft, frame, slash-command, routing |
 | [TFT Preference Regression Gate는 사용자 선호 역전을 막는다](./tft-preference-regression-gate.md) | active | high | 2026-05-13 | 9152c35 | tft, frame, decide, verify, ask-user-question, regression |
 | [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-05-13 | 10e0874 | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
-| [To-production은 source-preserving hotfix 이식이다](./to-production-source-preserving-hotfix.md) | active | high | 2026-05-18 | d1f71ab | to-production, hotfix, production, git, worktree, source-preserving |
+| [To-production은 source-preserving hotfix 이식이다](./to-production-source-preserving-hotfix.md) | active | high | 2026-05-18 | 08b66ed | to-production, hotfix, production, git, worktree, source-preserving |
 | [TUI 질문은 작은 의사결정 게이트다](./tui-ask-decision-overlay.md) | active | high | 2026-05-13 | 10e0874 | tui, ask-user-question, decision-gate, tool, overlay |
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
 | [Working Context Card는 큰 맥락을 현재 slice로 압축한다](./work-context-card-task-board.md) | active | high | 2026-05-13 | e0dc999 | work-context, tasks, workflow, context, guard |
