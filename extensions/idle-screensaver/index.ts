@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionContext, ThemeColor } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
-import { visibleWidth } from "@mariozechner/pi-tui";
+import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { POKEMON_KO_TO_ID, renderSprite } from "./sprite.js";
 
 // ─── Config ────────────────────────────────────────────────────────────────
@@ -297,17 +297,20 @@ function renderScreensaver(width: number, height: number, data: RenderData, them
 	const hRule = new DynamicBorder(bc).render(width)[0] ?? bc("─".repeat(width));
 	const L = bc("│");
 	const R = bc("│");
-	const innerWidth = width - 2;
+	const innerWidth = Math.max(0, width - 2);
 
+	const fitLine = (text: string) => innerWidth <= 0 ? "" : truncateToWidth(text, innerWidth, "…", true);
 	const emptyLine = () => L + " ".repeat(innerWidth) + R;
 	const placeLine = (chars: string) => {
-		const vw = visibleWidth(chars);
-		return L + chars + " ".repeat(Math.max(0, innerWidth - vw)) + R;
+		const fitted = fitLine(chars);
+		const vw = visibleWidth(fitted);
+		return L + fitted + " ".repeat(Math.max(0, innerWidth - vw)) + R;
 	};
 	const centerLine = (text: string) => {
-		const tw = visibleWidth(text);
+		const fitted = fitLine(text);
+		const tw = visibleWidth(fitted);
 		const pad = Math.max(0, Math.floor((innerWidth - tw) / 2));
-		return placeLine(" ".repeat(pad) + text);
+		return placeLine(" ".repeat(pad) + fitted);
 	};
 
 	const compact = data.title.trim();
