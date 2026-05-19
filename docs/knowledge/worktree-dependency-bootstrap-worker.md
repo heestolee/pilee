@@ -33,7 +33,7 @@ related:
 
 Profile이 bootstrap 대상으로 지정한 worktree의 dependency/runtime 준비는 구현 agent가 lint·migration·local-dev 실패를 맞고 뒤늦게 처리하는 일이 아니라, worktree 생성 직후와 구현 시작 시점의 조건부 readiness workflow가 맡아야 합니다.
 
-기본 구조는 **AI subagent orchestrator + deterministic executor**입니다. subagent는 현재 작업 의도와 repo profile로 필요한 domain을 확인하고, extension이 생성한 executor script를 실행한 뒤 status/log를 읽어 READY/BLOCKED를 판정합니다. executor는 이미 준비된 marker를 다시 설치하거나 생성하지 않고 누락된 domain만 실행합니다. Domain은 dependency install뿐 아니라 local env 생성, generated artifact 준비, lockfile sync, dev-server health처럼 repo/profile마다 다른 runtime readiness도 표현할 수 있습니다. 한 domain이 여러 파일을 함께 준비해야 하면 profile은 `marker` + `markers[]`로 전체 marker 묶음을 선언하고, marker만으로 readiness를 표현할 수 없으면 빠른 `readyCommand`를 추가합니다. public executor는 marker가 하나라도 빠지거나 `readyCommand`가 실패하면 해당 domain을 missing으로 봅니다.
+기본 구조는 **AI subagent orchestrator + deterministic executor**입니다. subagent는 현재 작업 의도와 repo profile로 필요한 domain을 확인하고, extension이 생성한 executor script를 실행한 뒤 status/log를 읽어 READY/BLOCKED를 판정합니다. executor는 이미 준비된 marker를 다시 설치하거나 생성하지 않고 누락된 domain만 실행합니다. Domain은 dependency install뿐 아니라 local env 생성, generated artifact 준비, lockfile sync, dev-server health, native build freshness처럼 repo/profile마다 다른 runtime readiness도 표현할 수 있습니다. 한 domain이 여러 파일을 함께 준비해야 하면 profile은 `marker` + `markers[]`로 전체 marker 묶음을 선언하고, marker만으로 readiness를 표현할 수 없으면 빠른 `readyCommand`를 추가합니다. public executor는 marker가 하나라도 빠지거나 `readyCommand`가 실패하면 해당 domain을 missing으로 봅니다.
 
 ## Conditional Rule
 
@@ -43,8 +43,9 @@ orchestrator/worker는 다음 조건을 만족할 때 자동 시작합니다.
 2. user prompt가 조사 전용이 아니라 구현/수정/검증/마무리 흐름입니다.
 3. profile이 지정한 domain marker 또는 `readyCommand`가 준비되지 않았습니다.
 4. `/wt new`, `/wt fork`, `worktree_create`, `worktree_fork`가 profile repo의 새 worktree를 만들면, 세션 전환 성공/실패와 무관하게 target worktree에서 `bootstrap.onCreateDomains`를 즉시 시작합니다.
+5. `bootstrap.changedPathRules`에 걸리는 branch diff 또는 working-tree diff가 있으면, prompt가 generic하더라도 해당 path의 runtime domain을 추가합니다.
 
-구체적인 marker, command, domain 추론 regex, 생성 직후 준비할 `onCreateDomains`는 public extension 코드가 아니라 overlay/profile JSON에 둡니다. public pilee는 orchestration lifecycle, status/log, idempotent marker/readyCommand check, executor script 생성만 담당합니다. Profile이 없으면 자동 bootstrap은 조용히 비활성화되고, 사용자는 일반 worktree workflow만 사용합니다.
+구체적인 marker, command, domain 추론 regex, 변경 경로별 domain 매핑, 생성 직후 준비할 `onCreateDomains`는 public extension 코드가 아니라 overlay/profile JSON에 둡니다. public pilee는 orchestration lifecycle, changed-path collection, status/log, idempotent marker/readyCommand check, executor script 생성만 담당합니다. Profile이 없으면 자동 bootstrap은 조용히 비활성화되고, 사용자는 일반 worktree workflow만 사용합니다.
 
 ## Main Agent Contract
 

@@ -45,6 +45,8 @@ export interface WorktreeBootstrapProfile {
 	implementationPromptRegex?: string;
 	exploratoryPromptRegex?: string;
 	domainPromptRules?: Array<{ domain: string; regex: string }>;
+	/** Add domains when the current branch or working tree has matching changed paths. */
+	changedPathRules?: Array<{ domain: string; regex: string }>;
 	domains?: WorktreeBootstrapDomainProfile[];
 	orchestrator?: WorktreeBootstrapOrchestratorProfile;
 }

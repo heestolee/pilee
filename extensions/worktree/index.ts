@@ -1031,7 +1031,7 @@ function orderedBootstrapDomains(profile: WorktreeRepoProfile, domains: Iterable
 	return bootstrapDomainProfiles(profile).map((domain) => domain.name).filter((name) => requested.has(name));
 }
 
-function getBootstrapDomains(profile: WorktreeRepoProfile, prompt: string, meta: WorktreeMeta | null): BootstrapDomain[] {
+function getBootstrapDomains(profile: WorktreeRepoProfile, prompt: string, meta: WorktreeMeta | null, changedPaths: string[] = []): BootstrapDomain[] {
 	const bootstrap = profile.bootstrap;
 	const domainProfiles = bootstrapDomainProfiles(profile);
 	if (!bootstrap?.enabled || domainProfiles.length === 0) return [];
@@ -1040,10 +1040,45 @@ function getBootstrapDomains(profile: WorktreeRepoProfile, prompt: string, meta:
 	for (const rule of bootstrap.domainPromptRules ?? []) {
 		if (regexTest(rule.regex, text)) matched.add(rule.domain);
 	}
+	for (const rule of bootstrap.changedPathRules ?? []) {
+		if (changedPaths.some((path) => regexTest(rule.regex, path))) matched.add(rule.domain);
+	}
 	const hasRoot = domainProfiles.some((domain) => domain.name === "root");
 	if (matched.size > 0 && hasRoot) matched.add("root");
 	const selected = matched.size > 0 ? matched : new Set(bootstrap.defaultDomains ?? domainProfiles.map((domain) => domain.name));
 	return orderedBootstrapDomains(profile, selected);
+}
+
+function parseGitPorcelainPath(line: string): string | null {
+	const body = line.slice(3).trim();
+	if (!body) return null;
+	const arrow = body.lastIndexOf(" -> ");
+	return arrow >= 0 ? body.slice(arrow + 4).trim() : body;
+}
+
+async function collectBootstrapChangedPaths(pi: ExtensionAPI, repoRoot: string, profile: WorktreeRepoProfile, meta: WorktreeMeta | null): Promise<string[]> {
+	if (!profile.bootstrap?.changedPathRules?.length) return [];
+	const changed = new Set<string>();
+	const status = await pi.exec("git", ["status", "--porcelain=v1", "--untracked-files=all"], { cwd: repoRoot });
+	if (status.code === 0) {
+		for (const line of (status.stdout ?? "").split("\n")) {
+			const path = parseGitPorcelainPath(line);
+			if (path) changed.add(path);
+		}
+	}
+	const baseBranch = meta?.baseBranch ?? profile.baseBranch;
+	if (baseBranch) {
+		const baseRef = baseBranch.includes("/") ? baseBranch : `origin/${baseBranch}`;
+		const mergeBase = await pi.exec("git", ["merge-base", "HEAD", baseRef], { cwd: repoRoot });
+		const mergeBaseSha = (mergeBase.stdout ?? "").trim();
+		if (mergeBase.code === 0 && mergeBaseSha) {
+			const diff = await pi.exec("git", ["diff", "--name-only", `${mergeBaseSha}...HEAD`], { cwd: repoRoot });
+			if (diff.code === 0) {
+				for (const path of (diff.stdout ?? "").split("\n").map((line) => line.trim()).filter(Boolean)) changed.add(path);
+			}
+		}
+	}
+	return [...changed];
 }
 
 function repoRelativePath(repoRoot: string, value: string | undefined): string {
@@ -1264,7 +1299,8 @@ async function ensureDependencyBootstrapWorker(
 	if (!options.force && !isImplementationStartPrompt(prompt, repoProfile)) return { repoRoot, repoName, state: "not-implementation" };
 
 	const meta = readMeta(repoRoot);
-	const domains = [...new Set(options.domains ?? getBootstrapDomains(repoProfile, prompt, meta))];
+	const changedPaths = options.domains ? [] : await collectBootstrapChangedPaths(pi, repoRoot, repoProfile, meta);
+	const domains = [...new Set(options.domains ?? getBootstrapDomains(repoProfile, prompt, meta, changedPaths))];
 	const missing = missingBootstrapDomains(repoRoot, repoProfile, domains);
 	const stateDir = bootstrapStateDir(repoRoot);
 	const logPath = join(stateDir, "bootstrap.log");
