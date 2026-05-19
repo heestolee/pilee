@@ -78,8 +78,14 @@ async function showShortcutAtlasOverlay(ctx: ExtensionCommandContext, initialFil
 
 	await ctx.ui.custom<void>(
 		(tui, theme, _kb, done) => ({
-			render: (width: number, height: number) => {
-				const bodyHeight = Math.max(6, height - 7);
+			render: (width: number, height?: number) => {
+				const terminalRows = Number((tui as any)?.terminal?.rows);
+				const viewportHeight = Number.isFinite(height)
+					? Math.max(8, Math.floor(height as number))
+					: Number.isFinite(terminalRows)
+						? Math.max(8, Math.floor(terminalRows))
+						: 28;
+				const bodyHeight = Math.max(6, viewportHeight - 7);
 				const lines: string[] = [];
 				lines.push(theme.fg("accent", "─".repeat(width)));
 				const status = atlas.summary.errors > 0
@@ -116,7 +122,7 @@ async function showShortcutAtlasOverlay(ctx: ExtensionCommandContext, initialFil
 				const maxScroll = Math.max(0, body.length - bodyHeight);
 				scroll = Math.min(scroll, maxScroll);
 				lines.push(...body.slice(scroll, scroll + bodyHeight));
-				while (lines.length < height - 2) lines.push("");
+				while (lines.length < viewportHeight - 2) lines.push("");
 				lines.push(theme.fg("accent", "─".repeat(width)));
 				lines.push(row(theme, width, `  ↑↓/jk scroll · PgUp/PgDn page · a all · c custom · p Pi · t terminal · i issues · / search · q close`));
 				return lines;
