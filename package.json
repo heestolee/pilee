@@ -33,7 +33,8 @@
     "test:pilee-final-check": "node scripts/check-pilee-final-check.mjs",
     "test:companion-window": "node scripts/run-typescript-test.mjs extensions/utils/companion-window.test.ts",
     "test:idle-screensaver": "node scripts/run-typescript-test.mjs extensions/idle-screensaver/render.test.ts",
-    "test:tasks": "node scripts/run-typescript-test.mjs extensions/tasks/index.test.ts"
+    "test:tasks": "node scripts/run-typescript-test.mjs extensions/tasks/index.test.ts",
+    "test:shortcut-atlas": "node scripts/run-typescript-test.mjs extensions/shortcut-atlas/registry.test.ts extensions/shortcut-atlas/index.test.ts"
   },
   "dependencies": {
     "@mariozechner/pi-ai": "^0.70.0",

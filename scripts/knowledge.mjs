@@ -1042,6 +1042,7 @@ const README_EXTENSION_GROUPS = [
 		{ name: "diff-overlay", ko: "`/diff` TUI — 커밋 모드, 파일 트리, 구문 하이라이팅", en: "`/diff` TUI with commit mode, file tree, and syntax highlight" },
 		{ name: "timestamp", ko: "`/timestamp` TUI — 대화 타임라인", en: "`/timestamp` conversation timeline" },
 		{ name: "archive-to-html", ko: "Verify/Web Search HTML 아카이브 + `/archive` Artifact Browser(`/show-report` alias) + companion WebView 재사용", en: "Verify/Web Search HTML archive and `/archive` Artifact Browser (`/show-report` alias) using the shared companion WebView" },
+		{ name: "shortcut-atlas", ko: "`/shortcuts` — 터미널/Pi/pilee custom 단축키 atlas와 충돌 검사", en: "`/shortcuts` atlas for terminal/Pi/pilee custom shortcuts and conflict checks" },
 	] },
 	{ ko: "도구", en: "Tools and data", items: [
 		{ name: "bash-tool-override", ko: "Bash tool 제목/출력 렌더링 override — 명령 의도 중심으로 표시", en: "Bash tool title and output rendering override focused on command intent" },
