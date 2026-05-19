@@ -17,7 +17,7 @@ applies_to:
 source:
   - user-direction:2026-05-20-shortcut-atlas
 reviewed_at: 2026-05-20
-reviewed_commit: f310033cd9f8ac74eeb0d5b9fd3d330d30db68b1
+reviewed_commit: c4756f8ea0f3cfd7360dc38930e29642a67dcc9a
 related:
   - task-work-map-overlay
   - terminal-host-integration
@@ -53,6 +53,7 @@ pilee custom shortcut 목록은 사람이 읽는 curated atlas이지만, source 
 
 `npm run test:shortcut-atlas`는 다음 계약을 고정합니다.
 
+- Pi custom renderer가 `render(width)`처럼 height 없이 호출돼도 atlas body rows를 렌더한다. height는 terminal rows 또는 안전한 기본값으로 fallback한다.
 - modifier normalize가 `Ctrl+Shift+O`, `Cmd+-`, `Ctrl+-` 같은 symbol key를 잃지 않는다.
 - 현재 pilee custom shortcut 사이에는 blocking collision이 없다.
 - 의도적으로 중복 custom key를 넣으면 `custom-collision` error가 발생한다.
