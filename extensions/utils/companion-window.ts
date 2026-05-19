@@ -37,6 +37,23 @@ export type CompanionToggleResult = {
 };
 
 const companions = new Map<string, CompanionRecord>();
+let testOpenForTesting: ((html: string, opts: Record<string, unknown>) => GlimpseWindow) | null = null;
+
+export function __setCompanionWindowOpenForTesting(open: ((html: string, opts: Record<string, unknown>) => GlimpseWindow) | null): void {
+	testOpenForTesting = open;
+}
+
+export function __resetCompanionWindowStateForTesting(): void {
+	for (const record of companions.values()) {
+		try { record.window?.close(); } catch {}
+	}
+	companions.clear();
+	testOpenForTesting = null;
+}
+
+async function resolveGlimpseOpen(): Promise<((html: string, opts: Record<string, unknown>) => GlimpseWindow) | null> {
+	return testOpenForTesting ?? await getGlimpseOpen();
+}
 
 function sessionKey(ctx: Pick<ExtensionContext, "cwd" | "sessionManager">): string {
 	try {
@@ -112,7 +129,7 @@ export async function openCompanionHtml(
 	options: { width?: number; height?: number; openLinks?: boolean; key?: string } = {},
 ): Promise<CompanionOpenResult> {
 	const key = options.key ?? sessionKey(ctx);
-	const open = await getGlimpseOpen();
+	const open = await resolveGlimpseOpen();
 	if (!open) return { mode: "none", key };
 	const geometry = await rightHalfGeometry(pi, options.width ?? 1180, options.height ?? 920);
 	const openLinks = options.openLinks ?? true;

@@ -1,6 +1,6 @@
 {
   "name": "pilee",
-  "version": "0.1.131",
+  "version": "0.1.133",
   "description": "Personal pi coding agent config 🔥",
   "private": true,
   "type": "module",
@@ -30,7 +30,8 @@
     "knowledge:review": "node scripts/knowledge.mjs --review-candidates",
     "knowledge:resolve": "node scripts/knowledge.mjs --resolve-stale",
     "knowledge:resolver-log": "node scripts/knowledge.mjs --resolver-log",
-    "test:pilee-final-check": "node scripts/check-pilee-final-check.mjs"
+    "test:pilee-final-check": "node scripts/check-pilee-final-check.mjs",
+    "test:companion-window": "node scripts/run-typescript-test.mjs extensions/utils/companion-window.test.ts"
   },
   "dependencies": {
     "@mariozechner/pi-ai": "^0.70.0",
