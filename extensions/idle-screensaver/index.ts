@@ -459,14 +459,22 @@ export default function (pi: ExtensionAPI): void {
 			}
 			if (sub === "config") {
 				reloadConfig();
-				ctx.ui.notify([
+				const visibleInfo = ["세션/폴더명", "branch", "마지막 인터랙션", "마지막 assistant 요약", "TODO"];
+				const hiddenInfo: string[] = [];
+				if (config.showWorktreeMeta) visibleInfo.splice(1, 0, "worktree 이름", "ticket/note");
+				else hiddenInfo.push("worktree 이름/ticket/note");
+				if (config.showSprite) visibleInfo.push("캐릭터 이미지");
+				else hiddenInfo.push("캐릭터 이미지");
+				const lines = [
 					`Idle: ${config.idleMinutes}min`,
 					`기능: ${config.enabled ? "on" : "off"}`,
 					`캐릭터 이미지: ${config.showSprite ? "on" : "off"}`,
 					`worktree meta: ${config.showWorktreeMeta ? "on" : "off"}`,
-					"표시 정보: 세션/폴더명, worktree·branch, ticket/note, 마지막 인터랙션, 마지막 assistant 요약, TODO, 캐릭터 이미지",
-					`전역 config: ${CONFIG_PATH}`,
-				].join("\n"), "info");
+					`표시 정보: ${visibleInfo.join(", ")}`,
+				];
+				if (hiddenInfo.length > 0) lines.push(`미표시: ${hiddenInfo.join(", ")}`);
+				lines.push(`전역 config: ${CONFIG_PATH}`);
+				ctx.ui.notify(lines.join("\n"), "info");
 				return;
 			}
 			ctx.ui.notify(usage, "info");
