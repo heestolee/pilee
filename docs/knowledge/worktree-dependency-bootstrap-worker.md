@@ -31,25 +31,26 @@ related:
 
 ## Judgment
 
-Profile이 bootstrap 대상으로 지정한 worktree의 dependency/runtime 준비는 구현 agent가 lint·migration·local-dev 실패를 맞고 뒤늦게 처리하는 일이 아니라, 구현 시작 시점에 조건부 readiness workflow가 맡아야 합니다.
+Profile이 bootstrap 대상으로 지정한 worktree의 dependency/runtime 준비는 구현 agent가 lint·migration·local-dev 실패를 맞고 뒤늦게 처리하는 일이 아니라, worktree 생성 직후와 구현 시작 시점의 조건부 readiness workflow가 맡아야 합니다.
 
-기본 구조는 **AI subagent orchestrator + deterministic executor**입니다. subagent는 현재 작업 의도와 repo profile로 필요한 domain을 확인하고, extension이 생성한 executor script를 실행한 뒤 status/log를 읽어 READY/BLOCKED를 판정합니다. executor는 이미 준비된 marker를 다시 설치하거나 생성하지 않고 누락된 domain만 실행합니다. Domain은 dependency install뿐 아니라 local env 생성처럼 repo/profile마다 다른 runtime readiness도 표현할 수 있습니다. 한 domain이 여러 파일을 함께 준비해야 하면 profile은 `marker` + `markers[]`로 전체 marker 묶음을 선언하고, public executor는 하나라도 빠지면 해당 domain을 missing으로 봅니다.
+기본 구조는 **AI subagent orchestrator + deterministic executor**입니다. subagent는 현재 작업 의도와 repo profile로 필요한 domain을 확인하고, extension이 생성한 executor script를 실행한 뒤 status/log를 읽어 READY/BLOCKED를 판정합니다. executor는 이미 준비된 marker를 다시 설치하거나 생성하지 않고 누락된 domain만 실행합니다. Domain은 dependency install뿐 아니라 local env 생성, generated artifact 준비, lockfile sync, dev-server health처럼 repo/profile마다 다른 runtime readiness도 표현할 수 있습니다. 한 domain이 여러 파일을 함께 준비해야 하면 profile은 `marker` + `markers[]`로 전체 marker 묶음을 선언하고, marker만으로 readiness를 표현할 수 없으면 빠른 `readyCommand`를 추가합니다. public executor는 marker가 하나라도 빠지거나 `readyCommand`가 실패하면 해당 domain을 missing으로 봅니다.
 
 ## Conditional Rule
 
-orchestrator/worker는 다음 조건을 만족할 때만 자동 시작합니다.
+orchestrator/worker는 다음 조건을 만족할 때 자동 시작합니다.
 
 1. 현재 cwd가 runtime profile의 `worktree.repos[].bootstrap.enabled` repo와 매칭됩니다.
 2. user prompt가 조사 전용이 아니라 구현/수정/검증/마무리 흐름입니다.
-3. profile이 지정한 domain marker가 없습니다.
+3. profile이 지정한 domain marker 또는 `readyCommand`가 준비되지 않았습니다.
+4. `/wt new`, `/wt fork`, `worktree_create`, `worktree_fork`가 profile repo의 새 worktree를 만들면, 세션 전환 성공/실패와 무관하게 target worktree에서 `bootstrap.onCreateDomains`를 즉시 시작합니다.
 
-구체적인 marker, command, domain 추론 regex는 public extension 코드가 아니라 overlay/profile JSON에 둡니다. public pilee는 orchestration lifecycle, status/log, idempotent marker check, executor script 생성만 담당합니다. Profile이 없으면 자동 bootstrap은 조용히 비활성화되고, 사용자는 일반 worktree workflow만 사용합니다.
+구체적인 marker, command, domain 추론 regex, 생성 직후 준비할 `onCreateDomains`는 public extension 코드가 아니라 overlay/profile JSON에 둡니다. public pilee는 orchestration lifecycle, status/log, idempotent marker/readyCommand check, executor script 생성만 담당합니다. Profile이 없으면 자동 bootstrap은 조용히 비활성화되고, 사용자는 일반 worktree workflow만 사용합니다.
 
 ## Main Agent Contract
 
 subagent orchestrator가 시작되면 extension은 해당 turn의 system prompt와 상태바에 bootstrap 상태를 주입합니다. 시작/이미 실행 중 안내는 채팅에 visible block으로 반복 노출하지 않습니다. READY/BLOCKED 최종 판정도 사용자가 raw executor 증거를 읽을 필요가 없도록 한 줄 요약만 visible하게 보고하고, log/report/raw summary는 message details와 `/wt bootstrap status`로 이동합니다. 같은 repo/domain/status 알림은 짧은 시간 안에 중복 노출하지 않습니다. failed-to-start처럼 사용자가 개입해야 하는 상태만 상세 visible message를 남깁니다. main agent는 코드를 읽고 수정할 수 있지만, lint/type-check/test를 실행하기 전에는 orchestrator의 READY 보고, `/wt bootstrap status`, 또는 status/log/report를 확인해야 합니다.
 
-수동으로는 `/wt bootstrap`, `/wt bootstrap --backend`, `/wt bootstrap --frontend`, `/wt bootstrap --<profile-domain>`, `/wt bootstrap --domain <name>`, `/wt bootstrap --env`, `/wt bootstrap --all`, `/wt bootstrap status`를 사용할 수 있습니다. AI orchestrator를 우회해야 하면 `/wt bootstrap --executor`로 deterministic executor만 실행합니다. `/wt bootstrap status`는 profile domain marker별 ready/missing 상태를 함께 보여줘서 dependency READY와 runtime env READY를 구분할 수 있어야 합니다. 다중 marker domain은 누락된 marker 목록을 직접 보여줘 partial env copy 같은 false-ready를 막습니다.
+수동으로는 `/wt bootstrap`, `/wt bootstrap --backend`, `/wt bootstrap --frontend`, `/wt bootstrap --<profile-domain>`, `/wt bootstrap --domain <name>`, `/wt bootstrap --env`, `/wt bootstrap --all`, `/wt bootstrap status`를 사용할 수 있습니다. AI orchestrator를 우회해야 하면 `/wt bootstrap --executor`로 deterministic executor만 실행합니다. `/wt bootstrap status`는 profile domain marker별 ready/missing 상태를 함께 보여줘서 dependency READY와 runtime env READY를 구분할 수 있어야 합니다. 다중 marker domain은 누락된 marker 목록을 직접 보여주고, marker는 있지만 `readyCommand`가 실패한 domain은 `readyCommand failed`로 표시해 false-ready를 막습니다.
 
 ## Boundary
 

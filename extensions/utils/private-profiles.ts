@@ -23,6 +23,12 @@ export interface WorktreeBootstrapDomainProfile {
 	markers?: string[];
 	command: string;
 	cwd?: string;
+	/**
+	 * Optional fast readiness check. Use only for cheap checks that markers cannot
+	 * express, e.g. lockfile sync or server health. Exit 0 means ready.
+	 */
+	readyCommand?: string;
+	readyCwd?: string;
 }
 
 export interface WorktreeBootstrapOrchestratorProfile {
@@ -34,6 +40,8 @@ export interface WorktreeBootstrapOrchestratorProfile {
 export interface WorktreeBootstrapProfile {
 	enabled?: boolean;
 	defaultDomains?: string[];
+	/** Domains to start immediately after a worktree is created/forked. */
+	onCreateDomains?: string[];
 	implementationPromptRegex?: string;
 	exploratoryPromptRegex?: string;
 	domainPromptRules?: Array<{ domain: string; regex: string }>;

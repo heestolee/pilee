@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, statSync, rmSync, renameSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
@@ -1055,7 +1056,19 @@ function bootstrapDomainMarkers(domain: WorktreeBootstrapDomainProfile): string[
 }
 
 function bootstrapDomainReady(repoRoot: string, domain: WorktreeBootstrapDomainProfile): boolean {
-	return bootstrapDomainMarkers(domain).every((marker) => existsSync(repoRelativePath(repoRoot, marker)));
+	const markersReady = bootstrapDomainMarkers(domain).every((marker) => existsSync(repoRelativePath(repoRoot, marker)));
+	if (!markersReady) return false;
+	if (!domain.readyCommand) return true;
+	try {
+		execFileSync("bash", ["-lc", domain.readyCommand], {
+			cwd: repoRelativePath(repoRoot, domain.readyCwd ?? domain.cwd ?? "."),
+			stdio: "ignore",
+			timeout: 15_000,
+		});
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 function missingBootstrapDomains(repoRoot: string, profile: WorktreeRepoProfile, domains: BootstrapDomain[]): BootstrapDomain[] {
@@ -1080,7 +1093,11 @@ function buildDependencyBootstrapScript(profile: WorktreeRepoProfile, domains: B
 		const markers = bootstrapDomainMarkers(domain).map((marker) => repoRelativePath(repoRoot, marker));
 		const markerChecks = markers.map((marker) => `[ -e ${shellQuote(marker)} ]`).join(" && ") || "true";
 		const stepCwd = repoRelativePath(repoRoot, domain.cwd ?? ".");
-		return `if ${markerChecks}; then
+		const readyCwd = repoRelativePath(repoRoot, domain.readyCwd ?? domain.cwd ?? ".");
+		const readyCheck = domain.readyCommand
+			? `${markerChecks} && (cd ${shellQuote(readyCwd)} && bash -lc ${shellQuote(domain.readyCommand)})`
+			: markerChecks;
+		return `if ${readyCheck}; then
   echo "✓ ${label} ready"
 else
   run_step ${shellQuote(label)} ${shellQuote(stepCwd)} ${shellQuote(domain.command)}
@@ -1232,13 +1249,13 @@ async function ensureDependencyBootstrapWorker(
 	pi: ExtensionAPI,
 	ctx: ExtensionContext | ExtensionCommandContext,
 	prompt: string,
-	options: { force?: boolean; domains?: BootstrapDomain[]; reason?: string; mode?: "auto" | "executor" | "orchestrator" } = {},
+	options: { force?: boolean; domains?: BootstrapDomain[]; reason?: string; mode?: "auto" | "executor" | "orchestrator"; repoRoot?: string } = {},
 ): Promise<DependencyBootstrapResult> {
 	if (!options.force && (isSubagentSessionContext(ctx) || isBootstrapOrchestratorPrompt(prompt))) {
 		return { state: "not-implementation" };
 	}
 
-	const repoRoot = await findRepoRoot(pi, ctx.cwd);
+	const repoRoot = options.repoRoot ?? await findRepoRoot(pi, ctx.cwd);
 	if (!repoRoot) return { state: "not-company-repo" };
 
 	const repoProfile = await detectProfiledRepo(pi, repoRoot);
@@ -1443,9 +1460,13 @@ async function formatBootstrapStatus(pi: ExtensionAPI, repoRoot: string): Promis
 		for (const domain of bootstrapDomainProfiles(repoProfile)) {
 			const markers = bootstrapDomainMarkers(domain);
 			const missingMarkers = markers.filter((marker) => !existsSync(repoRelativePath(repoRoot, marker)));
-			const ready = missingMarkers.length === 0;
+			const ready = bootstrapDomainReady(repoRoot, domain);
 			const label = domain.label ?? domain.name;
-			const markerSummary = ready ? markers.join(", ") : `missing: ${missingMarkers.join(", ")}`;
+			const markerSummary = ready
+				? markers.join(", ")
+				: missingMarkers.length > 0
+					? `missing: ${missingMarkers.join(", ")}`
+					: "readyCommand failed";
 			lines.push(`  ${ready ? "✓" : "✗"} ${domain.name} — ${label} — ${ready ? "ready" : "missing"} (${markerSummary})`);
 		}
 	}
@@ -1485,6 +1506,51 @@ function parseRequestedBootstrapDomains(tokens: string[], profile: WorktreeRepoP
 	}
 	if (tokens.includes("--all")) return knownDomains;
 	return [...requested];
+}
+
+function getPostCreateBootstrapDomains(profile: WorktreeRepoProfile): BootstrapDomain[] {
+	const bootstrap = profile.bootstrap;
+	if (!bootstrap?.enabled) return [];
+	const domainProfiles = bootstrapDomainProfiles(profile);
+	const requested = bootstrap.onCreateDomains ?? bootstrap.defaultDomains ?? domainProfiles.map((domain) => domain.name);
+	return orderedBootstrapDomains(profile, requested);
+}
+
+async function startPostCreateBootstrap(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext | ExtensionCommandContext,
+	worktreePath: string,
+	reason: string,
+): Promise<DependencyBootstrapResult | null> {
+	const repoProfile = await detectProfiledRepo(pi, worktreePath);
+	if (!repoProfile?.bootstrap?.enabled) return null;
+	const domains = getPostCreateBootstrapDomains(repoProfile);
+	if (domains.length === 0) return null;
+	return ensureDependencyBootstrapWorker(pi, ctx, `${reason} post-create runtime readiness`, {
+		force: true,
+		domains,
+		reason,
+		mode: "auto",
+		repoRoot: worktreePath,
+	});
+}
+
+function formatPostCreateBootstrapSummary(result: DependencyBootstrapResult | null): string {
+	if (!result) return "";
+	const domainLabel = result.domains?.join(", ") || result.missing?.join(", ") || "profile domains";
+	if (result.state === "ready") return ` Bootstrap: already ready (${domainLabel}).`;
+	if (result.state === "running") return ` Bootstrap: already running (${domainLabel}). Log: ${result.logPath}.`;
+	if (result.state === "started") {
+		const via = result.kind === "subagent-orchestrator" ? ` via ${result.agentName}` : "";
+		return ` Bootstrap: started${via} (${domainLabel}). Log: ${result.logPath}.`;
+	}
+	if (result.state === "failed-to-start") return ` Bootstrap: failed to start. ${result.systemNote ?? ""}`;
+	return "";
+}
+
+function notifyPostCreateBootstrap(ctx: ExtensionCommandContext, result: DependencyBootstrapResult | null) {
+	const summary = formatPostCreateBootstrapSummary(result).trim();
+	if (summary) ctx.ui.notify(summary, result?.state === "failed-to-start" ? "warning" : "info");
 }
 
 async function handleBootstrap(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
@@ -1679,6 +1745,9 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 			ctx.ui.notify(`✓ Setup complete`, "info");
 		}
 	}
+
+	const bootstrapResult = await startPostCreateBootstrap(pi, ctx, worktreePath, "/wt new");
+	notifyPostCreateBootstrap(ctx, bootstrapResult);
 
 	// Step 5: switch to new session with worktree cwd
 	const useFullContext = parsed.fullContext || (parsed.carryContext && !parsed.minimalContext);
@@ -2472,6 +2541,9 @@ async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandC
 			ctx.ui.notify(`✓ Setup complete`, "info");
 		}
 	}
+
+	const bootstrapResult = await startPostCreateBootstrap(pi, ctx, worktreePath, "/wt fork");
+	notifyPostCreateBootstrap(ctx, bootstrapResult);
 
 	const session = createWorktreeSession(ctx, worktreePath, {
 		fullContext: useFullContext,
@@ -3330,14 +3402,17 @@ export default function (pi: ExtensionAPI) {
 				await pi.exec("bash", ["-lc", config.setupScript], { cwd: worktreePath, signal });
 			}
 
+			const bootstrapResult = await startPostCreateBootstrap(pi, ctx, worktreePath, "worktree_create");
+			const bootstrapText = formatPostCreateBootstrapSummary(bootstrapResult);
+
 			const session = createWorktreeSession(ctx, worktreePath, { sessionName: `${name} (${branchName})` });
 			recordWorktreeContextMeta(worktreePath, "clean", session);
 			const frameText = framePromotion.status === "promoted" ? ` Planning frame promoted to ${framePromotion.framePath}.` : "";
 			const switchResult = await trySwitchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, framePromotionContextLabel(framePromotion));
 			if (switchResult.switched) {
 				return {
-					content: [{ type: "text", text: `✓ Worktree "${name}" created (${branchName}) at ${worktreePath}.${frameText} 현재 패널을 전환했습니다.` }],
-					details: { name, branch: branchName, path: worktreePath, autoSwitched: true, framePromotion },
+					content: [{ type: "text", text: `✓ Worktree "${name}" created (${branchName}) at ${worktreePath}.${frameText}${bootstrapText} 현재 패널을 전환했습니다.` }],
+					details: { name, branch: branchName, path: worktreePath, autoSwitched: true, framePromotion, bootstrap: bootstrapResult },
 				};
 			}
 
@@ -3345,8 +3420,8 @@ export default function (pi: ExtensionAPI) {
 			const switchCommand = `/wt switch ${registeredName}/${name}`;
 			const prefilled = prefillSwitchCommand(ctx, switchCommand);
 			return {
-				content: [{ type: "text", text: `✓ Worktree "${name}" created (${branchName}) at ${worktreePath}.${frameText} 즉시 전환 불가: ${switchResult.reason ?? "unknown"}. 대체 전환 명령 ${switchCommand}${prefilled ? "를 에디터에 준비했습니다" : "를 사용하세요"}.` }],
-				details: { name, branch: branchName, path: worktreePath, autoSwitched: false, switchReason: switchResult.reason, switchCommand, prefilled, framePromotion },
+				content: [{ type: "text", text: `✓ Worktree "${name}" created (${branchName}) at ${worktreePath}.${frameText}${bootstrapText} 즉시 전환 불가: ${switchResult.reason ?? "unknown"}. 대체 전환 명령 ${switchCommand}${prefilled ? "를 에디터에 준비했습니다" : "를 사용하세요"}.` }],
+				details: { name, branch: branchName, path: worktreePath, autoSwitched: false, switchReason: switchResult.reason, switchCommand, prefilled, framePromotion, bootstrap: bootstrapResult },
 			};
 		},
 	});
@@ -3517,6 +3592,9 @@ export default function (pi: ExtensionAPI) {
 				note: params.note,
 			});
 
+			const bootstrapResult = await startPostCreateBootstrap(pi, ctx, worktreePath, "worktree_fork");
+			const bootstrapText = formatPostCreateBootstrapSummary(bootstrapResult);
+
 			const useFullContext = params.minimalContext ? false : params.fullContext === false ? false : true;
 			const useMinimalContext = !useFullContext;
 			const contextNote = params.context?.trim() || null;
@@ -3547,8 +3625,8 @@ export default function (pi: ExtensionAPI) {
 			const switchResult = await trySwitchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, contextLabel);
 			if (switchResult.switched) {
 				return {
-					content: [{ type: "text", text: `✓ Worktree "${name}" forked (${branchName}) at ${worktreePath}. Context: ${contextMode}${contextLength ? `, note ${contextLength} chars` : ""}.${frameText} 현재 패널을 전환했습니다.` }],
-					details: { name, branch: branchName, path: worktreePath, contextLength, contextMode, autoSwitched: true, framePromotion },
+					content: [{ type: "text", text: `✓ Worktree "${name}" forked (${branchName}) at ${worktreePath}. Context: ${contextMode}${contextLength ? `, note ${contextLength} chars` : ""}.${frameText}${bootstrapText} 현재 패널을 전환했습니다.` }],
+					details: { name, branch: branchName, path: worktreePath, contextLength, contextMode, autoSwitched: true, framePromotion, bootstrap: bootstrapResult },
 				};
 			}
 
@@ -3556,8 +3634,8 @@ export default function (pi: ExtensionAPI) {
 			const switchCommand = `/wt switch ${registeredName}/${name}`;
 			const prefilled = prefillSwitchCommand(ctx, switchCommand);
 			return {
-				content: [{ type: "text", text: `✓ Worktree "${name}" forked (${branchName}) at ${worktreePath}. Context: ${contextMode}${contextLength ? `, note ${contextLength} chars` : ""}.${frameText} 즉시 전환 불가: ${switchResult.reason ?? "unknown"}. 대체 전환 명령 ${switchCommand}${prefilled ? "를 에디터에 준비했습니다" : "를 사용하세요"}.` }],
-				details: { name, branch: branchName, path: worktreePath, contextLength, contextMode, autoSwitched: false, switchReason: switchResult.reason, switchCommand, prefilled, framePromotion },
+				content: [{ type: "text", text: `✓ Worktree "${name}" forked (${branchName}) at ${worktreePath}. Context: ${contextMode}${contextLength ? `, note ${contextLength} chars` : ""}.${frameText}${bootstrapText} 즉시 전환 불가: ${switchResult.reason ?? "unknown"}. 대체 전환 명령 ${switchCommand}${prefilled ? "를 에디터에 준비했습니다" : "를 사용하세요"}.` }],
+				details: { name, branch: branchName, path: worktreePath, contextLength, contextMode, autoSwitched: false, switchReason: switchResult.reason, switchCommand, prefilled, framePromotion, bootstrap: bootstrapResult },
 			};
 		},
 	});
