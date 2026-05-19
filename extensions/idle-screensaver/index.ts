@@ -61,6 +61,7 @@ let overlayActive = false;
 let askUserQuestionActive = false;
 let latestCtx: ExtensionContext | null = null;
 let piRef: ExtensionAPI | null = null;
+let lastInteractionAtMs = 0;
 
 type ScreensaverTui = { terminal?: { rows?: number } };
 type ScreensaverTheme = { fg: (color: ThemeColor, text: string) => string; bold: (text: string) => string };
@@ -83,6 +84,10 @@ function saveConfig(next: ScreensaverConfig): void {
 
 function saveEnabledConfig(enabled: boolean): void {
 	saveConfig({ ...loadConfig(), enabled });
+}
+
+function saveSpriteConfig(showSprite: boolean): void {
+	saveConfig({ ...loadConfig(), showSprite });
 }
 
 function syncConfigFromDisk(): void {
@@ -110,6 +115,56 @@ function scheduleIdleTimer(): void {
 }
 
 watchFile(CONFIG_PATH, { interval: 1000, persistent: false }, syncConfigFromDisk);
+
+function noteInteraction(ts = Date.now()): void {
+	lastInteractionAtMs = ts;
+}
+
+function entryTimestampMs(entry: any): number {
+	const raw = entry?.timestamp ?? entry?.createdAt ?? entry?.time;
+	if (!raw) return 0;
+	const ms = new Date(raw).getTime();
+	return Number.isFinite(ms) ? ms : 0;
+}
+
+function inferLastInteractionAt(ctx: ExtensionContext): number | null {
+	try {
+		const entries = ctx.sessionManager.getEntries();
+		for (let i = entries.length - 1; i >= 0; i--) {
+			const e = entries[i] as any;
+			if (e?.type !== "message") continue;
+			const role = e.message?.role;
+			if (role !== "user" && role !== "assistant") continue;
+			const ts = entryTimestampMs(e);
+			if (ts) return ts;
+		}
+	} catch {}
+	return lastInteractionAtMs || null;
+}
+
+function formatLocalTime(ts: number): string {
+	const d = new Date(ts);
+	const pad = (n: number) => String(n).padStart(2, "0");
+	return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function formatRelativeTime(ts: number, now = Date.now()): string {
+	const seconds = Math.max(0, Math.floor((now - ts) / 1000));
+	if (seconds < 10) return "방금 전";
+	if (seconds < 60) return `${seconds}초 전`;
+	const minutes = Math.floor(seconds / 60);
+	if (minutes < 60) return `${minutes}분 전`;
+	const hours = Math.floor(minutes / 60);
+	if (hours < 24) return `${hours}시간 ${minutes % 60}분 전`;
+	const days = Math.floor(hours / 24);
+	return `${days}일 전`;
+}
+
+function buildLastInteractionLine(ctx: ExtensionContext): string | null {
+	const ts = inferLastInteractionAt(ctx);
+	if (!ts) return null;
+	return `🕘 마지막 인터랙션 ${formatLocalTime(ts)} · ${formatRelativeTime(ts)}`;
+}
 
 // ─── Show screensaver ──────────────────────────────────────────────────────
 
@@ -142,6 +197,8 @@ async function showScreensaver({ force = false }: { force?: boolean } = {}): Pro
 	const metaLines: string[] = [];
 	if (meta?.ticket) metaLines.push(meta.ticket);
 	if (meta?.note) metaLines.push(meta.note);
+	const lastInteractionLine = buildLastInteractionLine(latestCtx);
+	if (lastInteractionLine) metaLines.push(lastInteractionLine);
 
 	// 💬 마지막 assistant 메시지 1줄 요약
 	try {
@@ -317,7 +374,10 @@ export default function (pi: ExtensionAPI): void {
 
 	pi.on("input", (event, ctx) => {
 		latestCtx = ctx;
-		if (event.source !== "extension") scheduleIdleTimer();
+		if (event.source !== "extension") {
+			noteInteraction();
+			scheduleIdleTimer();
+		}
 	});
 
 	pi.on("agent_start", (_e, ctx) => {
@@ -329,6 +389,7 @@ export default function (pi: ExtensionAPI): void {
 	pi.on("agent_end", (_e, ctx) => {
 		latestCtx = ctx;
 		agentRunning = false;
+		noteInteraction();
 		scheduleIdleTimer();
 	});
 
@@ -350,6 +411,7 @@ export default function (pi: ExtensionAPI): void {
 
 	pi.on("session_start", (_e, ctx) => {
 		latestCtx = ctx;
+		lastInteractionAtMs = inferLastInteractionAt(ctx) ?? 0;
 		clearIdleTimer();
 		overlayActive = false;
 		scheduleIdleTimer();
@@ -359,9 +421,12 @@ export default function (pi: ExtensionAPI): void {
 
 	// /screensaver command
 	pi.registerCommand("screensaver", {
-		description: "Global idle screensaver controls (/screensaver show|on|off|config)",
+		description: "전역 idle screensaver 제어 (/screensaver show|on|off|image on|image off|config)",
 		async handler(args, ctx) {
-			const sub = args.trim();
+			const parts = args.trim().split(/\s+/).filter(Boolean);
+			const sub = parts[0] ?? "";
+			const value = parts[1] ?? "";
+			const usage = "사용법: /screensaver show|on|off|config|image on|image off";
 			if (sub === "show") {
 				await showScreensaver({ force: true });
 				return;
@@ -369,21 +434,42 @@ export default function (pi: ExtensionAPI): void {
 			if (sub === "off" || sub === "disable") {
 				saveEnabledConfig(false);
 				clearIdleTimer();
-				ctx.ui.notify("Screensaver disabled globally", "info");
+				ctx.ui.notify("Screensaver 기능을 전역으로 껐습니다", "info");
 				return;
 			}
 			if (sub === "on" || sub === "enable") {
 				saveEnabledConfig(true);
 				scheduleIdleTimer();
-				ctx.ui.notify("Screensaver enabled globally", "info");
+				ctx.ui.notify("Screensaver 기능을 전역으로 켰습니다", "info");
+				return;
+			}
+			if (sub === "image" || sub === "sprite" || sub === "character") {
+				if (value === "on" || value === "enable") {
+					saveSpriteConfig(true);
+					ctx.ui.notify("Screensaver 캐릭터 이미지를 켰습니다", "info");
+					return;
+				}
+				if (value === "off" || value === "disable") {
+					saveSpriteConfig(false);
+					ctx.ui.notify("Screensaver 캐릭터 이미지를 껐습니다", "info");
+					return;
+				}
+				ctx.ui.notify("사용법: /screensaver image on|off", "info");
 				return;
 			}
 			if (sub === "config") {
 				reloadConfig();
-				ctx.ui.notify(`Idle: ${config.idleMinutes}min · enabled: ${config.enabled} · showWorktreeMeta: ${config.showWorktreeMeta}\nGlobal config file: ${CONFIG_PATH}`, "info");
+				ctx.ui.notify([
+					`Idle: ${config.idleMinutes}min`,
+					`기능: ${config.enabled ? "on" : "off"}`,
+					`캐릭터 이미지: ${config.showSprite ? "on" : "off"}`,
+					`worktree meta: ${config.showWorktreeMeta ? "on" : "off"}`,
+					"표시 정보: 세션/폴더명, worktree·branch, ticket/note, 마지막 인터랙션, 마지막 assistant 요약, TODO, 캐릭터 이미지",
+					`전역 config: ${CONFIG_PATH}`,
+				].join("\n"), "info");
 				return;
 			}
-			ctx.ui.notify("Usage: /screensaver show|on|off|config", "info");
+			ctx.ui.notify(usage, "info");
 		},
 	});
 }
