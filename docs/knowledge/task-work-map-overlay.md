@@ -16,8 +16,9 @@ applies_to:
   - extensions/frame-studio
 source:
   - user-direction:2026-05-19-task-work-map-overlay
-reviewed_at: 2026-05-19
-reviewed_commit: 35c90a85c366ff609cafeef713d579208de2cbbe
+  - user-direction:2026-05-20-task-overlay-toggle-shortcut
+reviewed_at: 2026-05-20
+reviewed_commit: 9d1f4092867a90642ba745de8374506e301a9a87
 related:
   - work-context-card-task-board
   - ambient-status-surfaces
@@ -67,6 +68,16 @@ Task에는 가능한 한 다음 정보를 남깁니다.
 - `source` — `frame`, `user`, `agent`, `subagent`, `verify`, `review`, `manual`
 - `disposition.reason` — 빠지거나 반려된 이유
 - `refs/evidence` — frame, 검증, 커밋, 리포트 링크
+
+## Shortcut Rule
+
+Task UI는 두 표면을 분리합니다.
+
+- `Ctrl+Shift+T` — 중앙 `/tasks` interactive overlay를 열어 상태 토글, 새 task 추가, soft delete, backlog 이동을 수행합니다.
+- `Ctrl+Shift+O` — 우상단 passive work-map overlay만 show/hide 토글합니다. 사용자가 화면을 넓게 보고 싶을 때 work map을 잠시 숨기되, task 데이터와 `/tasks` 조작 흐름은 그대로 보존합니다.
+- `/tasks show|hide|status` — 같은 passive overlay visibility 상태를 명령으로 제어합니다.
+
+토글 단축키는 hidden flag와 실제 overlay handle close/open을 함께 갱신해야 합니다. 단축키 회귀는 `npm run test:tasks`가 보장합니다.
 
 ## Boundary
 

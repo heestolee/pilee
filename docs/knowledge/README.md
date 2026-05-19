@@ -142,7 +142,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Idle UI는 장식이 아니라 ambient status다](./ambient-status-surfaces.md) | active | high | 2026-05-20 | 1d95b54 | idle-screensaver, tasks, spinner, status, ambient, ui |
 | [Editor affordance는 숨은 컨텍스트가 아니다](./editor-affordance-not-context.md) | active | high | 2026-05-13 | dea80b9 | editor, footer, prompt-suggest, working-text, affordance, ui |
 | [User-facing 출력은 한국어를 기본으로 한다](./korean-first-user-facing-output.md) | active | high | 2026-05-13 | 1f5c3ac | korean-output, localization, web-search, ui, rewrite, 한국어 |
-| [Task overlay는 작업 맵을 보존한다](./task-work-map-overlay.md) | active | high | 2026-05-19 | 35c90a8 | tasks, overlay, work-map, soft-delete, provenance, ui |
+| [Task overlay는 작업 맵을 보존한다](./task-work-map-overlay.md) | active | high | 2026-05-20 | 9d1f409 | tasks, overlay, work-map, soft-delete, provenance, ui |
 | [색상은 정보 위계다](./theme-information-hierarchy.md) | active | high | 2026-05-13 | 10e0874 | theme, color, dim, muted, border, accent |
 | [도구 출력은 대화 흐름을 침범하지 않는다](./tool-output-noise-management.md) | active | high | 2026-05-11 | ce3a598 | tool-output, collapse, noise, ui, usage, renderer |
 | [TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다](./tui-rendering-sanitization.md) | active | high | 2026-05-12 | fc6ffa9 | tui, rendering, newline, ansi, sanitize, terminal |

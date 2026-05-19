@@ -340,7 +340,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **read-tool-override** | Read tool compact preview and range rendering override |
 | **edit-tool-override** | Edit tool preflight diff preview and side-by-side result rendering override |
 | **interactive-shell** | Runs interactive or long-running shells in overlay, hands-free, or dispatch modes |
-| **tasks** | Area-grouped work-map overlay, task CRUD, and `Ctrl+Shift+T` |
+| **tasks** | Area-grouped work-map overlay, task CRUD, and `Ctrl+Shift+T`/`Ctrl+Shift+O` |
 | **auto-commit** | Executes commit/push from an explicit JSON plan |
 | **tui-ask** | Terminal overlay question tool for single/multi/text decision gates |
 | **web-access** | Tavily web search, URL extraction, and curator workflow |
@@ -474,6 +474,7 @@ Compared to bare pi, early pilee added about 6K tokens of overhead per turn. The
 | `Ctrl+Shift+→←↑↓` | Split fork-panel by direction |
 | `Ctrl+Shift+N` | New fork-panel tab |
 | `Ctrl+Shift+T` | Open tasks |
+| `Ctrl+Shift+O` | Show/hide top-right tasks overlay |
 
 ---
 
