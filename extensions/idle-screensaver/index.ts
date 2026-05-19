@@ -2,10 +2,9 @@ import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, watchFile, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { ExtensionAPI, ExtensionContext, ThemeColor } from "@mariozechner/pi-coding-agent";
-import { DynamicBorder } from "@mariozechner/pi-coding-agent";
-import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { formatLastInteractionLine, resolveLastInteractionAt } from "./last-interaction.js";
+import { renderScreensaver, shouldDismissScreensaver, type ScreensaverRenderData, type ScreensaverTheme } from "./render.js";
 import { POKEMON_KO_TO_ID, renderSprite } from "./sprite.js";
 
 // ─── Config ────────────────────────────────────────────────────────────────
@@ -65,7 +64,6 @@ let piRef: ExtensionAPI | null = null;
 let lastInteractionAtMs = 0;
 
 type ScreensaverTui = { terminal?: { rows?: number } };
-type ScreensaverTheme = { fg: (color: ThemeColor, text: string) => string; bold: (text: string) => string };
 
 // ─── Timer helpers ─────────────────────────────────────────────────────────
 
@@ -167,18 +165,17 @@ async function showScreensaver({ force = false }: { force?: boolean } = {}): Pro
 	const lastInteractionLine = buildLastInteractionLine(latestCtx);
 	if (lastInteractionLine) metaLines.push(lastInteractionLine);
 
-	// 💬 마지막 assistant 메시지 1줄 요약
+	let assistantText: string | null = null;
 	try {
 		const entries = latestCtx.sessionManager.getEntries();
 		for (let i = entries.length - 1; i >= 0; i--) {
 			const e = entries[i] as any;
 			if (e?.type === "message" && e.message?.role === "assistant") {
 				const text = Array.isArray(e.message.content)
-					? e.message.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("").trim()
+					? e.message.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n").trim()
 					: "";
 				if (text) {
-					const oneLine = text.replace(/\s+/g, " ").slice(0, 80);
-					metaLines.push(`💬 ${oneLine}${text.length > 80 ? "…" : ""}`);
+					assistantText = text.replace(/\s+/g, " ").trim().slice(0, 1200);
 					break;
 				}
 			}
@@ -234,110 +231,32 @@ async function showScreensaver({ force = false }: { force?: boolean } = {}): Pro
 		}
 	}
 
+	const renderData: ScreensaverRenderData = { title, subtitle, metaLines, assistantText, spriteLines, spritePokemonName };
+	let dismissed = false;
 	await latestCtx.ui.custom(
 		(tui: ScreensaverTui, theme: ScreensaverTheme, _kb: unknown, done: (v: undefined) => void) => ({
-			render: (w: number) => renderScreensaver(w, tui.terminal?.rows ?? 40, { title, subtitle, metaLines, spriteLines, spritePokemonName }, theme),
-			handleInput: (_data: string) => done(undefined),
+			render: (w: number) => renderScreensaver(w, tui.terminal?.rows ?? 40, renderData, theme),
+			handleInput: (data: string) => {
+				if (dismissed || !shouldDismissScreensaver(data)) return;
+				dismissed = true;
+				done(undefined);
+			},
 			invalidate: () => {},
 		}),
-		{ overlay: true, overlayOptions: { width: "100%", maxHeight: "100%", anchor: "center" } },
+		{
+			overlay: true,
+			overlayOptions: { width: "100%", maxHeight: "100%", anchor: "center", nonCapturing: false },
+			onHandle: (handle) => handle.focus?.(),
+		},
 	);
 
 	overlayActive = false;
 	scheduleIdleTimer();
 }
 
-// ─── Renderer ──────────────────────────────────────────────────────────────
-
-interface RenderData {
-	title: string;
-	subtitle: string;
-	metaLines: string[];
-	spriteLines: string[] | null;
-	spritePokemonName: string | null;
-}
-
-function renderScreensaver(width: number, height: number, data: RenderData, theme: ScreensaverTheme): string[] {
-	const lines: string[] = [];
-	const bc = (s: string) => theme.fg("accent", s);
-
-	const hRule = new DynamicBorder(bc).render(width)[0] ?? bc("─".repeat(width));
-	const L = bc("│");
-	const R = bc("│");
-	const innerWidth = Math.max(0, width - 2);
-
-	const fitLine = (text: string) => innerWidth <= 0 ? "" : truncateToWidth(text, innerWidth, "…", true);
-	const emptyLine = () => L + " ".repeat(innerWidth) + R;
-	const placeLine = (chars: string) => {
-		const fitted = fitLine(chars);
-		const vw = visibleWidth(fitted);
-		return L + fitted + " ".repeat(Math.max(0, innerWidth - vw)) + R;
-	};
-	const centerLine = (text: string) => {
-		const fitted = fitLine(text);
-		const tw = visibleWidth(fitted);
-		const pad = Math.max(0, Math.floor((innerWidth - tw) / 2));
-		return placeLine(" ".repeat(pad) + fitted);
-	};
-
-	const compact = data.title.trim();
-	const spread = compact.length <= 24 ? compact.split("").join(" ") : compact;
-	const titleText = spread || "Pi";
-
-	const separatorWidth = Math.min(innerWidth - 4, Math.max(visibleWidth(titleText) + 8, 24));
-	const separator = bc("─".repeat(Math.max(1, separatorWidth)));
-
-	const SPRITE_H = (data.spriteLines?.length ?? 0) + (data.spritePokemonName ? 1 : 0);
-	const TITLE_BLOCK_H = 3;
-	const META_BLOCK_H = (data.subtitle ? 2 : 0) + (data.metaLines.length > 0 ? data.metaLines.length + 1 : 0);
-	const FOOTER_H = 1;
-	const innerHeight = height - 2;
-	const SPRITE_PAD = SPRITE_H > 0 ? 1 : 0;
-	const contentH = SPRITE_H + SPRITE_PAD + TITLE_BLOCK_H + META_BLOCK_H + FOOTER_H;
-	const topPad = Math.max(0, Math.floor((innerHeight - contentH) / 2) - 1);
-
-	lines.push(hRule);
-	for (let i = 0; i < topPad; i++) lines.push(emptyLine());
-
-	// Sprite (if available)
-	if (data.spriteLines) {
-		for (const sl of data.spriteLines) {
-			lines.push(centerLine(sl));
-		}
-		if (data.spritePokemonName) {
-			lines.push(centerLine(theme.fg("dim", data.spritePokemonName)));
-		}
-		lines.push(emptyLine());
-	}
-
-	// Title
-	lines.push(centerLine(separator));
-	lines.push(centerLine(theme.fg("accent", titleText)));
-	lines.push(centerLine(separator));
-
-	// Subtitle (folder/branch)
-	if (data.subtitle) {
-		lines.push(emptyLine());
-		lines.push(centerLine(theme.fg("muted", data.subtitle)));
-	}
-
-	// Meta (ticket/note)
-	if (data.metaLines.length > 0) {
-		lines.push(emptyLine());
-		for (const m of data.metaLines) lines.push(centerLine(theme.fg("muted", m)));
-	}
-
-	while (lines.length < height - 2) lines.push(emptyLine());
-	if (lines.length === height - 2) {
-		lines.push(centerLine(theme.fg("dim", "Press any key to dismiss")));
-	}
-	while (lines.length < height - 1) lines.push(emptyLine());
-	lines.push(hRule);
-
-	return lines;
-}
-
 // ─── Entry ─────────────────────────────────────────────────────────────────
+
+
 
 export default function (pi: ExtensionAPI): void {
 	piRef = pi;
