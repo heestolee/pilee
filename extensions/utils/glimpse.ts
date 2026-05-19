@@ -10,6 +10,8 @@ export interface GlimpseWindow {
 	on(event: "message", handler: (data: unknown) => void): void;
 	on(event: "ready", handler: (info: { screen?: { visibleHeight?: number } }) => void): void;
 	close(): void;
+	show?(options?: { title?: string }): void;
+	setHTML?(html: string): void;
 	_write?(message: Record<string, unknown>): void;
 }
 
@@ -299,14 +301,38 @@ function patchDarwinWebViewShortcutSupport(source: string): string | null {
         }
         installWebViewEditKeyMonitor()
         if config.transparent {`;
-	if (!source.includes(originalPanel) || !source.includes(originalMonitorSlot) || !source.includes(originalLaunch) || !source.includes(originalSetupWindow) || !source.includes(originalSetupWebView) || !source.includes(originalDelegate)) return null;
+	const originalResizeCommand = `        case "resize":
+            let w = json["width"] as? Int ?? config.width
+            let h = json["height"] as? Int ?? config.height
+            let size = NSSize(width: w, height: h)
+            if config.statusItem {
+                popover?.contentSize = size
+                popoverViewController?.preferredContentSize = size
+            } else {
+                window.setContentSize(size)
+            }`;
+	const patchedResizeCommand = `${originalResizeCommand}
+        case "bounds":
+            let w = json["width"] as? Int ?? Int(window.frame.width)
+            let h = json["height"] as? Int ?? Int(window.frame.height)
+            let x = json["x"] as? Int ?? Int(window.frame.origin.x)
+            let y = json["y"] as? Int ?? Int(window.frame.origin.y)
+            let frame = NSRect(x: x, y: y, width: w, height: h)
+            if config.statusItem {
+                popover?.contentSize = NSSize(width: w, height: h)
+                popoverViewController?.preferredContentSize = NSSize(width: w, height: h)
+            } else {
+                window.setFrame(frame, display: true, animate: false)
+            }`;
+	if (!source.includes(originalPanel) || !source.includes(originalMonitorSlot) || !source.includes(originalLaunch) || !source.includes(originalSetupWindow) || !source.includes(originalSetupWebView) || !source.includes(originalDelegate) || !source.includes(originalResizeCommand)) return null;
 	return source
 		.replace(originalPanel, patchedPanel)
 		.replace(originalMonitorSlot, patchedMonitorSlot)
 		.replace(originalLaunch, patchedLaunch)
 		.replace(originalSetupWindow, patchedSetupWindow)
 		.replace(originalSetupWebView, patchedSetupWebView)
-		.replace(originalDelegate, patchedDelegate);
+		.replace(originalDelegate, patchedDelegate)
+		.replace(originalResizeCommand, patchedResizeCommand);
 }
 
 function resolveDarwinHostWithShortcutSupport(resolvedGlimpseMjs: string, dir: string): string | null {
@@ -335,13 +361,15 @@ function resolveDarwinHostWithShortcutSupport(resolvedGlimpseMjs: string, dir: s
 
 function installDarwinHostAdapter(resolvedGlimpseMjs: string): void {
 	if (process.platform !== "darwin") return;
-	if (process.env.GLIMPSE_BINARY_PATH || process.env.GLIMPSE_HOST_PATH) return;
 
 	const dir = join(homedir(), ".pi", "agent", "glimpse");
+	const wrapper = join(dir, "glimpse-host-adapter.sh");
+	if (process.env.GLIMPSE_BINARY_PATH) return;
+	if (process.env.GLIMPSE_HOST_PATH && process.env.GLIMPSE_HOST_PATH !== wrapper) return;
+
 	const realHost = resolveDarwinHostWithShortcutSupport(resolvedGlimpseMjs, dir);
 	if (!realHost) return;
 
-	const wrapper = join(dir, "glimpse-host-adapter.sh");
 	const content = `#!/usr/bin/env bash
 set -euo pipefail
 real_host=${shellQuote(realHost)}

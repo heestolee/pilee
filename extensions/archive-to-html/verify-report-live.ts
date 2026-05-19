@@ -5,7 +5,8 @@ import { homedir, platform } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import { getGlimpseOpen, type GlimpseWindow } from "../utils/glimpse.ts";
+import { openCompanionUrl } from "../utils/companion-window.ts";
+import type { GlimpseWindow } from "../utils/glimpse.ts";
 import { webviewCopyCss, webviewCopyScript } from "../utils/webview-copy.ts";
 
 const REPORT_SIGNATURE = "Verify Report";
@@ -423,11 +424,6 @@ async function listenOnLoopback(server: Server): Promise<string> {
 	});
 }
 
-function openGlimpseUrl(open: (html: string, opts: Record<string, unknown>) => GlimpseWindow, url: string, title: string): GlimpseWindow {
-	const shellHtml = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title></head><body style="margin:0;background:${REPORT_SURFACE.bg}"><script>window.location.replace(${JSON.stringify(url)});</script></body></html>`;
-	return open(shellHtml, { width: 1180, height: 920, title, openLinks: true });
-}
-
 async function openUrlInBrowser(pi: ExtensionAPI, url: string): Promise<void> {
 	const plat = platform();
 	const result = plat === "darwin"
@@ -438,17 +434,14 @@ async function openUrlInBrowser(pi: ExtensionAPI, url: string): Promise<void> {
 	if (result.code !== 0) throw new Error(result.stderr || `Failed to open browser (${result.code})`);
 }
 
-async function openLivePreview(pi: ExtensionAPI, handle: LiveHandle): Promise<"glimpse" | "browser" | "none"> {
-	const open = await getGlimpseOpen();
-	if (open) {
-		try {
-			const win = openGlimpseUrl(open, handle.state.url, handle.state.title);
-			handle.window = win;
-			win.on("closed", () => {
-				handle.window = undefined;
-			});
-			return "glimpse";
-		} catch {}
+async function openLivePreview(pi: ExtensionAPI, ctx: ExtensionContext, handle: LiveHandle): Promise<"glimpse" | "browser" | "none"> {
+	const companion = await openCompanionUrl(pi, ctx, handle.state.url, handle.state.title, { width: 1180, height: 920 });
+	if (companion.window) {
+		handle.window = companion.window;
+		companion.window.on("closed", () => {
+			handle.window = undefined;
+		});
+		return "glimpse";
 	}
 	try {
 		await openUrlInBrowser(pi, handle.state.url);
@@ -1278,7 +1271,7 @@ export function registerVerifyReportLive(pi: ExtensionAPI) {
 				state.url = await listenOnLoopback(handle.server);
 				liveRuns.set(runId, handle);
 				let opened: "glimpse" | "browser" | "none" = "none";
-				if (ctx.hasUI) opened = await openLivePreview(pi, handle);
+				if (ctx.hasUI) opened = await openLivePreview(pi, ctx, handle);
 				return {
 					content: [{ type: "text", text: `Started live Verify Report (${runId}). Preview: ${state.url}. Captures: ${capturesDir}. report.html: ${reportPath}. Opened: ${opened}.` }],
 					details: { runId, url: state.url, capturesDir, reportPath, opened },
@@ -1290,7 +1283,7 @@ export function registerVerifyReportLive(pi: ExtensionAPI) {
 			const { state } = handle;
 
 			if (action === "open") {
-				const opened = ctx.hasUI ? await openLivePreview(pi, handle) : "none";
+				const opened = ctx.hasUI ? await openLivePreview(pi, ctx, handle) : "none";
 				return { content: [{ type: "text", text: `Opened live Verify Report (${state.runId}): ${state.url} (${opened}).` }], details: { runId: state.runId, url: state.url, opened } };
 			}
 

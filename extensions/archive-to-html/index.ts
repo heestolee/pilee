@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ToolResultEvent } from "@mariozechner/pi-coding-agent";
 import { complete, getModel, type Api, type Message, type Model } from "@mariozechner/pi-ai";
 import { resumeTftStudioFromTranscript } from "../frame-studio/index.ts";
-import { getGlimpseOpen, type GlimpseWindow } from "../utils/glimpse.ts";
+import { openCompanionHtml } from "../utils/companion-window.ts";
 import { expandProfileTemplate, loadArtifactBrowserProfiles, loadConductorProfiles } from "../utils/private-profiles.ts";
 import { webviewCopyCss, webviewCopyScript } from "../utils/webview-copy.ts";
 import { exportSessionFileToHtml, isPiSessionFile, openFile, SESSION_EXPORT_DIR } from "../utils/session-export.js";
@@ -172,7 +172,6 @@ input[type="text"]:focus, input[type="number"]:focus, textarea:focus, select:foc
 }
 `;
 
-const artifactWindows = new Set<GlimpseWindow>();
 const artifactBrowserServers = new Set<Server>();
 
 function escapeHtml(value: string): string {
@@ -257,20 +256,6 @@ function buildGlimpseArtifactHtml(artifactHtml: string, artifactPath: string): s
 	<iframe src="${artifactDataUri}" title="${escapeAttr(title)}"></iframe>
 </body>
 </html>`;
-}
-
-function openHtmlStringInGlimpse(open: (html: string, opts: Record<string, unknown>) => GlimpseWindow, html: string, title: string, width = 1280, height = 900): void {
-	const win = open(html, { width, height, title, openLinks: true });
-	artifactWindows.add(win);
-	win.on("closed", () => artifactWindows.delete(win));
-}
-
-function openHtmlInGlimpse(open: (html: string, opts: Record<string, unknown>) => GlimpseWindow, filePath: string): void {
-	const resolved = fs.realpathSync(filePath);
-	const htmlDir = path.dirname(resolved);
-	const html = inlineLocalImageSrc(fs.readFileSync(resolved, "utf-8"), htmlDir);
-	const title = artifactTitle(html, resolved);
-	openHtmlStringInGlimpse(open, buildGlimpseArtifactHtml(html, resolved), title);
 }
 
 function conductorDbPath(): string {
@@ -903,15 +888,10 @@ async function openUrlOrPathInSystem(pi: ExtensionAPI, target: string): Promise<
 	if (result.code !== 0) throw new Error(result.stderr || `Failed to open target (${result.code})`);
 }
 
-async function openHtmlStringArtifact(pi: ExtensionAPI, html: string, title: string, browserOnly = false): Promise<"glimpse" | "browser"> {
-	if (!browserOnly) {
-		const open = await getGlimpseOpen();
-		if (open) {
-			try {
-				openHtmlStringInGlimpse(open, html, title);
-				return "glimpse";
-			} catch {}
-		}
+async function openHtmlStringArtifact(pi: ExtensionAPI, html: string, title: string, browserOnly = false, ctx?: ExtensionContext | ExtensionCommandContext): Promise<"glimpse" | "browser"> {
+	if (!browserOnly && ctx) {
+		const companion = await openCompanionHtml(pi, ctx, html, title, { width: 1280, height: 900 });
+		if (companion.window) return "glimpse";
 	}
 	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pilee-artifact-browser-"));
 	const tmpPath = path.join(tmpDir, `${slugify(title)}.html`);
@@ -920,42 +900,42 @@ async function openHtmlStringArtifact(pi: ExtensionAPI, html: string, title: str
 	return "browser";
 }
 
-async function openHtmlArtifact(pi: ExtensionAPI, filePath: string, browserOnly = false): Promise<"glimpse" | "browser"> {
-	if (!browserOnly) {
-		const open = await getGlimpseOpen();
-		if (open) {
-			try {
-				openHtmlInGlimpse(open, filePath);
-				return "glimpse";
-			} catch {}
-		}
+async function openHtmlArtifact(pi: ExtensionAPI, filePath: string, browserOnly = false, ctx?: ExtensionContext | ExtensionCommandContext): Promise<"glimpse" | "browser"> {
+	if (!browserOnly && ctx) {
+		try {
+			const resolved = fs.realpathSync(filePath);
+			const htmlDir = path.dirname(resolved);
+			const html = inlineLocalImageSrc(fs.readFileSync(resolved, "utf-8"), htmlDir);
+			const title = artifactTitle(html, resolved);
+			return await openHtmlStringArtifact(pi, buildGlimpseArtifactHtml(html, resolved), title, false, ctx);
+		} catch {}
 	}
 	await openInSystemBrowser(pi, filePath);
 	return "browser";
 }
 
-async function openMediaArtifact(pi: ExtensionAPI, filePath: string, browserOnly = false, intent?: EvidenceIntent): Promise<"glimpse" | "browser"> {
+async function openMediaArtifact(pi: ExtensionAPI, filePath: string, browserOnly = false, intent?: EvidenceIntent, ctx?: ExtensionContext | ExtensionCommandContext): Promise<"glimpse" | "browser"> {
 	const resolved = fs.realpathSync(filePath);
 	const title = path.basename(resolved);
 	const html = buildMediaPreviewHtml(resolved, title, intent);
-	return openHtmlStringArtifact(pi, html, title, browserOnly);
+	return openHtmlStringArtifact(pi, html, title, browserOnly, ctx);
 }
 
-async function openAnyArtifact(pi: ExtensionAPI, filePath: string, browserOnly = false, cwd = process.cwd()): Promise<"glimpse" | "browser"> {
+async function openAnyArtifact(pi: ExtensionAPI, filePath: string, browserOnly = false, cwd = process.cwd(), ctx?: ExtensionContext | ExtensionCommandContext): Promise<"glimpse" | "browser"> {
 	const resolved = fs.realpathSync(filePath);
 	const ext = path.extname(resolved).toLowerCase();
-	if (ext === ".html" || ext === ".htm") return openHtmlArtifact(pi, resolved, browserOnly);
+	if (ext === ".html" || ext === ".htm") return openHtmlArtifact(pi, resolved, browserOnly, ctx);
 	if (ext === ".json" && resolved.startsWith(FRAME_TRANSCRIPTS_DIR)) {
-		return openHtmlStringArtifact(pi, buildFrameTranscriptStandaloneHtml(resolved), path.basename(resolved), browserOnly);
+		return openHtmlStringArtifact(pi, buildFrameTranscriptStandaloneHtml(resolved), path.basename(resolved), browserOnly, ctx);
 	}
-	if (MEDIA_EXTENSIONS.has(ext)) return openMediaArtifact(pi, resolved, browserOnly, collectEvidenceIntentIndex(cwd).get(resolved));
+	if (MEDIA_EXTENSIONS.has(ext)) return openMediaArtifact(pi, resolved, browserOnly, collectEvidenceIntentIndex(cwd).get(resolved), ctx);
 	if (ext === ".jsonl" || isSessionJsonlPath(resolved)) {
 		const exportPath = await exportSessionArtifactToHtml(pi, resolved);
 		if (browserOnly) {
 			await openFile(pi, exportPath);
 			return "browser";
 		}
-		return openHtmlArtifact(pi, exportPath, false);
+		return openHtmlArtifact(pi, exportPath, false, ctx);
 	}
 	await openInSystemBrowser(pi, resolved);
 	return "browser";
@@ -994,7 +974,7 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.notify(`artifact를 찾을 수 없습니다: ${parsed.explicitPath}`, "warning");
 				return;
 			}
-			const mode = await openAnyArtifact(pi, parsed.explicitPath, parsed.browserOnly, ctx.cwd);
+			const mode = await openAnyArtifact(pi, parsed.explicitPath, parsed.browserOnly, ctx.cwd, ctx);
 			ctx.ui.notify(`🗂️ ${mode === "glimpse" ? "Glimpse" : "브라우저"} 열기 → ${path.basename(parsed.explicitPath)}`, "info");
 			return;
 		}
@@ -1653,14 +1633,10 @@ function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData,
 
 async function openArtifactBrowser(pi: ExtensionAPI, data: ArtifactBrowserData, cwd: string, browserOnly = false, ctx?: ExtensionCommandContext): Promise<"glimpse" | "browser"> {
 	const url = await startArtifactBrowserServer(pi, data, cwd, ctx);
-	if (!browserOnly) {
-		const open = await getGlimpseOpen();
-		if (open) {
-			try {
-				openHtmlStringInGlimpse(open, `<!doctype html><html><head><meta charset="utf-8"><title>pilee Artifact Browser</title></head><body><script>window.location.replace(${JSON.stringify(url)});</script></body></html>`, "pilee Artifact Browser");
-				return "glimpse";
-			} catch {}
-		}
+	if (!browserOnly && ctx) {
+		const html = `<!doctype html><html><head><meta charset="utf-8"><title>pilee Artifact Browser</title></head><body><script>window.location.replace(${JSON.stringify(url)});</script></body></html>`;
+		const companion = await openCompanionHtml(pi, ctx, html, "pilee Artifact Browser", { width: 1280, height: 900 });
+		if (companion.window) return "glimpse";
 	}
 	await openUrlOrPathInSystem(pi, url);
 	return "browser";
@@ -3231,7 +3207,7 @@ async function archiveVerifyReport(event: ToolResultEvent, ctx: ExtensionContext
 		if (ctx.hasUI) {
 			let mode: "glimpse" | "browser" | "none" = "none";
 			try {
-				mode = await openHtmlArtifact(pi, resolved);
+				mode = await openHtmlArtifact(pi, resolved, false, ctx);
 			} catch {}
 			ctx.ui.notify(
 				`📊 Verify Report 아카이브${mode !== "none" ? ` + ${mode === "glimpse" ? "Glimpse" : "브라우저"} 프리뷰` : ""} → reports/${filename}`,

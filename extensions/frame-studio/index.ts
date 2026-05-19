@@ -7,7 +7,8 @@ import { isAbsolute, join, resolve as resolvePath, sep } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import { buildFrameIdentity, type FrameIdentity } from "../tft-commands/frame-identity.ts";
-import { getGlimpseOpen, type GlimpseWindow } from "../utils/glimpse.ts";
+import { openCompanionUrl, toggleCompanionWindow } from "../utils/companion-window.ts";
+import type { GlimpseWindow } from "../utils/glimpse.ts";
 import { loadOrDeriveWorkContext } from "../utils/work-context.ts";
 import { webviewCopyCss, webviewCopyScript } from "../utils/webview-copy.ts";
 
@@ -1193,28 +1194,14 @@ async function openInBrowser(pi: ExtensionAPI, url: string): Promise<void> {
 	if (result.code !== 0) throw new Error(result.stderr || `Failed to open browser (${result.code})`);
 }
 
-function openGlimpseUrl(open: (html: string, opts: Record<string, unknown>) => GlimpseWindow, url: string, title: string): GlimpseWindow {
-	const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title></head><body style="margin:0;background:#fafaf9"><script>window.location.replace(${JSON.stringify(url)});</script></body></html>`;
-	const win = open(html, { width: 980, height: 900, title, openLinks: true });
-	win.on("message", (data: unknown) => {
-		if (!data || typeof data !== "object") return;
-		const msg = data as Record<string, unknown>;
-		if (msg.type !== "resize" || typeof msg.height !== "number") return;
-		win._write?.({ type: "resize", width: 980, height: Math.max(560, Math.min(Math.round(msg.height), 1200)) });
-	});
-	return win;
-}
-
 async function openStudio(pi: ExtensionAPI, ctx: ExtensionContext, handle: FrameStudioHandle): Promise<"glimpse" | "browser" | "none"> {
 	if (!ctx.hasUI) return "none";
 	if (platform() === "darwin") {
-		const open = await getGlimpseOpen();
-		if (open) {
-			try {
-				handle.window = openGlimpseUrl(open, handle.state.url, handle.state.title);
-				handle.window.on("closed", () => { handle.window = undefined; });
-				return "glimpse";
-			} catch {}
+		const result = await openCompanionUrl(pi, ctx, handle.state.url, handle.state.title, { width: 980, height: 900 });
+		if (result.window) {
+			handle.window = result.window;
+			handle.window.on("closed", () => { handle.window = undefined; });
+			return "glimpse";
 		}
 	}
 	await openInBrowser(pi, handle.state.url);
@@ -1451,11 +1438,49 @@ export async function resumeTftStudioFromTranscript(pi: ExtensionAPI, ctx: Exten
 	return { runId: handle.state.runId, title: handle.state.title, opened, reactivated, transcriptPath: handle.state.transcriptPath };
 }
 
+async function toggleCurrentCompanion(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
+	const toggled = await toggleCompanionWindow(pi, ctx, { width: 980, height: 900 });
+	if (toggled.mode === "hidden") {
+		ctx.ui.notify(`짝 WebView 숨김: ${toggled.title ?? "companion"}`, "info");
+		return;
+	}
+	if (toggled.mode === "shown") {
+		ctx.ui.notify(`짝 WebView 표시: ${toggled.title ?? "companion"}`, "info");
+		return;
+	}
+	const latest = latestHandle();
+	if (latest) {
+		const opened = await openStudio(pi, ctx, latest);
+		ctx.ui.notify(`TFT Studio companion 열기: ${latest.state.title} (${opened})`, opened === "none" ? "warning" : "info");
+		return;
+	}
+	ctx.ui.notify("현재 세션에 연결된 WebView가 없습니다. 먼저 /tft 또는 /show-report를 여세요.", "warning");
+}
+
+function registerCompanionCommand(pi: ExtensionAPI): void {
+	pi.registerCommand("companion", {
+		description: "현재 Pi 패널에 연결된 단일 WebView companion을 토글합니다. 기본 단축키: Ctrl+Shift+G",
+		handler: async (_args: string, ctx: ExtensionCommandContext) => {
+			await toggleCurrentCompanion(pi, ctx);
+		},
+	});
+	pi.registerShortcut("ctrl+shift+g", {
+		description: "현재 Pi 패널의 WebView companion 토글",
+		handler: async (ctx: ExtensionCommandContext) => {
+			await toggleCurrentCompanion(pi, ctx);
+		},
+	});
+}
+
 function registerTftStudioCommand(pi: ExtensionAPI): void {
 	pi.registerCommand("tft", {
-		description: "TFT Studio 열기/재진입. Usage: /tft [open|resume] [transcriptPath|identityKey]",
+		description: "TFT Studio 열기/재진입. Usage: /tft [open|resume|toggle] [transcriptPath|identityKey]",
 		handler: async (args: string, ctx: ExtensionCommandContext) => {
 			try {
+				if (/^\s*(?:toggle|hide|show)\s*$/i.test(args ?? "")) {
+					await toggleCurrentCompanion(pi, ctx);
+					return;
+				}
 				const target = parseTftOpenTarget(args);
 				if (target && existsSync(isAbsolute(target) ? target : resolvePath(ctx.cwd, target))) {
 					const resumed = await resumeTftStudioFromTranscript(pi, ctx, target);
@@ -1480,6 +1505,7 @@ function registerTftStudioCommand(pi: ExtensionAPI): void {
 }
 
 export default function (pi: ExtensionAPI) {
+	registerCompanionCommand(pi);
 	registerTftStudioCommand(pi);
 
 	pi.registerTool({
@@ -1561,7 +1587,7 @@ export default function (pi: ExtensionAPI) {
 				if (params.title) handle.state.title = params.title;
 				if (params.step) handle.state.step = params.step;
 				updateTab(handle.state, tab, { markdown: params.markdown, step: params.step });
-				if (!handle.window) await openStudio(pi, ctx, handle);
+				await openStudio(pi, ctx, handle);
 				const question: StudioQuestion = {
 					id: randomUUID().slice(0, 8),
 					tab,

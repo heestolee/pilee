@@ -1017,7 +1017,7 @@ const README_EXTENSION_GROUPS = [
 		{ name: "tool-group-renderer", ko: "관련 도구 출력 그룹/축소", en: "Groups and collapses related tool output" },
 		{ name: "tft-commands", ko: "`/frame`/`/decide`/`/verify`를 pilee SKILL.md 인라인 실행으로 라우팅", en: "Routes `/frame`, `/decide`, `/verify` to pilee skills" },
 		{ name: "ship-commands", ko: "`/ship`/`/pr-ship`/`/ci-ship`을 pilee SKILL.md 인라인 실행으로 라우팅하고 PR 리뷰·CI 컨텍스트를 수집", en: "Routes `/ship`, `/pr-ship`, and `/ci-ship` to pilee skills and collects PR review/CI context" },
-		{ name: "frame-studio", ko: "Glimpse 기반 TFT Studio shell — Frame/Decide/Verify/Verify Report 탭 + 선택 UI/전문 저장 + Archive `이어하기`/`/tft open` 재진입", en: "Glimpse-based TFT Studio shell with Frame/Decide/Verify/Verify Report tabs, choices, transcript replay, Archive resume, and `/tft open`" },
+		{ name: "frame-studio", ko: "Glimpse 기반 TFT Studio shell — Frame/Decide/Verify/Verify Report 탭 + 선택 UI/전문 저장 + 단일 companion WebView(`/companion`, `Ctrl+Shift+G`)", en: "Glimpse-based TFT Studio shell with Frame/Decide/Verify/Verify Report tabs, choices, transcript replay, and one companion WebView (`/companion`, `Ctrl+Shift+G`)" },
 		{ name: "user-facing-language", ko: "사용자에게 보이는 진행/요약/답변은 짧은 한국어를 기본으로 하는 system prompt guard", en: "System prompt guard that keeps user-visible progress, summaries, and answers short and Korean-first" },
 		{ name: "workflow-guard", ko: "요청 의도·작업 무게·audit·선택 후 실행 흐름을 turn 단위로 강제하는 guard", en: "Turn-level guard for request intent, workflow weight, audits, and post-choice continuation" },
 	] },
@@ -1040,7 +1040,7 @@ const README_EXTENSION_GROUPS = [
 		{ name: "queued-messages", ko: "메시지 큐 시각화 + idle watchdog", en: "Queue visualization and idle watchdog" },
 		{ name: "diff-overlay", ko: "`/diff` TUI — 커밋 모드, 파일 트리, 구문 하이라이팅", en: "`/diff` TUI with commit mode, file tree, and syntax highlight" },
 		{ name: "timestamp", ko: "`/timestamp` TUI — 대화 타임라인", en: "`/timestamp` conversation timeline" },
-		{ name: "archive-to-html", ko: "Verify/Web Search HTML 아카이브 + `/archive` Artifact Browser(`/show-report` alias) + live Verify Glimpse viewer", en: "Verify/Web Search HTML archive, `/archive` Artifact Browser (`/show-report` alias), and live Verify preview" },
+		{ name: "archive-to-html", ko: "Verify/Web Search HTML 아카이브 + `/archive` Artifact Browser(`/show-report` alias) + companion WebView 재사용", en: "Verify/Web Search HTML archive and `/archive` Artifact Browser (`/show-report` alias) using the shared companion WebView" },
 	] },
 	{ ko: "도구", en: "Tools and data", items: [
 		{ name: "bash-tool-override", ko: "Bash tool 제목/출력 렌더링 override — 명령 의도 중심으로 표시", en: "Bash tool title and output rendering override focused on command intent" },
