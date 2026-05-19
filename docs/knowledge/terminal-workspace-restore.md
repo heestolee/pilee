@@ -15,8 +15,8 @@ applies_to:
   - extensions/fork-panel
 source:
   - user-direction:2026-05-12-workspace-save-restore
-reviewed_at: 2026-05-15
-reviewed_commit: 7496d7e50acb04cfc337ae17aa2ff3d94e04a3ba
+reviewed_at: 2026-05-19
+reviewed_commit: 753d75bcc7f80e4393b68ef575f1838f9d8563fb
 related:
   - terminal-host-integration
   - fork-panel-spatial-continuity
@@ -33,9 +33,13 @@ snapshot에는 Ghostty window/tab/terminal id, tab 순서, terminal title, cwd, 
 
 ## Autosave Rule
 
-autosave는 명시 save를 대체하는 주 복원 경로가 아니라 안전망입니다. Ghostty/macOS 세션에서 시작 5~10초 뒤 첫 snapshot을 만들고 이후 약 1시간마다 `autosave` snapshot을 갱신합니다. 작업공간 크기 수준의 Ghostty AppleScript와 작은 JSON write만 수행하므로 일반적인 탭/패널 수에서는 큰 성능 부담을 기대하지 않지만, 사용자가 의도한 복원 지점은 `/workspace save`로 남긴 수동 snapshot이 기준이어야 합니다.
+autosave는 명시 save를 대체하는 주 복원 경로가 아니라 안전망입니다. Ghostty/macOS 세션에서 시작 30~60초 뒤 첫 확인을 하고 이후 약 1시간마다 `autosave` snapshot을 확인합니다. 다만 실제 snapshot 저장은 각 Pi 패널이 아니라 전역 leader process 하나만 수행합니다. 다른 패널은 active session registry만 갱신하고, leader lease가 살아 있으면 autosave write를 건너뜁니다.
 
-전역 `autosave`는 새 Pi 세션이나 단일 패널 창에서도 실행될 수 있으므로, 단일 alias 파일만 덮어쓰면 사용자가 부활시키려던 작업공간을 잃습니다. alias 갱신 전 기존 autosave는 `autosave-YYYYMMDDTHHMMSS` 형태의 versioned archive로 먼저 보존합니다. 또한 기존 autosave에 연결된 session이 있는데 새 snapshot은 session 0개이거나, 기존 다중 panel autosave를 단일 panel snapshot이 크게 낮은 복원 점수로 대체하려는 경우에는 alias 갱신을 건너뛰고 상태 파일에 skip reason을 남깁니다.
+autosave는 시간만 됐다고 파일을 새로 쓰지 않습니다. tab/panel 순서, cwd, terminal title, 연결된 session file, panel label 같은 복원 핵심 필드로 stable hash를 계산하고, 직전 hash와 같으면 `autosave` alias와 archive를 그대로 둡니다. 사용자가 의도한 복원 지점은 여전히 `/workspace save "이름"`으로 남긴 수동 snapshot이 기준이어야 합니다.
+
+전역 `autosave`는 새 Pi 세션이나 단일 패널 창에서도 실행될 수 있으므로, 단일 alias 파일만 덮어쓰면 사용자가 부활시키려던 작업공간을 잃습니다. alias 갱신 전 기존 autosave는 `autosave-YYYYMMDDTHHMMSS` 형태의 versioned archive로 보존하되, archive는 snapshot hash가 바뀌고 tab/panel/session 수·복원 점수 변화 또는 최소 보관 간격이 있을 때만 남깁니다. 또한 기존 autosave에 연결된 session이 있는데 새 snapshot은 session 0개이거나, 기존 다중 panel autosave를 단일 panel snapshot이 크게 낮은 복원 점수로 대체하려는 경우에는 alias 갱신을 건너뛰고 상태 파일에 skip reason을 남깁니다.
+
+autosave archive cleanup은 매 저장마다 무작정 돌리는 사용자가 보는 기능이 아니라 저장소 위생 안전장치입니다. leader autosave가 하루에 한 번 또는 archive pressure가 높을 때 prune하며, 최근 대표 archive와 일/주 단위 대표본만 남겨 전체 autosave archive를 작게 유지합니다. `/workspace list` 기본 목록은 현재 autosave, 수동 snapshot, 대표 archive만 보여주고 오래된 archive는 `/workspace list --all`에서 봅니다. 기본 목록 번호는 `/workspace restore <번호>`와 대응하고, 전체 목록 번호는 `/workspace restore --all <번호>`와 대응합니다.
 
 ## Restore Rule
 
