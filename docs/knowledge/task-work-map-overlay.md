@@ -18,7 +18,7 @@ source:
   - user-direction:2026-05-19-task-work-map-overlay
   - user-direction:2026-05-20-task-overlay-toggle-shortcut
 reviewed_at: 2026-05-20
-reviewed_commit: 9d1f4092867a90642ba745de8374506e301a9a87
+reviewed_commit: 7ea10e491f6879877d71fa09f3671ed4c8c0d7bb
 related:
   - work-context-card-task-board
   - ambient-status-surfaces
@@ -73,11 +73,11 @@ Task에는 가능한 한 다음 정보를 남깁니다.
 
 Task UI는 두 표면을 분리합니다.
 
-- `Ctrl+Shift+T` — 중앙 `/tasks` interactive overlay를 열어 상태 토글, 새 task 추가, soft delete, backlog 이동을 수행합니다.
+- `Ctrl+Shift+T` — 중앙 `/tasks` interactive overlay를 즉시 열어 상태 토글, 새 task 추가, soft delete, backlog 이동을 수행합니다. 입력창에 `/tasks`를 대신 채워 넣는 prefill fallback이 아니어야 합니다.
 - `Ctrl+Shift+O` — 우상단 passive work-map overlay만 show/hide 토글합니다. 사용자가 화면을 넓게 보고 싶을 때 work map을 잠시 숨기되, task 데이터와 `/tasks` 조작 흐름은 그대로 보존합니다.
 - `/tasks show|hide|status` — 같은 passive overlay visibility 상태를 명령으로 제어합니다.
 
-토글 단축키는 hidden flag와 실제 overlay handle close/open을 함께 갱신해야 합니다. 단축키 회귀는 `npm run test:tasks`가 보장합니다.
+토글 단축키는 hidden flag와 실제 overlay handle close/open을 함께 갱신해야 합니다. 단축키 회귀는 `npm run test:tasks`가 보장하며, `Ctrl+Shift+T`가 editor text를 바꾸지 않고 overlay를 직접 여는 계약도 포함합니다.
 
 ## Boundary
 

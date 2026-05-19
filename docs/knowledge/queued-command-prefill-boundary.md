@@ -13,6 +13,8 @@ confidence: high
 applies_to:
   - extensions/queued-messages
   - extensions/worktree
+  - extensions/tasks
+  - extensions/frame-studio
   - worktree_create
   - worktree_switch
   - worktree_fork
@@ -22,7 +24,7 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-11-subagent-skill-delegation
 reviewed_at: 2026-05-19
-reviewed_commit: 6564ee3a9c6c3dec179bbe670e4674cc32e87e2a
+reviewed_commit: 7ea10e491f6879877d71fa09f3671ed4c8c0d7bb
 related:
   - worktree-execution-boundary
   - session-identity-over-filenames
@@ -37,6 +39,8 @@ Pi 대화에 slash command 문자열을 queue했다고 해서 그 command가 실
 ## Boundary Rule
 
 도구는 필요한 세션을 만들거나 fork하고, 사용자가 확인할 수 있는 editor prefill을 제공합니다. 자동 실행이 필요한 일은 command queue에 기대지 말고 확실한 API/함수 경로로 수행합니다.
+
+사용자가 단축키를 누른 경우에는 가능한 한 실제 handler를 즉시 실행해야 합니다. `Ctrl+W`처럼 `/wt switch` dashboard를 열 수 있거나 `Ctrl+Shift+T`처럼 `/tasks` overlay를 바로 열 수 있는 shortcut이 입력창에 slash command만 채워 넣으면 사용자는 “단축키가 동작했다”가 아니라 “명령어가 입력됐다”고 느낍니다. prefill은 즉시 실행 API가 없거나 runtime 경계 때문에 수동 확인이 필요한 fallback일 때만 씁니다.
 
 Subagent에 slash command 문자열을 그대로 넘기는 것도 command 실행이 아닙니다. 필요한 경우 command shim이 만드는 context와 `SKILL.md` prompt를 명시적으로 구성해 subagent task로 위임합니다.
 

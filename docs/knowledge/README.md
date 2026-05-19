@@ -142,8 +142,8 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Idle UI는 장식이 아니라 ambient status다](./ambient-status-surfaces.md) | active | high | 2026-05-20 | b0bff2c | idle-screensaver, tasks, spinner, status, ambient, ui |
 | [Editor affordance는 숨은 컨텍스트가 아니다](./editor-affordance-not-context.md) | active | high | 2026-05-13 | dea80b9 | editor, footer, prompt-suggest, working-text, affordance, ui |
 | [User-facing 출력은 한국어를 기본으로 한다](./korean-first-user-facing-output.md) | active | high | 2026-05-13 | 1f5c3ac | korean-output, localization, web-search, ui, rewrite, 한국어 |
-| [Shortcut Atlas는 단축키 표면을 한 번에 검토한다](./shortcut-atlas-conflict-audit.md) | active | high | 2026-05-20 | c4756f8 | shortcuts, keybindings, overlay, collision, audit, ui |
-| [Task overlay는 작업 맵을 보존한다](./task-work-map-overlay.md) | active | high | 2026-05-20 | 9d1f409 | tasks, overlay, work-map, soft-delete, provenance, ui |
+| [Shortcut Atlas는 단축키 표면을 한 번에 검토한다](./shortcut-atlas-conflict-audit.md) | active | high | 2026-05-20 | 7ea10e4 | shortcuts, keybindings, overlay, collision, audit, ui |
+| [Task overlay는 작업 맵을 보존한다](./task-work-map-overlay.md) | active | high | 2026-05-20 | 7ea10e4 | tasks, overlay, work-map, soft-delete, provenance, ui |
 | [색상은 정보 위계다](./theme-information-hierarchy.md) | active | high | 2026-05-13 | 10e0874 | theme, color, dim, muted, border, accent |
 | [도구 출력은 대화 흐름을 침범하지 않는다](./tool-output-noise-management.md) | active | high | 2026-05-11 | ce3a598 | tool-output, collapse, noise, ui, usage, renderer |
 | [TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다](./tui-rendering-sanitization.md) | active | high | 2026-05-12 | fc6ffa9 | tui, rendering, newline, ansi, sanitize, terminal |
@@ -195,7 +195,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 264ea17 | local-dev, server, startup, diagnosis, dev |
 | [pilee 변경은 final-check gate로 닫는다](./pilee-final-check-gate.md) | active | high | 2026-05-19 | 27c20a3 | pilee, final-check, verification, skill, workflow, 마무리 |
 | [Private overlay package는 회사·개인 실행 맥락을 담는다](./private-overlay-package-boundary.md) | active | high | 2026-05-13 | e0dc999 | privacy, package, overlay, skill, company-context |
-| [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-05-19 | 6564ee3 | queued-messages, slash-command, prefill, worktree, session, boundary |
+| [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-05-19 | 7ea10e4 | queued-messages, slash-command, prefill, worktree, session, boundary |
 | [Read/Edit tool override는 필요한 증거만 펼친다](./read-edit-tool-output-override.md) | active | high | 2026-05-13 | f3fe380 | read, edit, tool, override, diff, preview |
 | [변경된 줄은 요청으로 추적 가능해야 한다](./request-traceability-surgical-changes.md) | active | high | 2026-05-13 | 74c8c28 | request-traceability, surgical-change, karpathy, diff, scope, review |
 | [종료된 포크는 transcript 주입보다 revive가 우선이다](./revive-over-transcript-recall.md) | active | high | 2026-05-12 | ca8ae9e | revive, recall, fork-panel, session, continuity, 세션 |

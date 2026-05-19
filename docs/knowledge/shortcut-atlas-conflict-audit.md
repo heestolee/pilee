@@ -17,7 +17,7 @@ applies_to:
 source:
   - user-direction:2026-05-20-shortcut-atlas
 reviewed_at: 2026-05-20
-reviewed_commit: c4756f8ea0f3cfd7360dc38930e29642a67dcc9a
+reviewed_commit: 7ea10e491f6879877d71fa09f3671ed4c8c0d7bb
 related:
   - task-work-map-overlay
   - terminal-host-integration
@@ -49,12 +49,15 @@ pilee custom shortcut 목록은 사람이 읽는 curated atlas이지만, source 
 
 동적 등록처럼 정적 scan이 잡기 어려운 shortcut은 curated registry에 명시합니다. 예: fork-panel 방향키 배열.
 
+Terminal/host shortcut은 추측으로 적지 말고 가능한 경우 host가 제공하는 목록을 기준으로 갱신합니다. Ghostty 기본 동작은 `ghostty +list-keybinds`를 기준으로 Cmd+T 탭, Cmd+D split, Cmd+Shift+]/[ 탭 이동, Cmd+Alt+Arrow split focus, 검색/폰트/스크롤 동작을 atlas의 `terminal` layer에 둡니다.
+
 ## Test Contract
 
 `npm run test:shortcut-atlas`는 다음 계약을 고정합니다.
 
 - Pi custom renderer가 `render(width)`처럼 height 없이 호출돼도 atlas body rows를 렌더한다. height는 terminal rows 또는 안전한 기본값으로 fallback한다.
-- modifier normalize가 `Ctrl+Shift+O`, `Cmd+-`, `Ctrl+-` 같은 symbol key를 잃지 않는다.
+- modifier normalize가 `Ctrl+Shift+O`, `Cmd+-`, `Ctrl+-`, `Super+T` 같은 host key 표기를 잃지 않는다.
+- Ghostty host shortcut의 탭/split/search 대표 키가 terminal layer에 포함된다.
 - 현재 pilee custom shortcut 사이에는 blocking collision이 없다.
 - 의도적으로 중복 custom key를 넣으면 `custom-collision` error가 발생한다.
 - custom이 `Ctrl+C` 같은 Pi reserved key와 겹치면 warning으로 드러난다.
