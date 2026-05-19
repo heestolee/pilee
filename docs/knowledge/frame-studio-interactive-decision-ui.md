@@ -32,7 +32,7 @@ source:
   - user-direction:2026-05-12-tft-studio-ime-shortcut-conflict
   - user-direction:2026-05-19-single-companion-webview-toggle
 reviewed_at: 2026-05-19
-reviewed_commit: 1f5c3acfcb23b01a3fc6bc30592dbe0156748c4f
+reviewed_commit: 8f426bacbd846ac9d8ea86e277a6f349e9b29201
 related:
   - frame-planning-identity
   - frame-verify-contract
