@@ -84,7 +84,7 @@ function createCtx(cwd: string) {
 				const done = () => { record.doneCalled = true; };
 				factory({ requestRender() {} }, plainTheme, {}, done);
 				_options?.onHandle?.({ hide: () => { hideCalls++; } });
-				return new Promise<void>(() => {});
+				return _options?.overlayOptions?.nonCapturing ? new Promise<void>(() => {}) : Promise.resolve();
 			},
 		},
 	};
@@ -97,20 +97,32 @@ function createCtx(cwd: string) {
 	};
 }
 
-test("Ctrl+Shift+O toggles the passive tasks overlay without replacing Ctrl+Shift+T", async () => {
+test("Ctrl+Shift+T opens the interactive tasks overlay immediately", async () => {
 	const cwd = createGitWorkdir();
 	try {
 		const harness = createPiHarness();
 		tasksExtension(harness.pi as any);
 
-		assert.ok(harness.shortcuts.has("ctrl+shift+t"), "Ctrl+Shift+T should keep opening the interactive /tasks overlay");
+		assert.ok(harness.shortcuts.has("ctrl+shift+t"), "Ctrl+Shift+T should open the interactive tasks overlay");
+		const view = createCtx(cwd);
+		await harness.shortcuts.get("ctrl+shift+t")!.handler(view.ctx);
+		assert.deepEqual(view.editorTexts, [], "Ctrl+Shift+T must not prefill /tasks into the editor");
+		assert.equal(view.customCalls.length, 1, "Ctrl+Shift+T should open the tasks overlay directly");
+	} finally {
+		rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("Ctrl+Shift+O toggles the passive tasks overlay", async () => {
+	const cwd = createGitWorkdir();
+	try {
+		const harness = createPiHarness();
+		tasksExtension(harness.pi as any);
+
 		assert.ok(harness.shortcuts.has("ctrl+shift+o"), "Ctrl+Shift+O should be registered for passive overlay toggle");
 		assert.equal(harness.shortcuts.get("ctrl+shift+o")?.description, "Toggle passive tasks work-map overlay");
 
 		const view = createCtx(cwd);
-		await harness.shortcuts.get("ctrl+shift+t")!.handler(view.ctx);
-		assert.deepEqual(view.editorTexts, ["/tasks"], "Ctrl+Shift+T should still prefill /tasks");
-
 		await harness.shortcuts.get("ctrl+shift+o")!.handler(view.ctx);
 		assert.equal(view.customCalls.length, 0, "first toggle hides the currently-shown passive overlay state");
 		assert.match(view.notifications.at(-1)?.message ?? "", /숨겼습니다/);

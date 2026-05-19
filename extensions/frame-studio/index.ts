@@ -9,6 +9,7 @@ import { Type } from "typebox";
 import { buildFrameIdentity, type FrameIdentity } from "../tft-commands/frame-identity.ts";
 import { openCompanionUrl, toggleCompanionWindow } from "../utils/companion-window.ts";
 import type { GlimpseWindow } from "../utils/glimpse.ts";
+import { registerCompanionToggleShortcut } from "./companion-shortcut.ts";
 import { loadOrDeriveWorkContext } from "../utils/work-context.ts";
 import { webviewCopyCss, webviewCopyScript } from "../utils/webview-copy.ts";
 
@@ -1464,11 +1465,8 @@ function registerCompanionCommand(pi: ExtensionAPI): void {
 			await toggleCurrentCompanion(pi, ctx);
 		},
 	});
-	pi.registerShortcut("ctrl+shift+g", {
-		description: "현재 Pi 패널의 WebView companion 토글",
-		handler: async (ctx: ExtensionCommandContext) => {
-			await toggleCurrentCompanion(pi, ctx);
-		},
+	registerCompanionToggleShortcut(pi, async (ctx) => {
+		await toggleCurrentCompanion(pi, ctx);
 	});
 }
 

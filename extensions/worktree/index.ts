@@ -19,6 +19,7 @@ import { getFinalOutput, runSingleAgent } from "../subagent/runner.ts";
 import { makeSubagentSessionFile } from "../subagent/session.ts";
 import type { SingleResult, SubagentDetails } from "../subagent/types.ts";
 import { resolveForkPanelIdentity } from "../utils/fork-panel-identity.ts";
+import { registerWorktreeDashboardShortcut } from "./shortcut.ts";
 
 // ─── Repo registry ─────────────────────────────────────────────────────────
 
@@ -3311,11 +3312,8 @@ export default function (pi: ExtensionAPI) {
 		handler: (args, ctx) => handleWt(pi, args, ctx),
 	});
 
-	pi.registerShortcut("ctrl+w", {
-		description: "Worktree dashboard",
-		handler: async (ctx) => {
-			ctx.ui.setEditorText("/wt switch");
-		},
+	registerWorktreeDashboardShortcut(pi, async (ctx) => {
+		await handleWt(pi, "switch", ctx);
 	});
 
 	pi.on("before_agent_start", async (event, ctx) => {

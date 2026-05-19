@@ -953,9 +953,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerShortcut("ctrl+shift+t", {
 		description: "Open tasks overlay",
 		handler: async (ctx) => {
-			// Shortcut can't open overlay directly (no CommandContext)
-			// Pre-fill /tasks command
-			ctx.ui.setEditorText("/tasks");
+			await showTasksOverlay(ctx);
 		},
 	});
 

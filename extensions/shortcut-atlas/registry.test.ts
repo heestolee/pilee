@@ -22,6 +22,7 @@ test("normalizes modifier order and symbol keys without losing the symbol", () =
 	assert.equal(normalizeShortcutKey("cmd+-"), "cmd+-");
 	assert.equal(normalizeShortcutKey("Ctrl+-"), "ctrl+-");
 	assert.equal(normalizeShortcutKey("Option+Return"), "alt+enter");
+	assert.equal(normalizeShortcutKey("Super+T"), "cmd+t");
 });
 
 test("actual pilee custom shortcuts have no custom-custom collisions", () => {
@@ -29,6 +30,14 @@ test("actual pilee custom shortcuts have no custom-custom collisions", () => {
 	const customCollisions = atlas.issues.filter((issue) => issue.type === "custom-collision");
 	assert.deepEqual(customCollisions, []);
 	assert.ok(atlas.entries.some((entry) => entry.layer === "pilee" && entry.key === "ctrl+shift+o" && /tasks/.test(entry.action)), "Ctrl+Shift+O tasks toggle must be in custom atlas");
+});
+
+test("Ghostty host shortcuts include tab, split, navigation, and search actions", () => {
+	const atlas = buildShortcutAtlas();
+	const terminalKeys = new Set(atlas.entries.filter((entry) => entry.layer === "terminal" && /Ghostty/.test(entry.scope)).map((entry) => entry.key));
+	for (const key of ["cmd+t", "cmd+shift+]", "cmd+alt+right", "cmd+f", "cmd+shift+g"]) {
+		assert.ok(terminalKeys.has(key), `${key} should be documented as a Ghostty host shortcut`);
+	}
 });
 
 test("detects custom shortcut collisions as blocking errors", () => {
