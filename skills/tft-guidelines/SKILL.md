@@ -151,6 +151,8 @@ Resolver/Controller, Usecase, Service, Repository, Entity, VO, Loader/DataLoader
 - `/backlog` — 장기 백로그 (우선순위 관리, 영구 저장)
 - 안 넣음
 
+명시적 캡처 요청은 옵션 질문이 아니다. 사용자가 “backlog에 넣어줘”, “백로그에 남겨줘”, “나중에 볼 수 있게 backlog”처럼 말하면 장기 보관 의도가 이미 확정된 것이므로 `TaskCreate`를 호출하지 않는다. 실제 backlog 저장소(`/backlog`, `BacklogCreate`, `~/.pi/agent/state/backlog.json`)에 기록한다. 잘못 task를 만들었으면 “원하면 옮길게요”라고 묻지 말고 즉시 task에서 제거하고 backlog로 옮긴다.
+
 의례적으로 매번 묻지 않는다. 위 조건에 해당할 때만.
 
 ### 3. 구조 시각화가 필요한 순간 (TFT Visual)

@@ -18,6 +18,7 @@ applies_to:
 source:
   - pilee-history:2026-05-05#51
   - user-direction:2026-05-07-local-resolver
+  - user-direction:2026-05-19-explicit-backlog-is-not-task
 reviewed_at: 2026-05-13
 reviewed_commit: ca6dec9d7f8a3eeda24ee5b0d35c64752d02a76a
 related:
@@ -33,9 +34,17 @@ Backlog item은 제목과 노트만 저장하면 시간이 지난 뒤 왜 생겼
 
 새 backlog item에는 session file, session title, cwd, leaf entry, capturedAt을 `sourceSession`으로 저장합니다. 사람이 읽는 `sourceReference`도 함께 남겨 미래 에이전트가 “이 세션 전문에서 확인”이라는 경로를 바로 이해하게 합니다.
 
+## Capture Surface Boundary Rule
+
+사용자가 “backlog에 넣어줘”, “백로그에 남겨줘”, “나중에 볼 수 있게 backlog”처럼 backlog를 명시하면 장기 보관 surface가 이미 결정된 것입니다. 이때 `TaskCreate`나 work-unit task board를 사용하지 않습니다. 실제 backlog 저장소(`/backlog`, `BacklogCreate`, `~/.pi/agent/state/backlog.json`)에 기록해야 합니다.
+
+반대로 `/task`, “현재 작업 task”, “이번 slice에서 추적”처럼 현재 work-unit 추적을 명시한 경우에만 task board를 사용합니다. Task는 active work를 외부화하는 보드이고, Backlog는 당장 진행하지 않는 장기 기억입니다.
+
+실수로 backlog 요청을 task로 만들었다면 사용자에게 “원하면 옮길까요?”라고 되묻지 않습니다. 그 순간 이미 사용자의 명시 지시를 위반한 것이므로 task에서 제거하고 backlog로 옮긴 뒤 정정 결과를 보고합니다.
+
 ## Manual Edit Fallback Rule
 
-가능하면 `/backlog add`를 사용해 provenance capture를 자동으로 태웁니다. 수동으로 local backlog JSON을 편집해야 하는 예외 상황에서도 `sourceSession`과 `sourceReference`를 생략하지 않습니다.
+가능하면 `/backlog add`나 `BacklogCreate`를 사용해 provenance capture를 자동으로 태웁니다. 수동으로 local backlog JSON을 편집해야 하는 예외 상황에서도 `sourceSession`과 `sourceReference`를 생략하지 않습니다.
 
 수동 편집 시 최소로 남길 것:
 

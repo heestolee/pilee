@@ -1,9 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import type { ExtensionAPI, ExtensionCommandContext, ThemeColor } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ThemeColor } from "@mariozechner/pi-coding-agent";
 import { copyToClipboard, DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@mariozechner/pi-tui";
+import { Type } from "typebox";
 import { BACKLOG_SESSION_EXPORT_DIR, displayPath, expandHome, exportSessionFileToHtml, openFile } from "../utils/session-export.js";
 
 // ─── Storage ───────────────────────────────────────────────────────────────
@@ -50,6 +51,10 @@ function save(store: BacklogStore) {
 	writeFileSync(BACKLOG_FILE, JSON.stringify(store, null, 2));
 }
 
+function toolText(t: string, details: Record<string, unknown> = {}) {
+	return { content: [{ type: "text" as const, text: t }], details };
+}
+
 const PRIORITY_ORDER: Record<Priority, number> = { high: 0, medium: 1, low: 2 };
 
 function sorted(items: BacklogItem[]): BacklogItem[] {
@@ -84,7 +89,7 @@ function sourceSessionFile(item: BacklogItem): string | undefined {
 	return match ? expandHome(match[0].trim()) : undefined;
 }
 
-function captureSourceSession(ctx: ExtensionCommandContext): SourceSession | undefined {
+function captureSourceSession(ctx: ExtensionCommandContext | ExtensionContext): SourceSession | undefined {
 	const sessionFile = ctx.sessionManager.getSessionFile();
 	if (!sessionFile) return undefined;
 	const title = ctx.sessionManager.getSessionName()?.trim() || undefined;
@@ -659,6 +664,24 @@ function handleList(ctx: ExtensionCommandContext) {
 // ─── Extension ─────────────────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
+	pi.registerTool({
+		name: "BacklogCreate",
+		label: "Create Backlog Item",
+		description: "Create a persistent backlog item. Use this instead of TaskCreate when the user says 'backlog', '백로그', '나중에', or asks to save deferred work for later.",
+		parameters: Type.Object({
+			title: Type.String({ description: "Backlog item title" }),
+			note: Type.Optional(Type.String({ description: "Detailed context, current state, validation, and resume checklist" })),
+			priority: Type.Optional(Type.Union([Type.Literal("high"), Type.Literal("medium"), Type.Literal("low")], { description: "Backlog priority. Defaults to medium." })),
+		}),
+		async execute(_id, params, _signal, _onUpdate, ctx) {
+			const store = load();
+			const item = createBacklogItem(store, params.title, params.priority ?? "medium", params.note, ctx);
+			save(store);
+			const sourceSuffix = item.sourceSession?.sessionFile ? ` · source=${displayPath(item.sourceSession.sessionFile)}` : "";
+			return toolText(`Backlog #${item.id} created: ${item.title}${sourceSuffix}`, { item, backlogPath: BACKLOG_FILE });
+		},
+	});
+
 	pi.registerCommand("backlog", {
 		description: "Manage persistent backlog. Subcommands: (none)=overlay, add, done, list",
 		handler: async (args, ctx) => {
