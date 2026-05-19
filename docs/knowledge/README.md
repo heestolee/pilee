@@ -142,6 +142,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Idle UI는 장식이 아니라 ambient status다](./ambient-status-surfaces.md) | active | high | 2026-05-20 | 3292a84 | idle-screensaver, tasks, spinner, status, ambient, ui |
 | [Editor affordance는 숨은 컨텍스트가 아니다](./editor-affordance-not-context.md) | active | high | 2026-05-13 | dea80b9 | editor, footer, prompt-suggest, working-text, affordance, ui |
 | [User-facing 출력은 한국어를 기본으로 한다](./korean-first-user-facing-output.md) | active | high | 2026-05-13 | 1f5c3ac | korean-output, localization, web-search, ui, rewrite, 한국어 |
+| [Shortcut Atlas는 단축키 표면을 한 번에 검토한다](./shortcut-atlas-conflict-audit.md) | active | high | 2026-05-20 | f310033 | shortcuts, keybindings, overlay, collision, audit, ui |
 | [Task overlay는 작업 맵을 보존한다](./task-work-map-overlay.md) | active | high | 2026-05-20 | 9d1f409 | tasks, overlay, work-map, soft-delete, provenance, ui |
 | [색상은 정보 위계다](./theme-information-hierarchy.md) | active | high | 2026-05-13 | 10e0874 | theme, color, dim, muted, border, accent |
 | [도구 출력은 대화 흐름을 침범하지 않는다](./tool-output-noise-management.md) | active | high | 2026-05-11 | ce3a598 | tool-output, collapse, noise, ui, usage, renderer |
@@ -257,6 +258,7 @@ graph TD
   doc_ambient_status_surfaces["Idle UI는 장식이 아니라 ambient status다"]
   doc_editor_affordance_not_context["Editor affordance는 숨은 컨텍스트가 아니다"]
   doc_korean_first_user_facing_output["User-facing 출력은 한국어를 기본으로 한다"]
+  doc_shortcut_atlas_conflict_audit["Shortcut Atlas는 단축키 표면을 한 번에 검토한다"]
   doc_task_work_map_overlay["Task overlay는 작업 맵을 보존한다"]
   doc_theme_information_hierarchy["색상은 정보 위계다"]
   doc_tool_output_noise_management["도구 출력은 대화 흐름을 침범하지 않는다"]
@@ -426,6 +428,10 @@ graph TD
   doc_korean_first_user_facing_output --> doc_curator_approved_source_selection
   doc_korean_first_user_facing_output --> doc_theme_information_hierarchy
   doc_korean_first_user_facing_output --> doc_web_search_curator
+  doc_shortcut_atlas_conflict_audit --> doc_readme_coverage_map
+  doc_shortcut_atlas_conflict_audit --> doc_task_work_map_overlay
+  doc_shortcut_atlas_conflict_audit --> doc_terminal_host_integration
+  doc_shortcut_atlas_conflict_audit --> doc_theme_information_hierarchy
   doc_task_work_map_overlay --> doc_ambient_status_surfaces
   doc_task_work_map_overlay --> doc_backlog_source_session_provenance
   doc_task_work_map_overlay --> doc_work_context_card_task_board
@@ -643,7 +649,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 95
-- Links: 323
+- Documents: 96
+- Links: 327
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
