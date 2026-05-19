@@ -646,6 +646,24 @@ export default function (pi: ExtensionAPI) {
 		showOrUpdateTaskOverlay(ctx, key, store);
 	}
 
+	function setPassiveTaskOverlayVisible(ctx: ExtensionContext, visible: boolean): void {
+		const key = taskOverlayKey(ctx);
+		taskOverlayHiddenStore.set(key, !visible);
+		if (visible) updateWidget(ctx);
+		else hideTaskOverlay(key);
+	}
+
+	function togglePassiveTaskOverlay(ctx: ExtensionContext): boolean {
+		const key = taskOverlayKey(ctx);
+		const nextVisible = taskOverlayHiddenStore.get(key) === true;
+		setPassiveTaskOverlayVisible(ctx, nextVisible);
+		return nextVisible;
+	}
+
+	function isPassiveTaskOverlayHidden(ctx: ExtensionContext): boolean {
+		return taskOverlayHiddenStore.get(taskOverlayKey(ctx)) === true;
+	}
+
 	function setTaskOverlayAgentRunning(ctx: ExtensionContext, running: boolean): void {
 		const key = taskOverlayKey(ctx);
 		taskOverlayAgentRunningStore.set(key, running);
@@ -912,21 +930,18 @@ export default function (pi: ExtensionAPI) {
 		},
 		handler: async (args, ctx) => {
 			const action = args.trim().toLowerCase();
-			const key = taskOverlayKey(ctx);
 			if (action === "show") {
-				taskOverlayHiddenStore.set(key, false);
-				updateWidget(ctx);
+				setPassiveTaskOverlayVisible(ctx, true);
 				ctx.ui.notify("tasks work-map overlay를 표시합니다.", "info");
 				return;
 			}
 			if (action === "hide") {
-				taskOverlayHiddenStore.set(key, true);
-				hideTaskOverlay(key);
-				ctx.ui.notify("tasks work-map overlay를 숨겼습니다. /tasks show로 다시 표시할 수 있습니다.", "info");
+				setPassiveTaskOverlayVisible(ctx, false);
+				ctx.ui.notify("tasks work-map overlay를 숨겼습니다. /tasks show 또는 Ctrl+Shift+O로 다시 표시할 수 있습니다.", "info");
 				return;
 			}
 			if (action === "status") {
-				ctx.ui.notify(`tasks overlay: ${taskOverlayHiddenStore.get(key) ? "hidden" : "shown"}`, "info");
+				ctx.ui.notify(`tasks overlay: ${isPassiveTaskOverlayHidden(ctx) ? "hidden" : "shown"}`, "info");
 				return;
 			}
 			await showTasksOverlay(ctx);
@@ -941,6 +956,19 @@ export default function (pi: ExtensionAPI) {
 			// Shortcut can't open overlay directly (no CommandContext)
 			// Pre-fill /tasks command
 			ctx.ui.setEditorText("/tasks");
+		},
+	});
+
+	pi.registerShortcut("ctrl+shift+o", {
+		description: "Toggle passive tasks work-map overlay",
+		handler: async (ctx) => {
+			const visible = togglePassiveTaskOverlay(ctx);
+			ctx.ui.notify(
+				visible
+					? "tasks work-map overlay를 표시합니다."
+					: "tasks work-map overlay를 숨겼습니다. Ctrl+Shift+O로 다시 표시할 수 있습니다.",
+				"info",
+			);
 		},
 	});
 }
