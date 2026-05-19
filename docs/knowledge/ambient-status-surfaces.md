@@ -20,8 +20,9 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-19-screensaver-status
   - user-direction:2026-05-19-screensaver-last-interaction
-reviewed_at: 2026-05-19
-reviewed_commit: 24dcf2c38d52e08d25816c6eb5d734c722d1da1a
+  - user-direction:2026-05-20-screensaver-render-contract
+reviewed_at: 2026-05-20
+reviewed_commit: 360317f7eea3f9b3164b82bac83fc9796ee98d3a
 related:
   - tool-output-noise-management
   - backlog-source-session-provenance
@@ -35,7 +36,7 @@ Idle screensaver나 spinner는 단순 장식보다 “지금 무엇을 기다리
 
 마지막 assistant 메시지 요약, in-progress/pending task, 마지막 인터랙션 시간, 현재 작업 상태를 짧게 보여줍니다. idle 화면은 사용자가 돌아왔을 때 “얼마나 오래 비웠고, 어디서 다시 잡으면 되는지”를 즉시 회수하게 해야 합니다. 마지막 인터랙션 시간은 manual preview 명령 입력 시각이 아니라 현재 세션 transcript의 최신 user/assistant 메시지 timestamp를 우선 source-of-truth로 삼아야 합니다.
 
-장식적 애니메이션은 정보를 방해하지 않을 때만 의미가 있습니다. 캐릭터 이미지는 screensaver 기능 전체 on/off와 별개의 전역 preference로 두어, 사용자가 ambient status는 유지하면서 시각 장식만 끌 수 있어야 합니다. 설정/도움말에 표시 정보 목록을 보여줄 때는 현재 toggle 상태를 반영해 실제로 보이는 정보와 숨겨진 정보를 구분해야 합니다. task 경로처럼 상태 source가 바뀌면 UI도 실제 저장 위치를 따라가야 합니다.
+장식적 애니메이션은 정보를 방해하지 않을 때만 의미가 있습니다. 캐릭터 이미지는 screensaver 기능 전체 on/off와 별개의 전역 preference로 두어, 사용자가 ambient status는 유지하면서 시각 장식만 끌 수 있어야 합니다. 설정/도움말에 표시 정보 목록을 보여줄 때는 현재 toggle 상태를 반영해 실제로 보이는 정보와 숨겨진 정보를 구분해야 합니다. 화면 렌더링은 전체 폭에 문자열을 바로 흘리지 말고 가운데 content box를 잡은 뒤, title은 중앙 정렬하고 상태/응답/TODO는 box 안에서 읽기 좋게 배치해야 합니다. 마지막 assistant 응답은 한 줄 앞부분만 보여주지 말고 최대 5줄 wrap으로 복원 가능한 맥락을 제공해야 합니다. dismiss 안내는 실제 입력 처리 계약과 테스트로 보장해야 합니다. task 경로처럼 상태 source가 바뀌면 UI도 실제 저장 위치를 따라가야 합니다.
 
 ## Global Preference Rule
 
