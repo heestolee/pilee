@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionContext, ThemeColor } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import { formatLastInteractionLine, resolveLastInteractionAt } from "./last-interaction.js";
 import { POKEMON_KO_TO_ID, renderSprite } from "./sprite.js";
 
 // ─── Config ────────────────────────────────────────────────────────────────
@@ -120,50 +121,16 @@ function noteInteraction(ts = Date.now()): void {
 	lastInteractionAtMs = ts;
 }
 
-function entryTimestampMs(entry: any): number {
-	const raw = entry?.timestamp ?? entry?.createdAt ?? entry?.time;
-	if (!raw) return 0;
-	const ms = new Date(raw).getTime();
-	return Number.isFinite(ms) ? ms : 0;
-}
-
 function inferLastInteractionAt(ctx: ExtensionContext): number | null {
-	try {
-		const entries = ctx.sessionManager.getEntries();
-		for (let i = entries.length - 1; i >= 0; i--) {
-			const e = entries[i] as any;
-			if (e?.type !== "message") continue;
-			const role = e.message?.role;
-			if (role !== "user" && role !== "assistant") continue;
-			const ts = entryTimestampMs(e);
-			if (ts) return ts;
-		}
-	} catch {}
-	return lastInteractionAtMs || null;
-}
-
-function formatLocalTime(ts: number): string {
-	const d = new Date(ts);
-	const pad = (n: number) => String(n).padStart(2, "0");
-	return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function formatRelativeTime(ts: number, now = Date.now()): string {
-	const seconds = Math.max(0, Math.floor((now - ts) / 1000));
-	if (seconds < 10) return "방금 전";
-	if (seconds < 60) return `${seconds}초 전`;
-	const minutes = Math.floor(seconds / 60);
-	if (minutes < 60) return `${minutes}분 전`;
-	const hours = Math.floor(minutes / 60);
-	if (hours < 24) return `${hours}시간 ${minutes % 60}분 전`;
-	const days = Math.floor(hours / 24);
-	return `${days}일 전`;
+	let entries: unknown[] | undefined;
+	try { entries = ctx.sessionManager.getEntries(); } catch {}
+	let sessionFile: string | null | undefined;
+	try { sessionFile = ctx.sessionManager.getSessionFile?.(); } catch {}
+	return resolveLastInteractionAt({ entries, sessionFile, fallbackMs: lastInteractionAtMs });
 }
 
 function buildLastInteractionLine(ctx: ExtensionContext): string | null {
-	const ts = inferLastInteractionAt(ctx);
-	if (!ts) return null;
-	return `🕘 마지막 인터랙션 ${formatLocalTime(ts)} · ${formatRelativeTime(ts)}`;
+	return formatLastInteractionLine(inferLastInteractionAt(ctx));
 }
 
 // ─── Show screensaver ──────────────────────────────────────────────────────
