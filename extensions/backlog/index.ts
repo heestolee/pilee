@@ -667,7 +667,7 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "BacklogCreate",
 		label: "Create Backlog Item",
-		description: "Create a persistent backlog item. Use this instead of TaskCreate when the user says 'backlog', '백로그', '나중에', or asks to save deferred work for later.",
+		description: "Create a persistent backlog item. Use this instead of TaskCreate when the user explicitly says 'backlog'/'백로그' or has selected backlog. Deferred/later wording without explicit backlog is a judgment cue, not a tool-level block.",
 		parameters: Type.Object({
 			title: Type.String({ description: "Backlog item title" }),
 			note: Type.Optional(Type.String({ description: "Detailed context, current state, validation, and resume checklist" })),

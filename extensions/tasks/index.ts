@@ -130,7 +130,7 @@ function stringifyTaskCreateIntent(params: {
 		.toLowerCase();
 }
 
-function looksLikeDeferredBacklogCapture(params: {
+function looksLikeExplicitBacklogCapture(params: {
 	subject: string;
 	description: string;
 	activeForm?: string;
@@ -139,14 +139,14 @@ function looksLikeDeferredBacklogCapture(params: {
 }): boolean {
 	if (params.kind) return false;
 	const textValue = stringifyTaskCreateIntent(params);
-	return /백로그|backlog|장기\s*백로그|영구\s*저장|pr\s*대기|당장\s*pr|pr은\s*올리지|보류|나중에|언젠가|defer|deferred|later/u.test(textValue);
+	return /(?:백로그|backlog)\s*(?:에|로|으로|에다)?\s*(?:넣|남기|기록|추가|저장|보관|올리|담아)|(?:넣|남기|기록|추가|저장|보관|올리|담아).{0,20}(?:백로그|backlog)|\/backlog\b/u.test(textValue);
 }
 
 export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "TaskCreate",
 		label: "Create Task",
-		description: "Create a work-unit task for current active work only. Do not use for persistent backlog/deferred items; when the user says backlog/백로그/나중에, use BacklogCreate or /backlog instead.",
+		description: "Create a work-unit task for current active work only. Do not use when the user explicitly says backlog/백로그; use BacklogCreate or /backlog instead. Deferred/later wording without explicit backlog is a judgment cue, not a tool-level block.",
 		parameters: Type.Object({
 			subject: Type.String({ description: "Brief task title" }),
 			description: Type.String({ description: "Detailed description" }),
@@ -160,9 +160,9 @@ export default function (pi: ExtensionAPI) {
 			metadata: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "Arbitrary metadata" })),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
-			if (looksLikeDeferredBacklogCapture(params)) {
+			if (looksLikeExplicitBacklogCapture(params)) {
 				return text(
-					"TaskCreate blocked: this looks like a persistent backlog/deferred item. Use BacklogCreate or /backlog instead.",
+					"TaskCreate blocked: the request explicitly mentions backlog/백로그. Use BacklogCreate or /backlog instead.",
 					{ blocked: true, suggestedTool: "BacklogCreate", tasksPath: storePath(ctx), backlogPath: BACKLOG_FILE },
 				);
 			}

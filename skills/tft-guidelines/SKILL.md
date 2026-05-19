@@ -151,7 +151,9 @@ Resolver/Controller, Usecase, Service, Repository, Entity, VO, Loader/DataLoader
 - `/backlog` — 장기 백로그 (우선순위 관리, 영구 저장)
 - 안 넣음
 
-명시적 캡처 요청은 옵션 질문이 아니다. 사용자가 “backlog에 넣어줘”, “백로그에 남겨줘”, “나중에 볼 수 있게 backlog”처럼 말하면 장기 보관 의도가 이미 확정된 것이므로 `TaskCreate`를 호출하지 않는다. 실제 backlog 저장소(`/backlog`, `BacklogCreate`, `~/.pi/agent/state/backlog.json`)에 기록한다. 잘못 task를 만들었으면 “원하면 옮길게요”라고 묻지 말고 즉시 task에서 제거하고 backlog로 옮긴다.
+명시적 캡처 요청은 옵션 질문이 아니다. 사용자가 “backlog에 넣어줘”, “백로그에 남겨줘”, “나중에 볼 수 있게 backlog”처럼 `backlog`/`백로그`를 명시하면 장기 보관 의도가 이미 확정된 것이므로 `TaskCreate`를 호출하지 않는다. 실제 backlog 저장소(`/backlog`, `BacklogCreate`, `~/.pi/agent/state/backlog.json`)에 기록한다. 잘못 task를 만들었으면 “원하면 옮길게요”라고 묻지 말고 즉시 task에서 제거하고 backlog로 옮긴다.
+
+`나중에`, `보류`, `언젠가`처럼 backlog를 직접 말하지 않은 표현은 장기 보관 후보라는 판단 신호다. 이 표현만으로 `TaskCreate`를 hard block하지 않는다. tool-level hard block은 `backlog`/`백로그`가 캡처 동사(넣다/남기다/기록하다/저장하다 등)와 함께 나온 명시적 backlog 저장 요청에만 적용한다. 그 밖에는 현재 work-unit task가 맞는지, backlog가 맞는지 맥락으로 판단하거나 필요하면 짧게 확인한다.
 
 의례적으로 매번 묻지 않는다. 위 조건에 해당할 때만.
 

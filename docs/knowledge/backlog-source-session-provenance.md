@@ -36,7 +36,9 @@ Backlog item은 제목과 노트만 저장하면 시간이 지난 뒤 왜 생겼
 
 ## Capture Surface Boundary Rule
 
-사용자가 “backlog에 넣어줘”, “백로그에 남겨줘”, “나중에 볼 수 있게 backlog”처럼 backlog를 명시하면 장기 보관 surface가 이미 결정된 것입니다. 이때 `TaskCreate`나 work-unit task board를 사용하지 않습니다. 실제 backlog 저장소(`/backlog`, `BacklogCreate`, `~/.pi/agent/state/backlog.json`)에 기록해야 합니다.
+사용자가 “backlog에 넣어줘”, “백로그에 남겨줘”, “나중에 볼 수 있게 backlog”처럼 `backlog`/`백로그`를 명시하면 장기 보관 surface가 이미 결정된 것입니다. 이때 `TaskCreate`나 work-unit task board를 사용하지 않습니다. 실제 backlog 저장소(`/backlog`, `BacklogCreate`, `~/.pi/agent/state/backlog.json`)에 기록해야 합니다.
+
+하드 차단은 `backlog`/`백로그`가 캡처 동사(넣다/남기다/기록하다/저장하다 등)와 함께 나온 명시적 backlog 저장 요청에만 적용합니다. `나중에`, `보류`, `언젠가`, `later`, `deferred` 같은 표현은 장기 보관 후보라는 판단 신호지만, 현재 work-unit task에도 자연스럽게 들어갈 수 있으므로 tool-level hard block 조건으로 쓰지 않습니다. 이 경우에는 맥락상 task/backlog를 판단하거나 필요하면 짧게 확인합니다.
 
 반대로 `/task`, “현재 작업 task”, “이번 slice에서 추적”처럼 현재 work-unit 추적을 명시한 경우에만 task board를 사용합니다. Task는 active work를 외부화하는 보드이고, Backlog는 당장 진행하지 않는 장기 기억입니다.
 
