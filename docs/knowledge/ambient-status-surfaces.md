@@ -22,7 +22,7 @@ source:
   - user-direction:2026-05-19-screensaver-last-interaction
   - user-direction:2026-05-20-screensaver-render-contract
 reviewed_at: 2026-05-20
-reviewed_commit: 360317f7eea3f9b3164b82bac83fc9796ee98d3a
+reviewed_commit: 1d95b54893314cb41efd4ea31d62d4fdace63c11
 related:
   - tool-output-noise-management
   - backlog-source-session-provenance
