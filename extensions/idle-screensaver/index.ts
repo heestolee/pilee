@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { formatLastInteractionLine, resolveLastInteractionAt } from "./last-interaction.js";
-import { renderScreensaver, shouldDismissScreensaver, type ScreensaverRenderData, type ScreensaverTheme } from "./render.js";
+import { createScreensaverDismissController, renderScreensaver, type ScreensaverRenderData, type ScreensaverTheme } from "./render.js";
 import { POKEMON_KO_TO_ID, renderSprite } from "./sprite.js";
 
 // ─── Config ────────────────────────────────────────────────────────────────
@@ -175,7 +175,7 @@ async function showScreensaver({ force = false }: { force?: boolean } = {}): Pro
 					? e.message.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n").trim()
 					: "";
 				if (text) {
-					assistantText = text.replace(/\s+/g, " ").trim().slice(0, 1200);
+					assistantText = text.trim().slice(0, 1200);
 					break;
 				}
 			}
@@ -232,26 +232,38 @@ async function showScreensaver({ force = false }: { force?: boolean } = {}): Pro
 	}
 
 	const renderData: ScreensaverRenderData = { title, subtitle, metaLines, assistantText, spriteLines, spritePokemonName };
-	let dismissed = false;
-	await latestCtx.ui.custom(
-		(tui: ScreensaverTui, theme: ScreensaverTheme, _kb: unknown, done: (v: undefined) => void) => ({
-			render: (w: number) => renderScreensaver(w, tui.terminal?.rows ?? 40, renderData, theme),
-			handleInput: (data: string) => {
-				if (dismissed || !shouldDismissScreensaver(data)) return;
-				dismissed = true;
-				done(undefined);
+	let unsubscribeTerminalInput: (() => void) | undefined;
+	try {
+		await latestCtx.ui.custom(
+			(tui: ScreensaverTui, theme: ScreensaverTheme, _kb: unknown, done: (v: undefined) => void) => {
+				const dismissController = createScreensaverDismissController(
+					() => done(undefined),
+					() => {
+						unsubscribeTerminalInput?.();
+						unsubscribeTerminalInput = undefined;
+					},
+				);
+				unsubscribeTerminalInput = latestCtx?.ui.onTerminalInput((data: string) => {
+					if (!dismissController.dismiss(data)) return undefined;
+					return { consume: true };
+				});
+				return {
+					render: (w: number) => renderScreensaver(w, tui.terminal?.rows ?? 40, renderData, theme),
+					handleInput: (data: string) => { dismissController.dismiss(data); },
+					invalidate: () => {},
+				};
 			},
-			invalidate: () => {},
-		}),
-		{
-			overlay: true,
-			overlayOptions: { width: "100%", maxHeight: "100%", anchor: "center", nonCapturing: false },
-			onHandle: (handle) => handle.focus?.(),
-		},
-	);
-
-	overlayActive = false;
-	scheduleIdleTimer();
+			{
+				overlay: true,
+				overlayOptions: { width: "100%", maxHeight: "100%", anchor: "center", nonCapturing: false },
+				onHandle: (handle) => handle.focus?.(),
+			},
+		);
+	} finally {
+		unsubscribeTerminalInput?.();
+		overlayActive = false;
+		scheduleIdleTimer();
+	}
 }
 
 // ─── Entry ─────────────────────────────────────────────────────────────────

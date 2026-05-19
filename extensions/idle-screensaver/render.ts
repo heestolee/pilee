@@ -66,6 +66,33 @@ export function shouldDismissScreensaver(input: string): boolean {
 	return input.length > 0;
 }
 
+export function createScreensaverDismissController(done: () => void, cleanup?: () => void): { dismiss: (input: string) => boolean; isDismissed: () => boolean } {
+	let dismissed = false;
+	return {
+		dismiss(input: string): boolean {
+			if (dismissed || !shouldDismissScreensaver(input)) return false;
+			dismissed = true;
+			cleanup?.();
+			done();
+			return true;
+		},
+		isDismissed: () => dismissed,
+	};
+}
+
+export function sanitizeAssistantPreviewText(text: string): string {
+	return text
+		.replace(/```[\s\S]*?```/g, " 코드 블록 ")
+		.replace(/`([^`]+)`/g, "$1")
+		.replace(/\*\*([^*]+)\*\*/g, "$1")
+		.replace(/__([^_]+)__/g, "$1")
+		.replace(/^\s{0,3}#{1,6}\s+/gm, "")
+		.replace(/(^|\s)#{1,6}\s+/g, "$1")
+		.replace(/^\s*[-*+]\s+/gm, "")
+		.replace(/\s+/g, " ")
+		.trim();
+}
+
 export function renderScreensaver(width: number, height: number, data: ScreensaverRenderData, theme: ScreensaverTheme): string[] {
 	const bc = (s: string) => theme.fg("accent", s);
 	const safeWidth = Math.max(2, width);
@@ -121,10 +148,11 @@ export function renderScreensaver(width: number, height: number, data: Screensav
 		for (const line of data.metaLines) contentRows.push(line.trim() ? leftLine(theme.fg("muted", line)) : emptyLine());
 	}
 
-	if (data.assistantText) {
+	const assistantPreview = data.assistantText ? sanitizeAssistantPreviewText(data.assistantText) : "";
+	if (assistantPreview) {
 		contentRows.push(emptyLine());
-		contentRows.push(leftLine(theme.fg("muted", "💬 마지막 응답")));
-		const wrapped = wrapTextToWidth(data.assistantText, Math.max(1, contentWidth - 2), ASSISTANT_MAX_LINES);
+		contentRows.push(leftLine(theme.fg("muted", "💬 최근 응답")));
+		const wrapped = wrapTextToWidth(assistantPreview, Math.max(1, contentWidth - 2), ASSISTANT_MAX_LINES);
 		for (const line of wrapped) contentRows.push(leftLine(theme.fg("muted", `  ${line}`)));
 	}
 

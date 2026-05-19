@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { visibleWidth } from "@mariozechner/pi-tui";
-import { renderScreensaver, shouldDismissScreensaver, wrapTextToWidth, type ScreensaverTheme } from "./render.ts";
+import { createScreensaverDismissController, renderScreensaver, sanitizeAssistantPreviewText, shouldDismissScreensaver, wrapTextToWidth, type ScreensaverTheme } from "./render.ts";
 
 const plainTheme: ScreensaverTheme = {
 	fg: (_color, text) => text,
@@ -45,8 +45,14 @@ test("assistant summary wraps to at most five content lines instead of one-line 
 		spriteLines: null,
 		spritePokemonName: null,
 	}, plainTheme).join("\n");
-	assert.ok(rendered.includes("💬 마지막 응답"));
+	assert.ok(rendered.includes("💬 최근 응답"));
+	assert.ok(!rendered.includes("💬 마지막 응답"));
 	assert.ok(rendered.includes("runtime fallback"));
+});
+
+test("assistant preview strips markdown noise before wrapping", () => {
+	const preview = sanitizeAssistantPreviewText("고쳤어. ## 고친 것\n- **마지막 응답 5줄 표시**\n- `shouldDismissScreensaver()` 계약");
+	assert.equal(preview, "고쳤어. 고친 것 마지막 응답 5줄 표시 shouldDismissScreensaver() 계약");
 });
 
 test("dismiss contract accepts normal keys and escape sequences", () => {
@@ -56,4 +62,17 @@ test("dismiss contract accepts normal keys and escape sequences", () => {
 	assert.equal(shouldDismissScreensaver("\u001b"), true);
 	assert.equal(shouldDismissScreensaver("\u001b[<0;10;10M"), true);
 	assert.equal(shouldDismissScreensaver(""), false);
+});
+
+test("dismiss controller closes once and runs cleanup so raw terminal listener cannot leak", () => {
+	let doneCalls = 0;
+	let cleanupCalls = 0;
+	const controller = createScreensaverDismissController(() => { doneCalls++; }, () => { cleanupCalls++; });
+	assert.equal(controller.dismiss(""), false);
+	assert.equal(controller.isDismissed(), false);
+	assert.equal(controller.dismiss("q"), true);
+	assert.equal(controller.isDismissed(), true);
+	assert.equal(controller.dismiss("enter"), false);
+	assert.equal(doneCalls, 1);
+	assert.equal(cleanupCalls, 1);
 });
