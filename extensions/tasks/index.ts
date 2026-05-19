@@ -1,23 +1,36 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { ExtensionAPI, ExtensionContext, ExtensionCommandContext, ThemeColor } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ExtensionCommandContext, Theme, ThemeColor } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
-import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
+import { Key, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
 import { resolveWorkUnit } from "../utils/work-context.ts";
 
 type TaskKind = "slice" | "decision" | "verify" | "blocked" | "followup" | "general";
 type TaskOwner = "agent" | "user" | "reviewer" | "subagent" | "external";
+type TaskStatus = "pending" | "in_progress" | "completed" | "deleted" | "rejected" | "deprioritized" | "superseded";
+type TaskDispositionType = "deleted" | "rejected" | "deprioritized" | "superseded" | "misread";
+type TaskSource = "frame" | "user" | "agent" | "subagent" | "verify" | "review" | "manual";
+
+interface TaskDisposition {
+	type: TaskDispositionType;
+	reason?: string;
+	at: number;
+	by?: TaskOwner | string;
+}
 
 interface Task {
 	id: string;
 	subject: string;
 	description: string;
 	activeForm?: string;
-	status: "pending" | "in_progress" | "completed";
+	status: TaskStatus;
 	kind?: TaskKind;
 	owner?: TaskOwner | string;
+	area?: string;
+	source?: TaskSource | string;
+	disposition?: TaskDisposition;
 	acceptance?: string[];
 	refs?: Record<string, unknown>;
 	evidence?: string[];
@@ -71,7 +84,7 @@ function find(store: TaskStore, id: string): Task | undefined {
 function openBlockers(store: TaskStore, task: Task): string[] {
 	return task.blockedBy.filter((id) => {
 		const t = find(store, id);
-		return t && t.status !== "completed";
+		return t && !isTerminalTask(t);
 	});
 }
 
@@ -80,7 +93,21 @@ function taskKind(t: Task): TaskKind {
 	return (t.kind || metaKind || "general") as TaskKind;
 }
 
+const SOFT_DISPOSITION_STATUSES = new Set<TaskStatus>(["deleted", "rejected", "deprioritized", "superseded"]);
+const AREA_ORDER = ["FE", "BE", "DB", "UI", "UX", "검증", "리뷰", "문서", "인프라", "판단", "Blocked", "기타"];
+const TASK_SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
+const TASK_SPINNER_INTERVAL_MS = 120;
+
+function isSoftDispositionStatus(status: TaskStatus): boolean {
+	return SOFT_DISPOSITION_STATUSES.has(status);
+}
+
+function isTerminalTask(t: Task): boolean {
+	return t.status === "completed" || isSoftDispositionStatus(t.status);
+}
+
 function taskPriority(t: Task): number {
+	if (isSoftDispositionStatus(t.status)) return 10;
 	if (t.status === "completed") return 9;
 	if (t.owner === "user" || taskKind(t) === "decision") return 0;
 	if (t.status === "in_progress") return 1;
@@ -94,12 +121,69 @@ function sortTasks(tasks: Task[]): Task[] {
 	return [...tasks].sort((a, b) => taskPriority(a) - taskPriority(b) || a.createdAt - b.createdAt);
 }
 
+function normalizeArea(value: unknown): string | undefined {
+	if (typeof value !== "string") return undefined;
+	const trimmed = value.trim().replace(/^-?\s*\(?\s*/, "").replace(/\s*\)?\s*$/, "");
+	if (!trimmed) return undefined;
+	const upper = trimmed.toUpperCase();
+	if (["FE", "BE", "DB", "UI", "UX"].includes(upper)) return upper;
+	return trimmed;
+}
+
+function taskArea(t: Task): string {
+	const fromTask = normalizeArea(t.area);
+	if (fromTask) return fromTask;
+	const fromMetadata = normalizeArea(t.metadata?.area ?? t.metadata?.group ?? t.metadata?.scope);
+	if (fromMetadata) return fromMetadata;
+	const fromRefs = normalizeArea(t.refs?.area ?? t.refs?.group ?? t.refs?.scope);
+	if (fromRefs) return fromRefs;
+	const kind = taskKind(t);
+	if (kind === "verify") return "검증";
+	if (kind === "decision") return "판단";
+	if (kind === "blocked") return "Blocked";
+	return "기타";
+}
+
+function taskSource(t: Task): string | undefined {
+	if (t.source) return t.source;
+	const source = t.metadata?.source;
+	return typeof source === "string" ? source : undefined;
+}
+
+function dispositionTypeForStatus(status: TaskStatus): TaskDispositionType | undefined {
+	if (status === "deleted" || status === "rejected" || status === "deprioritized" || status === "superseded") return status;
+	return undefined;
+}
+
+function dispositionLabel(type: TaskDispositionType): string {
+	if (type === "deleted") return "삭제";
+	if (type === "rejected") return "반려";
+	if (type === "deprioritized") return "우선순위밀림";
+	if (type === "superseded") return "대체";
+	return "오독";
+}
+
+function taskDisposition(t: Task): TaskDisposition | undefined {
+	if (t.disposition) return t.disposition;
+	const type = dispositionTypeForStatus(t.status);
+	return type ? { type, at: t.updatedAt } : undefined;
+}
+
+function formatDisposition(t: Task): string {
+	const disposition = taskDisposition(t);
+	if (!disposition) return "";
+	const label = dispositionLabel(disposition.type);
+	return disposition.reason ? ` (${label}: ${disposition.reason})` : ` (${label})`;
+}
+
 function formatTask(store: TaskStore, t: Task): string {
 	const blockers = openBlockers(store, t);
 	const blocked = blockers.length > 0 ? ` [blocked by: ${blockers.join(", ")}]` : "";
 	const owner = t.owner ? ` (owner: ${t.owner})` : "";
 	const kind = taskKind(t) !== "general" ? ` <${taskKind(t)}>` : "";
-	return `#${t.id} [${t.status}]${kind} ${t.subject}${owner}${blocked}`;
+	const area = taskArea(t) !== "기타" ? ` (${taskArea(t)})` : "";
+	const disposition = formatDisposition(t);
+	return `#${t.id} [${t.status}]${kind}${area} ${t.subject}${owner}${blocked}${disposition}`;
 }
 
 const BACKLOG_FILE = join(homedir(), ".pi", "agent", "state", "backlog.json");
@@ -146,13 +230,20 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "TaskCreate",
 		label: "Create Task",
-		description: "Create a work-unit task for current active work only. Do not use when the user explicitly says backlog/백로그; use BacklogCreate or /backlog instead. Deferred/later wording without explicit backlog is a judgment cue, not a tool-level block.",
+		description: "Create a work-unit task for current active work only. Use area/group (FE, BE, DB, UI, UX, 검증, 리뷰 등) so the task overlay shows the implementation map. Do not use when the user explicitly says backlog/백로그; use BacklogCreate or /backlog instead. Deferred/later wording without explicit backlog is a judgment cue, not a tool-level block.",
+		promptSnippet: "Create a work-unit task with area/source metadata for the passive work-map overlay.",
+		promptGuidelines: [
+			"Use TaskCreate when the active work has multiple implementation, review, or verification steps; assign area/source so the tasks overlay reflects the user's work map.",
+			"Use TaskUpdate with deleted/rejected/deprioritized/superseded plus dispositionReason instead of removing tasks when scope changes.",
+		],
 		parameters: Type.Object({
 			subject: Type.String({ description: "Brief task title" }),
 			description: Type.String({ description: "Detailed description" }),
 			activeForm: Type.Optional(Type.String({ description: "Present continuous form for spinner" })),
 			kind: Type.Optional(Type.Union([Type.Literal("slice"), Type.Literal("decision"), Type.Literal("verify"), Type.Literal("blocked"), Type.Literal("followup"), Type.Literal("general")])),
 			owner: Type.Optional(Type.Union([Type.Literal("agent"), Type.Literal("user"), Type.Literal("reviewer"), Type.Literal("subagent"), Type.Literal("external")])),
+			area: Type.Optional(Type.String({ description: "Visible work area/group header, e.g. FE, BE, DB, UI, UX, 검증, 리뷰, 문서, 인프라" })),
+			source: Type.Optional(Type.Union([Type.Literal("frame"), Type.Literal("user"), Type.Literal("agent"), Type.Literal("subagent"), Type.Literal("verify"), Type.Literal("review"), Type.Literal("manual")])),
 			acceptance: Type.Optional(Type.Array(Type.String(), { description: "Done-when checks for this task" })),
 			refs: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "Frame/success criteria/slice/file references" })),
 			evidence: Type.Optional(Type.Array(Type.String(), { description: "Evidence refs collected for this task" })),
@@ -177,6 +268,8 @@ export default function (pi: ExtensionAPI) {
 				status: "pending",
 				kind: params.kind ?? (typeof metadata.kind === "string" ? metadata.kind as TaskKind : undefined),
 				owner: params.owner,
+				area: normalizeArea(params.area ?? metadata.area ?? metadata.group),
+				source: params.source ?? (typeof metadata.source === "string" ? metadata.source : undefined),
 				acceptance: params.acceptance,
 				refs: params.refs,
 				evidence: params.evidence,
@@ -201,13 +294,15 @@ export default function (pi: ExtensionAPI) {
 		parameters: Type.Object({}),
 		async execute(_id, _params, _signal, _onUpdate, ctx) {
 			const store = load(ctx);
-			const active = store.tasks.filter((t) => t.status !== "completed");
+			const active = store.tasks.filter((t) => !isTerminalTask(t));
 			const completed = store.tasks.filter((t) => t.status === "completed");
+			const held = store.tasks.filter((t) => isSoftDispositionStatus(t.status));
 			if (store.tasks.length === 0) return text("No tasks.");
 			const lines = sortTasks(active).map((t) => formatTask(store, t));
 			if (completed.length > 0) lines.push(`\n${completed.length} completed task(s)`);
+			if (held.length > 0) lines.push(`${held.length} held/removed task(s):`, ...sortTasks(held).map((t) => formatTask(store, t)));
 			const unit = resolveWorkUnit(ctx.cwd, ctx.sessionManager?.getSessionFile?.());
-			return text(lines.join("\n"), { tasksPath: unit.tasksPath, active: active.length, completed: completed.length });
+			return text(lines.join("\n"), { tasksPath: unit.tasksPath, active: active.length, completed: completed.length, held: held.length });
 		},
 	});
 
@@ -227,7 +322,10 @@ export default function (pi: ExtensionAPI) {
 				`#${task.id} — ${task.subject}`,
 				`Status: ${task.status}`,
 				`Kind: ${taskKind(task)}`,
+				`Area: ${taskArea(task)}`,
 				task.owner ? `Owner: ${task.owner}` : null,
+				taskSource(task) ? `Source: ${taskSource(task)}` : null,
+				taskDisposition(task) ? `Disposition: ${formatDisposition(task).trim()}` : null,
 				`Description: ${task.description}`,
 				task.acceptance?.length ? `Acceptance:\n${task.acceptance.map((item) => `- ${item}`).join("\n")}` : null,
 				task.refs ? `Refs: ${JSON.stringify(task.refs)}` : null,
@@ -242,7 +340,12 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "TaskUpdate",
 		label: "Update Task",
-		description: "Update task status, subject, description, owner, or dependencies.",
+		description: "Update task status, subject, description, area/group, owner, or dependencies. Do not physically delete normal tasks: use status deleted/rejected/deprioritized/superseded with a dispositionReason so context is preserved with strikethrough in the overlay.",
+		promptSnippet: "Update work-unit task state, area/source metadata, and soft disposition for preserved context.",
+		promptGuidelines: [
+			"Use TaskUpdate to keep task state current while working; do not leave the overlay stale after finishing or reprioritizing a step.",
+			"Use TaskUpdate status=deleted/rejected/deprioritized/superseded with dispositionReason when a mapped task is removed from scope so the context is not lost.",
+		],
 		parameters: Type.Object({
 			taskId: Type.String({ description: "Task ID" }),
 			status: Type.Optional(Type.Union([
@@ -250,12 +353,19 @@ export default function (pi: ExtensionAPI) {
 				Type.Literal("in_progress"),
 				Type.Literal("completed"),
 				Type.Literal("deleted"),
+				Type.Literal("rejected"),
+				Type.Literal("deprioritized"),
+				Type.Literal("superseded"),
 			])),
 			subject: Type.Optional(Type.String()),
 			description: Type.Optional(Type.String()),
 			activeForm: Type.Optional(Type.String()),
 			kind: Type.Optional(Type.Union([Type.Literal("slice"), Type.Literal("decision"), Type.Literal("verify"), Type.Literal("blocked"), Type.Literal("followup"), Type.Literal("general")])),
 			owner: Type.Optional(Type.String()),
+			area: Type.Optional(Type.String({ description: "Visible work area/group header, e.g. FE, BE, DB, UI, UX, 검증, 리뷰" })),
+			source: Type.Optional(Type.String({ description: "Where this task/change came from: frame, user, agent, subagent, verify, review, manual" })),
+			disposition: Type.Optional(Type.Union([Type.Literal("deleted"), Type.Literal("rejected"), Type.Literal("deprioritized"), Type.Literal("superseded"), Type.Literal("misread")])),
+			dispositionReason: Type.Optional(Type.String({ description: "Short reason shown next to strikethrough items" })),
 			acceptance: Type.Optional(Type.Array(Type.String())),
 			refs: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
 			evidence: Type.Optional(Type.Array(Type.String())),
@@ -268,22 +378,35 @@ export default function (pi: ExtensionAPI) {
 			const task = find(store, params.taskId);
 			if (!task) return text(`Task #${params.taskId} not found.`);
 
-			if (params.status === "deleted") {
-				store.tasks = store.tasks.filter((t) => t.id !== params.taskId);
-				for (const t of store.tasks) {
-					t.blocks = t.blocks.filter((id) => id !== params.taskId);
-					t.blockedBy = t.blockedBy.filter((id) => id !== params.taskId);
+			if (params.status) {
+				task.status = params.status;
+				const dispositionType = params.disposition ?? dispositionTypeForStatus(params.status);
+				if (dispositionType) {
+					task.disposition = {
+						type: dispositionType,
+						reason: params.dispositionReason,
+						at: Date.now(),
+						by: params.owner ?? task.owner ?? "agent",
+					};
+				} else if (params.status === "pending" || params.status === "in_progress" || params.status === "completed") {
+					delete task.disposition;
 				}
-				save(ctx, store);
-				return text(`Task #${params.taskId} deleted.`);
+			} else if (params.disposition) {
+				task.status = params.disposition === "misread" ? "rejected" : params.disposition;
+				task.disposition = {
+					type: params.disposition,
+					reason: params.dispositionReason,
+					at: Date.now(),
+					by: params.owner ?? task.owner ?? "agent",
+				};
 			}
-
-			if (params.status) task.status = params.status;
 			if (params.subject) task.subject = params.subject;
 			if (params.description) task.description = params.description;
 			if (params.activeForm) task.activeForm = params.activeForm;
 			if (params.kind) task.kind = params.kind;
 			if (params.owner) task.owner = params.owner;
+			if (params.area) task.area = normalizeArea(params.area);
+			if (params.source) task.source = params.source;
 			if (params.acceptance) task.acceptance = params.acceptance;
 			if (params.refs) task.refs = params.refs;
 			if (params.evidence) task.evidence = params.evidence;
@@ -314,32 +437,218 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	// ─── Widget (above editor) ─────────────────────────────────────────────
+	// ─── Passive work map overlay ──────────────────────────────────────────
 
 	let latestCtx: ExtensionContext | undefined;
 	const WIDGET_KEY = "tasks";
+	type TaskOverlayRecord = {
+		opening: boolean;
+		component?: WorkTaskOverlayComponent;
+		handle?: { hide?: () => void };
+		close?: () => void;
+	};
+	const taskOverlayStore = new Map<string, TaskOverlayRecord>();
+	const taskOverlayHiddenStore = new Map<string, boolean>();
+	const taskOverlayAgentRunningStore = new Map<string, boolean>();
+
+	function taskOverlayKey(ctx: Pick<ExtensionContext, "cwd" | "sessionManager">): string {
+		return storePath(ctx as ExtensionContext);
+	}
+
+	function groupedTasks(store: TaskStore, includeTerminal = true): Array<{ area: string; tasks: Task[] }> {
+		const groups = new Map<string, Task[]>();
+		for (const task of sortTasks(includeTerminal ? store.tasks : store.tasks.filter((t) => !isTerminalTask(t)))) {
+			const area = taskArea(task);
+			groups.set(area, [...(groups.get(area) ?? []), task]);
+		}
+		return [...groups.entries()]
+			.map(([area, tasks]) => ({ area, tasks }))
+			.sort((a, b) => {
+				const ai = AREA_ORDER.indexOf(a.area);
+				const bi = AREA_ORDER.indexOf(b.area);
+				const ap = ai === -1 ? AREA_ORDER.length : ai;
+				const bp = bi === -1 ? AREA_ORDER.length : bi;
+				return ap - bp || a.area.localeCompare(b.area, "ko");
+			});
+	}
+
+	function padAnsi(textValue: string, width: number): string {
+		const clipped = truncateToWidth(textValue, width, "…", true);
+		return `${clipped}${" ".repeat(Math.max(0, width - visibleWidth(clipped)))}`;
+	}
+
+	function renderTaskSubject(task: Task): string {
+		return task.status === "in_progress" && task.activeForm ? task.activeForm : task.subject;
+	}
+
+	class WorkTaskOverlayComponent {
+		private tui: { requestRender?: () => void };
+		private theme: Theme;
+		private store: TaskStore;
+		private agentRunning: boolean;
+		private timer: ReturnType<typeof setInterval> | undefined;
+		private disposed = false;
+
+		constructor(tui: { requestRender?: () => void }, theme: Theme, store: TaskStore, agentRunning: boolean) {
+			this.tui = tui;
+			this.theme = theme;
+			this.store = { nextId: store.nextId, tasks: store.tasks.map((task) => ({ ...task, metadata: { ...task.metadata } })) };
+			this.agentRunning = agentRunning;
+			this.syncTimer();
+		}
+
+		setStore(store: TaskStore): void {
+			this.store = { nextId: store.nextId, tasks: store.tasks.map((task) => ({ ...task, metadata: { ...task.metadata } })) };
+			this.syncTimer();
+			this.tui.requestRender?.();
+		}
+
+		setAgentRunning(running: boolean): void {
+			this.agentRunning = running;
+			this.syncTimer();
+			this.tui.requestRender?.();
+		}
+
+		invalidate(): void {
+			this.tui.requestRender?.();
+		}
+
+		dispose(): void {
+			if (this.disposed) return;
+			this.disposed = true;
+			if (this.timer) clearInterval(this.timer);
+			this.timer = undefined;
+		}
+
+		render(width: number): string[] {
+			const innerWidth = Math.max(1, width - 2);
+			const active = this.store.tasks.filter((task) => !isTerminalTask(task)).length;
+			const completed = this.store.tasks.filter((task) => task.status === "completed").length;
+			const held = this.store.tasks.filter((task) => isSoftDispositionStatus(task.status)).length;
+			const hasRunning = this.agentRunning && this.store.tasks.some((task) => task.status === "in_progress");
+			const borderColor: ThemeColor = hasRunning ? "accent" : active > 0 ? "borderAccent" : "borderMuted";
+			const border = (textValue: string) => this.theme.fg(borderColor, hasRunning ? this.theme.bold(textValue) : textValue);
+			const row = (textValue: string) => `${border("│")}${padAnsi(textValue, innerWidth)}${border("│")}`;
+			const title = this.theme.fg("accent", this.theme.bold(" Work Tasks "));
+			const summaryParts = [`${active} active`];
+			if (completed > 0) summaryParts.push(`${completed} done`);
+			if (held > 0) summaryParts.push(`${held} held`);
+			const summary = this.theme.fg("dim", ` ${summaryParts.join(" · ")} `);
+			const titlePad = Math.max(0, innerWidth - visibleWidth(title) - visibleWidth(summary));
+			const lines = [`${border("╭")}${title}${border("─".repeat(titlePad))}${summary}${border("╮")}`];
+
+			if (this.store.tasks.length === 0) {
+				lines.push(row(` ${this.theme.fg("dim", "작업 없음")}`));
+			} else {
+				for (const group of groupedTasks(this.store)) {
+					lines.push(row(` ${this.theme.fg("muted", `-(${group.area})`)}`));
+					for (const task of group.tasks) lines.push(row(this.renderTaskLine(task)));
+				}
+			}
+
+			lines.push(`${border("╰")}${border("─".repeat(innerWidth))}${border("╯")}`);
+			return lines;
+		}
+
+		private renderTaskLine(task: Task): string {
+			const subject = renderTaskSubject(task);
+			const source = taskSource(task);
+			const sourceSuffix = source && source !== "agent" ? this.theme.fg("dim", ` · ${source}`) : "";
+			if (task.status === "completed") {
+				return `  ${this.theme.fg("success", "✓")} ${this.theme.fg("dim", subject)}${sourceSuffix}`;
+			}
+			if (isSoftDispositionStatus(task.status)) {
+				const disposition = this.theme.fg("warning", formatDisposition(task));
+				return `  ${this.theme.fg("warning", "⊘")} ${this.theme.fg("dim", this.theme.strikethrough(subject))}${disposition}${sourceSuffix}`;
+			}
+			if (task.status === "in_progress") {
+				const marker = this.agentRunning ? this.currentSpinner() : "→";
+				return `  ${this.theme.fg("accent", marker)} ${this.theme.fg("accent", this.theme.bold(subject))}${sourceSuffix}`;
+			}
+			return `  ${this.theme.fg("muted", "○")} ${this.theme.fg("toolOutput", subject)}${sourceSuffix}`;
+		}
+
+		private currentSpinner(): string {
+			return TASK_SPINNER_FRAMES[Math.floor(Date.now() / TASK_SPINNER_INTERVAL_MS) % TASK_SPINNER_FRAMES.length] ?? "•";
+		}
+
+		private syncTimer(): void {
+			const shouldRun = !this.disposed && this.agentRunning && this.store.tasks.some((task) => task.status === "in_progress");
+			if (shouldRun && !this.timer) {
+				this.timer = setInterval(() => this.tui.requestRender?.(), TASK_SPINNER_INTERVAL_MS);
+				return;
+			}
+			if (!shouldRun && this.timer) {
+				clearInterval(this.timer);
+				this.timer = undefined;
+			}
+		}
+	}
+
+	function hideTaskOverlay(key: string): void {
+		const record = taskOverlayStore.get(key);
+		if (!record) return;
+		record.close?.();
+		record.handle?.hide?.();
+		record.component?.dispose();
+		taskOverlayStore.delete(key);
+	}
+
+	function showOrUpdateTaskOverlay(ctx: ExtensionContext, key: string, store: TaskStore): void {
+		const agentRunning = taskOverlayAgentRunningStore.get(key) ?? false;
+		const record = taskOverlayStore.get(key);
+		if (record?.component) {
+			record.component.setStore(store);
+			record.component.setAgentRunning(agentRunning);
+			return;
+		}
+		if (record?.opening) return;
+		taskOverlayStore.set(key, { opening: true });
+		const initialStore = { nextId: store.nextId, tasks: store.tasks.map((task) => ({ ...task, metadata: { ...task.metadata } })) };
+		void ctx.ui.custom(
+			(tui, theme, _keybindings, done) => {
+				const component = new WorkTaskOverlayComponent(tui, theme, initialStore, agentRunning);
+				const current = taskOverlayStore.get(key) ?? { opening: false };
+				taskOverlayStore.set(key, { ...current, opening: false, component, close: done });
+				return component;
+			},
+			{
+				overlay: true,
+				overlayOptions: {
+					anchor: "top-right",
+					width: 52,
+					maxHeight: "70%",
+					margin: { top: 1, right: 2 },
+					nonCapturing: true,
+					visible: (termWidth: number) => termWidth >= 80,
+				},
+				onHandle: (handle) => {
+					const current = taskOverlayStore.get(key) ?? { opening: false };
+					taskOverlayStore.set(key, { ...current, handle });
+				},
+			},
+		).finally(() => {
+			const current = taskOverlayStore.get(key);
+			current?.component?.dispose();
+			taskOverlayStore.delete(key);
+		}).catch(() => {});
+	}
 
 	function updateWidget(ctx: ExtensionContext) {
 		if (!ctx.hasUI) return;
+		ctx.ui.setWidget(WIDGET_KEY, undefined);
+		const key = taskOverlayKey(ctx);
 		const store = load(ctx);
-		const active = store.tasks.filter((t) => t.status !== "completed");
-		if (active.length === 0) {
-			ctx.ui.setWidget(WIDGET_KEY, undefined);
+		if (store.tasks.length === 0 || taskOverlayHiddenStore.get(key)) {
+			hideTaskOverlay(key);
 			return;
 		}
-		const inProgress = active.filter((t) => t.status === "in_progress");
-		const pending = active.filter((t) => t.status === "pending");
-		const needsUser = active.filter((t) => t.owner === "user" || taskKind(t) === "decision");
-		ctx.ui.setWidget(WIDGET_KEY, (_tui, theme) => {
-			const lines: string[] = [];
-			const header = `${theme.fg("accent", "☐")} Tasks: ${theme.fg("success", String(inProgress.length))} in progress · ${String(pending.length)} pending · ${theme.fg(needsUser.length ? "warning" : "border", String(needsUser.length))} needs user`;
-			lines.push(header);
-			for (const t of sortTasks(active).slice(0, 3)) {
-				const marker = t.owner === "user" || taskKind(t) === "decision" ? "?" : t.status === "in_progress" ? "▸" : "·";
-				lines.push(`  ${theme.fg(marker === "?" ? "warning" : "borderAccent", marker)} ${t.activeForm ?? t.subject}`);
-			}
-			return { render: (width: number) => lines.map(l => truncateToWidth(l, width)), invalidate() {}, handleInput() {} };
-		});
+		showOrUpdateTaskOverlay(ctx, key, store);
+	}
+
+	function setTaskOverlayAgentRunning(ctx: ExtensionContext, running: boolean): void {
+		const key = taskOverlayKey(ctx);
+		taskOverlayAgentRunningStore.set(key, running);
 	}
 
 	pi.on("session_start", async (_e, ctx) => {
@@ -353,11 +662,36 @@ export default function (pi: ExtensionAPI) {
 		}
 	});
 
+	pi.on("agent_start", async (_event, ctx) => {
+		latestCtx = ctx;
+		setTaskOverlayAgentRunning(ctx, true);
+		updateWidget(ctx);
+	});
+
+	pi.on("agent_end", async (_event, ctx) => {
+		latestCtx = ctx;
+		setTaskOverlayAgentRunning(ctx, false);
+		updateWidget(ctx);
+	});
+
 	pi.on("tool_result", async (event, ctx) => {
 		latestCtx = ctx;
 		if (["TaskCreate", "TaskUpdate"].includes(event.toolName)) {
 			updateWidget(ctx);
 		}
+	});
+
+	pi.on("session_tree", async (_event, ctx) => {
+		latestCtx = ctx;
+		setTaskOverlayAgentRunning(ctx, false);
+		updateWidget(ctx);
+	});
+
+	pi.on("session_shutdown", async (_event, ctx) => {
+		const key = taskOverlayKey(ctx);
+		hideTaskOverlay(key);
+		taskOverlayHiddenStore.delete(key);
+		taskOverlayAgentRunningStore.delete(key);
 	});
 
 	// ─── Overlay (/tasks command) ──────────────────────────────────────────
@@ -375,7 +709,7 @@ export default function (pi: ExtensionAPI) {
 		let inputMode: null | "new" | "edit" = null;
 		let inputBuffer = "";
 
-		const getVisible = () => sortTasks(showCompleted ? store.tasks : store.tasks.filter((t) => t.status !== "completed"));
+		const getVisible = () => sortTasks(showCompleted ? store.tasks : store.tasks.filter((t) => !isTerminalTask(t)));
 
 		await ctx.ui.custom<void>(
 			(tui, theme, _kb, done) => {
@@ -387,7 +721,7 @@ export default function (pi: ExtensionAPI) {
 					lines.push(`  ${theme.fg("warning", "↑/↓, k/j")}     ${theme.fg("border", "항목 이동")}`);
 					lines.push(`  ${theme.fg("warning", "Space/Enter")}  ${theme.fg("border", "상태 토글 (pending→in_progress→completed)")}`);
 					lines.push(`  ${theme.fg("warning", "n")}            ${theme.fg("border", "새 태스크 추가")}`);
-					lines.push(`  ${theme.fg("warning", "d")}            ${theme.fg("border", "삭제")}`);
+					lines.push(`  ${theme.fg("warning", "d")}            ${theme.fg("border", "삭제 표시(soft delete)")}`);
 					lines.push(`  ${theme.fg("warning", ",")}            ${theme.fg("border", "이 도움말")}`);
 					lines.push(`  ${theme.fg("warning", "q")}            ${theme.fg("border", "닫기")}`);
 					lines.push("");
@@ -401,12 +735,14 @@ export default function (pi: ExtensionAPI) {
 						if (showHelp) return renderHelp(w);
 						const visible = getVisible();
 						const completed = store.tasks.filter((t) => t.status === "completed").length;
+						const held = store.tasks.filter((t) => isSoftDispositionStatus(t.status)).length;
+						const active = store.tasks.filter((t) => !isTerminalTask(t)).length;
 						const total = store.tasks.length;
 
 						const lines: string[] = [];
 						lines.push(theme.fg("accent", "─".repeat(w)));
-						const needsUser = store.tasks.filter((t) => t.status !== "completed" && (t.owner === "user" || taskKind(t) === "decision")).length;
-						lines.push(`  ${theme.bold("Work Tasks")} (${total - completed}/${total} active · ${needsUser} needs user)        ${inputMode ? theme.fg("warning", `[${inputMode === "new" ? "새 태스크" : "수정"}]`) : ""}`);
+						const needsUser = store.tasks.filter((t) => !isTerminalTask(t) && (t.owner === "user" || taskKind(t) === "decision")).length;
+						lines.push(`  ${theme.bold("Work Tasks")} (${active}/${total} active · ${completed} done · ${held} held · ${needsUser} needs user)        ${inputMode ? theme.fg("warning", `[${inputMode === "new" ? "새 태스크" : "수정"}]`) : ""}`);
 						lines.push(theme.fg("accent", "─".repeat(w)));
 
 						if (inputMode) {
@@ -423,22 +759,28 @@ export default function (pi: ExtensionAPI) {
 								const t = visible[i];
 								const sel = i === selectedIdx;
 								const cursor = sel ? theme.fg("accent", "▶") : " ";
-								const icon = t.status === "completed" ? theme.fg("success", "✓") : t.status === "in_progress" ? theme.fg("warning", "●") : "○";
-								const subject = t.status === "completed" ? theme.fg("border", t.subject) : sel ? theme.fg("accent", t.subject) : t.subject;
+								const icon = t.status === "completed" ? theme.fg("success", "✓") : isSoftDispositionStatus(t.status) ? theme.fg("warning", "⊘") : t.status === "in_progress" ? theme.fg("warning", "●") : "○";
+								const rawSubject = renderTaskSubject(t);
+								const subject = isSoftDispositionStatus(t.status)
+									? theme.fg("border", theme.strikethrough(rawSubject))
+									: t.status === "completed"
+										? theme.fg("border", rawSubject)
+										: sel ? theme.fg("accent", rawSubject) : rawSubject;
 								const kind = taskKind(t);
-								const metaParts = [kind !== "general" ? kind : undefined, t.owner ? `@${t.owner}` : undefined, t.metadata?.ticket ? String(t.metadata.ticket) : undefined].filter(Boolean);
+								const metaParts = [taskArea(t), kind !== "general" ? kind : undefined, t.owner ? `@${t.owner}` : undefined, t.metadata?.ticket ? String(t.metadata.ticket) : undefined].filter(Boolean);
+								if (isSoftDispositionStatus(t.status)) metaParts.push(formatDisposition(t).trim());
 								const meta = metaParts.length ? ` [${metaParts.join(" · ")}]` : "";
 								const lineColor: ThemeColor = t.owner === "user" || kind === "decision" ? "warning" : t.status === "in_progress" ? "accent" : "text";
 								lines.push(truncateToWidth(`${cursor} ${icon} #${t.id} ${theme.fg(lineColor, subject)}${meta}`, w, ""));
 							}
 						}
 
-						if (completed > 0 && !showCompleted) {
-							lines.push(`  + ${completed} completed (v로 표시)`);
+						if ((completed > 0 || held > 0) && !showCompleted) {
+							lines.push(`  + ${completed} completed · ${held} held (v로 표시)`);
 						}
 
 						lines.push(theme.fg("accent", "─".repeat(w)));
-						lines.push(`  ${theme.fg("border", "↑↓ 이동 · Space 상태 토글 · n 새로 · d 삭제 · b backlog · v 완료 표시 · q 닫기")}`);
+						lines.push(`  ${theme.fg("border", "↑↓ 이동 · Space 상태 · n 새로 · d 삭제표시 · b backlog · v 완료/보류 표시 · q 닫기")}`);
 
 						return lines;
 					},
@@ -521,7 +863,9 @@ export default function (pi: ExtensionAPI) {
 						} else if (data === "d") {
 							const t = visible[selectedIdx];
 							if (t) {
-								store.tasks = store.tasks.filter((s) => s.id !== t.id);
+								t.status = "deleted";
+								t.disposition = { type: "deleted", reason: "수동 삭제 표시", at: Date.now(), by: "user" };
+								t.updatedAt = Date.now();
 								save(ctx, store);
 								updateWidget(ctx);
 								if (selectedIdx >= getVisible().length) selectedIdx = Math.max(0, getVisible().length - 1);
@@ -542,7 +886,9 @@ export default function (pi: ExtensionAPI) {
 									createdAt: Date.now(),
 								});
 								saveBacklog(bl);
-								store.tasks = store.tasks.filter((s) => s.id !== t.id);
+								t.status = "deprioritized";
+								t.disposition = { type: "deprioritized", reason: "backlog로 이동", at: Date.now(), by: "user" };
+								t.updatedAt = Date.now();
 								save(ctx, store);
 								updateWidget(ctx);
 								if (selectedIdx >= getVisible().length) selectedIdx = Math.max(0, getVisible().length - 1);
@@ -558,8 +904,33 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	pi.registerCommand("tasks", {
-		description: "Interactive task checklist overlay",
-		handler: async (_args, ctx) => showTasksOverlay(ctx),
+		description: "Interactive task checklist overlay. Use /tasks show|hide|status to control the passive work-map overlay.",
+		getArgumentCompletions(prefix: string) {
+			const values = ["show", "hide", "status"];
+			const filtered = values.filter((value) => value.startsWith(prefix.trim().toLowerCase()));
+			return filtered.length > 0 ? filtered.map((value) => ({ value, label: value })) : null;
+		},
+		handler: async (args, ctx) => {
+			const action = args.trim().toLowerCase();
+			const key = taskOverlayKey(ctx);
+			if (action === "show") {
+				taskOverlayHiddenStore.set(key, false);
+				updateWidget(ctx);
+				ctx.ui.notify("tasks work-map overlay를 표시합니다.", "info");
+				return;
+			}
+			if (action === "hide") {
+				taskOverlayHiddenStore.set(key, true);
+				hideTaskOverlay(key);
+				ctx.ui.notify("tasks work-map overlay를 숨겼습니다. /tasks show로 다시 표시할 수 있습니다.", "info");
+				return;
+			}
+			if (action === "status") {
+				ctx.ui.notify(`tasks overlay: ${taskOverlayHiddenStore.get(key) ? "hidden" : "shown"}`, "info");
+				return;
+			}
+			await showTasksOverlay(ctx);
+		},
 	});
 
 	// ─── Keyboard shortcut ─────────────────────────────────────────────────

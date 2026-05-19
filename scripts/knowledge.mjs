@@ -1047,7 +1047,7 @@ const README_EXTENSION_GROUPS = [
 		{ name: "read-tool-override", ko: "Read tool 출력 preview/range 렌더링 override", en: "Read tool compact preview and range rendering override" },
 		{ name: "edit-tool-override", ko: "Edit tool 사전 diff preview와 side-by-side 결과 렌더링 override", en: "Edit tool preflight diff preview and side-by-side result rendering override" },
 		{ name: "interactive-shell", ko: "인터랙티브/장시간 셸을 overlay·hands-free·dispatch 모드로 실행", en: "Runs interactive or long-running shells in overlay, hands-free, or dispatch modes" },
-		{ name: "tasks", ko: "태스크 CRUD + `Ctrl+Shift+T`", en: "Task CRUD and `Ctrl+Shift+T`" },
+		{ name: "tasks", ko: "영역별 work-map overlay + 태스크 CRUD + `Ctrl+Shift+T`", en: "Area-grouped work-map overlay, task CRUD, and `Ctrl+Shift+T`" },
 		{ name: "auto-commit", ko: "명시 JSON plan 기반 commit/push 실행 도구", en: "Executes commit/push from an explicit JSON plan" },
 		{ name: "tui-ask", ko: "터미널 overlay 질문 도구 — single/multi/text decision gate", en: "Terminal overlay question tool for single/multi/text decision gates" },
 		{ name: "web-access", ko: "Tavily 웹 검색 + URL 콘텐츠 추출 + curator workflow", en: "Tavily web search, URL extraction, and curator workflow" },
