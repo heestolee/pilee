@@ -42,6 +42,10 @@ pilee가 아닌 product/lambda/외부 프로젝트 변경에는 해당 프로젝
 7. **도구 성공과 사용자 성공 분리**
    - TypeScript syntax check, Studio update, HTML 생성 성공은 중간 증거일 뿐이다.
    - 사용자가 보는 화면/리포트/동작이 핵심이면 실제 렌더 결과를 확인한다.
+8. **테스트 코드도 claim으로 다룬다**
+   - 동작/계약/회귀를 고정할 수 있는 변경이면 테스트 추가·보강 여부를 반드시 판단한다.
+   - 테스트를 안 쓰는 것도 결정이다. 순수 문서/generated 변경처럼 합당한 예외가 아니면 “테스트 없음”은 GAP이다.
+   - 통과용 snapshot, 구현 세부 복제, 명령만 실행하는 smoke를 의미 있는 테스트로 포장하지 않는다.
 
 ## Workflow
 
@@ -121,6 +125,38 @@ npm run tft:regression-audit
 
 이 명령이 실패하면 pilee 변경을 완료하거나 push하지 않는다. 스크립트가 PASS해도 품질 검토가 끝난 것은 아니며, 위 friction 매핑과 claim/evidence 판정은 별도로 수행한다.
 
+### 2.7 Test Code Gate
+
+변경이 “다시 깨질 수 있는 동작”을 만들거나 고쳤다면 테스트 코드가 기본값이다. final-check는 검증 명령을 돌리는 것과 별개로, **이 변경에 남겨야 할 자동화 테스트가 있는지**를 판단한다.
+
+| 변경 유형 | 테스트 추가/보강 Required | 의미 있는 테스트 예 |
+|---|---|---|
+| extension/tool/slash command | 새 인자, 상태 전이, session/cwd/source-of-truth, no-UI fallback, stale ctx 위험이 있으면 필요 | mock Pi context로 tool/command를 호출하고 저장 state·render text·blocked path를 assert |
+| parser/serializer/generator | 입력 변형, escaping, markdown/frontmatter/JSON/SVG 생성 계약이 바뀌면 필요 | fixture → output snapshot 전체가 아니라 핵심 구조/escape/round-trip assert |
+| bug fix/regression | 재현 가능한 실패가 있었으면 필요 | 수정 전 실패했을 최소 fixture나 command를 테스트로 고정 |
+| skill/prompt/contract | 특정 지침이 다시 빠지면 같은 실수가 반복될 때 필요 | deterministic script가 필수 heading/문구/금지 패턴을 검사 |
+| docs/knowledge/generated-only | 실행 계약 변화가 없고 generated artifact sync만 있으면 생략 가능 | 대신 graph/validate/freshness로 generated 정합성 확인 |
+
+테스트를 추가하지 않아도 되는 경우는 명시한다.
+
+- 순수 README/knowledge 문구 수정이며 executable behavior가 없다.
+- 이미 같은 계약을 직접 검증하는 테스트가 있고 이번 변경이 그 테스트 범위 안에 있다.
+- 실제 UI/host/외부 서비스라 자동화 비용이 과도하면, 왜 자동화하지 못했는지와 대신 사용한 캡처/수동 증거를 남긴다.
+
+의미 없는 테스트는 금지한다.
+
+- 구현을 그대로 복제해 같은 버그를 공유하는 테스트
+- assert 없이 명령만 실행하는 통과용 smoke
+- 변경 계약과 무관한 snapshot 대량 갱신
+- 실패 원인과 무관한 기대값 완화
+
+Claim inventory에 `테스트 결정`을 붙인다.
+
+| Claim | 테스트 결정 | 필요한 증거 | 판정 |
+|---|---|---|---|
+| 새 tool 인자가 state에 저장된다 | 추가: mock tool test | test output + state assert | PASS/GAP |
+| README 문구만 바뀐다 | 생략: 실행 계약 없음 | graph/validate | PASS/GAP |
+
 ### 3. pilee-specific 구멍 리뷰
 
 변경 유형별로 최소 하나 이상의 실제 failure mode를 확인한다.
@@ -130,7 +166,7 @@ npm run tft:regression-audit
 | extension/slash command | command args, alias, no-UI/headless fallback, session/cwd/source-of-truth, stale ctx |
 | worktree/session/revive/archive | 중복 세션, wrong cwd, panel label/P0/P1, source provenance, raw file mutation |
 | Glimpse/WebView | embedded script escape, native host shortcut, stdout/stderr protocol, browser fallback |
-| skill/prompt | trigger description, prerequisite, output contract, near-miss 오작동 |
+| skill/prompt | trigger description, prerequisite, output contract, near-miss 오작동, 지침 회귀를 잡는 deterministic test |
 | knowledge/README | graph freshness, coverage TODO, generated block 수동 편집, reviewed_commit 의미 |
 | automation/local history | local-only 파일 위치, Notion sync, raw private text public 유출 |
 
@@ -144,6 +180,8 @@ npm run tft:regression-audit
 - generated HTML/WebView script는 `new Function` 또는 문법 smoke
 - session 변환은 임시 JSONL로 중복/metadata/timestamp 확인
 - command shim은 등록 문자열/args parsing smoke
+- tool/command 변경은 mock Pi context로 state transition과 user-facing render text assert
+- skill/prompt 계약 변경은 deterministic script로 필수 문구와 금지 패턴 assert
 - knowledge 변경은 `knowledge:graph -- --check`, `knowledge:validate`
 
 실제 UI/host 동작이 핵심이면 가능한 범위에서 실제 capture/smoke를 수행하고, 불가능하면 왜 불가능한지 gap으로 남긴다.
@@ -203,6 +241,7 @@ Skill 변경:
 - `description` 1024자 이하
 - near-miss trigger가 과도하게 넓지 않음
 - 위험한 자동화/권한 상승 지시 없음
+- 계약 회귀가 반복된 스킬이면 전용 deterministic test를 실행한다. `pilee-final-check` 변경은 반드시 `npm run test:pilee-final-check`를 실행한다.
 
 ### 6. 수정 루프
 
@@ -229,6 +268,7 @@ Skill 변경:
 ```markdown
 ## 최종 점검 결과
 - 발견/수정: <없음 또는 수정한 구멍>
+- 테스트 결정: <추가한 테스트 또는 생략 사유>
 - 검증: <명령 요약>
 - push: <branch/commit>
 

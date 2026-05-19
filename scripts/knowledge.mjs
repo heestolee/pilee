@@ -957,7 +957,8 @@ function normalizeSurface(target) {
 	if (extensionMatch) return extensionMatch[1];
 	if (value === "agents" || value.startsWith("agents/")) return "agents";
 	if (value === "docs/knowledge" || value.startsWith("docs/knowledge/")) return "docs/knowledge";
-	if (value === "scripts/knowledge.mjs") return "scripts/knowledge.mjs";
+	const scriptMatch = value.match(/^(scripts\/[a-z0-9-]+\.mjs)$/);
+	if (scriptMatch) return scriptMatch[1];
 	if (value === "show-report") return "show-report";
 	if (value.startsWith("web_search")) return "web_search";
 	return null;
