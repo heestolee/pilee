@@ -13,6 +13,10 @@ tags:
   - report
   - show-report
   - detail-readability
+  - motion-first
+  - gif
+  - report-lint
+  - setup-noise
   - subagent
   - fan-out
   - 검증
@@ -34,8 +38,9 @@ source:
   - pilee-history:2026-05-06#69
   - user-direction:2026-05-07-local-resolver
   - user-feedback:2026-05-11-detail-readability
-reviewed_at: 2026-05-12
-reviewed_commit: fc6ffa9aaa2a87275a50c2888d6ca4bbe0255cf6
+  - user-feedback:2026-05-19-motion-first-and-setup-noise
+reviewed_at: 2026-05-19
+reviewed_commit: 7b4b3255b2a1cfccef0561e553768cad323304a4
 related:
   - pilee-knowledge-system
   - web-search-curator
@@ -71,7 +76,9 @@ live preview는 [web-search-curator](./web-search-curator.md)의 “작업 중 G
 
 ## Capture Quality Rule
 
-Primary evidence는 검증 포인트가 바로 보이는 viewport/section/element crop이어야 합니다. Before/after가 필요한 항목은 `Before — ...`, `After — ...` label로 같은 item에 넣어 비교되게 합니다. 두 이미지를 나란히 보아야만 변화가 분명한 경우에는 before/after를 한 장으로 합성한 핵심 비교 이미지를 `role: "primary"`로 남기며, renderer는 primary 이미지/GIF evidence를 full-width 단일 카드로 표시합니다. Full-page나 세로로 긴 스크롤 캡처는 supporting context로만 사용하고, 리포트에서는 토글/details/appendix/link 뒤에 둡니다.
+Primary evidence는 검증 claim을 직접 닫는 artifact여야 합니다. 정적 상태 확인은 검증 포인트가 바로 보이는 viewport/section/element crop이 primary입니다. 이동, 전환, 클릭 후 화면 이동, 열림/닫힘, 스무스함, 끊김 없음처럼 시간 흐름이 claim이면 GIF 또는 짧은 영상이 primary evidence이고, 대표 final-state PNG/crop은 supporting evidence로 함께 둡니다. 최종 PNG만으로 “잘 이동했다”를 PASS 처리하면 흐름의 연속성을 증명하지 못하므로 Coverage Gap 후보입니다.
+
+Before/after가 필요한 항목은 `Before — ...`, `After — ...` label로 같은 item에 넣어 비교되게 합니다. 두 이미지를 나란히 보아야만 변화가 분명한 경우에는 before/after를 한 장으로 합성한 핵심 비교 이미지를 `role: "primary"`로 남기며, renderer는 primary 이미지/GIF evidence를 full-width 단일 카드로 표시합니다. Full-page나 세로로 긴 스크롤 캡처는 supporting context로만 사용하고, 리포트에서는 토글/details/appendix/link 뒤에 둡니다.
 
 긴 캡처를 그대로 본문에 펼치면 리뷰어가 실제 검증 지점을 찾기 어렵습니다. 따라서 Verify Report는 “전체 페이지를 찍었다”보다 “어떤 영역에서 무엇을 확인했는가”를 우선합니다.
 
@@ -80,6 +87,8 @@ Primary evidence는 검증 포인트가 바로 보이는 viewport/section/elemen
 ## Evidence Intent Rule
 
 Evidence는 파일 경로가 아니라 “검증 의도를 가진 관찰 단위”여야 합니다. report item evidence와 case worker result의 `evidence_created`에는 가능한 한 `purpose`(왜 수집했나), `inspectFor`(리뷰어가 봐야 할 것), `expected`(닫아야 할 기준), `observed`(실제 관찰), `role`(primary/supporting/raw), `relatedItem`(V1 같은 항목 id)을 함께 적습니다.
+
+검증 전 bootstrap 과정은 evidence가 아닙니다. 로그인, 빌드, Metro/dev-server, pod/env/codegen, dependency bootstrap 같은 준비 과정은 setup 자체가 검증 대상이거나 검증을 막은 blocked 사유일 때만 report item에 남깁니다. 에이전트가 preflight를 잘못해서 헤맨 내용은 내부 작업 로그로만 두고, 사용자-facing report에는 핵심 동작/결과 증거를 우선합니다.
 
 이 metadata는 live/static report의 evidence card와 `/archive` 캡처/미디어 raw card·preview의 관찰 가이드로 재사용됩니다. `verify_report_live finish`는 direct evidence metadata를 `captures/evidence-intent.json` sidecar로 남기고, case worker는 `verify-workers/results/*.json`에 같은 metadata를 남깁니다. 따라서 시간이 지난 뒤 원본 PNG/GIF/JSON만 열어도 “이 파일이 왜 남았는지”와 “어디를 봐야 하는지”를 알 수 있어야 합니다. Metadata가 없으면 artifact browser는 원자료를 보여줄 수는 있지만 판정 근거로 읽기 어렵기 때문에, main agent가 보완하거나 Coverage Gap에 남겨야 합니다.
 
@@ -109,12 +118,20 @@ report preview는 artifact browser 안에서 `/preview` route로 열리고, top 
 
 원본 capture가 별도 media tab에 남는 경우에는 workspace/Jira/session/frame label로 group drill-down할 수 있어야 합니다. 다만 Verify Report의 PASS 판정은 여전히 report item evidence와 coverage gap에 있고, capture group은 원자료 탐색 보조입니다.
 
+## Report Lint Rule
+
+`verify_report_live finish`는 PASS를 자동으로 뒤집지 않는 report lint를 실행합니다. lint는 motion claim인데 GIF primary가 없는 항목, GIF primary에 대표 PNG/crop이 없는 항목, setup/bootstrap noise가 PASS item에 섞인 항목, 긴 이미지가 primary인 항목, evidence metadata가 부족한 항목을 경고로 남깁니다.
+
+이 경고는 리포트 작성자가 “정말 기준을 닫았는지” 다시 보게 하는 안전장치입니다. 특히 motion claim의 GIF 누락은 보완하거나 `unverified`/Coverage Gap으로 내려야 합니다.
+
 ## Decision Rules
 
 - report 작성은 검증의 일부이지 PR 업로드의 동의가 아닙니다.
 - 사용자가 upload를 명시하지 않으면 로컬 report와 archive까지만 처리합니다.
 - “화면이 바뀌지 않는다”는 이유로 검증을 생략하지 않고, 더 적절한 evidence type을 선택합니다.
-- UI evidence는 crop/section image를 primary로 두고, 긴 full-page image는 supporting으로 둡니다.
+- UI evidence는 claim에 맞게 둡니다. 정적 상태는 crop/section image, 움직임/전환/클릭 flow는 GIF/짧은 영상을 primary로 둡니다.
+- flow GIF에는 대표 final-state PNG/crop을 supporting으로 함께 둡니다.
+- 긴 full-page image는 supporting으로 둡니다.
 - before/after 합성 이미지처럼 한 장이 핵심 비교 증거이면 `role: "primary"`를 붙여 full-width 단일 카드로 보이게 합니다.
 - 텍스트 합성 이미지는 대상 언어 glyph가 있는 폰트로 렌더링하고 tofu box가 보이면 재생성합니다.
 - evidence에는 purpose/inspectFor/expected/observed/role/relatedItem을 붙여 raw artifact가 나중에도 읽히게 합니다.
