@@ -22,7 +22,7 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-11-subagent-skill-delegation
 reviewed_at: 2026-05-19
-reviewed_commit: 8dd65c14e15a16afaaafe14302030cef2a7df737
+reviewed_commit: 6564ee3a9c6c3dec179bbe670e4674cc32e87e2a
 related:
   - worktree-execution-boundary
   - session-identity-over-filenames

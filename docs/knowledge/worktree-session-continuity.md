@@ -39,7 +39,7 @@ source:
   - user-direction:2026-05-12-minimal-worktree-handoff
   - user-direction:2026-05-17-full-worktree-fork-default
 reviewed_at: 2026-05-19
-reviewed_commit: 8dd65c14e15a16afaaafe14302030cef2a7df737
+reviewed_commit: 6564ee3a9c6c3dec179bbe670e4674cc32e87e2a
 related:
   - subagent-model-policy
   - pilee-knowledge-system
