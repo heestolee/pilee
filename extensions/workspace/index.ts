@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -13,11 +13,21 @@ const SNAPSHOT_DIR = join(WORKSPACE_DIR, "snapshots");
 const ACTIVE_PATH = join(WORKSPACE_DIR, "active-sessions.json");
 const AUTOSAVE_ID = "autosave";
 const AUTOSAVE_ARCHIVE_PREFIX = "autosave-";
-const AUTOSAVE_ARCHIVE_LIMIT = 72;
-const ACTIVE_TTL_MS = 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const AUTOSAVE_ARCHIVE_LIMIT = 40;
+const AUTOSAVE_LIST_ARCHIVE_LIMIT = 8;
+const AUTOSAVE_RECENT_ARCHIVE_KEEP = 12;
+const AUTOSAVE_ARCHIVE_MIN_GAP_MS = 60 * 60 * 1000;
+const AUTOSAVE_CLEANUP_INTERVAL_MS = DAY_MS;
+const AUTOSAVE_LEADER_LEASE_MS = 75 * 60 * 1000;
+const AUTOSAVE_LOCK_STALE_MS = 5 * 60 * 1000;
+const AUTOSAVE_INITIAL_DELAY_MIN_MS = 30_000;
+const AUTOSAVE_INITIAL_DELAY_JITTER_MS = 30_000;
+const ACTIVE_TTL_MS = DAY_MS;
 const AUTOSAVE_INTERVAL_MS = 60 * 60 * 1000;
 const AUTOSAVE_MIN_GAP_MS = 20_000;
 const AUTOSAVE_STATE_PATH = join(WORKSPACE_DIR, "autosave-state.json");
+const AUTOSAVE_LOCK_PATH = join(WORKSPACE_DIR, "autosave.lock");
 
 let autosaveScheduled = false;
 let latestContext: ExtensionContext | undefined;
@@ -102,6 +112,30 @@ type WorkspaceArgs = {
 	name?: string;
 	dryRun: boolean;
 	append: boolean;
+	all: boolean;
+};
+
+type AutosaveState = {
+	lastAttemptAt?: number;
+	lastSavedAt?: number;
+	lastSkippedAt?: number;
+	lastSnapshotHash?: string;
+	lastArchiveAt?: number;
+	lastCleanupAt?: number;
+	pid?: number;
+	ok?: boolean;
+	saved?: boolean;
+	archivedPath?: string;
+	skippedReason?: string;
+	stats?: { tabs: number; terminals: number; matched: number; score: number };
+	leader?: {
+		pid: number;
+		sessionFile?: string;
+		acquiredAt: number;
+		leaseUntil: number;
+	};
+	error?: string;
+	deletedArchives?: number;
 };
 
 type RestoreAction = {
@@ -403,6 +437,26 @@ export function workspaceSnapshotStats(snapshot: Pick<WorkspaceSnapshot, "tabs">
 	};
 }
 
+export function workspaceSnapshotHash(snapshot: Pick<WorkspaceSnapshot, "tabs">): string {
+	const stable = snapshot.tabs.map((tab) => ({
+		index: tab.index,
+		name: tab.name,
+		selected: tab.selected,
+		terminals: tab.terminals.map((term) => ({
+			index: term.index,
+			name: term.name,
+			cwd: term.cwd,
+			sessionFile: term.sessionFile,
+			sessionTitle: term.sessionTitle,
+			panelLabel: term.panelLabel,
+			forkId: term.forkId,
+			parentSessionFile: term.parentSessionFile,
+			match: term.match,
+		})),
+	}));
+	return createHash("sha256").update(JSON.stringify(stable)).digest("hex").slice(0, 16);
+}
+
 function isRecoverableSummary(summary: WorkspaceSummary): boolean {
 	return summary.matched > 0;
 }
@@ -449,42 +503,104 @@ function isAutosaveArchive(snapshot: WorkspaceSnapshot): boolean {
 	return snapshot.source === "auto" && /^autosave-\d{8}T\d{6}$/u.test(snapshot.id);
 }
 
+function isAutosaveArchiveSummary(summary: WorkspaceSummary): boolean {
+	return summary.source === "auto" && /^autosave-\d{8}T\d{6}$/u.test(summary.id);
+}
+
 function archiveAutosaveSnapshot(snapshot: WorkspaceSnapshot | null): string | undefined {
 	if (!snapshot || snapshot.id !== AUTOSAVE_ID) return undefined;
 	const archive = { ...snapshot, id: `${AUTOSAVE_ARCHIVE_PREFIX}${timestampId(snapshot.updatedAt)}` };
 	const path = autosaveArchivePath(archive);
 	if (!existsSync(path)) writeFileSync(path, JSON.stringify(archive, null, 2));
-	pruneAutosaveArchives();
 	return path;
 }
 
-function pruneAutosaveArchives() {
-	let archives: Array<{ path: string; updatedAt: number }> = [];
+type AutosaveArchiveFile = { path: string; updatedAt: number };
+
+function listAutosaveArchives(): AutosaveArchiveFile[] {
 	try {
-		archives = readdirSync(SNAPSHOT_DIR)
+		return readdirSync(SNAPSHOT_DIR)
 			.filter((entry) => entry.endsWith(".json"))
 			.map((entry) => {
 				const path = join(SNAPSHOT_DIR, entry);
 				const snapshot = readSnapshot(path);
 				return snapshot && isAutosaveArchive(snapshot) ? { path, updatedAt: snapshot.updatedAt } : null;
 			})
-			.filter((entry): entry is { path: string; updatedAt: number } => Boolean(entry))
+			.filter((entry): entry is AutosaveArchiveFile => Boolean(entry))
 			.sort((a, b) => b.updatedAt - a.updatedAt);
 	} catch {
-		return;
-	}
-	for (const archive of archives.slice(AUTOSAVE_ARCHIVE_LIMIT)) {
-		try { unlinkSync(archive.path); } catch {}
+		return [];
 	}
 }
 
-function saveAutosaveSnapshot(snapshot: WorkspaceSnapshot): { path: string; saved: boolean; reason?: string; archivedPath?: string } {
+function archiveDayKey(ts: number): string {
+	return new Date(ts).toISOString().slice(0, 10);
+}
+
+function archiveWeekKey(ts: number): string {
+	return String(Math.floor(ts / (7 * DAY_MS)));
+}
+
+function pruneAutosaveArchives(now = Date.now()): number {
+	const archives = listAutosaveArchives();
+	if (archives.length <= AUTOSAVE_ARCHIVE_LIMIT) return 0;
+	const keep = new Set<string>();
+	for (const archive of archives.slice(0, AUTOSAVE_RECENT_ARCHIVE_KEEP)) keep.add(archive.path);
+
+	const daySeen = new Set<string>();
+	for (const archive of archives) {
+		if (now - archive.updatedAt > 7 * DAY_MS) continue;
+		const key = archiveDayKey(archive.updatedAt);
+		if (daySeen.has(key)) continue;
+		daySeen.add(key);
+		keep.add(archive.path);
+	}
+
+	const weekSeen = new Set<string>();
+	for (const archive of archives) {
+		if (now - archive.updatedAt > 28 * DAY_MS) continue;
+		const key = archiveWeekKey(archive.updatedAt);
+		if (weekSeen.has(key)) continue;
+		weekSeen.add(key);
+		keep.add(archive.path);
+	}
+
+	if (keep.size > AUTOSAVE_ARCHIVE_LIMIT) {
+		const capped = new Set(archives.filter((archive) => keep.has(archive.path)).slice(0, AUTOSAVE_ARCHIVE_LIMIT).map((archive) => archive.path));
+		keep.clear();
+		for (const path of capped) keep.add(path);
+	}
+
+	let deleted = 0;
+	for (const archive of archives) {
+		if (keep.has(archive.path)) continue;
+		try {
+			unlinkSync(archive.path);
+			deleted += 1;
+		} catch {}
+	}
+	return deleted;
+}
+
+function shouldArchiveAutosaveSnapshot(existing: WorkspaceSnapshot | null, next: WorkspaceSnapshot, state: AutosaveState, nextHash: string, now: number): boolean {
+	if (!existing || existing.id !== AUTOSAVE_ID) return false;
+	const existingHash = workspaceSnapshotHash(existing);
+	if (existingHash === nextHash) return false;
+	const previous = workspaceSnapshotStats(existing);
+	const incoming = workspaceSnapshotStats(next);
+	const structureChanged = previous.tabs !== incoming.tabs || previous.terminals !== incoming.terminals || previous.matched !== incoming.matched;
+	const scoreChanged = previous.score !== incoming.score;
+	const archiveGapElapsed = !state.lastArchiveAt || now - state.lastArchiveAt >= AUTOSAVE_ARCHIVE_MIN_GAP_MS;
+	return structureChanged || scoreChanged || archiveGapElapsed;
+}
+
+function saveAutosaveSnapshot(snapshot: WorkspaceSnapshot, state: AutosaveState, nextHash: string, now: number): { path: string; saved: boolean; reason?: string; archivedPath?: string } {
 	ensureWorkspaceDirs();
 	const path = snapshotPath(AUTOSAVE_ID);
 	const existing = readSnapshot(path);
 	const reason = autosaveReplacementReason(existing, snapshot);
 	if (reason) return { path, saved: false, reason };
-	const archivedPath = existing?.updatedAt !== snapshot.updatedAt ? archiveAutosaveSnapshot(existing) : undefined;
+	const archivedPath = shouldArchiveAutosaveSnapshot(existing, snapshot, state, nextHash, now) ? archiveAutosaveSnapshot(existing) : undefined;
 	writeFileSync(path, JSON.stringify(snapshot, null, 2));
 	return { path, saved: true, archivedPath };
 }
@@ -513,24 +629,32 @@ function listSnapshots(): WorkspaceSummary[] {
 		.sort(compareWorkspaceSummaries);
 }
 
-function resolveSnapshot(target?: string): { snapshot?: WorkspaceSnapshot; summary?: WorkspaceSummary; error?: string } {
-	const summaries = listSnapshots();
-	if (summaries.length === 0) return { error: "저장된 workspace snapshot이 없습니다. 먼저 /workspace save를 실행하세요." };
+function visibleSnapshotSummaries(summaries: WorkspaceSummary[]): WorkspaceSummary[] {
+	const fixed = summaries.filter((summary) => !isAutosaveArchiveSummary(summary));
+	const archives = summaries.filter(isAutosaveArchiveSummary).slice(0, AUTOSAVE_LIST_ARCHIVE_LIMIT);
+	return [...fixed, ...archives].sort(compareWorkspaceSummaries);
+}
+
+function resolveSnapshot(target?: string, includeAll = false): { snapshot?: WorkspaceSnapshot; summary?: WorkspaceSummary; error?: string } {
+	const allSummaries = listSnapshots();
+	if (allSummaries.length === 0) return { error: "저장된 workspace snapshot이 없습니다. 먼저 /workspace save를 실행하세요." };
+	const visibleSummaries = visibleSnapshotSummaries(allSummaries);
+	const numberedSummaries = includeAll ? allSummaries : visibleSummaries;
 	let summary: WorkspaceSummary | undefined;
 	if (target) {
 		const normalized = target.toLowerCase();
 		if (/^[1-9]\d*$/u.test(normalized)) {
 			const index = Number.parseInt(normalized, 10) - 1;
-			summary = summaries[index];
-			if (!summary) return { error: `snapshot 번호를 찾지 못했습니다: ${target} (범위: 1-${summaries.length})` };
+			summary = numberedSummaries[index];
+			if (!summary) return { error: `snapshot 번호를 찾지 못했습니다: ${target} (범위: 1-${numberedSummaries.length}${includeAll ? "" : "; 전체 archive는 /workspace list --all"})` };
 		} else {
-			summary = summaries.find((item) => item.id.toLowerCase() === normalized)
-				?? summaries.find((item) => item.name.toLowerCase() === normalized)
-				?? summaries.find((item) => item.id.toLowerCase().includes(normalized) || item.name.toLowerCase().includes(normalized));
+			summary = allSummaries.find((item) => item.id.toLowerCase() === normalized)
+				?? allSummaries.find((item) => item.name.toLowerCase() === normalized)
+				?? allSummaries.find((item) => item.id.toLowerCase().includes(normalized) || item.name.toLowerCase().includes(normalized));
 			if (!summary) return { error: `snapshot을 찾지 못했습니다: ${target}` };
 		}
 	} else {
-		summary = summaries[0];
+		summary = visibleSummaries[0] ?? allSummaries[0];
 	}
 	const snapshot = readSnapshot(summary.path);
 	if (!snapshot) return { error: `snapshot 파일을 읽지 못했습니다: ${summary.path}` };
@@ -689,15 +813,17 @@ export function parseWorkspaceArgs(args: string): WorkspaceArgs {
 	const rest = sub === "restore" && firstToken && !knownSubs.includes(first) ? [firstToken, ...tokens] : tokens;
 	let dryRun = false;
 	let append = true;
+	let all = false;
 	const positional: string[] = [];
 	for (const token of rest) {
 		if (token === "--dry-run" || token === "-n") dryRun = true;
 		else if (token === "--append") append = true;
+		else if (token === "--all" || token === "-a") all = true;
 		else positional.push(token);
 	}
-	if (sub === "save") return { sub, name: positional.join(" ").trim() || undefined, dryRun, append };
-	if (sub === "restore") return { sub, target: positional.join(" ").trim() || undefined, dryRun, append };
-	return { sub, target: positional.join(" ").trim() || undefined, dryRun, append };
+	if (sub === "save") return { sub, name: positional.join(" ").trim() || undefined, dryRun, append, all };
+	if (sub === "restore") return { sub, target: positional.join(" ").trim() || undefined, dryRun, append, all };
+	return { sub, target: positional.join(" ").trim() || undefined, dryRun, append, all };
 }
 
 function dedupeRecords(records: ActiveSessionRecord[]): ActiveSessionRecord[] {
@@ -760,9 +886,13 @@ function renderSnapshotSummary(summary: WorkspaceSummary, index?: number): strin
 	return `${prefix}${summary.name} (${summary.id}) · ${source} · ${displayDate(summary.updatedAt)} · tab ${summary.tabs}, panel ${summary.terminals}, session ${summary.matched}/${summary.terminals}`;
 }
 
-function renderList(summaries: WorkspaceSummary[]): string {
+function renderList(summaries: WorkspaceSummary[], hiddenArchives = 0): string {
 	if (summaries.length === 0) return "저장된 workspace snapshot이 없습니다.";
-	return ["저장된 workspace snapshots", "", ...summaries.map(renderSnapshotSummary)].join("\n");
+	const lines = ["저장된 workspace snapshots", "", ...summaries.map(renderSnapshotSummary)];
+	if (hiddenArchives > 0) {
+		lines.push("", `숨긴 autosave archive ${hiddenArchives}개 · 전체 목록은 /workspace list --all`);
+	}
+	return lines.join("\n");
 }
 
 export function renderPlan(plan: RestorePlan): string {
@@ -862,7 +992,7 @@ async function handleSave(pi: ExtensionAPI, ctx: ExtensionCommandContext, args: 
 }
 
 async function handleRestore(pi: ExtensionAPI, ctx: ExtensionCommandContext, args: WorkspaceArgs) {
-	const resolved = resolveSnapshot(args.target);
+	const resolved = resolveSnapshot(args.target, args.all);
 	if (!resolved.snapshot) {
 		ctx.ui.notify(resolved.error || "snapshot을 찾지 못했습니다.", "error");
 		return;
@@ -899,48 +1029,164 @@ async function handleStatus(pi: ExtensionAPI, ctx: ExtensionCommandContext) {
 	const summaries = listSnapshots();
 	const latest = summaries[0] ? renderSnapshotSummary(summaries[0]) : "저장된 snapshot 없음";
 	const activeCount = readActiveRecords().length;
+	const state = readJson<AutosaveState>(AUTOSAVE_STATE_PATH, {});
 	const body = [
 		liveLine,
 		`active session registry: ${activeCount}`,
 		`latest snapshot: ${latest}`,
+		state.leader ? `autosave leader: pid ${state.leader.pid} · lease ${displayDate(state.leader.leaseUntil)}` : "autosave leader: 없음",
+		state.lastSnapshotHash ? `autosave hash: ${state.lastSnapshotHash}` : undefined,
+		state.skippedReason ? `autosave skip: ${state.skippedReason}` : undefined,
 		"",
 		"commands:",
 		"  /workspace [number|name-or-id]",
 		"  /workspace save [name]",
-		"  /workspace restore [number|name-or-id] [--dry-run] [--append]",
-		"  /workspace list",
+		"  /workspace save \"작업 이름\"",
+		"  /workspace restore [number|name-or-id] [--dry-run] [--append] [--all]",
+		"  /workspace list [--all]",
 		"  /workspace status",
-	].join("\n");
+	].filter((line): line is string => line !== undefined).join("\n");
 	ctx.ui.notify("workspace 상태를 표시했습니다.", "info");
 	sendReport(pi, "Workspace status", body);
 }
 
+function acquireAutosaveLock(): (() => void) | undefined {
+	ensureWorkspaceDirs();
+	function openLock(): number | undefined {
+		try { return openSync(AUTOSAVE_LOCK_PATH, "wx"); } catch { return undefined; }
+	}
+	let fd = openLock();
+	if (fd === undefined) {
+		try {
+			const st = statSync(AUTOSAVE_LOCK_PATH);
+			if (Date.now() - st.mtimeMs > AUTOSAVE_LOCK_STALE_MS) {
+				unlinkSync(AUTOSAVE_LOCK_PATH);
+				fd = openLock();
+			}
+		} catch {}
+	}
+	if (fd === undefined) return undefined;
+	writeFileSync(fd, `${process.pid}\n`);
+	return () => {
+		try { closeSync(fd!); } catch {}
+		try { unlinkSync(AUTOSAVE_LOCK_PATH); } catch {}
+	};
+}
+
+function pidIsAlive(pid: number | undefined): boolean {
+	if (!pid || pid === process.pid) return Boolean(pid);
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+function autosaveLeaderFor(ctx: ExtensionContext, previous: AutosaveState["leader"] | undefined, now: number): NonNullable<AutosaveState["leader"]> {
+	const sessionFile = ctx.sessionManager.getSessionFile();
+	return {
+		pid: process.pid,
+		sessionFile: sessionFile ? safeRealpath(sessionFile) : undefined,
+		acquiredAt: previous?.pid === process.pid ? previous.acquiredAt : now,
+		leaseUntil: now + AUTOSAVE_LEADER_LEASE_MS,
+	};
+}
+
+function autosaveLeaderSkipReason(state: AutosaveState, now: number): string | undefined {
+	const leader = state.leader;
+	if (!leader || leader.pid === process.pid) return undefined;
+	if (leader.leaseUntil <= now) return undefined;
+	if (!pidIsAlive(leader.pid)) return undefined;
+	return `다른 Pi process(pid ${leader.pid})가 autosave leader입니다.`;
+}
+
+function shouldRunAutosaveCleanup(state: AutosaveState, now: number): boolean {
+	if (!state.lastCleanupAt || now - state.lastCleanupAt >= AUTOSAVE_CLEANUP_INTERVAL_MS) return true;
+	return listAutosaveArchives().length > AUTOSAVE_ARCHIVE_LIMIT;
+}
+
 async function autosave(pi: ExtensionAPI, ctx: ExtensionContext) {
 	if (process.platform !== "darwin" || process.env.TERM_PROGRAM !== "ghostty") return;
-	const state = readJson<{ lastSavedAt?: number }>(AUTOSAVE_STATE_PATH, {});
-	if (state.lastSavedAt && Date.now() - state.lastSavedAt < AUTOSAVE_MIN_GAP_MS) return;
-	writeJson(AUTOSAVE_STATE_PATH, { lastSavedAt: Date.now(), pid: process.pid });
+	const releaseLock = acquireAutosaveLock();
+	if (!releaseLock) return;
 	try {
+		const now = Date.now();
+		const state = readJson<AutosaveState>(AUTOSAVE_STATE_PATH, {});
+		const lastAttemptAt = state.lastAttemptAt ?? state.lastSavedAt;
+		if (lastAttemptAt && now - lastAttemptAt < AUTOSAVE_MIN_GAP_MS) return;
+
+		const leaderSkipReason = autosaveLeaderSkipReason(state, now);
+		if (leaderSkipReason) {
+			writeJson(AUTOSAVE_STATE_PATH, {
+				...state,
+				lastAttemptAt: now,
+				lastSkippedAt: now,
+				pid: process.pid,
+				ok: true,
+				saved: false,
+				skippedReason: leaderSkipReason,
+			});
+			return;
+		}
+
+		const leader = autosaveLeaderFor(ctx, state.leader, now);
 		writeActiveRecord(ctx);
 		const window = await captureGhosttyWindow(pi);
 		const snapshot = buildSnapshot(window, "auto", "autosave", false);
-		const saved = saveAutosaveSnapshot(snapshot);
+		const stats = workspaceSnapshotStats(snapshot);
+		const nextHash = workspaceSnapshotHash(snapshot);
+		const cleanupDue = shouldRunAutosaveCleanup(state, now);
+		let deletedArchives = 0;
+
+		if (state.lastSnapshotHash === nextHash) {
+			if (cleanupDue) deletedArchives = pruneAutosaveArchives(now);
+			writeJson(AUTOSAVE_STATE_PATH, {
+				...state,
+				lastAttemptAt: now,
+				lastSkippedAt: now,
+				lastCleanupAt: cleanupDue ? now : state.lastCleanupAt,
+				pid: process.pid,
+				leader,
+				ok: true,
+				saved: false,
+				skippedReason: "workspace snapshot 내용 변경 없음",
+				stats,
+				deletedArchives,
+			});
+			return;
+		}
+
+		const saved = saveAutosaveSnapshot(snapshot, state, nextHash, now);
+		if (cleanupDue) deletedArchives = pruneAutosaveArchives(now);
 		writeJson(AUTOSAVE_STATE_PATH, {
-			lastSavedAt: Date.now(),
+			...state,
+			lastAttemptAt: now,
+			lastSavedAt: saved.saved ? Date.now() : state.lastSavedAt,
+			lastSnapshotHash: saved.saved ? nextHash : state.lastSnapshotHash,
+			lastArchiveAt: saved.archivedPath ? now : state.lastArchiveAt,
+			lastCleanupAt: cleanupDue ? now : state.lastCleanupAt,
 			pid: process.pid,
+			leader,
 			ok: true,
 			saved: saved.saved,
 			archivedPath: saved.archivedPath,
 			skippedReason: saved.reason,
-			stats: workspaceSnapshotStats(snapshot),
+			stats,
+			deletedArchives,
 		});
 	} catch (error) {
+		const now = Date.now();
+		const state = readJson<AutosaveState>(AUTOSAVE_STATE_PATH, {});
 		writeJson(AUTOSAVE_STATE_PATH, {
-			lastSavedAt: Date.now(),
+			...state,
+			lastAttemptAt: now,
 			pid: process.pid,
 			ok: false,
 			error: error instanceof Error ? error.message : String(error),
 		});
+	} finally {
+		releaseLock();
 	}
 }
 
@@ -949,7 +1195,7 @@ function scheduleAutosave(pi: ExtensionAPI, ctx: ExtensionContext) {
 	if (autosaveScheduled) return;
 	if (process.platform !== "darwin" || process.env.TERM_PROGRAM !== "ghostty") return;
 	autosaveScheduled = true;
-	const initialDelay = 5_000 + Math.floor(Math.random() * 5_000);
+	const initialDelay = AUTOSAVE_INITIAL_DELAY_MIN_MS + Math.floor(Math.random() * AUTOSAVE_INITIAL_DELAY_JITTER_MS);
 	setTimeout(() => { if (latestContext) void autosave(pi, latestContext); }, initialDelay).unref?.();
 	setInterval(() => { if (latestContext) void autosave(pi, latestContext); }, AUTOSAVE_INTERVAL_MS).unref?.();
 }
@@ -960,14 +1206,18 @@ Usage:
   /workspace [number|name-or-id]
   /workspace status
   /workspace save [name]
-  /workspace restore [number|name-or-id] [--dry-run] [--append]
-  /workspace list
+  /workspace save "작업 이름"
+  /workspace restore [number|name-or-id] [--dry-run] [--append] [--all]
+  /workspace list [--all]
 
 Notes:
 - 기본 restore mode는 append입니다. 현재 창을 닫거나 대체하지 않습니다.
+- /workspace save 뒤에 이름을 붙이면 수동 snapshot 이름으로 저장됩니다. 공백이 있으면 따옴표로 감싸세요.
 - /workspace list의 번호를 그대로 /workspace <번호> 또는 /workspace restore <번호>에 사용할 수 있습니다.
 - 복원 가능한 session이 연결된 snapshot을 번호 목록에서 우선 표시하고, 그 안에서는 session/panel이 많은 복원성 높은 snapshot을 먼저 표시합니다.
-- autosave는 session 시작 5~10초 뒤 첫 저장 후 약 1시간마다 갱신됩니다.
+- 기본 목록은 오래된 autosave archive를 접고, 전체 archive는 /workspace list --all에서 봅니다. 전체 목록의 번호로 복원할 때는 /workspace restore --all <번호>를 사용하세요.
+- autosave는 session 시작 30~60초 뒤 leader process가 첫 확인을 하고 이후 약 1시간마다 갱신합니다.
+- autosave는 snapshot 내용 hash가 바뀌지 않으면 파일을 새로 저장하지 않고, alias archive도 의미 있는 변화나 최소 보관 간격이 있을 때만 남깁니다.
 - autosave alias를 갱신하기 전 기존 autosave를 버전 보관본으로 보존하고, 복원성이 크게 낮은 snapshot으로는 덮어쓰지 않습니다.
 - Ghostty AppleScript가 split tree/비율을 제공하지 않아 split panel은 순차 right split으로 근사 복원합니다.
 - Pi session 매핑은 active session registry를 우선하고, restore 시점에도 최근 session fallback을 보조로 재확인합니다.`;
@@ -991,7 +1241,7 @@ function workspaceArgumentCompletions(argumentPrefix: string): AutocompleteItem[
 		const hasTarget = tokens.slice(1).some((token) => !token.startsWith("-"));
 		if (hasTarget) return null;
 		if (!hasTrailingSpace) return null;
-		return listSnapshots().map((summary, index) => ({
+		return visibleSnapshotSummaries(listSnapshots()).map((summary, index) => ({
 			value: `restore ${index + 1}`,
 			label: `restore ${index + 1}`,
 			description: `${summary.name} · ${displayDate(summary.updatedAt)} · session ${summary.matched}/${summary.terminals}`,
@@ -1031,7 +1281,10 @@ export default function (pi: ExtensionAPI) {
 				if (args.sub === "save") return await handleSave(pi, ctx, args);
 				if (args.sub === "restore") return await handleRestore(pi, ctx, args);
 				if (args.sub === "list") {
-					const body = renderList(listSnapshots());
+					const allSummaries = listSnapshots();
+					const summaries = args.all ? allSummaries : visibleSnapshotSummaries(allSummaries);
+					const hiddenArchives = args.all ? 0 : allSummaries.length - summaries.length;
+					const body = renderList(summaries, hiddenArchives);
 					ctx.ui.notify("workspace snapshot 목록을 표시했습니다.", "info");
 					sendReport(pi, "Workspace list", body);
 					return;
