@@ -87,8 +87,9 @@
     <h2>🧪 검증 항목</h2>
     <table>
       <tr><th>#</th><th>항목</th><th>분류</th><th>형태</th><th>결과</th></tr>
-      <tr><td>A1</td><td>...</td><td>UI_CAPTURE</td><td>PNG</td><td class="pass">PASS</td></tr>
-      <tr><td>A2</td><td>...</td><td>BE</td><td>—</td><td class="skip">SKIP (CODE_DIFF)</td></tr>
+      <tr><td>A1</td><td>클릭 후 리스트 이동</td><td>UI_CAPTURE</td><td>GIF primary + PNG supporting</td><td class="pass">PASS</td></tr>
+      <tr><td>A2</td><td>정적 UI 노출</td><td>UI_CAPTURE</td><td>PNG crop</td><td class="pass">PASS</td></tr>
+      <tr><td>A3</td><td>BE-only 검증</td><td>BE</td><td>—</td><td class="skip">SKIP (CODE_DIFF)</td></tr>
     </table>
   </section>
 
@@ -99,14 +100,25 @@
         <div class="step-num">A1</div>
         <div><div class="step-title">...</div><div class="step-meta">UI_CAPTURE · PASS</div></div>
       </div>
-      <p class="detail">설명...</p>
-      <div class="evidence"><img src="A1-...png" alt="A1"></div>
+      <p class="detail">클릭 후 화면 이동이 끊김 없이 이어지는지 GIF로 확인하고, 최종 상태는 대표 PNG로 보조 확인합니다.</p>
+      <div class="evidence">
+        <figure><img src="A1-click-flow.gif" alt="A1 flow"><figcaption>primary GIF — 클릭 후 이동 흐름</figcaption></figure>
+        <figure><img src="A1-final.png" alt="A1 final"><figcaption>supporting PNG — 최종 상태</figcaption></figure>
+      </div>
     </div>
   </section>
 </div>
 </body>
 </html>
 ```
+
+### Motion evidence 기준
+
+리포트가 “잘 이동된다/스무스하게 열린다/클릭 후 이어진다”를 주장하면 primary evidence는 GIF 또는 짧은 영상이어야 한다. 대표 PNG/crop은 최종 상태를 선명하게 보여주는 supporting evidence다. 정적 PNG만 있는 flow item은 PASS가 아니라 Report Lint 경고 또는 Coverage Gap 후보다.
+
+### Setup noise 제외 기준
+
+로그인, 빌드, Metro/dev-server, pod/env/codegen, dependency bootstrap 같은 준비 과정은 핵심 검증 항목이 아니다. setup 자체가 검증 대상이거나 blocked 사유일 때만 report에 남기고, 에이전트가 검증 전 헤맨 과정은 내부 작업 로그로만 둔다.
 
 ### Renderer design 기준
 
@@ -226,7 +238,7 @@ Step 5에서 `verify_report_live action=start`를 호출하면 Glimpse live prev
 
 ```json
 {"action":"start","title":"Verify Report — {ticket}","items":[{"id":"V1","title":"...","type":"UI_CAPTURE","status":"pending"}]}
-{"action":"update","runId":"{runId}","item":{"id":"V1","title":"...","type":"UI_CAPTURE","status":"pass","evidence":[{"kind":"image","path":".context/work/{workspace}/captures/v1.png"}]}}
+{"action":"update","runId":"{runId}","item":{"id":"V1","title":"클릭 후 이동","type":"UI_CAPTURE","status":"pass","evidence":[{"kind":"gif","path":".context/work/{workspace}/captures/v1-click-flow.gif","role":"primary","purpose":"클릭 후 화면 이동 흐름 확인","inspectFor":["끊김 없음","최종 화면 도달"],"expected":"클릭 후 목적 화면으로 자연스럽게 이동","observed":"GIF에서 목적 화면 도달"},{"kind":"image","path":".context/work/{workspace}/captures/v1-final.png","role":"supporting","purpose":"최종 상태 선명도 확인","inspectFor":"목적 화면 상태","expected":"목적 화면 렌더","observed":"최종 화면 렌더"}]}}
 {"action":"finish","runId":"{runId}","finalSummary":"..."}
 ```
 

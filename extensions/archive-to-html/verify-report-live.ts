@@ -74,6 +74,14 @@ type ReportStatus = "draft" | "running" | "done" | "aborted";
 type ItemStatus = "pending" | "running" | "pass" | "fail" | "skip" | "blocked" | "unverified";
 
 type EvidenceKind = "image" | "gif" | "json" | "text" | "network" | "console" | "diff" | "link";
+type ReportLintSeverity = "gap" | "warning";
+
+interface ReportLintWarning {
+	severity: ReportLintSeverity;
+	itemId?: string;
+	title: string;
+	detail: string;
+}
 
 interface Evidence {
 	label?: string;
@@ -112,6 +120,7 @@ interface VerifyReportState {
 	status: ReportStatus;
 	summary?: string;
 	finalSummary?: string;
+	lintWarnings?: ReportLintWarning[];
 	createdAt: number;
 	updatedAt: number;
 	items: ReportItem[];
@@ -317,6 +326,7 @@ function publicState(state: VerifyReportState) {
 		updatedAt: state.updatedAt,
 		reportPath: state.reportPath,
 		archivePath: state.archivePath,
+		lintWarnings: state.lintWarnings ?? [],
 		items: state.items,
 		logs: state.logs,
 	};
@@ -566,6 +576,107 @@ function imageDimensionLabel(dimensions: ImageDimensions | null): string {
 	return dimensions ? ` · ${dimensions.width}×${dimensions.height}` : "";
 }
 
+const MOTION_CLAIM_TERMS = [
+	"이동", "전환", "흐름", "플로우", "클릭", "열림", "닫힘", "열고", "닫고", "스무스", "부드럽", "끊김", "이어", "도달", "launch", "transition", "flow", "click", "open", "close", "smooth", "continuity", "navigation",
+];
+
+const SETUP_NOISE_TERMS = [
+	"로그인", "login", "빌드", "build", "metro", "pod", "pods", "env", "환경변수", "codegen", "부트스트랩", "bootstrap", "dependency", "dependencies", "install", "설치", "dev server", "개발 서버", "서버 시작", "server start",
+];
+
+function searchableItemText(item: ReportItem): string {
+	return [
+		item.id,
+		item.title,
+		item.type,
+		item.detail,
+		...item.evidence.flatMap((evidence) => [evidence.label, evidence.purpose, evidence.expected, evidence.observed, Array.isArray(evidence.inspectFor) ? evidence.inspectFor.join(" ") : evidence.inspectFor]),
+	].filter(Boolean).join(" ").toLowerCase();
+}
+
+function includesTerm(text: string, terms: string[]): boolean {
+	return terms.some((term) => text.includes(term.toLowerCase()));
+}
+
+function isMotionUiClaim(item: ReportItem): boolean {
+	if ((item.type ?? "").toUpperCase() !== "UI_CAPTURE") return false;
+	return includesTerm(searchableItemText(item), MOTION_CLAIM_TERMS);
+}
+
+function evidenceRole(evidence: Evidence): string {
+	return (evidence.role ?? "").toLowerCase();
+}
+
+function hasPrimaryEvidenceKind(item: ReportItem, kind: EvidenceKind): boolean {
+	return item.evidence.some((evidence) => evidenceRole(evidence) === "primary" && evidenceKind(evidence) === kind);
+}
+
+function hasSupportingImage(item: ReportItem): boolean {
+	return item.evidence.some((evidence) => evidenceKind(evidence) === "image" && evidenceRole(evidence) !== "primary");
+}
+
+function evidenceIntentMissing(evidence: Evidence): boolean {
+	return !evidence.purpose || !evidence.expected || !evidence.observed || !evidence.inspectFor || !evidence.role;
+}
+
+function pushLintWarning(warnings: ReportLintWarning[], warning: ReportLintWarning): void {
+	const key = `${warning.severity}:${warning.itemId ?? ""}:${warning.title}:${warning.detail}`;
+	if (warnings.some((existing) => `${existing.severity}:${existing.itemId ?? ""}:${existing.title}:${existing.detail}` === key)) return;
+	warnings.push(warning);
+}
+
+export function lintVerifyReport(state: VerifyReportState): ReportLintWarning[] {
+	const warnings: ReportLintWarning[] = [];
+	for (const item of state.items) {
+		if (item.status !== "pass") continue;
+		const text = searchableItemText(item);
+		if (isMotionUiClaim(item) && !hasPrimaryEvidenceKind(item, "gif")) {
+			pushLintWarning(warnings, {
+				severity: "gap",
+				itemId: item.id,
+				title: "Motion claim에 GIF primary evidence가 없습니다",
+				detail: "이동/전환/클릭/스무스함/도달 같은 흐름 claim은 정적 PNG만으로 PASS 처리하지 말고 GIF/짧은 영상 primary evidence로 닫아야 합니다.",
+			});
+		}
+		if (isMotionUiClaim(item) && hasPrimaryEvidenceKind(item, "gif") && !hasSupportingImage(item)) {
+			pushLintWarning(warnings, {
+				severity: "warning",
+				itemId: item.id,
+				title: "GIF primary에는 대표 PNG/crop 보조 증거를 함께 두세요",
+				detail: "GIF는 흐름을 닫고, 대표 PNG/crop은 최종 상태를 선명하게 확인하게 합니다. 가능하면 같은 item 안에 supporting image를 추가하세요.",
+			});
+		}
+		if (includesTerm(text, SETUP_NOISE_TERMS)) {
+			pushLintWarning(warnings, {
+				severity: "warning",
+				itemId: item.id,
+				title: "setup/bootstrap noise가 PASS 항목에 섞였을 수 있습니다",
+				detail: "로그인/빌드/Metro/pod/env/codegen/부트스트랩은 검증 대상 자체이거나 blocked 사유일 때만 report item으로 남기고, 에이전트가 검증 전 헤맨 준비 과정은 내부 로그로만 두세요.",
+			});
+		}
+		for (const evidence of item.evidence) {
+			const kind = evidenceKind(evidence);
+			if (evidenceRole(evidence) === "primary" && kind === "image" && evidence.path && isTallEvidence(readImageDimensions(evidence.path))) {
+				pushLintWarning(warnings, {
+					severity: "warning",
+					itemId: item.id,
+					title: "긴 이미지는 primary evidence로 적합하지 않습니다",
+					detail: "세로로 긴/full-page 이미지는 supporting/toggle로 두고, 검증 지점이 보이는 crop 또는 flow GIF를 primary로 사용하세요.",
+				});
+			}
+			if (evidenceIntentMissing(evidence)) {
+				pushLintWarning(warnings, {
+					severity: "warning",
+					itemId: item.id,
+					title: "evidence intent metadata가 부족합니다",
+					detail: "각 evidence에는 purpose, inspectFor, expected, observed, role, relatedItem을 가능한 한 채워 raw artifact가 나중에도 읽히게 해야 합니다.",
+				});
+			}
+		}
+	}
+	return warnings;
+}
+
 function renderImageFigure(evidence: Evidence, state: VerifyReportState, label: string, dimensions: ImageDimensions | null): string {
 	const src = relativeEvidencePath(evidence, state) ?? evidence.path ?? "";
 	return `<figure><img src="${escapeHtml(src)}" alt="${escapeHtml(label)}"><figcaption>${escapeHtml(label)} · ${escapeHtml(basename(evidence.path ?? src))}${escapeHtml(imageDimensionLabel(dimensions))}</figcaption></figure>`;
@@ -676,6 +787,9 @@ function generateLivePage(initialState: unknown): string {
 	.detail-readable p:last-child { margin-bottom:0; }
 	.detail-list { margin:0; padding-left:1.15em; display:grid; gap:8px; }
 	.detail-list li { padding-left:2px; }
+	.gap-list { display:grid; gap:10px; margin-top:12px; }
+	.gap-item { background:#fffbeb; border:1px solid #fbbf24; border-radius:12px; padding:12px 14px; color:#78350f; }
+	.gap-item strong { display:block; color:#92400e; margin-bottom:5px; }
 	.evidence { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap:12px; margin-top:12px; align-items:start; }
 	.evidence-card { border:1px solid var(--line); border-radius:14px; background:var(--panel2); padding:12px; min-width:0; }
 	.evidence-card.evidence-raw-card, .evidence-card.evidence-primary-image-card { grid-column:1 / -1; }
@@ -829,6 +943,11 @@ function detailHtml(v) {
   }
   return '<p class="detail">' + inlineHtml(trimmed) + '</p>';
 }
+function lintWarningsHtml() {
+  var warnings = state.lintWarnings || [];
+  if (!warnings.length) return '';
+  return '<section class="summary"><h2>🧭 Report Lint</h2><p class="detail">flow evidence와 setup noise를 확정 전에 다시 보는 자동 점검입니다.</p><div class="gap-list">' + warnings.map(function(w){ return '<div class="gap-item"><strong>' + esc(String(w.severity || 'warning').toUpperCase()) + (w.itemId ? ' · ' + esc(w.itemId) : '') + ' · ' + esc(w.title || '') + '</strong>' + detailHtml(w.detail || '') + '</div>'; }).join('') + '</div></section>';
+}
 function render() {
   var items = state.items || [];
   var html = '<div class="header"><div class="header-row"><div><h1>' + esc(state.title || 'Verify Report Live') + '</h1><div class="meta">' +
@@ -839,7 +958,7 @@ function render() {
     '</div></div><div class="meta"><span class="badge">updated ' + new Date(state.updatedAt || Date.now()).toLocaleTimeString() + '</span></div></div></div>';
   html += '<main><section class="summary"><h2>요약</h2>' + detailHtml(state.summary) + detailHtml(state.finalSummary) +
     '<div class="grid"><div class="stat"><strong>' + items.length + '</strong>전체</div><div class="stat"><strong>' + count('pass') + '</strong>PASS</div><div class="stat"><strong>' + count('fail') + '</strong>FAIL</div><div class="stat"><strong>' + (count('skip') + count('blocked') + count('unverified')) + '</strong>SKIP/미검증</div></div>' +
-    (state.reportPath ? '<p><strong>report.html</strong>: <code>' + esc(state.reportPath) + '</code></p>' : '') + '</section>';
+    (state.reportPath ? '<p><strong>report.html</strong>: <code>' + esc(state.reportPath) + '</code></p>' : '') + '</section>' + lintWarningsHtml();
   for (var i=0; i<items.length; i++) { var item = items[i];
     html += '<section class="item"><div class="item-head"><div><h3>' + esc(item.id) + '. ' + esc(item.title) + '</h3>' + (item.type ? '<div class="type">' + esc(item.type) + '</div>' : '') + '</div><span class="status ' + esc(item.status || 'pending') + '">' + statusLabel(item.status || 'pending') + '</span></div>' +
       detailHtml(item.detail) +
@@ -859,6 +978,17 @@ events.onerror = function() { var el = document.querySelector('.header .meta'); 
 </script>
 </body>
 </html>`;
+}
+
+function renderLintWarningsSectionStatic(warnings: ReportLintWarning[] | undefined): string {
+	if (!warnings?.length) return "";
+	return `<section>
+	<h2>🧭 Report Lint</h2>
+	<p>아래 항목은 리포트를 확정하기 전에 다시 봐야 하는 자동 점검 결과입니다. PASS 판정 자체를 자동으로 뒤집지는 않지만, flow evidence와 setup noise를 점검해야 합니다.</p>
+	<div class="gap-list">
+	${warnings.map((warning) => `<div class="gap-item lint-${escapeHtml(warning.severity)}"><strong>${escapeHtml(warning.severity.toUpperCase())}${warning.itemId ? ` · ${escapeHtml(warning.itemId)}` : ""} · ${escapeHtml(warning.title)}</strong>${renderDetailHtml(warning.detail)}</div>`).join("\n")}
+	</div>
+</section>`;
 }
 
 function generateStaticReportHtml(state: VerifyReportState): string {
@@ -1006,6 +1136,8 @@ function generateStaticReportHtml(state: VerifyReportState): string {
 	</div>
 </section>
 
+${renderLintWarningsSectionStatic(state.lintWarnings)}
+
 ${coverageGaps.length ? `<section>
 	<h2>⚠️ Coverage Gaps</h2>
 	<p>아래 항목은 리포트에 포함됐지만 PASS로 닫히지 않았습니다. 추가 캡처/로그/환경 검증이 필요합니다.</p>
@@ -1096,7 +1228,9 @@ export function registerVerifyReportLive(pi: ExtensionAPI) {
 			"Use verify_report_live for /verify-report workflows: start after defining verification coverage, update after each item with status/evidence, then finish to export report.html.",
 			"Evidence must close the stated criterion. If a required axis is not checked, keep that item unverified/blocked instead of marking pass.",
 			"Evidence should explain its intent: include purpose, inspectFor, expected, observed, role, and relatedItem when available so raw captures are readable later.",
-			"For UI evidence, prefer focused viewport or section crops as primary evidence. Tall/full-page images are auto-collapsed in the report and should be supporting context only.",
+			"For UI movement/transition/click/open-close/smoothness claims, use GIF or short video as primary evidence and pair it with one representative PNG/crop as supporting evidence.",
+			"For static UI evidence, prefer focused viewport or section crops as primary evidence. Tall/full-page images are auto-collapsed in the report and should be supporting context only.",
+			"Keep login/build/dev-server/env/bootstrap setup noise out of PASS items unless setup itself is the verification target or a blocking coverage gap.",
 			"When existing UI/behavior is the baseline, include Before and After image evidence in the same item when practical, with labels that state environment/viewport/role.",
 			"Do not use verify_report_live to upload reports or modify PRs; upload remains opt-in via the verify-report skill.",
 		],
@@ -1181,14 +1315,17 @@ export function registerVerifyReportLive(pi: ExtensionAPI) {
 			if (action === "finish") {
 				if (params.summary) state.summary = params.summary;
 				if (params.finalSummary) state.finalSummary = params.finalSummary;
+				state.lintWarnings = lintVerifyReport(state);
 				state.status = "done";
+				addLog(state, state.lintWarnings.length ? `Report lint completed with ${state.lintWarnings.length} warning(s).` : "Report lint completed with no warnings.");
 				addLog(state, "Static report.html exported.");
 				mkdirSync(dirname(state.reportPath), { recursive: true });
 				try { writeEvidenceIntentSidecar(state); } catch {}
 				writeFileSync(state.reportPath, generateStaticReportHtml(state), "utf-8");
 				try { state.archivePath = archiveReport(state); } catch {}
 				pushState(handle);
-				return { content: [{ type: "text", text: `Finished live Verify Report (${state.runId}). Exported: ${state.reportPath}${state.archivePath ? `; archived: ${state.archivePath}` : ""}.` }], details: { runId: state.runId, reportPath: state.reportPath, archivePath: state.archivePath, url: state.url } };
+				const warningSuffix = state.lintWarnings.length ? ` Report lint warnings: ${state.lintWarnings.length}.` : "";
+				return { content: [{ type: "text", text: `Finished live Verify Report (${state.runId}). Exported: ${state.reportPath}${state.archivePath ? `; archived: ${state.archivePath}` : ""}.${warningSuffix}` }], details: { runId: state.runId, reportPath: state.reportPath, archivePath: state.archivePath, url: state.url, lintWarnings: state.lintWarnings } };
 			}
 
 			if (action === "abort") {

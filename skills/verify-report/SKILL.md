@@ -12,9 +12,11 @@ argument-hint: "[base-url] [--upload] [--update] [--ask-before] [--no-workers]"
 
 - **Coverage 먼저, 캡처는 그 다음**: 리포트 시작 전에 변경 diff/요구사항으로 검증 축을 정의한다. 캡처가 있어도 해당 축을 닫지 못하면 PASS가 아니다.
 - **캡처/증거 우선**: UI는 화면 캡처를 우선 증거로 삼고, 비가시 동작은 성공 기준을 어떤 로그/결과로 확인할지 먼저 정한다.
+- **Motion-first evidence**: 이동/전환/클릭/열림/닫힘/스무스함/끊김 없음처럼 시간 흐름이 claim이면 정적 PNG만으로 PASS 처리하지 않는다. GIF/짧은 영상이 primary evidence이고, 대표 final-state PNG/crop은 supporting evidence로 함께 둔다.
+- **Setup noise 격리**: 로그인, 빌드, Metro/dev-server, pod/env/codegen, dependency bootstrap처럼 검증 전 준비 과정은 리포트의 PASS item에 넣지 않는다. setup 자체가 검증 대상이거나, 검증을 막은 blocked/coverage gap일 때만 짧게 남긴다.
 - **미검증 명시**: 자동화로 확인하지 못한 항목은 PASS로 쓰지 않고 `미검증`/`blocked`/`Coverage Gap`에 남긴다.
 - **렌더링 claim은 실제 렌더로 닫는다**: 구조도, TUI, WebView, Markdown/HTML preview, SVG/이미지 생성처럼 “보인다”가 성공 기준인 작업은 source text, Mermaid codeblock, raw inline SVG, HTML 파일 생성만으로 PASS가 아니다. 실제 artifact를 열어 렌더링된 결과를 확인하고, 가능하면 캡처를 evidence로 남긴다.
-- **짧고 초점 있는 primary evidence**: 리포트 본문 핵심 증거는 viewport/섹션/element crop을 우선한다. 세로로 긴 full-page 캡처는 필요할 때만 보조 증거로 남기고 토글/appendix/link 뒤에 둔다. `role: "primary"`인 이미지/GIF는 renderer가 full-width로 보여주므로, 한 항목의 핵심 before/after 합성 이미지나 단일 핵심 crop에는 반드시 primary role을 붙인다.
+- **짧고 초점 있는 primary evidence**: 리포트 본문 핵심 증거는 검증 claim을 직접 닫는 artifact여야 한다. 정적 UI는 viewport/섹션/element crop, flow UI는 GIF/짧은 영상이 primary다. 세로로 긴 full-page 캡처는 필요할 때만 보조 증거로 남기고 토글/appendix/link 뒤에 둔다. `role: "primary"`인 이미지/GIF는 renderer가 full-width로 보여주므로, 한 항목의 핵심 before/after 합성 이미지나 단일 핵심 crop에는 반드시 primary role을 붙인다.
 - **텍스트 합성 캡처는 glyph 확인**: 메시지 본문·알림톡·TUI처럼 실제 텍스트를 이미지로 렌더링할 때는 대상 언어 glyph가 있는 폰트(예: 한글은 Apple SD Gothic Neo/AppleGothic/Noto Sans CJK)를 사용한다. `□`/tofu box가 보이면 인코딩 문제가 아니라 폰트 fallback 실패일 가능성이 높으므로 리포트 확정 전에 재렌더링한다.
 - **Raw evidence에도 의도를 붙인다**: 모든 evidence에는 가능한 한 `purpose`, `inspectFor`, `expected`, `observed`, `role`, `relatedItem`을 붙여 “왜 수집했는지 / 무엇을 봐야 하는지”가 report와 `/archive`의 캡처/미디어 탭에서도 보이게 한다. Raw 파일의 의도는 별도 섹션으로 분리하지 말고 해당 raw 토글 내부 상단에 함께 보여 시선이 흩어지지 않게 한다.
 - **Item detail은 읽히는 설명이어야 한다**: `detail`에는 긴 한 문단을 넣지 말고 조건/관찰/제약을 문장 단위나 줄바꿈 bullet로 나눈다. renderer는 긴 detail을 자동 bullet card로 정리하고 backtick inline code와 URL link를 강조하지만, agent도 “왜 직접 캡처하지 못했는지 / 무엇으로 대체 검증했는지 / 남은 gap은 무엇인지”가 눈에 들어오게 작성한다.
@@ -42,7 +44,7 @@ Preflight는 PASS 증거가 아니며, 최종 판정은 여전히 이 스킬의 
 |------|------|--------|
 | **confirm** (default) | 로컬 캡처/검증 증거 수집 + HTML 프리뷰만. 업로드 X | 기본 |
 | **upload** | confirm + project artifact storage 업로드 + PR 본문 갱신 | `--upload` 인자 또는 사용자가 명시 요청 |
-| **update** | 기존 리포트에 신규 검증 항목 append | `--update` 인자 또는 “추가” 키워드 감지 |
+| **update** | 기존 리포트에 신규 검증 항목 append/update/replace | `--update` 인자 또는 “추가/교체/기존 리포트에 반영” 키워드 감지 |
 | **ask-before** | 항목별 검증 실행 전 사전 확인 | `--ask-before` 인자 또는 사용자가 요구 |
 
 Escape hatch:
@@ -150,8 +152,8 @@ Before/After가 필요한 항목은 before 기준도 함께 정한다.
 
 | 캡처/증거 유형 | 형태 |
 |----------|------|
-| UI 단일 상태 | PNG 1장 |
-| UI 다단계 플로우 | GIF |
+| UI 단일 상태 | focused PNG/crop 1장 |
+| UI 다단계 플로우 / 스무스함 / 이동 | GIF 또는 짧은 영상 primary + 대표 final-state PNG/crop supporting |
 | NETWORK | JSON/표 + 필요 시 화면 PNG |
 | CONSOLE | 로그 excerpt + 필요 시 화면 PNG |
 | CODE_DIFF | 파일/라인/diff 요약 |
@@ -266,6 +268,7 @@ URL: https://example.local/path
 
 PASS 처리 조건:
 - 성공 기준의 모든 필수 coverage axis가 증거로 닫혔을 때만 `pass`.
+- flow/motion claim은 GIF/짧은 영상 primary evidence가 있어야 `pass`로 닫는다. 대표 final-state PNG/crop은 supporting으로 함께 둔다.
 - before/after가 필요한 항목은 after만 캡처하고 PASS로 닫지 않는다. before 생략이 정당하면 detail에 사유를 명시한다.
 - 캡처가 있어도 축이 빠졌으면 `unverified` 또는 별도 Coverage Gap 항목으로 남긴다.
 - 자동화/권한/외부 환경 때문에 못 본 항목은 `blocked`로 남기고 차단 사유를 적는다.
@@ -311,7 +314,7 @@ Subagent launch가 필요한 경우, 현재 Pi subagent 규칙에 따라 먼저 
 
 모든 case worker 결과를 main이 adjudication한 뒤 `verify_report_live action=update`로 각 항목의 최종 상태와 evidence를 반영하고, 마지막에 `verify_report_live action=finish`로 `.context/work/{workspace}/captures/report.html`을 export한다. live Glimpse 창은 최종 상태로 갱신되고, 이후에는 `/archive`로 다시 열 수 있다.
 
-finish 전에 결과를 세 그룹으로 분리한다.
+finish 전에 결과를 세 그룹으로 분리한다. `verify_report_live finish`는 report lint도 실행해 motion claim의 GIF 누락, GIF+PNG pairing 누락, setup noise PASS item, primary tall image, evidence metadata 누락을 Report Lint 섹션과 tool details에 경고로 남긴다. 경고는 PASS를 자동으로 뒤집지는 않지만, motion claim의 GIF 누락은 Coverage Gap 후보로 보고 보완하거나 unverified 처리한다.
 
 ```markdown
 Verified
@@ -383,6 +386,7 @@ Blocked / Known unrelated failures
 | 케이스 | 해결 |
 |--------|------|
 | 화면 변화가 있는 검증 | PNG/GIF 캡처를 우선 증거로 남긴다. |
+| 이동/전환/클릭/열림/닫힘/스무스함 검증 | GIF/짧은 영상을 primary로 두고, 대표 PNG/crop을 supporting으로 함께 둔다. 최종 PNG만으로 PASS 처리하지 않는다. |
 | responsive/layout 변경 | mobile + breakpoint boundary + desktop 축을 모두 계획하고, 누락 시 Coverage Gap으로 남긴다. |
 | 기존 대비 변경이 중요한 UI | before + after를 같은 viewport/role/action으로 캡처하고 차이를 설명한다. |
 | 긴 full-page 캡처 | primary evidence로 쓰지 않는다. crop/section 이미지를 본문에 두고 full-page는 토글/appendix/link로 둔다. |
@@ -390,6 +394,8 @@ Blocked / Known unrelated failures
 | GA/픽셀 미발화 검증 | `targetEvents`, 필터 조건, matched count, matched requests를 JSON으로 저장한다. |
 | 사용자가 “BE는 빼” | BE/CODE_DIFF 항목을 SKIP 표시하고 사유를 남긴다. |
 | 사용자가 “추가로 X도 확인” | update 모드로 기존 리포트에 항목 append. |
+| 사용자가 “그 리포트에 교체/업데이트” | 새 리포트를 만들지 말고 기존 `captures/report.html`의 같은 item을 update/replace한다. archive copy는 자동으로 생겨도 workspace report는 같은 검증 artifact로 유지한다. |
+| 로그인/빌드/env/부트스트랩 삽질이 있었음 | 핵심 검증 target이 아니면 report item에서 제외한다. 필요한 경우 내부 setup note나 blocked 사유에만 짧게 남긴다. |
 | subagent가 `UNVERIFIED` 반환 | main이 추가 evidence 수집/brief 수정 후 재위임/사용자 질문/Coverage Gap 중 하나로 처리한다. subagent가 계획 밖 새 캡처·질문을 하지 않는다. |
 | 사용자가 “업로드는 나중에” | confirm 모드로 종료하고 `/verify-report --upload` 안내. |
 | Glimpse 창이 안 뜸/닫힘 | 업로드하지 않고 `/archive --browser report.html` 또는 `open report.html` fallback 안내. |

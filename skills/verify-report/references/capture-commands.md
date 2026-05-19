@@ -49,6 +49,8 @@ file .context/work/{workspace}/captures/{source}.png
 
 ## GIF 캡처 (다단계 플로우) — 고화질 설정
 
+Flow/motion claim(이동, 전환, 클릭 후 화면 이동, 열림/닫힘, 스무스함)은 GIF/짧은 영상을 primary evidence로 둔다. 같은 item 안에 대표 final-state PNG/crop을 supporting evidence로 함께 남긴다.
+
 ```bash
 # 각 단계마다 프레임 캡처
 agent-browser screenshot .context/work/{workspace}/captures/{항목}-frame-1.png --session {session}
@@ -89,6 +91,58 @@ scale=960:-1
 max_colors=128
 # 또는 framerate 줄이기
 -framerate 1
+```
+
+## iOS Simulator GIF 캡처 — simctl recordVideo + ffmpeg
+
+앱 딥링크, native tab 이동, modal transition처럼 브라우저 frame screenshot으로 흐름을 닫기 어려운 경우 `simctl recordVideo`로 mp4를 만들고 ffmpeg로 GIF를 만든다.
+
+```bash
+CAP=.context/work/{workspace}/captures
+UDID=$(xcrun simctl list devices booted | awk -F'[()]' '/iPhone/ {print $2; exit}')
+APP_ID=com.example.app
+TARGET_URL='myapp://example/path?foo=bar'
+MP4="$CAP/{항목}.mp4"
+GIF="$CAP/{항목}.gif"
+PALETTE="$CAP/{항목}-palette.png"
+
+xcrun simctl io "$UDID" recordVideo --codec=h264 --force "$MP4" &
+REC_PID=$!
+sleep 1
+xcrun simctl openurl "$UDID" "$TARGET_URL"
+sleep 8
+kill -INT "$REC_PID" || true
+wait "$REC_PID" || true
+
+ffmpeg -y -i "$MP4" -vf "fps=10,scale=720:-1:flags=lanczos,palettegen=stats_mode=diff" "$PALETTE"
+ffmpeg -y -i "$MP4" -i "$PALETTE" -lavfi "fps=10,scale=720:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=sierra2_4a" "$GIF"
+
+# 대표 final-state PNG도 supporting evidence로 남긴다.
+xcrun simctl io "$UDID" screenshot "$CAP/{항목}-final.png"
+```
+
+긴 cold-start flow는 720px 폭 GIF가 너무 크면 `scale=480:-1` 또는 `fps=8`로 낮춘다. 리포트에는 GIF를 `role: primary`, final PNG를 `role: supporting`으로 넣는다.
+
+## Android Emulator GIF 캡처 — screenrecord + ffmpeg
+
+```bash
+CAP=.context/work/{workspace}/captures
+MP4="$CAP/{항목}.mp4"
+GIF="$CAP/{항목}.gif"
+PALETTE="$CAP/{항목}-palette.png"
+
+adb shell screenrecord /sdcard/{항목}.mp4 &
+REC_PID=$!
+sleep 1
+adb shell am start -W -a android.intent.action.VIEW -d 'myapp://example/path?foo=bar'
+sleep 8
+kill -INT "$REC_PID" || true
+adb pull /sdcard/{항목}.mp4 "$MP4"
+adb shell rm /sdcard/{항목}.mp4
+
+ffmpeg -y -i "$MP4" -vf "fps=10,scale=720:-1:flags=lanczos,palettegen=stats_mode=diff" "$PALETTE"
+ffmpeg -y -i "$MP4" -i "$PALETTE" -lavfi "fps=10,scale=720:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=sierra2_4a" "$GIF"
+adb exec-out screencap -p > "$CAP/{항목}-final.png"
 ```
 
 ## 단일 프레임 인터랙션 패턴
