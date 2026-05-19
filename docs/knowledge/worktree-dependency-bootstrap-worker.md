@@ -20,7 +20,7 @@ applies_to:
 source:
   - user-direction:2026-05-07-worker-dependency-bootstrap
 reviewed_at: 2026-05-19
-reviewed_commit: 7d0cf97718345bce09882e9bcc9d3b810ca9f586
+reviewed_commit: cd625b862d4a4aa96f458417dbcb2ac912393fc3
 related:
   - worktree-execution-boundary
   - worktree-session-continuity
