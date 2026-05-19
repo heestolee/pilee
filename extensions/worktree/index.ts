@@ -726,12 +726,12 @@ function selectContextMode(
 
 function contextModeLabel(mode: WorktreeContextMode): string {
 	switch (mode) {
-		case "full-transcript": return " — full transcript carried";
-		case "full-transcript-plus-context": return " — full transcript + handoff";
-		case "minimal-handoff": return " — minimal handoff persisted";
-		case "context-pack": return " — context pack persisted";
-		case "fallback-context-pack": return " — context fallback persisted";
-		case "fallback-empty": return " — context missing";
+		case "full-transcript": return " — 전문 계승";
+		case "full-transcript-plus-context": return " — 전문 계승 + 추가 전달 메모";
+		case "minimal-handoff": return " — 최소 전달 메모 저장";
+		case "context-pack": return " — 전달 메모 저장";
+		case "fallback-context-pack": return " — 대체 전달 메모 저장";
+		case "fallback-empty": return " — 전달 정보 없음";
 		case "clean": return "";
 	}
 }
@@ -774,6 +774,34 @@ function prefillSwitchCommand(ctx: ExtensionContext, command: string): boolean {
 	if (!ctx.hasUI) return false;
 	ctx.ui.setEditorText(command);
 	return true;
+}
+
+function buildSwitchCommand(repoRoot: string, wtName: string): string {
+	const registeredName = findRegisteredName(loadRegistry(), repoRoot) ?? basename(repoRoot);
+	return `/wt switch ${registeredName}/${wtName}`;
+}
+
+function findSwitchCommandForWorktreePath(wtName: string, wtPath: string): string | null {
+	for (const [repoName, repoRoot] of Object.entries(loadRegistry())) {
+		try {
+			const config = loadConfig(repoRoot);
+			if (samePath(join(config.rootDir, wtName), wtPath)) return `/wt switch ${repoName}/${wtName}`;
+		} catch {
+			// Ignore broken registry entries while building a fallback hint.
+		}
+	}
+	return null;
+}
+
+function notifySwitchFallback(ctx: ExtensionContext, reason: string | undefined, switchCommand: string | null, wtPath: string): boolean {
+	const reasonText = reason || "unknown";
+	if (switchCommand) {
+		const prefilled = prefillSwitchCommand(ctx, switchCommand);
+		ctx.ui.notify(`즉시 전환 불가: ${reasonText}. 대체 전환 명령 ${switchCommand}${prefilled ? "를 에디터에 준비했습니다" : "를 사용하세요"}.`, "warning");
+		return prefilled;
+	}
+	ctx.ui.notify(`즉시 전환 불가: ${reasonText}. 수동 경로: cd ${wtPath}`, "warning");
+	return false;
 }
 
 function markConductorContextLoaded(worktreePath: string): boolean {
@@ -819,6 +847,20 @@ async function switchSessionToWorktree(ctx: ExtensionCommandContext, sessionFile
 			);
 		},
 	});
+}
+
+async function trySwitchSessionToWorktree(ctx: ExtensionContext, sessionFile: string, wtName: string, wtPath: string, contextLabel = ""): Promise<{ switched: boolean; reason?: string }> {
+	if (typeof (ctx as Partial<ExtensionCommandContext>).switchSession !== "function") {
+		return { switched: false, reason: "현재 tool context에는 session switch API가 없습니다" };
+	}
+
+	try {
+		await switchSessionToWorktree(ctx as ExtensionCommandContext, sessionFile, wtName, wtPath, contextLabel);
+		return { switched: true };
+	} catch (error) {
+		const reason = error instanceof Error ? error.message : String(error);
+		return { switched: false, reason };
+	}
 }
 
 function getProfiledWorktreeRepos(cwd?: string): WorktreeRepoProfile[] {
@@ -870,18 +912,22 @@ function getKnownRepoName(repoRoot: string): string {
 	return findRegisteredName(loadRegistry(), repoRoot) ?? basename(repoRoot);
 }
 
-function getWorktreeCreationPanelGuardMessage(repoRoot: string, ctx?: unknown): string | null {
+function getWorktreeCreationPanelNoticeMessage(repoRoot: string, ctx?: unknown): string | null {
 	if (!isChildForkPanel(ctx)) return null;
 	const profile = getProfiledRepoSync(repoRoot);
 	if (!profile?.gate?.requireParentPanel) return null;
 	const panelLabel = getCurrentPanelLabel(ctx);
 	const repoName = profile.displayName ?? profile.name;
-	const hotfixHint = profile.gate.hotfixHint ?? (profile.gate.hotfixRequiresExplicitBase ? " 핫픽스라면 --hotfix를 함께 붙이세요." : "");
 	return [
-		`현재 패널은 ${panelLabel} fork panel입니다.`,
-		`${repoName} worktree 생성은 부모 패널(P0)에서 /wt fork로 실행해야 대화 맥락과 base 선택이 깨지지 않습니다.`,
-		`이 패널에서는 /handoff로 조사 결과를 부모에 넘긴 뒤, 부모에서 /wt fork --repo ${repoName}를 실행하세요.${hotfixHint}`,
+		`현재 패널은 ${panelLabel}입니다.`,
+		`${repoName} worktree는 이 패널의 현재 대화를 source로 만들어 계속 진행합니다.`,
+		"부모(P0) 대화를 기준으로 만들고 싶을 때만 부모 패널에서 다시 실행하세요.",
 	].join(" ");
+}
+
+function notifyWorktreeCreationPanelNotice(repoRoot: string, ctx?: ExtensionContext): void {
+	const notice = getWorktreeCreationPanelNoticeMessage(repoRoot, ctx);
+	if (notice) ctx?.ui.notify(notice, "info");
 }
 
 function hasHotfixIntent(text?: string): boolean {
@@ -1541,8 +1587,7 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 	const repoRoot = await resolveRepoRoot(pi, ctx, parsed.repo);
 	if (!repoRoot) return;
 
-	const panelGuard = getWorktreeCreationPanelGuardMessage(repoRoot, ctx);
-	if (panelGuard) { ctx.ui.notify(panelGuard, "error"); return; }
+	notifyWorktreeCreationPanelNotice(repoRoot, ctx);
 	const hotfixGuard = getHotfixBaseGuardMessage(parsed, "/wt new");
 	if (hotfixGuard) { ctx.ui.notify(hotfixGuard, "error"); return; }
 
@@ -1655,8 +1700,8 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 	try {
 		await switchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, contextLabel);
 	} catch (error) {
-		const reason = error instanceof Error ? ` (${error.message})` : "";
-		ctx.ui.notify(`✓ Created. cwd: ${worktreePath}${reason}`, "info");
+		const reason = error instanceof Error ? error.message : String(error);
+		notifySwitchFallback(ctx, reason, buildSwitchCommand(repoRoot, name), worktreePath);
 	}
 }
 
@@ -1949,7 +1994,7 @@ function buildUniqueSessionChoiceOptions(choices: SessionChoiceInfo[]): SessionC
 	});
 }
 
-async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string, ctx: ExtensionCommandContext, options: { hydrateConductor?: boolean; notifyConductorHydration?: boolean } = {}) {
+async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string, ctx: ExtensionCommandContext, options: { hydrateConductor?: boolean; notifyConductorHydration?: boolean } = {}): Promise<{ switched: boolean; sessionFile?: string; reason?: string }> {
 	const meta = readMeta(wtPath);
 	const framePromotion = meta ? promotePlanningFrameToWorktree(wtPath, meta) : { status: "missing-source" as const };
 	if (framePromotion.status === "promoted") ctx.ui.notify(`✓ planning frame promoted to ${wtName}/.pi/frame.json`, "info");
@@ -1976,9 +2021,9 @@ async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string
 			);
 			const sessionOptions = buildUniqueSessionChoiceOptions(choices);
 			const choice = await ctx.ui.select(`${wtName} 세션 선택:`, sessionOptions.map((option) => option.displayLabel));
-			if (!choice) return;
+			if (!choice) return { switched: false, reason: "세션 선택이 취소되었습니다" };
 			const selected = sessionOptions.find((option) => option.displayLabel === choice)?.choice;
-			if (!selected) return;
+			if (!selected) return { switched: false, reason: "선택한 세션을 찾을 수 없습니다" };
 			sessionFile = join(sessionDir, selected.file);
 		}
 	}
@@ -1995,8 +2040,11 @@ async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string
 
 	try {
 		await switchSessionToWorktree(ctx, sessionFile, wtName, wtPath, framePromotionContextLabel(framePromotion));
-	} catch {
-		ctx.ui.notify(`Switch to: cd ${wtPath}`, "info");
+		return { switched: true, sessionFile };
+	} catch (error) {
+		const reason = error instanceof Error ? error.message : String(error);
+		notifySwitchFallback(ctx, reason, findSwitchCommandForWorktreePath(wtName, wtPath), wtPath);
+		return { switched: false, sessionFile, reason };
 	}
 }
 
@@ -2340,8 +2388,7 @@ async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandC
 	const repoRoot = await resolveRepoRoot(pi, ctx, parsed.repo);
 	if (!repoRoot) return;
 
-	const panelGuard = getWorktreeCreationPanelGuardMessage(repoRoot, ctx);
-	if (panelGuard) { ctx.ui.notify(panelGuard, "error"); return; }
+	notifyWorktreeCreationPanelNotice(repoRoot, ctx);
 	const hotfixGuard = getHotfixBaseGuardMessage(parsed, "/wt fork");
 	if (hotfixGuard) { ctx.ui.notify(hotfixGuard, "error"); return; }
 
@@ -2443,8 +2490,8 @@ async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandC
 	try {
 		await switchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, contextLabel);
 	} catch (error) {
-		const reason = error instanceof Error ? ` (${error.message})` : "";
-		ctx.ui.notify(`✓ Created. cwd: ${worktreePath}${reason}`, "info");
+		const reason = error instanceof Error ? error.message : String(error);
+		notifySwitchFallback(ctx, reason, buildSwitchCommand(repoRoot, name), worktreePath);
 	}
 }
 
@@ -3189,10 +3236,10 @@ export default function (pi: ExtensionAPI) {
 		promptGuidelines: [
 			"Before any worktree creation, classify: investigation vs implementation, context-carry needed vs fresh, development vs production/hotfix base.",
 			"Use worktree_create only for a fresh implementation session with no valuable investigation/planning context. If context exists, use worktree_fork instead.",
-			`In fork/child panels (P1/P2), do not call worktree_create for configured protected repos (${configuredRepoLabel}). Hand off to the parent P0 panel and have the parent run /wt fork.`,
+			`worktree_create may run from P0/P1/P2; treat the current panel conversation as the source unless the user explicitly asks to use the parent panel.`,
 			"If the request mentions hotfix/production/핫픽스, pass hotfix: true. Do not create a development-based hotfix branch.",
-			`Use worktree_create before editing files in configured protected repos (${configuredRepoLabel}). Do not manually run git worktree add.`,
-			"Tool calls cannot execute slash-command session switches directly. After worktree_create succeeds, tell the user to submit the returned /wt switch command (prefilled in interactive UI) and wait before continuing.",
+			`Use worktree_create before editing files in configured protected repos (${configuredRepoLabel}) when a new worktree is actually needed. Do not manually run git worktree add.`,
+			"worktree_create attempts to switch the current panel immediately after creation. If the runtime tool context cannot switch sessions, report that limitation and the prepared /wt switch fallback instead of presenting it as the normal path.",
 		],
 		parameters: Type.Object({
 			repo: Type.Optional(Type.String({ description: `Registered repo name (configured examples: ${configuredRepoLabel}). Auto-detected if omitted.` })),
@@ -3220,8 +3267,7 @@ export default function (pi: ExtensionAPI) {
 
 			if (!existsSync(repoRoot)) throw new Error(`Repo path missing: ${repoRoot}`);
 
-			const panelGuard = getWorktreeCreationPanelGuardMessage(repoRoot, ctx);
-			if (panelGuard) throw new Error(panelGuard);
+			notifyWorktreeCreationPanelNotice(repoRoot, ctx);
 			const hotfixGuard = getHotfixBaseGuardMessage(
 				{ hotfix: Boolean(params.hotfix), hotfeature: false, from: undefined, branch: undefined, note: params.note },
 				"worktree_create",
@@ -3286,14 +3332,21 @@ export default function (pi: ExtensionAPI) {
 
 			const session = createWorktreeSession(ctx, worktreePath, { sessionName: `${name} (${branchName})` });
 			recordWorktreeContextMeta(worktreePath, "clean", session);
+			const frameText = framePromotion.status === "promoted" ? ` Planning frame promoted to ${framePromotion.framePath}.` : "";
+			const switchResult = await trySwitchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, framePromotionContextLabel(framePromotion));
+			if (switchResult.switched) {
+				return {
+					content: [{ type: "text", text: `✓ Worktree "${name}" created (${branchName}) at ${worktreePath}.${frameText} 현재 패널을 전환했습니다.` }],
+					details: { name, branch: branchName, path: worktreePath, autoSwitched: true, framePromotion },
+				};
+			}
+
 			const registeredName = findRegisteredName(loadRegistry(), repoRoot) ?? basename(repoRoot);
 			const switchCommand = `/wt switch ${registeredName}/${name}`;
 			const prefilled = prefillSwitchCommand(ctx, switchCommand);
-
-			const frameText = framePromotion.status === "promoted" ? ` Planning frame promoted to ${framePromotion.framePath}.` : "";
 			return {
-				content: [{ type: "text", text: `✓ Worktree "${name}" created (${branchName}) at ${worktreePath}.${frameText} Run ${switchCommand} to switch${prefilled ? " (prefilled in editor)" : ""}.` }],
-				details: { name, branch: branchName, path: worktreePath, switchCommand, prefilled, framePromotion },
+				content: [{ type: "text", text: `✓ Worktree "${name}" created (${branchName}) at ${worktreePath}.${frameText} 즉시 전환 불가: ${switchResult.reason ?? "unknown"}. 대체 전환 명령 ${switchCommand}${prefilled ? "를 에디터에 준비했습니다" : "를 사용하세요"}.` }],
+				details: { name, branch: branchName, path: worktreePath, autoSwitched: false, switchReason: switchResult.reason, switchCommand, prefilled, framePromotion },
 			};
 		},
 	});
@@ -3340,13 +3393,30 @@ export default function (pi: ExtensionAPI) {
 			const target = worktrees.find(w => w.name === params.name);
 			if (!target) throw new Error(`Worktree "${params.name}" not found. Available: ${worktrees.map(w => w.name).join(", ") || "(none)"}`);
 
+			if (typeof (ctx as Partial<ExtensionCommandContext>).switchSession === "function") {
+				const switchResult = await switchToWorktree(pi, target.name, target.path, ctx as ExtensionCommandContext);
+				if (switchResult.switched) {
+					return {
+						content: [{ type: "text", text: `✓ Worktree "${params.name}" (${target.branch})로 현재 패널을 전환했습니다.` }],
+						details: { name: target.name, branch: target.branch, path: target.path, autoSwitched: true, sessionFile: switchResult.sessionFile },
+					};
+				}
+
+				const registeredName = findRegisteredName(loadRegistry(), repoRoot) ?? basename(repoRoot);
+				const switchCommand = `/wt switch ${registeredName}/${params.name}`;
+				const prefilled = prefillSwitchCommand(ctx, switchCommand);
+				return {
+					content: [{ type: "text", text: `✓ Worktree "${params.name}" (${target.branch})를 찾았습니다. 즉시 전환 불가: ${switchResult.reason ?? "unknown"}. 대체 전환 명령 ${switchCommand}${prefilled ? "를 에디터에 준비했습니다" : "를 사용하세요"}.` }],
+					details: { name: target.name, branch: target.branch, path: target.path, autoSwitched: false, switchReason: switchResult.reason, switchCommand, prefilled, sessionFile: switchResult.sessionFile },
+				};
+			}
+
 			const registeredName = findRegisteredName(loadRegistry(), repoRoot) ?? basename(repoRoot);
 			const switchCommand = `/wt switch ${registeredName}/${params.name}`;
 			const prefilled = prefillSwitchCommand(ctx, switchCommand);
-
 			return {
-				content: [{ type: "text", text: `✓ Worktree "${params.name}" (${target.branch}) found. Run ${switchCommand} to switch${prefilled ? " (prefilled in editor)" : ""}.` }],
-				details: { name: target.name, branch: target.branch, path: target.path, switchCommand, prefilled },
+				content: [{ type: "text", text: `✓ Worktree "${params.name}" (${target.branch})를 찾았습니다. 즉시 전환 불가: 현재 tool context에는 session switch API가 없습니다. 대체 전환 명령 ${switchCommand}${prefilled ? "를 에디터에 준비했습니다" : "를 사용하세요"}.` }],
+				details: { name: target.name, branch: target.branch, path: target.path, autoSwitched: false, switchReason: "tool context has no switchSession", switchCommand, prefilled },
 			};
 		},
 	});
@@ -3360,10 +3430,10 @@ export default function (pi: ExtensionAPI) {
 			"Before any worktree creation, classify: investigation vs implementation, context-carry needed vs fresh, development vs production/hotfix base.",
 			"Use worktree_fork instead of worktree_create when valuable context exists; the default is full transcript continuity so the new worktree can continue the actual investigation thread.",
 			"Use minimalContext: true only when the user explicitly asks for a lightweight/summary-only handoff or when copying the transcript would be clearly harmful.",
-			`In fork/child panels (P1/P2), do not call worktree_fork for configured protected repos (${configuredRepoLabel}). Hand off to the parent P0 panel and have the parent run /wt fork so the parent conversation is the source session.`,
+			`worktree_fork may run from P0/P1/P2; treat the current panel conversation as the source unless the user explicitly asks to use the parent panel.`,
 			"If the request mentions hotfix/production/핫픽스, pass hotfix: true. Do not create a development-based hotfix branch.",
-			"The optional context parameter is an additional handoff note, not a replacement for the full transcript unless minimalContext is true.",
-			"Tool calls cannot execute slash-command session switches directly. After worktree_fork succeeds, tell the user to submit the returned /wt switch command (prefilled in interactive UI) and wait before continuing.",
+			"The optional context parameter is an additional transfer note, not a replacement for the full transcript unless minimalContext is true.",
+			"worktree_fork attempts to switch the current panel immediately after creation. If the runtime tool context cannot switch sessions, report that limitation and the prepared /wt switch fallback instead of presenting it as the normal path.",
 		],
 		parameters: Type.Object({
 			context: Type.Optional(Type.String({ description: "Optional compact markdown note to attach in addition to the transcript, or the summary handoff when minimalContext is true." })),
@@ -3392,8 +3462,7 @@ export default function (pi: ExtensionAPI) {
 
 			if (!existsSync(repoRoot)) throw new Error(`Repo path missing: ${repoRoot}`);
 
-			const panelGuard = getWorktreeCreationPanelGuardMessage(repoRoot, ctx);
-			if (panelGuard) throw new Error(panelGuard);
+			notifyWorktreeCreationPanelNotice(repoRoot, ctx);
 			const hotfixGuard = getHotfixBaseGuardMessage(
 				{ hotfix: Boolean(params.hotfix), hotfeature: false, from: undefined, branch: undefined, note: params.note },
 				"worktree_fork",
@@ -3472,15 +3541,23 @@ export default function (pi: ExtensionAPI) {
 				await pi.exec("bash", ["-lc", config.setupScript], { cwd: worktreePath, signal });
 			}
 
+			const frameText = framePromotion.status === "promoted" ? ` Planning frame promoted to ${framePromotion.framePath}.` : "";
+			const contextLength = params.context?.length ?? 0;
+			const contextLabel = `${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}`;
+			const switchResult = await trySwitchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, contextLabel);
+			if (switchResult.switched) {
+				return {
+					content: [{ type: "text", text: `✓ Worktree "${name}" forked (${branchName}) at ${worktreePath}. Context: ${contextMode}${contextLength ? `, note ${contextLength} chars` : ""}.${frameText} 현재 패널을 전환했습니다.` }],
+					details: { name, branch: branchName, path: worktreePath, contextLength, contextMode, autoSwitched: true, framePromotion },
+				};
+			}
+
 			const registeredName = findRegisteredName(loadRegistry(), repoRoot) ?? basename(repoRoot);
 			const switchCommand = `/wt switch ${registeredName}/${name}`;
 			const prefilled = prefillSwitchCommand(ctx, switchCommand);
-
-			const frameText = framePromotion.status === "promoted" ? ` Planning frame promoted to ${framePromotion.framePath}.` : "";
-			const contextLength = params.context?.length ?? 0;
 			return {
-				content: [{ type: "text", text: `✓ Worktree "${name}" forked (${branchName}) at ${worktreePath}. Context: ${contextMode}${contextLength ? `, note ${contextLength} chars` : ""}.${frameText} Run ${switchCommand} to switch${prefilled ? " (prefilled in editor)" : ""}.` }],
-				details: { name, branch: branchName, path: worktreePath, contextLength, contextMode, switchCommand, prefilled, framePromotion },
+				content: [{ type: "text", text: `✓ Worktree "${name}" forked (${branchName}) at ${worktreePath}. Context: ${contextMode}${contextLength ? `, note ${contextLength} chars` : ""}.${frameText} 즉시 전환 불가: ${switchResult.reason ?? "unknown"}. 대체 전환 명령 ${switchCommand}${prefilled ? "를 에디터에 준비했습니다" : "를 사용하세요"}.` }],
+				details: { name, branch: branchName, path: worktreePath, contextLength, contextMode, autoSwitched: false, switchReason: switchResult.reason, switchCommand, prefilled, framePromotion },
 			};
 		},
 	});

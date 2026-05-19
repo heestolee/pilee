@@ -38,8 +38,8 @@ source:
   - user-direction:2026-05-12-wt-switch-session-unification
   - user-direction:2026-05-12-minimal-worktree-handoff
   - user-direction:2026-05-17-full-worktree-fork-default
-reviewed_at: 2026-05-17
-reviewed_commit: 13fe99c41edc4ec1e8e5818a2d7e9e13e380de85
+reviewed_at: 2026-05-19
+reviewed_commit: 8dd65c14e15a16afaaafe14302030cef2a7df737
 related:
   - subagent-model-policy
   - pilee-knowledge-system
@@ -70,9 +70,9 @@ fork-panel에서 종료된 대화는 transcript를 주입하는 것보다 세션
 
 ## Context Sharing Rule
 
-worktree 생성의 context sharing은 command 의미에 맞춰 나뉩니다. `/wt fork`와 `worktree_fork`는 현재 대화의 조사·판단·파일 포인터를 그대로 이어받는 것이 사용자 기대이므로 full transcript를 기본으로 복사합니다. 반대로 `/wt new`는 깨끗한 세션이고, `--minimal-context` / `minimalContext: true`를 명시한 경우에만 최근 user prompt, source session `/archive <path>` reference, 선택적 summary를 담은 최소 handoff pack을 붙입니다.
+worktree 생성의 context sharing은 command 의미에 맞춰 나뉩니다. `/wt fork`와 `worktree_fork`는 현재 패널 대화의 조사·판단·파일 포인터를 그대로 이어받는 것이 사용자 기대이므로 full transcript를 기본으로 복사합니다. P0/P1/P2는 위치 표시일 뿐 기본 source를 바꾸지 않습니다. 반대로 `/wt new`는 깨끗한 세션이고, `--minimal-context` / `minimalContext: true`를 명시한 경우에만 최근 user prompt, source session `/archive <path>` reference, 선택적 summary를 담은 최소 전달 pack을 붙입니다.
 
-최소 handoff도 “보조 힌트”가 아니라 복구 가능한 artifact입니다. 새 session JSONL에 실제 `worktree-context` custom message로 persist되어야 하며, `.pi/worktree-meta.json`에는 `context.mode`, source session file/title/cwd, target session file, full transcript copy 여부가 남아야 합니다. UI의 cwd binding도 `full transcript carried`, `minimal handoff persisted`, `context fallback`처럼 실제 전달 상태를 말해야 합니다.
+최소 전달 정보도 “보조 힌트”가 아니라 복구 가능한 artifact입니다. 새 session JSONL에 실제 `worktree-context` custom message로 persist되어야 하며, `.pi/worktree-meta.json`에는 `context.mode`, source session file/title/cwd, target session file, full transcript copy 여부가 남아야 합니다. UI의 cwd binding도 `전문 계승`, `최소 전달 메모 저장`, `대체 전달 메모 저장`처럼 실제 전달 상태를 말해야 합니다. handoff를 숨긴다는 뜻은 전달 사실을 감추는 것이 아니라, 사용자가 별도 handoff 절차를 수행해야만 worktree를 만들 수 있는 UX를 없앤다는 뜻입니다.
 
 fork-panel의 handoff는 패널 생명주기와 분리합니다. 자식 패널이 닫혀야만 맥락이 전달되는 구조는 사용자가 불필요하게 패널을 종료하게 만들고, 즉시 follow-up 주입은 부모 대화 흐름을 끊을 수 있습니다. 기본 handoff는 parent inbox에 unread 항목으로 저장하고, 부모가 `/panels`에서 선택해 입력창에 삽입하거나 명시적으로 follow-up 전송할 때만 대화 컨텍스트에 들어옵니다.
 

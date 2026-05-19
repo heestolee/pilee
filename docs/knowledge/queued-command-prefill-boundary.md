@@ -21,8 +21,8 @@ source:
   - pilee-history:2026-05-05#41
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-11-subagent-skill-delegation
-reviewed_at: 2026-05-12
-reviewed_commit: ca8ae9e32d7b25f2fd5290bb5a25f57bba3dc0e2
+reviewed_at: 2026-05-19
+reviewed_commit: 8dd65c14e15a16afaaafe14302030cef2a7df737
 related:
   - worktree-execution-boundary
   - session-identity-over-filenames
@@ -42,7 +42,7 @@ Subagent에 slash command 문자열을 그대로 넘기는 것도 command 실행
 
 ## Worktree Tool Rule
 
-`worktree_create`, `worktree_switch`, `worktree_fork` 같은 도구는 slash command를 몰래 실행하지 않습니다. 대신 세션을 준비하고 사용자가 볼 수 있는 `/wt switch ...` prefill을 남깁니다. 실행 경계가 바뀌는 작업일수록 사용자가 실제 전환을 눈으로 확인해야 합니다.
+`worktree_create`, `worktree_switch`, `worktree_fork` 같은 도구는 slash command를 몰래 실행하지 않습니다. 먼저 가능한 경우 extension의 session switch API로 현재 패널을 직접 전환합니다. 현재 tool context가 session switch API를 제공하지 않는 경우에만 fallback으로 사용자가 볼 수 있는 `/wt switch ...` prefill을 남기고, 이것이 정상 경로가 아니라 runtime 제약이라는 사실을 결과에 명시합니다. `/wt new|fork|switch` slash command 자체도 즉시 전환 실패를 조용히 `cwd` 안내로 축소하지 않고, 실패 이유와 대체 전환 명령 또는 수동 경로를 표시합니다. 실행 경계가 바뀌는 작업일수록 사용자가 실제 전환 여부와 전달된 맥락 범위를 눈으로 확인해야 합니다.
 
 ## Failure Mode
 
