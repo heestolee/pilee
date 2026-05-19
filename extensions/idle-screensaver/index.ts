@@ -1,11 +1,12 @@
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, watchFile, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, watchFile, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { formatLastInteractionLine, resolveLastInteractionAt } from "./last-interaction.js";
 import { createScreensaverDismissController, renderScreensaver, type ScreensaverRenderData, type ScreensaverTheme } from "./render.js";
 import { POKEMON_KO_TO_ID, renderSprite } from "./sprite.js";
+import { loadScreensaverTaskLines } from "./task-source.js";
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
@@ -182,29 +183,11 @@ async function showScreensaver({ force = false }: { force?: boolean } = {}): Pro
 		}
 	} catch {}
 
-	// 📋 TODO: tasks에서 in_progress/pending 항목
-	try {
-		const tasksDir = join(folder, ".pi", "tasks");
-		if (existsSync(tasksDir)) {
-			const taskFiles = readdirSync(tasksDir).filter((f: string) => f.endsWith(".json")).sort().reverse();
-			for (const tf of taskFiles) {
-				const data = JSON.parse(readFileSync(join(tasksDir, tf), "utf8"));
-				const taskList = data.tasks ?? (Array.isArray(data) ? data : []);
-				const active = taskList
-					.filter((t: any) => t.status === "in_progress" || t.status === "pending")
-					.slice(0, 5);
-				if (active.length > 0) {
-					metaLines.push("");
-					metaLines.push("📋 TODO");
-					for (const t of active) {
-						const icon = t.status === "in_progress" ? "▸" : "○";
-						metaLines.push(`  ${icon} ${(t.subject ?? "").slice(0, 60)}`);
-					}
-					break;
-				}
-			}
-		}
-	} catch {}
+	const taskLines = loadScreensaverTaskLines(latestCtx, 5);
+	if (taskLines.length > 0) {
+		metaLines.push("");
+		metaLines.push(...taskLines);
+	}
 
 	// Try to load sprite — match by folderName (workspace name) or meta.name
 	let spriteLines: string[] | null = null;
