@@ -20,6 +20,7 @@ import { makeSubagentSessionFile } from "../subagent/session.ts";
 import type { SingleResult, SubagentDetails } from "../subagent/types.ts";
 import { resolveForkPanelIdentity } from "../utils/fork-panel-identity.ts";
 import { registerWorktreeDashboardShortcut } from "./shortcut.ts";
+import { promotePlanningWorkArtifactsToWorktree, type WorkArtifactPromotionResult } from "./frame-artifacts.ts";
 
 // ─── Repo registry ─────────────────────────────────────────────────────────
 
@@ -268,10 +269,10 @@ const FRAME_PLANNING_ROOT = join(homedir(), ".pi", "agent", "frame-planning");
 type FrameDocLoose = Record<string, any>;
 
 type FramePromotionResult =
-	| { status: "promoted"; framePath: string; frameMdPath: string; sourcePath: string; canonicalHash?: string }
-	| { status: "exists"; framePath: string }
+	| { status: "promoted"; framePath: string; frameMdPath: string; sourcePath: string; canonicalHash?: string; artifacts?: WorkArtifactPromotionResult }
+	| { status: "exists"; framePath: string; artifacts?: WorkArtifactPromotionResult }
 	| { status: "missing-source" }
-	| { status: "error"; error: string };
+	| { status: "error"; error: string; artifacts?: WorkArtifactPromotionResult };
 
 function safeFrameSlug(text: string): string {
 	return text
@@ -356,9 +357,22 @@ function renderFrameMirror(frame: FrameDocLoose): string {
 function promotePlanningFrameToWorktree(worktreePath: string, meta: WorktreeMeta): FramePromotionResult {
 	const targetFramePath = join(worktreePath, ".pi", "frame.json");
 	const targetMdPath = join(worktreePath, ".pi", "frame.md");
-	if (existsSync(targetFramePath)) return { status: "exists", framePath: targetFramePath };
+	const sourcePath = meta.frame?.sourcePlanningFrame ?? planningFramePathForTicket(meta.ticket);
+	if (existsSync(targetFramePath)) {
+		try {
+			const existingFrame = JSON.parse(readFileSync(targetFramePath, "utf8")) as FrameDocLoose;
+			const artifacts = promotePlanningWorkArtifactsToWorktree({
+				frame: existingFrame,
+				worktreePath,
+				targetFramePath,
+				sourceFramePath: sourcePath,
+			});
+			return { status: "exists", framePath: targetFramePath, artifacts };
+		} catch {
+			return { status: "exists", framePath: targetFramePath };
+		}
+	}
 
-	const sourcePath = planningFramePathForTicket(meta.ticket);
 	if (!sourcePath || !existsSync(sourcePath)) return { status: "missing-source" };
 
 	try {
@@ -408,15 +422,45 @@ function promotePlanningFrameToWorktree(worktreePath: string, meta: WorktreeMeta
 			},
 		});
 
-		return { status: "promoted", framePath: targetFramePath, frameMdPath: targetMdPath, sourcePath, canonicalHash: frame.provenance.canonicalHash };
+		const artifacts = promotePlanningWorkArtifactsToWorktree({
+			frame,
+			worktreePath,
+			targetFramePath,
+			sourceFramePath: sourcePath,
+			now,
+		});
+
+		return { status: "promoted", framePath: targetFramePath, frameMdPath: targetMdPath, sourcePath, canonicalHash: frame.provenance.canonicalHash, artifacts };
 	} catch (error) {
 		return { status: "error", error: error instanceof Error ? error.message : String(error) };
 	}
 }
 
 function framePromotionContextLabel(result: FramePromotionResult): string {
+	const tasksCopied = result.status !== "missing-source" && result.artifacts?.tasks.status === "copied";
+	if (result.status === "promoted" && tasksCopied) return " — frame/tasks promoted";
 	if (result.status === "promoted") return " — frame promoted";
+	if (tasksCopied) return " — tasks promoted";
 	return "";
+}
+
+function framePromotionSummary(result: FramePromotionResult): string {
+	const parts: string[] = [];
+	if (result.status === "promoted") parts.push(`Planning frame promoted to ${result.framePath}`);
+	if (result.status !== "missing-source" && result.artifacts?.tasks.status === "copied") {
+		parts.push(`Planning task board promoted to ${result.artifacts.tasks.targetPath}`);
+	}
+	return parts.length ? ` ${parts.join(". ")}.` : "";
+}
+
+function notifyFramePromotion(ctx: ExtensionCommandContext, name: string, result: FramePromotionResult): void {
+	if (result.status === "promoted") ctx.ui.notify(`✓ planning frame promoted to ${name}/.pi/frame.json`, "info");
+	else if (result.status === "error") ctx.ui.notify(`Frame promotion skipped: ${result.error}`, "warning");
+	if (result.status !== "missing-source" && result.artifacts?.tasks.status === "copied") {
+		ctx.ui.notify(`✓ planning task board promoted to ${name}/.pi/work-tasks.json`, "info");
+	} else if (result.status !== "missing-source" && result.artifacts?.tasks.status === "error") {
+		ctx.ui.notify(`Task board promotion skipped: ${result.artifacts.tasks.error}`, "warning");
+	}
 }
 
 // ─── Worktree operations ───────────────────────────────────────────────────
@@ -1760,8 +1804,7 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 		ticket: parsed.ticket,
 		note: parsed.note,
 	});
-	if (framePromotion.status === "promoted") ctx.ui.notify(`✓ planning frame promoted to ${name}/.pi/frame.json`, "info");
-	else if (framePromotion.status === "error") ctx.ui.notify(`Frame promotion skipped: ${framePromotion.error}`, "warning");
+	notifyFramePromotion(ctx, name, framePromotion);
 
 	ctx.ui.notify(`✓ ${name} created (${branchName})`, "info");
 
@@ -2096,8 +2139,7 @@ function buildUniqueSessionChoiceOptions(choices: SessionChoiceInfo[]): SessionC
 async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string, ctx: ExtensionCommandContext, options: { hydrateConductor?: boolean; notifyConductorHydration?: boolean } = {}): Promise<{ switched: boolean; sessionFile?: string; reason?: string }> {
 	const meta = readMeta(wtPath);
 	const framePromotion = meta ? promotePlanningFrameToWorktree(wtPath, meta) : { status: "missing-source" as const };
-	if (framePromotion.status === "promoted") ctx.ui.notify(`✓ planning frame promoted to ${wtName}/.pi/frame.json`, "info");
-	else if (framePromotion.status === "error") ctx.ui.notify(`Frame promotion skipped: ${framePromotion.error}`, "warning");
+	notifyFramePromotion(ctx, wtName, framePromotion);
 
 	let conductorHydration: ConductorHydrationResult | null = null;
 	if (options.hydrateConductor !== false) {
@@ -2557,8 +2599,7 @@ async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandC
 		ticket: parsed.ticket,
 		note: parsed.note,
 	});
-	if (framePromotion.status === "promoted") ctx.ui.notify(`✓ planning frame promoted to ${name}/.pi/frame.json`, "info");
-	else if (framePromotion.status === "error") ctx.ui.notify(`Frame promotion skipped: ${framePromotion.error}`, "warning");
+	notifyFramePromotion(ctx, name, framePromotion);
 
 	ctx.ui.notify(`✓ ${name} forked (${branchName})`, "info");
 
@@ -3441,7 +3482,7 @@ export default function (pi: ExtensionAPI) {
 
 			const session = createWorktreeSession(ctx, worktreePath, { sessionName: `${name} (${branchName})` });
 			recordWorktreeContextMeta(worktreePath, "clean", session);
-			const frameText = framePromotion.status === "promoted" ? ` Planning frame promoted to ${framePromotion.framePath}.` : "";
+			const frameText = framePromotionSummary(framePromotion);
 			const switchResult = await trySwitchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, framePromotionContextLabel(framePromotion));
 			if (switchResult.switched) {
 				return {
@@ -3658,7 +3699,7 @@ export default function (pi: ExtensionAPI) {
 				await pi.exec("bash", ["-lc", config.setupScript], { cwd: worktreePath, signal });
 			}
 
-			const frameText = framePromotion.status === "promoted" ? ` Planning frame promoted to ${framePromotion.framePath}.` : "";
+			const frameText = framePromotionSummary(framePromotion);
 			const contextLength = params.context?.length ?? 0;
 			const contextLabel = `${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}`;
 			const switchResult = await trySwitchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, contextLabel);
