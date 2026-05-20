@@ -376,6 +376,11 @@ function isFailingCheck(check: CiCheckSummary): boolean {
 	return status === "FAILURE" || status === "ERROR";
 }
 
+export function isCiShipExcludedByDefaultCheck(check: CiCheckSummary): boolean {
+	const haystack = [check.name, check.workflowName].filter(Boolean).join(" ");
+	return /fixme-alert|FIXME\s*코멘트\s*체크|FIXME|TODO\s*comment|comment\s*policy/iu.test(haystack);
+}
+
 function parseCiChecks(snapshot: Record<string, unknown> | null): CiCheckSummary[] {
 	const rollup = Array.isArray(snapshot?.statusCheckRollup) ? snapshot.statusCheckRollup : [];
 	return rollup
@@ -523,18 +528,29 @@ async function buildCiShipCollectedContext(pi: ExtensionAPI, ctx: ShipContext, a
 		const snapshot = await fetchPrStatusSnapshot(pi, ctx.cwd, pullRequest);
 		const checks = parseCiChecks(snapshot);
 		const failingChecks = checks.filter(isFailingCheck);
+		const excludedChecks = failingChecks.filter(isCiShipExcludedByDefaultCheck);
+		const actionableChecks = failingChecks.filter((check) => !isCiShipExcludedByDefaultCheck(check));
 		sections.push([
 			"## PR status check snapshot",
 			"",
 			snapshot ? fence(JSON.stringify(snapshot, null, 2), "json") : `PR status check 조회 실패: ${pullRequest.url}`,
 		].join("\n"));
 		sections.push([
-			"## Failing / non-success checks",
+			"## Failing / non-success checks (actionable by default)",
 			"",
-			formatCiChecks(failingChecks),
+			formatCiChecks(actionableChecks),
 		].join("\n"));
+		if (excludedChecks.length > 0) {
+			sections.push([
+				"## Excluded by default checks",
+				"",
+				"이 check들은 PR rollup에는 남기지만, 사용자가 명시적으로 요청하지 않는 한 `/ci-ship`은 의도적 주석/policy gate를 자동 수정하지 않습니다.",
+				"",
+				formatCiChecks(excludedChecks),
+			].join("\n"));
+		}
 
-		const logTargets = failingChecks
+		const logTargets = actionableChecks
 			.map((check) => check.detailsUrl ? parseActionsJobUrl(check.detailsUrl) : null)
 			.filter((target): target is ActionsJobTarget => target !== null)
 			.slice(0, 4);

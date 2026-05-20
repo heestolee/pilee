@@ -16,6 +16,7 @@ applies_to:
 source:
   - user-direction:2026-05-10-ci-ship
   - user-direction:2026-05-11-ci-ship-update-branch
+  - user-direction:2026-05-20-fixme-alert-exclusion
   - pr-context:github-actions-failure
 reviewed_at: 2026-05-13
 reviewed_commit: 49eb5f7591aa355f1022ea1e7fe2659a181cfb63
@@ -40,7 +41,11 @@ related:
 
 ## Failure Classification Rule
 
-CI 실패는 먼저 분류합니다. Code failure, generated artifact stale, stale base / branch behind, stale test expectation, flaky/timeout, infra/external, unrelated baseline, unknown은 서로 다른 대응을 요구합니다. 마지막 `exit code 1`이나 실패 check 이름만으로 수정하면 표면 대응이 됩니다.
+CI 실패는 먼저 분류합니다. Code failure, generated artifact stale, stale base / branch behind, stale test expectation, flaky/timeout, infra/external, unrelated baseline, intentional policy/comment gate, unknown은 서로 다른 대응을 요구합니다. 마지막 `exit code 1`이나 실패 check 이름만으로 수정하면 표면 대응이 됩니다.
+
+## Policy Gate Exclusion Rule
+
+`fixme-alert`, `FIXME 코멘트 체크`, comment policy처럼 의도적 주석·후속작업 표식을 금지하는 check는 `ci-ship`의 기본 자동 수정 대상이 아닙니다. 이런 gate는 CI rollup에 남기되, 사용자가 “이 표식을 제거해서 check까지 통과시켜”라고 명시하지 않는 한 코드 변경·로컬 재현·커밋 대상에서 제외합니다. 특히 `FIXME:`는 i18n 후속 처리처럼 사용자가 의도적으로 남긴 표식일 수 있으므로, `ci-ship`이 임의로 주석을 바꾸면 제품 의사결정을 덮어쓰는 표면 대응이 됩니다.
 
 ## Evidence Rule
 
