@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { resolveForkPanelIdentity } from "./fork-panel-identity.ts";
 
 export type WorkUnitType = "worktree" | "session";
 export type WorkContextMode = "light" | "standard" | "full" | "unknown";
@@ -18,6 +19,13 @@ export interface WorkUnitIdentity {
 	contextPath: string;
 	tasksPath: string;
 	framePath?: string;
+}
+
+export interface TaskWorkUnitResolution {
+	unit: WorkUnitIdentity;
+	parentUnit?: WorkUnitIdentity;
+	panelLabel?: string;
+	seedFromParentTasksPath?: string;
 }
 
 export interface WorkContextSlice {
@@ -136,6 +144,28 @@ export function resolveWorkUnit(cwd: string, sessionFile?: string): WorkUnitIden
 		contextPath: join(dir, "work-context.json"),
 		tasksPath: join(dir, "work-tasks.json"),
 	};
+}
+
+export function resolveTaskWorkUnit(cwd: string, sessionFile?: string, env: NodeJS.ProcessEnv = process.env): TaskWorkUnitResolution {
+	const parentUnit = resolveWorkUnit(cwd, sessionFile);
+	const forkIdentity = resolveForkPanelIdentity({ env, sessionFile });
+	const panelLabel = forkIdentity.panelLabel?.trim();
+	if (parentUnit.type !== "worktree" || !panelLabel || panelLabel === "P0") return { unit: parentUnit };
+
+	const key = sessionFile || `${cwd}:${panelLabel}:${forkIdentity.forkId ?? "fork-panel-child"}`;
+	const dir = sessionWorkUnitDir(key, key);
+	const unit: WorkUnitIdentity = {
+		id: `fork-panel:${panelLabel}:${sha(key)}`,
+		type: "session",
+		root: parentUnit.root,
+		cwd,
+		sessionFile,
+		displayName: `${parentUnit.displayName} · ${panelLabel}`,
+		contextPath: join(dir, "work-context.json"),
+		tasksPath: join(dir, "work-tasks.json"),
+		framePath: parentUnit.framePath,
+	};
+	return { unit, parentUnit, panelLabel, seedFromParentTasksPath: parentUnit.tasksPath };
 }
 
 function readJson<T>(path: string): T | undefined {

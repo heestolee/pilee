@@ -181,3 +181,35 @@ test("readSessionHeaderFromFile reads the session cwd and id for P0/alias fallba
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
+
+test("fork-panel child screensaver uses child-local current tasks and P0 only as fallback", () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pilee-screensaver-fork-child-"));
+	try {
+		execFileSync("git", ["init", "--quiet"], { cwd });
+		mkdirSync(join(cwd, ".pi"), { recursive: true });
+		const parentTasksPath = join(cwd, ".pi", "work-tasks.json");
+		writeJson(parentTasksPath, { nextId: 2, tasks: [task("P0 작업", "pending", 1)] });
+		const childSession = join(cwd, "child.jsonl");
+		const parentSession = join(cwd, "parent.jsonl");
+		writeFileSync(parentSession, `${JSON.stringify({ type: "session", id: "parent", cwd })}\n`);
+		writeFileSync(childSession, `${JSON.stringify({ type: "session", id: "child", cwd, parentSession })}\n`);
+		const ctx = {
+			cwd,
+			sessionManager: {
+				getSessionFile: () => childSession,
+				getHeader: () => ({ type: "session", id: "child", cwd, parentSession }),
+			},
+		} as any;
+
+		const candidates = resolveScreensaverTaskCandidates(ctx, { PI_FORK_PANEL_LABEL: "P1", PI_FORK_ID: "child-screensaver", PI_FORK_PARENT: parentSession } as any);
+		const current = candidates.find((candidate) => candidate.source === "current");
+		const p0 = candidates.find((candidate) => candidate.source === "p0");
+		assert.ok(current);
+		assert.ok(p0);
+		assert.notEqual(current.tasksPath.replace(/^\/private/u, ""), parentTasksPath.replace(/^\/private/u, ""), "child current tasks must be session-local");
+		assert.equal(p0.tasksPath.replace(/^\/private/u, ""), parentTasksPath.replace(/^\/private/u, ""), "P0 fallback should still reference the parent worktree task board");
+		assert.deepEqual(buildScreensaverTaskLines(candidates), ["📋 작업 진행 0/1 완료 · P0", "  ○ P0 작업"]);
+	} finally {
+		rmSync(cwd, { recursive: true, force: true });
+	}
+});

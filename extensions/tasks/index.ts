@@ -5,7 +5,7 @@ import type { ExtensionAPI, ExtensionContext, ExtensionCommandContext, Theme, Th
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
-import { resolveWorkUnit } from "../utils/work-context.ts";
+import { resolveTaskWorkUnit } from "../utils/work-context.ts";
 
 type TaskKind = "slice" | "decision" | "verify" | "blocked" | "followup" | "general";
 type TaskOwner = "agent" | "user" | "reviewer" | "subagent" | "external";
@@ -51,26 +51,40 @@ function legacyStorePath(ctx: ExtensionContext): string {
 	return join(ctx.cwd, ".pi", "tasks", `tasks-${sessionId}.json`);
 }
 
+function taskWorkUnit(ctx: ExtensionContext) {
+	return resolveTaskWorkUnit(ctx.cwd, ctx.sessionManager?.getSessionFile?.());
+}
+
 function storePath(ctx: ExtensionContext): string {
-	const unit = resolveWorkUnit(ctx.cwd, ctx.sessionManager?.getSessionFile?.());
+	const unit = taskWorkUnit(ctx).unit;
 	mkdirSync(dirname(unit.tasksPath), { recursive: true });
 	return unit.tasksPath;
 }
 
-function load(ctx: ExtensionContext): TaskStore {
-	const p = storePath(ctx);
-	if (!existsSync(p)) {
-		const legacy = legacyStorePath(ctx);
-		if (existsSync(legacy)) {
-			try { return JSON.parse(readFileSync(legacy, "utf8")); } catch {}
-		}
-		return { nextId: 1, tasks: [] };
-	}
+function readStore(path: string): TaskStore | undefined {
 	try {
-		return JSON.parse(readFileSync(p, "utf8"));
+		if (!existsSync(path)) return undefined;
+		return JSON.parse(readFileSync(path, "utf8"));
 	} catch {
-		return { nextId: 1, tasks: [] };
+		return undefined;
 	}
+}
+
+function load(ctx: ExtensionContext): TaskStore {
+	const location = taskWorkUnit(ctx);
+	const p = storePath(ctx);
+	const current = readStore(p);
+	if (current) return current;
+
+	if (location.seedFromParentTasksPath) {
+		const parentSeed = readStore(location.seedFromParentTasksPath);
+		if (parentSeed) return parentSeed;
+	}
+
+	const legacy = legacyStorePath(ctx);
+	const legacyStore = readStore(legacy);
+	if (legacyStore) return legacyStore;
+	return { nextId: 1, tasks: [] };
 }
 
 function save(ctx: ExtensionContext, store: TaskStore) {
@@ -282,7 +296,7 @@ export default function (pi: ExtensionAPI) {
 			if (params.agentType) task.metadata.agentType = params.agentType;
 			store.tasks.push(task);
 			save(ctx, store);
-			const unit = resolveWorkUnit(ctx.cwd, ctx.sessionManager?.getSessionFile?.());
+			const unit = taskWorkUnit(ctx).unit;
 			return text(`Task #${task.id} created successfully: ${task.subject}`, { task, tasksPath: unit.tasksPath });
 		},
 	});
@@ -301,7 +315,7 @@ export default function (pi: ExtensionAPI) {
 			const lines = sortTasks(active).map((t) => formatTask(store, t));
 			if (completed.length > 0) lines.push(`\n${completed.length} completed task(s)`);
 			if (held.length > 0) lines.push(`${held.length} held/removed task(s):`, ...sortTasks(held).map((t) => formatTask(store, t)));
-			const unit = resolveWorkUnit(ctx.cwd, ctx.sessionManager?.getSessionFile?.());
+			const unit = taskWorkUnit(ctx).unit;
 			return text(lines.join("\n"), { tasksPath: unit.tasksPath, active: active.length, completed: completed.length, held: held.length });
 		},
 	});
@@ -432,7 +446,7 @@ export default function (pi: ExtensionAPI) {
 			}
 			task.updatedAt = Date.now();
 			save(ctx, store);
-			const unit = resolveWorkUnit(ctx.cwd, ctx.sessionManager?.getSessionFile?.());
+			const unit = taskWorkUnit(ctx).unit;
 			return text(`Updated task #${params.taskId} status`, { task, tasksPath: unit.tasksPath });
 		},
 	});

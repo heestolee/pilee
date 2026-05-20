@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { resolveWorkUnit } from "../utils/work-context.ts";
+import { resolveTaskWorkUnit, resolveWorkUnit } from "../utils/work-context.ts";
 
 export type ScreensaverTaskStatus = "pending" | "in_progress" | "completed" | "blocked" | "deleted" | "rejected" | "deprioritized" | "superseded" | string;
 
@@ -161,7 +161,7 @@ function currentHeader(ctx: ExtensionContext): SessionHeaderLike | null {
 	try { return ctx.sessionManager.getHeader?.() as SessionHeaderLike | null; } catch { return null; }
 }
 
-function sameSessionIdAliases(sessionFile: string | undefined, header: SessionHeaderLike | null, cwd: string): ScreensaverTaskCandidate[] {
+function sameSessionIdAliases(sessionFile: string | undefined, header: SessionHeaderLike | null, cwd: string, env: NodeJS.ProcessEnv = process.env): ScreensaverTaskCandidate[] {
 	if (!sessionFile || !header?.id) return [];
 	try {
 		const currentReal = resolve(sessionFile);
@@ -174,7 +174,7 @@ function sameSessionIdAliases(sessionFile: string | undefined, header: SessionHe
 			.filter((item) => item.header?.id === header.id)
 			.sort((a, b) => b.mtime - a.mtime)
 			.map((item) => {
-				const unit = resolveWorkUnit(item.header?.cwd || cwd, item.filePath);
+				const unit = resolveTaskWorkUnit(item.header?.cwd || cwd, item.filePath, env).unit;
 				return { source: "current-alias" as const, label: unit.displayName, tasksPath: unit.tasksPath };
 			});
 	} catch {
@@ -203,11 +203,11 @@ export function resolveScreensaverTaskCandidates(ctx: ExtensionContext, env: Nod
 	const liveHeader = currentHeader(ctx);
 	const fileHeader = readSessionHeaderFromFile(currentSession);
 	const header = { ...(fileHeader ?? {}), ...(liveHeader ?? {}), id: liveHeader?.id || fileHeader?.id } as SessionHeaderLike;
-	const currentUnit = resolveWorkUnit(ctx.cwd, currentSession);
+	const currentUnit = resolveTaskWorkUnit(ctx.cwd, currentSession, env).unit;
 	const candidates: ScreensaverTaskCandidate[] = [{ source: "current", label: currentUnit.displayName, tasksPath: currentUnit.tasksPath }];
 	const seen = new Set(candidates.map((candidate) => candidate.tasksPath));
 
-	for (const alias of sameSessionIdAliases(currentSession, header, ctx.cwd)) {
+	for (const alias of sameSessionIdAliases(currentSession, header, ctx.cwd, env)) {
 		if (seen.has(alias.tasksPath)) continue;
 		seen.add(alias.tasksPath);
 		candidates.push(alias);

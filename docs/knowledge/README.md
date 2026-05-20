@@ -211,7 +211,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [To-production은 source-preserving hotfix 이식이다](./to-production-source-preserving-hotfix.md) | active | high | 2026-05-20 | 1dc3eae | to-production, hotfix, production, git, worktree, source-preserving |
 | [TUI 질문은 작은 의사결정 게이트다](./tui-ask-decision-overlay.md) | active | high | 2026-05-13 | 10e0874 | tui, ask-user-question, decision-gate, tool, overlay |
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
-| [Working Context Card는 큰 맥락을 현재 slice로 압축한다](./work-context-card-task-board.md) | active | high | 2026-05-20 | 14cb3a9 | work-context, tasks, workflow, context, guard |
+| [Working Context Card는 큰 맥락을 현재 slice로 압축한다](./work-context-card-task-board.md) | active | high | 2026-05-20 | db0d715 | work-context, tasks, workflow, context, guard |
 | [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-05-13 | 062f9f2 | workflow, guard, intent, audit, hotfix, continuation |
 | [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-05-13 | 062f9f2 | workflow, frame, tft, hotfix, scope, incremental |
 | [Worktree 생성은 현재 패널 대화가 source다](./worktree-creation-parent-gate.md) | active | high | 2026-05-19 | 6564ee3 | worktree, fork-panel, current-panel, hotfix, context, profile-driven |

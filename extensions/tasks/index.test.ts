@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -8,6 +8,7 @@ import tasksExtension from "./index.ts";
 
 type RegisteredShortcut = { description?: string; handler: (ctx: any) => Promise<void> | void };
 type RegisteredCommand = { description?: string; handler: (args: string, ctx: any) => Promise<void> | void };
+type RegisteredTool = { name: string; execute: (id: string, params: any, signal: any, onUpdate: any, ctx: any) => Promise<any> | any };
 
 const plainTheme = {
 	fg: (_color: string, text: string) => text,
@@ -18,11 +19,13 @@ const plainTheme = {
 function createPiHarness() {
 	const shortcuts = new Map<string, RegisteredShortcut>();
 	const commands = new Map<string, RegisteredCommand>();
+	const tools = new Map<string, RegisteredTool>();
 	return {
 		shortcuts,
 		commands,
+		tools,
 		pi: {
-			registerTool() {},
+			registerTool(tool: RegisteredTool) { tools.set(tool.name, tool); },
 			registerCommand(name: string, command: RegisteredCommand) {
 				commands.set(name, command);
 			},
@@ -57,7 +60,7 @@ function createGitWorkdir(): string {
 	return cwd;
 }
 
-function createCtx(cwd: string) {
+function createCtx(cwd: string, sessionFile = join(cwd, "session.jsonl")) {
 	const notifications: Array<{ message: string; level?: string }> = [];
 	const editorTexts: string[] = [];
 	const customCalls: Array<{ doneCalled: boolean }> = [];
@@ -68,7 +71,7 @@ function createCtx(cwd: string) {
 		hasUI: true,
 		sessionManager: {
 			getSessionId: () => "test-session",
-			getSessionFile: () => join(cwd, "session.jsonl"),
+			getSessionFile: () => sessionFile,
 		},
 		ui: {
 			notify(message: string, level?: string) {
@@ -162,6 +165,46 @@ test("/tasks show/hide/status uses the same passive overlay visibility state", a
 		await tasksCommand!.handler("status", view.ctx);
 		assert.match(view.notifications.at(-1)?.message ?? "", /shown/);
 	} finally {
+		rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("fork-panel child tasks are seeded from parent but saved session-locally", async () => {
+	const cwd = createGitWorkdir();
+	const parentTasksPath = join(cwd, ".pi", "work-tasks.json");
+	const childSession = join(cwd, "child-session.jsonl");
+	writeFileSync(childSession, `${JSON.stringify({ type: "session", id: "child-session", cwd, parentSession: join(cwd, "parent-session.jsonl") })}\n`);
+	const previousLabel = process.env.PI_FORK_PANEL_LABEL;
+	const previousForkId = process.env.PI_FORK_ID;
+	try {
+		process.env.PI_FORK_PANEL_LABEL = "P1";
+		process.env.PI_FORK_ID = "child-task-test";
+
+		const harness = createPiHarness();
+		tasksExtension(harness.pi as any);
+		const childCtx = createCtx(cwd, childSession).ctx;
+		const listBefore = await harness.tools.get("TaskList")!.execute("list", {}, undefined, undefined, childCtx);
+		assert.match(listBefore.content[0].text, /FE 작업 확인/, "child should inherit the parent task board as an initial seed");
+		assert.notEqual(listBefore.details.tasksPath, parentTasksPath, "child task store must not be the parent worktree file");
+		assert.equal(existsSync(listBefore.details.tasksPath), false, "seed reads must not eagerly create a child task file");
+
+		await harness.tools.get("TaskCreate")!.execute("create", {
+			subject: "P1 전용 조사",
+			description: "자식 패널에서만 추적할 작업",
+			area: "pilee",
+			source: "user",
+		}, undefined, undefined, childCtx);
+
+		const parentStoreText = readFileSync(parentTasksPath, "utf8");
+		const childStoreText = readFileSync(listBefore.details.tasksPath, "utf8");
+		assert.doesNotMatch(parentStoreText, /P1 전용 조사/, "child-created tasks must not be written back to the parent board");
+		assert.match(childStoreText, /FE 작업 확인/, "child local board keeps the inherited parent snapshot");
+		assert.match(childStoreText, /P1 전용 조사/, "child-created task is stored in the child-local board");
+	} finally {
+		if (previousLabel === undefined) delete process.env.PI_FORK_PANEL_LABEL;
+		else process.env.PI_FORK_PANEL_LABEL = previousLabel;
+		if (previousForkId === undefined) delete process.env.PI_FORK_ID;
+		else process.env.PI_FORK_ID = previousForkId;
 		rmSync(cwd, { recursive: true, force: true });
 	}
 });
