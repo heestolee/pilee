@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { Type } from "typebox";
 
 const DEFAULT_BASE_REF = "origin/production";
 const ARTIFACT_ROOT = join(homedir(), ".pi", "agent", "to-production");
@@ -58,6 +59,26 @@ interface Plan {
 	targetPath: string;
 	message: string;
 	includeUntracked: boolean;
+}
+
+interface RunResult {
+	report: string;
+	level: "info" | "warning" | "error";
+	status: "help" | "dry_run" | "cancelled" | "success";
+	plan?: Plan;
+	artifacts?: PreparedArtifacts;
+}
+
+interface ToProductionToolParams {
+	args?: string;
+	branch?: string;
+	base?: string;
+	path?: string;
+	range?: string;
+	message?: string;
+	includeUntracked?: boolean;
+	dryRun?: boolean;
+	yes?: boolean;
 }
 
 function splitArgs(input: string): string[] {
@@ -529,38 +550,80 @@ function helpText(): string {
 	].join("\n");
 }
 
-function publish(pi: ExtensionAPI, ctx: ExtensionCommandContext, report: string, level: "info" | "warning" | "error" = "info"): void {
+function publish(pi: ExtensionAPI, ctx: ExtensionContext, report: string, level: "info" | "warning" | "error" = "info", details: Record<string, unknown> = {}): void {
 	if (ctx.hasUI) ctx.ui.notify(report.split("\n")[0] ?? "/to-production", level);
-	pi.sendMessage({ customType: CUSTOM_TYPE, content: report, display: true, details: {} }, { triggerTurn: false });
+	pi.sendMessage({ customType: CUSTOM_TYPE, content: report, display: true, details }, { triggerTurn: false });
 }
 
-async function runToProduction(pi: ExtensionAPI, ctx: ExtensionCommandContext, args: string): Promise<void> {
-	const parsed = parseArgs(args);
-	if (parsed.help) {
-		publish(pi, ctx, helpText(), "info");
-		return;
-	}
+function toolParamsToParsed(params: ToProductionToolParams): ParsedArgs {
+	const rawArgs = params.args?.trim();
+	const structuredKeys: Array<keyof ToProductionToolParams> = ["branch", "base", "path", "range", "message", "includeUntracked", "dryRun", "yes"];
+	const hasStructured = structuredKeys.some((key) => params[key] !== undefined);
+	if (rawArgs && hasStructured) throw new Error("to_production tool에서는 args와 구조화 옵션을 함께 쓰지 않습니다. 하나만 선택하세요.");
+	if (rawArgs) return parseArgs(rawArgs);
+	return {
+		branch: params.branch?.trim() || undefined,
+		baseRef: normalizeBaseRef(params.base ?? DEFAULT_BASE_REF),
+		targetPath: params.path?.trim() || undefined,
+		message: params.message?.trim() || undefined,
+		range: params.range?.trim() || undefined,
+		includeUntracked: Boolean(params.includeUntracked),
+		yes: Boolean(params.yes),
+		dryRun: Boolean(params.dryRun),
+		help: false,
+	};
+}
+
+async function executeToProduction(pi: ExtensionAPI, ctx: ExtensionContext, parsed: ParsedArgs): Promise<RunResult> {
+	if (parsed.help) return { report: helpText(), level: "info", status: "help" };
 
 	const plan = await buildPlan(pi, ctx.cwd, parsed);
 	await fetchBase(pi, plan);
 	await assertTargetSafe(pi, plan);
 	const planReport = buildPlanReport(plan);
-	if (parsed.dryRun) {
-		publish(pi, ctx, `${planReport}\n\nDry-run이라 branch/worktree/artifact를 만들지 않았습니다.`, "info");
-		return;
-	}
+	if (parsed.dryRun) return { report: `${planReport}\n\nDry-run이라 branch/worktree/artifact를 만들지 않았습니다.`, level: "info", status: "dry_run", plan };
 	if (!parsed.yes) {
 		if (!ctx.hasUI) throw new Error("비대화 모드에서는 --yes 없이는 실행하지 않습니다.");
 		const confirmed = await ctx.ui.confirm("/to-production 실행", `${planReport}\n\n진행할까요?`);
-		if (!confirmed) {
-			publish(pi, ctx, `${planReport}\n\n사용자가 취소했습니다. source worktree는 변경하지 않았습니다.`, "warning");
-			return;
-		}
+		if (!confirmed) return { report: `${planReport}\n\n사용자가 취소했습니다. source worktree는 변경하지 않았습니다.`, level: "warning", status: "cancelled", plan };
 	}
 
 	const artifacts = await prepareArtifacts(pi, plan);
 	await applyArtifacts(pi, plan, artifacts);
-	publish(pi, ctx, await buildSuccessReport(pi, plan, artifacts), "info");
+	return { report: await buildSuccessReport(pi, plan, artifacts), level: "info", status: "success", plan, artifacts };
+}
+
+async function runToProduction(pi: ExtensionAPI, ctx: ExtensionContext, args: string): Promise<RunResult> {
+	return executeToProduction(pi, ctx, parseArgs(args));
+}
+
+function resultDetails(result: RunResult): Record<string, unknown> {
+	return {
+		status: result.status,
+		level: result.level,
+		source: result.plan
+			? {
+				repoRoot: result.plan.source.repoRoot,
+				branch: result.plan.source.branch,
+				head: result.plan.source.head,
+				commitRange: result.plan.source.commitRange,
+				commits: result.plan.source.commits,
+			}
+			: undefined,
+		target: result.plan
+			? {
+				baseRef: result.plan.baseRef,
+				branch: result.plan.targetBranch,
+				path: result.plan.targetPath,
+			}
+			: undefined,
+		artifacts: result.artifacts,
+	};
+}
+
+function errorReport(error: unknown): string {
+	const message = error instanceof Error ? error.message : String(error);
+	return `## /to-production 중단\n\n${message}\n\nsource worktree에는 checkout/stash/reset/clean을 실행하지 않았습니다.`;
 }
 
 export default function toProduction(pi: ExtensionAPI) {
@@ -568,10 +631,43 @@ export default function toProduction(pi: ExtensionAPI) {
 		description: "현재 worktree 변경을 source 손상 없이 최신 production 기반 새 worktree/branch로 이식",
 		handler: async (args: string, ctx: ExtensionCommandContext) => {
 			try {
-				await runToProduction(pi, ctx, args);
+				const result = await runToProduction(pi, ctx, args);
+				publish(pi, ctx, result.report, result.level, resultDetails(result));
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				publish(pi, ctx, `## /to-production 중단\n\n${message}\n\nsource worktree에는 checkout/stash/reset/clean을 실행하지 않았습니다.`, "error");
+				publish(pi, ctx, errorReport(error), "error", { blocked: true });
+			}
+		},
+	});
+
+	pi.registerTool({
+		name: "to_production",
+		label: "To Production",
+		description: "Run the dedicated /to-production source-preserving production/hotfix migration flow from natural-language requests.",
+		promptSnippet: "Use to_production when the user asks to move current work to production/hotfix/hotfeature or says '/to-production으로 해줘' in natural language.",
+		promptGuidelines: [
+			"Use this dedicated tool instead of worktree_fork, worktree_create, manual git worktree add, checkout, stash, reset, or clean when the task is to move existing source work to production/hotfix/hotfeature.",
+			"The tool shares the same execution path as the /to-production slash command and preserves the source worktree by using artifact/backup branch + target worktree application.",
+			"If the user provided an exact /to-production argument string, pass it as args. Otherwise prefer structured parameters such as branch, range, base, path, message, includeUntracked, dryRun, and yes.",
+			"Do not pass yes:true unless the user explicitly approved execution or asked you to run it now; without yes, UI contexts show the same confirmation as the slash command and headless contexts stop safely.",
+			"If this tool is unavailable in the current runtime, ask the user to submit the standalone /to-production command rather than emulating it with generic worktree tools.",
+		],
+		parameters: Type.Object({
+			args: Type.Optional(Type.String({ description: "Raw /to-production argument string, e.g. '--range abc..HEAD --branch hotfeature/COM-123/foo'. Do not combine with structured options." })),
+			branch: Type.Optional(Type.String({ description: "Target branch name." })),
+			base: Type.Optional(Type.String({ description: "Production base ref. Defaults to origin/production." })),
+			path: Type.Optional(Type.String({ description: "Target worktree path." })),
+			range: Type.Optional(Type.String({ description: "Commit range to migrate, e.g. abc123..HEAD." })),
+			message: Type.Optional(Type.String({ description: "Commit message for migrated dirty/untracked changes." })),
+			includeUntracked: Type.Optional(Type.Boolean({ description: "Include untracked files after artifact backup." })),
+			dryRun: Type.Optional(Type.Boolean({ description: "Plan only; do not create branch/worktree/artifacts." })),
+			yes: Type.Optional(Type.Boolean({ description: "Skip confirmation only when the user explicitly approved execution." })),
+		}),
+		async execute(_toolCallId, params: ToProductionToolParams, _signal, _onUpdate, ctx: ExtensionContext) {
+			try {
+				const result = await executeToProduction(pi, ctx, toolParamsToParsed(params));
+				return { content: [{ type: "text", text: result.report }], details: resultDetails(result) };
+			} catch (error) {
+				return { content: [{ type: "text", text: errorReport(error) }], details: { blocked: true } };
 			}
 		},
 	});
@@ -579,6 +675,7 @@ export default function toProduction(pi: ExtensionAPI) {
 
 export const __toProductionForTests = {
 	parseArgs,
+	toolParamsToParsed,
 	buildPlan,
 	helpText,
 };
