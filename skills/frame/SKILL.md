@@ -501,7 +501,7 @@ Draft를 보여줄 때 맨 위에 반드시 다음을 붙인다:
 14. `verify_plan.manual_checks` → 각 항목당 `TaskCreate`:
     - `kind: "verify"`, `owner: "agent"`
     - `metadata: { kind: "frame.verify_check" }`
-15. TFT Studio를 쓰고 있으면 `frame_studio action=update tab=frame`으로 저장 결과와 Plan synthesis, Working Context Card 요약을 남긴다. Step 9의 다음 단계 질문까지 끝난 뒤 **반드시** `frame_studio action=finish tab=frame`으로 닫는다.
+15. TFT Studio를 쓰고 있으면 `frame_studio action=update tab=frame`으로 저장 결과와 Plan synthesis, Working Context Card 요약을 남긴다. 이때 `implementation_plan.slices[]`가 있으면 “각 slice는 검증 후 `work_context commit_plan` → `auto_commit apply`로 닫는 커밋 후보”라는 soft rhythm을 함께 표시한다. Step 9의 다음 단계 질문까지 끝난 뒤 **반드시** `frame_studio action=finish tab=frame`으로 닫는다.
     - `frame.json` path
     - `frame.md` path
     - `canonicalHash`

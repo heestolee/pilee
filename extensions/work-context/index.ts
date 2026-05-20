@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import {
@@ -10,6 +12,7 @@ import {
 	type WorkContextMode,
 	type WorkContextSlice,
 } from "../utils/work-context.ts";
+import { buildSliceCommitPlan, sliceCommitPlanFileName } from "./slice-commit-plan.ts";
 
 const sliceSchema = Type.Object({
 	id: Type.String({ description: "Slice id, e.g. S1 or SLICE-1" }),
@@ -25,6 +28,17 @@ function toolText(text: string, details: Record<string, unknown> = {}) {
 
 function sessionFile(ctx: { sessionManager?: { getSessionFile?: () => string | undefined } }) {
 	return ctx.sessionManager?.getSessionFile?.();
+}
+
+async function gitOutput(pi: ExtensionAPI, cwd: string, args: string[]): Promise<string> {
+	const result = await pi.exec("git", args, { cwd });
+	if (result.code !== 0) throw new Error(`git ${args.join(" ")} failed: ${result.stderr?.trim() || result.stdout?.trim() || "unknown"}`);
+	return result.stdout ?? "";
+}
+
+function writeJson(path: string, value: unknown): void {
+	mkdirSync(dirname(path), { recursive: true });
+	writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
 function mergeSlice(card: WorkContextCard, params: { sliceId?: string; slice?: Partial<WorkContextSlice> }): WorkContextCard {
@@ -60,6 +74,7 @@ export default function workContextExtension(pi: ExtensionAPI) {
 			"Working Context Card is the compact context carried each turn: goal, current slice, must keep/not, open questions, verify focus, and artifact refs.",
 			"Do not paste full transcripts into the card. Keep raw history in transcriptRef/archive and store only actionable current context.",
 			"Before editing a standard/full framed work, make sure currentSlice is selected and not blocked by open questions.",
+			"When a slice is complete and nearest validation passed, use action=commit_plan to create an explicit auto_commit JSON plan, then call auto_commit apply after reviewing it.",
 		],
 		parameters: Type.Object({
 			action: Type.Union([
@@ -68,6 +83,7 @@ export default function workContextExtension(pi: ExtensionAPI) {
 				Type.Literal("set_slice"),
 				Type.Literal("checkpoint"),
 				Type.Literal("gate_check"),
+				Type.Literal("commit_plan"),
 			]),
 			mode: Type.Optional(Type.Union([Type.Literal("light"), Type.Literal("standard"), Type.Literal("full"), Type.Literal("unknown")])),
 			goal: Type.Optional(Type.String()),
@@ -78,6 +94,8 @@ export default function workContextExtension(pi: ExtensionAPI) {
 			verifyFocus: Type.Optional(Type.Array(Type.String())),
 			note: Type.Optional(Type.String()),
 			lastValidation: Type.Optional(Type.String()),
+			commitMessage: Type.Optional(Type.String({ description: "Commit message for action=commit_plan. Defaults to feat: <current slice title>." })),
+			includeOutsideScope: Type.Optional(Type.Boolean({ description: "For action=commit_plan, include files outside current slice scope. Defaults to false; outside files are left as leftovers." })),
 			paths: Type.Optional(Type.Array(Type.String(), { description: "Paths to check against current slice scope" })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -123,6 +141,34 @@ export default function workContextExtension(pi: ExtensionAPI) {
 				const result = gateWorkContext(card, { action: "status", paths: params.paths, requireSlice: true });
 				const status = result.level === "pass" ? "PASS" : result.level.toUpperCase();
 				return toolText([`work-context gate: ${status}`, ...result.reasons.map((reason) => `- ${reason}`), "", formatWorkContextCard(card)].filter(Boolean).join("\n"), { ...result, card });
+			}
+
+			if (params.action === "commit_plan") {
+				if (!card.currentSlice) throw new Error("commit_plan requires currentSlice. Use work_context set_slice first.");
+				const root = card.identity.root || ctx.cwd;
+				const [statusText, head] = await Promise.all([
+					gitOutput(pi, root, ["status", "--porcelain"]),
+					gitOutput(pi, root, ["rev-parse", "HEAD"]).then((value) => value.trim()),
+				]);
+				const output = buildSliceCommitPlan({
+					card,
+					statusLines: statusText.split(/\r?\n/u),
+					expectedHead: head,
+					message: params.commitMessage,
+					includeOutsideScope: params.includeOutsideScope,
+				});
+				const planPath = join(card.identity.root || card.identity.cwd, ".pi", "auto-commit", sliceCommitPlanFileName(card));
+				writeJson(planPath, output.plan);
+				const skipped = output.skipped.length ? `\n\nLeft as uncommitted leftovers outside current slice:\n${output.skipped.map((path) => `- ${path}`).join("\n")}` : "";
+				return toolText([
+					`auto_commit plan을 생성했습니다: ${planPath}`,
+					`message: ${output.message}`,
+					"paths:",
+					...output.included.map((path) => `- ${path}`),
+					"",
+					"다음 단계: plan을 검토한 뒤 auto_commit action=apply planPath=<위 경로>를 호출하세요.",
+					skipped,
+				].filter(Boolean).join("\n"), { planPath, plan: output.plan, included: output.included, outsideScope: output.outsideScope, skipped: output.skipped, card });
 			}
 
 			throw new Error(`Unsupported work_context action: ${params.action}`);

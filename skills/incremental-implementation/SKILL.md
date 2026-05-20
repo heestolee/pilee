@@ -33,6 +33,18 @@ For each slice:
 4. **Commit** — save progress with a descriptive message
 5. **Continue** to the next slice
 
+### Soft slice auto-commit rhythm
+
+이 단계는 하드 블록이 아니라 기본 리듬이다. slice가 완료되고 가장 가까운 검증이 통과하면, 다음 slice로 넘어가기 전에 현재 slice diff를 커밋 후보로 다룬다.
+
+1. `git status --short`와 `git diff --stat`으로 현재 slice 변경만 있는지 확인한다.
+2. `work_context action=commit_plan`으로 currentSlice scope 기반 `auto_commit` JSON plan을 만든다.
+3. plan의 `message`와 `paths`를 읽어 관련 없는 파일이 섞이지 않았는지 확인한다.
+4. 적절하면 `auto_commit action=apply planPath=<planPath>`를 호출한다.
+5. 아직 slice가 불완전하거나 검증 전이면 커밋을 미루되, `work_context action=checkpoint`에 이유를 남긴다.
+
+사용자가 명시적으로 “커밋하지 마”라고 했거나, 현재 slice가 아직 검증되지 않았거나, 관련 파일을 분리하면 빌드가 깨지는 경우에는 커밋을 보류할 수 있다. 하지만 마지막에 “구현은 끝났는데 커밋 안 됨”으로 놀라게 하지 않는다.
+
 ### Context hoarding보다 slice closure
 
 큰 transcript를 오래 들고 가는 것보다, 현재 slice를 작게 닫는 것이 우선이다.

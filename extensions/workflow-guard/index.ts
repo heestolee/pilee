@@ -269,6 +269,20 @@ function workContextSection(card?: WorkContextCard): string {
 	].join("\n");
 }
 
+function sliceCommitRhythmSection(state: GuardState, card?: WorkContextCard): string {
+	if (!card?.currentSlice) return "";
+	if (!state.explicitMutation || (state.weight !== "standard" && state.weight !== "full")) return "";
+	return [
+		"",
+		"Soft slice commit rhythm:",
+		`- Current slice ${card.currentSlice.id}: ${card.currentSlice.title}`,
+		"- Treat a verified slice as a commit candidate, not as something to batch until the whole implementation is done.",
+		"- When the slice's nearest validation passes, inspect git status/diff, call work_context action=commit_plan to write an explicit auto_commit JSON plan, then call auto_commit action=apply after reviewing the plan.",
+		"- If you intentionally defer the slice commit, record the reason in work_context checkpoint. Do not surprise the user at the end with a large uncommitted diff.",
+		"- This is a soft rhythm, not a hard block: continue only when a commit would be premature because the current slice is incomplete or validation is still missing.",
+	].join("\n");
+}
+
 function keywordTokens(text: string): string[] {
 	const normalized = text
 		.replace(/[`*_#[\](){}.,:;!?"']/g, " ")
@@ -393,7 +407,7 @@ export default function workflowGuard(pi: ExtensionAPI) {
 		rememberGuardState(key, state);
 		const audit = state.auditRequired ? buildAuditSnapshot({ prompt: event.prompt }) : undefined;
 		const card = loadOrDeriveWorkContext(ctx.cwd, sessionFile);
-		const guardPrompt = `${buildSystemPrompt(state)}${workContextSection(card)}`;
+		const guardPrompt = `${buildSystemPrompt(state)}${workContextSection(card)}${sliceCommitRhythmSection(state, card)}`;
 		return {
 			systemPrompt: `${event.systemPrompt}\n\n${guardPrompt}`,
 			message: {
