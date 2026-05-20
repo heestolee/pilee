@@ -110,6 +110,12 @@ test("같은 Pi session에서는 companion 창을 새로 만들지 않고 기존
 	assert.equal(calls[0].window.showCalls.at(-1)?.title, "둘째 창");
 	assert.equal(execCalls.length, geometryExecCountAfterFirstOpen, "reuse should not recompute or reapply right-half geometry");
 	assert.deepEqual(calls[0].window.writes.filter((write) => write.type === "bounds" || write.type === "resize"), []);
+
+	const third = await openCompanionHtml(pi, ctx, "<h1>second</h1>", "둘째 창 다시 표시", { width: 900, height: 700 });
+	assert.equal(third.mode, "reused");
+	assert.equal(third.window, first.window);
+	assert.deepEqual(calls[0].window.htmlWrites, ["<h1>second</h1>"], "same companion HTML should be shown without rewriting/reloading the WebView");
+	assert.equal(calls[0].window.showCalls.at(-1)?.title, "둘째 창 다시 표시");
 });
 
 test("toggle은 기존 companion을 숨기고 마지막 HTML로 다시 연다", async () => {
@@ -150,4 +156,8 @@ test("저장된 companion이 없으면 toggle은 missing을 반환하고 url ope
 	assert.equal(calls[0].html.includes("URL &lt;창&gt;"), true);
 	assert.equal(calls[0].opts.width, 777);
 	assert.equal(calls[0].opts.height, 555);
+
+	const reopened = await openCompanionUrl(pi, ctx, "http://127.0.0.1:1234/?q=1", "URL <창>", { width: 777, height: 555 });
+	assert.equal(reopened.mode, "reused");
+	assert.deepEqual(calls[0].window.htmlWrites, [], "same URL redirect shell should not be rewritten because it reloads the live page and resets scroll");
 });

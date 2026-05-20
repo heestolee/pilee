@@ -32,8 +32,9 @@ source:
   - user-direction:2026-05-12-tft-studio-ime-shortcut-conflict
   - user-direction:2026-05-19-single-companion-webview-toggle
   - user-direction:2026-05-20-tft-studio-scroll-preservation
+  - user-feedback:2026-05-20-tft-studio-awaiting-scroll-reset
 reviewed_at: 2026-05-20
-reviewed_commit: 38651aa6e79bd3c035599c260c19988dd1c4c15c
+reviewed_commit: 44ae15881445a9625b4b6b2e19784605cdd61f06
 related:
   - frame-planning-identity
   - frame-verify-contract
@@ -74,6 +75,8 @@ TFT Studio의 메인 화면은 최신 활성 step을 위에 따로 띄우고 그
 같은 work unit 안에서 Frame, Decide, Verify, Verify Report는 여러 번 수행될 수 있습니다. 따라서 tab timeline은 단순 flat list가 아니라 `Frame Run #1`, `Frame Run #2`, `Verify Run #1`처럼 stage run 카드로 묶어 보여줘야 합니다. 새 transcript 파일을 만들지는 않고 같은 identity transcript에 append하되, `finish`/`abort` 이후 같은 tab에 새 update/start가 오면 새 run 카드로 보이게 합니다.
 
 Live update는 사용자가 읽던 위치를 방해하면 안 됩니다. SSE로 새 `update`/`ask` state가 들어와 timeline HTML을 다시 그리더라도, 사용자가 중간을 읽고 있었다면 기존 scroll offset을 보존합니다. 사용자가 이미 하단 근처에 있을 때만 새 내용이 추가되는 진행 상황을 보기 위해 하단을 계속 따라갑니다. 탭을 사용자가 직접 바꾸는 동작은 다른 문맥으로 이동하는 것이므로 scroll 보존 대상이 아닙니다.
+
+선택대기 질문을 띄우기 위해 `openStudio()`가 호출되더라도 이미 같은 TFT Studio URL이 열린 companion WebView를 다시 redirect/write하면 안 됩니다. 같은 redirect shell을 재주입하면 페이지 자체가 reload되어 WebView script의 scroll snapshot/restore가 개입하기 전에 scroll이 0으로 초기화됩니다. 따라서 companion 재사용 경로는 HTML/URL이 동일하면 `show`만 수행하고, 다른 artifact로 바뀐 경우에만 content를 교체합니다.
 
 즉 TFT Studio는 AskUserQuestion 원칙을 대체하지 않습니다. 같은 decision gate를 더 읽기 쉬운 UI로 표현하는 surface입니다. `/frame`의 핵심 정렬 질문에서는 추천안이 명백해 보여도 묻고, `(명백: ...)` 주석으로 AI 판단 근거를 같이 보여줘야 합니다.
 

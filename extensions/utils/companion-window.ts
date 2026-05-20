@@ -134,11 +134,12 @@ export async function openCompanionHtml(
 	const openLinks = options.openLinks ?? true;
 	const existing = companions.get(key);
 	if (isOpen(existing)) {
+		const htmlChanged = existing.html !== html;
 		existing.title = title;
 		existing.html = html;
 		existing.openLinks = openLinks;
 		existing.updatedAt = Date.now();
-		writeHtml(existing.window, html);
+		if (htmlChanged) writeHtml(existing.window, html);
 		showWindow(existing.window, title);
 		return { mode: "reused", key, window: existing.window };
 	}
