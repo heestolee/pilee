@@ -131,7 +131,6 @@ export async function openCompanionHtml(
 	const key = options.key ?? sessionKey(ctx);
 	const open = await resolveGlimpseOpen();
 	if (!open) return { mode: "none", key };
-	const geometry = await rightHalfGeometry(pi, options.width ?? 1180, options.height ?? 920);
 	const openLinks = options.openLinks ?? true;
 	const existing = companions.get(key);
 	if (isOpen(existing)) {
@@ -140,10 +139,10 @@ export async function openCompanionHtml(
 		existing.openLinks = openLinks;
 		existing.updatedAt = Date.now();
 		writeHtml(existing.window, html);
-		applyGeometry(existing.window, geometry);
 		showWindow(existing.window, title);
 		return { mode: "reused", key, window: existing.window };
 	}
+	const geometry = await rightHalfGeometry(pi, options.width ?? 1180, options.height ?? 920);
 	try {
 		const win = open(html, { ...geometry, title, openLinks });
 		const record: CompanionRecord = { key, title, html, openLinks, window: win, closed: false, updatedAt: Date.now() };

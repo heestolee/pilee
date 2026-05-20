@@ -101,14 +101,15 @@ test("같은 Pi session에서는 companion 창을 새로 만들지 않고 기존
 		assert.equal(calls[0].opts.height, 700);
 	}
 
+	const geometryExecCountAfterFirstOpen = execCalls.length;
 	const second = await openCompanionHtml(pi, ctx, "<h1>second</h1>", "둘째 창", { width: 900, height: 700 });
 	assert.equal(second.mode, "reused");
 	assert.equal(calls.length, 1);
 	assert.equal(second.window, first.window);
 	assert.deepEqual(calls[0].window.htmlWrites, ["<h1>second</h1>"]);
 	assert.equal(calls[0].window.showCalls.at(-1)?.title, "둘째 창");
-	assert.equal(calls[0].window.writes.at(-2)?.type, "bounds");
-	assert.equal(calls[0].window.writes.at(-1)?.type, "resize");
+	assert.equal(execCalls.length, geometryExecCountAfterFirstOpen, "reuse should not recompute or reapply right-half geometry");
+	assert.deepEqual(calls[0].window.writes.filter((write) => write.type === "bounds" || write.type === "resize"), []);
 });
 
 test("toggle은 기존 companion을 숨기고 마지막 HTML로 다시 연다", async () => {

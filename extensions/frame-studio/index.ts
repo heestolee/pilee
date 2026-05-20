@@ -179,6 +179,73 @@ function escapeHtml(value: string): string {
 		.replace(/"/g, "&quot;");
 }
 
+const QUESTION_CARD_LABELS = ["질문 제목", "현재 이해", "막힌 결정", "왜 중요한가", "추천", "추천 답안", "선택 후 달라지는 것", "질문"];
+
+function countQuestionCardLabels(value: string): number {
+	return QUESTION_CARD_LABELS.filter((label) => new RegExp(`(?:^|\\n)\\s*${label}\\s*[:：]`).test(value)).length;
+}
+
+export type QuestionDisplayParts = {
+	title: string;
+	body: string;
+	wasSplit: boolean;
+};
+
+export function splitQuestionDisplayParts(rawQuestion: string): QuestionDisplayParts {
+	const raw = rawQuestion.trim() || "선택해주세요.";
+	const lines = raw.split(/\r?\n/);
+	let title = "";
+	let titleLineIndex = -1;
+
+	for (let index = 0; index < lines.length; index++) {
+		const line = lines[index].trim();
+		if (!line) continue;
+		const titleMatch = line.match(/^질문 제목\s*[:：]\s*(.+)$/);
+		if (titleMatch?.[1]) {
+			title = titleMatch[1].trim();
+			titleLineIndex = index;
+			break;
+		}
+	}
+
+	if (!title) {
+		for (let index = lines.length - 1; index >= 0; index--) {
+			const line = lines[index].trim();
+			if (!line) continue;
+			const questionMatch = line.match(/^질문\s*[:：]\s*(.*)$/);
+			if (!questionMatch) continue;
+			const inlineTitle = questionMatch[1]?.trim();
+			const nextTitle = lines.slice(index + 1).find((candidate) => candidate.trim())?.trim();
+			title = inlineTitle || nextTitle || "질문";
+			titleLineIndex = index;
+			break;
+		}
+	}
+
+	const cardLabelCount = countQuestionCardLabels(raw);
+	const shouldSplit = raw.length > 180 || cardLabelCount >= 2 || /\r?\n\s*\r?\n/.test(raw);
+	if (!shouldSplit) return { title: raw, body: "", wasSplit: false };
+
+	if (!title) {
+		const firstContentLine = lines.find((line) => line.trim())?.trim() ?? "선택해주세요.";
+		title = firstContentLine.length > 90 ? `${firstContentLine.slice(0, 87).trimEnd()}…` : firstContentLine;
+	}
+	if (title.length > 120) title = `${title.slice(0, 117).trimEnd()}…`;
+
+	const body = lines.filter((_, index) => index !== titleLineIndex).join("\n").trim();
+	return { title, body, wasSplit: true };
+}
+
+function normalizeStudioQuestionInput(question: StudioQuestion): StudioQuestion {
+	const parts = splitQuestionDisplayParts(question.question);
+	if (!parts.wasSplit) return { ...question, question: parts.title };
+
+	const existingMarkdown = question.markdown?.trim() ?? "";
+	const shouldAppendBody = Boolean(parts.body) && !existingMarkdown.includes(parts.body.slice(0, 120));
+	const markdown = [existingMarkdown, shouldAppendBody ? parts.body : ""].filter(Boolean).join("\n\n---\n\n");
+	return { ...question, question: parts.title, markdown };
+}
+
 function sendJson(res: ServerResponse, value: unknown, status = 200) {
 	res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
 	res.end(JSON.stringify(value));
@@ -493,7 +560,7 @@ function listenOnLoopback(server: Server): Promise<string> {
 	});
 }
 
-function buildPageHtml(): string {
+export function buildPageHtml(): string {
 	return String.raw`<!doctype html>
 <html lang="ko">
 <head>
@@ -583,7 +650,11 @@ h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .tft-relation-card p, .tft-note-card p { margin:4px 0; color:var(--muted); font-size:12px; line-height:1.45; overflow-wrap:anywhere; }
 .tft-visual-error { border:1px solid #fecaca; background:#fef2f2; color:#991b1b; border-radius:14px; padding:12px; white-space:pre-wrap; }
 .question { border-color:#ddd6fe; background:#faf9ff; }
-.question-title { font-size:18px; font-weight:800; margin:0 0 12px; }
+.question-title { font-size:18px; font-weight:800; margin:0 0 12px; line-height:1.35; overflow-wrap:anywhere; }
+.question-context { margin:0 0 14px; padding:12px 14px; border:1px solid #ede9fe; border-radius:12px; background:#faf9ff; font-size:14px; line-height:1.55; }
+.question-context h1, .question-context h2 { font-size:16px; margin:10px 0 6px; border:0; padding:0; }
+.question-context h3, .question-context h4, .question-context h5, .question-context h6 { font-size:14px; margin:9px 0 5px; }
+.question-context p { margin:6px 0; }
 .options { display:grid; gap:10px; margin:14px 0; }
 .option { display:flex; gap:10px; align-items:flex-start; padding:12px; border:1px solid var(--line); border-radius:14px; background:#fff; cursor:pointer; }
 .option:hover { border-color:#c4b5fd; background:#faf9ff; }
@@ -863,21 +934,66 @@ function answerStatusLabel(status) {
   if (status === 'timeout') return '응답 시간 초과';
   return '응답 상태: ' + esc(status || 'unknown');
 }
+function countQuestionCardLabelsInBrowser(value) {
+  var labels = ['질문 제목', '현재 이해', '막힌 결정', '왜 중요한가', '추천', '추천 답안', '선택 후 달라지는 것', '질문'];
+  return labels.filter(function(label) { return new RegExp('(?:^|\\n)\\s*' + label + '\\s*[:：]').test(value); }).length;
+}
+function splitQuestionDisplay(rawQuestion) {
+  var raw = String(rawQuestion || '').trim() || '선택해주세요.';
+  var lines = raw.split(/\r?\n/);
+  var title = '';
+  var titleLineIndex = -1;
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].trim();
+    if (!line) continue;
+    var titleMatch = line.match(/^질문 제목\s*[:：]\s*(.+)$/);
+    if (titleMatch && titleMatch[1]) { title = titleMatch[1].trim(); titleLineIndex = i; break; }
+  }
+  if (!title) {
+    for (var j = lines.length - 1; j >= 0; j--) {
+      var qLine = lines[j].trim();
+      if (!qLine) continue;
+      var questionMatch = qLine.match(/^질문\s*[:：]\s*(.*)$/);
+      if (!questionMatch) continue;
+      var inlineTitle = questionMatch[1] ? questionMatch[1].trim() : '';
+      var nextLine = lines.slice(j + 1).find(function(item) { return item.trim(); });
+      title = inlineTitle || (nextLine ? nextLine.trim() : '질문');
+      titleLineIndex = j;
+      break;
+    }
+  }
+  var shouldSplit = raw.length > 180 || countQuestionCardLabelsInBrowser(raw) >= 2 || /\r?\n\s*\r?\n/.test(raw);
+  if (!shouldSplit) return { title: raw, body: '', wasSplit: false };
+  if (!title) {
+    var first = lines.find(function(item) { return item.trim(); });
+    title = first ? first.trim() : '선택해주세요.';
+    if (title.length > 90) title = title.slice(0, 87).trimEnd() + '…';
+  }
+  if (title.length > 120) title = title.slice(0, 117).trimEnd() + '…';
+  var body = lines.filter(function(_, index) { return index !== titleLineIndex; }).join('\n').trim();
+  return { title: title, body: body, wasSplit: true };
+}
+function renderQuestionValue(rawQuestion) {
+  var parts = splitQuestionDisplay(rawQuestion);
+  return '<div class="answer-value">' + inline(parts.title) + '</div>' + (parts.body ? '<div class="question-context markdown">' + renderMarkdown(parts.body) + '</div>' : '');
+}
 function renderAnswerCard(answer) {
   var optionHtml = (answer.selectedOptions || []).length
     ? '<ol>' + answer.selectedOptions.map(function(opt) { return '<li>' + inline(opt) + '</li>'; }).join('') + '</ol>'
     : '<div class="status">선택한 옵션 없음</div>';
   var textHtml = answer.text ? '<div class="answer-row"><div class="answer-label">직접 입력</div><div class="answer-value">' + inline(answer.text) + '</div></div>' : '';
   return '<div class="answer-title">✅ ' + answerStatusLabel(answer.status) + '</div>'
-    + (answer.question ? '<div class="answer-row"><div class="answer-label">질문</div><div class="answer-value">' + inline(answer.question) + '</div></div>' : '')
+    + (answer.question ? '<div class="answer-row"><div class="answer-label">질문</div>' + renderQuestionValue(answer.question) + '</div>' : '')
     + '<div class="answer-row"><div class="answer-label">선택값</div><div class="answer-value">' + optionHtml + '</div></div>'
     + textHtml
     + '<div class="status">Pi가 다음 단계를 준비 중입니다. 다음 markdown update가 오면 이 카드가 교체됩니다.</div>';
 }
 function renderQuestionForm(q) {
   var type = q.multiSelect ? 'checkbox' : 'radio';
+  var parts = splitQuestionDisplay(q.question);
   return '<div class="inline-question">'
-    + '<div class="question-title">' + esc(q.question) + '</div>'
+    + '<div class="question-title">' + esc(parts.title) + '</div>'
+    + (parts.body ? '<div class="question-context markdown">' + renderMarkdown(parts.body) + '</div>' : '')
     + '<div class="options">' + q.options.map(function(opt, i) {
       return '<label class="option"><input name="frameOption" type="' + type + '" value="' + i + '"><span class="option-number">' + (i + 1) + '</span><span>' + inline(opt) + '</span></label>';
     }).join('') + '</div>'
@@ -898,7 +1014,7 @@ function renderTimelineEntry(entry, s) {
     if (isPending) {
       body += renderQuestionForm(s.question);
     } else {
-      body += '<div class="answer-row"><div class="answer-label">질문</div><div class="answer-value">' + inline(entry.question.question) + '</div></div>';
+      body += '<div class="answer-row"><div class="answer-label">질문</div>' + renderQuestionValue(entry.question.question) + '</div>';
       if ((entry.question.options || []).length) {
         body += '<div class="answer-row"><div class="answer-label">옵션</div><ol>' + entry.question.options.map(function(opt) { return '<li>' + inline(opt) + '</li>'; }).join('') + '</ol></div>';
       }
@@ -1586,7 +1702,7 @@ export default function (pi: ExtensionAPI) {
 				if (params.step) handle.state.step = params.step;
 				updateTab(handle.state, tab, { markdown: params.markdown, step: params.step });
 				await openStudio(pi, ctx, handle);
-				const question: StudioQuestion = {
+				const question = normalizeStudioQuestionInput({
 					id: randomUUID().slice(0, 8),
 					tab,
 					question: params.question || "선택해주세요.",
@@ -1597,7 +1713,7 @@ export default function (pi: ExtensionAPI) {
 					placeholder: params.placeholder,
 					submitLabel: params.submitLabel,
 					createdAt: Date.now(),
-				};
+				});
 				const answer = await ask(handle, question, signal);
 				refreshStudioWorkContext(handle.state, ctx);
 				const currentTabSnapshot = tabSnapshot(handle.state, tab);

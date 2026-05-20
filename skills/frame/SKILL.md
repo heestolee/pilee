@@ -211,7 +211,8 @@ Pi UI가 있고 `frame_studio` tool을 사용할 수 있으면, 번호형 텍스
 
 - Step 1 직후: `frame_studio action=start tab=frame`으로 identity-bound TFT Studio를 연다.
 - Step 2: 목표 fingerprint/가정/렌즈/정책축 스캔/백엔드 레이어 맵 markdown을 `frame_studio action=update tab=frame`으로 렌더링한 뒤, `frame_studio action=ask tab=frame`으로 `ok` 또는 정정 입력을 받는다. 버튼 없는 `ok` 문장을 markdown에만 남기지 않는다.
-- Step 3/4/5/7/9: 선택이 필요한 지점은 `frame_studio action=ask tab=frame`을 호출해 버튼/체크박스/직접입력으로 답을 받는다. 질문 본문은 가능하면 `현재 이해 / 막힌 결정 / 왜 중요한가 / 추천 답안 / 선택 후 달라지는 것 / 질문` 카드 구조로 만든다.
+- Step 3/4/5/7/9: 선택이 필요한 지점은 `frame_studio action=ask tab=frame`을 호출해 버튼/체크박스/직접입력으로 답을 받는다. 긴 판단 맥락 카드는 직전 `update` 또는 같은 `ask`의 `markdown`에 넣고, `question` 필드는 **짧은 질문 제목 한 줄**만 넣는다.
+- `ask.question`에 `현재 이해 / 막힌 결정 / 왜 중요한가 / 추천 답안 / 선택 후 달라지는 것 / 질문` 카드 전체를 넣지 않는다. 그런 호출은 Studio가 방어적으로 제목/본문을 분리하더라도 실패한 호출이다.
 - Step 6/8: 현재 markdown을 `frame_studio action=update tab=frame`으로 렌더링한다. 구현 계획은 별도 Plan 탭이 아니라 Frame 탭 마지막의 `Implementation plan synthesis` 섹션으로 보여준다.
 - 질문 본문을 채팅에 번호형 메뉴로 출력하는 것은 `frame_studio ask` 결과가 `unavailable`, `cancelled`, `timeout`일 때만 허용한다.
 - tool 결과가 `unavailable`, `cancelled`, `timeout`이면 `ask-user-question-rules`의 번호형 text-mode fallback으로 이어간다.
