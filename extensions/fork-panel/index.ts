@@ -11,9 +11,14 @@ import { resolveForkPanelIdentity, type ForkPanelIdentity } from "../utils/fork-
 
 const SPLIT_DIRS = ["right", "left", "down", "up"] as const;
 type SplitDirection = (typeof SPLIT_DIRS)[number];
+export interface SplitPlacement {
+	anchorPath: SplitDirection[];
+	splitDirection: SplitDirection;
+}
 const VALID_DIRS = [...SPLIT_DIRS, "tab"] as const;
 type Direction = (typeof VALID_DIRS)[number];
-type OpenMode = Direction | "here";
+type PanelOpenTarget = "tab" | SplitPlacement;
+type OpenMode = "here" | PanelOpenTarget;
 type ReviveHereMismatchAction = "fast" | "worktree-here" | Direction;
 
 const HANDOFF_DIR = join(homedir(), ".pi", "agent", "fork-panel");
@@ -629,7 +634,8 @@ function parseOpenMode(value: string | undefined): OpenMode | null {
 	const normalized = value?.trim().toLowerCase();
 	if (!normalized) return null;
 	if (normalized === "here" || normalized === "current" || normalized === "panel" || normalized === "this") return "here";
-	if (VALID_DIRS.includes(normalized as Direction)) return normalized as Direction;
+	if (normalized === "tab") return "tab";
+	if (isSplitDirection(normalized)) return splitPlacementFromDirections([normalized]);
 	return null;
 }
 
@@ -637,10 +643,61 @@ function isSplitDirection(value: string | undefined): value is SplitDirection {
 	return SPLIT_DIRS.includes(value as SplitDirection);
 }
 
+export function isSplitPlacement(value: unknown): value is SplitPlacement {
+	if (!value || typeof value !== "object") return false;
+	const candidate = value as Partial<SplitPlacement>;
+	return Array.isArray(candidate.anchorPath)
+		&& candidate.anchorPath.every(isSplitDirection)
+		&& isSplitDirection(candidate.splitDirection);
+}
+
+export function splitPlacementFromDirections(directions: SplitDirection[]): SplitPlacement {
+	if (directions.length === 0) throw new Error("split placement requires at least one direction");
+	return {
+		anchorPath: directions.slice(0, -1),
+		splitDirection: directions[directions.length - 1],
+	};
+}
+
+function openTargetFromDirection(direction: Direction): PanelOpenTarget {
+	return direction === "tab" ? "tab" : splitPlacementFromDirections([direction]);
+}
+
+export function parseSplitPlacementArgs(args: string): SplitPlacement | null {
+	const directions = args.trim().split(/\s+/).filter(Boolean);
+	if (directions.length === 0 || !directions.every(isSplitDirection)) return null;
+	return splitPlacementFromDirections(directions as SplitDirection[]);
+}
+
+export function parsePanelTargetRequest(args: string, defaultDirection: SplitDirection = "right"): { target: PanelOpenTarget; prompt?: string } {
+	const tokens = args.trim().split(/\s+/).filter(Boolean);
+	if (tokens[0]?.toLowerCase() === "tab") {
+		return { target: "tab", prompt: tokens.slice(1).join(" ") || undefined };
+	}
+
+	const directions: SplitDirection[] = [];
+	let index = 0;
+	while (index < tokens.length && isSplitDirection(tokens[index]?.toLowerCase())) {
+		directions.push(tokens[index].toLowerCase() as SplitDirection);
+		index++;
+	}
+
+	return {
+		target: splitPlacementFromDirections(directions.length > 0 ? directions : [defaultDirection]),
+		prompt: tokens.slice(index).join(" ") || undefined,
+	};
+}
+
+function placementLabel(placement: SplitPlacement): string {
+	return placement.anchorPath.length > 0
+		? `${placement.anchorPath.join(" ")} → ${placement.splitDirection}`
+		: placement.splitDirection;
+}
+
 function modeLabel(mode: OpenMode): string {
 	if (mode === "here") return "현재 패널";
 	if (mode === "tab") return "새 탭";
-	return `${mode} 패널`;
+	return `${placementLabel(mode)} 패널`;
 }
 
 function buildEnvPrefix(env: Record<string, string | undefined>): string {
@@ -724,7 +781,22 @@ tell application "Ghostty"
 end tell`;
 }
 
-function buildOpenSessionScript(mode: Direction, cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}): string {
+function buildAnchorNavigationScript(placement: SplitPlacement, startTermVar: string, anchorTermVar: string): string {
+	const lines = [`set ${anchorTermVar} to ${startTermVar}`];
+	for (const direction of placement.anchorPath) {
+		const pathLabel = esc(placementLabel(placement));
+		lines.push(`set previousAnchorId to id of ${anchorTermVar}`);
+		lines.push(`set navigationOk to perform action "goto_split:${direction}" on ${anchorTermVar}`);
+		lines.push("delay 0.1");
+		lines.push("set nextAnchorTerm to focused terminal of selected tab of front window");
+		lines.push(`if navigationOk is false then error "Ghostty goto_split:${direction} failed for ${pathLabel}"`);
+		lines.push(`if (id of nextAnchorTerm) is previousAnchorId then error "Ghostty anchor path ${pathLabel} did not move from " & previousAnchorId`);
+		lines.push(`set ${anchorTermVar} to nextAnchorTerm`);
+	}
+	return lines.map((line) => `  ${line}`).join("\n");
+}
+
+function buildOpenSessionScript(mode: PanelOpenTarget, cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}): string {
 	const cmd = buildSessionLaunchCommand(cwd, sessionFile, env);
 	if (mode === "tab") {
 		return `tell application "System Events"
@@ -739,26 +811,49 @@ end tell`;
 
 	return `tell application "Ghostty"
   set currentTerm to focused terminal of selected tab of front window
-  set newTerm to split currentTerm direction ${mode}
+${buildAnchorNavigationScript(mode, "currentTerm", "anchorTerm")}
+  set newTerm to split anchorTerm direction ${mode.splitDirection}
   input text "${cmd}" to newTerm
   send key "enter" to newTerm
 end tell`;
 }
 
-function buildRepanelScript(direction: SplitDirection, cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}, oldTerminalId?: string): string {
+export function buildRepanelScript(placement: SplitPlacement, cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}, oldTerminalId?: string): string {
 	const cmd = buildSessionLaunchCommand(cwd, sessionFile, env);
 	const oldTermSelector = oldTerminalId
 		? `set oldTerm to first terminal whose id is "${esc(oldTerminalId)}"`
 		: "set oldTerm to focused terminal of selected tab of front window";
-	return `tell application "Ghostty"
+	if (placement.anchorPath.length === 0) {
+		return `tell application "Ghostty"
   activate
   ${oldTermSelector}
   close oldTerm
 end tell
 delay 0.7
 tell application "Ghostty"
-  set currentTerm to focused terminal of selected tab of front window
-  set newTerm to split currentTerm direction ${direction}
+  set anchorTerm to focused terminal of selected tab of front window
+  set newTerm to split anchorTerm direction ${placement.splitDirection}
+  input text "${cmd}" to newTerm
+  send key "enter" to newTerm
+end tell`;
+	}
+
+	const pathLabel = esc(placementLabel(placement));
+	return `tell application "Ghostty"
+  activate
+  ${oldTermSelector}
+  focus oldTerm
+  set currentTerm to oldTerm
+${buildAnchorNavigationScript(placement, "currentTerm", "anchorTerm")}
+  set anchorId to id of anchorTerm
+  if anchorId is (id of oldTerm) then error "Refusing to repanel: anchor path ${pathLabel} resolved to the current terminal"
+  close oldTerm
+end tell
+delay 0.7
+tell application "Ghostty"
+  set anchorTerm to first terminal whose id is anchorId
+  focus anchorTerm
+  set newTerm to split anchorTerm direction ${placement.splitDirection}
   input text "${cmd}" to newTerm
   send key "enter" to newTerm
 end tell`;
@@ -916,14 +1011,14 @@ function assemblePayload(opts: { mode: "summary" | "full" | "last"; lastMessage:
 	return opts.lastMessage;
 }
 
-function buildScript(direction: Direction, cwd: string, sessionFile: string, forkId: string, panelLabel: string, parentSessionFile: string, prompt?: string): string {
+function buildScript(target: PanelOpenTarget, cwd: string, sessionFile: string, forkId: string, panelLabel: string, parentSessionFile: string, prompt?: string): string {
 	const cmd = buildSessionLaunchCommand(cwd, sessionFile, {
 		PI_FORK_ID: forkId,
 		PI_FORK_PANEL_LABEL: panelLabel,
 		PI_FORK_PARENT: parentSessionFile,
 	});
 
-	if (direction === "tab") {
+	if (target === "tab") {
 		return `tell application "System Events"
   tell process "Ghostty"
     keystroke "t" using command down
@@ -936,7 +1031,8 @@ end tell`;
 
 	return `tell application "Ghostty"
   set currentTerm to focused terminal of selected tab of front window
-  set newTerm to split currentTerm direction ${direction}
+${buildAnchorNavigationScript(target, "currentTerm", "anchorTerm")}
+  set newTerm to split anchorTerm direction ${target.splitDirection}
   input text "${cmd}" to newTerm
   send key "enter" to newTerm${prompt ? `\n  delay 2\n  input text "${esc(prompt)}" to newTerm\n  send key "enter" to newTerm` : ""}
 end tell`;
@@ -1299,12 +1395,9 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			// Parse args
-			const trimmed = args?.trim() ?? "";
-			const firstSpace = trimmed.indexOf(" ");
-			const dirArg = (firstSpace === -1 ? trimmed : trimmed.slice(0, firstSpace)).toLowerCase();
-			const prompt = firstSpace === -1 ? undefined : trimmed.slice(firstSpace + 1).trim();
-			const direction: Direction = VALID_DIRS.includes(dirArg as Direction) ? (dirArg as Direction) : "right";
+			// Parse args. Multiple leading split directions mean: move to an anchor path,
+			// then split the anchor in the final direction (`right down` = right panel's bottom).
+			const { target, prompt } = parsePanelTargetRequest(args ?? "");
 
 			// Copy session file
 			const dir = dirname(sessionFile);
@@ -1324,7 +1417,7 @@ export default function (pi: ExtensionAPI) {
 
 			// Open in Ghostty
 			forkInProgress = true;
-			const script = buildScript(direction, ctx.cwd, forkedFile, newForkId, panelLabel, parentSessionFile, prompt);
+			const script = buildScript(target, ctx.cwd, forkedFile, newForkId, panelLabel, parentSessionFile, prompt);
 			const result = await pi.exec("osascript", ["-e", script]);
 
 			setTimeout(() => { forkInProgress = false; }, FORK_COOLDOWN_MS);
@@ -1337,7 +1430,8 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			// Register watcher for handoff
-			const label = prompt ? sanitizeRowText(prompt).slice(0, 40) : `${direction} panel`;
+			const targetLabel = target === "tab" ? "새 탭" : `${placementLabel(target)} 패널`;
+			const label = prompt ? sanitizeRowText(prompt).slice(0, 40) : targetLabel;
 			recordFork({
 				forkId: newForkId,
 				label,
@@ -1350,18 +1444,22 @@ export default function (pi: ExtensionAPI) {
 			watchHandoff(newForkId, label, ctx);
 
 			ctx.ui.notify(
-				`${panelLabel} 세션 포크 → ${direction === "tab" ? "새 탭" : `${direction} 패널`}${prompt ? ` (자동 prompt)` : ""}\n/handoff는 parent inbox에 저장되고, 종료 fallback도 /panels에서 확인합니다.`,
+				`${panelLabel} 세션 포크 → ${targetLabel}${prompt ? ` (자동 prompt)` : ""}\n/handoff는 parent inbox에 저장되고, 종료 fallback도 /panels에서 확인합니다.`,
 				"info",
 			);
 	};
 
 	const completions = (prefix: string): AutocompleteItem[] | null => {
-		const filtered = VALID_DIRS.filter((d) => d.startsWith(prefix)).map((d) => ({ value: d, label: d }));
+		const parts = prefix.split(/\s+/);
+		const last = parts.pop() ?? "";
+		const base = parts.length > 0 ? `${parts.join(" ")} ` : "";
+		const candidates = base ? SPLIT_DIRS : VALID_DIRS;
+		const filtered = candidates.filter((d) => d.startsWith(last)).map((d) => ({ value: `${base}${d}`, label: `${base}${d}` }));
 		return filtered.length > 0 ? filtered : null;
 	};
 
 	pi.registerCommand("fork-panel", {
-		description: "Fork current session into a new Ghostty panel/tab. On panel close, the panel's last assistant message returns to this session as a follow-up. (args: right|left|down|up|tab [prompt])",
+		description: "Fork current session into a new Ghostty panel/tab. Leading split dirs form an anchor path. Examples: right, right down, tab [prompt]",
 		getArgumentCompletions: completions,
 		handler,
 	});
@@ -1514,21 +1612,24 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	const splitCompletions = (prefix: string): AutocompleteItem[] | null => {
-		const filtered = SPLIT_DIRS.filter((d) => d.startsWith(prefix)).map((d) => ({ value: d, label: d }));
+		const parts = prefix.split(/\s+/);
+		const last = parts.pop() ?? "";
+		const base = parts.length > 0 ? `${parts.join(" ")} ` : "";
+		const filtered = SPLIT_DIRS.filter((d) => d.startsWith(last)).map((d) => ({ value: `${base}${d}`, label: `${base}${d}` }));
 		return filtered.length > 0 ? filtered : null;
 	};
 
 	const repanelHandler = async (args: string, ctx: ExtensionCommandContext) => {
-		const direction = (args ?? "").trim().split(/\s+/).filter(Boolean)[0]?.toLowerCase();
-		if (!isSplitDirection(direction)) {
-			ctx.ui.notify("사용법: /repanel right|left|down|up", "warning");
+		const placement = parseSplitPlacementArgs(args ?? "");
+		if (!placement) {
+			ctx.ui.notify("사용법: /repanel right|left|down|up [anchor... split] 예: /repanel right down", "warning");
 			return;
 		}
-		await repanelCurrent(direction, ctx);
+		await repanelCurrent(placement, ctx);
 	};
 
 	pi.registerCommand("repanel", {
-		description: "현재 Ghostty pi 패널을 닫은 뒤, 남은 패널 기준으로 지정 방향에 같은 세션을 다시 엽니다. (right|left|down|up)",
+		description: "현재 Ghostty pi 패널을 닫은 뒤, anchor 경로 기준으로 같은 세션을 다시 엽니다. 예: /repanel down, /repanel right down",
 		getArgumentCompletions: splitCompletions,
 		handler: repanelHandler,
 	});
@@ -1557,15 +1658,19 @@ export default function (pi: ExtensionAPI) {
 			let showAll = false;
 			let selector: string | null = null;
 			let requestedMode: OpenMode | null = null;
+			const requestedDirections: SplitDirection[] = [];
 			for (const token of tokens) {
 				const lower = token.toLowerCase();
 				if (lower === "list") continue;
-				if (lower === "all") showAll = true;
-				else {
-					const mode = parseOpenMode(lower);
-					if (mode) requestedMode = mode;
-					else if (!selector) selector = token;
+				if (lower === "all") { showAll = true; continue; }
+				if (isSplitDirection(lower)) {
+					requestedDirections.push(lower);
+					requestedMode = splitPlacementFromDirections(requestedDirections);
+					continue;
 				}
+				const mode = parseOpenMode(lower);
+				if (mode) requestedMode = mode;
+				else if (!selector) selector = token;
 			}
 
 			const openItem = async (item: ReviveItem) => {
@@ -1680,7 +1785,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	async function chooseReviveOpenMode(item: ReviveItem, ctx: ExtensionCommandContext): Promise<OpenMode | null> {
-		if (!ctx.hasUI) return "right";
+		if (!ctx.hasUI) return splitPlacementFromDirections(["right"]);
 		return ctx.ui.custom<OpenMode | null>(
 			(tui, theme, _kb, done) => ({
 				render: (w: number) => {
@@ -1696,10 +1801,10 @@ export default function (pi: ExtensionAPI) {
 				handleInput: (data: string) => {
 					if (data === "q" || matchesKey(data, Key.escape)) { done(null); return; }
 					if (matchesKey(data, Key.enter) || data === "h") { done("here"); return; }
-					if (matchesKey(data, Key.left) || data === "l") { done("left"); return; }
-					if (matchesKey(data, Key.right) || data === "r") { done("right"); return; }
-					if (matchesKey(data, Key.up) || data === "u") { done("up"); return; }
-					if (matchesKey(data, Key.down) || data === "d") { done("down"); return; }
+					if (matchesKey(data, Key.left) || data === "l") { done(splitPlacementFromDirections(["left"])); return; }
+					if (matchesKey(data, Key.right) || data === "r") { done(splitPlacementFromDirections(["right"])); return; }
+					if (matchesKey(data, Key.up) || data === "u") { done(splitPlacementFromDirections(["up"])); return; }
+					if (matchesKey(data, Key.down) || data === "d") { done(splitPlacementFromDirections(["down"])); return; }
 					if (data === "t") { done("tab"); return; }
 					(tui as any).requestRender?.();
 				},
@@ -1829,7 +1934,7 @@ export default function (pi: ExtensionAPI) {
 					return;
 				}
 				if (action !== "worktree-here") {
-					await openRevive(target, ctx, action);
+					await openRevive(target, ctx, openTargetFromDirection(action));
 					return;
 				}
 			}
@@ -1866,7 +1971,7 @@ export default function (pi: ExtensionAPI) {
 		ctx.ui.notify(`${panelLabelOf(target)} · ${item.workspaceLabel} · ${item.title} 세션 재개 → ${modeLabel(mode)}`, "info");
 	}
 
-	async function repanelCurrent(direction: SplitDirection, ctx: ExtensionCommandContext) {
+	async function repanelCurrent(placement: SplitPlacement, ctx: ExtensionCommandContext) {
 		if (process.platform !== "darwin" || process.env.TERM_PROGRAM !== "ghostty") {
 			ctx.ui.notify("/repanel은 macOS Ghostty에서만 동작합니다", "warning");
 			return;
@@ -1896,7 +2001,7 @@ export default function (pi: ExtensionAPI) {
 		const forkId = process.env.PI_FORK_ID;
 		if (forkId) writeRepanelMarker(forkId);
 
-		const script = buildRepanelScript(direction, ctx.cwd, sessionFile, {
+		const script = buildRepanelScript(placement, ctx.cwd, sessionFile, {
 			PI_FORK_ID: forkId,
 			PI_FORK_PANEL_LABEL: process.env.PI_FORK_PANEL_LABEL,
 			PI_FORK_PARENT: process.env.PI_FORK_PARENT,
@@ -1908,6 +2013,6 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 
-		ctx.ui.notify(`현재 패널을 닫은 뒤 남은 패널 기준으로 ${direction}에 같은 세션을 다시 엽니다`, "info");
+		ctx.ui.notify(`현재 패널을 닫은 뒤 ${placementLabel(placement)} 기준으로 같은 세션을 다시 엽니다`, "info");
 	}
 }
