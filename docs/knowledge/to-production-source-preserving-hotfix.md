@@ -22,7 +22,7 @@ applies_to:
 source:
   - user-direction:2026-05-18-to-production-mvp
 reviewed_at: 2026-05-20
-reviewed_commit: 2f47d812bbea2e9d4f51f940dd764befe8e70239
+reviewed_commit: 1dc3eae79051807b9d53efcdbddd80c59d0071fd
 related:
   - worktree-execution-boundary
   - worktree-creation-parent-gate
