@@ -22,6 +22,7 @@ source:
   - user-direction:2026-05-19-screensaver-last-interaction
   - user-direction:2026-05-20-screensaver-render-contract
   - user-direction:2026-05-20-screensaver-work-map
+  - user-direction:2026-05-20-screensaver-relative-time-refresh
 reviewed_at: 2026-05-20
 reviewed_commit: a27e674e3a5cce46c1d3a42ee75e771d7fa61492
 related:
@@ -35,7 +36,7 @@ Idle screensaver나 spinner는 단순 장식보다 “지금 무엇을 기다리
 
 ## Status Rule
 
-마지막 assistant 메시지 요약, in-progress/pending task, 마지막 인터랙션 시간, 현재 작업 상태를 짧게 보여줍니다. idle 화면은 사용자가 돌아왔을 때 “얼마나 오래 비웠고, 어디서 다시 잡으면 되는지”를 즉시 회수하게 해야 합니다. 마지막 인터랙션 시간은 manual preview 명령 입력 시각이 아니라 현재 세션 transcript의 최신 user/assistant 메시지 timestamp를 우선 source-of-truth로 삼아야 합니다.
+마지막 assistant 메시지 요약, in-progress/pending task, 마지막 인터랙션 시간, 현재 작업 상태를 짧게 보여줍니다. idle 화면은 사용자가 돌아왔을 때 “얼마나 오래 비웠고, 어디서 다시 잡으면 되는지”를 즉시 회수하게 해야 합니다. 마지막 인터랙션 시간은 현재 세션 transcript의 최신 user/assistant 메시지 timestamp와 실제 Pi input/agent-end fallback 중 가장 최신 timestamp를 source-of-truth로 삼아야 합니다. 화면에 표시되는 상대 시간은 overlay가 열린 순간의 문자열로 굳으면 안 됩니다. overlay가 떠 있는 동안만 재렌더 타이머를 두고, 30분 전까지는 1분마다, 30분 이후에는 5분마다 갱신하되 timestamp 계산은 cache해 session file을 반복 스캔하지 않습니다. overlay가 닫히면 갱신 타이머와 terminal input listener를 함께 정리해야 합니다.
 
 장식적 애니메이션은 정보를 방해하지 않을 때만 의미가 있습니다. 캐릭터 이미지는 screensaver 기능 전체 on/off와 별개의 전역 preference로 두어, 사용자가 ambient status는 유지하면서 시각 장식만 끌 수 있어야 합니다. 설정/도움말에 표시 정보 목록을 보여줄 때는 현재 toggle 상태를 반영해 실제로 보이는 정보와 숨겨진 정보를 구분해야 합니다. 화면 렌더링은 전체 폭에 문자열을 바로 흘리지 말고 가운데 content box를 잡은 뒤, title은 중앙 정렬하고 상태/응답/작업 진행을 box 안에서 읽기 좋게 배치해야 합니다. 최근 assistant 응답은 한 줄 앞부분만 보여주지 말고 최대 5줄 wrap으로 복원 가능한 맥락을 제공하되, markdown 제목/강조/코드 표시는 preview에서 정리해 screensaver 자체 라벨과 응답 본문이 중복돼 보이지 않게 해야 합니다. dismiss 안내는 overlay component의 `handleInput`만 믿지 말고 raw terminal input listener까지 연결해 실제 TUI focus가 빗나가도 Esc/q/Enter/Space/일반 키가 닫힘으로 소비되게 하고, 중복 close와 listener leak을 테스트로 막아야 합니다. task 같은 ambient 상태는 남은 TODO만 보여주는 필터가 아니라 현재 세션 work-map 요약이어야 합니다. `📋 작업 진행 n/m 완료`처럼 완료율을 먼저 보여주고, `in_progress`/blocked/`pending`/최근 `completed`를 함께 렌더링해 사용자가 돌아왔을 때 어디까지 끝났고 무엇이 남았는지 바로 복원하게 해야 합니다. 모든 task가 완료된 경우에도 섹션을 숨기지 말고 `n/n 완료`와 완료 항목을 보여줍니다. source-of-truth는 legacy/global 파일 scan이 아니라 현재 work-unit입니다. 같은 session header id를 가진 session file alias 때문에 work-unit이 갈라진 경우에는 alias work-unit들을 현재 세션 상태로 합쳐 보고, 그래도 현재 세션에 진행 항목이 없을 때만 P0 parent session work-unit까지 fallback합니다. 홈 cwd의 오래된 `.pi/tasks/*.json`처럼 unrelated planning 파일이 현재 세션 상태처럼 보이면 안 됩니다.
 

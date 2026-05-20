@@ -62,9 +62,18 @@ export function latestInteractionFromSessionFile(sessionFile: string | null | un
 }
 
 export function resolveLastInteractionAt(options: LastInteractionOptions): number | null {
-	return latestInteractionFromEntries(options.entries)
-		?? latestInteractionFromSessionFile(options.sessionFile)
-		?? (options.fallbackMs && options.fallbackMs > 0 ? options.fallbackMs : null);
+	const candidates = [
+		latestInteractionFromEntries(options.entries),
+		latestInteractionFromSessionFile(options.sessionFile),
+		options.fallbackMs && options.fallbackMs > 0 ? options.fallbackMs : null,
+	].filter((ts): ts is number => typeof ts === "number" && Number.isFinite(ts) && ts > 0);
+	return candidates.length > 0 ? Math.max(...candidates) : null;
+}
+
+export function nextRelativeTimeRefreshDelayMs(lastInteractionAt: number | null, now = Date.now()): number {
+	if (!lastInteractionAt) return 60_000;
+	const elapsedMs = Math.max(0, now - lastInteractionAt);
+	return elapsedMs >= 30 * 60_000 ? 5 * 60_000 : 60_000;
 }
 
 export function formatLocalTime(ts: number): string {

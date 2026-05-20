@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, watchFile, writeFileSync } from "n
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { formatLastInteractionLine, resolveLastInteractionAt } from "./last-interaction.js";
+import { formatLastInteractionLine, nextRelativeTimeRefreshDelayMs, resolveLastInteractionAt } from "./last-interaction.js";
 import { createScreensaverDismissController, renderScreensaver, type ScreensaverRenderData, type ScreensaverTheme } from "./render.js";
 import { POKEMON_KO_TO_ID, renderSprite } from "./sprite.js";
 import { loadScreensaverTaskLines } from "./task-source.js";
@@ -64,7 +64,7 @@ let latestCtx: ExtensionContext | null = null;
 let piRef: ExtensionAPI | null = null;
 let lastInteractionAtMs = 0;
 
-type ScreensaverTui = { terminal?: { rows?: number } };
+type ScreensaverTui = { terminal?: { rows?: number }; requestRender?: () => void };
 
 // ─── Timer helpers ─────────────────────────────────────────────────────────
 
@@ -128,10 +128,6 @@ function inferLastInteractionAt(ctx: ExtensionContext): number | null {
 	return resolveLastInteractionAt({ entries, sessionFile, fallbackMs: lastInteractionAtMs });
 }
 
-function buildLastInteractionLine(ctx: ExtensionContext): string | null {
-	return formatLastInteractionLine(inferLastInteractionAt(ctx));
-}
-
 // ─── Show screensaver ──────────────────────────────────────────────────────
 
 async function showScreensaver({ force = false }: { force?: boolean } = {}): Promise<void> {
@@ -163,8 +159,7 @@ async function showScreensaver({ force = false }: { force?: boolean } = {}): Pro
 	const metaLines: string[] = [];
 	if (meta?.ticket) metaLines.push(meta.ticket);
 	if (meta?.note) metaLines.push(meta.note);
-	const lastInteractionLine = buildLastInteractionLine(latestCtx);
-	if (lastInteractionLine) metaLines.push(lastInteractionLine);
+	const lastInteractionAt = inferLastInteractionAt(latestCtx);
 
 	let assistantText: string | null = null;
 	try {
@@ -214,24 +209,48 @@ async function showScreensaver({ force = false }: { force?: boolean } = {}): Pro
 		}
 	}
 
-	const renderData: ScreensaverRenderData = { title, subtitle, metaLines, assistantText, spriteLines, spritePokemonName };
+	const buildRenderData = (): ScreensaverRenderData => {
+		const dynamicMetaLines = [...metaLines];
+		const lastInteractionLine = formatLastInteractionLine(lastInteractionAt, Date.now());
+		if (lastInteractionLine) dynamicMetaLines.push(lastInteractionLine);
+		return { title, subtitle, metaLines: dynamicMetaLines, assistantText, spriteLines, spritePokemonName };
+	};
 	let unsubscribeTerminalInput: (() => void) | undefined;
+	let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+	const clearRefreshTimer = () => {
+		if (!refreshTimer) return;
+		clearTimeout(refreshTimer);
+		refreshTimer = null;
+	};
 	try {
 		await latestCtx.ui.custom(
 			(tui: ScreensaverTui, theme: ScreensaverTheme, _kb: unknown, done: (v: undefined) => void) => {
+				const scheduleRelativeTimeRefresh = () => {
+					clearRefreshTimer();
+					if (!lastInteractionAt || !tui.requestRender) return;
+					refreshTimer = setTimeout(() => {
+						refreshTimer = null;
+						tui.requestRender?.();
+						scheduleRelativeTimeRefresh();
+					}, nextRelativeTimeRefreshDelayMs(lastInteractionAt));
+					refreshTimer.unref?.();
+				};
+				const stopOverlayRefresh = () => {
+					clearRefreshTimer();
+					unsubscribeTerminalInput?.();
+					unsubscribeTerminalInput = undefined;
+				};
 				const dismissController = createScreensaverDismissController(
 					() => done(undefined),
-					() => {
-						unsubscribeTerminalInput?.();
-						unsubscribeTerminalInput = undefined;
-					},
+					stopOverlayRefresh,
 				);
 				unsubscribeTerminalInput = latestCtx?.ui.onTerminalInput((data: string) => {
 					if (!dismissController.dismiss(data)) return undefined;
 					return { consume: true };
 				});
+				scheduleRelativeTimeRefresh();
 				return {
-					render: (w: number) => renderScreensaver(w, tui.terminal?.rows ?? 40, renderData, theme),
+					render: (w: number) => renderScreensaver(w, tui.terminal?.rows ?? 40, buildRenderData(), theme),
 					handleInput: (data: string) => { dismissController.dismiss(data); },
 					invalidate: () => {},
 				};
@@ -243,6 +262,7 @@ async function showScreensaver({ force = false }: { force?: boolean } = {}): Pro
 			},
 		);
 	} finally {
+		clearRefreshTimer();
 		unsubscribeTerminalInput?.();
 		overlayActive = false;
 		scheduleIdleTimer();
