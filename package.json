@@ -1,6 +1,6 @@
 {
   "name": "pilee",
-  "version": "0.1.140",
+  "version": "0.1.141",
   "description": "Personal pi coding agent config 🔥",
   "private": true,
   "type": "module",
@@ -36,7 +36,7 @@
     "test:tft-studio": "node scripts/run-typescript-test.mjs extensions/frame-studio/question-display.test.ts extensions/frame-studio/companion-shortcut.test.ts extensions/utils/companion-window.test.ts",
     "test:idle-screensaver": "node scripts/run-typescript-test.mjs extensions/idle-screensaver/render.test.ts extensions/idle-screensaver/task-source.test.ts",
     "test:tasks": "node scripts/run-typescript-test.mjs extensions/tasks/index.test.ts",
-    "test:worktree": "node scripts/run-typescript-test.mjs extensions/worktree/shortcut.test.ts",
+    "test:worktree": "node scripts/run-typescript-test.mjs extensions/worktree/shortcut.test.ts extensions/worktree/tool-fallback.test.ts",
     "test:shortcut-atlas": "node scripts/run-typescript-test.mjs extensions/shortcut-atlas/registry.test.ts extensions/shortcut-atlas/index.test.ts"
   },
   "dependencies": {

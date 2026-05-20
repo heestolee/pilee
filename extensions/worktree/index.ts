@@ -772,37 +772,30 @@ function readContextFileOption(ctx: ExtensionContext, path?: string): string | n
 	return readFileSync(expanded, "utf8");
 }
 
-function prefillSwitchCommand(ctx: ExtensionContext, command: string): boolean {
-	if (!ctx.hasUI) return false;
-	ctx.ui.setEditorText(command);
-	return true;
+function hasSessionSwitchApi(ctx: ExtensionContext): boolean {
+	return typeof (ctx as Partial<ExtensionCommandContext>).switchSession === "function";
 }
 
-function buildSwitchCommand(repoRoot: string, wtName: string): string {
-	const registeredName = findRegisteredName(loadRegistry(), repoRoot) ?? basename(repoRoot);
-	return `/wt switch ${registeredName}/${wtName}`;
+function noToolSwitchBlockedText(action: string, targetPath?: string): string {
+	return [
+		`BLOCKED: ${action}는 현재 tool context에서 forked worktree session으로 현재 패널을 전환할 수 없습니다.`,
+		"worktree를 만들거나 전환하지 않았습니다.",
+		"여기서 절대경로/cd 방식으로 계속 작업하면 사용자가 기대한 컨텍스트 fork가 아니므로 중단해야 합니다.",
+		targetPath ? `대상 worktree: ${targetPath}` : undefined,
+	].filter(Boolean).join(" ");
 }
 
-function findSwitchCommandForWorktreePath(wtName: string, wtPath: string): string | null {
-	for (const [repoName, repoRoot] of Object.entries(loadRegistry())) {
-		try {
-			const config = loadConfig(repoRoot);
-			if (samePath(join(config.rootDir, wtName), wtPath)) return `/wt switch ${repoName}/${wtName}`;
-		} catch {
-			// Ignore broken registry entries while building a fallback hint.
-		}
-	}
-	return null;
+function toolSwitchFailureText(action: string, reason?: string, targetPath?: string): string {
+	return [
+		`BLOCKED: ${action} 중 worktree session 전환이 실패했습니다.`,
+		reason ? `사유: ${reason}` : undefined,
+		"현재 세션에서 이어서 작업하지 않습니다.",
+		targetPath ? `생성/대상 worktree: ${targetPath}` : undefined,
+	].filter(Boolean).join(" ");
 }
 
-function notifySwitchFallback(ctx: ExtensionContext, reason: string | undefined, switchCommand: string | null, wtPath: string): boolean {
-	const reasonText = reason || "unknown";
-	if (switchCommand) {
-		const prefilled = prefillSwitchCommand(ctx, switchCommand);
-		ctx.ui.notify(`즉시 전환 불가: ${reasonText}. 대체 전환 명령 ${switchCommand}${prefilled ? "를 에디터에 준비했습니다" : "를 사용하세요"}.`, "warning");
-		return prefilled;
-	}
-	ctx.ui.notify(`즉시 전환 불가: ${reasonText}. 수동 경로: cd ${wtPath}`, "warning");
+function notifySwitchFallback(ctx: ExtensionContext, reason: string | undefined, wtPath: string): boolean {
+	ctx.ui.notify(toolSwitchFailureText("worktree 전환", reason, wtPath), "error");
 	return false;
 }
 
@@ -828,7 +821,7 @@ function worktreeCwdBindingMessage(wtName: string, wtPath: string, branch: strin
 		`브랜치: ${branch}`,
 		contextLabel ? `컨텍스트: ${contextLabel.replace(/^\s+—\s+/, "")}` : undefined,
 		"",
-		"세션 전환 후 특정 tool runner가 이전 `pwd`를 계속 보고하더라도, 위 절대경로를 source of truth로 보고 read/edit/bash/frame/verify artifact는 해당 경로 아래에서 수행한다. 세션 전환 자체가 실패한 경우가 아니라면 사용자에게 `/wt switch`를 다시 요구하지 않는다.",
+		"세션 전환 후 특정 tool runner가 이전 `pwd`를 계속 보고하더라도, 위 절대경로를 source of truth로 보고 read/edit/bash/frame/verify artifact는 해당 경로 아래에서 수행한다. 세션 전환 자체가 실패한 경우가 아니라면 사용자에게 전환 명령을 다시 요구하지 않는다.",
 	].filter(Boolean).join("\n");
 }
 
@@ -1807,7 +1800,7 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 		await switchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, contextLabel);
 	} catch (error) {
 		const reason = error instanceof Error ? error.message : String(error);
-		notifySwitchFallback(ctx, reason, buildSwitchCommand(repoRoot, name), worktreePath);
+		notifySwitchFallback(ctx, reason, worktreePath);
 	}
 }
 
@@ -2149,7 +2142,7 @@ async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string
 		return { switched: true, sessionFile };
 	} catch (error) {
 		const reason = error instanceof Error ? error.message : String(error);
-		notifySwitchFallback(ctx, reason, findSwitchCommandForWorktreePath(wtName, wtPath), wtPath);
+		notifySwitchFallback(ctx, reason, wtPath);
 		return { switched: false, sessionFile, reason };
 	}
 }
@@ -2600,7 +2593,7 @@ async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandC
 		await switchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, contextLabel);
 	} catch (error) {
 		const reason = error instanceof Error ? error.message : String(error);
-		notifySwitchFallback(ctx, reason, buildSwitchCommand(repoRoot, name), worktreePath);
+		notifySwitchFallback(ctx, reason, worktreePath);
 	}
 }
 
@@ -3345,7 +3338,7 @@ export default function (pi: ExtensionAPI) {
 			`worktree_create may run from P0/P1/P2; treat the current panel conversation as the source unless the user explicitly asks to use the parent panel.`,
 			"If the request mentions hotfix/production/핫픽스, pass hotfix: true. Do not create a development-based hotfix branch.",
 			`Use worktree_create before editing files in configured protected repos (${configuredRepoLabel}) when a new worktree is actually needed. Do not manually run git worktree add.`,
-			"worktree_create attempts to switch the current panel immediately after creation. If the runtime tool context cannot switch sessions, report that limitation and the prepared /wt switch fallback instead of presenting it as the normal path.",
+			"worktree_create must provide a real switched worktree session. If the runtime tool context cannot switch sessions, stop before creating a worktree, report BLOCKED, and do not continue via absolute-path or switch-command fallback.",
 		],
 		parameters: Type.Object({
 			repo: Type.Optional(Type.String({ description: `Registered repo name (configured examples: ${configuredRepoLabel}). Auto-detected if omitted.` })),
@@ -3379,6 +3372,13 @@ export default function (pi: ExtensionAPI) {
 				"worktree_create",
 			);
 			if (hotfixGuard) throw new Error(hotfixGuard);
+
+			if (!hasSessionSwitchApi(ctx)) {
+				return {
+					content: [{ type: "text", text: noToolSwitchBlockedText("worktree_create") }],
+					details: { blocked: true, action: "worktree_create", reason: "tool context has no switchSession", noWorktreeCreated: true },
+				};
+			}
 
 			const { isNew: justRegistered } = autoRegister(repoRoot);
 			const config = loadConfig(repoRoot);
@@ -3450,12 +3450,9 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
-			const registeredName = findRegisteredName(loadRegistry(), repoRoot) ?? basename(repoRoot);
-			const switchCommand = `/wt switch ${registeredName}/${name}`;
-			const prefilled = prefillSwitchCommand(ctx, switchCommand);
 			return {
-				content: [{ type: "text", text: `✓ Worktree "${name}" created (${branchName}) at ${worktreePath}.${frameText}${bootstrapText} 즉시 전환 불가: ${switchResult.reason ?? "unknown"}. 대체 전환 명령 ${switchCommand}${prefilled ? "를 에디터에 준비했습니다" : "를 사용하세요"}.` }],
-				details: { name, branch: branchName, path: worktreePath, autoSwitched: false, switchReason: switchResult.reason, switchCommand, prefilled, framePromotion, bootstrap: bootstrapResult },
+				content: [{ type: "text", text: `✓ Worktree "${name}" created (${branchName}) at ${worktreePath}.${frameText}${bootstrapText} ${toolSwitchFailureText("worktree_create", switchResult.reason, worktreePath)}` }],
+				details: { name, branch: branchName, path: worktreePath, blocked: true, autoSwitched: false, switchReason: switchResult.reason, framePromotion, bootstrap: bootstrapResult },
 			};
 		},
 	});
@@ -3502,6 +3499,13 @@ export default function (pi: ExtensionAPI) {
 			const target = worktrees.find(w => w.name === params.name);
 			if (!target) throw new Error(`Worktree "${params.name}" not found. Available: ${worktrees.map(w => w.name).join(", ") || "(none)"}`);
 
+			if (!hasSessionSwitchApi(ctx)) {
+				return {
+					content: [{ type: "text", text: noToolSwitchBlockedText("worktree_switch", target.path) }],
+					details: { name: target.name, branch: target.branch, path: target.path, blocked: true, action: "worktree_switch", reason: "tool context has no switchSession", noSessionSwitched: true },
+				};
+			}
+
 			if (typeof (ctx as Partial<ExtensionCommandContext>).switchSession === "function") {
 				const switchResult = await switchToWorktree(pi, target.name, target.path, ctx as ExtensionCommandContext);
 				if (switchResult.switched) {
@@ -3511,21 +3515,15 @@ export default function (pi: ExtensionAPI) {
 					};
 				}
 
-				const registeredName = findRegisteredName(loadRegistry(), repoRoot) ?? basename(repoRoot);
-				const switchCommand = `/wt switch ${registeredName}/${params.name}`;
-				const prefilled = prefillSwitchCommand(ctx, switchCommand);
 				return {
-					content: [{ type: "text", text: `✓ Worktree "${params.name}" (${target.branch})를 찾았습니다. 즉시 전환 불가: ${switchResult.reason ?? "unknown"}. 대체 전환 명령 ${switchCommand}${prefilled ? "를 에디터에 준비했습니다" : "를 사용하세요"}.` }],
-					details: { name: target.name, branch: target.branch, path: target.path, autoSwitched: false, switchReason: switchResult.reason, switchCommand, prefilled, sessionFile: switchResult.sessionFile },
+					content: [{ type: "text", text: `✓ Worktree "${params.name}" (${target.branch})를 찾았습니다. ${toolSwitchFailureText("worktree_switch", switchResult.reason, target.path)}` }],
+					details: { name: target.name, branch: target.branch, path: target.path, blocked: true, autoSwitched: false, switchReason: switchResult.reason, sessionFile: switchResult.sessionFile },
 				};
 			}
 
-			const registeredName = findRegisteredName(loadRegistry(), repoRoot) ?? basename(repoRoot);
-			const switchCommand = `/wt switch ${registeredName}/${params.name}`;
-			const prefilled = prefillSwitchCommand(ctx, switchCommand);
 			return {
-				content: [{ type: "text", text: `✓ Worktree "${params.name}" (${target.branch})를 찾았습니다. 즉시 전환 불가: 현재 tool context에는 session switch API가 없습니다. 대체 전환 명령 ${switchCommand}${prefilled ? "를 에디터에 준비했습니다" : "를 사용하세요"}.` }],
-				details: { name: target.name, branch: target.branch, path: target.path, autoSwitched: false, switchReason: "tool context has no switchSession", switchCommand, prefilled },
+				content: [{ type: "text", text: noToolSwitchBlockedText("worktree_switch", target.path) }],
+				details: { name: target.name, branch: target.branch, path: target.path, blocked: true, autoSwitched: false, switchReason: "tool context has no switchSession", noSessionSwitched: true },
 			};
 		},
 	});
@@ -3542,7 +3540,7 @@ export default function (pi: ExtensionAPI) {
 			`worktree_fork may run from P0/P1/P2; treat the current panel conversation as the source unless the user explicitly asks to use the parent panel.`,
 			"If the request mentions hotfix/production/핫픽스, pass hotfix: true. Do not create a development-based hotfix branch.",
 			"The optional context parameter is an additional transfer note, not a replacement for the full transcript unless minimalContext is true.",
-			"worktree_fork attempts to switch the current panel immediately after creation. If the runtime tool context cannot switch sessions, report that limitation and the prepared /wt switch fallback instead of presenting it as the normal path.",
+			"worktree_fork must provide a real forked worktree session. If the runtime tool context cannot switch sessions, stop before creating a worktree, report BLOCKED, and do not continue via absolute-path or switch-command fallback.",
 		],
 		parameters: Type.Object({
 			context: Type.Optional(Type.String({ description: "Optional compact markdown note to attach in addition to the transcript, or the summary handoff when minimalContext is true." })),
@@ -3577,6 +3575,13 @@ export default function (pi: ExtensionAPI) {
 				"worktree_fork",
 			);
 			if (hotfixGuard) throw new Error(hotfixGuard);
+
+			if (!hasSessionSwitchApi(ctx)) {
+				return {
+					content: [{ type: "text", text: noToolSwitchBlockedText("worktree_fork") }],
+					details: { blocked: true, action: "worktree_fork", reason: "tool context has no switchSession", noWorktreeCreated: true },
+				};
+			}
 
 			autoRegister(repoRoot);
 			const config = loadConfig(repoRoot);
@@ -3664,12 +3669,9 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
-			const registeredName = findRegisteredName(loadRegistry(), repoRoot) ?? basename(repoRoot);
-			const switchCommand = `/wt switch ${registeredName}/${name}`;
-			const prefilled = prefillSwitchCommand(ctx, switchCommand);
 			return {
-				content: [{ type: "text", text: `✓ Worktree "${name}" forked (${branchName}) at ${worktreePath}. Context: ${contextMode}${contextLength ? `, note ${contextLength} chars` : ""}.${frameText}${bootstrapText} 즉시 전환 불가: ${switchResult.reason ?? "unknown"}. 대체 전환 명령 ${switchCommand}${prefilled ? "를 에디터에 준비했습니다" : "를 사용하세요"}.` }],
-				details: { name, branch: branchName, path: worktreePath, contextLength, contextMode, autoSwitched: false, switchReason: switchResult.reason, switchCommand, prefilled, framePromotion, bootstrap: bootstrapResult },
+				content: [{ type: "text", text: `✓ Worktree "${name}" forked (${branchName}) at ${worktreePath}. Context: ${contextMode}${contextLength ? `, note ${contextLength} chars` : ""}.${frameText}${bootstrapText} ${toolSwitchFailureText("worktree_fork", switchResult.reason, worktreePath)}` }],
+				details: { name, branch: branchName, path: worktreePath, contextLength, contextMode, blocked: true, autoSwitched: false, switchReason: switchResult.reason, framePromotion, bootstrap: bootstrapResult },
 			};
 		},
 	});

@@ -154,7 +154,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 /wt sessions                 → 호환 alias: 현재/선택 워크트리의 /wt switch 세션 선택 흐름
 ```
 
-`/wt new`와 `/wt fork`는 생성 후 현재 패널을 새 worktree 세션으로 즉시 전환한다. 에이전트 tool(`worktree_create`/`worktree_fork`/`worktree_switch`)도 가능한 경우 즉시 전환을 시도하고, 현재 tool context가 session switch API를 제공하지 않는 경우에만 그 제약을 설명한 뒤 `/wt switch <repo>/<name>` fallback을 에디터에 채운다.
+`/wt new`와 `/wt fork`는 생성 후 현재 패널을 새 worktree 세션으로 즉시 전환한다. 에이전트 tool(`worktree_create`/`worktree_fork`/`worktree_switch`)은 현재 패널을 실제 worktree session으로 전환할 수 있을 때만 실행한다. tool context가 session switch API를 제공하지 않으면 worktree를 만들거나 전환하지 않고 `BLOCKED`로 멈춘다. 이때 전환 명령 fallback이나 절대경로 작업 우회는 사용하지 않는다.
 
 생성 전 안전 게이트:
 - 조사 단계(`확인해볼래?`)에서는 만들지 않는다.
