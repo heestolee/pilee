@@ -209,7 +209,7 @@ function pickName(scheme: WorktreeConfig["namingScheme"], existing: Set<string>)
 // ─── Metadata ──────────────────────────────────────────────────────────────
 
 type WorktreeStatus = "backlog" | "active" | "done" | "archived";
-type WorktreeContextMode =
+export type WorktreeContextMode =
 	| "clean"
 	| "full-transcript"
 	| "full-transcript-plus-context"
@@ -217,6 +217,25 @@ type WorktreeContextMode =
 	| "context-pack"
 	| "fallback-context-pack"
 	| "fallback-empty";
+
+export interface WorktreeAfterSwitchFollowUp {
+	customType: string;
+	content: string;
+	display?: boolean;
+	details?: Record<string, unknown>;
+}
+
+interface SwitchSessionToWorktreeOptions {
+	afterSwitchFollowUp?: WorktreeAfterSwitchFollowUp;
+}
+
+export interface WorktreeForkCommandOptions {
+	afterSwitchFollowUp?: WorktreeAfterSwitchFollowUp;
+}
+
+export type WorktreeForkCommandResult =
+	| { status: "switched"; name: string; branch: string; path: string; sessionFile: string; contextMode: WorktreeContextMode; framePromotion: FramePromotionResult }
+	| { status: "blocked" | "failed"; reason: string; name?: string; branch?: string; path?: string; sessionFile?: string; contextMode?: WorktreeContextMode; framePromotion?: FramePromotionResult };
 
 interface WorktreeMeta {
 	name: string;
@@ -268,7 +287,7 @@ const FRAME_PLANNING_ROOT = join(homedir(), ".pi", "agent", "frame-planning");
 
 type FrameDocLoose = Record<string, any>;
 
-type FramePromotionResult =
+export type FramePromotionResult =
 	| { status: "promoted"; framePath: string; frameMdPath: string; sourcePath: string; canonicalHash?: string; artifacts?: WorkArtifactPromotionResult }
 	| { status: "exists"; framePath: string; artifacts?: WorkArtifactPromotionResult }
 	| { status: "missing-source" }
@@ -869,7 +888,7 @@ function worktreeCwdBindingMessage(wtName: string, wtPath: string, branch: strin
 	].filter(Boolean).join("\n");
 }
 
-async function switchSessionToWorktree(ctx: ExtensionCommandContext, sessionFile: string, wtName: string, wtPath: string, contextLabel = "") {
+async function switchSessionToWorktree(ctx: ExtensionCommandContext, sessionFile: string, wtName: string, wtPath: string, contextLabel = "", options: SwitchSessionToWorktreeOptions = {}) {
 	const branch = readMeta(wtPath)?.branch ?? "unknown";
 	await (ctx as any).switchSession(sessionFile, {
 		cwdOverride: wtPath,
@@ -884,6 +903,27 @@ async function switchSessionToWorktree(ctx: ExtensionCommandContext, sessionFile
 				},
 				{ triggerTurn: false },
 			);
+
+			if (options.afterSwitchFollowUp) {
+				if (typeof newCtx.sendMessage !== "function") {
+					newCtx.ui.notify("Worktree session switched, but follow-up start prompt could not be delivered.", "warning");
+					return;
+				}
+				await newCtx.sendMessage(
+					{
+						customType: options.afterSwitchFollowUp.customType,
+						content: options.afterSwitchFollowUp.content,
+						display: options.afterSwitchFollowUp.display ?? false,
+						details: {
+							...options.afterSwitchFollowUp.details,
+							name: wtName,
+							path: wtPath,
+							branch,
+						},
+					},
+					{ deliverAs: "followUp", triggerTurn: true },
+				);
+			}
 		},
 	});
 }
@@ -2524,14 +2564,14 @@ async function showDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Pr
 	);
 }
 
-async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
+async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext, options: WorktreeForkCommandOptions = {}): Promise<WorktreeForkCommandResult> {
 	const parsed = parseNewArgs(args);
 	const repoRoot = await resolveRepoRoot(pi, ctx, parsed.repo);
-	if (!repoRoot) return;
+	if (!repoRoot) return { status: "blocked", reason: "repo root was not resolved" };
 
 	notifyWorktreeCreationPanelNotice(repoRoot, ctx);
 	const hotfixGuard = getHotfixBaseGuardMessage(parsed, "/wt fork");
-	if (hotfixGuard) { ctx.ui.notify(hotfixGuard, "error"); return; }
+	if (hotfixGuard) { ctx.ui.notify(hotfixGuard, "error"); return { status: "blocked", reason: hotfixGuard }; }
 
 	const { isNew: justRegistered } = autoRegister(repoRoot);
 	if (justRegistered) ctx.ui.notify(`Registered repo "${basename(repoRoot)}"`, "info");
@@ -2553,8 +2593,9 @@ async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandC
 	const name = parsed.name ?? pickName(config.namingScheme, existing);
 
 	if (existing.has(name)) {
-		ctx.ui.notify(`Worktree "${name}" already exists at ${config.rootDir}`, "error");
-		return;
+		const reason = `Worktree "${name}" already exists at ${config.rootDir}`;
+		ctx.ui.notify(reason, "error");
+		return { status: "blocked", reason, name };
 	}
 
 	const worktreePath = join(config.rootDir, name);
@@ -2565,7 +2606,7 @@ async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandC
 			: `${prefix}/${name}`;
 
 	const contextContent = readContextFileOption(ctx, parsed.contextFile);
-	if (parsed.contextFile && contextContent === null) return;
+	if (parsed.contextFile && contextContent === null) return { status: "blocked", reason: `context file not found: ${parsed.contextFile}`, name, branch: branchName, path: worktreePath };
 
 	const useFullContext = parsed.fullContext || !parsed.minimalContext;
 	const useMinimalContext = !useFullContext;
@@ -2573,14 +2614,16 @@ async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandC
 
 	const fetchR = await pi.exec("git", ["fetch", "origin", baseBranch], { cwd: repoRoot });
 	if (fetchR.code !== 0) {
-		ctx.ui.notify(`git fetch failed: ${fetchR.stderr?.trim().slice(0, 200) ?? "unknown error"}`, "error");
-		return;
+		const reason = `git fetch failed: ${fetchR.stderr?.trim().slice(0, 200) ?? "unknown error"}`;
+		ctx.ui.notify(reason, "error");
+		return { status: "failed", reason, name, branch: branchName, path: worktreePath };
 	}
 
 	const addR = await pi.exec("git", ["worktree", "add", worktreePath, "-b", branchName, `origin/${baseBranch}`], { cwd: repoRoot });
 	if (addR.code !== 0) {
-		ctx.ui.notify(`git worktree add failed: ${addR.stderr?.trim().slice(0, 200)}`, "error");
-		return;
+		const reason = `git worktree add failed: ${addR.stderr?.trim().slice(0, 200)}`;
+		ctx.ui.notify(reason, "error");
+		return { status: "failed", reason, name, branch: branchName, path: worktreePath };
 	}
 
 	writeMeta(worktreePath, {
@@ -2631,11 +2674,19 @@ async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandC
 	const contextLabel = `${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}`;
 
 	try {
-		await switchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, contextLabel);
+		await switchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, contextLabel, {
+			afterSwitchFollowUp: options.afterSwitchFollowUp,
+		});
+		return { status: "switched", name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion };
 	} catch (error) {
 		const reason = error instanceof Error ? error.message : String(error);
 		notifySwitchFallback(ctx, reason, worktreePath);
+		return { status: "failed", reason, name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion };
 	}
+}
+
+export async function runWorktreeForkFromCommandContext(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext, options: WorktreeForkCommandOptions = {}): Promise<WorktreeForkCommandResult> {
+	return handleFork(pi, args, ctx, options);
 }
 
 async function handleSwitch(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
