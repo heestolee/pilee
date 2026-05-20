@@ -15,6 +15,8 @@ applies_to:
   - extensions/worktree
   - extensions/tasks
   - extensions/frame-studio
+  - extensions/tft-commands
+  - frame_worktree_fork
   - worktree_create
   - worktree_switch
   - worktree_fork
@@ -24,7 +26,7 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-11-subagent-skill-delegation
 reviewed_at: 2026-05-20
-reviewed_commit: 57bf4c59e820e138881510b5ed2dea068a8d47df
+reviewed_commit: 32d1aedb2d3bbe552d84e03c7db7435884af2c0e
 related:
   - worktree-execution-boundary
   - session-identity-over-filenames
@@ -46,7 +48,9 @@ Subagent에 slash command 문자열을 그대로 넘기는 것도 command 실행
 
 ## Worktree Tool Rule
 
-`worktree_create`, `worktree_switch`, `worktree_fork` 같은 도구는 slash command를 몰래 실행하지 않습니다. 현재 패널을 실제 worktree session으로 전환할 수 있는 session switch API가 있을 때만 진행합니다. API가 없는 tool context에서는 worktree 생성·전환을 시작하지 않고 `BLOCKED`를 반환하며, 전환 명령을 에디터에 채우거나 “이 경로에서 계속 작업” 같은 우회를 제안하지 않습니다. 이미 생성 후 전환이 실패한 드문 경우에도 현재 세션에서 작업을 이어가지 않고 실패를 명시합니다.
+`worktree_create`, `worktree_switch`, `worktree_fork` 같은 일반 도구는 slash command를 몰래 실행하지 않습니다. 현재 패널을 실제 worktree session으로 전환할 수 있는 session switch API가 있을 때만 진행합니다. API가 없는 tool context에서는 worktree 생성·전환을 시작하지 않고 `BLOCKED`를 반환하며, 전환 명령을 에디터에 채우거나 “이 경로에서 계속 작업” 같은 우회를 제안하지 않습니다. 이미 생성 후 전환이 실패한 드문 경우에도 현재 세션에서 작업을 이어가지 않고 실패를 명시합니다.
+
+`/frame`처럼 command shim에서 시작해 agent가 Step 9 결정을 처리하는 흐름은 예외적으로 command context bridge를 둡니다. `/frame` command handler가 자신의 `ExtensionCommandContext`를 frame identity에 묶어 저장하고, Step 9의 `fork해서 시작`은 `frame_worktree_fork` tool을 통해 그 저장된 command context의 실제 `/wt fork` 경로를 호출합니다. 이렇게 해야 LLM tool context가 직접 session switch를 못 하더라도 사용자는 `/wt switch` fallback 없이 forked worktree session으로 바로 이동합니다. bridge context가 없거나 session이 맞지 않으면 worktree를 만들지 않고 `BLOCKED`로 멈춥니다.
 
 ## Failure Mode
 

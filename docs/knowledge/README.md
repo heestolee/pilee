@@ -187,7 +187,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [최종 검증은 메인 세션을 막지 않고 병렬화한다](./final-verification-parallelization.md) | active | high | 2026-05-13 | cdaedbd | verification, ship, final-check, subagent, background, parallel |
 | [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-05-12 | 4d1ff26 | fork-panel, handoff, inbox, inject, parent, panel |
 | [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-05-20 | f2e7cec | fork-panel, revive, repanel, ghostty, spatial, panel |
-| [Frame은 마지막에 Plan을 합성한다](./frame-plan-synthesis-continuity.md) | active | high | 2026-05-20 | 57bf4c5 | frame, implementation-plan, tft-studio, worktree, continuity, planning |
+| [Frame은 마지막에 Plan을 합성한다](./frame-plan-synthesis-continuity.md) | active | high | 2026-05-20 | 32d1aed | frame, implementation-plan, tft-studio, worktree, continuity, planning |
 | [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-05-13 | 1f5c3ac | frame, planning, identity, home-directory, ticket, session-title |
 | [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-05-19 | 8f426ba | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
 | [Interactive shell은 bash가 아닌 터미널 세션이다](./interactive-shell-overlay-tool.md) | active | high | 2026-05-13 | f3fe380 | interactive-shell, shell, tui, dev-server, overlay, dispatch |
@@ -195,7 +195,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 264ea17 | local-dev, server, startup, diagnosis, dev |
 | [pilee 변경은 final-check gate로 닫는다](./pilee-final-check-gate.md) | active | high | 2026-05-19 | 27c20a3 | pilee, final-check, verification, skill, workflow, 마무리 |
 | [Private overlay package는 회사·개인 실행 맥락을 담는다](./private-overlay-package-boundary.md) | active | high | 2026-05-13 | e0dc999 | privacy, package, overlay, skill, company-context |
-| [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-05-20 | 57bf4c5 | queued-messages, slash-command, prefill, worktree, session, boundary |
+| [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-05-20 | 32d1aed | queued-messages, slash-command, prefill, worktree, session, boundary |
 | [Read/Edit tool override는 필요한 증거만 펼친다](./read-edit-tool-output-override.md) | active | high | 2026-05-13 | f3fe380 | read, edit, tool, override, diff, preview |
 | [변경된 줄은 요청으로 추적 가능해야 한다](./request-traceability-surgical-changes.md) | active | high | 2026-05-13 | 74c8c28 | request-traceability, surgical-change, karpathy, diff, scope, review |
 | [종료된 포크는 transcript 주입보다 revive가 우선이다](./revive-over-transcript-recall.md) | active | high | 2026-05-12 | ca8ae9e | revive, recall, fork-panel, session, continuity, 세션 |
@@ -215,7 +215,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-05-13 | 062f9f2 | workflow, frame, tft, hotfix, scope, incremental |
 | [Worktree 생성은 현재 패널 대화가 source다](./worktree-creation-parent-gate.md) | active | high | 2026-05-19 | 6564ee3 | worktree, fork-panel, current-panel, hotfix, context, profile-driven |
 | [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-05-19 | cd625b8 | worktree, dependencies, bootstrap, profile-driven, worker, subagent |
-| [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-05-20 | 57bf4c5 | worktree, workspace, repo, branch, execution-boundary, cwd-binding |
+| [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-05-20 | 32d1aed | worktree, workspace, repo, branch, execution-boundary, cwd-binding |
 | [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-05-20 | 57bf4c5 | worktree, session, revive, fork-panel, panel-inbox, handoff |
 
 ## Knowledge Map
