@@ -1082,6 +1082,15 @@ function isImplementationStartPrompt(prompt: string, profile?: WorktreeRepoProfi
 	return textMatches(implementationPattern, text);
 }
 
+function isBootstrapDiagnosticPrompt(prompt: string): boolean {
+	const text = prompt.trim().toLowerCase();
+	if (!text) return false;
+	if (text.startsWith("[dependency-bootstrap]")) return true;
+	const mentionsBootstrap = /dependency-bootstrap|worktree bootstrap|\/wt\s+bootstrap|부트스트랩/.test(text);
+	if (!mentionsBootstrap) return false;
+	return /(blocked|ready|status|준비 실패|준비 완료|상세 확인|왜|어떻게|무슨|뭐|설명|구조|되어|노이즈|스킵|관여|없는데|why|how|what|explain|noise|skip)/i.test(text);
+}
+
 function shouldSendDependencyBootstrapVisibleNotification(repoRoot: string, domains: string[], status: "ready" | "blocked"): boolean {
 	const now = Date.now();
 	for (const [key, timestamp] of dependencyBootstrapVisibleNotifications) {
@@ -1364,7 +1373,7 @@ async function ensureDependencyBootstrapWorker(
 	prompt: string,
 	options: { force?: boolean; domains?: BootstrapDomain[]; reason?: string; mode?: "auto" | "executor" | "orchestrator"; repoRoot?: string } = {},
 ): Promise<DependencyBootstrapResult> {
-	if (!options.force && (isSubagentSessionContext(ctx) || isBootstrapOrchestratorPrompt(prompt))) {
+	if (!options.force && (isSubagentSessionContext(ctx) || isBootstrapOrchestratorPrompt(prompt) || isBootstrapDiagnosticPrompt(prompt))) {
 		return { state: "not-implementation" };
 	}
 
