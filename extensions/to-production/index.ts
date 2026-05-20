@@ -9,6 +9,8 @@ const DEFAULT_BASE_REF = "origin/production";
 const ARTIFACT_ROOT = join(homedir(), ".pi", "agent", "to-production");
 const CUSTOM_TYPE = "pilee-to-production-report";
 
+type UntrackedMode = "ask" | "include" | "skip" | "commit" | "block";
+
 interface ParsedArgs {
 	branch?: string;
 	baseRef: string;
@@ -16,6 +18,8 @@ interface ParsedArgs {
 	message?: string;
 	range?: string;
 	includeUntracked: boolean;
+	untrackedMode: UntrackedMode;
+	untrackedCommitMessage?: string;
 	yes: boolean;
 	dryRun: boolean;
 	help: boolean;
@@ -39,6 +43,8 @@ interface SourceSnapshot {
 	commitRangeSource: string | null;
 	dirtyPatch: string;
 	untrackedFiles: string[];
+	skippedUntrackedFiles: string[];
+	committedUntrackedCommit: string | null;
 }
 
 interface PreparedArtifacts {
@@ -77,6 +83,8 @@ interface ToProductionToolParams {
 	range?: string;
 	message?: string;
 	includeUntracked?: boolean;
+	untrackedMode?: string;
+	untrackedCommitMessage?: string;
 	dryRun?: boolean;
 	yes?: boolean;
 }
@@ -119,11 +127,24 @@ function splitArgs(input: string): string[] {
 	return tokens;
 }
 
+function normalizeUntrackedMode(value: string | undefined): UntrackedMode {
+	const mode = (value ?? "ask").trim().toLowerCase();
+	if (["ask", "include", "skip", "commit", "block"].includes(mode)) return mode as UntrackedMode;
+	throw new Error(`지원하지 않는 untracked 처리 방식입니다: ${value}. ask/include/skip/commit/block 중 하나를 사용하세요.`);
+}
+
+function setUntrackedMode(parsed: ParsedArgs, mode: UntrackedMode, sourceFlag: string): void {
+	if (parsed.untrackedMode !== "ask") throw new Error(`untracked 처리 옵션은 하나만 사용할 수 있습니다. 이미 ${parsed.untrackedMode}인데 ${sourceFlag}를 받았습니다.`);
+	parsed.untrackedMode = mode;
+	parsed.includeUntracked = mode === "include";
+}
+
 function parseArgs(args: string): ParsedArgs {
 	const tokens = splitArgs(args.trim());
 	const parsed: ParsedArgs = {
 		baseRef: DEFAULT_BASE_REF,
 		includeUntracked: false,
+		untrackedMode: "ask",
 		yes: false,
 		dryRun: false,
 		help: false,
@@ -142,7 +163,11 @@ function parseArgs(args: string): ParsedArgs {
 		if (token === "--help" || token === "-h") parsed.help = true;
 		else if (token === "--yes" || token === "-y") parsed.yes = true;
 		else if (token === "--dry-run") parsed.dryRun = true;
-		else if (token === "--include-untracked") parsed.includeUntracked = true;
+		else if (token === "--include-untracked") setUntrackedMode(parsed, "include", token);
+		else if (token === "--skip-untracked") setUntrackedMode(parsed, "skip", token);
+		else if (token === "--commit-untracked") setUntrackedMode(parsed, "commit", token);
+		else if (token === "--untracked-mode") setUntrackedMode(parsed, normalizeUntrackedMode(nextValue()), token);
+		else if (token === "--untracked-message") parsed.untrackedCommitMessage = nextValue();
 		else if (token === "--branch" || token === "-b") parsed.branch = nextValue();
 		else if (token === "--base") parsed.baseRef = normalizeBaseRef(nextValue());
 		else if (token === "--path") parsed.targetPath = nextValue();
@@ -190,6 +215,10 @@ function timestamp(): string {
 
 function short(value: string): string {
 	return value.slice(0, 10);
+}
+
+function formatFileList(files: string[], limit = 12): string {
+	return `${files.slice(0, limit).join(", ")}${files.length > limit ? " ..." : ""}`;
 }
 
 function hasUnmergedStatus(porcelain: string): boolean {
@@ -273,6 +302,20 @@ async function resolveCommitRange(pi: ExtensionAPI, repoRoot: string, parsed: Pa
 	return { range, source, commits };
 }
 
+function defaultUntrackedCommitMessage(branch: string | null): string {
+	return `chore: ${branch ? `${branch} ` : ""}untracked 파일 보존`;
+}
+
+async function commitUntrackedFiles(pi: ExtensionAPI, source: SourceSnapshot, parsed: ParsedArgs): Promise<string> {
+	if (parsed.range && !/\bHEAD\b/u.test(parsed.range)) {
+		throw new Error("--commit-untracked는 새 source commit을 이식 range에 포함해야 하므로 --range는 `...HEAD`처럼 HEAD를 포함해야 합니다.");
+	}
+	const message = parsed.untrackedCommitMessage?.trim() || defaultUntrackedCommitMessage(source.branch);
+	await gitCapture(pi, source.repoRoot, ["add", "--", ...source.untrackedFiles], 120_000);
+	await gitCapture(pi, source.repoRoot, ["commit", "-m", message, "--", ...source.untrackedFiles], 120_000);
+	return gitCapture(pi, source.repoRoot, ["rev-parse", "HEAD"]);
+}
+
 async function readSourceSnapshot(pi: ExtensionAPI, repoRoot: string, parsed: ParsedArgs): Promise<SourceSnapshot> {
 	const [branch, head, upstream, statusShort, porcelain, dirtyPatch, untrackedRaw] = await Promise.all([
 		tryGitCapture(pi, repoRoot, ["branch", "--show-current"]),
@@ -301,23 +344,57 @@ async function readSourceSnapshot(pi: ExtensionAPI, repoRoot: string, parsed: Pa
 		commitRangeSource: commitRange.source,
 		dirtyPatch,
 		untrackedFiles: untrackedRaw.split("\0").filter(Boolean),
+		skippedUntrackedFiles: [],
+		committedUntrackedCommit: null,
 	};
 }
 
-async function buildPlan(pi: ExtensionAPI, cwd: string, parsed: ParsedArgs): Promise<Plan> {
+async function chooseUntrackedMode(ctx: ExtensionContext | undefined, files: string[]): Promise<UntrackedMode> {
+	if (!ctx?.hasUI) return "block";
+	const options = [
+		"target에 포함해서 진행",
+		"source에 커밋 후 진행",
+		"이번 이식에서 제외하고 진행",
+		"중단하고 직접 정리",
+	];
+	const choice = await ctx.ui.select(`/to-production untracked ${files.length}개 처리`, options);
+	if (choice === options[0]) return "include";
+	if (choice === options[1]) return "commit";
+	if (choice === options[2]) return "skip";
+	return "block";
+}
+
+async function resolveUntrackedFiles(pi: ExtensionAPI, ctx: ExtensionContext | undefined, parsed: ParsedArgs, source: SourceSnapshot, allowSourceMutation: boolean): Promise<SourceSnapshot> {
+	if (source.untrackedFiles.length === 0) return source;
+	const mode = parsed.untrackedMode === "ask" ? await chooseUntrackedMode(ctx, source.untrackedFiles) : parsed.untrackedMode;
+	if (mode === "include") {
+		parsed.includeUntracked = true;
+		return source;
+	}
+	if (mode === "skip") {
+		return { ...source, skippedUntrackedFiles: source.untrackedFiles, untrackedFiles: [] };
+	}
+	if (mode === "commit") {
+		if (!allowSourceMutation) throw new Error("dry-run에서는 source에 untracked commit을 만들지 않습니다. --dry-run을 제거하거나 include/skip/block을 선택하세요.");
+		const committed = await commitUntrackedFiles(pi, source, parsed);
+		const next = await readSourceSnapshot(pi, source.repoRoot, parsed);
+		return { ...next, committedUntrackedCommit: committed };
+	}
+	throw new Error([
+		"untracked 파일이 있어 자동 이식을 중단합니다.",
+		"원본은 변경하지 않았습니다. UI에서는 포함/커밋/제외를 선택할 수 있고, 비대화 모드에서는 `--include-untracked`, `--skip-untracked`, `--commit-untracked` 중 하나를 명시하세요.",
+		`untracked: ${formatFileList(source.untrackedFiles)}`,
+	].join("\n"));
+}
+
+async function buildPlan(pi: ExtensionAPI, cwd: string, parsed: ParsedArgs, ctx?: ExtensionContext, options: { allowSourceMutation?: boolean } = {}): Promise<Plan> {
 	const repoRoot = await findRepoRoot(pi, cwd);
-	const source = await readSourceSnapshot(pi, repoRoot, parsed);
+	const source = await resolveUntrackedFiles(pi, ctx, parsed, await readSourceSnapshot(pi, repoRoot, parsed), options.allowSourceMutation ?? true);
 	const hasDirty = source.dirtyPatch.trim().length > 0;
 	const hasUntracked = source.untrackedFiles.length > 0;
 	if (source.commits.length === 0 && !hasDirty && !hasUntracked) {
-		throw new Error("production으로 옮길 commit/diff/untracked 변경이 없습니다.");
-	}
-	if (hasUntracked && !parsed.includeUntracked) {
-		throw new Error([
-			"untracked 파일이 있어 자동 이식을 중단합니다.",
-			"원본은 변경하지 않았습니다. untracked까지 옮기려면 `/to-production --include-untracked ...`로 다시 실행하세요.",
-			`untracked: ${source.untrackedFiles.slice(0, 12).join(", ")}${source.untrackedFiles.length > 12 ? " ..." : ""}`,
-		].join("\n"));
+		const skipped = source.skippedUntrackedFiles.length > 0 ? ` 제외한 untracked: ${formatFileList(source.skippedUntrackedFiles)}` : "";
+		throw new Error(`production으로 옮길 commit/diff/untracked 변경이 없습니다.${skipped}`);
 	}
 
 	const { remote, branch } = parseRemoteRef(parsed.baseRef);
@@ -354,6 +431,8 @@ function metadataFor(plan: Plan, artifacts?: Partial<PreparedArtifacts>): Record
 			commits: plan.source.commits,
 			hasDirtyPatch: plan.source.dirtyPatch.trim().length > 0,
 			untrackedFiles: plan.source.untrackedFiles,
+			skippedUntrackedFiles: plan.source.skippedUntrackedFiles,
+			committedUntrackedCommit: plan.source.committedUntrackedCommit,
 			statusShort: plan.source.statusShort,
 		},
 		target: {
@@ -475,16 +554,19 @@ async function applyArtifacts(pi: ExtensionAPI, plan: Plan, artifacts: PreparedA
 
 function buildPlanReport(plan: Plan, artifacts?: PreparedArtifacts): string {
 	const dirty = plan.source.dirtyPatch.trim().length > 0;
+	const skippedUntracked = plan.source.skippedUntrackedFiles.length > 0;
 	return [
 		"## /to-production plan",
 		"",
-		"### Source — 절대 수정하지 않음",
+		plan.source.committedUntrackedCommit ? "### Source — 명시 선택으로 untracked commit 생성" : "### Source — checkout/stash/reset/clean 없음",
 		`- repo: \`${plan.source.repoRoot}\``,
 		`- branch: \`${plan.source.branch ?? "(detached)"}\` @ \`${short(plan.source.head)}\``,
 		`- upstream: \`${plan.source.upstream ?? "none"}\``,
 		`- commits: ${plan.source.commits.length}${plan.source.commitRange ? ` (range \`${plan.source.commitRange}\`, ${plan.source.commitRangeSource})` : ""}`,
 		`- dirty tracked/staged diff: ${dirty ? "yes" : "no"}`,
 		`- untracked: ${plan.source.untrackedFiles.length}${plan.source.untrackedFiles.length > 0 ? ` (${plan.includeUntracked ? "include" : "blocked"})` : ""}`,
+		skippedUntracked ? `- skipped untracked: ${plan.source.skippedUntrackedFiles.length} (${formatFileList(plan.source.skippedUntrackedFiles)})` : null,
+		plan.source.committedUntrackedCommit ? `- source untracked commit: \`${short(plan.source.committedUntrackedCommit)}\`` : null,
 		"",
 		"### Target",
 		`- base: \`${plan.baseRef}\``,
@@ -494,7 +576,8 @@ function buildPlanReport(plan: Plan, artifacts?: PreparedArtifacts): string {
 		"",
 		"### Safety",
 		"- source worktree에는 checkout/stash/reset/clean을 실행하지 않습니다.",
-		"- source HEAD backup branch와 patch artifact를 먼저 만든 뒤 target worktree에만 적용합니다.",
+		plan.source.committedUntrackedCommit ? "- 사용자가 선택한 경우에만 source untracked 파일을 commit으로 보존합니다." : "- source HEAD backup branch와 patch artifact를 먼저 만든 뒤 target worktree에만 적용합니다.",
+		plan.source.committedUntrackedCommit ? "- source HEAD backup branch와 patch artifact를 만든 뒤 target worktree에 적용합니다." : null,
 		artifacts ? `- artifact: \`${artifacts.artifactDir}\`` : "- artifact: 실행 시 생성",
 		artifacts ? `- backup branch: \`${artifacts.backupBranch}\`` : "- backup branch: 실행 시 생성",
 	].join("\n");
@@ -503,12 +586,16 @@ function buildPlanReport(plan: Plan, artifacts?: PreparedArtifacts): string {
 async function buildSuccessReport(pi: ExtensionAPI, plan: Plan, artifacts: PreparedArtifacts): Promise<string> {
 	const targetStatus = await gitCapture(pi, plan.targetPath, ["status", "--short", "--branch"]);
 	const targetLog = await gitCapture(pi, plan.targetPath, ["log", "--oneline", "--decorate", "-5"]);
+	const sourceSummary = plan.source.committedUntrackedCommit
+		? `사용자 선택에 따라 source untracked 파일을 \`${short(plan.source.committedUntrackedCommit)}\` commit으로 먼저 보존한 뒤, production 기반 target worktree에 이식했습니다.`
+		: "source worktree는 checkout/stash/reset/clean 없이 보존했고, production 기반 target worktree에 변경을 이식했습니다.";
 	return [
 		"## /to-production 완료",
 		"",
-		"source worktree는 그대로 보존했고, production 기반 target worktree에 변경을 이식했습니다.",
+		sourceSummary,
 		"",
 		`- source: \`${plan.source.repoRoot}\` @ \`${short(plan.source.head)}\``,
+		plan.source.committedUntrackedCommit ? `- source untracked commit: \`${short(plan.source.committedUntrackedCommit)}\`` : null,
 		`- backup branch: \`${artifacts.backupBranch}\``,
 		`- artifact: \`${artifacts.artifactDir}\``,
 		`- target branch: \`${plan.targetBranch}\``,
@@ -539,8 +626,11 @@ function helpText(): string {
 		"  --base <remote/branch>    production base. 기본: origin/production",
 		"  --path <path>             target worktree path. 기본: source sibling path",
 		"  --range <rev-range>       이식할 commit range를 명시. 기본: @{upstream} merge-base..HEAD",
-		"  -m, --message <message>   미커밋 diff를 commit할 메시지",
+		"  -m, --message <message>   미커밋 diff를 target에서 commit할 메시지",
 		"  --include-untracked       untracked 파일도 artifact 백업 후 target에 복사/commit",
+		"  --skip-untracked          untracked 파일은 source에 남기고 이번 이식에서 제외",
+		"  --commit-untracked        untracked 파일을 source에 commit한 뒤 그 commit까지 이식",
+		"  --untracked-message <msg> --commit-untracked source commit 메시지",
 		"  --dry-run                 계획만 출력",
 		"  -y, --yes                 확인창 생략",
 		"",
@@ -557,17 +647,21 @@ function publish(pi: ExtensionAPI, ctx: ExtensionContext, report: string, level:
 
 function toolParamsToParsed(params: ToProductionToolParams): ParsedArgs {
 	const rawArgs = params.args?.trim();
-	const structuredKeys: Array<keyof ToProductionToolParams> = ["branch", "base", "path", "range", "message", "includeUntracked", "dryRun", "yes"];
+	const structuredKeys: Array<keyof ToProductionToolParams> = ["branch", "base", "path", "range", "message", "includeUntracked", "untrackedMode", "untrackedCommitMessage", "dryRun", "yes"];
 	const hasStructured = structuredKeys.some((key) => params[key] !== undefined);
 	if (rawArgs && hasStructured) throw new Error("to_production tool에서는 args와 구조화 옵션을 함께 쓰지 않습니다. 하나만 선택하세요.");
 	if (rawArgs) return parseArgs(rawArgs);
+	const untrackedMode = params.includeUntracked ? "include" : normalizeUntrackedMode(params.untrackedMode);
+	if (params.includeUntracked && params.untrackedMode && params.untrackedMode !== "include") throw new Error("includeUntracked와 untrackedMode는 서로 충돌하지 않게 하나만 지정하세요.");
 	return {
 		branch: params.branch?.trim() || undefined,
 		baseRef: normalizeBaseRef(params.base ?? DEFAULT_BASE_REF),
 		targetPath: params.path?.trim() || undefined,
 		message: params.message?.trim() || undefined,
 		range: params.range?.trim() || undefined,
-		includeUntracked: Boolean(params.includeUntracked),
+		includeUntracked: untrackedMode === "include",
+		untrackedMode,
+		untrackedCommitMessage: params.untrackedCommitMessage?.trim() || undefined,
 		yes: Boolean(params.yes),
 		dryRun: Boolean(params.dryRun),
 		help: false,
@@ -577,7 +671,7 @@ function toolParamsToParsed(params: ToProductionToolParams): ParsedArgs {
 async function executeToProduction(pi: ExtensionAPI, ctx: ExtensionContext, parsed: ParsedArgs): Promise<RunResult> {
 	if (parsed.help) return { report: helpText(), level: "info", status: "help" };
 
-	const plan = await buildPlan(pi, ctx.cwd, parsed);
+	const plan = await buildPlan(pi, ctx.cwd, parsed, ctx, { allowSourceMutation: !parsed.dryRun });
 	await fetchBase(pi, plan);
 	await assertTargetSafe(pi, plan);
 	const planReport = buildPlanReport(plan);
@@ -608,6 +702,9 @@ function resultDetails(result: RunResult): Record<string, unknown> {
 				head: result.plan.source.head,
 				commitRange: result.plan.source.commitRange,
 				commits: result.plan.source.commits,
+				untrackedFiles: result.plan.source.untrackedFiles,
+				skippedUntrackedFiles: result.plan.source.skippedUntrackedFiles,
+				committedUntrackedCommit: result.plan.source.committedUntrackedCommit,
 			}
 			: undefined,
 		target: result.plan
@@ -647,7 +744,8 @@ export default function toProduction(pi: ExtensionAPI) {
 		promptGuidelines: [
 			"Use this dedicated tool instead of worktree_fork, worktree_create, manual git worktree add, checkout, stash, reset, or clean when the task is to move existing source work to production/hotfix/hotfeature.",
 			"The tool shares the same execution path as the /to-production slash command and preserves the source worktree by using artifact/backup branch + target worktree application.",
-			"If the user provided an exact /to-production argument string, pass it as args. Otherwise prefer structured parameters such as branch, range, base, path, message, includeUntracked, dryRun, and yes.",
+			"If the user provided an exact /to-production argument string, pass it as args. Otherwise prefer structured parameters such as branch, range, base, path, message, untrackedMode, dryRun, and yes.",
+			"When source untracked files matter, choose untrackedMode explicitly: include copies them to target, skip leaves them only in source, commit creates a source commit before migration, block stops. In UI contexts ask is allowed.",
 			"Do not pass yes:true unless the user explicitly approved execution or asked you to run it now; without yes, UI contexts show the same confirmation as the slash command and headless contexts stop safely.",
 			"If this tool is unavailable in the current runtime, ask the user to submit the standalone /to-production command rather than emulating it with generic worktree tools.",
 		],
@@ -657,9 +755,11 @@ export default function toProduction(pi: ExtensionAPI) {
 			base: Type.Optional(Type.String({ description: "Production base ref. Defaults to origin/production." })),
 			path: Type.Optional(Type.String({ description: "Target worktree path." })),
 			range: Type.Optional(Type.String({ description: "Commit range to migrate, e.g. abc123..HEAD." })),
-			message: Type.Optional(Type.String({ description: "Commit message for migrated dirty/untracked changes." })),
-			includeUntracked: Type.Optional(Type.Boolean({ description: "Include untracked files after artifact backup." })),
-			dryRun: Type.Optional(Type.Boolean({ description: "Plan only; do not create branch/worktree/artifacts." })),
+			message: Type.Optional(Type.String({ description: "Commit message for migrated dirty changes in the target worktree." })),
+			includeUntracked: Type.Optional(Type.Boolean({ description: "Include untracked files in the target after artifact backup. Equivalent to untrackedMode='include'." })),
+			untrackedMode: Type.Optional(Type.String({ description: "How to handle source untracked files: ask|include|skip|commit|block. UI default is ask; headless default blocks unless explicit." })),
+			untrackedCommitMessage: Type.Optional(Type.String({ description: "Source commit message when untrackedMode='commit'." })),
+			dryRun: Type.Optional(Type.Boolean({ description: "Plan only; do not create branch/worktree/artifacts or source untracked commits." })),
 			yes: Type.Optional(Type.Boolean({ description: "Skip confirmation only when the user explicitly approved execution." })),
 		}),
 		async execute(_toolCallId, params: ToProductionToolParams, _signal, _onUpdate, ctx: ExtensionContext) {

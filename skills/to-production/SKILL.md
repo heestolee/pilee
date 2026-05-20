@@ -1,7 +1,7 @@
 ---
 name: to-production
 description: 현재 worktree의 작업 내용이나 local commits를 최신 production 기반 hotfix branch/worktree로 안전하게 옮겨야 할 때 사용한다. "/to-production", "production으로 옮겨", "hotfix로 다시 쌓아", "development 기반 작업을 production base로 이식" 요청에 사용한다. source worktree 변경 유실 방지가 핵심이다.
-argument-hint: "[target-branch] [--include-untracked] [--message <commit-message>]"
+argument-hint: "[target-branch] [--include-untracked|--skip-untracked|--commit-untracked] [--message <commit-message>]"
 disable-model-invocation: false
 ---
 
@@ -17,7 +17,9 @@ disable-model-invocation: false
 - **자동 삭제 금지**: 성공해도 원본 worktree/branch를 자동 삭제하지 않는다. 정리는 사용자가 확인한 뒤 별도 수행한다.
 - **전용 실행 경계**: 자연어 요청에 `/to-production`이 포함되어도 slash command가 자동 실행되는 것은 아니다. 이때는 `to_production` tool을 사용한다.
 - **대체 금지**: `/to-production` 이식은 `worktree_fork`, `worktree_create`, 수동 `git worktree add`, source `checkout/stash/reset/clean`으로 흉내 내지 않는다. 전용 command/tool이 없으면 standalone `/to-production ...` 입력을 요청한다.
-- **불명확하면 중단**: untracked, merge commit, 충돌, commit range 불명확성은 조용히 추측하지 않는다.
+- **untracked는 선택 게이트**: UI가 있으면 포함/제외/source commit 후 진행/중단을 묻는다. headless에서는 `--include-untracked`, `--skip-untracked`, `--commit-untracked` 중 하나를 명시해야 한다.
+- **source commit은 명시 선택일 때만**: `--commit-untracked` 또는 UI 선택으로 untracked를 source에 commit할 수 있다. 이 경우 새 commit이 이식 range에 포함되어야 하므로 explicit range는 `...HEAD` 형태여야 한다.
+- **불명확하면 중단**: merge commit, 충돌, commit range 불명확성은 조용히 추측하지 않는다.
 
 ## 기본 사용
 
@@ -32,10 +34,11 @@ disable-model-invocation: false
 1. 현재 git repo/source branch/HEAD/upstream/status를 읽는다.
 2. local commits는 `@{upstream}`과의 merge-base부터 `HEAD`까지를 이식 대상으로 본다.
 3. tracked/staged/unstaged diff는 `git diff --binary HEAD` patch로 보존한다.
-4. `origin/production`을 fetch한다.
-5. source HEAD backup branch와 `~/.pi/agent/to-production/...` artifact를 만든다.
-6. 새 sibling worktree를 `origin/production` 기반 target branch로 만든다.
-7. commit patch는 `git am --3way`, dirty patch는 `git apply --3way --index` 후 새 commit으로 적용한다.
+4. untracked 파일이 있으면 UI에서 처리 방식을 묻거나 명시 옵션을 적용한다.
+5. `origin/production`을 fetch한다.
+6. source HEAD backup branch와 `~/.pi/agent/to-production/...` artifact를 만든다.
+7. 새 sibling worktree를 `origin/production` 기반 target branch로 만든다.
+8. commit patch는 `git am --3way`, dirty patch는 `git apply --3way --index` 후 새 commit으로 적용한다.
 
 ## 자주 쓰는 옵션
 
@@ -43,6 +46,8 @@ disable-model-invocation: false
 /to-production hotfix/COM-1234-something
 /to-production --branch hotfix/COM-1234-something --message "fix: 앱쿠폰 결제통화 예외"
 /to-production --include-untracked --message "fix: production hotfix"
+/to-production --skip-untracked --branch hotfix/manual-range
+/to-production --commit-untracked --untracked-message "chore: hotfix 누락 파일 보존"
 /to-production --range abc123..HEAD --branch hotfix/manual-range
 /to-production --dry-run
 ```
@@ -53,8 +58,11 @@ disable-model-invocation: false
 | `--base` | production base. 기본 `origin/production` |
 | `--path` | target worktree path |
 | `--range` | 이식할 commit range를 명시 |
-| `--message`, `-m` | 미커밋 diff를 commit할 메시지 |
+| `--message`, `-m` | 미커밋 diff를 target에서 commit할 메시지 |
 | `--include-untracked` | untracked 파일까지 artifact 백업 후 target에 복사/commit |
+| `--skip-untracked` | untracked 파일은 source에 남기고 이번 이식에서 제외 |
+| `--commit-untracked` | untracked 파일을 source에 먼저 commit하고 그 commit까지 이식 |
+| `--untracked-message` | `--commit-untracked` source commit 메시지 |
 | `--dry-run` | 실제 branch/worktree/artifact 생성 없이 plan만 출력 |
 | `--yes`, `-y` | 확인창 생략 |
 
@@ -64,7 +72,8 @@ disable-model-invocation: false
 
 - source worktree에 conflict/unmerged file이 있다.
 - 옮길 local commit/diff/untracked가 없다.
-- untracked 파일이 있는데 `--include-untracked`가 없다.
+- headless/no-UI에서 untracked 파일이 있는데 include/skip/commit 중 명시 선택이 없다.
+- `--commit-untracked`와 explicit `--range`를 함께 쓰면서 range가 `HEAD`를 포함하지 않는다.
 - target branch 또는 target worktree path가 이미 존재한다.
 - commit range에 merge commit이 포함되어 있다.
 - `origin/production` fetch 또는 base ref 검증에 실패한다.
@@ -112,9 +121,10 @@ git commit -m "fix: ..." # dirty patch 단계에서 멈춘 경우
 ## Red Flags
 
 - source worktree에서 `git stash`, `git reset`, `git clean`을 먼저 실행한다.
+- untracked 발견 시 선택지를 주지 않고 바로 중단한다.
 - 자연어 `/to-production` 요청을 generic `worktree_fork`/`worktree_create`로 처리한다.
 - dedicated command/tool 대신 사용자에게 commit range를 다시 계산해 입력하라고 떠넘긴다.
 - `origin/production..HEAD` 전체를 local commit range로 사용한다. development 기반 branch에서는 unrelated development commit이 섞일 수 있다.
-- untracked 파일을 조용히 무시한다.
+- untracked 파일을 조용히 무시하거나 사용자 선택 없이 source에 commit한다.
 - target 적용 실패 후 artifact/backup 없이 “다시 해보면 됨”으로 넘긴다.
 - 성공 직후 원본 worktree를 자동 삭제한다.

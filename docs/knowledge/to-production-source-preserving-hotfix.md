@@ -22,7 +22,7 @@ applies_to:
 source:
   - user-direction:2026-05-18-to-production-mvp
 reviewed_at: 2026-05-20
-reviewed_commit: 85795f026aa91a5d4798253aa252faab35929f41
+reviewed_commit: 2f47d812bbea2e9d4f51f940dd764befe8e70239
 related:
   - worktree-execution-boundary
   - worktree-creation-parent-gate
@@ -35,12 +35,13 @@ type: doctrine
 
 ## Source-preserving Rule
 
-자동화는 source repo에서 읽기와 보존용 ref/artifact 생성만 허용합니다.
+자동화는 source repo에서 읽기와 보존용 ref/artifact 생성을 기본으로 합니다.
 
 - 허용: `git status`, `git diff`, `git format-patch`, `git rev-list`, `git branch <backup> HEAD`, artifact write
+- 명시 선택 시 허용: untracked 파일만 source에 `git add`/`git commit`해 보존 commit을 만든 뒤 그 commit까지 이식
 - 금지: source `git checkout`, `git switch`, `git stash`, `git reset`, `git clean`, source worktree 삭제
 
-실제 변경 적용은 새 target worktree에서만 수행합니다. target이 conflict 상태가 되어도 source는 그대로 남아야 하므로, 실패 복구는 target과 artifact 기준으로 안내합니다.
+실제 변경 적용은 새 target worktree에서만 수행합니다. 단, 사용자가 untracked commit option을 선택한 경우 source에는 새 보존 commit이 생깁니다. target이 conflict 상태가 되어도 source checkout/reset/clean 없이 남아야 하므로, 실패 복구는 target과 artifact 기준으로 안내합니다.
 
 ## Commit Range Rule
 
@@ -60,9 +61,16 @@ Merge commit은 MVP 자동화에서 중단합니다. `git format-patch`/`git am`
 
 Artifact는 “성공 로그”가 아니라 복구 계약입니다. target 적용이 실패해도 사용자는 artifact와 source backup branch를 기준으로 수동 적용을 이어갈 수 있어야 합니다.
 
-## Untracked Rule
+## Untracked Decision Rule
 
-Untracked 파일은 기본적으로 자동 이식하지 않습니다. untracked에는 임시 파일, secret, local report, 빌드 산출물이 섞일 수 있기 때문입니다. 따라서 기본은 중단이고, 사용자가 `--include-untracked`를 명시한 경우에만 artifact에 복사한 뒤 target에 복사/commit합니다.
+Untracked 파일은 조용히 무시하거나 자동 포함하지 않습니다. untracked에는 임시 파일, secret, local report, 빌드 산출물이 섞일 수 있기 때문입니다. 하지만 UI가 있는 `/to-production`에서는 hard stop보다 decision gate가 맞습니다.
+
+- `include`: artifact에 복사한 뒤 target에 복사/commit합니다.
+- `skip`: source에는 그대로 두고 이번 production 이식에서는 제외합니다. metadata/report에 skipped list를 남깁니다.
+- `commit`: untracked 파일만 source에 명시 commit으로 보존한 뒤, 새 source HEAD까지 commit range를 다시 읽어 target에 이식합니다.
+- `block`: 사용자가 직접 정리하도록 중단합니다.
+
+Headless/no-UI에서는 선택할 수 없으므로 `--include-untracked`, `--skip-untracked`, `--commit-untracked` 중 하나를 명시해야 합니다. `--commit-untracked`는 source에 새 commit을 만들기 때문에 사용자의 명시 선택이 필요하고, explicit `--range`를 함께 쓸 때는 새 commit이 포함되도록 `...HEAD` 형태여야 합니다.
 
 ## Dedicated Execution Boundary
 
