@@ -100,6 +100,7 @@ for (const [id, phrase] of [
   ['tft-scroll-test-non-question-sections', 'non-question sections'],
   ['tft-scroll-test-answer-card', 'answer card'],
   ['tft-scroll-test-work-context-logs', 'work context and logs'],
+  ['tft-scroll-test-header-status-log-workcontext', 'header/status/log/workContext sections'],
 ]) {
   requireIncludes(id, tftScrollTest, phrase, `extensions/frame-studio/scroll-preservation.test.ts must cover ${phrase}`);
 }

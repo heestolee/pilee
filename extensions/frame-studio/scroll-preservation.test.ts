@@ -52,7 +52,7 @@ function makeQuestion(id: string, time = Date.now()) {
 	};
 }
 
-function createFakeBrowser(options: { top: number; viewport: number; height: number; onTimelineRender?: () => void }) {
+function createFakeBrowser(options: { top: number; viewport: number; height: number; onElementRender?: (id: string, value: string) => void; onTimelineRender?: () => void }) {
 	const elements = new Map<string, any>();
 	const fakeWindow: FakeWindow = {
 		pageYOffset: options.top,
@@ -71,12 +71,18 @@ function createFakeBrowser(options: { top: number; viewport: number; height: num
 		getElementById(id: string) {
 			if (!elements.has(id)) {
 				let html = "";
+				let text = "";
 				elements.set(id, {
 					id,
-					textContent: "",
 					className: "",
+					set textContent(value: string) {
+						text = String(value);
+						options.onElementRender?.(id, text);
+					},
+					get textContent() { return text; },
 					set innerHTML(value: string) {
 						html = String(value);
+						options.onElementRender?.(id, html);
 						if (id === "timeline" && options.onTimelineRender) options.onTimelineRender();
 					},
 					get innerHTML() { return html; },
@@ -94,9 +100,19 @@ function loadStudioScript(fakeWindow: FakeWindow, fakeDocument: FakeDocument) {
 	const script = extractInlineScript(buildPageHtml());
 	const EventSource = function EventSource(this: any) { this.close = () => {}; };
 	const fetch = () => Promise.reject(new Error("initial state disabled in test"));
-	const immediate = (fn: () => void) => { fn(); return 0; };
+	const timerQueue: Array<() => void> = [];
+	const queueTimer = (fn: () => void) => { timerQueue.push(fn); return timerQueue.length; };
+	function flushTimers(limit = 100) {
+		let count = 0;
+		while (timerQueue.length) {
+			const next = timerQueue.shift();
+			if (next) next();
+			count += 1;
+			if (count > limit) throw new Error("Timer queue did not settle");
+		}
+	}
 	const factory = new Function("window", "document", "EventSource", "fetch", "setTimeout", "requestAnimationFrame", `${script}\nreturn { render: render, selectTab: selectTab };`);
-	return factory(fakeWindow, fakeDocument, EventSource, fetch, immediate, immediate) as { render(state: any, options?: any): void; selectTab(key: string): void };
+	return { ...(factory(fakeWindow, fakeDocument, EventSource, fetch, queueTimer, queueTimer) as { render(state: any, options?: any): void; selectTab(key: string): void }), flushTimers };
 }
 
 test("TFT Studio state update preserves the reader's current scroll offset", () => {
@@ -115,11 +131,13 @@ test("TFT Studio state update preserves the reader's current scroll offset", () 
 	const studio = loadStudioScript(browser.window, browser.document);
 
 	studio.render(makeState("# 처음 상태"));
+	studio.flushTimers();
 	browser.window.pageYOffset = 420;
 	browser.document.documentElement.scrollTop = 420;
 	browser.document.body.scrollTop = 420;
 	resetOnTimelineRender = true;
 	studio.render(makeState("# 업데이트된 상태", Date.now() + 1));
+	studio.flushTimers();
 
 	assert.equal(browser.window.pageYOffset, 420);
 	assert.equal(browser.window.scrollCalls.at(-1), 420);
@@ -170,15 +188,52 @@ test("TFT Studio preserves scroll when non-question sections are appended", () =
 		const studio = loadStudioScript(browser.window, browser.document);
 
 		studio.render(makeState(`# initial ${item.name}`));
+		studio.flushTimers();
 		browser.window.pageYOffset = 640;
 		browser.document.documentElement.scrollTop = 640;
 		browser.document.body.scrollTop = 640;
 		resetOnTimelineRender = true;
 		studio.render(item.state);
+		studio.flushTimers();
 
 		assert.equal(browser.window.pageYOffset, 640, item.name);
 		assert.equal(browser.window.scrollCalls.at(-1), 640, item.name);
 	}
+});
+
+test("TFT Studio preserves scroll when header/status/log/workContext sections mutate independently", () => {
+	let resetOnElementRender = false;
+	const resetIds = new Set(["title", "meta", "tabs", "workContext", "flowTitle", "flowSubtitle", "flowStatus", "logs"]);
+	const browser = createFakeBrowser({
+		top: 510,
+		viewport: 600,
+		height: 3300,
+		onElementRender: (id) => {
+			if (!resetOnElementRender || !resetIds.has(id)) return;
+			browser.window.pageYOffset = 0;
+			browser.document.documentElement.scrollTop = 0;
+			browser.document.body.scrollTop = 0;
+		},
+	});
+	const studio = loadStudioScript(browser.window, browser.document);
+
+	studio.render(makeState("# 헤더 갱신 전"));
+	studio.flushTimers();
+	browser.window.pageYOffset = 510;
+	browser.document.documentElement.scrollTop = 510;
+	browser.document.body.scrollTop = 510;
+	resetOnElementRender = true;
+	studio.render(makeState("# 헤더와 보조 섹션 갱신", Date.now() + 4, {
+		title: "TFT Studio scroll test updated",
+		status: "awaiting",
+		question: makeQuestion("q-header", Date.now() + 4),
+		workContext: { mode: "worktree", goal: "보조 섹션 스크롤 보존", currentSlice: { id: "S2", title: "header/status/log/workContext sections", scope: ["extensions/frame-studio"] }, openQuestions: [{ id: "Q1", text: "질문", owner: "user" }], verifyFocus: ["header", "status", "logs"] },
+		logs: [{ time: Date.now() + 4, message: "Header/status/log/workContext sections refreshed." }],
+	}));
+	studio.flushTimers();
+
+	assert.equal(browser.window.pageYOffset, 510);
+	assert.equal(browser.window.scrollCalls.at(-1), 510);
 });
 
 test("TFT Studio preserves scroll when a pending question section is appended", () => {
@@ -198,6 +253,7 @@ test("TFT Studio preserves scroll when a pending question section is appended", 
 	const studio = loadStudioScript(browser.window, browser.document);
 
 	studio.render(makeState("# 질문 전 상태"));
+	studio.flushTimers();
 	browser.window.pageYOffset = 720;
 	browser.document.documentElement.scrollTop = 720;
 	browser.document.body.scrollTop = 720;
@@ -210,6 +266,7 @@ test("TFT Studio preserves scroll when a pending question section is appended", 
 			{ id: "q1", time: Date.now() + 1, kind: "question", tab: "frame", step: "step", markdown: question.markdown, question },
 		],
 	}));
+	studio.flushTimers();
 
 	assert.equal(browser.window.pageYOffset, 720);
 	assert.equal(browser.window.scrollCalls.at(-1), 720);
@@ -235,11 +292,13 @@ test("TFT Studio keeps following the bottom only when the reader was already nea
 	const studio = loadStudioScript(browser.window, browser.document);
 
 	studio.render(makeState("# 처음 상태"));
+	studio.flushTimers();
 	browser.window.pageYOffset = 570;
 	browser.document.documentElement.scrollTop = 570;
 	browser.document.body.scrollTop = 570;
 	resetOnTimelineRender = true;
 	studio.render(makeState("# 새 하단 상태", Date.now() + 1));
+	studio.flushTimers();
 
 	assert.equal(browser.window.pageYOffset, 1200);
 	assert.equal(browser.window.scrollCalls.at(-1), 1200);
