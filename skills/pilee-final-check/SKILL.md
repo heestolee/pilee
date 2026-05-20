@@ -132,6 +132,7 @@ npm run tft:regression-audit
 | 변경 유형 | 테스트 추가/보강 Required | 의미 있는 테스트 예 |
 |---|---|---|
 | extension/tool/slash command | 새 인자, 상태 전이, session/cwd/source-of-truth, no-UI fallback, stale ctx 위험이 있으면 필요 | mock Pi context로 tool/command를 호출하고 저장 state·render text·blocked path를 assert |
+| Glimpse/WebView/render UX | scroll/reload/focus/shortcut/window reuse처럼 사용자 조작 상태가 깨지는 회귀를 고치거나 만들면 필요 | generated WebView script parse + scroll preservation fixture + mock companion no-reload/window reuse assert |
 | parser/serializer/generator | 입력 변형, escaping, markdown/frontmatter/JSON/SVG 생성 계약이 바뀌면 필요 | fixture → output snapshot 전체가 아니라 핵심 구조/escape/round-trip assert |
 | bug fix/regression | 재현 가능한 실패가 있었으면 필요 | 수정 전 실패했을 최소 fixture나 command를 테스트로 고정 |
 | skill/prompt/contract | 특정 지침이 다시 빠지면 같은 실수가 반복될 때 필요 | deterministic script가 필수 heading/문구/금지 패턴을 검사 |
@@ -165,7 +166,7 @@ Claim inventory에 `테스트 결정`을 붙인다.
 |---|---|
 | extension/slash command | command args, alias, no-UI/headless fallback, session/cwd/source-of-truth, stale ctx |
 | worktree/session/revive/archive | 중복 세션, wrong cwd, panel label/P0/P1, source provenance, raw file mutation |
-| Glimpse/WebView | embedded script escape, native host shortcut, stdout/stderr protocol, browser fallback |
+| Glimpse/WebView | embedded script escape, native host shortcut, stdout/stderr protocol, browser fallback, scroll/reload/focus preservation |
 | skill/prompt | trigger description, prerequisite, output contract, near-miss 오작동, 지침 회귀를 잡는 deterministic test |
 | knowledge/README | graph freshness, coverage TODO, generated block 수동 편집, reviewed_commit 의미 |
 | automation/local history | local-only 파일 위치, Notion sync, raw private text public 유출 |

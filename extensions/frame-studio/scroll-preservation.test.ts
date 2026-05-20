@@ -23,7 +23,7 @@ function extractInlineScript(html: string): string {
 	return scripts.join("\n");
 }
 
-function makeState(markdown: string, time = Date.now()) {
+function makeState(markdown: string, time = Date.now(), overrides: Record<string, unknown> = {}) {
 	return {
 		title: "TFT Studio scroll test",
 		identity: { mode: "session", displayTitle: "Scroll test" },
@@ -34,6 +34,21 @@ function makeState(markdown: string, time = Date.now()) {
 		workContext: undefined,
 		timeline: [{ id: String(time), time, kind: "update", tab: "frame", step: "step", markdown }],
 		logs: [],
+		...overrides,
+	};
+}
+
+function makeQuestion(id: string, time = Date.now()) {
+	return {
+		id,
+		tab: "frame",
+		question: "다음 단계는 무엇인가요?",
+		markdown: "## 선택대기 섹션\n\n- 현재 맥락\n- 선택 후 달라지는 것",
+		options: ["계속 진행", "잠시 멈춤"],
+		multiSelect: false,
+		allowText: true,
+		placeholder: "직접 입력",
+		createdAt: time,
 	};
 }
 
@@ -108,6 +123,96 @@ test("TFT Studio state update preserves the reader's current scroll offset", () 
 
 	assert.equal(browser.window.pageYOffset, 420);
 	assert.equal(browser.window.scrollCalls.at(-1), 420);
+});
+
+test("TFT Studio preserves scroll when non-question sections are appended", () => {
+	const sectionCases = [
+		{
+			name: "answer card",
+			state: makeState("# 답변 이후 상태", Date.now() + 1, {
+				timeline: [
+					{ id: "u1", time: Date.now(), kind: "update", tab: "frame", step: "step", markdown: "# 처음 상태" },
+					{ id: "a1", time: Date.now() + 1, kind: "answer", tab: "frame", step: "step", answer: { status: "answered", questionId: "q1", question: "다음 단계는 무엇인가요?", selectedIndices: [0], selectedOptions: ["계속 진행"], submittedAt: Date.now() + 1 } },
+				],
+			}),
+		},
+		{
+			name: "work context and logs",
+			state: makeState("# 작업 맥락 갱신", Date.now() + 2, {
+				workContext: { mode: "worktree", goal: "스크롤 보존", currentSlice: { id: "S1", title: "렌더 안정화", scope: ["extensions/frame-studio"] }, openQuestions: [], verifyFocus: ["scroll"] },
+				logs: [{ time: Date.now() + 2, message: "Work context refreshed." }],
+			}),
+		},
+		{
+			name: "additional update block",
+			state: makeState("# 두 번째 업데이트\n\n새 섹션이 추가됩니다.", Date.now() + 3, {
+				timeline: [
+					{ id: "u1", time: Date.now(), kind: "update", tab: "frame", step: "step", markdown: "# 처음 상태" },
+					{ id: "u2", time: Date.now() + 3, kind: "update", tab: "frame", step: "step", markdown: "# 두 번째 업데이트\n\n새 섹션이 추가됩니다." },
+				],
+			}),
+		},
+	];
+
+	for (const item of sectionCases) {
+		let resetOnTimelineRender = false;
+		const browser = createFakeBrowser({
+			top: 640,
+			viewport: 600,
+			height: 3200,
+			onTimelineRender: () => {
+				if (!resetOnTimelineRender) return;
+				browser.window.pageYOffset = 0;
+				browser.document.documentElement.scrollTop = 0;
+				browser.document.body.scrollTop = 0;
+			},
+		});
+		const studio = loadStudioScript(browser.window, browser.document);
+
+		studio.render(makeState(`# initial ${item.name}`));
+		browser.window.pageYOffset = 640;
+		browser.document.documentElement.scrollTop = 640;
+		browser.document.body.scrollTop = 640;
+		resetOnTimelineRender = true;
+		studio.render(item.state);
+
+		assert.equal(browser.window.pageYOffset, 640, item.name);
+		assert.equal(browser.window.scrollCalls.at(-1), 640, item.name);
+	}
+});
+
+test("TFT Studio preserves scroll when a pending question section is appended", () => {
+	let resetOnTimelineRender = false;
+	const question = makeQuestion("q1", Date.now() + 1);
+	const browser = createFakeBrowser({
+		top: 720,
+		viewport: 600,
+		height: 3400,
+		onTimelineRender: () => {
+			if (!resetOnTimelineRender) return;
+			browser.window.pageYOffset = 0;
+			browser.document.documentElement.scrollTop = 0;
+			browser.document.body.scrollTop = 0;
+		},
+	});
+	const studio = loadStudioScript(browser.window, browser.document);
+
+	studio.render(makeState("# 질문 전 상태"));
+	browser.window.pageYOffset = 720;
+	browser.document.documentElement.scrollTop = 720;
+	browser.document.body.scrollTop = 720;
+	resetOnTimelineRender = true;
+	studio.render(makeState(question.markdown, Date.now() + 1, {
+		status: "awaiting",
+		question,
+		timeline: [
+			{ id: "u1", time: Date.now(), kind: "update", tab: "frame", step: "step", markdown: "# 질문 전 상태" },
+			{ id: "q1", time: Date.now() + 1, kind: "question", tab: "frame", step: "step", markdown: question.markdown, question },
+		],
+	}));
+
+	assert.equal(browser.window.pageYOffset, 720);
+	assert.equal(browser.window.scrollCalls.at(-1), 720);
 });
 
 test("TFT Studio keeps following the bottom only when the reader was already near the bottom", () => {

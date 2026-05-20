@@ -58,6 +58,9 @@ if (!gate) {
     ['gate-default', '테스트 코드가 기본값이다'],
     ['gate-required-column', '테스트 추가/보강 Required'],
     ['gate-extension-row', 'extension/tool/slash command'],
+    ['gate-webview-render-row', 'Glimpse/WebView/render UX'],
+    ['gate-webview-scroll-reload', 'scroll/reload/focus/shortcut/window reuse'],
+    ['gate-webview-test-examples', 'scroll preservation fixture + mock companion no-reload/window reuse assert'],
     ['gate-parser-row', 'parser/serializer/generator'],
     ['gate-bugfix-row', 'bug fix/regression'],
     ['gate-skill-row', 'skill/prompt/contract'],
@@ -86,6 +89,26 @@ for (const phrase of [
 
 const skillValidationSection = sectionBetween(skill, 'Skill 변경:', /^###\s+6\./m);
 requireIncludes('skill-validation-runs-test', skillValidationSection, '`pilee-final-check` 변경은 반드시 `npm run test:pilee-final-check`를 실행한다.');
+requireIncludes('webview-hole-review-scroll-reload', skill, 'scroll/reload/focus preservation');
+
+const tftScrollTestPath = path.join(root, 'extensions', 'frame-studio', 'scroll-preservation.test.ts');
+const companionTestPath = path.join(root, 'extensions', 'utils', 'companion-window.test.ts');
+const tftScrollTest = fs.existsSync(tftScrollTestPath) ? read(tftScrollTestPath) : '';
+const companionTest = fs.existsSync(companionTestPath) ? read(companionTestPath) : '';
+for (const [id, phrase] of [
+  ['tft-scroll-test-pending-question', 'pending question section'],
+  ['tft-scroll-test-non-question-sections', 'non-question sections'],
+  ['tft-scroll-test-answer-card', 'answer card'],
+  ['tft-scroll-test-work-context-logs', 'work context and logs'],
+]) {
+  requireIncludes(id, tftScrollTest, phrase, `extensions/frame-studio/scroll-preservation.test.ts must cover ${phrase}`);
+}
+for (const [id, phrase] of [
+  ['companion-no-rewrite-same-html', 'same companion HTML should be shown without rewriting/reloading the WebView'],
+  ['companion-no-rewrite-same-url', 'same URL redirect shell should not be rewritten because it reloads the live page and resets scroll'],
+]) {
+  requireIncludes(id, companionTest, phrase, `extensions/utils/companion-window.test.ts must cover ${phrase}`);
+}
 
 if (pkg.scripts?.['test:pilee-final-check'] !== 'node scripts/check-pilee-final-check.mjs') {
   failures.push({
@@ -127,4 +150,5 @@ if (failures.length > 0) {
 console.log('✅ pilee-final-check test gate contract passed');
 console.log('- checked: SKILL.md Test Code Gate section');
 console.log('- checked: smoke/test validation instructions');
+console.log('- checked: WebView scroll/reload regression test coverage');
 console.log('- checked: package script test:pilee-final-check');
