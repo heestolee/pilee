@@ -10,6 +10,7 @@ tags:
   - 패널
 category: workflow
 status: active
+confidence: high
 applies_to:
   - extensions/fork-panel
   - revive workflow
@@ -18,8 +19,8 @@ source:
   - pilee-history:2026-05-05#39
   - pilee-history:2026-05-05#40
   - user-direction:2026-05-07-local-resolver
-reviewed_at: 2026-05-12
-reviewed_commit: 4d1ff268e27626a227ef1f2e25f2871278918e25
+reviewed_at: 2026-05-20
+reviewed_commit: f2e7cecba9f73a1e4a45151d988e53ebc499c69b
 related:
   - revive-over-transcript-recall
   - terminal-host-integration
@@ -33,6 +34,12 @@ related:
 ## Spatial Rule
 
 `/revive`는 현재 패널, 좌/우/상/하 split, tab 같은 open target을 선택할 수 있어야 합니다. 이미 열린 세션의 위치를 바꾸는 `/repanel`은 같은 session file을 새 split에서 다시 열어 세션 정체성을 유지합니다. 이때 launch command는 bare `pi`가 아니라 현재 Pi command/wrapper를 보존해야 새 shell의 PATH 차이로 다른 설치본을 실행하지 않습니다.
+
+## Anchor-path Rule
+
+단일 방향은 “현재/남은 focused terminal을 그 방향으로 split”한다는 기존 의미를 유지합니다. 두 개 이상의 split 방향은 앞 방향들을 anchor 이동 경로로 해석하고 마지막 방향을 실제 split 방향으로 사용합니다. 예를 들어 `/repanel right down`은 현재 패널 기준 오른쪽 split으로 이동해 그 terminal을 anchor로 잡은 뒤, 현재 세션을 그 anchor 아래에 다시 엽니다. `/fork-panel right down`과 `/revive last right down`도 같은 placement 문법을 사용합니다.
+
+`/repanel`은 원본 terminal을 닫기 전에 anchor path를 먼저 확인해야 합니다. Ghostty `goto_split:<dir>`이 실패하거나 focus가 움직이지 않으면 원본 terminal을 닫지 않고 중단합니다. anchor path가 다시 현재 terminal로 돌아오는 경우도 닫기 전에 거부합니다.
 
 ## Orientation Rule
 
