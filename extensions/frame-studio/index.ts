@@ -852,7 +852,55 @@ async function renderTftVisualElement(el) {
     el.innerHTML = '<div class="tft-visual-error">ELK layout failed:\\n' + esc(e && e.message ? e.message : e) + '</div>';
   }
 }
-function renderPendingTftVisuals() { Array.prototype.slice.call(document.querySelectorAll('.tft-visual[data-source]')).forEach(function(el) { renderTftVisualElement(el); }); }
+function renderPendingTftVisuals() {
+  return Promise.all(Array.prototype.slice.call(document.querySelectorAll('.tft-visual[data-source]')).map(function(el) { return renderTftVisualElement(el); }));
+}
+function pageScrollTop() {
+  var doc = document.documentElement || {};
+  var body = document.body || {};
+  if (typeof window.pageYOffset === 'number') return window.pageYOffset;
+  if (typeof doc.scrollTop === 'number') return doc.scrollTop;
+  if (typeof body.scrollTop === 'number') return body.scrollTop;
+  return 0;
+}
+function pageViewportHeight() {
+  var doc = document.documentElement || {};
+  return Number(window.innerHeight || doc.clientHeight || 0) || 0;
+}
+function pageScrollHeight() {
+  var doc = document.documentElement || {};
+  var body = document.body || {};
+  return Math.max(
+    Number(body.scrollHeight || 0),
+    Number(doc.scrollHeight || 0),
+    Number(body.offsetHeight || 0),
+    Number(doc.offsetHeight || 0),
+    Number(doc.clientHeight || 0)
+  );
+}
+function captureScrollState() {
+  var top = pageScrollTop();
+  var viewport = pageViewportHeight();
+  var height = pageScrollHeight();
+  var bottomGap = Math.max(0, height - top - viewport);
+  return { top: top, viewport: viewport, height: height, bottomGap: bottomGap, nearBottom: bottomGap <= 96 };
+}
+function restoreScrollState(snapshot) {
+  if (!snapshot) return;
+  var viewport = pageViewportHeight() || snapshot.viewport || 0;
+  var maxTop = Math.max(0, pageScrollHeight() - viewport);
+  var target = snapshot.nearBottom ? maxTop : Math.min(snapshot.top, maxTop);
+  if (Math.abs(pageScrollTop() - target) < 2) return;
+  window.scrollTo(0, target);
+}
+function restoreScrollAfterRender(snapshot) {
+  if (!snapshot) return;
+  var restore = function() { restoreScrollState(snapshot); };
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(restore);
+  else setTimeout(restore, 0);
+  setTimeout(restore, 40);
+  setTimeout(restore, 160);
+}
 function renderMarkdown(md) {
   var lines = String(md || '').split(/\r?\n/);
   var html = []; var inCode = false; var list = null;
@@ -1103,7 +1151,7 @@ function renderTabs(s) {
       + '</button>';
   }).join('');
 }
-function selectTab(key) { selectedTab = key; if (state) render(state); }
+function selectTab(key) { selectedTab = key; if (state) render(state, { preserveScroll:false }); }
 function renderWorkContext(ctx) {
   if (!ctx) return '';
   var slice = ctx.currentSlice;
@@ -1118,7 +1166,8 @@ function renderWorkContext(ctx) {
       return '<div class="work-context-cell"><div class="work-context-label">' + esc(pair[0]) + '</div><div class="work-context-value">' + esc(pair[1]) + '</div></div>';
     }).join('') + '</div>';
 }
-function render(s) {
+function render(s, options) {
+  var scrollSnapshot = state && (!options || options.preserveScroll !== false) ? captureScrollState() : null;
   state = s;
   if (!s.status || s.status !== 'awaiting' || !s.question) { submitInFlight = false; submittedQuestionId = ''; }
   else if (submittedQuestionId && s.question.id !== submittedQuestionId) { submitInFlight = false; submittedQuestionId = ''; }
@@ -1143,7 +1192,11 @@ function render(s) {
   document.getElementById('flowSubtitle').textContent = '업데이트·질문·답변을 시간순으로 표시합니다. 현재 선택도 해당 step 안에 표시됩니다.';
   document.getElementById('flowStatus').textContent = tabStatus(s, active);
   document.getElementById('timeline').innerHTML = renderStageRuns(visibleTimelineEntries(s), s, active);
-  setTimeout(renderPendingTftVisuals, 0);
+  setTimeout(function() {
+    var visualRender = renderPendingTftVisuals();
+    restoreScrollAfterRender(scrollSnapshot);
+    if (visualRender && typeof visualRender.then === 'function') visualRender.then(function() { restoreScrollAfterRender(scrollSnapshot); }).catch(function() { restoreScrollAfterRender(scrollSnapshot); });
+  }, 0);
   document.getElementById('logs').innerHTML = (s.logs || []).slice().reverse().map(function(log) {
     return '<div>' + new Date(log.time).toLocaleTimeString() + ' · ' + esc(log.message) + '</div>';
   }).join('') || '<span class="status">로그 없음</span>';
