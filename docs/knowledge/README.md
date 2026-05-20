@@ -175,7 +175,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [AskUserQuestion은 의사결정 게이트다](./ask-user-question-decision-gates.md) | active | high | 2026-05-13 | ca6dec9 | ask-user-question, tft, decision-gate, question, non-delegable, 질문 |
 | [AskUserQuestion 옵션은 행동 분기를 표현한다](./ask-user-question-option-design.md) | active | high | 2026-05-13 | 9152c35 | ask-user-question, option, wording, ceremony, tft, 질문 |
 | [Atomic evidence workflow는 작은 claim을 증거로 닫는다](./atomic-evidence-workflow.md) | active | high | 2026-05-13 | e6c131d | atomic, evidence, claim, slice, verification, frame |
-| [Auto-commit은 명시 계획만 실행한다](./auto-commit-explicit-plan-gate.md) | active | high | 2026-05-13 | e0dc999 | auto-commit, git, commit, plan, safety |
+| [Auto-commit은 명시 계획만 실행한다](./auto-commit-explicit-plan-gate.md) | active | high | 2026-05-20 | 14cb3a9 | auto-commit, git, commit, plan, safety |
 | [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | high | 2026-05-13 | ca6dec9 | backlog, tasks, provenance, source-session, session, 맥락 |
 | [Bash tool override는 명령 의도와 출력 노이즈를 분리한다](./bash-tool-title-output-override.md) | active | high | 2026-05-13 | 62d55bb | bash, tool, override, ui, output, title |
 | [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md) | active | high | 2026-05-13 | 49eb5f7 | git, incremental, code-review, commit, quality, 통합 |
@@ -204,13 +204,14 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [세션 식별자는 파일명이 아니라 사람이 본 이름이다](./session-identity-over-filenames.md) | active | high | 2026-05-12 | b3d4dce | session, title, identity, session_info, worktree, revive |
 | [Ship과 PR-Ship은 서로 다른 통합 단계다](./ship-pr-ship-review-boundary.md) | active | high | 2026-05-13 | 74c8c28 | ship, pr-ship, pr-review, github, commit, push |
 | [Skill은 재사용 가능한 절차다](./skills-as-portable-procedures.md) | active | high | 2026-05-12 | b3d4dce | skill, skill-creator, procedure, porting, workflow, 스킬 |
+| [Slice 완료는 commit 후보를 만든다](./slice-auto-commit-rhythm.md) | active | high | 2026-05-20 | 14cb3a9 | frame, slice, auto-commit, work-context, git |
 | [Command shim은 skill source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-05-13 | 10e0874 | command-shim, skill, tft, frame, slash-command, routing |
 | [TFT Preference Regression Gate는 사용자 선호 역전을 막는다](./tft-preference-regression-gate.md) | active | high | 2026-05-13 | 9152c35 | tft, frame, decide, verify, ask-user-question, regression |
 | [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-05-13 | 10e0874 | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
 | [To-production은 source-preserving hotfix 이식이다](./to-production-source-preserving-hotfix.md) | active | high | 2026-05-18 | 08b66ed | to-production, hotfix, production, git, worktree, source-preserving |
 | [TUI 질문은 작은 의사결정 게이트다](./tui-ask-decision-overlay.md) | active | high | 2026-05-13 | 10e0874 | tui, ask-user-question, decision-gate, tool, overlay |
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
-| [Working Context Card는 큰 맥락을 현재 slice로 압축한다](./work-context-card-task-board.md) | active | high | 2026-05-20 | 57bf4c5 | work-context, tasks, workflow, context, guard |
+| [Working Context Card는 큰 맥락을 현재 slice로 압축한다](./work-context-card-task-board.md) | active | high | 2026-05-20 | 14cb3a9 | work-context, tasks, workflow, context, guard |
 | [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-05-13 | 062f9f2 | workflow, guard, intent, audit, hotfix, continuation |
 | [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-05-13 | 062f9f2 | workflow, frame, tft, hotfix, scope, incremental |
 | [Worktree 생성은 현재 패널 대화가 source다](./worktree-creation-parent-gate.md) | active | high | 2026-05-19 | 6564ee3 | worktree, fork-panel, current-panel, hotfix, context, profile-driven |
@@ -305,6 +306,7 @@ graph TD
   doc_session_identity_over_filenames["세션 식별자는 파일명이 아니라 사람이 본 이름이다"]
   doc_ship_pr_ship_review_boundary["Ship과 PR-Ship은 서로 다른 통합 단계다"]
   doc_skills_as_portable_procedures["Skill은 재사용 가능한 절차다"]
+  doc_slice_auto_commit_rhythm["Slice 완료는 commit 후보를 만든다"]
   doc_tft_command_shim_skill_routing["Command shim은 skill source of truth를 지킨다"]
   doc_tft_preference_regression_gate["TFT Preference Regression Gate는 사용자 선호 역전을 막는다"]
   doc_tft_visual_structure_renderer["TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다"]
@@ -498,6 +500,7 @@ graph TD
   doc_auto_commit_explicit_plan_gate --> doc_change_integration_discipline
   doc_auto_commit_explicit_plan_gate --> doc_deterministic_vs_ai_actions
   doc_auto_commit_explicit_plan_gate --> doc_request_traceability_surgical_changes
+  doc_auto_commit_explicit_plan_gate --> doc_slice_auto_commit_rhythm
   doc_backlog_source_session_provenance --> doc_artifact_archive_reopenability
   doc_backlog_source_session_provenance --> doc_session_identity_over_filenames
   doc_bash_tool_title_output_override --> doc_atomic_evidence_workflow
@@ -599,6 +602,10 @@ graph TD
   doc_ship_pr_ship_review_boundary --> doc_subagent_skill_delegation
   doc_skills_as_portable_procedures --> doc_context_loading_minimal_surface
   doc_skills_as_portable_procedures --> doc_judgment_doc_unit
+  doc_slice_auto_commit_rhythm --> doc_auto_commit_explicit_plan_gate
+  doc_slice_auto_commit_rhythm --> doc_change_integration_discipline
+  doc_slice_auto_commit_rhythm --> doc_frame_plan_synthesis_continuity
+  doc_slice_auto_commit_rhythm --> doc_work_context_card_task_board
   doc_tft_command_shim_skill_routing --> doc_frame_verify_contract
   doc_tft_command_shim_skill_routing --> doc_queued_command_prefill_boundary
   doc_tft_command_shim_skill_routing --> doc_skills_as_portable_procedures
@@ -621,6 +628,7 @@ graph TD
   doc_work_context_card_task_board --> doc_ambient_status_surfaces
   doc_work_context_card_task_board --> doc_frame_plan_synthesis_continuity
   doc_work_context_card_task_board --> doc_frame_studio_interactive_decision_ui
+  doc_work_context_card_task_board --> doc_slice_auto_commit_rhythm
   doc_work_context_card_task_board --> doc_workflow_guard_enforced_flow
   doc_work_context_card_task_board --> doc_worktree_session_continuity
   doc_workflow_guard_enforced_flow --> doc_ask_user_question_decision_gates
@@ -649,7 +657,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 96
-- Links: 327
+- Documents: 97
+- Links: 333
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

@@ -19,11 +19,12 @@ applies_to:
 source:
   - user-direction:2026-05-13-working-context-card
 reviewed_at: 2026-05-20
-reviewed_commit: 57bf4c59e820e138881510b5ed2dea068a8d47df
+reviewed_commit: 14cb3a94b0e5ad8f6c5eef7afa606a392cf18487
 related:
   - frame-studio-interactive-decision-ui
   - frame-plan-synthesis-continuity
   - workflow-guard-enforced-flow
+  - slice-auto-commit-rhythm
   - worktree-session-continuity
   - ambient-status-surfaces
 title_en: Working Context Card compresses large context into the current slice
@@ -66,6 +67,8 @@ Working Context Card는 work-unit scoped JSON입니다.
 5. completed task는 접어서 보조 정보로 둡니다.
 
 Frame이 저장되면 `implementation_plan.slices[]`는 `kind=slice`, `risk_register.needs_decision`은 `kind=decision owner=user`, `verify_plan.manual_checks`는 `kind=verify` task로 내려갑니다. 이렇게 해야 사용자가 todo를 “agent가 알아서 처리하는 목록”이 아니라 “내가 개입해야 하는 판단과 현재 실행 단위”로 읽을 수 있습니다.
+
+현재 slice는 커밋 후보 단위이기도 합니다. slice 검증이 끝나면 `work_context commit_plan`으로 currentSlice scope에 맞는 `auto_commit` JSON plan을 만들 수 있어야 하고, outside-scope 변경은 기본적으로 leftovers로 남겨 unrelated diff를 섞지 않습니다.
 
 Planning frame에서 `/wt fork` 또는 worktree 생성으로 실행 공간을 얻을 때는 task board도 frame과 같은 work-unit artifact로 계승합니다. source planning session의 `~/.pi/agent/work-units/<id>/work-tasks.json`을 target worktree의 `.pi/work-tasks.json`으로 복사하고, task의 `refs.frame`은 target `.pi/frame.json`을 가리키게 retarget합니다. 이미 target에 사용자 task가 있으면 덮어쓰지 않습니다. 이후 Working Context Card는 target frame 기준으로 refresh되어 `refs.tasks`가 새 task board를 가리켜야 합니다.
 
