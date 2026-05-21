@@ -19,13 +19,14 @@ applies_to:
   - extensions/fork-panel
   - extensions/timestamp
   - extensions/idle-screensaver
+  - extensions/tui-ask
   - skills/ask-user-question-rules
 source:
   - pilee-history:2026-05-03#27
   - pilee-history:2026-05-03#28
   - user-direction:2026-05-07-local-resolver
-reviewed_at: 2026-05-13
-reviewed_commit: 10e08748c48459b4044ec1abe3f88d39566de60c
+reviewed_at: 2026-05-21
+reviewed_commit: fcd3b87
 related:
   - tui-rendering-sanitization
   - terminal-host-integration
@@ -38,6 +39,8 @@ related:
 ## Hierarchy Rule
 
 주요 내용은 기본 foreground로 읽히게 둡니다. 보조 메타데이터와 separator는 `border` 계열로 낮추고, 현재 선택/입력/강조 상태만 `accent`나 warning/success 색을 씁니다. 색은 장식이 아니라 정보 위계입니다.
+
+질문 overlay처럼 사용자의 판단을 멈춰 세우는 UI는 주변 transcript와 다른 카드 배경을 쓸 수 있습니다. 이때 accent는 브랜드/primary 색처럼 의미 있는 한 가지 색으로 제한하고, 선택 row 배경과 본문 텍스트 대비를 테스트로 고정합니다.
 
 ## Review Trigger
 

@@ -230,7 +230,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | extension | `extensions/timestamp` | [Theme Information Hierarchy](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI Rendering Sanitization](./docs/knowledge/tui-rendering-sanitization.md) |
 | extension | `extensions/to-production` | [To Production Source Preserving Hotfix](./docs/knowledge/to-production-source-preserving-hotfix.md) |
 | extension | `extensions/tool-group-renderer` | [Tool Output Noise Management](./docs/knowledge/tool-output-noise-management.md) |
-| extension | `extensions/tui-ask` | [TUI Ask is a lightweight decision gate](./docs/knowledge/tui-ask-decision-overlay.md)<br>[Repeated workflow failures become enforced guard flows](./docs/knowledge/workflow-guard-enforced-flow.md) |
+| extension | `extensions/tui-ask` | [Theme Information Hierarchy](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI Ask is a lightweight decision gate](./docs/knowledge/tui-ask-decision-overlay.md)<br>[Repeated workflow failures become enforced guard flows](./docs/knowledge/workflow-guard-enforced-flow.md) |
 | extension | `extensions/until` | [Until Loop Explicit Reporting](./docs/knowledge/until-loop-explicit-reporting.md) |
 | extension | `extensions/usage-analytics` | [Tool Output Noise Management](./docs/knowledge/tool-output-noise-management.md) |
 | extension | `extensions/usage-reporter` | [Ambient Status Surfaces](./docs/knowledge/ambient-status-surfaces.md)<br>[Tool Output Noise Management](./docs/knowledge/tool-output-noise-management.md) |
