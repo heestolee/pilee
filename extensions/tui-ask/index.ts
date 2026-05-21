@@ -133,18 +133,30 @@ interface TuiAskOverlayOptions {
 	done: (result: TuiAskResult | null) => void;
 }
 
-class TuiAskOverlay implements Focusable {
+const ASK_CARD_STYLE = {
+	cardBg: "\x1b[48;2;238;240;242m",
+	selectedBg: "\x1b[48;2;217;240;238m",
+	textFg: "\x1b[38;2;32;36;42m",
+	mutedFg: "\x1b[38;2;83;91;101m",
+	accentFg: "\x1b[38;2;0;189;173m",
+	reset: "\x1b[0m",
+	bold: "\x1b[1m",
+} as const;
+
+type AskCardStyle = typeof ASK_CARD_STYLE;
+
+export class TuiAskOverlay implements Focusable {
 	private readonly input = new Input();
-	private readonly theme: Theme;
 	private readonly options: TuiAskOverlayOptions;
+	private readonly style: AskCardStyle;
 	private selectedIndex = 0;
 	private textMode = false;
 	private textValue = "";
 	private readonly selected = new Set<number>();
 
-	constructor(theme: Theme, options: TuiAskOverlayOptions) {
-		this.theme = theme;
+	constructor(_theme: Theme, options: TuiAskOverlayOptions) {
 		this.options = options;
+		this.style = ASK_CARD_STYLE;
 		this.textMode = options.options.length === 0 && options.allowText;
 		for (const oneBasedIndex of options.defaultSelectedIndices) {
 			const index = oneBasedIndex - 1;
@@ -231,15 +243,15 @@ class TuiAskOverlay implements Focusable {
 	render(width: number): string[] {
 		const w = Math.max(40, width);
 		const lines: string[] = [];
-		const add = (line: string) => lines.push(truncateToWidth(line, w, ""));
-		const accentLine = this.theme.fg("accent", "─".repeat(w));
+		const addCard = (line: string, fg = this.style.textFg) => lines.push(this.paintLine(line, w, { fg }));
+		const accentLine = this.style.accentFg + "─".repeat(w);
 
-		add(accentLine);
-		add(`  ${this.theme.fg("accent", this.theme.bold(this.options.title))}`);
+		addCard(accentLine, this.style.accentFg);
+		addCard(`  ${this.style.bold}${this.options.title}`, this.style.accentFg);
 		for (const line of wrapPlainText(this.options.question, Math.max(20, w - 4))) {
-			add(`  ${this.theme.fg("text", line)}`);
+			addCard(`  ${line}`, this.style.textFg);
 		}
-		add(accentLine);
+		addCard(accentLine, this.style.accentFg);
 
 		for (let i = 0; i < this.options.options.length; i++) {
 			const option = this.options.options[i] ?? "";
@@ -266,13 +278,13 @@ class TuiAskOverlay implements Focusable {
 		}
 
 		if (this.textMode) {
-			add("");
-			add(`  ${this.theme.fg("muted", "입력 후 Enter로 제출 · Esc로 옵션으로 돌아가기")}`);
-			for (const line of this.input.render(Math.max(10, w - 4))) add(`  ${line}`);
+			addCard("");
+			addCard("  입력 후 Enter로 제출 · Esc로 옵션으로 돌아가기", this.style.mutedFg);
+			for (const line of this.input.render(Math.max(10, w - 4))) addCard(`  ${line}`, this.style.textFg);
 		}
 
-		add(accentLine);
-		add(`  ${this.theme.fg("border", this.footerText())}`);
+		addCard(accentLine, this.style.accentFg);
+		addCard(`  ${this.footerText()}`, this.style.mutedFg);
 		return lines;
 	}
 
@@ -316,15 +328,26 @@ class TuiAskOverlay implements Focusable {
 		choice: { cursor: string; checked: string; label: string; selected: boolean },
 	): void {
 		const plainPrefix = `${choice.cursor} ${choice.checked} `;
-		const styledPrefix = `${choice.selected ? this.theme.fg("accent", choice.cursor) : choice.cursor} ${choice.checked} `;
+		const styledPrefix = `${choice.selected ? this.style.accentFg : this.style.textFg}${choice.cursor}${this.style.textFg} ${choice.checked} `;
 		const continuationPrefix = " ".repeat(Math.max(0, visibleWidth(plainPrefix)));
 		const contentWidth = Math.max(8, width - visibleWidth(plainPrefix));
 		const wrapped = wrapPlainText(choice.label, contentWidth);
 		for (let lineIndex = 0; lineIndex < wrapped.length; lineIndex++) {
 			const prefix = lineIndex === 0 ? styledPrefix : continuationPrefix;
-			const label = choice.selected ? this.theme.fg("accent", wrapped[lineIndex] ?? "") : this.theme.fg("text", wrapped[lineIndex] ?? "");
-			lines.push(truncateToWidth(`${prefix}${label}`, width, ""));
+			const content = `${prefix}${wrapped[lineIndex] ?? ""}`;
+			lines.push(this.paintLine(content, width, {
+				bg: choice.selected ? this.style.selectedBg : this.style.cardBg,
+				fg: choice.selected ? this.style.accentFg : this.style.textFg,
+			}));
 		}
+	}
+
+	private paintLine(content: string, width: number, style: { bg?: string; fg?: string } = {}): string {
+		const bg = style.bg ?? this.style.cardBg;
+		const fg = style.fg ?? this.style.textFg;
+		const clipped = truncateToWidth(content, width, "");
+		const padded = `${clipped}${" ".repeat(Math.max(0, width - visibleWidth(clipped)))}`;
+		return `${bg}${fg}${padded}${this.style.reset}`;
 	}
 
 	private buildResult(status: TuiAskStatus, text: string | null): TuiAskResult {
