@@ -3,10 +3,10 @@ import { existsSync, mkdirSync, readFileSync, watchFile, writeFileSync } from "n
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { formatLastInteractionLine, nextRelativeTimeRefreshDelayMs, resolveLastInteractionAt } from "./last-interaction.js";
-import { createScreensaverDismissController, renderScreensaver, type ScreensaverRenderData, type ScreensaverTheme } from "./render.js";
-import { POKEMON_KO_TO_ID, renderSprite } from "./sprite.js";
-import { loadScreensaverTaskLines } from "./task-source.js";
+import { formatLastInteractionLine, nextRelativeTimeRefreshDelayMs, resolveLastInteractionAt } from "./last-interaction.ts";
+import { createScreensaverDismissController, renderScreensaver, type ScreensaverRenderData, type ScreensaverTheme } from "./render.ts";
+import { POKEMON_KO_TO_ID, renderSprite } from "./sprite.ts";
+import { loadScreensaverTaskLines } from "./task-source.ts";
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
@@ -66,6 +66,33 @@ let lastInteractionAtMs = 0;
 
 type ScreensaverTui = { terminal?: { rows?: number }; requestRender?: () => void };
 
+function isStaleExtensionContextError(error: unknown): boolean {
+	const message = error instanceof Error ? error.message : String(error ?? "");
+	return message.includes("This extension ctx is stale")
+		|| message.includes("stale after session replacement")
+		|| message.includes("Do not use a captured pi or command ctx");
+}
+
+function forgetStaleContext(error: unknown): boolean {
+	if (!isStaleExtensionContextError(error)) return false;
+	latestCtx = null;
+	clearIdleTimer();
+	return true;
+}
+
+function reportScreensaverError(error: unknown): void {
+	if (forgetStaleContext(error)) return;
+	console.error("[idle-screensaver] failed to show screensaver", error);
+}
+
+async function runScheduledScreensaver(): Promise<void> {
+	try {
+		await showScreensaver();
+	} catch (error) {
+		reportScreensaverError(error);
+	}
+}
+
 // ─── Timer helpers ─────────────────────────────────────────────────────────
 
 function applyConfig(next: ScreensaverConfig): void {
@@ -111,7 +138,7 @@ function scheduleIdleTimer(): void {
 	reloadConfig();
 	if (!config.enabled) return;
 	if (agentRunning || overlayActive || askUserQuestionActive) return;
-	idleTimer = setTimeout(() => void showScreensaver(), config.idleMinutes * 60 * 1000);
+	idleTimer = setTimeout(() => void runScheduledScreensaver(), config.idleMinutes * 60 * 1000);
 }
 
 watchFile(CONFIG_PATH, { interval: 1000, persistent: false }, syncConfigFromDisk);
@@ -133,88 +160,16 @@ function inferLastInteractionAt(ctx: ExtensionContext): number | null {
 async function showScreensaver({ force = false }: { force?: boolean } = {}): Promise<void> {
 	reloadConfig();
 	if (!force && !config.enabled) return;
-	if (!latestCtx?.hasUI) return;
-
-	overlayActive = true;
-	clearIdleTimer();
-
-	const sessionName = piRef?.getSessionName() ?? "";
-	const folder = latestCtx.sessionManager.getCwd();
-	const folderName = folder.split("/").pop() ?? "";
-
-	let branch = "";
+	const ctx = latestCtx;
 	try {
-		branch = execSync("git branch --show-current", { cwd: folder, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
-	} catch {}
-
-	const meta = config.showWorktreeMeta ? readWorktreeMeta(folder) : null;
-
-	// Build display lines
-	const title = sessionName || folderName || "Pi";
-	const subtitleParts: string[] = [];
-	if (meta?.name && meta.name !== folderName) subtitleParts.push(meta.name);
-	if (branch) subtitleParts.push(branch);
-	const subtitle = subtitleParts.join(" · ");
-
-	const metaLines: string[] = [];
-	if (meta?.ticket) metaLines.push(meta.ticket);
-	if (meta?.note) metaLines.push(meta.note);
-	const lastInteractionAt = inferLastInteractionAt(latestCtx);
-
-	let assistantText: string | null = null;
-	try {
-		const entries = latestCtx.sessionManager.getEntries();
-		for (let i = entries.length - 1; i >= 0; i--) {
-			const e = entries[i] as any;
-			if (e?.type === "message" && e.message?.role === "assistant") {
-				const text = Array.isArray(e.message.content)
-					? e.message.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n").trim()
-					: "";
-				if (text) {
-					assistantText = text.trim().slice(0, 1200);
-					break;
-				}
-			}
-		}
-	} catch {}
-
-	const taskLines = loadScreensaverTaskLines(latestCtx, 5);
-	if (taskLines.length > 0) {
-		metaLines.push("");
-		metaLines.push(...taskLines);
+		if (!ctx?.hasUI) return;
+	} catch (error) {
+		if (!forgetStaleContext(error)) throw error;
+		return;
 	}
 
-	// Try to load sprite — match by folderName (workspace name) or meta.name
-	let spriteLines: string[] | null = null;
-	let spritePokemonName: string | null = null;
-	if (config.showSprite) {
-		// First try exact match
-		const candidates = [folderName, meta?.name].filter(Boolean) as string[];
-		for (const candidate of candidates) {
-			if (POKEMON_KO_TO_ID[candidate]) {
-				spriteLines = await renderSprite(candidate, config.spriteSize, config.spriteSize);
-				if (spriteLines) {
-					spritePokemonName = candidate;
-					break;
-				}
-			}
-		}
-
-		// Fallback: random pokemon
-		if (!spriteLines) {
-			const allNames = Object.keys(POKEMON_KO_TO_ID);
-			const randomName = allNames[Math.floor(Math.random() * allNames.length)];
-			spriteLines = await renderSprite(randomName, config.spriteSize, config.spriteSize);
-			if (spriteLines) spritePokemonName = randomName;
-		}
-	}
-
-	const buildRenderData = (): ScreensaverRenderData => {
-		const dynamicMetaLines = [...metaLines];
-		const lastInteractionLine = formatLastInteractionLine(lastInteractionAt, Date.now());
-		if (lastInteractionLine) dynamicMetaLines.push(lastInteractionLine);
-		return { title, subtitle, metaLines: dynamicMetaLines, assistantText, spriteLines, spritePokemonName };
-	};
+	let staleContext = false;
+	let overlayStarted = false;
 	let unsubscribeTerminalInput: (() => void) | undefined;
 	let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 	const clearRefreshTimer = () => {
@@ -222,8 +177,90 @@ async function showScreensaver({ force = false }: { force?: boolean } = {}): Pro
 		clearTimeout(refreshTimer);
 		refreshTimer = null;
 	};
+
 	try {
-		await latestCtx.ui.custom(
+		overlayActive = true;
+		overlayStarted = true;
+		clearIdleTimer();
+
+		const sessionName = piRef?.getSessionName() ?? "";
+		const folder = ctx.sessionManager.getCwd();
+		const folderName = folder.split("/").pop() ?? "";
+
+		let branch = "";
+		try {
+			branch = execSync("git branch --show-current", { cwd: folder, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+		} catch {}
+
+		const meta = config.showWorktreeMeta ? readWorktreeMeta(folder) : null;
+
+		// Build display lines
+		const title = sessionName || folderName || "Pi";
+		const subtitleParts: string[] = [];
+		if (meta?.name && meta.name !== folderName) subtitleParts.push(meta.name);
+		if (branch) subtitleParts.push(branch);
+		const subtitle = subtitleParts.join(" · ");
+
+		const metaLines: string[] = [];
+		if (meta?.ticket) metaLines.push(meta.ticket);
+		if (meta?.note) metaLines.push(meta.note);
+		const lastInteractionAt = inferLastInteractionAt(ctx);
+
+		let assistantText: string | null = null;
+		try {
+			const entries = ctx.sessionManager.getEntries();
+			for (let i = entries.length - 1; i >= 0; i--) {
+				const e = entries[i] as any;
+				if (e?.type === "message" && e.message?.role === "assistant") {
+					const text = Array.isArray(e.message.content)
+						? e.message.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n").trim()
+						: "";
+					if (text) {
+						assistantText = text.trim().slice(0, 1200);
+						break;
+					}
+				}
+			}
+		} catch {}
+
+		const taskLines = loadScreensaverTaskLines(ctx, 5);
+		if (taskLines.length > 0) {
+			metaLines.push("");
+			metaLines.push(...taskLines);
+		}
+
+		// Try to load sprite — match by folderName (workspace name) or meta.name
+		let spriteLines: string[] | null = null;
+		let spritePokemonName: string | null = null;
+		if (config.showSprite) {
+			// First try exact match
+			const candidates = [folderName, meta?.name].filter(Boolean) as string[];
+			for (const candidate of candidates) {
+				if (POKEMON_KO_TO_ID[candidate]) {
+					spriteLines = await renderSprite(candidate, config.spriteSize, config.spriteSize);
+					if (spriteLines) {
+						spritePokemonName = candidate;
+						break;
+					}
+				}
+			}
+
+			// Fallback: random pokemon
+			if (!spriteLines) {
+				const allNames = Object.keys(POKEMON_KO_TO_ID);
+				const randomName = allNames[Math.floor(Math.random() * allNames.length)];
+				spriteLines = await renderSprite(randomName, config.spriteSize, config.spriteSize);
+				if (spriteLines) spritePokemonName = randomName;
+			}
+		}
+
+		const buildRenderData = (): ScreensaverRenderData => {
+			const dynamicMetaLines = [...metaLines];
+			const lastInteractionLine = formatLastInteractionLine(lastInteractionAt, Date.now());
+			if (lastInteractionLine) dynamicMetaLines.push(lastInteractionLine);
+			return { title, subtitle, metaLines: dynamicMetaLines, assistantText, spriteLines, spritePokemonName };
+		};
+		await ctx.ui.custom(
 			(tui: ScreensaverTui, theme: ScreensaverTheme, _kb: unknown, done: (v: undefined) => void) => {
 				const scheduleRelativeTimeRefresh = () => {
 					clearRefreshTimer();
@@ -244,7 +281,7 @@ async function showScreensaver({ force = false }: { force?: boolean } = {}): Pro
 					() => done(undefined),
 					stopOverlayRefresh,
 				);
-				unsubscribeTerminalInput = latestCtx?.ui.onTerminalInput((data: string) => {
+				unsubscribeTerminalInput = ctx.ui.onTerminalInput((data: string) => {
 					if (!dismissController.dismiss(data)) return undefined;
 					return { consume: true };
 				});
@@ -261,12 +298,47 @@ async function showScreensaver({ force = false }: { force?: boolean } = {}): Pro
 				onHandle: (handle) => handle.focus?.(),
 			},
 		);
+	} catch (error) {
+		staleContext = forgetStaleContext(error);
+		if (!staleContext) throw error;
 	} finally {
 		clearRefreshTimer();
 		unsubscribeTerminalInput?.();
-		overlayActive = false;
-		scheduleIdleTimer();
+		if (overlayStarted) overlayActive = false;
+		if (overlayStarted && !staleContext) scheduleIdleTimer();
 	}
+}
+
+export function __resetIdleScreensaverStateForTesting(): void {
+	clearIdleTimer();
+	agentRunning = false;
+	overlayActive = false;
+	askUserQuestionActive = false;
+	latestCtx = null;
+	piRef = null;
+	lastInteractionAtMs = 0;
+	applyConfig({ ...DEFAULT_CONFIG });
+}
+
+export function __setIdleScreensaverRefsForTesting(ctx: ExtensionContext | null, pi: ExtensionAPI | null = null): void {
+	latestCtx = ctx;
+	piRef = pi;
+}
+
+export function __setIdleScreensaverConfigForTesting(next: Partial<ScreensaverConfig>): void {
+	applyConfig({ ...config, ...next });
+}
+
+export async function __runScheduledScreensaverForTesting(): Promise<void> {
+	await runScheduledScreensaver();
+}
+
+export function __hasLatestScreensaverContextForTesting(): boolean {
+	return latestCtx !== null;
+}
+
+export function __isStaleExtensionContextErrorForTesting(error: unknown): boolean {
+	return isStaleExtensionContextError(error);
 }
 
 // ─── Entry ─────────────────────────────────────────────────────────────────

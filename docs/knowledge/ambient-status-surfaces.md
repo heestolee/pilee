@@ -23,8 +23,9 @@ source:
   - user-direction:2026-05-20-screensaver-render-contract
   - user-direction:2026-05-20-screensaver-work-map
   - user-direction:2026-05-20-screensaver-relative-time-refresh
-reviewed_at: 2026-05-20
-reviewed_commit: a27e674e3a5cce46c1d3a42ee75e771d7fa61492
+  - user-report:2026-05-21-screensaver-stale-ctx-crash
+reviewed_at: 2026-05-21
+reviewed_commit: 9b55f1862c8bd289392dcf6f2ffd29be664bdcdf
 related:
   - tool-output-noise-management
   - backlog-source-session-provenance
@@ -43,6 +44,8 @@ Idle screensaver나 spinner는 단순 장식보다 “지금 무엇을 기다리
 ## Global Preference Rule
 
 ambient UI의 on/off는 패널별 임시 상태보다 사용자 전역 preference로 다룹니다. screensaver처럼 모든 패널에서 체감되는 기능은 설정 파일을 공유하고, 각 패널이 변경을 감지해 stale timer를 취소하거나 다시 예약해야 합니다. 단, 명시적인 manual preview는 설정값과 별개로 현재 화면 확인을 위해 허용할 수 있습니다.
+
+Idle timer나 refresh timer는 reload/session replacement 이후 오래된 `ExtensionContext`를 들고 있을 수 있습니다. 이 상태에서 `ctx.hasUI`, `ctx.sessionManager`, `ctx.ui.custom` 같은 accessor를 호출하면 Pi core가 stale ctx 예외를 던질 수 있으므로, ambient timer callback은 예외를 프로세스 크래시로 전파하지 않고 stale 참조를 버려야 합니다. 새 세션 이벤트가 들어오면 새 ctx로 다시 예약하고, stale ctx만 남아 있으면 조용히 멈추는 것이 맞습니다.
 
 ## Failure Mode
 
