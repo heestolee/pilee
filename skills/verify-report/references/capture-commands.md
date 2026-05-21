@@ -51,6 +51,35 @@ file .context/work/{workspace}/captures/{source}.png
 
 Flow/motion claim(이동, 전환, 클릭 후 화면 이동, 열림/닫힘, 스무스함)은 GIF/짧은 영상을 primary evidence로 둔다. 같은 item 안에 대표 final-state PNG/crop을 supporting evidence로 함께 남긴다.
 
+### 품질 하한선
+
+Primary GIF는 리뷰어가 텍스트와 색상을 판독할 수 있어야 한다. 기본 하한선은 다음과 같다.
+
+- 길이: **3~8초**. 긴 cold-start/대기 시간은 잘라낸다.
+- 폭: Web/desktop capture는 **800px 이상** 권장, 모바일·native는 최소 720px 권장. 390px 이하 축소는 supporting thumbnail이 아닌 한 금지한다.
+- 프레임: **10~15fps**. 클릭/전환 흐름은 15fps 우선, 단순 before/after 토글은 10fps까지 허용한다.
+- 색상: GIF는 256색 제한이 있으므로 **`palettegen` + `paletteuse` 필수**. `dither=sierra2_4a`를 기본으로 사용한다.
+- 원본: 가능하면 원본 WebM/MP4도 supporting evidence로 함께 둔다.
+
+### WebM/MP4 원본 영상 → GIF
+
+Playwright/브라우저/시뮬레이터가 원본 영상을 만들었다면, 바로 `scale=390` 같은 저해상도 GIF로 만들지 말고 아래 2-pass palette 파이프라인을 사용한다.
+
+```bash
+CAP=.context/work/{workspace}/captures
+SRC="$CAP/{항목}.webm"   # 또는 .mp4
+GIF="$CAP/{항목}.gif"
+
+ffmpeg -y -t 8 -i "$SRC" \
+  -vf "fps=15,scale=800:-1:flags=lanczos,split[s0][s1];[s0]palettegen=stats_mode=diff:max_colors=256[p];[s1][p]paletteuse=dither=sierra2_4a" \
+  -loop 0 \
+  "$GIF"
+```
+
+필요하면 `-ss <start>`와 `-t <seconds>`로 핵심 구간만 남긴다. 25MB를 넘으면 먼저 길이를 줄이고, 그래도 크면 `scale=720:-1` 또는 `fps=10`으로 낮춘다. 텍스트가 깨지면 `scale=800`과 palette 설정을 유지한 채 구간을 더 짧게 자른다.
+
+### 프레임 PNG → GIF
+
 ```bash
 # 각 단계마다 프레임 캡처
 agent-browser screenshot .context/work/{workspace}/captures/{항목}-frame-1.png --session {session}

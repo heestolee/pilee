@@ -109,7 +109,26 @@ Primary evidence는 검증 포인트가 바로 보이는 이미지여야 한다.
 
 필요하면 full-page 이미지는 토글/details/appendix/link 뒤에 둔다. `verify_report_live`는 PNG/JPEG/GIF/WebP의 실제 크기를 읽어 긴 이미지를 자동으로 접힌 토글에 넣는다. 그래도 primary crop은 별도로 캡처해야 한다.
 
-## 6. PASS gate
+## 6. Motion evidence quality gate
+
+움직임 claim의 primary GIF/영상은 “움직인다”만 보여주면 충분하지 않다. 리뷰어가 텍스트, 색상, 최종 상태를 판독할 수 있어야 PASS evidence다.
+
+권장 기본값:
+
+- Web/desktop 원본 영상 변환: `fps=15`, `scale=800:-1`, `palettegen=stats_mode=diff:max_colors=256`, `paletteuse=dither=sierra2_4a`
+- 모바일/native 원본 영상 변환: `fps=10~15`, `scale=720:-1` 이상, palette 최적화
+- 길이: 3~8초. 8초를 넘기면 대기/로딩/셋업 구간을 잘라낸다.
+- 원본 WebM/MP4와 대표 final-state PNG/crop을 supporting evidence로 둔다.
+
+PASS 금지 예시:
+
+- 390px 폭으로 줄여 카드/버튼 텍스트를 읽을 수 없음
+- 8fps 이하로 클릭/전환 흐름이 끊겨 보임
+- `palettegen/paletteuse` 없이 변환해 색이 깨지거나 banding이 심함
+- 20초 이상 길어서 검증 포인트를 찾기 어려움
+- 원본 영상이나 final-state PNG 없이 손실 GIF만 남김
+
+## 7. PASS gate
 
 PASS는 아래가 모두 참일 때만 쓴다.
 
@@ -127,7 +146,7 @@ PASS는 아래가 모두 참일 때만 쓴다.
 - 환경/계정/viewport를 알 수 없음
 - 로그는 있지만 필터 조건/expected count가 없음
 
-## 7. Final summary template
+## 8. Final summary template
 
 ```markdown
 Verified
