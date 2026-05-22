@@ -147,6 +147,24 @@ git push
 
 기본 모드에서는 각 thread의 **해당 conversation**에 답글을 단다. 전체 PR comment 하나로 여러 line thread를 대체하지 않는다.
 
+답글 payload는 파일 경로 literal이 GitHub에 올라가지 않도록 안전하게 전송한다.
+
+- `gh api ... -f body=@/tmp/reply.md`처럼 `@file`을 `body` 값으로 넘기지 않는다. 이 경로는 환경/버전에 따라 파일 확장이 아니라 문자열 `@/tmp/reply.md` 그대로 게시될 수 있다.
+- 임시 파일을 쓰더라도 전송 전에는 반드시 실제 문자열로 읽거나 JSON stdin으로 보낸다.
+- 권장 방식:
+
+```bash
+body="$(cat /tmp/reply.md)"
+jq -n --arg body "$body" '{body: $body}' \
+  | gh api repos/<owner>/<repo>/pulls/<pr>/comments/<comment_id>/replies \
+      --method POST \
+      --input - \
+      --jq '{html_url, body}'
+```
+
+- 게시/수정 직후 응답의 `.body`를 확인한다. `@/tmp/`, `/tmp/`, `reply.md`, `body=@` 같은 전송 아티팩트가 보이면 성공으로 보고하지 말고 즉시 `PATCH repos/<owner>/<repo>/pulls/comments/<reply_id>`로 실제 본문을 덮어쓴 뒤 다시 확인한다.
+- 최종 보고의 답글 URL은 body 검증이 끝난 뒤에만 적는다.
+
 `push-only` 모드에서는 GitHub에 답글을 달지 않는다. 대신 아래 형식을 바탕으로 수동 게시용 초안을 최종 응답에 포함한다. 초안에는 commit 링크, 근본 원인, 대응, 검증을 포함하되 “반영 완료”처럼 게시 사실을 암시하는 표현은 사용자가 실제 게시하기 전까지 조심한다.
 
 코드 수정 답글:
@@ -202,7 +220,8 @@ git push
 
 - 댓글 조회: `gh api repos/<owner>/<repo>/pulls/comments/<comment_id>`
 - thread 목록: GraphQL `pullRequest.reviewThreads`
-- 답글 작성: `gh api repos/<owner>/<repo>/pulls/<pr>/comments/<comment_id>/replies --method POST -f body=...`
+- 답글 작성: `jq -n --arg body "$body" '{body: $body}' | gh api repos/<owner>/<repo>/pulls/<pr>/comments/<comment_id>/replies --method POST --input - --jq '{id, html_url, body}'`
+- 답글 수정: `jq -n --arg body "$body" '{body: $body}' | gh api repos/<owner>/<repo>/pulls/comments/<reply_id> --method PATCH --input - --jq '{html_url, body}'`
 - review re-request: `gh api --method POST repos/<owner>/<repo>/pulls/<pr>/requested_reviewers -f reviewers[]=<login>` 또는 `team_reviewers[]=<slug>`
 - `resolveReviewThread`, `unresolveReviewThread` mutation은 사용자 명시 승인 없이는 사용하지 않는다.
 
@@ -229,6 +248,7 @@ git push
 - 리뷰 문구만 맞추고 실제 원인을 확인하지 않음
 - comment URL이 있는데 전체 PR comment로만 답변
 - commit message 링크 없는 raw SHA만 있는 “반영했습니다” 답글
+- `@/tmp/reply.md`, `body=@...`, `/tmp/...` 같은 파일 경로 literal이 GitHub 답글 본문에 남았는데 성공으로 보고
 - 검증 없이 push/comment
 - 사용자가 요청하지 않은 thread resolve/unresolve
 - `--push-only`인데 GitHub comment/re-request 실행
