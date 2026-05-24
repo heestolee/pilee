@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { SessionManager } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 
 const DEFAULT_BASE_REF = "origin/production";
@@ -75,6 +76,19 @@ interface RunResult {
 	artifacts?: PreparedArtifacts;
 }
 
+type ToProductionActivationPlan =
+	| { mode: "none" }
+	| { mode: "switch" }
+	| { mode: "current-panel-relaunch"; terminalId: string }
+	| { mode: "blocked"; reason: string };
+
+interface ToProductionActivationResult {
+	activated: boolean;
+	mode?: "switch" | "current-panel-relaunch";
+	sessionFile?: string;
+	reason?: string;
+}
+
 interface ToProductionToolParams {
 	args?: string;
 	branch?: string;
@@ -87,6 +101,141 @@ interface ToProductionToolParams {
 	untrackedCommitMessage?: string;
 	dryRun?: boolean;
 	yes?: boolean;
+}
+
+function shellQuote(value: string): string {
+	return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function escapeAppleScriptString(value: string): string {
+	return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function currentPiCommand(): string {
+	const envPi = process.env.PILEE_PI_BIN || process.env.PI_BIN;
+	if (envPi && existsSync(envPi)) return shellQuote(envPi);
+	const cliPath = process.argv[1] && existsSync(process.argv[1]) ? process.argv[1] : "";
+	if (cliPath) return `${shellQuote(process.execPath)} ${shellQuote(cliPath)}`;
+	const userWrapper = join(homedir(), ".local", "bin", "pi");
+	if (existsSync(userWrapper)) return shellQuote(userWrapper);
+	return "pi";
+}
+
+function buildSessionLaunchCommand(cwd: string, sessionFile: string): string {
+	return `cd ${shellQuote(cwd)} && ${currentPiCommand()} --session ${shellQuote(sessionFile)}`;
+}
+
+function buildReplaceCurrentPanelScript(cwd: string, sessionFile: string, terminalId?: string | null): string {
+	const cmd = escapeAppleScriptString(buildSessionLaunchCommand(cwd, sessionFile));
+	const targetTermSelector = terminalId
+		? `set targetTerm to first terminal whose id is "${escapeAppleScriptString(terminalId)}"`
+		: "set targetTerm to focused terminal of selected tab of front window";
+	return `delay 0.8
+tell application "Ghostty"
+  activate
+  ${targetTermSelector}
+  input text "${cmd}" to targetTerm
+  send key "enter" to targetTerm
+end tell`;
+}
+
+function hasSessionSwitchApi(ctx: ExtensionContext): boolean {
+	return typeof (ctx as Partial<ExtensionCommandContext>).switchSession === "function";
+}
+
+async function getGhosttyFocusedTerminalId(pi: ExtensionAPI): Promise<{ terminalId?: string; reason?: string }> {
+	const result = await pi.exec("osascript", ["-e", `tell application "Ghostty" to id of focused terminal of selected tab of front window`]);
+	if (result.code !== 0) return { reason: result.stderr?.trim() || "Ghostty focused terminal id 확인 실패" };
+	const terminalId = result.stdout?.trim();
+	return terminalId ? { terminalId } : { reason: "Ghostty focused terminal id가 비어 있습니다" };
+}
+
+async function planToProductionActivation(pi: ExtensionAPI, ctx: ExtensionContext, parsed: ParsedArgs): Promise<ToProductionActivationPlan> {
+	if (parsed.help || parsed.dryRun) return { mode: "none" };
+	if (hasSessionSwitchApi(ctx)) return { mode: "switch" };
+	if (!ctx.hasUI) return { mode: "blocked", reason: "현재 tool context에는 session switch API가 없고 UI도 없어 target worktree로 현재 패널을 전환할 수 없습니다" };
+	if (process.platform !== "darwin" || process.env.TERM_PROGRAM !== "ghostty") {
+		return { mode: "blocked", reason: "현재 tool context에는 session switch API가 없고 Ghostty 현재 패널 재실행 경로도 사용할 수 없습니다" };
+	}
+	const probe = await getGhosttyFocusedTerminalId(pi);
+	if (!probe.terminalId) return { mode: "blocked", reason: probe.reason ?? "Ghostty 현재 패널을 찾지 못했습니다" };
+	return { mode: "current-panel-relaunch", terminalId: probe.terminalId };
+}
+
+function ensureSessionHeaderCwd(sessionFile: string, cwd: string): { updated: boolean; error?: string } {
+	try {
+		const raw = readFileSync(sessionFile, "utf8");
+		const lines = raw.split("\n");
+		for (let i = 0; i < lines.length; i++) {
+			const line = lines[i];
+			if (!line.trim()) continue;
+			let entry: any;
+			try { entry = JSON.parse(line); } catch { continue; }
+			if (entry?.type !== "session") continue;
+			if (entry.cwd === cwd) return { updated: false };
+			entry.cwd = cwd;
+			lines[i] = JSON.stringify(entry);
+			writeFileSync(sessionFile, lines.join("\n"));
+			return { updated: true };
+		}
+		return { updated: false, error: "session header를 찾지 못했습니다" };
+	} catch (error) {
+		return { updated: false, error: error instanceof Error ? error.message : String(error) };
+	}
+}
+
+async function runDetachedAppleScript(pi: ExtensionAPI, script: string) {
+	const dir = join(ARTIFACT_ROOT, "current-panel-relaunch");
+	mkdirSync(dir, { recursive: true });
+	const scriptPath = join(dir, `to-production-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.applescript`);
+	writeFileSync(scriptPath, script);
+	return pi.exec("bash", ["-lc", `nohup osascript ${shellQuote(scriptPath)} >/dev/null 2>&1 &`]);
+}
+
+function createTargetSession(ctx: ExtensionContext, result: RunResult): string {
+	if (!result.plan) throw new Error("target session을 만들 plan이 없습니다");
+	const sourceFile = ctx.sessionManager.getSessionFile();
+	let session: SessionManager;
+	if (sourceFile && existsSync(sourceFile)) {
+		session = SessionManager.forkFrom(sourceFile, result.plan.targetPath);
+	} else {
+		session = SessionManager.create(result.plan.targetPath);
+		session.newSession();
+	}
+	const sessionFile = session.getSessionFile();
+	if (!sessionFile) throw new Error("target session file을 만들지 못했습니다");
+	session.appendSessionInfo(`${basename(result.plan.targetPath)} (${result.plan.targetBranch})`);
+	session.appendCustomMessageEntry(CUSTOM_TYPE, result.report, true, resultDetails(result));
+	return sessionFile;
+}
+
+async function activateToProductionTarget(pi: ExtensionAPI, ctx: ExtensionContext, result: RunResult, plan: ToProductionActivationPlan): Promise<ToProductionActivationResult> {
+	if (result.status !== "success" || !result.plan || plan.mode === "none") return { activated: false, mode: undefined, reason: "activation 대상이 아닙니다" };
+	if (plan.mode === "blocked") return { activated: false, reason: plan.reason };
+	const sessionFile = createTargetSession(ctx, result);
+	const targetPath = result.plan.targetPath;
+
+	if (plan.mode === "switch") {
+		try {
+			await (ctx as any).switchSession(sessionFile, {
+				cwdOverride: targetPath,
+				withSession: async (newCtx: any) => {
+					newCtx.ui.notify(`✓ /to-production target worktree로 전환했습니다: ${basename(targetPath)}`, "info");
+				},
+			});
+			return { activated: true, mode: "switch", sessionFile };
+		} catch (error) {
+			return { activated: false, mode: "switch", sessionFile, reason: error instanceof Error ? error.message : String(error) };
+		}
+	}
+
+	const header = ensureSessionHeaderCwd(sessionFile, targetPath);
+	if (header.error) ctx.ui.notify(`target session cwd header 보정 실패: ${header.error}`, "warning");
+	const launch = await runDetachedAppleScript(pi, buildReplaceCurrentPanelScript(targetPath, sessionFile, plan.terminalId));
+	if (launch.code !== 0) return { activated: false, mode: "current-panel-relaunch", sessionFile, reason: launch.stderr?.trim() || "현재 패널 재실행 AppleScript 시작 실패" };
+	ctx.ui.notify(`✓ /to-production target worktree로 현재 패널을 재실행합니다: ${basename(targetPath)}`, "info");
+	ctx.shutdown();
+	return { activated: true, mode: "current-panel-relaunch", sessionFile };
 }
 
 function splitArgs(input: string): string[] {
@@ -687,11 +836,59 @@ async function executeToProduction(pi: ExtensionAPI, ctx: ExtensionContext, pars
 	return { report: await buildSuccessReport(pi, plan, artifacts), level: "info", status: "success", plan, artifacts };
 }
 
-async function runToProduction(pi: ExtensionAPI, ctx: ExtensionContext, args: string): Promise<RunResult> {
-	return executeToProduction(pi, ctx, parseArgs(args));
+async function executeToProductionAndActivate(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	parsed: ParsedArgs,
+): Promise<{ result: RunResult; activation?: ToProductionActivationResult; publish: boolean }> {
+	if (!parsed.help && !parsed.dryRun && !parsed.yes && !ctx.hasUI) {
+		return {
+			result: {
+				report: errorReport(new Error("비대화 모드에서는 --yes 없이는 실행하지 않습니다.")),
+				level: "error",
+				status: "cancelled",
+			},
+			publish: true,
+		};
+	}
+
+	const activationPlan = await planToProductionActivation(pi, ctx, parsed);
+	if (activationPlan.mode === "blocked") {
+		return {
+			result: {
+				report: errorReport(new Error(`현재 패널 전환 준비 실패: ${activationPlan.reason}`)),
+				level: "error",
+				status: "cancelled",
+			},
+			activation: { activated: false, reason: activationPlan.reason },
+			publish: true,
+		};
+	}
+
+	const result = await executeToProduction(pi, ctx, parsed);
+	if (result.status !== "success") return { result, publish: true };
+
+	const activation = await activateToProductionTarget(pi, ctx, result, activationPlan);
+	if (activation.activated) return { result, activation, publish: false };
+
+	return {
+		result: {
+			...result,
+			level: "warning",
+			report: [
+				result.report,
+				"",
+				"### Current panel activation",
+				`BLOCKED: ${activation.reason ?? "target worktree session 전환 실패"}`,
+				result.plan ? `target worktree는 보존했습니다: \`${result.plan.targetPath}\`` : null,
+			].filter(Boolean).join("\n"),
+		},
+		activation,
+		publish: true,
+	};
 }
 
-function resultDetails(result: RunResult): Record<string, unknown> {
+function resultDetails(result: RunResult, activation?: ToProductionActivationResult): Record<string, unknown> {
 	return {
 		status: result.status,
 		level: result.level,
@@ -715,6 +912,7 @@ function resultDetails(result: RunResult): Record<string, unknown> {
 			}
 			: undefined,
 		artifacts: result.artifacts,
+		activation,
 	};
 }
 
@@ -728,8 +926,9 @@ export default function toProduction(pi: ExtensionAPI) {
 		description: "현재 worktree 변경을 source 손상 없이 최신 production 기반 새 worktree/branch로 이식",
 		handler: async (args: string, ctx: ExtensionCommandContext) => {
 			try {
-				const result = await runToProduction(pi, ctx, args);
-				publish(pi, ctx, result.report, result.level, resultDetails(result));
+				const parsed = parseArgs(args);
+				const { result, activation, publish: shouldPublish } = await executeToProductionAndActivate(pi, ctx, parsed);
+				if (shouldPublish) publish(pi, ctx, result.report, result.level, resultDetails(result, activation));
 			} catch (error) {
 				publish(pi, ctx, errorReport(error), "error", { blocked: true });
 			}
@@ -747,6 +946,7 @@ export default function toProduction(pi: ExtensionAPI) {
 			"If the user provided an exact /to-production argument string, pass it as args. Otherwise prefer structured parameters such as branch, range, base, path, message, untrackedMode, dryRun, and yes.",
 			"When source untracked files matter, choose untrackedMode explicitly: include copies them to target, skip leaves them only in source, commit creates a source commit before migration, block stops. In UI contexts ask is allowed.",
 			"Do not pass yes:true unless the user explicitly approved execution or asked you to run it now; without yes, UI contexts show the same confirmation as the slash command and headless contexts stop safely.",
+			"After a successful migration, the current panel must continue in the target worktree session. Use session switch when available, otherwise same-panel Ghostty relaunch. If neither is possible, block before migrating instead of asking the user to run /wt switch or continuing by absolute path.",
 			"If this tool is unavailable in the current runtime, ask the user to submit the standalone /to-production command rather than emulating it with generic worktree tools.",
 		],
 		parameters: Type.Object({
@@ -764,8 +964,8 @@ export default function toProduction(pi: ExtensionAPI) {
 		}),
 		async execute(_toolCallId, params: ToProductionToolParams, _signal, _onUpdate, ctx: ExtensionContext) {
 			try {
-				const result = await executeToProduction(pi, ctx, toolParamsToParsed(params));
-				return { content: [{ type: "text", text: result.report }], details: resultDetails(result) };
+				const { result, activation } = await executeToProductionAndActivate(pi, ctx, toolParamsToParsed(params));
+				return { content: [{ type: "text", text: result.report }], details: resultDetails(result, activation) };
 			} catch (error) {
 				return { content: [{ type: "text", text: errorReport(error) }], details: { blocked: true } };
 			}

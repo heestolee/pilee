@@ -56,6 +56,7 @@ test("to-production registers a dedicated natural-language tool bridge", () => {
 	assert.ok(tool);
 	assert.match(tool.promptSnippet, /자연어|natural-language|to-production/);
 	assert.match(tool.promptGuidelines.join("\n"), /instead of worktree_fork, worktree_create/);
+	assert.match(tool.promptGuidelines.join("\n"), /current panel must continue in the target worktree session/);
 	assert.match(tool.promptGuidelines.join("\n"), /standalone \/to-production/);
 });
 
@@ -122,7 +123,26 @@ test("to-production tool stops safely in headless mode without explicit yes", as
 		hasUI: false,
 		ui: {},
 	});
-	assert.equal(result.details.blocked, true);
+	assert.equal(result.details.status, "cancelled");
 	assert.match(result.content[0].text, /비대화 모드에서는 --yes 없이는 실행하지 않습니다/);
+	assert.match(result.content[0].text, /source worktree에는 checkout\/stash\/reset\/clean을 실행하지 않았습니다/);
+});
+
+test("to-production blocks before migration when target session activation is unavailable", async () => {
+	const repoRoot = mkdtempSync(join(tmpdir(), "pilee-to-production-source-"));
+	let called = false;
+	const { tools } = registerFixture(async () => {
+		called = true;
+		throw new Error("git should not run before activation block");
+	});
+	const tool = tools.get("to_production");
+	const result = await tool.execute("call-1", { branch: "hotfeature/COM-1/foo", path: join(tmpdir(), `pilee-to-production-target-${Date.now()}`), yes: true }, undefined, undefined, {
+		cwd: repoRoot,
+		hasUI: false,
+		ui: {},
+	});
+	assert.equal(called, false);
+	assert.equal(result.details.activation.activated, false);
+	assert.match(result.content[0].text, /현재 패널 전환 준비 실패/);
 	assert.match(result.content[0].text, /source worktree에는 checkout\/stash\/reset\/clean을 실행하지 않았습니다/);
 });

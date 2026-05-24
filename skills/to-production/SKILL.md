@@ -17,6 +17,7 @@ disable-model-invocation: false
 - **자동 삭제 금지**: 성공해도 원본 worktree/branch를 자동 삭제하지 않는다. 정리는 사용자가 확인한 뒤 별도 수행한다.
 - **전용 실행 경계**: 자연어 요청에 `/to-production`이 포함되어도 slash command가 자동 실행되는 것은 아니다. 이때는 `to_production` tool을 사용한다.
 - **대체 금지**: `/to-production` 이식은 `worktree_fork`, `worktree_create`, 수동 `git worktree add`, source `checkout/stash/reset/clean`으로 흉내 내지 않는다. 전용 command/tool이 없으면 standalone `/to-production ...` 입력을 요청한다.
+- **현재 패널 연속성**: 성공 후 현재 패널은 target worktree session을 바라봐야 한다. session switch 또는 interactive Ghostty 현재 패널 재실행이 불가능하면 이식 전에 중단한다.
 - **untracked는 선택 게이트**: UI가 있으면 포함/제외/source commit 후 진행/중단을 묻는다. headless에서는 `--include-untracked`, `--skip-untracked`, `--commit-untracked` 중 하나를 명시해야 한다.
 - **source commit은 명시 선택일 때만**: `--commit-untracked` 또는 UI 선택으로 untracked를 source에 commit할 수 있다. 이 경우 새 commit이 이식 range에 포함되어야 하므로 explicit range는 `...HEAD` 형태여야 한다.
 - **불명확하면 중단**: merge commit, 충돌, commit range 불명확성은 조용히 추측하지 않는다.
@@ -39,6 +40,7 @@ disable-model-invocation: false
 6. source HEAD backup branch와 `~/.pi/agent/to-production/...` artifact를 만든다.
 7. 새 sibling worktree를 `origin/production` 기반 target branch로 만든다.
 8. commit patch는 `git am --3way`, dirty patch는 `git apply --3way --index` 후 새 commit으로 적용한다.
+9. target worktree cwd의 session을 만들고 현재 패널을 그 session으로 전환/재실행해 바로 이어서 작업한다.
 
 ## 자주 쓰는 옵션
 
@@ -75,6 +77,7 @@ disable-model-invocation: false
 - headless/no-UI에서 untracked 파일이 있는데 include/skip/commit 중 명시 선택이 없다.
 - `--commit-untracked`와 explicit `--range`를 함께 쓰면서 range가 `HEAD`를 포함하지 않는다.
 - target branch 또는 target worktree path가 이미 존재한다.
+- non-dry-run인데 현재 패널을 target worktree session으로 전환/재실행할 수 없다.
 - commit range에 merge commit이 포함되어 있다.
 - `origin/production` fetch 또는 base ref 검증에 실패한다.
 - target 적용 중 `git am`/`git apply` conflict가 발생한다.
