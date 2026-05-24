@@ -43,6 +43,7 @@
     "test:shortcut-atlas": "node scripts/run-typescript-test.mjs extensions/shortcut-atlas/registry.test.ts extensions/shortcut-atlas/index.test.ts",
     "test:tft-commands": "node scripts/run-typescript-test.mjs extensions/tft-commands/frame-worktree-fork.test.ts",
     "test:work-context": "node scripts/run-typescript-test.mjs extensions/work-context/slice-commit-plan.test.ts",
+    "test:workflow-guard": "node scripts/run-typescript-test.mjs extensions/workflow-guard/index.test.ts",
     "test:to-production": "node scripts/run-typescript-test.mjs extensions/to-production/index.test.ts"
   },
   "dependencies": {

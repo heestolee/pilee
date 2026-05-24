@@ -17,7 +17,7 @@ applies_to:
   - extensions/frame-studio
 source:
   - user-direction:2026-05-12-conductor-like-guards
-reviewed_at: 2026-05-13
+reviewed_at: 2026-05-24
 reviewed_commit: 062f9f271759452705f233b16503967c1287d4c7
 related:
   - workflow-weight-proportionality
@@ -41,7 +41,8 @@ title_en: Repeated workflow failures become enforced guard flows
 |---|---|---|
 | 요청 의도 분류 | soft default + mutation guard | `before_agent_start`에서 turn intent/weight를 주입하고, answer/investigate turn의 edit/write/commit/push/worktree 생성을 막음 |
 | fixed-vs-unfixed audit | hard audit path | “이미 대응/미대응/남은 gap” 요청에는 local history snapshot을 자동 주입하고 `friction → response evidence → current state → remaining gap` 형식을 요구 |
-| 작은 hotfix 기본 경로 | hard lightweight default | light turn에서 `verify_report_live start`와 subagent fan-out을 막고 scope lock → focused change → nearest validation부터 시작 |
+| 작은 hotfix 기본 경로 | hard lightweight default | light turn에서 `verify_report_live start`, subagent fan-out, deep session/context mining을 막고 scope lock → focused change → nearest validation부터 시작 |
+| 판단 드리프트 억제 | hard prompt discipline + selective block | 코드 가능 여부와 제품 요구 충족을 분리하고, 사용자 지정 환경·dev 절차·SQL 안전장치를 과확장하지 않게 turn guard에 주입 |
 | UI choice continuity | hard result annotation | `tui_ask`/TFT Studio 선택 결과에 `nextActionRequired`를 붙여 선택 요약으로 멈추지 않게 함 |
 | 큰 commit 분리 | hard commit guard | staged diff가 크거나 여러 area를 섞으면 direct `git commit`을 차단하고 logical commit split을 요구 |
 
@@ -66,6 +67,19 @@ title_en: Repeated workflow failures become enforced guard flows
 4. atomic commit
 
 검증 축이 새로 늘어나면 standard/full로 승격할 수 있지만, 그 이유가 관찰된 risk여야 합니다. “늘 하던 full report”는 이유가 아닙니다.
+
+Light PR/ship에서는 현재 diff, 최근 커밋, 사용자가 방금 확인한 intent를 우선합니다. PR 템플릿을 채우기 위해 `.context/work/**`, raw session jsonl, Frame Studio transcript를 깊게 훑는 것은 새 risk가 있거나 사용자가 맥락 감사를 명시한 경우에만 허용합니다.
+
+## Judgment Drift Rules
+
+반복 지연 사례에서 확인된 실패는 다음 runtime discipline으로 고정합니다.
+
+- **중간 진행 공유**: 조사/확인이 2–3분 이상 걸리거나 여러 파일·도구를 연쇄로 읽어야 하면, 결과를 기다리지 말고 현재까지 본 것과 다음 확인 축을 짧게 공유합니다.
+- **환경 범위 고정**: 사용자가 dev/preview/특정 증상 확인을 요청했으면 그 범위를 넘지 않습니다. production, 외부 서비스, 실제 write 경로로 확장하려면 먼저 묻습니다.
+- **제품 판단 분리**: “코드상 계산 가능”과 “제품 요구를 충족”은 다릅니다. 실제 소비 경로(UI, 알림, 지급, 운영자 확인)가 값을 쓰는지 확인하기 전에는 완료 판단을 하지 않습니다.
+- **사용자 제안 절차 존중**: 사용자가 dev down/up, 임시 백업 후 복구처럼 구체적 검증 절차를 제안하면 먼저 그 목적을 수행 가능한 dev 검증으로 해석합니다. prod 배포 정석으로 일반화하려면 확인 질문을 둡니다.
+- **SQL ceremony 비례**: DB write/runbook에서 backup, rollback, DELETE SQL은 row 수·가역성·side effect에 비례해야 합니다. 작은 reversible 변경에 큰 안전장치를 자동으로 붙이지 않습니다.
+- **worker 절제**: standard 작업에서도 worker/subagent는 기본값이 아닙니다. 병렬 소유권, readiness 진단, explicit user request가 있을 때만 사용하고 이유를 남깁니다.
 
 ## Continuation Rule
 

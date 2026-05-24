@@ -87,7 +87,8 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 	]);
 	const auditRequired = hasAny(normalized, [
 		/(이미|전에|기존|고친|해결|대응|미대응|남은|remaining|fixed|unfixed).*(구분|분리|확인|정리|audit|오디트)/,
-		/(불편|friction|느렸|느림|느린|오버헤드|과했|과한).*(대응|해결|남은|미대응|분석|정리)/,
+		/(불편|friction|느렸|느림|느린|오버헤드|과했|과한|늘어지|지연|판단실수|스트레스).*(대응|해결|남은|미대응|분석|정리|뒤져|찾아|조사)/,
+		/(작업|워크플로|플로우).*(늘어지|지연|과했|과한|판단실수|스트레스)/,
 		/(already fixed|still missing|remaining gap|fixed vs)/,
 	]);
 	const verifyReport = explicitHeavy && hasAny(normalized, [/verify[- ]?report|검증\s*리포트|캡처\s*리포트/]);
@@ -95,7 +96,7 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 	const ship = hasAny(normalized, [/\bpr\b|pull request|commit|push|merge|ship|릴리즈/]);
 	const hotfix = hasAny(normalized, [/hotfix|핫픽스|간단|문구|오타|copy|카피|one[- ]?line|한\s*줄|작은|small|quick|빨리|이거\s*하나/]);
 	const noMutation = hasAny(normalized, [/수정하지|고치지|변경하지|건드리지|커밋하지|푸시하지|하지\s*마|하지마|no\s*(edit|change|commit|push)|do\s*not\s*(edit|change|commit|push)/]);
-	const implement = !noMutation && hasAny(normalized, [/구현|수정|고쳐|고치|바꿔|변경|추가|삭제|반영|패치|implement|fix|change|add|remove|update/]);
+	const implement = !noMutation && hasAny(normalized, [/구현|수정|고쳐|고치|바꿔|변경|추가|삭제|반영|패치|생성|작성|만들|implement|fix|change|add|remove|update|create/]);
 	const investigate = hasAny(normalized, [/확인|봐줘|살펴|분석|조사|찾아|왜|원인|검토|audit|오디트|알아봐/]);
 	const answerOnly = hasAny(normalized, [/설명|알려줘|어떻게|무슨\s*뜻|질문|궁금|정리해줘/]) && !implement && !ship;
 
@@ -141,6 +142,8 @@ function buildSystemPrompt(state: GuardState): string {
 	if (state.intent === "answer" || state.intent === "investigate") {
 		lines.push(
 			"- HARD PATH: this turn is read-only by default. Do not edit/write files, create worktrees, install dependencies, commit, or push unless the user explicitly turns the request into implementation.",
+			"- Investigation discipline: if checking will take more than 2–3 minutes or multiple files/tools, give a short progress update before continuing.",
+			"- Scope discipline: do not widen from the user-named environment/scope (for example dev/preview → production, symptom check → fix) without asking first.",
 		);
 	}
 	if (state.auditRequired) {
@@ -151,7 +154,16 @@ function buildSystemPrompt(state: GuardState): string {
 	}
 	if (state.weight === "light") {
 		lines.push(
-			"- HARD LIGHT PATH: default to scope lock → focused change → nearest validation → atomic commit. Do not start worker fan-out, stress interview, or capture-heavy verify report unless the user explicitly asks or a new risk axis appears.",
+			"- HARD LIGHT PATH: default to scope lock → focused change → nearest validation → atomic commit. Do not start worker fan-out, stress interview, capture-heavy verify report, or deep session/context mining unless the user explicitly asks or a new risk axis appears.",
+			"- Light PR/ship path: use current diff, recent commits, and the user's explicit intent. Do not run full transcript/session extraction just to fill templates.",
+		);
+	}
+	if (state.explicitMutation) {
+		lines.push(
+			"- Product judgment discipline: separate 'code can do this' from 'the product requirement is satisfied'; verify the actual consumer path before concluding.",
+			"- User-proposed procedure discipline: when the user proposes a concrete dev/test procedure, first honor that purpose; do not expand it into production best-practice unless asked.",
+			"- SQL/runbook discipline: scale backup/rollback/DELETE plans to the actual risk and row count; do not add defensive ceremony that was not requested without explaining why.",
+			"- Worker discipline: worker/subagent orchestration is opt-in for standard work unless parallel ownership, readiness diagnosis, or explicit user request justifies it.",
 		);
 	}
 	lines.push(
@@ -245,8 +257,20 @@ function heavyToolBlockReason(state: GuardState, toolName: string): string {
 	return [
 		`workflow_guard blocked ${toolName}: current request is light (${state.summary}).`,
 		"Use scope lock → focused change → nearest validation first.",
-		"Start worker fan-out or capture-heavy report only after explicit user request or a newly discovered risk axis.",
+		"Start worker fan-out, capture-heavy report, or deep session/context mining only after explicit user request or a newly discovered risk axis.",
 	].join("\n");
+}
+
+function isDeepContextPath(path: string): boolean {
+	return /(?:^|\/)\.context\/work\/.+\.md$/u.test(path)
+		|| /(?:^|\/)\.pi\/agent\/sessions\/.+\.jsonl$/u.test(path)
+		|| /(?:^|\/)frame-studio\/transcripts\/.+\.json$/u.test(path);
+}
+
+function isDeepContextMiningCommand(command: string): boolean {
+	const compact = command.replace(/\s+/g, " ");
+	if (!/\.context\/work|\.pi\/agent\/sessions|frame-studio\/transcripts/.test(compact)) return false;
+	return /(^|[;&|]\s*)(find|rg|grep|cat|sed|awk|python|python3|node)\b/.test(compact);
 }
 
 function formatWorkContextBlock(result: WorkContextGateResult, toolName: string): string {
@@ -438,8 +462,16 @@ export default function workflowGuard(pi: ExtensionAPI) {
 			if (reason) return { block: true, reason };
 		}
 
+		if (event.toolName === "read" && state.weight === "light" && !state.explicitHeavy && !state.auditRequired) {
+			const path = String(event.input?.path ?? "");
+			if (isDeepContextPath(path)) return { block: true, reason: heavyToolBlockReason(state, "deep context read") };
+		}
+
 		if (event.toolName === "bash") {
 			const command = String(event.input?.command ?? "");
+			if (state.weight === "light" && !state.explicitHeavy && !state.auditRequired && isDeepContextMiningCommand(command)) {
+				return { block: true, reason: heavyToolBlockReason(state, "deep context mining") };
+			}
 			if (isMutatingBash(command)) {
 				const reason = mutationBlockReason(state, "bash mutation");
 				if (reason) return { block: true, reason };
@@ -482,7 +514,8 @@ export default function workflowGuard(pi: ExtensionAPI) {
 		promptSnippet: "Use workflow_guard when the request is about workflow friction, already-fixed vs remaining gaps, or when you need to inspect the current request classification.",
 		promptGuidelines: [
 			"For fixed-vs-unfixed audits, use action=audit and map friction → response evidence → current state → remaining gap.",
-			"For small hotfixes, respect the light path unless new risk axes appear.",
+			"For small hotfixes, respect the light path unless new risk axes appear; do not deep-scan transcripts/context just to satisfy a template.",
+			"If the user reports workflow drag, search for repeated judgment-drift patterns and translate them into guard rules.",
 			"Do not treat this tool as permission to mutate files during an answer/investigation-only turn.",
 		],
 		parameters: workflowGuardToolSchema,
