@@ -472,7 +472,7 @@ function framePromotionSummary(result: FramePromotionResult): string {
 	return parts.length ? ` ${parts.join(". ")}.` : "";
 }
 
-function notifyFramePromotion(ctx: ExtensionCommandContext, name: string, result: FramePromotionResult): void {
+function notifyFramePromotion(ctx: ExtensionContext, name: string, result: FramePromotionResult): void {
 	if (result.status === "promoted") ctx.ui.notify(`✓ planning frame promoted to ${name}/.pi/frame.json`, "info");
 	else if (result.status === "error") ctx.ui.notify(`Frame promotion skipped: ${result.error}`, "warning");
 	if (result.status !== "missing-source" && result.artifacts?.tasks.status === "copied") {
@@ -839,20 +839,83 @@ function hasSessionSwitchApi(ctx: ExtensionContext): boolean {
 	return typeof (ctx as Partial<ExtensionCommandContext>).switchSession === "function";
 }
 
-function noToolSwitchBlockedText(action: string, targetPath?: string): string {
+type WorktreeActivationPlan =
+	| { mode: "switch" }
+	| { mode: "current-panel-relaunch"; terminalId: string }
+	| { mode: "blocked"; reason: string };
+
+const WORKTREE_RELAUNCH_DIR = join(homedir(), ".pi", "agent", "worktree-relaunch");
+
+function escapeAppleScriptString(value: string): string {
+	return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function buildEnvPrefix(env: Record<string, string | undefined>): string {
+	const entries = Object.entries(env).filter(([, value]) => !!value);
+	return entries.length > 0 ? `${entries.map(([key, value]) => `${key}=${shellQuote(value!)}`).join(" ")} ` : "";
+}
+
+function currentPiCommand(): string {
+	const envPi = process.env.PILEE_PI_BIN || process.env.PI_BIN;
+	if (envPi && existsSync(envPi)) return shellQuote(envPi);
+	const cliPath = process.argv[1] && existsSync(process.argv[1]) ? process.argv[1] : "";
+	if (cliPath) return `${shellQuote(process.execPath)} ${shellQuote(cliPath)}`;
+	const userWrapper = join(homedir(), ".local", "bin", "pi");
+	if (existsSync(userWrapper)) return shellQuote(userWrapper);
+	return "pi";
+}
+
+export function buildWorktreeSessionLaunchCommand(cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}): string {
+	return `cd ${shellQuote(cwd)} && ${buildEnvPrefix(env)}${currentPiCommand()} --session ${shellQuote(sessionFile)}`;
+}
+
+export function buildReplaceCurrentWorktreePanelScript(cwd: string, sessionFile: string, terminalId?: string | null): string {
+	const cmd = escapeAppleScriptString(buildWorktreeSessionLaunchCommand(cwd, sessionFile));
+	const targetTermSelector = terminalId
+		? `set targetTerm to first terminal whose id is "${escapeAppleScriptString(terminalId)}"`
+		: "set targetTerm to focused terminal of selected tab of front window";
+	return `delay 0.8
+tell application "Ghostty"
+  activate
+  ${targetTermSelector}
+  input text "${cmd}" to targetTerm
+  send key "enter" to targetTerm
+end tell`;
+}
+
+async function getGhosttyFocusedTerminalId(pi: ExtensionAPI): Promise<{ terminalId?: string; reason?: string }> {
+	const result = await pi.exec("osascript", ["-e", `tell application "Ghostty" to id of focused terminal of selected tab of front window`]);
+	if (result.code !== 0) return { reason: result.stderr?.trim() || "Ghostty focused terminal id 확인 실패" };
+	const terminalId = result.stdout?.trim();
+	return terminalId ? { terminalId } : { reason: "Ghostty focused terminal id가 비어 있습니다" };
+}
+
+async function planWorktreeActivation(pi: ExtensionAPI, ctx: ExtensionContext): Promise<WorktreeActivationPlan> {
+	if (hasSessionSwitchApi(ctx)) return { mode: "switch" };
+	if (!ctx.hasUI) return { mode: "blocked", reason: "현재 tool context에는 session switch API가 없고 UI도 없어 현재 패널 재실행을 준비할 수 없습니다" };
+	if (process.platform !== "darwin" || process.env.TERM_PROGRAM !== "ghostty") {
+		return { mode: "blocked", reason: "현재 tool context에는 session switch API가 없고 Ghostty 현재 패널 재실행 경로도 사용할 수 없습니다" };
+	}
+	const probe = await getGhosttyFocusedTerminalId(pi);
+	if (!probe.terminalId) return { mode: "blocked", reason: probe.reason ?? "Ghostty 현재 패널을 찾지 못했습니다" };
+	return { mode: "current-panel-relaunch", terminalId: probe.terminalId };
+}
+
+function noToolSwitchBlockedText(action: string, reason?: string, targetPath?: string): string {
 	return [
-		`BLOCKED: ${action}는 현재 tool context에서 forked worktree session으로 현재 패널을 전환할 수 없습니다.`,
+		`BLOCKED: ${action}는 현재 패널을 worktree session으로 전환하거나 재실행할 수 없습니다.`,
+		reason ? `사유: ${reason}` : undefined,
 		"worktree를 만들거나 전환하지 않았습니다.",
-		"여기서 절대경로/cd 방식으로 계속 작업하면 사용자가 기대한 컨텍스트 fork가 아니므로 중단해야 합니다.",
+		"여기서 /wt 재입력 요구, /wt switch 요구, 절대경로/cd 작업 우회는 사용하지 않습니다.",
 		targetPath ? `대상 worktree: ${targetPath}` : undefined,
 	].filter(Boolean).join(" ");
 }
 
 function toolSwitchFailureText(action: string, reason?: string, targetPath?: string): string {
 	return [
-		`BLOCKED: ${action} 중 worktree session 전환이 실패했습니다.`,
+		`BLOCKED: ${action} 중 worktree session 전환/현재 패널 재실행이 실패했습니다.`,
 		reason ? `사유: ${reason}` : undefined,
-		"현재 세션에서 이어서 작업하지 않습니다.",
+		"현재 세션에서 절대경로로 이어서 작업하지 않습니다.",
 		targetPath ? `생성/대상 worktree: ${targetPath}` : undefined,
 	].filter(Boolean).join(" ");
 }
@@ -860,6 +923,111 @@ function toolSwitchFailureText(action: string, reason?: string, targetPath?: str
 function notifySwitchFallback(ctx: ExtensionContext, reason: string | undefined, wtPath: string): boolean {
 	ctx.ui.notify(toolSwitchFailureText("worktree 전환", reason, wtPath), "error");
 	return false;
+}
+
+interface WorktreeCreationCleanupResult {
+	worktreeRemoved: boolean;
+	branchRemoved: boolean;
+	errors: string[];
+}
+
+async function cleanupCreatedWorktree(pi: ExtensionAPI, repoRoot: string, worktreePath: string, branchName: string): Promise<WorktreeCreationCleanupResult> {
+	const result: WorktreeCreationCleanupResult = { worktreeRemoved: false, branchRemoved: false, errors: [] };
+	if (existsSync(worktreePath)) {
+		const remove = await pi.exec("git", ["worktree", "remove", "--force", worktreePath], { cwd: repoRoot });
+		if (remove.code === 0) result.worktreeRemoved = true;
+		else result.errors.push(`git worktree remove failed: ${remove.stderr?.trim().slice(0, 300) || remove.stdout?.trim().slice(0, 300) || "unknown"}`);
+	} else {
+		result.worktreeRemoved = true;
+	}
+
+	const branch = await pi.exec("git", ["branch", "--list", branchName], { cwd: repoRoot });
+	if (branch.code === 0 && branch.stdout?.trim()) {
+		const removeBranch = await pi.exec("git", ["branch", "-D", branchName], { cwd: repoRoot });
+		if (removeBranch.code === 0) result.branchRemoved = true;
+		else result.errors.push(`git branch -D failed: ${removeBranch.stderr?.trim().slice(0, 300) || removeBranch.stdout?.trim().slice(0, 300) || "unknown"}`);
+	} else {
+		result.branchRemoved = true;
+	}
+	return result;
+}
+
+function cleanupSummary(cleanup: WorktreeCreationCleanupResult): string {
+	const status = cleanup.errors.length > 0 ? "정리 일부 실패" : "생성된 worktree/branch 정리 완료";
+	return `${status} (worktree: ${cleanup.worktreeRemoved ? "removed" : "remaining"}, branch: ${cleanup.branchRemoved ? "removed" : "remaining"})${cleanup.errors.length > 0 ? ` — ${cleanup.errors.join("; ")}` : ""}`;
+}
+
+async function runDetachedAppleScript(pi: ExtensionAPI, script: string) {
+	mkdirSync(WORKTREE_RELAUNCH_DIR, { recursive: true });
+	const scriptPath = join(WORKTREE_RELAUNCH_DIR, `current-panel-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.applescript`);
+	writeFileSync(scriptPath, script);
+	return pi.exec("bash", ["-lc", `nohup osascript ${shellQuote(scriptPath)} >/dev/null 2>&1 &`]);
+}
+
+function ensureSessionHeaderCwd(sessionFile: string, cwd: string): { updated: boolean; error?: string } {
+	try {
+		const raw = readFileSync(sessionFile, "utf8");
+		const lines = raw.split("\n");
+		for (let i = 0; i < lines.length; i++) {
+			const line = lines[i];
+			if (!line.trim()) continue;
+			let entry: any;
+			try { entry = JSON.parse(line); } catch { continue; }
+			if (entry?.type !== "session") continue;
+			if (entry.cwd === cwd) return { updated: false };
+			entry.cwd = cwd;
+			lines[i] = JSON.stringify(entry);
+			writeFileSync(sessionFile, lines.join("\n"));
+			return { updated: true };
+		}
+		return { updated: false, error: "session header를 찾지 못했습니다" };
+	} catch (error) {
+		return { updated: false, error: error instanceof Error ? error.message : String(error) };
+	}
+}
+
+function appendWorktreeCwdBindingEntry(sessionFile: string, wtName: string, wtPath: string, contextLabel = ""): void {
+	const branch = readMeta(wtPath)?.branch ?? "unknown";
+	appendFileSync(sessionFile, `${JSON.stringify({
+		type: "custom_message",
+		customType: "worktree-cwd-binding",
+		content: worktreeCwdBindingMessage(wtName, wtPath, branch, contextLabel),
+		display: true,
+		details: { name: wtName, path: wtPath, branch, contextLabel, activation: "current-panel-relaunch" },
+		id: localSessionEntryId("worktree_cwd"),
+		parentId: null,
+		timestamp: new Date().toISOString(),
+	})}\n`);
+}
+
+async function relaunchCurrentPanelToWorktree(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	sessionFile: string,
+	wtName: string,
+	wtPath: string,
+	contextLabel = "",
+	plan?: Extract<WorktreeActivationPlan, { mode: "current-panel-relaunch" }>,
+): Promise<{ switched: boolean; reason?: string; mode?: "current-panel-relaunch" }> {
+	const relaunchPlan = plan ?? (await planWorktreeActivation(pi, ctx));
+	if (relaunchPlan.mode !== "current-panel-relaunch") {
+		return { switched: false, reason: relaunchPlan.mode === "blocked" ? relaunchPlan.reason : "현재 패널 재실행 계획이 없습니다" };
+	}
+
+	const header = ensureSessionHeaderCwd(sessionFile, wtPath);
+	if (header.error) ctx.ui.notify(`worktree session cwd header 보정 실패: ${header.error}`, "warning");
+	try {
+		appendWorktreeCwdBindingEntry(sessionFile, wtName, wtPath, contextLabel);
+	} catch (error) {
+		return { switched: false, reason: `worktree cwd binding 기록 실패: ${error instanceof Error ? error.message : String(error)}` };
+	}
+
+	const script = buildReplaceCurrentWorktreePanelScript(wtPath, sessionFile, relaunchPlan.terminalId);
+	const launch = await runDetachedAppleScript(pi, script);
+	if (launch.code !== 0) return { switched: false, reason: launch.stderr?.trim() || "현재 패널 재실행 AppleScript 시작 실패" };
+	ctx.ui.notify(`✓ ${wtName} worktree session으로 현재 패널을 재실행합니다`, "info");
+	ctx.shutdown();
+	return { switched: true, mode: "current-panel-relaunch" };
 }
 
 function markConductorContextLoaded(worktreePath: string): boolean {
@@ -928,14 +1096,25 @@ async function switchSessionToWorktree(ctx: ExtensionCommandContext, sessionFile
 	});
 }
 
-async function trySwitchSessionToWorktree(ctx: ExtensionContext, sessionFile: string, wtName: string, wtPath: string, contextLabel = ""): Promise<{ switched: boolean; reason?: string }> {
-	if (typeof (ctx as Partial<ExtensionCommandContext>).switchSession !== "function") {
-		return { switched: false, reason: "현재 tool context에는 session switch API가 없습니다" };
+async function trySwitchSessionToWorktree(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	sessionFile: string,
+	wtName: string,
+	wtPath: string,
+	contextLabel = "",
+	activationPlan?: WorktreeActivationPlan,
+): Promise<{ switched: boolean; reason?: string; mode?: "switch" | "current-panel-relaunch" }> {
+	const plan = activationPlan ?? await planWorktreeActivation(pi, ctx);
+	if (plan.mode === "blocked") return { switched: false, reason: plan.reason };
+
+	if (plan.mode === "current-panel-relaunch") {
+		return relaunchCurrentPanelToWorktree(pi, ctx, sessionFile, wtName, wtPath, contextLabel, plan);
 	}
 
 	try {
 		await switchSessionToWorktree(ctx as ExtensionCommandContext, sessionFile, wtName, wtPath, contextLabel);
-		return { switched: true };
+		return { switched: true, mode: "switch" };
 	} catch (error) {
 		const reason = error instanceof Error ? error.message : String(error);
 		return { switched: false, reason };
@@ -2185,7 +2364,13 @@ function buildUniqueSessionChoiceOptions(choices: SessionChoiceInfo[]): SessionC
 	});
 }
 
-async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string, ctx: ExtensionCommandContext, options: { hydrateConductor?: boolean; notifyConductorHydration?: boolean } = {}): Promise<{ switched: boolean; sessionFile?: string; reason?: string }> {
+async function resolveSessionFileForWorktree(
+	pi: ExtensionAPI,
+	wtName: string,
+	wtPath: string,
+	ctx: ExtensionContext,
+	options: { hydrateConductor?: boolean; notifyConductorHydration?: boolean } = {},
+): Promise<{ sessionFile?: string; reason?: string; framePromotion: FramePromotionResult }> {
 	const meta = readMeta(wtPath);
 	const framePromotion = meta ? promotePlanningFrameToWorktree(wtPath, meta) : { status: "missing-source" as const };
 	notifyFramePromotion(ctx, wtName, framePromotion);
@@ -2211,9 +2396,9 @@ async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string
 			);
 			const sessionOptions = buildUniqueSessionChoiceOptions(choices);
 			const choice = await ctx.ui.select(`${wtName} 세션 선택:`, sessionOptions.map((option) => option.displayLabel));
-			if (!choice) return { switched: false, reason: "세션 선택이 취소되었습니다" };
+			if (!choice) return { reason: "세션 선택이 취소되었습니다", framePromotion };
 			const selected = sessionOptions.find((option) => option.displayLabel === choice)?.choice;
-			if (!selected) return { switched: false, reason: "선택한 세션을 찾을 수 없습니다" };
+			if (!selected) return { reason: "선택한 세션을 찾을 수 없습니다", framePromotion };
 			sessionFile = join(sessionDir, selected.file);
 		}
 	}
@@ -2228,13 +2413,20 @@ async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string
 		}) + "\n");
 	}
 
+	return { sessionFile, framePromotion };
+}
+
+async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string, ctx: ExtensionCommandContext, options: { hydrateConductor?: boolean; notifyConductorHydration?: boolean } = {}): Promise<{ switched: boolean; sessionFile?: string; reason?: string }> {
+	const resolved = await resolveSessionFileForWorktree(pi, wtName, wtPath, ctx, options);
+	if (!resolved.sessionFile) return { switched: false, reason: resolved.reason };
+
 	try {
-		await switchSessionToWorktree(ctx, sessionFile, wtName, wtPath, framePromotionContextLabel(framePromotion));
-		return { switched: true, sessionFile };
+		await switchSessionToWorktree(ctx, resolved.sessionFile, wtName, wtPath, framePromotionContextLabel(resolved.framePromotion));
+		return { switched: true, sessionFile: resolved.sessionFile };
 	} catch (error) {
 		const reason = error instanceof Error ? error.message : String(error);
 		notifySwitchFallback(ctx, reason, wtPath);
-		return { switched: false, sessionFile, reason };
+		return { switched: false, sessionFile: resolved.sessionFile, reason };
 	}
 }
 
@@ -3148,7 +3340,7 @@ function conductorHydrationSummary(wsName: string, result: ConductorHydrationRes
 
 async function hydrateConductorSessionsForWorktree(
 	pi: ExtensionAPI,
-	ctx: ExtensionCommandContext,
+	ctx: ExtensionContext,
 	wsName: string,
 	worktreePath: string,
 	options: { notifyAlways?: boolean } = {},
@@ -3439,7 +3631,7 @@ export default function (pi: ExtensionAPI) {
 			`worktree_create may run from P0/P1/P2; treat the current panel conversation as the source unless the user explicitly asks to use the parent panel.`,
 			"If the request mentions hotfix/production/핫픽스, pass hotfix: true. Do not create a development-based hotfix branch.",
 			`Use worktree_create before editing files in configured protected repos (${configuredRepoLabel}) when a new worktree is actually needed. Do not manually run git worktree add.`,
-			"worktree_create must provide a real switched worktree session. If the runtime tool context cannot switch sessions, stop before creating a worktree, report BLOCKED, and do not continue via absolute-path or switch-command fallback.",
+			"worktree_create must make the current panel land in the real worktree session: use session switch when available, otherwise same-panel relaunch in interactive Ghostty. If neither is possible, stop before creating a worktree and do not ask for /wt fork, /wt switch, or use absolute-path/cd fallback.",
 		],
 		parameters: Type.Object({
 			repo: Type.Optional(Type.String({ description: `Registered repo name (configured examples: ${configuredRepoLabel}). Auto-detected if omitted.` })),
@@ -3474,14 +3666,15 @@ export default function (pi: ExtensionAPI) {
 			);
 			if (hotfixGuard) throw new Error(hotfixGuard);
 
-			if (!hasSessionSwitchApi(ctx)) {
+			const activationPlan = await planWorktreeActivation(pi, ctx);
+			if (activationPlan.mode === "blocked") {
 				return {
-					content: [{ type: "text", text: noToolSwitchBlockedText("worktree_create") }],
-					details: { blocked: true, action: "worktree_create", reason: "tool context has no switchSession", noWorktreeCreated: true },
+					content: [{ type: "text", text: noToolSwitchBlockedText("worktree_create", activationPlan.reason) }],
+					details: { blocked: true, action: "worktree_create", reason: activationPlan.reason, noWorktreeCreated: true },
 				};
 			}
 
-			const { isNew: justRegistered } = autoRegister(repoRoot);
+			autoRegister(repoRoot);
 			const config = loadConfig(repoRoot);
 
 			const baseBranch = params.hotfix ? config.productionBranch : config.baseBranch;
@@ -3543,17 +3736,19 @@ export default function (pi: ExtensionAPI) {
 			const session = createWorktreeSession(ctx, worktreePath, { sessionName: `${name} (${branchName})` });
 			recordWorktreeContextMeta(worktreePath, "clean", session);
 			const frameText = framePromotionSummary(framePromotion);
-			const switchResult = await trySwitchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, framePromotionContextLabel(framePromotion));
+			const switchResult = await trySwitchSessionToWorktree(pi, ctx, session.sessionFile, name, worktreePath, framePromotionContextLabel(framePromotion), activationPlan);
 			if (switchResult.switched) {
+				const activationText = switchResult.mode === "current-panel-relaunch" ? "현재 패널을 새 worktree session으로 재실행합니다." : "현재 패널을 전환했습니다.";
 				return {
-					content: [{ type: "text", text: `✓ Worktree "${name}" created (${branchName}) at ${worktreePath}.${frameText}${bootstrapText} 현재 패널을 전환했습니다.` }],
-					details: { name, branch: branchName, path: worktreePath, autoSwitched: true, framePromotion, bootstrap: bootstrapResult },
+					content: [{ type: "text", text: `✓ Worktree "${name}" created (${branchName}) at ${worktreePath}.${frameText}${bootstrapText} ${activationText}` }],
+					details: { name, branch: branchName, path: worktreePath, autoSwitched: true, activationMode: switchResult.mode, framePromotion, bootstrap: bootstrapResult },
 				};
 			}
 
+			const cleanup = await cleanupCreatedWorktree(pi, repoRoot, worktreePath, branchName);
 			return {
-				content: [{ type: "text", text: `✓ Worktree "${name}" created (${branchName}) at ${worktreePath}.${frameText}${bootstrapText} ${toolSwitchFailureText("worktree_create", switchResult.reason, worktreePath)}` }],
-				details: { name, branch: branchName, path: worktreePath, blocked: true, autoSwitched: false, switchReason: switchResult.reason, framePromotion, bootstrap: bootstrapResult },
+				content: [{ type: "text", text: `${toolSwitchFailureText("worktree_create", switchResult.reason, worktreePath)} ${cleanupSummary(cleanup)}` }],
+				details: { name, branch: branchName, path: worktreePath, blocked: true, autoSwitched: false, switchReason: switchResult.reason, cleanup, framePromotion, bootstrap: bootstrapResult },
 			};
 		},
 	});
@@ -3600,31 +3795,34 @@ export default function (pi: ExtensionAPI) {
 			const target = worktrees.find(w => w.name === params.name);
 			if (!target) throw new Error(`Worktree "${params.name}" not found. Available: ${worktrees.map(w => w.name).join(", ") || "(none)"}`);
 
-			if (!hasSessionSwitchApi(ctx)) {
+			const activationPlan = await planWorktreeActivation(pi, ctx);
+			if (activationPlan.mode === "blocked") {
 				return {
-					content: [{ type: "text", text: noToolSwitchBlockedText("worktree_switch", target.path) }],
-					details: { name: target.name, branch: target.branch, path: target.path, blocked: true, action: "worktree_switch", reason: "tool context has no switchSession", noSessionSwitched: true },
+					content: [{ type: "text", text: noToolSwitchBlockedText("worktree_switch", activationPlan.reason, target.path) }],
+					details: { name: target.name, branch: target.branch, path: target.path, blocked: true, action: "worktree_switch", reason: activationPlan.reason, noSessionSwitched: true },
 				};
 			}
 
-			if (typeof (ctx as Partial<ExtensionCommandContext>).switchSession === "function") {
-				const switchResult = await switchToWorktree(pi, target.name, target.path, ctx as ExtensionCommandContext);
-				if (switchResult.switched) {
-					return {
-						content: [{ type: "text", text: `✓ Worktree "${params.name}" (${target.branch})로 현재 패널을 전환했습니다.` }],
-						details: { name: target.name, branch: target.branch, path: target.path, autoSwitched: true, sessionFile: switchResult.sessionFile },
-					};
-				}
-
+			const resolved = await resolveSessionFileForWorktree(pi, target.name, target.path, ctx);
+			if (!resolved.sessionFile) {
 				return {
-					content: [{ type: "text", text: `✓ Worktree "${params.name}" (${target.branch})를 찾았습니다. ${toolSwitchFailureText("worktree_switch", switchResult.reason, target.path)}` }],
-					details: { name: target.name, branch: target.branch, path: target.path, blocked: true, autoSwitched: false, switchReason: switchResult.reason, sessionFile: switchResult.sessionFile },
+					content: [{ type: "text", text: `✓ Worktree "${params.name}" (${target.branch})를 찾았습니다. ${toolSwitchFailureText("worktree_switch", resolved.reason, target.path)}` }],
+					details: { name: target.name, branch: target.branch, path: target.path, blocked: true, autoSwitched: false, switchReason: resolved.reason, framePromotion: resolved.framePromotion },
+				};
+			}
+
+			const switchResult = await trySwitchSessionToWorktree(pi, ctx, resolved.sessionFile, target.name, target.path, framePromotionContextLabel(resolved.framePromotion), activationPlan);
+			if (switchResult.switched) {
+				const activationText = switchResult.mode === "current-panel-relaunch" ? "현재 패널을 새 worktree session으로 재실행합니다." : "현재 패널을 전환했습니다.";
+				return {
+					content: [{ type: "text", text: `✓ Worktree "${params.name}" (${target.branch})로 ${activationText}` }],
+					details: { name: target.name, branch: target.branch, path: target.path, autoSwitched: true, activationMode: switchResult.mode, sessionFile: resolved.sessionFile, framePromotion: resolved.framePromotion },
 				};
 			}
 
 			return {
-				content: [{ type: "text", text: noToolSwitchBlockedText("worktree_switch", target.path) }],
-				details: { name: target.name, branch: target.branch, path: target.path, blocked: true, autoSwitched: false, switchReason: "tool context has no switchSession", noSessionSwitched: true },
+				content: [{ type: "text", text: `✓ Worktree "${params.name}" (${target.branch})를 찾았습니다. ${toolSwitchFailureText("worktree_switch", switchResult.reason, target.path)}` }],
+				details: { name: target.name, branch: target.branch, path: target.path, blocked: true, autoSwitched: false, switchReason: switchResult.reason, sessionFile: resolved.sessionFile, framePromotion: resolved.framePromotion },
 			};
 		},
 	});
@@ -3641,7 +3839,7 @@ export default function (pi: ExtensionAPI) {
 			`worktree_fork may run from P0/P1/P2; treat the current panel conversation as the source unless the user explicitly asks to use the parent panel.`,
 			"If the request mentions hotfix/production/핫픽스, pass hotfix: true. Do not create a development-based hotfix branch.",
 			"The optional context parameter is an additional transfer note, not a replacement for the full transcript unless minimalContext is true.",
-			"worktree_fork must provide a real forked worktree session. If the runtime tool context cannot switch sessions, stop before creating a worktree, report BLOCKED, and do not continue via absolute-path or switch-command fallback.",
+			"worktree_fork must make the current panel land in the real forked worktree session: use session switch when available, otherwise same-panel relaunch in interactive Ghostty. If neither is possible, stop before creating a worktree and do not ask for /wt fork, /wt switch, or use absolute-path/cd fallback.",
 		],
 		parameters: Type.Object({
 			context: Type.Optional(Type.String({ description: "Optional compact markdown note to attach in addition to the transcript, or the summary handoff when minimalContext is true." })),
@@ -3677,10 +3875,11 @@ export default function (pi: ExtensionAPI) {
 			);
 			if (hotfixGuard) throw new Error(hotfixGuard);
 
-			if (!hasSessionSwitchApi(ctx)) {
+			const activationPlan = await planWorktreeActivation(pi, ctx);
+			if (activationPlan.mode === "blocked") {
 				return {
-					content: [{ type: "text", text: noToolSwitchBlockedText("worktree_fork") }],
-					details: { blocked: true, action: "worktree_fork", reason: "tool context has no switchSession", noWorktreeCreated: true },
+					content: [{ type: "text", text: noToolSwitchBlockedText("worktree_fork", activationPlan.reason) }],
+					details: { blocked: true, action: "worktree_fork", reason: activationPlan.reason, noWorktreeCreated: true },
 				};
 			}
 
@@ -3762,17 +3961,19 @@ export default function (pi: ExtensionAPI) {
 			const frameText = framePromotionSummary(framePromotion);
 			const contextLength = params.context?.length ?? 0;
 			const contextLabel = `${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}`;
-			const switchResult = await trySwitchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, contextLabel);
+			const switchResult = await trySwitchSessionToWorktree(pi, ctx, session.sessionFile, name, worktreePath, contextLabel, activationPlan);
 			if (switchResult.switched) {
+				const activationText = switchResult.mode === "current-panel-relaunch" ? "현재 패널을 새 worktree session으로 재실행합니다." : "현재 패널을 전환했습니다.";
 				return {
-					content: [{ type: "text", text: `✓ Worktree "${name}" forked (${branchName}) at ${worktreePath}. Context: ${contextMode}${contextLength ? `, note ${contextLength} chars` : ""}.${frameText}${bootstrapText} 현재 패널을 전환했습니다.` }],
-					details: { name, branch: branchName, path: worktreePath, contextLength, contextMode, autoSwitched: true, framePromotion, bootstrap: bootstrapResult },
+					content: [{ type: "text", text: `✓ Worktree "${name}" forked (${branchName}) at ${worktreePath}. Context: ${contextMode}${contextLength ? `, note ${contextLength} chars` : ""}.${frameText}${bootstrapText} ${activationText}` }],
+					details: { name, branch: branchName, path: worktreePath, contextLength, contextMode, autoSwitched: true, activationMode: switchResult.mode, framePromotion, bootstrap: bootstrapResult },
 				};
 			}
 
+			const cleanup = await cleanupCreatedWorktree(pi, repoRoot, worktreePath, branchName);
 			return {
-				content: [{ type: "text", text: `✓ Worktree "${name}" forked (${branchName}) at ${worktreePath}. Context: ${contextMode}${contextLength ? `, note ${contextLength} chars` : ""}.${frameText}${bootstrapText} ${toolSwitchFailureText("worktree_fork", switchResult.reason, worktreePath)}` }],
-				details: { name, branch: branchName, path: worktreePath, contextLength, contextMode, blocked: true, autoSwitched: false, switchReason: switchResult.reason, framePromotion, bootstrap: bootstrapResult },
+				content: [{ type: "text", text: `${toolSwitchFailureText("worktree_fork", switchResult.reason, worktreePath)} ${cleanupSummary(cleanup)}` }],
+				details: { name, branch: branchName, path: worktreePath, contextLength, contextMode, blocked: true, autoSwitched: false, switchReason: switchResult.reason, cleanup, framePromotion, bootstrap: bootstrapResult },
 			};
 		},
 	});
