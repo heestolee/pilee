@@ -19,8 +19,9 @@ source:
   - user-direction:2026-05-09-show-report-session-classification
   - user-direction:2026-05-09-archive-command-name
   - user-direction:2026-05-09-session-classification-select-tags
-reviewed_at: 2026-05-12
-reviewed_commit: b3d4dce30c72c41269198130989e0d306ed787a1
+  - user-direction:2026-05-25-session-body-search
+reviewed_at: 2026-05-25
+reviewed_commit: 77307efb89b7ab0d259d394bc012201b930a05a7
 related:
   - artifact-archive-reopenability
   - session-export-source-preservation
@@ -35,6 +36,8 @@ related:
 대화 세션은 한 파일 안에 여러 맥락이 섞일 수 있습니다. 홈 세션 하나에도 잡담, 영상 분석, 기능 개선, knowledge 정리, 검증 리포트 확인이 이어질 수 있습니다. 따라서 세션을 다시 찾기 쉽게 만들려면 원본 JSONL을 고치지 말고, 별도의 sidecar metadata로 분류와 세그먼트를 얹어야 합니다.
 
 이 분류는 canonical history가 아니라 navigation layer입니다. 원본 대화, session export, Verify Report, TFT Studio transcript는 그대로 두고 `/archive` Artifact Browser에서 사람이 찾기 쉬운 category/tag/summary/segment view를 제공합니다. 기존 `/show-report` alias도 같은 분류 sidecar를 읽어야 합니다.
+
+단, 세션 회수의 1차 경로는 사용자가 사전에 저장한 분류가 아니라 본문 검색입니다. 분류가 없거나 사용자의 기억 단어와 맞지 않아도, JSONL user/assistant text 검색과 matching snippet으로 세션을 찾을 수 있어야 합니다. Sidecar는 검색 결과를 정리하고 재탐색을 돕는 보조 layer로 남깁니다.
 
 ## Sidecar Rule
 
@@ -63,7 +66,7 @@ AI는 분류의 최종 결정자가 아니라 초안 작성자입니다. `/archi
 
 태그(tags)는 같은 분류 안에서 나중에 찾기 위한 보조 검색 키워드입니다. category보다 작은 cross-cutting facet이므로 필수 판단 축처럼 보이게 하지 말고, 쉼표 구분 입력과 짧은 설명으로 선택 항목임을 드러냅니다.
 
-세그먼트 분류는 검색과 탐색을 돕는 색인입니다. 세그먼트가 있다고 해서 세션을 실제로 쪼개거나 revive/export 대상이 바뀌는 것은 아닙니다.
+세그먼트 분류는 검색과 탐색을 돕는 보조 색인입니다. 세그먼트가 있다고 해서 세션을 실제로 쪼개거나 revive/export 대상이 바뀌는 것은 아닙니다. 사용자가 “부트스트랩”처럼 본문 표현을 기억하는 경우에는 category/tag보다 본문 검색 결과와 snippet을 먼저 보여줘야 합니다.
 
 ## Review triggers
 

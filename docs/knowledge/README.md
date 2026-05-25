@@ -171,7 +171,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [검토 산출물은 다시 열 수 있어야 한다](./artifact-archive-reopenability.md) | active | high | 2026-05-13 | ca6dec9 | artifact, archive, show-report, archive-command, history, html |
+| [검토 산출물은 다시 열 수 있어야 한다](./artifact-archive-reopenability.md) | active | high | 2026-05-25 | 77307ef | artifact, archive, show-report, archive-command, history, html |
 | [AskUserQuestion은 의사결정 게이트다](./ask-user-question-decision-gates.md) | active | high | 2026-05-13 | ca6dec9 | ask-user-question, tft, decision-gate, question, non-delegable, 질문 |
 | [AskUserQuestion 옵션은 행동 분기를 표현한다](./ask-user-question-option-design.md) | active | high | 2026-05-13 | 9152c35 | ask-user-question, option, wording, ceremony, tft, 질문 |
 | [Atomic evidence workflow는 작은 claim을 증거로 닫는다](./atomic-evidence-workflow.md) | active | high | 2026-05-13 | e6c131d | atomic, evidence, claim, slice, verification, frame |
@@ -199,7 +199,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Read/Edit tool override는 필요한 증거만 펼친다](./read-edit-tool-output-override.md) | active | high | 2026-05-13 | f3fe380 | read, edit, tool, override, diff, preview |
 | [변경된 줄은 요청으로 추적 가능해야 한다](./request-traceability-surgical-changes.md) | active | high | 2026-05-13 | 74c8c28 | request-traceability, surgical-change, karpathy, diff, scope, review |
 | [종료된 포크는 transcript 주입보다 revive가 우선이다](./revive-over-transcript-recall.md) | active | high | 2026-05-12 | ca8ae9e | revive, recall, fork-panel, session, continuity, 세션 |
-| [세션 분류는 원본 위의 sidecar다](./session-classification-sidecar.md) | active | high | 2026-05-12 | b3d4dce | archive, show-report, session-classification, sidecar, session, ai-suggestion |
+| [세션 분류는 원본 위의 sidecar다](./session-classification-sidecar.md) | active | high | 2026-05-25 | 77307ef | archive, show-report, session-classification, sidecar, session, ai-suggestion |
 | [Session export는 원본을 보존하는 adapter를 거친다](./session-export-source-preservation.md) | active | high | 2026-05-13 | 74c8c28 | session-export, source-preservation, jsonl, conductor, normalize, show-report |
 | [세션 식별자는 파일명이 아니라 사람이 본 이름이다](./session-identity-over-filenames.md) | active | high | 2026-05-12 | b3d4dce | session, title, identity, session_info, worktree, revive |
 | [Ship과 PR-Ship은 서로 다른 통합 단계다](./ship-pr-ship-review-boundary.md) | active | high | 2026-05-13 | 74c8c28 | ship, pr-ship, pr-review, github, commit, push |

@@ -31,8 +31,9 @@ source:
   - user-direction:2026-05-07-conductor-history-artifact-browser
   - user-direction:2026-05-09-archive-command-name
   - user-direction:2026-05-11-mcp-digest-first-artifacts
-reviewed_at: 2026-05-13
-reviewed_commit: ca6dec9d7f8a3eeda24ee5b0d35c64752d02a76a
+  - user-direction:2026-05-25-session-body-search
+reviewed_at: 2026-05-25
+reviewed_commit: 77307efb89b7ab0d259d394bc012201b930a05a7
 related:
   - live-artifact-preview-pattern
   - backlog-source-session-provenance
@@ -75,6 +76,14 @@ artifact 종류가 늘어나면 한 목록에 섞지 않습니다. `/archive`는
 7. 캡처 / 미디어 — 아직 리포트로 묶이지 않았거나 원본 확인이 필요한 PNG/JPEG/GIF/WebP/SVG evidence입니다.
 
 이 구분은 “작업 단위 이력”, “판정이 있는 리포트”, “생각 과정 전문”, “해석 전 원자료”, “외부 tool 원문 snapshot”을 섞지 않기 위한 정보 구조입니다.
+
+## Session Body Search Rule
+
+세션을 다시 찾는 1차 경로는 수동 분류가 아니라 대화 본문 검색입니다. 사용자는 “부트스트랩”, “verify-report”, “worktree fork”처럼 기억나는 표현으로 이전 대화를 찾고 싶어 하므로, `/archive`는 카드 metadata 검색과 별도로 Pi/Conductor session JSONL의 user/assistant text를 검색해야 합니다.
+
+본문 검색 결과는 전체 raw JSONL을 펼치는 대신 matching snippet, session title, cwd/workspace, P0/P1/Conductor source를 함께 보여줍니다. system/model/tool/thinking payload는 검색·표시 기본 대상에서 제외해 대화 기억을 복구하는 데 집중합니다. 결과 액션은 세션 전문 보기에서 시작하되, 장기적으로는 현재 패널 이어가기, 새 패널 revive, clean continuation 같은 session recovery action으로 이어져야 합니다.
+
+수동 classification sidecar는 보조 색인입니다. 분류를 해두지 않았다는 이유로 세션 회수가 실패하면 안 되며, card 검색 placeholder는 metadata 필터임을 명확히 밝혀 대화 본문 검색과 혼동하지 않게 합니다.
 
 ## Capture Group Rule
 
