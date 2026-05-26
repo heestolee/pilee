@@ -64,12 +64,21 @@ export function extractGitIndexLockPath(stderr: string | undefined, stdout = "")
 	return match?.[1];
 }
 
+export function shouldRemoveStaleIndexLockAfterLsof(result: { code?: number; stdout?: string; stderr?: string }): boolean {
+	if ((result.stdout ?? "").trim()) return false;
+	if ((result.code ?? 1) !== 0 && (result.stderr ?? "").trim()) return false;
+	return true;
+}
+
 async function removeStaleIndexLockIfSafe(pi: ExecHost, cwd: string, stderr: string, stdout: string): Promise<string | undefined> {
 	const lockPath = extractGitIndexLockPath(stderr, stdout);
 	if (!lockPath) return undefined;
-	const lsof = await pi.exec("lsof", [lockPath], { cwd });
-	if (lsof.code === 0 && (lsof.stdout ?? "").trim()) {
+	const lsof = await pi.exec("lsof", [lockPath], { cwd }).catch((error: unknown) => ({ code: 1, stdout: "", stderr: String(error) }));
+	if ((lsof.stdout ?? "").trim()) {
 		return `index.lock is still owned; not removing: ${lockPath}`;
+	}
+	if (!shouldRemoveStaleIndexLockAfterLsof(lsof)) {
+		return `index.lock owner check failed; not removing: ${lockPath}`;
 	}
 	await rm(lockPath, { force: true });
 	return `removed stale index.lock and retried: ${lockPath}`;
