@@ -8,6 +8,10 @@ export interface ConversationSessionCandidate {
 	cwd: string;
 	sourceLabel: string;
 	panelLabel: string;
+	piSession: boolean;
+	panelSource?: "p0" | "fork";
+	forkId?: string;
+	parentSessionFile?: string;
 	time: string;
 	mtime: number;
 }

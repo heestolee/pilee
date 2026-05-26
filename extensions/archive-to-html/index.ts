@@ -12,6 +12,7 @@ import { openCompanionHtml } from "../utils/companion-window.ts";
 import { expandProfileTemplate, loadArtifactBrowserProfiles, loadConductorProfiles } from "../utils/private-profiles.ts";
 import { webviewCopyCss, webviewCopyScript } from "../utils/webview-copy.ts";
 import { exportSessionFileToHtml, isPiSessionFile, openFile, SESSION_EXPORT_DIR } from "../utils/session-export.js";
+import { openSessionInGhosttyTab, type ArchiveSessionOpenTarget } from "./session-open.ts";
 import { searchSessionCandidates, type ConversationSearchResponse, type ConversationSearchResult, type ConversationSessionCandidate } from "./session-search.ts";
 import { registerVerifyReportLive } from "./verify-report-live.js";
 
@@ -1154,6 +1155,7 @@ interface PiSessionEntry {
 	panelLabel: string;
 	panelSource: PiSessionPanelSource;
 	forkId?: string;
+	parentSessionFile?: string;
 	classification?: SessionClassification;
 	time: string;
 	mtime: number;
@@ -1488,6 +1490,72 @@ function resolveAllowedSessionPath(rawPath: string, allowedPaths: Set<string>): 
 	return resolved;
 }
 
+function resolveAllowedPiSessionOpenPath(rawPath: string, allowedPaths: Set<string>): string {
+	const resolved = resolveAllowedSessionPath(rawPath, allowedPaths);
+	if (!isPiSessionJsonl(resolved)) throw new Error("Pi에서 다시 열기는 Pi session JSONL에서만 지원합니다. 원본 Conductor 세션은 세션 전문 보기를 사용하세요.");
+	return resolved;
+}
+
+function isDirectoryPath(filePath: string): boolean {
+	try { return fs.statSync(filePath).isDirectory(); } catch { return false; }
+}
+
+function readSessionHeaderCwd(filePath: string): string {
+	try {
+		for (const line of readTextPreview(filePath, 256 * 1024).text.split(/\r?\n/)) {
+			if (!line.includes('"type":"session"')) continue;
+			try {
+				const parsed = JSON.parse(line) as { cwd?: string };
+				if (typeof parsed.cwd === "string" && parsed.cwd.trim()) return parsed.cwd;
+			} catch {}
+		}
+	} catch {}
+	return "";
+}
+
+function findConversationSessionCandidate(data: ArtifactBrowserData, resolvedPath: string): ConversationSessionCandidate | null {
+	let real = resolvedPath;
+	try { real = fs.realpathSync(resolvedPath); } catch {}
+	return conversationSessionCandidates(data).find((candidate) => candidate.path === real) ?? null;
+}
+
+function resolveArchiveSessionCwd(candidate: ConversationSessionCandidate | null, sessionFile: string, fallbackCwd: string): string {
+	for (const item of [candidate?.cwd, readSessionHeaderCwd(sessionFile), fallbackCwd]) {
+		if (!item) continue;
+		let resolved = item;
+		try { resolved = fs.realpathSync(item); } catch {}
+		if (isDirectoryPath(resolved)) return resolved;
+	}
+	return fallbackCwd;
+}
+
+function archiveSessionOpenEnv(candidate: ConversationSessionCandidate | null): Record<string, string | undefined> {
+	if (candidate?.panelSource !== "fork") return {};
+	return {
+		PI_FORK_ID: candidate.forkId,
+		PI_FORK_PANEL_LABEL: candidate.panelLabel,
+		PI_FORK_PARENT: candidate.parentSessionFile,
+	};
+}
+
+async function openArchiveSessionHere(ctx: ExtensionCommandContext, sessionFile: string, openCwd: string, label: string) {
+	try {
+		const result = await ctx.switchSession(sessionFile, {
+			cwdOverride: openCwd,
+			withSession: async (nextCtx) => {
+				nextCtx.ui.notify(`${label} 세션 재개 → 현재 패널`, "info");
+			},
+		});
+		if (result.cancelled) ctx.ui.notify("세션 전환이 취소되었습니다", "warning");
+	} catch (error) {
+		ctx.ui.notify(`세션 전환 실패: ${error instanceof Error ? error.message : String(error)}`, "error");
+	}
+}
+
+function resolveSessionOpenTarget(value: string | null): ArchiveSessionOpenTarget {
+	return value === "here" ? "here" : "tab";
+}
+
 function resolveAllowedFrameTranscriptPath(rawPath: string, allowedPaths: Set<string>): string {
 	let resolved = "";
 	try { resolved = fs.realpathSync(rawPath); } catch {}
@@ -1541,6 +1609,27 @@ function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData,
 					jsonResponse(res, 200, { ok: true, summary, html: renderSessionSearchResults(search), ...search });
 				} catch (error) {
 					jsonResponse(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
+				}
+				return;
+			}
+			if (req.method === "POST" && url.pathname === "/session-open") {
+				try {
+					if (!ctx) throw new Error("Archive command context is unavailable.");
+					const resolved = resolveAllowedPiSessionOpenPath(url.searchParams.get("path") || "", allowedPaths);
+					const target = resolveSessionOpenTarget(url.searchParams.get("target"));
+					const candidate = findConversationSessionCandidate(data, resolved);
+					const openCwd = resolveArchiveSessionCwd(candidate, resolved, cwd);
+					const env = archiveSessionOpenEnv(candidate);
+					const label = candidate?.title || path.basename(resolved);
+					if (target === "here") {
+						jsonResponse(res, 200, { ok: true, mode: "here", message: `${label} 현재 패널 전환 요청됨`, cwd: openCwd });
+						setTimeout(() => { void openArchiveSessionHere(ctx, resolved, openCwd, label); }, 30);
+						return;
+					}
+					await openSessionInGhosttyTab(pi, openCwd, resolved, env);
+					jsonResponse(res, 200, { ok: true, mode: "tab", message: `${label} 새 탭 열기 요청됨`, cwd: openCwd });
+				} catch (error) {
+					jsonResponse(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
 				}
 				return;
 			}
@@ -2142,11 +2231,11 @@ function loadForkPanelSessionIndex(): Map<string, ForkPanelSessionInfo> {
 	return index;
 }
 
-function panelInfoForSession(filePath: string, panelIndex: Map<string, ForkPanelSessionInfo>): { panelLabel: string; panelSource: PiSessionPanelSource; forkId?: string } {
+function panelInfoForSession(filePath: string, panelIndex: Map<string, ForkPanelSessionInfo>): { panelLabel: string; panelSource: PiSessionPanelSource; forkId?: string; parentSessionFile?: string } {
 	let real = filePath;
 	try { real = fs.realpathSync(filePath); } catch {}
 	const fork = panelIndex.get(real);
-	if (fork) return { panelLabel: fork.panelLabel, panelSource: "fork", forkId: fork.forkId };
+	if (fork) return { panelLabel: fork.panelLabel, panelSource: "fork", forkId: fork.forkId, parentSessionFile: fork.parentSessionFile };
 	return { panelLabel: "P0", panelSource: "p0" };
 }
 
@@ -2975,13 +3064,13 @@ function conversationSessionCandidates(data: ArtifactBrowserData): ConversationS
 		if (!candidates.has(key)) candidates.set(key, { ...candidate, path: key });
 	};
 	for (const unit of data.piUnits) {
-		for (const session of unit.piRestoredSessions) add({ path: session.path, title: session.title, workspace: session.workspace || unit.workspace, cwd: session.cwd || unit.workspacePath, sourceLabel: "Pi 복구", panelLabel: session.panelLabel, time: session.time, mtime: session.mtime });
-		for (const session of unit.piChatSessions) add({ path: session.path, title: session.title, workspace: session.workspace || unit.workspace, cwd: session.cwd || unit.workspacePath, sourceLabel: "Pi 대화", panelLabel: session.panelLabel, time: session.time, mtime: session.mtime });
+		for (const session of unit.piRestoredSessions) add({ path: session.path, title: session.title, workspace: session.workspace || unit.workspace, cwd: session.cwd || unit.workspacePath, sourceLabel: "Pi 복구", panelLabel: session.panelLabel, piSession: true, panelSource: session.panelSource, forkId: session.forkId, parentSessionFile: session.parentSessionFile, time: session.time, mtime: session.mtime });
+		for (const session of unit.piChatSessions) add({ path: session.path, title: session.title, workspace: session.workspace || unit.workspace, cwd: session.cwd || unit.workspacePath, sourceLabel: "Pi 대화", panelLabel: session.panelLabel, piSession: true, panelSource: session.panelSource, forkId: session.forkId, parentSessionFile: session.parentSessionFile, time: session.time, mtime: session.mtime });
 		for (const filePath of unit.originalConductorSessionPaths) {
 			let mtime = unit.mtime;
 			let time = unit.time;
 			try { const stat = fs.statSync(filePath); mtime = stat.mtimeMs; time = formatMtime(stat.mtimeMs); } catch {}
-			add({ path: filePath, title: path.basename(filePath), workspace: unit.workspace, cwd: unit.workspacePath, sourceLabel: "원본 Conductor", panelLabel: "Conductor", time, mtime });
+			add({ path: filePath, title: path.basename(filePath), workspace: unit.workspace, cwd: unit.workspacePath, sourceLabel: "원본 Conductor", panelLabel: "Conductor", piSession: false, time, mtime });
 		}
 	}
 	for (const conductor of data.conductors) {
@@ -2989,7 +3078,7 @@ function conversationSessionCandidates(data: ArtifactBrowserData): ConversationS
 			let mtime = conductor.mtime;
 			let time = conductor.time;
 			try { const stat = fs.statSync(filePath); mtime = stat.mtimeMs; time = formatMtime(stat.mtimeMs); } catch {}
-			add({ path: filePath, title: conductor.title || conductor.label || path.basename(filePath), workspace: conductor.workspace, cwd: "", sourceLabel: "원본 Conductor", panelLabel: "Conductor", time, mtime });
+			add({ path: filePath, title: conductor.title || conductor.label || path.basename(filePath), workspace: conductor.workspace, cwd: "", sourceLabel: "원본 Conductor", panelLabel: "Conductor", piSession: false, time, mtime });
 		}
 	}
 	return [...candidates.values()].sort((a, b) => b.mtime - a.mtime);
@@ -3010,9 +3099,14 @@ function renderSessionSearchResults(search: ConversationSearchResponse): string 
 	return `<div class="grid">${search.results.map((result) => renderSessionSearchResultCard(result)).join("\n")}</div>`;
 }
 
+function sessionSearchOpenButtons(session: ConversationSessionCandidate): string {
+	if (!session.piSession) return "";
+	return `<button class="button open-session" type="button" data-session-target="tab" data-path="${escapeAttr(session.path)}">새 탭에서 열기</button><button class="button open-session" type="button" data-session-target="here" data-path="${escapeAttr(session.path)}">현재 패널에서 열기</button>`;
+}
+
 function renderSessionSearchResultCard(result: ConversationSearchResult): string {
 	const session = result.candidate;
-	return `<article class="card"><h3>${escapeHtml(session.title)}</h3><div class="meta"><span class="badge">${escapeHtml(session.sourceLabel)}</span><span class="badge">${escapeHtml(session.panelLabel)}</span>${session.workspace ? `<span class="badge">${escapeHtml(session.workspace)}</span>` : ""}<span class="badge">${escapeHtml(session.time)}</span><span class="badge">matches ${result.matches.length}</span></div>${session.cwd ? `<div class="path">cwd: ${escapeHtml(shortDisplayPath(session.cwd))}</div>` : ""}<div class="path">${escapeHtml(session.path)}</div>${result.matches.map((match) => `<div class="snippet"><div class="snippet-head"><span>${match.role === "user" ? "나" : "pilee"}</span><span>#${match.index}</span>${match.timestamp ? `<time>${escapeHtml(match.timestamp)}</time>` : ""}</div><div>${match.snippetHtml}</div></div>`).join("")}<div class="actions">${artifactOpenButtons(session.path)}</div></article>`;
+	return `<article class="card"><h3>${escapeHtml(session.title)}</h3><div class="meta"><span class="badge">${escapeHtml(session.sourceLabel)}</span><span class="badge">${escapeHtml(session.panelLabel)}</span>${session.workspace ? `<span class="badge">${escapeHtml(session.workspace)}</span>` : ""}<span class="badge">${escapeHtml(session.time)}</span><span class="badge">matches ${result.matches.length}</span></div>${session.cwd ? `<div class="path">cwd: ${escapeHtml(shortDisplayPath(session.cwd))}</div>` : ""}<div class="path">${escapeHtml(session.path)}</div>${result.matches.map((match) => `<div class="snippet"><div class="snippet-head"><span>${match.role === "user" ? "나" : "pilee"}</span><span>#${match.index}</span>${match.timestamp ? `<time>${escapeHtml(match.timestamp)}</time>` : ""}</div><div>${match.snippetHtml}</div></div>`).join("")}<div class="actions">${sessionSearchOpenButtons(session)}${artifactOpenButtons(session.path)}</div></article>`;
 }
 
 function buildArtifactBrowserHtml(data: ArtifactBrowserData, cwd: string): string {
@@ -3147,6 +3241,25 @@ ${webviewCopyScript()}
 			if (button) { button.disabled = false; button.textContent = previous; }
 		}
 	}
+	async function requestSessionOpen(button){
+		const path = button.dataset.path;
+		const target = button.dataset.sessionTarget || 'tab';
+		if (!path) return;
+		const previous = button.textContent;
+		button.disabled = true;
+		button.textContent = target === 'here' ? '현재 패널 전환 중...' : '새 탭 여는 중...';
+		try {
+			const response = await fetch('/session-open?target=' + encodeURIComponent(target) + '&path=' + encodeURIComponent(path), { method: 'POST' });
+			const payload = await response.json().catch(() => ({}));
+			if (!response.ok || !payload.ok) throw new Error(payload.error || 'session open failed');
+			button.textContent = target === 'here' ? '현재 패널 전환 요청됨' : '새 탭 열림';
+			setTimeout(() => { button.textContent = previous; button.disabled = false; }, 1600);
+		} catch (error) {
+			button.textContent = '열기 실패';
+			button.title = String(error && error.message || error);
+			setTimeout(() => { button.textContent = previous; button.disabled = false; }, 2600);
+		}
+	}
 	let classificationPath = '';
 	function setClassificationStatus(text){ const el = qs('#classificationStatus'); if (el) el.textContent = text; }
 	function classificationCategoryPresets(){ return Array.from(qs('#classificationCategorySelect').options).map((option) => option.value).filter((value) => value && value !== '__custom__'); }
@@ -3245,6 +3358,8 @@ ${webviewCopyScript()}
 		const target = event.target;
 		if (!(target instanceof HTMLElement)) return;
 		if (target.id === 'sessionSearchButton') { requestSessionSearch(); return; }
+		const sessionOpener = target.closest('.open-session');
+		if (sessionOpener) { requestSessionOpen(sessionOpener); return; }
 		const resumer = target.closest('.resume-tft');
 		if (resumer) { requestResumeTft(resumer); return; }
 		const opener = target.closest('.open-artifact');

@@ -19,6 +19,8 @@ function tempSession(lines: unknown[]): { dir: string; file: string; candidate: 
 			cwd: dir,
 			sourceLabel: "Pi 대화",
 			panelLabel: "P0",
+			piSession: true,
+			panelSource: "p0",
 			time: "now",
 			mtime: Date.now(),
 		},
