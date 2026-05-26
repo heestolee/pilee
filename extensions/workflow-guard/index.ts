@@ -142,8 +142,10 @@ function buildSystemPrompt(state: GuardState): string {
 	if (state.intent === "answer" || state.intent === "investigate") {
 		lines.push(
 			"- HARD PATH: this turn is read-only by default. Do not edit/write files, create worktrees, install dependencies, commit, or push unless the user explicitly turns the request into implementation.",
-			"- Investigation discipline: if checking will take more than 2–3 minutes or multiple files/tools, give a short progress update before continuing.",
-			"- Scope discipline: do not widen from the user-named environment/scope (for example dev/preview → production, symptom check → fix) without asking first.",
+			"- Investigation scope lock: first inspect only the scope explicitly named in the user's latest request. Do not chase adjacent work status, diffs, commits, worktrees, or recovery/implementation state unless that directly answers the named question.",
+			"- Scope expansion gate: when the next check would substantially widen scope (for example crash/log → worktree progress, symptom check → fix, dev/preview → production, or source evidence → unrelated session history), stop and ask the user before continuing.",
+			"- No-result handoff: if the current scope does not answer the question, report exactly what you checked and what you could not find, then offer 1–3 concrete next search directions and ask which one to inspect.",
+			"- Progress heartbeat: if investigation may take more than 3 minutes or several tools/files, send a short Korean progress update at least every 3 minutes explaining what you are checking and why it is taking time.",
 		);
 	}
 	if (state.auditRequired) {

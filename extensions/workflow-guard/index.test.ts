@@ -43,6 +43,19 @@ test("light hotfix PR path blocks deep context mining", async () => {
 	assert.equal(normalRead, undefined);
 });
 
+test("investigation prompts lock scope and require expansion handoff", async () => {
+	const { hooks, ctx } = createHarness();
+	const start = await hooks.before_agent_start({ prompt: "/to-production 하다가 Pi가 터진 로그 확인해봐", systemPrompt: "base" }, ctx);
+
+	assert.match(start.systemPrompt, /intent=investigate/);
+	assert.match(start.systemPrompt, /Investigation scope lock/);
+	assert.match(start.systemPrompt, /Scope expansion gate/);
+	assert.match(start.systemPrompt, /No-result handoff/);
+	assert.match(start.systemPrompt, /Progress heartbeat/);
+	assert.match(start.systemPrompt, /at least every 3 minutes/);
+	assert.match(start.systemPrompt, /crash\/log → worktree progress/);
+});
+
 test("workflow drag prompts enter audit path", async () => {
 	const { hooks, ctx } = createHarness();
 	const start = await hooks.before_agent_start({ prompt: "판단실수 때문에 스트레스야. 지난 작업 플로우가 늘어진 지점들을 뒤져봐", systemPrompt: "base" }, ctx);
