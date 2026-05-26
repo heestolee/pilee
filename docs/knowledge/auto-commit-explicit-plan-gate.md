@@ -14,7 +14,7 @@ applies_to:
   - extensions/work-context
 source: public
 reviewed_at: 2026-05-26
-reviewed_commit: 14cb3a94b0e5ad8f6c5eef7afa606a392cf18487
+reviewed_commit: 668415d6b821f26cfd3eb95dc0a8a38ef23144dd
 related:
   - change-integration-discipline
   - request-traceability-surgical-changes
