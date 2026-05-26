@@ -37,11 +37,12 @@ For each slice:
 
 이 단계는 하드 블록이 아니라 기본 리듬이다. slice가 완료되고 가장 가까운 검증이 통과하면, 다음 slice로 넘어가기 전에 현재 slice diff를 커밋 후보로 다룬다.
 
-1. `git status --short`와 `git diff --stat`으로 현재 slice 변경만 있는지 확인한다.
+1. `GIT_OPTIONAL_LOCKS=0 git status --short --branch`와 `git diff --stat`으로 현재 slice 변경만 있는지 확인한다.
 2. `work_context action=commit_plan`으로 currentSlice scope 기반 `auto_commit` JSON plan을 만든다.
-3. plan의 `message`와 `paths`를 읽어 관련 없는 파일이 섞이지 않았는지 확인한다.
-4. 적절하면 `auto_commit action=apply planPath=<planPath>`를 호출한다.
-5. 아직 slice가 불완전하거나 검증 전이면 커밋을 미루되, `work_context action=checkpoint`에 이유를 남긴다.
+3. plan의 `message`, `paths`, `push` 대상을 읽어 관련 없는 파일이 섞이지 않았는지 확인한다.
+4. 적절하면 `auto_commit action=apply planPath=<planPath>`를 호출한다. plan에 `push`가 있으면 commit+push까지 완료된다.
+5. `auto_commit` 결과가 `push: skipped`이고 사용자가 push 보류를 지시하지 않았다면, 즉시 `git push`까지 끝낸 뒤 보고한다.
+6. 아직 slice가 불완전하거나 검증 전이면 커밋을 미루되, `work_context action=checkpoint`에 이유를 남긴다.
 
 사용자가 명시적으로 “커밋하지 마”라고 했거나, 현재 slice가 아직 검증되지 않았거나, 관련 파일을 분리하면 빌드가 깨지는 경우에는 커밋을 보류할 수 있다. 하지만 마지막에 “구현은 끝났는데 커밋 안 됨”으로 놀라게 하지 않는다.
 
@@ -106,11 +107,11 @@ If slice 1 fails, you discover it before investing in slices 2 and 3.
 
 | 무게 | 신호 | 절차 |
 |---|---|---|
-| light | 파일 1~2개, route/role/data 1개, side effect 없음 | 짧은 scope lock → focused 수정 → 가장 가까운 검증 1개 → 커밋 |
+| light | 파일 1~2개, route/role/data 1개, side effect 없음 | `GIT_OPTIONAL_LOCKS=0 git status` → focused 수정 → 가장 가까운 검증 1개 → 커밋 → push → PR/branch 확인 |
 | standard | UI/BE/event 중 2~5개 축 | frame/verify 또는 verify-report를 축 수만큼 사용 |
 | full | 다중 role/viewport/before-after/DB/정책 판단 | TFT + worker fan-out + report를 명시 계획 뒤에 사용 |
 
-큰 절차를 쓰는 이유를 한 문장으로 설명할 수 없으면 절차를 줄인다. 반대로 light로 시작했는데 검증 축이 늘어나면 그때 standard/full로 승격한다.
+큰 절차를 쓰는 이유를 한 문장으로 설명할 수 없으면 절차를 줄인다. 반대로 light로 시작했는데 검증 축이 늘어나면 그때 standard/full로 승격한다. 단일 문구/CTA/작은 리뷰 반영에서는 self-healing, stress-interview, subagent fan-out, capture-heavy verify-report를 기본 실행하지 않는다.
 
 ### Simplicity First
 
