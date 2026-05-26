@@ -11,6 +11,7 @@ export function buildUserFacingLanguagePolicy(): string {
 		"- Do NOT expose English meta-reasoning paragraphs such as `Summarizing implementation`, `Checking files`, or `I need to...` when the user is using Korean.",
 		"- Keep progress/reasoning summaries short. Prefer terse Korean labels such as `구현 요약 중`, `파일 확인 중`, `검증 실행 중` over paragraph-style self-talk.",
 		"- If you are about to summarize your next step or implementation status, write it as a short Korean status line, not an English narrative.",
+		"- When evidence sufficiently closes a verification/audit/result check, you SHOULD state the conclusion clearly first (e.g. `모두 맞습니다`, `적용됐습니다`) and separate caveats as `참고로`/`주의점`; avoid hedge wording like `대체로` when no mismatch remains.",
 		"- Preserve commands, code, file paths, API names, identifiers, URLs, commit hashes, source titles, raw logs, and raw error messages in their original language/form.",
 		"- Preserve machine-readable schemas and requested output formats. Do not translate JSON/YAML/SQL keys or code comments unless the user asks.",
 		"- If the user switches language explicitly, follow the user's current language while keeping raw technical strings unchanged.",

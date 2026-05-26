@@ -141,7 +141,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 |---|---|---:|---:|---:|---|
 | [Idle UI는 장식이 아니라 ambient status다](./ambient-status-surfaces.md) | active | high | 2026-05-21 | 9b55f18 | idle-screensaver, tasks, spinner, status, ambient, ui |
 | [Editor affordance는 숨은 컨텍스트가 아니다](./editor-affordance-not-context.md) | active | high | 2026-05-13 | dea80b9 | editor, footer, prompt-suggest, working-text, affordance, ui |
-| [User-facing 출력은 한국어를 기본으로 한다](./korean-first-user-facing-output.md) | active | high | 2026-05-13 | 1f5c3ac | korean-output, localization, web-search, ui, rewrite, 한국어 |
+| [User-facing 출력은 한국어를 기본으로 한다](./korean-first-user-facing-output.md) | active | high | 2026-05-26 | 1f5c3ac | korean-output, localization, web-search, ui, rewrite, 한국어 |
 | [Shortcut Atlas는 단축키 표면을 한 번에 검토한다](./shortcut-atlas-conflict-audit.md) | active | high | 2026-05-20 | 7ea10e4 | shortcuts, keybindings, overlay, collision, audit, ui |
 | [Task overlay는 작업 맵을 보존한다](./task-work-map-overlay.md) | active | high | 2026-05-20 | 7ea10e4 | tasks, overlay, work-map, soft-delete, provenance, ui |
 | [색상은 정보 위계다](./theme-information-hierarchy.md) | active | high | 2026-05-21 | fcd3b87 | theme, color, dim, muted, border, accent |
