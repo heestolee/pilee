@@ -128,6 +128,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
+| [Codex fast mode는 출력 verbosity와 priority tier만 줄인다](./codex-fast-mode-runtime.md) | active | high | 2026-05-26 | c1cfb50 | codex, model, speed, provider, extension |
 | [Deterministic fallback은 workflow를 보존한다](./deterministic-fallbacks-preserve-workflow.md) | active | high | 2026-05-12 | b01add4 | fallback, deterministic, model-failure, resilience, web-search, report |
 | [Embedded WebView script는 escape 경계를 보존한다](./embedded-webview-script-escape-boundary.md) | active | high | 2026-05-13 | f89a0f6 | webview, embedded-script, escape, string-raw, regex, glimpse |
 | [MCP 결과는 큰 출력만 digest-first로 다룬다](./mcp-digest-first-artifacts.md) | active | high | 2026-05-12 | d98008a | mcp, digest-first, artifact, tool-output, lazy-retrieval |
@@ -250,6 +251,7 @@ graph TD
   doc_retro_private_reflection_boundary["Retro는 private reflection이다"]
   doc_reviewed_commit_freshness["reviewed_commit은 날짜 freshness의 빈틈을 막는다"]
   doc_diff_review_draft_handoff["Diff review draft는 PR 코멘트 전 단계다"]
+  doc_codex_fast_mode_runtime["Codex fast mode는 출력 verbosity와 priority tier만 줄인다"]
   doc_deterministic_fallbacks_preserve_workflow["Deterministic fallback은 workflow를 보존한다"]
   doc_embedded_webview_script_escape_boundary["Embedded WebView script는 escape 경계를 보존한다"]
   doc_mcp_digest_first_artifacts["MCP 결과는 큰 출력만 digest-first로 다룬다"]
@@ -402,6 +404,9 @@ graph TD
   doc_reviewed_commit_freshness --> doc_freshness_diagnosis_report
   doc_diff_review_draft_handoff --> doc_change_integration_discipline
   doc_diff_review_draft_handoff --> doc_tool_output_noise_management
+  doc_codex_fast_mode_runtime --> doc_editor_affordance_not_context
+  doc_codex_fast_mode_runtime --> doc_subagent_model_policy
+  doc_codex_fast_mode_runtime --> doc_workflow_guard_enforced_flow
   doc_deterministic_fallbacks_preserve_workflow --> doc_curator_approved_source_selection
   doc_deterministic_fallbacks_preserve_workflow --> doc_live_artifact_preview_pattern
   doc_embedded_webview_script_escape_boundary --> doc_artifact_archive_reopenability
@@ -657,7 +662,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 97
-- Links: 333
+- Documents: 98
+- Links: 336
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

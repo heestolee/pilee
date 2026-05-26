@@ -196,9 +196,10 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | extension | `extensions/cc-system-prompt` | [Context Loading Minimal Surface](./docs/knowledge/context-loading-minimal-surface.md) |
 | extension | `extensions/claude-code-ui` | [Tool Output Noise Management](./docs/knowledge/tool-output-noise-management.md)<br>[TUI Rendering Sanitization](./docs/knowledge/tui-rendering-sanitization.md) |
 | extension | `extensions/claude-hooks-bridge` | [Context Loading Minimal Surface](./docs/knowledge/context-loading-minimal-surface.md) |
+| extension | `extensions/codex-fast-mode` | [Codex fast mode only reduces output verbosity and priority tier](./docs/knowledge/codex-fast-mode-runtime.md) |
 | extension | `extensions/context-loader` | [Context Loading Minimal Surface](./docs/knowledge/context-loading-minimal-surface.md) |
 | extension | `extensions/continue-clean` | [Clean Handoff Session Continuation](./docs/knowledge/clean-handoff-session-continuation.md) |
-| extension | `extensions/custom-style` | [Editor Affordance Not Context](./docs/knowledge/editor-affordance-not-context.md)<br>[Korean First User Facing Output](./docs/knowledge/korean-first-user-facing-output.md)<br>[Terminal Host Integration](./docs/knowledge/terminal-host-integration.md)<br>[Theme Information Hierarchy](./docs/knowledge/theme-information-hierarchy.md) |
+| extension | `extensions/custom-style` | [Codex fast mode only reduces output verbosity and priority tier](./docs/knowledge/codex-fast-mode-runtime.md)<br>[Editor Affordance Not Context](./docs/knowledge/editor-affordance-not-context.md)<br>[Korean First User Facing Output](./docs/knowledge/korean-first-user-facing-output.md)<br>[Terminal Host Integration](./docs/knowledge/terminal-host-integration.md)<br>[Theme Information Hierarchy](./docs/knowledge/theme-information-hierarchy.md) |
 | extension | `extensions/diff-overlay` | [Diff Review Draft Handoff](./docs/knowledge/diff-review-draft-handoff.md)<br>[Theme Information Hierarchy](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI Rendering Sanitization](./docs/knowledge/tui-rendering-sanitization.md) |
 | extension | `extensions/dynamic-agents-md` | [Context Loading Minimal Surface](./docs/knowledge/context-loading-minimal-surface.md)<br>[Skills As Portable Procedures](./docs/knowledge/skills-as-portable-procedures.md) |
 | extension | `extensions/edit-tool-override` | [Read Edit Tool Output Override](./docs/knowledge/read-edit-tool-output-override.md) |
@@ -283,7 +284,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 ## Extensions
 
 <!-- PILEE_README_EXTENSIONS_START -->
-53 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
+54 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
 
 > Generated from `extensions/*` plus inventory metadata in `scripts/knowledge.mjs`; refresh with `node scripts/knowledge.mjs --graph`.
 
@@ -304,6 +305,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **ship-commands** | Routes `/ship`, `/pr-ship`, and `/ci-ship` to pilee skills and collects PR review/CI context |
 | **frame-studio** | Glimpse-based TFT Studio shell with Frame/Decide/Verify/Verify Report tabs, choices, transcript replay, and one companion WebView (`/companion`, `Ctrl+Shift+G`) |
 | **user-facing-language** | System prompt guard that keeps user-visible progress, summaries, and answers short and Korean-first |
+| **codex-fast-mode** | `/codex-fast` applies low verbosity and optional priority tier for openai-codex gpt-5.4/gpt-5.5 |
 | **workflow-guard** | Turn-level guard for request intent, workflow weight, audits, and post-choice continuation |
 
 ### Session management

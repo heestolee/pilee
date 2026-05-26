@@ -221,9 +221,10 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | extension | `extensions/cc-system-prompt` | [자동 로드 컨텍스트는 최소 surface만 가진다](./docs/knowledge/context-loading-minimal-surface.md) |
 | extension | `extensions/claude-code-ui` | [도구 출력은 대화 흐름을 침범하지 않는다](./docs/knowledge/tool-output-noise-management.md)<br>[TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다](./docs/knowledge/tui-rendering-sanitization.md) |
 | extension | `extensions/claude-hooks-bridge` | [자동 로드 컨텍스트는 최소 surface만 가진다](./docs/knowledge/context-loading-minimal-surface.md) |
+| extension | `extensions/codex-fast-mode` | [Codex fast mode는 출력 verbosity와 priority tier만 줄인다](./docs/knowledge/codex-fast-mode-runtime.md) |
 | extension | `extensions/context-loader` | [자동 로드 컨텍스트는 최소 surface만 가진다](./docs/knowledge/context-loading-minimal-surface.md) |
 | extension | `extensions/continue-clean` | [Clean handoff는 compact와 새 세션 사이의 전환 계약이다](./docs/knowledge/clean-handoff-session-continuation.md) |
-| extension | `extensions/custom-style` | [Editor affordance는 숨은 컨텍스트가 아니다](./docs/knowledge/editor-affordance-not-context.md)<br>[User-facing 출력은 한국어를 기본으로 한다](./docs/knowledge/korean-first-user-facing-output.md)<br>[터미널 연동은 host adapter로 다룬다](./docs/knowledge/terminal-host-integration.md)<br>[색상은 정보 위계다](./docs/knowledge/theme-information-hierarchy.md) |
+| extension | `extensions/custom-style` | [Codex fast mode는 출력 verbosity와 priority tier만 줄인다](./docs/knowledge/codex-fast-mode-runtime.md)<br>[Editor affordance는 숨은 컨텍스트가 아니다](./docs/knowledge/editor-affordance-not-context.md)<br>[User-facing 출력은 한국어를 기본으로 한다](./docs/knowledge/korean-first-user-facing-output.md)<br>[터미널 연동은 host adapter로 다룬다](./docs/knowledge/terminal-host-integration.md)<br>[색상은 정보 위계다](./docs/knowledge/theme-information-hierarchy.md) |
 | extension | `extensions/diff-overlay` | [Diff review draft는 PR 코멘트 전 단계다](./docs/knowledge/diff-review-draft-handoff.md)<br>[색상은 정보 위계다](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다](./docs/knowledge/tui-rendering-sanitization.md) |
 | extension | `extensions/dynamic-agents-md` | [자동 로드 컨텍스트는 최소 surface만 가진다](./docs/knowledge/context-loading-minimal-surface.md)<br>[Skill은 재사용 가능한 절차다](./docs/knowledge/skills-as-portable-procedures.md) |
 | extension | `extensions/edit-tool-override` | [Read/Edit tool override는 필요한 증거만 펼친다](./docs/knowledge/read-edit-tool-output-override.md) |
@@ -308,7 +309,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 ## Extensions
 
 <!-- PILEE_README_EXTENSIONS_START -->
-53개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
+54개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
 
 > `extensions/*`와 `scripts/knowledge.mjs`의 inventory metadata에서 생성됩니다. 변경 후 `node scripts/knowledge.mjs --graph`로 갱신합니다.
 
@@ -329,6 +330,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | **ship-commands** | `/ship`/`/pr-ship`/`/ci-ship`을 pilee SKILL.md 인라인 실행으로 라우팅하고 PR 리뷰·CI 컨텍스트를 수집 |
 | **frame-studio** | Glimpse 기반 TFT Studio shell — Frame/Decide/Verify/Verify Report 탭 + 선택 UI/전문 저장 + 단일 companion WebView(`/companion`, `Ctrl+Shift+G`) |
 | **user-facing-language** | 사용자에게 보이는 진행/요약/답변은 짧은 한국어를 기본으로 하는 system prompt guard |
+| **codex-fast-mode** | `/codex-fast` — openai-codex gpt-5.4/5.5 요청에 low verbosity와 선택적 priority tier 적용 |
 | **workflow-guard** | 요청 의도·작업 무게·audit·선택 후 실행 흐름을 turn 단위로 강제하는 guard |
 
 ### 세션 관리
