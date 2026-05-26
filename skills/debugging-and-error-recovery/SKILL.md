@@ -37,6 +37,30 @@ Do not push past a failing test to work on the next feature. Errors compound —
 
 Work through these steps in order. Do not skip steps.
 
+### Monitoring alert fast path
+
+When a bug report starts from Slack/Sentry/Datadog/log alert, root-cause discipline does **not** mean opening every trace surface. Use the shortest evidence path that identifies the failing operation and its domain data.
+
+Default sequence:
+
+```
+1. Read the alert/thread once.
+2. Open the grouped issue/event detail once.
+3. Use the included first-party stack frame and event context to identify the failing code boundary.
+4. Search code by the exact error string or culprit function once.
+5. Go directly to the domain evidence store that can identify the affected object (request log, outbound message log, DB read-only lookup, job record, etc.).
+6. Report the issue once the failing operation + affected object + likely bad input/state are known.
+```
+
+Defer expensive branches until the direct path fails:
+
+- Do not fetch breadcrumbs/traces/replays/log streams by default when issue detail already contains a first-party stack and domain context.
+- Do not repo-wide search callers before checking the domain record that already stores the object id/status/error summary.
+- Do not run broad historical/neighbor scans until after the first issue report; treat them as follow-up recurrence analysis.
+- If a timestamp query misses, try one explicit timezone/window correction and record it. Do not keep widening the search silently.
+
+Escalate to breadcrumbs/traces/log streams only when the issue detail lacks the request/job/domain object, the stack is generic, or the domain record lookup returns no usable evidence.
+
 ### Step 1: Reproduce
 
 Make the failure happen reliably.

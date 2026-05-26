@@ -33,6 +33,14 @@ related:
 
 최근 변경, 재현 입력, 실제 출력, 기대 출력, 관련 코드 경계를 먼저 정리합니다. 가설은 명시하고, 하나씩 확인합니다. 원인이 확인되기 전의 수정은 실험으로 표시하고, 성공 여부를 검증 증거로 남깁니다.
 
+## Alert Fast Path Rule
+
+Slack/Sentry/Datadog 같은 모니터링 알림을 분석할 때 “근본 원인”은 모든 trace surface를 여는 것이 아니라, 실패한 operation과 영향을 받은 domain object를 가장 짧은 경로로 확인하는 것입니다.
+
+기본 순서는 알림 1회 확인 → grouped issue/event detail 1회 확인 → first-party stack/error string으로 코드 경계 확인 → request/outbound/job log나 read-only DB처럼 domain object를 식별하는 저장소로 직행입니다. Issue detail에 stack과 domain context가 이미 있으면 breadcrumbs, trace, replay, 전체 log stream은 기본 경로가 아닙니다.
+
+breadcrumbs/trace/log stream/repo-wide caller search는 issue detail에 object id가 없거나 stack이 generic하거나 domain record 조회가 실패했을 때만 승격합니다. 과거 재발 범위·유사 데이터 스캔은 1차 이슈 보고 이후 follow-up 분석으로 분리합니다.
+
 ## Host Boundary Rule
 
 WebView, terminal host, OS opener처럼 외부 host가 끼는 버그는 브라우저 표준 동작만 보고 고치면 안 됩니다. static `file://` 링크가 브라우저에서는 열려도 Glimpse/WebView에서는 삼켜질 수 있으므로, 실제 host에서 버튼·route·open 요청을 재현하고 host-side boundary가 맞는지 확인합니다.
