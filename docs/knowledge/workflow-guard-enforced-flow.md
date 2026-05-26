@@ -18,7 +18,7 @@ applies_to:
 source:
   - user-direction:2026-05-12-conductor-like-guards
 reviewed_at: 2026-05-26
-reviewed_commit: 668415d6b821f26cfd3eb95dc0a8a38ef23144dd
+reviewed_commit: b434c00680fd02e076f7b0a6a68b483fea7ef074
 related:
   - workflow-weight-proportionality
   - validation-baseline-failure-cache
@@ -76,7 +76,10 @@ Light PR/ship에서는 현재 diff, 최근 커밋, 사용자가 방금 확인한
 
 반복 지연 사례에서 확인된 실패는 다음 runtime discipline으로 고정합니다.
 
-- **중간 진행 공유**: 조사/확인이 2–3분 이상 걸리거나 여러 파일·도구를 연쇄로 읽어야 하면, 결과를 기다리지 말고 현재까지 본 것과 다음 확인 축을 짧게 공유합니다.
+- **조사 범위 잠금**: 조사/원인 확인 요청에서는 먼저 사용자가 발화에 직접 포함한 범위만 봅니다. crash/log 확인을 작업물 상태, diff, commit, worktree 진행률, 복구/구현 상태 추적으로 바꾸지 않습니다.
+- **범위 확장 확인**: 다음 확인이 crash/log → worktree 진행률, 증상 확인 → 수정, dev/preview → production, 직접 증거 → unrelated session history처럼 많이 넓어지는 순간에는 멈추고 사용자에게 먼저 묻습니다.
+- **못 찾음 handoff**: 현재 범위에서 답을 못 찾으면 어디까지 봤고 무엇을 못 찾았는지 먼저 보고한 뒤, 다음으로 더 찾아볼 수 있는 방향 1–3개를 제시하고 어느 쪽을 볼지 묻습니다.
+- **중간 진행 공유**: 조사/확인이 3분 이상 걸리거나 여러 파일·도구를 연쇄로 읽어야 하면, 결과를 기다리지 말고 지금 무엇을 확인 중인지와 왜 시간이 걸리는지 짧게 공유합니다.
 - **환경 범위 고정**: 사용자가 dev/preview/특정 증상 확인을 요청했으면 그 범위를 넘지 않습니다. production, 외부 서비스, 실제 write 경로로 확장하려면 먼저 묻습니다.
 - **제품 판단 분리**: “코드상 계산 가능”과 “제품 요구를 충족”은 다릅니다. 실제 소비 경로(UI, 알림, 지급, 운영자 확인)가 값을 쓰는지 확인하기 전에는 완료 판단을 하지 않습니다.
 - **사용자 제안 절차 존중**: 사용자가 dev down/up, 임시 백업 후 복구처럼 구체적 검증 절차를 제안하면 먼저 그 목적을 수행 가능한 dev 검증으로 해석합니다. prod 배포 정석으로 일반화하려면 확인 질문을 둡니다.
