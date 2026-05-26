@@ -64,7 +64,9 @@ title_en: Repeated workflow failures become enforced guard flows
 1. scope lock
 2. focused change
 3. nearest validation
-4. atomic commit
+4. atomic commit/push
+
+문구·라벨 같은 micro-hotfix에서 commit plan 파일을 만드는 절차가 작업보다 커지면, `auto_commit action=quick`으로 message와 paths를 명시해 commit+safe upstream push를 한 번에 닫는다. 이때 결과가 `committed_not_pushed`이면 guard는 완료 보고 전에 push 해결을 요구한다.
 
 검증 축이 새로 늘어나면 standard/full로 승격할 수 있지만, 그 이유가 관찰된 risk여야 합니다. “늘 하던 full report”는 이유가 아닙니다.
 

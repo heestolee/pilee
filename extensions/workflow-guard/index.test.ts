@@ -28,6 +28,7 @@ test("light hotfix PR path blocks deep context mining", async () => {
 
 	assert.match(start.systemPrompt, /deep session\/context mining/);
 	assert.match(start.systemPrompt, /current diff, recent commits/);
+	assert.match(start.systemPrompt, /auto_commit action=quick/);
 	assert.match(start.systemPrompt, /Product judgment discipline/);
 
 	const readBlock = await hooks.tool_call({ toolName: "read", input: { path: "/repo/.context/work/foo/context.md" } }, ctx);
@@ -61,4 +62,20 @@ test("auto_commit push skipped result requires immediate push follow-up", async 
 
 	assert.equal(result.details.workflowGuard.nextActionRequired, true);
 	assert.match(result.content.at(-1).text, /git push/);
+});
+
+test("auto_commit committed_not_pushed result requires immediate push follow-up", async () => {
+	const { hooks } = createHarness();
+	const result = await hooks.tool_result({
+		toolName: "auto_commit",
+		content: [{ type: "text", text: "status: committed_not_pushed\npush: failed" }],
+		details: {
+			completion: "committed_not_pushed",
+			push: { status: "failed" },
+			commits: [{ hash: "abc123", message: "fix: test" }],
+		},
+	});
+
+	assert.equal(result.details.workflowGuard.nextActionRequired, true);
+	assert.match(result.content.at(-1).text, /push is not complete: failed/);
 });

@@ -156,7 +156,8 @@ function buildSystemPrompt(state: GuardState): string {
 		lines.push(
 			"- HARD LIGHT PATH: default to scope lock → focused change → nearest validation → atomic commit → push/PR status check. Do not start worker fan-out, stress interview, capture-heavy verify report, or deep session/context mining unless the user explicitly asks or a new risk axis appears.",
 			"- Light PR/ship path: use `GIT_OPTIONAL_LOCKS=0 git status --short --branch`, current diff, recent commits, and the user's explicit intent. Do not run full transcript/session extraction just to fill templates.",
-			"- If a commit tool reports `push: skipped` and the user did not explicitly ask to hold push, immediately run `git push` before the final response.",
+			"- For tiny copy/label hotfixes with explicit paths, prefer `auto_commit action=quick` over a heavy commit_plan roundtrip when using auto_commit.",
+			"- If a commit tool reports `committed_not_pushed` or `push: skipped` and the user did not explicitly ask to hold push, immediately run `git push` before the final response.",
 		);
 	}
 	if (state.explicitMutation) {
@@ -401,12 +402,15 @@ function appendWorkflowGuardResult(event: any, text: string, extraDetails: Recor
 
 function actionContinuityNote(kind: string, details: any): string | undefined {
 	if (kind === "auto_commit") {
-		if (!details || details.pushed !== false || !Array.isArray(details.commits) || details.commits.length === 0) return undefined;
+		const hasCommit = Array.isArray(details?.commits) && details.commits.length > 0;
+		const pushIncomplete = details?.completion === "committed_not_pushed" || details?.pushed === false;
+		if (!hasCommit || !pushIncomplete) return undefined;
+		const pushStatus = details?.push?.status ?? "skipped";
 		return [
 			"",
 			"[workflow_guard] nextActionRequired: true",
-			"- auto_commit completed but push was skipped.",
-			"- Unless the user explicitly asked to hold push, run `git push` now and then check PR/branch status before reporting completion.",
+			`- auto_commit created commit(s) but push is not complete: ${pushStatus}.`,
+			"- Unless the user explicitly asked to hold push, run `git push` or resolve the push failure now before reporting completion.",
 		].join("\n");
 	}
 	if (kind === "tui_ask") {

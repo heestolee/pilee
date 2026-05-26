@@ -13,7 +13,7 @@ applies_to:
   - extensions/auto-commit
   - extensions/work-context
 source: public
-reviewed_at: 2026-05-20
+reviewed_at: 2026-05-26
 reviewed_commit: 14cb3a94b0e5ad8f6c5eef7afa606a392cf18487
 related:
   - change-integration-discipline
@@ -27,19 +27,23 @@ title_en: Auto-commit executes only explicit plans
 
 ## 판단
 
-자동 커밋 도구는 agent가 임의로 변경 파일을 추론해 커밋하는 도구가 아니다. 사용자가 검토할 수 있는 JSON plan에 commit message와 path 묶음이 명시되어 있을 때만 실행한다.
+자동 커밋 도구는 agent가 임의로 변경 파일을 추론해 커밋하는 도구가 아니다. 기본은 사용자가 검토할 수 있는 JSON plan에 commit message와 path 묶음이 명시되어 있을 때만 실행한다. 단, 단일 문구·라벨 같은 light hotfix는 JSON 파일을 만들지 않더라도 `action=quick`에 message와 paths를 명시해 같은 안전 경계 안에서 commit+push까지 닫을 수 있다.
 
 ## 규칙
 
-- `auto_commit`은 `status`, `apply`, `split-head`처럼 좁은 action만 제공한다.
+- `auto_commit`은 `status`, `apply`, `split-head`, `quick`처럼 좁은 action만 제공한다.
 - `apply`는 plan file의 `commits[].paths`만 stage/commit한다.
+- `quick`은 plan file을 생략하지만 message와 paths를 tool input에 반드시 명시해야 하며, dirty tree 전체를 자동 stage하지 않는다.
 - `split-head`는 clean worktree에서만 동작하고, reset 전에 backup branch를 둘 수 있어야 한다.
 - commit message는 reviewable해야 하며, scope parentheses 같은 프로젝트별 convention 강제는 기본적으로 거부할 수 있다.
-- push는 plan에 명시된 경우에만 수행한다.
+- push는 plan의 `push`, `pushPolicy`, 또는 quick path 기본값(`push-if-tracking`)으로만 수행한다. 결과는 `committed_and_pushed` / `committed_not_pushed`로 분리해 보고한다.
+- `status`는 현재 branch/head뿐 아니라 안전한 push target과 ahead/behind를 보여준다.
 - `work_context action=commit_plan`은 currentSlice scope 기반 plan 파일을 만드는 helper일 뿐이며, 실제 commit은 여전히 plan 검토 후 `auto_commit apply`가 수행한다.
 
 ## Review trigger
 
 - auto-commit 도구가 dirty tree 전체를 자동 stage하려 하면 중단한다.
+- `quick`이 explicit paths 없이 동작하거나, unplanned dirty file을 조용히 함께 커밋하려 하면 중단한다.
 - plan 없이 “알아서 커밋”하는 흐름이 생기면 [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md)를 다시 적용한다.
 - currentSlice scope 밖 파일을 기본 commit plan에 섞으면 중단하고 [Slice 완료는 commit 후보를 만든다](./slice-auto-commit-rhythm.md)의 leftover 원칙을 적용한다.
+- auto-commit 결과가 `committed_not_pushed`인데 사용자가 push 보류를 말하지 않았다면 완료 보고 전에 push 실패/스킵을 해결한다.

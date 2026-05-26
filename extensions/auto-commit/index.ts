@@ -16,6 +16,20 @@ interface PushPlan {
 	noVerify?: boolean;
 }
 
+type PushPolicy = "commit-only" | "push-if-tracking" | "push";
+type AutoCommitMode = "apply" | "split-head" | "quick";
+type AutoCommitCompletion = "committed_and_pushed" | "committed_not_pushed";
+type PushExecutionStatus = "done" | "not_requested" | "skipped_no_safe_target" | "failed";
+
+interface PushExecution {
+	status: PushExecutionStatus;
+	requested: boolean;
+	policy: PushPolicy;
+	remote?: string;
+	branch?: string;
+	error?: string;
+}
+
 interface AutoCommitPlan {
 	expectedHead?: string;
 	resetTo?: string;
@@ -25,19 +39,27 @@ interface AutoCommitPlan {
 	commitNoVerify?: boolean;
 	commits: CommitPlanEntry[];
 	push?: PushPlan;
+	pushPolicy?: PushPolicy;
 }
 
 interface AutoCommitResult {
-	mode: "apply" | "split-head";
+	mode: AutoCommitMode;
 	backupBranch?: string;
 	commits: Array<{ message: string; hash: string; paths: string[] }>;
 	leftovers: string[];
 	pushed: boolean;
+	push: PushExecution;
+	completion: AutoCommitCompletion;
 }
 
+const pushPolicySchema = StringEnum(["commit-only", "push-if-tracking", "push"] as const);
 const autoCommitToolSchema = Type.Object({
-	action: StringEnum(["status", "apply", "split-head"] as const),
+	action: StringEnum(["status", "apply", "split-head", "quick"] as const),
 	planPath: Type.Optional(Type.String({ description: "Path to an auto-commit JSON plan file." })),
+	message: Type.Optional(Type.String({ description: "Commit message for action=quick." })),
+	paths: Type.Optional(Type.Array(Type.String(), { description: "Explicit file paths to commit for action=quick." })),
+	pushPolicy: Type.Optional(pushPolicySchema),
+	allowLeftovers: Type.Optional(Type.Boolean({ description: "Allow unrelated dirty files to remain outside action=quick paths." })),
 });
 
 type AutoCommitToolInput = Static<typeof autoCommitToolSchema>;
@@ -126,14 +148,138 @@ async function statusLines(pi: ExecHost, cwd: string): Promise<string[]> {
 	return lines(await git(pi, cwd, ["status", "--porcelain"], "git status --porcelain", { optionalLocks: true }));
 }
 
+async function rawStatusLines(pi: ExecHost, cwd: string): Promise<string[]> {
+	return (await git(pi, cwd, ["status", "--porcelain"], "git status --porcelain", { optionalLocks: true }))
+		.split(/\r?\n/u)
+		.filter(Boolean);
+}
+
 async function currentHead(pi: ExecHost, cwd: string): Promise<string> {
 	return (await git(pi, cwd, ["rev-parse", "HEAD"])).trim();
+}
+
+const PROTECTED_PUSH_BRANCHES = new Set(["main", "master", "development", "production"]);
+
+function normalizeGitPath(path: string): string {
+	return path.trim().replace(/^\.\//u, "").replace(/\\/g, "/").replace(/\/$/u, "");
+}
+
+function stripQuotes(value: string): string {
+	const trimmed = value.trim();
+	if (!trimmed.startsWith('"') || !trimmed.endsWith('"')) return trimmed;
+	try {
+		return JSON.parse(trimmed) as string;
+	} catch {
+		return trimmed.slice(1, -1);
+	}
+}
+
+function extractStatusPaths(raw: string): string[] {
+	const rest = raw.slice(3).trim();
+	if (!rest) return [];
+	const renameParts = rest.split(/\s+->\s+/u);
+	if (renameParts.length === 2) return renameParts.map(stripQuotes).map(normalizeGitPath).filter(Boolean);
+	return [normalizeGitPath(stripQuotes(rest))].filter(Boolean);
+}
+
+function pathCoveredByPlan(path: string, plannedPaths: string[]): boolean {
+	const normalized = normalizeGitPath(path);
+	return plannedPaths.some((planned) => {
+		const candidate = normalizeGitPath(planned);
+		return normalized === candidate || normalized.startsWith(`${candidate}/`);
+	});
+}
+
+async function assertNoUnplannedChanges(pi: ExecHost, cwd: string, plan: AutoCommitPlan): Promise<void> {
+	if (plan.allowLeftovers) return;
+	const plannedPaths = plan.commits.flatMap((commit) => commit.paths).map(normalizeGitPath).filter(Boolean);
+	const changedPaths = (await rawStatusLines(pi, cwd)).flatMap(extractStatusPaths);
+	const unplanned = [...new Set(changedPaths.filter((path) => !pathCoveredByPlan(path, plannedPaths)))].sort((a, b) => a.localeCompare(b));
+	if (unplanned.length > 0) {
+		throw new Error(`auto-commit plan has unplanned changes before commit:\n${unplanned.join("\n")}`);
+	}
+}
+
+function pushPlanFromUpstream(branch: string, upstream: string | undefined): PushPlan | undefined {
+	if (!branch || PROTECTED_PUSH_BRANCHES.has(branch)) return undefined;
+	if (!upstream) return undefined;
+	const slash = upstream.indexOf("/");
+	if (slash <= 0 || slash === upstream.length - 1) return undefined;
+	const remoteBranch = upstream.slice(slash + 1);
+	if (PROTECTED_PUSH_BRANCHES.has(remoteBranch)) return undefined;
+	return { remote: upstream.slice(0, slash), branch: remoteBranch };
+}
+
+async function currentBranch(pi: ExecHost, cwd: string): Promise<string> {
+	return (await git(pi, cwd, ["branch", "--show-current"])).trim();
+}
+
+async function upstreamBranch(pi: ExecHost, cwd: string): Promise<string | undefined> {
+	const result = await gitCode(pi, cwd, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], { optionalLocks: true });
+	if (result.code !== 0) return undefined;
+	return result.stdout.trim() || undefined;
+}
+
+async function resolvePushPlan(pi: ExecHost, cwd: string, explicitPush: PushPlan | undefined, policy: PushPolicy): Promise<PushPlan | undefined> {
+	if (explicitPush) return explicitPush;
+	if (policy === "commit-only") return undefined;
+	const branch = await currentBranch(pi, cwd);
+	const fromUpstream = pushPlanFromUpstream(branch, await upstreamBranch(pi, cwd));
+	if (fromUpstream) return fromUpstream;
+	if (policy !== "push") return undefined;
+	if (!branch || PROTECTED_PUSH_BRANCHES.has(branch)) return undefined;
+	return { remote: "origin", branch };
+}
+
+async function runPush(pi: ExecHost, cwd: string, push: PushPlan | undefined, pushPolicy: PushPolicy | undefined): Promise<PushExecution> {
+	const policy = pushPolicy ?? (push ? "push" : "commit-only");
+	const requested = Boolean(push) || policy !== "commit-only";
+	if (!requested) return { status: "not_requested", requested: false, policy };
+
+	const resolved = await resolvePushPlan(pi, cwd, push, policy);
+	if (!resolved) {
+		return { status: "skipped_no_safe_target", requested: true, policy, error: "safe push target was not detected" };
+	}
+
+	const remote = resolved.remote ?? "origin";
+	const branch = resolved.branch ?? (await currentBranch(pi, cwd));
+	if (!branch) return { status: "skipped_no_safe_target", requested: true, policy, remote, error: "push.branch is required when HEAD is detached" };
+
+	const args = ["push"];
+	if (resolved.forceWithLease) args.push("--force-with-lease");
+	if (resolved.noVerify) args.push("--no-verify");
+	args.push(remote, `HEAD:${branch}`);
+	try {
+		await git(pi, cwd, args, `git push ${remote} HEAD:${branch}`);
+		return { status: "done", requested: true, policy, remote, branch };
+	} catch (error) {
+		return { status: "failed", requested: true, policy, remote, branch, error: error instanceof Error ? error.message : String(error) };
+	}
+}
+
+function completionFromPush(push: PushExecution): AutoCommitCompletion {
+	return push.status === "done" ? "committed_and_pushed" : "committed_not_pushed";
+}
+
+async function describePushReadiness(pi: ExecHost, cwd: string): Promise<string> {
+	const branch = await currentBranch(pi, cwd).catch(() => "");
+	if (!branch) return "push: no safe target (detached HEAD)";
+	if (PROTECTED_PUSH_BRANCHES.has(branch)) return `push: disabled on protected branch ${branch}`;
+	const upstream = await upstreamBranch(pi, cwd);
+	const plan = pushPlanFromUpstream(branch, upstream);
+	if (!plan) return upstream ? `push: no safe target for upstream ${upstream}` : "push: no upstream; quick path would need pushPolicy=push to create origin/<branch>";
+	const counts = await gitCode(pi, cwd, ["rev-list", "--left-right", "--count", "@{u}...HEAD"], { optionalLocks: true });
+	const [behind = "?", ahead = "?"] = counts.code === 0 ? counts.stdout.trim().split(/\s+/u) : [];
+	return `push: ${plan.remote}/${plan.branch} (ahead ${ahead}, behind ${behind})`;
 }
 
 function assertPlan(plan: AutoCommitPlan): void {
 	if (!plan || typeof plan !== "object") throw new Error("auto-commit plan must be an object");
 	if (!Array.isArray(plan.commits) || plan.commits.length === 0) {
 		throw new Error("auto-commit plan requires at least one commit entry");
+	}
+	if (plan.pushPolicy && !["commit-only", "push-if-tracking", "push"].includes(plan.pushPolicy)) {
+		throw new Error(`auto-commit plan has invalid pushPolicy: ${plan.pushPolicy}`);
 	}
 
 	for (const [index, entry] of plan.commits.entries()) {
@@ -199,21 +345,7 @@ async function commitEntry(
 	return { message: entry.message, hash, paths: [...entry.paths] };
 }
 
-async function pushIfRequested(pi: ExecHost, cwd: string, push: PushPlan | undefined): Promise<boolean> {
-	if (!push) return false;
-	const remote = push.remote ?? "origin";
-	const branch = push.branch ?? (await git(pi, cwd, ["branch", "--show-current"])).trim();
-	if (!branch) throw new Error("push.branch is required when HEAD is detached");
-
-	const args = ["push"];
-	if (push.forceWithLease) args.push("--force-with-lease");
-	if (push.noVerify) args.push("--no-verify");
-	args.push(remote, `HEAD:${branch}`);
-	await git(pi, cwd, args, `git push ${remote} HEAD:${branch}`);
-	return true;
-}
-
-async function applyPlan(pi: ExecHost, cwd: string, mode: "apply" | "split-head", plan: AutoCommitPlan): Promise<AutoCommitResult> {
+async function applyPlan(pi: ExecHost, cwd: string, mode: AutoCommitMode, plan: AutoCommitPlan): Promise<AutoCommitResult> {
 	await assertExpectedHead(pi, cwd, plan.expectedHead);
 	if (mode === "split-head") {
 		const currentStatus = await statusLines(pi, cwd);
@@ -223,6 +355,8 @@ async function applyPlan(pi: ExecHost, cwd: string, mode: "apply" | "split-head"
 		await maybeCreateBackupBranch(pi, cwd, plan.backupBranch);
 		await git(pi, cwd, ["reset", "--mixed", plan.resetTo ?? "HEAD~1"], "git reset --mixed");
 	}
+
+	await assertNoUnplannedChanges(pi, cwd, plan);
 
 	const commits: AutoCommitResult["commits"] = [];
 	try {
@@ -234,38 +368,74 @@ async function applyPlan(pi: ExecHost, cwd: string, mode: "apply" | "split-head"
 		if (leftovers.length > 0 && !plan.allowLeftovers) {
 			throw new Error(`auto-commit plan left unstaged changes:\n${leftovers.join("\n")}`);
 		}
-		const pushed = await pushIfRequested(pi, cwd, plan.push);
-		return { mode, backupBranch: plan.backupBranch, commits, leftovers, pushed };
+		const push = await runPush(pi, cwd, plan.push, plan.pushPolicy);
+		return { mode, backupBranch: plan.backupBranch, commits, leftovers, pushed: push.status === "done", push, completion: completionFromPush(push) };
 	} catch (error) {
 		await gitCode(pi, cwd, ["reset"]);
 		throw error;
 	}
 }
 
-function formatResult(result: AutoCommitResult): string {
+function buildQuickPlan(params: { message?: string; paths?: string[]; pushPolicy?: PushPolicy; allowLeftovers?: boolean }): AutoCommitPlan {
+	const message = params.message?.trim();
+	if (!message) throw new Error("action=quick requires message");
+	const paths = (params.paths ?? []).map((path) => path.trim()).filter(Boolean);
+	if (paths.length === 0) throw new Error("action=quick requires explicit paths");
+	const plan: AutoCommitPlan = {
+		allowLeftovers: params.allowLeftovers ?? false,
+		commits: [{ message, paths }],
+		pushPolicy: params.pushPolicy ?? "push-if-tracking",
+	};
+	assertPlan(plan);
+	return plan;
+}
+
+function formatPush(push: PushExecution): string {
+	const target = push.remote && push.branch ? ` ${push.remote}/${push.branch}` : "";
+	const error = push.error ? ` (${push.error.split(/\r?\n/u)[0]})` : "";
+	return `push: ${push.status}${target}${error}`;
+}
+
+export function formatResult(result: AutoCommitResult): string {
 	const rows = result.commits.map((commit, index) => `${index + 1}. ${commit.hash} ${commit.message}`).join("\n");
+	const needsPushFollowUp = result.completion === "committed_not_pushed";
+	const next = needsPushFollowUp
+		? result.push.status === "failed"
+			? "next: push가 실패했습니다. fetch/rebase/충돌 해결 후 push를 완료하기 전까지는 이 작업을 완료로 보고하지 마세요."
+			: "next: 사용자가 push 보류를 명시하지 않았다면 지금 바로 push까지 완료한 뒤 보고하세요."
+		: null;
 	const extras = [
 		result.backupBranch ? `backup: ${result.backupBranch}` : null,
-		result.pushed ? "push: done" : "push: skipped",
-		!result.pushed ? "next: 명시적 push 보류 지시가 없으면 바로 `git push`까지 완료한 뒤 보고하세요." : null,
+		`status: ${result.completion}`,
+		formatPush(result.push),
+		next,
 		result.leftovers.length > 0 ? `leftovers:\n${result.leftovers.join("\n")}` : "leftovers: none",
 	].filter(Boolean);
 	return [`auto-commit ${result.mode} 완료`, rows, ...extras].join("\n");
 }
 
 async function runStatus(pi: ExecHost, cwd: string): Promise<string> {
-	const [branch, head, status] = await Promise.all([
-		git(pi, cwd, ["branch", "--show-current"]).then((value) => value.trim()).catch(() => ""),
+	const [branch, head, status, push] = await Promise.all([
+		currentBranch(pi, cwd).catch(() => ""),
 		currentHead(pi, cwd).catch(() => ""),
 		statusLines(pi, cwd).catch((error: unknown) => [`status failed: ${String(error)}`]),
+		describePushReadiness(pi, cwd).catch((error: unknown) => `push: status failed (${String(error)})`),
 	]);
-	return [`branch: ${branch || "(detached)"}`, `HEAD: ${head}`, status.length > 0 ? status.join("\n") : "working tree clean"].join("\n");
+	return [`branch: ${branch || "(detached)"}`, `HEAD: ${head}`, push, status.length > 0 ? status.join("\n") : "working tree clean"].join("\n");
+}
+
+function parseQuickCommandArgs(args: string): { message: string; paths: string[] } {
+	const body = args.replace(/^quick\s*/u, "");
+	const parts = body.split(/\s+--\s+/u);
+	if (parts.length !== 2) throw new Error("/auto-commit quick requires: quick <message> -- <path...>");
+	return { message: parts[0].trim(), paths: parts[1].trim().split(/\s+/u).filter(Boolean) };
 }
 
 async function runFromArgs(pi: ExecHost, ctx: CommandCtx, args: string): Promise<string> {
 	const [rawMode, ...rest] = args.trim().split(/\s+/u).filter(Boolean);
-	const mode = rawMode === "apply" || rawMode === "split-head" || rawMode === "status" ? rawMode : "apply";
+	const mode = rawMode === "apply" || rawMode === "split-head" || rawMode === "status" || rawMode === "quick" ? rawMode : "apply";
 	if (mode === "status") return runStatus(pi, ctx.cwd);
+	if (mode === "quick") return formatResult(await applyPlan(pi, ctx.cwd, "quick", buildQuickPlan(parseQuickCommandArgs(args))));
 
 	const planPath = mode === rawMode ? rest.join(" ") : args.trim();
 	if (!planPath) throw new Error(`/${"auto-commit"} ${mode} requires a plan JSON path`);
@@ -275,7 +445,7 @@ async function runFromArgs(pi: ExecHost, ctx: CommandCtx, args: string): Promise
 
 export default function (pi: ExtensionAPI) {
 	pi.registerCommand("auto-commit", {
-		description: "Apply a JSON commit plan or split HEAD into focused commits.",
+		description: "Apply a JSON commit plan, run a quick explicit-path hotfix commit, or split HEAD into focused commits.",
 		handler: async (args, ctx) => {
 			try {
 				const output = await runFromArgs(pi, ctx, args);
@@ -293,10 +463,12 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "auto_commit",
 		label: "Auto Commit",
-		description: "Apply an explicit JSON commit plan, optionally splitting HEAD into focused commits and pushing with force-with-lease.",
-		promptSnippet: "Create focused git commits from an explicit JSON plan.",
+		description: "Apply an explicit JSON commit plan, run a quick explicit-path hotfix commit, optionally split HEAD, and report push-aware completion.",
+		promptSnippet: "Create focused git commits from an explicit JSON plan or quick explicit-path hotfix input.",
 		promptGuidelines: [
-			"Use auto_commit only with an explicit commit plan whose file groups and messages are reviewable.",
+			"Use auto_commit with an explicit JSON commit plan whose file groups and messages are reviewable, or action=quick with explicit message+paths for tiny hotfix/copy changes.",
+			"For action=quick, default pushPolicy=push-if-tracking commits and pushes to the safe upstream feature branch when available.",
+			"Treat status=committed_not_pushed as incomplete when the user expected push; do not report done until push is resolved.",
 			"auto_commit rejects conventional commit scope parentheses by default; use messages like 'feat: 한글 설명'.",
 		],
 		parameters: autoCommitToolSchema,
@@ -305,9 +477,13 @@ export default function (pi: ExtensionAPI) {
 				const output = await runStatus(pi, ctx.cwd);
 				return { content: [{ type: "text", text: output }], details: { action: params.action } };
 			}
+			if (params.action === "quick") {
+				const result = await applyPlan(pi, ctx.cwd, "quick", buildQuickPlan(params));
+				return { content: [{ type: "text", text: formatResult(result) }], details: result };
+			}
 			if (!params.planPath) throw new Error("planPath is required");
 			const plan = await loadPlan(ctx.cwd, params.planPath);
-			const result = await applyPlan(pi, ctx.cwd, params.action, plan);
+			const result = await applyPlan(pi, ctx.cwd, params.action, params.pushPolicy ? { ...plan, pushPolicy: params.pushPolicy } : plan);
 			return { content: [{ type: "text", text: formatResult(result) }], details: result };
 		},
 	});
