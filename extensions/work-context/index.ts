@@ -12,7 +12,7 @@ import {
 	type WorkContextMode,
 	type WorkContextSlice,
 } from "../utils/work-context.ts";
-import { buildSliceCommitPlan, sliceCommitPlanFileName } from "./slice-commit-plan.ts";
+import { buildSliceCommitPlan, sliceCommitPlanFileName, type SliceCommitPushPlan } from "./slice-commit-plan.ts";
 
 const sliceSchema = Type.Object({
 	id: Type.String({ description: "Slice id, e.g. S1 or SLICE-1" }),
@@ -30,10 +30,38 @@ function sessionFile(ctx: { sessionManager?: { getSessionFile?: () => string | u
 	return ctx.sessionManager?.getSessionFile?.();
 }
 
-async function gitOutput(pi: ExtensionAPI, cwd: string, args: string[]): Promise<string> {
-	const result = await pi.exec("git", args, { cwd });
+async function gitOutput(pi: ExtensionAPI, cwd: string, args: string[], options: { optionalLocks?: boolean } = {}): Promise<string> {
+	const command = options.optionalLocks ? "env" : "git";
+	const finalArgs = options.optionalLocks ? ["GIT_OPTIONAL_LOCKS=0", "git", ...args] : args;
+	const result = await pi.exec(command, finalArgs, { cwd });
 	if (result.code !== 0) throw new Error(`git ${args.join(" ")} failed: ${result.stderr?.trim() || result.stdout?.trim() || "unknown"}`);
 	return result.stdout ?? "";
+}
+
+async function gitOutputOrNull(pi: ExtensionAPI, cwd: string, args: string[], options: { optionalLocks?: boolean } = {}): Promise<string | null> {
+	try {
+		return await gitOutput(pi, cwd, args, options);
+	} catch {
+		return null;
+	}
+}
+
+const PROTECTED_PUSH_BRANCHES = new Set(["main", "master", "development", "production"]);
+
+function pushPlanFromUpstream(branch: string, upstream: string | null): SliceCommitPushPlan | undefined {
+	if (!branch || PROTECTED_PUSH_BRANCHES.has(branch)) return undefined;
+	if (!upstream) return undefined;
+	const slash = upstream.indexOf("/");
+	if (slash <= 0 || slash === upstream.length - 1) return undefined;
+	const remoteBranch = upstream.slice(slash + 1);
+	if (PROTECTED_PUSH_BRANCHES.has(remoteBranch)) return undefined;
+	return { remote: upstream.slice(0, slash), branch: remoteBranch };
+}
+
+async function detectSafePushPlan(pi: ExtensionAPI, cwd: string): Promise<SliceCommitPushPlan | undefined> {
+	const branch = (await gitOutputOrNull(pi, cwd, ["branch", "--show-current"]))?.trim() ?? "";
+	const upstream = (await gitOutputOrNull(pi, cwd, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]))?.trim() ?? null;
+	return pushPlanFromUpstream(branch, upstream);
 }
 
 function writeJson(path: string, value: unknown): void {
@@ -146,9 +174,10 @@ export default function workContextExtension(pi: ExtensionAPI) {
 			if (params.action === "commit_plan") {
 				if (!card.currentSlice) throw new Error("commit_plan requires currentSlice. Use work_context set_slice first.");
 				const root = card.identity.root || ctx.cwd;
-				const [statusText, head] = await Promise.all([
-					gitOutput(pi, root, ["status", "--porcelain"]),
+				const [statusText, head, push] = await Promise.all([
+					gitOutput(pi, root, ["status", "--porcelain"], { optionalLocks: true }),
 					gitOutput(pi, root, ["rev-parse", "HEAD"]).then((value) => value.trim()),
+					detectSafePushPlan(pi, root),
 				]);
 				const output = buildSliceCommitPlan({
 					card,
@@ -156,17 +185,24 @@ export default function workContextExtension(pi: ExtensionAPI) {
 					expectedHead: head,
 					message: params.commitMessage,
 					includeOutsideScope: params.includeOutsideScope,
+					push,
 				});
 				const planPath = join(card.identity.root || card.identity.cwd, ".pi", "auto-commit", sliceCommitPlanFileName(card));
 				writeJson(planPath, output.plan);
 				const skipped = output.skipped.length ? `\n\nLeft as uncommitted leftovers outside current slice:\n${output.skipped.map((path) => `- ${path}`).join("\n")}` : "";
+				const pushLine = output.plan.push
+					? `push: ${output.plan.push.remote ?? "origin"}/${output.plan.push.branch ?? "(current branch)"}`
+					: "push: not planned (protected branch, detached HEAD, or no upstream)";
 				return toolText([
 					`auto_commit plan을 생성했습니다: ${planPath}`,
 					`message: ${output.message}`,
+					pushLine,
 					"paths:",
 					...output.included.map((path) => `- ${path}`),
 					"",
-					"다음 단계: plan을 검토한 뒤 auto_commit action=apply planPath=<위 경로>를 호출하세요.",
+					output.plan.push
+						? "다음 단계: plan을 검토한 뒤 auto_commit action=apply planPath=<위 경로>를 호출하면 commit+push까지 완료됩니다."
+						: "다음 단계: plan을 검토한 뒤 auto_commit action=apply planPath=<위 경로>를 호출하고, push가 필요하면 즉시 별도 git push까지 완료하세요.",
 					skipped,
 				].filter(Boolean).join("\n"), { planPath, plan: output.plan, included: output.included, outsideScope: output.outsideScope, skipped: output.skipped, card });
 			}

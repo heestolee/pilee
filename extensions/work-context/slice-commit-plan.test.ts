@@ -65,6 +65,16 @@ test("buildSliceCommitPlan can include outside scope when explicitly requested",
 	assert.equal(output.plan.commits[0].message, "fix: 예약 플로우 수정");
 });
 
+test("buildSliceCommitPlan carries a safe push target into the plan", () => {
+	const output = buildSliceCommitPlan({
+		card: card(),
+		message: "fix: 예약 플로우 수정",
+		statusLines: [" M src/feature/index.ts"],
+		push: { remote: "origin", branch: "feature/test" },
+	});
+	assert.deepEqual(output.plan.push, { remote: "origin", branch: "feature/test" });
+});
+
 test("defaultSliceCommitMessage falls back to goal when slice title is empty", () => {
 	const c = card([], "");
 	c.currentSlice = { ...c.currentSlice!, title: "" };

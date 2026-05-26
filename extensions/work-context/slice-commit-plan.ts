@@ -8,12 +8,20 @@ export interface GitStatusEntry {
 	originalPath?: string;
 }
 
+export interface SliceCommitPushPlan {
+	remote?: string;
+	branch?: string;
+	forceWithLease?: boolean;
+	noVerify?: boolean;
+}
+
 export interface SliceCommitPlanInput {
 	card: WorkContextCard;
 	statusLines: string[];
 	expectedHead?: string;
 	message?: string;
 	includeOutsideScope?: boolean;
+	push?: SliceCommitPushPlan;
 }
 
 export interface SliceCommitPlanOutput {
@@ -21,6 +29,7 @@ export interface SliceCommitPlanOutput {
 		expectedHead?: string;
 		allowLeftovers: boolean;
 		commits: Array<{ message: string; paths: string[] }>;
+		push?: SliceCommitPushPlan;
 	};
 	included: string[];
 	outsideScope: string[];
@@ -116,6 +125,7 @@ export function buildSliceCommitPlan(input: SliceCommitPlanInput): SliceCommitPl
 			expectedHead: input.expectedHead,
 			allowLeftovers: skipped.length > 0,
 			commits: [{ message, paths: included }],
+			...(input.push ? { push: input.push } : {}),
 		},
 		included,
 		outsideScope,

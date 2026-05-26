@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { StringEnum } from "@mariozechner/pi-ai";
@@ -45,6 +45,13 @@ type AutoCommitToolInput = Static<typeof autoCommitToolSchema>;
 type ExecHost = Pick<ExtensionAPI, "exec">;
 type CommandCtx = Pick<ExtensionContext, "cwd" | "hasUI"> & { ui?: ExtensionCommandContext["ui"] };
 
+interface GitExecOptions {
+	optionalLocks?: boolean;
+	retryStaleLock?: boolean;
+}
+
+const INDEX_LOCK_PATTERN = /Unable to create '([^']*index\.lock)'/u;
+
 function lines(text: string | undefined): string[] {
 	return (text ?? "")
 		.split(/\r?\n/u)
@@ -52,23 +59,62 @@ function lines(text: string | undefined): string[] {
 		.filter(Boolean);
 }
 
-async function git(pi: ExecHost, cwd: string, args: string[], label = `git ${args.join(" ")}`): Promise<string> {
-	const result = await pi.exec("git", args, { cwd });
-	if (result.code !== 0) {
-		const stderr = result.stderr?.trim();
-		const stdout = result.stdout?.trim();
-		throw new Error([`${label} failed`, stderr, stdout].filter(Boolean).join("\n"));
-	}
-	return result.stdout ?? "";
+export function extractGitIndexLockPath(stderr: string | undefined, stdout = ""): string | undefined {
+	const match = `${stderr ?? ""}\n${stdout}`.match(INDEX_LOCK_PATTERN);
+	return match?.[1];
 }
 
-async function gitCode(pi: ExecHost, cwd: string, args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
-	const result = await pi.exec("git", args, { cwd });
-	return { code: result.code ?? 1, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+async function removeStaleIndexLockIfSafe(pi: ExecHost, cwd: string, stderr: string, stdout: string): Promise<string | undefined> {
+	const lockPath = extractGitIndexLockPath(stderr, stdout);
+	if (!lockPath) return undefined;
+	const lsof = await pi.exec("lsof", [lockPath], { cwd });
+	if (lsof.code === 0 && (lsof.stdout ?? "").trim()) {
+		return `index.lock is still owned; not removing: ${lockPath}`;
+	}
+	await rm(lockPath, { force: true });
+	return `removed stale index.lock and retried: ${lockPath}`;
+}
+
+async function execGit(
+	pi: ExecHost,
+	cwd: string,
+	args: string[],
+	options: GitExecOptions = {},
+): Promise<{ code: number; stdout: string; stderr: string }> {
+	const command = options.optionalLocks ? "env" : "git";
+	const finalArgs = options.optionalLocks ? ["GIT_OPTIONAL_LOCKS=0", "git", ...args] : args;
+	let result = await pi.exec(command, finalArgs, { cwd });
+	let stdout = result.stdout ?? "";
+	let stderr = result.stderr ?? "";
+	if ((result.code ?? 1) !== 0 && options.retryStaleLock !== false && !options.optionalLocks) {
+		const retryNote = await removeStaleIndexLockIfSafe(pi, cwd, stderr, stdout);
+		if (retryNote?.startsWith("removed stale")) {
+			result = await pi.exec(command, finalArgs, { cwd });
+			stdout = result.stdout ?? "";
+			stderr = [retryNote, result.stderr ?? ""].filter(Boolean).join("\n");
+		} else if (retryNote) {
+			stderr = [retryNote, stderr].filter(Boolean).join("\n");
+		}
+	}
+	return { code: result.code ?? 1, stdout, stderr };
+}
+
+async function git(pi: ExecHost, cwd: string, args: string[], label = `git ${args.join(" ")}`, options: GitExecOptions = {}): Promise<string> {
+	const result = await execGit(pi, cwd, args, options);
+	if (result.code !== 0) {
+		const stderr = result.stderr.trim();
+		const stdout = result.stdout.trim();
+		throw new Error([`${label} failed`, stderr, stdout].filter(Boolean).join("\n"));
+	}
+	return result.stdout;
+}
+
+async function gitCode(pi: ExecHost, cwd: string, args: string[], options: GitExecOptions = {}): Promise<{ code: number; stdout: string; stderr: string }> {
+	return execGit(pi, cwd, args, options);
 }
 
 async function statusLines(pi: ExecHost, cwd: string): Promise<string[]> {
-	return lines(await git(pi, cwd, ["status", "--porcelain"]));
+	return lines(await git(pi, cwd, ["status", "--porcelain"], "git status --porcelain", { optionalLocks: true }));
 }
 
 async function currentHead(pi: ExecHost, cwd: string): Promise<string> {
@@ -192,6 +238,7 @@ function formatResult(result: AutoCommitResult): string {
 	const extras = [
 		result.backupBranch ? `backup: ${result.backupBranch}` : null,
 		result.pushed ? "push: done" : "push: skipped",
+		!result.pushed ? "next: 명시적 push 보류 지시가 없으면 바로 `git push`까지 완료한 뒤 보고하세요." : null,
 		result.leftovers.length > 0 ? `leftovers:\n${result.leftovers.join("\n")}` : "leftovers: none",
 	].filter(Boolean);
 	return [`auto-commit ${result.mode} 완료`, rows, ...extras].join("\n");
