@@ -50,3 +50,15 @@ test("workflow drag prompts enter audit path", async () => {
 	assert.match(start.systemPrompt, /HARD AUDIT PATH/);
 	assert.match(start.systemPrompt, /friction → response evidence → current state → remaining gap/);
 });
+
+test("auto_commit push skipped result requires immediate push follow-up", async () => {
+	const { hooks } = createHarness();
+	const result = await hooks.tool_result({
+		toolName: "auto_commit",
+		content: [{ type: "text", text: "auto-commit apply 완료\npush: skipped" }],
+		details: { pushed: false, commits: [{ hash: "abc123", message: "fix: test" }] },
+	});
+
+	assert.equal(result.details.workflowGuard.nextActionRequired, true);
+	assert.match(result.content.at(-1).text, /git push/);
+});

@@ -154,8 +154,9 @@ function buildSystemPrompt(state: GuardState): string {
 	}
 	if (state.weight === "light") {
 		lines.push(
-			"- HARD LIGHT PATH: default to scope lock → focused change → nearest validation → atomic commit. Do not start worker fan-out, stress interview, capture-heavy verify report, or deep session/context mining unless the user explicitly asks or a new risk axis appears.",
-			"- Light PR/ship path: use current diff, recent commits, and the user's explicit intent. Do not run full transcript/session extraction just to fill templates.",
+			"- HARD LIGHT PATH: default to scope lock → focused change → nearest validation → atomic commit → push/PR status check. Do not start worker fan-out, stress interview, capture-heavy verify report, or deep session/context mining unless the user explicitly asks or a new risk axis appears.",
+			"- Light PR/ship path: use `GIT_OPTIONAL_LOCKS=0 git status --short --branch`, current diff, recent commits, and the user's explicit intent. Do not run full transcript/session extraction just to fill templates.",
+			"- If a commit tool reports `push: skipped` and the user did not explicitly ask to hold push, immediately run `git push` before the final response.",
 		);
 	}
 	if (state.explicitMutation) {
@@ -399,6 +400,15 @@ function appendWorkflowGuardResult(event: any, text: string, extraDetails: Recor
 }
 
 function actionContinuityNote(kind: string, details: any): string | undefined {
+	if (kind === "auto_commit") {
+		if (!details || details.pushed !== false || !Array.isArray(details.commits) || details.commits.length === 0) return undefined;
+		return [
+			"",
+			"[workflow_guard] nextActionRequired: true",
+			"- auto_commit completed but push was skipped.",
+			"- Unless the user explicitly asked to hold push, run `git push` now and then check PR/branch status before reporting completion.",
+		].join("\n");
+	}
 	if (kind === "tui_ask") {
 		if (details?.status !== "submitted") return undefined;
 		const choice = details.selectedOptions?.length ? details.selectedOptions.join(", ") : details.text || "submitted";
@@ -501,7 +511,7 @@ export default function workflowGuard(pi: ExtensionAPI) {
 	});
 
 	pi.on("tool_result", async (event) => {
-		if (event.toolName !== "tui_ask" && event.toolName !== "frame_studio") return undefined;
+		if (event.toolName !== "tui_ask" && event.toolName !== "frame_studio" && event.toolName !== "auto_commit") return undefined;
 		const note = actionContinuityNote(event.toolName, event.details);
 		if (!note) return undefined;
 		return appendWorkflowGuardResult(event, note, { nextActionRequired: true, sourceTool: event.toolName });
