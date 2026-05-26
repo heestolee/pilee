@@ -21,7 +21,7 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-26-clear-verdict-before-caveat
 reviewed_at: 2026-05-26
-reviewed_commit: 1f5c3acfcb23b01a3fc6bc30592dbe0156748c4f
+reviewed_commit: ae8152bae3d818b525c0e7e0574386bda2713355
 related:
   - web-search-curator
   - curator-approved-source-selection
