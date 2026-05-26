@@ -4,7 +4,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, write
 import { homedir } from "node:os";
 import { join, dirname, basename } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ThemeColor } from "@mariozechner/pi-coding-agent";
-import { DynamicBorder, SessionManager } from "@mariozechner/pi-coding-agent";
+import { DynamicBorder, ExtensionRunner, SessionManager } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
 import {
@@ -835,75 +835,97 @@ function readContextFileOption(ctx: ExtensionContext, path?: string): string | n
 	return readFileSync(expanded, "utf8");
 }
 
+type WorktreeSessionSwitchOptions = {
+	cwdOverride?: string;
+	withSession?: (ctx: any) => Promise<void>;
+};
+
+type WorktreeSessionSwitchResult = { cancelled?: boolean };
+
+type WorktreeSessionSwitchContext = ExtensionContext & {
+	switchSession?: (sessionPath: string, options?: WorktreeSessionSwitchOptions) => Promise<WorktreeSessionSwitchResult>;
+	requestSessionSwitch?: (sessionPath: string, options?: WorktreeSessionSwitchOptions) => Promise<WorktreeSessionSwitchResult>;
+};
+
+const REQUEST_SESSION_SWITCH_PATCH_KEY = Symbol.for("pilee.worktree.request-session-switch-patch");
+
+type RequestSessionSwitchPatchState = {
+	originalCreateContext?: (...args: unknown[]) => ExtensionContext;
+	version?: number;
+};
+
+function installRequestSessionSwitchPatch(): void {
+	const globalState = globalThis as typeof globalThis & { [REQUEST_SESSION_SWITCH_PATCH_KEY]?: RequestSessionSwitchPatchState };
+	const state = globalState[REQUEST_SESSION_SWITCH_PATCH_KEY] ?? {};
+	globalState[REQUEST_SESSION_SWITCH_PATCH_KEY] = state;
+
+	const proto = ExtensionRunner.prototype as any;
+	if (!state.originalCreateContext) {
+		state.originalCreateContext = proto.createContext;
+	} else {
+		proto.createContext = state.originalCreateContext;
+	}
+
+	const originalCreateContext = state.originalCreateContext;
+	proto.createContext = function createContextWithRequestSessionSwitch(this: any, ...args: unknown[]) {
+		const context = originalCreateContext.apply(this, args) as WorktreeSessionSwitchContext;
+		if (typeof context.requestSessionSwitch === "function") return context;
+
+		Object.defineProperty(context, "requestSessionSwitch", {
+			configurable: true,
+			enumerable: false,
+			value: async (sessionPath: string, options?: WorktreeSessionSwitchOptions): Promise<WorktreeSessionSwitchResult> => {
+				setTimeout(() => {
+					void (async () => {
+						try {
+							if (typeof this.waitForIdleFn === "function") await this.waitForIdleFn();
+							if (typeof this.switchSessionHandler !== "function") throw new Error("switchSession handler is not available");
+							const result = await this.switchSessionHandler(sessionPath, options);
+							if (result?.cancelled) this.uiContext?.notify?.("Session switch request was cancelled", "warning");
+						} catch (error) {
+							this.emitError?.({
+								extensionPath: "pilee/worktree",
+								event: "request_session_switch",
+								error: error instanceof Error ? error.message : String(error),
+								stack: error instanceof Error ? error.stack : undefined,
+							});
+						}
+					})();
+				}, 0);
+				return { cancelled: false };
+			},
+		});
+
+		return context;
+	};
+	state.version = 1;
+}
+
 function hasSessionSwitchApi(ctx: ExtensionContext): boolean {
-	return typeof (ctx as Partial<ExtensionCommandContext>).switchSession === "function";
+	return typeof (ctx as WorktreeSessionSwitchContext).switchSession === "function";
+}
+
+function hasRequestedSessionSwitchApi(ctx: ExtensionContext): boolean {
+	return typeof (ctx as WorktreeSessionSwitchContext).requestSessionSwitch === "function";
 }
 
 type WorktreeActivationPlan =
 	| { mode: "switch" }
-	| { mode: "current-panel-relaunch"; terminalId: string }
+	| { mode: "request-switch" }
 	| { mode: "blocked"; reason: string };
 
-const WORKTREE_RELAUNCH_DIR = join(homedir(), ".pi", "agent", "worktree-relaunch");
-
-function escapeAppleScriptString(value: string): string {
-	return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
-function buildEnvPrefix(env: Record<string, string | undefined>): string {
-	const entries = Object.entries(env).filter(([, value]) => !!value);
-	return entries.length > 0 ? `${entries.map(([key, value]) => `${key}=${shellQuote(value!)}`).join(" ")} ` : "";
-}
-
-function currentPiCommand(): string {
-	const envPi = process.env.PILEE_PI_BIN || process.env.PI_BIN;
-	if (envPi && existsSync(envPi)) return shellQuote(envPi);
-	const cliPath = process.argv[1] && existsSync(process.argv[1]) ? process.argv[1] : "";
-	if (cliPath) return `${shellQuote(process.execPath)} ${shellQuote(cliPath)}`;
-	const userWrapper = join(homedir(), ".local", "bin", "pi");
-	if (existsSync(userWrapper)) return shellQuote(userWrapper);
-	return "pi";
-}
-
-export function buildWorktreeSessionLaunchCommand(cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}): string {
-	return `cd ${shellQuote(cwd)} && ${buildEnvPrefix(env)}${currentPiCommand()} --session ${shellQuote(sessionFile)}`;
-}
-
-export function buildReplaceCurrentWorktreePanelScript(cwd: string, sessionFile: string, terminalId?: string | null): string {
-	const cmd = escapeAppleScriptString(buildWorktreeSessionLaunchCommand(cwd, sessionFile));
-	const targetTermSelector = terminalId
-		? `set targetTerm to first terminal whose id is "${escapeAppleScriptString(terminalId)}"`
-		: "set targetTerm to focused terminal of selected tab of front window";
-	return `delay 0.8
-tell application "Ghostty"
-  activate
-  ${targetTermSelector}
-  input text "${cmd}" to targetTerm
-  send key "enter" to targetTerm
-end tell`;
-}
-
-async function getGhosttyFocusedTerminalId(pi: ExtensionAPI): Promise<{ terminalId?: string; reason?: string }> {
-	const result = await pi.exec("osascript", ["-e", `tell application "Ghostty" to id of focused terminal of selected tab of front window`]);
-	if (result.code !== 0) return { reason: result.stderr?.trim() || "Ghostty focused terminal id 확인 실패" };
-	const terminalId = result.stdout?.trim();
-	return terminalId ? { terminalId } : { reason: "Ghostty focused terminal id가 비어 있습니다" };
-}
-
-async function planWorktreeActivation(pi: ExtensionAPI, ctx: ExtensionContext): Promise<WorktreeActivationPlan> {
+async function planWorktreeActivation(_pi: ExtensionAPI, ctx: ExtensionContext): Promise<WorktreeActivationPlan> {
 	if (hasSessionSwitchApi(ctx)) return { mode: "switch" };
-	if (!ctx.hasUI) return { mode: "blocked", reason: "현재 tool context에는 session switch API가 없고 UI도 없어 현재 패널 재실행을 준비할 수 없습니다" };
-	if (process.platform !== "darwin" || process.env.TERM_PROGRAM !== "ghostty") {
-		return { mode: "blocked", reason: "현재 tool context에는 session switch API가 없고 Ghostty 현재 패널 재실행 경로도 사용할 수 없습니다" };
-	}
-	const probe = await getGhosttyFocusedTerminalId(pi);
-	if (!probe.terminalId) return { mode: "blocked", reason: probe.reason ?? "Ghostty 현재 패널을 찾지 못했습니다" };
-	return { mode: "current-panel-relaunch", terminalId: probe.terminalId };
+	if (hasRequestedSessionSwitchApi(ctx)) return { mode: "request-switch" };
+	return {
+		mode: "blocked",
+		reason: "현재 context에는 switchSession/requestSessionSwitch API가 없어 안전하게 worktree session으로 전환할 수 없습니다. Ghostty 키보드 주입 fallback은 다른 패널 오염 위험 때문에 사용하지 않습니다.",
+	};
 }
 
 function noToolSwitchBlockedText(action: string, reason?: string, targetPath?: string): string {
 	return [
-		`BLOCKED: ${action}는 현재 패널을 worktree session으로 전환하거나 재실행할 수 없습니다.`,
+		`BLOCKED: ${action}는 현재 패널을 worktree session으로 전환할 수 없습니다.`,
 		reason ? `사유: ${reason}` : undefined,
 		"worktree를 만들거나 전환하지 않았습니다.",
 		"여기서 /wt 재입력 요구, /wt switch 요구, 절대경로/cd 작업 우회는 사용하지 않습니다.",
@@ -913,7 +935,7 @@ function noToolSwitchBlockedText(action: string, reason?: string, targetPath?: s
 
 function toolSwitchFailureText(action: string, reason?: string, targetPath?: string): string {
 	return [
-		`BLOCKED: ${action} 중 worktree session 전환/현재 패널 재실행이 실패했습니다.`,
+		`BLOCKED: ${action} 중 worktree session 전환이 실패했습니다.`,
 		reason ? `사유: ${reason}` : undefined,
 		"현재 세션에서 절대경로로 이어서 작업하지 않습니다.",
 		targetPath ? `생성/대상 worktree: ${targetPath}` : undefined,
@@ -957,79 +979,6 @@ function cleanupSummary(cleanup: WorktreeCreationCleanupResult): string {
 	return `${status} (worktree: ${cleanup.worktreeRemoved ? "removed" : "remaining"}, branch: ${cleanup.branchRemoved ? "removed" : "remaining"})${cleanup.errors.length > 0 ? ` — ${cleanup.errors.join("; ")}` : ""}`;
 }
 
-async function runDetachedAppleScript(pi: ExtensionAPI, script: string) {
-	mkdirSync(WORKTREE_RELAUNCH_DIR, { recursive: true });
-	const scriptPath = join(WORKTREE_RELAUNCH_DIR, `current-panel-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.applescript`);
-	writeFileSync(scriptPath, script);
-	return pi.exec("bash", ["-lc", `nohup osascript ${shellQuote(scriptPath)} >/dev/null 2>&1 &`]);
-}
-
-function ensureSessionHeaderCwd(sessionFile: string, cwd: string): { updated: boolean; error?: string } {
-	try {
-		const raw = readFileSync(sessionFile, "utf8");
-		const lines = raw.split("\n");
-		for (let i = 0; i < lines.length; i++) {
-			const line = lines[i];
-			if (!line.trim()) continue;
-			let entry: any;
-			try { entry = JSON.parse(line); } catch { continue; }
-			if (entry?.type !== "session") continue;
-			if (entry.cwd === cwd) return { updated: false };
-			entry.cwd = cwd;
-			lines[i] = JSON.stringify(entry);
-			writeFileSync(sessionFile, lines.join("\n"));
-			return { updated: true };
-		}
-		return { updated: false, error: "session header를 찾지 못했습니다" };
-	} catch (error) {
-		return { updated: false, error: error instanceof Error ? error.message : String(error) };
-	}
-}
-
-function appendWorktreeCwdBindingEntry(sessionFile: string, wtName: string, wtPath: string, contextLabel = ""): void {
-	const branch = readMeta(wtPath)?.branch ?? "unknown";
-	appendFileSync(sessionFile, `${JSON.stringify({
-		type: "custom_message",
-		customType: "worktree-cwd-binding",
-		content: worktreeCwdBindingMessage(wtName, wtPath, branch, contextLabel),
-		display: true,
-		details: { name: wtName, path: wtPath, branch, contextLabel, activation: "current-panel-relaunch" },
-		id: localSessionEntryId("worktree_cwd"),
-		parentId: null,
-		timestamp: new Date().toISOString(),
-	})}\n`);
-}
-
-async function relaunchCurrentPanelToWorktree(
-	pi: ExtensionAPI,
-	ctx: ExtensionContext,
-	sessionFile: string,
-	wtName: string,
-	wtPath: string,
-	contextLabel = "",
-	plan?: Extract<WorktreeActivationPlan, { mode: "current-panel-relaunch" }>,
-): Promise<{ switched: boolean; reason?: string; mode?: "current-panel-relaunch" }> {
-	const relaunchPlan = plan ?? (await planWorktreeActivation(pi, ctx));
-	if (relaunchPlan.mode !== "current-panel-relaunch") {
-		return { switched: false, reason: relaunchPlan.mode === "blocked" ? relaunchPlan.reason : "현재 패널 재실행 계획이 없습니다" };
-	}
-
-	const header = ensureSessionHeaderCwd(sessionFile, wtPath);
-	if (header.error) ctx.ui.notify(`worktree session cwd header 보정 실패: ${header.error}`, "warning");
-	try {
-		appendWorktreeCwdBindingEntry(sessionFile, wtName, wtPath, contextLabel);
-	} catch (error) {
-		return { switched: false, reason: `worktree cwd binding 기록 실패: ${error instanceof Error ? error.message : String(error)}` };
-	}
-
-	const script = buildReplaceCurrentWorktreePanelScript(wtPath, sessionFile, relaunchPlan.terminalId);
-	const launch = await runDetachedAppleScript(pi, script);
-	if (launch.code !== 0) return { switched: false, reason: launch.stderr?.trim() || "현재 패널 재실행 AppleScript 시작 실패" };
-	ctx.ui.notify(`✓ ${wtName} worktree session으로 현재 패널을 재실행합니다`, "info");
-	ctx.shutdown();
-	return { switched: true, mode: "current-panel-relaunch" };
-}
-
 function markConductorContextLoaded(worktreePath: string): boolean {
 	const contextFile = join(worktreePath, ".pi", "conductor-context.md");
 	if (!existsSync(contextFile)) return false;
@@ -1056,9 +1005,14 @@ function worktreeCwdBindingMessage(wtName: string, wtPath: string, branch: strin
 	].filter(Boolean).join("\n");
 }
 
-async function switchSessionToWorktree(ctx: ExtensionCommandContext, sessionFile: string, wtName: string, wtPath: string, contextLabel = "", options: SwitchSessionToWorktreeOptions = {}) {
+function buildWorktreeSessionSwitchOptions(
+	wtName: string,
+	wtPath: string,
+	contextLabel = "",
+	options: SwitchSessionToWorktreeOptions = {},
+): WorktreeSessionSwitchOptions {
 	const branch = readMeta(wtPath)?.branch ?? "unknown";
-	await (ctx as any).switchSession(sessionFile, {
+	return {
 		cwdOverride: wtPath,
 		withSession: async (newCtx: any) => {
 			newCtx.ui.notify(`✓ ${wtName} (${branch})${contextLabel}`, "info");
@@ -1093,7 +1047,19 @@ async function switchSessionToWorktree(ctx: ExtensionCommandContext, sessionFile
 				);
 			}
 		},
-	});
+	};
+}
+
+async function switchSessionToWorktree(ctx: ExtensionContext, sessionFile: string, wtName: string, wtPath: string, contextLabel = "", options: SwitchSessionToWorktreeOptions = {}) {
+	const switchSession = (ctx as WorktreeSessionSwitchContext).switchSession;
+	if (typeof switchSession !== "function") throw new Error("switchSession API가 없습니다");
+	await switchSession.call(ctx, sessionFile, buildWorktreeSessionSwitchOptions(wtName, wtPath, contextLabel, options));
+}
+
+async function requestSessionSwitchToWorktree(ctx: ExtensionContext, sessionFile: string, wtName: string, wtPath: string, contextLabel = "", options: SwitchSessionToWorktreeOptions = {}) {
+	const requestSessionSwitch = (ctx as WorktreeSessionSwitchContext).requestSessionSwitch;
+	if (typeof requestSessionSwitch !== "function") throw new Error("requestSessionSwitch API가 없습니다");
+	await requestSessionSwitch.call(ctx, sessionFile, buildWorktreeSessionSwitchOptions(wtName, wtPath, contextLabel, options));
 }
 
 async function trySwitchSessionToWorktree(
@@ -1104,16 +1070,17 @@ async function trySwitchSessionToWorktree(
 	wtPath: string,
 	contextLabel = "",
 	activationPlan?: WorktreeActivationPlan,
-): Promise<{ switched: boolean; reason?: string; mode?: "switch" | "current-panel-relaunch" }> {
+): Promise<{ switched: boolean; reason?: string; mode?: "switch" | "request-switch" }> {
 	const plan = activationPlan ?? await planWorktreeActivation(pi, ctx);
 	if (plan.mode === "blocked") return { switched: false, reason: plan.reason };
 
-	if (plan.mode === "current-panel-relaunch") {
-		return relaunchCurrentPanelToWorktree(pi, ctx, sessionFile, wtName, wtPath, contextLabel, plan);
-	}
-
 	try {
-		await switchSessionToWorktree(ctx as ExtensionCommandContext, sessionFile, wtName, wtPath, contextLabel);
+		if (plan.mode === "request-switch") {
+			await requestSessionSwitchToWorktree(ctx, sessionFile, wtName, wtPath, contextLabel);
+			return { switched: true, mode: "request-switch" };
+		}
+
+		await switchSessionToWorktree(ctx, sessionFile, wtName, wtPath, contextLabel);
 		return { switched: true, mode: "switch" };
 	} catch (error) {
 		const reason = error instanceof Error ? error.message : String(error);
@@ -3592,6 +3559,7 @@ async function handleWt(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCon
 // ─── Extension entry ───────────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
+	installRequestSessionSwitchPatch();
 	const configuredRepoLabel = profiledRepoLabel();
 	pi.registerCommand("wt", {
 		description: "Git worktree management — create/list/switch/remove parallel workspaces",
@@ -3631,7 +3599,7 @@ export default function (pi: ExtensionAPI) {
 			`worktree_create may run from P0/P1/P2; treat the current panel conversation as the source unless the user explicitly asks to use the parent panel.`,
 			"If the request mentions hotfix/production/핫픽스, pass hotfix: true. Do not create a development-based hotfix branch.",
 			`Use worktree_create before editing files in configured protected repos (${configuredRepoLabel}) when a new worktree is actually needed. Do not manually run git worktree add.`,
-			"worktree_create must make the current panel land in the real worktree session: use session switch when available, otherwise same-panel relaunch in interactive Ghostty. If neither is possible, stop before creating a worktree and do not ask for /wt fork, /wt switch, or use absolute-path/cd fallback.",
+			"worktree_create must make the current panel land in the real worktree session: use switchSession when available, or requestSessionSwitch for deferred safe switching. If neither API exists, stop before creating a worktree. Never use keyboard/input-text relaunch, /wt re-entry, or absolute-path/cd fallback.",
 		],
 		parameters: Type.Object({
 			repo: Type.Optional(Type.String({ description: `Registered repo name (configured examples: ${configuredRepoLabel}). Auto-detected if omitted.` })),
@@ -3738,7 +3706,7 @@ export default function (pi: ExtensionAPI) {
 			const frameText = framePromotionSummary(framePromotion);
 			const switchResult = await trySwitchSessionToWorktree(pi, ctx, session.sessionFile, name, worktreePath, framePromotionContextLabel(framePromotion), activationPlan);
 			if (switchResult.switched) {
-				const activationText = switchResult.mode === "current-panel-relaunch" ? "현재 패널을 새 worktree session으로 재실행합니다." : "현재 패널을 전환했습니다.";
+				const activationText = switchResult.mode === "request-switch" ? "현재 패널 전환을 안전 지점에 요청했습니다." : "현재 패널을 전환했습니다.";
 				return {
 					content: [{ type: "text", text: `✓ Worktree "${name}" created (${branchName}) at ${worktreePath}.${frameText}${bootstrapText} ${activationText}` }],
 					details: { name, branch: branchName, path: worktreePath, autoSwitched: true, activationMode: switchResult.mode, framePromotion, bootstrap: bootstrapResult },
@@ -3813,7 +3781,7 @@ export default function (pi: ExtensionAPI) {
 
 			const switchResult = await trySwitchSessionToWorktree(pi, ctx, resolved.sessionFile, target.name, target.path, framePromotionContextLabel(resolved.framePromotion), activationPlan);
 			if (switchResult.switched) {
-				const activationText = switchResult.mode === "current-panel-relaunch" ? "현재 패널을 새 worktree session으로 재실행합니다." : "현재 패널을 전환했습니다.";
+				const activationText = switchResult.mode === "request-switch" ? "현재 패널 전환을 안전 지점에 요청했습니다." : "현재 패널을 전환했습니다.";
 				return {
 					content: [{ type: "text", text: `✓ Worktree "${params.name}" (${target.branch})로 ${activationText}` }],
 					details: { name: target.name, branch: target.branch, path: target.path, autoSwitched: true, activationMode: switchResult.mode, sessionFile: resolved.sessionFile, framePromotion: resolved.framePromotion },
@@ -3839,7 +3807,7 @@ export default function (pi: ExtensionAPI) {
 			`worktree_fork may run from P0/P1/P2; treat the current panel conversation as the source unless the user explicitly asks to use the parent panel.`,
 			"If the request mentions hotfix/production/핫픽스, pass hotfix: true. Do not create a development-based hotfix branch.",
 			"The optional context parameter is an additional transfer note, not a replacement for the full transcript unless minimalContext is true.",
-			"worktree_fork must make the current panel land in the real forked worktree session: use session switch when available, otherwise same-panel relaunch in interactive Ghostty. If neither is possible, stop before creating a worktree and do not ask for /wt fork, /wt switch, or use absolute-path/cd fallback.",
+			"worktree_fork must make the current panel land in the real forked worktree session: use switchSession when available, or requestSessionSwitch for deferred safe switching. If neither API exists, stop before creating a worktree. Never use keyboard/input-text relaunch, /wt re-entry, or absolute-path/cd fallback.",
 		],
 		parameters: Type.Object({
 			context: Type.Optional(Type.String({ description: "Optional compact markdown note to attach in addition to the transcript, or the summary handoff when minimalContext is true." })),
@@ -3963,7 +3931,7 @@ export default function (pi: ExtensionAPI) {
 			const contextLabel = `${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}`;
 			const switchResult = await trySwitchSessionToWorktree(pi, ctx, session.sessionFile, name, worktreePath, contextLabel, activationPlan);
 			if (switchResult.switched) {
-				const activationText = switchResult.mode === "current-panel-relaunch" ? "현재 패널을 새 worktree session으로 재실행합니다." : "현재 패널을 전환했습니다.";
+				const activationText = switchResult.mode === "request-switch" ? "현재 패널 전환을 안전 지점에 요청했습니다." : "현재 패널을 전환했습니다.";
 				return {
 					content: [{ type: "text", text: `✓ Worktree "${name}" forked (${branchName}) at ${worktreePath}. Context: ${contextMode}${contextLength ? `, note ${contextLength} chars` : ""}.${frameText}${bootstrapText} ${activationText}` }],
 					details: { name, branch: branchName, path: worktreePath, contextLength, contextMode, autoSwitched: true, activationMode: switchResult.mode, framePromotion, bootstrap: bootstrapResult },

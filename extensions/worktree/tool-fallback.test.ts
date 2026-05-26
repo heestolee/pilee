@@ -13,19 +13,27 @@ test("worktree tools do not expose switch-command fallback", () => {
 	assert.doesNotMatch(source, /switchCommand/);
 });
 
-test("worktree tools block before creation when neither switch nor same-panel relaunch is available", () => {
+test("worktree tools block before creation when neither switch nor requestSessionSwitch is available", () => {
 	assert.match(source, /planWorktreeActivation\(pi, ctx\)/);
 	assert.match(source, /noToolSwitchBlockedText\("worktree_create", activationPlan\.reason\)/);
 	assert.match(source, /noToolSwitchBlockedText\("worktree_fork", activationPlan\.reason\)/);
 	assert.match(source, /noWorktreeCreated: true/);
-	assert.match(source, /Ghostty 현재 패널 재실행/);
+	assert.match(source, /switchSession\/requestSessionSwitch API/);
 	assert.match(source, /절대경로\/cd 작업 우회/);
 });
 
-test("worktree tools can replace the current Ghostty panel without slash-command fallback", () => {
-	assert.match(source, /buildReplaceCurrentWorktreePanelScript/);
-	assert.match(source, /current-panel-relaunch/);
-	assert.match(source, /ctx\.shutdown\(\)/);
+test("worktree tools provide deferred requestSessionSwitch instead of Ghostty keyboard relaunch fallback", () => {
+	assert.match(source, /ExtensionRunner/);
+	assert.match(source, /installRequestSessionSwitchPatch\(\)/);
+	assert.match(source, /createContextWithRequestSessionSwitch/);
+	assert.match(source, /waitForIdleFn/);
+	assert.match(source, /switchSessionHandler\(sessionPath, options\)/);
+	assert.match(source, /requestSessionSwitch/);
+	assert.match(source, /Ghostty 키보드 주입 fallback/);
+	assert.doesNotMatch(source, /buildReplaceCurrentWorktreePanelScript/);
+	assert.doesNotMatch(source, /current-panel-relaunch/);
+	assert.doesNotMatch(source, /to targetTerm/);
+	assert.doesNotMatch(source, /ctx\.shutdown\(\)/);
 	assert.doesNotMatch(source, /setEditorText\([^)]*\/wt switch/);
 });
 
