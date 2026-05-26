@@ -171,7 +171,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [검토 산출물은 다시 열 수 있어야 한다](./artifact-archive-reopenability.md) | active | high | 2026-05-25 | 77307ef | artifact, archive, show-report, archive-command, history, html |
+| [검토 산출물은 다시 열 수 있어야 한다](./artifact-archive-reopenability.md) | active | high | 2026-05-26 | 2b30eb5 | artifact, archive, show-report, archive-command, history, html |
 | [AskUserQuestion은 의사결정 게이트다](./ask-user-question-decision-gates.md) | active | high | 2026-05-13 | ca6dec9 | ask-user-question, tft, decision-gate, question, non-delegable, 질문 |
 | [AskUserQuestion 옵션은 행동 분기를 표현한다](./ask-user-question-option-design.md) | active | high | 2026-05-13 | 9152c35 | ask-user-question, option, wording, ceremony, tft, 질문 |
 | [Atomic evidence workflow는 작은 claim을 증거로 닫는다](./atomic-evidence-workflow.md) | active | high | 2026-05-13 | e6c131d | atomic, evidence, claim, slice, verification, frame |

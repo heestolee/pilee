@@ -32,8 +32,9 @@ source:
   - user-direction:2026-05-09-archive-command-name
   - user-direction:2026-05-11-mcp-digest-first-artifacts
   - user-direction:2026-05-25-session-body-search
-reviewed_at: 2026-05-25
-reviewed_commit: 77307efb89b7ab0d259d394bc012201b930a05a7
+  - user-direction:2026-05-26-session-search-revive-actions
+reviewed_at: 2026-05-26
+reviewed_commit: 2b30eb59931fb6d0b02c4e253f6c0cf9e9e166cb
 related:
   - live-artifact-preview-pattern
   - backlog-source-session-provenance
@@ -81,7 +82,9 @@ artifact 종류가 늘어나면 한 목록에 섞지 않습니다. `/archive`는
 
 세션을 다시 찾는 1차 경로는 수동 분류가 아니라 대화 본문 검색입니다. 사용자는 “부트스트랩”, “verify-report”, “worktree fork”처럼 기억나는 표현으로 이전 대화를 찾고 싶어 하므로, `/archive`는 카드 metadata 검색과 별도로 Pi/Conductor session JSONL의 user/assistant text를 검색해야 합니다.
 
-본문 검색 결과는 전체 raw JSONL을 펼치는 대신 matching snippet, session title, cwd/workspace, P0/P1/Conductor source를 함께 보여줍니다. system/model/tool/thinking payload는 검색·표시 기본 대상에서 제외해 대화 기억을 복구하는 데 집중합니다. 결과 액션은 세션 전문 보기에서 시작하되, 장기적으로는 현재 패널 이어가기, 새 패널 revive, clean continuation 같은 session recovery action으로 이어져야 합니다.
+본문 검색 결과는 전체 raw JSONL을 펼치는 대신 matching snippet, session title, cwd/workspace, P0/P1/Conductor source를 함께 보여줍니다. system/model/tool/thinking payload는 검색·표시 기본 대상에서 제외해 대화 기억을 복구하는 데 집중합니다.
+
+Pi session 검색 결과는 읽기 전용 preview에서 끝나지 않아야 합니다. 기본 CTA는 검색 화면을 유지하는 `새 탭에서 열기`이고, 보조 CTA로 `현재 패널에서 열기`를 제공합니다. 새 탭은 session cwd에서 `pi --session <sessionFile>`을 실행해 `/revive tab`에 가까운 사용감을 제공하고, 현재 패널은 command context의 `switchSession`으로 전환합니다. 원본 Conductor JSONL은 Pi session header/env 계약이 없으므로 직접 reopen action을 노출하지 않고, 세션 전문 보기나 Pi 복구 세션 매칭/clean continuation으로 연결합니다.
 
 수동 classification sidecar는 보조 색인입니다. 분류를 해두지 않았다는 이유로 세션 회수가 실패하면 안 되며, card 검색 placeholder는 metadata 필터임을 명확히 밝혀 대화 본문 검색과 혼동하지 않게 합니다.
 
