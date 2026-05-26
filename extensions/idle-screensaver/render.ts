@@ -62,8 +62,32 @@ export function wrapTextToWidth(text: string, width: number, maxLines: number): 
 	return lines.slice(0, maxLines);
 }
 
+function isMouseTerminalInput(input: string): boolean {
+	return /^\u001b\[<\d+;\d+;\d+[mM]$/.test(input) || input.startsWith("\u001b[M");
+}
+
+function isKnownTerminalNavigationInput(input: string): boolean {
+	const normalized = input.toLowerCase();
+	if (/^(ctrl\+shift\+\[|ctrl\+shift\+\]|ctrl\+\[|ctrl\+\]|cmd\+\d|command\+\d|meta\+\d)$/.test(normalized)) return true;
+	if (input === "\u001b" || input === "\u001d") return true;
+	if (input === "\u001b[I" || input === "\u001b[O") return true;
+	return false;
+}
+
+function hasPrintableInput(input: string): boolean {
+	for (const char of input) {
+		const code = char.codePointAt(0) ?? 0;
+		if (code >= 0x20 && code !== 0x7f) return true;
+	}
+	return false;
+}
+
 export function shouldDismissScreensaver(input: string): boolean {
-	return input.length > 0;
+	if (!input) return false;
+	if (isMouseTerminalInput(input)) return true;
+	if (isKnownTerminalNavigationInput(input)) return false;
+	if (input === "\r" || input === "\n" || input === "\r\n" || input === "\t") return true;
+	return hasPrintableInput(input);
 }
 
 export function createScreensaverDismissController(done: () => void, cleanup?: () => void): { dismiss: (input: string) => boolean; isDismissed: () => boolean } {

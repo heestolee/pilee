@@ -55,13 +55,27 @@ test("assistant preview strips markdown noise before wrapping", () => {
 	assert.equal(preview, "고쳤어. 고친 것 마지막 응답 5줄 표시 shouldDismissScreensaver() 계약");
 });
 
-test("dismiss contract accepts normal keys and escape sequences", () => {
+test("dismiss contract accepts real text input and pointer input", () => {
 	assert.equal(shouldDismissScreensaver("q"), true);
+	assert.equal(shouldDismissScreensaver("한"), true);
 	assert.equal(shouldDismissScreensaver(" "), true);
 	assert.equal(shouldDismissScreensaver("\r"), true);
-	assert.equal(shouldDismissScreensaver("\u001b"), true);
+	assert.equal(shouldDismissScreensaver("\t"), true);
 	assert.equal(shouldDismissScreensaver("\u001b[<0;10;10M"), true);
+	assert.equal(shouldDismissScreensaver("\u001b[<64;10;10M"), true);
 	assert.equal(shouldDismissScreensaver(""), false);
+});
+
+test("dismiss contract ignores terminal navigation shortcuts that switch tabs", () => {
+	assert.equal(shouldDismissScreensaver("\u001b"), false, "Ctrl+Shift+[ / Ctrl+[ should not dismiss");
+	assert.equal(shouldDismissScreensaver("\u001d"), false, "Ctrl+Shift+] / Ctrl+] should not dismiss");
+	assert.equal(shouldDismissScreensaver("ctrl+shift+["), false);
+	assert.equal(shouldDismissScreensaver("ctrl+shift+]"), false);
+	assert.equal(shouldDismissScreensaver("cmd+1"), false);
+	assert.equal(shouldDismissScreensaver("command+9"), false);
+	assert.equal(shouldDismissScreensaver("meta+3"), false);
+	assert.equal(shouldDismissScreensaver("\u001b[I"), false, "terminal focus-in report during tab switch should not dismiss");
+	assert.equal(shouldDismissScreensaver("\u001b[O"), false, "terminal focus-out report during tab switch should not dismiss");
 });
 
 test("dismiss controller closes once and runs cleanup so raw terminal listener cannot leak", () => {
@@ -69,6 +83,7 @@ test("dismiss controller closes once and runs cleanup so raw terminal listener c
 	let cleanupCalls = 0;
 	const controller = createScreensaverDismissController(() => { doneCalls++; }, () => { cleanupCalls++; });
 	assert.equal(controller.dismiss(""), false);
+	assert.equal(controller.dismiss("\u001b"), false);
 	assert.equal(controller.isDismissed(), false);
 	assert.equal(controller.dismiss("q"), true);
 	assert.equal(controller.isDismissed(), true);
