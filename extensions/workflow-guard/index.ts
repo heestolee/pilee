@@ -16,6 +16,8 @@ interface GuardState {
 	explicitHeavy: boolean;
 	explicitMutation: boolean;
 	explicitSingleCommit: boolean;
+	explicitCommitPushOnly: boolean;
+	explicitPrAction: boolean;
 	auditRequired: boolean;
 	summary: string;
 	createdAt: string;
@@ -46,6 +48,7 @@ const HISTORY_FILE = join(PACKAGE_ROOT, "docs", "pilee-history.md");
 const MAX_GUARD_STATES = 80;
 
 const guardBySession = new Map<string, GuardState>();
+const lightPushDoneBySession = new Map<string, boolean>();
 
 const workflowGuardToolSchema = Type.Object({
 	action: Type.Union([
@@ -65,9 +68,13 @@ function sessionKey(ctx: { cwd: string; sessionManager?: { getSessionFile?: () =
 
 function rememberGuardState(key: string, state: GuardState) {
 	guardBySession.set(key, state);
+	lightPushDoneBySession.delete(key);
 	if (guardBySession.size <= MAX_GUARD_STATES) return;
 	const oldest = [...guardBySession.entries()].sort((a, b) => Date.parse(a[1].createdAt) - Date.parse(b[1].createdAt))[0];
-	if (oldest) guardBySession.delete(oldest[0]);
+	if (oldest) {
+		guardBySession.delete(oldest[0]);
+		lightPushDoneBySession.delete(oldest[0]);
+	}
 }
 
 function normalizeText(text: string): string {
@@ -103,10 +110,22 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 	]);
 	const verifyReport = explicitHeavy && hasAny(normalized, [/verify[- ]?report|검증\s*리포트|캡처\s*리포트/]);
 	const knowledge = !statusNote && hasAny(normalized, [/ember|knowledge|불씨|지식|stale|freshness/]);
-	const ship = !statusNote && hasAny(normalized, [/\bpr\b|pull request|commit|push|merge|ship|릴리즈/]);
+	const explicitPrAction = !statusNote && hasAny(normalized, [/\bpr\b|pull request|create-pr|pr\s*(생성|만들|올려|확인|체크)|리뷰\s*요청/]);
+	const ship = !statusNote && hasAny(normalized, [/\bpr\b|pull request|commit|push|merge|ship|릴리즈|커밋|푸시/]);
 	const hotfix = !statusNote && hasAny(normalized, [/hotfix|핫픽스|간단|문구|오타|copy|카피|one[- ]?line|한\s*줄|작은|small|quick|빨리|이거\s*하나/]);
 	const noMutation = hasAny(normalized, [/수정하지|고치지|변경하지|건드리지|커밋하지|푸시하지|하지\s*마|하지마|no\s*(edit|change|commit|push)|do\s*not\s*(edit|change|commit|push)/]);
 	const implement = !statusNote && !noMutation && hasAny(normalized, [/구현|수정|고쳐|고치|바꿔|변경|추가|삭제|반영|패치|생성|작성|만들|implement|fix|change|add|remove|update|create/]);
+	const readOnlyShipSignal = hasAny(normalized, [/확인|상태|왜|원인|알려|조회|봐줘|보여|status|check|view/]);
+	const explicitCommitPushOnly = ship && !implement && !noMutation && !readOnlyShipSignal && hasAny(normalized, [
+		/커밋\s*[\/]?\s*푸시/,
+		/커밋푸시/,
+		/커밋.*푸시/,
+		/푸시.*커밋/,
+		/commit\s*(?:and|&|\/)?\s*push/,
+		/push\s*(?:and|&|\/)?\s*commit/,
+		/(?:그냥|걍)?\s*푸시(?:해|해줘|하자|만)?/,
+		/\bpush\b\s*(?:it|this|해|해줘|하자|please|now)/,
+	]);
 	const investigate = !statusNote && hasAny(normalized, [/확인|봐줘|살펴|분석|조사|찾아|왜|원인|검토|audit|오디트|알아봐/]);
 	const answerOnly = !statusNote && hasAny(normalized, [/설명|알려줘|어떻게|무슨\s*뜻|질문|궁금|정리해줘/]) && !implement && !ship;
 
@@ -116,6 +135,7 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 	else if (verifyReport) intent = "verify_report";
 	else if (knowledge && implement) intent = "knowledge";
 	else if (hotfix && implement) intent = "hotfix";
+	else if (explicitCommitPushOnly) intent = "ship";
 	else if (ship && implement) intent = "ship";
 	else if (implement) intent = "implement";
 	else if (investigate) intent = "investigate";
@@ -124,11 +144,11 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 
 	let weight: WorkflowWeight = "none";
 	if (intent === "verify_report" || explicitHeavy) weight = "full";
-	else if (intent === "hotfix") weight = "light";
+	else if (intent === "hotfix" || (intent === "ship" && explicitCommitPushOnly)) weight = "light";
 	else if (intent === "implement" || intent === "ship" || intent === "knowledge") weight = "standard";
 	else if (intent === "investigate" || intent === "audit" || intent === "answer") weight = "none";
 
-	const explicitMutation = !statusNote && !noMutation && (implement || ship || hasAny(normalized, [/작업해|진행해|만들어|적용해|커밋|푸시/]));
+	const explicitMutation = !statusNote && !noMutation && (implement || ship || explicitCommitPushOnly || hasAny(normalized, [/작업해|진행해|만들어|적용해|커밋|푸시/]));
 	const explicitSingleCommit = hasAny(normalized, [/단일\s*커밋|한\s*커밋|one\s*commit|single\s*commit|squash/]);
 
 	const summary = [
@@ -139,7 +159,15 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 		!explicitMutation ? "mutation=not-requested" : null,
 	].filter(Boolean).join(" · ");
 
-	return { prompt, intent, weight, explicitHeavy, explicitMutation, explicitSingleCommit, auditRequired, summary, createdAt: new Date().toISOString(), sessionFile };
+	return { prompt, intent, weight, explicitHeavy, explicitMutation, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, auditRequired, summary, createdAt: new Date().toISOString(), sessionFile };
+}
+
+function fastPaceBudgetSeconds(state: GuardState): number | undefined {
+	if (state.intent === "status_note") return undefined;
+	if (state.intent === "answer" || state.intent === "investigate" || state.intent === "audit" || state.weight === "light") return 30;
+	if (state.weight === "standard") return 60;
+	if (state.weight === "full") return 120;
+	return undefined;
 }
 
 function buildSystemPrompt(state: GuardState): string {
@@ -149,6 +177,14 @@ function buildSystemPrompt(state: GuardState): string {
 		"- Treat this as a guardrail generated from the user request, not as optional style advice.",
 		"- If the classification seems wrong, ask one short clarifying question before mutating files or starting heavy workflow.",
 	];
+
+	const paceSeconds = fastPaceBudgetSeconds(state);
+	if (paceSeconds) {
+		lines.push(
+			`- FAST RESPONSE PACE: after each tool result, use a ${paceSeconds}-second decision budget. Choose one of: next narrow tool call, interim conclusion, scope-gate question, or final report. Do not silently spend minutes deciding the next step.`,
+			"- Tool exploration discipline: do not call broad tool list/schema/full-content discovery (`mcp list`, broad `describe`, `get_mcp_content`, raw transcript/context mining) unless the user explicitly asks about tools, a direct call fails from schema uncertainty, or the current evidence cannot identify the required tool.",
+		);
+	}
 
 	if (state.intent === "status_note") {
 		lines.push(
@@ -175,11 +211,22 @@ function buildSystemPrompt(state: GuardState): string {
 	}
 	if (state.weight === "light") {
 		lines.push(
-			"- HARD LIGHT PATH: default to scope lock → focused change → nearest validation → atomic commit → push/PR status check. Do not start worker fan-out, stress interview, capture-heavy verify report, or deep session/context mining unless the user explicitly asks or a new risk axis appears.",
+			"- HARD LIGHT PATH: default to scope lock → focused change → nearest validation → atomic commit → push. Do not start worker fan-out, stress interview, capture-heavy verify report, or deep session/context mining unless the user explicitly asks or a new risk axis appears.",
 			"- Light PR/ship path: use `GIT_OPTIONAL_LOCKS=0 git status --short --branch`, current diff, recent commits, and the user's explicit intent. Do not run full transcript/session extraction just to fill templates.",
 			"- For tiny copy/label hotfixes with explicit paths, prefer `auto_commit action=quick` over a heavy commit_plan roundtrip when using auto_commit.",
 			"- If a commit tool reports `committed_not_pushed` or `push: skipped` and the user did not explicitly ask to hold push, immediately run `git push` before the final response.",
 		);
+		if (!state.explicitPrAction) {
+			lines.push(
+				"- HARD LIGHT PUSH TERMINAL PATH: when a light task reaches a successful push, stop tool use immediately. Do not run extra `git status`, `git log`, `gh pr view`, `work_context`, or PR/branch checks unless the user explicitly asked for PR/status work or push failed.",
+				"- Final response after successful push must be one short Korean line like `완료: <sha> <message>`.",
+			);
+		}
+		if (state.explicitCommitPushOnly) {
+			lines.push(
+				"- The latest user request explicitly asks to commit/push existing work. Obey that request; do not reinterpret it as a broader implementation, PR audit, or verification task.",
+			);
+		}
 	}
 	if (state.explicitMutation) {
 		lines.push(
@@ -219,6 +266,31 @@ function isMutatingBash(command: string): boolean {
 
 function isGitCommitCommand(command: string): boolean {
 	return /(^|[;&|]\s*)git\s+commit\b/.test(command.replace(/\s+/g, " "));
+}
+
+function isGitPushCommand(command: string): boolean {
+	return /(^|[;&|]\s*)git\s+push\b/.test(command.replace(/\s+/g, " "));
+}
+
+function toolResultSucceeded(event: any): boolean {
+	if (event.isError) return false;
+	const code = event.details?.code ?? event.details?.exitCode ?? event.details?.statusCode;
+	if (typeof code === "number") return code === 0;
+	const text = (event.content ?? []).map((item: any) => String(item?.text ?? "")).join("\n");
+	if (/Command exited with code\s+[1-9]/u.test(text)) return false;
+	return true;
+}
+
+function toolResultCommand(event: any): string {
+	return String(event.input?.command ?? event.details?.command ?? event.toolCall?.input?.command ?? "");
+}
+
+function autoCommitPushed(details: any): boolean {
+	return details?.completion === "committed_and_pushed" || details?.pushed === true || details?.push?.status === "pushed";
+}
+
+function shouldStopAfterPush(state: GuardState): boolean {
+	return state.weight === "light" && !state.explicitPrAction;
 }
 
 function isExplicitCommitBypass(command: string): boolean {
@@ -429,6 +501,20 @@ function appendWorkflowGuardResult(event: any, text: string, extraDetails: Recor
 	};
 }
 
+function fastPaceToolResultNote(state: GuardState, event: any): string | undefined {
+	const seconds = fastPaceBudgetSeconds(state);
+	if (!seconds) return undefined;
+	if (event.toolName === "auto_commit" || event.toolName === "tui_ask" || event.toolName === "frame_studio") return undefined;
+	if (event.toolName === "bash" && isGitPushCommand(toolResultCommand(event))) return undefined;
+	return [
+		"",
+		"[workflow_guard] fastPaceRequired: true",
+		`- After this tool result, use a ${seconds}-second decision budget.`,
+		"- Choose one: next narrow tool call, interim conclusion, scope-gate question, or final report.",
+		"- Avoid silent tool/schema/context exploration. If evidence is enough, report now; if not, state the exact remaining gap.",
+	].join("\n");
+}
+
 function actionContinuityNote(kind: string, details: any): string | undefined {
 	if (kind === "auto_commit") {
 		const hasCommit = Array.isArray(details?.commits) && details.commits.length > 0;
@@ -495,6 +581,20 @@ export default function workflowGuard(pi: ExtensionAPI) {
 			return { block: true, reason: statusNoteToolBlockReason(state, event.toolName) };
 		}
 
+		if (lightPushDoneBySession.get(sessionKey(ctx)) && event.toolName !== "workflow_guard") {
+			const command = event.toolName === "bash" ? String(event.input?.command ?? "") : "";
+			const isExplicitBypass = event.toolName === "bash" && /WORKFLOW_GUARD_ALLOW_POST_PUSH_CHECK=1/.test(command);
+			if (!isExplicitBypass) {
+				return {
+					block: true,
+					reason: [
+						"workflow_guard blocked extra tool use: light task already reached successful push.",
+						"Report completion now in one short Korean line. Do not run extra status/log/PR/work_context checks unless the user asks a new question.",
+					].join("\n"),
+				};
+			}
+		}
+
 		if ((event.toolName === "edit" || event.toolName === "write") && !isTempPath(String(event.input?.path ?? ""))) {
 			const reason = mutationBlockReason(state, event.toolName);
 			if (reason) return { block: true, reason };
@@ -547,11 +647,35 @@ export default function workflowGuard(pi: ExtensionAPI) {
 		return undefined;
 	});
 
-	pi.on("tool_result", async (event) => {
-		if (event.toolName !== "tui_ask" && event.toolName !== "frame_studio" && event.toolName !== "auto_commit") return undefined;
-		const note = actionContinuityNote(event.toolName, event.details);
+	pi.on("tool_result", async (event, ctx) => {
+		const state = ctx ? guardBySession.get(sessionKey(ctx)) : undefined;
+		if (ctx && state) {
+			const command = toolResultCommand(event);
+			const pushed = event.toolName === "bash"
+				? isGitPushCommand(command) && toolResultSucceeded(event)
+				: event.toolName === "auto_commit" && autoCommitPushed(event.details);
+			if (shouldStopAfterPush(state) && pushed) {
+				lightPushDoneBySession.set(sessionKey(ctx), true);
+				const note = [
+					"",
+					"[workflow_guard] terminalActionRequired: true",
+					"- Light task reached successful push.",
+					"- Stop tool use now. Do not run extra `git status`, `git log`, `gh pr view`, `work_context`, or PR/branch checks.",
+					"- Final response must be one short Korean completion line, e.g. `완료: <sha> <message>`.",
+				].join("\n");
+				return appendWorkflowGuardResult(event, note, { terminalActionRequired: true, sourceTool: event.toolName });
+			}
+		}
+
+		const continuityNote = actionContinuityNote(event.toolName, event.details);
+		const paceNote = state ? fastPaceToolResultNote(state, event) : undefined;
+		const note = [continuityNote, paceNote].filter(Boolean).join("\n");
 		if (!note) return undefined;
-		return appendWorkflowGuardResult(event, note, { nextActionRequired: true, sourceTool: event.toolName });
+		return appendWorkflowGuardResult(event, note, {
+			nextActionRequired: Boolean(continuityNote),
+			fastPaceRequired: Boolean(paceNote),
+			sourceTool: event.toolName,
+		});
 	});
 
 	pi.registerTool({

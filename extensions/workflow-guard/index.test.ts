@@ -54,6 +54,32 @@ test("investigation prompts lock scope and require expansion handoff", async () 
 	assert.match(start.systemPrompt, /Progress heartbeat/);
 	assert.match(start.systemPrompt, /at least every 3 minutes/);
 	assert.match(start.systemPrompt, /crash\/log → worktree progress/);
+	assert.match(start.systemPrompt, /FAST RESPONSE PACE/);
+	assert.match(start.systemPrompt, /30-second decision budget/);
+	assert.match(start.systemPrompt, /Tool exploration discipline/);
+
+	const result = await hooks.tool_result({
+		toolName: "mcp",
+		content: [{ type: "text", text: "issue detail" }],
+		details: {},
+	}, ctx);
+	assert.equal(result.details.workflowGuard.fastPaceRequired, true);
+	assert.match(result.content.at(-1).text, /30-second decision budget/);
+	assert.match(result.content.at(-1).text, /next narrow tool call/);
+});
+
+test("workflow weight controls fast response pace budget", async () => {
+	const { hooks, ctx } = createHarness();
+	const standard = await hooks.before_agent_start({ prompt: "결제 플로우 수정해줘", systemPrompt: "base" }, ctx);
+	assert.match(standard.systemPrompt, /intent=implement · weight=standard/);
+	assert.match(standard.systemPrompt, /60-second decision budget/);
+
+	const full = await hooks.before_agent_start({ prompt: "full report로 전체 검증해줘", systemPrompt: "base" }, ctx);
+	assert.match(full.systemPrompt, /weight=full/);
+	assert.match(full.systemPrompt, /120-second decision budget/);
+
+	const status = await hooks.before_agent_start({ prompt: "[dependency-bootstrap] READY — frontend 준비 완료", systemPrompt: "base" }, ctx);
+	assert.doesNotMatch(status.systemPrompt, /FAST RESPONSE PACE/);
 });
 
 test("workflow drag prompts enter audit path", async () => {
@@ -99,6 +125,68 @@ test("worktree cwd binding messages are status notes", async () => {
 	const editBlock = await hooks.tool_call({ toolName: "edit", input: { path: "/repo/file.ts" } }, ctx);
 	assert.equal(editBlock?.block, true);
 	assert.match(editBlock.reason, /Status\/readiness\/context-binding notes/);
+});
+
+test("push status questions stay read-only instead of commit-push terminal path", async () => {
+	const { hooks, ctx } = createHarness();
+	const start = await hooks.before_agent_start({ prompt: "push 상태 확인해줘", systemPrompt: "base" }, ctx);
+
+	assert.match(start.systemPrompt, /intent=investigate/);
+	assert.match(start.systemPrompt, /HARD PATH/);
+	assert.doesNotMatch(start.systemPrompt, /HARD LIGHT PUSH TERMINAL PATH/);
+});
+
+test("light commit-push prompt uses push terminal path", async () => {
+	const { hooks, ctx } = createHarness();
+	const start = await hooks.before_agent_start({ prompt: "작은 문구만 수정하고 커밋푸시해줘", systemPrompt: "base" }, ctx);
+
+	assert.match(start.systemPrompt, /intent=hotfix · weight=light/);
+	assert.match(start.systemPrompt, /HARD LIGHT PUSH TERMINAL PATH/);
+	assert.match(start.systemPrompt, /Final response after successful push/);
+	assert.doesNotMatch(start.systemPrompt, /Soft slice commit rhythm/);
+
+	const commitCommand = await hooks.tool_call({ toolName: "bash", input: { command: "git add a && git commit -m 'fix: test' && git push" } }, ctx);
+	assert.equal(commitCommand, undefined);
+});
+
+test("light task stops tools after successful push", async () => {
+	const { hooks, ctx } = createHarness();
+	await hooks.before_agent_start({ prompt: "작은 문구만 수정하고 커밋푸시해줘", systemPrompt: "base" }, ctx);
+
+	const result = await hooks.tool_result({
+		toolName: "bash",
+		input: { command: "git push" },
+		content: [{ type: "text", text: "To https://github.com/example/repo.git" }],
+		details: { code: 0 },
+	}, ctx);
+
+	assert.equal(result.details.workflowGuard.terminalActionRequired, true);
+	assert.match(result.content.at(-1).text, /Light task reached successful push/);
+
+	const statusBlock = await hooks.tool_call({ toolName: "bash", input: { command: "git status --short --branch && git log --oneline -3" } }, ctx);
+	assert.equal(statusBlock?.block, true);
+	assert.match(statusBlock.reason, /light task already reached successful push/);
+
+	const workContextBlock = await hooks.tool_call({ toolName: "work_context", input: { action: "checkpoint" } }, ctx);
+	assert.equal(workContextBlock?.block, true);
+});
+
+test("explicit PR light path can continue after push", async () => {
+	const { hooks, ctx } = createHarness();
+	const start = await hooks.before_agent_start({ prompt: "/create-pr hotfix/foo 생성해줘", systemPrompt: "base" }, ctx);
+	assert.match(start.systemPrompt, /intent=hotfix · weight=light/);
+	assert.doesNotMatch(start.systemPrompt, /HARD LIGHT PUSH TERMINAL PATH/);
+
+	const result = await hooks.tool_result({
+		toolName: "bash",
+		input: { command: "git push" },
+		content: [{ type: "text", text: "To https://github.com/example/repo.git" }],
+		details: { code: 0 },
+	}, ctx);
+	assert.equal(result, undefined);
+
+	const prCommand = await hooks.tool_call({ toolName: "bash", input: { command: "gh pr view --json url" } }, ctx);
+	assert.equal(prCommand, undefined);
 });
 
 test("auto_commit push skipped result requires immediate push follow-up", async () => {

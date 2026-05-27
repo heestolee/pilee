@@ -41,7 +41,7 @@ git log --oneline --decorate -5
 - branch 인자가 있으면 해당 branch로 전환하거나 새로 만든다.
 - base/main/development 브랜치에서 직접 push하려는 상황이면 프로젝트 규칙을 확인한다. 위험하면 멈춘다.
 - unrelated dirty file은 건드리지 않는다. stage는 요청과 직접 관련된 파일만 한다.
-- 단일 문구/CTA/작은 리뷰 반영 같은 light ship은 subagent/self-healing/verify-report를 기본 실행하지 않는다. focused edit → 가까운 lint/diff-check → commit → push → PR 상태 확인으로 닫는다.
+- 단일 문구/CTA/작은 리뷰 반영 같은 light ship은 subagent/self-healing/verify-report를 기본 실행하지 않는다. focused edit → 가까운 lint/diff-check → commit → push로 닫는다. PR 상태 확인은 사용자가 명시했거나 push 실패·rejected 때만 한다.
 - `index.lock`이 나오면 먼저 `lsof <index.lock>`로 소유자를 확인한다. 소유자가 없으면 고아 lock으로 보고 제거 후 재시도한다. 단순 status 확인은 `GIT_OPTIONAL_LOCKS=0`를 우선한다.
 
 ### 2. 의도 단위 커밋 계획
@@ -142,6 +142,8 @@ git push -u origin "$(git branch --show-current)"
 ```
 
 이미 upstream이 있으면 일반 `git push`도 가능하다. 커밋 도구나 `auto_commit`이 `push: skipped`를 반환했으면, 사용자가 명시적으로 push 보류를 말하지 않은 한 바로 이 단계를 실행한 뒤 최종 보고한다.
+
+PR/status 확인을 사용자가 명시하지 않은 light ship에서는 push 성공 출력이 terminal condition이다. 사용자가 불만을 표한 뒤 말하는 “걍 커밋푸시해” 같은 탈출 문구를 기다리지 말고, 성공한 push 직후 추가 `git status`, `git log`, `gh pr view`, work_context checkpoint를 실행하지 않은 채 한 줄 완료 보고로 멈춘다.
 
 ### 7. Final Report
 

@@ -107,11 +107,13 @@ If slice 1 fails, you discover it before investing in slices 2 and 3.
 
 | 무게 | 신호 | 절차 |
 |---|---|---|
-| light | 파일 1~2개, route/role/data 1개, side effect 없음 | `GIT_OPTIONAL_LOCKS=0 git status` → focused 수정 → 가장 가까운 검증 1개 → 커밋 → push → PR/branch 확인 |
+| light | 파일 1~2개, route/role/data 1개, side effect 없음 | `GIT_OPTIONAL_LOCKS=0 git status` → focused 수정 → 가장 가까운 검증 1개 → 커밋 → push. PR/branch 확인은 사용자가 명시했거나 push 실패·rejected 때만 |
 | standard | UI/BE/event 중 2~5개 축 | frame/verify 또는 verify-report를 축 수만큼 사용 |
 | full | 다중 role/viewport/before-after/DB/정책 판단 | TFT + worker fan-out + report를 명시 계획 뒤에 사용 |
 
 큰 절차를 쓰는 이유를 한 문장으로 설명할 수 없으면 절차를 줄인다. 반대로 light로 시작했는데 검증 축이 늘어나면 그때 standard/full로 승격한다. 단일 문구/CTA/작은 리뷰 반영에서는 self-healing, stress-interview, subagent fan-out, capture-heavy verify-report를 기본 실행하지 않는다.
+
+Tool result 이후의 판단 시간도 무게에 맞춘다. none/light 판별·운영 triage는 30초 안에 다음 좁은 tool call, 중간 결론, scope-gate 질문, 최종 보고 중 하나로 전환한다. standard는 60초, full은 120초를 기본 예산으로 삼고, 그 이상 조용히 고민해야 하면 현재 결론과 남은 gap을 먼저 보고한다.
 
 ### Simplicity First
 
