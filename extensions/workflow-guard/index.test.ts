@@ -216,3 +216,70 @@ test("auto_commit committed_not_pushed result requires immediate push follow-up"
 	assert.equal(result.details.workflowGuard.nextActionRequired, true);
 	assert.match(result.content.at(-1).text, /push is not complete: failed/);
 });
+
+test("validation wrapper fan-out commands are blocked before broad suite execution", async () => {
+	const { hooks, ctx } = createHarness();
+	const start = await hooks.before_agent_start({ prompt: "스팟 리뷰 답글 기능 남은 작업 구현해줘", systemPrompt: "base" }, ctx);
+
+	assert.match(start.systemPrompt, /Validation command fan-out discipline/);
+	assert.match(start.systemPrompt, /Do not assume `pnpm <script> -- <path>` narrows/);
+
+	const webTestBlock = await hooks.tool_call({
+		toolName: "bash",
+		input: { command: "cd frontend && pnpm -F web test -- domain/travel/subdomain/spot/SpotReviewAdminReply.test.tsx" },
+	}, ctx);
+	assert.equal(webTestBlock?.block, true);
+	assert.match(webTestBlock.reason, /validation wrapper fan-out risk/);
+	assert.match(webTestBlock.reason, /pnpm vitest run/);
+
+	const migrationLintBlock = await hooks.tool_call({
+		toolName: "bash",
+		input: { command: "cd backend && pnpm lint:migration-algorithm -- apps/trip/migrations/20260527042440-add-display-author-type.js" },
+	}, ctx);
+	assert.equal(migrationLintBlock?.block, true);
+	assert.match(migrationLintBlock.reason, /package-script wrappers can ignore/);
+
+	const flagOnlyWrapper = await hooks.tool_call({
+		toolName: "bash",
+		input: { command: "cd frontend && pnpm -F web test -- --reporter=verbose" },
+	}, ctx);
+	assert.equal(flagOnlyWrapper, undefined);
+
+	const directVitest = await hooks.tool_call({
+		toolName: "bash",
+		input: { command: "cd frontend/apps/web && pnpm vitest run domain/travel/subdomain/spot/SpotReviewAdminReply.test.tsx" },
+	}, ctx);
+	assert.equal(directVitest, undefined);
+});
+
+test("package resolve failures gate broad wildcard workspace bootstrap", async () => {
+	const { hooks, ctx } = createHarness();
+	await hooks.before_agent_start({ prompt: "스팟 리뷰 답글 기능 남은 작업 구현해줘", systemPrompt: "base" }, ctx);
+
+	const firstFailure = await hooks.tool_result({
+		toolName: "bash",
+		input: { command: "cd frontend/apps/web && pnpm vitest run domain/foo.test.tsx" },
+		content: [{ type: "text", text: 'Error: Failed to resolve entry for package "@creatrip/utils".' }],
+		details: { code: 1 },
+	}, ctx);
+	assert.equal(firstFailure.details.workflowGuard.validationBootstrapScopeGate, true);
+	assert.match(firstFailure.content.at(-1).text, /narrowRecoveryOnly/);
+	assert.match(firstFailure.content.at(-1).text, /@creatrip\/utils/);
+
+	const broadBuildBlock = await hooks.tool_call({
+		toolName: "bash",
+		input: { command: "cd frontend && pnpm turbo build --filter='@creatrip*'" },
+	}, ctx);
+	assert.equal(broadBuildBlock?.block, true);
+	assert.match(broadBuildBlock.reason, /broad workspace bootstrap\/build/);
+	assert.match(broadBuildBlock.reason, /WORKFLOW_GUARD_ALLOW_BROAD_BOOTSTRAP=1/);
+
+	const secondFailure = await hooks.tool_result({
+		toolName: "bash",
+		input: { command: "cd frontend/apps/web && pnpm vitest run domain/foo.test.tsx" },
+		content: [{ type: "text", text: 'Error: Failed to resolve entry for package "@creatrip/bridge".' }],
+		details: { code: 1 },
+	}, ctx);
+	assert.match(secondFailure.content.at(-1).text, /scopeGateRequired/);
+	assert.match(secondFailure.content.at(-1).text, /Second package\/module resolve failure/);
+});

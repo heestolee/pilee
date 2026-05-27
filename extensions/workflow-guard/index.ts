@@ -49,6 +49,7 @@ const MAX_GUARD_STATES = 80;
 
 const guardBySession = new Map<string, GuardState>();
 const lightPushDoneBySession = new Map<string, boolean>();
+const packageResolveFailuresBySession = new Map<string, { count: number; packages: string[] }>();
 
 const workflowGuardToolSchema = Type.Object({
 	action: Type.Union([
@@ -69,11 +70,13 @@ function sessionKey(ctx: { cwd: string; sessionManager?: { getSessionFile?: () =
 function rememberGuardState(key: string, state: GuardState) {
 	guardBySession.set(key, state);
 	lightPushDoneBySession.delete(key);
+	packageResolveFailuresBySession.delete(key);
 	if (guardBySession.size <= MAX_GUARD_STATES) return;
 	const oldest = [...guardBySession.entries()].sort((a, b) => Date.parse(a[1].createdAt) - Date.parse(b[1].createdAt))[0];
 	if (oldest) {
 		guardBySession.delete(oldest[0]);
 		lightPushDoneBySession.delete(oldest[0]);
+		packageResolveFailuresBySession.delete(oldest[0]);
 	}
 }
 
@@ -178,6 +181,14 @@ function buildSystemPrompt(state: GuardState): string {
 		"- If the classification seems wrong, ask one short clarifying question before mutating files or starting heavy workflow.",
 	];
 
+	if (state.intent !== "status_note") {
+		lines.push(
+			"- Validation command fan-out discipline: before running lint/test/type-check/build/bootstrap, predict the actual fan-out in files/packages. Prefer direct executables with explicit paths over package-script wrappers when narrowing matters.",
+			"- Do not assume `pnpm <script> -- <path>` narrows the script. If a wrapper script might contain fixed globs or ignore args, inspect package.json or use a direct command such as `pnpm exec eslint <file>` / `pnpm vitest run <file>`.",
+			"- Whole app/repo/workspace validation or wildcard package builds require a one-line reason tied to the current diff. Dependency/bootstrap recovery gets one narrow package-level attempt; after a second missing package/module signal, stop and report BLOCKED or ask before broad workspace build.",
+		);
+	}
+
 	const paceSeconds = fastPaceBudgetSeconds(state);
 	if (paceSeconds) {
 		lines.push(
@@ -270,6 +281,84 @@ function isGitCommitCommand(command: string): boolean {
 
 function isGitPushCommand(command: string): boolean {
 	return /(^|[;&|]\s*)git\s+push\b/.test(command.replace(/\s+/g, " "));
+}
+
+function validationWrapperBypass(command: string): boolean {
+	return /WORKFLOW_GUARD_ALLOW_WRAPPER_FANOUT=1|workflow-guard:allow-wrapper-fanout|workflow_guard:allow_wrapper_fanout/.test(command);
+}
+
+function broadBootstrapBypass(command: string): boolean {
+	return /WORKFLOW_GUARD_ALLOW_BROAD_BOOTSTRAP=1|workflow-guard:allow-broad-bootstrap|workflow_guard:allow_broad_bootstrap/.test(command);
+}
+
+function hasPathLikeArgAfterDoubleDash(command: string): boolean {
+	const after = command.split(/\s--\s/u).slice(1).join(" -- ");
+	return after.split(/\s+/u).filter(Boolean).some((arg) => !arg.startsWith("-") || /[/.]/u.test(arg));
+}
+
+function isTargetedValidationWrapperCommand(command: string): boolean {
+	const compact = command.replace(/\s+/g, " ").trim();
+	if (!/\bpnpm\b/.test(compact) || !/\s--\s+\S/.test(compact) || !hasPathLikeArgAfterDoubleDash(compact)) return false;
+	return /(?:^|[;&|]\s*)pnpm\s+(?:--filter|-F)\s+\S+\s+(?:\S*?(?:test|lint|type-?check|build|migration)\S*)\s+--\s+\S/.test(compact)
+		|| /(?:^|[;&|]\s*)pnpm\s+(?:\S*?(?:test|lint|type-?check|build|migration)\S*)\s+--\s+\S/.test(compact);
+}
+
+function isBroadWildcardWorkspaceBuildCommand(command: string): boolean {
+	const compact = command.replace(/['"]/g, "").replace(/\s+/g, " ").trim();
+	return /(?:^|[;&|]\s*)(?:pnpm\s+)?turbo\s+build\b/.test(compact)
+		&& /--filter(?:=|\s+)@?[^\s]*\*/.test(compact);
+}
+
+function validationWrapperBlockReason(command: string): string {
+	return [
+		"workflow_guard blocked validation wrapper fan-out risk.",
+		"The command looks targeted, but package-script wrappers can ignore `-- <path>` or contain fixed broad globs.",
+		`Command: ${command}`,
+		"Inspect package.json first or use the direct executable with explicit paths, e.g. `pnpm exec eslint <file>` or `pnpm vitest run <file>`.",
+		"If you intentionally want the wrapper's full fan-out, retry with WORKFLOW_GUARD_ALLOW_WRAPPER_FANOUT=1 and state the reason.",
+	].join("\n");
+}
+
+function broadBootstrapBlockReason(command: string, failures: { count: number; packages: string[] } | undefined): string {
+	const packages = failures?.packages.length ? failures.packages.join(", ") : "unknown package";
+	return [
+		"workflow_guard blocked broad workspace bootstrap/build after package resolve failure.",
+		`Observed package/module resolve failures: ${packages}.`,
+		`Command: ${command}`,
+		"Use one narrow package-level recovery, or stop and report BLOCKED/ask before wildcard workspace build.",
+		"If this broad build is explicitly required, retry with WORKFLOW_GUARD_ALLOW_BROAD_BOOTSTRAP=1 and state the reason.",
+	].join("\n");
+}
+
+function packageResolveFailurePackages(text: string): string[] {
+	const packages = new Set<string>();
+	const patterns = [
+		/Failed to resolve entry for package ["']([^"']+)["']/g,
+		/Cannot find module ["']([^"']+)["']/g,
+	];
+	for (const pattern of patterns) {
+		for (const match of text.matchAll(pattern)) {
+			const pkg = match[1];
+			if (pkg?.startsWith("@")) packages.add(pkg.split("/").slice(0, 2).join("/"));
+			else if (pkg) packages.add(pkg);
+		}
+	}
+	return [...packages];
+}
+
+function packageResolveFailureNote(sessionRecord: { count: number; packages: string[] }): string {
+	const packages = sessionRecord.packages.length ? sessionRecord.packages.join(", ") : "unknown package";
+	const severity = sessionRecord.count >= 2 ? "scopeGateRequired" : "narrowRecoveryOnly";
+	const next = sessionRecord.count >= 2
+		? "Second package/module resolve failure observed. Stop broad recovery; report BLOCKED or ask before workspace-wide build/bootstrap."
+		: "One narrow package-level recovery is allowed. Do not run wildcard workspace build/bootstrap as the next step.";
+	return [
+		"",
+		`[workflow_guard] validationBootstrapScopeGate: ${severity}`,
+		`- Package/module resolve failure count in this turn: ${sessionRecord.count} (${packages}).`,
+		`- ${next}`,
+		"- If you continue, state the exact package/file fan-out before the next validation/bootstrap command.",
+	].join("\n");
 }
 
 function toolResultSucceeded(event: any): boolean {
@@ -616,6 +705,14 @@ export default function workflowGuard(pi: ExtensionAPI) {
 
 		if (event.toolName === "bash") {
 			const command = String(event.input?.command ?? "");
+			if (isTargetedValidationWrapperCommand(command) && !validationWrapperBypass(command)) {
+				return { block: true, reason: validationWrapperBlockReason(command) };
+			}
+			if (isBroadWildcardWorkspaceBuildCommand(command) && !broadBootstrapBypass(command)) {
+				const failures = packageResolveFailuresBySession.get(sessionKey(ctx));
+				if (failures?.count) return { block: true, reason: broadBootstrapBlockReason(command, failures) };
+				if (state.weight === "light" && !state.explicitHeavy) return { block: true, reason: heavyToolBlockReason(state, "broad wildcard workspace build") };
+			}
 			if (state.weight === "light" && !state.explicitHeavy && !state.auditRequired && isDeepContextMiningCommand(command)) {
 				return { block: true, reason: heavyToolBlockReason(state, "deep context mining") };
 			}
@@ -667,12 +764,27 @@ export default function workflowGuard(pi: ExtensionAPI) {
 			}
 		}
 
+		let packageResolveNote: string | undefined;
+		if (ctx && state && event.toolName === "bash" && !toolResultSucceeded(event)) {
+			const output = (event.content ?? []).map((item: any) => String(item?.text ?? "")).join("\n");
+			const packages = packageResolveFailurePackages(output);
+			if (packages.length) {
+				const key = sessionKey(ctx);
+				const current = packageResolveFailuresBySession.get(key) ?? { count: 0, packages: [] };
+				const nextPackages = [...new Set([...current.packages, ...packages])];
+				const nextRecord = { count: current.count + 1, packages: nextPackages };
+				packageResolveFailuresBySession.set(key, nextRecord);
+				packageResolveNote = packageResolveFailureNote(nextRecord);
+			}
+		}
+
 		const continuityNote = actionContinuityNote(event.toolName, event.details);
 		const paceNote = state ? fastPaceToolResultNote(state, event) : undefined;
-		const note = [continuityNote, paceNote].filter(Boolean).join("\n");
+		const note = [continuityNote, packageResolveNote, paceNote].filter(Boolean).join("\n");
 		if (!note) return undefined;
 		return appendWorkflowGuardResult(event, note, {
 			nextActionRequired: Boolean(continuityNote),
+			validationBootstrapScopeGate: Boolean(packageResolveNote),
 			fastPaceRequired: Boolean(paceNote),
 			sourceTool: event.toolName,
 		});
