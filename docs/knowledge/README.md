@@ -194,6 +194,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Interactive shell은 bash가 아닌 터미널 세션이다](./interactive-shell-overlay-tool.md) | active | high | 2026-05-13 | f3fe380 | interactive-shell, shell, tui, dev-server, overlay, dispatch |
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-05-13 | 1f5c3ac | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 264ea17 | local-dev, server, startup, diagnosis, dev |
+| [장시간 세션은 phase와 stop-line으로 제어한다](./long-running-session-control.md) | active | high | 2026-05-27 | 94b3eb0 | workflow, guard, checkpoint, validation, commit, heartbeat |
 | [pilee 변경은 final-check gate로 닫는다](./pilee-final-check-gate.md) | active | high | 2026-05-20 | 0a58e59 | pilee, final-check, verification, skill, workflow, 마무리 |
 | [Private overlay package는 회사·개인 실행 맥락을 담는다](./private-overlay-package-boundary.md) | active | high | 2026-05-13 | e0dc999 | privacy, package, overlay, skill, company-context |
 | [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-05-20 | 32d1aed | queued-messages, slash-command, prefill, worktree, session, boundary |
@@ -298,6 +299,7 @@ graph TD
   doc_interactive_shell_overlay_tool["Interactive shell은 bash가 아닌 터미널 세션이다"]
   doc_live_artifact_preview_pattern["Live artifact는 local preview first다"]
   doc_local_dev_startup_diagnosis["로컬 개발 서버 시작은 진단 가능한 절차여야 한다"]
+  doc_long_running_session_control["장시간 세션은 phase와 stop-line으로 제어한다"]
   doc_pilee_final_check_gate["pilee 변경은 final-check gate로 닫는다"]
   doc_private_overlay_package_boundary["Private overlay package는 회사·개인 실행 맥락을 담는다"]
   doc_queued_command_prefill_boundary["Queued command는 실행 보장이 아니다"]
@@ -570,6 +572,10 @@ graph TD
   doc_local_dev_startup_diagnosis --> doc_private_overlay_package_boundary
   doc_local_dev_startup_diagnosis --> doc_root_cause_before_fix
   doc_local_dev_startup_diagnosis --> doc_worktree_execution_boundary
+  doc_long_running_session_control --> doc_change_integration_discipline
+  doc_long_running_session_control --> doc_work_context_card_task_board
+  doc_long_running_session_control --> doc_workflow_guard_enforced_flow
+  doc_long_running_session_control --> doc_workflow_weight_proportionality
   doc_pilee_final_check_gate --> doc_change_integration_discipline
   doc_pilee_final_check_gate --> doc_evidence_first_verification_gate
   doc_pilee_final_check_gate --> doc_pilee_knowledge_system
@@ -667,7 +673,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 99
-- Links: 339
+- Documents: 100
+- Links: 343
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

@@ -108,6 +108,16 @@ You never lose more than one increment of work. If something goes wrong, `git re
 
 이 리듬은 my-pi `/ship`의 “commit + verify + push가 기본” 원칙을 구현 중 slice 단위로 앞당긴 것이다. 마지막 ship/final-check에서 한꺼번에 커밋을 발견하는 흐름을 정상 경로로 보지 않는다.
 
+### Commit-complete stop-line
+
+커밋은 다음 작업을 계속하기 위한 중간 implementation detail이 아니라 사용자-visible save point다.
+
+- commit이 만들어지면 먼저 보고한다. UI 검증, PR, push, broad status 확인은 다음 phase로 분리한다.
+- 사용자가 이미 “커밋+푸시”, “PR까지”, “검증 리포트까지”를 명시했다면 이어갈 수 있지만, phase가 바뀌었다는 사실은 짧게 표시한다.
+- 커밋 후 `git status`, `git log`, `gh pr view` 같은 안심 확인은 기본 실행하지 않는다. 필요한 SHA/message는 commit tool result나 직전 HEAD에서 가져온다.
+- push가 포함된 light path에서는 push 성공이 terminal condition이다. 추가 확인 대신 짧은 완료 보고를 우선한다.
+- 커밋은 됐지만 UI 검증/환경 검증이 남았으면 “코드 save point 완료, 남은 검증은 별도 phase”로 분리해 caveat를 남긴다.
+
 ## Pre-Commit Checks
 
 Before every commit:

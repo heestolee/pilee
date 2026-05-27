@@ -46,6 +46,18 @@ For each slice:
 
 사용자가 명시적으로 “커밋하지 마”라고 했거나, 현재 slice가 아직 검증되지 않았거나, 관련 파일을 분리하면 빌드가 깨지는 경우에는 커밋을 보류할 수 있다. 하지만 마지막에 “구현은 끝났는데 커밋 안 됨”으로 놀라게 하지 않는다.
 
+### Long-running checkpoint rhythm
+
+긴 작업은 구현 자체보다 보고 stop-line이 무너질 때 사용자-visible 실패가 된다. 다음 checkpoint를 기본 리듬으로 둔다.
+
+- **30분 경과**: 현재 phase, 완료한 것, 남은 것, 차단 가능성을 짧게 보고한다.
+- **60분 경과**: 계속 진행할지, 부분 커밋/부분 handoff로 끊을지 확인한다.
+- **같은 검증 계열 2회 실패**: lint/test/type-check/codegen 루프를 계속 돌기 전에 원인, 수정한 것, 남은 선택지를 보고한다.
+- **phase 전환**: 구조 파악 → 구현 → 기계 검증 → 커밋 → UI/수동 검증 → PR/push로 넘어갈 때 최소 한 줄 checkpoint를 남긴다.
+- **환경 검증 차단**: 로컬 서버, 로그인, 권한, 데이터 세팅 문제는 5~10분 이상 main flow를 붙잡지 말고 `BLOCKED` 또는 선택지로 보고한다.
+
+`continue`/compaction 이후에는 current context card와 current slice를 우선 신뢰한다. 이미 discovery/frame이 있으면 broad rediscovery로 시간을 쓰지 말고, 현재 claim/evidence를 닫는 파일만 좁게 확인한다.
+
 ### Context hoarding보다 slice closure
 
 큰 transcript를 오래 들고 가는 것보다, 현재 slice를 작게 닫는 것이 우선이다.

@@ -50,6 +50,7 @@ const MAX_GUARD_STATES = 80;
 const guardBySession = new Map<string, GuardState>();
 const lightPushDoneBySession = new Map<string, boolean>();
 const packageResolveFailuresBySession = new Map<string, { count: number; packages: string[] }>();
+const validationFailuresBySession = new Map<string, Map<string, { count: number; commands: string[] }>>();
 
 const workflowGuardToolSchema = Type.Object({
 	action: Type.Union([
@@ -71,12 +72,14 @@ function rememberGuardState(key: string, state: GuardState) {
 	guardBySession.set(key, state);
 	lightPushDoneBySession.delete(key);
 	packageResolveFailuresBySession.delete(key);
+	validationFailuresBySession.delete(key);
 	if (guardBySession.size <= MAX_GUARD_STATES) return;
 	const oldest = [...guardBySession.entries()].sort((a, b) => Date.parse(a[1].createdAt) - Date.parse(b[1].createdAt))[0];
 	if (oldest) {
 		guardBySession.delete(oldest[0]);
 		lightPushDoneBySession.delete(oldest[0]);
 		packageResolveFailuresBySession.delete(oldest[0]);
+		validationFailuresBySession.delete(oldest[0]);
 	}
 }
 
@@ -187,6 +190,13 @@ function buildSystemPrompt(state: GuardState): string {
 			"- Do not assume `pnpm <script> -- <path>` narrows the script. If a wrapper script might contain fixed globs or ignore args, inspect package.json or use a direct command such as `pnpm exec eslint <file>` / `pnpm vitest run <file>`.",
 			"- Whole app/repo/workspace validation or wildcard package builds require a one-line reason tied to the current diff. Dependency/bootstrap recovery gets one narrow package-level attempt; after a second missing package/module signal, stop and report BLOCKED or ask before broad workspace build.",
 		);
+		if (state.weight === "standard" || state.weight === "full") {
+			lines.push(
+				"- Long-running session control: label phase transitions (discovery → implementation → mechanical validation → commit → UI/manual verification → PR/push). At 30 minutes report current phase/completed/remaining/blockers; at 60 minutes ask whether to continue or cut a partial handoff/commit.",
+				"- Validation loop gate: if the same lint/test/type-check/codegen/build family fails twice, stop silent retrying and report cause, attempted fix, and next options before running broader recovery.",
+				"- Commit-complete stop-line: when commit(s) are created, report the save point before starting UI/manual verification, PR, push, or extra status checks unless the user already requested that next phase.",
+			);
+		}
 	}
 
 	const paceSeconds = fastPaceBudgetSeconds(state);
@@ -361,6 +371,53 @@ function packageResolveFailureNote(sessionRecord: { count: number; packages: str
 	].join("\n");
 }
 
+function validationCommandKind(command: string): string | undefined {
+	const compact = command.replace(/\s+/g, " ").trim();
+	if (!compact) return undefined;
+	if (/\b(codegen|generate-?schema|graphql-codegen|merge-graphql-schema)\b/u.test(compact)) return "codegen";
+	if (/\b(type-?check|tsc)\b/u.test(compact)) return "type-check";
+	if (/\b(lint|eslint|biome)\b/u.test(compact)) return "lint";
+	if (/\b(test|vitest|jest|playwright)\b/u.test(compact)) return "test";
+	if (/\b(build|turbo\s+build)\b/u.test(compact)) return "build";
+	return undefined;
+}
+
+function recordValidationFailure(session: string, kind: string, command: string): { count: number; commands: string[] } {
+	const byKind = validationFailuresBySession.get(session) ?? new Map<string, { count: number; commands: string[] }>();
+	const current = byKind.get(kind) ?? { count: 0, commands: [] };
+	const next = { count: current.count + 1, commands: [...current.commands, command].slice(-3) };
+	byKind.set(kind, next);
+	validationFailuresBySession.set(session, byKind);
+	return next;
+}
+
+function validationLoopFailureNote(kind: string, record: { count: number; commands: string[] }): string | undefined {
+	if (record.count < 2) return undefined;
+	return [
+		"",
+		"[workflow_guard] validationLoopGate: scopeGateRequired",
+		`- Same validation family failed ${record.count} times in this turn: ${kind}.`,
+		"- Stop silent retrying. Report the cause you found, what you already changed, and 1–3 next options before running broader recovery or another retry.",
+		`- Last command: ${record.commands.at(-1) ?? "unknown"}`,
+	].join("\n");
+}
+
+function commitCompleteStopLineNote(state: GuardState | undefined, event: any): string | undefined {
+	if (!state || state.intent === "status_note" || state.weight === "none") return undefined;
+	const bashCommit = event.toolName === "bash" && toolResultSucceeded(event) && isGitCommitCommand(toolResultCommand(event)) && !isGitPushCommand(toolResultCommand(event));
+	const autoCommitDone = event.toolName === "auto_commit"
+		&& Array.isArray(event.details?.commits)
+		&& event.details.commits.length > 0
+		&& event.details?.completion !== "committed_not_pushed"
+		&& event.details?.pushed !== false;
+	if (!bashCommit && !autoCommitDone) return undefined;
+	return [
+		"",
+		"[workflow_guard] commitCompleteStopLine: true",
+		"- Commit save point created. Report this phase boundary before starting UI/manual verification, PR, push, or extra status/log checks unless the user already requested that next phase.",
+	].join("\n");
+}
+
 function toolResultSucceeded(event: any): boolean {
 	if (event.isError) return false;
 	const code = event.details?.code ?? event.details?.exitCode ?? event.details?.statusCode;
@@ -490,12 +547,13 @@ function sliceCommitRhythmSection(state: GuardState, card?: WorkContextCard): st
 	if (!state.explicitMutation || (state.weight !== "standard" && state.weight !== "full")) return "";
 	return [
 		"",
-		"Soft slice commit rhythm:",
+		"Slice commit-or-explain guard:",
 		`- Current slice ${card.currentSlice.id}: ${card.currentSlice.title}`,
 		"- Treat a verified slice as a commit candidate, not as something to batch until the whole implementation is done.",
 		"- When the slice's nearest validation passes, inspect git status/diff, call work_context action=commit_plan to write an explicit auto_commit JSON plan, then call auto_commit action=apply after reviewing the plan.",
-		"- If you intentionally defer the slice commit, record the reason in work_context checkpoint. Do not surprise the user at the end with a large uncommitted diff.",
-		"- This is a soft rhythm, not a hard block: continue only when a commit would be premature because the current slice is incomplete or validation is still missing.",
+		"- Pending migration execution, UI capture, or final verify-report is a ship-readiness caveat, not a valid reason by itself to leave a verified code slice uncommitted.",
+		"- Before a final response with dirty diff: either commit the verified slice, or explicitly record the concrete reason in work_context checkpoint. Do not surprise the user at the end with a large uncommitted diff.",
+		"- This is not an auto-stage permission: auto_commit must still use explicit JSON plans or explicit quick paths.",
 	].join("\n");
 }
 
@@ -765,7 +823,9 @@ export default function workflowGuard(pi: ExtensionAPI) {
 		}
 
 		let packageResolveNote: string | undefined;
+		let validationLoopNote: string | undefined;
 		if (ctx && state && event.toolName === "bash" && !toolResultSucceeded(event)) {
+			const command = toolResultCommand(event);
 			const output = (event.content ?? []).map((item: any) => String(item?.text ?? "")).join("\n");
 			const packages = packageResolveFailurePackages(output);
 			if (packages.length) {
@@ -776,15 +836,23 @@ export default function workflowGuard(pi: ExtensionAPI) {
 				packageResolveFailuresBySession.set(key, nextRecord);
 				packageResolveNote = packageResolveFailureNote(nextRecord);
 			}
+			const validationKind = validationCommandKind(command);
+			if (validationKind) {
+				const record = recordValidationFailure(sessionKey(ctx), validationKind, command);
+				validationLoopNote = validationLoopFailureNote(validationKind, record);
+			}
 		}
 
 		const continuityNote = actionContinuityNote(event.toolName, event.details);
+		const commitStopLineNote = commitCompleteStopLineNote(state, event);
 		const paceNote = state ? fastPaceToolResultNote(state, event) : undefined;
-		const note = [continuityNote, packageResolveNote, paceNote].filter(Boolean).join("\n");
+		const note = [continuityNote, packageResolveNote, validationLoopNote, commitStopLineNote, paceNote].filter(Boolean).join("\n");
 		if (!note) return undefined;
 		return appendWorkflowGuardResult(event, note, {
 			nextActionRequired: Boolean(continuityNote),
 			validationBootstrapScopeGate: Boolean(packageResolveNote),
+			validationLoopGate: Boolean(validationLoopNote),
+			commitCompleteStopLine: Boolean(commitStopLineNote),
 			fastPaceRequired: Boolean(paceNote),
 			sourceTool: event.toolName,
 		});

@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import workflowGuard from "./index.ts";
 
@@ -73,13 +77,48 @@ test("workflow weight controls fast response pace budget", async () => {
 	const standard = await hooks.before_agent_start({ prompt: "결제 플로우 수정해줘", systemPrompt: "base" }, ctx);
 	assert.match(standard.systemPrompt, /intent=implement · weight=standard/);
 	assert.match(standard.systemPrompt, /60-second decision budget/);
+	assert.match(standard.systemPrompt, /Long-running session control/);
+	assert.match(standard.systemPrompt, /Commit-complete stop-line/);
 
 	const full = await hooks.before_agent_start({ prompt: "full report로 전체 검증해줘", systemPrompt: "base" }, ctx);
 	assert.match(full.systemPrompt, /weight=full/);
 	assert.match(full.systemPrompt, /120-second decision budget/);
+	assert.match(full.systemPrompt, /60 minutes ask whether to continue/);
 
 	const status = await hooks.before_agent_start({ prompt: "[dependency-bootstrap] READY — frontend 준비 완료", systemPrompt: "base" }, ctx);
 	assert.doesNotMatch(status.systemPrompt, /FAST RESPONSE PACE/);
+});
+
+
+test("standard validation loop and commit stop-line are annotated", async () => {
+	const { hooks, ctx } = createHarness();
+	await hooks.before_agent_start({ prompt: "결제 플로우 수정해줘", systemPrompt: "base" }, ctx);
+
+	const firstTypecheckFailure = await hooks.tool_result({
+		toolName: "bash",
+		input: { command: "cd frontend/apps/admin && pnpm type-check" },
+		content: [{ type: "text", text: "Command exited with code 1" }],
+		details: { code: 1 },
+	}, ctx);
+	assert.equal(firstTypecheckFailure.details.workflowGuard.validationLoopGate, false);
+
+	const secondTypecheckFailure = await hooks.tool_result({
+		toolName: "bash",
+		input: { command: "cd frontend/apps/admin && pnpm type-check" },
+		content: [{ type: "text", text: "Command exited with code 1" }],
+		details: { code: 1 },
+	}, ctx);
+	assert.equal(secondTypecheckFailure.details.workflowGuard.validationLoopGate, true);
+	assert.match(secondTypecheckFailure.content.at(-1).text, /Same validation family failed 2 times/);
+	assert.match(secondTypecheckFailure.content.at(-1).text, /Stop silent retrying/);
+
+	const commitResult = await hooks.tool_result({
+		toolName: "auto_commit",
+		content: [{ type: "text", text: "auto-commit apply 완료" }],
+		details: { completion: "committed", commits: [{ hash: "abc123", message: "fix: test" }] },
+	}, ctx);
+	assert.equal(commitResult.details.workflowGuard.commitCompleteStopLine, true);
+	assert.match(commitResult.content.at(-1).text, /Commit save point created/);
 });
 
 test("workflow drag prompts enter audit path", async () => {
@@ -143,10 +182,47 @@ test("light commit-push prompt uses push terminal path", async () => {
 	assert.match(start.systemPrompt, /intent=hotfix · weight=light/);
 	assert.match(start.systemPrompt, /HARD LIGHT PUSH TERMINAL PATH/);
 	assert.match(start.systemPrompt, /Final response after successful push/);
-	assert.doesNotMatch(start.systemPrompt, /Soft slice commit rhythm/);
+	assert.doesNotMatch(start.systemPrompt, /Slice commit-or-explain guard/);
 
 	const commitCommand = await hooks.tool_call({ toolName: "bash", input: { command: "git add a && git commit -m 'fix: test' && git push" } }, ctx);
 	assert.equal(commitCommand, undefined);
+});
+
+test("standard framed work injects commit-or-explain guard", async () => {
+	const root = await mkdtemp(join(tmpdir(), "workflow-guard-slice-"));
+	execFileSync("git", ["init", "-b", "main", root]);
+	await mkdir(join(root, ".pi"), { recursive: true });
+	await writeFile(join(root, ".pi", "work-context.json"), JSON.stringify({
+		schemaVersion: 1,
+		identity: {
+			id: "worktree:test",
+			type: "worktree",
+			root,
+			cwd: root,
+			displayName: "repo",
+			contextPath: join(root, ".pi", "work-context.json"),
+			tasksPath: join(root, ".pi", "work-tasks.json"),
+		},
+		updatedAt: "2026-05-27T00:00:00.000Z",
+		source: "frame",
+		mode: "full",
+		goal: "스팟 리뷰 답글 개선",
+		currentSlice: { id: "S3", title: "API/schema/codegen", scope: ["backend", "frontend"], acceptance: ["검증 통과"], status: "completed" },
+		slices: [],
+		mustKeep: [],
+		mustNot: [],
+		openQuestions: [],
+		verifyFocus: [],
+		lastKnownState: {},
+		refs: {},
+	}, null, 2));
+	const { hooks, ctx } = createHarness();
+	const start = await hooks.before_agent_start({ prompt: "남은 작업 구현해줘", systemPrompt: "base" }, { ...ctx, cwd: root });
+
+	assert.match(start.systemPrompt, /Slice commit-or-explain guard/);
+	assert.match(start.systemPrompt, /Pending migration execution, UI capture, or final verify-report is a ship-readiness caveat/);
+	assert.match(start.systemPrompt, /Before a final response with dirty diff: either commit the verified slice/);
+	assert.match(start.systemPrompt, /auto_commit must still use explicit JSON plans/);
 });
 
 test("light task stops tools after successful push", async () => {
