@@ -6,7 +6,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import { formatWorkContextCard, gateWorkContext, loadOrDeriveWorkContext, type WorkContextCard, type WorkContextGateResult } from "../utils/work-context.ts";
 
-type Intent = "answer" | "investigate" | "implement" | "hotfix" | "verify_report" | "audit" | "ship" | "knowledge" | "unknown";
+type Intent = "answer" | "investigate" | "implement" | "hotfix" | "verify_report" | "audit" | "ship" | "knowledge" | "status_note" | "unknown";
 type WorkflowWeight = "none" | "light" | "standard" | "full";
 
 interface GuardState {
@@ -78,30 +78,41 @@ function hasAny(text: string, patterns: RegExp[]): boolean {
 	return patterns.some((pattern) => pattern.test(text));
 }
 
+function isStatusNotePrompt(prompt: string): boolean {
+	const trimmed = prompt.trim();
+	if (!trimmed) return false;
+	return trimmed.startsWith("[dependency-bootstrap]")
+		|| trimmed.startsWith("## Worktree cwd binding")
+		|| trimmed.startsWith("Workflow guard for this turn:")
+		|| trimmed.startsWith("WORKTREE DEPENDENCY BOOTSTRAP:");
+}
+
 function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 	const normalized = normalizeText(prompt);
-	const explicitHeavy = hasAny(normalized, [
+	const statusNote = isStatusNotePrompt(prompt);
+	const explicitHeavy = !statusNote && hasAny(normalized, [
 		/verify[- ]?report|검증\s*리포트|캡처\s*리포트|full\s*report/,
 		/stress[- ]?interview|fan[- ]?out|subagent|worker|병렬|전체\s*검증|풀\s*검증/,
 		/다중\s*(role|viewport|계정|권한)|before[- ]?after|회귀\s*검증|e2e/,
 	]);
-	const auditRequired = hasAny(normalized, [
+	const auditRequired = !statusNote && hasAny(normalized, [
 		/(이미|전에|기존|고친|해결|대응|미대응|남은|remaining|fixed|unfixed).*(구분|분리|확인|정리|audit|오디트)/,
 		/(불편|friction|느렸|느림|느린|오버헤드|과했|과한|늘어지|지연|판단실수|스트레스).*(대응|해결|남은|미대응|분석|정리|뒤져|찾아|조사)/,
 		/(작업|워크플로|플로우).*(늘어지|지연|과했|과한|판단실수|스트레스)/,
 		/(already fixed|still missing|remaining gap|fixed vs)/,
 	]);
 	const verifyReport = explicitHeavy && hasAny(normalized, [/verify[- ]?report|검증\s*리포트|캡처\s*리포트/]);
-	const knowledge = hasAny(normalized, [/ember|knowledge|불씨|지식|stale|freshness/]);
-	const ship = hasAny(normalized, [/\bpr\b|pull request|commit|push|merge|ship|릴리즈/]);
-	const hotfix = hasAny(normalized, [/hotfix|핫픽스|간단|문구|오타|copy|카피|one[- ]?line|한\s*줄|작은|small|quick|빨리|이거\s*하나/]);
+	const knowledge = !statusNote && hasAny(normalized, [/ember|knowledge|불씨|지식|stale|freshness/]);
+	const ship = !statusNote && hasAny(normalized, [/\bpr\b|pull request|commit|push|merge|ship|릴리즈/]);
+	const hotfix = !statusNote && hasAny(normalized, [/hotfix|핫픽스|간단|문구|오타|copy|카피|one[- ]?line|한\s*줄|작은|small|quick|빨리|이거\s*하나/]);
 	const noMutation = hasAny(normalized, [/수정하지|고치지|변경하지|건드리지|커밋하지|푸시하지|하지\s*마|하지마|no\s*(edit|change|commit|push)|do\s*not\s*(edit|change|commit|push)/]);
-	const implement = !noMutation && hasAny(normalized, [/구현|수정|고쳐|고치|바꿔|변경|추가|삭제|반영|패치|생성|작성|만들|implement|fix|change|add|remove|update|create/]);
-	const investigate = hasAny(normalized, [/확인|봐줘|살펴|분석|조사|찾아|왜|원인|검토|audit|오디트|알아봐/]);
-	const answerOnly = hasAny(normalized, [/설명|알려줘|어떻게|무슨\s*뜻|질문|궁금|정리해줘/]) && !implement && !ship;
+	const implement = !statusNote && !noMutation && hasAny(normalized, [/구현|수정|고쳐|고치|바꿔|변경|추가|삭제|반영|패치|생성|작성|만들|implement|fix|change|add|remove|update|create/]);
+	const investigate = !statusNote && hasAny(normalized, [/확인|봐줘|살펴|분석|조사|찾아|왜|원인|검토|audit|오디트|알아봐/]);
+	const answerOnly = !statusNote && hasAny(normalized, [/설명|알려줘|어떻게|무슨\s*뜻|질문|궁금|정리해줘/]) && !implement && !ship;
 
 	let intent: Intent = "unknown";
-	if (auditRequired) intent = "audit";
+	if (statusNote) intent = "status_note";
+	else if (auditRequired) intent = "audit";
 	else if (verifyReport) intent = "verify_report";
 	else if (knowledge && implement) intent = "knowledge";
 	else if (hotfix && implement) intent = "hotfix";
@@ -117,7 +128,7 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 	else if (intent === "implement" || intent === "ship" || intent === "knowledge") weight = "standard";
 	else if (intent === "investigate" || intent === "audit" || intent === "answer") weight = "none";
 
-	const explicitMutation = !noMutation && (implement || ship || hasAny(normalized, [/작업해|진행해|만들어|적용해|커밋|푸시/]));
+	const explicitMutation = !statusNote && !noMutation && (implement || ship || hasAny(normalized, [/작업해|진행해|만들어|적용해|커밋|푸시/]));
 	const explicitSingleCommit = hasAny(normalized, [/단일\s*커밋|한\s*커밋|one\s*commit|single\s*commit|squash/]);
 
 	const summary = [
@@ -139,6 +150,14 @@ function buildSystemPrompt(state: GuardState): string {
 		"- If the classification seems wrong, ask one short clarifying question before mutating files or starting heavy workflow.",
 	];
 
+	if (state.intent === "status_note") {
+		lines.push(
+			"- HARD STATUS NOTE PATH: the latest prompt is an environment/readiness/context-binding note, not a user task directive.",
+			"- Do not resume older implementation, validation, PR, or worktree threads because of this note.",
+			"- Do not call tools for this turn unless the user adds a real request; at most acknowledge the status in one short Korean sentence.",
+			"- Dependency/bootstrap READY, worktree cwd binding, workflow guard, and compaction notes describe state only; they do not override the latest explicit user intent.",
+		);
+	}
 	if (state.intent === "answer" || state.intent === "investigate") {
 		lines.push(
 			"- HARD PATH: this turn is read-only by default. Do not edit/write files, create worktrees, install dependencies, commit, or push unless the user explicitly turns the request into implementation.",
@@ -178,10 +197,10 @@ function buildSystemPrompt(state: GuardState): string {
 }
 
 function mutationBlockReason(state: GuardState, toolName: string): string | undefined {
-	if (state.intent !== "answer" && state.intent !== "investigate") return undefined;
+	if (state.intent !== "answer" && state.intent !== "investigate" && state.intent !== "status_note") return undefined;
 	return [
 		`workflow_guard blocked ${toolName}: current request was classified as ${state.intent} (${state.summary}).`,
-		"This path is read-only by default.",
+		state.intent === "status_note" ? "This prompt is a status note, not a user task directive." : "This path is read-only by default.",
 		"Ask the user to confirm implementation, or explain why this mutation is required before retrying.",
 	].join("\n");
 }
@@ -254,6 +273,14 @@ function formatLargeCommitBlock(summary: StagedDiffSummary): string {
 		"Split by logical concern, or get explicit user approval for one commit/squash before retrying.",
 		"Staged sample:",
 		sampleFiles,
+	].join("\n");
+}
+
+function statusNoteToolBlockReason(state: GuardState, toolName: string): string {
+	return [
+		`workflow_guard blocked ${toolName}: current prompt is a status note (${state.summary}).`,
+		"Status/readiness/context-binding notes must not trigger old implementation or validation work.",
+		"Wait for an explicit user request, or answer with a short acknowledgement only.",
 	].join("\n");
 }
 
@@ -463,6 +490,10 @@ export default function workflowGuard(pi: ExtensionAPI) {
 		const state = guardBySession.get(sessionKey(ctx));
 		if (!state) return undefined;
 		const card = loadOrDeriveWorkContext(ctx.cwd, ctx.sessionManager?.getSessionFile?.());
+
+		if (state.intent === "status_note" && event.toolName !== "workflow_guard") {
+			return { block: true, reason: statusNoteToolBlockReason(state, event.toolName) };
+		}
 
 		if ((event.toolName === "edit" || event.toolName === "write") && !isTempPath(String(event.input?.path ?? ""))) {
 			const reason = mutationBlockReason(state, event.toolName);

@@ -45,6 +45,7 @@ title_en: Repeated workflow failures become enforced guard flows
 | 판단 드리프트 억제 | hard prompt discipline + selective block | 코드 가능 여부와 제품 요구 충족을 분리하고, 사용자 지정 환경·dev 절차·SQL 안전장치를 과확장하지 않게 turn guard에 주입 |
 | UI choice continuity | hard result annotation | `tui_ask`/TFT Studio 선택 결과에 `nextActionRequired`를 붙여 선택 요약으로 멈추지 않게 함 |
 | 큰 commit 분리 | hard commit guard | staged diff가 크거나 여러 area를 섞으면 direct `git commit`을 차단하고 logical commit split을 요구 |
+| 상태 노트 오인 방지 | hard status-note path | dependency bootstrap READY, worktree cwd binding, workflow guard 같은 환경/상태 메시지는 사용자 task 지시가 아니므로 old work 재개와 tool call을 차단 |
 
 ## Audit Rule
 
@@ -85,6 +86,12 @@ Light PR/ship에서는 현재 diff, 최근 커밋, 사용자가 방금 확인한
 - **사용자 제안 절차 존중**: 사용자가 dev down/up, 임시 백업 후 복구처럼 구체적 검증 절차를 제안하면 먼저 그 목적을 수행 가능한 dev 검증으로 해석합니다. prod 배포 정석으로 일반화하려면 확인 질문을 둡니다.
 - **SQL ceremony 비례**: DB write/runbook에서 backup, rollback, DELETE SQL은 row 수·가역성·side effect에 비례해야 합니다. 작은 reversible 변경에 큰 안전장치를 자동으로 붙이지 않습니다.
 - **worker 절제**: standard 작업에서도 worker/subagent는 기본값이 아닙니다. 병렬 소유권, readiness 진단, explicit user request가 있을 때만 사용하고 이유를 남깁니다.
+
+## Status Note Rule
+
+`[dependency-bootstrap] READY`, `## Worktree cwd binding`, `Workflow guard for this turn`, `WORKTREE DEPENDENCY BOOTSTRAP` 같은 메시지는 실행 상태 또는 context binding을 설명하는 노트입니다. 이 노트는 최신 사용자 의도를 대체하지 않습니다.
+
+압축 직후나 follow-up 메시지 이후에도 agent는 상태 노트만 보고 이전 구현·검증·PR 작업을 재개하면 안 됩니다. 최신 prompt가 status note로 분류되면 guard는 tool call을 차단하고, 필요하면 짧게 상태만 확인합니다. 실제 작업 재개는 사용자가 새 요청을 명시했을 때만 합니다.
 
 ## Continuation Rule
 

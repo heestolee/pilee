@@ -65,6 +65,42 @@ test("workflow drag prompts enter audit path", async () => {
 	assert.match(start.systemPrompt, /friction → response evidence → current state → remaining gap/);
 });
 
+test("status-only bootstrap messages do not resume prior work", async () => {
+	const { hooks, ctx } = createHarness();
+	const start = await hooks.before_agent_start({ prompt: "[dependency-bootstrap] READY — product: backend 준비 완료", systemPrompt: "base" }, ctx);
+
+	assert.match(start.systemPrompt, /intent=status_note/);
+	assert.match(start.systemPrompt, /HARD STATUS NOTE PATH/);
+	assert.match(start.systemPrompt, /not a user task directive/);
+	assert.match(start.systemPrompt, /Do not resume older implementation/);
+
+	const readBlock = await hooks.tool_call({ toolName: "read", input: { path: "/repo/package.json" } }, ctx);
+	assert.equal(readBlock?.block, true);
+	assert.match(readBlock.reason, /status note/);
+
+	const bashBlock = await hooks.tool_call({ toolName: "bash", input: { command: "git status --short" } }, ctx);
+	assert.equal(bashBlock?.block, true);
+	assert.match(bashBlock.reason, /must not trigger old implementation/);
+});
+
+test("worktree cwd binding messages are status notes", async () => {
+	const { hooks, ctx } = createHarness();
+	const prompt = [
+		"## Worktree cwd binding",
+		"",
+		"활성 worktree: 푸크린",
+		"절대경로: /Users/changheelee/pilee-workspaces/product/푸크린",
+	].join("\n");
+	const start = await hooks.before_agent_start({ prompt, systemPrompt: "base" }, ctx);
+
+	assert.match(start.systemPrompt, /intent=status_note/);
+	assert.match(start.systemPrompt, /worktree cwd binding/);
+
+	const editBlock = await hooks.tool_call({ toolName: "edit", input: { path: "/repo/file.ts" } }, ctx);
+	assert.equal(editBlock?.block, true);
+	assert.match(editBlock.reason, /Status\/readiness\/context-binding notes/);
+});
+
 test("auto_commit push skipped result requires immediate push follow-up", async () => {
 	const { hooks } = createHarness();
 	const result = await hooks.tool_result({
