@@ -233,6 +233,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | extension | `extensions/tool-group-renderer` | [Tool Output Noise Management](./docs/knowledge/tool-output-noise-management.md) |
 | extension | `extensions/tui-ask` | [Theme Information Hierarchy](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI Ask is a lightweight decision gate](./docs/knowledge/tui-ask-decision-overlay.md)<br>[Repeated workflow failures become enforced guard flows](./docs/knowledge/workflow-guard-enforced-flow.md) |
 | extension | `extensions/until` | [Until Loop Explicit Reporting](./docs/knowledge/until-loop-explicit-reporting.md) |
+| extension | `extensions/update-branch` | [Update Branch Safe Pull Command](./docs/knowledge/update-branch-safe-pull-command.md) |
 | extension | `extensions/usage-analytics` | [Tool Output Noise Management](./docs/knowledge/tool-output-noise-management.md) |
 | extension | `extensions/usage-reporter` | [Ambient Status Surfaces](./docs/knowledge/ambient-status-surfaces.md)<br>[Tool Output Noise Management](./docs/knowledge/tool-output-noise-management.md) |
 | extension | `extensions/user-facing-language` | [Korean First User Facing Output](./docs/knowledge/korean-first-user-facing-output.md) |
@@ -284,7 +285,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 ## Extensions
 
 <!-- PILEE_README_EXTENSIONS_START -->
-54 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
+55 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
 
 > Generated from `extensions/*` plus inventory metadata in `scripts/knowledge.mjs`; refresh with `node scripts/knowledge.mjs --graph`.
 
@@ -355,6 +356,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **preflight** | Validation failure observer plus known-baseline separation tool |
 | **pr-comments** | PR unresolved review comment collection helper |
 | **pr-review-re-request** | Re-request review from non-approved PR reviewers/teams |
+| **update-branch** | `/update-branch` safely pulls the current git branch from upstream |
 | **until** | Explicit until-loop progress reporting |
 | **usage-analytics** | Agent and skill usage statistics |
 | **usage-reporter** | Usage reports |

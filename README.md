@@ -258,6 +258,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | extension | `extensions/tool-group-renderer` | [도구 출력은 대화 흐름을 침범하지 않는다](./docs/knowledge/tool-output-noise-management.md) |
 | extension | `extensions/tui-ask` | [색상은 정보 위계다](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI 질문은 작은 의사결정 게이트다](./docs/knowledge/tui-ask-decision-overlay.md)<br>[반복 워크플로 실패는 guard/flow로 고정한다](./docs/knowledge/workflow-guard-enforced-flow.md) |
 | extension | `extensions/until` | [Until loop는 종료 조건을 명시 보고한다](./docs/knowledge/until-loop-explicit-reporting.md) |
+| extension | `extensions/update-branch` | [Update branch는 안전한 pull command다](./docs/knowledge/update-branch-safe-pull-command.md) |
 | extension | `extensions/usage-analytics` | [도구 출력은 대화 흐름을 침범하지 않는다](./docs/knowledge/tool-output-noise-management.md) |
 | extension | `extensions/usage-reporter` | [Idle UI는 장식이 아니라 ambient status다](./docs/knowledge/ambient-status-surfaces.md)<br>[도구 출력은 대화 흐름을 침범하지 않는다](./docs/knowledge/tool-output-noise-management.md) |
 | extension | `extensions/user-facing-language` | [User-facing 출력은 한국어를 기본으로 한다](./docs/knowledge/korean-first-user-facing-output.md) |
@@ -309,7 +310,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 ## Extensions
 
 <!-- PILEE_README_EXTENSIONS_START -->
-54개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
+55개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
 
 > `extensions/*`와 `scripts/knowledge.mjs`의 inventory metadata에서 생성됩니다. 변경 후 `node scripts/knowledge.mjs --graph`로 갱신합니다.
 
@@ -380,6 +381,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | **preflight** | validation 실패 관찰 + known baseline 자동 분리 tool |
 | **pr-comments** | PR unresolved review comment를 editor에 붙이는 helper |
 | **pr-review-re-request** | 승인되지 않은 PR reviewer/team에게 review re-request |
+| **update-branch** | `/update-branch` — 현재 git 브랜치를 upstream 최신 상태로 안전하게 pull |
 | **until** | 반복 작업 추적 |
 | **usage-analytics** | 에이전트/스킬 사용량 통계 |
 | **usage-reporter** | 사용량 리포트 |

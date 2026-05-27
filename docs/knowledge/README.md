@@ -212,6 +212,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [To-production은 source-preserving hotfix 이식이다](./to-production-source-preserving-hotfix.md) | active | high | 2026-05-20 | 1dc3eae | to-production, hotfix, production, git, worktree, source-preserving |
 | [TUI 질문은 작은 의사결정 게이트다](./tui-ask-decision-overlay.md) | active | high | 2026-05-21 | fcd3b87 | tui, ask-user-question, decision-gate, tool, overlay |
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
+| [Update branch는 안전한 pull command다](./update-branch-safe-pull-command.md) | active | high | 2026-05-27 | fdd1a98 | update-branch, slash-command, git, pull, index-lock, workflow |
 | [Working Context Card는 큰 맥락을 현재 slice로 압축한다](./work-context-card-task-board.md) | active | high | 2026-05-20 | db0d715 | work-context, tasks, workflow, context, guard |
 | [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-05-26 | b434c00 | workflow, guard, intent, audit, hotfix, continuation |
 | [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-05-24 | fbc6771 | workflow, frame, tft, hotfix, scope, incremental |
@@ -315,6 +316,7 @@ graph TD
   doc_to_production_source_preserving_hotfix["To-production은 source-preserving hotfix 이식이다"]
   doc_tui_ask_decision_overlay["TUI 질문은 작은 의사결정 게이트다"]
   doc_until_loop_explicit_reporting["Until loop는 종료 조건을 명시 보고한다"]
+  doc_update_branch_safe_pull_command["Update branch는 안전한 pull command다"]
   doc_work_context_card_task_board["Working Context Card는 큰 맥락을 현재 slice로 압축한다"]
   doc_workflow_guard_enforced_flow["반복 워크플로 실패는 guard/flow로 고정한다"]
   doc_workflow_weight_proportionality["작업 절차의 무게는 변경 리스크에 비례해야 한다"]
@@ -630,6 +632,9 @@ graph TD
   doc_tui_ask_decision_overlay --> doc_tui_rendering_sanitization
   doc_until_loop_explicit_reporting --> doc_deterministic_vs_ai_actions
   doc_until_loop_explicit_reporting --> doc_evidence_first_verification_gate
+  doc_update_branch_safe_pull_command --> doc_change_integration_discipline
+  doc_update_branch_safe_pull_command --> doc_workflow_weight_proportionality
+  doc_update_branch_safe_pull_command --> doc_worktree_execution_boundary
   doc_work_context_card_task_board --> doc_ambient_status_surfaces
   doc_work_context_card_task_board --> doc_frame_plan_synthesis_continuity
   doc_work_context_card_task_board --> doc_frame_studio_interactive_decision_ui
@@ -662,7 +667,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 98
-- Links: 336
+- Documents: 99
+- Links: 339
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
