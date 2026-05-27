@@ -70,6 +70,38 @@ async function git(cwd: string, ...args: string[]) {
 	return result.stdout;
 }
 
+test("action=status reports commit readiness and ship caveats", async () => {
+	const root = await mkdtemp(join(tmpdir(), "auto-commit-status-"));
+	const repo = join(root, "repo");
+	await git(root, "init", "-b", "main", repo);
+	await git(repo, "config", "user.email", "test@example.com");
+	await git(repo, "config", "user.name", "Test User");
+	await writeFile(join(repo, "README.md"), "init\n");
+	await git(repo, "add", "README.md");
+	await git(repo, "commit", "-m", "chore: init");
+	await git(repo, "checkout", "-b", "feature/test");
+	await exec("mkdir", ["-p", "backend/apps/trip/migrations", "frontend/apps/admin/src", "frontend/apps/web/domain"], repo);
+	await writeFile(join(repo, "backend/apps/trip/migrations/20260527042440-add.js"), "module.exports = {};\n");
+	await writeFile(join(repo, "frontend/apps/admin/src/view.tsx"), "export const x = 1;\n");
+	await writeFile(join(repo, "frontend/apps/web/domain/view.tsx"), "export const y = 1;\n");
+	await writeFile(join(repo, "frontend/schema.graphql"), "type Query { id: ID }\n");
+
+	const tools: Record<string, any> = {};
+	autoCommit({
+		exec: async (command: string, args: string[], options: { cwd?: string } = {}) => exec(command, args, options.cwd ?? repo),
+		registerCommand: () => undefined,
+		registerTool: (tool: any) => { tools[tool.name] = tool; },
+	} as any);
+
+	const result = await tools.auto_commit.execute("call-status", { action: "status" }, new AbortController().signal, () => undefined, { cwd: repo });
+	const text = result.content[0].text;
+	assert.match(text, /commit readiness: READY_WITH_CAVEATS/);
+	assert.match(text, /ship readiness: BLOCKED_BY_CAVEATS/);
+	assert.match(text, /split recommendation: RECOMMENDED/);
+	assert.match(text, /migration\/DB schema execution may still be pending/);
+	assert.match(text, /pending UI capture\/verify-report is a ship evidence caveat/);
+});
+
 test("action=quick commits explicit paths and pushes to safe upstream", async () => {
 	const root = await mkdtemp(join(tmpdir(), "auto-commit-quick-"));
 	const repo = join(root, "repo");

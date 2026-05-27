@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { Type, type Static } from "typebox";
+import { buildCommitReadinessDiagnostic, formatCommitReadinessDiagnostic, pathsFromGitStatus } from "../utils/commit-readiness.ts";
 
 interface CommitPlanEntry {
 	message: string;
@@ -145,11 +146,11 @@ async function gitCode(pi: ExecHost, cwd: string, args: string[], options: GitEx
 }
 
 async function statusLines(pi: ExecHost, cwd: string): Promise<string[]> {
-	return lines(await git(pi, cwd, ["status", "--porcelain"], "git status --porcelain", { optionalLocks: true }));
+	return lines(await git(pi, cwd, ["status", "--porcelain", "--untracked-files=all"], "git status --porcelain --untracked-files=all", { optionalLocks: true }));
 }
 
 async function rawStatusLines(pi: ExecHost, cwd: string): Promise<string[]> {
-	return (await git(pi, cwd, ["status", "--porcelain"], "git status --porcelain", { optionalLocks: true }))
+	return (await git(pi, cwd, ["status", "--porcelain", "--untracked-files=all"], "git status --porcelain --untracked-files=all", { optionalLocks: true }))
 		.split(/\r?\n/u)
 		.filter(Boolean);
 }
@@ -418,10 +419,19 @@ async function runStatus(pi: ExecHost, cwd: string): Promise<string> {
 	const [branch, head, status, push] = await Promise.all([
 		currentBranch(pi, cwd).catch(() => ""),
 		currentHead(pi, cwd).catch(() => ""),
-		statusLines(pi, cwd).catch((error: unknown) => [`status failed: ${String(error)}`]),
+		rawStatusLines(pi, cwd).catch((error: unknown) => [`status failed: ${String(error)}`]),
 		describePushReadiness(pi, cwd).catch((error: unknown) => `push: status failed (${String(error)})`),
 	]);
-	return [`branch: ${branch || "(detached)"}`, `HEAD: ${head}`, push, status.length > 0 ? status.join("\n") : "working tree clean"].join("\n");
+	const diagnostic = buildCommitReadinessDiagnostic(pathsFromGitStatus(status));
+	return [
+		`branch: ${branch || "(detached)"}`,
+		`HEAD: ${head}`,
+		push,
+		"",
+		formatCommitReadinessDiagnostic(diagnostic),
+		"",
+		status.length > 0 ? status.join("\n") : "working tree clean",
+	].join("\n");
 }
 
 function parseQuickCommandArgs(args: string): { message: string; paths: string[] } {

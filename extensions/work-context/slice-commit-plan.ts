@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { buildCommitReadinessDiagnostic, type CommitReadinessDiagnostic } from "../utils/commit-readiness.ts";
 import type { WorkContextCard } from "../utils/work-context.ts";
 
 export interface GitStatusEntry {
@@ -30,11 +31,19 @@ export interface SliceCommitPlanOutput {
 		allowLeftovers: boolean;
 		commits: Array<{ message: string; paths: string[] }>;
 		push?: SliceCommitPushPlan;
+		metadata?: {
+			commitReadiness: CommitReadinessDiagnostic["commitReadiness"];
+			shipReadiness: CommitReadinessDiagnostic["shipReadiness"];
+			splitRecommendation: CommitReadinessDiagnostic["splitRecommendation"];
+			caveats: string[];
+			notBlockers: string[];
+		};
 	};
 	included: string[];
 	outsideScope: string[];
 	skipped: string[];
 	message: string;
+	readiness: CommitReadinessDiagnostic;
 }
 
 function stripQuotes(value: string): string {
@@ -120,17 +129,26 @@ export function buildSliceCommitPlan(input: SliceCommitPlanInput): SliceCommitPl
 			: "커밋할 변경 파일이 없습니다.");
 	}
 	const message = input.message?.trim() || defaultSliceCommitMessage(input.card);
+	const readiness = buildCommitReadinessDiagnostic(included);
 	return {
 		plan: {
 			expectedHead: input.expectedHead,
 			allowLeftovers: skipped.length > 0,
 			commits: [{ message, paths: included }],
 			...(input.push ? { push: input.push } : {}),
+			metadata: {
+				commitReadiness: readiness.commitReadiness,
+				shipReadiness: readiness.shipReadiness,
+				splitRecommendation: readiness.splitRecommendation,
+				caveats: readiness.caveats,
+				notBlockers: readiness.notBlockers,
+			},
 		},
 		included,
 		outsideScope,
 		skipped,
 		message,
+		readiness,
 	};
 }
 

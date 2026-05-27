@@ -75,6 +75,24 @@ test("buildSliceCommitPlan carries a safe push target into the plan", () => {
 	assert.deepEqual(output.plan.push, { remote: "origin", branch: "feature/test" });
 });
 
+test("buildSliceCommitPlan records commit readiness metadata without blocking caveats", () => {
+	const output = buildSliceCommitPlan({
+		card: card(["backend/apps/trip", "frontend/apps/admin", "frontend/schema.graphql"]),
+		message: "feat: 스팟 리뷰 답글 노출 타입",
+		statusLines: [
+			"?? backend/apps/trip/migrations/20260527042440-add-display-author-type.js",
+			" M frontend/apps/admin/src/components/spotReviews/SpotReviewDetailModal.tsx",
+			" M frontend/schema.graphql",
+		],
+	});
+
+	assert.equal(output.readiness.commitReadiness, "ready_with_caveats");
+	assert.equal(output.readiness.shipReadiness, "blocked_by_caveats");
+	assert.equal(output.plan.metadata?.commitReadiness, "ready_with_caveats");
+	assert.equal(output.plan.metadata?.shipReadiness, "blocked_by_caveats");
+	assert.match(output.plan.metadata?.notBlockers.join("\n") ?? "", /deferred migration execution/);
+});
+
 test("defaultSliceCommitMessage falls back to goal when slice title is empty", () => {
 	const c = card([], "");
 	c.currentSlice = { ...c.currentSlice!, title: "" };

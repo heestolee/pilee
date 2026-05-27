@@ -37,8 +37,10 @@ title_en: Auto-commit executes only explicit plans
 - `split-head`는 clean worktree에서만 동작하고, reset 전에 backup branch를 둘 수 있어야 한다.
 - commit message는 reviewable해야 하며, scope parentheses 같은 프로젝트별 convention 강제는 기본적으로 거부할 수 있다.
 - push는 plan의 `push`, `pushPolicy`, 또는 quick path 기본값(`push-if-tracking`)으로만 수행한다. 결과는 `committed_and_pushed` / `committed_not_pushed`로 분리해 보고한다.
-- `status`는 현재 branch/head뿐 아니라 안전한 push target과 ahead/behind를 보여준다.
+- `status`는 현재 branch/head와 안전한 push target/ahead/behind뿐 아니라 dirty diff의 commit readiness, ship readiness caveat, split recommendation을 진단한다.
+- `status`의 `READY_WITH_CAVEATS`는 “nearest validation 후 커밋 가능한 diff”라는 뜻이지 ship 완료가 아니다. migration 실행, UI capture, 최종 verify-report는 ship caveat로 남길 수 있다.
 - `work_context action=commit_plan`은 currentSlice scope 기반 plan 파일을 만드는 helper일 뿐이며, 실제 commit은 여전히 plan 검토 후 `auto_commit apply`가 수행한다.
+- commit plan에는 `metadata.commitReadiness`, `metadata.shipReadiness`, `metadata.caveats`, `metadata.notBlockers`를 포함해 agent가 migration/UI 검증 대기를 commit blocker로 오인하지 않게 한다.
 
 ## Review trigger
 
@@ -47,3 +49,4 @@ title_en: Auto-commit executes only explicit plans
 - plan 없이 “알아서 커밋”하는 흐름이 생기면 [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md)를 다시 적용한다.
 - currentSlice scope 밖 파일을 기본 commit plan에 섞으면 중단하고 [Slice 완료는 commit 후보를 만든다](./slice-auto-commit-rhythm.md)의 leftover 원칙을 적용한다.
 - auto-commit 결과가 `committed_not_pushed`인데 사용자가 push 보류를 말하지 않았다면 완료 보고 전에 push 실패/스킵을 해결한다.
+- verified slice가 있고 dirty diff가 남아 있는데 “migration 실행 전”, “UI 캡처 전”, “최종 verify 전”만을 이유로 commit을 미루면 중단하고 commit plan을 만들거나 명시적 checkpoint reason을 남긴다.

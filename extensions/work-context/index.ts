@@ -12,6 +12,7 @@ import {
 	type WorkContextMode,
 	type WorkContextSlice,
 } from "../utils/work-context.ts";
+import { formatCommitReadinessDiagnostic } from "../utils/commit-readiness.ts";
 import { buildSliceCommitPlan, sliceCommitPlanFileName, type SliceCommitPushPlan } from "./slice-commit-plan.ts";
 
 const sliceSchema = Type.Object({
@@ -175,7 +176,7 @@ export default function workContextExtension(pi: ExtensionAPI) {
 				if (!card.currentSlice) throw new Error("commit_plan requires currentSlice. Use work_context set_slice first.");
 				const root = card.identity.root || ctx.cwd;
 				const [statusText, head, push] = await Promise.all([
-					gitOutput(pi, root, ["status", "--porcelain"], { optionalLocks: true }),
+					gitOutput(pi, root, ["status", "--porcelain", "--untracked-files=all"], { optionalLocks: true }),
 					gitOutput(pi, root, ["rev-parse", "HEAD"]).then((value) => value.trim()),
 					detectSafePushPlan(pi, root),
 				]);
@@ -197,14 +198,18 @@ export default function workContextExtension(pi: ExtensionAPI) {
 					`auto_commit plan을 생성했습니다: ${planPath}`,
 					`message: ${output.message}`,
 					pushLine,
+					"",
+					formatCommitReadinessDiagnostic(output.readiness),
+					"",
 					"paths:",
 					...output.included.map((path) => `- ${path}`),
 					"",
+					"판정: 이 plan은 current slice의 commit 후보입니다. migration 실행이나 UI capture가 남아 있다면 ship caveat로 기록하되, nearest validation이 통과한 코드 slice 커밋을 막는 이유로 쓰지 마세요.",
 					output.plan.push
 						? "다음 단계: plan을 검토한 뒤 auto_commit action=apply planPath=<위 경로>를 호출하면 commit+push까지 완료됩니다."
 						: "다음 단계: plan을 검토한 뒤 auto_commit action=apply planPath=<위 경로>를 호출하고, push가 필요하면 즉시 별도 git push까지 완료하세요.",
 					skipped,
-				].filter(Boolean).join("\n"), { planPath, plan: output.plan, included: output.included, outsideScope: output.outsideScope, skipped: output.skipped, card });
+				].filter(Boolean).join("\n"), { planPath, plan: output.plan, included: output.included, outsideScope: output.outsideScope, skipped: output.skipped, readiness: output.readiness, card });
 			}
 
 			throw new Error(`Unsupported work_context action: ${params.action}`);
