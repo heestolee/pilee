@@ -19,8 +19,8 @@ applies_to:
   - extensions/frame-studio
 source:
   - user-direction:2026-05-12-conductor-like-guards
-reviewed_at: 2026-05-27
-reviewed_commit: b434c00680fd02e076f7b0a6a68b483fea7ef074
+reviewed_at: 2026-05-28
+reviewed_commit: 536bd9c
 related:
   - workflow-weight-proportionality
   - validation-baseline-failure-cache
