@@ -189,6 +189,7 @@ function buildSystemPrompt(state: GuardState): string {
 			"- Validation command fan-out discipline: before running lint/test/type-check/build/bootstrap, predict the actual fan-out in files/packages. Prefer direct executables with explicit paths over package-script wrappers when narrowing matters.",
 			"- Do not assume `pnpm <script> -- <path>` narrows the script. If a wrapper script might contain fixed globs or ignore args, inspect package.json or use a direct command such as `pnpm exec eslint <file>` / `pnpm vitest run <file>`.",
 			"- Whole app/repo/workspace validation or wildcard package builds require a one-line reason tied to the current diff. Dependency/bootstrap recovery gets one narrow package-level attempt; after a second missing package/module signal, stop and report BLOCKED or ask before broad workspace build.",
+			"- Search/history fan-out discipline: before the first investigative search/history command (`git log -S`, `git grep`, `rg`, `find`, `gh search`, `vcc_recall`), estimate ref/path/history/output fan-out. If the user gave anchors such as a symbol, file, URL, PR, commit, or branch, start with an anchored narrow lookup; broad repo/all-history/all-branch search is a soft fallback only after anchored lookup misses, and should be preceded by a one-line reason.",
 		);
 		if (state.weight === "standard" || state.weight === "full") {
 			lines.push(
@@ -203,6 +204,7 @@ function buildSystemPrompt(state: GuardState): string {
 	if (paceSeconds) {
 		lines.push(
 			`- FAST RESPONSE PACE: after each tool result, use a ${paceSeconds}-second decision budget. Choose one of: next narrow tool call, interim conclusion, scope-gate question, or final report. Do not silently spend minutes deciding the next step.`,
+			"- Silence breaker: if the next step is broad/long, a command may take more than ~30 seconds, or the previous command aborted/timed out/returned no usable evidence, state a short Korean progress/strategy-reset line before the next tool call instead of waiting for the user to ask what is happening.",
 			"- Tool exploration discipline: do not call broad tool list/schema/full-content discovery (`mcp list`, broad `describe`, `get_mcp_content`, raw transcript/context mining) unless the user explicitly asks about tools, a direct call fails from schema uncertainty, or the current evidence cannot identify the required tool.",
 		);
 	}
@@ -221,7 +223,7 @@ function buildSystemPrompt(state: GuardState): string {
 			"- Investigation scope lock: first inspect only the scope explicitly named in the user's latest request. Do not chase adjacent work status, diffs, commits, worktrees, or recovery/implementation state unless that directly answers the named question.",
 			"- Scope expansion gate: when the next check would substantially widen scope (for example crash/log → worktree progress, symptom check → fix, dev/preview → production, or source evidence → unrelated session history), stop and ask the user before continuing.",
 			"- No-result handoff: if the current scope does not answer the question, report exactly what you checked and what you could not find, then offer 1–3 concrete next search directions and ask which one to inspect.",
-			"- Progress heartbeat: if investigation may take more than 3 minutes or several tools/files, send a short Korean progress update at least every 3 minutes explaining what you are checking and why it is taking time.",
+			"- Progress heartbeat: for quick lookup/triage, use the silence breaker when the first route stalls or broadens; for genuinely long investigations, send a short Korean progress update at least every 3 minutes explaining what you are checking and why it is taking time.",
 		);
 	}
 	if (state.auditRequired) {
@@ -658,6 +660,7 @@ function fastPaceToolResultNote(state: GuardState, event: any): string | undefin
 		"[workflow_guard] fastPaceRequired: true",
 		`- After this tool result, use a ${seconds}-second decision budget.`,
 		"- Choose one: next narrow tool call, interim conclusion, scope-gate question, or final report.",
+		"- If the previous command stalled/aborted/no-result or the next step is broad/long, state a short Korean progress/strategy-reset line before the next tool call.",
 		"- Avoid silent tool/schema/context exploration. If evidence is enough, report now; if not, state the exact remaining gap.",
 	].join("\n");
 }

@@ -55,7 +55,12 @@ test("investigation prompts lock scope and require expansion handoff", async () 
 	assert.match(start.systemPrompt, /Investigation scope lock/);
 	assert.match(start.systemPrompt, /Scope expansion gate/);
 	assert.match(start.systemPrompt, /No-result handoff/);
+	assert.match(start.systemPrompt, /Search\/history fan-out discipline/);
+	assert.match(start.systemPrompt, /anchored narrow lookup/);
+	assert.match(start.systemPrompt, /broad repo\/all-history\/all-branch search is a soft fallback/);
+	assert.match(start.systemPrompt, /Silence breaker/);
 	assert.match(start.systemPrompt, /Progress heartbeat/);
+	assert.match(start.systemPrompt, /quick lookup\/triage/);
 	assert.match(start.systemPrompt, /at least every 3 minutes/);
 	assert.match(start.systemPrompt, /crash\/log → worktree progress/);
 	assert.match(start.systemPrompt, /FAST RESPONSE PACE/);
@@ -70,6 +75,7 @@ test("investigation prompts lock scope and require expansion handoff", async () 
 	assert.equal(result.details.workflowGuard.fastPaceRequired, true);
 	assert.match(result.content.at(-1).text, /30-second decision budget/);
 	assert.match(result.content.at(-1).text, /next narrow tool call/);
+	assert.match(result.content.at(-1).text, /progress\/strategy-reset/);
 });
 
 test("workflow weight controls fast response pace budget", async () => {

@@ -45,6 +45,7 @@ title_en: Repeated workflow failures become enforced guard flows
 | fixed-vs-unfixed audit | hard audit path | “이미 대응/미대응/남은 gap” 요청에는 local history snapshot을 자동 주입하고 `friction → response evidence → current state → remaining gap` 형식을 요구 |
 | 작은 hotfix 기본 경로 | hard lightweight default | light turn에서 `verify_report_live start`, subagent fan-out, deep session/context mining을 막고 scope lock → focused change → nearest validation부터 시작 |
 | fast response pace | hard prompt + result annotation | tool result 이후 none/light는 30초, standard는 60초, full은 120초 판단 예산 안에 다음 좁은 tool call·중간 결론·scope-gate 질문·최종 보고 중 하나로 전환하게 함 |
+| search/history fan-out 예산 | soft prompt + result annotation | 첫 조사 명령 전에 ref/path/history/output fan-out을 가볍게 추정하고, symbol/file/URL/PR/commit/branch anchor가 있으면 narrow lookup을 기본값으로 삼음. broad search는 fallback으로 허용하되 이유와 범위를 먼저 드러냄 |
 | light push 종료 | hard terminal rule | PR/status 작업을 명시하지 않은 light 작업은 push 성공을 종료 조건으로 보고, 추가 status/log/PR/work_context 도구 호출을 막아 한 줄 완료 보고로 끝냄 |
 | 판단 드리프트 억제 | hard prompt discipline + selective block | 코드 가능 여부와 제품 요구 충족을 분리하고, 사용자 지정 환경·dev 절차·SQL 안전장치를 과확장하지 않게 turn guard에 주입 |
 | UI choice continuity | hard result annotation | `tui_ask`/TFT Studio 선택 결과에 `nextActionRequired`를 붙여 선택 요약으로 멈추지 않게 함 |
@@ -92,6 +93,18 @@ Light PR/ship에서는 현재 diff, 최근 커밋, 사용자가 방금 확인한
 
 이 규칙은 validation을 덜 하라는 뜻이 아닙니다. 현재 diff를 닫는 가장 가까운 증거를 먼저 만들고, 더 넓은 검증은 실제 risk가 관찰되거나 사용자가 요청할 때 승격합니다.
 
+## Search / History Fan-out Rule
+
+질질 끌리는 조사는 보통 “도구가 느림”보다 “첫 탐색 범위를 너무 크게 잡음”에서 시작합니다. 그래서 workflow guard는 validation뿐 아니라 검색·히스토리 조회에도 fan-out 예산을 적용합니다.
+
+1. 첫 `git log -S`, `git grep`, `rg`, `find`, `gh search`, `vcc_recall` 전에 ref/path/history/output 범위를 가볍게 추정합니다.
+2. 사용자가 symbol, file, URL, PR, commit, branch 같은 anchor를 준 경우에는 해당 anchor로 좁은 lookup을 먼저 실행합니다.
+3. repo 전체, 모든 branch, 넓은 directory, raw transcript 전체 검색은 첫 수가 아니라 fallback입니다.
+4. broad search가 필요하면 hard block하지 않고, “무엇을 못 찾았고 어디까지 넓히는지”를 한 줄로 드러낸 뒤 실행합니다.
+5. 명령이 abort/timeout/no-result이면 같은 broad path를 반복하지 않고 strategy reset을 알립니다. 예: `범위가 넓어 끊겼습니다. 먼저 symbol 위치를 target branch에서 좁혀 다시 찾겠습니다.`
+
+이 규칙은 질문을 늘리라는 뜻이 아닙니다. 사용자가 이미 anchor를 줬다면 되묻기보다 narrow lookup으로 바로 답을 찾아야 합니다. anchor가 없고 다음 search가 범위를 크게 넓힐 때만 scope-gate 질문을 사용합니다.
+
 ## Judgment Drift Rules
 
 반복 지연 사례에서 확인된 실패는 다음 runtime discipline으로 고정합니다.
@@ -99,8 +112,8 @@ Light PR/ship에서는 현재 diff, 최근 커밋, 사용자가 방금 확인한
 - **조사 범위 잠금**: 조사/원인 확인 요청에서는 먼저 사용자가 발화에 직접 포함한 범위만 봅니다. crash/log 확인을 작업물 상태, diff, commit, worktree 진행률, 복구/구현 상태 추적으로 바꾸지 않습니다.
 - **범위 확장 확인**: 다음 확인이 crash/log → worktree 진행률, 증상 확인 → 수정, dev/preview → production, 직접 증거 → unrelated session history처럼 많이 넓어지는 순간에는 멈추고 사용자에게 먼저 묻습니다.
 - **못 찾음 handoff**: 현재 범위에서 답을 못 찾으면 어디까지 봤고 무엇을 못 찾았는지 먼저 보고한 뒤, 다음으로 더 찾아볼 수 있는 방향 1–3개를 제시하고 어느 쪽을 볼지 묻습니다.
-- **중간 진행 공유**: 조사/확인이 3분 이상 걸리거나 여러 파일·도구를 연쇄로 읽어야 하면, 결과를 기다리지 말고 지금 무엇을 확인 중인지와 왜 시간이 걸리는지 짧게 공유합니다.
-- **tool result 판단 예산**: 운영 triage·light investigation·answer/audit처럼 빠른 판별이 중요한 none/light 경로는 tool result 이후 30초 안에 다음 좁은 tool call, 중간 결론, scope-gate 질문, 최종 보고 중 하나를 선택합니다. standard는 60초, full은 120초를 기본 예산으로 둡니다. 이 예산은 “정확도 포기”가 아니라 조용히 몇 분씩 내부 판단에 머무르지 않기 위한 실행 리듬입니다.
+- **중간 진행 공유**: 빠른 lookup/triage에서 첫 경로가 30초 이상 막히거나 abort/timeout/no-result가 나오면 즉시 무엇을 확인했고 어떤 전략으로 좁히거나 넓히는지 짧게 공유합니다. 장시간 조사는 최소 3분마다 진행 상태와 지연 이유를 공유합니다.
+- **tool result 판단 예산**: 운영 triage·light investigation·answer/audit처럼 빠른 판별이 중요한 none/light 경로는 tool result 이후 30초 안에 다음 좁은 tool call, 중간 결론, scope-gate 질문, 최종 보고 중 하나를 선택합니다. standard는 60초, full은 120초를 기본 예산으로 둡니다. 이 예산은 “정확도 포기”가 아니라 조용히 몇 분씩 내부 판단에 머무르지 않기 위한 실행 리듬입니다. 다음 step이 broad/long이거나 직전 명령이 결과 없이 끝났다면 다음 tool call 전에 strategy reset을 사용자에게 보입니다.
 - **tool 탐색 절제**: 스킬이나 프롬프트가 사용할 도구를 이미 가리키면 `mcp list`, broad `describe`, digest 원문 전체 조회, raw transcript/context mining을 먼저 열지 않습니다. 직접 호출이 schema 불확실성으로 실패했거나 사용자가 도구/스키마 자체를 묻거나 현재 evidence로 필요한 도구를 식별하지 못할 때만 tool 탐색으로 승격합니다.
 - **환경 범위 고정**: 사용자가 dev/preview/특정 증상 확인을 요청했으면 그 범위를 넘지 않습니다. production, 외부 서비스, 실제 write 경로로 확장하려면 먼저 묻습니다.
 - **제품 판단 분리**: “코드상 계산 가능”과 “제품 요구를 충족”은 다릅니다. 실제 소비 경로(UI, 알림, 지급, 운영자 확인)가 값을 쓰는지 확인하기 전에는 완료 판단을 하지 않습니다.
