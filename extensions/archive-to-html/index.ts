@@ -198,13 +198,55 @@ function mimeFor(filePath: string): string {
 	return "application/octet-stream";
 }
 
-function inlineLocalImageSrc(html: string, htmlDir: string): string {
+function workspaceHintFromReportPath(htmlFilePath?: string): string {
+	if (!htmlFilePath) return "";
+	const base = path.basename(htmlFilePath).replace(/\.html?$/i, "");
+	const match = base.match(/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}_([^_]+)/);
+	return match?.[1] ?? "";
+}
+
+function existingFilePath(candidate: string): string | null {
+	try { return fs.existsSync(candidate) && fs.statSync(candidate).isFile() ? fs.realpathSync(candidate) : null; } catch { return null; }
+}
+
+function resolveLocalImageAsset(src: string, htmlDir: string, htmlFilePath?: string, cwd?: string): string | null {
+	if (/^(https?:|data:|blob:)/i.test(src)) return null;
+	try {
+		if (/^file:/i.test(src)) return existingFilePath(fileURLToPath(src));
+	} catch {}
+	const candidates: string[] = [];
+	if (path.isAbsolute(src)) candidates.push(src);
+	else candidates.push(path.resolve(htmlDir, src));
+
+	const srcBase = path.basename(src);
+	const workspaceHint = workspaceHintFromReportPath(htmlFilePath);
+	const captureRoots = new Set<string>();
+	if (cwd) {
+		try {
+			for (const root of contextWorkRoots(cwd)) {
+				for (const ws of fs.readdirSync(root.dir)) captureRoots.add(path.join(root.dir, ws, "captures"));
+			}
+		} catch {}
+	}
+	for (const root of collectWorktreeRoots()) {
+		if (workspaceHint && root.workspace !== workspaceHint) continue;
+		captureRoots.add(path.join(root.workspacePath, ".context", "work", root.workspace, "captures"));
+	}
+	for (const captureRoot of captureRoots) {
+		candidates.push(path.join(captureRoot, src));
+		if (srcBase && srcBase !== src) candidates.push(path.join(captureRoot, srcBase));
+	}
+	for (const candidate of candidates) {
+		const found = existingFilePath(candidate);
+		if (found) return found;
+	}
+	return null;
+}
+
+function inlineLocalImageSrc(html: string, htmlDir: string, htmlFilePath?: string, cwd?: string): string {
 	return html.replace(/(<img\b[^>]*\bsrc=["'])([^"']+)(["'][^>]*>)/gi, (match, prefix, src, suffix) => {
-		if (/^(https?:|data:|blob:|file:)/i.test(src)) return match;
-		const assetPath = path.resolve(htmlDir, src);
-		const relative = path.relative(htmlDir, assetPath);
-		if (relative.startsWith("..") || path.isAbsolute(relative)) return match;
-		if (!fs.existsSync(assetPath)) return match;
+		const assetPath = resolveLocalImageAsset(src, htmlDir, htmlFilePath, cwd);
+		if (!assetPath) return match;
 		const b64 = fs.readFileSync(assetPath).toString("base64");
 		return `${prefix}data:${mimeFor(assetPath)};base64,${b64}${suffix}`;
 	});
@@ -801,11 +843,11 @@ async function suggestSessionClassification(filePath: string, ctx?: Pick<Extensi
 	}
 }
 
-function artifactPreviewInnerHtml(filePath: string, options: { full?: boolean; intent?: EvidenceIntent } = {}): { title: string; html: string } {
+function artifactPreviewInnerHtml(filePath: string, options: { full?: boolean; intent?: EvidenceIntent; cwd?: string } = {}): { title: string; html: string } {
 	const ext = path.extname(filePath).toLowerCase();
 	if (ext === ".html" || ext === ".htm") {
 		const htmlDir = path.dirname(filePath);
-		const html = inlineLocalImageSrc(fs.readFileSync(filePath, "utf-8"), htmlDir);
+		const html = inlineLocalImageSrc(fs.readFileSync(filePath, "utf-8"), htmlDir, filePath, options.cwd);
 		return { title: artifactTitle(html, filePath), html };
 	}
 	if (ext === ".json" && filePath.startsWith(FRAME_TRANSCRIPTS_DIR)) {
@@ -829,7 +871,7 @@ function sanitizePreviewReturnTo(value: string | null | undefined): string {
 	return trimmed;
 }
 
-function buildArtifactPreviewHtml(filePath: string, options: { full?: boolean; returnTo?: string; intent?: EvidenceIntent } = {}): string {
+function buildArtifactPreviewHtml(filePath: string, options: { full?: boolean; returnTo?: string; intent?: EvidenceIntent; cwd?: string } = {}): string {
 	const { title, html } = artifactPreviewInnerHtml(filePath, options);
 	const returnTo = sanitizePreviewReturnTo(options.returnTo);
 	const artifactDataUri = `data:text/html;charset=utf-8;base64,${Buffer.from(html, "utf8").toString("base64")}`;
@@ -907,7 +949,7 @@ async function openHtmlArtifact(pi: ExtensionAPI, filePath: string, browserOnly 
 		try {
 			const resolved = fs.realpathSync(filePath);
 			const htmlDir = path.dirname(resolved);
-			const html = inlineLocalImageSrc(fs.readFileSync(resolved, "utf-8"), htmlDir);
+			const html = inlineLocalImageSrc(fs.readFileSync(resolved, "utf-8"), htmlDir, resolved, ctx?.cwd);
 			const title = artifactTitle(html, resolved);
 			return await openHtmlStringArtifact(pi, buildGlimpseArtifactHtml(html, resolved), title, false, ctx);
 		} catch {}
@@ -1594,7 +1636,7 @@ function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData,
 					return;
 				}
 				res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-				res.end(buildArtifactPreviewHtml(resolved, { full: url.searchParams.get("full") === "1", returnTo, intent: intentByPath.get(resolved) }));
+				res.end(buildArtifactPreviewHtml(resolved, { full: url.searchParams.get("full") === "1", returnTo, intent: intentByPath.get(resolved), cwd }));
 				return;
 			}
 			if (req.method === "GET" && url.pathname === "/session-search") {

@@ -263,18 +263,67 @@ function normalizeLocalPath(rawPath: string, cwd: string): string {
 	return isAbsolute(rawPath) ? rawPath : resolve(cwd, rawPath);
 }
 
+function isPathInside(filePath: string, rootDir: string): boolean {
+	const rel = relative(resolve(rootDir), resolve(filePath));
+	return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
 function isPathAllowed(filePath: string, state: VerifyReportState): boolean {
 	const resolved = resolve(filePath);
 	const roots = [resolve(state.cwd), resolve(state.capturesDir)];
-	return roots.some((root) => {
-		const rel = relative(root, resolved);
-		return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
-	});
+	return roots.some((root) => isPathInside(resolved, root));
 }
 
 function evidenceWithNormalizedPath(evidence: Evidence, state: VerifyReportState): Evidence {
 	if (!evidence.path) return evidence;
 	return { ...evidence, path: normalizeLocalPath(evidence.path, state.cwd) };
+}
+
+function safeAssetName(value: string): string {
+	return value.replace(/[^a-zA-Z0-9가-힣._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 140) || `evidence-${randomUUID().slice(0, 8)}`;
+}
+
+function uniqueAssetPath(dir: string, desiredName: string, sourcePath: string): string {
+	const parsed = extname(desiredName) ? { stem: desiredName.slice(0, -extname(desiredName).length), ext: extname(desiredName) } : { stem: desiredName, ext: "" };
+	for (let i = 0; i < 100; i += 1) {
+		const suffix = i === 0 ? "" : `-${i + 1}`;
+		const candidate = join(dir, `${parsed.stem}${suffix}${parsed.ext}`);
+		try {
+			if (existsSync(candidate) && resolve(candidate) === resolve(sourcePath)) return candidate;
+			if (!existsSync(candidate)) return candidate;
+		} catch {
+			if (!existsSync(candidate)) return candidate;
+		}
+	}
+	return join(dir, `${parsed.stem}-${randomUUID().slice(0, 8)}${parsed.ext}`);
+}
+
+function materializeEvidenceAsset(evidence: Evidence, state: VerifyReportState): Evidence {
+	if (!evidence.path) return evidence;
+	const normalized = evidenceWithNormalizedPath(evidence, state);
+	if (!normalized.path || !existsSync(normalized.path)) return normalized;
+	if (isPathInside(normalized.path, state.capturesDir)) return normalized;
+	mkdirSync(state.capturesDir, { recursive: true });
+	const dest = uniqueAssetPath(state.capturesDir, safeAssetName(basename(normalized.path)), normalized.path);
+	if (!existsSync(dest)) copyFileSync(normalized.path, dest);
+	return { ...normalized, path: dest };
+}
+
+function materializeEvidenceAssets(state: VerifyReportState): void {
+	state.items = state.items.map((item) => ({
+		...item,
+		evidence: item.evidence.map((evidence) => materializeEvidenceAsset(evidence, state)),
+	}));
+}
+
+function inlineReportImageAssets(html: string, htmlDir: string): string {
+	return html.replace(/(<img\b[^>]*\bsrc=["'])([^"']+)(["'][^>]*>)/gi, (match, prefix, src, suffix) => {
+		if (/^(https?:|data:|blob:)/i.test(src)) return match;
+		const assetPath = isAbsolute(src) ? src : resolve(htmlDir, src);
+		if (!existsSync(assetPath)) return match;
+		const data = readFileSync(assetPath).toString("base64");
+		return `${prefix}data:${mimeFor(assetPath)};base64,${data}${suffix}`;
+	});
 }
 
 function statusLabel(status: ItemStatus | ReportStatus): string {
@@ -1191,7 +1240,8 @@ function archiveReport(state: VerifyReportState): string {
 	const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 	const filename = `${ts}_${state.workspaceName}${state.ticket ? `_${state.ticket}` : ""}.html`;
 	const dest = join(REPORTS_ARCHIVE_DIR, filename);
-	copyFileSync(state.reportPath, dest);
+	const html = readFileSync(state.reportPath, "utf-8");
+	writeFileSync(dest, inlineReportImageAssets(html, dirname(state.reportPath)), "utf-8");
 	return dest;
 }
 
@@ -1308,6 +1358,7 @@ export function registerVerifyReportLive(pi: ExtensionAPI) {
 			if (action === "finish") {
 				if (params.summary) state.summary = params.summary;
 				if (params.finalSummary) state.finalSummary = params.finalSummary;
+				materializeEvidenceAssets(state);
 				state.lintWarnings = lintVerifyReport(state);
 				state.status = "done";
 				addLog(state, state.lintWarnings.length ? `Report lint completed with ${state.lintWarnings.length} warning(s).` : "Report lint completed with no warnings.");
