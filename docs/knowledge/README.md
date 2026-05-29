@@ -208,7 +208,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Ship과 PR-Ship은 서로 다른 통합 단계다](./ship-pr-ship-review-boundary.md) | active | high | 2026-05-13 | 74c8c28 | ship, pr-ship, pr-review, github, commit, push |
 | [Skill은 재사용 가능한 절차다](./skills-as-portable-procedures.md) | active | high | 2026-05-12 | b3d4dce | skill, skill-creator, procedure, porting, workflow, 스킬 |
 | [Slice 완료는 commit 후보를 만든다](./slice-auto-commit-rhythm.md) | active | high | 2026-05-26 | 668415d | frame, slice, auto-commit, work-context, git |
-| [정확한 기획 근거가 있으면 Frame은 추적 매트릭스를 만든다](./source-grounded-frame-planning.md) | active | high | 2026-05-30 | 6f973ef | frame, tft-studio, planning, requirements, traceability, work-map |
+| [정확한 기획 근거가 있으면 Frame은 추적 매트릭스를 만든다](./source-grounded-frame-planning.md) | active | high | 2026-05-30 | e8f8911 | frame, tft-studio, planning, requirements, traceability, work-map |
 | [Command shim은 skill source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-05-13 | 10e0874 | command-shim, skill, tft, frame, slash-command, routing |
 | [TFT Preference Regression Gate는 사용자 선호 역전을 막는다](./tft-preference-regression-gate.md) | active | high | 2026-05-13 | 9152c35 | tft, frame, decide, verify, ask-user-question, regression |
 | [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-05-13 | 10e0874 | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
