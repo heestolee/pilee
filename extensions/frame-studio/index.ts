@@ -649,6 +649,74 @@ h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .tft-relation-card strong, .tft-note-card strong { display:block; margin-bottom:4px; overflow-wrap:anywhere; }
 .tft-relation-card p, .tft-note-card p { margin:4px 0; color:var(--muted); font-size:12px; line-height:1.45; overflow-wrap:anywhere; }
 .tft-visual-error { border:1px solid #fecaca; background:#fef2f2; color:#991b1b; border-radius:14px; padding:12px; white-space:pre-wrap; }
+.layer-visual { border:1px solid #dbeafe; background:linear-gradient(180deg,#f8fbff 0%,#ffffff 100%); border-radius:20px; padding:16px; margin:16px 0; overflow:hidden; min-width:0; max-width:100%; }
+.layer-visual-head { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start; margin-bottom:12px; }
+.layer-visual-title { font-size:18px; font-weight:950; color:#1e3a8a; overflow-wrap:anywhere; }
+.layer-visual-subtitle { margin-top:3px; color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
+.layer-flow-strip { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 14px; }
+.layer-flow-chip { border:1px solid #bfdbfe; background:#eff6ff; color:#1d4ed8; border-radius:999px; padding:5px 9px; font-size:11px; font-weight:850; }
+.layer-visual-diagram { overflow:auto; border:1px solid #dbeafe; border-radius:18px; background:#fff; padding:12px; }
+.layer-visual-canvas { position:relative; min-width:760px; }
+.layer-rail { position:absolute; left:0; top:0; z-index:1; overflow:visible; }
+.layer-card { position:absolute; left:92px; right:18px; z-index:2; border:1px solid #cbd5e1; border-left:7px solid #7c3aed; border-radius:18px; background:#ffffff; box-shadow:0 12px 26px rgba(15,23,42,.07); padding:13px 15px; min-height:168px; overflow:visible; }
+.layer-card.entry, .layer-card.resolver, .layer-card.controller { border-left-color:#2563eb; background:#f8fbff; }
+.layer-card.application, .layer-card.usecase, .layer-card.service { border-left-color:#7c3aed; background:#fbf8ff; }
+.layer-card.domain, .layer-card.entity, .layer-card.vo { border-left-color:#059669; background:#f7fefb; }
+.layer-card.repository, .layer-card.data, .layer-card.persistence, .layer-card.db { border-left-color:#d97706; background:#fffaf3; }
+.layer-card.consumer, .layer-card.ui { border-left-color:#0891b2; background:#f5fdff; }
+.layer-card.ops { border-left-color:#dc2626; background:#fff7f7; }
+.layer-card-top { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+.layer-card-title { font-size:15px; font-weight:950; color:#111827; overflow-wrap:anywhere; }
+.layer-card-role { margin-top:3px; display:inline-block; background:#eef2ff; color:#3730a3; border:1px solid #c7d2fe; border-radius:999px; padding:3px 8px; font-size:11px; font-weight:900; }
+.layer-card-beginner { margin-top:9px; padding:9px 10px; border:1px solid rgba(37,99,235,.16); background:rgba(239,246,255,.72); border-radius:12px; color:#334155; font-size:12px; line-height:1.45; }
+.layer-card-section { margin-top:9px; }
+.layer-card-section b { display:block; color:#475569; font-size:11px; text-transform:uppercase; letter-spacing:.04em; margin-bottom:3px; }
+.layer-card-section ul { margin:0; padding-left:18px; }
+.layer-card-section li { margin:2px 0; font-size:12px; line-height:1.38; overflow-wrap:anywhere; }
+.layer-reqs { display:flex; flex-wrap:wrap; gap:4px; justify-content:flex-end; min-width:80px; }
+.layer-req { background:#111827; color:white; border-radius:999px; padding:3px 7px; font-size:10px; font-weight:950; }
+.layer-glossary { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:8px; margin-top:12px; }
+.layer-glossary-card { border:1px solid #e2e8f0; border-radius:14px; background:#fff; padding:9px 10px; }
+.layer-glossary-card strong { display:block; font-size:12px; color:#1e3a8a; }
+.layer-glossary-card span { display:block; margin-top:3px; color:var(--muted); font-size:11px; line-height:1.4; }
+.arch-visual { border:1px solid #e9d5ff; background:linear-gradient(180deg,#fdfbff 0%,#ffffff 100%); border-radius:20px; padding:16px; margin:16px 0; overflow:hidden; min-width:0; max-width:100%; }
+.arch-visual-head { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start; margin-bottom:12px; }
+.arch-visual-title { font-size:18px; font-weight:950; color:#581c87; overflow-wrap:anywhere; }
+.arch-visual-subtitle { margin-top:3px; color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
+.arch-visual-diagram { overflow:auto; border:1px solid #e9d5ff; border-radius:18px; background:#fff; padding:12px; }
+.arch-canvas { position:relative; min-width:980px; }
+.arch-lane { position:absolute; top:0; bottom:0; border:1px dashed #e2e8f0; border-radius:16px; background:rgba(248,250,252,.62); }
+.arch-lane-title { position:absolute; left:10px; top:9px; right:10px; text-align:center; font-size:11px; font-weight:950; color:#64748b; text-transform:uppercase; letter-spacing:.04em; }
+.arch-edge-svg { position:absolute; inset:0; z-index:1; overflow:visible; pointer-events:none; }
+.arch-node { position:absolute; z-index:2; border:1px solid #cbd5e1; border-top:6px solid #7c3aed; border-radius:16px; background:#ffffff; box-shadow:0 12px 26px rgba(15,23,42,.07); padding:10px 11px; overflow:visible; }
+.arch-node.screen, .arch-node.ui { border-top-color:#2563eb; background:#f8fbff; }
+.arch-node.resolver, .arch-node.api { border-top-color:#4f46e5; background:#f8f7ff; }
+.arch-node.usecase, .arch-node.service { border-top-color:#7c3aed; background:#fbf8ff; }
+.arch-node.domain, .arch-node.vo, .arch-node.entity { border-top-color:#059669; background:#f7fefb; }
+.arch-node.repository, .arch-node.repo { border-top-color:#d97706; background:#fffaf3; }
+.arch-node.table, .arch-node.db { border-top-color:#b45309; background:#fff7ed; }
+.arch-node.ops, .arch-node.review { border-top-color:#dc2626; background:#fff7f7; }
+.arch-node.legacy { opacity:.94; border-style:dashed; }
+.arch-node-title { font-size:13px; font-weight:950; line-height:1.25; overflow-wrap:anywhere; }
+.arch-node-kind { display:inline-flex; margin-top:5px; border:1px solid #ddd6fe; background:#f5f3ff; color:#6d28d9; border-radius:999px; padding:2px 7px; font-size:10px; font-weight:900; }
+.arch-node-desc { margin-top:7px; font-size:11px; color:#475569; line-height:1.35; overflow-wrap:anywhere; }
+.arch-node-badges { display:flex; flex-wrap:wrap; gap:4px; margin-top:8px; }
+.arch-badge { display:inline-flex; border:1px solid #e2e8f0; background:#f8fafc; color:#475569; border-radius:999px; padding:2px 6px; font-size:9px; font-weight:950; white-space:nowrap; }
+.arch-badge.pk { border-color:#bfdbfe; background:#eff6ff; color:#1d4ed8; }
+.arch-badge.fk { border-color:#bbf7d0; background:#f0fdf4; color:#166534; }
+.arch-badge.unique { border-color:#ddd6fe; background:#f5f3ff; color:#6d28d9; }
+.arch-badge.json { border-color:#fed7aa; background:#fff7ed; color:#c2410c; }
+.arch-badge.legacy, .arch-badge.risk { border-color:#fecaca; background:#fef2f2; color:#991b1b; }
+.arch-badge.source-of-truth { border-color:#bae6fd; background:#ecfeff; color:#0e7490; }
+.arch-columns { margin-top:8px; display:grid; gap:4px; }
+.arch-column { display:flex; justify-content:space-between; gap:7px; align-items:flex-start; border-top:1px solid rgba(148,163,184,.28); padding-top:4px; font-size:10px; }
+.arch-column-name { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; overflow-wrap:anywhere; }
+.arch-column-badges { display:flex; flex-wrap:wrap; gap:3px; justify-content:flex-end; }
+.arch-edge-label { font-size:11px; font-weight:900; fill:#334155; paint-order:stroke; stroke:#fff; stroke-width:5px; }
+.arch-legend { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:8px; margin-top:12px; }
+.arch-legend-card { border:1px solid #e2e8f0; border-radius:14px; background:#fff; padding:9px 10px; }
+.arch-legend-card strong { display:block; color:#581c87; font-size:12px; }
+.arch-legend-card span { display:block; margin-top:3px; color:var(--muted); font-size:11px; line-height:1.4; }
 .question { border-color:#ddd6fe; background:#faf9ff; }
 .question-title { font-size:18px; font-weight:800; margin:0 0 12px; line-height:1.35; overflow-wrap:anywhere; }
 .question-context { margin:0 0 14px; padding:12px 14px; border:1px solid #ede9fe; border-radius:12px; background:#faf9ff; font-size:14px; line-height:1.55; }
@@ -791,6 +859,288 @@ function renderLearningNotes(notes) {
     return '<div class="tft-note-card"><strong>' + esc(n.title || '설명') + '</strong>' + body + '</div>';
   }).join('') + '</div>';
 }
+function asTextArray(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.map(function(item) { return String(item || '').trim(); }).filter(Boolean);
+  return String(value).split(/\n|;/).map(function(item) { return item.trim(); }).filter(Boolean);
+}
+function layerKey(value) {
+  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'layer';
+}
+function defaultLayerInfo(layer) {
+  var raw = layerKey(layer.layer || layer.kind || layer.type || layer.id || layer.title || layer.label);
+  if (/resolver|controller|route|entry|api/.test(raw)) return { key:'entry', role:'요청 접수창', beginner:'사용자나 화면에서 들어온 요청을 가장 먼저 받는 입구입니다. 여기서는 요청 모양을 읽고, 실제 업무 판단은 usecase 쪽으로 넘깁니다.' };
+  if (/usecase|application|flow|orchestr/.test(raw)) return { key:'usecase', role:'업무 총괄자', beginner:'이번 기능을 어떤 순서로 처리할지 조립하는 곳입니다. 권한, 트랜잭션, 여러 서비스 호출 순서를 한 업무 흐름으로 묶습니다.' };
+  if (/service|worker|manager/.test(raw)) return { key:'service', role:'전문 작업자', beginner:'특정 일을 실제로 수행하는 작업자입니다. 이미지 draft 생성, pending 요청 반려처럼 재사용되는 세부 작업을 맡습니다.' };
+  if (/domain|rule|policy/.test(raw)) return { key:'domain', role:'업무 규칙판', beginner:'하면 안 되는 것과 반드시 지켜야 하는 규칙을 모아둔 곳입니다. 승인 전 즉시 반영 금지, 자동승인 금지 같은 약속을 지킵니다.' };
+  if (/entity|model|vo|value/.test(raw)) return { key:'entity', role:'데이터 모양과 불변식', beginner:'DB row나 값 객체가 어떤 의미인지 표현합니다. 단순 저장값이 아니라, 이 값이 어떤 상태와 규칙을 가져야 하는지 드러냅니다.' };
+  if (/repo|data|dao|gateway|loader/.test(raw)) return { key:'repository', role:'DB·외부 저장소 창구', beginner:'데이터를 어디서 읽고 어디에 저장할지 담당하는 창구입니다. 업무 판단을 하지 않고 조회 조건과 저장 경계를 명확히 합니다.' };
+  if (/persist|db|migration|table/.test(raw)) return { key:'persistence', role:'실제 저장소', beginner:'데이터가 실제로 남는 테이블/컬럼입니다. 여기의 구조가 바뀌면 migration, rollback, 운영 데이터 영향까지 함께 봐야 합니다.' };
+  if (/consumer|admin|partner|ui|screen|client/.test(raw)) return { key:'consumer', role:'사용자가 보는 화면', beginner:'최종 사용자가 행동하는 화면입니다. backend가 제공한 결과가 실제 UX와 검증 캡처로 이어지는 곳입니다.' };
+  if (/ops|slack|alert|review|approve/.test(raw)) return { key:'ops', role:'운영 전환 지점', beginner:'운영팀 검수, 승인, 알림처럼 코드 결과가 실제 업무로 넘어가는 지점입니다. 실수하면 사람의 업무 흐름이 깨질 수 있습니다.' };
+  return { key:raw, role:'구조 구성요소', beginner:'이 카드가 맡는 책임을 한 문장으로 설명해야 합니다. 모호하면 구현 전에 어느 레이어 책임인지 다시 나눠야 합니다.' };
+}
+function normalizeLayer(layer, index) {
+  layer = layer || {};
+  var info = defaultLayerInfo(layer);
+  var title = layer.title || layer.label || layer.name || layer.layer || layer.id || ('Layer ' + (index + 1));
+  return {
+    id: layer.id || info.key + '-' + (index + 1),
+    key: layerKey(layer.key || layer.layer || layer.kind || layer.type || info.key),
+    title: String(title),
+    role: String(layer.beginnerLabel || layer.role || info.role),
+    beginner: String(layer.beginnerDescription || layer.beginner || layer.explainLikeBootcamp || info.beginner),
+    requirements: asTextArray(layer.requirements || layer.requirementIds || layer.refs || layer.ids),
+    responsibilities: asTextArray(layer.responsibilities || layer.owns || layer.tasks || layer.contract),
+    files: asTextArray(layer.files || layer.paths || layer.candidates),
+    evidence: asTextArray(layer.evidence || layer.verify || layer.verification),
+    risk: asTextArray(layer.risks || layer.risk),
+    status: layer.status || layer.state || 'planned'
+  };
+}
+function layerCardHeight(layer) {
+  var itemCount = layer.responsibilities.length + layer.files.length + layer.evidence.length + layer.risk.length;
+  var beginnerExtra = Math.ceil(Math.max(0, layer.beginner.length - 90) / 80) * 18;
+  return Math.max(210, 168 + beginnerExtra + itemCount * 22);
+}
+function renderLayerList(label, items) {
+  if (!items || !items.length) return '';
+  return '<div class="layer-card-section"><b>' + esc(label) + '</b><ul>' + items.slice(0, 5).map(function(item) { return '<li>' + inline(item) + '</li>'; }).join('') + '</ul></div>';
+}
+function renderReqs(reqs) {
+  if (!reqs || !reqs.length) return '<span class="layer-req">REQ?</span>';
+  return reqs.map(function(req) { return '<span class="layer-req">' + esc(req) + '</span>'; }).join('');
+}
+function renderLayerCard(layer, index, top, height) {
+  var cls = layerKey(layer.key) + ' ' + layerKey(layer.status);
+  return '<article class="layer-card ' + esc(cls) + '" style="top:' + top + 'px;height:' + height + 'px">'
+    + '<div class="layer-card-top"><div><div class="layer-card-title">' + esc(index + 1) + '. ' + inline(layer.title) + '</div><span class="layer-card-role">' + esc(layer.role) + '</span></div><div class="layer-reqs">' + renderReqs(layer.requirements) + '</div></div>'
+    + '<div class="layer-card-beginner">' + inline(layer.beginner) + '</div>'
+    + renderLayerList('이 레이어가 맡는 일', layer.responsibilities)
+    + renderLayerList('구현 후보 파일', layer.files)
+    + renderLayerList('검증 포인트', layer.evidence)
+    + renderLayerList('주의할 실수', layer.risk)
+    + '</article>';
+}
+function renderLayerRail(layers, tops, heights, canvasHeight) {
+  var circles = [];
+  var arrows = [];
+  for (var i = 0; i < layers.length; i++) {
+    var y = tops[i] + 44;
+    circles.push('<circle cx="40" cy="' + y + '" r="18" fill="#ffffff" stroke="#2563eb" stroke-width="3"/><text x="40" y="' + (y + 5) + '" text-anchor="middle" font-size="13" font-weight="900" fill="#1d4ed8">' + (i + 1) + '</text>');
+    if (i < layers.length - 1) {
+      var nextY = tops[i + 1] + 26;
+      arrows.push('<path d="M40 ' + (y + 22) + ' L40 ' + nextY + '" stroke="#93c5fd" stroke-width="4" stroke-linecap="round" marker-end="url(#layerArrow)"/>');
+    }
+  }
+  return '<svg class="layer-rail" width="80" height="' + canvasHeight + '" viewBox="0 0 80 ' + canvasHeight + '"><defs><marker id="layerArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#93c5fd"/></marker></defs>' + arrows.join('') + circles.join('') + '</svg>';
+}
+function renderFlowStrip(flow) {
+  var items = asTextArray(flow);
+  if (!items.length) return '';
+  return '<div class="layer-flow-strip">' + items.map(function(item, index) { return '<span class="layer-flow-chip">' + (index + 1) + '. ' + inline(item) + '</span>'; }).join('') + '</div>';
+}
+function renderLayerGlossary(spec, layers) {
+  var glossary = Array.isArray(spec.glossary) ? spec.glossary : [];
+  if (!glossary.length) {
+    var seen = new Set();
+    glossary = layers.map(function(layer) { return { term: layer.title, description: layer.role + ' — ' + layer.beginner }; }).filter(function(item) {
+      var key = layerKey(item.term); if (seen.has(key)) return false; seen.add(key); return true;
+    }).slice(0, 8);
+  }
+  if (!glossary.length) return '';
+  return '<div class="layer-glossary">' + glossary.map(function(item) {
+    return '<div class="layer-glossary-card"><strong>' + esc(item.term || item.title || '레이어') + '</strong><span>' + inline(item.description || item.body || '') + '</span></div>';
+  }).join('') + '</div>';
+}
+function renderBackendLayerVisualElement(el, spec) {
+  var layers = (Array.isArray(spec.layers) ? spec.layers : []).map(normalizeLayer);
+  if (!layers.length) { el.innerHTML = '<div class="tft-visual-error">backend-layer-map visual에는 layers 배열이 필요합니다.</div>'; return; }
+  var gap = 18;
+  var tops = [];
+  var heights = [];
+  var cursor = 18;
+  layers.forEach(function(layer) { var h = layerCardHeight(layer); tops.push(cursor); heights.push(h); cursor += h + gap; });
+  var canvasHeight = Math.max(260, cursor + 12);
+  var cards = layers.map(function(layer, index) { return renderLayerCard(layer, index, tops[index], heights[index]); }).join('');
+  el.className = 'layer-visual';
+  el.innerHTML = '<div class="layer-visual-head"><div><div class="layer-visual-title">' + esc(spec.title || 'Backend Layer Visual Map') + '</div>' + (spec.subtitle ? '<div class="layer-visual-subtitle">' + esc(spec.subtitle) + '</div>' : '<div class="layer-visual-subtitle">usecase/entity/service/repository가 어디서 어떤 책임을 갖는지 한눈에 보는 그림입니다.</div>') + '</div><span class="badge">SVG layer map</span></div>'
+    + renderFlowStrip(spec.flow || spec.story || spec.userFlow)
+    + '<div class="layer-visual-diagram"><div class="layer-visual-canvas" style="height:' + canvasHeight + 'px">' + renderLayerRail(layers, tops, heights, canvasHeight) + cards + '</div></div>'
+    + renderLayerGlossary(spec, layers)
+    + renderLearningNotes(spec.notes || spec.explanations);
+}
+function isBackendLayerVisualSpec(spec) {
+  var kind = String(spec.kind || spec.type || '').toLowerCase();
+  return kind === 'backend-layer-map' || kind === 'layer-map' || kind === 'backend-layer-visual';
+}
+function isArchitectureFlowSpec(spec) {
+  var kind = String(spec.kind || spec.type || '').toLowerCase();
+  return kind === 'architecture-flow' || kind === 'data-flow-map' || kind === 'data-flow' || kind === 'architecture-data-flow';
+}
+function normalizeArchLane(value, index) {
+  if (typeof value === 'string') return { id: layerKey(value), title: value, index:index };
+  value = value || {};
+  return { id: layerKey(value.id || value.key || value.title || value.label || ('lane-' + index)), title: String(value.title || value.label || value.id || ('Lane ' + (index + 1))), index:index };
+}
+function archNodeKind(node) { return layerKey(node.type || node.kind || node.layer || 'node'); }
+function archNodeHeight(node) {
+  var cols = Array.isArray(node.columns) ? node.columns.length : 0;
+  var badgeCount = asTextArray(node.badges || node.flags).length;
+  var descExtra = Math.ceil(Math.max(0, String(node.description || node.beginnerDescription || '').length - 80) / 70) * 14;
+  return Math.max(node.type === 'table' || node.kind === 'table' ? 170 : 132, 112 + descExtra + cols * 22 + Math.ceil(badgeCount / 3) * 14);
+}
+function collectArchLanes(spec) {
+  var explicit = Array.isArray(spec.lanes) ? spec.lanes.map(normalizeArchLane) : [];
+  var lanes = explicit.slice();
+  var seen = new Set(lanes.map(function(lane) { return lane.id; }));
+  (Array.isArray(spec.nodes) ? spec.nodes : []).forEach(function(node) {
+    var raw = node.lane || node.group || node.layer || 'Flow';
+    var id = layerKey(raw);
+    if (!seen.has(id)) { seen.add(id); lanes.push({ id:id, title:String(raw), index:lanes.length }); }
+  });
+  return lanes.length ? lanes : [{ id:'flow', title:'Flow', index:0 }];
+}
+function normalizeArchNode(node, index, lanes) {
+  node = node || {};
+  var laneId = layerKey(node.lane || node.group || node.layer || lanes[0].id);
+  if (!lanes.some(function(lane) { return lane.id === laneId; })) laneId = lanes[0].id;
+  return {
+    id: String(node.id || ('node-' + (index + 1))),
+    lane: laneId,
+    row: Number.isFinite(Number(node.row)) ? Number(node.row) : undefined,
+    type: archNodeKind(node),
+    title: String(node.title || node.name || node.id || ('Node ' + (index + 1))),
+    description: String(node.description || node.beginnerDescription || node.role || ''),
+    badges: asTextArray(node.badges || node.flags || node.requirements),
+    columns: Array.isArray(node.columns) ? node.columns : [],
+    status: node.status || node.state || '',
+    source: node.source || node.sourceOfTruth,
+    order: index,
+  };
+}
+function columnBadges(column) {
+  var badges = asTextArray(column.badges || column.constraints || column.flags || column.badge);
+  if (column.pk || column.primaryKey) badges.push('PK');
+  if (column.fk || column.foreignKey || column.references) badges.push('FK');
+  if (column.unique) badges.push('UNIQUE');
+  if (column.nullable === false || column.required) badges.push('NOT NULL');
+  if (column.json || column.type === 'json' || column.type === 'jsonb') badges.push('JSON');
+  if (column.legacy) badges.push('LEGACY');
+  return Array.from(new Set(badges.filter(Boolean)));
+}
+function archBadgeClass(value) {
+  var key = layerKey(value);
+  if (key === 'pk' || key === 'primary-key') return 'pk';
+  if (key === 'fk' || key === 'foreign-key') return 'fk';
+  if (key === 'unique') return 'unique';
+  if (key === 'json' || key === 'jsonb') return 'json';
+  if (key === 'legacy' || key === 'deprecated') return 'legacy';
+  if (key === 'source-of-truth' || key === 'canonical') return 'source-of-truth';
+  if (key === 'risk' || key === 'danger') return 'risk';
+  return key;
+}
+function renderArchBadge(value) { return '<span class="arch-badge ' + archBadgeClass(value) + '">' + esc(value) + '</span>'; }
+function renderArchColumns(columns) {
+  if (!columns || !columns.length) return '';
+  return '<div class="arch-columns">' + columns.slice(0, 8).map(function(column) {
+    var name = column.name || column.id || column.column || '';
+    var badges = columnBadges(column).map(renderArchBadge).join('');
+    var refs = column.references || column.ref || column.to;
+    var label = refs ? name + ' → ' + refs : name;
+    return '<div class="arch-column"><span class="arch-column-name">' + esc(label) + '</span><span class="arch-column-badges">' + badges + '</span></div>';
+  }).join('') + '</div>';
+}
+function renderArchNode(node, layout) {
+  var badges = node.badges.slice();
+  if (node.source === true) badges.push('source-of-truth');
+  else if (typeof node.source === 'string') badges.push(node.source);
+  if (node.status) badges.push(node.status);
+  var classes = ['arch-node', node.type].concat(badges.map(archBadgeClass)).join(' ');
+  return '<article class="' + esc(classes) + '" style="left:' + layout.x + 'px;top:' + layout.y + 'px;width:' + layout.w + 'px;min-height:' + layout.h + 'px">'
+    + '<div class="arch-node-title">' + inline(node.title) + '</div>'
+    + '<span class="arch-node-kind">' + esc(node.type) + '</span>'
+    + (node.description ? '<div class="arch-node-desc">' + inline(node.description) + '</div>' : '')
+    + (badges.length ? '<div class="arch-node-badges">' + badges.map(renderArchBadge).join('') + '</div>' : '')
+    + renderArchColumns(node.columns)
+    + '</article>';
+}
+function renderArchEdge(edge, layouts, index, markerId) {
+  var from = layouts[edge.from];
+  var to = layouts[edge.to];
+  if (!from || !to) return '';
+  var sx = from.x + from.w;
+  var sy = from.y + Math.min(from.h / 2, 82);
+  var tx = to.x;
+  var ty = to.y + Math.min(to.h / 2, 82);
+  var midX = (sx + tx) / 2;
+  var color = edge.color || (edge.kind === 'write' ? '#dc2626' : edge.kind === 'read' ? '#2563eb' : '#7c3aed');
+  var path = tx >= sx
+    ? 'M' + sx + ' ' + sy + ' C' + midX + ' ' + sy + ' ' + midX + ' ' + ty + ' ' + tx + ' ' + ty
+    : 'M' + sx + ' ' + sy + ' C' + (sx + 36) + ' ' + sy + ' ' + (tx - 36) + ' ' + ty + ' ' + tx + ' ' + ty;
+  var label = edge.label || edge.title || edge.kind || ('F' + (index + 1));
+  var lx = (sx + tx) / 2;
+  var ly = (sy + ty) / 2 - 8;
+  return '<path d="' + path + '" fill="none" stroke="' + esc(color) + '" stroke-width="2.5" marker-end="url(#' + markerId + ')"/><text x="' + lx + '" y="' + ly + '" text-anchor="middle" class="arch-edge-label">' + esc(label) + '</text>';
+}
+function renderArchLegend(spec) {
+  var legend = Array.isArray(spec.legend) ? spec.legend : [];
+  if (!legend.length) {
+    legend = [
+      { title:'PK / FK', description:'PK는 row의 고유 식별자, FK는 다른 table row를 가리키는 연결선입니다.' },
+      { title:'source-of-truth', description:'실제로 최종 데이터가 맞다고 믿는 저장소입니다. 예를 들어 승인 후 반영되는 canonical table이 이 역할입니다.' },
+      { title:'legacy', description:'남아 있지만 이번 흐름에서는 줄이거나 끊어야 하는 오래된 source입니다.' },
+    ];
+  }
+  return '<div class="arch-legend">' + legend.map(function(item) { return '<div class="arch-legend-card"><strong>' + esc(item.title || item.term || '설명') + '</strong><span>' + inline(item.description || item.body || '') + '</span></div>'; }).join('') + '</div>';
+}
+function renderArchitectureFlowElement(el, spec) {
+  var lanes = collectArchLanes(spec);
+  var nodes = (Array.isArray(spec.nodes) ? spec.nodes : []).map(function(node, index) { return normalizeArchNode(node, index, lanes); });
+  if (!nodes.length) { el.innerHTML = '<div class="tft-visual-error">architecture-flow visual에는 nodes 배열이 필요합니다.</div>'; return; }
+  var laneWidth = Number(spec.laneWidth) || 220;
+  var laneGap = Number(spec.laneGap) || 24;
+  var nodeWidth = Number(spec.nodeWidth) || 192;
+  var rowGap = Number(spec.rowGap) || 28;
+  var topPad = 48;
+  var laneBuckets = {};
+  var layouts = {};
+  nodes.forEach(function(node) {
+    var lane = lanes.find(function(item) { return item.id === node.lane; }) || lanes[0];
+    if (!laneBuckets[lane.id]) laneBuckets[lane.id] = [];
+    laneBuckets[lane.id].push({ node:node, lane:lane });
+  });
+  Object.keys(laneBuckets).forEach(function(laneId) {
+    var cursor = topPad;
+    laneBuckets[laneId].sort(function(a, b) {
+      var aRow = Number.isFinite(a.node.row) ? a.node.row : a.node.order;
+      var bRow = Number.isFinite(b.node.row) ? b.node.row : b.node.order;
+      return aRow === bRow ? a.node.order - b.node.order : aRow - bRow;
+    }).forEach(function(item, index) {
+      if (index > 0) cursor += rowGap;
+      var node = item.node;
+      var lane = item.lane;
+      var h = archNodeHeight(node);
+      layouts[node.id] = { x: 16 + lane.index * (laneWidth + laneGap) + Math.max(0, (laneWidth - nodeWidth) / 2), y:cursor, w:nodeWidth, h:h };
+      cursor += h;
+    });
+  });
+  var canvasWidth = 32 + lanes.length * laneWidth + Math.max(0, lanes.length - 1) * laneGap;
+  var canvasHeight = Math.max(360, Object.values(layouts).reduce(function(max, box) { return Math.max(max, box.y + box.h + 34); }, 0));
+  var laneHtml = lanes.map(function(lane) {
+    var x = 16 + lane.index * (laneWidth + laneGap);
+    return '<div class="arch-lane" style="left:' + x + 'px;width:' + laneWidth + 'px;height:' + canvasHeight + 'px"><div class="arch-lane-title">' + esc(lane.title) + '</div></div>';
+  }).join('');
+  var markerId = el.id + '-arch-arrow';
+  var edges = Array.isArray(spec.edges) ? spec.edges : [];
+  var edgeSvg = '<svg class="arch-edge-svg" width="' + canvasWidth + '" height="' + canvasHeight + '" viewBox="0 0 ' + canvasWidth + ' ' + canvasHeight + '"><defs><marker id="' + markerId + '" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker></defs>' + edges.map(function(edge, index) { return renderArchEdge(edge, layouts, index, markerId); }).join('') + '</svg>';
+  var nodeHtml = nodes.map(function(node) { return renderArchNode(node, layouts[node.id]); }).join('');
+  el.className = 'arch-visual';
+  el.innerHTML = '<div class="arch-visual-head"><div><div class="arch-visual-title">' + esc(spec.title || 'Architecture / Data Flow Map') + '</div>' + (spec.subtitle ? '<div class="arch-visual-subtitle">' + esc(spec.subtitle) + '</div>' : '<div class="arch-visual-subtitle">데이터와 로직이 UI/API/usecase/domain/repository/DB를 어떻게 지나가는지 보는 전체 지도입니다.</div>') + '</div><span class="badge">Architecture flow</span></div>'
+    + '<div class="arch-visual-diagram"><div class="arch-canvas" style="width:' + canvasWidth + 'px;height:' + canvasHeight + 'px">' + laneHtml + edgeSvg + nodeHtml + '</div></div>'
+    + renderArchLegend(spec)
+    + renderLearningNotes(spec.notes || spec.explanations);
+}
 function renderElkTable(table, node, scale, pad) {
   var status = table.status || 'same';
   var rows = (table.columns || []).map(function(col) {
@@ -809,6 +1159,8 @@ async function renderTftVisualElement(el) {
   var source = decodeURIComponent(el.getAttribute('data-source') || '');
   var spec;
   try { spec = JSON.parse(source); } catch (e) { el.innerHTML = '<div class="tft-visual-error">tft-visual JSON parse failed:\\n' + esc(e.message || e) + '</div>'; return; }
+  if (isBackendLayerVisualSpec(spec)) { renderBackendLayerVisualElement(el, spec); return; }
+  if (isArchitectureFlowSpec(spec)) { renderArchitectureFlowElement(el, spec); return; }
   if (!window.ELK) { el.innerHTML = '<div class="tft-visual-error">ELK renderer를 불러오지 못했습니다.</div>'; return; }
   var tables = Array.isArray(spec.tables) ? spec.tables : [];
   if (!tables.length) { el.innerHTML = '<div class="tft-visual-error">tft-visual에는 tables 배열이 필요합니다.</div>'; return; }

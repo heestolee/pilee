@@ -111,9 +111,70 @@ function loadStudioScript(fakeWindow: FakeWindow, fakeDocument: FakeDocument) {
 			if (count > limit) throw new Error("Timer queue did not settle");
 		}
 	}
-	const factory = new Function("window", "document", "EventSource", "fetch", "setTimeout", "requestAnimationFrame", `${script}\nreturn { render: render, selectTab: selectTab };`);
-	return { ...(factory(fakeWindow, fakeDocument, EventSource, fetch, queueTimer, queueTimer) as { render(state: any, options?: any): void; selectTab(key: string): void }), flushTimers };
+	const factory = new Function("window", "document", "EventSource", "fetch", "setTimeout", "requestAnimationFrame", `${script}\nreturn { render: render, selectTab: selectTab, renderArchitectureFlowElement: renderArchitectureFlowElement };`);
+	return { ...(factory(fakeWindow, fakeDocument, EventSource, fetch, queueTimer, queueTimer) as { render(state: any, options?: any): void; selectTab(key: string): void; renderArchitectureFlowElement(el: any, spec: any): void }), flushTimers };
 }
+
+function extractArchNodeBoxes(html: string) {
+	return [...html.matchAll(/<article class="arch-node[^"]*" style="[^"]*top:(\d+)px;[^"]*min-height:(\d+)px"/g)]
+		.map((match) => ({ top: Number(match[1]), height: Number(match[2]), bottom: Number(match[1]) + Number(match[2]) }))
+		.sort((a, b) => a.top - b.top);
+}
+
+test("Architecture flow keeps variable-height nodes in the same lane from overlapping", () => {
+	const browser = createFakeBrowser({ top: 0, viewport: 600, height: 1600 });
+	const studio = loadStudioScript(browser.window, browser.document);
+	const element = {
+		id: "arch-overlap-test",
+		className: "",
+		innerHTML: "",
+	};
+
+	studio.renderArchitectureFlowElement(element, {
+		kind: "architecture-flow",
+		lanes: ["DB"],
+		nodes: [
+			{
+				id: "large-table",
+				lane: "DB",
+				row: 0,
+				type: "table",
+				title: "Large canonical table",
+				description: "source-of-truth table with enough columns to be taller than the next card",
+				badges: ["source-of-truth"],
+				columns: [
+					{ name: "id", badges: ["PK"] },
+					{ name: "parent_id", badges: ["FK"], references: "parent.id" },
+					{ name: "media_id", badges: ["FK"], references: "media.id" },
+					{ name: "payload", badges: ["JSON"] },
+					{ name: "sort_order" },
+					{ name: "is_main" },
+				],
+			},
+			{ id: "small-table", lane: "DB", row: 1, type: "table", title: "Small lookup table", columns: [{ name: "id", badges: ["PK"] }] },
+			{
+				id: "another-large-table",
+				lane: "DB",
+				row: 2,
+				type: "table",
+				title: "Another tall table",
+				columns: [
+					{ name: "id", badges: ["PK"] },
+					{ name: "request_id", badges: ["FK"] },
+					{ name: "payload", badges: ["JSON"] },
+					{ name: "status" },
+				],
+			},
+		],
+		edges: [],
+	});
+
+	const boxes = extractArchNodeBoxes(element.innerHTML);
+	assert.equal(boxes.length, 3);
+	for (let index = 0; index < boxes.length - 1; index++) {
+		assert.ok(boxes[index].bottom < boxes[index + 1].top, `node ${index} should end before node ${index + 1} starts`);
+	}
+});
 
 test("TFT Studio state update preserves the reader's current scroll offset", () => {
 	let resetOnTimelineRender = false;

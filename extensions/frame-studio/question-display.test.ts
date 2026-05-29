@@ -57,3 +57,24 @@ test("생성된 WebView 스크립트가 파싱된다", () => {
 	for (const script of scripts) new Function(script);
 	assert.match(html, /question-context/);
 });
+
+test("Backend Layer Visual Map 렌더러가 WebView bundle에 포함된다", () => {
+	const html = buildPageHtml();
+	assert.match(html, /backend-layer-map/);
+	assert.match(html, /renderBackendLayerVisualElement/);
+	assert.match(html, /SVG layer map/);
+	assert.match(html, /요청 접수창/);
+	assert.match(html, /업무 총괄자/);
+	assert.match(html, /DB·외부 저장소 창구/);
+});
+
+test("Architecture/Data Flow Map 렌더러가 WebView bundle에 포함된다", () => {
+	const html = buildPageHtml();
+	assert.match(html, /architecture-flow/);
+	assert.match(html, /renderArchitectureFlowElement/);
+	assert.match(html, /Architecture flow/);
+	assert.match(html, /arch-edge-label/);
+	assert.match(html, /source-of-truth/);
+	assert.match(html, /PK/);
+	assert.match(html, /FK/);
+});
