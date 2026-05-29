@@ -1100,6 +1100,7 @@ const README_SKILL_GROUPS = [
 		{ name: "to-production", ko: "현재 worktree 변경을 source 보존 방식으로 production 기반 hotfix target에 이식", en: "Source-preserving migration of current worktree changes to a production-based hotfix target" },
 		{ name: "pr-ship", ko: "PR 리뷰 코멘트 대응 후 커밋·push·스레드 답글·review re-request까지 수행 (`--push-only` 지원)", en: "Post-PR review response with commit, push, thread reply, review re-request, and `--push-only` mode" },
 		{ name: "ci-ship", ko: "PR CI 실패를 check/log 기반으로 분석해 수정·검증·push", en: "Post-PR CI failure analysis, fix, verification, and push workflow" },
+		{ name: "runtime-fanout-triage", ko: "healthcheck/preview/deploy 실패를 fan-out map과 contract 재현으로 진단", en: "Diagnoses healthcheck, preview, and deploy failures with fan-out maps and contract reproduction" },
 		{ name: "verify-report", ko: "캡처/네트워크/콘솔/코드 diff 기반 검증 리포트", en: "Capture/evidence-based verification reports" },
 		{ name: "verify-report-preflight", ko: "검증 리포트 전 readiness·작업 무게·차단 조건 점검", en: "Readiness, workflow weight, and blocker check before Verify Report" },
 		{ name: "start-local-dev", ko: "로컬 dev 서버 구동과 진단", en: "Local dev server startup diagnosis" },

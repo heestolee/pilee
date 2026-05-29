@@ -133,6 +133,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Embedded WebView script는 escape 경계를 보존한다](./embedded-webview-script-escape-boundary.md) | active | high | 2026-05-13 | f89a0f6 | webview, embedded-script, escape, string-raw, regex, glimpse |
 | [MCP 결과는 큰 출력만 digest-first로 다룬다](./mcp-digest-first-artifacts.md) | active | high | 2026-05-12 | d98008a | mcp, digest-first, artifact, tool-output, lazy-retrieval |
 | [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-05-13 | 1a6aa93 | mcp, stderr, stdio, terminal, tui, noise |
+| [Runtime fan-out은 healthcheck 뒤의 실행 계약이다](./runtime-fanout-diagnosis.md) | active | high | 2026-05-28 | f481e63 | runtime, fanout, healthcheck, deployment, triage, root-cause |
 | [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-05-13 | e0dc999 | terminal, ghostty, applescript, notify, host, integration |
 | [터미널 workspace 복원은 snapshot과 host adapter를 분리한다](./terminal-workspace-restore.md) | active | high | 2026-05-19 | 753d75b | workspace, terminal, ghostty, snapshot, restore, session |
 
@@ -258,6 +259,7 @@ graph TD
   doc_embedded_webview_script_escape_boundary["Embedded WebView script는 escape 경계를 보존한다"]
   doc_mcp_digest_first_artifacts["MCP 결과는 큰 출력만 digest-first로 다룬다"]
   doc_mcp_stderr_isolation["MCP stderr는 TUI 출력이 아니다"]
+  doc_runtime_fanout_diagnosis["Runtime fan-out은 healthcheck 뒤의 실행 계약이다"]
   doc_terminal_host_integration["터미널 연동은 host adapter로 다룬다"]
   doc_terminal_workspace_restore["터미널 workspace 복원은 snapshot과 host adapter를 분리한다"]
   doc_ambient_status_surfaces["Idle UI는 장식이 아니라 ambient status다"]
@@ -424,6 +426,9 @@ graph TD
   doc_mcp_digest_first_artifacts --> doc_web_search_curator
   doc_mcp_stderr_isolation --> doc_terminal_host_integration
   doc_mcp_stderr_isolation --> doc_tui_rendering_sanitization
+  doc_runtime_fanout_diagnosis --> doc_deterministic_fallbacks_preserve_workflow
+  doc_runtime_fanout_diagnosis --> doc_private_overlay_package_boundary
+  doc_runtime_fanout_diagnosis --> doc_root_cause_before_fix
   doc_terminal_host_integration --> doc_fork_panel_spatial_continuity
   doc_terminal_host_integration --> doc_mcp_stderr_isolation
   doc_terminal_host_integration --> doc_terminal_workspace_restore
@@ -673,7 +678,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 100
-- Links: 343
+- Documents: 101
+- Links: 346
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
