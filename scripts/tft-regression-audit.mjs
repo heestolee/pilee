@@ -19,6 +19,7 @@ const targetFiles = [
   'docs/knowledge/frame-verify-contract.md',
   'docs/knowledge/source-grounded-frame-planning.md',
   'docs/knowledge/tft-preference-regression-gate.md',
+  'docs/knowledge/tft-visual-structure-renderer.md',
 ];
 
 const negativeContextPattern = /금지|실패|나쁜|❌|돌아오면|막는다|제거|되돌아가면|의례화|통과용|directive|계열|아니다/;
@@ -70,6 +71,9 @@ const requiredContracts = [
       'Requirement Matrix',
       'Domain Work Map',
       'Backend Layer Map',
+      'kind: "backend-layer-map"',
+      'kind: "architecture-flow"',
+      '부트캠프 수강생도 알 수 있는 설명',
     ],
   },
   {
@@ -90,11 +94,15 @@ const requiredContracts = [
   },
   {
     file: 'docs/knowledge/source-grounded-frame-planning.md',
-    includes: ['Requirement Matrix', 'Domain Work Map', 'Backend Layer Map', 'source-grounded frame', 'gap', '상태 없는 Requirement Matrix', 'requirement ID'],
+    includes: ['Requirement Matrix', 'Domain Work Map', 'Backend Layer Map', 'source-grounded frame', 'gap', '상태 없는 Requirement Matrix', 'requirement ID', 'kind: "backend-layer-map"', 'kind: "architecture-flow"'],
   },
   {
     file: 'docs/knowledge/tft-preference-regression-gate.md',
     includes: ['TFT Preference Regression Gate', 'preference inversion', 'regression gate'],
+  },
+  {
+    file: 'docs/knowledge/tft-visual-structure-renderer.md',
+    includes: ['kind: "backend-layer-map"', 'kind: "architecture-flow"', 'SVG rail + 카드형', '부트캠프 수강생', '요청 접수창', '업무 총괄자', 'PK', 'FK', 'source-of-truth'],
   },
 ];
 

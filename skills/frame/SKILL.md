@@ -117,7 +117,10 @@ Jira, Notion, Slack, wireframe, PRD, 디자인 캡처처럼 정확한 기획 근
 규칙:
 - 모든 레이어를 억지로 채우지 않는다. 해당 없으면 `N/A`로 표시한다.
 - 파일 목록 plan을 쓰기 전에 “어느 책임이 어느 레이어에 있어야 하는지”를 표나 call-flow로 먼저 보여준다.
-- 구조 이해가 핵심이면 `tft-visual` 또는 간단한 ASCII flow를 함께 사용한다. 단, visual은 설명용이고 canonical 원천은 `backend_layer_map`이다.
+- 구조 이해가 핵심이면 Markdown/Mermaid만으로 끝내지 말고 `tft-visual` fenced block의 `kind: "backend-layer-map"`으로 **Layer Visual Map**을 함께 렌더링한다. 특히 사용자가 usecase/entity/service/repository 같은 레이어가 헷갈린다고 밝히면 필수다.
+- Layer Visual Map의 각 카드에는 `role`/`beginnerDescription`/`requirements`/`responsibilities`/`files`/`evidence`를 넣어 “부트캠프 수강생도 알 수 있는 설명”과 요구사항 ID 추적성을 같이 보여준다.
+- 사용자가 데이터/로직 흐름, 아키텍처 구조, DB PK/FK, resolver → usecase → service/domain/VO → repository → table 흐름을 보고 싶다고 밝히면 `kind: "architecture-flow"` `tft-visual`도 함께 출력한다.
+- 단, visual은 설명용이고 canonical 원천은 `backend_layer_map`이다.
 - 레이어 책임이 미해결이면 Step 3/4에서 “repo 조건인가, usecase 정책인가, VO 불변식인가”처럼 한 가지 분기로 묻는다.
 - 세부 템플릿은 `references/backend-layer-map.md`를 따른다.
 

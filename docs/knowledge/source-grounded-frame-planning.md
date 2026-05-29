@@ -21,7 +21,7 @@ applies_to:
 source:
   - user-direction:2026-05-30-source-grounded-frame-matrix
 reviewed_at: 2026-05-30
-reviewed_commit: e8f8911e9182a43350a2e9e7a82887dbe8ab9c7e
+reviewed_commit: c32c8f834c02e446a9325df68beacf9873fa1fe3
 related:
   - frame-verify-contract
   - frame-plan-synthesis-continuity
@@ -73,6 +73,10 @@ Requirement Matrix는 다시 도메인별 work map으로 펼쳐집니다. 기본
 backend가 얽힌 작업에서 layer map은 아키텍처 설명이 아니라 기획 책임 분배표입니다. Entry/API, Application flow, Domain rule, Data access, Cache/batching, Persistence, Consumer, Ops 같은 레이어에 requirement ID를 붙입니다.
 
 이 맵은 “어느 파일을 먼저 고칠지”가 아니라 “어느 레이어가 어떤 책임을 소유하는지”를 보여줍니다. 각 row는 `요구사항` 컬럼이나 `requirementIds`를 가져야 합니다. requirement ID가 없으면 기획 책임 분배표가 아니라 일반 아키텍처 설명입니다. 책임 위치가 불분명하면 파일 plan으로 넘어가기 전에 한 가지 질문으로 승격합니다. 예를 들어 목표 상태 validation이 usecase 흐름인지, domain/helper invariant인지, repository DB 조건인지 결정합니다.
+
+사용자가 backend layer를 이해하고 검수해야 하는 상황이면 표만 출력하지 않고 `kind: "backend-layer-map"` `tft-visual`을 함께 둡니다. 이 visual은 SVG rail + 카드형 레이어 설명으로 렌더링되며, `요청 접수창`, `업무 총괄자`, `DB·외부 저장소 창구` 같은 초보자용 역할 비유와 requirement ID를 함께 보여줘야 합니다.
+
+사용자가 데이터/로직 흐름이나 전체 아키텍처를 보길 원하면 `kind: "architecture-flow"` visual을 추가합니다. 이 visual은 UI/API/Usecase/Domain/Repository/DB/Ops lane, edge label, DB `PK`/`FK`/`source-of-truth`/`legacy` badge를 통해 실제 데이터 이동과 저장 구조를 한 화면에 보여줘야 합니다.
 
 ## Verification Rule
 

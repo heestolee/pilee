@@ -7,6 +7,9 @@ tags:
   - schema-diff
   - database
   - diagram
+  - backend-layer-map
+  - architecture-flow
+  - data-flow
 category: workflow
 status: active
 confidence: high
@@ -15,8 +18,8 @@ applies_to:
   - skills/tft-guidelines
 source:
   - user-direction:2026-05-10-tft-visual-db-structure
-reviewed_at: 2026-05-13
-reviewed_commit: 10e08748c48459b4044ec1abe3f88d39566de60c
+reviewed_at: 2026-05-30
+reviewed_commit: c32c8f834c02e446a9325df68beacf9873fa1fe3
 related:
   - frame-studio-interactive-decision-ui
   - frame-verify-contract
@@ -28,11 +31,19 @@ related:
 
 DB schema, API shape, backend layer call-flow, state ownership, source-of-truth처럼 구조 이해가 작업의 핵심이면 텍스트 표만으로 충분하지 않습니다. 사용자가 “기존에는 어떤 형태였고 어떻게 변하는지”, “대안마다 테이블/컬럼이 어떻게 달라지는지”, “어느 컬럼이 어느 컬럼을 참조하는지”, “resolver/usecase/repository/VO/loader가 어떻게 이어지는지”를 물으면 TFT Studio는 `tft-visual` fenced block이나 call-flow diagram을 구조 그림으로 렌더링해야 합니다.
 
+특히 backend layer map은 Markdown 표나 Mermaid fallback만으로 끝내지 않습니다. `kind: "backend-layer-map"` visual을 사용해 SVG rail + 카드형 레이어 설명을 보여주고, 각 카드에 쉬운 역할 비유(`요청 접수창`, `업무 총괄자`, `DB·외부 저장소 창구`), 요구사항 ID, 구현 후보, 검증 포인트를 같이 둡니다. 이 visual은 “레이어를 이미 아는 사람용 다이어그램”이 아니라, 부트캠프 수강생도 지금 작업이 어느 책임을 건드리는지 이해하게 만드는 학습 surface입니다.
+
+레이어 책임 설명만으로 데이터/로직 흐름이 보이지 않으면 `kind: "architecture-flow"` 또는 `kind: "data-flow-map"` visual을 함께 사용합니다. 이 visual은 UI → API/Resolver → Usecase → Domain/VO/Service → Repository → DB → Ops/Review lane을 그리고, edge label로 “조회”, “payload 저장”, “승인 시 반영”, “legacy pending 반려”처럼 이동 의미를 표시합니다. DB table card에는 `PK`, `FK`, `UNIQUE`, `JSON`, `source-of-truth`, `legacy` badge를 붙여 구조와 데이터 흐름을 한 화면에서 보게 합니다.
+
 이 visual은 `/frame`이나 `/decide`에만 묶인 stage 기능이 아닙니다. Frame, Decide, Verify, 일반 구현 대화 어디서든 맥락상 구조 그림이 이해·선택·검증을 돕는다면 사용할 수 있는 시각화 primitive입니다.
 
 ## Renderer Rule
 
 TFT Studio는 `elkjs` 기반 top-down renderer를 기본으로 사용합니다. Graphviz처럼 빠른 SVG renderer도 가능하지만, pilee의 목표는 학습용 설명 카드, 접기, badge, hover/highlight 같은 HTML/CSS 자유도가 높은 구조 리뷰 UI입니다. 따라서 ELK가 node layout과 edge routing을 계산하고, 테이블 카드·컬럼 상태·설명 패널은 deterministic HTML/CSS로 렌더링합니다.
+
+`backend-layer-map` kind는 ELK 테이블 renderer 대신 deterministic SVG rail + HTML 카드 renderer를 사용합니다. 레이어 개수가 많아도 세로 스토리보드로 읽히게 하고, 가로 폭은 내부 diagram 영역에서만 scroll되도록 containment를 유지합니다.
+
+`architecture-flow` kind는 lane-based renderer를 사용합니다. 각 node는 lane/row로 배치되고, SVG edge가 node 사이 데이터·로직 이동을 연결합니다. DB table node는 컬럼 목록과 constraint badge를 카드 안에 표시합니다. 복잡한 auto-layout보다 “전체 흐름을 한눈에 보는 안정적인 지도”를 우선합니다.
 
 기본 방향은 `DOWN`입니다. 좌→우(`RIGHT`)는 테이블이 2~3개이고 설명이 짧을 때만 선택합니다. 테이블이 많거나 컬럼 설명이 길면 top-down으로 전환하고, 폭이 viewport를 넘으면 scale을 적용해 가로 스크롤을 피합니다.
 

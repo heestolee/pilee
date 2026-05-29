@@ -50,6 +50,112 @@ GraphQL Reservation.beautyCashbackCampaign
 | Consumer | R1,R5 | Web/Slack이 reservation 기준 값을 쓰는지 | 확인 필요 |
 ```
 
+## Layer Visual Map 템플릿
+
+사용자가 레이어 구조를 잘 모르거나 backend 책임 배치가 구현 판단을 좌우하면, 표 바로 아래에 `tft-visual` fenced block을 추가한다. Mermaid는 fallback일 뿐이며, 기본은 TFT Studio가 렌더링하는 SVG/카드형 visual이다.
+
+```tft-visual
+{
+  "kind": "backend-layer-map",
+  "title": "언어별 미디어 수정 요청 레이어 지도",
+  "subtitle": "사용자 행동이 어떤 backend 책임으로 넘어가는지 초보자용 설명과 함께 표시",
+  "flow": ["공급자 관리 화면에서 언어별 미디어 수정", "수정 요청 payload 저장", "운영자 검수", "승인 시 실제 미디어 source 반영"],
+  "layers": [
+    {
+      "layer": "Entry/API",
+      "title": "GraphQL mutation / DTO",
+      "role": "요청 접수창",
+      "beginnerDescription": "화면에서 보낸 언어별 이미지 목표 상태를 처음 받는 입구입니다. 복잡한 승인 정책은 여기서 계산하지 않습니다.",
+      "requirements": ["R4"],
+      "responsibilities": ["localizedImages input/output shape 유지"],
+      "files": ["DTO, GraphQL schema"],
+      "evidence": ["schema/codegen"],
+      "risk": ["요청을 받자마자 실제 미디어 source를 저장하면 승인 전 반영 버그가 됩니다."]
+    },
+    {
+      "layer": "Application Flow / Usecase",
+      "title": "Create/Approve update request usecase",
+      "role": "업무 총괄자",
+      "beginnerDescription": "수정 요청 생성, 기존 pending 반려, 승인 반영 순서를 조립합니다. 여러 작업자의 순서를 정하는 총괄자입니다.",
+      "requirements": ["R4", "R6", "R7"],
+      "responsibilities": ["승인 전 즉시 저장 금지", "승인 시 canonical media source 반영", "기존 pending 대표 미디어 요청 반려"],
+      "files": ["update-request/usecase"],
+      "evidence": ["integration/unit test", "dry-run/log evidence"]
+    }
+  ],
+  "notes": [
+    { "title": "읽는 법", "body": ["위에서 아래로 사용자의 요청이 흘러갑니다.", "카드 오른쪽의 R 번호는 기획 요구사항 ID입니다.", "각 카드의 초보자 설명이 이해되지 않으면 구현 전에 레이어 책임을 다시 나눕니다."] }
+  ]
+}
+```
+
+Layer Visual Map 규칙:
+
+- `kind`는 반드시 `backend-layer-map`으로 둔다.
+- `layers[].requirements`는 Requirement Matrix의 ID와 일치해야 한다.
+- `beginnerDescription`은 “요청 접수창”, “업무 총괄자”, “DB 창구”처럼 쉬운 비유를 포함한다.
+- `files`는 후보 파일을 1~3개만 적고, 파일 나열이 visual의 주 내용이 되지 않게 한다.
+- `evidence`는 해당 레이어가 닫혔음을 어떤 검증으로 볼지 적는다.
+- visual이 canonical을 대체하지 않는다. 같은 내용은 `backend_layer_map.layers[]`에도 저장한다.
+
+## Architecture / Data Flow Map 템플릿
+
+Layer Visual Map이 “각 레이어가 무슨 책임인지”를 설명한다면, Architecture/Data Flow Map은 “데이터와 로직이 실제로 어디를 지나가는지”를 보여준다. 사용자가 전체 구조, 데이터 흐름, DB PK/FK, resolver → usecase → service/domain/VO → repository → table 흐름을 보고 싶다고 밝히면 `kind: "architecture-flow"` visual을 추가한다.
+
+```tft-visual
+{
+  "kind": "architecture-flow",
+  "title": "언어별 미디어 수정 요청 데이터 흐름",
+  "subtitle": "UI에서 제출된 언어별 미디어 목표 상태가 승인 후 실제 table에 반영되는 경로",
+  "lanes": ["UI", "API / Resolver", "Usecase", "Domain / VO", "Repository", "DB", "Ops Review"],
+  "nodes": [
+    {
+      "id": "requester-ui",
+      "lane": "UI",
+      "type": "screen",
+      "title": "공급자 관리 화면 미디어 편집",
+      "description": "언어별 미디어 추가·삭제·순서·대표 지정 변경을 draft로 누적",
+      "badges": ["R2", "R3", "draft-only"]
+    },
+    {
+      "id": "create-usecase",
+      "lane": "Usecase",
+      "type": "usecase",
+      "title": "수정 요청 생성 Usecase",
+      "description": "즉시 저장하지 않고 BASIC_INFO / LOCALIZED_MEDIA payload로 보관",
+      "badges": ["R12", "R13", "R16"]
+    },
+    {
+      "id": "media-table",
+      "lane": "DB",
+      "type": "table",
+      "title": "localized_entity_media",
+      "description": "승인 후 반영되는 언어별 미디어 source-of-truth",
+      "badges": ["source-of-truth"],
+      "columns": [
+        { "name": "id", "badges": ["PK"] },
+        { "name": "translation_id", "badges": ["FK"], "references": "localized_entity_translation.id" },
+        { "name": "asset_id", "badges": ["FK"], "references": "media_asset.id" },
+        { "name": "sort_order" },
+        { "name": "is_main" }
+      ]
+    }
+  ],
+  "edges": [
+    { "from": "requester-ui", "to": "create-usecase", "label": "언어별 목표 상태 제출" },
+    { "from": "create-usecase", "to": "media-table", "label": "승인 전에는 쓰지 않음", "kind": "risk" }
+  ]
+}
+```
+
+Architecture/Data Flow Map 규칙:
+
+- `lanes`는 사용자가 읽는 큰 흐름 순서로 둔다. 기본은 UI → API/Resolver → Usecase → Domain/VO → Repository → DB → Ops/Review다.
+- `nodes[].type`은 `screen`, `resolver`, `usecase`, `service`, `domain`, `vo`, `repository`, `table`, `review`, `ops`처럼 책임/형태가 보이게 적는다.
+- DB table node는 가능하면 `columns`에 `PK`, `FK`, `UNIQUE`, `JSON`, `source-of-truth`, `legacy` badge를 넣는다. 정확한 컬럼명은 실제 schema를 읽은 뒤 채운다.
+- `edges[].label`에는 “조회”, “payload 저장”, “승인 시 반영”, “legacy pending 반려”처럼 데이터/로직 이동의 의미를 짧게 쓴다.
+- Layer Visual Map과 Architecture/Data Flow Map은 둘 다 설명 surface다. canonical 구조는 `backend_layer_map`, `requirement_matrix`, `implementation_plan`, 실제 code/schema에 남긴다.
+
 ## 질문으로 승격하는 기준
 
 레이어 맵 전체를 사용자에게 묻지 않는다. 아래 조건이면 하나만 AskUserQuestion으로 승격한다.
