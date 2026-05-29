@@ -33,8 +33,8 @@ source:
   - user-direction:2026-05-19-single-companion-webview-toggle
   - user-direction:2026-05-20-tft-studio-scroll-preservation
   - user-feedback:2026-05-20-tft-studio-awaiting-scroll-reset
-reviewed_at: 2026-05-20
-reviewed_commit: 44ae15881445a9625b4b6b2e19784605cdd61f06
+reviewed_at: 2026-05-30
+reviewed_commit: 6f973ef50606bcf1e000991e62e13540e4e81c39
 related:
   - frame-planning-identity
   - frame-verify-contract

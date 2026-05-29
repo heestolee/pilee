@@ -22,8 +22,8 @@ source:
   - pilee-history:2026-05-06#65
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-10-deep-interview-frame
-reviewed_at: 2026-05-13
-reviewed_commit: e0dc999e580d0ff1f1940470f7a8f2a20d2920f5
+reviewed_at: 2026-05-30
+reviewed_commit: 6f973ef50606bcf1e000991e62e13540e4e81c39
 related:
   - ask-user-question-decision-gates
   - evidence-first-verification-gate

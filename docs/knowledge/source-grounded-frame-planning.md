@@ -21,7 +21,7 @@ applies_to:
 source:
   - user-direction:2026-05-30-source-grounded-frame-matrix
 reviewed_at: 2026-05-30
-reviewed_commit: bfa4a448ed135506decf63ffb13836ddca918e70
+reviewed_commit: 6f973ef50606bcf1e000991e62e13540e4e81c39
 related:
   - frame-verify-contract
   - frame-plan-synthesis-continuity
