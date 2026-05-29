@@ -74,7 +74,7 @@ const requiredContracts = [
   },
   {
     file: 'skills/frame/references/source-grounded-planning.md',
-    includes: ['Requirement Matrix', 'Domain Work Map', 'Backend Layer Map', '기획 근거 원문', '`gap`'],
+    includes: ['Requirement Matrix', 'Domain Work Map', 'Backend Layer Map', '기획 근거 원문', '`gap`', '`상태` 컬럼은 필수', 'requirement ID prefix'],
   },
   {
     file: 'skills/decide/SKILL.md',
@@ -90,7 +90,7 @@ const requiredContracts = [
   },
   {
     file: 'docs/knowledge/source-grounded-frame-planning.md',
-    includes: ['Requirement Matrix', 'Domain Work Map', 'Backend Layer Map', 'source-grounded frame', 'gap'],
+    includes: ['Requirement Matrix', 'Domain Work Map', 'Backend Layer Map', 'source-grounded frame', 'gap', '상태 없는 Requirement Matrix', 'requirement ID'],
   },
   {
     file: 'docs/knowledge/tft-preference-regression-gate.md',

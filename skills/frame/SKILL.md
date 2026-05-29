@@ -60,8 +60,11 @@ Jira, Notion, Slack, wireframe, PRD, 디자인 캡처처럼 정확한 기획 근
 4. `backend_layer_map` — backend가 얽힌 경우 요구사항 ID가 붙은 Backend Layer Map / 레이어 책임 지도
 
 규칙:
-- 기획 문장을 AI가 임의로 축소하지 않는다. 예를 들어 “컴포넌트 재사용”을 “같은 데이터 source 사용”으로 바꾸면 `gap` 또는 `decision-needed`다.
-- 그대로 구현하기 위험하거나 비현실적인 기획을 발견하면 `원문 요구 → 위험 → 대안 → 승인 필요 여부`를 Step 3/4 질문으로 승격한다.
+- 기획 문장을 AI가 임의로 축소하지 않는다. 예를 들어 “컴포넌트 재사용”을 “같은 데이터 source 사용”, “동일 UX”, “유사 방식”으로 바꾸면 `gap` 또는 `decision-needed`다.
+- 그대로 구현하기 위험하거나 비현실적인 기획을 발견하면 조용히 완화하지 말고 `원문 요구 → 위험 → 대안 → 승인 필요 여부`를 Step 3/4 질문으로 승격한다.
+- Requirement Matrix는 반드시 `| ID | Source | 기획 근거 원문 | 구현 계약 | 검증 증거 | 상태 |` 형태의 `상태` 컬럼을 포함한다. 상태 없는 matrix는 무효다.
+- Domain Work Map의 각 leaf task는 `[R1,R2]`처럼 닫는 requirement ID를 앞에 붙인다. requirement ID 없는 work map은 큰틀 요약으로 간주한다.
+- Backend Layer Map의 각 row는 `요구사항` 컬럼 또는 `requirementIds`를 가져야 한다. requirement ID 없는 layer map은 아키텍처 설명일 뿐 기획 책임 분배표가 아니다.
 - matrix의 모든 요구사항 ID는 implementation plan slice 또는 out_of_scope/decision_queue/blocked 항목 중 하나에 연결되어야 한다.
 - verify plan은 테스트 통과 목록이 아니라 요구사항 ID별 PASS 증거 목록이어야 한다.
 - 세부 템플릿은 `references/source-grounded-planning.md`를 따른다.
@@ -435,12 +438,14 @@ AI가 frame draft를 작성한다. `/frame` 초반에는 구현 계획을 만들
   - `needs_decision: true` 항목은 Step 8에서 task로 큐잉됨
 - `source_evidence[]`: Jira/Notion/Slack/wireframe/PRD 등 사용한 기획 근거와 provenance
 - `requirement_matrix[]`: 기획 근거 원문 ID별 `{ source, sourceText, implementationContract, verificationEvidence, status }`
+  - markdown draft에서는 반드시 `| ID | Source | 기획 근거 원문 | 구현 계약 | 검증 증거 | 상태 |` 컬럼을 사용한다.
   - 기존 schema 확장이 어렵다면 `success_criteria[].statement/evidence_locator`, `review_lenses`, `verify_plan.manual_checks`에 요구사항 ID를 명시해 fallback한다.
-  - 기획 원문과 구현 계약이 다르면 `decision-needed`, `blocked`, `gap`, `out-of-scope` 중 하나로 드러낸다.
+  - 기획 원문과 구현 계약이 다르면 `decision-needed`, `blocked`, `gap`, `out-of-scope` 중 하나로 드러낸다. `또는 동일 UX`, `유사 방식`, `동등하게 보이게` 같은 완화 표현을 PASS 상태 구현 계약으로 쓰지 않는다.
 - `domain_work_map[]`: FE Web/Admin/Mobile, BE Entry/Application/Domain/Data, DB/Ops, Verification 같은 레인별 task 후보와 requirement refs
+  - markdown draft의 leaf task는 `[R1,R2]` prefix를 붙인다.
   - 기존 schema 확장이 어렵다면 `implementation_plan.slices[]`와 TaskCreate `area`/`refs.requirements`로 표현한다.
 - `policy_axis_scan`: 트리거된 작업이면 시간 기준, 적용 대상 수, DEFAULT/fallback, 소비 채널 매트릭스, 데이터/마이그레이션, API/cache identity의 결론과 열린 질문
-- `backend_layer_map`: 트리거된 작업이면 entry point, application flow, domain rule, data access, cache/batching, persistence, consumers의 책임과 call-flow. source-grounded mode에서는 각 레이어가 닫는 requirement ID도 함께 적는다.
+- `backend_layer_map`: 트리거된 작업이면 entry point, application flow, domain rule, data access, cache/batching, persistence, consumers의 책임과 call-flow. source-grounded mode에서는 각 레이어가 닫는 requirement ID도 함께 적고, markdown row에는 `요구사항` 컬럼을 둔다.
 - `edge_case_seeds[]`: Step 4/5 초점에 맞춘 3~5개
   - 구조 렌즈를 선택했다면 “다음 AI/사람이 변경 지점을 찾을 수 있는가” 같은 탐색성 edge도 포함
 - `verify_plan`: `{ commands[], manual_checks[] }`
@@ -492,7 +497,7 @@ Draft를 보여줄 때 맨 위에 반드시 다음을 붙인다:
 저장은 반드시 아래 순서로 한다.
 
 1. `FrameDoc` 객체를 완성한다.
-2. source-grounded mode이면 `requirement_matrix`의 모든 ID가 `implementation_plan.slices[]`, `domain_work_map`, `verify_plan`, `out_of_scope`, `decision_queue`, `blocked` 중 하나에 연결됐는지 확인한다. 미매핑 요구사항이 있으면 저장 전에 patch하거나 decision으로 큐잉한다.
+2. source-grounded mode이면 `requirement_matrix`의 모든 ID가 `implementation_plan.slices[]`, `domain_work_map`, `backend_layer_map`, `verify_plan`, `out_of_scope`, `decision_queue`, `blocked` 중 하나에 연결됐는지 확인한다. 미매핑 요구사항, `상태` 없는 matrix, requirement ID 없는 work/layer map, 또는 원문 요구를 완화한 PASS 계약이 있으면 저장 전에 patch하거나 decision으로 큐잉한다.
 3. `implementation_plan`을 frame/decide 결정에서 합성한다.
    - `decision_queue[]`가 남아 있으면 `status="blocked_by_decision"`으로 저장하고, Plan을 ready로 선언하지 않는다.
    - 닫힌 결정만으로 실행 방향이 충분하면 `status="ready"`로 두고 `slices`, `firstSafeStep`, `readiness`, `gates`를 채운다.
