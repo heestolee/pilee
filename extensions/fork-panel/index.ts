@@ -404,6 +404,31 @@ function extractSessionCwd(entries: any[]): string {
 	return "";
 }
 
+function extractSessionParentSession(entries: any[]): string {
+	for (const entry of entries) {
+		if (entry?.type === "session" && typeof entry.parentSession === "string" && entry.parentSession.trim()) return entry.parentSession;
+	}
+	return "";
+}
+
+function collectSessionLineage(sessionFile: string | undefined | null, maxDepth = 8): Set<string> {
+	const lineage = new Set<string>();
+	let current = sessionFile ? safeRealpath(sessionFile) : "";
+	for (let depth = 0; current && depth < maxDepth; depth++) {
+		if (lineage.has(current) || !existsSync(current)) break;
+		lineage.add(current);
+		const parent = extractSessionParentSession(readSessionPreviewEntries(current));
+		current = parent ? safeRealpath(parent) : "";
+	}
+	return lineage;
+}
+
+function isRecordRelatedToSessionLineage(record: ForkRecord, sessionLineage: Set<string>): boolean {
+	if (sessionLineage.size === 0) return false;
+	if (sessionLineage.has(safeRealpath(record.sessionFile))) return true;
+	return Boolean(record.parentSessionFile && sessionLineage.has(safeRealpath(record.parentSessionFile)));
+}
+
 function normalizedPath(path: string): string {
 	return path.replace(/\/+$/, "") || path;
 }
@@ -1653,7 +1678,8 @@ export default function (pi: ExtensionAPI) {
 				.sort((a, b) => (b.record.closedAt ?? b.record.createdAt) - (a.record.closedAt ?? a.record.createdAt));
 			const currentWorkspaceKey = workspaceKeyFor(ctx.cwd);
 			const currentWorkspaceLabel = workspaceLabelFor(ctx.cwd);
-			const scopedItems = () => allItems.filter((item) => item.workspaceKey === currentWorkspaceKey);
+			const currentSessionLineage = collectSessionLineage(ctx.sessionManager.getSessionFile());
+			const scopedItems = () => allItems.filter((item) => item.workspaceKey === currentWorkspaceKey || isRecordRelatedToSessionLineage(item.record, currentSessionLineage));
 
 			let showAll = false;
 			let selector: string | null = null;
@@ -1716,8 +1742,8 @@ export default function (pi: ExtensionAPI) {
 						const footerH = 1;
 						const bodyH = Math.max(3, rows - headerH - footerH);
 						const lines: string[] = [];
-						const scopeText = showAll ? "all workspaces" : `workspace ${currentWorkspaceLabel}`;
-						const toggleText = showAll ? "a: current" : "a: all";
+						const scopeText = showAll ? "all workspaces" : `workspace ${currentWorkspaceLabel} + related`;
+						const toggleText = showAll ? "a: current+related" : "a: all";
 						const openHint = requestedMode ? `Enter: open → ${modeLabel(requestedMode)}` : "Enter: choose open target";
 
 						lines.push(theme.fg("accent", "─".repeat(w)));
@@ -1728,7 +1754,7 @@ export default function (pi: ExtensionAPI) {
 						lines.push(truncateToWidth(help, w, ""));
 
 						if (items.length === 0) {
-							lines.push(truncateToWidth(theme.fg("warning", `  현재 워크스페이스(${currentWorkspaceLabel})에 세션이 없습니다. a를 눌러 전체 워크스페이스를 보세요.`), w, ""));
+							lines.push(truncateToWidth(theme.fg("warning", `  현재 워크스페이스/관련 세션(${currentWorkspaceLabel})에 세션이 없습니다. a를 눌러 전체 워크스페이스를 보세요.`), w, ""));
 						} else {
 							if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
 							if (selectedIndex >= scrollOffset + bodyH) scrollOffset = selectedIndex - bodyH + 1;
