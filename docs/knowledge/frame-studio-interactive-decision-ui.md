@@ -82,6 +82,8 @@ Live update는 사용자가 읽던 위치를 방해하면 안 됩니다. SSE로 
 
 Frame 질문 UI는 deep-interview식으로 “현재 이해 / 막힌 결정 / 추천 답안 / 질문”을 한 카드에 담는 것이 좋습니다. 이 구조는 사용자가 전체 계획을 감사하게 만드는 대신, 지금 풀어야 하는 불확실성 하나와 선택 후 달라질 계약을 바로 보게 합니다. 단, 카드가 길어져 여러 결정을 한 번에 묻는다면 실패입니다.
 
+정확한 기획 근거가 있는 source-grounded frame에서는 Frame tab이 `Source Evidence`, `Requirement Matrix`, `Domain Work Map`, `Backend Layer Map`, `Implementation Plan Synthesis`, `Verification Evidence Plan`을 읽기 쉬운 순서로 보여줘야 합니다. 사용자는 큰 목표가 아니라 “기획 원문 한 줄이 어떤 구현 task와 어떤 검증 증거로 닫히는지”를 검수합니다.
+
 TFT Studio tool 호출에서는 이 카드와 `question` 필드를 구분합니다. 판단 맥락 카드는 `update` 또는 `ask.markdown`의 본문으로 렌더링하고, `ask.question`은 “배너 버튼 스크롤 target을 어떻게 반영할까요?”처럼 짧은 질문 제목 한 줄만 담습니다. 긴 카드가 실수로 `question`에 들어오면 renderer는 제목과 본문을 방어적으로 분리해야 하지만, 그것은 사용자 화면을 보호하는 safety net이지 권장 호출 방식이 아닙니다.
 
 Generative UI 스타일의 flat/compact visual pattern은 TFT Studio에도 유용하지만, dependency나 “모델이 매번 UI를 생성하는 방식”을 붙이는 것은 맞지 않습니다. TFT Studio는 prose-heavy co-thinking artifact이므로 `텍스트는 tool 밖에, visual만 tool 안에` 같은 규칙을 그대로 적용하면 오히려 목적을 잃습니다. 대신 renderer는 deterministic하게 유지하고, tab shell·표·요약 카드·간단한 다이어그램 같은 보조 시각화만 사용해 사용자가 목표/범위/검증 렌즈를 더 빨리 읽게 합니다.

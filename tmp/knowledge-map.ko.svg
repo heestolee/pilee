@@ -53,12 +53,12 @@
     <text x="259" y="187" text-anchor="middle" class="small">README coverage</text>
 
     <rect x="384" y="112" width="210" height="86" rx="14" class="panel orange"/>
-    <text x="489" y="148" text-anchor="middle" class="num">101</text>
+    <text x="489" y="148" text-anchor="middle" class="num">102</text>
     <text x="489" y="172" text-anchor="middle" class="numLabel">JUDGMENT DOCS</text>
     <text x="489" y="187" text-anchor="middle" class="small">feature보다 작은 판단 단위</text>
 
     <rect x="614" y="112" width="210" height="86" rx="14" class="panel green"/>
-    <text x="719" y="148" text-anchor="middle" class="num">101</text>
+    <text x="719" y="148" text-anchor="middle" class="num">102</text>
     <text x="719" y="172" text-anchor="middle" class="numLabel">HIGH CONFIDENCE</text>
     <text x="719" y="187" text-anchor="middle" class="small">현재 확정 doctrine</text>
 
@@ -89,7 +89,7 @@
   <g filter="url(#shadow)">
     <rect x="430" y="300" width="340" height="178" rx="18" class="panel orange"/>
     <text x="600" y="335" text-anchor="middle" class="section orangeText">PUBLIC / SANITIZED</text>
-    <text x="600" y="384" text-anchor="middle" class="num">101</text>
+    <text x="600" y="384" text-anchor="middle" class="num">102</text>
     <text x="600" y="411" text-anchor="middle" class="h">Judgment docs</text>
     <text x="600" y="438" text-anchor="middle" class="p">문서 단위 = 기능 하나가 아니라</text>
     <text x="600" y="458" text-anchor="middle" class="p">앞으로 재사용할 판단 하나</text>
@@ -125,7 +125,7 @@
     <g transform="translate(262,592)">
       <rect width="118" height="34" rx="9" fill="#1f2937" stroke="#f97316"/>
       <text x="59" y="15" text-anchor="middle" class="chip" fill="#fdba74">workflow</text>
-      <text x="59" y="28" text-anchor="middle" class="chipSmall">49 docs</text>
+      <text x="59" y="28" text-anchor="middle" class="chipSmall">50 docs</text>
     </g>
     <g transform="translate(396,592)">
       <rect width="118" height="34" rx="9" fill="#1f2937" stroke="#a78bfa"/>

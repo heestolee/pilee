@@ -2,6 +2,8 @@
 
 백엔드 레이어 맵은 구현 순서가 아니라 **책임 위치와 call-flow를 사용자가 함께 검수하기 위한 지도**다. 사용자가 backend 레이어를 잘 모르거나 resolver/usecase/service/repository/entity/VO/loader가 함께 등장하면 `/frame` Step 2에서 먼저 보여준다.
 
+정확한 기획 근거가 있는 source-grounded frame에서는 레이어 맵이 단순 아키텍처 설명이 아니라 **기획 책임 분배표**가 된다. 각 레이어는 `R1`, `R2` 같은 requirement ID를 가져야 하며, implementation plan은 이 맵에서 파생되어야 한다.
+
 ## 언제 켜나
 
 다음 중 하나라도 있으면 켠다.
@@ -38,14 +40,14 @@ GraphQL Reservation.beautyCashbackCampaign
   → BeautyCashbackBenefit VO
   → Web 예약 후 화면 / Slack 알림
 
-| 레이어 | 이번 작업 책임 | 확인 상태 |
-|---|---|---|
-| Resolver | reservation.createdAt/spotCode로 reservation-scoped benefit 노출 | 확인 필요 |
-| Usecase/Service | 영수증 가이드 조회 기준 시간 전달 | 가정 |
-| Repository | spot + basisTime으로 active/inactive period 조회 | 확인 필요 |
-| VO | refundRate 합산/중복 방어/cache id | 확인 필요 |
-| Loader | basisTime이 cache key에 포함되는지 | 열린 질문 |
-| Consumer | Web/Slack이 reservation 기준 값을 쓰는지 | 확인 필요 |
+| 레이어 | 요구사항 | 이번 작업 책임 | 확인 상태 |
+|---|---|---|---|
+| Resolver | R1,R4 | reservation.createdAt/spotCode로 reservation-scoped benefit 노출 | 확인 필요 |
+| Usecase/Service | R4 | 영수증 가이드 조회 기준 시간 전달 | 가정 |
+| Repository | R4 | spot + basisTime으로 active/inactive period 조회 | 확인 필요 |
+| VO | R2 | refundRate 합산/중복 방어/cache id | 확인 필요 |
+| Loader | R4 | basisTime이 cache key에 포함되는지 | 열린 질문 |
+| Consumer | R1,R5 | Web/Slack이 reservation 기준 값을 쓰는지 | 확인 필요 |
 ```
 
 ## 질문으로 승격하는 기준
@@ -75,6 +77,7 @@ GraphQL Reservation.beautyCashbackCampaign
 백엔드 레이어 맵이 켜진 frame은 저장 전에 다음 중 하나를 만족해야 한다.
 
 - `backend_layer_map`에 callFlow와 각 레이어 책임/검증 포인트가 들어 있다.
+- source-grounded frame이면 각 레이어에 requirement ID가 붙어 있고, 해당 ID가 Requirement Matrix와 Domain Work Map에 존재한다.
 - 또는 기존 schema에 필드가 없다면 `review_lenses`, `risk_register`, `success_criteria`, `verify_plan.manual_checks`에 같은 내용이 명시되어 있다.
 - 열린 레이어 책임 질문은 `decision_queue` 또는 `risk_register.needs_decision`에 들어 있다.
 - implementation plan의 파일 순서는 이 맵에서 파생되어야 하며, 맵을 대체하지 않는다.

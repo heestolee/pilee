@@ -208,6 +208,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Ship과 PR-Ship은 서로 다른 통합 단계다](./ship-pr-ship-review-boundary.md) | active | high | 2026-05-13 | 74c8c28 | ship, pr-ship, pr-review, github, commit, push |
 | [Skill은 재사용 가능한 절차다](./skills-as-portable-procedures.md) | active | high | 2026-05-12 | b3d4dce | skill, skill-creator, procedure, porting, workflow, 스킬 |
 | [Slice 완료는 commit 후보를 만든다](./slice-auto-commit-rhythm.md) | active | high | 2026-05-26 | 668415d | frame, slice, auto-commit, work-context, git |
+| [정확한 기획 근거가 있으면 Frame은 추적 매트릭스를 만든다](./source-grounded-frame-planning.md) | active | high | 2026-05-30 | bfa4a44 | frame, tft-studio, planning, requirements, traceability, work-map |
 | [Command shim은 skill source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-05-13 | 10e0874 | command-shim, skill, tft, frame, slash-command, routing |
 | [TFT Preference Regression Gate는 사용자 선호 역전을 막는다](./tft-preference-regression-gate.md) | active | high | 2026-05-13 | 9152c35 | tft, frame, decide, verify, ask-user-question, regression |
 | [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-05-13 | 10e0874 | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
@@ -314,6 +315,7 @@ graph TD
   doc_ship_pr_ship_review_boundary["Ship과 PR-Ship은 서로 다른 통합 단계다"]
   doc_skills_as_portable_procedures["Skill은 재사용 가능한 절차다"]
   doc_slice_auto_commit_rhythm["Slice 완료는 commit 후보를 만든다"]
+  doc_source_grounded_frame_planning["정확한 기획 근거가 있으면 Frame은 추적 매트릭스를 만든다"]
   doc_tft_command_shim_skill_routing["Command shim은 skill source of truth를 지킨다"]
   doc_tft_preference_regression_gate["TFT Preference Regression Gate는 사용자 선호 역전을 막는다"]
   doc_tft_visual_structure_renderer["TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다"]
@@ -624,6 +626,12 @@ graph TD
   doc_slice_auto_commit_rhythm --> doc_change_integration_discipline
   doc_slice_auto_commit_rhythm --> doc_frame_plan_synthesis_continuity
   doc_slice_auto_commit_rhythm --> doc_work_context_card_task_board
+  doc_source_grounded_frame_planning --> doc_backend_layer_map_frame_gate
+  doc_source_grounded_frame_planning --> doc_frame_plan_synthesis_continuity
+  doc_source_grounded_frame_planning --> doc_frame_verify_contract
+  doc_source_grounded_frame_planning --> doc_task_work_map_overlay
+  doc_source_grounded_frame_planning --> doc_tft_preference_regression_gate
+  doc_source_grounded_frame_planning --> doc_work_context_card_task_board
   doc_tft_command_shim_skill_routing --> doc_frame_verify_contract
   doc_tft_command_shim_skill_routing --> doc_queued_command_prefill_boundary
   doc_tft_command_shim_skill_routing --> doc_skills_as_portable_procedures
@@ -678,7 +686,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 101
-- Links: 346
+- Documents: 102
+- Links: 352
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

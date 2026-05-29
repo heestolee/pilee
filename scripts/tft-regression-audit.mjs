@@ -8,6 +8,7 @@ const targetFiles = [
   'AGENTS.md',
   'skills/ask-user-question-rules/SKILL.md',
   'skills/frame/SKILL.md',
+  'skills/frame/references/source-grounded-planning.md',
   'skills/decide/SKILL.md',
   'skills/verify/SKILL.md',
   'skills/tft-guidelines/SKILL.md',
@@ -16,6 +17,7 @@ const targetFiles = [
   'docs/knowledge/decide-tradeoff-challenge.md',
   'docs/knowledge/atomic-evidence-workflow.md',
   'docs/knowledge/frame-verify-contract.md',
+  'docs/knowledge/source-grounded-frame-planning.md',
   'docs/knowledge/tft-preference-regression-gate.md',
 ];
 
@@ -59,7 +61,20 @@ const requiredContracts = [
   },
   {
     file: 'skills/frame/SKILL.md',
-    includes: ['판단 맥락 카드', '현재 이해', '막힌 결정', '왜 중요한가', '선택 후 달라지는 것'],
+    includes: [
+      '판단 맥락 카드',
+      '현재 이해',
+      '막힌 결정',
+      '왜 중요한가',
+      '선택 후 달라지는 것',
+      'Requirement Matrix',
+      'Domain Work Map',
+      'Backend Layer Map',
+    ],
+  },
+  {
+    file: 'skills/frame/references/source-grounded-planning.md',
+    includes: ['Requirement Matrix', 'Domain Work Map', 'Backend Layer Map', '기획 근거 원문', '`gap`'],
   },
   {
     file: 'skills/decide/SKILL.md',
@@ -72,6 +87,10 @@ const requiredContracts = [
   {
     file: 'skills/pilee-final-check/SKILL.md',
     includes: ['TFT Preference Regression Gate', 'npm run tft:regression-audit'],
+  },
+  {
+    file: 'docs/knowledge/source-grounded-frame-planning.md',
+    includes: ['Requirement Matrix', 'Domain Work Map', 'Backend Layer Map', 'source-grounded frame', 'gap'],
   },
   {
     file: 'docs/knowledge/tft-preference-regression-gate.md',

@@ -44,6 +44,28 @@ description: 작업 시작 전에 구체 질문으로 목표·성공 기준·범
 
 사용자가 “간단한 hotfix”, “빨리”, “문구만”, “이거 하나만”처럼 좁은 의도를 주면, 먼저 light frame으로 시작한다. 진행 중 검증 축이나 위험이 늘어나면 standard/full로 승격하되, 승격 이유를 한 문장으로 적는다.
 
+### 0-1. 기획 근거 대응형 Frame 게이트
+
+Jira, Notion, Slack, wireframe, PRD, 디자인 캡처처럼 정확한 기획 근거가 있으면 `/frame`은 큰틀 요약으로 끝나지 않는다. 기획 근거 원문을 `Requirement Matrix → Domain Work Map → Verification Evidence`로 변환해야 한다.
+
+트리거:
+- 사용자가 기획 본문, Jira ticket, Notion 문서, Slack thread, wireframe, acceptance criteria를 제공했다.
+- 사용자가 “기획대로”, “Jira 요구대로”, “와이어프레임 기준”, “본문에 적힌 대로”라고 말했다.
+- 이전 구현이 “큰 목표는 맞지만 세부 기획이 샜다”는 피드백을 받았다.
+
+필수 산출물:
+1. `source_evidence` — 사용한 기획 근거와 provenance
+2. `requirement_matrix` — 기획 원문 ID별 구현 계약과 검증 증거
+3. `domain_work_map` — FE Web/Admin/Mobile, BE, DB/Ops, Verification 같은 작업 레인 지도
+4. `backend_layer_map` — backend가 얽힌 경우 요구사항 ID가 붙은 Backend Layer Map / 레이어 책임 지도
+
+규칙:
+- 기획 문장을 AI가 임의로 축소하지 않는다. 예를 들어 “컴포넌트 재사용”을 “같은 데이터 source 사용”으로 바꾸면 `gap` 또는 `decision-needed`다.
+- 그대로 구현하기 위험하거나 비현실적인 기획을 발견하면 `원문 요구 → 위험 → 대안 → 승인 필요 여부`를 Step 3/4 질문으로 승격한다.
+- matrix의 모든 요구사항 ID는 implementation plan slice 또는 out_of_scope/decision_queue/blocked 항목 중 하나에 연결되어야 한다.
+- verify plan은 테스트 통과 목록이 아니라 요구사항 ID별 PASS 증거 목록이어야 한다.
+- 세부 템플릿은 `references/source-grounded-planning.md`를 따른다.
+
 ### 0-A. 정책축 스캔 게이트
 
 `/frame`은 티켓의 개별 룰을 나열하기 전에, 그 룰들이 충돌하거나 확장될 **정책축**을 먼저 스캔한다. 다음 도메인이 보이면 Step 2에서 정책축 스캔을 반드시 수행하고, Step 3/4 질문 후보에 반영한다.
@@ -263,9 +285,11 @@ planning frame은 나중에 worktree가 만들어지면 해당 worktree의 `.pi/
 2. **명백해 보이는 추천 범위/검증 초점** — `(명백: ...)` 근거 포함
 3. **가정 4~6개** — 틀리면 사용자가 번호로 정정할 수 있는 문장
 4. **같이 볼 렌즈 3~4개** — 사용자가 무엇을 신경 써야 하는지 알려주는 구체 항목
-5. **정책축 스캔** — 트리거된 경우 시간 기준/적용 수/DEFAULT/채널/마이그레이션/cache 축의 확인값과 빈칸
-6. **백엔드 레이어 맵** — 트리거된 경우 resolver/usecase/service/repository/entity/VO/loader/consumer 책임과 call-flow
-7. **남은 불확실성 1개** — 다음 질문에서 풀 가장 큰 빈칸
+5. **Requirement Matrix 초안** — 기획 근거가 있으면 원문 요구사항 ID, 구현 계약, 검증 증거, 상태
+6. **Domain Work Map 초안** — FE Web/Admin/Mobile, BE, DB/Ops, Verification 레인과 각 레인이 닫는 요구사항 ID
+7. **정책축 스캔** — 트리거된 경우 시간 기준/적용 수/DEFAULT/채널/마이그레이션/cache 축의 확인값과 빈칸
+8. **백엔드 레이어 맵** — 트리거된 경우 resolver/usecase/service/repository/entity/VO/loader/consumer 책임과 call-flow, 가능하면 요구사항 ID
+9. **남은 불확실성 1개** — 다음 질문에서 풀 가장 큰 빈칸
 
 예:
 
@@ -409,8 +433,14 @@ AI가 frame draft를 작성한다. `/frame` 초반에는 구현 계획을 만들
   - 여러 파일/모듈에 걸친 변경이면 shallow module 증가, public interface 복잡도, 용어 분산 같은 architecture friction을 risk 또는 follow-up으로 기록
   - 정책축 스캔에서 미해결인 시간 기준/다중 적용/DEFAULT/채널별 표시/마이그레이션/cache identity는 `needs_decision` 또는 mitigation으로 남김
   - `needs_decision: true` 항목은 Step 8에서 task로 큐잉됨
+- `source_evidence[]`: Jira/Notion/Slack/wireframe/PRD 등 사용한 기획 근거와 provenance
+- `requirement_matrix[]`: 기획 근거 원문 ID별 `{ source, sourceText, implementationContract, verificationEvidence, status }`
+  - 기존 schema 확장이 어렵다면 `success_criteria[].statement/evidence_locator`, `review_lenses`, `verify_plan.manual_checks`에 요구사항 ID를 명시해 fallback한다.
+  - 기획 원문과 구현 계약이 다르면 `decision-needed`, `blocked`, `gap`, `out-of-scope` 중 하나로 드러낸다.
+- `domain_work_map[]`: FE Web/Admin/Mobile, BE Entry/Application/Domain/Data, DB/Ops, Verification 같은 레인별 task 후보와 requirement refs
+  - 기존 schema 확장이 어렵다면 `implementation_plan.slices[]`와 TaskCreate `area`/`refs.requirements`로 표현한다.
 - `policy_axis_scan`: 트리거된 작업이면 시간 기준, 적용 대상 수, DEFAULT/fallback, 소비 채널 매트릭스, 데이터/마이그레이션, API/cache identity의 결론과 열린 질문
-- `backend_layer_map`: 트리거된 작업이면 entry point, application flow, domain rule, data access, cache/batching, persistence, consumers의 책임과 call-flow
+- `backend_layer_map`: 트리거된 작업이면 entry point, application flow, domain rule, data access, cache/batching, persistence, consumers의 책임과 call-flow. source-grounded mode에서는 각 레이어가 닫는 requirement ID도 함께 적는다.
 - `edge_case_seeds[]`: Step 4/5 초점에 맞춘 3~5개
   - 구조 렌즈를 선택했다면 “다음 AI/사람이 변경 지점을 찾을 수 있는가” 같은 탐색성 edge도 포함
 - `verify_plan`: `{ commands[], manual_checks[] }`
@@ -424,13 +454,15 @@ Draft를 보여줄 때 맨 위에 반드시 다음을 붙인다:
 ```markdown
 검수할 때 볼 것:
 1. 성공 기준이 실제 사용자/시스템 결과를 말하는가
-2. 이번 작업에서 제외할 범위가 충분히 명시됐는가
-3. 검증 증거가 테스트/캡처/로그 중 무엇인지 분명한가
-4. claim/slice가 작게 닫히고, 각 slice의 evidence가 분명한가
-5. 내가 선택한 답변이 frame 계약에 정확히 반영됐는가
-6. 정책축 스캔이 필요한 작업인데 시간 기준/DEFAULT/다중 적용/채널별 규칙이 빠지지 않았는가
-7. 백엔드 레이어 맵이 필요한 작업인데 resolver/usecase/repository/VO/loader 책임이 빠지지 않았는가
-8. implementation plan이 frame/decide 결정에서 파생됐는가
+2. 정확한 기획 근거가 있다면 Requirement Matrix가 원문 요구를 빠짐없이 구현/검증 증거에 매핑했는가
+3. Domain Work Map이 FE Web/Admin/Mobile, BE, DB/Ops, Verification 같은 레인별 작업 누락을 드러내는가
+4. 이번 작업에서 제외할 범위가 충분히 명시됐는가
+5. 검증 증거가 테스트/캡처/로그 중 무엇인지 분명한가
+6. claim/slice가 작게 닫히고, 각 slice의 evidence가 분명한가
+7. 내가 선택한 답변이 frame 계약에 정확히 반영됐는가
+8. 정책축 스캔이 필요한 작업인데 시간 기준/DEFAULT/다중 적용/채널별 규칙이 빠지지 않았는가
+9. 백엔드 레이어 맵이 필요한 작업인데 resolver/usecase/repository/VO/loader 책임이 요구사항 ID와 연결됐는가
+10. implementation plan이 frame/decide 결정과 matrix/work map에서 파생됐는가
 ```
 
 ### Step 7: AskUserQuestion — 구체 patch 메뉴
@@ -460,48 +492,52 @@ Draft를 보여줄 때 맨 위에 반드시 다음을 붙인다:
 저장은 반드시 아래 순서로 한다.
 
 1. `FrameDoc` 객체를 완성한다.
-2. `implementation_plan`을 frame/decide 결정에서 합성한다.
+2. source-grounded mode이면 `requirement_matrix`의 모든 ID가 `implementation_plan.slices[]`, `domain_work_map`, `verify_plan`, `out_of_scope`, `decision_queue`, `blocked` 중 하나에 연결됐는지 확인한다. 미매핑 요구사항이 있으면 저장 전에 patch하거나 decision으로 큐잉한다.
+3. `implementation_plan`을 frame/decide 결정에서 합성한다.
    - `decision_queue[]`가 남아 있으면 `status="blocked_by_decision"`으로 저장하고, Plan을 ready로 선언하지 않는다.
    - 닫힌 결정만으로 실행 방향이 충분하면 `status="ready"`로 두고 `slices`, `firstSafeStep`, `readiness`, `gates`를 채운다.
    - 각 slice는 최소한 `claim`, `scope`, `evidence_needed`, `done_when`이 읽히게 작성한다. 별도 schema 확장이 과하면 기존 slice description/acceptance에 이 네 가지를 넣는다.
    - 이 Plan은 frame contract를 대체하지 않고, `derivedFrom.frameHash`와 `derivedFrom.decisionIds`로 출처를 남긴다.
-3. 필수 필드 점검:
+4. 필수 필드 점검:
    - `identity`, `goal`, `success_criteria`, `out_of_scope`, `boundaries`, `risk_register`, `verify_plan`, `implementation_plan`, `provenance`
+   - 기획 근거 트리거 작업이면 `source_evidence`, `requirement_matrix`, `domain_work_map` 또는 이에 준하는 `success_criteria`/`implementation_plan`/`verify_plan`/Task refs 반영 여부
    - 정책축 스캔 트리거 작업이면 `policy_axis_scan` 또는 이에 준하는 `review_lenses`/`risk_register`/`verify_plan` 반영 여부
    - 백엔드 레이어 맵 트리거 작업이면 `backend_layer_map` 또는 이에 준하는 `review_lenses`/`risk_register`/`verify_plan` 반영 여부
    - `decisions[]`는 없으면 빈 배열
    - `decision_queue[]`는 없으면 빈 배열
-4. canonical JSON을 먼저 쓴다.
+5. canonical JSON을 먼저 쓴다.
    - 대상: worktree mode면 `<worktree>/.pi/frame.json`, planning mode면 Step 1에서 정한 planning path
    - 쓰기 방식: `frame.json.tmp` → rename
-5. `provenance.canonicalHash`를 비운 canonical payload의 SHA-256 hash를 계산한다.
-6. 그 hash를 `provenance.canonicalHash`에 반영해 `frame.json`을 한 번 더 atomic write한다.
-7. 이후 hash 검증은 `provenance.canonicalHash` 필드를 제외한 payload로 재계산한다.
-8. `frame.md`를 `frame.json`에서 재생성한다.
+6. `provenance.canonicalHash`를 비운 canonical payload의 SHA-256 hash를 계산한다.
+7. 그 hash를 `provenance.canonicalHash`에 반영해 `frame.json`을 한 번 더 atomic write한다.
+8. 이후 hash 검증은 `provenance.canonicalHash` 필드를 제외한 payload로 재계산한다.
+9. `frame.md`를 `frame.json`에서 재생성한다.
    - 상단에 `Generated from frame.json. Do not edit as source.` 표시
    - `canonicalHash`, `updatedAt`, `transcriptPath` 표시
-9. mirror sanity check:
+10. mirror sanity check:
    - `frame.md`의 SC 개수와 `frame.json.success_criteria.length`가 맞는지 확인
+   - source-grounded mode이면 `frame.md`의 requirement/domain work map 요약이 canonical과 맞는지 확인
    - decision queue 개수가 맞는지 확인
    - `implementation_plan.status`와 남은 decision queue 상태가 모순되지 않는지 확인
-10. `worktree-meta.json`에 `frame: { path, updatedAt, summary, canonicalHash }` 키 추가
-11. `work_context action=refresh`로 work-unit scoped Working Context Card를 만든다.
+11. `worktree-meta.json`에 `frame: { path, updatedAt, summary, canonicalHash }` 키 추가
+12. `work_context action=refresh`로 work-unit scoped Working Context Card를 만든다.
    - 저장 위치: worktree면 `<worktree>/.pi/work-context.json`, planning/session이면 identity별 state dir
    - 내용: goal, currentSlice, mustKeep, mustNot, openQuestions, verifyFocus, frame/transcript/tasks refs
    - 원칙: 전체 transcript를 주입하지 않고 `transcriptRef`/`/archive`는 refs로만 남긴다.
-12. `implementation_plan.slices[]` → 각 항목당 `TaskCreate`:
+13. `implementation_plan.slices[]` 또는 `domain_work_map` leaf task → 각 항목당 `TaskCreate`:
    - `kind: "slice"`, `owner: "agent"`
-   - `acceptance`: slice validation
-   - `refs: { sliceId, frame, successCriteria? }`
-13. `risk_register` 중 `needs_decision: true` 항목 → 각 항목당 `TaskCreate`:
+   - `area`: `FE Admin`, `FE Web`, `FE Mobile`, `BE`, `DB/Ops`, `Verification`처럼 사용자가 읽을 수 있는 도메인 레인
+   - `acceptance`: slice validation과 requirement evidence
+   - `refs: { sliceId, frame, successCriteria?, requirements? }`
+14. `risk_register` 중 `needs_decision: true` 항목 → 각 항목당 `TaskCreate`:
    - `kind: "decision"`, `owner: "user"`
    - `subject`: 결정 제목
    - `description`: 리스크 설명 + 후보 옵션
    - `metadata: { kind: "frame.decision", riskRef, frameVersion }`
-14. `verify_plan.manual_checks` → 각 항목당 `TaskCreate`:
+15. `verify_plan.manual_checks` → 각 항목당 `TaskCreate`:
     - `kind: "verify"`, `owner: "agent"`
     - `metadata: { kind: "frame.verify_check" }`
-15. TFT Studio를 쓰고 있으면 `frame_studio action=update tab=frame`으로 저장 결과와 Plan synthesis, Working Context Card 요약을 남긴다. 이때 `implementation_plan.slices[]`가 있으면 “각 slice는 검증 후 `work_context commit_plan` → `auto_commit apply`로 닫는 커밋 후보”라는 soft rhythm을 함께 표시한다. Step 9의 다음 단계 질문까지 끝난 뒤 **반드시** `frame_studio action=finish tab=frame`으로 닫는다.
+16. TFT Studio를 쓰고 있으면 `frame_studio action=update tab=frame`으로 저장 결과와 Plan synthesis, Working Context Card 요약을 남긴다. 이때 `implementation_plan.slices[]`가 있으면 “각 slice는 검증 후 `work_context commit_plan` → `auto_commit apply`로 닫는 커밋 후보”라는 soft rhythm을 함께 표시한다. Step 9의 다음 단계 질문까지 끝난 뒤 **반드시** `frame_studio action=finish tab=frame`으로 닫는다.
     - `frame.json` path
     - `frame.md` path
     - `canonicalHash`
@@ -585,6 +621,32 @@ type FrameDoc = {
   scope_size: "small" | "standard" | "risky";  // Non-delegable 감지 시 자동 risky
   assumptions: string[];
   review_lenses: string[];
+  source_evidence?: Array<{
+    id: string;                // SRC-1 ...
+    type: "jira" | "notion" | "slack" | "wireframe" | "prd" | "user" | "code" | "other";
+    title: string;
+    url?: string;
+    excerpt?: string;          // raw sensitive text는 public artifact에 넣지 않음
+  }>;
+  requirement_matrix?: Array<{
+    id: string;                // R1, R2 ...
+    sourceId: string;
+    sourceText: string;        // 기획 근거 원문 또는 sanitized excerpt
+    implementationContract: string;
+    verificationEvidence: string[];
+    status: "pending" | "confirmed" | "decision-needed" | "gap" | "blocked" | "out-of-scope";
+  }>;
+  domain_work_map?: Array<{
+    area: string;              // FE Admin, FE Web, BE, DB/Ops, Verification ...
+    tasks: Array<{
+      title: string;
+      requirementIds: string[];
+      implementation?: string;
+      verification: string[];
+      owner?: "agent" | "user";
+      status: "pending" | "confirmed" | "decision-needed" | "gap" | "blocked" | "out-of-scope";
+    }>;
+  }>;
   policy_axis_scan?: {
     triggered: boolean;
     triggerDomains: string[];
@@ -611,6 +673,7 @@ type FrameDoc = {
       layer: "entry_point" | "application_flow" | "domain_rule" | "data_access" | "cache_batching" | "persistence" | "consumer" | "external";
       names: string[];
       responsibility: string;
+      requirementIds?: string[];
       ownsDecision?: string;
       verification?: string;
       status: "confirmed" | "assumption" | "open_question" | "not_applicable";
