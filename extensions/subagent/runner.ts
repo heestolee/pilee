@@ -243,7 +243,7 @@ export async function runSingleAgent(
 		);
 	}
 
-	return runPiAgent(
+	const primaryResult = await runPiAgent(
 		defaultCwd,
 		agent,
 		agentName,
@@ -255,6 +255,46 @@ export async function runSingleAgent(
 		sessionFile,
 		persistedSessionBaseOffset,
 	);
+
+	if (!shouldFallbackToModel(agent, primaryResult, signal)) return primaryResult;
+
+	const fallbackModel = agent.modelFallback as string;
+	const fallbackAgent = { ...agent, model: fallbackModel };
+	const fallbackResult = await runPiAgent(
+		defaultCwd,
+		fallbackAgent,
+		agentName,
+		task,
+		step,
+		signal,
+		onUpdate,
+		makeDetails,
+		sessionFile,
+		persistedSessionBaseOffset,
+	);
+	appendModelFallbackDiagnostic(fallbackResult, agent.model, fallbackModel, primaryResult);
+	return fallbackResult;
+}
+
+function shouldFallbackToModel(agent: AgentConfig, result: SingleResult, signal: AbortSignal | undefined): boolean {
+	if (signal?.aborted) return false;
+	if (result.exitCode === 0) return false;
+	if (!agent.model || !agent.modelFallback) return false;
+	return agent.modelFallback !== agent.model;
+}
+
+function appendModelFallbackDiagnostic(
+	result: SingleResult,
+	primaryModel: string | undefined,
+	fallbackModel: string,
+	primaryResult: SingleResult,
+): void {
+	const primaryStderr = primaryResult.stderr.trim();
+	appendStderrDiagnostic(
+		result,
+		`Primary model ${primaryModel ?? "(inherit current model)"} failed with exit ${primaryResult.exitCode}; retried with fallback model ${fallbackModel}.`,
+	);
+	if (primaryStderr) appendStderrDiagnostic(result, `Primary stderr: ${primaryStderr}`);
 }
 
 async function runClaudeAgent(

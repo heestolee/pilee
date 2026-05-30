@@ -922,10 +922,11 @@ export function registerAll(pi: ExtensionAPI, store: SubagentStore): void {
 
 			const lines = agents.map((agent) => {
 				const model = agent.model ?? "(inherit current model)";
+				const modelFallback = agent.modelFallback ? ` · fallback: ${agent.modelFallback}` : "";
 				const thinking = agent.thinking ?? "(inherit current thinking)";
 				const tools = agent.tools && agent.tools.length > 0 ? agent.tools.join(",") : "default";
 				const description = agent.description ? ` · ${agent.description}` : "";
-				return `${agent.name} [${agent.source}] · model: ${model} · thinking: ${thinking} · tools: ${tools}${description}`;
+				return `${agent.name} [${agent.source}] · model: ${model}${modelFallback} · thinking: ${thinking} · tools: ${tools}${description}`;
 			});
 
 			return {
@@ -936,6 +937,7 @@ export function registerAll(pi: ExtensionAPI, store: SubagentStore): void {
 						name: agent.name,
 						source: agent.source,
 						model: agent.model,
+						modelFallback: agent.modelFallback,
 						thinking: agent.thinking,
 						tools: agent.tools ?? [],
 						description: agent.description,
@@ -1585,12 +1587,13 @@ export function registerAll(pi: ExtensionAPI, store: SubagentStore): void {
 			const lines = agents.map((a) => {
 				const tools = a.tools?.join(",") ?? "default";
 				const model = a.model ?? "(inherit current model)";
+				const modelFallback = a.modelFallback ? ` · fallback: ${a.modelFallback}` : "";
 				const thinking = a.thinking ?? "(inherit current thinking)";
 				const description = a.description ? ` · ${a.description}` : "";
 				const colorCode = AGENT_NAME_PALETTE[agentBgIndex(a.name)];
 				const coloredName = `\x1b[38;5;${colorCode}m${a.name}\x1b[39m`;
 				return truncateText(
-					`${coloredName} [${a.source}] · model: ${model} · thinking: ${thinking} · tools: ${tools}${description}`,
+					`${coloredName} [${a.source}] · model: ${model}${modelFallback} · thinking: ${thinking} · tools: ${tools}${description}`,
 					220,
 				);
 			});

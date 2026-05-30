@@ -23,6 +23,7 @@ export interface AgentConfig {
 	description: string;
 	tools?: string[];
 	model?: string;
+	modelFallback?: string;
 	thinking?: AgentThinkingLevel;
 	systemPrompt: string;
 	source: "user" | "project";
@@ -148,6 +149,7 @@ function loadAgentsFromDir(dir: string, source: "user" | "project", options: Loa
 
 		const tools = normalizeTools(frontmatter.tools, format);
 		const model = normalizeModel(frontmatter.model, format);
+		const modelFallback = normalizeModel(frontmatter.modelFallback || frontmatter.fallbackModel, format);
 		const thinking = normalizeThinkingLevel(frontmatter.thinking);
 		const runtime: AgentRuntime = frontmatter.runtime === "claude" ? "claude" : "pi";
 
@@ -156,6 +158,7 @@ function loadAgentsFromDir(dir: string, source: "user" | "project", options: Loa
 			description: frontmatter.description,
 			tools,
 			model,
+			modelFallback,
 			thinking,
 			systemPrompt: attachCommonSubagentRule(body, runtime),
 			source,

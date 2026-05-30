@@ -471,7 +471,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 
 | 에이전트 | 관점 |
 |---------|------|
-| **verifier** | 구현이 요구사항을 충족하는가 (anthropic/claude-opus-4-6) |
+| **verifier** | 구현이 요구사항을 충족하는가 (anthropic/claude-opus-4-6, fallback: openai-codex/gpt-5.5) |
 | **reviewer** | 코드 품질, 패턴, 유지보수성 (openai-codex/gpt-5.5) |
 
 ---
