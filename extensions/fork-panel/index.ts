@@ -41,6 +41,7 @@ interface ForkRecord {
 	panelLabel?: string;
 	parentSessionFile?: string;
 	sessionFile: string;
+	sessionId?: string;
 	cwd: string;
 	createdAt: number;
 	closedAt?: number;
@@ -404,6 +405,13 @@ function extractSessionCwd(entries: any[]): string {
 	return "";
 }
 
+function extractSessionId(entries: any[]): string {
+	for (const entry of entries) {
+		if (entry?.type === "session" && typeof entry.id === "string" && entry.id.trim()) return entry.id;
+	}
+	return "";
+}
+
 function extractSessionParentSession(entries: any[]): string {
 	for (const entry of entries) {
 		if (entry?.type === "session" && typeof entry.parentSession === "string" && entry.parentSession.trim()) return entry.parentSession;
@@ -411,22 +419,45 @@ function extractSessionParentSession(entries: any[]): string {
 	return "";
 }
 
-function collectSessionLineage(sessionFile: string | undefined | null, maxDepth = 8): Set<string> {
-	const lineage = new Set<string>();
+interface SessionLineage {
+	files: Set<string>;
+	sessionIds: Set<string>;
+}
+
+function mergeSessionLineage(target: SessionLineage, source: SessionLineage): SessionLineage {
+	for (const file of source.files) target.files.add(file);
+	for (const id of source.sessionIds) target.sessionIds.add(id);
+	return target;
+}
+
+function collectSessionLineage(sessionFile: string | undefined | null, maxDepth = 8): SessionLineage {
+	const lineage: SessionLineage = { files: new Set(), sessionIds: new Set() };
 	let current = sessionFile ? safeRealpath(sessionFile) : "";
 	for (let depth = 0; current && depth < maxDepth; depth++) {
-		if (lineage.has(current) || !existsSync(current)) break;
-		lineage.add(current);
-		const parent = extractSessionParentSession(readSessionPreviewEntries(current));
+		if (lineage.files.has(current) || !existsSync(current)) break;
+		lineage.files.add(current);
+		const entries = readSessionPreviewEntries(current);
+		const sessionId = extractSessionId(entries);
+		if (sessionId) lineage.sessionIds.add(sessionId);
+		const parent = extractSessionParentSession(entries);
 		current = parent ? safeRealpath(parent) : "";
 	}
 	return lineage;
 }
 
-function isRecordRelatedToSessionLineage(record: ForkRecord, sessionLineage: Set<string>): boolean {
-	if (sessionLineage.size === 0) return false;
-	if (sessionLineage.has(safeRealpath(record.sessionFile))) return true;
-	return Boolean(record.parentSessionFile && sessionLineage.has(safeRealpath(record.parentSessionFile)));
+function collectCurrentSessionLineage(sessionFile: string | undefined | null, entries: any[]): SessionLineage {
+	const lineage = collectSessionLineage(sessionFile);
+	const currentSessionId = extractSessionId(entries);
+	if (currentSessionId) lineage.sessionIds.add(currentSessionId);
+	const parent = extractSessionParentSession(entries);
+	return mergeSessionLineage(lineage, collectSessionLineage(parent));
+}
+
+function isRecordRelatedToSessionLineage(record: ForkRecord, sessionLineage: SessionLineage): boolean {
+	if (sessionLineage.files.size === 0 && sessionLineage.sessionIds.size === 0) return false;
+	if (sessionLineage.files.has(safeRealpath(record.sessionFile))) return true;
+	if (record.parentSessionFile && sessionLineage.files.has(safeRealpath(record.parentSessionFile))) return true;
+	return Boolean(record.sessionId && sessionLineage.sessionIds.has(record.sessionId));
 }
 
 function normalizedPath(path: string): string {
@@ -534,6 +565,10 @@ function resolveRecordCwdFromSession(record: ForkRecord): string {
 	return inferWorkspaceCwdFromSessionEntries(entries, record.cwd) || record.cwd;
 }
 
+function resolveRecordSessionIdFromSession(record: ForkRecord): string {
+	return record.sessionId || extractSessionId(readSessionPreviewEntries(record.sessionFile));
+}
+
 function buildP0RecordFromSession(sessionFile: string): ForkRecord | null {
 	try {
 		const real = safeRealpath(sessionFile);
@@ -543,12 +578,14 @@ function buildP0RecordFromSession(sessionFile: string): ForkRecord | null {
 		const cwd = inferWorkspaceCwdFromSessionEntries(entries, headerCwd) || headerCwd;
 		const firstUser = extractFirstText(entries, "user");
 		const title = extractLastSessionName(entries) || firstUser || basename(real, ".jsonl");
+		const sessionId = extractSessionId(entries);
 		const preview = extractLastText(entries, "assistant") || extractLastText(entries) || firstUser;
 		return {
 			forkId: `p0_${shortHash(real)}`,
 			label: title,
 			panelLabel: "P0",
 			sessionFile: real,
+			sessionId,
 			cwd,
 			createdAt: stat.mtimeMs,
 			closedAt: stat.mtimeMs,
@@ -584,7 +621,7 @@ function collectP0SessionRecords(excludeSessionFiles: Set<string>): ForkRecord[]
 function collectReviveRecords(recent: Record<string, ForkRecord>): ForkRecord[] {
 	const forkRecords = Object.values(recent)
 		.filter((record) => existsSync(record.sessionFile))
-		.map((record) => ({ ...record, cwd: resolveRecordCwdFromSession(record), source: "fork" as ReviveSource }));
+		.map((record) => ({ ...record, sessionId: resolveRecordSessionIdFromSession(record), cwd: resolveRecordCwdFromSession(record), source: "fork" as ReviveSource }));
 	const forkFiles = new Set(forkRecords.map((record) => safeRealpath(record.sessionFile)));
 	return [...forkRecords, ...collectP0SessionRecords(forkFiles)];
 }
@@ -1678,7 +1715,7 @@ export default function (pi: ExtensionAPI) {
 				.sort((a, b) => (b.record.closedAt ?? b.record.createdAt) - (a.record.closedAt ?? a.record.createdAt));
 			const currentWorkspaceKey = workspaceKeyFor(ctx.cwd);
 			const currentWorkspaceLabel = workspaceLabelFor(ctx.cwd);
-			const currentSessionLineage = collectSessionLineage(ctx.sessionManager.getSessionFile());
+			const currentSessionLineage = collectCurrentSessionLineage(ctx.sessionManager.getSessionFile(), ctx.sessionManager.getEntries());
 			const scopedItems = () => allItems.filter((item) => item.workspaceKey === currentWorkspaceKey || isRecordRelatedToSessionLineage(item.record, currentSessionLineage));
 
 			let showAll = false;
