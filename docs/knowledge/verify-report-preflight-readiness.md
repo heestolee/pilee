@@ -23,6 +23,7 @@ source:
   - user-direction:2026-05-12-verify-report-preflight-skill
   - user-feedback:2026-05-30-pm-facing-capture-report-preflight
   - user-feedback:2026-05-30-prior-correction-intent
+  - user-feedback:2026-05-30-frame-handoff-adjudication
 reviewed_at: 2026-05-30
 reviewed_commit: 3b49f4999dfb4cd256dc28d9757a7a29b67d3c70
 related:
@@ -46,6 +47,7 @@ Preflight는 각 검증 item을 아래 계약으로 바꿔야 합니다.
 | 계약 필드 | 확인해야 할 것 |
 |-----------|----------------|
 | Requirement source | Jira/Notion/Slack/와이어프레임/PR test plan/frame/user instruction 중 무엇을 증명하는가 |
+| Frame handoff adjudication | Frame 항목이면 reuse/revise/add/drop/blocked 중 무엇이고 이유는 무엇인가 |
 | PM-readable claim | PM·기획자가 읽을 한 문장 성공 기준 |
 | Primary action | 기능을 실제로 닫는 핵심 동사가 create/update/read-display/permission/event 중 무엇인가 |
 | Actor / role | 누가 조작하거나 보는가. 기능 대상 role과 검증 계정 role이 일치하는가 |
@@ -56,6 +58,20 @@ Preflight는 각 검증 item을 아래 계약으로 바꿔야 합니다.
 | Excluded setup noise | 로그인/빌드/bootstrap/selector 시행착오 중 report에서 숨길 것은 무엇인가 |
 
 이 계약이 없으면 `/verify-report`는 시작할 수는 있어도 신뢰도 높은 PM-facing report가 되기 어렵습니다. 특히 before/after 또는 A→B state transition은 같은 subject identity가 없으면 PASS 후보가 아닙니다.
+
+## Frame Handoff Adjudication Rule
+
+Frame은 requirement source이고 preflight는 handoff adjudicator입니다. Frame Requirement Matrix/Domain Work Map/verify focus가 있으면 preflight는 이를 무시하지 않고 Requirement ID와 intent를 이어받습니다. 동시에 Frame을 완전 SSOT로 복사하지 않고, 최신 사용자 지시·구현 diff·데이터/권한 현실성·캡처 가능성으로 각 항목을 재판정합니다.
+
+판정은 `reuse`, `revise`, `add`, `drop`, `blocked` 중 하나입니다.
+
+- `reuse`: Frame 항목을 그대로 V/T 후보로 승격합니다.
+- `revise`: Frame intent는 유지하되 subject/action/oracle/evidence를 수정하고 이유를 남깁니다.
+- `add`: Frame에 없지만 새로 필요한 검증축을 출처와 함께 추가합니다.
+- `drop`: scope 밖/중복/오래된 항목을 제외하고 이유를 남깁니다.
+- `blocked`: 대체 경로도 없어 Coverage Gap 후보로 남깁니다.
+
+이 판정이 없으면 preflight는 Frame을 맹신하거나, 반대로 이미 정리된 구현 요구를 다시 발명하는 drift에 빠질 수 있습니다.
 
 ## Prior Correction Intent Rule
 
@@ -76,6 +92,7 @@ blocked는 literal 실행이 불가능하다는 이유만으로 쓰지 않습니
 | 축 | 확인해야 할 것 |
 |---|---|
 | Requirement | 근거 출처와 PM-readable 성공 기준 |
+| Frame Handoff | Frame 항목별 reuse/revise/add/drop/blocked 판정과 이유 |
 | Primary Action / Correction | 기능의 핵심 동사, 과거 교정 literal/intent, literal 현실성, equivalent path 여부 |
 | Target | local/dev/preview/prod URL과 route |
 | Actor/Role | 계정 alias/session/role, 기능 대상과의 일치 |
@@ -107,8 +124,8 @@ Preflight 결과는 `/verify-report`의 목차 초안이어야 합니다.
 - light / standard / full / blocked
 
 ### PM-facing behavior contract
-| V | 근거 출처 | PM-readable 성공 기준 | actor/role | subject identity | 화면 oracle | primary capture | 상태 |
-|---|-----------|----------------------|------------|------------------|-------------|-----------------|------|
+| V | Frame handoff | 근거 출처 | PM-readable 성공 기준 | actor/role | subject identity | 화면 oracle | primary capture | 상태 |
+|---|---------------|-----------|----------------------|------------|------------------|-------------|-----------------|------|
 
 ### Technical support candidates
 | T | 보조 검증 | 왜 필요한가 | Evidence | 상태 |

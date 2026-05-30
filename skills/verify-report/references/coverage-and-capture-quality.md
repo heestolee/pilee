@@ -9,6 +9,7 @@ Verify Report는 개발자용 디버깅 로그가 아니라 구현 공유 문서
 | 계약 필드 | 질문 |
 |-----------|------|
 | Requirement source | Jira/Notion/Slack/와이어프레임/PR test plan/frame/사용자 지시 중 무엇을 증명하는가? |
+| Frame handoff adjudication | Frame 항목이면 reuse/revise/add/drop/blocked 중 무엇이고 이유는 무엇인가? |
 | Audience claim | PM·기획자가 읽을 한 문장 성공 기준은 무엇인가? |
 | Primary feature verb | 이 기능을 실제로 닫는 핵심 동사는 create/update/read-display/permission/event 중 무엇인가? |
 | Actor / role | 누가 조작하거나 보는가? admin/member/partner/anonymous 등 |
@@ -20,7 +21,23 @@ Verify Report는 개발자용 디버깅 로그가 아니라 구현 공유 문서
 
 하나의 리포트는 위 계약을 item별로 반복한 PM-facing story여야 한다. 기술 검증은 중요하지만 상단 결론을 대신하지 않는다.
 
-### 0.1 Prior correction intent rule
+### 0.1 Frame handoff adjudication rule
+
+Frame은 requirement source이고 verify-report는 evidence adjudicator다. Frame Requirement Matrix/Domain Work Map/verify focus가 있으면 report가 처음부터 다시 발명하지 않고 추적성을 이어받는다. 하지만 Frame을 완전 SSOT로 복사하면 구현 중 바뀐 scope, 최신 사용자 지시, 데이터/권한 현실성, 캡처 가능성을 놓칠 수 있다.
+
+따라서 verify-report 시작 전 각 Frame 항목에 판정을 붙인다.
+
+| 판정 | 의미 | evidence 계약 |
+|------|------|---------------|
+| `reuse` | Frame 항목이 현재 검증에서도 그대로 유효 | Requirement ID를 유지하고 동일 claim을 evidence로 닫는다. |
+| `revise` | intent는 유효하지만 subject/action/oracle/evidence가 바뀌어야 함 | Requirement ID와 변경 이유를 남기고 대체 경로를 명시한다. |
+| `add` | Frame에는 없지만 최신 지시/diff/runtime 현실에서 새 축이 필요 | 새 출처와 추가 이유를 명시한다. |
+| `drop` | scope 밖/중복/오래된 항목 | 제외 사유를 남기고 PASS 항목으로 만들지 않는다. |
+| `blocked` | 대체 경로도 없어 evidence를 만들 수 없음 | Coverage Gap/blocked로 남긴다. |
+
+이 판정 없이 Frame 항목을 그대로 PASS 목록으로 복사하거나, 반대로 Frame 추적성을 버리고 독립 리스트업만 하면 실패다.
+
+### 0.2 Prior correction intent rule
 
 이전 사용자 교정이나 실패 회고가 있으면 그대로 집행하기 전에 `literal`과 `intent`를 분리한다.
 
@@ -169,6 +186,7 @@ PASS 금지 예시:
 
 - 요구사항/기획 근거 또는 PM-readable 성공 기준이 없다.
 - UI item인데 primary 화면 캡처/GIF가 없거나, 캡처 안에 expected UI가 보이지 않는다.
+- Frame Requirement Matrix/verify focus가 있는데 reuse/revise/add/drop/blocked handoff 판정 없이 복사하거나 무시했다.
 - state transition/before-after claim인데 같은 subject identity가 보장되지 않고, equivalent path도 명시되지 않았다.
 - 과거 교정 literal이 비현실적인데 primary action과 correction intent를 재해석하지 않고 blocked/pass로 처리했다.
 - actor/role이 성공 기준의 일부인데 잘못된 계정/role로 검증했다.

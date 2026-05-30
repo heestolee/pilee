@@ -12,6 +12,7 @@ argument-hint: "[base-url] [--upload] [--update] [--ask-before] [--no-workers]"
 
 - **PM-facing이 기본값**: 리포트는 개발자 디버깅 로그가 아니라 PM·기획자·디자이너가 구현 핵심과 동작을 빠르게 이해하는 공유 문서다. 내부 셋업/삽질보다 사용자-facing 결과를 먼저 보여준다.
 - **기획 근거와 구현 동작을 매핑**: Jira, Notion, Slack, 와이어프레임, PR test plan, frame 성공 기준이 있으면 각 요구를 실제 화면 동작/상태와 연결한다. 출처가 없는 코드 리스크는 별도 기술 보조 검증으로 내린다.
+- **Frame은 requirement source, report는 evidence adjudicator**: TFT Frame의 Requirement Matrix/Domain Work Map/verify focus는 중요한 입력 source지만 최종 판정표를 그대로 복사하는 SSOT가 아니다. `/verify-report`는 Frame 항목을 `reuse`/`revise`/`add`/`drop`/`blocked`로 재판정하고, 최신 사용자 지시·구현 diff·데이터/권한 현실성·캡처 가능성으로 evidence 계약을 확정한다.
 - **과거 교정은 intent로 재해석**: 이전 실패 회고나 사용자 교정은 중요한 제약이지만, 기능의 primary action을 덮어쓰는 literal 요구가 아니다. 먼저 교정이 막으려던 실패(intent)를 추출하고, 현재 데이터/권한/side effect상 literal 실행이 비현실적이면 같은 intent를 보존하는 현실적인 equivalent path를 제안하거나 선택한다. blocked는 교정 intent까지 보존할 대체 경로가 없을 때만 쓴다.
 - **캡처 중심 리포트**: UI 기능의 primary evidence는 focused screenshot/GIF다. code diff, API 응답, DB 조회, unit test는 PM-facing 화면 증거를 보조하거나 비가시 정책을 설명하는 하단 근거로 둔다.
 - **Coverage 먼저, 캡처는 그 다음**: 리포트 시작 전에 요구사항으로 검증 축을 정의한다. 캡처가 있어도 해당 축을 닫지 못하면 PASS가 아니다.
@@ -88,6 +89,16 @@ Escape hatch:
 6. **구현 코드 분석** — 기획 근거가 비어 있는 리스크를 보완하는 보조 입력
 7. **정책축 스캔 / 백엔드 레이어 맵** — 비가시 정책·레이어 책임은 하단 기술 보조 검증 후보로 승격
 
+Frame/TFT plan이 있으면 먼저 **Frame handoff adjudication** 을 작성한다. Frame 항목을 그대로 복사하거나 무시하지 말고, 각 requirement/verify item에 아래 판정을 붙인다.
+
+| 판정 | 의미 | 처리 |
+|------|------|------|
+| `reuse` | Frame 항목의 claim/subject/evidence가 현재 검증에도 그대로 맞음 | Requirement ID를 유지해 V/T item으로 승격 |
+| `revise` | intent는 맞지만 subject/action/evidence가 현재 현실과 다름 | Requirement ID와 변경 사유를 남기고 equivalent path로 수정 |
+| `add` | 최신 사용자 지시, 구현 diff, 데이터/권한 확인에서 새 축 발견 | 새 V/T item으로 추가하고 출처를 명시 |
+| `drop` | 현재 scope 밖, 중복, 더 이상 유효하지 않음 | report에서 제외하되 이유를 남김 |
+| `blocked` | 대체 경로도 없어 검증 불가 | Coverage Gap/blocked item으로 남김 |
+
 수집 직후 먼저 **핵심 사용자 행동(primary action)** 을 고정한다. 이 기능이 `create`, `update`, `read/display`, `delete`, `permission denial`, `event emission` 중 무엇으로 성공하는지 분리한다. 과거 교정이 있으면 문장을 literal과 intent로 나눈다. 예를 들어 “같은 기존 항목으로 비교”가 권한 정책상 불가능한데 기능의 핵심이 “새 항목 생성 시 선택값 저장/표시”라면, literal 기존 항목 수정에 매이지 말고 “user-facing에 노출되는 생성 가능한 subject로 새 항목을 만들어 선택값별 표시를 확인”하는 equivalent path로 재구성한다.
 
 수집 직후 각 요구를 **PM-facing 검증 계약**으로 바꾼다.
@@ -95,6 +106,7 @@ Escape hatch:
 | 필드 | 의미 |
 |------|------|
 | 근거 출처 | Jira/Notion/Slack/와이어프레임/PR test plan/frame/사용자 지시 |
+| Frame handoff 판정 | Frame 항목이면 reuse/revise/add/drop/blocked 중 무엇인지와 이유 |
 | PM-readable claim | 비개발자가 이해할 수 있는 성공 문장 |
 | 핵심 사용자 행동 | create/update/read-display/permission/event 중 기능을 실제로 닫는 primary verb |
 | 사용자/관리자 시나리오 | 어떤 role이 어떤 화면에서 무엇을 조작하는지 |
@@ -148,9 +160,9 @@ Escape hatch:
 ```markdown
 다음 기획 근거 → 구현 동작 → 캡처 증거 매핑으로 리포트를 만들겠습니다. 수정할 게 있나요?
 
-| # | 근거 출처 | PM-readable 성공 기준 | 시나리오/subject | primary evidence | 하단 보조 검증 |
-|---|-----------|-------------------------|------------------|------------------|----------------|
-| V1 | Jira COM-123 | 관리자가 새 옵션을 켜면 사용자 화면에 새 CTA가 보인다 | admin 설정 → user detail / item=123 | before/after focused crop | API 응답 JSON |
+| # | Frame handoff | 근거 출처 | PM-readable 성공 기준 | 시나리오/subject | primary evidence | 하단 보조 검증 |
+|---|---------------|-----------|-------------------------|------------------|------------------|----------------|
+| V1 | reuse R1 | Jira COM-123 | 관리자가 새 옵션을 켜면 사용자 화면에 새 CTA가 보인다 | admin 설정 → user detail / item=123 | before/after focused crop | API 응답 JSON |
 | V2 | 와이어프레임 | 모바일에서 카드가 한 줄로 겹치지 않는다 | anonymous / 390×844 | mobile crop | 없음 |
 | V3 | PR test plan | 클릭 플로우가 끊기지 않고 상세로 이동한다 | member / click CTA | GIF primary + final PNG | console error 0 |
 | T1 | 코드 리스크 | 권한 없는 mutation은 차단된다 | unauthorized role | 없음 | API 403 response |
