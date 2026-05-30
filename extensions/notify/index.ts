@@ -7,9 +7,14 @@ let sessionTitle = "";
 const WIDGET_BG = "\x1b[48;2;130;130;130m";
 const WIDGET_RESET = "\x1b[49m";
 
+function isStaleCtxError(err: unknown): boolean {
+	return String((err as Error)?.message ?? err).includes("ctx is stale");
+}
+
 function showNotifyWidget(ctx: ExtensionContext, message: string) {
-	if (!ctx.hasUI) return;
-	ctx.ui.setWidget("notify-bar", (_tui, theme) => ({
+	try {
+		if (!ctx.hasUI) return;
+		ctx.ui.setWidget("notify-bar", (_tui, theme) => ({
 		invalidate() {},
 		render(width: number): string[] {
 			const content = `  ${theme.fg("text", "🔔")} ${theme.fg("accent", "작업 완료")} ${theme.fg("text", `— ${message}`)}`;
@@ -17,11 +22,18 @@ function showNotifyWidget(ctx: ExtensionContext, message: string) {
 			const pad = " ".repeat(Math.max(0, width - visibleWidth(truncated)));
 			return [`${WIDGET_BG}${truncated}${pad}${WIDGET_RESET}`];
 		},
-	}));
+		}));
+	} catch (err) {
+		if (!isStaleCtxError(err)) throw err;
+	}
 }
 
 function clearNotifyWidget(ctx: ExtensionContext) {
-	if (ctx.hasUI) ctx.ui.setWidget("notify-bar", undefined);
+	try {
+		if (ctx.hasUI) ctx.ui.setWidget("notify-bar", undefined);
+	} catch (err) {
+		if (!isStaleCtxError(err)) throw err;
+	}
 }
 
 function extractSummary(messages: any[]): string | undefined {
@@ -54,7 +66,12 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("agent_end", async (event, ctx) => {
-		if (!enabled || !ctx.hasUI) return;
+		try {
+			if (!enabled || !ctx.hasUI) return;
+		} catch (err) {
+			if (isStaleCtxError(err)) return;
+			throw err;
+		}
 		const summary = extractSummary(event.messages);
 		const text = summary ?? pi.getSessionName?.() ?? sessionTitle ?? "pi";
 		sendNotification(pi, "pilee", `작업 완료 — ${text}`);

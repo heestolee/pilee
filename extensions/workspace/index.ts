@@ -253,14 +253,32 @@ function readActiveRecords(): ActiveSessionRecord[] {
 		.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
+function isStaleCtxError(err: unknown): boolean {
+	return String((err as Error)?.message ?? err).includes("ctx is stale");
+}
+
 function writeActiveRecord(ctx: ExtensionContext) {
-	const sessionFile = ctx.sessionManager.getSessionFile();
+	let sessionFile: string | undefined;
+	try {
+		sessionFile = ctx.sessionManager.getSessionFile();
+	} catch (err) {
+		if (isStaleCtxError(err)) return;
+		throw err;
+	}
 	if (!sessionFile) return;
-	const sessionTitle = ctx.sessionManager.getSessionName() || basename(sessionFile).replace(/\.jsonl$/u, "");
+	let sessionTitle: string;
+	let cwd: string;
+	try {
+		sessionTitle = ctx.sessionManager.getSessionName() || basename(sessionFile).replace(/\.jsonl$/u, "");
+		cwd = ctx.sessionManager.getCwd();
+	} catch (err) {
+		if (isStaleCtxError(err)) return;
+		throw err;
+	}
 	const identity = resolveForkPanelIdentity({ sessionFile });
 	const next: ActiveSessionRecord = {
 		sessionFile: safeRealpath(sessionFile),
-		cwd: ctx.sessionManager.getCwd(),
+		cwd,
 		title: sessionTitle,
 		panelLabel: identity.panelLabel,
 		forkId: identity.forkId,
@@ -1266,6 +1284,9 @@ export default function (pi: ExtensionAPI) {
 	pi.on("agent_end", async (_event, ctx) => {
 		latestContext = ctx;
 		writeActiveRecord(ctx);
+	});
+	pi.on("session_shutdown", async () => {
+		latestContext = undefined;
 	});
 
 	pi.registerCommand("workspace", {

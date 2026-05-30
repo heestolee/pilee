@@ -34,9 +34,26 @@ function getPromptSuggestArgumentCompletions(argumentPrefix: string): Autocomple
 	return filtered.length > 0 ? filtered.map((item) => ({ ...item })) : null;
 }
 
+function isStaleCtxError(err: unknown): boolean {
+	return String((err as Error)?.message ?? err).includes("ctx is stale");
+}
+
+function hasUiIfActive(ctx: ExtensionContext): boolean {
+	try {
+		return ctx.hasUI;
+	} catch (err) {
+		if (isStaleCtxError(err)) return false;
+		throw err;
+	}
+}
+
 function clearFooterStatus(ctx: ExtensionContext): void {
-	if (!ctx.hasUI) return;
-	ctx.ui.setStatus(STATUS_KEY, undefined);
+	try {
+		if (!ctx.hasUI) return;
+		ctx.ui.setStatus(STATUS_KEY, undefined);
+	} catch (err) {
+		if (!isStaleCtxError(err)) throw err;
+	}
 }
 
 function cancelPendingGenerationStatus(ctx: ExtensionContext): void {
@@ -173,7 +190,7 @@ export default function promptSuggestLite(pi: ExtensionAPI) {
 		promptSuggestLiteStore.setStatus({ status: config.enabled ? "idle" : "disabled" });
 		clearFooterStatus(ctx);
 
-		if (!config.enabled || !ctx.hasUI) return;
+		if (!config.enabled || !hasUiIfActive(ctx)) return;
 		const turn = buildLatestHistoricalTurnContext({ branchEntries: branchMessageEntries(ctx), config });
 		if (!turn) return;
 		void generateForTurn({ turn, ctx, generationId: currentGeneration, getGenerationId: () => generationId });
@@ -214,7 +231,7 @@ export default function promptSuggestLite(pi: ExtensionAPI) {
 
 	pi.on("agent_end", async (event, ctx) => {
 		config = promptSuggestLiteStore.getConfig();
-		if (!config.enabled || !ctx.hasUI) return;
+		if (!config.enabled || !hasUiIfActive(ctx)) return;
 		const branch = branchMessages(ctx);
 		const turnId = ctx.sessionManager.getLeafId() ?? `turn-${Date.now()}`;
 		const messagesFromPrompt = event.messages as AgentMessage[];
@@ -277,6 +294,6 @@ export default function promptSuggestLite(pi: ExtensionAPI) {
 	pi.on("session_shutdown", async (_event, ctx) => {
 		generationId += 1;
 		promptSuggestLiteStore.clearSuggestion();
-		if (ctx.hasUI) ctx.ui.setStatus(STATUS_KEY, undefined);
+		clearFooterStatus(ctx);
 	});
 }

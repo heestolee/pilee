@@ -648,16 +648,24 @@ export default function (pi: ExtensionAPI) {
 		}).catch(() => {});
 	}
 
+	function isStaleCtxError(err: unknown): boolean {
+		return String((err as Error)?.message ?? err).includes("ctx is stale");
+	}
+
 	function updateWidget(ctx: ExtensionContext) {
-		if (!ctx.hasUI) return;
-		ctx.ui.setWidget(WIDGET_KEY, undefined);
-		const key = taskOverlayKey(ctx);
-		const store = load(ctx);
-		if (store.tasks.length === 0 || taskOverlayHiddenStore.get(key)) {
-			hideTaskOverlay(key);
-			return;
+		try {
+			if (!ctx.hasUI) return;
+			ctx.ui.setWidget(WIDGET_KEY, undefined);
+			const key = taskOverlayKey(ctx);
+			const store = load(ctx);
+			if (store.tasks.length === 0 || taskOverlayHiddenStore.get(key)) {
+				hideTaskOverlay(key);
+				return;
+			}
+			showOrUpdateTaskOverlay(ctx, key, store);
+		} catch (err) {
+			if (!isStaleCtxError(err)) throw err;
 		}
-		showOrUpdateTaskOverlay(ctx, key, store);
 	}
 
 	function setPassiveTaskOverlayVisible(ctx: ExtensionContext, visible: boolean): void {
@@ -679,18 +687,26 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	function setTaskOverlayAgentRunning(ctx: ExtensionContext, running: boolean): void {
-		const key = taskOverlayKey(ctx);
-		taskOverlayAgentRunningStore.set(key, running);
+		try {
+			const key = taskOverlayKey(ctx);
+			taskOverlayAgentRunningStore.set(key, running);
+		} catch (err) {
+			if (!isStaleCtxError(err)) throw err;
+		}
 	}
 
 	pi.on("session_start", async (_e, ctx) => {
 		latestCtx = ctx;
-		if (!ctx.hasUI) return;
-		updateWidget(ctx);
-		const store = load(ctx);
-		const inProgress = store.tasks.filter((t) => t.status === "in_progress");
-		if (inProgress.length > 0) {
-			ctx.ui.notify(`${inProgress.length} task(s) in progress from previous session`, "info");
+		try {
+			if (!ctx.hasUI) return;
+			updateWidget(ctx);
+			const store = load(ctx);
+			const inProgress = store.tasks.filter((t) => t.status === "in_progress");
+			if (inProgress.length > 0) {
+				ctx.ui.notify(`${inProgress.length} task(s) in progress from previous session`, "info");
+			}
+		} catch (err) {
+			if (!isStaleCtxError(err)) throw err;
 		}
 	});
 
@@ -720,10 +736,14 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
-		const key = taskOverlayKey(ctx);
-		hideTaskOverlay(key);
-		taskOverlayHiddenStore.delete(key);
-		taskOverlayAgentRunningStore.delete(key);
+		try {
+			const key = taskOverlayKey(ctx);
+			hideTaskOverlay(key);
+			taskOverlayHiddenStore.delete(key);
+			taskOverlayAgentRunningStore.delete(key);
+		} catch (err) {
+			if (!isStaleCtxError(err)) throw err;
+		}
 	});
 
 	// ─── Overlay (/tasks command) ──────────────────────────────────────────

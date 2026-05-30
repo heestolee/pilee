@@ -14,10 +14,15 @@ type SyncedState = {
 };
 
 function syncState(ctx: ExtensionContext): SyncedState {
-	return {
-		modelLabel: ctx.model?.id ?? "no-model",
-		panelLabel: getForkPanelLabel(process.env, ctx.sessionManager.getSessionFile()),
-	};
+	try {
+		return {
+			modelLabel: ctx.model?.id ?? "no-model",
+			panelLabel: getForkPanelLabel(process.env, ctx.sessionManager.getSessionFile()),
+		};
+	} catch (err) {
+		if (isStaleCtxError(err)) return { modelLabel: "no-model", panelLabel: getForkPanelLabel() };
+		throw err;
+	}
 }
 
 const COMPACTION_STATUS_KEY = "custom-style:compaction";
@@ -25,6 +30,19 @@ const COMPACTION_STATUS_CLEAR_MS = 8_000;
 
 let currentEditor: PolishedEditor | undefined;
 let compactionStatusClearTimer: ReturnType<typeof setTimeout> | undefined;
+
+function isStaleCtxError(err: unknown): boolean {
+	return String((err as Error)?.message ?? err).includes("ctx is stale");
+}
+
+function hasUiIfActive(ctx: ExtensionContext): boolean {
+	try {
+		return ctx.hasUI;
+	} catch (err) {
+		if (isStaleCtxError(err)) return false;
+		throw err;
+	}
+}
 
 function setFooterStatus(ctx: ExtensionContext, text: string | undefined) {
 	try {
@@ -43,13 +61,13 @@ function clearCompactionStatusLater(ctx: ExtensionContext) {
 }
 
 function setCompactionStatus(ctx: ExtensionContext, prefix: string, tokensBefore: number, reserveTokens: number) {
-	if (!ctx.hasUI) return;
+	if (!hasUiIfActive(ctx)) return;
 	const status = formatCompactionStatus(tokensBefore, ctx.model?.contextWindow, reserveTokens, ctx.model);
 	setFooterStatus(ctx, `${prefix} · ${status}`);
 }
 
 function installEditor(pi: ExtensionAPI, ctx: ExtensionContext, getState: () => SyncedState) {
-	if (!ctx.hasUI) return;
+	if (!hasUiIfActive(ctx)) return;
 
 	let autocompleteFixed = false;
 
@@ -112,7 +130,7 @@ export default function (pi: ExtensionAPI) {
 	};
 
 	const installUi = (ctx: ExtensionContext) => {
-		if (!ctx.hasUI) return;
+		if (!hasUiIfActive(ctx)) return;
 		ensureConfigExists();
 		currentConfig = loadConfig();
 		doSync(ctx);
@@ -166,9 +184,13 @@ export default function (pi: ExtensionAPI) {
 			clearTimeout(compactionStatusClearTimer);
 			compactionStatusClearTimer = undefined;
 		}
-		if (!ctx.hasUI) return;
-		setFooterStatus(ctx, undefined);
-		ctx.ui.setFooter(undefined);
-		ctx.ui.setEditorComponent(undefined);
+		if (!hasUiIfActive(ctx)) return;
+		try {
+			setFooterStatus(ctx, undefined);
+			ctx.ui.setFooter(undefined);
+			ctx.ui.setEditorComponent(undefined);
+		} catch (err) {
+			if (!isStaleCtxError(err)) throw err;
+		}
 	});
 }

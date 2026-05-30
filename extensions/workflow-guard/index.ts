@@ -20,6 +20,7 @@ interface GuardState {
 	explicitPrAction: boolean;
 	auditRequired: boolean;
 	summary: string;
+	continuationCue: boolean;
 	createdAt: string;
 	sessionFile?: string;
 }
@@ -100,9 +101,14 @@ function isStatusNotePrompt(prompt: string): boolean {
 		|| trimmed.startsWith("WORKTREE DEPENDENCY BOOTSTRAP:");
 }
 
+function isContinuationCue(normalized: string): boolean {
+	return /^(계속|계속해|이어가|이어서|진행|진행해|다음|다음으로|continue|proceed|go on|next)$/.test(normalized);
+}
+
 function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 	const normalized = normalizeText(prompt);
 	const statusNote = isStatusNotePrompt(prompt);
+	const continuationCue = !statusNote && isContinuationCue(normalized);
 	const explicitHeavy = !statusNote && hasAny(normalized, [
 		/verify[- ]?report|검증\s*리포트|캡처\s*리포트|full\s*report/,
 		/stress[- ]?interview|fan[- ]?out|subagent|worker|병렬|전체\s*검증|풀\s*검증/,
@@ -160,12 +166,13 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 	const summary = [
 		`intent=${intent}`,
 		`weight=${weight}`,
+		continuationCue ? "continuation=latest-intent" : null,
 		auditRequired ? "audit=required" : null,
 		explicitHeavy ? "heavy=explicit" : null,
 		!explicitMutation ? "mutation=not-requested" : null,
 	].filter(Boolean).join(" · ");
 
-	return { prompt, intent, weight, explicitHeavy, explicitMutation, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, auditRequired, summary, createdAt: new Date().toISOString(), sessionFile };
+	return { prompt, intent, weight, explicitHeavy, explicitMutation, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, auditRequired, summary, continuationCue, createdAt: new Date().toISOString(), sessionFile };
 }
 
 function fastPaceBudgetSeconds(state: GuardState): number | undefined {
@@ -215,6 +222,16 @@ function buildSystemPrompt(state: GuardState): string {
 			"- Do not resume older implementation, validation, PR, or worktree threads because of this note.",
 			"- Do not call tools for this turn unless the user adds a real request; at most acknowledge the status in one short Korean sentence.",
 			"- Dependency/bootstrap READY, worktree cwd binding, workflow guard, and compaction notes describe state only; they do not override the latest explicit user intent.",
+		);
+	}
+	if (state.continuationCue) {
+		lines.push(
+			"- CONTINUATION CUE PATH: the latest prompt is a short continuation cue, not a new topic.",
+			"- Continue the latest non-status user intent from the current conversation/Current Conversation Contract.",
+			"- Do not continue from dependency/bootstrap READY, worktree cwd binding, workflow guard, or other status notes.",
+			"- Do not answer with an options/menu question just because the cue is short; take the next concrete verification/implementation step when the prior intent is clear.",
+			"- If the prior intent is verification and tools are available, run one next narrow verification instead of only describing what could be checked.",
+			"- Ask a clarifying question only if the latest non-status intent is genuinely ambiguous.",
 		);
 	}
 	if (state.intent === "answer" || state.intent === "investigate") {

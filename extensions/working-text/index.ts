@@ -25,6 +25,10 @@ function elapsed(since: number): string {
 	return `${m}분 ${s % 60}초`;
 }
 
+function isStaleCtxError(err: unknown): boolean {
+	return String((err as Error)?.message ?? err).includes("ctx is stale");
+}
+
 export default function (pi: ExtensionAPI) {
 	let startedAt = 0;
 	let message = "";
@@ -44,7 +48,8 @@ export default function (pi: ExtensionAPI) {
 	const start = () => {
 		stop();
 		timer = setInterval(() => {
-			if (!ctx?.hasUI || startedAt <= 0 || paused > 0) return;
+			try {
+				if (!ctx?.hasUI || startedAt <= 0 || paused > 0) return;
 			const now = Date.now();
 			if (now - lastRotate >= ROTATE_MS) {
 				message = pick(TIPS);
@@ -56,7 +61,12 @@ export default function (pi: ExtensionAPI) {
 			} else if (lastToolEndAt > 0 && now - lastToolEndAt > 10_000) {
 				toolInfo = ` [LLM 응답 대기 중 · ${elapsed(lastToolEndAt)}]`;
 			}
-			ctx.ui.setWorkingMessage(`${message} · ${elapsed(startedAt)}${toolInfo}`);
+				ctx.ui.setWorkingMessage(`${message} · ${elapsed(startedAt)}${toolInfo}`);
+			} catch (err) {
+				if (!isStaleCtxError(err)) throw err;
+				ctx = undefined;
+				stop();
+			}
 		}, 1000);
 	};
 
@@ -72,7 +82,11 @@ export default function (pi: ExtensionAPI) {
 	pi.on("agent_end", async (_e, c) => {
 		stop();
 		paused = 0;
-		if (c.hasUI) c.ui.setWorkingMessage();
+		try {
+			if (c.hasUI) c.ui.setWorkingMessage();
+		} catch (err) {
+			if (!isStaleCtxError(err)) throw err;
+		}
 		startedAt = 0;
 	});
 

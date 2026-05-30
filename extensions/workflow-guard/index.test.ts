@@ -172,6 +172,19 @@ test("worktree cwd binding messages are status notes", async () => {
 	assert.match(editBlock.reason, /Status\/readiness\/context-binding notes/);
 });
 
+test("short continuation cues continue latest non-status intent", async () => {
+	const { hooks, ctx } = createHarness();
+	const start = await hooks.before_agent_start({ prompt: "계속해", systemPrompt: "base\n\n[Current Conversation Contract]\n- Latest user intent: pi-vcc와 workflow-guard E2E를 확인한다." }, ctx);
+
+	assert.match(start.systemPrompt, /continuation=latest-intent/);
+	assert.match(start.systemPrompt, /CONTINUATION CUE PATH/);
+	assert.match(start.systemPrompt, /latest non-status user intent/);
+	assert.match(start.systemPrompt, /Do not continue from dependency\/bootstrap READY/);
+	assert.match(start.systemPrompt, /Do not answer with an options\/menu question/);
+	assert.match(start.systemPrompt, /run one next narrow verification/);
+	assert.doesNotMatch(start.systemPrompt, /HARD STATUS NOTE PATH/);
+});
+
 test("push status questions stay read-only instead of commit-push terminal path", async () => {
 	const { hooks, ctx } = createHarness();
 	const start = await hooks.before_agent_start({ prompt: "push 상태 확인해줘", systemPrompt: "base" }, ctx);

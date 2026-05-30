@@ -129,9 +129,23 @@ export default function (pi: ExtensionAPI) {
 		}, 100);
 	});
 
+	const isStaleCtxError = (err: unknown) => String((err as Error)?.message ?? err).includes("ctx is stale");
+
+	const stopUsingStaleCtx = () => {
+		currentCtx = null;
+		queue.length = 0;
+		agentRunning = false;
+	};
+
 	// Periodic sync — best-effort cleanup if our tracking gets out of sync
 	const syncInterval = setInterval(() => {
-		if (currentCtx) syncWithReality(currentCtx);
+		if (!currentCtx) return;
+		try {
+			syncWithReality(currentCtx);
+		} catch (err) {
+			if (!isStaleCtxError(err)) throw err;
+			stopUsingStaleCtx();
+		}
 	}, 1500);
 
 	// Idle watchdog
@@ -164,18 +178,28 @@ export default function (pi: ExtensionAPI) {
 		lines.push("");
 		lines.push("필요 시 Esc로 abort 가능");
 
-		currentCtx.ui.notify(lines.join("\n"), "warning");
+		try {
+			currentCtx.ui.notify(lines.join("\n"), "warning");
+		} catch (err) {
+			if (!isStaleCtxError(err)) throw err;
+			stopUsingStaleCtx();
+		}
 	}, IDLE_CHECK_INTERVAL_MS);
 
 	function syncWithReality(ctx: ExtensionContext) {
-		if (!ctx.hasPendingMessages() && queue.length > 0) {
-			// Real queue empty but we still have items — clear
-			queue.length = 0;
-			updateWidget(ctx);
-			return;
+		try {
+			if (!ctx.hasPendingMessages() && queue.length > 0) {
+				// Real queue empty but we still have items — clear
+				queue.length = 0;
+				updateWidget(ctx);
+				return;
+			}
+			// Otherwise just re-render in case nothing changed
+			if (queue.length > 0) updateWidget(ctx);
+		} catch (err) {
+			if (!isStaleCtxError(err)) throw err;
+			stopUsingStaleCtx();
 		}
-		// Otherwise just re-render in case nothing changed
-		if (queue.length > 0) updateWidget(ctx);
 	}
 
 	pi.on("session_start", async (_e, ctx) => {
