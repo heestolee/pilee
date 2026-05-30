@@ -72,13 +72,13 @@ related:
 
 ## Decide Rule
 
-`/decide`에서 backend 레이어 선택이 핵심이면 비교표에 `레이어 책임` 행을 포함합니다. 각 대안이 resolver/usecase/service/repository/VO/loader/entity 중 어디에 책임을 두는지, 그 결과로 생기는 테스트 위치·cache key·transaction boundary·source-of-truth 비용을 비교합니다.
+`/decide`에서 backend 레이어 선택이 핵심이면 비교표에 `레이어 책임` 행을 포함합니다. 각 대안이 resolver/usecase/service/repository/VO/loader/entity 중 어디에 책임을 두는지, 그 결과로 생기는 테스트 위치·cache key·transaction boundary·source-of-truth 비용을 비교합니다. Architecture/Data Flow가 있으면 `Architecture/Data Flow 영향` 행도 포함해 UI/API/Usecase/Domain/Repository/DB edge와 source-of-truth가 대안별로 어떻게 바뀌는지 비교합니다.
 
-레이어 책임 선택이 API/cache/transaction/source-of-truth를 바꾸면 challenge intensity는 최소 `high`입니다. 수용한 비용은 `tradeoffs_accepted`나 `mitigations`에 남깁니다.
+레이어 책임 선택이 API/cache/transaction/source-of-truth를 바꾸거나 Architecture/Data Flow의 write edge/source-of-truth를 바꾸면 challenge intensity는 최소 `high`입니다. 수용한 비용은 `tradeoffs_accepted`나 `mitigations`에 남깁니다.
 
 ## Verify Rule
 
-`/verify`는 `backend_layer_map`이 있으면 실제 diff가 맵과 일치하는지 확인합니다.
+`/verify`는 `backend_layer_map`이 있으면 실제 diff가 맵과 일치하는지 확인합니다. `architecture_flow_map`이 있으면 lane/node/edge/source-of-truth도 실제 diff와 일치하는지 별도 확인합니다.
 
 - Resolver/Controller가 복잡한 정책·DB 조건을 소유하지 않는가
 - Usecase/Service가 사용자 행동, 기준 시간, 권한, transaction 조합을 소유하는가
@@ -87,6 +87,8 @@ related:
 - Loader/cache key가 기준 값, 권한, request scope를 빠뜨리지 않는가
 - Entity/Migration/Schema가 source-of-truth와 제약을 표현하는가
 - Consumer가 받은 결과를 표시/전달하고 source-of-truth를 재계산하지 않는가
+- Architecture Flow의 주요 edge가 frame과 같은 방향/조건으로 구현됐는가
+- source-of-truth table/API/cache가 frame에서 정한 노드와 달라지지 않았는가
 
 불일치는 자동 리팩터링 명령이 아닙니다. frame 계약 위반 또는 decision mitigation 누락이면 `부분`/`GAP`으로 연결하고, 범위 밖 구조 개선이면 follow-up/backlog로 남깁니다.
 

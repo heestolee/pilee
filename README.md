@@ -401,7 +401,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 ## Skills
 
 <!-- PILEE_README_SKILLS_START -->
-28개. 글로벌 워크플로 스킬만 pilee에 포함. 프로젝트 고유 스킬(create-pr, self-review)은 해당 레포/private overlay에 위치.
+28개. 글로벌 워크플로 스킬만 pilee에 포함. 프로젝트 고유 스킬(create-pr 등)은 해당 레포/private overlay에 위치.
 
 > `skills/*/SKILL.md`와 `scripts/knowledge.mjs`의 inventory metadata에서 생성됩니다. 변경 후 `node scripts/knowledge.mjs --graph`로 갱신합니다.
 

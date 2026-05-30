@@ -7,6 +7,7 @@
 1. Requirement Matrix — 기획 근거와 구현/검증의 1:1 추적표
 2. Domain Work Map — FE Web/Admin/BE/DB·Ops/Verification 같은 작업 레인 지도
 3. Backend Layer Map — backend 레이어별 기획 책임 분배표
+4. Architecture/Data Flow Map — 데이터·로직·DB/source-of-truth 흐름 검수 지도
 
 ## 1. Source-grounded mode trigger
 
@@ -159,7 +160,7 @@ Backend Layer Map row에는 `요구사항` 컬럼이 반드시 있어야 한다.
 
 source-grounded mode에서 backend layer map이 켜졌고 사용자가 레이어 이해를 검수해야 하면, `references/backend-layer-map.md`의 Layer Visual Map 템플릿을 사용해 `kind: "backend-layer-map"` `tft-visual` fenced block을 함께 출력한다. 이 visual은 표를 예쁘게 바꾸는 장식이 아니라, 각 레이어가 닫는 `R...` 요구사항과 초보자용 책임 설명을 연결하는 검수 surface다.
 
-사용자가 데이터나 로직이 어떻게 흐르는지, 전체 아키텍처, DB PK/FK 연결까지 보고 싶다고 하면 같은 reference의 Architecture/Data Flow Map 템플릿을 사용해 `kind: "architecture-flow"` visual도 함께 출력한다. 이 visual은 UI/API/usecase/domain/repository/DB/ops lane과 edge label로 “데이터가 어디에서 어디로 이동하는지”를 보여준다.
+데이터나 로직이 어떻게 흐르는지, 전체 아키텍처, DB PK/FK 연결, resolver → usecase → service/domain/VO → repository → table 흐름이 구현 위치·검증 증거·source-of-truth 판단에 영향을 주면 같은 reference의 Architecture/Data Flow Map 템플릿을 사용해 `kind: "architecture-flow"` visual도 함께 출력한다. 이는 사용자가 먼저 요청했을 때만의 옵션이 아니라, backend/data/API/DB 흐름이 작업 이해를 좌우하는 source-grounded full frame의 필수 surface다. 이 visual은 UI/API/usecase/domain/repository/DB/ops lane과 edge label로 “데이터가 어디에서 어디로 이동하는지”를 보여준다.
 
 ### 미해결 책임 질문
 
@@ -195,20 +196,24 @@ source-grounded mode의 Frame draft는 최소한 다음을 포함한다.
 2. `requirement_matrix[]` — 요구사항 ID, source, 원문, 구현 계약, 검증 증거, 상태
 3. `domain_work_map[]` — 레인별 task 후보와 requirement refs
 4. `backend_layer_map` — backend trigger가 있으면 requirement refs가 붙은 layer map
-5. `implementation_plan.slices[]` — Domain Work Map에서 파생된 실행 slice
-6. `verify_plan.manual_checks[]` — Requirement Matrix의 검증 증거에서 파생
+5. `architecture_flow_map` — data/API/DB/source-of-truth flow trigger가 있으면 requirement refs가 붙은 lane/node/edge map
+6. `implementation_plan.slices[]` — Domain Work Map에서 파생된 실행 slice
+7. `verify_plan.manual_checks[]` — Requirement Matrix의 검증 증거에서 파생
 
 기존 `frame.json` schema에 당장 새 필드가 없다면 다음 fallback을 사용한다.
 
 - `requirement_matrix`: `success_criteria[].evidence_locator`, `review_lenses`, `verify_plan.manual_checks`에 요구사항 ID를 명시한다.
 - `domain_work_map`: `implementation_plan.slices[]`와 TaskCreate `area`/`refs.requirements`로 표현한다.
 - `backend_layer_map`: 기존 `backend_layer_map.layers[]`에 `ownsDecision`/`verification`과 requirement ID를 포함한다.
+- `architecture_flow_map`: schema가 없다면 `backend_layer_map.callFlow`, `review_lenses`, `verify_plan.manual_checks`, `tft-visual` code block에 lane/node/edge, source-of-truth, requirement ID를 함께 남긴다.
 
 ## 6. Verification rule
 
 `/verify`와 `/verify-report`는 source-grounded frame에서 다음 기준을 따른다.
 
 - 모든 requirement ID는 `PASS`, `GAP`, `BLOCKED`, `OUT_OF_SCOPE` 중 하나여야 한다.
+- Domain Work Map의 각 lane은 구현 또는 의도적 제외/blocked로 닫혀야 한다.
+- Architecture Flow가 있으면 주요 lane/node/edge/source-of-truth가 실제 diff와 맞는지 `/verify`에서 확인해야 한다.
 - UI 요구는 캡처/GIF 없이 PASS가 아니다.
 - “영향 없음” 요구도 consumer path 확인 없이 PASS가 아니다.
 - “자동 반려/로그” 요구는 dry-run/execute gate/log evidence 없이 PASS가 아니다.

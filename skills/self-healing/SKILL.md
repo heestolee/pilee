@@ -1,6 +1,6 @@
 ---
 name: self-healing
-description: Pi/Codex subagent로 stress-interview를 실행한 뒤 worker가 actionable item만 수정하고 재검토를 2사이클 반복하는 자가 치유 스킬. PR 머지 전 자동 안정화, self-review, 품질 개선 루프 때 사용.
+description: Pi/Codex subagent로 stress-interview를 실행한 뒤 worker가 actionable item만 수정하고 재검토를 2사이클 반복하는 자가 치유 스킬. PR 머지 전 자동 안정화와 품질 개선 루프 때 사용.
 argument-hint: "이 변경사항 자동으로 두 번 고쳐가며 안정화해줘 | 방금 만든 코드 self-healing 돌려줘"
 ---
 
@@ -131,7 +131,3 @@ reviewer가 `fix_class`를 제공하지 않으면 기존 심각도(Critical/Impo
 - 마지막 상태가 "완벽함"이라고 단정하지 말고, 2사이클 기준의 남은 리스크를 솔직히 적는다.
 - frame.json이 있으면 `verify_plan.commands`를 verifier 검증 명령으로 우선 사용한다.
 - 이 스킬은 Pi/Codex subagent 기준이다. Claude Code 전용 agent 이름이나 내부 실행 문법을 사용하지 않는다.
-
-## self-review 요청과의 관계
-
-사용자가 자연어로 `self-review` 또는 자가 안정화 루프를 요청하면 이 스킬을 적용할 수 있다. 단, pilee public package는 `/self-review` slash command를 직접 제공하지 않는다. 프로젝트/private overlay가 별도 `/self-review` 명령을 제공하는 경우에만 그 명령 라우팅을 따른다.

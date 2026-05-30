@@ -100,7 +100,7 @@ Layer Visual Map 규칙:
 
 ## Architecture / Data Flow Map 템플릿
 
-Layer Visual Map이 “각 레이어가 무슨 책임인지”를 설명한다면, Architecture/Data Flow Map은 “데이터와 로직이 실제로 어디를 지나가는지”를 보여준다. 사용자가 전체 구조, 데이터 흐름, DB PK/FK, resolver → usecase → service/domain/VO → repository → table 흐름을 보고 싶다고 밝히면 `kind: "architecture-flow"` visual을 추가한다.
+Layer Visual Map이 “각 레이어가 무슨 책임인지”를 설명한다면, Architecture/Data Flow Map은 “데이터와 로직이 실제로 어디를 지나가는지”를 보여준다. 전체 구조, 데이터 흐름, DB PK/FK, resolver → usecase → service/domain/VO → repository → table 흐름이 구현 위치·검증 증거·source-of-truth 판단에 영향을 주면 `kind: "architecture-flow"` visual을 추가한다. 사용자가 먼저 요청했을 때만의 옵션이 아니라, backend/data/API/DB 흐름이 작업 이해를 좌우하는 source-grounded full frame의 필수 surface다.
 
 ```tft-visual
 {
@@ -154,7 +154,8 @@ Architecture/Data Flow Map 규칙:
 - `nodes[].type`은 `screen`, `resolver`, `usecase`, `service`, `domain`, `vo`, `repository`, `table`, `review`, `ops`처럼 책임/형태가 보이게 적는다.
 - DB table node는 가능하면 `columns`에 `PK`, `FK`, `UNIQUE`, `JSON`, `source-of-truth`, `legacy` badge를 넣는다. 정확한 컬럼명은 실제 schema를 읽은 뒤 채운다.
 - `edges[].label`에는 “조회”, “payload 저장”, “승인 시 반영”, “legacy pending 반려”처럼 데이터/로직 이동의 의미를 짧게 쓴다.
-- Layer Visual Map과 Architecture/Data Flow Map은 둘 다 설명 surface다. canonical 구조는 `backend_layer_map`, `requirement_matrix`, `implementation_plan`, 실제 code/schema에 남긴다.
+- Layer Visual Map과 Architecture/Data Flow Map은 둘 다 설명 surface다. canonical 구조는 `backend_layer_map`, `architecture_flow_map`, `requirement_matrix`, `implementation_plan`, 실제 code/schema에 남긴다.
+- Architecture/Data Flow Map의 주요 lane/node/edge는 Requirement Matrix의 ID와 연결되어야 하며, source-of-truth table/node는 verification evidence를 가져야 한다.
 
 ## 질문으로 승격하는 기준
 
@@ -185,5 +186,6 @@ Architecture/Data Flow Map 규칙:
 - `backend_layer_map`에 callFlow와 각 레이어 책임/검증 포인트가 들어 있다.
 - source-grounded frame이면 각 레이어에 requirement ID가 붙어 있고, 해당 ID가 Requirement Matrix와 Domain Work Map에 존재한다.
 - 또는 기존 schema에 필드가 없다면 `review_lenses`, `risk_register`, `success_criteria`, `verify_plan.manual_checks`에 같은 내용이 명시되어 있다.
-- 열린 레이어 책임 질문은 `decision_queue` 또는 `risk_register.needs_decision`에 들어 있다.
+- Architecture/Data Flow가 트리거된 작업이면 `architecture_flow_map` 또는 이에 준하는 visual/verify_plan에 lane/node/edge/source-of-truth와 requirement ID가 명시되어 있다.
+- 열린 레이어/흐름 책임 질문은 `decision_queue` 또는 `risk_register.needs_decision`에 들어 있다.
 - implementation plan의 파일 순서는 이 맵에서 파생되어야 하며, 맵을 대체하지 않는다.

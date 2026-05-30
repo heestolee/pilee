@@ -71,18 +71,24 @@ const requiredContracts = [
       'Requirement Matrix',
       'Domain Work Map',
       'Backend Layer Map',
+      'architecture_flow_map',
       'kind: "backend-layer-map"',
       'kind: "architecture-flow"',
+      'source-grounded full frame에서는 필수 surface',
       '부트캠프 수강생도 알 수 있는 설명',
     ],
   },
   {
     file: 'skills/frame/references/source-grounded-planning.md',
-    includes: ['Requirement Matrix', 'Domain Work Map', 'Backend Layer Map', '기획 근거 원문', '`gap`', '`상태` 컬럼은 필수', 'requirement ID prefix'],
+    includes: ['Requirement Matrix', 'Domain Work Map', 'Backend Layer Map', 'Architecture/Data Flow Map', '기획 근거 원문', '`gap`', '`상태` 컬럼은 필수', 'requirement ID prefix', 'source-grounded full frame의 필수 surface'],
   },
   {
     file: 'skills/decide/SKILL.md',
-    includes: ['짧은 반론 카드', '질문 제목: 접근 선택', '선택 후 달라지는 것'],
+    includes: ['짧은 반론 카드', '질문 제목: 접근 선택', '선택 후 달라지는 것', '요구사항 추적성', 'Domain Work Map 영향', 'Architecture/Data Flow 영향', 'verifyHandoffHints'],
+  },
+  {
+    file: 'skills/verify/SKILL.md',
+    includes: ['source-grounded requirement coverage 검증', 'Domain Work Map coverage', 'Architecture/Data Flow 검증', 'verifyReportHandoff', 'reuse/revise/add/drop/blocked'],
   },
   {
     file: 'skills/tft-guidelines/SKILL.md',
@@ -94,7 +100,7 @@ const requiredContracts = [
   },
   {
     file: 'docs/knowledge/source-grounded-frame-planning.md',
-    includes: ['Requirement Matrix', 'Domain Work Map', 'Backend Layer Map', 'source-grounded frame', 'gap', '상태 없는 Requirement Matrix', 'requirement ID', 'kind: "backend-layer-map"', 'kind: "architecture-flow"'],
+    includes: ['Requirement Matrix', 'Domain Work Map', 'Backend Layer Map', 'Architecture/Data Flow Map', 'source-grounded frame', 'gap', '상태 없는 Requirement Matrix', 'requirement ID', 'kind: "backend-layer-map"', 'kind: "architecture-flow"', 'source-grounded full frame의 필수 surface'],
   },
   {
     file: 'docs/knowledge/tft-preference-regression-gate.md',

@@ -58,6 +58,7 @@ Jira, Notion, Slack, wireframe, PRD, 디자인 캡처처럼 정확한 기획 근
 2. `requirement_matrix` — 기획 원문 ID별 구현 계약과 검증 증거
 3. `domain_work_map` — FE Web/Admin/Mobile, BE, DB/Ops, Verification 같은 작업 레인 지도
 4. `backend_layer_map` — backend가 얽힌 경우 요구사항 ID가 붙은 Backend Layer Map / 레이어 책임 지도
+5. `architecture_flow_map` — 데이터/로직/API/DB/source-of-truth 흐름이 구현·검증 이해를 좌우하면 요구사항 ID가 붙은 Architecture/Data Flow Map
 
 규칙:
 - 기획 문장을 AI가 임의로 축소하지 않는다. 예를 들어 “컴포넌트 재사용”을 “같은 데이터 source 사용”, “동일 UX”, “유사 방식”으로 바꾸면 `gap` 또는 `decision-needed`다.
@@ -65,6 +66,7 @@ Jira, Notion, Slack, wireframe, PRD, 디자인 캡처처럼 정확한 기획 근
 - Requirement Matrix는 반드시 `| ID | Source | 기획 근거 원문 | 구현 계약 | 검증 증거 | 상태 |` 형태의 `상태` 컬럼을 포함한다. 상태 없는 matrix는 무효다.
 - Domain Work Map의 각 leaf task는 `[R1,R2]`처럼 닫는 requirement ID를 앞에 붙인다. requirement ID 없는 work map은 큰틀 요약으로 간주한다.
 - Backend Layer Map의 각 row는 `요구사항` 컬럼 또는 `requirementIds`를 가져야 한다. requirement ID 없는 layer map은 아키텍처 설명일 뿐 기획 책임 분배표가 아니다.
+- Architecture Flow가 켜진 작업은 주요 lane/node/edge가 요구사항 ID, source-of-truth, 검증 증거와 연결되어야 한다. 흐름이 있는데 `kind: "architecture-flow"` visual이나 이에 준하는 `architecture_flow_map`이 없으면 source-grounded full frame이 불완전하다.
 - matrix의 모든 요구사항 ID는 implementation plan slice 또는 out_of_scope/decision_queue/blocked 항목 중 하나에 연결되어야 한다.
 - verify plan은 테스트 통과 목록이 아니라 요구사항 ID별 PASS 증거 목록이어야 한다.
 - 세부 템플릿은 `references/source-grounded-planning.md`를 따른다.
@@ -119,8 +121,8 @@ Jira, Notion, Slack, wireframe, PRD, 디자인 캡처처럼 정확한 기획 근
 - 파일 목록 plan을 쓰기 전에 “어느 책임이 어느 레이어에 있어야 하는지”를 표나 call-flow로 먼저 보여준다.
 - 구조 이해가 핵심이면 Markdown/Mermaid만으로 끝내지 말고 `tft-visual` fenced block의 `kind: "backend-layer-map"`으로 **Layer Visual Map**을 함께 렌더링한다. 특히 사용자가 usecase/entity/service/repository 같은 레이어가 헷갈린다고 밝히면 필수다.
 - Layer Visual Map의 각 카드에는 `role`/`beginnerDescription`/`requirements`/`responsibilities`/`files`/`evidence`를 넣어 “부트캠프 수강생도 알 수 있는 설명”과 요구사항 ID 추적성을 같이 보여준다.
-- 사용자가 데이터/로직 흐름, 아키텍처 구조, DB PK/FK, resolver → usecase → service/domain/VO → repository → table 흐름을 보고 싶다고 밝히면 `kind: "architecture-flow"` `tft-visual`도 함께 출력한다.
-- 단, visual은 설명용이고 canonical 원천은 `backend_layer_map`이다.
+- 데이터/로직 흐름, 아키텍처 구조, DB PK/FK, resolver → usecase → service/domain/VO → repository → table 흐름이 구현 위치·검증 증거·source-of-truth 판단에 영향을 주면 `kind: "architecture-flow"` `tft-visual`을 함께 출력한다. 사용자가 명시적으로 원할 때만이 아니라, backend/data/API/DB 흐름이 작업 이해를 좌우하는 source-grounded full frame에서는 필수 surface다.
+- 단, visual은 설명용이고 canonical 원천은 `backend_layer_map`과 `architecture_flow_map`이다.
 - 레이어 책임이 미해결이면 Step 3/4에서 “repo 조건인가, usecase 정책인가, VO 불변식인가”처럼 한 가지 분기로 묻는다.
 - 세부 템플릿은 `references/backend-layer-map.md`를 따른다.
 
@@ -449,6 +451,7 @@ AI가 frame draft를 작성한다. `/frame` 초반에는 구현 계획을 만들
   - 기존 schema 확장이 어렵다면 `implementation_plan.slices[]`와 TaskCreate `area`/`refs.requirements`로 표현한다.
 - `policy_axis_scan`: 트리거된 작업이면 시간 기준, 적용 대상 수, DEFAULT/fallback, 소비 채널 매트릭스, 데이터/마이그레이션, API/cache identity의 결론과 열린 질문
 - `backend_layer_map`: 트리거된 작업이면 entry point, application flow, domain rule, data access, cache/batching, persistence, consumers의 책임과 call-flow. source-grounded mode에서는 각 레이어가 닫는 requirement ID도 함께 적고, markdown row에는 `요구사항` 컬럼을 둔다.
+- `architecture_flow_map`: 트리거된 작업이면 UI/API/Usecase/Domain/Repository/DB/Ops lane, 주요 node/edge, DB source-of-truth/PK/FK/legacy badge, 각 흐름이 닫는 requirement ID와 verification evidence를 적는다.
 - `edge_case_seeds[]`: Step 4/5 초점에 맞춘 3~5개
   - 구조 렌즈를 선택했다면 “다음 AI/사람이 변경 지점을 찾을 수 있는가” 같은 탐색성 edge도 포함
 - `verify_plan`: `{ commands[], manual_checks[] }`
@@ -470,7 +473,8 @@ Draft를 보여줄 때 맨 위에 반드시 다음을 붙인다:
 7. 내가 선택한 답변이 frame 계약에 정확히 반영됐는가
 8. 정책축 스캔이 필요한 작업인데 시간 기준/DEFAULT/다중 적용/채널별 규칙이 빠지지 않았는가
 9. 백엔드 레이어 맵이 필요한 작업인데 resolver/usecase/repository/VO/loader 책임이 요구사항 ID와 연결됐는가
-10. implementation plan이 frame/decide 결정과 matrix/work map에서 파생됐는가
+10. Architecture Flow가 필요한 작업인데 UI/API/Usecase/Domain/Repository/DB/Ops 흐름, source-of-truth, 검증 증거가 요구사항 ID와 연결됐는가
+11. implementation plan이 frame/decide 결정과 matrix/work map에서 파생됐는가
 ```
 
 ### Step 7: AskUserQuestion — 구체 patch 메뉴
@@ -500,7 +504,7 @@ Draft를 보여줄 때 맨 위에 반드시 다음을 붙인다:
 저장은 반드시 아래 순서로 한다.
 
 1. `FrameDoc` 객체를 완성한다.
-2. source-grounded mode이면 `requirement_matrix`의 모든 ID가 `implementation_plan.slices[]`, `domain_work_map`, `backend_layer_map`, `verify_plan`, `out_of_scope`, `decision_queue`, `blocked` 중 하나에 연결됐는지 확인한다. 미매핑 요구사항, `상태` 없는 matrix, requirement ID 없는 work/layer map, 또는 원문 요구를 완화한 PASS 계약이 있으면 저장 전에 patch하거나 decision으로 큐잉한다.
+2. source-grounded mode이면 `requirement_matrix`의 모든 ID가 `implementation_plan.slices[]`, `domain_work_map`, `backend_layer_map`, `architecture_flow_map`, `verify_plan`, `out_of_scope`, `decision_queue`, `blocked` 중 하나에 연결됐는지 확인한다. 미매핑 요구사항, `상태` 없는 matrix, requirement ID 없는 work/layer/flow map, 또는 원문 요구를 완화한 PASS 계약이 있으면 저장 전에 patch하거나 decision으로 큐잉한다.
 3. `implementation_plan`을 frame/decide 결정에서 합성한다.
    - `decision_queue[]`가 남아 있으면 `status="blocked_by_decision"`으로 저장하고, Plan을 ready로 선언하지 않는다.
    - 닫힌 결정만으로 실행 방향이 충분하면 `status="ready"`로 두고 `slices`, `firstSafeStep`, `readiness`, `gates`를 채운다.
@@ -511,6 +515,7 @@ Draft를 보여줄 때 맨 위에 반드시 다음을 붙인다:
    - 기획 근거 트리거 작업이면 `source_evidence`, `requirement_matrix`, `domain_work_map` 또는 이에 준하는 `success_criteria`/`implementation_plan`/`verify_plan`/Task refs 반영 여부
    - 정책축 스캔 트리거 작업이면 `policy_axis_scan` 또는 이에 준하는 `review_lenses`/`risk_register`/`verify_plan` 반영 여부
    - 백엔드 레이어 맵 트리거 작업이면 `backend_layer_map` 또는 이에 준하는 `review_lenses`/`risk_register`/`verify_plan` 반영 여부
+   - Architecture Flow 트리거 작업이면 `architecture_flow_map` 또는 이에 준하는 `review_lenses`/`risk_register`/`verify_plan` 반영 여부
    - `decisions[]`는 없으면 빈 배열
    - `decision_queue[]`는 없으면 빈 배열
 5. canonical JSON을 먼저 쓴다.
@@ -685,6 +690,30 @@ type FrameDoc = {
       ownsDecision?: string;
       verification?: string;
       status: "confirmed" | "assumption" | "open_question" | "not_applicable";
+    }>;
+    openQuestions?: string[];
+  };
+  architecture_flow_map?: {
+    triggered: boolean;
+    triggerReason: string;
+    lanes: string[];
+    nodes: Array<{
+      id: string;
+      lane: string;
+      type: "screen" | "resolver" | "usecase" | "service" | "domain" | "vo" | "repository" | "table" | "review" | "ops" | "external";
+      title: string;
+      description: string;
+      requirementIds?: string[];
+      verification?: string;
+      sourceOfTruth?: boolean;
+    }>;
+    edges: Array<{
+      from: string;
+      to: string;
+      label: string;
+      requirementIds?: string[];
+      risk?: string;
+      verification?: string;
     }>;
     openQuestions?: string[];
   };

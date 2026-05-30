@@ -82,7 +82,7 @@ Live update는 사용자가 읽던 위치를 방해하면 안 됩니다. SSE로 
 
 Frame 질문 UI는 deep-interview식으로 “현재 이해 / 막힌 결정 / 추천 답안 / 질문”을 한 카드에 담는 것이 좋습니다. 이 구조는 사용자가 전체 계획을 감사하게 만드는 대신, 지금 풀어야 하는 불확실성 하나와 선택 후 달라질 계약을 바로 보게 합니다. 단, 카드가 길어져 여러 결정을 한 번에 묻는다면 실패입니다.
 
-정확한 기획 근거가 있는 source-grounded frame에서는 Frame tab이 `Source Evidence`, `Requirement Matrix`, `Domain Work Map`, `Backend Layer Map`, `Implementation Plan Synthesis`, `Verification Evidence Plan`을 읽기 쉬운 순서로 보여줘야 합니다. 사용자는 큰 목표가 아니라 “기획 원문 한 줄이 어떤 구현 task와 어떤 검증 증거로 닫히는지”를 검수합니다.
+정확한 기획 근거가 있는 source-grounded frame에서는 Frame tab이 `Source Evidence`, `Requirement Matrix`, `Domain Work Map`, `Backend Layer Map`, `Architecture/Data Flow Map`, `Implementation Plan Synthesis`, `Verification Evidence Plan`을 읽기 쉬운 순서로 보여줘야 합니다. 사용자는 큰 목표가 아니라 “기획 원문 한 줄이 어떤 구현 task, 어떤 데이터/로직 흐름, 어떤 검증 증거로 닫히는지”를 검수합니다.
 
 TFT Studio tool 호출에서는 이 카드와 `question` 필드를 구분합니다. 판단 맥락 카드는 `update` 또는 `ask.markdown`의 본문으로 렌더링하고, `ask.question`은 “배너 버튼 스크롤 target을 어떻게 반영할까요?”처럼 짧은 질문 제목 한 줄만 담습니다. 긴 카드가 실수로 `question`에 들어오면 renderer는 제목과 본문을 방어적으로 분리해야 하지만, 그것은 사용자 화면을 보호하는 safety net이지 권장 호출 방식이 아닙니다.
 
@@ -96,7 +96,7 @@ TFT Studio는 UI에 렌더된 markdown/update/question/answer 흐름을 identity
 
 Transcript identity는 작업 단위 기준으로 유지합니다. Re-frame, 추가 decide, self-healing 후 re-verify처럼 같은 작업 안의 반복 stage는 새 transcript 파일이 아니라 같은 transcript timeline의 새 stage run으로 표현합니다. Canonical 기록은 별도로 `frame.json`의 success criteria, `decisions[]`, `verifications[]`에 새 항목으로 남기고, transcript는 그 반복의 provenance를 run 카드로 읽기 쉽게 보여줍니다.
 
-Frame/Decide/Verify stage를 실제로 수행했다면 canonical 저장 후 해당 stage run은 반드시 `finish`로 닫힙니다. 다음 단계 질문이 취소·timeout·UI unavailable이어도 canonical write가 성공했으면 “다음 단계 미선택”을 기록하고 finish해야 합니다. 다시 `/frame`, `/decide`, `/verify`가 호출되면 그것은 새 trigger이므로 같은 work-unit transcript 안의 다음 stage run으로 시작합니다.
+Frame/Decide/Verify stage를 실제로 수행했다면 canonical 저장 후 해당 stage run은 반드시 `finish`로 닫힙니다. 다음 단계 질문이 취소·timeout·UI unavailable이어도 canonical write가 성공했으면 “다음 단계 미선택”을 기록하고 finish해야 합니다. Decide tab은 Frame의 requirement ID/domain lane/architecture flow 영향을 비교표와 decision record에 이어받고, Verify tab은 requirement/domain/flow coverage와 verify-report handoff 후보를 보여줘야 합니다. 다시 `/frame`, `/decide`, `/verify`가 호출되면 그것은 새 trigger이므로 같은 work-unit transcript 안의 다음 stage run으로 시작합니다.
 
 이 구분이 중요합니다. LLM context에 전체 co-thinking 전문을 매번 주입하면 context budget과 attention이 무너집니다. 대신 tool result는 `contextDigest`, `tabSnapshot`, `transcriptRef`를 반환해야 합니다. `transcriptRef.openCommand`는 `/archive <transcriptPath>` 형태로 전문을 다시 여는 참조이며, 전문은 필요할 때 파일 또는 WebView로 확인하는 artifact입니다.
 

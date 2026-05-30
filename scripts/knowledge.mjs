@@ -1160,7 +1160,7 @@ function renderSkillsInventory(language = "ko") {
 	const lines = [];
 	lines.push(language === "en"
 		? `${count} global workflow skills. Project-specific skills belong in project/private overlays.`
-		: `${count}개. 글로벌 워크플로 스킬만 pilee에 포함. 프로젝트 고유 스킬(create-pr, self-review)은 해당 레포/private overlay에 위치.`);
+		: `${count}개. 글로벌 워크플로 스킬만 pilee에 포함. 프로젝트 고유 스킬(create-pr 등)은 해당 레포/private overlay에 위치.`);
 	lines.push("");
 	lines.push(language === "en"
 		? `> Generated from \`skills/*/SKILL.md\` plus inventory metadata in \`scripts/knowledge.mjs\`; refresh with \`node scripts/knowledge.mjs --graph\`.`
