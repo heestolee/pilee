@@ -1,14 +1,15 @@
 # Backend Layer Map
 
-백엔드 레이어 맵은 구현 순서가 아니라 **책임 위치와 call-flow를 사용자가 함께 검수하기 위한 지도**다. 사용자가 backend 레이어를 잘 모르거나 resolver/usecase/service/repository/entity/VO/loader가 함께 등장하면 `/frame` Step 2에서 먼저 보여준다.
+백엔드 레이어 맵은 구현 순서가 아니라 **책임 위치와 call-flow를 사용자가 함께 검수하기 위한 지도**다. 사용자가 backend 레이어를 잘 모르거나 resolver/usecase/service/repository/entity/VO/loader가 함께 등장하면 `/frame` Step 2에서 먼저 보여준다. FE 중심 작업이라도 버튼/셀렉트박스/카드 action이 기존 backend/API/cache/refresh 경계를 재사용해야 하면 Backend/Action Boundary Map으로 보여준다.
 
-정확한 기획 근거가 있는 source-grounded frame에서는 레이어 맵이 단순 아키텍처 설명이 아니라 **기획 책임 분배표**가 된다. 각 레이어는 `R1`, `R2` 같은 requirement ID를 가져야 하며, implementation plan은 이 맵에서 파생되어야 한다.
+정확한 기획 근거가 있는 source-grounded frame에서는 레이어 맵이 단순 아키텍처 설명이 아니라 **기획 책임 분배표**가 된다. 각 레이어/경계는 `R1`, `R2` 같은 requirement ID를 가져야 하며, implementation plan은 이 맵에서 파생되어야 한다. 신규 backend 구현이 없다는 이유만으로 `triggered:false`로 숨기지 말고, 변경 금지/재사용 경계는 `mode="boundary-only"`로 남긴다.
 
 ## 언제 켜나
 
 다음 중 하나라도 있으면 켠다.
 
 - Resolver/Controller, Usecase, Service, Repository, Entity, VO, Loader/DataLoader, Migration 중 2개 이상이 영향 범위에 있음
+- UI 버튼/셀렉트박스/카드 action이 기존 approval/status-change/API/cache/refresh 경계를 재사용하거나 변경하지 않아야 함
 - API 응답 값이 Web/Admin/Slack/job 등 여러 소비 채널로 흘러감
 - “어디에 로직을 둬야 하는지”가 정책/검증/구조 비용을 바꿈
 - cache key, loader scope, transaction boundary, ORM include/where/order가 결과 의미를 바꿀 수 있음
@@ -186,6 +187,8 @@ Architecture/Data Flow Map 규칙:
 - `backend_layer_map`에 callFlow와 각 레이어 책임/검증 포인트가 들어 있다.
 - source-grounded frame이면 각 레이어에 requirement ID가 붙어 있고, 해당 ID가 Requirement Matrix와 Domain Work Map에 존재한다.
 - 또는 기존 schema에 필드가 없다면 `review_lenses`, `risk_register`, `success_criteria`, `verify_plan.manual_checks`에 같은 내용이 명시되어 있다.
-- Architecture/Data Flow가 트리거된 작업이면 `architecture_flow_map` 또는 이에 준하는 visual/verify_plan에 lane/node/edge/source-of-truth와 requirement ID가 명시되어 있다.
+- Architecture/Data Flow가 트리거된 작업이면 `architecture_flow_map` 또는 이에 준하는 visual/verify_plan에 lane/node/edge/source-of-truth 또는 action boundary와 requirement ID가 명시되어 있다.
+- lane이 많거나 가로 폭이 과도하면 renderer가 세로 top-down 배치를 선택할 수 있게 `direction:"auto"` 또는 생략을 우선한다. 반드시 가로가 더 읽기 쉬운 작은 그래프에서만 `direction:"RIGHT"`를 명시한다.
+- edge label은 카드 본문 위에 올리지 않는다. label은 pill 배경을 가진 별도 시각 요소로 두고, edge는 카드 바깥 gutter/bus를 통해 우회하도록 visual을 작성한다.
 - 열린 레이어/흐름 책임 질문은 `decision_queue` 또는 `risk_register.needs_decision`에 들어 있다.
 - implementation plan의 파일 순서는 이 맵에서 파생되어야 하며, 맵을 대체하지 않는다.

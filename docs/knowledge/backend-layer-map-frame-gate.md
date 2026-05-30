@@ -35,15 +35,16 @@ related:
 
 ## Judgment
 
-사용자가 backend 레이어를 잘 모르는 상태에서 agent가 바로 파일별 구현 plan을 쓰면, 사용자는 계획을 검수하기 어렵습니다. Resolver, usecase, service, repository, entity, VO, loader 같은 이름은 구현 파일명이 아니라 책임 경계입니다. 따라서 backend 작업에서는 구현 순서 전에 **레이어 책임 지도와 call-flow**를 먼저 보여줘야 합니다.
+사용자가 backend 레이어를 잘 모르는 상태에서 agent가 바로 파일별 구현 plan을 쓰면, 사용자는 계획을 검수하기 어렵습니다. Resolver, usecase, service, repository, entity, VO, loader 같은 이름은 구현 파일명이 아니라 책임 경계입니다. 따라서 backend 작업에서는 구현 순서 전에 **레이어 책임 지도와 call-flow**를 먼저 보여줘야 합니다. FE 중심 작업이라도 버튼/셀렉트박스/카드 action이 기존 backend/API/cache/refresh 경계를 재사용해야 하면 같은 원칙을 적용합니다.
 
-이 지도는 “어느 파일을 고칠지”가 아니라 “어느 레이어가 어떤 결정을 소유해야 하는지”를 검수하는 표면입니다. 예를 들어 기준 시간 선택은 usecase/resolver input의 책임인지, repository 내부 기본값인지, VO 필터링인지에 따라 API shape, query, cache key, 테스트 위치가 모두 달라집니다.
+이 지도는 “어느 파일을 고칠지”가 아니라 “어느 레이어가 어떤 결정을 소유해야 하는지, 또는 어떤 기존 action/API 경계를 보존해야 하는지”를 검수하는 표면입니다. 예를 들어 기준 시간 선택은 usecase/resolver input의 책임인지, repository 내부 기본값인지, VO 필터링인지에 따라 API shape, query, cache key, 테스트 위치가 모두 달라집니다. 신규 backend 구현이 없으면 `false`가 아니라 `boundary-only`로 표시해 변경 금지 경계를 보이게 합니다.
 
 ## Frame Rule
 
 `/frame`은 다음 트리거가 보이면 Step 2에 `백엔드 레이어 맵`을 포함합니다.
 
 - Resolver/Controller, Usecase, Service, Repository, Entity, VO, Loader/DataLoader, Migration 중 2개 이상이 영향 범위에 있음
+- UI 버튼/셀렉트박스/카드 action이 기존 approval/status-change/API/cache/refresh 경계를 재사용하거나 변경하지 않아야 함
 - API 응답 값이 Web/Admin/Slack/job 등 여러 소비 채널로 흘러감
 - cache key, loader scope, transaction boundary, ORM include/where/order가 결과 의미를 바꿈
 - 사용자가 backend 구조에 익숙하지 않다고 밝힘
@@ -88,7 +89,8 @@ related:
 - Entity/Migration/Schema가 source-of-truth와 제약을 표현하는가
 - Consumer가 받은 결과를 표시/전달하고 source-of-truth를 재계산하지 않는가
 - Architecture Flow의 주요 edge가 frame과 같은 방향/조건으로 구현됐는가
-- source-of-truth table/API/cache가 frame에서 정한 노드와 달라지지 않았는가
+- source-of-truth table/API/cache 또는 기존 action/API boundary가 frame에서 정한 노드와 달라지지 않았는가
+- `boundary-only`로 기록한 작업에서 신규 endpoint/usecase/transaction이 몰래 추가되지 않았는가
 
 불일치는 자동 리팩터링 명령이 아닙니다. frame 계약 위반 또는 decision mitigation 누락이면 `부분`/`GAP`으로 연결하고, 범위 밖 구조 개선이면 follow-up/backlog로 남깁니다.
 

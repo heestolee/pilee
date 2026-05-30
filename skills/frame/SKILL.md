@@ -57,16 +57,17 @@ Jira, Notion, Slack, wireframe, PRD, 디자인 캡처처럼 정확한 기획 근
 1. `source_evidence` — 사용한 기획 근거와 provenance
 2. `requirement_matrix` — 기획 원문 ID별 구현 계약과 검증 증거
 3. `domain_work_map` — FE Web/Admin/Mobile, BE, DB/Ops, Verification 같은 작업 레인 지도
-4. `backend_layer_map` — backend가 얽힌 경우 요구사항 ID가 붙은 Backend Layer Map / 레이어 책임 지도
-5. `architecture_flow_map` — 데이터/로직/API/DB/source-of-truth 흐름이 구현·검증 이해를 좌우하면 요구사항 ID가 붙은 Architecture/Data Flow Map
+4. `backend_layer_map` — backend/action/API 경계가 얽힌 경우 요구사항 ID가 붙은 Backend Layer Map / Backend/Action Boundary Map / 레이어 책임 지도
+5. `architecture_flow_map` — 화면·action·API·DB·검증 증거 흐름이 구현·검증 이해를 좌우하면 요구사항 ID가 붙은 Architecture/Data Flow Map / Architecture/User Flow Map
 
 규칙:
 - 기획 문장을 AI가 임의로 축소하지 않는다. 예를 들어 “컴포넌트 재사용”을 “같은 데이터 source 사용”, “동일 UX”, “유사 방식”으로 바꾸면 `gap` 또는 `decision-needed`다.
 - 그대로 구현하기 위험하거나 비현실적인 기획을 발견하면 조용히 완화하지 말고 `원문 요구 → 위험 → 대안 → 승인 필요 여부`를 Step 3/4 질문으로 승격한다.
 - Requirement Matrix는 반드시 `| ID | Source | 기획 근거 원문 | 구현 계약 | 검증 증거 | 상태 |` 형태의 `상태` 컬럼을 포함한다. 상태 없는 matrix는 무효다.
 - Domain Work Map의 각 leaf task는 `[R1,R2]`처럼 닫는 requirement ID를 앞에 붙인다. requirement ID 없는 work map은 큰틀 요약으로 간주한다.
-- Backend Layer Map의 각 row는 `요구사항` 컬럼 또는 `requirementIds`를 가져야 한다. requirement ID 없는 layer map은 아키텍처 설명일 뿐 기획 책임 분배표가 아니다.
-- Architecture Flow가 켜진 작업은 주요 lane/node/edge가 요구사항 ID, source-of-truth, 검증 증거와 연결되어야 한다. 흐름이 있는데 `kind: "architecture-flow"` visual이나 이에 준하는 `architecture_flow_map`이 없으면 source-grounded full frame이 불완전하다.
+- Backend/Action Boundary Map의 각 row는 `요구사항` 컬럼 또는 `requirementIds`를 가져야 한다. requirement ID 없는 layer map은 아키텍처 설명일 뿐 기획 책임 분배표가 아니다.
+- source-grounded Jira/기획 frame에서 사용자 action, 기존 API/action 재사용, cache/refresh, 동작 회귀 검증 중 하나라도 요구사항에 있으면 `backend_layer_map.mode="boundary-only"`라도 반드시 보여준다. **신규 backend 변경이 없다는 이유만으로 `triggered:false`로 숨기지 않는다.**
+- Architecture/User Flow는 주요 lane/node/edge가 요구사항 ID, source-of-truth 또는 consumer/action boundary, 검증 증거와 연결되어야 한다. UI-only처럼 보이는 작업도 화면 → action → 기존 boundary → refresh/검증 흐름이 있으면 `architecture_flow_map.mode="user-flow"`로 보여준다. 흐름이 있는데 `kind: "architecture-flow"` visual이나 이에 준하는 `architecture_flow_map`이 없으면 source-grounded full frame이 불완전하다.
 - matrix의 모든 요구사항 ID는 implementation plan slice 또는 out_of_scope/decision_queue/blocked 항목 중 하나에 연결되어야 한다.
 - verify plan은 테스트 통과 목록이 아니라 요구사항 ID별 PASS 증거 목록이어야 한다.
 - 세부 템플릿은 `references/source-grounded-planning.md`를 따른다.
@@ -99,13 +100,14 @@ Jira, Notion, Slack, wireframe, PRD, 디자인 캡처처럼 정확한 기획 근
 
 ### 0-B. 백엔드 레이어 맵 게이트
 
-`/frame`은 backend 계층 구조가 작업 이해를 좌우하면 구현 plan 전에 **레이어 책임 지도**를 먼저 그린다. 사용자가 backend 세부 레이어에 익숙하지 않다고 밝혔거나, 작업이 resolver/usecase/service/repository/entity/VO/loader/cache/migration을 건드리면 이 게이트를 켠다.
+`/frame`은 backend 계층 구조나 기존 action/API boundary가 작업 이해를 좌우하면 구현 plan 전에 **레이어 책임 지도**를 먼저 그린다. 사용자가 backend 세부 레이어에 익숙하지 않다고 밝혔거나, 작업이 resolver/usecase/service/repository/entity/VO/loader/cache/migration을 건드리거나, FE 요구사항이 기존 action/API/cache/refresh 동작 재사용을 요구하면 이 게이트를 켠다.
 
 트리거:
 - GraphQL resolver, REST controller, usecase, service, repository, entity, VO/value object, loader/DataLoader, ORM relation, migration 중 2개 이상이 영향 범위에 보임
 - “어디에 로직을 둬야 하는지”가 성공 기준이나 구조 비용을 바꿈
 - 사용자가 해당 backend 구조를 잘 모른다고 말했거나, PR review에서 레이어 책임 질문이 나올 가능성이 있음
 - API 응답 값이 여러 소비 채널(Web/Admin/Slack 등)로 흘러가거나, cache/loader가 기준 시간·권한·정책을 바꿀 수 있음
+- source-grounded UI 작업에서 버튼/셀렉트박스/카드 action이 기존 backend/API/action boundary를 재사용해야 하거나, 변경하지 않을 backend 경계가 검증 대상임
 
 필수 맵:
 1. Entry point — Resolver/Controller/Handler가 어떤 API field/action을 받는가
@@ -117,11 +119,13 @@ Jira, Notion, Slack, wireframe, PRD, 디자인 캡처처럼 정확한 기획 근
 7. Consumers — Web/Admin/Slack/job 등 결과를 소비하는 경로가 무엇인가
 
 규칙:
-- 모든 레이어를 억지로 채우지 않는다. 해당 없으면 `N/A`로 표시한다.
-- 파일 목록 plan을 쓰기 전에 “어느 책임이 어느 레이어에 있어야 하는지”를 표나 call-flow로 먼저 보여준다.
+- 모든 레이어를 억지로 채우지 않는다. 해당 없으면 `N/A`로 표시한다. 단, source-grounded UI/action 작업에서는 `triggered:false`로 숨기기보다 `mode="boundary-only"`로 기존 action/API/refresh 경계와 변경 금지 책임을 보인다.
+- 파일 목록 plan을 쓰기 전에 “어느 책임이 어느 레이어에 있어야 하는지” 또는 “어느 기존 경계를 재사용/보존해야 하는지”를 표나 call-flow로 먼저 보여준다.
 - 구조 이해가 핵심이면 Markdown/Mermaid만으로 끝내지 말고 `tft-visual` fenced block의 `kind: "backend-layer-map"`으로 **Layer Visual Map**을 함께 렌더링한다. 특히 사용자가 usecase/entity/service/repository 같은 레이어가 헷갈린다고 밝히면 필수다.
 - Layer Visual Map의 각 카드에는 `role`/`beginnerDescription`/`requirements`/`responsibilities`/`files`/`evidence`를 넣어 “부트캠프 수강생도 알 수 있는 설명”과 요구사항 ID 추적성을 같이 보여준다.
 - 데이터/로직 흐름, 아키텍처 구조, DB PK/FK, resolver → usecase → service/domain/VO → repository → table 흐름이 구현 위치·검증 증거·source-of-truth 판단에 영향을 주면 `kind: "architecture-flow"` `tft-visual`을 함께 출력한다. 사용자가 명시적으로 원할 때만이 아니라, backend/data/API/DB 흐름이 작업 이해를 좌우하는 source-grounded full frame에서는 필수 surface다.
+- 화면 중심 작업이어도 Jira 요구사항이 사용자 action, 기존 action/API 재사용, refresh/cache, 동작 회귀를 포함하면 `kind:"architecture-flow"`로 **User/Action Flow Map**을 그린다. 이때 DB node가 없을 수 있지만, 화면 → shared action → existing boundary → verification edge가 요구사항 ID와 연결되어야 한다.
+- `triggered:false` 또는 `mode="not-applicable"`은 사용자 action/API/data/cache/refresh/verification flow가 정말 없고, 단순 copy/style처럼 구조 흐름 검수가 의미 없는 경우에만 쓴다.
 - 단, visual은 설명용이고 canonical 원천은 `backend_layer_map`과 `architecture_flow_map`이다.
 - 레이어 책임이 미해결이면 Step 3/4에서 “repo 조건인가, usecase 정책인가, VO 불변식인가”처럼 한 가지 분기로 묻는다.
 - 세부 템플릿은 `references/backend-layer-map.md`를 따른다.
@@ -514,8 +518,8 @@ Draft를 보여줄 때 맨 위에 반드시 다음을 붙인다:
    - `identity`, `goal`, `success_criteria`, `out_of_scope`, `boundaries`, `risk_register`, `verify_plan`, `implementation_plan`, `provenance`
    - 기획 근거 트리거 작업이면 `source_evidence`, `requirement_matrix`, `domain_work_map` 또는 이에 준하는 `success_criteria`/`implementation_plan`/`verify_plan`/Task refs 반영 여부
    - 정책축 스캔 트리거 작업이면 `policy_axis_scan` 또는 이에 준하는 `review_lenses`/`risk_register`/`verify_plan` 반영 여부
-   - 백엔드 레이어 맵 트리거 작업이면 `backend_layer_map` 또는 이에 준하는 `review_lenses`/`risk_register`/`verify_plan` 반영 여부
-   - Architecture Flow 트리거 작업이면 `architecture_flow_map` 또는 이에 준하는 `review_lenses`/`risk_register`/`verify_plan` 반영 여부
+   - 백엔드 레이어 맵 트리거 작업이면 `backend_layer_map` 또는 이에 준하는 `review_lenses`/`risk_register`/`verify_plan` 반영 여부. source-grounded UI/action 작업에서 기존 action/API boundary 재사용이 있으면 `mode="boundary-only"`라도 있어야 한다.
+   - Architecture Flow 트리거 작업이면 `architecture_flow_map` 또는 이에 준하는 `review_lenses`/`risk_register`/`verify_plan` 반영 여부. source-grounded UI/action 작업에서 화면→action→기존 boundary→검증 흐름이 있으면 `mode="user-flow"`라도 있어야 한다.
    - `decisions[]`는 없으면 빈 배열
    - `decision_queue[]`는 없으면 빈 배열
 5. canonical JSON을 먼저 쓴다.
@@ -680,10 +684,11 @@ type FrameDoc = {
   };
   backend_layer_map?: {
     triggered: boolean;
+    mode?: "full" | "boundary-only" | "not-applicable"; // boundary-only = 신규 BE 구현 없음, 기존 action/API 경계 재사용/보존을 검증
     triggerReason: string;
     callFlow: string[];
     layers: Array<{
-      layer: "entry_point" | "application_flow" | "domain_rule" | "data_access" | "cache_batching" | "persistence" | "consumer" | "external";
+      layer: "entry_point" | "application_flow" | "domain_rule" | "data_access" | "cache_batching" | "persistence" | "consumer" | "external" | "action_boundary" | "refresh_boundary";
       names: string[];
       responsibility: string;
       requirementIds?: string[];
@@ -695,12 +700,13 @@ type FrameDoc = {
   };
   architecture_flow_map?: {
     triggered: boolean;
+    mode?: "architecture-flow" | "data-flow" | "user-flow" | "not-applicable"; // user-flow = UI/action/verification 흐름 중심
     triggerReason: string;
     lanes: string[];
     nodes: Array<{
       id: string;
       lane: string;
-      type: "screen" | "resolver" | "usecase" | "service" | "domain" | "vo" | "repository" | "table" | "review" | "ops" | "external";
+      type: "screen" | "resolver" | "usecase" | "service" | "domain" | "vo" | "repository" | "table" | "review" | "ops" | "external" | "action" | "cache";
       title: string;
       description: string;
       requirementIds?: string[];

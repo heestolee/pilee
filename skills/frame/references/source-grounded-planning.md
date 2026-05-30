@@ -128,7 +128,7 @@ Frame 저장 시 Domain Work Map의 leaf 항목은 가능한 한 `TaskCreate`로
 
 ## 4. Backend Layer Map as planning surface
 
-Backend Layer Map은 구현 파일 순서가 아니라, 기획 책임이 backend 레이어 어디에 놓이는지 보여주는 표다. `references/backend-layer-map.md`의 레이어 책임을 따르되, source-grounded mode에서는 각 레이어가 어떤 요구사항 ID를 닫는지 함께 표시한다.
+Backend/Action Boundary Map은 구현 파일 순서가 아니라, 기획 책임이 backend 레이어 또는 기존 action/API 경계 어디에 놓이는지 보여주는 표다. `references/backend-layer-map.md`의 레이어 책임을 따르되, source-grounded mode에서는 각 레이어/경계가 어떤 요구사항 ID를 닫거나 보존하는지 함께 표시한다. 신규 backend 구현이 없더라도 버튼/셀렉트박스/카드 action이 기존 approval/status-change/API/cache/refresh 경계를 재사용해야 하면 `mode="boundary-only"`로 보여준다.
 
 ### 템플릿
 
@@ -160,7 +160,7 @@ Backend Layer Map row에는 `요구사항` 컬럼이 반드시 있어야 한다.
 
 source-grounded mode에서 backend layer map이 켜졌고 사용자가 레이어 이해를 검수해야 하면, `references/backend-layer-map.md`의 Layer Visual Map 템플릿을 사용해 `kind: "backend-layer-map"` `tft-visual` fenced block을 함께 출력한다. 이 visual은 표를 예쁘게 바꾸는 장식이 아니라, 각 레이어가 닫는 `R...` 요구사항과 초보자용 책임 설명을 연결하는 검수 surface다.
 
-데이터나 로직이 어떻게 흐르는지, 전체 아키텍처, DB PK/FK 연결, resolver → usecase → service/domain/VO → repository → table 흐름이 구현 위치·검증 증거·source-of-truth 판단에 영향을 주면 같은 reference의 Architecture/Data Flow Map 템플릿을 사용해 `kind: "architecture-flow"` visual도 함께 출력한다. 이는 사용자가 먼저 요청했을 때만의 옵션이 아니라, backend/data/API/DB 흐름이 작업 이해를 좌우하는 source-grounded full frame의 필수 surface다. 이 visual은 UI/API/usecase/domain/repository/DB/ops lane과 edge label로 “데이터가 어디에서 어디로 이동하는지”를 보여준다.
+데이터나 로직이 어떻게 흐르는지, 전체 아키텍처, DB PK/FK 연결, resolver → usecase → service/domain/VO → repository → table 흐름이 구현 위치·검증 증거·source-of-truth 판단에 영향을 주면 같은 reference의 Architecture/Data Flow Map 템플릿을 사용해 `kind: "architecture-flow"` visual도 함께 출력한다. 이는 사용자가 먼저 요청했을 때만의 옵션이 아니라, backend/data/API/DB 흐름이 작업 이해를 좌우하는 source-grounded full frame의 필수 surface다. 또한 UI 중심 Jira라도 화면 → shared action → existing backend boundary → refresh/cache → verification 흐름이 요구사항이면 `mode="user-flow"` Architecture/User Flow Map으로 보여준다. 신규 DB/API node가 없다는 이유로 `triggered:false` 처리하지 않는다.
 
 ### 미해결 책임 질문
 
@@ -205,7 +205,7 @@ source-grounded mode의 Frame draft는 최소한 다음을 포함한다.
 - `requirement_matrix`: `success_criteria[].evidence_locator`, `review_lenses`, `verify_plan.manual_checks`에 요구사항 ID를 명시한다.
 - `domain_work_map`: `implementation_plan.slices[]`와 TaskCreate `area`/`refs.requirements`로 표현한다.
 - `backend_layer_map`: 기존 `backend_layer_map.layers[]`에 `ownsDecision`/`verification`과 requirement ID를 포함한다.
-- `architecture_flow_map`: schema가 없다면 `backend_layer_map.callFlow`, `review_lenses`, `verify_plan.manual_checks`, `tft-visual` code block에 lane/node/edge, source-of-truth, requirement ID를 함께 남긴다.
+- `architecture_flow_map`: schema가 없다면 `backend_layer_map.callFlow`, `review_lenses`, `verify_plan.manual_checks`, `tft-visual` code block에 lane/node/edge, source-of-truth 또는 action boundary, requirement ID를 함께 남긴다.
 
 ## 6. Verification rule
 
