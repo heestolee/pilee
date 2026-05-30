@@ -2,7 +2,7 @@
 name: verifier
 description: Validation specialist — use for proving changes are correct with concrete evidence (tests, lint, typecheck)
 tools: read, grep, find, bash
-model: openai-codex/gpt-5.5
+model: anthropic/claude-opus-4-6
 runtime: pi
 thinking: xhigh
 ---
