@@ -153,7 +153,7 @@ Risk lens 결과도 함께 정리:
 
 ### Step 2.1: source-grounded requirement coverage 검증
 
-frame.json에 `requirement_matrix` 또는 `domain_work_map`이 있으면 success_criteria만 보지 않고 요구사항 ID와 작업 레인을 별도 coverage로 닫는다. 이 단계는 Frame을 requirement source로 쓰되 Verify가 evidence adjudicator로 넘어가기 전 기술/구현 coverage gap을 잡기 위한 연결부다.
+frame.json에 `requirement_matrix` 또는 `domain_work_map`이 있으면 success_criteria만 보지 않고 요구사항 ID와 작업 레인을 별도 coverage로 닫는다. 이 단계는 Frame을 requirement source로 쓰되 `/verify-report`가 evidence adjudicator로 판정하기 전, `/verify`가 기술/구현 coverage gap을 잡기 위한 연결부다.
 
 | Requirement | Source text | 구현 계약 | Evidence | Verify result |
 |---|---|---|---|---|
