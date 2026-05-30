@@ -34,7 +34,7 @@ source:
   - user-direction:2026-05-20-tft-studio-scroll-preservation
   - user-feedback:2026-05-20-tft-studio-awaiting-scroll-reset
 reviewed_at: 2026-05-30
-reviewed_commit: 6f973ef50606bcf1e000991e62e13540e4e81c39
+reviewed_commit: de40e548359d357b1f7444ab484fa322e9b8a707
 related:
   - frame-planning-identity
   - frame-verify-contract
