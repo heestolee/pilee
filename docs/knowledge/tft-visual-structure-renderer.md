@@ -43,9 +43,9 @@ TFT Studio는 `elkjs` 기반 top-down renderer를 기본으로 사용합니다. 
 
 `backend-layer-map` kind는 ELK 테이블 renderer 대신 deterministic SVG rail + HTML 카드 renderer를 사용합니다. 레이어 개수가 많아도 세로 스토리보드로 읽히게 하고, 가로 폭은 내부 diagram 영역에서만 scroll되도록 containment를 유지합니다.
 
-`architecture-flow` kind는 lane-based renderer를 사용합니다. 각 node는 lane/row로 배치되고, SVG edge가 node 사이 데이터·로직 이동을 연결합니다. DB table node는 컬럼 목록과 constraint badge를 카드 안에 표시합니다. 복잡한 auto-layout보다 “전체 흐름을 한눈에 보는 안정적인 지도”를 우선합니다.
+`architecture-flow` kind는 lane-based renderer를 사용합니다. 각 node는 lane/row로 배치되고, SVG edge가 node 사이 데이터·로직 이동을 연결합니다. DB table node는 컬럼 목록과 constraint badge를 카드 안에 표시합니다. 복잡한 auto-layout보다 “전체 흐름을 한눈에 보는 안정적인 지도”를 우선합니다. lane이 많거나 가로 폭이 과도하면 renderer는 자동으로 세로 top-down 배치를 선택하고, 작은 그래프는 가로 배치를 유지합니다.
 
-기본 방향은 `DOWN`입니다. 좌→우(`RIGHT`)는 테이블이 2~3개이고 설명이 짧을 때만 선택합니다. 테이블이 많거나 컬럼 설명이 길면 top-down으로 전환하고, 폭이 viewport를 넘으면 scale을 적용해 가로 스크롤을 피합니다.
+기본 방향은 `auto`입니다. `auto`는 lane 수, 예상 canvas 폭, lane당 node 수를 보고 `DOWN` 또는 `RIGHT`를 고릅니다. 좌→우(`RIGHT`)는 lane 수가 적고 설명이 짧을 때만 명시합니다. lane이 많거나 긴 title/body가 많으면 top-down으로 전환하고, diagram 내부에서만 scroll되게 합니다.
 
 ## Visual Semantics
 
@@ -59,7 +59,7 @@ TFT Studio는 `elkjs` 기반 top-down renderer를 기본으로 사용합니다. 
 - `unique` — 중복을 막는 invariant
 - `unique part` — 복합 unique의 일부
 
-관계선은 긴 문장을 edge label에 직접 쓰지 않습니다. Edge에는 `R1`, `R2`처럼 짧은 label을 두고, 아래 relation card에서 `from → to`, 왜 필요한지, 검증 포인트를 설명합니다. 이렇게 해야 label이 카드와 겹치지 않고, 사용자가 관계를 학습할 수 있습니다.
+관계선은 긴 문장을 edge label에 직접 쓰지 않습니다. Edge에는 짧은 label을 두고, label은 흰 배경 pill로 렌더링합니다. Edge path는 카드 본문을 가로지르지 않고 lane gutter 또는 하단/right-side bus를 통해 우회해야 합니다. 자세한 `from → to`, 왜 필요한지, 검증 포인트는 relation card나 note에서 설명합니다. 이렇게 해야 label이 카드와 겹치지 않고, 사용자가 관계를 학습할 수 있습니다.
 
 ## Learning Rule
 
@@ -74,7 +74,7 @@ TFT Studio는 `elkjs` 기반 top-down renderer를 기본으로 사용합니다. 
 
 ## Layout Containment Rule
 
-`tft-visual`의 내부 diagram canvas는 내용에 따라 넓어질 수 있지만, timeline/stage run 같은 바깥 카드 자체를 고정 폭으로 밀어내면 안 됩니다. 바깥 카드와 timeline 계층은 `min-width: 0`과 `max-width: 100%`로 부모 폭에 맞게 줄어들고, 실제 넓은 diagram은 `.tft-visual-diagram` 내부 가로 스크롤로만 처리합니다.
+`tft-visual`의 내부 diagram canvas는 내용에 따라 넓어질 수 있지만, timeline/stage run 같은 바깥 카드 자체를 고정 폭으로 밀어내면 안 됩니다. 바깥 카드와 timeline 계층은 `min-width: 0`과 `max-width: 100%`로 부모 폭에 맞게 줄어들고, 실제 넓은 diagram은 `.tft-visual-diagram` 내부 스크롤로만 처리합니다. 카드가 canvas 경계에서 잘리지 않도록 side padding/right gutter를 확보하고, edge label은 별도 pill layer로 보이게 합니다.
 
 즉 “보라색 stage frame”은 흰 카드 폭에 맞춰 반응형으로 줄어들고, ELK canvas만 scrollable overflow를 가집니다. 이 규칙이 깨지면 사용자는 white frame과 purple frame이 서로 다른 기준 폭을 가진 것처럼 보게 됩니다.
 

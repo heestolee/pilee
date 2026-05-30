@@ -683,12 +683,13 @@ h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .arch-visual-head { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start; margin-bottom:12px; }
 .arch-visual-title { font-size:18px; font-weight:950; color:#581c87; overflow-wrap:anywhere; }
 .arch-visual-subtitle { margin-top:3px; color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
-.arch-visual-diagram { overflow:auto; border:1px solid #e9d5ff; border-radius:18px; background:#fff; padding:12px; }
-.arch-canvas { position:relative; min-width:980px; }
-.arch-lane { position:absolute; top:0; bottom:0; border:1px dashed #e2e8f0; border-radius:16px; background:rgba(248,250,252,.62); }
-.arch-lane-title { position:absolute; left:10px; top:9px; right:10px; text-align:center; font-size:11px; font-weight:950; color:#64748b; text-transform:uppercase; letter-spacing:.04em; }
+.arch-visual-diagram { overflow:auto; border:1px solid #e9d5ff; border-radius:18px; background:#fff; padding:22px; overscroll-behavior:contain; }
+.arch-canvas { position:relative; min-width:980px; margin:0 auto; }
+.arch-lane { position:absolute; border:1px dashed #e2e8f0; border-radius:18px; background:rgba(248,250,252,.62); box-sizing:border-box; }
+.arch-lane-title { position:absolute; left:12px; top:11px; right:12px; text-align:center; font-size:11px; font-weight:950; color:#64748b; text-transform:uppercase; letter-spacing:.04em; overflow-wrap:anywhere; }
+.arch-lane.down .arch-lane-title { text-align:left; right:auto; max-width:210px; }
 .arch-edge-svg { position:absolute; inset:0; z-index:1; overflow:visible; pointer-events:none; }
-.arch-node { position:absolute; z-index:2; border:1px solid #cbd5e1; border-top:6px solid #7c3aed; border-radius:16px; background:#ffffff; box-shadow:0 12px 26px rgba(15,23,42,.07); padding:10px 11px; overflow:visible; }
+.arch-node { position:absolute; z-index:2; border:1px solid #cbd5e1; border-top:6px solid #7c3aed; border-radius:17px; background:#ffffff; box-shadow:0 12px 26px rgba(15,23,42,.07); padding:12px 13px; overflow:visible; box-sizing:border-box; }
 .arch-node.screen, .arch-node.ui { border-top-color:#2563eb; background:#f8fbff; }
 .arch-node.resolver, .arch-node.api { border-top-color:#4f46e5; background:#f8f7ff; }
 .arch-node.usecase, .arch-node.service { border-top-color:#7c3aed; background:#fbf8ff; }
@@ -712,7 +713,8 @@ h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .arch-column { display:flex; justify-content:space-between; gap:7px; align-items:flex-start; border-top:1px solid rgba(148,163,184,.28); padding-top:4px; font-size:10px; }
 .arch-column-name { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; overflow-wrap:anywhere; }
 .arch-column-badges { display:flex; flex-wrap:wrap; gap:3px; justify-content:flex-end; }
-.arch-edge-label { font-size:11px; font-weight:900; fill:#334155; paint-order:stroke; stroke:#fff; stroke-width:5px; }
+.arch-edge-label-bg { fill:rgba(255,255,255,.96); stroke:#ddd6fe; stroke-width:1.2px; filter:drop-shadow(0 3px 8px rgba(88,28,135,.12)); }
+.arch-edge-label { font-size:10.5px; font-weight:950; fill:#334155; dominant-baseline:middle; }
 .arch-legend { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:8px; margin-top:12px; }
 .arch-legend-card { border:1px solid #e2e8f0; border-radius:14px; background:#fff; padding:9px 10px; }
 .arch-legend-card strong { display:block; color:#581c87; font-size:12px; }
@@ -984,11 +986,19 @@ function normalizeArchLane(value, index) {
   return { id: layerKey(value.id || value.key || value.title || value.label || ('lane-' + index)), title: String(value.title || value.label || value.id || ('Lane ' + (index + 1))), index:index };
 }
 function archNodeKind(node) { return layerKey(node.type || node.kind || node.layer || 'node'); }
+function archTextLines(value, charsPerLine, maxLines) {
+  var text = String(value || '').trim();
+  if (!text) return 0;
+  var lines = Math.ceil(text.length / Math.max(12, charsPerLine || 28));
+  return Math.max(1, Math.min(maxLines || 5, lines));
+}
 function archNodeHeight(node) {
   var cols = Array.isArray(node.columns) ? node.columns.length : 0;
   var badgeCount = asTextArray(node.badges || node.flags).length;
-  var descExtra = Math.ceil(Math.max(0, String(node.description || node.beginnerDescription || '').length - 80) / 70) * 14;
-  return Math.max(node.type === 'table' || node.kind === 'table' ? 170 : 132, 112 + descExtra + cols * 22 + Math.ceil(badgeCount / 3) * 14);
+  var titleExtra = Math.max(0, archTextLines(node.title || node.name || node.id, 24, 3) - 1) * 18;
+  var descExtra = Math.max(0, archTextLines(node.description || node.beginnerDescription || node.role, 48, 5) - 2) * 15;
+  var base = node.type === 'table' || node.kind === 'table' ? 184 : 148;
+  return Math.max(base, 118 + titleExtra + descExtra + cols * 24 + Math.ceil(badgeCount / 3) * 16);
 }
 function collectArchLanes(spec) {
   var explicit = Array.isArray(spec.lanes) ? spec.lanes.map(normalizeArchLane) : [];
@@ -1065,23 +1075,59 @@ function renderArchNode(node, layout) {
     + renderArchColumns(node.columns)
     + '</article>';
 }
-function renderArchEdge(edge, layouts, index, markerId) {
+function archEdgeColor(edge) {
+  return edge.color || (edge.kind === 'write' ? '#dc2626' : edge.kind === 'read' ? '#2563eb' : '#7c3aed');
+}
+function archLabelPill(label, x, y, anchor) {
+  label = String(label || '');
+  var width = Math.min(220, Math.max(46, label.length * 6.5 + 20));
+  var height = 22;
+  var left = anchor === 'end' ? x - width : anchor === 'start' ? x : x - width / 2;
+  var textX = anchor === 'end' ? x - 10 : anchor === 'start' ? x + 10 : x;
+  var textAnchor = anchor === 'end' ? 'end' : anchor === 'start' ? 'start' : 'middle';
+  return '<rect class="arch-edge-label-bg" x="' + left + '" y="' + (y - height / 2) + '" width="' + width + '" height="' + height + '" rx="11"/><text x="' + textX + '" y="' + y + '" text-anchor="' + textAnchor + '" class="arch-edge-label">' + esc(label) + '</text>';
+}
+function renderArchEdge(edge, layouts, index, markerId, orientation, metrics) {
   var from = layouts[edge.from];
   var to = layouts[edge.to];
   if (!from || !to) return '';
-  var sx = from.x + from.w;
-  var sy = from.y + Math.min(from.h / 2, 82);
-  var tx = to.x;
-  var ty = to.y + Math.min(to.h / 2, 82);
-  var midX = (sx + tx) / 2;
-  var color = edge.color || (edge.kind === 'write' ? '#dc2626' : edge.kind === 'read' ? '#2563eb' : '#7c3aed');
-  var path = tx >= sx
-    ? 'M' + sx + ' ' + sy + ' C' + midX + ' ' + sy + ' ' + midX + ' ' + ty + ' ' + tx + ' ' + ty
-    : 'M' + sx + ' ' + sy + ' C' + (sx + 36) + ' ' + sy + ' ' + (tx - 36) + ' ' + ty + ' ' + tx + ' ' + ty;
+  var color = archEdgeColor(edge);
   var label = edge.label || edge.title || edge.kind || ('F' + (index + 1));
-  var lx = (sx + tx) / 2;
-  var ly = (sy + ty) / 2 - 8;
-  return '<path d="' + path + '" fill="none" stroke="' + esc(color) + '" stroke-width="2.5" marker-end="url(#' + markerId + ')"/><text x="' + lx + '" y="' + ly + '" text-anchor="middle" class="arch-edge-label">' + esc(label) + '</text>';
+  var busOffset = (index % 5) * 28;
+  var path;
+  var lx;
+  var ly;
+  var anchor = 'middle';
+  if (orientation === 'DOWN') {
+    var sxDown = from.x + from.w;
+    var syDown = from.y + Math.min(from.h / 2, 88);
+    var txDown = to.x + to.w;
+    var tyDown = to.y + Math.min(to.h / 2, 88);
+    var busX = metrics.canvasWidth - metrics.rightGutter + 24 + busOffset;
+    path = 'M' + sxDown + ' ' + syDown + ' L' + busX + ' ' + syDown + ' L' + busX + ' ' + tyDown + ' L' + txDown + ' ' + tyDown;
+    lx = Math.min(metrics.canvasWidth - 20, busX + 8);
+    ly = (syDown + tyDown) / 2;
+    anchor = 'end';
+  } else {
+    var sx = from.x + from.w;
+    var sy = from.y + Math.min(from.h / 2, 88);
+    var tx = to.x;
+    var ty = to.y + Math.min(to.h / 2, 88);
+    var busY = metrics.edgeBusTop + busOffset;
+    var exitX = sx + Math.max(18, metrics.laneGap / 2);
+    var entryX = tx - Math.max(18, metrics.laneGap / 2);
+    if (tx >= sx) {
+      path = 'M' + sx + ' ' + sy + ' L' + exitX + ' ' + sy + ' L' + exitX + ' ' + busY + ' L' + entryX + ' ' + busY + ' L' + entryX + ' ' + ty + ' L' + tx + ' ' + ty;
+      lx = (exitX + entryX) / 2;
+      ly = busY - 13;
+    } else {
+      var wrapX = Math.max(20, Math.min(sx + 40 + busOffset, metrics.canvasWidth - 28));
+      path = 'M' + sx + ' ' + sy + ' L' + wrapX + ' ' + sy + ' L' + wrapX + ' ' + busY + ' L' + entryX + ' ' + busY + ' L' + entryX + ' ' + ty + ' L' + tx + ' ' + ty;
+      lx = (wrapX + entryX) / 2;
+      ly = busY - 13;
+    }
+  }
+  return '<g class="arch-edge"><path d="' + path + '" fill="none" stroke="' + esc(color) + '" stroke-width="2.8" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#' + markerId + ')"/>' + archLabelPill(label, lx, ly, anchor) + '</g>';
 }
 function renderArchLegend(spec) {
   var legend = Array.isArray(spec.legend) ? spec.legend : [];
@@ -1094,49 +1140,101 @@ function renderArchLegend(spec) {
   }
   return '<div class="arch-legend">' + legend.map(function(item) { return '<div class="arch-legend-card"><strong>' + esc(item.title || item.term || '설명') + '</strong><span>' + inline(item.description || item.body || '') + '</span></div>'; }).join('') + '</div>';
 }
-function renderArchitectureFlowElement(el, spec) {
-  var lanes = collectArchLanes(spec);
-  var nodes = (Array.isArray(spec.nodes) ? spec.nodes : []).map(function(node, index) { return normalizeArchNode(node, index, lanes); });
-  if (!nodes.length) { el.innerHTML = '<div class="tft-visual-error">architecture-flow visual에는 nodes 배열이 필요합니다.</div>'; return; }
-  var laneWidth = Number(spec.laneWidth) || 220;
-  var laneGap = Number(spec.laneGap) || 24;
-  var nodeWidth = Number(spec.nodeWidth) || 192;
-  var rowGap = Number(spec.rowGap) || 28;
-  var topPad = 48;
+function archOrientation(spec, lanes, nodes) {
+  var raw = String(spec.direction || spec.layout || spec.orientation || 'auto').toUpperCase();
+  if (raw === 'DOWN' || raw === 'VERTICAL' || raw === 'TOP-DOWN') return 'DOWN';
+  if (raw === 'RIGHT' || raw === 'HORIZONTAL' || raw === 'LR' || raw === 'LEFT-RIGHT') return 'RIGHT';
+  var horizontalWidth = lanes.length * 292 + Math.max(0, lanes.length - 1) * 56;
+  var hasOneNodePerLane = nodes.length <= lanes.length + 2;
+  if (lanes.length >= 6 && hasOneNodePerLane) return 'DOWN';
+  if (horizontalWidth > 1500 && nodes.length <= lanes.length * 2) return 'DOWN';
+  return 'RIGHT';
+}
+function sortedLaneItems(items) {
+  return items.sort(function(a, b) {
+    var aRow = Number.isFinite(a.node.row) ? a.node.row : a.node.order;
+    var bRow = Number.isFinite(b.node.row) ? b.node.row : b.node.order;
+    return aRow === bRow ? a.node.order - b.node.order : aRow - bRow;
+  });
+}
+function buildArchLaneBuckets(nodes, lanes) {
   var laneBuckets = {};
-  var layouts = {};
   nodes.forEach(function(node) {
     var lane = lanes.find(function(item) { return item.id === node.lane; }) || lanes[0];
     if (!laneBuckets[lane.id]) laneBuckets[lane.id] = [];
     laneBuckets[lane.id].push({ node:node, lane:lane });
   });
-  Object.keys(laneBuckets).forEach(function(laneId) {
-    var cursor = topPad;
-    laneBuckets[laneId].sort(function(a, b) {
-      var aRow = Number.isFinite(a.node.row) ? a.node.row : a.node.order;
-      var bRow = Number.isFinite(b.node.row) ? b.node.row : b.node.order;
-      return aRow === bRow ? a.node.order - b.node.order : aRow - bRow;
-    }).forEach(function(item, index) {
-      if (index > 0) cursor += rowGap;
-      var node = item.node;
-      var lane = item.lane;
-      var h = archNodeHeight(node);
-      layouts[node.id] = { x: 16 + lane.index * (laneWidth + laneGap) + Math.max(0, (laneWidth - nodeWidth) / 2), y:cursor, w:nodeWidth, h:h };
-      cursor += h;
+  Object.keys(laneBuckets).forEach(function(laneId) { laneBuckets[laneId] = sortedLaneItems(laneBuckets[laneId]); });
+  return laneBuckets;
+}
+function renderArchitectureFlowElement(el, spec) {
+  var lanes = collectArchLanes(spec);
+  var nodes = (Array.isArray(spec.nodes) ? spec.nodes : []).map(function(node, index) { return normalizeArchNode(node, index, lanes); });
+  if (!nodes.length) { el.innerHTML = '<div class="tft-visual-error">architecture-flow visual에는 nodes 배열이 필요합니다.</div>'; return; }
+  var orientation = archOrientation(spec, lanes, nodes);
+  var laneGap = Number(spec.laneGap) || (orientation === 'DOWN' ? 34 : 56);
+  var nodeWidth = Number(spec.nodeWidth) || (orientation === 'DOWN' ? 270 : 246);
+  var rowGap = Number(spec.rowGap) || 34;
+  var sidePad = 46;
+  var topPad = 58;
+  var bottomPad = 46;
+  var rightGutter = 150;
+  var laneBuckets = buildArchLaneBuckets(nodes, lanes);
+  var layouts = {};
+  var laneBoxes = {};
+  var canvasWidth;
+  var canvasHeight;
+  var edgeBusTop = 0;
+  if (orientation === 'DOWN') {
+    var maxLaneItems = Math.max.apply(null, lanes.map(function(lane) { return (laneBuckets[lane.id] || []).length || 1; }));
+    var nodeGap = Number(spec.nodeGap) || 28;
+    var contentWidth = Math.max(760, sidePad * 2 + maxLaneItems * nodeWidth + Math.max(0, maxLaneItems - 1) * nodeGap + rightGutter);
+    canvasWidth = Number(spec.canvasWidth) || contentWidth;
+    var yCursor = sidePad;
+    lanes.forEach(function(lane) {
+      var items = laneBuckets[lane.id] || [];
+      var laneNodeHeights = items.map(function(item) { return archNodeHeight(item.node); });
+      var laneHeight = Math.max(210, topPad + (laneNodeHeights.length ? Math.max.apply(null, laneNodeHeights) : 120) + bottomPad);
+      laneBoxes[lane.id] = { x:sidePad, y:yCursor, w:canvasWidth - sidePad * 2, h:laneHeight };
+      items.forEach(function(item, index) {
+        var h = archNodeHeight(item.node);
+        layouts[item.node.id] = { x:sidePad + 24 + index * (nodeWidth + nodeGap), y:yCursor + topPad, w:nodeWidth, h:h };
+      });
+      yCursor += laneHeight + laneGap;
     });
-  });
-  var canvasWidth = 32 + lanes.length * laneWidth + Math.max(0, lanes.length - 1) * laneGap;
-  var canvasHeight = Math.max(360, Object.values(layouts).reduce(function(max, box) { return Math.max(max, box.y + box.h + 34); }, 0));
+    canvasHeight = yCursor + bottomPad;
+  } else {
+    var laneWidth = Number(spec.laneWidth) || Math.max(292, nodeWidth + 60);
+    canvasWidth = sidePad * 2 + lanes.length * laneWidth + Math.max(0, lanes.length - 1) * laneGap;
+    lanes.forEach(function(lane) {
+      var x = sidePad + lane.index * (laneWidth + laneGap);
+      laneBoxes[lane.id] = { x:x, y:sidePad, w:laneWidth, h:0 };
+      var cursor = topPad + sidePad;
+      (laneBuckets[lane.id] || []).forEach(function(item, index) {
+        if (index > 0) cursor += rowGap;
+        var h = archNodeHeight(item.node);
+        layouts[item.node.id] = { x:x + Math.max(18, (laneWidth - nodeWidth) / 2), y:cursor, w:nodeWidth, h:h };
+        cursor += h;
+      });
+    });
+    var nodeBottom = Object.values(layouts).reduce(function(max, box) { return Math.max(max, box.y + box.h); }, topPad + sidePad);
+    edgeBusTop = nodeBottom + 72;
+    canvasHeight = Math.max(420, edgeBusTop + 28 * Math.min(5, Math.max(1, (Array.isArray(spec.edges) ? spec.edges.length : 0))) + bottomPad);
+    Object.keys(laneBoxes).forEach(function(laneId) { laneBoxes[laneId].h = canvasHeight - sidePad * 2; });
+  }
   var laneHtml = lanes.map(function(lane) {
-    var x = 16 + lane.index * (laneWidth + laneGap);
-    return '<div class="arch-lane" style="left:' + x + 'px;width:' + laneWidth + 'px;height:' + canvasHeight + 'px"><div class="arch-lane-title">' + esc(lane.title) + '</div></div>';
+    var box = laneBoxes[lane.id];
+    var klass = orientation === 'DOWN' ? 'arch-lane down' : 'arch-lane';
+    return '<div class="' + klass + '" style="left:' + box.x + 'px;top:' + box.y + 'px;width:' + box.w + 'px;height:' + box.h + 'px"><div class="arch-lane-title">' + esc(lane.title) + '</div></div>';
   }).join('');
   var markerId = el.id + '-arch-arrow';
   var edges = Array.isArray(spec.edges) ? spec.edges : [];
-  var edgeSvg = '<svg class="arch-edge-svg" width="' + canvasWidth + '" height="' + canvasHeight + '" viewBox="0 0 ' + canvasWidth + ' ' + canvasHeight + '"><defs><marker id="' + markerId + '" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker></defs>' + edges.map(function(edge, index) { return renderArchEdge(edge, layouts, index, markerId); }).join('') + '</svg>';
+  var metrics = { orientation:orientation, canvasWidth:canvasWidth, canvasHeight:canvasHeight, laneGap:laneGap, edgeBusTop:edgeBusTop, rightGutter:rightGutter };
+  var edgeSvg = '<svg class="arch-edge-svg" width="' + canvasWidth + '" height="' + canvasHeight + '" viewBox="0 0 ' + canvasWidth + ' ' + canvasHeight + '"><defs><marker id="' + markerId + '" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker></defs>' + edges.map(function(edge, index) { return renderArchEdge(edge, layouts, index, markerId, orientation, metrics); }).join('') + '</svg>';
   var nodeHtml = nodes.map(function(node) { return renderArchNode(node, layouts[node.id]); }).join('');
+  var orientationLabel = orientation === 'DOWN' ? 'Architecture flow · 세로 자동 배치' : 'Architecture flow · 가로 배치';
   el.className = 'arch-visual';
-  el.innerHTML = '<div class="arch-visual-head"><div><div class="arch-visual-title">' + esc(spec.title || 'Architecture / Data Flow Map') + '</div>' + (spec.subtitle ? '<div class="arch-visual-subtitle">' + esc(spec.subtitle) + '</div>' : '<div class="arch-visual-subtitle">데이터와 로직이 UI/API/usecase/domain/repository/DB를 어떻게 지나가는지 보는 전체 지도입니다.</div>') + '</div><span class="badge">Architecture flow</span></div>'
+  el.innerHTML = '<div class="arch-visual-head"><div><div class="arch-visual-title">' + esc(spec.title || 'Architecture / Data Flow Map') + '</div>' + (spec.subtitle ? '<div class="arch-visual-subtitle">' + esc(spec.subtitle) + '</div>' : '<div class="arch-visual-subtitle">데이터와 로직이 UI/API/usecase/domain/repository/DB를 어떻게 지나가는지 보는 전체 지도입니다.</div>') + '</div><span class="badge">' + esc(orientationLabel) + '</span></div>'
     + '<div class="arch-visual-diagram"><div class="arch-canvas" style="width:' + canvasWidth + 'px;height:' + canvasHeight + 'px">' + laneHtml + edgeSvg + nodeHtml + '</div></div>'
     + renderArchLegend(spec)
     + renderLearningNotes(spec.notes || spec.explanations);

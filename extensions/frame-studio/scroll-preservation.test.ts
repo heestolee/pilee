@@ -121,6 +121,11 @@ function extractArchNodeBoxes(html: string) {
 		.sort((a, b) => a.top - b.top);
 }
 
+function extractArchLabelRects(html: string) {
+	return [...html.matchAll(/<rect class="arch-edge-label-bg" x="([\d.-]+)" y="([\d.-]+)" width="([\d.-]+)" height="([\d.-]+)"/g)]
+		.map((match) => ({ x: Number(match[1]), y: Number(match[2]), width: Number(match[3]), height: Number(match[4]) }));
+}
+
 test("Architecture flow keeps variable-height nodes in the same lane from overlapping", () => {
 	const browser = createFakeBrowser({ top: 0, viewport: 600, height: 1600 });
 	const studio = loadStudioScript(browser.window, browser.document);
@@ -174,6 +179,63 @@ test("Architecture flow keeps variable-height nodes in the same lane from overla
 	for (let index = 0; index < boxes.length - 1; index++) {
 		assert.ok(boxes[index].bottom < boxes[index + 1].top, `node ${index} should end before node ${index + 1} starts`);
 	}
+});
+
+test("Architecture flow auto layout switches wide lane maps to vertical with label pills", () => {
+	const browser = createFakeBrowser({ top: 0, viewport: 600, height: 1600 });
+	const studio = loadStudioScript(browser.window, browser.document);
+	const element = { id: "arch-auto-layout-test", className: "", innerHTML: "" };
+	const lanes = ["Jira", "FE Mobile", "Shared UI", "Existing Backend", "FE Desktop", "Widget", "Verification"];
+
+	studio.renderArchitectureFlowElement(element, {
+		kind: "architecture-flow",
+		lanes,
+		nodes: lanes.map((lane, index) => ({
+			id: `node-${index}`,
+			lane,
+			type: index === 3 ? "resolver" : "screen",
+			title: `${lane} node with a title long enough to need safe wrapping`,
+			description: "긴 설명이 있어도 카드가 canvas 경계에 잘리지 않고 edge label은 pill로 보입니다.",
+			badges: [`R${index + 1}`],
+		})),
+		edges: [
+			{ from: "node-1", to: "node-2", label: "재사용" },
+			{ from: "node-2", to: "node-3", label: "기존 boundary" },
+			{ from: "node-5", to: "node-6", label: "캡처" },
+		],
+	});
+
+	assert.match(element.innerHTML, /세로 자동 배치/);
+	assert.match(element.innerHTML, /class="arch-lane down"/);
+	assert.match(element.innerHTML, /arch-edge-label-bg/);
+	assert.doesNotMatch(element.innerHTML, / C[\d. -]+ C/);
+});
+
+test("Architecture flow horizontal routing keeps edge labels below cards", () => {
+	const browser = createFakeBrowser({ top: 0, viewport: 600, height: 1600 });
+	const studio = loadStudioScript(browser.window, browser.document);
+	const element = { id: "arch-horizontal-routing-test", className: "", innerHTML: "" };
+
+	studio.renderArchitectureFlowElement(element, {
+		kind: "architecture-flow",
+		direction: "RIGHT",
+		lanes: ["UI", "Action", "Verification"],
+		nodes: [
+			{ id: "ui", lane: "UI", type: "screen", title: "Mobile cards", description: "사용자가 보는 카드" },
+			{ id: "action", lane: "Action", type: "service", title: "Existing approval action", description: "기존 action boundary" },
+			{ id: "verify", lane: "Verification", type: "review", title: "Capture evidence", description: "캡처 증거" },
+		],
+		edges: [
+			{ from: "ui", to: "action", label: "기존 action" },
+			{ from: "action", to: "verify", label: "캡처" },
+		],
+	});
+
+	const nodeBottom = Math.max(...extractArchNodeBoxes(element.innerHTML).map((box) => box.bottom));
+	const labelRects = extractArchLabelRects(element.innerHTML);
+	assert.equal(labelRects.length, 2);
+	assert.ok(labelRects.every((rect) => rect.y > nodeBottom), "edge labels should be placed in the bottom bus, below node cards");
+	assert.match(element.innerHTML, /stroke-linejoin="round"/);
 });
 
 test("TFT Studio state update preserves the reader's current scroll offset", () => {
