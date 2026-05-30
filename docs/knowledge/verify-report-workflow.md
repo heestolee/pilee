@@ -17,6 +17,10 @@ tags:
   - gif
   - report-lint
   - setup-noise
+  - pm-facing
+  - requirement-mapping
+  - capture-first
+  - technical-appendix
   - subagent
   - fan-out
   - 검증
@@ -39,8 +43,8 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-feedback:2026-05-11-detail-readability
   - user-feedback:2026-05-19-motion-first-and-setup-noise
-reviewed_at: 2026-05-19
-reviewed_commit: 7b4b3255b2a1cfccef0561e553768cad323304a4
+reviewed_at: 2026-05-30
+reviewed_commit: e51d6d113ac499514ce0d981ea1160833f960051
 related:
   - pilee-knowledge-system
   - web-search-curator
@@ -54,21 +58,25 @@ supersedes:
 
 ## Overview
 
-Verify Report는 “완료했다고 말하기 전에 증거를 남긴다”는 원칙을 UI/로그/코드 diff까지 확장한 검증 리포트 흐름입니다. 현재 기준은 단순히 캡처 파일을 모으는 것이 아니라, 변경 리스크를 coverage axis로 쪼갠 뒤 각 축을 증거로 닫는 것입니다.
+Verify Report는 “완료했다고 말하기 전에 증거를 남긴다”는 원칙을 PM-facing 구현 공유 문서로 확장한 검증 리포트 흐름입니다. 현재 기준은 단순히 캡처 파일을 모으는 것이 아니라, Jira/Notion/Slack/와이어프레임/PR test plan 같은 기획 근거를 사용자-facing 성공 기준으로 바꾸고, 각 기준을 캡처/GIF 중심 증거로 닫는 것입니다.
 
 기본 동작은 로컬 확인용 report를 먼저 만들고 Glimpse에서 확인한 뒤, 명시적으로 요청된 경우에만 외부 업로드나 PR 갱신으로 넘어갑니다. 프로젝트별 preview URL, 계정 alias, artifact storage 규칙은 private/project overlay가 제공하고, public verify-report는 coverage/evidence protocol에 집중합니다.
 
 ## Current Shape
 
-검증은 `UI_CAPTURE`, `NETWORK`, `CONSOLE`, `CODE_DIFF`, `BE`, `SKIP` 같은 증거 타입으로 나뉩니다. 화면 변화가 핵심인 작업은 PNG/GIF 캡처가 강한 증거이고, GA 이벤트·API·백엔드 동작처럼 화면에 드러나지 않는 작업은 네트워크 로그, 콘솔 출력, 코드 diff, 서버 검증 결과를 evidence로 남깁니다.
+검증은 `UI_CAPTURE`, `NETWORK`, `CONSOLE`, `CODE_DIFF`, `BE`, `SKIP` 같은 증거 타입으로 나뉩니다. 다만 리포트 상단의 기본 독자는 PM·기획자·디자이너이므로, 화면 변화가 핵심인 작업은 PNG/GIF 캡처가 primary evidence입니다. GA 이벤트·API·백엔드 동작처럼 화면에 드러나지 않는 작업이나 로직 보강은 하단 `Technical support checks`에서 네트워크 로그, 콘솔 출력, 코드 diff, 서버 검증 결과로 보조합니다.
 
 기본 검증 구조는 evidence-first case worker fan-out입니다. main agent가 coverage 계획, 환경, 허용 액션을 정의하고, 여러 검증 축이 있으면 case별 subagent가 계획된 캡처/로그/명령 실행과 1차 검증을 병렬 수행합니다. Subagent는 brief에 적힌 planned evidence를 만들 수 있지만, 계획 밖 새 캡처/재캡처나 계정·route·viewport 확장은 `UNVERIFIED`와 `main_action_required`로 main에게 올립니다. 최종 report 상태와 사용자 질문은 main agent가 처리합니다.
 
 live preview는 [web-search-curator](./web-search-curator.md)의 “작업 중 Glimpse 창이 상태를 실시간으로 보여준다”는 UX를 검증 리포트에 적용한 것입니다. 검증 계획을 세운 뒤 `start → update → finish`로 항목 상태가 변하고, finish 시 정적 HTML report가 남아 나중에도 다시 열 수 있습니다.
 
+## Requirement Mapping Rule
+
+캡처는 coverage 계획 뒤에 오지만, coverage는 diff가 아니라 기획 근거에서 먼저 나와야 합니다. 각 item은 `근거 출처 → PM-readable 성공 기준 → actor/role → subject identity → 화면 oracle → primary capture → technical support` 계약을 가져야 합니다. 같은 상태 전환을 보여주는 리포트는 같은 row/order/review/user/item 같은 subject identity를 유지해야 하며, 다른 후보를 찾는 순간 원래 item을 닫은 증거가 아닙니다.
+
 ## Coverage Rule
 
-캡처는 coverage 계획 뒤에 옵니다. responsive/layout 변경이면 mobile, breakpoint boundary, desktop을 각각 확인하고, nav 변경이면 expanded/collapsed와 role 차이를 봅니다. typography 변경은 screenshot만으로 닫지 않고 DOM class/token과 computed style을 함께 확인합니다.
+캡처는 coverage 계획 뒤에 옵니다. responsive/layout 변경이면 mobile, breakpoint boundary, desktop을 각각 확인하고, nav 변경이면 expanded/collapsed와 role 차이를 봅니다. typography 변경은 screenshot만으로 닫지 않고 DOM class/token과 computed style을 함께 확인하되, 이런 기술 확인은 PM-facing 화면 증거를 보조하는 하단 근거로 둡니다.
 
 기존 UI/동작을 바꾸는 작업은 before/after도 coverage 후보입니다. 같은 route, viewport, role, 데이터 상태로 작업 전 기준과 작업 후 결과를 나란히 보여주면 리뷰어가 “무엇이 바뀌었고 무엇은 유지됐는지”를 더 빨리 판단할 수 있습니다.
 
@@ -118,6 +126,12 @@ report preview는 artifact browser 안에서 `/preview` route로 열리고, top 
 
 원본 capture가 별도 media tab에 남는 경우에는 workspace/Jira/session/frame label로 group drill-down할 수 있어야 합니다. 다만 Verify Report의 PASS 판정은 여전히 report item evidence와 coverage gap에 있고, capture group은 원자료 탐색 보조입니다.
 
+## Gate Strength Rule
+
+강제는 모두 hard gate가 아닙니다. PM-facing 신뢰를 깨는 항목은 PASS 금지 hard gate이고, 보조 품질은 soft lint입니다.
+
+Hard gate 예시는 UI item인데 expected UI가 캡처에 보이지 않는 경우, actor/role이 잘못된 경우, state transition인데 같은 subject identity가 없는 경우, motion claim인데 GIF/영상이 없는 경우, setup/login/bootstrap 실패를 기능 PASS evidence처럼 넣은 경우입니다. Soft lint 예시는 metadata 일부 누락, supporting full-page가 긴 경우, 상단 UI claim은 닫혔지만 하단 기술 보조 검증이 부족한 경우입니다.
+
 ## Report Lint Rule
 
 `verify_report_live finish`는 PASS를 자동으로 뒤집지 않는 report lint를 실행합니다. lint는 motion claim인데 GIF primary가 없는 항목, GIF primary에 대표 PNG/crop이 없는 항목, setup/bootstrap noise가 PASS item에 섞인 항목, 긴 이미지가 primary인 항목, evidence metadata가 부족한 항목을 경고로 남깁니다.
@@ -129,6 +143,7 @@ report preview는 artifact browser 안에서 `/preview` route로 열리고, top 
 - report 작성은 검증의 일부이지 PR 업로드의 동의가 아닙니다.
 - 사용자가 upload를 명시하지 않으면 로컬 report와 archive까지만 처리합니다.
 - “화면이 바뀌지 않는다”는 이유로 검증을 생략하지 않고, 더 적절한 evidence type을 선택합니다.
+- 리포트 상단은 PM-facing behavior를 캡처/GIF로 설명하고, API/DB/code/test는 하단 Technical support checks로 둡니다.
 - UI evidence는 claim에 맞게 둡니다. 정적 상태는 crop/section image, 움직임/전환/클릭 flow는 GIF/짧은 영상을 primary로 둡니다.
 - flow GIF에는 대표 final-state PNG/crop을 supporting으로 함께 둡니다.
 - 긴 full-page image는 supporting으로 둡니다.

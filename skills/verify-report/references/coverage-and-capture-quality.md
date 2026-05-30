@@ -1,10 +1,27 @@
 # Verify Report — Coverage & Capture Quality
 
-리포트의 목표는 “증거를 모았다”가 아니라 “성공 기준을 증거로 닫았다”이다. 캡처 파일이 있어도 변경 리스크를 커버하지 못하면 PASS가 아니다.
+리포트의 목표는 “증거를 모았다”가 아니라 “PM·비개발자가 기획 의도대로 구현됐는지 화면으로 이해한다”이다. 캡처 파일이 있어도 기획 근거와 사용자-facing 성공 기준을 닫지 못하면 PASS가 아니다.
+
+## 0. PM-facing report contract
+
+Verify Report는 개발자용 디버깅 로그가 아니라 구현 공유 문서다. 시작 전에 각 항목을 다음 계약으로 고정한다.
+
+| 계약 필드 | 질문 |
+|-----------|------|
+| Requirement source | Jira/Notion/Slack/와이어프레임/PR test plan/frame/사용자 지시 중 무엇을 증명하는가? |
+| Audience claim | PM·기획자가 읽을 한 문장 성공 기준은 무엇인가? |
+| Actor / role | 누가 조작하거나 보는가? admin/member/partner/anonymous 등 |
+| Subject identity | 같은 row/order/review/user/item임을 무엇으로 보장하는가? |
+| User-facing oracle | 화면에서 무엇이 보여야 성공인가? |
+| Primary capture | focused crop/GIF/viewport 중 무엇이 primary인가? |
+| Technical support | API/DB/code/test는 어떤 claim을 보조하는가? |
+| Excluded setup noise | 로그인/빌드/bootstrap/selector 시행착오 중 report에서 숨길 것은 무엇인가? |
+
+하나의 리포트는 위 계약을 item별로 반복한 PM-facing story여야 한다. 기술 검증은 중요하지만 상단 결론을 대신하지 않는다.
 
 ## 1. Coverage matrix first
 
-검증 시작 전에 변경 diff와 요구사항을 보고 축을 만든다.
+검증 시작 전에 기획 근거와 요구사항을 보고 축을 만든다. 구현 diff는 누락 리스크를 보완하는 보조 입력이며, PM-facing UI 기능에서 code diff만으로 상단 PASS를 닫지 않는다.
 
 | 변경 유형 | 필수 축 | 권장 evidence |
 |----------|---------|---------------|
@@ -14,7 +31,7 @@
 | table/card/list | empty, data, overflow/scroll | section crop + data fixture 설명 |
 | default selection/option panel | no data, data exists, refresh/stale selection | UI crop + state/log excerpt |
 | network/event | trigger, non-trigger, request payload/count | network JSON/TXT + optional UI context |
-| BE/API/permission | authorized, unauthorized, error path | response JSON/status/log |
+| BE/API/permission | authorized, unauthorized, error path | 하단 기술 보조 검증의 response JSON/status/log |
 
 ## 2. Responsive preset
 
@@ -87,9 +104,9 @@ V3 supporting — local 390×2016 full-page context
 V4 network — preview PR-123 GA event matchedResourceCount=0
 ```
 
-## 5. Crop-first UI evidence
+## 5. Capture-first UI evidence
 
-Primary evidence는 검증 포인트가 바로 보이는 이미지여야 한다.
+Primary evidence는 검증 포인트가 바로 보이는 이미지/GIF여야 한다. UI 기능의 상단 PASS는 “코드상 가능함”이 아니라 “실제 사용자가 보는 화면에서 기획 의도가 드러남”으로 닫는다.
 
 권장 순서:
 
@@ -128,15 +145,33 @@ PASS 금지 예시:
 - 20초 이상 길어서 검증 포인트를 찾기 어려움
 - 원본 영상이나 final-state PNG 없이 손실 GIF만 남김
 
-## 7. PASS gate
+## 7. Gate strength: hard gate vs soft lint
+
+강제는 모두 같은 강도로 걸지 않는다. PM-facing 신뢰를 깨는 항목만 hard gate이고, 보조 품질은 soft lint다.
+
+### Hard gate — 위반 시 PASS 금지
+
+- 요구사항/기획 근거 또는 PM-readable 성공 기준이 없다.
+- UI item인데 primary 화면 캡처/GIF가 없거나, 캡처 안에 expected UI가 보이지 않는다.
+- state transition/before-after claim인데 같은 subject identity가 보장되지 않는다.
+- actor/role이 성공 기준의 일부인데 잘못된 계정/role로 검증했다.
+- motion/flow claim인데 GIF/짧은 영상 없이 정적 PNG만 있다.
+- setup/login/bootstrap 실패를 기능 PASS evidence처럼 넣었다.
+
+### Soft lint — 경고 후 보완 권장
+
+- evidence metadata 일부가 부족하다.
+- full-page supporting image가 너무 길다.
+- 하단 기술 보조 검증이 부족하지만 상단 UI claim은 화면으로 이미 닫혔다.
+- before source를 못 맞췄지만 신규 기능이거나 생략 사유가 명확하다.
 
 PASS는 아래가 모두 참일 때만 쓴다.
 
-- 해당 item의 성공 기준이 명확하다.
+- 해당 item의 성공 기준이 PM-readable하게 명확하다.
 - 계획한 coverage axis가 모두 evidence로 닫혔다.
 - evidence에 환경/viewport/role/action 메타데이터가 있다.
-- UI item이면 primary crop 또는 명확한 viewport screenshot이 있다.
-- before/after가 필요한 item이면 둘 다 같은 축으로 캡처했거나, before 생략 사유가 명확하다.
+- UI item이면 primary crop/GIF 또는 명확한 viewport screenshot이 있다.
+- before/after가 필요한 item이면 둘 다 같은 subject/축으로 캡처했거나, before 생략 사유가 명확하다.
 
 아래 상황은 PASS 금지:
 
@@ -144,18 +179,23 @@ PASS는 아래가 모두 참일 때만 쓴다.
 - before가 핵심인 UI 변경인데 after만 보고 완료 선언함
 - 캡처가 full-page 하나뿐이라 검증 포인트가 불명확함
 - 환경/계정/viewport를 알 수 없음
+- actor/role이 틀렸거나 검증 대상 기능과 무관한 계정 실패를 gap처럼 섞음
 - 로그는 있지만 필터 조건/expected count가 없음
 
 ## 8. Final summary template
 
 ```markdown
-Verified
-- V1: develop before 대비 local after 390×844에서 모바일 카드가 1열로 쌓임 (before/after primary crop)
-- V2: desktop 1440×900에서 차트/요약 카드 겹침 없음 확인
+Verified — PM-facing behavior
+- V1: Jira COM-123 요구대로 관리자가 옵션을 켜면 사용자 상세 화면에 새 CTA가 보임 (before/after primary crop)
+- V2: 와이어프레임 기준 390×844 모바일에서 카드가 1열로 쌓이고 CTA와 겹치지 않음 (focused crop)
 
 Coverage gaps / Unverified
 - V3: PR Preview가 아직 뜨지 않아 preview 환경 미검증
-- V4: 신규 기능이라 의미 있는 before 없음, after-only로 검증
+- V4: 기존 before 기준을 맞출 수 없어 after-only로 검증, 생략 사유 기록
+
+Technical support checks
+- T1: API 응답에 신규 필드가 내려오고 권한 없는 mutation은 403으로 차단됨
+- T2: 관련 unit test 통과
 
 Blocked / Known unrelated failures
 - type-check: 기존 GraphQL schema mismatch로 실패, touched files focused check는 통과

@@ -1,17 +1,19 @@
 ---
 name: verify-report
-description: PR/구현 검증을 위해 스크린샷/GIF 캡처와 네트워크 로그, 콘솔 출력, 코드 diff 같은 검증 근거를 HTML 리포트로 만든다. UI/이벤트/BE처럼 여러 검증 축이 있으면 case별 subagent가 계획된 캡처·로그 수집과 1차 검증을 병렬 수행하고 main이 최종 판정한다. 기본은 로컬 확인용이며 업로드/PR 업데이트는 명시 요청 시에만 한다.
+description: PR/구현 검증을 PM·비개발자도 이해할 수 있는 캡처 중심 HTML 리포트로 만든다. Jira/Notion/Slack/와이어프레임/PR test plan 같은 기획 근거를 사용자-facing 동작과 매핑하고, 핵심 UI 흐름은 스크린샷/GIF를 primary evidence로 증명한다. 로직/API/DB/code diff 검증은 하단 기술 보조 검증으로 정리한다. 기본은 로컬 확인용이며 업로드/PR 업데이트는 명시 요청 시에만 한다.
 argument-hint: "[base-url] [--upload] [--update] [--ask-before] [--no-workers]"
 ---
 
 # Verify Report
 
-구현이 요구사항을 만족한다는 **캡처/검증 증거**를 수집해 HTML 리포트로 만든다. 화면 변화는 PNG/GIF 캡처가 가장 확실한 검증 근거가 될 수 있으므로 우선 활용한다. 화면 변화가 없거나 이벤트/BE처럼 눈에 보이지 않는 동작은 네트워크 로그/콘솔 결과/코드 diff 같은 기계적 근거를 함께 남긴다.
+구현이 기획 의도대로 동작한다는 사실을 **PM·비개발자도 캡처/GIF만 보고 이해할 수 있게** HTML 리포트로 만든다. 리포트의 중심은 개발 과정 로그가 아니라 “기획 근거 → 사용자-facing 성공 기준 → 실제 화면 증거”의 매핑이다. 화면 변화는 PNG/GIF 캡처를 primary evidence로 삼고, 로직/API/DB/code diff 검증은 하단 기술 보조 검증으로 분리한다.
 
 ## 원칙
 
-- **Coverage 먼저, 캡처는 그 다음**: 리포트 시작 전에 변경 diff/요구사항으로 검증 축을 정의한다. 캡처가 있어도 해당 축을 닫지 못하면 PASS가 아니다.
-- **캡처/증거 우선**: UI는 화면 캡처를 우선 증거로 삼고, 비가시 동작은 성공 기준을 어떤 로그/결과로 확인할지 먼저 정한다.
+- **PM-facing이 기본값**: 리포트는 개발자 디버깅 로그가 아니라 PM·기획자·디자이너가 구현 핵심과 동작을 빠르게 이해하는 공유 문서다. 내부 셋업/삽질보다 사용자-facing 결과를 먼저 보여준다.
+- **기획 근거와 구현 동작을 매핑**: Jira, Notion, Slack, 와이어프레임, PR test plan, frame 성공 기준이 있으면 각 요구를 실제 화면 동작/상태와 연결한다. 출처가 없는 코드 리스크는 별도 기술 보조 검증으로 내린다.
+- **캡처 중심 리포트**: UI 기능의 primary evidence는 focused screenshot/GIF다. code diff, API 응답, DB 조회, unit test는 PM-facing 화면 증거를 보조하거나 비가시 정책을 설명하는 하단 근거로 둔다.
+- **Coverage 먼저, 캡처는 그 다음**: 리포트 시작 전에 요구사항으로 검증 축을 정의한다. 캡처가 있어도 해당 축을 닫지 못하면 PASS가 아니다.
 - **Motion-first evidence**: 이동/전환/클릭/열림/닫힘/스무스함/끊김 없음처럼 시간 흐름이 claim이면 정적 PNG만으로 PASS 처리하지 않는다. GIF/짧은 영상이 primary evidence이고, 대표 final-state PNG/crop은 supporting evidence로 함께 둔다. GIF는 판독 가능한 품질이어야 하며, 기본 기준은 3~8초, 720~800px 이상 폭, 10~15fps, `palettegen/paletteuse` 적용이다. 저용량을 이유로 390px/8fps/no-palette처럼 텍스트와 색상이 깨지는 설정을 primary evidence에 쓰지 않는다.
 - **Setup noise 격리**: 로그인, 빌드, Metro/dev-server, pod/env/codegen, dependency bootstrap처럼 검증 전 준비 과정은 리포트의 PASS item에 넣지 않는다. setup 자체가 검증 대상이거나, 검증을 막은 blocked/coverage gap일 때만 짧게 남긴다.
 - **미검증 명시**: 자동화로 확인하지 못한 항목은 PASS로 쓰지 않고 `미검증`/`blocked`/`Coverage Gap`에 남긴다.
@@ -74,16 +76,31 @@ Escape hatch:
 > - [references/report-templates.md](references/report-templates.md) — HTML/context.md/PR 템플릿
 > - [references/troubleshooting.md](references/troubleshooting.md) — agent-browser daemon 복구, 자주 깨지는 케이스
 
-## Step 1: 성공 기준 수집 + 캡처/증거 유형 분류
+## Step 1: 기획 근거 수집 + 성공 기준 매핑 + 캡처/증거 유형 분류
 
 소스 우선순위:
-1. **PR test plan** — `gh pr view` body의 `## Test plan`
-2. **Verify 체크리스트** — `.context/work/{workspace}/context.md`의 `## Verifications`
-3. **자체 도출** — Frame 성공 기준 + 구현 코드 분석
-4. **정책축 스캔** — frame.json `policy_axis_scan`의 channel_matrix/axes가 있으면 채널·기준 시간·DEFAULT·다중 적용·migration/cache identity를 검증 축으로 승격
-5. **백엔드 레이어 맵** — frame.json `backend_layer_map`이 있으면 resolver/usecase/repository/VO/loader/entity/consumer 책임을 검증 축으로 승격
+1. **사용자가 이번 검증에서 직접 지정한 기준** — “이 화면을 보여줘”, “기획대로 동작하는지 증명해줘” 같은 최신 지시
+2. **기획 근거** — Jira, Notion, Slack, 와이어프레임, 디자인 시안, 요구사항 문서
+3. **PR test plan** — `gh pr view` body의 `## Test plan`
+4. **Verify 체크리스트** — `.context/work/{workspace}/context.md`의 `## Verifications`
+5. **Frame 성공 기준** — `.pi/frame.json` 또는 frame transcript의 success criteria
+6. **구현 코드 분석** — 기획 근거가 비어 있는 리스크를 보완하는 보조 입력
+7. **정책축 스캔 / 백엔드 레이어 맵** — 비가시 정책·레이어 책임은 하단 기술 보조 검증 후보로 승격
 
-수집 직후 각 항목을 **검증 축(coverage axis)** 으로 쪼개고, 축마다 **화면 캡처로 검증할지, 다른 증거로 검증할지** 분류한다.
+수집 직후 각 요구를 **PM-facing 검증 계약**으로 바꾼다.
+
+| 필드 | 의미 |
+|------|------|
+| 근거 출처 | Jira/Notion/Slack/와이어프레임/PR test plan/frame/사용자 지시 |
+| PM-readable claim | 비개발자가 이해할 수 있는 성공 문장 |
+| 사용자/관리자 시나리오 | 어떤 role이 어떤 화면에서 무엇을 조작하는지 |
+| 대상 subject | 같은 row/id/order/review/user 등 상태 전환을 증명할 기준 subject |
+| 화면 oracle | 무엇이 보이면 기획대로 구현된 것인지 |
+| primary visual evidence | screenshot/GIF/crop 중 무엇으로 보여줄지 |
+| 하단 기술 보조 검증 | API/DB/code/test가 필요한 경우만 기록 |
+| 제외할 noise | 로그인 실패, bootstrap, selector 삽질 등 report에서 숨길 준비 과정 |
+
+그 다음 각 항목을 **검증 축(coverage axis)** 으로 쪼개고, 축마다 **화면 캡처로 검증할지, 하단 보조 근거로 검증할지** 분류한다.
 
 필수 coverage 도출 규칙:
 
@@ -106,25 +123,25 @@ Escape hatch:
 | **UI_CAPTURE** | 화면에 보이는 상태/플로우 | PNG/GIF + 짧은 설명 |
 | **NETWORK** | GA/픽셀/API 요청 발화/미발화 | request/response 로그, matched count, 필터 조건 |
 | **CONSOLE** | 콘솔 출력/런타임 상태 | console log/error 캡처 |
-| **CODE_DIFF** | 코드 구조 자체가 근거 | 관련 diff/파일/라인 요약 |
-| **BE** | API/권한/DB만 영향 | API 응답, SQL 결과, 로그 또는 CODE_DIFF |
+| **CODE_DIFF** | 코드 구조 자체가 근거 | 하단 기술 보조 검증의 관련 diff/파일/라인 요약 |
+| **BE** | API/권한/DB만 영향 | 하단 기술 보조 검증의 API 응답, SQL 결과, 로그 또는 CODE_DIFF |
 | **SKIP** | 이번 리포트에서 제외 | 제외 사유 |
 
 정책축 스캔이 있는 작업은 “보이는 화면”만 캡처하지 말고, 각 채널이 올바른 기준 시간을 쓰는지와 DEFAULT/다중 적용 규칙이 실제 결과에 반영되는지를 항목으로 분리한다. 화면 증거가 없는 축은 BE/API/SQL/log/code diff 증거로 닫고, 닫지 못하면 Coverage Gap으로 남긴다.
 
 백엔드 레이어 맵이 있는 작업은 사용자-facing 결과뿐 아니라 “책임이 올바른 레이어에 있는가”도 CODE_DIFF/BE 증거로 닫는다. 예를 들어 resolver는 연결만 하는지, repo는 조회 조건만 소유하는지, VO는 계산/불변식을 소유하는지, loader key에 기준 값이 들어가는지를 항목화한다.
 
-분류 결과를 사용자에게 보여주고 확인한다.
+분류 결과를 사용자에게 보여주고 확인한다. 이 계획은 개발자용 테스트 목록이 아니라 PM-facing 리포트의 목차여야 한다.
 
 ```markdown
-다음 검증 항목과 증거 유형으로 리포트를 만들겠습니다. 수정할 게 있나요?
+다음 기획 근거 → 구현 동작 → 캡처 증거 매핑으로 리포트를 만들겠습니다. 수정할 게 있나요?
 
-| # | 성공 기준 / 검증 축 | 캡처/증거 유형 | 환경 메타데이터 | 이유 |
-|---|----------------------|----------------|------------------|------|
-| V1 | dev 스팟상세에서 GA 이벤트 미발화 | NETWORK | dev / reload+scroll / anonymous | 화면 변화 없음, 네트워크 요청 여부가 핵심 증거 |
-| V2 | 신규 버튼 노출 — mobile 390px | UI_CAPTURE | before=base / after=local / 390×844 / member | 화면에 보이는 상태는 before/after 비교가 가장 명확 |
-| V3 | 신규 버튼 노출 — desktop 1440px | UI_CAPTURE | before=base / after=local / 1440×900 / member | responsive 회귀를 막기 위한 별도 축 |
-| V4 | 권한 없는 mutation 차단 | BE | preview / unauthorized role | API 응답/권한 로직 검증 |
+| # | 근거 출처 | PM-readable 성공 기준 | 시나리오/subject | primary evidence | 하단 보조 검증 |
+|---|-----------|-------------------------|------------------|------------------|----------------|
+| V1 | Jira COM-123 | 관리자가 새 옵션을 켜면 사용자 화면에 새 CTA가 보인다 | admin 설정 → user detail / item=123 | before/after focused crop | API 응답 JSON |
+| V2 | 와이어프레임 | 모바일에서 카드가 한 줄로 겹치지 않는다 | anonymous / 390×844 | mobile crop | 없음 |
+| V3 | PR test plan | 클릭 플로우가 끊기지 않고 상세로 이동한다 | member / click CTA | GIF primary + final PNG | console error 0 |
+| T1 | 코드 리스크 | 권한 없는 mutation은 차단된다 | unauthorized role | 없음 | API 403 response |
 ```
 
 ## Step 2: 검증 환경 확인
@@ -314,19 +331,24 @@ Subagent launch가 필요한 경우, 현재 Pi subagent 규칙에 따라 먼저 
 
 모든 case worker 결과를 main이 adjudication한 뒤 `verify_report_live action=update`로 각 항목의 최종 상태와 evidence를 반영하고, 마지막에 `verify_report_live action=finish`로 `.context/work/{workspace}/captures/report.html`을 export한다. live Glimpse 창은 최종 상태로 갱신되고, 이후에는 `/archive`로 다시 열 수 있다.
 
-finish 전에 결과를 세 그룹으로 분리한다. `verify_report_live finish`는 report lint도 실행해 motion claim의 GIF 누락, GIF+PNG pairing 누락, setup noise PASS item, primary tall image, evidence metadata 누락을 Report Lint 섹션과 tool details에 경고로 남긴다. 경고는 PASS를 자동으로 뒤집지는 않지만, motion claim의 GIF 누락은 Coverage Gap 후보로 보고 보완하거나 unverified 처리한다.
+finish 전에 결과를 네 그룹으로 분리한다. 상단은 PM-facing 캡처 검증이고, 로직/API/DB/code diff는 하단 기술 보조 검증으로 내린다. `verify_report_live finish`는 report lint도 실행해 motion claim의 GIF 누락, GIF+PNG pairing 누락, setup noise PASS item, primary tall image, evidence metadata 누락을 Report Lint 섹션과 tool details에 경고로 남긴다. 경고는 PASS를 자동으로 뒤집지는 않지만, motion claim의 GIF 누락처럼 PM-facing 이해를 깨는 항목은 Coverage Gap 후보로 보고 보완하거나 unverified 처리한다.
 
 ```markdown
-Verified
-- 증거로 닫힌 항목
+Verified — PM-facing behavior
+- 기획 근거와 매핑된 사용자-facing 동작이 캡처/GIF로 닫힌 항목
 
 Coverage gaps / Unverified
 - 필요한 축이 빠진 항목
 - 캡처는 있지만 검증 기준을 닫지 못한 항목
 - case worker가 `UNVERIFIED`로 올렸고 main이 추가 증거/질문/보완 없이 닫지 못한 항목
 
+Technical support checks
+- API/DB/code diff/unit test처럼 화면 증거를 보조하는 하단 근거
+- 비가시 정책 자체가 요구사항인 경우의 BE/NETWORK/CODE_DIFF 근거
+
 Blocked / Known unrelated failures
 - 권한/외부 환경/기존 실패로 막힌 항목
+- setup noise는 검증을 실제로 막은 경우에만 여기에 짧게 기록
 ```
 
 ```json
@@ -385,12 +407,13 @@ Blocked / Known unrelated failures
 
 | 케이스 | 해결 |
 |--------|------|
-| 화면 변화가 있는 검증 | PNG/GIF 캡처를 우선 증거로 남긴다. |
+| 기획 근거가 있는 UI 검증 | 근거 출처 → PM-readable 성공 기준 → 실제 화면 캡처/GIF를 같은 item에 매핑한다. |
+| 화면 변화가 있는 검증 | PNG/GIF 캡처를 primary evidence로 남긴다. code/test/DB는 하단 보조 근거다. |
 | 이동/전환/클릭/열림/닫힘/스무스함 검증 | GIF/짧은 영상을 primary로 두고, 대표 PNG/crop을 supporting으로 함께 둔다. 최종 PNG만으로 PASS 처리하지 않는다. |
 | responsive/layout 변경 | mobile + breakpoint boundary + desktop 축을 모두 계획하고, 누락 시 Coverage Gap으로 남긴다. |
 | 기존 대비 변경이 중요한 UI | before + after를 같은 viewport/role/action으로 캡처하고 차이를 설명한다. |
 | 긴 full-page 캡처 | primary evidence로 쓰지 않는다. crop/section 이미지를 본문에 두고 full-page는 토글/appendix/link로 둔다. |
-| 화면 변화가 없는 검증 | UI 캡처로 억지 증명하지 말고 NETWORK/CONSOLE/CODE_DIFF 증거로 남긴다. |
+| 화면 변화가 없는 검증 | UI 캡처로 억지 증명하지 말고 NETWORK/CONSOLE/CODE_DIFF 증거로 남기되, PM-facing 섹션이 아니라 하단 기술 보조 검증으로 둔다. |
 | GA/픽셀 미발화 검증 | `targetEvents`, 필터 조건, matched count, matched requests를 JSON으로 저장한다. |
 | 사용자가 “BE는 빼” | BE/CODE_DIFF 항목을 SKIP 표시하고 사유를 남긴다. |
 | 사용자가 “추가로 X도 확인” | update 모드로 기존 리포트에 항목 append. |
