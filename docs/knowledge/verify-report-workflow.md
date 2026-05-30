@@ -45,7 +45,7 @@ source:
   - user-feedback:2026-05-19-motion-first-and-setup-noise
   - user-feedback:2026-05-30-prior-correction-intent
 reviewed_at: 2026-05-30
-reviewed_commit: 96f0421f8271a13ab9af3f2ada8aec58700f2c47
+reviewed_commit: 3b49f4999dfb4cd256dc28d9757a7a29b67d3c70
 related:
   - pilee-knowledge-system
   - web-search-curator

@@ -24,7 +24,7 @@ source:
   - user-feedback:2026-05-30-pm-facing-capture-report-preflight
   - user-feedback:2026-05-30-prior-correction-intent
 reviewed_at: 2026-05-30
-reviewed_commit: 8519c9f9eedc83e23261465ad054aff37c4c797f
+reviewed_commit: 3b49f4999dfb4cd256dc28d9757a7a29b67d3c70
 related:
   - verify-report-workflow
   - evidence-first-verification-gate
