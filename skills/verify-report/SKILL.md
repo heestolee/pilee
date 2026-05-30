@@ -12,6 +12,7 @@ argument-hint: "[base-url] [--upload] [--update] [--ask-before] [--no-workers]"
 
 - **PM-facing이 기본값**: 리포트는 개발자 디버깅 로그가 아니라 PM·기획자·디자이너가 구현 핵심과 동작을 빠르게 이해하는 공유 문서다. 내부 셋업/삽질보다 사용자-facing 결과를 먼저 보여준다.
 - **기획 근거와 구현 동작을 매핑**: Jira, Notion, Slack, 와이어프레임, PR test plan, frame 성공 기준이 있으면 각 요구를 실제 화면 동작/상태와 연결한다. 출처가 없는 코드 리스크는 별도 기술 보조 검증으로 내린다.
+- **과거 교정은 intent로 재해석**: 이전 실패 회고나 사용자 교정은 중요한 제약이지만, 기능의 primary action을 덮어쓰는 literal 요구가 아니다. 먼저 교정이 막으려던 실패(intent)를 추출하고, 현재 데이터/권한/side effect상 literal 실행이 비현실적이면 같은 intent를 보존하는 현실적인 equivalent path를 제안하거나 선택한다. blocked는 교정 intent까지 보존할 대체 경로가 없을 때만 쓴다.
 - **캡처 중심 리포트**: UI 기능의 primary evidence는 focused screenshot/GIF다. code diff, API 응답, DB 조회, unit test는 PM-facing 화면 증거를 보조하거나 비가시 정책을 설명하는 하단 근거로 둔다.
 - **Coverage 먼저, 캡처는 그 다음**: 리포트 시작 전에 요구사항으로 검증 축을 정의한다. 캡처가 있어도 해당 축을 닫지 못하면 PASS가 아니다.
 - **Motion-first evidence**: 이동/전환/클릭/열림/닫힘/스무스함/끊김 없음처럼 시간 흐름이 claim이면 정적 PNG만으로 PASS 처리하지 않는다. GIF/짧은 영상이 primary evidence이고, 대표 final-state PNG/crop은 supporting evidence로 함께 둔다. GIF는 판독 가능한 품질이어야 하며, 기본 기준은 3~8초, 720~800px 이상 폭, 10~15fps, `palettegen/paletteuse` 적용이다. 저용량을 이유로 390px/8fps/no-palette처럼 텍스트와 색상이 깨지는 설정을 primary evidence에 쓰지 않는다.
@@ -87,18 +88,28 @@ Escape hatch:
 6. **구현 코드 분석** — 기획 근거가 비어 있는 리스크를 보완하는 보조 입력
 7. **정책축 스캔 / 백엔드 레이어 맵** — 비가시 정책·레이어 책임은 하단 기술 보조 검증 후보로 승격
 
+수집 직후 먼저 **핵심 사용자 행동(primary action)** 을 고정한다. 이 기능이 `create`, `update`, `read/display`, `delete`, `permission denial`, `event emission` 중 무엇으로 성공하는지 분리한다. 과거 교정이 있으면 문장을 literal과 intent로 나눈다. 예를 들어 “같은 기존 항목으로 비교”가 권한 정책상 불가능한데 기능의 핵심이 “새 항목 생성 시 선택값 저장/표시”라면, literal 기존 항목 수정에 매이지 말고 “user-facing에 노출되는 생성 가능한 subject로 새 항목을 만들어 선택값별 표시를 확인”하는 equivalent path로 재구성한다.
+
 수집 직후 각 요구를 **PM-facing 검증 계약**으로 바꾼다.
 
 | 필드 | 의미 |
 |------|------|
 | 근거 출처 | Jira/Notion/Slack/와이어프레임/PR test plan/frame/사용자 지시 |
 | PM-readable claim | 비개발자가 이해할 수 있는 성공 문장 |
+| 핵심 사용자 행동 | create/update/read-display/permission/event 중 기능을 실제로 닫는 primary verb |
 | 사용자/관리자 시나리오 | 어떤 role이 어떤 화면에서 무엇을 조작하는지 |
 | 대상 subject | 같은 row/id/order/review/user 등 상태 전환을 증명할 기준 subject |
 | 화면 oracle | 무엇이 보이면 기획대로 구현된 것인지 |
 | primary visual evidence | screenshot/GIF/crop 중 무엇으로 보여줄지 |
 | 하단 기술 보조 검증 | API/DB/code/test가 필요한 경우만 기록 |
 | 제외할 noise | 로그인 실패, bootstrap, selector 삽질 등 report에서 숨길 준비 과정 |
+
+과거 교정/실패 회고가 현재 기능의 primary action과 충돌하면, 아래 순서로 처리한다.
+
+1. 교정 literal과 intent를 분리한다. (`기존 row만 써라` vs `서로 다른 조건의 데이터를 섞지 마라`)
+2. literal 실행 가능성을 확인한다. 권한 정책, user-facing 노출 여부, side effect 위험을 본다.
+3. literal이 비현실적이면 core feature path에서 intent를 보존하는 equivalent subject/action을 찾는다.
+4. equivalent path가 있으면 그 경로를 검증 계약에 명시하고 진행한다. 없을 때만 blocked/unverified로 내린다.
 
 그 다음 각 항목을 **검증 축(coverage axis)** 으로 쪼개고, 축마다 **화면 캡처로 검증할지, 하단 보조 근거로 검증할지** 분류한다.
 
@@ -111,6 +122,7 @@ Escape hatch:
 | typography/logo/token 변경 | screenshot + DOM class/token + computed `font-size`/`line-height` |
 | table/card/overflow 변경 | empty state + data state + overflow/scroll state |
 | option/default selection 변경 | no data + data exists + stale/refresh selection 유지 |
+| create/update/read 등 primary action이 있는 기능 | primary action happy path + downstream user-facing 표시/저장 확인 + 필요한 regression path |
 | 기존 UI/동작을 바꾸는 수정 | 같은 route/action/viewport/role의 before + after 비교 |
 | 정책축 스캔이 있는 작업 | channel_matrix의 각 채널 + time_basis/default_fallback/application_cardinality/data_migration/api_cache_identity 축 |
 | 백엔드 레이어 맵이 있는 작업 | entry_point/application_flow/domain_rule/data_access/cache_batching/persistence/consumer 책임 축 |

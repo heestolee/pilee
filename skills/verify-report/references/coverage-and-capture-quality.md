@@ -10,6 +10,7 @@ Verify Report는 개발자용 디버깅 로그가 아니라 구현 공유 문서
 |-----------|------|
 | Requirement source | Jira/Notion/Slack/와이어프레임/PR test plan/frame/사용자 지시 중 무엇을 증명하는가? |
 | Audience claim | PM·기획자가 읽을 한 문장 성공 기준은 무엇인가? |
+| Primary feature verb | 이 기능을 실제로 닫는 핵심 동사는 create/update/read-display/permission/event 중 무엇인가? |
 | Actor / role | 누가 조작하거나 보는가? admin/member/partner/anonymous 등 |
 | Subject identity | 같은 row/order/review/user/item임을 무엇으로 보장하는가? |
 | User-facing oracle | 화면에서 무엇이 보여야 성공인가? |
@@ -18,6 +19,20 @@ Verify Report는 개발자용 디버깅 로그가 아니라 구현 공유 문서
 | Excluded setup noise | 로그인/빌드/bootstrap/selector 시행착오 중 report에서 숨길 것은 무엇인가? |
 
 하나의 리포트는 위 계약을 item별로 반복한 PM-facing story여야 한다. 기술 검증은 중요하지만 상단 결론을 대신하지 않는다.
+
+### 0.1 Prior correction intent rule
+
+이전 사용자 교정이나 실패 회고가 있으면 그대로 집행하기 전에 `literal`과 `intent`를 분리한다.
+
+| 단계 | 확인 |
+|------|------|
+| Primary action | 기능의 핵심 동사가 create/update/read-display/permission/event 중 무엇인지 고정한다. |
+| Correction literal | 과거 교정을 문장 그대로 실행하면 어떤 subject/action이 필요한지 적는다. |
+| Correction intent | 그 교정이 막으려던 실패를 적는다. 예: 다른 조건의 데이터를 섞지 않기, setup noise 제외, role 혼동 방지. |
+| Feasibility | literal이 현재 권한 정책, user-facing 노출, side effect 조건에서 현실적인지 확인한다. |
+| Equivalent path | literal이 비현실적이면 core feature path에서 같은 intent를 보존하는 subject/action을 찾는다. |
+
+`blocked`는 literal이 불가능하다는 이유만으로 쓰지 않는다. 같은 intent를 보존하는 equivalent path가 있으면 그 경로를 item detail에 명시하고 PASS/FAIL을 판단한다. 대체 경로도 없거나 위험 side effect 승인이 없을 때만 Coverage Gap/blocked로 내린다.
 
 ## 1. Coverage matrix first
 
@@ -30,6 +45,7 @@ Verify Report는 개발자용 디버깅 로그가 아니라 구현 공유 문서
 | typography/logo/token | screenshot, DOM class/token, computed style, before/after | crop + computed style text |
 | table/card/list | empty, data, overflow/scroll | section crop + data fixture 설명 |
 | default selection/option panel | no data, data exists, refresh/stale selection | UI crop + state/log excerpt |
+| primary create/update/read action | happy path, 저장/조회, downstream 표시, 필요한 regression path | UI crop/GIF + DB/API support |
 | network/event | trigger, non-trigger, request payload/count | network JSON/TXT + optional UI context |
 | BE/API/permission | authorized, unauthorized, error path | 하단 기술 보조 검증의 response JSON/status/log |
 
@@ -153,7 +169,8 @@ PASS 금지 예시:
 
 - 요구사항/기획 근거 또는 PM-readable 성공 기준이 없다.
 - UI item인데 primary 화면 캡처/GIF가 없거나, 캡처 안에 expected UI가 보이지 않는다.
-- state transition/before-after claim인데 같은 subject identity가 보장되지 않는다.
+- state transition/before-after claim인데 같은 subject identity가 보장되지 않고, equivalent path도 명시되지 않았다.
+- 과거 교정 literal이 비현실적인데 primary action과 correction intent를 재해석하지 않고 blocked/pass로 처리했다.
 - actor/role이 성공 기준의 일부인데 잘못된 계정/role로 검증했다.
 - motion/flow claim인데 GIF/짧은 영상 없이 정적 PNG만 있다.
 - setup/login/bootstrap 실패를 기능 PASS evidence처럼 넣었다.

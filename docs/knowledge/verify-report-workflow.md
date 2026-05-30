@@ -43,6 +43,7 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-feedback:2026-05-11-detail-readability
   - user-feedback:2026-05-19-motion-first-and-setup-noise
+  - user-feedback:2026-05-30-prior-correction-intent
 reviewed_at: 2026-05-30
 reviewed_commit: 96f0421f8271a13ab9af3f2ada8aec58700f2c47
 related:
@@ -72,7 +73,9 @@ live preview는 [web-search-curator](./web-search-curator.md)의 “작업 중 G
 
 ## Requirement Mapping Rule
 
-캡처는 coverage 계획 뒤에 오지만, coverage는 diff가 아니라 기획 근거에서 먼저 나와야 합니다. 각 item은 `근거 출처 → PM-readable 성공 기준 → actor/role → subject identity → 화면 oracle → primary capture → technical support` 계약을 가져야 합니다. 같은 상태 전환을 보여주는 리포트는 같은 row/order/review/user/item 같은 subject identity를 유지해야 하며, 다른 후보를 찾는 순간 원래 item을 닫은 증거가 아닙니다.
+캡처는 coverage 계획 뒤에 오지만, coverage는 diff가 아니라 기획 근거에서 먼저 나와야 합니다. 각 item은 `근거 출처 → PM-readable 성공 기준 → primary feature verb → actor/role → subject identity → 화면 oracle → primary capture → technical support` 계약을 가져야 합니다. 같은 상태 전환을 보여주는 리포트는 같은 row/order/review/user/item 같은 subject identity를 유지해야 하며, 다른 후보를 찾는 순간 원래 item을 닫은 증거가 아닙니다.
+
+다만 과거 사용자 교정이나 실패 회고는 literal 요구가 아니라 intent 보존 제약으로 재해석해야 합니다. 먼저 기능의 primary action이 create/update/read-display/permission/event 중 무엇인지 고정하고, 교정 문장의 literal 실행 가능성을 확인합니다. literal subject/action이 권한 정책, user-facing 노출 여부, side effect 조건 때문에 비현실적이면 바로 blocked로 내리지 말고, 같은 correction intent를 보존하는 equivalent core feature path를 찾습니다. equivalent path가 있으면 item detail에 대체 경로와 보존한 intent를 명시하고 검증합니다. 대체 경로도 없거나 위험 side effect 승인이 없을 때만 Coverage Gap/blocked로 남깁니다.
 
 ## Coverage Rule
 

@@ -1,6 +1,6 @@
 {
   "name": "pilee",
-  "version": "0.1.177",
+  "version": "0.1.178",
   "description": "Personal pi coding agent config 🔥",
   "private": true,
   "type": "module",
@@ -31,6 +31,7 @@
     "knowledge:resolve": "node scripts/knowledge.mjs --resolve-stale",
     "knowledge:resolver-log": "node scripts/knowledge.mjs --resolver-log",
     "test:pilee-final-check": "node scripts/check-pilee-final-check.mjs",
+    "test:verify-report-prior-correction": "node scripts/check-verify-report-prior-correction.mjs",
     "test:pr-ship": "node scripts/check-pr-ship-reply-guidance.mjs",
     "test:tui-ask": "node scripts/run-typescript-test.mjs extensions/tui-ask/index.test.ts",
     "test:ship-commands": "node scripts/run-typescript-test.mjs extensions/ship-commands/index.test.ts",

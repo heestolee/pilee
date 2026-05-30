@@ -22,6 +22,7 @@ applies_to:
 source:
   - user-direction:2026-05-12-verify-report-preflight-skill
   - user-feedback:2026-05-30-pm-facing-capture-report-preflight
+  - user-feedback:2026-05-30-prior-correction-intent
 reviewed_at: 2026-05-30
 reviewed_commit: 8519c9f9eedc83e23261465ad054aff37c4c797f
 related:
@@ -46,6 +47,7 @@ Preflight는 각 검증 item을 아래 계약으로 바꿔야 합니다.
 |-----------|----------------|
 | Requirement source | Jira/Notion/Slack/와이어프레임/PR test plan/frame/user instruction 중 무엇을 증명하는가 |
 | PM-readable claim | PM·기획자가 읽을 한 문장 성공 기준 |
+| Primary action | 기능을 실제로 닫는 핵심 동사가 create/update/read-display/permission/event 중 무엇인가 |
 | Actor / role | 누가 조작하거나 보는가. 기능 대상 role과 검증 계정 role이 일치하는가 |
 | Subject identity | 같은 row/order/review/user/item임을 무엇으로 보장하는가 |
 | User-facing oracle | 화면에서 어떤 텍스트/상태/흐름이 보여야 성공인가 |
@@ -55,6 +57,18 @@ Preflight는 각 검증 item을 아래 계약으로 바꿔야 합니다.
 
 이 계약이 없으면 `/verify-report`는 시작할 수는 있어도 신뢰도 높은 PM-facing report가 되기 어렵습니다. 특히 before/after 또는 A→B state transition은 같은 subject identity가 없으면 PASS 후보가 아닙니다.
 
+## Prior Correction Intent Rule
+
+과거 사용자 교정이나 실패 회고는 중요하지만, 항상 문장 그대로 집행할 requirement는 아닙니다. Preflight는 이를 아래처럼 분리해야 합니다.
+
+1. **Primary action**: 현재 기능의 핵심 동사가 무엇인지 먼저 고정합니다. 생성 기능이면 생성 happy path와 저장/표시 결과가 1순위이고, 기존 항목 수정은 regression 축일 수 있습니다.
+2. **Correction literal**: 과거 교정을 그대로 실행하려면 어떤 기존 subject/action이 필요한지 적습니다.
+3. **Correction intent**: 그 교정이 막으려던 실패를 적습니다. 예를 들어 “서로 다른 조건의 데이터 섞기 금지”, “setup noise 제외”, “actor/role 혼동 방지”입니다.
+4. **Feasibility**: literal subject/action이 현재 권한 정책, user-facing 노출, side effect 조건에서 현실적인지 확인합니다.
+5. **Equivalent path**: literal이 비현실적이면 같은 intent를 보존하는 core feature path를 찾고, contract에 대체 경로를 명시합니다.
+
+blocked는 literal 실행이 불가능하다는 이유만으로 쓰지 않습니다. correction intent를 보존하는 equivalent path가 없거나, 사용자 승인 없는 위험 side effect가 필요한 경우에만 blocked로 내립니다.
+
 ## Readiness Rule
 
 캡처를 시작하기 전에 최소한 아래를 표로 잠급니다.
@@ -62,6 +76,7 @@ Preflight는 각 검증 item을 아래 계약으로 바꿔야 합니다.
 | 축 | 확인해야 할 것 |
 |---|---|
 | Requirement | 근거 출처와 PM-readable 성공 기준 |
+| Primary Action / Correction | 기능의 핵심 동사, 과거 교정 literal/intent, literal 현실성, equivalent path 여부 |
 | Target | local/dev/preview/prod URL과 route |
 | Actor/Role | 계정 alias/session/role, 기능 대상과의 일치 |
 | Subject/Data | subject id, fixture/data 상태, side effect 여부 |
