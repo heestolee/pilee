@@ -25,7 +25,7 @@ source:
   - user-feedback:2026-05-30-prior-correction-intent
   - user-feedback:2026-05-30-frame-handoff-adjudication
 reviewed_at: 2026-05-30
-reviewed_commit: 3b49f4999dfb4cd256dc28d9757a7a29b67d3c70
+reviewed_commit: 1270e1a2318cb0d7d3737094f2e9760bc75c9c39
 related:
   - verify-report-workflow
   - evidence-first-verification-gate
