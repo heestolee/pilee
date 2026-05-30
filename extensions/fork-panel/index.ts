@@ -569,6 +569,36 @@ function resolveRecordSessionIdFromSession(record: ForkRecord): string {
 	return record.sessionId || extractSessionId(readSessionPreviewEntries(record.sessionFile));
 }
 
+function isForkPanelCloneSessionFile(sessionFile: string): boolean {
+	return /^\d{13}_[0-9a-f]{8}\.jsonl$/i.test(basename(sessionFile));
+}
+
+function restoreForkClonePanelLabels(records: ForkRecord[]): ForkRecord[] {
+	const bySessionId = new Map<string, ForkRecord[]>();
+	for (const record of records) {
+		if (!record.sessionId) continue;
+		const group = bySessionId.get(record.sessionId) ?? [];
+		group.push(record);
+		bySessionId.set(record.sessionId, group);
+	}
+
+	for (const group of bySessionId.values()) {
+		if (group.length < 2) continue;
+		const parent = group.find((record) => !isForkPanelCloneSessionFile(record.sessionFile)) ?? group[0];
+		const clones = group
+			.filter((record) => record !== parent && isForkPanelCloneSessionFile(record.sessionFile))
+			.sort((a, b) => a.createdAt - b.createdAt);
+		for (let index = 0; index < clones.length; index++) {
+			const clone = clones[index];
+			clone.source = "fork";
+			clone.panelLabel = `P${index + 1}`;
+			clone.parentSessionFile = parent.sessionFile;
+			clone.forkId = clone.forkId.startsWith("p0_") ? `recovered_${shortHash(clone.sessionFile)}` : clone.forkId;
+		}
+	}
+	return records;
+}
+
 function buildP0RecordFromSession(sessionFile: string): ForkRecord | null {
 	try {
 		const real = safeRealpath(sessionFile);
@@ -615,7 +645,7 @@ function collectP0SessionRecords(excludeSessionFiles: Set<string>): ForkRecord[]
 			}
 		}
 	} catch {}
-	return records.sort((a, b) => (b.closedAt ?? b.createdAt) - (a.closedAt ?? a.createdAt));
+	return restoreForkClonePanelLabels(records).sort((a, b) => (b.closedAt ?? b.createdAt) - (a.closedAt ?? a.createdAt));
 }
 
 function collectReviveRecords(recent: Record<string, ForkRecord>): ForkRecord[] {
