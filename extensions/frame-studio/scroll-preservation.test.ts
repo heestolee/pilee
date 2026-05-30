@@ -111,8 +111,8 @@ function loadStudioScript(fakeWindow: FakeWindow, fakeDocument: FakeDocument) {
 			if (count > limit) throw new Error("Timer queue did not settle");
 		}
 	}
-	const factory = new Function("window", "document", "EventSource", "fetch", "setTimeout", "requestAnimationFrame", `${script}\nreturn { render: render, selectTab: selectTab, renderArchitectureFlowElement: renderArchitectureFlowElement };`);
-	return { ...(factory(fakeWindow, fakeDocument, EventSource, fetch, queueTimer, queueTimer) as { render(state: any, options?: any): void; selectTab(key: string): void; renderArchitectureFlowElement(el: any, spec: any): void }), flushTimers };
+	const factory = new Function("window", "document", "EventSource", "fetch", "setTimeout", "requestAnimationFrame", `${script}\nreturn { render: render, selectTab: selectTab, renderArchitectureFlowElement: renderArchitectureFlowElement, renderBackendLayerVisualElement: renderBackendLayerVisualElement };`);
+	return { ...(factory(fakeWindow, fakeDocument, EventSource, fetch, queueTimer, queueTimer) as { render(state: any, options?: any): void; selectTab(key: string): void; renderArchitectureFlowElement(el: any, spec: any): void; renderBackendLayerVisualElement(el: any, spec: any): void }), flushTimers };
 }
 
 function extractArchNodeBoxes(html: string) {
@@ -125,6 +125,35 @@ function extractArchLabelRects(html: string) {
 	return [...html.matchAll(/<rect class="arch-edge-label-bg" x="([\d.-]+)" y="([\d.-]+)" width="([\d.-]+)" height="([\d.-]+)"/g)]
 		.map((match) => ({ x: Number(match[1]), y: Number(match[2]), width: Number(match[3]), height: Number(match[4]) }));
 }
+
+test("Backend layer visual keeps contract before the short learning helper", () => {
+	const browser = createFakeBrowser({ top: 0, viewport: 600, height: 1600 });
+	const studio = loadStudioScript(browser.window, browser.document);
+	const element = { id: "layer-contract-learning-test", className: "", innerHTML: "" };
+
+	studio.renderBackendLayerVisualElement(element, {
+		kind: "backend-layer-map",
+		layers: [
+			{
+				layer: "application_flow",
+				title: "Existing approval usecase",
+				requirements: ["R2", "R3"],
+				responsibilities: ["전체 승인/승인 버튼이 기존 승인 흐름을 재사용하는지 확인"],
+				evidence: ["기존 approve action 호출 diff", "신규 bulk endpoint 없음"],
+				frontendAnalogy: "프론트의 submit handler + 여러 hook/API call 조합",
+				whyHere: "승인은 사용자 행동 단위의 업무 흐름이기 때문",
+				ifWrong: "화면마다 승인 조건이 흩어져 회귀가 생김",
+			},
+		],
+	});
+
+	const contractIndex = element.innerHTML.indexOf("Contract · 책임");
+	const learningIndex = element.innerHTML.indexOf("Learning · 짧은 보조 설명");
+	assert.ok(contractIndex >= 0, "contract layer should render");
+	assert.ok(learningIndex > contractIndex, "learning helper should be after contract layer");
+	assert.match(element.innerHTML, /프론트 비유/);
+	assert.match(element.innerHTML, /신규 bulk endpoint 없음/);
+});
 
 test("Architecture flow keeps variable-height nodes in the same lane from overlapping", () => {
 	const browser = createFakeBrowser({ top: 0, viewport: 600, height: 1600 });
@@ -221,9 +250,9 @@ test("Architecture flow horizontal routing keeps edge labels below cards", () =>
 		direction: "RIGHT",
 		lanes: ["UI", "Action", "Verification"],
 		nodes: [
-			{ id: "ui", lane: "UI", type: "screen", title: "Mobile cards", description: "사용자가 보는 카드" },
-			{ id: "action", lane: "Action", type: "service", title: "Existing approval action", description: "기존 action boundary" },
-			{ id: "verify", lane: "Verification", type: "review", title: "Capture evidence", description: "캡처 증거" },
+			{ id: "ui", lane: "UI", type: "screen", title: "Mobile cards", description: "사용자가 보는 카드", requirements: ["R1"], responsibility: "카드와 버튼 노출", evidence: ["375px 캡처"], frontendAnalogy: "프론트 컴포넌트" },
+			{ id: "action", lane: "Action", type: "service", title: "Existing approval action", description: "기존 action boundary", requirements: ["R2"], responsibility: "기존 action 재사용", evidence: ["action wiring diff"], frontendAnalogy: "submit handler" },
+			{ id: "verify", lane: "Verification", type: "review", title: "Capture evidence", description: "캡처 증거", requirements: ["R3"], responsibility: "PASS 증거 수집", evidence: ["캡처 리포트"], frontendAnalogy: "QA 체크리스트" },
 		],
 		edges: [
 			{ from: "ui", to: "action", label: "기존 action" },
@@ -236,6 +265,7 @@ test("Architecture flow horizontal routing keeps edge labels below cards", () =>
 	assert.equal(labelRects.length, 2);
 	assert.ok(labelRects.every((rect) => rect.y > nodeBottom), "edge labels should be placed in the bottom bus, below node cards");
 	assert.match(element.innerHTML, /stroke-linejoin="round"/);
+	assert.ok(element.innerHTML.indexOf("Contract · 책임") < element.innerHTML.indexOf("프론트 비유"), "architecture node contract should appear before learning text");
 });
 
 test("TFT Studio state update preserves the reader's current scroll offset", () => {

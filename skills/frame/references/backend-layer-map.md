@@ -93,10 +93,12 @@ GraphQL Reservation.beautyCashbackCampaign
 Layer Visual Map 규칙:
 
 - `kind`는 반드시 `backend-layer-map`으로 둔다.
+- contract layer가 우선이다. 각 카드의 `requirements`/`responsibilities`/`evidence`가 먼저 보여야 하고, 학습 설명은 그 뒤의 짧은 보조 설명이어야 한다.
 - `layers[].requirements`는 Requirement Matrix의 ID와 일치해야 한다.
-- `beginnerDescription`은 “요청 접수창”, “업무 총괄자”, “DB 창구”처럼 쉬운 비유를 포함한다.
-- `files`는 후보 파일을 1~3개만 적고, 파일 나열이 visual의 주 내용이 되지 않게 한다.
+- `responsibilities`는 이번 작업에서 이 레이어/경계가 닫는 책임을 1~3개로 쓴다.
 - `evidence`는 해당 레이어가 닫혔음을 어떤 검증으로 볼지 적는다.
+- learning layer는 `frontendAnalogy`, `whyHere`, `ifWrong`, `beginnerDescription`처럼 짧게 둔다. 프론트 개발자 비유는 이해를 돕는 보조일 뿐, requirement/evidence를 대체하지 않는다.
+- `files`는 후보 파일을 1~3개만 적고, 파일 나열이 visual의 주 내용이 되지 않게 한다.
 - visual이 canonical을 대체하지 않는다. 같은 내용은 `backend_layer_map.layers[]`에도 저장한다.
 
 ## Architecture / Data Flow Map 템플릿
@@ -153,6 +155,7 @@ Architecture/Data Flow Map 규칙:
 
 - `lanes`는 사용자가 읽는 큰 흐름 순서로 둔다. 기본은 UI → API/Resolver → Usecase → Domain/VO → Repository → DB → Ops/Review다.
 - `nodes[].type`은 `screen`, `resolver`, `usecase`, `service`, `domain`, `vo`, `repository`, `table`, `review`, `ops`처럼 책임/형태가 보이게 적는다.
+- node도 contract layer 우선이다. `requirements`, `responsibility`, `evidence`를 먼저 채우고, `frontendAnalogy`, `whyHere`, `ifWrong`은 짧은 learning helper로만 둔다.
 - DB table node는 가능하면 `columns`에 `PK`, `FK`, `UNIQUE`, `JSON`, `source-of-truth`, `legacy` badge를 넣는다. 정확한 컬럼명은 실제 schema를 읽은 뒤 채운다.
 - `edges[].label`에는 “조회”, “payload 저장”, “승인 시 반영”, “legacy pending 반려”처럼 데이터/로직 이동의 의미를 짧게 쓴다.
 - Layer Visual Map과 Architecture/Data Flow Map은 둘 다 설명 surface다. canonical 구조는 `backend_layer_map`, `architecture_flow_map`, `requirement_matrix`, `implementation_plan`, 실제 code/schema에 남긴다.

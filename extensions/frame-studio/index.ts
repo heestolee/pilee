@@ -668,7 +668,14 @@ h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .layer-card-top { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
 .layer-card-title { font-size:15px; font-weight:950; color:#111827; overflow-wrap:anywhere; }
 .layer-card-role { margin-top:3px; display:inline-block; background:#eef2ff; color:#3730a3; border:1px solid #c7d2fe; border-radius:999px; padding:3px 8px; font-size:11px; font-weight:900; }
-.layer-card-beginner { margin-top:9px; padding:9px 10px; border:1px solid rgba(37,99,235,.16); background:rgba(239,246,255,.72); border-radius:12px; color:#334155; font-size:12px; line-height:1.45; }
+.layer-contract-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:7px; margin-top:10px; }
+.layer-contract-card { border:1px solid #dbeafe; background:#ffffff; border-radius:12px; padding:8px 9px; }
+.layer-contract-card strong { display:block; color:#1e3a8a; font-size:10px; text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px; }
+.layer-contract-card span { display:block; color:#1f2937; font-size:12px; line-height:1.38; overflow-wrap:anywhere; }
+.layer-learning { margin-top:9px; padding:8px 10px; border:1px solid rgba(37,99,235,.16); background:rgba(239,246,255,.58); border-radius:12px; color:#334155; font-size:11.5px; line-height:1.42; }
+.layer-learning-title { display:block; color:#1d4ed8; font-size:10px; font-weight:950; text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px; }
+.layer-learning-row { margin:2px 0; overflow-wrap:anywhere; }
+.layer-learning-row b { color:#334155; font-weight:950; }
 .layer-card-section { margin-top:9px; }
 .layer-card-section b { display:block; color:#475569; font-size:11px; text-transform:uppercase; letter-spacing:.04em; margin-bottom:3px; }
 .layer-card-section ul { margin:0; padding-left:18px; }
@@ -700,7 +707,13 @@ h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .arch-node.legacy { opacity:.94; border-style:dashed; }
 .arch-node-title { font-size:13px; font-weight:950; line-height:1.25; overflow-wrap:anywhere; }
 .arch-node-kind { display:inline-flex; margin-top:5px; border:1px solid #ddd6fe; background:#f5f3ff; color:#6d28d9; border-radius:999px; padding:2px 7px; font-size:10px; font-weight:900; }
+.arch-node-contract { display:grid; gap:5px; margin-top:8px; }
+.arch-node-contract-item { border:1px solid #e9d5ff; background:rgba(255,255,255,.82); border-radius:10px; padding:6px 7px; }
+.arch-node-contract-item b { display:block; color:#581c87; font-size:9px; text-transform:uppercase; letter-spacing:.04em; margin-bottom:2px; }
+.arch-node-contract-item span { display:block; color:#1f2937; font-size:10.5px; line-height:1.35; overflow-wrap:anywhere; }
 .arch-node-desc { margin-top:7px; font-size:11px; color:#475569; line-height:1.35; overflow-wrap:anywhere; }
+.arch-node-learning { margin-top:7px; border:1px solid rgba(124,58,237,.16); background:rgba(245,243,255,.62); border-radius:10px; padding:6px 7px; font-size:10.5px; color:#475569; line-height:1.35; }
+.arch-node-learning b { color:#6d28d9; font-weight:950; }
 .arch-node-badges { display:flex; flex-wrap:wrap; gap:4px; margin-top:8px; }
 .arch-badge { display:inline-flex; border:1px solid #e2e8f0; background:#f8fafc; color:#475569; border-radius:999px; padding:2px 6px; font-size:9px; font-weight:950; white-space:nowrap; }
 .arch-badge.pk { border-color:#bfdbfe; background:#eff6ff; color:#1d4ed8; }
@@ -871,16 +884,16 @@ function layerKey(value) {
 }
 function defaultLayerInfo(layer) {
   var raw = layerKey(layer.layer || layer.kind || layer.type || layer.id || layer.title || layer.label);
-  if (/resolver|controller|route|entry|api/.test(raw)) return { key:'entry', role:'요청 접수창', beginner:'사용자나 화면에서 들어온 요청을 가장 먼저 받는 입구입니다. 여기서는 요청 모양을 읽고, 실제 업무 판단은 usecase 쪽으로 넘깁니다.' };
-  if (/usecase|application|flow|orchestr/.test(raw)) return { key:'usecase', role:'업무 총괄자', beginner:'이번 기능을 어떤 순서로 처리할지 조립하는 곳입니다. 권한, 트랜잭션, 여러 서비스 호출 순서를 한 업무 흐름으로 묶습니다.' };
-  if (/service|worker|manager/.test(raw)) return { key:'service', role:'전문 작업자', beginner:'특정 일을 실제로 수행하는 작업자입니다. 이미지 draft 생성, pending 요청 반려처럼 재사용되는 세부 작업을 맡습니다.' };
-  if (/domain|rule|policy/.test(raw)) return { key:'domain', role:'업무 규칙판', beginner:'하면 안 되는 것과 반드시 지켜야 하는 규칙을 모아둔 곳입니다. 승인 전 즉시 반영 금지, 자동승인 금지 같은 약속을 지킵니다.' };
-  if (/entity|model|vo|value/.test(raw)) return { key:'entity', role:'데이터 모양과 불변식', beginner:'DB row나 값 객체가 어떤 의미인지 표현합니다. 단순 저장값이 아니라, 이 값이 어떤 상태와 규칙을 가져야 하는지 드러냅니다.' };
-  if (/repo|data|dao|gateway|loader/.test(raw)) return { key:'repository', role:'DB·외부 저장소 창구', beginner:'데이터를 어디서 읽고 어디에 저장할지 담당하는 창구입니다. 업무 판단을 하지 않고 조회 조건과 저장 경계를 명확히 합니다.' };
-  if (/persist|db|migration|table/.test(raw)) return { key:'persistence', role:'실제 저장소', beginner:'데이터가 실제로 남는 테이블/컬럼입니다. 여기의 구조가 바뀌면 migration, rollback, 운영 데이터 영향까지 함께 봐야 합니다.' };
-  if (/consumer|admin|partner|ui|screen|client/.test(raw)) return { key:'consumer', role:'사용자가 보는 화면', beginner:'최종 사용자가 행동하는 화면입니다. backend가 제공한 결과가 실제 UX와 검증 캡처로 이어지는 곳입니다.' };
-  if (/ops|slack|alert|review|approve/.test(raw)) return { key:'ops', role:'운영 전환 지점', beginner:'운영팀 검수, 승인, 알림처럼 코드 결과가 실제 업무로 넘어가는 지점입니다. 실수하면 사람의 업무 흐름이 깨질 수 있습니다.' };
-  return { key:raw, role:'구조 구성요소', beginner:'이 카드가 맡는 책임을 한 문장으로 설명해야 합니다. 모호하면 구현 전에 어느 레이어 책임인지 다시 나눠야 합니다.' };
+  if (/resolver|controller|route|entry|api/.test(raw)) return { key:'entry', role:'요청 접수창', beginner:'요청 모양을 읽고 실제 업무 판단은 usecase 쪽으로 넘깁니다.', analogy:'프론트의 route handler나 submit entry에 가깝습니다.' };
+  if (/usecase|application|flow|orchestr/.test(raw)) return { key:'usecase', role:'업무 총괄자', beginner:'권한, 트랜잭션, 여러 서비스 호출 순서를 한 업무 흐름으로 묶습니다.', analogy:'프론트의 submit handler + 여러 hook/API call 조합에 가깝습니다.' };
+  if (/service|worker|manager/.test(raw)) return { key:'service', role:'전문 작업자', beginner:'재사용되는 세부 작업을 실제로 수행합니다.', analogy:'프론트의 재사용 helper/action 함수에 가깝습니다.' };
+  if (/domain|rule|policy/.test(raw)) return { key:'domain', role:'업무 규칙판', beginner:'하면 안 되는 것과 반드시 지켜야 하는 규칙을 모아둡니다.', analogy:'프론트의 validation/schema/invariant helper에 가깝습니다.' };
+  if (/entity|model|vo|value/.test(raw)) return { key:'entity', role:'데이터 모양과 불변식', beginner:'값이 어떤 상태와 규칙을 가져야 하는지 드러냅니다.', analogy:'프론트의 typed model/state shape에 가깝습니다.' };
+  if (/repo|data|dao|gateway|loader/.test(raw)) return { key:'repository', role:'DB·외부 저장소 창구', beginner:'업무 판단을 하지 않고 조회 조건과 저장 경계를 명확히 합니다.', analogy:'프론트의 API client/query function에 가깝습니다.' };
+  if (/persist|db|migration|table/.test(raw)) return { key:'persistence', role:'실제 저장소', beginner:'데이터가 실제로 남는 테이블/컬럼입니다.', analogy:'프론트가 의존하는 server state의 원본 저장소입니다.' };
+  if (/consumer|admin|partner|ui|screen|client/.test(raw)) return { key:'consumer', role:'사용자가 보는 화면', beginner:'backend 결과가 실제 UX와 검증 캡처로 이어지는 곳입니다.', analogy:'프론트 컴포넌트/페이지 그 자체입니다.' };
+  if (/ops|slack|alert|review|approve/.test(raw)) return { key:'ops', role:'운영 전환 지점', beginner:'코드 결과가 실제 사람의 업무로 넘어가는 지점입니다.', analogy:'프론트의 admin review 화면이나 운영 action 지점에 가깝습니다.' };
+  return { key:raw, role:'구조 구성요소', beginner:'이 카드가 맡는 책임을 한 문장으로 설명해야 합니다.', analogy:'프론트 관점 비유가 필요하면 한 줄로만 덧붙입니다.' };
 }
 function normalizeLayer(layer, index) {
   layer = layer || {};
@@ -892,18 +905,28 @@ function normalizeLayer(layer, index) {
     title: String(title),
     role: String(layer.beginnerLabel || layer.role || info.role),
     beginner: String(layer.beginnerDescription || layer.beginner || layer.explainLikeBootcamp || info.beginner),
+    analogy: String(layer.frontendAnalogy || layer.frontEndAnalogy || layer.analogy || layer.frontendMentalModel || info.analogy || ''),
+    whyHere: String(layer.whyHere || layer.whyThisLayer || layer.rationale || ''),
+    ifWrong: String(layer.ifWrong || layer.failureMode || layer.wrongLayerRisk || ''),
     requirements: asTextArray(layer.requirements || layer.requirementIds || layer.refs || layer.ids),
-    responsibilities: asTextArray(layer.responsibilities || layer.owns || layer.tasks || layer.contract),
+    responsibilities: asTextArray(layer.responsibilities || layer.owns || layer.tasks || layer.contract || layer.responsibility),
     files: asTextArray(layer.files || layer.paths || layer.candidates),
     evidence: asTextArray(layer.evidence || layer.verify || layer.verification),
     risk: asTextArray(layer.risks || layer.risk),
     status: layer.status || layer.state || 'planned'
   };
 }
+function shortText(value, max) {
+  var text = String(value || '').trim();
+  if (!text) return '';
+  max = max || 120;
+  return text.length > max ? text.slice(0, max - 1) + '…' : text;
+}
 function layerCardHeight(layer) {
-  var itemCount = layer.responsibilities.length + layer.files.length + layer.evidence.length + layer.risk.length;
-  var beginnerExtra = Math.ceil(Math.max(0, layer.beginner.length - 90) / 80) * 18;
-  return Math.max(210, 168 + beginnerExtra + itemCount * 22);
+  var contractRows = Math.max(2, Math.min(3, (layer.responsibilities.length ? 1 : 0) + (layer.evidence.length ? 1 : 0) + (layer.files.length ? 1 : 0)));
+  var learningRows = [layer.analogy, layer.whyHere, layer.ifWrong || layer.risk[0], layer.beginner].filter(Boolean).slice(0, 3).length;
+  var itemCount = layer.files.length + layer.risk.length;
+  return Math.max(232, 164 + contractRows * 42 + learningRows * 19 + itemCount * 20);
 }
 function renderLayerList(label, items) {
   if (!items || !items.length) return '';
@@ -913,15 +936,36 @@ function renderReqs(reqs) {
   if (!reqs || !reqs.length) return '<span class="layer-req">REQ?</span>';
   return reqs.map(function(req) { return '<span class="layer-req">' + esc(req) + '</span>'; }).join('');
 }
+function renderContractCard(label, items, fallback) {
+  var values = asTextArray(items).filter(Boolean);
+  var body = values.length ? values.slice(0, 3).map(function(item) { return inline('• ' + shortText(item, 88)); }).join('<br>') : inline(shortText(fallback, 88));
+  return '<div class="layer-contract-card"><strong>' + esc(label) + '</strong><span>' + body + '</span></div>';
+}
+function renderLayerContract(layer) {
+  return '<div class="layer-contract-grid">'
+    + renderContractCard('Contract · 책임', layer.responsibilities, '이 레이어가 닫는 책임을 명시해야 합니다.')
+    + renderContractCard('Contract · 검증', layer.evidence, 'PASS 증거를 연결해야 합니다.')
+    + renderContractCard('Contract · 경계', layer.files.length ? layer.files : layer.requirements, '요구사항/경계가 필요합니다.')
+    + '</div>';
+}
+function renderLayerLearning(layer) {
+  var rows = [];
+  if (layer.analogy) rows.push(['프론트 비유', layer.analogy]);
+  if (layer.whyHere) rows.push(['왜 여기', layer.whyHere]);
+  if (layer.ifWrong || layer.risk[0]) rows.push(['잘못 두면', layer.ifWrong || layer.risk[0]]);
+  if (layer.beginner) rows.push(['읽는 법', layer.beginner]);
+  rows = rows.slice(0, 3);
+  if (!rows.length) return '';
+  return '<div class="layer-learning"><span class="layer-learning-title">Learning · 짧은 보조 설명</span>' + rows.map(function(row) { return '<div class="layer-learning-row"><b>' + esc(row[0]) + ':</b> ' + inline(shortText(row[1], 118)) + '</div>'; }).join('') + '</div>';
+}
 function renderLayerCard(layer, index, top, height) {
   var cls = layerKey(layer.key) + ' ' + layerKey(layer.status);
   return '<article class="layer-card ' + esc(cls) + '" style="top:' + top + 'px;height:' + height + 'px">'
     + '<div class="layer-card-top"><div><div class="layer-card-title">' + esc(index + 1) + '. ' + inline(layer.title) + '</div><span class="layer-card-role">' + esc(layer.role) + '</span></div><div class="layer-reqs">' + renderReqs(layer.requirements) + '</div></div>'
-    + '<div class="layer-card-beginner">' + inline(layer.beginner) + '</div>'
-    + renderLayerList('이 레이어가 맡는 일', layer.responsibilities)
+    + renderLayerContract(layer)
+    + renderLayerLearning(layer)
     + renderLayerList('구현 후보 파일', layer.files)
-    + renderLayerList('검증 포인트', layer.evidence)
-    + renderLayerList('주의할 실수', layer.risk)
+    + renderLayerList('주의할 실수', layer.ifWrong ? layer.risk : layer.risk.slice(1))
     + '</article>';
 }
 function renderLayerRail(layers, tops, heights, canvasHeight) {
@@ -994,11 +1038,13 @@ function archTextLines(value, charsPerLine, maxLines) {
 }
 function archNodeHeight(node) {
   var cols = Array.isArray(node.columns) ? node.columns.length : 0;
-  var badgeCount = asTextArray(node.badges || node.flags).length;
+  var badgeCount = asTextArray(node.badges || node.flags || node.requirements).length;
   var titleExtra = Math.max(0, archTextLines(node.title || node.name || node.id, 24, 3) - 1) * 18;
   var descExtra = Math.max(0, archTextLines(node.description || node.beginnerDescription || node.role, 48, 5) - 2) * 15;
-  var base = node.type === 'table' || node.kind === 'table' ? 184 : 148;
-  return Math.max(base, 118 + titleExtra + descExtra + cols * 24 + Math.ceil(badgeCount / 3) * 16);
+  var contractCount = (node.responsibility || node.contract || node.owns ? 1 : 0) + (asTextArray(node.evidence || node.verify || node.verification).length ? 1 : 0);
+  var learningCount = [node.frontendAnalogy || node.frontEndAnalogy || node.analogy || node.frontendMentalModel, node.whyHere || node.whyThisNode || node.rationale, node.ifWrong || node.failureMode || node.wrongLayerRisk].filter(Boolean).length;
+  var base = node.type === 'table' || node.kind === 'table' ? 194 : 160;
+  return Math.max(base, 126 + titleExtra + descExtra + contractCount * 34 + Math.min(2, learningCount) * 20 + cols * 24 + Math.ceil(badgeCount / 3) * 16);
 }
 function collectArchLanes(spec) {
   var explicit = Array.isArray(spec.lanes) ? spec.lanes.map(normalizeArchLane) : [];
@@ -1022,6 +1068,12 @@ function normalizeArchNode(node, index, lanes) {
     type: archNodeKind(node),
     title: String(node.title || node.name || node.id || ('Node ' + (index + 1))),
     description: String(node.description || node.beginnerDescription || node.role || ''),
+    responsibility: String(node.responsibility || node.contract || node.owns || ''),
+    evidence: asTextArray(node.evidence || node.verify || node.verification),
+    frontendAnalogy: String(node.frontendAnalogy || node.frontEndAnalogy || node.analogy || node.frontendMentalModel || ''),
+    whyHere: String(node.whyHere || node.whyThisNode || node.rationale || ''),
+    ifWrong: String(node.ifWrong || node.failureMode || node.wrongLayerRisk || ''),
+    requirements: asTextArray(node.requirements || node.requirementIds || node.refs || node.ids),
     badges: asTextArray(node.badges || node.flags || node.requirements),
     columns: Array.isArray(node.columns) ? node.columns : [],
     status: node.status || node.state || '',
@@ -1061,6 +1113,23 @@ function renderArchColumns(columns) {
     return '<div class="arch-column"><span class="arch-column-name">' + esc(label) + '</span><span class="arch-column-badges">' + badges + '</span></div>';
   }).join('') + '</div>';
 }
+function renderArchContract(node) {
+  var items = [];
+  if (node.requirements.length) items.push(['요구사항', node.requirements.join(', ')]);
+  if (node.responsibility) items.push(['책임', node.responsibility]);
+  if (node.evidence.length) items.push(['검증', node.evidence.slice(0, 2).join(' / ')]);
+  if (!items.length) return '';
+  return '<div class="arch-node-contract">' + items.slice(0, 3).map(function(item) { return '<div class="arch-node-contract-item"><b>Contract · ' + esc(item[0]) + '</b><span>' + inline(shortText(item[1], 92)) + '</span></div>'; }).join('') + '</div>';
+}
+function renderArchLearning(node) {
+  var rows = [];
+  if (node.frontendAnalogy) rows.push(['프론트 비유', node.frontendAnalogy]);
+  if (node.whyHere) rows.push(['왜 여기', node.whyHere]);
+  if (node.ifWrong) rows.push(['잘못 두면', node.ifWrong]);
+  rows = rows.slice(0, 2);
+  if (!rows.length) return '';
+  return '<div class="arch-node-learning">' + rows.map(function(row) { return '<div><b>' + esc(row[0]) + ':</b> ' + inline(shortText(row[1], 88)) + '</div>'; }).join('') + '</div>';
+}
 function renderArchNode(node, layout) {
   var badges = node.badges.slice();
   if (node.source === true) badges.push('source-of-truth');
@@ -1070,8 +1139,10 @@ function renderArchNode(node, layout) {
   return '<article class="' + esc(classes) + '" style="left:' + layout.x + 'px;top:' + layout.y + 'px;width:' + layout.w + 'px;min-height:' + layout.h + 'px">'
     + '<div class="arch-node-title">' + inline(node.title) + '</div>'
     + '<span class="arch-node-kind">' + esc(node.type) + '</span>'
-    + (node.description ? '<div class="arch-node-desc">' + inline(node.description) + '</div>' : '')
     + (badges.length ? '<div class="arch-node-badges">' + badges.map(renderArchBadge).join('') + '</div>' : '')
+    + renderArchContract(node)
+    + (node.description ? '<div class="arch-node-desc">' + inline(node.description) + '</div>' : '')
+    + renderArchLearning(node)
     + renderArchColumns(node.columns)
     + '</article>';
 }

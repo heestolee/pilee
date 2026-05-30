@@ -122,7 +122,7 @@ Jira, Notion, Slack, wireframe, PRD, 디자인 캡처처럼 정확한 기획 근
 - 모든 레이어를 억지로 채우지 않는다. 해당 없으면 `N/A`로 표시한다. 단, source-grounded UI/action 작업에서는 `triggered:false`로 숨기기보다 `mode="boundary-only"`로 기존 action/API/refresh 경계와 변경 금지 책임을 보인다.
 - 파일 목록 plan을 쓰기 전에 “어느 책임이 어느 레이어에 있어야 하는지” 또는 “어느 기존 경계를 재사용/보존해야 하는지”를 표나 call-flow로 먼저 보여준다.
 - 구조 이해가 핵심이면 Markdown/Mermaid만으로 끝내지 말고 `tft-visual` fenced block의 `kind: "backend-layer-map"`으로 **Layer Visual Map**을 함께 렌더링한다. 특히 사용자가 usecase/entity/service/repository 같은 레이어가 헷갈린다고 밝히면 필수다.
-- Layer Visual Map의 각 카드에는 `role`/`beginnerDescription`/`requirements`/`responsibilities`/`files`/`evidence`를 넣어 “부트캠프 수강생도 알 수 있는 설명”과 요구사항 ID 추적성을 같이 보여준다.
+- Layer Visual Map의 각 카드는 contract layer를 먼저 보여준다. `requirements`/`responsibilities`/`evidence`가 우선이고, `role`/`frontendAnalogy`/`whyHere`/`ifWrong`/`beginnerDescription`은 부트캠프 수강생도 알 수 있는 설명처럼 프론트 개발자도 이해할 수 있게 돕는 짧은 learning layer로만 둔다.
 - 데이터/로직 흐름, 아키텍처 구조, DB PK/FK, resolver → usecase → service/domain/VO → repository → table 흐름이 구현 위치·검증 증거·source-of-truth 판단에 영향을 주면 `kind: "architecture-flow"` `tft-visual`을 함께 출력한다. 사용자가 명시적으로 원할 때만이 아니라, backend/data/API/DB 흐름이 작업 이해를 좌우하는 source-grounded full frame에서는 필수 surface다.
 - 화면 중심 작업이어도 Jira 요구사항이 사용자 action, 기존 action/API 재사용, refresh/cache, 동작 회귀를 포함하면 `kind:"architecture-flow"`로 **User/Action Flow Map**을 그린다. 이때 DB node가 없을 수 있지만, 화면 → shared action → existing boundary → verification edge가 요구사항 ID와 연결되어야 한다.
 - `triggered:false` 또는 `mode="not-applicable"`은 사용자 action/API/data/cache/refresh/verification flow가 정말 없고, 단순 copy/style처럼 구조 흐름 검수가 의미 없는 경우에만 쓴다.

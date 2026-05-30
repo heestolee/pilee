@@ -39,6 +39,8 @@ related:
 
 이 지도는 “어느 파일을 고칠지”가 아니라 “어느 레이어가 어떤 결정을 소유해야 하는지, 또는 어떤 기존 action/API 경계를 보존해야 하는지”를 검수하는 표면입니다. 예를 들어 기준 시간 선택은 usecase/resolver input의 책임인지, repository 내부 기본값인지, VO 필터링인지에 따라 API shape, query, cache key, 테스트 위치가 모두 달라집니다. 신규 backend 구현이 없으면 `false`가 아니라 `boundary-only`로 표시해 변경 금지 경계를 보이게 합니다.
 
+학습 목적은 이 contract를 읽기 쉽게 만드는 보조입니다. 카드의 첫 층은 항상 requirement ID, 이번 책임, 검증 증거이고, 프론트 관점 비유·왜 이 레이어인지·잘못 두면 생기는 증상은 그 다음의 짧은 learning layer로만 둡니다.
+
 ## Frame Rule
 
 `/frame`은 다음 트리거가 보이면 Step 2에 `백엔드 레이어 맵`을 포함합니다.
