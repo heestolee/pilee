@@ -23,7 +23,7 @@ source:
   - user-direction:2026-05-12-verify-report-preflight-skill
   - user-feedback:2026-05-30-pm-facing-capture-report-preflight
 reviewed_at: 2026-05-30
-reviewed_commit: 1a66b70d647237bb906d46aa0f0d5a6579a6fae1
+reviewed_commit: 8519c9f9eedc83e23261465ad054aff37c4c797f
 related:
   - verify-report-workflow
   - evidence-first-verification-gate

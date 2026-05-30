@@ -158,7 +158,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-05-30 | 6f973ef | frame, verify, frame-json, success-criteria, contract, verification |
 | [반복 검증 실패는 baseline cache로 분리한다](./validation-baseline-failure-cache.md) | active | high | 2026-05-13 | 062f9f2 | preflight, validation, baseline, failure, cache, verification |
 | [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-05-13 | 062f9f2 | verify, invalidation, code-change, freshness, gate, 검증 |
-| [Verify Report 전에는 PM-facing 계약과 readiness를 먼저 잠근다](./verify-report-preflight-readiness.md) | active | high | 2026-05-30 | 1a66b70 | verify-report, preflight, readiness, capture, data, account |
+| [Verify Report 전에는 PM-facing 계약과 readiness를 먼저 잠근다](./verify-report-preflight-readiness.md) | active | high | 2026-05-30 | 8519c9f | verify-report, preflight, readiness, capture, data, account |
 | [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | active | high | 2026-05-30 | 96f0421 | verify-report, verification, evidence, coverage, capture, crop |
 | [Verify risk lens는 generic core와 private overlay로 나눈다](./verify-risk-lens-overlay.md) | active | high | 2026-05-12 | fc6ffa9 | verify, risk-lens, overlay, private-overlay, verification, domain-check |
 
