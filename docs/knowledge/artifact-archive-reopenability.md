@@ -33,8 +33,8 @@ source:
   - user-direction:2026-05-11-mcp-digest-first-artifacts
   - user-direction:2026-05-25-session-body-search
   - user-direction:2026-05-26-session-search-revive-actions
-reviewed_at: 2026-05-26
-reviewed_commit: 2b30eb59931fb6d0b02c4e253f6c0cf9e9e166cb
+reviewed_at: 2026-05-31
+reviewed_commit: 81a77af6bbaa70779dc6b30562f31663d78dcd4f
 related:
   - live-artifact-preview-pattern
   - backlog-source-session-provenance
