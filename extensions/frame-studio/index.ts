@@ -156,6 +156,24 @@ function resolveElkBundlePath(): string | undefined {
 	return elkBundlePath || undefined;
 }
 
+export function tftStudioElkBundleSource(): string | undefined {
+	const bundle = resolveElkBundlePath();
+	return bundle ? readFileSync(bundle, "utf-8") : undefined;
+}
+
+function scriptSafeJson(value: unknown): string {
+	return JSON.stringify(value)
+		.replace(/</g, "\\u003c")
+		.replace(/>/g, "\\u003e")
+		.replace(/&/g, "\\u0026")
+		.replace(/\u2028/g, "\\u2028")
+		.replace(/\u2029/g, "\\u2029");
+}
+
+function scriptSafeContent(value: string): string {
+	return value.replace(/<\/script/gi, "<\\/script");
+}
+
 const STUDIO_TABS: Array<{ key: StudioTabKey; label: string; subtitle: string }> = [
 	{ key: "frame", label: "Frame", subtitle: "계약·계획 합성" },
 	{ key: "decide", label: "Decide", subtitle: "대안·challenge·mitigation" },
@@ -560,7 +578,11 @@ function listenOnLoopback(server: Server): Promise<string> {
 	});
 }
 
-export function buildPageHtml(): string {
+export function buildPageHtml(options: { staticState?: unknown; inlineElk?: boolean } = {}): string {
+	const staticStateScript = options.staticState ? scriptSafeJson(options.staticState) : "null";
+	const elkScript = options.inlineElk
+		? `<script>${scriptSafeContent(tftStudioElkBundleSource() || "")}</script>`
+		: `<script src="/elk.bundled.js"></script>`;
 	return String.raw`<!doctype html>
 <html lang="ko">
 <head>
@@ -801,7 +823,7 @@ button { border:0; border-radius:12px; padding:10px 15px; font-weight:800; curso
     <section class="card"><h2>로그</h2><div class="logs" id="logs"></div></section>
   </main>
 </div>
-<script src="/elk.bundled.js"></script>
+${elkScript}
 <script>
 ${webviewCopyScript()}
 var state = null;
@@ -1777,13 +1799,53 @@ document.addEventListener('keydown', function(event) {
 document.addEventListener('keyup', function(event) {
   if (hasPendingQuestion() && isLegacyAltSubmitShortcut(event)) suppressShortcutEvent(event);
 }, true);
-var es = new EventSource('/events');
-es.onmessage = function(ev) { render(JSON.parse(ev.data)); };
-es.onerror = function() { setTimeout(function(){ location.reload(); }, 2000); };
-fetch('/state').then(function(r){ return r.json(); }).then(render).catch(function(){});
+var STATIC_STATE = ${staticStateScript};
+if (STATIC_STATE) {
+  render(STATIC_STATE, { preserveScroll:false });
+} else {
+  var es = new EventSource('/events');
+  es.onmessage = function(ev) { render(JSON.parse(ev.data)); };
+  es.onerror = function() { setTimeout(function(){ location.reload(); }, 2000); };
+  fetch('/state').then(function(r){ return r.json(); }).then(render).catch(function(){});
+}
 </script>
 </body>
 </html>`;
+}
+
+export function buildStaticTftStudioHtmlFromTranscript(filePath: string): string {
+	const resolved = realpathSync(filePath);
+	const parsed = JSON.parse(readFileSync(resolved, "utf-8")) as Partial<FrameStudioState>;
+	const markdown = typeof parsed.markdown === "string" ? parsed.markdown : "";
+	const step = typeof parsed.step === "string" ? parsed.step : undefined;
+	const fallbackIdentity: FrameIdentity = {
+		mode: "planning-session",
+		key: `archive:${resolved}`,
+		displayTitle: String(parsed.title || "TFT Studio"),
+		storageDir: join(STATE_DIR, "archive-preview"),
+		cwd: process.cwd(),
+		reason: "archive transcript preview fallback",
+	};
+	const state: FrameStudioState = {
+		runId: String(parsed.runId || "archive"),
+		identity: parsed.identity ?? fallbackIdentity,
+		title: String(parsed.title || (parsed.identity as FrameIdentity | undefined)?.displayTitle || "TFT Studio"),
+		markdown,
+		step,
+		activeTab: normalizeTab(parsed.activeTab) ?? "frame",
+		tabs: normalizeTabs(parsed.tabs, markdown, step),
+		status: parsed.status === "awaiting" || parsed.status === "done" || parsed.status === "aborted" ? parsed.status : "running",
+		url: "",
+		transcriptPath: resolved,
+		createdAt: typeof parsed.createdAt === "number" ? parsed.createdAt : Date.now(),
+		updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
+		question: parsed.question,
+		lastAnswer: parsed.lastAnswer,
+		workContext: parsed.workContext as StudioWorkContextSnapshot | undefined,
+		timeline: Array.isArray(parsed.timeline) ? normalizeTimelineEntries(parsed.timeline) : [],
+		logs: Array.isArray(parsed.logs) ? parsed.logs : [],
+	};
+	return buildPageHtml({ staticState: serializeState(state) });
 }
 
 function createServerFor(state: FrameStudioState): FrameStudioHandle {

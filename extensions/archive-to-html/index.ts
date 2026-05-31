@@ -7,7 +7,7 @@ import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ToolResultEvent } from "@mariozechner/pi-coding-agent";
 import { complete, getModel, type Api, type Message, type Model } from "@mariozechner/pi-ai";
-import { resumeTftStudioFromTranscript } from "../frame-studio/index.ts";
+import { buildStaticTftStudioHtmlFromTranscript, resumeTftStudioFromTranscript, tftStudioElkBundleSource } from "../frame-studio/index.ts";
 import { openCompanionHtml } from "../utils/companion-window.ts";
 import { expandProfileTemplate, loadArtifactBrowserProfiles, loadConductorProfiles } from "../utils/private-profiles.ts";
 import { webviewCopyCss, webviewCopyScript } from "../utils/webview-copy.ts";
@@ -297,7 +297,7 @@ function buildGlimpseArtifactHtml(artifactHtml: string, artifactPath: string): s
 			<button onclick="window.close()">Close</button>
 		</div>
 	</div>
-	<iframe src="${artifactDataUri}" title="${escapeAttr(title)}"></iframe>
+	<iframe srcdoc="${escapeAttr(artifactHtml)}" title="${escapeAttr(title)}"></iframe>
 </body>
 </html>`;
 }
@@ -874,7 +874,6 @@ function sanitizePreviewReturnTo(value: string | null | undefined): string {
 function buildArtifactPreviewHtml(filePath: string, options: { full?: boolean; returnTo?: string; intent?: EvidenceIntent; cwd?: string } = {}): string {
 	const { title, html } = artifactPreviewInnerHtml(filePath, options);
 	const returnTo = sanitizePreviewReturnTo(options.returnTo);
-	const artifactDataUri = `data:text/html;charset=utf-8;base64,${Buffer.from(html, "utf8").toString("base64")}`;
 	return `<!doctype html>
 <html lang="ko">
 <head>
@@ -909,7 +908,7 @@ function buildArtifactPreviewHtml(filePath: string, options: { full?: boolean; r
 			<button type="button" onclick="window.close()">닫기</button>
 		</div>
 	</div>
-	<iframe src="${artifactDataUri}" title="${escapeAttr(title)}"></iframe>
+	<iframe srcdoc="${escapeAttr(html)}" title="${escapeAttr(title)}"></iframe>
 <script>
 async function openOriginal(button){var label=button.textContent;button.disabled=true;button.textContent='브라우저 여는 중...';try{var res=await fetch('/open?target=browser&path='+encodeURIComponent(button.dataset.path||''),{method:'POST'});if(!res.ok)throw new Error(await res.text());button.textContent='열기 요청됨';setTimeout(function(){button.textContent=label;button.disabled=false;},1400);}catch(e){button.textContent='열기 실패';button.title=String(e&&e.message||e);setTimeout(function(){button.textContent=label;button.disabled=false;},2200);}}
 </script>
@@ -1623,6 +1622,17 @@ function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData,
 			if (req.method === "GET" && url.pathname === "/") {
 				res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
 				res.end(buildArtifactBrowserHtml(data, cwd));
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/elk.bundled.js") {
+				const source = tftStudioElkBundleSource();
+				if (!source) {
+					res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+					res.end("elkjs bundle not found");
+					return;
+				}
+				res.writeHead(200, { "content-type": "application/javascript; charset=utf-8", "cache-control": "public, max-age=3600" });
+				res.end(source);
 				return;
 			}
 			if (req.method === "GET" && url.pathname === "/preview") {
@@ -2861,12 +2871,7 @@ function renderFrameTimeline(timeline: unknown[]): string {
 }
 
 function buildFrameTranscriptStandaloneHtml(filePath: string): string {
-	let parsed: Record<string, unknown> = {};
-	try { parsed = JSON.parse(fs.readFileSync(filePath, "utf-8")) as Record<string, unknown>; } catch {}
-	const identity = valueFromRecord(parsed, "identity") as Record<string, unknown> | undefined;
-	const title = String(parsed.title || identity?.displayTitle || path.basename(filePath));
-	const timeline = Array.isArray(parsed.timeline) ? parsed.timeline : [];
-	return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title>${artifactBrowserStyle()}</head><body><main class="shell"><header class="hero"><div class="kicker">🔥 Frame Transcript</div><h1>${escapeHtml(title)}</h1><p>${escapeHtml(filePath)}</p></header><section class="card"><h2>Frame 전문</h2><div class="timeline">${renderFrameTimeline(timeline)}</div></section></main></body></html>`;
+	return buildStaticTftStudioHtmlFromTranscript(filePath);
 }
 
 function artifactBrowserStyle(): string {

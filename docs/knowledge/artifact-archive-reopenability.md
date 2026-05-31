@@ -52,7 +52,7 @@ related:
 
 Archive의 `기획 / Frame`은 재진입 가능한 기획 artifact만 보여줍니다. `.context/work/**/Session <id>.md`처럼 fork-panel/Pi 대화 전문을 markdown으로 내보낸 파일은 session provenance이며, 기획 문서가 아니므로 `Pi 이력` 쪽에 남기고 planning tab에서는 제외합니다. TFT Studio transcript 카드에는 `이어하기` 버튼을 노출해, 사용자가 JSON path나 `/tft open ...` 명령을 직접 입력하지 않아도 archive를 실행한 현재 Pi session에서 같은 identity/timeline으로 이어갈 수 있게 합니다.
 
-TFT Studio transcript preview도 live Studio와 같은 stage run grouping을 사용합니다. 같은 work unit에서 Frame/Decide/Verify를 여러 번 수행한 경우 `Frame Run #1`, `Frame Run #2`, `Verify Run #1`처럼 run 카드로 묶어 보여줘야, reopen 시 “같은 tab의 어느 반복 검증/결정인가”를 잃지 않습니다.
+TFT Studio transcript preview도 live Studio와 같은 stage run grouping과 markdown/visual renderer를 사용합니다. 같은 work unit에서 Frame/Decide/Verify를 여러 번 수행한 경우 `Frame Run #1`, `Frame Run #2`, `Verify Run #1`처럼 run 카드로 묶어 보여줘야, reopen 시 “같은 tab의 어느 반복 검증/결정인가”를 잃지 않습니다. `tft-visual` fenced block은 archive 전용 markdown preview로 다시 해석하지 않고 live TFT Studio renderer bundle을 재사용해야 합니다. 그렇지 않으면 `architecture-flow`나 `backend-layer-map` 같은 최신 visual payload가 예전 `tables` fallback으로 떨어져 transcript가 보이지 않는 artifact가 됩니다.
 
 ## Open Original Rule
 

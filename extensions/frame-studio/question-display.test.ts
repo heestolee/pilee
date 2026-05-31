@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
-import { buildPageHtml, splitQuestionDisplayParts } from "./index.ts";
+import { buildPageHtml, buildStaticTftStudioHtmlFromTranscript, splitQuestionDisplayParts } from "./index.ts";
 
 test("짧은 질문은 제목/본문으로 분리하지 않는다", () => {
 	const parts = splitQuestionDisplayParts("배너 버튼 스크롤 target을 어떻게 반영할까요?");
@@ -77,4 +80,59 @@ test("Architecture/Data Flow Map 렌더러가 WebView bundle에 포함된다", (
 	assert.match(html, /source-of-truth/);
 	assert.match(html, /PK/);
 	assert.match(html, /FK/);
+});
+
+
+test("정적 TFT transcript HTML도 live visual renderer bundle을 사용한다", () => {
+	const dir = mkdtempSync(join(tmpdir(), "pilee-tft-static-"));
+	const file = join(dir, "planning-ticket-COM-2491.json");
+	const architectureFlow = {
+		kind: "architecture-flow",
+		title: "COM-2491 flow",
+		lanes: ["UI", "Backend"],
+		nodes: [
+			{ id: "ui", lane: "UI", type: "screen", title: "Mobile cards" },
+			{ id: "api", lane: "Backend", type: "resolver", title: "Existing approval API" },
+		],
+		edges: [{ from: "ui", to: "api", label: "reuse existing action" }],
+	};
+	const backendLayerMap = {
+		kind: "backend-layer-map",
+		title: "Backend boundary",
+		layers: [{ layer: "Entry/API boundary", title: "Existing approval API", role: "기존 backend 입구" }],
+	};
+	const markdown = [
+		"# Visual smoke",
+		"",
+		"```tft-visual",
+		JSON.stringify(architectureFlow, null, 2),
+		"```",
+		"",
+		"```tft-visual",
+		JSON.stringify(backendLayerMap, null, 2),
+		"```",
+	].join("\n");
+	try {
+		writeFileSync(file, JSON.stringify({
+			title: "Verify · 윤겔라 · COM-2491",
+			activeTab: "frame",
+			status: "running",
+			markdown,
+			tabs: { frame: { markdown, step: "Visual smoke", updatedAt: Date.now() } },
+			timeline: [{ id: "u1", time: Date.now(), kind: "update", tab: "frame", step: "Visual smoke", markdown }],
+			logs: [],
+		}, null, 2));
+		const html = buildStaticTftStudioHtmlFromTranscript(file);
+		assert.match(html, /Verify · 윤겔라 · COM-2491/);
+		assert.match(html, /var STATIC_STATE = /);
+		assert.match(html, /renderArchitectureFlowElement/);
+		assert.match(html, /renderBackendLayerVisualElement/);
+		assert.match(html, /architecture-flow/);
+		assert.match(html, /backend-layer-map/);
+		const scripts = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map((match) => match[1]);
+		assert.ok(scripts.length > 0);
+		for (const script of scripts) new Function(script);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
 });
