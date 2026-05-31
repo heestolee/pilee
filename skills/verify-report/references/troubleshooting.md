@@ -48,6 +48,7 @@ agent-browser open {url} --session {session}
 - `Invalid data found when processing input`
 - 프레임 누락된 GIF
 - 검은 화면만 나오는 GIF
+- 텍스트/테두리/연한 배경이 점박이처럼 깨지는 저품질 GIF
 
 ### 원인 + 해결
 
@@ -57,6 +58,8 @@ agent-browser open {url} --session {session}
 | 프레임 번호 비연속 | `ls *-frame-*.png` 출력 확인 | 번호 재정렬 또는 `-i %*d.png` 패턴 변경 |
 | 프레임 크기 다름 (스크롤 후 등) | 크기 비교 | 동일 viewport에서 캡처 |
 | ffmpeg 미설치 | `which ffmpeg` | `brew install ffmpeg` |
+| 기본 GIF 인코더/no-palette 사용 | 변환 명령에 `palettegen`/`paletteuse`가 없음 | `skills/verify-report/scripts/make-motion-gif.mjs` helper로 재생성 |
+| 습관적 downscale | `scale=390`, `scale=900` 등으로 텍스트가 작아짐 | helper 기본값(`--width source`)을 쓰고, 용량 초과 시에만 `--max-width` 적용 |
 
 ## .context/work/ 디렉토리 충돌
 

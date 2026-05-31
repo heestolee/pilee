@@ -16,7 +16,7 @@ argument-hint: "[base-url] [--upload] [--update] [--ask-before] [--no-workers]"
 - **과거 교정은 intent로 재해석**: 이전 실패 회고나 사용자 교정은 중요한 제약이지만, 기능의 primary action을 덮어쓰는 literal 요구가 아니다. 먼저 교정이 막으려던 실패(intent)를 추출하고, 현재 데이터/권한/side effect상 literal 실행이 비현실적이면 같은 intent를 보존하는 현실적인 equivalent path를 제안하거나 선택한다. blocked는 교정 intent까지 보존할 대체 경로가 없을 때만 쓴다.
 - **캡처 중심 리포트**: UI 기능의 primary evidence는 focused screenshot/GIF다. code diff, API 응답, DB 조회, unit test는 PM-facing 화면 증거를 보조하거나 비가시 정책을 설명하는 하단 근거로 둔다.
 - **Coverage 먼저, 캡처는 그 다음**: 리포트 시작 전에 요구사항으로 검증 축을 정의한다. 캡처가 있어도 해당 축을 닫지 못하면 PASS가 아니다.
-- **Motion-first evidence**: 이동/전환/클릭/열림/닫힘/스무스함/끊김 없음처럼 시간 흐름이 claim이면 정적 PNG만으로 PASS 처리하지 않는다. GIF/짧은 영상이 primary evidence이고, 대표 final-state PNG/crop은 supporting evidence로 함께 둔다. GIF는 판독 가능한 품질이어야 하며, 기본 기준은 3~8초, 720~800px 이상 폭, 10~15fps, `palettegen/paletteuse` 적용이다. 저용량을 이유로 390px/8fps/no-palette처럼 텍스트와 색상이 깨지는 설정을 primary evidence에 쓰지 않는다.
+- **Motion-first evidence**: 이동/전환/클릭/열림/닫힘/스무스함/끊김 없음처럼 시간 흐름이 claim이면 정적 PNG만으로 PASS 처리하지 않는다. GIF/짧은 영상이 primary evidence이고, 대표 final-state PNG/crop은 supporting evidence로 함께 둔다. GIF는 판독 가능한 품질이어야 하며, 기본 생성 경로는 `skills/verify-report/scripts/make-motion-gif.mjs` helper다. helper 기본값은 원본 해상도 유지(`--width source`), 12fps, 8초 trim, `palettegen/paletteuse` + `sierra2_4a` dithering이다. 저용량을 이유로 390px/8fps/no-palette처럼 텍스트와 색상이 깨지는 설정을 primary evidence에 쓰지 않는다.
 - **Setup noise 격리**: 로그인, 빌드, Metro/dev-server, pod/env/codegen, dependency bootstrap처럼 검증 전 준비 과정은 리포트의 PASS item에 넣지 않는다. setup 자체가 검증 대상이거나, 검증을 막은 blocked/coverage gap일 때만 짧게 남긴다.
 - **미검증 명시**: 자동화로 확인하지 못한 항목은 PASS로 쓰지 않고 `미검증`/`blocked`/`Coverage Gap`에 남긴다.
 - **렌더링 claim은 실제 렌더로 닫는다**: 구조도, TUI, WebView, Markdown/HTML preview, SVG/이미지 생성처럼 “보인다”가 성공 기준인 작업은 source text, Mermaid codeblock, raw inline SVG, HTML 파일 생성만으로 PASS가 아니다. 실제 artifact를 열어 렌더링된 결과를 확인하고, 가능하면 캡처를 evidence로 남긴다.
@@ -194,7 +194,7 @@ Before/After가 필요한 항목은 before 기준도 함께 정한다.
 | 캡처/증거 유형 | 형태 |
 |----------|------|
 | UI 단일 상태 | focused PNG/crop 1장 |
-| UI 다단계 플로우 / 스무스함 / 이동 | 고화질 GIF 또는 짧은 영상 primary + 대표 final-state PNG/crop supporting. 기본 GIF 품질: 3~8초, 720~800px 이상 폭, 10~15fps, palette 최적화 |
+| UI 다단계 플로우 / 스무스함 / 이동 | 고화질 GIF 또는 짧은 영상 primary + 대표 final-state PNG/crop supporting. 기본 GIF 생성은 `make-motion-gif.mjs` helper를 사용하고, 원본 해상도 유지 + 12fps + palette 최적화를 기본값으로 한다. |
 | NETWORK | JSON/표 + 필요 시 화면 PNG |
 | CONSOLE | 로그 excerpt + 필요 시 화면 PNG |
 | CODE_DIFF | 파일/라인/diff 요약 |

@@ -45,6 +45,7 @@ source:
   - user-feedback:2026-05-19-motion-first-and-setup-noise
   - user-feedback:2026-05-30-prior-correction-intent
   - user-feedback:2026-05-30-frame-handoff-adjudication
+  - user-feedback:2026-05-31-motion-gif-quality-default
 reviewed_at: 2026-05-30
 reviewed_commit: 1270e1a2318cb0d7d3737094f2e9760bc75c9c39
 related:
@@ -91,6 +92,8 @@ Frame은 requirement source이고 verify-report는 evidence adjudicator입니다
 ## Capture Quality Rule
 
 Primary evidence는 검증 claim을 직접 닫는 artifact여야 합니다. 정적 상태 확인은 검증 포인트가 바로 보이는 viewport/section/element crop이 primary입니다. 이동, 전환, 클릭 후 화면 이동, 열림/닫힘, 스무스함, 끊김 없음처럼 시간 흐름이 claim이면 GIF 또는 짧은 영상이 primary evidence이고, 대표 final-state PNG/crop은 supporting evidence로 함께 둡니다. 최종 PNG만으로 “잘 이동했다”를 PASS 처리하면 흐름의 연속성을 증명하지 못하므로 Coverage Gap 후보입니다.
+
+Motion GIF는 단순히 생성됐다는 사실만으로 충분하지 않습니다. 기본 생성 경로는 `skills/verify-report/scripts/make-motion-gif.mjs`이며, 이 helper는 원본 해상도 유지, 12fps, 8초 trim, `palettegen/paletteuse`와 `sierra2_4a` dithering을 기본값으로 사용합니다. 텍스트 UI를 390px/900px로 습관적으로 축소하거나 no-palette 기본 GIF로 변환하면 PM-facing evidence 품질이 깨지므로 primary evidence로 쓰지 않습니다.
 
 Before/after가 필요한 항목은 `Before — ...`, `After — ...` label로 같은 item에 넣어 비교되게 합니다. 두 이미지를 나란히 보아야만 변화가 분명한 경우에는 before/after를 한 장으로 합성한 핵심 비교 이미지를 `role: "primary"`로 남기며, renderer는 primary 이미지/GIF evidence를 full-width 단일 카드로 표시합니다. Full-page나 세로로 긴 스크롤 캡처는 supporting context로만 사용하고, 리포트에서는 토글/details/appendix/link 뒤에 둡니다.
 

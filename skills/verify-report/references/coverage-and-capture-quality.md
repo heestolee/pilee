@@ -165,8 +165,9 @@ Primary evidence는 검증 포인트가 바로 보이는 이미지/GIF여야 한
 
 권장 기본값:
 
-- Web/desktop 원본 영상 변환: `fps=15`, `scale=800:-1`, `palettegen=stats_mode=diff:max_colors=256`, `paletteuse=dither=sierra2_4a`
-- 모바일/native 원본 영상 변환: `fps=10~15`, `scale=720:-1` 이상, palette 최적화
+- 기본 생성 경로: `skills/verify-report/scripts/make-motion-gif.mjs`
+- Web/desktop 원본 영상 변환: 원본 해상도 유지(`--width source`), `--fps 12`, `--duration 8`, `palettegen=stats_mode=diff:max_colors=256`, `paletteuse=dither=sierra2_4a`
+- 모바일/native 원본 영상 변환: 원본 해상도 유지가 기본이고, 용량 때문에 줄여야 할 때만 `--max-width 720` 이상을 사용한다.
 - 길이: 3~8초. 8초를 넘기면 대기/로딩/셋업 구간을 잘라낸다.
 - 원본 WebM/MP4와 대표 final-state PNG/crop을 supporting evidence로 둔다.
 
