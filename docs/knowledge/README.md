@@ -110,7 +110,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Ember Ship은 knowledge 정합성을 release train으로 닫는다](./ember-ship-release-train.md) | active | high | 2026-06-02 | 91c739f | ember, knowledge, release-train, freshness, merge-gate |
 | [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | high | 2026-06-02 | 7861f10 | knowledge, freshness, diagnosis, review, candidate, 정합성 |
 | [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | high | 2026-06-02 | 7861f10 | knowledge, judgment, granularity, documentation, coverage, 문서 |
-| [Knowledge review queue는 PR body에 남긴다](./knowledge-review-queue-pr-body.md) | active | high | 2026-06-03 | 6360cc9 | knowledge, review-queue, github-actions, pr-body, ember-ship |
+| [Knowledge review queue는 PR body에 남긴다](./knowledge-review-queue-pr-body.md) | active | high | 2026-06-02 | e19936a | knowledge, review-queue, github-actions, pr-body, ember-ship |
 | [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | high | 2026-06-02 | fad9c36 | pilee, knowledge, history, journal, sanitized, reviewed-at |
 | [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | high | 2026-06-02 | fad9c36 | knowledge, journal, privacy, sanitized, doctrine, history |
 | [README는 knowledge coverage map이다](./readme-coverage-map.md) | active | high | 2026-06-02 | 41c70e0 | knowledge, readme, coverage, graph, surface, todo |
