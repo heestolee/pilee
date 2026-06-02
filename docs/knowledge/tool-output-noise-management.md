@@ -26,6 +26,7 @@ source:
   - user-direction:2026-06-02-mcp-slack-participants-no-preview
   - user-direction:2026-06-02-mcp-notion-image-url-hidden
   - user-direction:2026-06-02-mcp-one-line-collapsed-render
+  - user-direction:2026-06-02-all-mcp-one-line-card
 reviewed_at: 2026-06-02
 reviewed_commit: 66927aafbf8d2d774a033e700f50bca494701178
 related:
@@ -44,7 +45,7 @@ related:
 
 외부 host가 stderr에 내는 known-noise도 같은 원칙을 따릅니다. MCP banner나 macOS WebView InputMethod 로그처럼 사용자가 조치할 수 없는 반복 noise는 runtime adapter에서 막고, 실제 실패·경고·open error처럼 조치 가능한 stderr는 숨기지 않습니다.
 
-MCP처럼 후속 action에 필요한 identifier를 포함할 수 있는 tool은 원문을 대화창에 직접 쏟지 않고 layer를 나눕니다. JSON-like 결과는 크기와 무관하게 deterministic human digest + 세션 내 lazy retrieval로 전환하고, 짧은 plain text만 그대로 반환합니다. Slack은 대화 스레드와 참여자, Notion은 페이지/본문, Jira는 이슈 메타데이터처럼 사람이 읽는 형태를 먼저 보여주어 issue id, URL, thread id 같은 정확한 입력값을 보존하면서도 JSON/API dump가 대화 흐름을 덮지 않게 합니다. Notion Markdown 이미지의 긴 signed URL은 파일명만 남겨 원문에서 확인하게 합니다. source-specific digest가 충분하면 generic identifier preview를 추가하지 않고, 별도 artifact 파일도 MCP 출력 스크롤 절감 목적의 기본 흐름이 아니므로 생성하지 않습니다. 화면 기본값은 한 줄 카드이고, `Ctrl+O` tool output 펼침으로 readable digest를 확인합니다.
+MCP처럼 후속 action에 필요한 identifier를 포함할 수 있는 tool은 원문을 대화창에 직접 쏟지 않고 layer를 나눕니다. JSON-like 결과는 크기와 무관하게 deterministic human digest + 세션 내 lazy retrieval로 전환합니다. Slack은 대화 스레드와 참여자, Notion은 페이지/본문, Jira는 이슈 메타데이터처럼 사람이 읽는 형태를 `details.fullDigest`에 보존해 issue id, URL, thread id 같은 정확한 입력값을 잃지 않으면서도 JSON/API dump가 대화 흐름을 덮지 않게 합니다. Notion Markdown 이미지의 긴 signed URL은 파일명만 남겨 원문에서 확인하게 합니다. source-specific digest가 충분하면 generic identifier preview를 추가하지 않고, 별도 artifact 파일도 MCP 출력 스크롤 절감 목적의 기본 흐름이 아니므로 생성하지 않습니다. 화면과 tool result `text`의 기본값은 한 줄 카드이고, `Ctrl+O` tool output 펼침으로 readable digest를 확인합니다.
 
 ## Failure Mode
 

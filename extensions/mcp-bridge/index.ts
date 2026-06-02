@@ -795,6 +795,71 @@ function shouldDigestMcpOutput(output: string): boolean {
 	return output.split(/\r?\n/).length > MCP_DIGEST_THRESHOLD_LINES;
 }
 
+function extractDigestLineValue(text: string, label: string): string | undefined {
+	const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const match = text.match(new RegExp(`^${escaped}:\\s*(.+)$`, "m"));
+	return match?.[1]?.trim();
+}
+
+function firstDigestContentLine(text: string): string | undefined {
+	for (const line of text.split(/\r?\n/)) {
+		const trimmed = line.trim();
+		if (!trimmed) continue;
+		if (/^(?:🔌 MCP 결과|server:|tool:|action:|responseId:|원문 크기:|## 요약|원문은 |필요 시:)/.test(trimmed)) continue;
+		return trimmed.replace(/^#+\s*/, "").replace(/^[-*]\s*/, "").trim();
+	}
+	return undefined;
+}
+
+function countDigestCommaSeparated(value: string | undefined): number | undefined {
+	if (!value) return undefined;
+	const count = value.split(",").map((part) => part.trim()).filter(Boolean).length;
+	return count > 0 ? count : undefined;
+}
+
+function digestTimeRange(value: string | undefined): string | undefined {
+	if (!value) return undefined;
+	const times = [...value.matchAll(/(\d{2}:\d{2})(?::\d{2})?/g)].map((match) => match[1]);
+	if (times.length >= 2) return `${times[0]}–${times.at(-1)}`;
+	return times[0];
+}
+
+function sourceCardLabel(args: { server: string; tool: string }, digest: string): string {
+	const hint = sourceHint(args);
+	if (digest.includes("💬 Slack 결과 확인") || hint.includes("slack")) return "💬 Slack thread";
+	if (digest.includes("📝 Notion 결과 확인") || hint.includes("notion")) return "📝 Notion page";
+	if (digest.includes("🎫 Jira 결과 확인") || hint.includes("jira") || hint.includes("atlassian")) return "🎫 Jira";
+	if (hint.includes("github")) return "🐙 GitHub";
+	if (hint.includes("sentry")) return "🔥 Sentry";
+	if (hint.includes("tavily")) return "🌐 Tavily";
+	if (hint.includes("figma")) return "🎨 Figma";
+	return "🔌 MCP";
+}
+
+function buildMcpCollapsedCard(args: { server: string; tool: string; action: string; output: string; digest: string }): string {
+	const hint = "Ctrl+O 펼쳐보기";
+	const label = sourceCardLabel(args, args.digest);
+	if (label === "💬 Slack thread") {
+		const messageCount = extractDigestLineValue(args.digest, "메시지");
+		const participants = countDigestCommaSeparated(extractDigestLineValue(args.digest, "참여자"));
+		const time = digestTimeRange(extractDigestLineValue(args.digest, "시간 범위"));
+		return [label, messageCount ? `${messageCount} 메시지` : undefined, participants ? `참여자 ${participants}명` : undefined, time, hint].filter(Boolean).join(" · ");
+	}
+	if (label === "📝 Notion page") {
+		const title = extractDigestLineValue(args.digest, "제목") ?? firstDigestContentLine(args.digest) ?? firstDigestContentLine(args.output) ?? "Notion 결과";
+		const imageCount = [...(args.digest === args.output ? args.digest : `${args.digest}\n${args.output}`).matchAll(/^- 이미지:/gm)].length;
+		return [label, truncateCompact(title, 72), imageCount > 0 ? `이미지 ${imageCount}개` : undefined, hint].filter(Boolean).join(" · ");
+	}
+	if (label === "🎫 Jira") {
+		const issueCount = extractDigestLineValue(args.digest, "이슈");
+		const title = firstDigestContentLine(args.digest) ?? `${args.server}/${args.tool}`;
+		return [label, issueCount ? `${issueCount} 이슈` : truncateCompact(title, 72), hint].filter(Boolean).join(" · ");
+	}
+	const title = firstDigestContentLine(args.digest) ?? firstDigestContentLine(args.output);
+	const chars = `${args.output.length.toLocaleString()} chars`;
+	return [label, title ? truncateCompact(title, 72) : `${args.server}/${args.tool}`, chars, hint].filter(Boolean).join(" · ");
+}
+
 function buildMcpDigest(args: { responseId: string; server: string; tool: string; action: string; output: string }): string {
 	const parsed = tryParseJson(args.output);
 	const lines: string[] = [
@@ -833,11 +898,11 @@ function formatMcpOutput(args: {
 }): McpFormattedResult {
 	const visibleOutput = sanitizeMcpVisibleOutput(args);
 	const sanitized = visibleOutput !== args.output;
-	if (!shouldReturnDigest({ action: args.action, output: visibleOutput })) {
-		return { text: visibleOutput || "(empty response)", details: { mcpDigest: false, mcpSanitized: sanitized, server: args.server, tool: args.tool, action: args.action } };
-	}
 	const responseId = `mcp_${randomUUID().slice(0, 8)}`;
-	const digest = buildMcpDigest({ responseId, server: args.server, tool: args.tool, action: args.action, output: visibleOutput });
+	const digest = shouldReturnDigest({ action: args.action, output: visibleOutput })
+		? buildMcpDigest({ responseId, server: args.server, tool: args.tool, action: args.action, output: visibleOutput })
+		: visibleOutput || "(empty response)";
+	const card = buildMcpCollapsedCard({ server: args.server, tool: args.tool, action: args.action, output: visibleOutput, digest });
 	storedMcpResults.set(responseId, {
 		id: responseId,
 		server: args.server,
@@ -849,9 +914,11 @@ function formatMcpOutput(args: {
 		rawData: args.rawData,
 	});
 	return {
-		text: digest,
+		text: card,
 		details: {
 			mcpDigest: true,
+			mcpCollapsed: true,
+			fullDigest: digest,
 			responseId,
 			server: args.server,
 			tool: args.tool,

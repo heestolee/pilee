@@ -564,8 +564,14 @@ function conciseTimeRange(value: string | undefined): string | undefined {
 	return times[0];
 }
 
+function mcpRenderableText(result?: ToolResultLike): string {
+	const details = toolResultDetails(result);
+	const fullDigest = typeof details?.fullDigest === "string" ? details.fullDigest.trim() : undefined;
+	return fullDigest || extractRawTextContent(result)?.trim() || "";
+}
+
 function formatMcpCollapsedLine(result?: ToolResultLike, args?: unknown, expanded = false): string {
-	const text = extractRawTextContent(result)?.trim() ?? "";
+	const text = mcpRenderableText(result);
 	const details = toolResultDetails(result);
 	const server = detailString(details, "server") ?? (isRecord(args) ? detailString(args, "server") : undefined) ?? "mcp";
 	const tool = detailString(details, "tool") ?? (isRecord(args) ? detailString(args, "tool") : undefined) ?? "tool";
@@ -599,7 +605,7 @@ function formatMcpCollapsedLine(result?: ToolResultLike, args?: unknown, expande
 }
 
 function formatMcpExpandedText(result?: ToolResultLike): string {
-	const text = extractRawTextContent(result)?.trim();
+	const text = mcpRenderableText(result);
 	return text && text.length > 0 ? text : "(아직 결과 없음)";
 }
 

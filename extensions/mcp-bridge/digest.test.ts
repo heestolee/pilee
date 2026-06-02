@@ -58,12 +58,15 @@ test("Slack thread resolves participants from user id maps", () => {
 	assert.doesNotMatch(digest, /## 보존한 식별자\/URL preview/);
 });
 
-test("digest-first MCP output does not expose artifact file details", () => {
+test("MCP output returns one-line card while keeping full digest in details", () => {
 	const output = JSON.stringify({ ok: true, messages: [{ ts: "1780000000.000100", username: "changhee", text: "스크롤만 줄이면 됩니다" }] });
 	const formatted = __formatMcpOutputForTesting({ server: "slack", tool: "slack_get_thread", output });
 	assert.equal(formatted.details?.mcpDigest, true);
-	assert.match(formatted.text, /responseId: mcp_/);
-	assert.doesNotMatch(formatted.text, /원문 artifact|raw json|full text/);
+	assert.equal(formatted.details?.mcpCollapsed, true);
+	assert.match(formatted.text, /^💬 Slack thread · 1개 메시지 · 참여자 1명 · \d{2}:\d{2} · Ctrl\+O 펼쳐보기$/);
+	assert.doesNotMatch(formatted.text, /responseId|스크롤만 줄이면 됩니다|원문 artifact|raw json|full text/);
+	assert.match(String(formatted.details?.fullDigest), /responseId: mcp_/);
+	assert.match(String(formatted.details?.fullDigest), /스크롤만 줄이면 됩니다/);
 	assert.equal(Object.hasOwn(formatted.details ?? {}, "artifactPath"), false);
 	assert.equal(Object.hasOwn(formatted.details ?? {}, "rawJsonPath"), false);
 	assert.equal(Object.hasOwn(formatted.details ?? {}, "fullTextPath"), false);
@@ -77,12 +80,15 @@ test("Notion markdown image links are shortened without signed URLs", () => {
 		"### 확인 완료 사항",
 	].join("\n\n");
 	const formatted = __formatMcpOutputForTesting({ server: "creatrip-internal", tool: "notion_readPage", output });
-	assert.equal(formatted.details?.mcpDigest, false);
+	assert.equal(formatted.details?.mcpDigest, true);
+	assert.equal(formatted.details?.mcpCollapsed, true);
 	assert.equal(formatted.details?.mcpSanitized, true);
-	assert.match(formatted.text, /- 이미지: 08B5E9F1-48CE-486A-AE1E-A76F48A0915D\.png · Notion 원문에서 확인/);
-	assert.match(formatted.text, /### 확인 완료 사항/);
-	assert.doesNotMatch(formatted.text, /prod-files-secure|X-Amz-|AWS4-HMAC|secret/);
-	assert.doesNotMatch(formatted.text, /!\[[^\]]*\]\(https?:\/\//);
+	assert.equal(formatted.text, "📝 Notion page · 취소/환불 정책 통합 변경 · 이미지 1개 · Ctrl+O 펼쳐보기");
+	assert.match(String(formatted.details?.fullDigest), /- 이미지: 08B5E9F1-48CE-486A-AE1E-A76F48A0915D\.png · Notion 원문에서 확인/);
+	assert.match(String(formatted.details?.fullDigest), /### 확인 완료 사항/);
+	assert.doesNotMatch(formatted.text, /prod-files-secure|X-Amz-|AWS4-HMAC|secret|본문입니다/);
+	assert.doesNotMatch(String(formatted.details?.fullDigest), /prod-files-secure|X-Amz-|AWS4-HMAC|secret/);
+	assert.doesNotMatch(String(formatted.details?.fullDigest), /!\[[^\]]*\]\(https?:\/\//);
 });
 
 test("Notion JSON is rendered around title properties and block text", () => {
