@@ -16,8 +16,8 @@ applies_to:
   - README.md
 source:
   - user-direction:2026-05-20-shortcut-atlas
-reviewed_at: 2026-05-20
-reviewed_commit: 7ea10e491f6879877d71fa09f3671ed4c8c0d7bb
+reviewed_at: 2026-06-02
+reviewed_commit: e123af14832390aa7959c2a5b597b1b64eaebb91
 related:
   - task-work-map-overlay
   - terminal-host-integration

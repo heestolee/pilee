@@ -15,8 +15,8 @@ applies_to:
   - extensions/fork-panel
 source:
   - user-direction:2026-05-12-workspace-save-restore
-reviewed_at: 2026-05-19
-reviewed_commit: 753d75bcc7f80e4393b68ef575f1838f9d8563fb
+reviewed_at: 2026-06-02
+reviewed_commit: 83617e9544615d818e6a7a17fa807f029a7db835
 related:
   - terminal-host-integration
   - fork-panel-spatial-continuity

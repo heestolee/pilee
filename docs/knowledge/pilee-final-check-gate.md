@@ -20,8 +20,8 @@ source:
   - user-direction:2026-05-12-pilee-final-check
   - user-direction:2026-05-19-final-check-test-code-gate
   - user-direction:2026-05-20-webview-scroll-reload-test-gate
-reviewed_at: 2026-05-20
-reviewed_commit: 0a58e59c9c35506e0568bb2bfc3cadc283f337a6
+reviewed_at: 2026-06-02
+reviewed_commit: fad9c363005bba6afcb9fecd6a1d5475b32c4ea9
 related:
   - request-traceability-surgical-changes
   - evidence-first-verification-gate

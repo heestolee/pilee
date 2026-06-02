@@ -16,8 +16,8 @@ applies_to:
   - extensions/subagent
 source:
   - user-direction:2026-05-13-final-verification-parallel
-reviewed_at: 2026-05-13
-reviewed_commit: cdaedbd
+reviewed_at: 2026-06-02
+reviewed_commit: c6cd06fdfbd276127b92c33ecbf9d12d71fb8a41
 related:
   - ai-worker-readiness-orchestrator
   - subagent-prompt-specificity

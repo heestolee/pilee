@@ -22,8 +22,8 @@ applies_to:
 source:
   - user-direction:2026-05-09-decide-tradeoff-challenge
   - pilee-history:2026-05-09#102
-reviewed_at: 2026-05-30
-reviewed_commit: de40e548359d357b1f7444ab484fa322e9b8a707
+reviewed_at: 2026-06-02
+reviewed_commit: cc0bd9893b2bcb593c3c66305002a0599e6c1b5d
 related:
   - ask-user-question-decision-gates
   - ask-user-question-option-design

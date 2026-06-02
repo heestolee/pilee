@@ -21,8 +21,8 @@ source:
   - pilee-history:2026-05-05#39
   - pilee-history:2026-05-05#51
   - pilee-history:2026-05-05#53
-reviewed_at: 2026-05-12
-reviewed_commit: fc6ffa9aaa2a87275a50c2888d6ca4bbe0255cf6
+reviewed_at: 2026-06-02
+reviewed_commit: d8f8c4c56f23dcfda08b089b6d8ff5be4885e37c
 related:
   - mcp-stderr-isolation
   - theme-information-hierarchy

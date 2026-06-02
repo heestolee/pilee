@@ -66,163 +66,163 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [Worker는 readiness ownership을 가진다](./ai-worker-readiness-orchestrator.md) | active | high | 2026-05-12 | a2019c2 | worker, subagent, orchestrator, readiness, bootstrap, diagnosis |
-| [Self-healing은 actionable item만 수정한다](./self-healing-actionable-loop.md) | active | high | 2026-05-13 | e0dc999 | self-healing, actionable, worker, fix-class, subagent, 자동수정 |
-| [Stress Interview는 다축 검토다](./stress-interview-multi-axis-review.md) | active | high | 2026-05-13 | 74c8c28 | stress-interview, review, verifier, reviewer, challenger, subagent |
-| [Hybrid subagent 모델 운용 정책](./subagent-model-policy.md) | active | high | 2026-05-12 | c82cbb0 | subagent, codex, claude, model-policy, worker, finder |
-| [Subagent 위임은 구체 프롬프트를 요구한다](./subagent-prompt-specificity.md) | active | high | 2026-05-13 | 10e0874 | subagent, prompt, delegation, worker, context, 위임 |
-| [Subagent는 slash command가 아니라 skill prompt를 위임받는다](./subagent-skill-delegation.md) | active | high | 2026-05-13 | 10e0874 | subagent, skill, slash-command, delegation, ship, ci-ship |
-| [Supervisor는 outcome guardrail이다](./supervisor-outcome-guardrail.md) | active | high | 2026-05-12 | c82cbb0 | supervisor, outcome, guardrail, steering, agent |
+| [Worker는 readiness ownership을 가진다](./ai-worker-readiness-orchestrator.md) | active | high | 2026-06-02 | ce5e875 | worker, subagent, orchestrator, readiness, bootstrap, diagnosis |
+| [Self-healing은 actionable item만 수정한다](./self-healing-actionable-loop.md) | active | high | 2026-06-02 | e123af1 | self-healing, actionable, worker, fix-class, subagent, 자동수정 |
+| [Stress Interview는 다축 검토다](./stress-interview-multi-axis-review.md) | active | high | 2026-06-02 | e123af1 | stress-interview, review, verifier, reviewer, challenger, subagent |
+| [Hybrid subagent 모델 운용 정책](./subagent-model-policy.md) | active | high | 2026-06-02 | 83617e9 | subagent, codex, claude, model-policy, worker, finder |
+| [Subagent 위임은 구체 프롬프트를 요구한다](./subagent-prompt-specificity.md) | active | high | 2026-06-02 | 83617e9 | subagent, prompt, delegation, worker, context, 위임 |
+| [Subagent는 slash command가 아니라 skill prompt를 위임받는다](./subagent-skill-delegation.md) | active | high | 2026-06-02 | 83617e9 | subagent, skill, slash-command, delegation, ship, ci-ship |
+| [Supervisor는 outcome guardrail이다](./supervisor-outcome-guardrail.md) | active | high | 2026-06-02 | 63f2a62 | supervisor, outcome, guardrail, steering, agent |
 
 ### architecture
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [Architecture friction은 TFT의 검증 축이다](./architecture-friction-tft-lens.md) | active | high | 2026-05-13 | e0dc999 | architecture, frame, decide, verify, deep-module, shallow-module |
-| [Utils surface는 사용자 계약을 만들지 않는다](./utility-surface-stays-invisible.md) | active | high | 2026-05-13 | 10e0874 | utils, internal, surface, abstraction, extension |
+| [Architecture friction은 TFT의 검증 축이다](./architecture-friction-tft-lens.md) | active | high | 2026-06-02 | ce5e875 | architecture, frame, decide, verify, deep-module, shallow-module |
+| [Utils surface는 사용자 계약을 만들지 않는다](./utility-surface-stays-invisible.md) | active | high | 2026-06-02 | d8f8c4c | utils, internal, surface, abstraction, extension |
 
 ### database
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [DB write는 인간 실행 게이트를 가진다](./database-write-human-execution-gate.md) | active | high | 2026-05-13 | 49eb5f7 | db-write, migration, sql, approval, transaction, database |
+| [DB write는 인간 실행 게이트를 가진다](./database-write-human-execution-gate.md) | active | high | 2026-06-02 | 91c739f | db-write, migration, sql, approval, transaction, database |
 
 ### debugging
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [수정 전에 근본 원인을 좁힌다](./root-cause-before-fix.md) | active | high | 2026-05-26 | fca5f1d | debugging, root-cause, triage, error-recovery, systematic, 디버깅 |
+| [수정 전에 근본 원인을 좁힌다](./root-cause-before-fix.md) | active | high | 2026-06-02 | 41c70e0 | debugging, root-cause, triage, error-recovery, systematic, 디버깅 |
 
 ### frame
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [백엔드 레이어 맵은 Frame의 초기 이해 게이트다](./backend-layer-map-frame-gate.md) | active | high | 2026-05-30 | de40e54 | frame, tft, backend, resolver, usecase, service |
-| [정책축 스캔은 Frame의 초기 게이트다](./policy-axis-frame-gate.md) | active | high | 2026-05-13 | e0dc999 | frame, tft, policy-axis, campaign, benefits, time-basis |
+| [백엔드 레이어 맵은 Frame의 초기 이해 게이트다](./backend-layer-map-frame-gate.md) | active | high | 2026-06-02 | ce5e875 | frame, tft, backend, resolver, usecase, service |
+| [정책축 스캔은 Frame의 초기 게이트다](./policy-axis-frame-gate.md) | active | high | 2026-06-02 | fad9c36 | frame, tft, policy-axis, campaign, benefits, time-basis |
 
 ### knowledge
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [낮은 confidence 판단은 정합성 PR로 올린다](./confidence-sensitive-review.md) | active | high | 2026-05-13 | 49eb5f7 | confidence, review, freshness, ai-actions, user-review, 정합성 |
-| [Deterministic action과 AI review action은 분리한다](./deterministic-vs-ai-actions.md) | active | high | 2026-05-13 | 49eb5f7 | knowledge, deterministic, ai-actions, review, automation, 정합성 |
-| [Ember는 knowledge의 친근한 입구다](./ember-friendly-knowledge-entrypoint.md) | active | high | 2026-05-13 | f89a0f6 | ember, branding, command, knowledge |
-| [Ember Ship은 knowledge 정합성을 release train으로 닫는다](./ember-ship-release-train.md) | active | high | 2026-06-03 | 6360cc9 | ember, knowledge, release-train, freshness, merge-gate |
-| [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | high | 2026-05-13 | 1f5c3ac | knowledge, freshness, diagnosis, review, candidate, 정합성 |
-| [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | high | 2026-05-13 | 1f5c3ac | knowledge, judgment, granularity, documentation, coverage, 문서 |
-| [Knowledge review queue는 PR body에 남긴다](./knowledge-review-queue-pr-body.md) | active | high | 2026-06-03 | 6360cc9 | knowledge, review-queue, github-actions, pr-body, ember-ship |
-| [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | high | 2026-05-13 | 1a6aa93 | pilee, knowledge, history, journal, sanitized, reviewed-at |
-| [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | high | 2026-05-13 | 1a6aa93 | knowledge, journal, privacy, sanitized, doctrine, history |
-| [README는 knowledge coverage map이다](./readme-coverage-map.md) | active | high | 2026-05-13 | 1a6aa93 | knowledge, readme, coverage, graph, surface, todo |
-| [README 철학 변경은 사용자 판단 게이트를 지난다](./readme-philosophy-user-gate.md) | active | high | 2026-05-13 | 1a6aa93 | readme, philosophy, user-gate, public-facing, documentation, 판단 |
-| [Retro는 private reflection이다](./retro-private-reflection-boundary.md) | active | high | 2026-05-13 | 74c8c28 | retro, notion, reflection, private, journal, 회고 |
-| [reviewed_commit은 날짜 freshness의 빈틈을 막는다](./reviewed-commit-freshness.md) | active | high | 2026-05-13 | 74c8c28 | knowledge, reviewed-commit, reviewed-at, freshness, commit, 정합성 |
+| [낮은 confidence 판단은 정합성 PR로 올린다](./confidence-sensitive-review.md) | active | high | 2026-06-02 | cc0bd98 | confidence, review, freshness, ai-actions, user-review, 정합성 |
+| [Deterministic action과 AI review action은 분리한다](./deterministic-vs-ai-actions.md) | active | high | 2026-06-02 | c6cd06f | knowledge, deterministic, ai-actions, review, automation, 정합성 |
+| [Ember는 knowledge의 친근한 입구다](./ember-friendly-knowledge-entrypoint.md) | active | high | 2026-06-02 | c6cd06f | ember, branding, command, knowledge |
+| [Ember Ship은 knowledge 정합성을 release train으로 닫는다](./ember-ship-release-train.md) | active | high | 2026-06-02 | 91c739f | ember, knowledge, release-train, freshness, merge-gate |
+| [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | high | 2026-06-02 | 7861f10 | knowledge, freshness, diagnosis, review, candidate, 정합성 |
+| [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | high | 2026-06-02 | 7861f10 | knowledge, judgment, granularity, documentation, coverage, 문서 |
+| [Knowledge review queue는 PR body에 남긴다](./knowledge-review-queue-pr-body.md) | active | high | 2026-06-02 | e19936a | knowledge, review-queue, github-actions, pr-body, ember-ship |
+| [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | high | 2026-06-02 | fad9c36 | pilee, knowledge, history, journal, sanitized, reviewed-at |
+| [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | high | 2026-06-02 | fad9c36 | knowledge, journal, privacy, sanitized, doctrine, history |
+| [README는 knowledge coverage map이다](./readme-coverage-map.md) | active | high | 2026-06-02 | 41c70e0 | knowledge, readme, coverage, graph, surface, todo |
+| [README 철학 변경은 사용자 판단 게이트를 지난다](./readme-philosophy-user-gate.md) | active | high | 2026-06-02 | 41c70e0 | readme, philosophy, user-gate, public-facing, documentation, 판단 |
+| [Retro는 private reflection이다](./retro-private-reflection-boundary.md) | active | high | 2026-06-02 | 41c70e0 | retro, notion, reflection, private, journal, 회고 |
+| [reviewed_commit은 날짜 freshness의 빈틈을 막는다](./reviewed-commit-freshness.md) | active | high | 2026-06-02 | 41c70e0 | knowledge, reviewed-commit, reviewed-at, freshness, commit, 정합성 |
 
 ### review
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [Diff review draft는 PR 코멘트 전 단계다](./diff-review-draft-handoff.md) | active | high | 2026-05-13 | f89a0f6 | diff-overlay, review-draft, pr-comments, code-review, handoff |
+| [Diff review draft는 PR 코멘트 전 단계다](./diff-review-draft-handoff.md) | active | high | 2026-06-02 | c6cd06f | diff-overlay, review-draft, pr-comments, code-review, handoff |
 
 ### runtime
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [Codex fast mode는 출력 verbosity와 priority tier만 줄인다](./codex-fast-mode-runtime.md) | active | high | 2026-05-26 | c1cfb50 | codex, model, speed, provider, extension |
-| [Deterministic fallback은 workflow를 보존한다](./deterministic-fallbacks-preserve-workflow.md) | active | high | 2026-05-12 | b01add4 | fallback, deterministic, model-failure, resilience, web-search, report |
-| [Embedded WebView script는 escape 경계를 보존한다](./embedded-webview-script-escape-boundary.md) | active | high | 2026-05-13 | f89a0f6 | webview, embedded-script, escape, string-raw, regex, glimpse |
+| [Codex fast mode는 출력 verbosity와 priority tier만 줄인다](./codex-fast-mode-runtime.md) | active | high | 2026-06-02 | 91c739f | codex, model, speed, provider, extension |
+| [Deterministic fallback은 workflow를 보존한다](./deterministic-fallbacks-preserve-workflow.md) | active | high | 2026-06-02 | c6cd06f | fallback, deterministic, model-failure, resilience, web-search, report |
+| [Embedded WebView script는 escape 경계를 보존한다](./embedded-webview-script-escape-boundary.md) | active | high | 2026-06-02 | c6cd06f | webview, embedded-script, escape, string-raw, regex, glimpse |
 | [MCP 결과는 구조화 출력부터 digest-first로 다룬다](./mcp-digest-first-artifacts.md) | active | high | 2026-06-02 | 3b2f6ec | mcp, digest-first, tool-output, lazy-retrieval |
-| [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-05-13 | 1a6aa93 | mcp, stderr, stdio, terminal, tui, noise |
-| [Runtime fan-out은 healthcheck 뒤의 실행 계약이다](./runtime-fanout-diagnosis.md) | active | high | 2026-05-28 | f481e63 | runtime, fanout, healthcheck, deployment, triage, root-cause |
-| [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-05-13 | e0dc999 | terminal, ghostty, applescript, notify, host, integration |
-| [터미널 workspace 복원은 snapshot과 host adapter를 분리한다](./terminal-workspace-restore.md) | active | high | 2026-05-19 | 753d75b | workspace, terminal, ghostty, snapshot, restore, session |
+| [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-06-02 | fad9c36 | mcp, stderr, stdio, terminal, tui, noise |
+| [Runtime fan-out은 healthcheck 뒤의 실행 계약이다](./runtime-fanout-diagnosis.md) | active | high | 2026-06-02 | 91c739f | runtime, fanout, healthcheck, deployment, triage, root-cause |
+| [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-06-02 | 83617e9 | terminal, ghostty, applescript, notify, host, integration |
+| [터미널 workspace 복원은 snapshot과 host adapter를 분리한다](./terminal-workspace-restore.md) | active | high | 2026-06-02 | 83617e9 | workspace, terminal, ghostty, snapshot, restore, session |
 
 ### ui
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [Idle UI는 장식이 아니라 ambient status다](./ambient-status-surfaces.md) | active | high | 2026-05-26 | 285562a | idle-screensaver, tasks, spinner, status, ambient, ui |
-| [Editor affordance는 숨은 컨텍스트가 아니다](./editor-affordance-not-context.md) | active | high | 2026-05-13 | dea80b9 | editor, footer, prompt-suggest, working-text, affordance, ui |
-| [User-facing 출력은 한국어를 기본으로 한다](./korean-first-user-facing-output.md) | active | high | 2026-05-26 | ae8152b | korean-output, localization, web-search, ui, rewrite, 한국어 |
-| [Shortcut Atlas는 단축키 표면을 한 번에 검토한다](./shortcut-atlas-conflict-audit.md) | active | high | 2026-05-20 | 7ea10e4 | shortcuts, keybindings, overlay, collision, audit, ui |
-| [Task overlay는 작업 맵을 보존한다](./task-work-map-overlay.md) | active | high | 2026-05-20 | 7ea10e4 | tasks, overlay, work-map, soft-delete, provenance, ui |
-| [색상은 정보 위계다](./theme-information-hierarchy.md) | active | high | 2026-05-21 | fcd3b87 | theme, color, dim, muted, border, accent |
+| [Idle UI는 장식이 아니라 ambient status다](./ambient-status-surfaces.md) | active | high | 2026-06-02 | 91c739f | idle-screensaver, tasks, spinner, status, ambient, ui |
+| [Editor affordance는 숨은 컨텍스트가 아니다](./editor-affordance-not-context.md) | active | high | 2026-06-02 | c6cd06f | editor, footer, prompt-suggest, working-text, affordance, ui |
+| [User-facing 출력은 한국어를 기본으로 한다](./korean-first-user-facing-output.md) | active | high | 2026-06-02 | 7861f10 | korean-output, localization, web-search, ui, rewrite, 한국어 |
+| [Shortcut Atlas는 단축키 표면을 한 번에 검토한다](./shortcut-atlas-conflict-audit.md) | active | high | 2026-06-02 | e123af1 | shortcuts, keybindings, overlay, collision, audit, ui |
+| [Task overlay는 작업 맵을 보존한다](./task-work-map-overlay.md) | active | high | 2026-06-02 | 83617e9 | tasks, overlay, work-map, soft-delete, provenance, ui |
+| [색상은 정보 위계다](./theme-information-hierarchy.md) | active | high | 2026-06-02 | d8f8c4c | theme, color, dim, muted, border, accent |
 | [도구 출력은 대화 흐름을 침범하지 않는다](./tool-output-noise-management.md) | active | high | 2026-06-02 | 3b2f6ec | tool-output, collapse, noise, ui, usage, renderer |
-| [TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다](./tui-rendering-sanitization.md) | active | high | 2026-05-12 | fc6ffa9 | tui, rendering, newline, ansi, sanitize, terminal |
+| [TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다](./tui-rendering-sanitization.md) | active | high | 2026-06-02 | d8f8c4c | tui, rendering, newline, ansi, sanitize, terminal |
 
 ### verification
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-05-30 | de40e54 | verify, evidence, gate, done, ready, verification |
-| [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-05-30 | de40e54 | frame, verify, frame-json, success-criteria, contract, verification |
-| [반복 검증 실패는 baseline cache로 분리한다](./validation-baseline-failure-cache.md) | active | high | 2026-05-13 | 062f9f2 | preflight, validation, baseline, failure, cache, verification |
-| [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-05-13 | 062f9f2 | verify, invalidation, code-change, freshness, gate, 검증 |
-| [Verify Report 전에는 PM-facing 계약과 readiness를 먼저 잠근다](./verify-report-preflight-readiness.md) | active | high | 2026-05-30 | 1270e1a | verify-report, preflight, readiness, capture, data, account |
-| [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | active | high | 2026-05-30 | 1270e1a | verify-report, verification, evidence, coverage, capture, crop |
-| [Verify risk lens는 generic core와 private overlay로 나눈다](./verify-risk-lens-overlay.md) | active | high | 2026-05-12 | fc6ffa9 | verify, risk-lens, overlay, private-overlay, verification, domain-check |
+| [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-06-02 | 91c739f | verify, evidence, gate, done, ready, verification |
+| [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-06-02 | 7861f10 | frame, verify, frame-json, success-criteria, contract, verification |
+| [반복 검증 실패는 baseline cache로 분리한다](./validation-baseline-failure-cache.md) | active | high | 2026-06-02 | d8f8c4c | preflight, validation, baseline, failure, cache, verification |
+| [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-06-02 | 61ccbc9 | verify, invalidation, code-change, freshness, gate, 검증 |
+| [Verify Report 전에는 PM-facing 계약과 readiness를 먼저 잠근다](./verify-report-preflight-readiness.md) | active | high | 2026-06-02 | 91c739f | verify-report, preflight, readiness, capture, data, account |
+| [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | active | high | 2026-06-02 | 61ccbc9 | verify-report, verification, evidence, coverage, capture, crop |
+| [Verify risk lens는 generic core와 private overlay로 나눈다](./verify-risk-lens-overlay.md) | active | high | 2026-06-02 | 61ccbc9 | verify, risk-lens, overlay, private-overlay, verification, domain-check |
 
 ### web-access
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [웹 검색은 승인된 출처 선택을 거친다](./curator-approved-source-selection.md) | active | high | 2026-05-13 | 49eb5f7 | web-search, curator, source-selection, approval, tavily, 검색 |
-| [Web Search curator와 승인형 요약 흐름](./web-search-curator.md) | active | high | 2026-05-13 | 062f9f2 | web-search, tavily, curator, glimpse, summary-review, korean-output |
+| [웹 검색은 승인된 출처 선택을 거친다](./curator-approved-source-selection.md) | active | high | 2026-06-02 | 63f2a62 | web-search, curator, source-selection, approval, tavily, 검색 |
+| [Web Search curator와 승인형 요약 흐름](./web-search-curator.md) | active | high | 2026-06-02 | 61ccbc9 | web-search, tavily, curator, glimpse, summary-review, korean-output |
 
 ### workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [검토 산출물은 다시 열 수 있어야 한다](./artifact-archive-reopenability.md) | active | high | 2026-05-31 | 81a77af | artifact, archive, show-report, archive-command, history, html |
-| [AskUserQuestion은 의사결정 게이트다](./ask-user-question-decision-gates.md) | active | high | 2026-05-13 | ca6dec9 | ask-user-question, tft, decision-gate, question, non-delegable, 질문 |
-| [AskUserQuestion 옵션은 행동 분기를 표현한다](./ask-user-question-option-design.md) | active | high | 2026-05-13 | 9152c35 | ask-user-question, option, wording, ceremony, tft, 질문 |
-| [Atomic evidence workflow는 작은 claim을 증거로 닫는다](./atomic-evidence-workflow.md) | active | high | 2026-05-13 | e6c131d | atomic, evidence, claim, slice, verification, frame |
-| [Auto-commit은 명시 계획만 실행한다](./auto-commit-explicit-plan-gate.md) | active | high | 2026-05-26 | 668415d | auto-commit, git, commit, plan, safety |
-| [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | high | 2026-05-13 | ca6dec9 | backlog, tasks, provenance, source-session, session, 맥락 |
-| [Bash tool override는 명령 의도와 출력 노이즈를 분리한다](./bash-tool-title-output-override.md) | active | high | 2026-05-13 | 62d55bb | bash, tool, override, ui, output, title |
-| [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md) | active | high | 2026-05-13 | 49eb5f7 | git, incremental, code-review, commit, quality, 통합 |
-| [CI-Ship은 PR 후 검증 실패 대응 단계다](./ci-ship-failure-response-boundary.md) | active | high | 2026-05-20 | 7662f0a | ci-ship, ci, github-actions, pull-request, failure-analysis, ship |
-| [Clean handoff는 compact와 새 세션 사이의 전환 계약이다](./clean-handoff-session-continuation.md) | active | high | 2026-05-14 | ae89856 | session, handoff, compact, context, archive, continue-clean |
-| [자동 로드 컨텍스트는 최소 surface만 가진다](./context-loading-minimal-surface.md) | active | high | 2026-05-13 | 49eb5f7 | context, agents-md, memory, system-prompt, token, autoload |
-| [Decide는 선택을 한 번 공격한다](./decide-tradeoff-challenge.md) | active | high | 2026-05-30 | de40e54 | decide, tradeoff, challenge, productive-resistance, frame-json, decision |
-| [외부 이슈 업데이트는 preview gate를 지난다](./external-issue-preview-gate.md) | active | high | 2026-05-13 | f89a0f6 | jira, issue, preview, wiki-markup, external-update, approval |
-| [최종 검증은 메인 세션을 막지 않고 병렬화한다](./final-verification-parallelization.md) | active | high | 2026-05-13 | cdaedbd | verification, ship, final-check, subagent, background, parallel |
-| [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-05-12 | 4d1ff26 | fork-panel, handoff, inbox, inject, parent, panel |
-| [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-05-20 | f2e7cec | fork-panel, revive, repanel, ghostty, spatial, panel |
-| [Frame은 마지막에 Plan을 합성한다](./frame-plan-synthesis-continuity.md) | active | high | 2026-05-20 | 32d1aed | frame, implementation-plan, tft-studio, worktree, continuity, planning |
-| [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-05-13 | 1f5c3ac | frame, planning, identity, home-directory, ticket, session-title |
+| [검토 산출물은 다시 열 수 있어야 한다](./artifact-archive-reopenability.md) | active | high | 2026-06-02 | ce5e875 | artifact, archive, show-report, archive-command, history, html |
+| [AskUserQuestion은 의사결정 게이트다](./ask-user-question-decision-gates.md) | active | high | 2026-06-02 | ce5e875 | ask-user-question, tft, decision-gate, question, non-delegable, 질문 |
+| [AskUserQuestion 옵션은 행동 분기를 표현한다](./ask-user-question-option-design.md) | active | high | 2026-06-02 | ce5e875 | ask-user-question, option, wording, ceremony, tft, 질문 |
+| [Atomic evidence workflow는 작은 claim을 증거로 닫는다](./atomic-evidence-workflow.md) | active | high | 2026-06-02 | ce5e875 | atomic, evidence, claim, slice, verification, frame |
+| [Auto-commit은 명시 계획만 실행한다](./auto-commit-explicit-plan-gate.md) | active | high | 2026-06-02 | ce5e875 | auto-commit, git, commit, plan, safety |
+| [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | high | 2026-06-02 | cc0bd98 | backlog, tasks, provenance, source-session, session, 맥락 |
+| [Bash tool override는 명령 의도와 출력 노이즈를 분리한다](./bash-tool-title-output-override.md) | active | high | 2026-06-02 | cc0bd98 | bash, tool, override, ui, output, title |
+| [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md) | active | high | 2026-06-02 | cc0bd98 | git, incremental, code-review, commit, quality, 통합 |
+| [CI-Ship은 PR 후 검증 실패 대응 단계다](./ci-ship-failure-response-boundary.md) | active | high | 2026-06-02 | cc0bd98 | ci-ship, ci, github-actions, pull-request, failure-analysis, ship |
+| [Clean handoff는 compact와 새 세션 사이의 전환 계약이다](./clean-handoff-session-continuation.md) | active | high | 2026-06-02 | cc0bd98 | session, handoff, compact, context, archive, continue-clean |
+| [자동 로드 컨텍스트는 최소 surface만 가진다](./context-loading-minimal-surface.md) | active | high | 2026-06-02 | cc0bd98 | context, agents-md, memory, system-prompt, token, autoload |
+| [Decide는 선택을 한 번 공격한다](./decide-tradeoff-challenge.md) | active | high | 2026-06-02 | cc0bd98 | decide, tradeoff, challenge, productive-resistance, frame-json, decision |
+| [외부 이슈 업데이트는 preview gate를 지난다](./external-issue-preview-gate.md) | active | high | 2026-06-02 | 63f2a62 | jira, issue, preview, wiki-markup, external-update, approval |
+| [최종 검증은 메인 세션을 막지 않고 병렬화한다](./final-verification-parallelization.md) | active | high | 2026-06-02 | c6cd06f | verification, ship, final-check, subagent, background, parallel |
+| [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-06-02 | c6cd06f | fork-panel, handoff, inbox, inject, parent, panel |
+| [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-06-02 | 63f2a62 | fork-panel, revive, repanel, ghostty, spatial, panel |
+| [Frame은 마지막에 Plan을 합성한다](./frame-plan-synthesis-continuity.md) | active | high | 2026-06-02 | 7861f10 | frame, implementation-plan, tft-studio, worktree, continuity, planning |
+| [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-06-02 | 7861f10 | frame, planning, identity, home-directory, ticket, session-title |
 | [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-05-31 | 81a77af | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
-| [Interactive shell은 bash가 아닌 터미널 세션이다](./interactive-shell-overlay-tool.md) | active | high | 2026-05-13 | f3fe380 | interactive-shell, shell, tui, dev-server, overlay, dispatch |
-| [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-05-13 | 1f5c3ac | artifact, glimpse, preview, sse, upload, local-first |
+| [Interactive shell은 bash가 아닌 터미널 세션이다](./interactive-shell-overlay-tool.md) | active | high | 2026-06-02 | 7861f10 | interactive-shell, shell, tui, dev-server, overlay, dispatch |
+| [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-06-02 | 7861f10 | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 264ea17 | local-dev, server, startup, diagnosis, dev |
-| [장시간 세션은 phase와 stop-line으로 제어한다](./long-running-session-control.md) | active | high | 2026-05-27 | 94b3eb0 | workflow, guard, checkpoint, validation, commit, heartbeat |
-| [pilee 변경은 final-check gate로 닫는다](./pilee-final-check-gate.md) | active | high | 2026-05-20 | 0a58e59 | pilee, final-check, verification, skill, workflow, 마무리 |
-| [Private overlay package는 회사·개인 실행 맥락을 담는다](./private-overlay-package-boundary.md) | active | high | 2026-05-13 | e0dc999 | privacy, package, overlay, skill, company-context |
-| [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-05-20 | 32d1aed | queued-messages, slash-command, prefill, worktree, session, boundary |
-| [Read/Edit tool override는 필요한 증거만 펼친다](./read-edit-tool-output-override.md) | active | high | 2026-05-13 | f3fe380 | read, edit, tool, override, diff, preview |
-| [변경된 줄은 요청으로 추적 가능해야 한다](./request-traceability-surgical-changes.md) | active | high | 2026-05-13 | 74c8c28 | request-traceability, surgical-change, karpathy, diff, scope, review |
-| [종료된 포크는 transcript 주입보다 revive가 우선이다](./revive-over-transcript-recall.md) | active | high | 2026-05-12 | ca8ae9e | revive, recall, fork-panel, session, continuity, 세션 |
-| [세션 분류는 원본 위의 sidecar다](./session-classification-sidecar.md) | active | high | 2026-05-25 | 77307ef | archive, show-report, session-classification, sidecar, session, ai-suggestion |
-| [Session export는 원본을 보존하는 adapter를 거친다](./session-export-source-preservation.md) | active | high | 2026-05-13 | 74c8c28 | session-export, source-preservation, jsonl, conductor, normalize, show-report |
-| [세션 식별자는 파일명이 아니라 사람이 본 이름이다](./session-identity-over-filenames.md) | active | high | 2026-05-12 | b3d4dce | session, title, identity, session_info, worktree, revive |
-| [Ship과 PR-Ship은 서로 다른 통합 단계다](./ship-pr-ship-review-boundary.md) | active | high | 2026-05-13 | 74c8c28 | ship, pr-ship, pr-review, github, commit, push |
-| [Skill은 재사용 가능한 절차다](./skills-as-portable-procedures.md) | active | high | 2026-05-12 | b3d4dce | skill, skill-creator, procedure, porting, workflow, 스킬 |
-| [Slice 완료는 commit 후보를 만든다](./slice-auto-commit-rhythm.md) | active | high | 2026-05-26 | 668415d | frame, slice, auto-commit, work-context, git |
-| [정확한 기획 근거가 있으면 Frame은 추적 매트릭스를 만든다](./source-grounded-frame-planning.md) | active | high | 2026-05-30 | de40e54 | frame, tft-studio, planning, requirements, traceability, work-map |
-| [Command shim은 skill source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-05-13 | 10e0874 | command-shim, skill, tft, frame, slash-command, routing |
-| [TFT Preference Regression Gate는 사용자 선호 역전을 막는다](./tft-preference-regression-gate.md) | active | high | 2026-05-13 | 9152c35 | tft, frame, decide, verify, ask-user-question, regression |
-| [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-05-30 | 12592b4 | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
-| [To-production은 source-preserving hotfix 이식이다](./to-production-source-preserving-hotfix.md) | active | high | 2026-05-20 | 1dc3eae | to-production, hotfix, production, git, worktree, source-preserving |
-| [TUI 질문은 작은 의사결정 게이트다](./tui-ask-decision-overlay.md) | active | high | 2026-05-21 | fcd3b87 | tui, ask-user-question, decision-gate, tool, overlay |
+| [장시간 세션은 phase와 stop-line으로 제어한다](./long-running-session-control.md) | active | high | 2026-06-02 | fad9c36 | workflow, guard, checkpoint, validation, commit, heartbeat |
+| [pilee 변경은 final-check gate로 닫는다](./pilee-final-check-gate.md) | active | high | 2026-06-02 | fad9c36 | pilee, final-check, verification, skill, workflow, 마무리 |
+| [Private overlay package는 회사·개인 실행 맥락을 담는다](./private-overlay-package-boundary.md) | active | high | 2026-06-02 | fad9c36 | privacy, package, overlay, skill, company-context |
+| [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-06-02 | fad9c36 | queued-messages, slash-command, prefill, worktree, session, boundary |
+| [Read/Edit tool override는 필요한 증거만 펼친다](./read-edit-tool-output-override.md) | active | high | 2026-06-02 | 41c70e0 | read, edit, tool, override, diff, preview |
+| [변경된 줄은 요청으로 추적 가능해야 한다](./request-traceability-surgical-changes.md) | active | high | 2026-06-02 | 41c70e0 | request-traceability, surgical-change, karpathy, diff, scope, review |
+| [종료된 포크는 transcript 주입보다 revive가 우선이다](./revive-over-transcript-recall.md) | active | high | 2026-06-02 | 41c70e0 | revive, recall, fork-panel, session, continuity, 세션 |
+| [세션 분류는 원본 위의 sidecar다](./session-classification-sidecar.md) | active | high | 2026-06-02 | 91c739f | archive, show-report, session-classification, sidecar, session, ai-suggestion |
+| [Session export는 원본을 보존하는 adapter를 거친다](./session-export-source-preservation.md) | active | high | 2026-06-02 | e123af1 | session-export, source-preservation, jsonl, conductor, normalize, show-report |
+| [세션 식별자는 파일명이 아니라 사람이 본 이름이다](./session-identity-over-filenames.md) | active | high | 2026-06-02 | e123af1 | session, title, identity, session_info, worktree, revive |
+| [Ship과 PR-Ship은 서로 다른 통합 단계다](./ship-pr-ship-review-boundary.md) | active | high | 2026-06-02 | e123af1 | ship, pr-ship, pr-review, github, commit, push |
+| [Skill은 재사용 가능한 절차다](./skills-as-portable-procedures.md) | active | high | 2026-06-02 | e123af1 | skill, skill-creator, procedure, porting, workflow, 스킬 |
+| [Slice 완료는 commit 후보를 만든다](./slice-auto-commit-rhythm.md) | active | high | 2026-06-02 | e123af1 | frame, slice, auto-commit, work-context, git |
+| [정확한 기획 근거가 있으면 Frame은 추적 매트릭스를 만든다](./source-grounded-frame-planning.md) | active | high | 2026-06-02 | 63f2a62 | frame, tft-studio, planning, requirements, traceability, work-map |
+| [Command shim은 reviewable workflow source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-06-02 | 83617e9 | command-shim, skill, tft, frame, slash-command, routing |
+| [TFT Preference Regression Gate는 사용자 선호 역전을 막는다](./tft-preference-regression-gate.md) | active | high | 2026-06-02 | 83617e9 | tft, frame, decide, verify, ask-user-question, regression |
+| [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-06-02 | d8f8c4c | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
+| [To-production은 source-preserving hotfix 이식이다](./to-production-source-preserving-hotfix.md) | active | high | 2026-06-02 | d8f8c4c | to-production, hotfix, production, git, worktree, source-preserving |
+| [TUI 질문은 작은 의사결정 게이트다](./tui-ask-decision-overlay.md) | active | high | 2026-06-02 | d8f8c4c | tui, ask-user-question, decision-gate, tool, overlay |
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
-| [Update branch는 안전한 pull command다](./update-branch-safe-pull-command.md) | active | high | 2026-05-27 | fdd1a98 | update-branch, slash-command, git, pull, index-lock, workflow |
-| [Working Context Card는 큰 맥락을 현재 slice로 압축한다](./work-context-card-task-board.md) | active | high | 2026-05-20 | db0d715 | work-context, tasks, workflow, context, guard |
-| [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-05-28 | 536bd9c | workflow, guard, intent, audit, hotfix, continuation |
-| [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-05-24 | fbc6771 | workflow, frame, tft, hotfix, scope, incremental |
-| [Worktree 생성은 현재 패널 대화가 source다](./worktree-creation-parent-gate.md) | active | high | 2026-05-19 | 6564ee3 | worktree, fork-panel, current-panel, hotfix, context, profile-driven |
-| [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-05-19 | cd625b8 | worktree, dependencies, bootstrap, profile-driven, worker, subagent |
-| [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-05-20 | 32d1aed | worktree, workspace, repo, branch, execution-boundary, cwd-binding |
-| [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-05-20 | 57bf4c5 | worktree, session, revive, fork-panel, panel-inbox, handoff |
+| [Update branch는 안전한 pull command다](./update-branch-safe-pull-command.md) | active | high | 2026-06-02 | d8f8c4c | update-branch, slash-command, git, pull, index-lock, workflow |
+| [Working Context Card는 큰 맥락을 현재 slice로 압축한다](./work-context-card-task-board.md) | active | high | 2026-06-02 | 61ccbc9 | work-context, tasks, workflow, context, guard |
+| [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-06-02 | 61ccbc9 | workflow, guard, intent, audit, hotfix, continuation |
+| [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-06-02 | 61ccbc9 | workflow, frame, tft, hotfix, scope, incremental |
+| [Worktree 생성은 현재 패널 대화가 source다](./worktree-creation-parent-gate.md) | active | high | 2026-06-02 | 61ccbc9 | worktree, fork-panel, current-panel, hotfix, context, profile-driven |
+| [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-06-02 | 63f2a62 | worktree, dependencies, bootstrap, profile-driven, worker, subagent |
+| [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-06-02 | 63f2a62 | worktree, workspace, repo, branch, execution-boundary, cwd-binding |
+| [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-06-02 | 63f2a62 | worktree, session, revive, fork-panel, panel-inbox, handoff |
 
 ## Knowledge Map
 
@@ -316,7 +316,7 @@ graph TD
   doc_skills_as_portable_procedures["Skill은 재사용 가능한 절차다"]
   doc_slice_auto_commit_rhythm["Slice 완료는 commit 후보를 만든다"]
   doc_source_grounded_frame_planning["정확한 기획 근거가 있으면 Frame은 추적 매트릭스를 만든다"]
-  doc_tft_command_shim_skill_routing["Command shim은 skill source of truth를 지킨다"]
+  doc_tft_command_shim_skill_routing["Command shim은 reviewable workflow source of truth를 지킨다"]
   doc_tft_preference_regression_gate["TFT Preference Regression Gate는 사용자 선호 역전을 막는다"]
   doc_tft_visual_structure_renderer["TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다"]
   doc_to_production_source_preserving_hotfix["To-production은 source-preserving hotfix 이식이다"]
@@ -374,6 +374,7 @@ graph TD
   doc_confidence_sensitive_review --> doc_readme_philosophy_user_gate
   doc_deterministic_vs_ai_actions --> doc_freshness_diagnosis_report
   doc_deterministic_vs_ai_actions --> doc_readme_coverage_map
+  doc_ember_friendly_knowledge_entrypoint --> doc_ember_ship_release_train
   doc_ember_friendly_knowledge_entrypoint --> doc_judgment_doc_unit
   doc_ember_friendly_knowledge_entrypoint --> doc_pilee_knowledge_system
   doc_ember_friendly_knowledge_entrypoint --> doc_private_journal_public_doctrine
@@ -499,6 +500,7 @@ graph TD
   doc_artifact_archive_reopenability --> doc_backlog_source_session_provenance
   doc_artifact_archive_reopenability --> doc_frame_studio_interactive_decision_ui
   doc_artifact_archive_reopenability --> doc_live_artifact_preview_pattern
+  doc_artifact_archive_reopenability --> doc_tool_output_noise_management
   doc_artifact_archive_reopenability --> doc_verify_report_workflow
   doc_ask_user_question_decision_gates --> doc_ask_user_question_option_design
   doc_ask_user_question_decision_gates --> doc_evidence_first_verification_gate
@@ -620,6 +622,7 @@ graph TD
   doc_ship_pr_ship_review_boundary --> doc_request_traceability_surgical_changes
   doc_ship_pr_ship_review_boundary --> doc_subagent_skill_delegation
   doc_skills_as_portable_procedures --> doc_context_loading_minimal_surface
+  doc_skills_as_portable_procedures --> doc_ember_ship_release_train
   doc_skills_as_portable_procedures --> doc_judgment_doc_unit
   doc_slice_auto_commit_rhythm --> doc_auto_commit_explicit_plan_gate
   doc_slice_auto_commit_rhythm --> doc_change_integration_discipline
@@ -686,6 +689,6 @@ graph TD
 ## Review Metadata Summary
 
 - Documents: 102
-- Links: 351
+- Links: 354
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

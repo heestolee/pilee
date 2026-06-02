@@ -18,8 +18,8 @@ applies_to:
 source:
   - pilee-history:2026-05-01#4
   - user-direction:2026-05-07-local-resolver
-reviewed_at: 2026-05-13
-reviewed_commit: 062f9f271759452705f233b16503967c1287d4c7
+reviewed_at: 2026-06-02
+reviewed_commit: 61ccbc9d3fb4d6eb5cb7f0558dd056eb385b0410
 related:
   - evidence-first-verification-gate
   - frame-verify-contract

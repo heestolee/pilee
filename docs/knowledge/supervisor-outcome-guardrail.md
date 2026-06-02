@@ -14,8 +14,8 @@ applies_to:
   - start_supervision
 source:
   - pilee-history:2026-05-01#workflow-analysis
-reviewed_at: 2026-05-12
-reviewed_commit: c82cbb080aa012fe0dfd135d37d099821dd70e23
+reviewed_at: 2026-06-02
+reviewed_commit: 63f2a622f7539ebd582b9af2b392c6de9ee47d47
 related:
   - ask-user-question-decision-gates
   - subagent-prompt-specificity

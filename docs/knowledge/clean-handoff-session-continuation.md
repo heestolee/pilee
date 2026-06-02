@@ -18,8 +18,8 @@ applies_to:
   - session handoff
 source:
   - user-direction:2026-05-14-continue-clean
-reviewed_at: 2026-05-14
-reviewed_commit: ae89856c5bb21333695fc8f1a5179dc866b58c23
+reviewed_at: 2026-06-02
+reviewed_commit: cc0bd9893b2bcb593c3c66305002a0599e6c1b5d
 related:
   - worktree-session-continuity
   - session-identity-over-filenames

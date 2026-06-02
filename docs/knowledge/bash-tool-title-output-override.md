@@ -18,8 +18,8 @@ applies_to:
 source:
   - user-direction:2026-05-14-my-pi-bash-tool-override
   - github:jonghakseo/my-pi/extensions/bash-tool-override
-reviewed_at: 2026-05-13
-reviewed_commit: 62d55bb3325175f0eb849341ee4a5a2115f37921
+reviewed_at: 2026-06-02
+reviewed_commit: cc0bd9893b2bcb593c3c66305002a0599e6c1b5d
 related:
   - tool-output-noise-management
   - korean-first-user-facing-output

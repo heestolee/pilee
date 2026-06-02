@@ -16,8 +16,8 @@ applies_to:
   - extensions/workflow-guard
 source:
   - user-direction:2026-05-27-long-running-session-friction
-reviewed_at: 2026-05-27
-reviewed_commit: 94b3eb0
+reviewed_at: 2026-06-02
+reviewed_commit: fad9c363005bba6afcb9fecd6a1d5475b32c4ea9
 related:
   - workflow-guard-enforced-flow
   - workflow-weight-proportionality

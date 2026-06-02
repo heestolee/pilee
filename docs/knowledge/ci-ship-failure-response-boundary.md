@@ -18,8 +18,8 @@ source:
   - user-direction:2026-05-11-ci-ship-update-branch
   - user-direction:2026-05-20-fixme-alert-exclusion
   - pr-context:github-actions-failure
-reviewed_at: 2026-05-20
-reviewed_commit: 7662f0ad5b7faccd78278c0d11f73d933ff599c6
+reviewed_at: 2026-06-02
+reviewed_commit: cc0bd9893b2bcb593c3c66305002a0599e6c1b5d
 related:
   - ship-pr-ship-review-boundary
   - root-cause-before-fix

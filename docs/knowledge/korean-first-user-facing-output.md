@@ -20,8 +20,8 @@ source:
   - pilee-history:2026-05-05#46
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-26-clear-verdict-before-caveat
-reviewed_at: 2026-05-26
-reviewed_commit: ae8152bae3d818b525c0e7e0574386bda2713355
+reviewed_at: 2026-06-02
+reviewed_commit: 7861f10310348338896d444480de22f1ba919273
 related:
   - web-search-curator
   - curator-approved-source-selection

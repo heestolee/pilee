@@ -25,8 +25,8 @@ source:
   - pilee-history:2026-05-05#41
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-11-subagent-skill-delegation
-reviewed_at: 2026-05-20
-reviewed_commit: 32d1aedb2d3bbe552d84e03c7db7435884af2c0e
+reviewed_at: 2026-06-02
+reviewed_commit: fad9c363005bba6afcb9fecd6a1d5475b32c4ea9
 related:
   - worktree-execution-boundary
   - session-identity-over-filenames

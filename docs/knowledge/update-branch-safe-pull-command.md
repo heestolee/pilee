@@ -15,8 +15,8 @@ applies_to:
   - slash-command:/update-branch
 source:
   - user-direction:2026-05-27-update-branch-command
-reviewed_at: 2026-05-27
-reviewed_commit: fdd1a982d09c94edb243e59eb6753747ab2a5341
+reviewed_at: 2026-06-02
+reviewed_commit: d8f8c4c56f23dcfda08b089b6d8ff5be4885e37c
 related:
   - worktree-execution-boundary
   - change-integration-discipline

@@ -25,8 +25,8 @@ applies_to:
   - skills/incremental-implementation
 source:
   - user-direction:2026-05-13-atomic-evidence-workflow
-reviewed_at: 2026-05-13
-reviewed_commit: e6c131d
+reviewed_at: 2026-06-02
+reviewed_commit: ce5e875d9e49a3a0b93215894e525b1933c6a145
 related:
   - frame-verify-contract
   - verify-report-workflow

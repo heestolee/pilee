@@ -17,8 +17,8 @@ applies_to:
   - skills/verify-report-preflight
 source:
   - user-direction:2026-05-12-worktree-speed-analysis
-reviewed_at: 2026-05-24
-reviewed_commit: fbc67710c611e264e907f16cf867c2c7a6e36c76
+reviewed_at: 2026-06-02
+reviewed_commit: 61ccbc9d3fb4d6eb5cb7f0558dd056eb385b0410
 related:
   - request-traceability-surgical-changes
   - frame-verify-contract

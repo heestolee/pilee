@@ -25,8 +25,8 @@ source:
   - user-direction:2026-05-20-screensaver-relative-time-refresh
   - user-report:2026-05-21-screensaver-stale-ctx-crash
   - user-report:2026-05-26-screensaver-tab-shortcut-dismiss
-reviewed_at: 2026-05-26
-reviewed_commit: 285562a91c4ff3d11e02156b54c18c1eea25df4e
+reviewed_at: 2026-06-02
+reviewed_commit: 91c739fbe51a72bee9c2a27aa4e3923da9fd4c03
 related:
   - tool-output-noise-management
   - backlog-source-session-provenance

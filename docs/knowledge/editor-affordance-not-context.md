@@ -20,8 +20,8 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-12-context-bar-compaction-progress
   - user-direction:2026-05-14-codex-effective-context-window
-reviewed_at: 2026-05-13
-reviewed_commit: dea80b941cc35f26a116a83ca2264a96423c5a39
+reviewed_at: 2026-06-02
+reviewed_commit: c6cd06fdfbd276127b92c33ecbf9d12d71fb8a41
 related:
   - theme-information-hierarchy
   - context-loading-minimal-surface

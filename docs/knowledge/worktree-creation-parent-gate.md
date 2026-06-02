@@ -21,8 +21,8 @@ applies_to:
 source:
   - pilee-history:2026-05-06#67
   - user-direction:2026-05-17-full-worktree-fork-default
-reviewed_at: 2026-05-19
-reviewed_commit: 6564ee3a9c6c3dec179bbe670e4674cc32e87e2a
+reviewed_at: 2026-06-02
+reviewed_commit: 61ccbc9d3fb4d6eb5cb7f0558dd056eb385b0410
 related:
   - worktree-execution-boundary
   - worktree-session-continuity

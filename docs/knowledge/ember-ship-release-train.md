@@ -17,8 +17,8 @@ applies_to:
   - scripts/knowledge.mjs
 source:
   - user-direction:2026-05-12-ember-ship
-reviewed_at: 2026-06-03
-reviewed_commit: 6360cc9dd00e11cde1aa86e747b9b1a859281af7
+reviewed_at: 2026-06-02
+reviewed_commit: 91c739fbe51a72bee9c2a27aa4e3923da9fd4c03
 related:
   - ember-friendly-knowledge-entrypoint
   - pilee-knowledge-system
