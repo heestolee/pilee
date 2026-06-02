@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { __buildMcpDigestForTesting, __shouldReturnDigestForTesting } from "./index.ts";
+import { __buildMcpDigestForTesting, __formatMcpOutputForTesting, __shouldReturnDigestForTesting } from "./index.ts";
 
 test("small JSON MCP output is digest-first instead of raw inline", () => {
 	const output = JSON.stringify({ ok: true, title: "작은 JSON", token: "secret-token-value" });
@@ -34,6 +34,17 @@ test("Slack JSON is rendered as a readable conversation thread", () => {
 	assert.match(digest, /파일: screenshot\.png/);
 	assert.doesNotMatch(digest, /"messages"\s*:/, "Slack thread should not expose raw JSON structure");
 	assert.doesNotMatch(digest, /원문 artifact|raw json|full text/, "Pi-visible MCP block should not tell the user to inspect raw artifacts");
+});
+
+test("digest-first MCP output does not expose artifact file details", () => {
+	const output = JSON.stringify({ ok: true, messages: [{ ts: "1780000000.000100", username: "changhee", text: "스크롤만 줄이면 됩니다" }] });
+	const formatted = __formatMcpOutputForTesting({ server: "slack", tool: "slack_get_thread", output });
+	assert.equal(formatted.details?.mcpDigest, true);
+	assert.match(formatted.text, /responseId: mcp_/);
+	assert.doesNotMatch(formatted.text, /원문 artifact|raw json|full text/);
+	assert.equal(Object.hasOwn(formatted.details ?? {}, "artifactPath"), false);
+	assert.equal(Object.hasOwn(formatted.details ?? {}, "rawJsonPath"), false);
+	assert.equal(Object.hasOwn(formatted.details ?? {}, "fullTextPath"), false);
 });
 
 test("Notion JSON is rendered around title properties and block text", () => {

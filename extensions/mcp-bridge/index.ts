@@ -38,16 +38,6 @@ interface StoredMcpResult {
 	timestamp: number;
 	output: string;
 	rawData: unknown;
-	artifactPath?: string;
-	rawJsonPath?: string;
-	fullTextPath?: string;
-}
-
-interface McpArtifactRef {
-	path: string;
-	rawJsonPath: string;
-	fullTextPath: string;
-	openCommand: string;
 }
 
 interface McpFormattedResult {
@@ -117,8 +107,6 @@ function formatTimeAgo(timestamp: number): string {
 
 const NPX_CACHE_PATH = join(homedir(), ".pi", "agent", "state", "mcp-npx-cache.json");
 const NPX_CACHE_TTL = 24 * 60 * 60 * 1000;
-const MCP_ARTIFACT_DIR = join(homedir(), "Documents", "agent-history", "mcp");
-const MCP_RESULT_SIGNATURE = "MCP Result";
 const MCP_DIGEST_THRESHOLD_CHARS = 12_000;
 const MCP_DIGEST_THRESHOLD_LINES = 240;
 const MCP_DIGEST_PREVIEW_CHARS = 700;
@@ -318,43 +306,10 @@ function text(msg: string, details: Record<string, unknown> = {}) {
 	return { content: [{ type: "text" as const, text: msg }], details };
 }
 
-function escapeHtml(value: string): string {
-	return value
-		.replaceAll("&", "&amp;")
-		.replaceAll("<", "&lt;")
-		.replaceAll(">", "&gt;")
-		.replaceAll('"', "&quot;");
-}
-
-function slugify(value: string): string {
-	return value
-		.toLowerCase()
-		.replace(/https?:\/\//g, "")
-		.replace(/[^a-z0-9가-힣_-]+/gi, "-")
-		.replace(/^-+|-+$/g, "")
-		.slice(0, 72) || "mcp";
-}
-
-function pathSegment(value: string): string {
-	return slugify(value).replace(/\.+/g, "-") || "mcp";
-}
-
-function quoteArchivePath(filePath: string): string {
-	return `/archive "${filePath.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
-}
-
 function truncateCompact(value: string, maxChars = MCP_DIGEST_PREVIEW_CHARS): string {
 	const text = value.replace(/\s+/g, " ").trim();
 	if (text.length <= maxChars) return text;
 	return `${text.slice(0, maxChars - 1).trim()}…`;
-}
-
-function safeStringify(value: unknown): string {
-	try {
-		return JSON.stringify(value, null, 2);
-	} catch {
-		return String(value);
-	}
 }
 
 function redactSensitiveForDigest(value: string): string {
@@ -787,105 +742,7 @@ function shouldDigestMcpOutput(output: string): boolean {
 	return output.split(/\r?\n/).length > MCP_DIGEST_THRESHOLD_LINES;
 }
 
-function buildMcpArtifactHtml(args: {
-	responseId: string;
-	server: string;
-	tool: string;
-	action: string;
-	output: string;
-	digest: string;
-	createdAt: Date;
-}): string {
-	return `<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${MCP_RESULT_SIGNATURE} — ${escapeHtml(args.server)} / ${escapeHtml(args.tool)}</title>
-<style>
-	:root { color-scheme: light dark; --bg:#111827; --panel:#1f2937; --panel2:#0f172a; --text:#f9fafb; --muted:#9ca3af; --line:#374151; --accent:#a78bfa; }
-	body { margin:0; padding:28px; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
-	main { max-width:1080px; margin:0 auto; }
-	header { border-bottom:1px solid var(--line); margin-bottom:24px; padding-bottom:18px; }
-	h1 { margin:0 0 8px; font-size:28px; }
-	.meta { display:flex; flex-wrap:wrap; gap:8px; color:var(--muted); font-size:13px; }
-	.badge { border:1px solid var(--line); border-radius:999px; padding:4px 9px; background:rgba(255,255,255,.04); }
-	section { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:20px; margin-bottom:18px; }
-	pre { white-space:pre-wrap; overflow:auto; background:var(--panel2); border:1px solid var(--line); border-radius:12px; padding:16px; line-height:1.55; }
-	details summary { cursor:pointer; color:var(--accent); font-weight:700; }
-</style>
-</head>
-<body>
-<main>
-<header>
-	<h1>${MCP_RESULT_SIGNATURE}</h1>
-	<div class="meta">
-		<span class="badge">${escapeHtml(args.createdAt.toLocaleString())}</span>
-		<span class="badge">server=${escapeHtml(args.server)}</span>
-		<span class="badge">tool=${escapeHtml(args.tool)}</span>
-		<span class="badge">action=${escapeHtml(args.action)}</span>
-		<span class="badge">responseId=${escapeHtml(args.responseId)}</span>
-	</div>
-</header>
-<section>
-	<h2>Digest returned to Pi</h2>
-	<pre>${escapeHtml(args.digest)}</pre>
-</section>
-<section>
-	<details open>
-		<summary>Full MCP text output</summary>
-		<pre>${escapeHtml(args.output)}</pre>
-	</details>
-</section>
-</main>
-</body>
-</html>`;
-}
-
-function writeMcpArtifact(args: {
-	responseId: string;
-	server: string;
-	tool: string;
-	action: string;
-	output: string;
-	digest: string;
-	rawData: unknown;
-}): McpArtifactRef | undefined {
-	try {
-		const createdAt = new Date();
-		const timestamp = createdAt.toISOString().replace(/[:.]/g, "-").slice(0, 19);
-		const dir = join(MCP_ARTIFACT_DIR, pathSegment(args.server), pathSegment(args.tool));
-		const baseName = `${timestamp}_${args.responseId}_${slugify(`${args.server}-${args.tool}`)}`;
-		const rawDir = join(dir, `${baseName}.raw`);
-		mkdirSync(rawDir, { recursive: true });
-		const rawJsonPath = join(rawDir, "raw.json");
-		const fullTextPath = join(rawDir, "full.txt");
-		const htmlPath = join(dir, `${baseName}.html`);
-		writeFileSync(rawJsonPath, `${safeStringify(args.rawData)}\n`, "utf8");
-		writeFileSync(fullTextPath, args.output.endsWith("\n") ? args.output : `${args.output}\n`, "utf8");
-		writeFileSync(htmlPath, buildMcpArtifactHtml({ ...args, createdAt }), "utf8");
-		return { path: htmlPath, rawJsonPath, fullTextPath, openCommand: quoteArchivePath(htmlPath) };
-	} catch {
-		return undefined;
-	}
-}
-
-function rewriteMcpArtifactDigest(args: {
-	artifact: McpArtifactRef | undefined;
-	responseId: string;
-	server: string;
-	tool: string;
-	action: string;
-	output: string;
-	digest: string;
-}) {
-	if (!args.artifact) return;
-	try {
-		writeFileSync(args.artifact.path, buildMcpArtifactHtml({ ...args, createdAt: new Date() }), "utf8");
-	} catch {}
-}
-
-function buildMcpDigest(args: { responseId: string; server: string; tool: string; action: string; output: string; artifact?: McpArtifactRef }): string {
+function buildMcpDigest(args: { responseId: string; server: string; tool: string; action: string; output: string }): string {
 	const parsed = tryParseJson(args.output);
 	const lines: string[] = [
 		"🔌 MCP 결과 — digest-first",
@@ -923,10 +780,7 @@ function formatMcpOutput(args: {
 		return { text: args.output || "(empty response)", details: { mcpDigest: false, server: args.server, tool: args.tool, action: args.action } };
 	}
 	const responseId = `mcp_${randomUUID().slice(0, 8)}`;
-	const placeholderDigest = buildMcpDigest({ responseId, server: args.server, tool: args.tool, action: args.action, output: args.output });
-	const artifact = writeMcpArtifact({ ...args, responseId, digest: placeholderDigest });
-	const digest = buildMcpDigest({ responseId, server: args.server, tool: args.tool, action: args.action, output: args.output, artifact });
-	rewriteMcpArtifactDigest({ artifact, responseId, server: args.server, tool: args.tool, action: args.action, output: args.output, digest });
+	const digest = buildMcpDigest({ responseId, server: args.server, tool: args.tool, action: args.action, output: args.output });
 	storedMcpResults.set(responseId, {
 		id: responseId,
 		server: args.server,
@@ -936,9 +790,6 @@ function formatMcpOutput(args: {
 		timestamp: Date.now(),
 		output: args.output,
 		rawData: args.rawData,
-		artifactPath: artifact?.path,
-		rawJsonPath: artifact?.rawJsonPath,
-		fullTextPath: artifact?.fullTextPath,
 	});
 	return {
 		text: digest,
@@ -948,9 +799,6 @@ function formatMcpOutput(args: {
 			server: args.server,
 			tool: args.tool,
 			action: args.action,
-			artifactPath: artifact?.path,
-			rawJsonPath: artifact?.rawJsonPath,
-			fullTextPath: artifact?.fullTextPath,
 			originalChars: args.output.length,
 		},
 	};
@@ -958,6 +806,10 @@ function formatMcpOutput(args: {
 
 export function __buildMcpDigestForTesting(args: { server: string; tool: string; action?: string; output: string }): string {
 	return buildMcpDigest({ responseId: "mcp_test", server: args.server, tool: args.tool, action: args.action ?? "call", output: args.output });
+}
+
+export function __formatMcpOutputForTesting(args: { server: string; tool: string; action?: string; output: string; rawData?: unknown }): McpFormattedResult {
+	return formatMcpOutput({ server: args.server, tool: args.tool, action: args.action ?? "call", output: args.output, rawData: args.rawData ?? args.output });
 }
 
 export function __shouldReturnDigestForTesting(args: { action?: string; output: string }): boolean {
@@ -1180,14 +1032,13 @@ export default function (pi: ExtensionAPI) {
 		}),
 		async execute(_id, params) {
 			const stored = storedMcpResults.get(params.responseId);
-			if (!stored) return text(`No stored MCP result for responseId "${params.responseId}". Open the artifact path from the digest if this is an older session.`);
+			if (!stored) return text(`No stored MCP result for responseId "${params.responseId}". MCP 원문은 현재 세션 메모리에만 보존됩니다.`);
 			const lines = [
 				`MCP full content`,
 				`responseId: ${stored.id}`,
 				`server: ${stored.server}`,
 				`tool: ${stored.tool}`,
 				`action: ${stored.action}`,
-				stored.artifactPath ? `artifact: ${stored.artifactPath}` : "",
 				"",
 				stored.output,
 			].filter(Boolean);
@@ -1196,9 +1047,6 @@ export default function (pi: ExtensionAPI) {
 				server: stored.server,
 				tool: stored.tool,
 				action: stored.action,
-				artifactPath: stored.artifactPath,
-				rawJsonPath: stored.rawJsonPath,
-				fullTextPath: stored.fullTextPath,
 			});
 		},
 	});
