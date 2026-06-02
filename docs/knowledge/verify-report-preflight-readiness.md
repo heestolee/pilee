@@ -24,8 +24,8 @@ source:
   - user-feedback:2026-05-30-pm-facing-capture-report-preflight
   - user-feedback:2026-05-30-prior-correction-intent
   - user-feedback:2026-05-30-frame-handoff-adjudication
-reviewed_at: 2026-05-30
-reviewed_commit: 1270e1a2318cb0d7d3737094f2e9760bc75c9c39
+reviewed_at: 2026-06-02
+reviewed_commit: 91c739fbe51a72bee9c2a27aa4e3923da9fd4c03
 related:
   - verify-report-workflow
   - evidence-first-verification-gate

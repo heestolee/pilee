@@ -16,8 +16,8 @@ applies_to:
 source:
   - pilee-history:2026-05-01#analysis-db-write
   - session-backfill:2026-05-01#workflow-analysis
-reviewed_at: 2026-05-13
-reviewed_commit: 49eb5f7591aa355f1022ea1e7fe2659a181cfb63
+reviewed_at: 2026-06-02
+reviewed_commit: 91c739fbe51a72bee9c2a27aa4e3923da9fd4c03
 related:
   - ask-user-question-decision-gates
   - evidence-first-verification-gate

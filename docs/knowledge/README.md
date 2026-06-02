@@ -85,7 +85,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [DB write는 인간 실행 게이트를 가진다](./database-write-human-execution-gate.md) | active | high | 2026-05-13 | 49eb5f7 | db-write, migration, sql, approval, transaction, database |
+| [DB write는 인간 실행 게이트를 가진다](./database-write-human-execution-gate.md) | active | high | 2026-06-02 | 91c739f | db-write, migration, sql, approval, transaction, database |
 
 ### debugging
 
@@ -107,7 +107,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [낮은 confidence 판단은 정합성 PR로 올린다](./confidence-sensitive-review.md) | active | high | 2026-06-02 | cc0bd98 | confidence, review, freshness, ai-actions, user-review, 정합성 |
 | [Deterministic action과 AI review action은 분리한다](./deterministic-vs-ai-actions.md) | active | high | 2026-06-02 | c6cd06f | knowledge, deterministic, ai-actions, review, automation, 정합성 |
 | [Ember는 knowledge의 친근한 입구다](./ember-friendly-knowledge-entrypoint.md) | active | high | 2026-06-02 | c6cd06f | ember, branding, command, knowledge |
-| [Ember Ship은 knowledge 정합성을 release train으로 닫는다](./ember-ship-release-train.md) | active | high | 2026-06-03 | 6360cc9 | ember, knowledge, release-train, freshness, merge-gate |
+| [Ember Ship은 knowledge 정합성을 release train으로 닫는다](./ember-ship-release-train.md) | active | high | 2026-06-02 | 91c739f | ember, knowledge, release-train, freshness, merge-gate |
 | [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | high | 2026-06-02 | 7861f10 | knowledge, freshness, diagnosis, review, candidate, 정합성 |
 | [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | high | 2026-06-02 | 7861f10 | knowledge, judgment, granularity, documentation, coverage, 문서 |
 | [Knowledge review queue는 PR body에 남긴다](./knowledge-review-queue-pr-body.md) | active | high | 2026-06-03 | 6360cc9 | knowledge, review-queue, github-actions, pr-body, ember-ship |
@@ -128,12 +128,12 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [Codex fast mode는 출력 verbosity와 priority tier만 줄인다](./codex-fast-mode-runtime.md) | active | high | 2026-05-26 | c1cfb50 | codex, model, speed, provider, extension |
+| [Codex fast mode는 출력 verbosity와 priority tier만 줄인다](./codex-fast-mode-runtime.md) | active | high | 2026-06-02 | 91c739f | codex, model, speed, provider, extension |
 | [Deterministic fallback은 workflow를 보존한다](./deterministic-fallbacks-preserve-workflow.md) | active | high | 2026-06-02 | c6cd06f | fallback, deterministic, model-failure, resilience, web-search, report |
 | [Embedded WebView script는 escape 경계를 보존한다](./embedded-webview-script-escape-boundary.md) | active | high | 2026-06-02 | c6cd06f | webview, embedded-script, escape, string-raw, regex, glimpse |
 | [MCP 결과는 구조화 출력부터 digest-first로 다룬다](./mcp-digest-first-artifacts.md) | active | high | 2026-06-02 | 3b2f6ec | mcp, digest-first, tool-output, lazy-retrieval |
 | [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-06-02 | fad9c36 | mcp, stderr, stdio, terminal, tui, noise |
-| [Runtime fan-out은 healthcheck 뒤의 실행 계약이다](./runtime-fanout-diagnosis.md) | active | high | 2026-05-28 | f481e63 | runtime, fanout, healthcheck, deployment, triage, root-cause |
+| [Runtime fan-out은 healthcheck 뒤의 실행 계약이다](./runtime-fanout-diagnosis.md) | active | high | 2026-06-02 | 91c739f | runtime, fanout, healthcheck, deployment, triage, root-cause |
 | [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-06-02 | 83617e9 | terminal, ghostty, applescript, notify, host, integration |
 | [터미널 workspace 복원은 snapshot과 host adapter를 분리한다](./terminal-workspace-restore.md) | active | high | 2026-06-02 | 83617e9 | workspace, terminal, ghostty, snapshot, restore, session |
 
@@ -141,7 +141,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [Idle UI는 장식이 아니라 ambient status다](./ambient-status-surfaces.md) | active | high | 2026-05-26 | 285562a | idle-screensaver, tasks, spinner, status, ambient, ui |
+| [Idle UI는 장식이 아니라 ambient status다](./ambient-status-surfaces.md) | active | high | 2026-06-02 | 91c739f | idle-screensaver, tasks, spinner, status, ambient, ui |
 | [Editor affordance는 숨은 컨텍스트가 아니다](./editor-affordance-not-context.md) | active | high | 2026-06-02 | c6cd06f | editor, footer, prompt-suggest, working-text, affordance, ui |
 | [User-facing 출력은 한국어를 기본으로 한다](./korean-first-user-facing-output.md) | active | high | 2026-06-02 | 7861f10 | korean-output, localization, web-search, ui, rewrite, 한국어 |
 | [Shortcut Atlas는 단축키 표면을 한 번에 검토한다](./shortcut-atlas-conflict-audit.md) | active | high | 2026-06-02 | e123af1 | shortcuts, keybindings, overlay, collision, audit, ui |
@@ -154,11 +154,11 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-05-30 | de40e54 | verify, evidence, gate, done, ready, verification |
+| [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-06-02 | 91c739f | verify, evidence, gate, done, ready, verification |
 | [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-06-02 | 7861f10 | frame, verify, frame-json, success-criteria, contract, verification |
 | [반복 검증 실패는 baseline cache로 분리한다](./validation-baseline-failure-cache.md) | active | high | 2026-06-02 | d8f8c4c | preflight, validation, baseline, failure, cache, verification |
 | [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-06-02 | 61ccbc9 | verify, invalidation, code-change, freshness, gate, 검증 |
-| [Verify Report 전에는 PM-facing 계약과 readiness를 먼저 잠근다](./verify-report-preflight-readiness.md) | active | high | 2026-05-30 | 1270e1a | verify-report, preflight, readiness, capture, data, account |
+| [Verify Report 전에는 PM-facing 계약과 readiness를 먼저 잠근다](./verify-report-preflight-readiness.md) | active | high | 2026-06-02 | 91c739f | verify-report, preflight, readiness, capture, data, account |
 | [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | active | high | 2026-06-02 | 61ccbc9 | verify-report, verification, evidence, coverage, capture, crop |
 | [Verify risk lens는 generic core와 private overlay로 나눈다](./verify-risk-lens-overlay.md) | active | high | 2026-06-02 | 61ccbc9 | verify, risk-lens, overlay, private-overlay, verification, domain-check |
 
@@ -202,7 +202,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Read/Edit tool override는 필요한 증거만 펼친다](./read-edit-tool-output-override.md) | active | high | 2026-06-02 | 41c70e0 | read, edit, tool, override, diff, preview |
 | [변경된 줄은 요청으로 추적 가능해야 한다](./request-traceability-surgical-changes.md) | active | high | 2026-06-02 | 41c70e0 | request-traceability, surgical-change, karpathy, diff, scope, review |
 | [종료된 포크는 transcript 주입보다 revive가 우선이다](./revive-over-transcript-recall.md) | active | high | 2026-06-02 | 41c70e0 | revive, recall, fork-panel, session, continuity, 세션 |
-| [세션 분류는 원본 위의 sidecar다](./session-classification-sidecar.md) | active | high | 2026-05-25 | 77307ef | archive, show-report, session-classification, sidecar, session, ai-suggestion |
+| [세션 분류는 원본 위의 sidecar다](./session-classification-sidecar.md) | active | high | 2026-06-02 | 91c739f | archive, show-report, session-classification, sidecar, session, ai-suggestion |
 | [Session export는 원본을 보존하는 adapter를 거친다](./session-export-source-preservation.md) | active | high | 2026-06-02 | e123af1 | session-export, source-preservation, jsonl, conductor, normalize, show-report |
 | [세션 식별자는 파일명이 아니라 사람이 본 이름이다](./session-identity-over-filenames.md) | active | high | 2026-06-02 | e123af1 | session, title, identity, session_info, worktree, revive |
 | [Ship과 PR-Ship은 서로 다른 통합 단계다](./ship-pr-ship-review-boundary.md) | active | high | 2026-06-02 | e123af1 | ship, pr-ship, pr-review, github, commit, push |

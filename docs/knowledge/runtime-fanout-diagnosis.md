@@ -16,8 +16,8 @@ applies_to:
   - skills/systematic-debugging
 source:
   - user-direction:2026-05-28-runtime-fanout-triage
-reviewed_at: 2026-05-28
-reviewed_commit: f481e633205e778806259067d286ef6b27999163
+reviewed_at: 2026-06-02
+reviewed_commit: 91c739fbe51a72bee9c2a27aa4e3923da9fd4c03
 related:
   - root-cause-before-fix
   - deterministic-fallbacks-preserve-workflow

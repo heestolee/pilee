@@ -14,8 +14,8 @@ applies_to:
   - extensions/custom-style
 source:
   - user-direction:2026-05-26-codex-fast-mode-benchmark
-reviewed_at: 2026-05-26
-reviewed_commit: c1cfb502e93cda203db69509772ee87feed9f7c6
+reviewed_at: 2026-06-02
+reviewed_commit: 91c739fbe51a72bee9c2a27aa4e3923da9fd4c03
 related:
   - editor-affordance-not-context
   - subagent-model-policy
