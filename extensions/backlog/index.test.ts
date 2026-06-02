@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { visibleWidth } from "@mariozechner/pi-tui";
 import {
+	BACKLOG_OVERLAY_BG,
 	BACKLOG_OVERLAY_OPTIONS,
 	backlogOverlayHeight,
 	backlogOverlayRenderToken,
@@ -39,11 +40,18 @@ test("fillBacklogOverlayLines pads height so stale rows from previous renders ar
 });
 
 test("fillBacklogOverlayLines can force clear-safe redraws without changing visible width", () => {
-	const firstRows = fillBacklogOverlayLines(["short"], 10, 2, backlogOverlayRenderToken(0));
-	const nextRows = fillBacklogOverlayLines(["short"], 10, 2, backlogOverlayRenderToken(1));
+	const firstToken = backlogOverlayRenderToken(0);
+	const nextToken = backlogOverlayRenderToken(1);
+	const firstRows = fillBacklogOverlayLines(["short"], 10, 2, firstToken);
+	const nextRows = fillBacklogOverlayLines(["short"], 10, 2, nextToken);
 	assert.equal(firstRows.length, 2);
 	assert.equal(nextRows.length, 2);
 	for (const row of [...firstRows, ...nextRows]) assert.equal(visibleWidth(row), 10);
+	assert.ok(firstRows[0].startsWith(firstToken), "render token must be before visible cells so TUI slicing preserves it");
+	assert.ok(firstRows[1].startsWith(firstToken), "blank filler rows must also carry the token before visible cells");
+	assert.ok(nextRows[0].startsWith(nextToken), "next frame token must be before visible cells");
+	assert.ok(firstRows[0].includes(BACKLOG_OVERLAY_BG), "overlay rows should paint a solid background");
+	assert.ok(firstRows[1].includes(BACKLOG_OVERLAY_BG), "blank filler rows should paint a solid background");
 	assert.notEqual(firstRows[0], nextRows[0], "render token should make repeated frames clearable");
 	assert.notEqual(firstRows[1], nextRows[1], "blank filler rows should also be redrawn");
 });

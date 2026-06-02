@@ -10,7 +10,6 @@ import {
 	BACKLOG_OVERLAY_OPTIONS,
 	backlogOverlayHeight,
 	backlogOverlayRenderToken,
-	backlogOverlayRow,
 	fillBacklogOverlayLines,
 } from "./rendering.ts";
 
@@ -257,8 +256,8 @@ function pushWrapped(lines: string[], width: number, prefix: string, text: strin
 	}
 }
 
-function footerLine(theme: any, text: string, width: number): string {
-	return backlogOverlayRow(`  ${theme.fg("border", text)}`, width);
+function footerLine(theme: any, text: string, _width: number): string {
+	return `  ${theme.fg("border", text)}`;
 }
 
 // ─── Overlay ───────────────────────────────────────────────────────────────
@@ -411,7 +410,7 @@ async function showOverlay(pi: ExtensionAPI, ctx: ExtensionCommandContext) {
 							const title = item.status === "done" ? item.title : sel ? theme.fg("accent", item.title) : item.title;
 							const sourceMark = sourceSessionFile(item) ? theme.fg("accent", " 📎") : "";
 							const note = item.note ? theme.fg("borderAccent", ` — ${item.note.slice(0, 30)}`) : "";
-							lines.push(backlogOverlayRow(`${cursor} ${check} ${icon} #${item.id} ${title}${sourceMark}${note}`, w));
+							lines.push(`${cursor} ${check} ${icon} #${item.id} ${title}${sourceMark}${note}`);
 						}
 					}
 
