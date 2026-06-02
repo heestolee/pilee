@@ -79,7 +79,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [Architecture friction은 TFT의 검증 축이다](./architecture-friction-tft-lens.md) | active | high | 2026-06-02 | ce5e875 | architecture, frame, decide, verify, deep-module, shallow-module |
-| [Utils surface는 사용자 계약을 만들지 않는다](./utility-surface-stays-invisible.md) | active | high | 2026-05-13 | 10e0874 | utils, internal, surface, abstraction, extension |
+| [Utils surface는 사용자 계약을 만들지 않는다](./utility-surface-stays-invisible.md) | active | high | 2026-06-02 | d8f8c4c | utils, internal, surface, abstraction, extension |
 
 ### database
 
@@ -146,9 +146,9 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [User-facing 출력은 한국어를 기본으로 한다](./korean-first-user-facing-output.md) | active | high | 2026-06-02 | 7861f10 | korean-output, localization, web-search, ui, rewrite, 한국어 |
 | [Shortcut Atlas는 단축키 표면을 한 번에 검토한다](./shortcut-atlas-conflict-audit.md) | active | high | 2026-06-02 | e123af1 | shortcuts, keybindings, overlay, collision, audit, ui |
 | [Task overlay는 작업 맵을 보존한다](./task-work-map-overlay.md) | active | high | 2026-06-02 | 83617e9 | tasks, overlay, work-map, soft-delete, provenance, ui |
-| [색상은 정보 위계다](./theme-information-hierarchy.md) | active | high | 2026-05-21 | fcd3b87 | theme, color, dim, muted, border, accent |
+| [색상은 정보 위계다](./theme-information-hierarchy.md) | active | high | 2026-06-02 | d8f8c4c | theme, color, dim, muted, border, accent |
 | [도구 출력은 대화 흐름을 침범하지 않는다](./tool-output-noise-management.md) | active | high | 2026-06-02 | 3b2f6ec | tool-output, collapse, noise, ui, usage, renderer |
-| [TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다](./tui-rendering-sanitization.md) | active | high | 2026-05-12 | fc6ffa9 | tui, rendering, newline, ansi, sanitize, terminal |
+| [TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다](./tui-rendering-sanitization.md) | active | high | 2026-06-02 | d8f8c4c | tui, rendering, newline, ansi, sanitize, terminal |
 
 ### verification
 
@@ -156,7 +156,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 |---|---|---:|---:|---:|---|
 | [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-05-30 | de40e54 | verify, evidence, gate, done, ready, verification |
 | [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-06-02 | 7861f10 | frame, verify, frame-json, success-criteria, contract, verification |
-| [반복 검증 실패는 baseline cache로 분리한다](./validation-baseline-failure-cache.md) | active | high | 2026-05-13 | 062f9f2 | preflight, validation, baseline, failure, cache, verification |
+| [반복 검증 실패는 baseline cache로 분리한다](./validation-baseline-failure-cache.md) | active | high | 2026-06-02 | d8f8c4c | preflight, validation, baseline, failure, cache, verification |
 | [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-05-13 | 062f9f2 | verify, invalidation, code-change, freshness, gate, 검증 |
 | [Verify Report 전에는 PM-facing 계약과 readiness를 먼저 잠근다](./verify-report-preflight-readiness.md) | active | high | 2026-05-30 | 1270e1a | verify-report, preflight, readiness, capture, data, account |
 | [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | active | high | 2026-05-30 | 1270e1a | verify-report, verification, evidence, coverage, capture, crop |
@@ -211,11 +211,11 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [정확한 기획 근거가 있으면 Frame은 추적 매트릭스를 만든다](./source-grounded-frame-planning.md) | active | high | 2026-05-30 | de40e54 | frame, tft-studio, planning, requirements, traceability, work-map |
 | [Command shim은 reviewable workflow source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-06-02 | 83617e9 | command-shim, skill, tft, frame, slash-command, routing |
 | [TFT Preference Regression Gate는 사용자 선호 역전을 막는다](./tft-preference-regression-gate.md) | active | high | 2026-06-02 | 83617e9 | tft, frame, decide, verify, ask-user-question, regression |
-| [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-05-30 | 12592b4 | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
-| [To-production은 source-preserving hotfix 이식이다](./to-production-source-preserving-hotfix.md) | active | high | 2026-05-20 | 1dc3eae | to-production, hotfix, production, git, worktree, source-preserving |
-| [TUI 질문은 작은 의사결정 게이트다](./tui-ask-decision-overlay.md) | active | high | 2026-05-21 | fcd3b87 | tui, ask-user-question, decision-gate, tool, overlay |
+| [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-06-02 | d8f8c4c | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
+| [To-production은 source-preserving hotfix 이식이다](./to-production-source-preserving-hotfix.md) | active | high | 2026-06-02 | d8f8c4c | to-production, hotfix, production, git, worktree, source-preserving |
+| [TUI 질문은 작은 의사결정 게이트다](./tui-ask-decision-overlay.md) | active | high | 2026-06-02 | d8f8c4c | tui, ask-user-question, decision-gate, tool, overlay |
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
-| [Update branch는 안전한 pull command다](./update-branch-safe-pull-command.md) | active | high | 2026-05-27 | fdd1a98 | update-branch, slash-command, git, pull, index-lock, workflow |
+| [Update branch는 안전한 pull command다](./update-branch-safe-pull-command.md) | active | high | 2026-06-02 | d8f8c4c | update-branch, slash-command, git, pull, index-lock, workflow |
 | [Working Context Card는 큰 맥락을 현재 slice로 압축한다](./work-context-card-task-board.md) | active | high | 2026-05-20 | db0d715 | work-context, tasks, workflow, context, guard |
 | [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-05-28 | 536bd9c | workflow, guard, intent, audit, hotfix, continuation |
 | [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-05-24 | fbc6771 | workflow, frame, tft, hotfix, scope, incremental |

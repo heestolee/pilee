@@ -21,8 +21,8 @@ applies_to:
   - hotfix branch migration
 source:
   - user-direction:2026-05-18-to-production-mvp
-reviewed_at: 2026-05-20
-reviewed_commit: 1dc3eae79051807b9d53efcdbddd80c59d0071fd
+reviewed_at: 2026-06-02
+reviewed_commit: d8f8c4c56f23dcfda08b089b6d8ff5be4885e37c
 related:
   - worktree-execution-boundary
   - worktree-creation-parent-gate

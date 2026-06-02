@@ -13,8 +13,8 @@ applies_to:
   - extensions/utils
 source:
   - pilee-history:2026-05-03#32
-reviewed_at: 2026-05-13
-reviewed_commit: 10e08748c48459b4044ec1abe3f88d39566de60c
+reviewed_at: 2026-06-02
+reviewed_commit: d8f8c4c56f23dcfda08b089b6d8ff5be4885e37c
 related:
   - deterministic-fallbacks-preserve-workflow
   - terminal-host-integration
