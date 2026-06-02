@@ -738,6 +738,27 @@ function buildHumanMcpSummary(args: { server: string; tool: string; action: stri
 		?? renderJiraSummary(args.parsed, args);
 }
 
+function imageFileName(alt: string, url: string): string {
+	const fromAlt = alt.trim();
+	if (fromAlt) return fromAlt;
+	try {
+		const parsed = new URL(url);
+		const last = parsed.pathname.split("/").filter(Boolean).at(-1);
+		return last ? decodeURIComponent(last) : "이미지";
+	} catch {
+		return "이미지";
+	}
+}
+
+function shortenMarkdownImageLinks(output: string): string {
+	return output.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g, (_match, alt: string, url: string) => `- 이미지: ${imageFileName(alt, url)} · Notion 원문에서 확인`);
+}
+
+function sanitizeMcpVisibleOutput(args: { server: string; tool: string; output: string }): string {
+	if (sourceHint(args).includes("notion")) return shortenMarkdownImageLinks(args.output);
+	return args.output;
+}
+
 function shouldReturnDigest(args: { action: string; output: string }): boolean {
 	if (tryParseJson(args.output) !== undefined) return true;
 	return shouldDigestMcpOutput(args.output);
@@ -810,11 +831,13 @@ function formatMcpOutput(args: {
 	rawData: unknown;
 	args?: Record<string, unknown>;
 }): McpFormattedResult {
-	if (!shouldReturnDigest({ action: args.action, output: args.output })) {
-		return { text: args.output || "(empty response)", details: { mcpDigest: false, server: args.server, tool: args.tool, action: args.action } };
+	const visibleOutput = sanitizeMcpVisibleOutput(args);
+	const sanitized = visibleOutput !== args.output;
+	if (!shouldReturnDigest({ action: args.action, output: visibleOutput })) {
+		return { text: visibleOutput || "(empty response)", details: { mcpDigest: false, mcpSanitized: sanitized, server: args.server, tool: args.tool, action: args.action } };
 	}
 	const responseId = `mcp_${randomUUID().slice(0, 8)}`;
-	const digest = buildMcpDigest({ responseId, server: args.server, tool: args.tool, action: args.action, output: args.output });
+	const digest = buildMcpDigest({ responseId, server: args.server, tool: args.tool, action: args.action, output: visibleOutput });
 	storedMcpResults.set(responseId, {
 		id: responseId,
 		server: args.server,
@@ -833,6 +856,7 @@ function formatMcpOutput(args: {
 			server: args.server,
 			tool: args.tool,
 			action: args.action,
+			mcpSanitized: sanitized,
 			originalChars: args.output.length,
 		},
 	};

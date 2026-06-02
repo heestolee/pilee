@@ -69,6 +69,22 @@ test("digest-first MCP output does not expose artifact file details", () => {
 	assert.equal(Object.hasOwn(formatted.details ?? {}, "fullTextPath"), false);
 });
 
+test("Notion markdown image links are shortened without signed URLs", () => {
+	const output = [
+		"# 취소/환불 정책 통합 변경",
+		"본문입니다.",
+		"![08B5E9F1-48CE-486A-AE1E-A76F48A0915D.png](https://prod-files-secure.s3.us-west-2.amazonaws.com/path/08B5E9F1-48CE-486A-AE1E-A76F48A0915D.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=secret)",
+		"### 확인 완료 사항",
+	].join("\n\n");
+	const formatted = __formatMcpOutputForTesting({ server: "creatrip-internal", tool: "notion_readPage", output });
+	assert.equal(formatted.details?.mcpDigest, false);
+	assert.equal(formatted.details?.mcpSanitized, true);
+	assert.match(formatted.text, /- 이미지: 08B5E9F1-48CE-486A-AE1E-A76F48A0915D\.png · Notion 원문에서 확인/);
+	assert.match(formatted.text, /### 확인 완료 사항/);
+	assert.doesNotMatch(formatted.text, /prod-files-secure|X-Amz-|AWS4-HMAC|secret/);
+	assert.doesNotMatch(formatted.text, /!\[[^\]]*\]\(https?:\/\//);
+});
+
 test("Notion JSON is rendered around title properties and block text", () => {
 	const output = JSON.stringify({
 		object: "list",
