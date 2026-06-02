@@ -98,7 +98,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [백엔드 레이어 맵은 Frame의 초기 이해 게이트다](./backend-layer-map-frame-gate.md) | active | high | 2026-06-02 | ce5e875 | frame, tft, backend, resolver, usecase, service |
-| [정책축 스캔은 Frame의 초기 게이트다](./policy-axis-frame-gate.md) | active | high | 2026-05-13 | e0dc999 | frame, tft, policy-axis, campaign, benefits, time-basis |
+| [정책축 스캔은 Frame의 초기 게이트다](./policy-axis-frame-gate.md) | active | high | 2026-06-02 | fad9c36 | frame, tft, policy-axis, campaign, benefits, time-basis |
 
 ### knowledge
 
@@ -111,8 +111,8 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Freshness는 진단서다](./freshness-diagnosis-report.md) | active | high | 2026-06-02 | 7861f10 | knowledge, freshness, diagnosis, review, candidate, 정합성 |
 | [Knowledge 문서 단위는 판단 하나다](./judgment-doc-unit.md) | active | high | 2026-06-02 | 7861f10 | knowledge, judgment, granularity, documentation, coverage, 문서 |
 | [Knowledge review queue는 PR body에 남긴다](./knowledge-review-queue-pr-body.md) | active | high | 2026-06-03 | 6360cc9 | knowledge, review-queue, github-actions, pr-body, ember-ship |
-| [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | high | 2026-05-13 | 1a6aa93 | pilee, knowledge, history, journal, sanitized, reviewed-at |
-| [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | high | 2026-05-13 | 1a6aa93 | knowledge, journal, privacy, sanitized, doctrine, history |
+| [pilee 지식 계층과 정합성 갱신](./pilee-knowledge-system.md) | active | high | 2026-06-02 | fad9c36 | pilee, knowledge, history, journal, sanitized, reviewed-at |
+| [Private journal과 public doctrine은 분리한다](./private-journal-public-doctrine.md) | active | high | 2026-06-02 | fad9c36 | knowledge, journal, privacy, sanitized, doctrine, history |
 | [README는 knowledge coverage map이다](./readme-coverage-map.md) | active | high | 2026-05-13 | 1a6aa93 | knowledge, readme, coverage, graph, surface, todo |
 | [README 철학 변경은 사용자 판단 게이트를 지난다](./readme-philosophy-user-gate.md) | active | high | 2026-05-13 | 1a6aa93 | readme, philosophy, user-gate, public-facing, documentation, 판단 |
 | [Retro는 private reflection이다](./retro-private-reflection-boundary.md) | active | high | 2026-05-13 | 74c8c28 | retro, notion, reflection, private, journal, 회고 |
@@ -132,7 +132,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Deterministic fallback은 workflow를 보존한다](./deterministic-fallbacks-preserve-workflow.md) | active | high | 2026-06-02 | c6cd06f | fallback, deterministic, model-failure, resilience, web-search, report |
 | [Embedded WebView script는 escape 경계를 보존한다](./embedded-webview-script-escape-boundary.md) | active | high | 2026-06-02 | c6cd06f | webview, embedded-script, escape, string-raw, regex, glimpse |
 | [MCP 결과는 구조화 출력부터 digest-first로 다룬다](./mcp-digest-first-artifacts.md) | active | high | 2026-06-02 | 3b2f6ec | mcp, digest-first, tool-output, lazy-retrieval |
-| [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-05-13 | 1a6aa93 | mcp, stderr, stdio, terminal, tui, noise |
+| [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-06-02 | fad9c36 | mcp, stderr, stdio, terminal, tui, noise |
 | [Runtime fan-out은 healthcheck 뒤의 실행 계약이다](./runtime-fanout-diagnosis.md) | active | high | 2026-05-28 | f481e63 | runtime, fanout, healthcheck, deployment, triage, root-cause |
 | [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-05-13 | e0dc999 | terminal, ghostty, applescript, notify, host, integration |
 | [터미널 workspace 복원은 snapshot과 host adapter를 분리한다](./terminal-workspace-restore.md) | active | high | 2026-05-19 | 753d75b | workspace, terminal, ghostty, snapshot, restore, session |
@@ -195,10 +195,10 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Interactive shell은 bash가 아닌 터미널 세션이다](./interactive-shell-overlay-tool.md) | active | high | 2026-06-02 | 7861f10 | interactive-shell, shell, tui, dev-server, overlay, dispatch |
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-06-02 | 7861f10 | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 264ea17 | local-dev, server, startup, diagnosis, dev |
-| [장시간 세션은 phase와 stop-line으로 제어한다](./long-running-session-control.md) | active | high | 2026-05-27 | 94b3eb0 | workflow, guard, checkpoint, validation, commit, heartbeat |
-| [pilee 변경은 final-check gate로 닫는다](./pilee-final-check-gate.md) | active | high | 2026-05-20 | 0a58e59 | pilee, final-check, verification, skill, workflow, 마무리 |
-| [Private overlay package는 회사·개인 실행 맥락을 담는다](./private-overlay-package-boundary.md) | active | high | 2026-05-13 | e0dc999 | privacy, package, overlay, skill, company-context |
-| [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-05-20 | 32d1aed | queued-messages, slash-command, prefill, worktree, session, boundary |
+| [장시간 세션은 phase와 stop-line으로 제어한다](./long-running-session-control.md) | active | high | 2026-06-02 | fad9c36 | workflow, guard, checkpoint, validation, commit, heartbeat |
+| [pilee 변경은 final-check gate로 닫는다](./pilee-final-check-gate.md) | active | high | 2026-06-02 | fad9c36 | pilee, final-check, verification, skill, workflow, 마무리 |
+| [Private overlay package는 회사·개인 실행 맥락을 담는다](./private-overlay-package-boundary.md) | active | high | 2026-06-02 | fad9c36 | privacy, package, overlay, skill, company-context |
+| [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-06-02 | fad9c36 | queued-messages, slash-command, prefill, worktree, session, boundary |
 | [Read/Edit tool override는 필요한 증거만 펼친다](./read-edit-tool-output-override.md) | active | high | 2026-05-13 | f3fe380 | read, edit, tool, override, diff, preview |
 | [변경된 줄은 요청으로 추적 가능해야 한다](./request-traceability-surgical-changes.md) | active | high | 2026-05-13 | 74c8c28 | request-traceability, surgical-change, karpathy, diff, scope, review |
 | [종료된 포크는 transcript 주입보다 revive가 우선이다](./revive-over-transcript-recall.md) | active | high | 2026-05-12 | ca8ae9e | revive, recall, fork-panel, session, continuity, 세션 |
