@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { visibleWidth } from "@mariozechner/pi-tui";
 import { backlogOverlayRow, fillBacklogOverlayLines } from "./rendering.ts";
@@ -23,4 +24,9 @@ test("fillBacklogOverlayLines pads height so stale rows from previous renders ar
 	assert.equal(rows[0], "short     ");
 	assert.equal(rows[2], "          ");
 	assert.equal(rows[3], "          ");
+});
+
+test("backlog index render path does not call truncateToWidth directly", () => {
+	const source = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
+	assert.equal(source.includes("truncateToWidth"), false, "index.ts should use backlogOverlayRow so the import cannot drift");
 });

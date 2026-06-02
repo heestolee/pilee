@@ -402,7 +402,7 @@ async function showOverlay(pi: ExtensionAPI, ctx: ExtensionCommandContext) {
 							const title = item.status === "done" ? item.title : sel ? theme.fg("accent", item.title) : item.title;
 							const sourceMark = sourceSessionFile(item) ? theme.fg("accent", " 📎") : "";
 							const note = item.note ? theme.fg("borderAccent", ` — ${item.note.slice(0, 30)}`) : "";
-							lines.push(truncateToWidth(`${cursor} ${check} ${icon} #${item.id} ${title}${sourceMark}${note}`, w, ""));
+							lines.push(backlogOverlayRow(`${cursor} ${check} ${icon} #${item.id} ${title}${sourceMark}${note}`, w));
 						}
 					}
 
