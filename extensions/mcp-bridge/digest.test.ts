@@ -33,7 +33,29 @@ test("Slack JSON is rendered as a readable conversation thread", () => {
 	assert.match(digest, /예약 취소 조건/);
 	assert.match(digest, /파일: screenshot\.png/);
 	assert.doesNotMatch(digest, /"messages"\s*:/, "Slack thread should not expose raw JSON structure");
-	assert.doesNotMatch(digest, /원문 artifact|raw json|full text/, "Pi-visible MCP block should not tell the user to inspect raw artifacts");
+	assert.doesNotMatch(digest, /보존한 식별자|원문 artifact|raw json|full text/, "Pi-visible Slack block should not expose generic identifier previews or artifacts");
+});
+
+test("Slack thread resolves participants from user id maps", () => {
+	const output = JSON.stringify({
+		ok: true,
+		channel: "CPJ04855E",
+		thread_ts: "1780400358.433669",
+		messages: [
+			{ ts: "1780400358.433669", userId: "U01", text: "버그 제보가 도착했어요", files: [{ name: "image.png", url_private: "https://files.slack.example/image.png" }] },
+			{ ts: "1780401182.758529", userId: "U02", text: "보현님 확인 부탁드려요" },
+		],
+		users: [
+			{ id: "U01", name: "creatripapp" },
+			{ id: "U02", real_name: "Yilin Hung (홍이린)" },
+		],
+	});
+	const digest = __buildMcpDigestForTesting({ server: "slack", tool: "slack_getThreadReplies", output });
+	assert.match(digest, /참여자: creatripapp, Yilin Hung \(홍이린\)/);
+	assert.match(digest, /\] creatripapp\n버그 제보/);
+	assert.match(digest, /\] Yilin Hung \(홍이린\)\n보현님 확인/);
+	assert.doesNotMatch(digest, /unknown/);
+	assert.doesNotMatch(digest, /## 보존한 식별자\/URL preview/);
 });
 
 test("digest-first MCP output does not expose artifact file details", () => {

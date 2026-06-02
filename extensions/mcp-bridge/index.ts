@@ -504,11 +504,40 @@ function looksLikeSlackMessage(record: Record<string, unknown>): boolean {
 		&& !!(record.ts || record.thread_ts || record.user || record.username || record.user_name || record.bot_id || record.channel);
 }
 
-function slackActor(message: Record<string, unknown>): string {
-	return readString(message, "user_name", "username", "real_name", "name", "user", "bot_id")
-		?? (isRecord(message.user_profile) ? readString(message.user_profile, "real_name", "display_name", "name") : undefined)
-		?? (isRecord(message.bot_profile) ? readString(message.bot_profile, "name") : undefined)
-		?? "unknown";
+function slackUserId(value: unknown): string | undefined {
+	const direct = stringValue(value);
+	if (direct && /^(?:U|W|B)[A-Z0-9]+$/.test(direct)) return direct;
+	if (!isRecord(value)) return undefined;
+	const id = readString(value, "id", "user", "user_id", "userId", "bot_id", "botId", "author", "author_id", "authorId", "sender", "sender_id", "senderId");
+	if (id && /^(?:U|W|B)[A-Z0-9]+$/.test(id)) return id;
+	return undefined;
+}
+
+function slackDisplayName(record: Record<string, unknown>): string | undefined {
+	return readString(record, "user_name", "username", "real_name", "display_name", "displayName", "name")
+		?? (isRecord(record.profile) ? readString(record.profile, "real_name", "display_name", "displayName", "name") : undefined)
+		?? (isRecord(record.user_profile) ? readString(record.user_profile, "real_name", "display_name", "displayName", "name") : undefined)
+		?? (isRecord(record.bot_profile) ? readString(record.bot_profile, "name") : undefined)
+		?? (isRecord(record.user) ? readString(record.user, "real_name", "display_name", "displayName", "name", "username") : undefined);
+}
+
+function buildSlackUserMap(parsed: unknown): Map<string, string> {
+	const users = collectRecords(parsed, (record) => !!slackUserId(record) && !!slackDisplayName(record));
+	const map = new Map<string, string>();
+	for (const user of users) {
+		const id = slackUserId(user);
+		const name = slackDisplayName(user);
+		if (id && name && name !== id) map.set(id, name);
+	}
+	return map;
+}
+
+function slackActor(message: Record<string, unknown>, userMap = new Map<string, string>()): string {
+	const directName = slackDisplayName(message);
+	if (directName) return directName;
+	const nestedUserId = isRecord(message.user) ? slackUserId(message.user) : undefined;
+	const id = nestedUserId ?? slackUserId(message) ?? slackUserId(message.user) ?? slackUserId(message.bot_id);
+	return (id ? userMap.get(id) ?? id : undefined) ?? "unknown";
 }
 
 function slackAttachmentLines(message: Record<string, unknown>): string[] {
@@ -536,20 +565,23 @@ function renderSlackSummary(parsed: unknown, args: { server: string; tool: strin
 	const root = isRecord(parsed) ? parsed : undefined;
 	const channel = readString(root, "channel_name", "channel", "channel_id") ?? readString(messages[0], "channel_name", "channel", "channel_id");
 	const threadTs = readString(root, "thread_ts", "ts") ?? readString(messages[0], "thread_ts");
-	const participants = [...new Set(messages.map(slackActor).filter(Boolean))];
+	const userMap = buildSlackUserMap(parsed);
+	const messageActors = messages.map((message) => slackActor(message, userMap));
+	const participants = [...new Set(messageActors.filter((actor) => actor && actor !== "unknown"))];
+	const fallbackParticipants = participants.length > 0 ? participants : [...new Set(userMap.values())];
 	const times = messages.map((msg) => formatMaybeTime(msg.ts)).filter((time): time is string => !!time);
 	const lines = ["💬 Slack 결과 확인", ""];
 	lines.push(`메시지: ${messages.length.toLocaleString()}개`);
 	if (channel) lines.push(`채널: ${channel}`);
 	if (threadTs) lines.push(`thread_ts: ${threadTs}`);
-	if (participants.length > 0) lines.push(`참여자: ${participants.slice(0, 20).join(", ")}${participants.length > 20 ? ` 외 ${participants.length - 20}명` : ""}`);
+	if (fallbackParticipants.length > 0) lines.push(`참여자: ${fallbackParticipants.slice(0, 20).join(", ")}${fallbackParticipants.length > 20 ? ` 외 ${fallbackParticipants.length - 20}명` : ""}`);
 	if (times.length > 0) lines.push(`시간 범위: ${times[0]}${times.length > 1 ? ` → ${times[times.length - 1]}` : ""}`);
 	if (messages.length === 0) return lines;
 	lines.push("", "## 대화 스레드");
 	messages.forEach((message, index) => {
 		const time = formatMaybeTime(message.ts) ?? `#${index + 1}`;
 		const text = compactLine(String(message.text ?? ""), 1200);
-		lines.push(`[${time}] ${slackActor(message)}`);
+		lines.push(`[${time}] ${messageActors[index] ?? "unknown"}`);
 		lines.push(text || "(본문 없음)");
 		lines.push(...slackAttachmentLines(message));
 		lines.push("");
@@ -758,10 +790,12 @@ function buildMcpDigest(args: { responseId: string; server: string; tool: string
 	if (humanSummary) lines.push(...humanSummary);
 	else if (parsed !== undefined) lines.push(...summarizeJson(parsed));
 	else lines.push(...firstLastLinePreview(args.output).map((line) => `- ${line}`));
-	const refs = extractImportantReferences(args.output);
-	if (refs.length > 0) {
-		lines.push("", "## 보존한 식별자/URL preview");
-		for (const ref of refs) lines.push(`- ${ref}`);
+	if (!humanSummary) {
+		const refs = extractImportantReferences(args.output);
+		if (refs.length > 0) {
+			lines.push("", "## 보존한 식별자/URL preview");
+			for (const ref of refs) lines.push(`- ${ref}`);
+		}
 	}
 	lines.push("", "원문은 대화 context에 넣지 않고 내부에 보존했습니다.");
 	lines.push(`필요 시: get_mcp_content(responseId="${args.responseId}")`);
