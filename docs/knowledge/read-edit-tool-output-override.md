@@ -24,8 +24,8 @@ source:
   - user-direction:2026-05-14-my-pi-tool-overrides
   - github:jonghakseo/my-pi/extensions/read-tool-override
   - github:jonghakseo/my-pi/extensions/edit-tool-override
-reviewed_at: 2026-05-13
-reviewed_commit: f3fe380f771c905d12d52a53fdf9a37e55ee6b7a
+reviewed_at: 2026-06-02
+reviewed_commit: 41c70e0d087088cac3758d698590fa56c4bff225
 related:
   - bash-tool-title-output-override
   - tool-output-noise-management

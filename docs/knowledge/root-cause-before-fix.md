@@ -18,8 +18,8 @@ source:
   - pilee-history:2026-05-03#32
   - session-backfill:2026-05-02#setwidget-notify
   - user-direction:2026-05-07-local-resolver
-reviewed_at: 2026-05-26
-reviewed_commit: fca5f1da1ca601ab5733a5a0b3764e56b59aecd9
+reviewed_at: 2026-06-02
+reviewed_commit: 41c70e0d087088cac3758d698590fa56c4bff225
 related:
   - evidence-first-verification-gate
   - verification-invalidation-on-change

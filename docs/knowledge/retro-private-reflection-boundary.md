@@ -16,8 +16,8 @@ applies_to:
 source:
   - pilee-history:2026-05-01#16
   - user-direction:2026-05-07-local-resolver
-reviewed_at: 2026-05-13
-reviewed_commit: 74c8c2864511fcfc7236861e875eb5c59d220f2f
+reviewed_at: 2026-06-02
+reviewed_commit: 41c70e0d087088cac3758d698590fa56c4bff225
 related:
   - private-journal-public-doctrine
   - artifact-archive-reopenability
