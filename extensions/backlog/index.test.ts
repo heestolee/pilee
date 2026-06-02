@@ -42,13 +42,15 @@ test("backlog note preview is sanitized into a single terminal row", () => {
 	assert.ok(visibleWidth(preview) <= 30);
 });
 
-test("fillBacklogOverlayLines pads height so stale rows from previous renders are cleared", () => {
+test("fillBacklogOverlayLines caps height without reserving a fixed blank area", () => {
 	const rows = fillBacklogOverlayLines(["short", "a very very long backlog row"], 10, 4);
-	assert.equal(rows.length, 4);
+	assert.equal(rows.length, 2);
 	for (const row of rows) assert.equal(visibleWidth(row), 10);
 	assert.equal(rows[0], "short     ");
-	assert.equal(rows[2], "          ");
-	assert.equal(rows[3], "          ");
+
+	const capped = fillBacklogOverlayLines(["one", "two", "three"], 10, 2);
+	assert.equal(capped.length, 2);
+	assert.deepEqual(capped.map((row) => row.trim()), ["one", "two"]);
 });
 
 test("fillBacklogOverlayLines can force clear-safe redraws without changing visible width", () => {
@@ -57,17 +59,14 @@ test("fillBacklogOverlayLines can force clear-safe redraws without changing visi
 	const coloredRow = "\u001b[31mshort\u001b[0m";
 	const firstRows = fillBacklogOverlayLines([coloredRow], 10, 2, firstToken);
 	const nextRows = fillBacklogOverlayLines(["short"], 10, 2, nextToken);
-	assert.equal(firstRows.length, 2);
-	assert.equal(nextRows.length, 2);
+	assert.equal(firstRows.length, 1);
+	assert.equal(nextRows.length, 1);
 	for (const row of [...firstRows, ...nextRows]) assert.equal(visibleWidth(row), 10);
 	assert.ok(firstRows[0].startsWith(firstToken), "render token must be before visible cells so TUI slicing preserves it");
-	assert.ok(firstRows[1].startsWith(firstToken), "blank filler rows must also carry the token before visible cells");
 	assert.ok(nextRows[0].startsWith(nextToken), "next frame token must be before visible cells");
 	assert.ok(firstRows[0].includes(BACKLOG_OVERLAY_BG), "overlay rows should paint a solid background");
 	assert.ok(firstRows[0].includes(`\u001b[0m${BACKLOG_OVERLAY_BG}`), "background should be restored after row text resets");
-	assert.ok(firstRows[1].includes(BACKLOG_OVERLAY_BG), "blank filler rows should paint a solid background");
-	assert.notEqual(firstRows[0], nextRows[0], "render token should make repeated frames clearable");
-	assert.notEqual(firstRows[1], nextRows[1], "blank filler rows should also be redrawn");
+	assert.notEqual(firstRows[0], nextRows[0], "render token should make repeated visible rows clearable");
 });
 
 test("backlog index render path does not call truncateToWidth directly", () => {

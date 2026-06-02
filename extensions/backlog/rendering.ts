@@ -52,7 +52,5 @@ export function backlogOverlayRow(text: string, width: number, options: BacklogO
 export function fillBacklogOverlayLines(lines: string[], width: number, height: number, renderToken = ""): string[] {
 	const targetHeight = Math.max(1, height);
 	const rowOptions = renderToken ? { renderToken, background: BACKLOG_OVERLAY_BG } : undefined;
-	const filled = lines.slice(0, targetHeight).map((line) => backlogOverlayRow(line, width, rowOptions));
-	while (filled.length < targetHeight) filled.push(backlogOverlayRow("", width, rowOptions));
-	return filled;
+	return lines.slice(0, targetHeight).map((line) => backlogOverlayRow(line, width, rowOptions));
 }
