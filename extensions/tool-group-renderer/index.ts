@@ -3,10 +3,10 @@ import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Container, Spacer, Text, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
-import { truncatePlainToWidth } from "../utils/format-utils.js";
+import { truncatePlainToWidth } from "../utils/format-utils.ts";
 
 const PATCH_STATE_KEY = Symbol.for("pilee.tool-group-renderer.patch-state");
-const PATCH_VERSION = "2026-04-27-r1";
+const PATCH_VERSION = "2026-06-02-mcp-collapse-r1";
 const GROUP_STATE = Symbol("pilee.tool-group-renderer.state");
 function piPackageRootFromDistEntrypoint(filePath: string | undefined): string | null {
 	if (!filePath) return null;
@@ -518,6 +518,149 @@ function formatExpandedDetail(item: GroupItem): string[] {
 	return formatExpandedTextDetail(item);
 }
 
+function toolResultDetails(result?: ToolResultLike): Record<string, unknown> | undefined {
+	return isRecord(result?.details) ? result.details : undefined;
+}
+
+function detailString(details: Record<string, unknown> | undefined, key: string): string | undefined {
+	const value = details?.[key];
+	return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function extractLineValue(text: string, label: string): string | undefined {
+	const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const match = text.match(new RegExp(`^${escaped}:\\s*(.+)$`, "m"));
+	return match?.[1]?.trim();
+}
+
+function cleanMarkdownTitle(line: string): string {
+	return line.replace(/^#+\s*/, "").replace(/^[-*]\s*/, "").trim();
+}
+
+function firstContentLine(text: string): string | undefined {
+	for (const line of text.split(/\r?\n/)) {
+		const trimmed = line.trim();
+		if (!trimmed) continue;
+		if (/^(?:🔌 MCP 결과|server:|tool:|action:|responseId:|원문 크기:|## 요약|원문은 |필요 시:)/.test(trimmed)) continue;
+		return cleanMarkdownTitle(trimmed);
+	}
+	return undefined;
+}
+
+function countCommaSeparated(value: string | undefined): number | undefined {
+	if (!value) return undefined;
+	const count = value.split(",").map((part) => part.trim()).filter(Boolean).length;
+	return count > 0 ? count : undefined;
+}
+
+function countMatches(text: string, pattern: RegExp): number {
+	return [...text.matchAll(pattern)].length;
+}
+
+function conciseTimeRange(value: string | undefined): string | undefined {
+	if (!value) return undefined;
+	const times = [...value.matchAll(/(\d{2}:\d{2})(?::\d{2})?/g)].map((match) => match[1]);
+	if (times.length >= 2) return `${times[0]}–${times.at(-1)}`;
+	return times[0];
+}
+
+function formatMcpCollapsedLine(result?: ToolResultLike, args?: unknown, expanded = false): string {
+	const text = extractRawTextContent(result)?.trim() ?? "";
+	const details = toolResultDetails(result);
+	const server = detailString(details, "server") ?? (isRecord(args) ? detailString(args, "server") : undefined) ?? "mcp";
+	const tool = detailString(details, "tool") ?? (isRecord(args) ? detailString(args, "tool") : undefined) ?? "tool";
+	const hint = expanded ? "Ctrl+O 접기" : "Ctrl+O 펼쳐보기";
+	const suffix = ` · ${hint}`;
+
+	if (!result) return `🔌 MCP 실행 중 · ${server}/${tool}`;
+	if (result.isError) return `🔌 MCP 실패 · ${server}/${tool}${suffix}`;
+
+	if (text.includes("💬 Slack 결과 확인")) {
+		const messageCount = extractLineValue(text, "메시지");
+		const participants = countCommaSeparated(extractLineValue(text, "참여자"));
+		const time = conciseTimeRange(extractLineValue(text, "시간 범위"));
+		return ["💬 Slack thread", messageCount ? `${messageCount} 메시지` : undefined, participants ? `참여자 ${participants}명` : undefined, time, hint].filter(Boolean).join(" · ");
+	}
+
+	if (text.includes("📝 Notion 결과 확인") || `${server} ${tool}`.toLowerCase().includes("notion")) {
+		const title = extractLineValue(text, "제목") ?? firstContentLine(text) ?? "Notion 결과";
+		const imageCount = countMatches(text, /^- 이미지:/gm);
+		return [`📝 Notion page`, truncatePlainToWidth(title, 72), imageCount > 0 ? `이미지 ${imageCount}개` : undefined, hint].filter(Boolean).join(" · ");
+	}
+
+	if (text.includes("🎫 Jira 결과 확인")) {
+		const issueCount = extractLineValue(text, "이슈");
+		const title = firstContentLine(text) ?? `${server}/${tool}`;
+		return [`🎫 Jira`, issueCount ? `${issueCount} 이슈` : truncatePlainToWidth(title, 72), hint].filter(Boolean).join(" · ");
+	}
+
+	const chars = typeof details?.originalChars === "number" ? `${details.originalChars.toLocaleString()} chars` : undefined;
+	return [`🔌 MCP`, `${server}/${tool}`, chars, hint].filter(Boolean).join(" · ");
+}
+
+function formatMcpExpandedText(result?: ToolResultLike): string {
+	const text = extractRawTextContent(result)?.trim();
+	return text && text.length > 0 ? text : "(아직 결과 없음)";
+}
+
+class McpToolResultComponent extends Container implements ToolComponentHandle {
+	private readonly content: Text;
+	private args: unknown;
+	private result?: ToolResultLike;
+	private isPartial = false;
+	private expanded = false;
+
+	constructor(args: unknown) {
+		super();
+		this.args = args;
+		this.addChild(new Spacer(1));
+		this.content = new Text("", 1, 1);
+		this.addChild(this.content);
+		this.refreshDisplay();
+	}
+
+	updateArgs(args: unknown): void {
+		this.args = args;
+		this.refreshDisplay();
+	}
+
+	markExecutionStarted(): void {
+		this.refreshDisplay();
+	}
+
+	setArgsComplete(): void {
+		this.refreshDisplay();
+	}
+
+	updateResult(result: ToolResultLike, isPartial = false): void {
+		this.result = result;
+		this.isPartial = isPartial;
+		this.refreshDisplay();
+	}
+
+	setExpanded(expanded: boolean): void {
+		this.expanded = expanded;
+		this.refreshDisplay();
+	}
+
+	override invalidate(): void {
+		super.invalidate();
+		this.refreshDisplay();
+	}
+
+	private refreshDisplay(): void {
+		const theme = getTheme();
+		const bg: ThemeBg = this.result?.isError ? "toolErrorBg" : this.isPartial || !this.result ? "toolPendingBg" : "toolSuccessBg";
+		this.content.setCustomBgFn((text) => theme.bg(bg, text));
+		const header = formatMcpCollapsedLine(this.result, this.args, this.expanded);
+		if (!this.expanded) {
+			this.content.setText(theme.fg(this.result?.isError ? "error" : "accent", header));
+			return;
+		}
+		this.content.setText(`${theme.fg("toolTitle", theme.bold(header))}\n${formatMcpExpandedText(this.result)}`);
+	}
+}
+
 function createGroupItem(toolName: GroupableToolName, toolCallId: string, args: unknown): GroupItem {
 	return {
 		toolCallId,
@@ -699,6 +842,14 @@ function createNormalToolComponent(
 	return component;
 }
 
+function createMcpToolComponent(mode: InteractiveModeLike, toolCallId: string, args: unknown): ToolHandle {
+	const component = new McpToolResultComponent(args);
+	component.setExpanded(mode.toolOutputExpanded);
+	mode.chatContainer.addChild(component);
+	mode.pendingTools.set(toolCallId, component);
+	return component;
+}
+
 function createRecordingToolHandle(delegate: ToolComponentHandle, item: GroupItem): ToolComponentHandle {
 	return {
 		updateArgs: (args: unknown) => {
@@ -786,6 +937,10 @@ function breakGroup(mode: InteractiveModeLike): void {
 }
 
 function ensureToolHandle(mode: InteractiveModeLike, toolName: string, toolCallId: string, args: unknown): ToolHandle {
+	if (toolName === "mcp") {
+		breakGroup(mode);
+		return createMcpToolComponent(mode, toolCallId, args);
+	}
 	if (!isGroupableToolCall(toolName, args)) {
 		breakGroup(mode);
 		const component = createNormalToolComponent(mode, toolName, toolCallId, args);
@@ -903,6 +1058,7 @@ function renderSessionContextPatched(
 export const __test__ = {
 	formatBashCommandPreview,
 	formatBashLine,
+	formatMcpCollapsedLine,
 	ensureToolHandle,
 	setRuntimeThemeForTest: (theme?: RuntimeTheme) => {
 		runtimeTheme = theme;
