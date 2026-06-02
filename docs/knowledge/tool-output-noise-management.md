@@ -28,7 +28,7 @@ source:
   - user-direction:2026-06-02-mcp-one-line-collapsed-render
   - user-direction:2026-06-02-all-mcp-one-line-card
 reviewed_at: 2026-06-02
-reviewed_commit: 66927aafbf8d2d774a033e700f50bca494701178
+reviewed_commit: 3b2f6ec652447b9c3927d782744d4289167e9afd
 related:
   - tui-rendering-sanitization
   - mcp-stderr-isolation
