@@ -31,15 +31,17 @@ source:
   - user-direction:2026-05-07-conductor-history-artifact-browser
   - user-direction:2026-05-09-archive-command-name
   - user-direction:2026-05-11-mcp-digest-first-artifacts
+  - user-direction:2026-06-02-mcp-scroll-only-no-artifact
   - user-direction:2026-05-25-session-body-search
   - user-direction:2026-05-26-session-search-revive-actions
-reviewed_at: 2026-05-31
-reviewed_commit: 81a77af6bbaa70779dc6b30562f31663d78dcd4f
+reviewed_at: 2026-06-02
+reviewed_commit: ce5e875d9e49a3a0b93215894e525b1933c6a145
 related:
   - live-artifact-preview-pattern
   - backlog-source-session-provenance
   - verify-report-workflow
   - frame-studio-interactive-decision-ui
+  - tool-output-noise-management
 ---
 
 ## Judgment
@@ -71,7 +73,7 @@ artifact 종류가 늘어나면 한 목록에 섞지 않습니다. `/archive`는
 1. Pi 이력 — `/wt resume`으로 복구한 worktree와 일반 Pi worktree/session을 작업 단위로 묶습니다. 원본 Conductor 세션, Pi 복구 세션, Pi 대화 세션, 복구 컨텍스트, 관련 검증 리포트/Frame/기획 markdown/캡처/웹 검색을 하위 섹션으로 보여줍니다.
 2. 컨덕터 이력 — runtime profile이 지정한 Conductor master DB와 project JSONL roots에 남은 원본 이력을 보여줍니다. `/wt resume` 산출물이 아니라 원본 보존 이력이라는 의미가 중심입니다.
 3. 웹 검색 — web-search review HTML은 verify report와 섞지 않고 별도 artifact class로 둡니다. worktree/session과 연결되는 검색은 해당 Pi 이력 아래에도 노출하고, 연결되지 않는 검색은 웹 검색 기본 그룹에 남깁니다.
-4. MCP — digest-first로 저장된 MCP result artifact입니다. 웹 검색과 같은 “원문 snapshot” 성격이지만, 후속 action identifier를 포함할 수 있으므로 별도 탭으로 둡니다.
+4. MCP — 기본 흐름은 archive artifact가 아니라 한 줄 카드 + 접힘 digest + 세션 내 lazy retrieval입니다. 별도로 저장된 MCP snapshot이 생긴 경우에만 웹 검색처럼 원문 재확인용 artifact class로 분리합니다. 후속 action identifier를 포함할 수 있으므로, 저장된 snapshot을 다른 검증/검색 산출물과 섞지 않습니다.
 5. 검증 리포트 — verify report HTML처럼 판정이 있는 검증 산출물입니다.
 6. 기획 / Frame — TFT Studio transcript와 `.context/plans`, `.context/work/**/context.md`, `todo.md` 등 planning markdown처럼 생각 과정이나 작업 계획을 남기는 문서입니다.
 7. 캡처 / 미디어 — 아직 리포트로 묶이지 않았거나 원본 확인이 필요한 PNG/JPEG/GIF/WebP/SVG evidence입니다.
