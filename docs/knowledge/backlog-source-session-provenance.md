@@ -19,8 +19,8 @@ source:
   - pilee-history:2026-05-05#51
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-19-explicit-backlog-is-not-task
-reviewed_at: 2026-05-13
-reviewed_commit: ca6dec9d7f8a3eeda24ee5b0d35c64752d02a76a
+reviewed_at: 2026-06-02
+reviewed_commit: cc0bd9893b2bcb593c3c66305002a0599e6c1b5d
 related:
   - session-identity-over-filenames
   - artifact-archive-reopenability

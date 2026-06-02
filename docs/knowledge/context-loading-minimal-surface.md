@@ -22,8 +22,8 @@ source:
   - pilee-history:2026-05-01#19
   - pilee-history:2026-05-01#24
   - user-direction:2026-05-09-tft-studio-context-return
-reviewed_at: 2026-05-13
-reviewed_commit: 49eb5f7591aa355f1022ea1e7fe2659a181cfb63
+reviewed_at: 2026-06-02
+reviewed_commit: cc0bd9893b2bcb593c3c66305002a0599e6c1b5d
 related:
   - private-journal-public-doctrine
   - tool-output-noise-management

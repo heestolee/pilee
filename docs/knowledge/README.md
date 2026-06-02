@@ -104,7 +104,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [낮은 confidence 판단은 정합성 PR로 올린다](./confidence-sensitive-review.md) | active | high | 2026-05-13 | 49eb5f7 | confidence, review, freshness, ai-actions, user-review, 정합성 |
+| [낮은 confidence 판단은 정합성 PR로 올린다](./confidence-sensitive-review.md) | active | high | 2026-06-02 | cc0bd98 | confidence, review, freshness, ai-actions, user-review, 정합성 |
 | [Deterministic action과 AI review action은 분리한다](./deterministic-vs-ai-actions.md) | active | high | 2026-05-13 | 49eb5f7 | knowledge, deterministic, ai-actions, review, automation, 정합성 |
 | [Ember는 knowledge의 친근한 입구다](./ember-friendly-knowledge-entrypoint.md) | active | high | 2026-05-13 | f89a0f6 | ember, branding, command, knowledge |
 | [Ember Ship은 knowledge 정합성을 release train으로 닫는다](./ember-ship-release-train.md) | active | high | 2026-06-03 | 6360cc9 | ember, knowledge, release-train, freshness, merge-gate |
@@ -178,13 +178,13 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [AskUserQuestion 옵션은 행동 분기를 표현한다](./ask-user-question-option-design.md) | active | high | 2026-06-02 | ce5e875 | ask-user-question, option, wording, ceremony, tft, 질문 |
 | [Atomic evidence workflow는 작은 claim을 증거로 닫는다](./atomic-evidence-workflow.md) | active | high | 2026-06-02 | ce5e875 | atomic, evidence, claim, slice, verification, frame |
 | [Auto-commit은 명시 계획만 실행한다](./auto-commit-explicit-plan-gate.md) | active | high | 2026-06-02 | ce5e875 | auto-commit, git, commit, plan, safety |
-| [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | high | 2026-05-13 | ca6dec9 | backlog, tasks, provenance, source-session, session, 맥락 |
-| [Bash tool override는 명령 의도와 출력 노이즈를 분리한다](./bash-tool-title-output-override.md) | active | high | 2026-05-13 | 62d55bb | bash, tool, override, ui, output, title |
-| [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md) | active | high | 2026-05-13 | 49eb5f7 | git, incremental, code-review, commit, quality, 통합 |
-| [CI-Ship은 PR 후 검증 실패 대응 단계다](./ci-ship-failure-response-boundary.md) | active | high | 2026-05-20 | 7662f0a | ci-ship, ci, github-actions, pull-request, failure-analysis, ship |
-| [Clean handoff는 compact와 새 세션 사이의 전환 계약이다](./clean-handoff-session-continuation.md) | active | high | 2026-05-14 | ae89856 | session, handoff, compact, context, archive, continue-clean |
-| [자동 로드 컨텍스트는 최소 surface만 가진다](./context-loading-minimal-surface.md) | active | high | 2026-05-13 | 49eb5f7 | context, agents-md, memory, system-prompt, token, autoload |
-| [Decide는 선택을 한 번 공격한다](./decide-tradeoff-challenge.md) | active | high | 2026-05-30 | de40e54 | decide, tradeoff, challenge, productive-resistance, frame-json, decision |
+| [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | high | 2026-06-02 | cc0bd98 | backlog, tasks, provenance, source-session, session, 맥락 |
+| [Bash tool override는 명령 의도와 출력 노이즈를 분리한다](./bash-tool-title-output-override.md) | active | high | 2026-06-02 | cc0bd98 | bash, tool, override, ui, output, title |
+| [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md) | active | high | 2026-06-02 | cc0bd98 | git, incremental, code-review, commit, quality, 통합 |
+| [CI-Ship은 PR 후 검증 실패 대응 단계다](./ci-ship-failure-response-boundary.md) | active | high | 2026-06-02 | cc0bd98 | ci-ship, ci, github-actions, pull-request, failure-analysis, ship |
+| [Clean handoff는 compact와 새 세션 사이의 전환 계약이다](./clean-handoff-session-continuation.md) | active | high | 2026-06-02 | cc0bd98 | session, handoff, compact, context, archive, continue-clean |
+| [자동 로드 컨텍스트는 최소 surface만 가진다](./context-loading-minimal-surface.md) | active | high | 2026-06-02 | cc0bd98 | context, agents-md, memory, system-prompt, token, autoload |
+| [Decide는 선택을 한 번 공격한다](./decide-tradeoff-challenge.md) | active | high | 2026-06-02 | cc0bd98 | decide, tradeoff, challenge, productive-resistance, frame-json, decision |
 | [외부 이슈 업데이트는 preview gate를 지난다](./external-issue-preview-gate.md) | active | high | 2026-05-13 | f89a0f6 | jira, issue, preview, wiki-markup, external-update, approval |
 | [최종 검증은 메인 세션을 막지 않고 병렬화한다](./final-verification-parallelization.md) | active | high | 2026-05-13 | cdaedbd | verification, ship, final-check, subagent, background, parallel |
 | [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-05-12 | 4d1ff26 | fork-panel, handoff, inbox, inject, parent, panel |
