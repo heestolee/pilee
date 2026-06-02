@@ -17,7 +17,7 @@ source:
   - user-direction:2026-06-02-mcp-human-digest
   - user-direction:2026-06-02-mcp-slack-block-not-artifact
 reviewed_at: 2026-06-02
-reviewed_commit: 311264e60e1921c55e9ea5206f65659ac810ddba
+reviewed_commit: 5f0a2efe9a15234f50453ee12b4a407db63e48cb
 related:
   - tool-output-noise-management
   - artifact-archive-reopenability
