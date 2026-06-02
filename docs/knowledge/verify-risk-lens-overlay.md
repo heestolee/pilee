@@ -18,8 +18,8 @@ applies_to:
   - private/project verify overlay skills
 source:
   - user-direction:2026-05-10-verify-risk-lens-overlay
-reviewed_at: 2026-05-12
-reviewed_commit: fc6ffa9aaa2a87275a50c2888d6ca4bbe0255cf6
+reviewed_at: 2026-06-02
+reviewed_commit: 61ccbc9d3fb4d6eb5cb7f0558dd056eb385b0410
 related:
   - frame-verify-contract
   - evidence-first-verification-gate

@@ -46,8 +46,8 @@ source:
   - user-feedback:2026-05-30-prior-correction-intent
   - user-feedback:2026-05-30-frame-handoff-adjudication
   - user-feedback:2026-05-31-motion-gif-quality-default
-reviewed_at: 2026-05-30
-reviewed_commit: 1270e1a2318cb0d7d3737094f2e9760bc75c9c39
+reviewed_at: 2026-06-02
+reviewed_commit: 61ccbc9d3fb4d6eb5cb7f0558dd056eb385b0410
 related:
   - pilee-knowledge-system
   - web-search-curator
