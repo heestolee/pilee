@@ -19,8 +19,8 @@ source:
   - pilee-history:2026-05-01#7
   - pilee-history:2026-05-05#42
   - user-direction:2026-05-07-local-resolver
-reviewed_at: 2026-05-13
-reviewed_commit: 74c8c2864511fcfc7236861e875eb5c59d220f2f
+reviewed_at: 2026-06-02
+reviewed_commit: e123af14832390aa7959c2a5b597b1b64eaebb91
 related:
   - subagent-model-policy
   - self-healing-actionable-loop
