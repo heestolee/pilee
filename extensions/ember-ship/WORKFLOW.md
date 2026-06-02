@@ -1,17 +1,12 @@
----
-name: ember-ship
-description: pilee knowledge maintenance를 release train처럼 한 사이클에 처리할 때 사용한다. 사용자가 `/ember-ship`, "ember tend부터 stale 해소, README/SVG/Notion 동기화, push/merge까지", "knowledge 정합성 한 번에 ship"처럼 말하면 사용한다. 별도 worktree에서 stale 문서를 batch당 8개씩 갱신/confirm하고 generated artifacts와 history/Notion sync를 닫은 뒤, SAFE면 main merge/push, BLOCKED면 PR 링크를 남긴다.
-argument-hint: "[--limit 8] [--no-merge] [--dry-run]"
-disable-model-invocation: false
----
-
 # ember-ship
+
+> 사용자에게 노출되는 진입점은 `/ember-ship` 하나다. 이 파일은 extension command shim이 inline하는 내부 workflow 계약이며, Pi skill discovery 대상이 아니다.
 
 `/ember-ship`은 pilee knowledge 운영에서 반복되던 수동 루틴을 **하나의 maintenance release train**으로 묶는다.
 
 > `/ember check` → stale/review_needed 해소 → generated README/SVG 갱신 → local history/Notion sync → final-check → push/merge
 
-이 스킬은 `pilee-knowledge`를 대체하지 않는다. 여러 번의 `pilee-knowledge` batch와 `pilee-final-check`를 조립해 release 가능한 단위로 닫는다.
+이 workflow는 `pilee-knowledge`를 대체하지 않는다. 여러 번의 `pilee-knowledge` batch와 `pilee-final-check`를 조립해 release 가능한 단위로 닫는다.
 
 ## 기본 실행 의미
 

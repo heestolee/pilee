@@ -6,6 +6,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-cod
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = resolve(__dirname, "../..");
 const SKILLS_DIR = join(PACKAGE_ROOT, "skills");
+const EMBER_SHIP_WORKFLOW_PATH = join(__dirname, "WORKFLOW.md");
 const SHIM_CUSTOM_TYPE = "pilee-ember-ship-command";
 
 const PREREQUISITE_SKILLS = [
@@ -38,6 +39,14 @@ function readSkill(skillName: string): { name: string; path: string; content: st
 	};
 }
 
+function readEmberShipWorkflow(): { name: string; path: string; content: string } {
+	return {
+		name: "ember-ship workflow",
+		path: EMBER_SHIP_WORKFLOW_PATH,
+		content: readFileSync(EMBER_SHIP_WORKFLOW_PATH, "utf-8").trimEnd(),
+	};
+}
+
 function formatInlinedSkill(skill: { name: string; path: string; content: string }): string {
 	const baseDir = dirname(skill.path);
 	return [
@@ -50,8 +59,20 @@ function formatInlinedSkill(skill: { name: string; path: string; content: string
 	].join("\n");
 }
 
+function formatInlinedWorkflow(workflow: { name: string; path: string; content: string }): string {
+	const baseDir = dirname(workflow.path);
+	return [
+		`----- BEGIN INLINED PILEE WORKFLOW: ${workflow.name} -----`,
+		`Location: ${workflow.path}`,
+		`References are relative to: ${baseDir}`,
+		"",
+		workflow.content,
+		`----- END INLINED PILEE WORKFLOW: ${workflow.name} -----`,
+	].join("\n");
+}
+
 export function buildEmberShipPrompt(args: string, cwd: string): string {
-	const targetSkill = readSkill("ember-ship");
+	const targetWorkflow = readEmberShipWorkflow();
 	const prerequisiteSkills = PREREQUISITE_SKILLS.map((name) => readSkill(name));
 	const commandLine = `/ember-ship${args.trim() ? ` ${args.trim()}` : ""}`;
 
@@ -61,11 +82,11 @@ export function buildEmberShipPrompt(args: string, cwd: string): string {
 		`You are executing \`${commandLine}\` through pilee's extension command shim.`,
 		"",
 		"Hard routing rules:",
-		"- Use the inlined pilee `ember-ship` SKILL.md below as the authoritative workflow for this invocation.",
+		"- Use the inlined pilee Ember Ship WORKFLOW.md below as the authoritative workflow for this invocation.",
 		"- Treat the inlined prerequisite skills as already loaded/read.",
-		"- Do not ask the user to re-invoke `/skill:ember-ship`; continue now using the inlined instructions.",
-		"- If a referenced helper file is not inlined, resolve relative paths from the listed pilee skill directory only.",
-		"- User explicitly invoked a merge-capable maintenance train. Follow the skill's SAFE vs BLOCKED gates before merging.",
+		"- Do not ask the user to re-invoke `/skill:ember-ship`; that skill command is intentionally not exposed. Continue now using `/ember-ship` workflow instructions.",
+		"- If a referenced helper file is not inlined, resolve relative paths from the listed workflow/skill directory only.",
+		"- User explicitly invoked a merge-capable maintenance train. Follow the workflow's SAFE vs BLOCKED gates before merging.",
 		"",
 		`Current cwd: ${cwd}`,
 		"",
@@ -77,10 +98,10 @@ export function buildEmberShipPrompt(args: string, cwd: string): string {
 		"## Inlined prerequisite skills",
 		...prerequisiteSkills.map(formatInlinedSkill),
 		"",
-		"## Inlined target skill",
-		formatInlinedSkill(targetSkill),
+		"## Inlined target workflow",
+		formatInlinedWorkflow(targetWorkflow),
 		"",
-		"Now execute the target skill for the original user command.",
+		"Now execute the target workflow for the original user command.",
 	].join("\n");
 }
 
@@ -106,7 +127,7 @@ export default function (pi: ExtensionAPI) {
 						details: {
 							command: "ember-ship",
 							args,
-							skillPath: skillPath("ember-ship"),
+							workflowPath: EMBER_SHIP_WORKFLOW_PATH,
 							prerequisiteSkillPaths: PREREQUISITE_SKILLS.map((name) => skillPath(name)),
 						},
 					},

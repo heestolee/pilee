@@ -11,13 +11,13 @@ status: active
 confidence: high
 applies_to:
   - .github/workflows/knowledge-review-sync.yml
-  - skills/ember-ship
+  - extensions/ember-ship
   - skills/pilee-knowledge
   - scripts/knowledge.mjs
 source:
   - user-direction:2026-05-13-knowledge-review-pr-body
-reviewed_at: 2026-05-13
-reviewed_commit: 1f5c3acfcb23b01a3fc6bc30592dbe0156748c4f
+reviewed_at: 2026-06-03
+reviewed_commit: 6360cc9dd00e11cde1aa86e747b9b1a859281af7
 related:
   - ember-ship-release-train
   - pilee-knowledge-system

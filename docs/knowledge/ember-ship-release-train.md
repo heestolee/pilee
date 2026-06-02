@@ -11,15 +11,14 @@ status: active
 confidence: high
 applies_to:
   - extensions/ember-ship
-  - skills/ember-ship
   - extensions/ember
   - skills/pilee-knowledge
   - skills/pilee-final-check
   - scripts/knowledge.mjs
 source:
   - user-direction:2026-05-12-ember-ship
-reviewed_at: 2026-05-13
-reviewed_commit: f89a0f6f84de4f00a3615883135c3e065d09451c
+reviewed_at: 2026-06-03
+reviewed_commit: 6360cc9dd00e11cde1aa86e747b9b1a859281af7
 related:
   - ember-friendly-knowledge-entrypoint
   - pilee-knowledge-system
@@ -38,6 +37,10 @@ related:
 Knowledge 정합성 갱신은 `check → resolve → generated sync → history/Notion → final-check → push/merge`가 매번 반복된다. 이 루틴은 사용자가 매번 worktree, batch size, generated artifact, Notion sync, merge gate를 기억해야 할 일이 아니다.
 
 따라서 `/ember-ship`은 명시 실행 시 merge 의도가 있는 자동화로 해석한다. 단, 자동 merge는 SAFE gate를 통과한 경우에만 가능하다. 판단이 필요한 stale 문서, public/private boundary, README 철학 변경, validation 실패, Notion sync 실패는 BLOCKED 상태로 전환하고 PR URL을 남긴다.
+
+## 노출 계층
+
+`/ember-ship`만 사용자-facing command로 노출한다. 실행 계약은 `extensions/ember-ship/WORKFLOW.md`에 보관하고 extension shim이 직접 inline한다. 이 계약 파일은 Pi skill discovery 경로 밖에 있어야 하며, `/skill:ember-ship`처럼 같은 workflow가 두 진입점으로 보이지 않게 한다.
 
 ## Release train 계약
 
