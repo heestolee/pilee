@@ -20,7 +20,7 @@ source:
   - user-direction:2026-06-02-mcp-notion-image-url-hidden
   - user-direction:2026-06-02-mcp-one-line-collapsed-render
 reviewed_at: 2026-06-02
-reviewed_commit: a79652f79b01566e2f3eabee1a93bc0a1333b28d
+reviewed_commit: 66927aafbf8d2d774a033e700f50bca494701178
 related:
   - tool-output-noise-management
   - mcp-stderr-isolation
