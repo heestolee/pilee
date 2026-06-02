@@ -10,6 +10,7 @@ status: active
 confidence: high
 applies_to:
   - extensions/ember
+  - extensions/ember-ship
   - skills/pilee-knowledge
   - scripts/knowledge.mjs
   - docs/knowledge
@@ -17,13 +18,14 @@ source:
   - user-direction:2026-05-05-ember-branding
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-09-ember-add-workflow-contract
-reviewed_at: 2026-05-13
-reviewed_commit: f89a0f6f84de4f00a3615883135c3e065d09451c
+reviewed_at: 2026-06-02
+reviewed_commit: c6cd06fdfbd276127b92c33ecbf9d12d71fb8a41
 related:
   - pilee-knowledge-system
   - private-journal-public-doctrine
   - readme-philosophy-user-gate
   - judgment-doc-unit
+  - ember-ship-release-train
 ---
 
 # Ember는 knowledge의 친근한 입구다
@@ -38,7 +40,7 @@ related:
 - CLI: `scripts/knowledge.mjs`
 - 운영 용어: `freshness`, `confidence`, `reviewed_commit`, `review queue`
 
-`/ember`는 이 구조 위에 얹는 friendly entrypoint다. 파이리의 작은 불꽃처럼, 아직 doctrine이 되지 않은 세션의 깨달음을 후보로 모으고, 후보를 보여준 뒤 add 여부를 묻는다. 사용자가 고른 후보는 public knowledge로 추가하거나 기존 문서에 접목한다(`/ember add`). knowledge 상태 점검은 `/ember check`가 맡고, generated README table/docs knowledge README/SVG map 갱신은 `/ember refresh`가 맡는다. stale/review_needed 직접 해소는 power-user용 `/ember resolve`로 남긴다. 반복적인 resolve batch, generated sync, local history/Notion sync, final-check, merge/push까지 한 release 단위로 닫을 때는 `/ember-ship`을 쓴다. `add`는 product식 `/add-knowledge`의 검색·범위 정렬·작성 계획·검증 단계를 pilee의 judgment-document 모델에 맞춘 진입점이고, `resolve`는 public review queue를 실제 local update PR 작업 단위로 바꾸는 입구다. 민감한 resolver 산출물은 로컬에만 둔다. `/ember-ship`은 명시 실행 시 merge 의도가 있다고 보되, 사용자 판단·private boundary·Notion sync·validation 문제가 있으면 BLOCKED PR로 멈춘다.
+`/ember`는 이 구조 위에 얹는 friendly entrypoint다. 파이리의 작은 불꽃처럼, 아직 doctrine이 되지 않은 세션의 깨달음을 후보로 모으고, 후보를 보여준 뒤 add 여부를 묻는다. 사용자가 고른 후보는 public knowledge로 추가하거나 기존 문서에 접목한다(`/ember add`). knowledge 상태 점검은 `/ember check`가 맡고, generated README table/docs knowledge README/SVG map 갱신은 `/ember refresh`가 맡는다. stale/review_needed 직접 해소는 power-user용 `/ember resolve`로 남긴다. 반복적인 resolve batch, generated sync, local history/Notion sync, final-check, merge/push까지 한 release 단위로 닫을 때는 `/ember-ship` command를 쓴다. `/ember-ship`의 실행 계약은 extension 내부 workflow로 유지하되, 사용자-facing 진입점은 slash command 하나만 노출한다. `add`는 product식 `/add-knowledge`의 검색·범위 정렬·작성 계획·검증 단계를 pilee의 judgment-document 모델에 맞춘 진입점이고, `resolve`는 public review queue를 실제 local update PR 작업 단위로 바꾸는 입구다. 민감한 resolver 산출물은 로컬에만 둔다. `/ember-ship`은 명시 실행 시 merge 의도가 있다고 보되, 사용자 판단·private boundary·Notion sync·validation 문제가 있으면 BLOCKED PR로 멈춘다.
 
 ## `/ember add` workflow contract
 

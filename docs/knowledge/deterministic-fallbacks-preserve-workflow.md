@@ -19,8 +19,8 @@ source:
   - pilee-history:2026-05-05#44
   - pilee-history:2026-05-05#45
   - user-direction:2026-05-07-local-resolver
-reviewed_at: 2026-05-12
-reviewed_commit: b01add434d2f69298be700bc39f1cb664de9f025
+reviewed_at: 2026-06-02
+reviewed_commit: c6cd06fdfbd276127b92c33ecbf9d12d71fb8a41
 related:
   - curator-approved-source-selection
   - live-artifact-preview-pattern
