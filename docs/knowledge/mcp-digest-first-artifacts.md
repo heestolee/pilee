@@ -19,7 +19,7 @@ source:
   - user-direction:2026-06-02-mcp-slack-participants-no-preview
   - user-direction:2026-06-02-mcp-notion-image-url-hidden
 reviewed_at: 2026-06-02
-reviewed_commit: 5f0a2efe9a15234f50453ee12b4a407db63e48cb
+reviewed_commit: a79652f79b01566e2f3eabee1a93bc0a1333b28d
 related:
   - tool-output-noise-management
   - mcp-stderr-isolation

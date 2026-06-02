@@ -26,7 +26,7 @@ source:
   - user-direction:2026-06-02-mcp-slack-participants-no-preview
   - user-direction:2026-06-02-mcp-notion-image-url-hidden
 reviewed_at: 2026-06-02
-reviewed_commit: 311264e60e1921c55e9ea5206f65659ac810ddba
+reviewed_commit: a79652f79b01566e2f3eabee1a93bc0a1333b28d
 related:
   - tui-rendering-sanitization
   - mcp-stderr-isolation

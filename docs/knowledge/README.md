@@ -131,7 +131,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Codex fast mode는 출력 verbosity와 priority tier만 줄인다](./codex-fast-mode-runtime.md) | active | high | 2026-05-26 | c1cfb50 | codex, model, speed, provider, extension |
 | [Deterministic fallback은 workflow를 보존한다](./deterministic-fallbacks-preserve-workflow.md) | active | high | 2026-05-12 | b01add4 | fallback, deterministic, model-failure, resilience, web-search, report |
 | [Embedded WebView script는 escape 경계를 보존한다](./embedded-webview-script-escape-boundary.md) | active | high | 2026-05-13 | f89a0f6 | webview, embedded-script, escape, string-raw, regex, glimpse |
-| [MCP 결과는 구조화 출력부터 digest-first로 다룬다](./mcp-digest-first-artifacts.md) | active | high | 2026-06-02 | 5f0a2ef | mcp, digest-first, tool-output, lazy-retrieval |
+| [MCP 결과는 구조화 출력부터 digest-first로 다룬다](./mcp-digest-first-artifacts.md) | active | high | 2026-06-02 | a79652f | mcp, digest-first, tool-output, lazy-retrieval |
 | [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-05-13 | 1a6aa93 | mcp, stderr, stdio, terminal, tui, noise |
 | [Runtime fan-out은 healthcheck 뒤의 실행 계약이다](./runtime-fanout-diagnosis.md) | active | high | 2026-05-28 | f481e63 | runtime, fanout, healthcheck, deployment, triage, root-cause |
 | [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-05-13 | e0dc999 | terminal, ghostty, applescript, notify, host, integration |
@@ -147,7 +147,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Shortcut Atlas는 단축키 표면을 한 번에 검토한다](./shortcut-atlas-conflict-audit.md) | active | high | 2026-05-20 | 7ea10e4 | shortcuts, keybindings, overlay, collision, audit, ui |
 | [Task overlay는 작업 맵을 보존한다](./task-work-map-overlay.md) | active | high | 2026-05-20 | 7ea10e4 | tasks, overlay, work-map, soft-delete, provenance, ui |
 | [색상은 정보 위계다](./theme-information-hierarchy.md) | active | high | 2026-05-21 | fcd3b87 | theme, color, dim, muted, border, accent |
-| [도구 출력은 대화 흐름을 침범하지 않는다](./tool-output-noise-management.md) | active | high | 2026-06-02 | 311264e | tool-output, collapse, noise, ui, usage, renderer |
+| [도구 출력은 대화 흐름을 침범하지 않는다](./tool-output-noise-management.md) | active | high | 2026-06-02 | a79652f | tool-output, collapse, noise, ui, usage, renderer |
 | [TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다](./tui-rendering-sanitization.md) | active | high | 2026-05-12 | fc6ffa9 | tui, rendering, newline, ansi, sanitize, terminal |
 
 ### verification
