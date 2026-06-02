@@ -6,7 +6,13 @@ import { copyToClipboard, DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, visibleWidth, wrapTextWithAnsi } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
 import { BACKLOG_SESSION_EXPORT_DIR, displayPath, expandHome, exportSessionFileToHtml, openFile } from "../utils/session-export.js";
-import { backlogOverlayRow, fillBacklogOverlayLines } from "./rendering.ts";
+import {
+	BACKLOG_OVERLAY_OPTIONS,
+	backlogOverlayHeight,
+	backlogOverlayRenderToken,
+	backlogOverlayRow,
+	fillBacklogOverlayLines,
+} from "./rendering.ts";
 
 // ─── Storage ───────────────────────────────────────────────────────────────
 
@@ -267,6 +273,7 @@ async function showOverlay(pi: ExtensionAPI, ctx: ExtensionCommandContext) {
 	let inputBuffer = "";
 	let detailId: number | null = null;
 	let detailScroll = 0;
+	let renderSeq = 0;
 
 	const getVisible = () => {
 		const items = showDone ? store.items : store.items.filter((i) => i.status === "open");
@@ -277,7 +284,9 @@ async function showOverlay(pi: ExtensionAPI, ctx: ExtensionCommandContext) {
 		(tui, theme, _kb, done) => {
 			const priorityColor = (p: Priority): ThemeColor => p === "high" ? "error" : p === "medium" ? "warning" : "dim";
 			const priorityIcon = (p: Priority) => p === "high" ? "🔴" : p === "medium" ? "🟡" : "⚪";
-			const overlayRows = () => Math.max(12, Math.floor(((tui as any).terminal?.rows ?? 24) * 0.9));
+			const overlayRows = () => backlogOverlayHeight((tui as any).terminal?.rows);
+			const fillOverlay = (lines: string[], width: number, height = overlayRows()) =>
+				fillBacklogOverlayLines(lines, width, height, backlogOverlayRenderToken(renderSeq++));
 
 			const renderHelp = (w: number): string[] => {
 				const lines: string[] = [];
@@ -302,7 +311,7 @@ async function showOverlay(pi: ExtensionAPI, ctx: ExtensionCommandContext) {
 				lines.push("");
 				lines.push(`  ${theme.fg("border", "아무 키나 누르면 닫힘")}`);
 				lines.push(...new DynamicBorder((s: string) => theme.fg("accent", s)).render(w));
-				return fillBacklogOverlayLines(lines, w, overlayRows());
+				return fillOverlay(lines, w);
 			};
 
 			const renderDetailBody = (item: BacklogItem, w: number): string[] => {
@@ -355,7 +364,7 @@ async function showOverlay(pi: ExtensionAPI, ctx: ExtensionCommandContext) {
 				}
 				lines.push(theme.fg("accent", "─".repeat(w)));
 				lines.push(footerLine(theme, "Esc 돌아가기 · ↑↓/j/k 스크롤 · s 세션 열기 · v 전문 보기 · p 경로 복사 · e 제목 수정 · t 노트 수정 · P 우선순위 · Space 완료 · b tasks · d 삭제", w));
-				return fillBacklogOverlayLines(lines, w, rowCount);
+				return fillOverlay(lines, w, rowCount);
 			};
 
 			return {
@@ -376,7 +385,7 @@ async function showOverlay(pi: ExtensionAPI, ctx: ExtensionCommandContext) {
 						lines.push(`  ${theme.fg("warning", `[${labels[inputMode] ?? inputMode}]`)} ${inputBuffer}${theme.fg("accent", "│")}`);
 						lines.push(`  ${theme.fg("border", "Enter 확인 · Esc 취소")}`);
 						lines.push(theme.fg("accent", "─".repeat(w)));
-						return fillBacklogOverlayLines(lines, w, rowCount);
+						return fillOverlay(lines, w, rowCount);
 					}
 
 					if (detailId !== null) {
@@ -408,7 +417,7 @@ async function showOverlay(pi: ExtensionAPI, ctx: ExtensionCommandContext) {
 
 					lines.push(theme.fg("accent", "─".repeat(w)));
 					lines.push(footerLine(theme, "↑↓ 이동 · Enter 상세 · s 세션 열기 · v 전문 보기 · p 경로 복사 · n 추가 · d 삭제 · Space 완료 · P 우선순위 · t 노트 · a done 표시 · q 닫기", w));
-					return fillBacklogOverlayLines(lines, w, rowCount);
+					return fillOverlay(lines, w, rowCount);
 				},
 				handleInput: (data: string) => {
 					if (showHelp) {
@@ -608,7 +617,7 @@ async function showOverlay(pi: ExtensionAPI, ctx: ExtensionCommandContext) {
 				invalidate: () => {},
 			};
 		},
-		{ overlay: true, overlayOptions: { width: "100%", maxHeight: "90%", anchor: "center" } },
+		{ overlay: true, overlayOptions: BACKLOG_OVERLAY_OPTIONS },
 	);
 
 	if (!action) return;
