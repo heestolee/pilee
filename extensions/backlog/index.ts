@@ -8,6 +8,7 @@ import { Type } from "typebox";
 import { BACKLOG_SESSION_EXPORT_DIR, displayPath, expandHome, exportSessionFileToHtml, openFile } from "../utils/session-export.js";
 import {
 	BACKLOG_OVERLAY_OPTIONS,
+	backlogNotePreview,
 	backlogOverlayHeight,
 	backlogOverlayRenderToken,
 	fillBacklogOverlayLines,
@@ -409,7 +410,8 @@ async function showOverlay(pi: ExtensionAPI, ctx: ExtensionCommandContext) {
 							const icon = priorityIcon(item.priority);
 							const title = item.status === "done" ? item.title : sel ? theme.fg("accent", item.title) : item.title;
 							const sourceMark = sourceSessionFile(item) ? theme.fg("accent", " 📎") : "";
-							const note = item.note ? theme.fg("borderAccent", ` — ${item.note.slice(0, 30)}`) : "";
+							const notePreview = item.note ? backlogNotePreview(item.note, 30) : "";
+							const note = notePreview ? theme.fg("borderAccent", ` — ${notePreview}`) : "";
 							lines.push(`${cursor} ${check} ${icon} #${item.id} ${title}${sourceMark}${note}`);
 						}
 					}
