@@ -438,6 +438,320 @@ function summarizeJson(value: unknown): string[] {
 	return [`JSON scalar: ${previewJsonValue(value)}`];
 }
 
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function stringValue(value: unknown): string | undefined {
+	if (typeof value === "string") return value.trim() || undefined;
+	if (typeof value === "number" || typeof value === "boolean") return String(value);
+	return undefined;
+}
+
+function readString(record: Record<string, unknown> | undefined, ...keys: string[]): string | undefined {
+	if (!record) return undefined;
+	for (const key of keys) {
+		const value = stringValue(record[key]);
+		if (value) return value;
+	}
+	return undefined;
+}
+
+function compactLine(value: string, maxChars = 240): string {
+	return truncateCompact(redactSensitiveForDigest(value), maxChars);
+}
+
+function richTextToPlain(value: unknown): string {
+	if (typeof value === "string") return value;
+	if (Array.isArray(value)) {
+		return value.map((item) => {
+			if (typeof item === "string") return item;
+			if (!isRecord(item)) return "";
+			return readString(item, "plain_text", "content", "text", "name")
+				?? (isRecord(item.text) ? readString(item.text, "content", "plain_text") : undefined)
+				?? "";
+		}).filter(Boolean).join("");
+	}
+	if (isRecord(value)) {
+		return readString(value, "plain_text", "content", "text", "name")
+			?? (isRecord(value.text) ? readString(value.text, "content", "plain_text") : undefined)
+			?? "";
+	}
+	return "";
+}
+
+function adfToPlain(value: unknown): string {
+	const parts: string[] = [];
+	const visit = (node: unknown) => {
+		if (typeof node === "string") return;
+		if (Array.isArray(node)) {
+			for (const item of node) visit(item);
+			return;
+		}
+		if (!isRecord(node)) return;
+		const text = readString(node, "text");
+		if (text) parts.push(text);
+		if (Array.isArray(node.content)) visit(node.content);
+	};
+	visit(value);
+	return parts.join(" ").replace(/\s+/g, " ").trim();
+}
+
+function genericValueToText(value: unknown): string {
+	const direct = stringValue(value);
+	if (direct) return direct;
+	const rich = richTextToPlain(value);
+	if (rich) return rich;
+	const adf = adfToPlain(value);
+	if (adf) return adf;
+	if (Array.isArray(value)) return value.map(genericValueToText).filter(Boolean).join(", ");
+	if (isRecord(value)) {
+		return readString(value, "displayName", "display_name", "real_name", "username", "name", "key", "id") ?? "";
+	}
+	return "";
+}
+
+function collectRecords(value: unknown, predicate: (record: Record<string, unknown>) => boolean, depth = 0, out: Record<string, unknown>[] = []): Record<string, unknown>[] {
+	if (out.length >= 500 || depth > 5) return out;
+	if (Array.isArray(value)) {
+		for (const item of value) collectRecords(item, predicate, depth + 1, out);
+		return out;
+	}
+	if (!isRecord(value)) return out;
+	if (predicate(value)) out.push(value);
+	for (const child of Object.values(value)) collectRecords(child, predicate, depth + 1, out);
+	return out;
+}
+
+function sourceHint(args: { server: string; tool: string }): string {
+	return `${args.server} ${args.tool}`.toLowerCase();
+}
+
+function formatMaybeTime(value: unknown): string | undefined {
+	const raw = stringValue(value);
+	if (!raw) return undefined;
+	if (/^\d{10}(?:\.\d+)?$/.test(raw)) {
+		const date = new Date(Number.parseFloat(raw) * 1000);
+		if (Number.isFinite(date.getTime())) return `${date.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC")} (${raw})`;
+	}
+	const parsed = Date.parse(raw);
+	if (Number.isFinite(parsed)) return new Date(parsed).toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
+	return raw;
+}
+
+function looksLikeSlackMessage(record: Record<string, unknown>): boolean {
+	return typeof record.text === "string"
+		&& !!(record.ts || record.thread_ts || record.user || record.username || record.user_name || record.bot_id || record.channel);
+}
+
+function slackActor(message: Record<string, unknown>): string {
+	return readString(message, "user_name", "username", "real_name", "name", "user", "bot_id")
+		?? (isRecord(message.user_profile) ? readString(message.user_profile, "real_name", "display_name", "name") : undefined)
+		?? (isRecord(message.bot_profile) ? readString(message.bot_profile, "name") : undefined)
+		?? "unknown";
+}
+
+function slackAttachmentLines(message: Record<string, unknown>): string[] {
+	const lines: string[] = [];
+	const files = Array.isArray(message.files) ? message.files : [];
+	for (const file of files.slice(0, 5)) {
+		if (!isRecord(file)) continue;
+		const title = readString(file, "title", "name", "filename", "id") ?? "file";
+		const url = readString(file, "url_private", "permalink", "url");
+		lines.push(`  - 파일: ${title}${url ? ` · ${url}` : ""}`);
+	}
+	const attachments = Array.isArray(message.attachments) ? message.attachments : [];
+	for (const attachment of attachments.slice(0, 5)) {
+		if (!isRecord(attachment)) continue;
+		const title = readString(attachment, "title", "fallback", "text");
+		if (title) lines.push(`  - 첨부: ${compactLine(title, 180)}`);
+	}
+	return lines;
+}
+
+function renderSlackSummary(parsed: unknown, args: { server: string; tool: string }): string[] | undefined {
+	const hint = sourceHint(args);
+	const messages = collectRecords(parsed, looksLikeSlackMessage);
+	if (!hint.includes("slack") && messages.length === 0) return undefined;
+	const root = isRecord(parsed) ? parsed : undefined;
+	const channel = readString(root, "channel_name", "channel", "channel_id") ?? readString(messages[0], "channel_name", "channel", "channel_id");
+	const threadTs = readString(root, "thread_ts", "ts") ?? readString(messages[0], "thread_ts");
+	const participants = [...new Set(messages.map(slackActor).filter(Boolean))];
+	const times = messages.map((msg) => formatMaybeTime(msg.ts)).filter((time): time is string => !!time);
+	const lines = ["💬 Slack 결과 확인", ""];
+	lines.push(`메시지: ${messages.length.toLocaleString()}개`);
+	if (channel) lines.push(`채널: ${channel}`);
+	if (threadTs) lines.push(`thread_ts: ${threadTs}`);
+	if (participants.length > 0) lines.push(`참여자: ${participants.slice(0, 20).join(", ")}${participants.length > 20 ? ` 외 ${participants.length - 20}명` : ""}`);
+	if (times.length > 0) lines.push(`시간 범위: ${times[0]}${times.length > 1 ? ` → ${times[times.length - 1]}` : ""}`);
+	if (messages.length === 0) return lines;
+	lines.push("", "## 대화 스레드");
+	messages.forEach((message, index) => {
+		const time = formatMaybeTime(message.ts) ?? `#${index + 1}`;
+		const text = compactLine(String(message.text ?? ""), 1200);
+		lines.push(`[${time}] ${slackActor(message)}`);
+		lines.push(text || "(본문 없음)");
+		lines.push(...slackAttachmentLines(message));
+		lines.push("");
+	});
+	return lines.filter((line, index, arr) => !(line === "" && arr[index - 1] === ""));
+}
+
+function looksLikeNotionPage(record: Record<string, unknown>): boolean {
+	return record.object === "page" || (!!record.properties && (!!record.last_edited_time || !!record.created_time || typeof record.url === "string"));
+}
+
+function looksLikeNotionBlock(record: Record<string, unknown>): boolean {
+	if (record.object === "block") return true;
+	return ["paragraph", "heading_1", "heading_2", "heading_3", "bulleted_list_item", "numbered_list_item", "to_do", "quote", "callout", "child_page"].some((key) => isRecord(record[key]));
+}
+
+function notionPropertyToText(property: unknown): string {
+	if (!isRecord(property)) return genericValueToText(property);
+	const type = stringValue(property.type);
+	if (type && property[type] !== undefined) {
+		const typed = property[type];
+		if (type === "title" || type === "rich_text") return richTextToPlain(typed);
+		if (type === "select" || type === "status") return isRecord(typed) ? readString(typed, "name") ?? "" : genericValueToText(typed);
+		if (type === "multi_select" && Array.isArray(typed)) return typed.map((item) => isRecord(item) ? readString(item, "name") : undefined).filter(Boolean).join(", ");
+		if (type === "date" && isRecord(typed)) return [readString(typed, "start"), readString(typed, "end")].filter(Boolean).join(" → ");
+		if (type === "people" && Array.isArray(typed)) return typed.map((item) => isRecord(item) ? readString(item, "name", "id") : undefined).filter(Boolean).join(", ");
+		if (type === "relation" && Array.isArray(typed)) return `${typed.length} relations`;
+		if (type === "formula" && isRecord(typed)) return genericValueToText(typed[readString(typed, "type") ?? ""] ?? typed);
+		return genericValueToText(typed);
+	}
+	return genericValueToText(property);
+}
+
+function notionPageTitle(page: Record<string, unknown>): string {
+	const properties = isRecord(page.properties) ? page.properties : undefined;
+	if (properties) {
+		for (const [key, property] of Object.entries(properties)) {
+			if (isRecord(property) && property.type === "title") return notionPropertyToText(property) || key;
+		}
+		const name = properties.Name ?? properties.name ?? properties.Title ?? properties.title;
+		const text = notionPropertyToText(name);
+		if (text) return text;
+	}
+	return readString(page, "title", "name", "id") ?? "Untitled";
+}
+
+function notionBlockText(block: Record<string, unknown>): string {
+	const type = readString(block, "type") ?? ["paragraph", "heading_1", "heading_2", "heading_3", "bulleted_list_item", "numbered_list_item", "to_do", "quote", "callout", "child_page"].find((key) => isRecord(block[key]));
+	if (!type) return "";
+	const body = isRecord(block[type]) ? block[type] as Record<string, unknown> : undefined;
+	if (!body) return "";
+	if (type === "child_page") return readString(body, "title") ?? "";
+	return richTextToPlain(body.rich_text) || readString(body, "text", "caption") || "";
+}
+
+function renderNotionSummary(parsed: unknown, args: { server: string; tool: string }): string[] | undefined {
+	const hint = sourceHint(args);
+	const pages = collectRecords(parsed, looksLikeNotionPage);
+	const blocks = collectRecords(parsed, looksLikeNotionBlock);
+	if (!hint.includes("notion") && pages.length === 0 && blocks.length === 0) return undefined;
+	const lines = ["📝 Notion 결과 확인", ""];
+	lines.push(`페이지: ${pages.length.toLocaleString()}개 / 블록: ${blocks.length.toLocaleString()}개`);
+	if (pages.length === 1) {
+		const page = pages[0];
+		lines.push(`제목: ${notionPageTitle(page)}`);
+		const url = readString(page, "url", "public_url");
+		if (url) lines.push(`URL: ${url}`);
+		const edited = formatMaybeTime(page.last_edited_time);
+		if (edited) lines.push(`최종 수정: ${edited}`);
+		const properties = isRecord(page.properties) ? page.properties : undefined;
+		if (properties) {
+			lines.push("", "## 주요 속성");
+			for (const [key, property] of Object.entries(properties).slice(0, 18)) {
+				const value = notionPropertyToText(property);
+				if (value) lines.push(`- ${key}: ${compactLine(value, 220)}`);
+			}
+		}
+	} else if (pages.length > 1) {
+		lines.push("", "## 페이지 목록");
+		for (const page of pages.slice(0, 40)) {
+			const edited = formatMaybeTime(page.last_edited_time);
+			const url = readString(page, "url", "public_url");
+			lines.push(`- ${notionPageTitle(page)}${edited ? ` · ${edited}` : ""}${url ? ` · ${url}` : ""}`);
+		}
+		if (pages.length > 40) lines.push(`- … 외 ${pages.length - 40}개`);
+	}
+	if (blocks.length > 0) {
+		lines.push("", "## 본문/블록 preview");
+		for (const block of blocks.slice(0, 40)) {
+			const text = notionBlockText(block);
+			if (text) lines.push(`- ${compactLine(text, 320)}`);
+		}
+		if (blocks.length > 40) lines.push(`- … 외 ${blocks.length - 40}개 블록`);
+	}
+	return lines;
+}
+
+function looksLikeJiraIssue(record: Record<string, unknown>): boolean {
+	return !!(record.key || record.issueKey || record.issue_key) && (isRecord(record.fields) || !!record.summary || !!record.status);
+}
+
+function collectJiraIssues(parsed: unknown): Record<string, unknown>[] {
+	const issues = collectRecords(parsed, looksLikeJiraIssue);
+	const seen = new Set<string>();
+	return issues.filter((issue) => {
+		const key = readString(issue, "key", "issueKey", "issue_key") ?? JSON.stringify(issue).slice(0, 80);
+		if (seen.has(key)) return false;
+		seen.add(key);
+		return true;
+	});
+}
+
+function jiraPerson(value: unknown): string {
+	return isRecord(value) ? readString(value, "displayName", "name", "emailAddress", "accountId") ?? "" : genericValueToText(value);
+}
+
+function jiraStatus(value: unknown): string {
+	return isRecord(value) ? readString(value, "name", "statusCategory") ?? genericValueToText(value) : genericValueToText(value);
+}
+
+function jiraDescription(value: unknown): string {
+	if (typeof value === "string") return value;
+	return adfToPlain(value) || genericValueToText(value);
+}
+
+function renderJiraSummary(parsed: unknown, args: { server: string; tool: string }): string[] | undefined {
+	const hint = sourceHint(args);
+	const issues = collectJiraIssues(parsed);
+	if (!/jira|atlassian/.test(hint) && issues.length === 0) return undefined;
+	const lines = ["🎫 Jira 결과 확인", ""];
+	lines.push(`이슈: ${issues.length.toLocaleString()}개`);
+	if (issues.length === 0) return lines;
+	lines.push("", "## 이슈 목록");
+	for (const issue of issues.slice(0, 40)) {
+		const fields = isRecord(issue.fields) ? issue.fields : issue;
+		const key = readString(issue, "key", "issueKey", "issue_key") ?? readString(fields, "key") ?? "UNKNOWN";
+		const summary = readString(fields, "summary", "title", "name") ?? readString(issue, "summary", "title", "name") ?? "(summary 없음)";
+		const status = jiraStatus(fields.status ?? issue.status);
+		const assignee = jiraPerson(fields.assignee ?? issue.assignee);
+		const reporter = jiraPerson(fields.reporter ?? issue.reporter ?? fields.creator);
+		const url = readString(issue, "url", "self", "web_url", "html_url") ?? readString(fields, "url", "self");
+		lines.push(`- ${key}: ${summary}${status ? ` · ${status}` : ""}${assignee ? ` · 담당 ${assignee}` : ""}${reporter ? ` · 보고 ${reporter}` : ""}${url ? ` · ${url}` : ""}`);
+		const description = jiraDescription(fields.description ?? issue.description);
+		if (description && issues.length <= 5) lines.push(`  - 설명: ${compactLine(description, 420)}`);
+	}
+	if (issues.length > 40) lines.push(`- … 외 ${issues.length - 40}개`);
+	return lines;
+}
+
+function buildHumanMcpSummary(args: { server: string; tool: string; action: string; output: string; parsed: unknown | undefined }): string[] | undefined {
+	if (args.parsed === undefined) return undefined;
+	return renderSlackSummary(args.parsed, args)
+		?? renderNotionSummary(args.parsed, args)
+		?? renderJiraSummary(args.parsed, args);
+}
+
+function shouldReturnDigest(args: { action: string; output: string }): boolean {
+	if (tryParseJson(args.output) !== undefined) return true;
+	return shouldDigestMcpOutput(args.output);
+}
+
 function extractImportantReferences(output: string): string[] {
 	const refs = new Set<string>();
 	const redacted = redactSensitiveForDigest(output);
@@ -447,7 +761,9 @@ function extractImportantReferences(output: string): string[] {
 	for (const key of ticketMatches.slice(0, MCP_DIGEST_MAX_REFERENCES)) refs.add(`key: ${key}`);
 	for (const line of redacted.split(/\r?\n/)) {
 		if (refs.size >= MCP_DIGEST_MAX_REFERENCES) break;
-		if (/\b(id|key|number|title|name|status|state|url|html_url|web_url)\b/i.test(line)) refs.add(truncateCompact(line, 220));
+		const trimmed = line.trim();
+		if (trimmed.startsWith("{") || trimmed.startsWith("[")) continue;
+		if (/\b(id|key|number|title|name|status|state|url|html_url|web_url)\b/i.test(trimmed)) refs.add(truncateCompact(trimmed, 220));
 	}
 	return [...refs].slice(0, MCP_DIGEST_MAX_REFERENCES);
 }
@@ -586,7 +902,9 @@ function buildMcpDigest(args: { responseId: string; server: string; tool: string
 		"",
 		"## 요약",
 	];
-	if (parsed !== undefined) lines.push(...summarizeJson(parsed));
+	const humanSummary = buildHumanMcpSummary({ ...args, parsed });
+	if (humanSummary) lines.push(...humanSummary);
+	else if (parsed !== undefined) lines.push(...summarizeJson(parsed));
 	else lines.push(...firstLastLinePreview(args.output).map((line) => `- ${line}`));
 	const refs = extractImportantReferences(args.output);
 	if (refs.length > 0) {
@@ -607,7 +925,7 @@ function formatMcpOutput(args: {
 	rawData: unknown;
 	args?: Record<string, unknown>;
 }): McpFormattedResult {
-	if (!shouldDigestMcpOutput(args.output)) {
+	if (!shouldReturnDigest({ action: args.action, output: args.output })) {
 		return { text: args.output || "(empty response)", details: { mcpDigest: false, server: args.server, tool: args.tool, action: args.action } };
 	}
 	const responseId = `mcp_${randomUUID().slice(0, 8)}`;
@@ -642,6 +960,14 @@ function formatMcpOutput(args: {
 			originalChars: args.output.length,
 		},
 	};
+}
+
+export function __buildMcpDigestForTesting(args: { server: string; tool: string; action?: string; output: string }): string {
+	return buildMcpDigest({ responseId: "mcp_test", server: args.server, tool: args.tool, action: args.action ?? "call", output: args.output });
+}
+
+export function __shouldReturnDigestForTesting(args: { action?: string; output: string }): boolean {
+	return shouldReturnDigest({ action: args.action ?? "call", output: args.output });
 }
 
 function statusText(): string {
