@@ -17,8 +17,8 @@ applies_to:
 source:
   - user-direction:2026-05-19-task-work-map-overlay
   - user-direction:2026-05-20-task-overlay-toggle-shortcut
-reviewed_at: 2026-05-20
-reviewed_commit: 7ea10e491f6879877d71fa09f3671ed4c8c0d7bb
+reviewed_at: 2026-06-02
+reviewed_commit: 83617e9544615d818e6a7a17fa807f029a7db835
 related:
   - work-context-card-task-board
   - ambient-status-surfaces

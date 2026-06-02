@@ -25,8 +25,8 @@ applies_to:
   - skills/pilee-final-check
 source:
   - user-direction:2026-05-14-tft-preference-regression-gate
-reviewed_at: 2026-05-13
-reviewed_commit: 9152c3541fcb65b16a73b411af145bda742a59be
+reviewed_at: 2026-06-02
+reviewed_commit: 83617e9544615d818e6a7a17fa807f029a7db835
 related:
   - ask-user-question-option-design
   - decide-tradeoff-challenge
