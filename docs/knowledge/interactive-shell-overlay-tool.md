@@ -19,8 +19,8 @@ source:
   - user-direction:2026-05-14-my-pi-tool-overrides
   - github:jonghakseo/my-pi/extensions/interactive-shell
   - github:jonghakseo/my-pi/skills/interactive-shell
-reviewed_at: 2026-05-13
-reviewed_commit: f3fe380f771c905d12d52a53fdf9a37e55ee6b7a
+reviewed_at: 2026-06-02
+reviewed_commit: 7861f10310348338896d444480de22f1ba919273
 related:
   - bash-tool-title-output-override
   - tool-output-noise-management

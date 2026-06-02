@@ -16,8 +16,8 @@ applies_to:
 source:
   - pilee-history:2026-05-06#66
   - user-direction:2026-05-07-local-resolver
-reviewed_at: 2026-05-13
-reviewed_commit: 1f5c3acfcb23b01a3fc6bc30592dbe0156748c4f
+reviewed_at: 2026-06-02
+reviewed_commit: 7861f10310348338896d444480de22f1ba919273
 related:
   - frame-verify-contract
   - session-identity-over-filenames
