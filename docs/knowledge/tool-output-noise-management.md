@@ -23,7 +23,7 @@ source:
   - user-direction:2026-05-11-mcp-digest-first-artifacts
   - user-direction:2026-06-02-mcp-human-digest
 reviewed_at: 2026-06-02
-reviewed_commit: ce3a59874a681af92ce8276ac799633660a65a8f
+reviewed_commit: 311264e60e1921c55e9ea5206f65659ac810ddba
 related:
   - tui-rendering-sanitization
   - mcp-stderr-isolation

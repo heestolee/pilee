@@ -16,7 +16,7 @@ source:
   - user-direction:2026-05-11-mcp-digest-first-artifacts
   - user-direction:2026-06-02-mcp-human-digest
 reviewed_at: 2026-06-02
-reviewed_commit: d98008aad8f6049883436cb079597282efde6fc0
+reviewed_commit: 311264e60e1921c55e9ea5206f65659ac810ddba
 related:
   - tool-output-noise-management
   - artifact-archive-reopenability
