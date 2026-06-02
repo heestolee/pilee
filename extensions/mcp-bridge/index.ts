@@ -366,12 +366,16 @@ function redactSensitiveForDigest(value: string): string {
 
 function tryParseJson(value: string): unknown | undefined {
 	const trimmed = value.trim();
-	if (!trimmed || (!trimmed.startsWith("{") && !trimmed.startsWith("["))) return undefined;
-	try {
-		return JSON.parse(trimmed);
-	} catch {
-		return undefined;
+	if (!trimmed) return undefined;
+	const starts = trimmed.startsWith("{") || trimmed.startsWith("[")
+		? [0]
+		: [...trimmed.matchAll(/[\[{]/g)].map((match) => match.index ?? -1).filter((index) => index >= 0);
+	for (const start of starts) {
+		try {
+			return JSON.parse(trimmed.slice(start));
+		} catch {}
 	}
+	return undefined;
 }
 
 function previewJsonValue(value: unknown): string {
@@ -866,15 +870,6 @@ function writeMcpArtifact(args: {
 	}
 }
 
-function artifactLines(artifact: McpArtifactRef | undefined): string[] {
-	if (!artifact) return ["원문 artifact 저장 실패: 이번 세션의 get_mcp_content로만 원문을 재조회할 수 있습니다."];
-	return [
-		`원문 artifact: ${artifact.openCommand}`,
-		`raw json: ${artifact.rawJsonPath}`,
-		`full text: ${artifact.fullTextPath}`,
-	];
-}
-
 function rewriteMcpArtifactDigest(args: {
 	artifact: McpArtifactRef | undefined;
 	responseId: string;
@@ -911,8 +906,7 @@ function buildMcpDigest(args: { responseId: string; server: string; tool: string
 		lines.push("", "## 보존한 식별자/URL preview");
 		for (const ref of refs) lines.push(`- ${ref}`);
 	}
-	lines.push("", "원문은 대화 context에 넣지 않고 artifact로 저장했습니다.");
-	lines.push(...artifactLines(args.artifact));
+	lines.push("", "원문은 대화 context에 넣지 않고 내부에 보존했습니다.");
 	lines.push(`필요 시: get_mcp_content(responseId="${args.responseId}")`);
 	return lines.join("\n").trim();
 }

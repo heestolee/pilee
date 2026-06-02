@@ -13,7 +13,7 @@ test("small JSON MCP output is digest-first instead of raw inline", () => {
 });
 
 test("Slack JSON is rendered as a readable conversation thread", () => {
-	const output = JSON.stringify({
+	const payload = {
 		ok: true,
 		channel_name: "product-dev",
 		thread_ts: "1780000000.000100",
@@ -21,7 +21,9 @@ test("Slack JSON is rendered as a readable conversation thread", () => {
 			{ ts: "1780000000.000100", user: "U1", username: "changhee", text: "예약 취소 조건이 이상해요", files: [{ title: "screenshot.png", permalink: "https://slack.example/file" }] },
 			{ ts: "1780000060.000200", user: "U2", username: "reviewer", text: "정책 구간 기준으로 봐야 할 것 같아요" },
 		],
-	});
+	};
+	const output = `Retrieved 2 message(s) from thread.\n${JSON.stringify(payload, null, 2)}`;
+	assert.equal(__shouldReturnDigestForTesting({ output }), true);
 	const digest = __buildMcpDigestForTesting({ server: "slack", tool: "slack_get_thread", output });
 	assert.match(digest, /💬 Slack 결과 확인/);
 	assert.match(digest, /채널: product-dev/);
@@ -31,6 +33,7 @@ test("Slack JSON is rendered as a readable conversation thread", () => {
 	assert.match(digest, /예약 취소 조건/);
 	assert.match(digest, /파일: screenshot\.png/);
 	assert.doesNotMatch(digest, /"messages"\s*:/, "Slack thread should not expose raw JSON structure");
+	assert.doesNotMatch(digest, /원문 artifact|raw json|full text/, "Pi-visible MCP block should not tell the user to inspect raw artifacts");
 });
 
 test("Notion JSON is rendered around title properties and block text", () => {
