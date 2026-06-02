@@ -72,7 +72,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Hybrid subagent 모델 운용 정책](./subagent-model-policy.md) | active | high | 2026-06-02 | 83617e9 | subagent, codex, claude, model-policy, worker, finder |
 | [Subagent 위임은 구체 프롬프트를 요구한다](./subagent-prompt-specificity.md) | active | high | 2026-06-02 | 83617e9 | subagent, prompt, delegation, worker, context, 위임 |
 | [Subagent는 slash command가 아니라 skill prompt를 위임받는다](./subagent-skill-delegation.md) | active | high | 2026-06-02 | 83617e9 | subagent, skill, slash-command, delegation, ship, ci-ship |
-| [Supervisor는 outcome guardrail이다](./supervisor-outcome-guardrail.md) | active | high | 2026-05-12 | c82cbb0 | supervisor, outcome, guardrail, steering, agent |
+| [Supervisor는 outcome guardrail이다](./supervisor-outcome-guardrail.md) | active | high | 2026-06-02 | 63f2a62 | supervisor, outcome, guardrail, steering, agent |
 
 ### architecture
 
@@ -166,7 +166,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [웹 검색은 승인된 출처 선택을 거친다](./curator-approved-source-selection.md) | active | high | 2026-05-13 | 49eb5f7 | web-search, curator, source-selection, approval, tavily, 검색 |
+| [웹 검색은 승인된 출처 선택을 거친다](./curator-approved-source-selection.md) | active | high | 2026-06-02 | 63f2a62 | web-search, curator, source-selection, approval, tavily, 검색 |
 | [Web Search curator와 승인형 요약 흐름](./web-search-curator.md) | active | high | 2026-06-02 | 61ccbc9 | web-search, tavily, curator, glimpse, summary-review, korean-output |
 
 ### workflow
@@ -185,10 +185,10 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Clean handoff는 compact와 새 세션 사이의 전환 계약이다](./clean-handoff-session-continuation.md) | active | high | 2026-06-02 | cc0bd98 | session, handoff, compact, context, archive, continue-clean |
 | [자동 로드 컨텍스트는 최소 surface만 가진다](./context-loading-minimal-surface.md) | active | high | 2026-06-02 | cc0bd98 | context, agents-md, memory, system-prompt, token, autoload |
 | [Decide는 선택을 한 번 공격한다](./decide-tradeoff-challenge.md) | active | high | 2026-06-02 | cc0bd98 | decide, tradeoff, challenge, productive-resistance, frame-json, decision |
-| [외부 이슈 업데이트는 preview gate를 지난다](./external-issue-preview-gate.md) | active | high | 2026-05-13 | f89a0f6 | jira, issue, preview, wiki-markup, external-update, approval |
+| [외부 이슈 업데이트는 preview gate를 지난다](./external-issue-preview-gate.md) | active | high | 2026-06-02 | 63f2a62 | jira, issue, preview, wiki-markup, external-update, approval |
 | [최종 검증은 메인 세션을 막지 않고 병렬화한다](./final-verification-parallelization.md) | active | high | 2026-06-02 | c6cd06f | verification, ship, final-check, subagent, background, parallel |
 | [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-06-02 | c6cd06f | fork-panel, handoff, inbox, inject, parent, panel |
-| [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-05-20 | f2e7cec | fork-panel, revive, repanel, ghostty, spatial, panel |
+| [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-06-02 | 63f2a62 | fork-panel, revive, repanel, ghostty, spatial, panel |
 | [Frame은 마지막에 Plan을 합성한다](./frame-plan-synthesis-continuity.md) | active | high | 2026-06-02 | 7861f10 | frame, implementation-plan, tft-studio, worktree, continuity, planning |
 | [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-06-02 | 7861f10 | frame, planning, identity, home-directory, ticket, session-title |
 | [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-05-31 | 81a77af | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
@@ -208,7 +208,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Ship과 PR-Ship은 서로 다른 통합 단계다](./ship-pr-ship-review-boundary.md) | active | high | 2026-06-02 | e123af1 | ship, pr-ship, pr-review, github, commit, push |
 | [Skill은 재사용 가능한 절차다](./skills-as-portable-procedures.md) | active | high | 2026-06-02 | e123af1 | skill, skill-creator, procedure, porting, workflow, 스킬 |
 | [Slice 완료는 commit 후보를 만든다](./slice-auto-commit-rhythm.md) | active | high | 2026-06-02 | e123af1 | frame, slice, auto-commit, work-context, git |
-| [정확한 기획 근거가 있으면 Frame은 추적 매트릭스를 만든다](./source-grounded-frame-planning.md) | active | high | 2026-05-30 | de40e54 | frame, tft-studio, planning, requirements, traceability, work-map |
+| [정확한 기획 근거가 있으면 Frame은 추적 매트릭스를 만든다](./source-grounded-frame-planning.md) | active | high | 2026-06-02 | 63f2a62 | frame, tft-studio, planning, requirements, traceability, work-map |
 | [Command shim은 reviewable workflow source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-06-02 | 83617e9 | command-shim, skill, tft, frame, slash-command, routing |
 | [TFT Preference Regression Gate는 사용자 선호 역전을 막는다](./tft-preference-regression-gate.md) | active | high | 2026-06-02 | 83617e9 | tft, frame, decide, verify, ask-user-question, regression |
 | [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-06-02 | d8f8c4c | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
@@ -220,9 +220,9 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-06-02 | 61ccbc9 | workflow, guard, intent, audit, hotfix, continuation |
 | [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-06-02 | 61ccbc9 | workflow, frame, tft, hotfix, scope, incremental |
 | [Worktree 생성은 현재 패널 대화가 source다](./worktree-creation-parent-gate.md) | active | high | 2026-06-02 | 61ccbc9 | worktree, fork-panel, current-panel, hotfix, context, profile-driven |
-| [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-05-19 | cd625b8 | worktree, dependencies, bootstrap, profile-driven, worker, subagent |
-| [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-05-20 | 32d1aed | worktree, workspace, repo, branch, execution-boundary, cwd-binding |
-| [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-05-20 | 57bf4c5 | worktree, session, revive, fork-panel, panel-inbox, handoff |
+| [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-06-02 | 63f2a62 | worktree, dependencies, bootstrap, profile-driven, worker, subagent |
+| [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-06-02 | 63f2a62 | worktree, workspace, repo, branch, execution-boundary, cwd-binding |
+| [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-06-02 | 63f2a62 | worktree, session, revive, fork-panel, panel-inbox, handoff |
 
 ## Knowledge Map
 

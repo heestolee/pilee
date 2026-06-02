@@ -20,8 +20,8 @@ applies_to:
   - extensions/frame-studio
 source:
   - user-direction:2026-05-30-source-grounded-frame-matrix
-reviewed_at: 2026-05-30
-reviewed_commit: de40e548359d357b1f7444ab484fa322e9b8a707
+reviewed_at: 2026-06-02
+reviewed_commit: 63f2a622f7539ebd582b9af2b392c6de9ee47d47
 related:
   - frame-verify-contract
   - frame-plan-synthesis-continuity

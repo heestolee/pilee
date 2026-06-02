@@ -22,8 +22,8 @@ source:
   - pilee-history:2026-05-03#25
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-11-worktree-cwd-binding
-reviewed_at: 2026-05-20
-reviewed_commit: 32d1aedb2d3bbe552d84e03c7db7435884af2c0e
+reviewed_at: 2026-06-02
+reviewed_commit: 63f2a622f7539ebd582b9af2b392c6de9ee47d47
 related:
   - worktree-session-continuity
   - session-identity-over-filenames

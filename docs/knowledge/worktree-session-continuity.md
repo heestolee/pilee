@@ -38,8 +38,8 @@ source:
   - user-direction:2026-05-12-wt-switch-session-unification
   - user-direction:2026-05-12-minimal-worktree-handoff
   - user-direction:2026-05-17-full-worktree-fork-default
-reviewed_at: 2026-05-20
-reviewed_commit: 57bf4c59e820e138881510b5ed2dea068a8d47df
+reviewed_at: 2026-06-02
+reviewed_commit: 63f2a622f7539ebd582b9af2b392c6de9ee47d47
 related:
   - subagent-model-policy
   - pilee-knowledge-system
