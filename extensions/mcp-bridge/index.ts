@@ -46,14 +46,14 @@ interface McpFormattedResult {
 	details?: Record<string, unknown>;
 }
 
-interface PendingMcpModelInjection {
+interface McpModelInjection {
 	responseId: string;
 	server: string;
 	tool: string;
 	fullContent: string;
 }
 
-const pendingMcpModelInjections: PendingMcpModelInjection[] = [];
+const MCP_MODEL_CONTEXT_CUSTOM_TYPE = "mcp-full-content-context";
 
 // --- Failure Tracker (in-memory, resets on session start) ---
 
@@ -1024,7 +1024,7 @@ export function __formatMcpFullContentCardForTesting(args: { text: string; detai
 	return formatMcpFullContentCard(args);
 }
 
-function buildMcpModelInjection(injection: PendingMcpModelInjection): string {
+function buildMcpModelInjection(injection: McpModelInjection): string {
 	return [
 		`[MCP full content for model-only context]`,
 		`responseId: ${injection.responseId}`,
@@ -1035,7 +1035,7 @@ function buildMcpModelInjection(injection: PendingMcpModelInjection): string {
 	].join("\n");
 }
 
-export function __buildMcpModelInjectionForTesting(injection: PendingMcpModelInjection): string {
+export function __buildMcpModelInjectionForTesting(injection: McpModelInjection): string {
 	return buildMcpModelInjection(injection);
 }
 
@@ -1265,8 +1265,13 @@ export default function (pi: ExtensionAPI) {
 				action: stored.action,
 				fullContent,
 			};
-			pendingMcpModelInjections.push({ responseId: stored.id, server: stored.server, tool: stored.tool, fullContent });
-			return text(`${formatMcpFullContentCard({ text: fullContent, details })}\n모델 context에는 MCP 원문을 별도로 주입했습니다.`, details);
+			pi.sendMessage({
+				customType: MCP_MODEL_CONTEXT_CUSTOM_TYPE,
+				content: buildMcpModelInjection({ responseId: stored.id, server: stored.server, tool: stored.tool, fullContent }),
+				display: false,
+				details: { responseId: stored.id, server: stored.server, tool: stored.tool },
+			}, { deliverAs: "steer", triggerTurn: false });
+			return text(`${formatMcpFullContentCard({ text: fullContent, details })}\n모델 context에는 MCP 원문을 숨김 메시지로 추가했습니다.`, details);
 		},
 		renderResult(result, { expanded, isPartial }, theme, context) {
 			const textComponent = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
@@ -1289,21 +1294,6 @@ export default function (pi: ExtensionAPI) {
 			textComponent.setText(`${theme.fg("toolTitle", theme.bold(card))}\n${fullContent}`);
 			return textComponent;
 		},
-	});
-
-	pi.on("context", async (event) => {
-		if (pendingMcpModelInjections.length === 0) return;
-		const injections = pendingMcpModelInjections.splice(0, pendingMcpModelInjections.length);
-		return {
-			messages: [
-				...event.messages,
-				...injections.map((injection) => ({
-					role: "user" as const,
-					content: [{ type: "text" as const, text: buildMcpModelInjection(injection) }],
-					timestamp: Date.now(),
-				})),
-			],
-		};
 	});
 
 	// Auto-connect on session start (skip unhealthy servers)
