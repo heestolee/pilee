@@ -238,6 +238,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | extension | `extensions/mcp-bridge` | [검토 산출물은 다시 열 수 있어야 한다](./docs/knowledge/artifact-archive-reopenability.md)<br>[Deterministic fallback은 workflow를 보존한다](./docs/knowledge/deterministic-fallbacks-preserve-workflow.md)<br>[MCP 결과는 구조화 출력부터 digest-first로 다룬다](./docs/knowledge/mcp-digest-first-artifacts.md)<br>[MCP stderr는 TUI 출력이 아니다](./docs/knowledge/mcp-stderr-isolation.md)<br>[터미널 연동은 host adapter로 다룬다](./docs/knowledge/terminal-host-integration.md)<br>[도구 출력은 대화 흐름을 침범하지 않는다](./docs/knowledge/tool-output-noise-management.md) |
 | extension | `extensions/memory-layer` | [자동 로드 컨텍스트는 최소 surface만 가진다](./docs/knowledge/context-loading-minimal-surface.md) |
 | extension | `extensions/notify` | [터미널 연동은 host adapter로 다룬다](./docs/knowledge/terminal-host-integration.md) |
+| extension | `extensions/pilee-update` | [pilee update는 현재 세션 reload까지 닫아야 한다](./docs/knowledge/pilee-update-current-session-reload.md) |
 | extension | `extensions/pr-comments` | [Diff review draft는 PR 코멘트 전 단계다](./docs/knowledge/diff-review-draft-handoff.md)<br>[Ship과 PR-Ship은 서로 다른 통합 단계다](./docs/knowledge/ship-pr-ship-review-boundary.md) |
 | extension | `extensions/pr-review-re-request` | [Ship과 PR-Ship은 서로 다른 통합 단계다](./docs/knowledge/ship-pr-ship-review-boundary.md) |
 | extension | `extensions/preflight` | [Private overlay package는 회사·개인 실행 맥락을 담는다](./docs/knowledge/private-overlay-package-boundary.md)<br>[수정 전에 근본 원인을 좁힌다](./docs/knowledge/root-cause-before-fix.md)<br>[반복 검증 실패는 baseline cache로 분리한다](./docs/knowledge/validation-baseline-failure-cache.md)<br>[반복 워크플로 실패는 guard/flow로 고정한다](./docs/knowledge/workflow-guard-enforced-flow.md) |
@@ -281,7 +282,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | skill | `skills/incremental-implementation` | [Atomic evidence workflow는 작은 claim을 증거로 닫는다](./docs/knowledge/atomic-evidence-workflow.md)<br>[변경 통합은 작은 단위와 검증을 요구한다](./docs/knowledge/change-integration-discipline.md)<br>[장시간 세션은 phase와 stop-line으로 제어한다](./docs/knowledge/long-running-session-control.md)<br>[변경된 줄은 요청으로 추적 가능해야 한다](./docs/knowledge/request-traceability-surgical-changes.md)<br>[Slice 완료는 commit 후보를 만든다](./docs/knowledge/slice-auto-commit-rhythm.md)<br>[작업 절차의 무게는 변경 리스크에 비례해야 한다](./docs/knowledge/workflow-weight-proportionality.md) |
 | skill | `skills/interactive-shell` | [Interactive shell은 bash가 아닌 터미널 세션이다](./docs/knowledge/interactive-shell-overlay-tool.md) |
 | skill | `skills/jira-issue-management` | [외부 이슈 업데이트는 preview gate를 지난다](./docs/knowledge/external-issue-preview-gate.md)<br>[Private overlay package는 회사·개인 실행 맥락을 담는다](./docs/knowledge/private-overlay-package-boundary.md) |
-| skill | `skills/pilee-final-check` | [Atomic evidence workflow는 작은 claim을 증거로 닫는다](./docs/knowledge/atomic-evidence-workflow.md)<br>[Ember Ship은 knowledge 정합성을 release train으로 닫는다](./docs/knowledge/ember-ship-release-train.md)<br>[최종 검증은 메인 세션을 막지 않고 병렬화한다](./docs/knowledge/final-verification-parallelization.md)<br>[pilee 변경은 final-check gate로 닫는다](./docs/knowledge/pilee-final-check-gate.md)<br>[TFT Preference Regression Gate는 사용자 선호 역전을 막는다](./docs/knowledge/tft-preference-regression-gate.md) |
+| skill | `skills/pilee-final-check` | [Atomic evidence workflow는 작은 claim을 증거로 닫는다](./docs/knowledge/atomic-evidence-workflow.md)<br>[Ember Ship은 knowledge 정합성을 release train으로 닫는다](./docs/knowledge/ember-ship-release-train.md)<br>[최종 검증은 메인 세션을 막지 않고 병렬화한다](./docs/knowledge/final-verification-parallelization.md)<br>[pilee 변경은 final-check gate로 닫는다](./docs/knowledge/pilee-final-check-gate.md)<br>[pilee update는 현재 세션 reload까지 닫아야 한다](./docs/knowledge/pilee-update-current-session-reload.md)<br>[TFT Preference Regression Gate는 사용자 선호 역전을 막는다](./docs/knowledge/tft-preference-regression-gate.md) |
 | skill | `skills/pilee-knowledge` | [낮은 confidence 판단은 정합성 PR로 올린다](./docs/knowledge/confidence-sensitive-review.md)<br>[Ember는 knowledge의 친근한 입구다](./docs/knowledge/ember-friendly-knowledge-entrypoint.md)<br>[Ember Ship은 knowledge 정합성을 release train으로 닫는다](./docs/knowledge/ember-ship-release-train.md)<br>[Freshness는 진단서다](./docs/knowledge/freshness-diagnosis-report.md)<br>[Knowledge 문서 단위는 판단 하나다](./docs/knowledge/judgment-doc-unit.md)<br>[Knowledge review queue는 PR body에 남긴다](./docs/knowledge/knowledge-review-queue-pr-body.md)<br>[pilee 지식 계층과 정합성 갱신](./docs/knowledge/pilee-knowledge-system.md)<br>[Private journal과 public doctrine은 분리한다](./docs/knowledge/private-journal-public-doctrine.md)<br>[README 철학 변경은 사용자 판단 게이트를 지난다](./docs/knowledge/readme-philosophy-user-gate.md)<br>[reviewed_commit은 날짜 freshness의 빈틈을 막는다](./docs/knowledge/reviewed-commit-freshness.md) |
 | skill | `skills/pr-ship` | [Ship과 PR-Ship은 서로 다른 통합 단계다](./docs/knowledge/ship-pr-ship-review-boundary.md)<br>[Subagent는 slash command가 아니라 skill prompt를 위임받는다](./docs/knowledge/subagent-skill-delegation.md) |
 | skill | `skills/runtime-fanout-triage` | [Runtime fan-out은 healthcheck 뒤의 실행 계약이다](./docs/knowledge/runtime-fanout-diagnosis.md) |
@@ -310,7 +311,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 ## Extensions
 
 <!-- PILEE_README_EXTENSIONS_START -->
-55개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
+56개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
 
 > `extensions/*`와 `scripts/knowledge.mjs`의 inventory metadata에서 생성됩니다. 변경 후 `node scripts/knowledge.mjs --graph`로 갱신합니다.
 
@@ -382,6 +383,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | **pr-comments** | PR unresolved review comment를 editor에 붙이는 helper |
 | **pr-review-re-request** | 승인되지 않은 PR reviewer/team에게 review re-request |
 | **update-branch** | `/update-branch` — 현재 git 브랜치를 upstream 최신 상태로 안전하게 pull |
+| **pilee-update** | `/pilee-update` — pilee package update 후 현재 세션 reload까지 한 번에 실행 |
 | **until** | 반복 작업 추적 |
 | **usage-analytics** | 에이전트/스킬 사용량 통계 |
 | **usage-reporter** | 사용량 리포트 |

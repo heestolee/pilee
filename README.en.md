@@ -213,6 +213,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | extension | `extensions/mcp-bridge` | [Artifact Archive Reopenability](./docs/knowledge/artifact-archive-reopenability.md)<br>[Deterministic Fallbacks Preserve Workflow](./docs/knowledge/deterministic-fallbacks-preserve-workflow.md)<br>[MCP Digest First Artifacts](./docs/knowledge/mcp-digest-first-artifacts.md)<br>[MCP Stderr Isolation](./docs/knowledge/mcp-stderr-isolation.md)<br>[Terminal Host Integration](./docs/knowledge/terminal-host-integration.md)<br>[Tool Output Noise Management](./docs/knowledge/tool-output-noise-management.md) |
 | extension | `extensions/memory-layer` | [Context Loading Minimal Surface](./docs/knowledge/context-loading-minimal-surface.md) |
 | extension | `extensions/notify` | [Terminal Host Integration](./docs/knowledge/terminal-host-integration.md) |
+| extension | `extensions/pilee-update` | [Pilee Update Current Session Reload](./docs/knowledge/pilee-update-current-session-reload.md) |
 | extension | `extensions/pr-comments` | [Diff Review Draft Handoff](./docs/knowledge/diff-review-draft-handoff.md)<br>[Ship PR Ship Review Boundary](./docs/knowledge/ship-pr-ship-review-boundary.md) |
 | extension | `extensions/pr-review-re-request` | [Ship PR Ship Review Boundary](./docs/knowledge/ship-pr-ship-review-boundary.md) |
 | extension | `extensions/preflight` | [Private Overlay Package Boundary](./docs/knowledge/private-overlay-package-boundary.md)<br>[Root Cause Before Fix](./docs/knowledge/root-cause-before-fix.md)<br>[Repeated validation failures are separated by a baseline cache](./docs/knowledge/validation-baseline-failure-cache.md)<br>[Repeated workflow failures become enforced guard flows](./docs/knowledge/workflow-guard-enforced-flow.md) |
@@ -256,7 +257,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | skill | `skills/incremental-implementation` | [Atomic Evidence Workflow](./docs/knowledge/atomic-evidence-workflow.md)<br>[Change Integration Discipline](./docs/knowledge/change-integration-discipline.md)<br>[Long-running sessions are controlled by phases and stop-lines](./docs/knowledge/long-running-session-control.md)<br>[Request Traceability Surgical Changes](./docs/knowledge/request-traceability-surgical-changes.md)<br>[Slice Auto Commit Rhythm](./docs/knowledge/slice-auto-commit-rhythm.md)<br>[Workflow weight must match change risk](./docs/knowledge/workflow-weight-proportionality.md) |
 | skill | `skills/interactive-shell` | [Interactive Shell Overlay Tool](./docs/knowledge/interactive-shell-overlay-tool.md) |
 | skill | `skills/jira-issue-management` | [External Issue Preview Gate](./docs/knowledge/external-issue-preview-gate.md)<br>[Private Overlay Package Boundary](./docs/knowledge/private-overlay-package-boundary.md) |
-| skill | `skills/pilee-final-check` | [Atomic Evidence Workflow](./docs/knowledge/atomic-evidence-workflow.md)<br>[Ember Ship Release Train](./docs/knowledge/ember-ship-release-train.md)<br>[Final Verification Parallelization](./docs/knowledge/final-verification-parallelization.md)<br>[Pilee Final Check Gate](./docs/knowledge/pilee-final-check-gate.md)<br>[TFT Preference Regression Gate](./docs/knowledge/tft-preference-regression-gate.md) |
+| skill | `skills/pilee-final-check` | [Atomic Evidence Workflow](./docs/knowledge/atomic-evidence-workflow.md)<br>[Ember Ship Release Train](./docs/knowledge/ember-ship-release-train.md)<br>[Final Verification Parallelization](./docs/knowledge/final-verification-parallelization.md)<br>[Pilee Final Check Gate](./docs/knowledge/pilee-final-check-gate.md)<br>[Pilee Update Current Session Reload](./docs/knowledge/pilee-update-current-session-reload.md)<br>[TFT Preference Regression Gate](./docs/knowledge/tft-preference-regression-gate.md) |
 | skill | `skills/pilee-knowledge` | [Confidence Sensitive Review](./docs/knowledge/confidence-sensitive-review.md)<br>[Ember Friendly Knowledge Entrypoint](./docs/knowledge/ember-friendly-knowledge-entrypoint.md)<br>[Ember Ship Release Train](./docs/knowledge/ember-ship-release-train.md)<br>[Freshness Diagnosis Report](./docs/knowledge/freshness-diagnosis-report.md)<br>[Judgment Doc Unit](./docs/knowledge/judgment-doc-unit.md)<br>[Knowledge Review Queue PR Body](./docs/knowledge/knowledge-review-queue-pr-body.md)<br>[Pilee Knowledge System](./docs/knowledge/pilee-knowledge-system.md)<br>[Private Journal Public Doctrine](./docs/knowledge/private-journal-public-doctrine.md)<br>[README Philosophy User Gate](./docs/knowledge/readme-philosophy-user-gate.md)<br>[Reviewed Commit Freshness](./docs/knowledge/reviewed-commit-freshness.md) |
 | skill | `skills/pr-ship` | [Ship PR Ship Review Boundary](./docs/knowledge/ship-pr-ship-review-boundary.md)<br>[Subagent Skill Delegation](./docs/knowledge/subagent-skill-delegation.md) |
 | skill | `skills/runtime-fanout-triage` | [Runtime Fanout Diagnosis](./docs/knowledge/runtime-fanout-diagnosis.md) |
@@ -285,7 +286,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 ## Extensions
 
 <!-- PILEE_README_EXTENSIONS_START -->
-55 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
+56 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
 
 > Generated from `extensions/*` plus inventory metadata in `scripts/knowledge.mjs`; refresh with `node scripts/knowledge.mjs --graph`.
 
@@ -357,6 +358,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **pr-comments** | PR unresolved review comment collection helper |
 | **pr-review-re-request** | Re-request review from non-approved PR reviewers/teams |
 | **update-branch** | `/update-branch` safely pulls the current git branch from upstream |
+| **pilee-update** | `/pilee-update` runs pilee package update and reloads the current session |
 | **until** | Explicit until-loop progress reporting |
 | **usage-analytics** | Agent and skill usage statistics |
 | **usage-reporter** | Usage reports |

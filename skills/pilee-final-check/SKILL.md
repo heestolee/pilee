@@ -46,6 +46,9 @@ pilee가 아닌 product/lambda/외부 프로젝트 변경에는 해당 프로젝
    - 동작/계약/회귀를 고정할 수 있는 변경이면 테스트 추가·보강 여부를 반드시 판단한다.
    - 테스트를 안 쓰는 것도 결정이다. 순수 문서/generated 변경처럼 합당한 예외가 아니면 “테스트 없음”은 GAP이다.
    - 통과용 snapshot, 구현 세부 복제, 명령만 실행하는 smoke를 의미 있는 테스트로 포장하지 않는다.
+9. **Runtime E2E는 업데이트/리로드 이후에 닫는다**
+   - extension/tool/rendering/slash command claim은 unit test와 syntax check만으로 PASS 처리하지 않는다.
+   - 현재 Pi 세션이 새 코드를 실제로 로드한 뒤 사용자-visible 경로를 한 번 이상 E2E로 확인한다.
 
 ## Workflow
 
@@ -186,6 +189,26 @@ Claim inventory에 `테스트 결정`을 붙인다.
 - knowledge 변경은 `knowledge:graph -- --check`, `knowledge:validate`
 
 실제 UI/host 동작이 핵심이면 가능한 범위에서 실제 capture/smoke를 수행하고, 불가능하면 왜 불가능한지 gap으로 남긴다.
+
+### 4.5 Runtime E2E Gate
+
+extension/tool/rendering/slash command 변경은 현재 Pi runtime에 새 코드가 로드된 뒤 실제 사용자-visible 경로를 확인해야 PASS다.
+
+필수 판단:
+
+| 변경 유형 | runtime E2E 필요 여부 | 예 |
+|---|---|---|
+| tool result/rendering | 필요 | 실제 tool 호출 → collapsed card/expanded view/model-readable content 확인 |
+| slash command/session action | 필요 | 실제 `/command` 호출 → 세션 상태, follow-up, reload/switch 동작 확인 |
+| WebView/Glimpse UI | 필요 | 실제 창/브라우저에서 버튼, scroll, reopen, fallback 확인 |
+| skill/docs/generated-only | 보통 불필요 | deterministic test/knowledge graph로 충분한지 명시 |
+
+규칙:
+- `pi update`만으로 current session이 새 extension code를 자동 사용한다고 가정하지 않는다.
+- 적용 확인이 필요한 경우 `/pilee-update` 또는 `/reload` 후 같은 claim을 다시 실행한다.
+- 외부 서비스가 필요한 E2E는 최소 안전 데이터로 실제 호출까지 닫는다. 스키마 describe나 mock만으로 “Slack/Notion/Jira 통과”라고 하지 않는다.
+- E2E 중 failure가 나오면 해당 failure를 반영해 고치고, 다시 update/reload/E2E를 반복한다.
+- 기술적으로 자동화가 불가능하거나 위험하면 PASS가 아니라 GAP/blocked로 남기고, 필요한 사용자 입력이나 권한을 명시한다.
 
 #### verifier lens 적용
 

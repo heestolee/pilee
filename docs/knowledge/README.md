@@ -196,7 +196,8 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-06-02 | 7861f10 | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 264ea17 | local-dev, server, startup, diagnosis, dev |
 | [장시간 세션은 phase와 stop-line으로 제어한다](./long-running-session-control.md) | active | high | 2026-06-02 | fad9c36 | workflow, guard, checkpoint, validation, commit, heartbeat |
-| [pilee 변경은 final-check gate로 닫는다](./pilee-final-check-gate.md) | active | high | 2026-06-02 | fad9c36 | pilee, final-check, verification, skill, workflow, 마무리 |
+| [pilee 변경은 final-check gate로 닫는다](./pilee-final-check-gate.md) | active | high | 2026-06-03 | 333e303 | pilee, final-check, verification, skill, workflow, 마무리 |
+| [pilee update는 현재 세션 reload까지 닫아야 한다](./pilee-update-current-session-reload.md) | active | high | 2026-06-03 | 333e303 | pilee, reload, update, runtime-e2e, command |
 | [Private overlay package는 회사·개인 실행 맥락을 담는다](./private-overlay-package-boundary.md) | active | high | 2026-06-02 | fad9c36 | privacy, package, overlay, skill, company-context |
 | [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-06-02 | fad9c36 | queued-messages, slash-command, prefill, worktree, session, boundary |
 | [Read/Edit tool override는 필요한 증거만 펼친다](./read-edit-tool-output-override.md) | active | high | 2026-06-02 | 41c70e0 | read, edit, tool, override, diff, preview |
@@ -304,6 +305,7 @@ graph TD
   doc_local_dev_startup_diagnosis["로컬 개발 서버 시작은 진단 가능한 절차여야 한다"]
   doc_long_running_session_control["장시간 세션은 phase와 stop-line으로 제어한다"]
   doc_pilee_final_check_gate["pilee 변경은 final-check gate로 닫는다"]
+  doc_pilee_update_current_session_reload["pilee update는 현재 세션 reload까지 닫아야 한다"]
   doc_private_overlay_package_boundary["Private overlay package는 회사·개인 실행 맥락을 담는다"]
   doc_queued_command_prefill_boundary["Queued command는 실행 보장이 아니다"]
   doc_read_edit_tool_output_override["Read/Edit tool override는 필요한 증거만 펼친다"]
@@ -588,6 +590,9 @@ graph TD
   doc_pilee_final_check_gate --> doc_evidence_first_verification_gate
   doc_pilee_final_check_gate --> doc_pilee_knowledge_system
   doc_pilee_final_check_gate --> doc_request_traceability_surgical_changes
+  doc_pilee_update_current_session_reload --> doc_evidence_first_verification_gate
+  doc_pilee_update_current_session_reload --> doc_live_artifact_preview_pattern
+  doc_pilee_update_current_session_reload --> doc_pilee_final_check_gate
   doc_private_overlay_package_boundary --> doc_database_write_human_execution_gate
   doc_private_overlay_package_boundary --> doc_private_journal_public_doctrine
   doc_private_overlay_package_boundary --> doc_skills_as_portable_procedures
@@ -688,7 +693,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 102
-- Links: 354
+- Documents: 103
+- Links: 357
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

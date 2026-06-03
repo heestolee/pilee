@@ -1062,6 +1062,7 @@ const README_EXTENSION_GROUPS = [
 		{ name: "pr-comments", ko: "PR unresolved review comment를 editor에 붙이는 helper", en: "PR unresolved review comment collection helper" },
 		{ name: "pr-review-re-request", ko: "승인되지 않은 PR reviewer/team에게 review re-request", en: "Re-request review from non-approved PR reviewers/teams" },
 		{ name: "update-branch", ko: "`/update-branch` — 현재 git 브랜치를 upstream 최신 상태로 안전하게 pull", en: "`/update-branch` safely pulls the current git branch from upstream" },
+		{ name: "pilee-update", ko: "`/pilee-update` — pilee package update 후 현재 세션 reload까지 한 번에 실행", en: "`/pilee-update` runs pilee package update and reloads the current session" },
 		{ name: "until", ko: "반복 작업 추적", en: "Explicit until-loop progress reporting" },
 		{ name: "usage-analytics", ko: "에이전트/스킬 사용량 통계", en: "Agent and skill usage statistics" },
 		{ name: "usage-reporter", ko: "사용량 리포트", en: "Usage reports" },

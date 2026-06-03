@@ -44,6 +44,8 @@ const requiredGlobalPhrases = [
   ['test-code-gate-heading', '### 2.7 Test Code Gate'],
   ['final-output-test-decision', '- 테스트 결정: <추가한 테스트 또는 생략 사유>'],
   ['pilee-final-check-script-command', 'npm run test:pilee-final-check'],
+  ['runtime-e2e-principle', 'Runtime E2E는 업데이트/리로드 이후에 닫는다'],
+  ['runtime-e2e-heading', '### 4.5 Runtime E2E Gate'],
 ];
 
 for (const [id, phrase] of requiredGlobalPhrases) {
@@ -85,6 +87,17 @@ for (const phrase of [
   'skill/prompt 계약 변경은 deterministic script로 필수 문구와 금지 패턴 assert',
 ]) {
   requireIncludes(`smoke-${phrase}`, smokeSection, phrase);
+}
+
+const runtimeE2ESection = sectionBetween(skill, '### 4.5 Runtime E2E Gate', /^####\s+verifier lens 적용/m);
+for (const [id, phrase] of [
+  ['runtime-e2e-current-runtime', '현재 Pi runtime에 새 코드가 로드된 뒤 실제 사용자-visible 경로를 확인해야 PASS'],
+  ['runtime-e2e-pi-update-not-enough', '`pi update`만으로 current session이 새 extension code를 자동 사용한다고 가정하지 않는다'],
+  ['runtime-e2e-pilee-update-or-reload', '`/pilee-update` 또는 `/reload` 후 같은 claim을 다시 실행한다'],
+  ['runtime-e2e-real-external-call', '외부 서비스가 필요한 E2E는 최소 안전 데이터로 실제 호출까지 닫는다'],
+  ['runtime-e2e-repeat-loop', '다시 update/reload/E2E를 반복한다'],
+]) {
+  requireIncludes(id, runtimeE2ESection, phrase);
 }
 
 const skillValidationSection = sectionBetween(skill, 'Skill 변경:', /^###\s+6\./m);
