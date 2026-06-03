@@ -103,8 +103,9 @@ You never lose more than one increment of work. If something goes wrong, `git re
 
 1. currentSlice의 claim/scope/evidence를 확인한다.
 2. 가까운 검증이 통과하면 `work_context action=commit_plan`으로 explicit `auto_commit` plan을 생성한다.
-3. plan을 검토한 뒤 `auto_commit action=apply`로 커밋한다.
-4. 커밋을 미루면 이유를 `work_context checkpoint`에 남긴다.
+3. plan을 검토할 때 한 commit entry의 primary path가 3개 이상이면 slice 단위로 만족하지 말고 logical atom 단위로 쪼갠다. test/generated/schema/package metadata은 companion으로만 붙인다.
+4. plan을 검토한 뒤 `auto_commit action=apply`로 커밋한다.
+5. 커밋을 미루면 이유를 `work_context checkpoint`에 남긴다.
 
 이 리듬은 my-pi `/ship`의 “commit + verify + push가 기본” 원칙을 구현 중 slice 단위로 앞당긴 것이다. 마지막 ship/final-check에서 한꺼번에 커밋을 발견하는 흐름을 정상 경로로 보지 않는다.
 
