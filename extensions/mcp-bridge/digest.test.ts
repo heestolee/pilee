@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { __buildMcpDigestForTesting, __buildMcpFullContentForTesting, __formatMcpOutputForTesting, __shouldReturnDigestForTesting } from "./index.ts";
+import { __buildMcpDigestForTesting, __buildMcpFullContentForTesting, __formatMcpFullContentCardForTesting, __formatMcpOutputForTesting, __shouldReturnDigestForTesting } from "./index.ts";
 
 test("small JSON MCP output is digest-first instead of raw inline", () => {
 	const output = JSON.stringify({ ok: true, title: "작은 JSON", token: "secret-token-value" });
@@ -89,6 +89,23 @@ test("get_mcp_content full content includes raw MCP result for lazy retrieval", 
 	assert.match(full, /## Raw MCP result/);
 	assert.match(full, /structuredContent/);
 	assert.match(full, /원문 메시지/);
+});
+
+test("get_mcp_content render card hides full content text", () => {
+	const full = __buildMcpFullContentForTesting({
+		id: "mcp_test",
+		server: "creatrip-internal",
+		tool: "slack_getThreadReplies",
+		output: "Retrieved 4 message(s) from thread.\n{\"messageCount\":4,\"messages\":[{\"text\":\"원문 메시지\"}]}",
+		rawData: { result: { structuredContent: { messages: [{ text: "원문 메시지" }] } } },
+	});
+	const card = __formatMcpFullContentCardForTesting({
+		text: full,
+		details: { mcpFullContent: true, responseId: "mcp_test", server: "creatrip-internal", tool: "slack_getThreadReplies" },
+	});
+	assert.equal(card, "📦 MCP 원문 · creatrip-internal/slack_getThreadReplies · 4개 메시지 · mcp_test · Ctrl+O 펼쳐보기");
+	assert.doesNotMatch(card, /원문 메시지|structuredContent|Raw MCP result/);
+	assert.match(full, /원문 메시지/, "model-facing full content remains intact outside the render card");
 });
 
 test("Notion markdown image links are shortened without signed URLs", () => {

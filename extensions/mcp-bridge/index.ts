@@ -3,6 +3,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { Text } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -993,6 +994,27 @@ export function __buildMcpFullContentForTesting(args: { id?: string; server?: st
 	});
 }
 
+function getToolResultText(result: { content?: Array<{ type: string; text?: string }> } | undefined): string {
+	return result?.content?.filter((entry) => entry.type === "text" && typeof entry.text === "string").map((entry) => entry.text).join("\n") ?? "";
+}
+
+function formatMcpFullContentCard(args: { text: string; details?: Record<string, unknown>; expanded?: boolean }): string {
+	const detailString = (key: string): string | undefined => {
+		const value = args.details?.[key];
+		return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+	};
+	const server = detailString("server") ?? extractDigestLineValue(args.text, "server") ?? "mcp";
+	const tool = detailString("tool") ?? extractDigestLineValue(args.text, "tool") ?? "tool";
+	const responseId = detailString("responseId") ?? extractDigestLineValue(args.text, "responseId");
+	const messageCount = extractDigestLineValue(args.text, "messageCount")?.replace(/[^0-9,]/g, "") || args.text.match(/Retrieved\s+(\d+)\s+message\(s\)/)?.[1];
+	const hint = args.expanded ? "Ctrl+O 접기" : "Ctrl+O 펼쳐보기";
+	return ["📦 MCP 원문", `${server}/${tool}`, messageCount ? `${messageCount}개 메시지` : undefined, responseId, hint].filter(Boolean).join(" · ");
+}
+
+export function __formatMcpFullContentCardForTesting(args: { text: string; details?: Record<string, unknown>; expanded?: boolean }): string {
+	return formatMcpFullContentCard(args);
+}
+
 function statusText(): string {
 	const configured = Object.keys(serverConfigs);
 	if (configured.length === 0) return "No MCP servers configured.";
@@ -1217,6 +1239,26 @@ export default function (pi: ExtensionAPI) {
 				tool: stored.tool,
 				action: stored.action,
 			});
+		},
+		renderResult(result, { expanded, isPartial }, theme, context) {
+			const textComponent = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
+			if (isPartial) {
+				textComponent.setText(theme.fg("warning", "MCP 원문 로드 중..."));
+				return textComponent;
+			}
+			const resultText = getToolResultText(result as { content?: Array<{ type: string; text?: string }> });
+			const details = result.details && typeof result.details === "object" ? result.details as Record<string, unknown> : undefined;
+			if (details?.mcpFullContent !== true) {
+				textComponent.setText(resultText);
+				return textComponent;
+			}
+			const card = formatMcpFullContentCard({ text: resultText, details, expanded });
+			if (!expanded) {
+				textComponent.setText(theme.fg("accent", card));
+				return textComponent;
+			}
+			textComponent.setText(`${theme.fg("toolTitle", theme.bold(card))}\n${resultText}`);
+			return textComponent;
 		},
 	});
 
