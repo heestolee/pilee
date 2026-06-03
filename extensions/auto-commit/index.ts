@@ -1,5 +1,5 @@
 import { readFile, rm } from "node:fs/promises";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { Type, type Static } from "typebox";
@@ -51,6 +51,7 @@ interface AutoCommitResult {
 	pushed: boolean;
 	push: PushExecution;
 	completion: AutoCommitCompletion;
+	warnings: string[];
 }
 
 const pushPolicySchema = StringEnum(["commit-only", "push-if-tracking", "push"] as const);
@@ -191,14 +192,35 @@ function pathCoveredByPlan(path: string, plannedPaths: string[]): boolean {
 	});
 }
 
-const LOGICAL_ATOM_PRIMARY_PATH_LIMIT = 2;
+const LOGICAL_ATOM_WARN_PRIMARY_PATHS = 3;
+const LOGICAL_ATOM_BLOCK_PRIMARY_PATHS = 6;
+const LOGICAL_ATOM_WARN_FILE_CHANGED_LINES = 300;
+const LOGICAL_ATOM_BLOCK_FILE_CHANGED_LINES = 1000;
+const LOGICAL_ATOM_WARN_TOTAL_CHANGED_LINES = 500;
+const LOGICAL_ATOM_BLOCK_TOTAL_CHANGED_LINES = 1500;
+const LOGICAL_ATOM_CLUSTER_FANOUT_LIMIT = 4;
 
 type LogicalAtomPathRole = "primary" | "companion";
+type LogicalAtomGateDecision = "pass" | "warn" | "block";
 
 interface LogicalAtomPathClassification {
 	path: string;
 	role: LogicalAtomPathRole;
 	reason?: string;
+}
+
+export interface LogicalAtomDiffStat {
+	path: string;
+	additions: number;
+	deletions: number;
+	changedLines: number;
+	binary?: boolean;
+}
+
+export interface LogicalAtomGateResult {
+	decision: LogicalAtomGateDecision;
+	warnings: string[];
+	blocks: string[];
 }
 
 function companionReason(path: string): string | undefined {
@@ -223,6 +245,42 @@ function classifyLogicalAtomPaths(paths: string[]): LogicalAtomPathClassificatio
 	});
 }
 
+function logicalAtomCluster(path: string): string {
+	const normalized = normalizeGitPath(path);
+	const parts = normalized.split("/").filter(Boolean);
+	const backendModule = normalized.match(/^backend\/apps\/([^/]+)\/src\/modules\/([^/]+)/u);
+	if (backendModule) return `backend/apps/${backendModule[1]}/modules/${backendModule[2]}`;
+	const backendApp = normalized.match(/^backend\/apps\/([^/]+)/u);
+	if (backendApp) return `backend/apps/${backendApp[1]}`;
+	const backendLib = normalized.match(/^backend\/libs\/([^/]+)/u);
+	if (backendLib) return `backend/libs/${backendLib[1]}`;
+	const frontendDomain = normalized.match(/^frontend\/apps\/([^/]+)\/domain\/([^/]+)(?:\/([^/]+))?/u);
+	if (frontendDomain) return `frontend/apps/${frontendDomain[1]}/domain/${frontendDomain[2]}${frontendDomain[3] ? `/${frontendDomain[3]}` : ""}`;
+	const frontendApp = normalized.match(/^frontend\/apps\/([^/]+)/u);
+	if (frontendApp) return `frontend/apps/${frontendApp[1]}`;
+	const frontendPackage = normalized.match(/^frontend\/packages\/([^/]+)/u);
+	if (frontendPackage) return `frontend/packages/${frontendPackage[1]}`;
+	const extension = normalized.match(/^extensions\/([^/]+)/u);
+	if (extension) return `extensions/${extension[1]}`;
+	const skill = normalized.match(/^skills\/([^/]+)/u);
+	if (skill) return `skills/${skill[1]}`;
+	if (normalized.startsWith("docs/knowledge/")) return "docs/knowledge";
+	return parts.slice(0, Math.min(2, parts.length)).join("/") || normalized;
+}
+
+function logicalAtomLayer(path: string): string {
+	const normalized = normalizeGitPath(path);
+	const parts = normalized.split("/").filter(Boolean);
+	if (normalized.startsWith("backend/apps/")) return parts.slice(0, 3).join("/");
+	if (normalized.startsWith("backend/libs/")) return parts.slice(0, 3).join("/");
+	if (normalized.startsWith("frontend/apps/")) return parts.slice(0, 3).join("/");
+	if (normalized.startsWith("frontend/packages/")) return parts.slice(0, 3).join("/");
+	if (normalized.startsWith("extensions/")) return parts.slice(0, 2).join("/");
+	if (normalized.startsWith("skills/")) return "skills";
+	if (normalized.startsWith("docs/")) return "docs";
+	return parts[0] || normalized;
+}
+
 function formatPathList(paths: string[], prefix = "  - "): string[] {
 	return paths.length > 0 ? paths.map((path) => `${prefix}${path}`) : [`${prefix}(none)`];
 }
@@ -230,40 +288,108 @@ function formatPathList(paths: string[], prefix = "  - "): string[] {
 function formatSuggestedLogicalAtomSplits(primaryPaths: string[], companionPaths: LogicalAtomPathClassification[]): string[] {
 	const rows = primaryPaths.map((path, index) => `  ${index + 1}. ${path}`);
 	if (companionPaths.length > 0) {
-		rows.push("  companion paths는 source/test/generated/schema 보조 관계가 닫히는 원자에만 붙이세요:");
+		rows.push("  companion paths는 source/test/generated/schema/package metadata 보조 관계가 닫히는 원자에만 붙이세요:");
 		for (const companion of companionPaths) rows.push(`    - ${companion.path}${companion.reason ? ` (${companion.reason})` : ""}`);
 	}
 	return rows;
 }
 
-export function buildLogicalAtomGateReport(plan: { commits: Array<{ message: string; paths: string[] }> }): string | undefined {
-	const violations: string[] = [];
+function statForPath(path: string, stats: LogicalAtomDiffStat[]): LogicalAtomDiffStat | undefined {
+	const normalized = normalizeGitPath(path);
+	const exact = stats.find((stat) => normalizeGitPath(stat.path) === normalized);
+	if (exact) return exact;
+	const children = stats.filter((stat) => normalizeGitPath(stat.path).startsWith(`${normalized}/`));
+	if (children.length === 0) return undefined;
+	return {
+		path: normalized,
+		additions: children.reduce((sum, stat) => sum + stat.additions, 0),
+		deletions: children.reduce((sum, stat) => sum + stat.deletions, 0),
+		changedLines: children.reduce((sum, stat) => sum + stat.changedLines, 0),
+		binary: children.some((stat) => stat.binary),
+	};
+}
+
+function statSummary(path: string, stats: LogicalAtomDiffStat[]): string {
+	const stat = statForPath(path, stats);
+	if (!stat) return path;
+	const binary = stat.binary ? " · binary" : "";
+	return `${path} (+${stat.additions}/-${stat.deletions}, ${stat.changedLines} lines${binary})`;
+}
+
+export function evaluateLogicalAtomGate(
+	plan: { commits: Array<{ message: string; paths: string[] }> },
+	diffStatsByCommit: LogicalAtomDiffStat[][] = [],
+): LogicalAtomGateResult {
+	const warnings: string[] = [];
+	const blocks: string[] = [];
 	for (const [index, entry] of plan.commits.entries()) {
-		const classifications = classifyLogicalAtomPaths(entry.paths);
-		const primaryPaths = classifications.filter((item) => item.role === "primary").map((item) => item.path);
-		if (primaryPaths.length <= LOGICAL_ATOM_PRIMARY_PATH_LIMIT) continue;
+		const stats = diffStatsByCommit[index] ?? [];
+		const actualPaths = stats.length > 0 ? stats.map((stat) => stat.path) : entry.paths;
+		const classifications = classifyLogicalAtomPaths(actualPaths);
+		const primaryItems = classifications.filter((item) => item.role === "primary");
 		const companionPaths = classifications.filter((item) => item.role === "companion");
-		violations.push([
-			`commits[${index}] "${entry.message}" has ${primaryPaths.length} primary paths (limit ${LOGICAL_ATOM_PRIMARY_PATH_LIMIT}).`,
+		const primaryPaths = primaryItems.map((item) => item.path);
+		const primaryStats = primaryPaths.map((path) => statForPath(path, stats)).filter((stat): stat is LogicalAtomDiffStat => Boolean(stat));
+		const totalChangedLines = primaryStats.reduce((sum, stat) => sum + stat.changedLines, 0);
+		const maxChangedLines = primaryStats.reduce((max, stat) => Math.max(max, stat.changedLines), 0);
+		const clusters = new Set(primaryPaths.map(logicalAtomCluster));
+		const layers = new Set(primaryPaths.map(logicalAtomLayer));
+		const reasons: string[] = [];
+		const warnReasons: string[] = [];
+
+		if (primaryPaths.length >= LOGICAL_ATOM_BLOCK_PRIMARY_PATHS) reasons.push(`${primaryPaths.length} primary paths >= ${LOGICAL_ATOM_BLOCK_PRIMARY_PATHS}`);
+		if (maxChangedLines >= LOGICAL_ATOM_BLOCK_FILE_CHANGED_LINES) reasons.push(`single primary diff ${maxChangedLines} lines >= ${LOGICAL_ATOM_BLOCK_FILE_CHANGED_LINES}`);
+		if (totalChangedLines >= LOGICAL_ATOM_BLOCK_TOTAL_CHANGED_LINES) reasons.push(`total primary diff ${totalChangedLines} lines >= ${LOGICAL_ATOM_BLOCK_TOTAL_CHANGED_LINES}`);
+		if (primaryPaths.length >= LOGICAL_ATOM_WARN_PRIMARY_PATHS && layers.size >= 2) reasons.push(`layer-mixed primary paths (${[...layers].join(", ")})`);
+		if (primaryPaths.length >= LOGICAL_ATOM_WARN_PRIMARY_PATHS && clusters.size >= LOGICAL_ATOM_CLUSTER_FANOUT_LIMIT) reasons.push(`surface fan-out ${clusters.size} clusters >= ${LOGICAL_ATOM_CLUSTER_FANOUT_LIMIT}`);
+		if (primaryPaths.length >= LOGICAL_ATOM_WARN_PRIMARY_PATHS && clusters.size >= 3 && totalChangedLines >= LOGICAL_ATOM_WARN_TOTAL_CHANGED_LINES) {
+			reasons.push(`cluster fan-out ${clusters.size} clusters with ${totalChangedLines} changed lines`);
+		}
+
+		if (primaryPaths.length >= LOGICAL_ATOM_WARN_PRIMARY_PATHS) warnReasons.push(`${primaryPaths.length} primary paths`);
+		if (maxChangedLines >= LOGICAL_ATOM_WARN_FILE_CHANGED_LINES) warnReasons.push(`single primary diff ${maxChangedLines} lines`);
+		if (totalChangedLines >= LOGICAL_ATOM_WARN_TOTAL_CHANGED_LINES) warnReasons.push(`total primary diff ${totalChangedLines} lines`);
+		if (clusters.size >= 2) warnReasons.push(`${clusters.size} clusters`);
+
+		const summary = [
+			`commits[${index}] "${entry.message}"`,
+			`primary=${primaryPaths.length}, companion=${companionPaths.length}, clusters=${clusters.size}, layers=${layers.size}, totalPrimaryLines=${totalChangedLines}, maxPrimaryLines=${maxChangedLines}`,
 			"primary paths:",
-			...formatPathList(primaryPaths),
+			...formatPathList(primaryPaths.map((path) => statSummary(path, stats))),
 			"companion paths:",
-			...formatPathList(companionPaths.map((item) => `${item.path}${item.reason ? ` (${item.reason})` : ""}`)),
+			...formatPathList(companionPaths.map((item) => `${statSummary(item.path, stats)}${item.reason ? ` (${item.reason})` : ""}`)),
 			"suggested logical atom split:",
 			...formatSuggestedLogicalAtomSplits(primaryPaths, companionPaths),
-		].join("\n"));
+		].join("\n");
+
+		if (reasons.length > 0) {
+			blocks.push([summary, `block reasons: ${reasons.join("; ")}`].join("\n"));
+		} else if (warnReasons.length > 0) {
+			warnings.push([summary, `warning reasons: ${warnReasons.join("; ")}`].join("\n"));
+		}
 	}
-	if (violations.length === 0) return undefined;
+	return { decision: blocks.length > 0 ? "block" : warnings.length > 0 ? "warn" : "pass", warnings, blocks };
+}
+
+export function buildLogicalAtomGateReport(
+	plan: { commits: Array<{ message: string; paths: string[] }> },
+	diffStatsByCommit: LogicalAtomDiffStat[][] = [],
+): string | undefined {
+	const result = evaluateLogicalAtomGate(plan, diffStatsByCommit);
+	if (result.blocks.length === 0) return undefined;
 	return [
-		"auto-commit logical atom gate failed",
-		"한 커밋은 가능하면 1~2개의 primary file만 담아야 합니다. test/generated/schema/lockfile은 companion으로 허용되지만, 서로 다른 primary 변화 3개 이상은 reviewable logical atom으로 쪼개야 합니다.",
+		"auto-commit logical atom gate blocked this plan",
+		"큰 commit entry는 파일 수뿐 아니라 diff 양, layer mix, cluster/surface fan-out을 함께 봅니다. 작은 동일 cluster fan-out은 warning으로 허용하지만, 큰 diff 또는 layer-mixed 변경은 reviewable logical atom으로 쪼개야 합니다.",
 		"",
-		...violations,
+		...result.blocks,
 	].join("\n");
 }
 
-export function assertLogicalAtomGate(plan: { commits: Array<{ message: string; paths: string[] }> }): void {
-	const report = buildLogicalAtomGateReport(plan);
+export function assertLogicalAtomGate(
+	plan: { commits: Array<{ message: string; paths: string[] }> },
+	diffStatsByCommit: LogicalAtomDiffStat[][] = [],
+): void {
+	const report = buildLogicalAtomGateReport(plan, diffStatsByCommit);
 	if (report) throw new Error(report);
 }
 
@@ -376,7 +502,6 @@ function assertPlan(plan: AutoCommitPlan): void {
 			}
 		}
 	}
-	assertLogicalAtomGate(plan);
 }
 
 async function loadPlan(cwd: string, planPath: string): Promise<AutoCommitPlan> {
@@ -400,6 +525,63 @@ async function assertExpectedHead(pi: ExecHost, cwd: string, expectedHead: strin
 	if (!head.startsWith(expectedHead) && expectedHead !== head) {
 		throw new Error(`HEAD mismatch: expected ${expectedHead}, actual ${head}`);
 	}
+}
+
+function parseNumstatLine(line: string): LogicalAtomDiffStat | undefined {
+	const [additionsRaw, deletionsRaw, ...pathParts] = line.split(/	/u);
+	const path = normalizeGitPath(pathParts.join("	"));
+	if (!path) return undefined;
+	const binary = additionsRaw === "-" || deletionsRaw === "-";
+	const additions = binary ? LOGICAL_ATOM_BLOCK_FILE_CHANGED_LINES : Number(additionsRaw);
+	const deletions = binary ? 0 : Number(deletionsRaw);
+	return {
+		path,
+		additions: Number.isFinite(additions) ? additions : 0,
+		deletions: Number.isFinite(deletions) ? deletions : 0,
+		changedLines: binary ? LOGICAL_ATOM_BLOCK_FILE_CHANGED_LINES : Math.max(0, (Number.isFinite(additions) ? additions : 0) + (Number.isFinite(deletions) ? deletions : 0)),
+		binary,
+	};
+}
+
+function countTextLines(content: Buffer): number {
+	if (content.length === 0) return 0;
+	let lines = 1;
+	for (const byte of content) if (byte === 10) lines += 1;
+	return lines;
+}
+
+async function statUntrackedFile(cwd: string, path: string): Promise<LogicalAtomDiffStat> {
+	const content = await readFile(join(cwd, path));
+	const binary = content.includes(0);
+	const changedLines = binary ? LOGICAL_ATOM_BLOCK_FILE_CHANGED_LINES : countTextLines(content);
+	return { path: normalizeGitPath(path), additions: changedLines, deletions: 0, changedLines, binary };
+}
+
+async function collectCommitEntryDiffStats(pi: ExecHost, cwd: string, entry: CommitPlanEntry): Promise<LogicalAtomDiffStat[]> {
+	const diff = await git(pi, cwd, ["diff", "--numstat", "--", ...entry.paths], `git diff --numstat -- ${entry.paths.join(" ")}`, { optionalLocks: true });
+	const stats = lines(diff).map(parseNumstatLine).filter((stat): stat is LogicalAtomDiffStat => Boolean(stat));
+	const seen = new Set(stats.map((stat) => normalizeGitPath(stat.path)));
+	const others = await git(pi, cwd, ["ls-files", "--others", "--exclude-standard", "--", ...entry.paths], `git ls-files --others -- ${entry.paths.join(" ")}`, { optionalLocks: true });
+	for (const rawPath of lines(others).map(normalizeGitPath).filter(Boolean)) {
+		if (seen.has(rawPath)) continue;
+		stats.push(await statUntrackedFile(cwd, rawPath));
+		seen.add(rawPath);
+	}
+	return stats;
+}
+
+async function assertLogicalAtomGateForWorkingTree(pi: ExecHost, cwd: string, plan: AutoCommitPlan): Promise<string[]> {
+	const diffStatsByCommit = await Promise.all(plan.commits.map((entry) => collectCommitEntryDiffStats(pi, cwd, entry)));
+	const result = evaluateLogicalAtomGate(plan, diffStatsByCommit);
+	if (result.blocks.length > 0) {
+		throw new Error([
+			"auto-commit logical atom gate blocked this plan",
+			"큰 commit entry는 파일 수뿐 아니라 diff 양, layer mix, cluster/surface fan-out을 함께 봅니다. 작은 동일 cluster fan-out은 warning으로 허용하지만, 큰 diff 또는 layer-mixed 변경은 reviewable logical atom으로 쪼개야 합니다.",
+			"",
+			...result.blocks,
+		].join("\n"));
+	}
+	return result.warnings;
 }
 
 async function commitEntry(
@@ -435,6 +617,7 @@ async function applyPlan(pi: ExecHost, cwd: string, mode: AutoCommitMode, plan: 
 	}
 
 	await assertNoUnplannedChanges(pi, cwd, plan);
+	const warnings = await assertLogicalAtomGateForWorkingTree(pi, cwd, plan);
 
 	const commits: AutoCommitResult["commits"] = [];
 	try {
@@ -447,7 +630,7 @@ async function applyPlan(pi: ExecHost, cwd: string, mode: AutoCommitMode, plan: 
 			throw new Error(`auto-commit plan left unstaged changes:\n${leftovers.join("\n")}`);
 		}
 		const push = await runPush(pi, cwd, plan.push, plan.pushPolicy);
-		return { mode, backupBranch: plan.backupBranch, commits, leftovers, pushed: push.status === "done", push, completion: completionFromPush(push) };
+		return { mode, backupBranch: plan.backupBranch, commits, leftovers, pushed: push.status === "done", push, completion: completionFromPush(push), warnings };
 	} catch (error) {
 		await gitCode(pi, cwd, ["reset"]);
 		throw error;
@@ -484,6 +667,7 @@ export function formatResult(result: AutoCommitResult): string {
 		: null;
 	const extras = [
 		result.backupBranch ? `backup: ${result.backupBranch}` : null,
+		result.warnings?.length ? `warnings:\n${result.warnings.join("\n\n")}` : null,
 		`status: ${result.completion}`,
 		formatPush(result.push),
 		next,
@@ -554,7 +738,7 @@ export default function (pi: ExtensionAPI) {
 		promptSnippet: "Create focused git commits from an explicit JSON plan or quick explicit-path hotfix input.",
 		promptGuidelines: [
 			"Use auto_commit with an explicit JSON commit plan whose file groups and messages are reviewable, or action=quick with explicit message+paths for tiny hotfix/copy changes.",
-			"auto_commit enforces a logical atom gate: each commit should have at most 1-2 primary files; test/generated/schema/package metadata companions are allowed only as support for that atom.",
+			"auto_commit enforces a diff-aware logical atom gate: 3+ primary files, large diffs, layer mix, and surface fan-out are evaluated before commit; small same-cluster fan-out may pass with warnings.",
 			"For action=quick, default pushPolicy=push-if-tracking commits and pushes to the safe upstream feature branch when available.",
 			"Treat status=committed_not_pushed as incomplete when the user expected push; do not report done until push is resolved.",
 			"auto_commit rejects conventional commit scope parentheses by default; use messages like 'feat: 한글 설명'.",

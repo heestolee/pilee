@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import test from "node:test";
-import autoCommit, { assertLogicalAtomGate, buildLogicalAtomGateReport, extractGitIndexLockPath, formatResult, shouldRemoveStaleIndexLockAfterLsof } from "./index.ts";
+import autoCommit, { assertLogicalAtomGate, buildLogicalAtomGateReport, evaluateLogicalAtomGate, extractGitIndexLockPath, formatResult, shouldRemoveStaleIndexLockAfterLsof } from "./index.ts";
 
 test("extractGitIndexLockPath reads git index.lock errors", () => {
 	const stderr = "fatal: Unable to create '/repo/.git/worktrees/foo/index.lock': File exists.";
@@ -21,24 +21,34 @@ test("shouldRemoveStaleIndexLockAfterLsof removes only when owner check is clean
 	assert.equal(shouldRemoveStaleIndexLockAfterLsof({ code: 127, stdout: "", stderr: "lsof: command not found" }), false);
 });
 
-test("logical atom gate rejects commits with three primary paths", () => {
+test("logical atom gate warns for small same-cluster three-primary changes", () => {
+	const result = evaluateLogicalAtomGate({
+		commits: [{
+			message: "feat: 작은 fan-out",
+			paths: ["extensions/auto-commit/a.ts", "extensions/auto-commit/b.ts", "extensions/auto-commit/c.ts"],
+		}],
+	}, [[
+		{ path: "extensions/auto-commit/a.ts", additions: 3, deletions: 0, changedLines: 3 },
+		{ path: "extensions/auto-commit/b.ts", additions: 4, deletions: 0, changedLines: 4 },
+		{ path: "extensions/auto-commit/c.ts", additions: 5, deletions: 0, changedLines: 5 },
+	]]);
+
+	assert.equal(result.decision, "warn");
+	assert.equal(result.blocks.length, 0);
+	assert.match(result.warnings.join("\n"), /3 primary paths/);
+});
+
+test("logical atom gate blocks large single-file diff", () => {
 	const report = buildLogicalAtomGateReport({
 		commits: [{
-			message: "feat: 온라인 쿠폰 웹 카드 태그 추가",
-			paths: [
-				"frontend/apps/web/domain/travel/subdomain/spot/SpotThumbnailCard/parts/SpotThumbnailTags.tsx",
-				"frontend/apps/web/domain/travel/subdomain/spot/converter/spotThumbnailInfoConverter.ts",
-				"frontend/apps/web/domain/shared/map/cards/MapSpotCard.tsx",
-				"frontend/apps/web/domain/travel/subdomain/spot/SpotThumbnailCard/parts/SpotThumbnailTags.test.tsx",
-			],
+			message: "feat: 큰 단일 파일 변경",
+			paths: ["extensions/auto-commit/index.ts"],
 		}],
-	});
+	}, [[{ path: "extensions/auto-commit/index.ts", additions: 1000, deletions: 0, changedLines: 1000 }]]);
 
-	assert.match(report ?? "", /logical atom gate failed/);
-	assert.match(report ?? "", /has 3 primary paths/);
-	assert.match(report ?? "", /SpotThumbnailTags\.tsx/);
-	assert.match(report ?? "", /SpotThumbnailTags\.test\.tsx \(test\)/);
-	assert.throws(() => assertLogicalAtomGate({ commits: [{ message: "feat: too broad", paths: ["a.ts", "b.ts", "c.ts"] }] }), /logical atom gate failed/);
+	assert.match(report ?? "", /logical atom gate blocked/);
+	assert.match(report ?? "", /single primary diff 1000 lines/);
+	assert.throws(() => assertLogicalAtomGate({ commits: [{ message: "feat: too large", paths: ["a.ts"] }] }, [[{ path: "a.ts", additions: 1000, deletions: 0, changedLines: 1000 }]]), /logical atom gate blocked/);
 });
 
 test("logical atom gate allows primary path with companion files", () => {
@@ -138,21 +148,66 @@ test("action=status reports commit readiness and ship caveats", async () => {
 	assert.match(text, /pending UI capture\/verify-report is a ship evidence caveat/);
 });
 
-test("action=quick rejects broad logical atom plans before git runs", async () => {
+test("action=quick blocks layer-mixed logical atom plans before commit", async () => {
+	const root = await mkdtemp(join(tmpdir(), "auto-commit-layer-block-"));
+	const repo = join(root, "repo");
+	await git(root, "init", "-b", "main", repo);
+	await git(repo, "config", "user.email", "test@example.com");
+	await git(repo, "config", "user.name", "Test User");
+	await writeFile(join(repo, "README.md"), "init\n");
+	await git(repo, "add", "README.md");
+	await git(repo, "commit", "-m", "chore: init");
+	await exec("mkdir", ["-p", "backend/apps/trip/src", "frontend/apps/web/domain", "scripts"], repo);
+	await writeFile(join(repo, "backend/apps/trip/src/a.ts"), "export const a = 1;\n");
+	await writeFile(join(repo, "frontend/apps/web/domain/b.ts"), "export const b = 1;\n");
+	await writeFile(join(repo, "scripts/c.ts"), "export const c = 1;\n");
+
 	const tools: Record<string, any> = {};
 	autoCommit({
-		exec: async () => {
-			throw new Error("git should not run when logical atom gate fails");
-		},
+		exec: async (command: string, args: string[], options: { cwd?: string } = {}) => exec(command, args, options.cwd ?? repo),
 		registerCommand: () => undefined,
 		registerTool: (tool: any) => { tools[tool.name] = tool; },
 	} as any);
 
-	await assert.rejects(() => tools.auto_commit.execute("call-quick-wide", {
+	await assert.rejects(() => tools.auto_commit.execute("call-quick-layer-mixed", {
 		action: "quick",
 		message: "feat: too broad",
-		paths: ["a.ts", "b.ts", "c.ts"],
-	}, new AbortController().signal, () => undefined, { cwd: "/tmp" }), /logical atom gate failed/);
+		paths: ["backend/apps/trip/src/a.ts", "frontend/apps/web/domain/b.ts", "scripts/c.ts"],
+	}, new AbortController().signal, () => undefined, { cwd: repo }), /layer-mixed primary paths/);
+	assert.equal((await git(repo, "rev-list", "--count", "HEAD")).trim(), "1");
+});
+
+test("action=quick allows warning-only same-cluster fanout and reports warning", async () => {
+	const root = await mkdtemp(join(tmpdir(), "auto-commit-warn-allow-"));
+	const repo = join(root, "repo");
+	await git(root, "init", "-b", "main", repo);
+	await git(repo, "config", "user.email", "test@example.com");
+	await git(repo, "config", "user.name", "Test User");
+	await writeFile(join(repo, "README.md"), "init\n");
+	await git(repo, "add", "README.md");
+	await git(repo, "commit", "-m", "chore: init");
+	await exec("mkdir", ["-p", "extensions/auto-commit"], repo);
+	await writeFile(join(repo, "extensions/auto-commit/a.ts"), "export const a = 1;\n");
+	await writeFile(join(repo, "extensions/auto-commit/b.ts"), "export const b = 1;\n");
+	await writeFile(join(repo, "extensions/auto-commit/c.ts"), "export const c = 1;\n");
+
+	const tools: Record<string, any> = {};
+	autoCommit({
+		exec: async (command: string, args: string[], options: { cwd?: string } = {}) => exec(command, args, options.cwd ?? repo),
+		registerCommand: () => undefined,
+		registerTool: (tool: any) => { tools[tool.name] = tool; },
+	} as any);
+
+	const result = await tools.auto_commit.execute("call-quick-warning", {
+		action: "quick",
+		message: "feat: 작은 fan-out",
+		paths: ["extensions/auto-commit/a.ts", "extensions/auto-commit/b.ts", "extensions/auto-commit/c.ts"],
+		pushPolicy: "commit-only",
+	}, new AbortController().signal, () => undefined, { cwd: repo });
+
+	assert.match(result.content[0].text, /warnings:/);
+	assert.match(result.content[0].text, /3 primary paths/);
+	assert.equal((await git(repo, "rev-list", "--count", "HEAD")).trim(), "2");
 });
 
 test("action=quick commits explicit paths and pushes to safe upstream", async () => {
