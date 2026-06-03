@@ -13,8 +13,8 @@ applies_to:
   - extensions/auto-commit
   - extensions/work-context
 source: public
-reviewed_at: 2026-06-04
-reviewed_commit: ce5e875d9e49a3a0b93215894e525b1933c6a145
+reviewed_at: 2026-06-03
+reviewed_commit: 238ee8dc514157fdec14db36a41125a2fd24f664
 related:
   - change-integration-discipline
   - request-traceability-surgical-changes

@@ -20,8 +20,8 @@ source:
   - user-direction:2026-05-20-slice-commit-rhythm
   - reference:https://github.com/Jonghakseo/my-pi
   - reference:https://github.com/Jonghakseo/pi-extension
-reviewed_at: 2026-06-04
-reviewed_commit: e123af14832390aa7959c2a5b597b1b64eaebb91
+reviewed_at: 2026-06-03
+reviewed_commit: 238ee8dc514157fdec14db36a41125a2fd24f664
 related:
   - auto-commit-explicit-plan-gate
   - change-integration-discipline
