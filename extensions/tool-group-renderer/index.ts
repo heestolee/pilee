@@ -6,7 +6,7 @@ import { Container, Spacer, Text, truncateToWidth, visibleWidth } from "@marioze
 import { truncatePlainToWidth } from "../utils/format-utils.ts";
 
 const PATCH_STATE_KEY = Symbol.for("pilee.tool-group-renderer.patch-state");
-const PATCH_VERSION = "2026-06-02-mcp-collapse-r1";
+const PATCH_VERSION = "2026-06-03-mcp-content-collapse-r2";
 const GROUP_STATE = Symbol("pilee.tool-group-renderer.state");
 function piPackageRootFromDistEntrypoint(filePath: string | undefined): string | null {
 	if (!filePath) return null;
@@ -570,7 +570,25 @@ function mcpRenderableText(result?: ToolResultLike): string {
 	return fullDigest || extractRawTextContent(result)?.trim() || "";
 }
 
+function isMcpFullContentResult(result?: ToolResultLike): boolean {
+	const details = toolResultDetails(result);
+	return details?.mcpFullContent === true || /^MCP full content\b/.test(extractRawTextContent(result)?.trim() ?? "");
+}
+
+function formatMcpFullContentCollapsedLine(result: ToolResultLike | undefined, args: unknown, expanded: boolean): string {
+	const text = extractRawTextContent(result)?.trim() || "";
+	const details = toolResultDetails(result);
+	const server = detailString(details, "server") ?? extractLineValue(text, "server") ?? (isRecord(args) ? detailString(args, "server") : undefined) ?? "mcp";
+	const tool = detailString(details, "tool") ?? extractLineValue(text, "tool") ?? (isRecord(args) ? detailString(args, "tool") : undefined) ?? "tool";
+	const responseId = detailString(details, "responseId") ?? extractLineValue(text, "responseId");
+	const messageCount = extractLineValue(text, "messageCount")?.replace(/[^0-9,]/g, "") || text.match(/Retrieved\s+(\d+)\s+message\(s\)/)?.[1];
+	const hint = expanded ? "Ctrl+O 접기" : "Ctrl+O 펼쳐보기";
+	return ["📦 MCP 원문", `${server}/${tool}`, messageCount ? `${messageCount}개 메시지` : undefined, responseId, hint].filter(Boolean).join(" · ");
+}
+
 function formatMcpCollapsedLine(result?: ToolResultLike, args?: unknown, expanded = false): string {
+	if (isMcpFullContentResult(result)) return formatMcpFullContentCollapsedLine(result, args, expanded);
+
 	const text = mcpRenderableText(result);
 	const details = toolResultDetails(result);
 	const server = detailString(details, "server") ?? (isRecord(args) ? detailString(args, "server") : undefined) ?? "mcp";
@@ -943,7 +961,7 @@ function breakGroup(mode: InteractiveModeLike): void {
 }
 
 function ensureToolHandle(mode: InteractiveModeLike, toolName: string, toolCallId: string, args: unknown): ToolHandle {
-	if (toolName === "mcp") {
+	if (toolName === "mcp" || toolName === "get_mcp_content") {
 		breakGroup(mode);
 		return createMcpToolComponent(mode, toolCallId, args);
 	}

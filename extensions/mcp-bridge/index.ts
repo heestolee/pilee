@@ -1211,6 +1211,7 @@ export default function (pi: ExtensionAPI) {
 			const stored = storedMcpResults.get(params.responseId);
 			if (!stored) return text(`No stored MCP result for responseId "${params.responseId}". MCP 원문은 현재 세션 메모리에만 보존됩니다.`);
 			return text(buildMcpFullContent(stored), {
+				mcpFullContent: true,
 				responseId: stored.id,
 				server: stored.server,
 				tool: stored.tool,

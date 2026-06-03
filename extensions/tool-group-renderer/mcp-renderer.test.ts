@@ -42,6 +42,29 @@ test("MCP Notion result collapses to page title and image count", () => {
 	assert.doesNotMatch(line, /X-Amz|prod-files-secure|본문입니다/);
 });
 
+test("get_mcp_content collapses in UI while preserving model-facing full content", () => {
+	const fullContent = [
+		"MCP full content",
+		"responseId: mcp_test",
+		"server: creatrip-internal",
+		"tool: slack_getThreadReplies",
+		"action: call",
+		"",
+		"## MCP content text",
+		"Retrieved 4 message(s) from thread.",
+		'{ "messageCount": 4, "messages": [{ "text": "원문 메시지" }] }',
+		"",
+		"## Raw MCP result",
+		'{ "structuredContent": { "messages": [{ "text": "원문 메시지" }] } }',
+	].join("\n");
+	const result = toolResult(fullContent, { mcpFullContent: true, responseId: "mcp_test", server: "creatrip-internal", tool: "slack_getThreadReplies" });
+
+	assert.match(result.content[0].text ?? "", /원문 메시지/, "model-facing content must keep full MCP text");
+	const line = __test__.formatMcpCollapsedLine(result);
+	assert.equal(line, "📦 MCP 원문 · creatrip-internal/slack_getThreadReplies · 4개 메시지 · mcp_test · Ctrl+O 펼쳐보기");
+	assert.doesNotMatch(line, /원문 메시지|structuredContent|Raw MCP result/);
+});
+
 test("MCP expanded hint changes when tool output is expanded", () => {
 	const line = __test__.formatMcpCollapsedLine(toolResult("# 문서", { server: "creatrip-internal", tool: "notion_readPage" }), undefined, true);
 	assert.match(line, /Ctrl\+O 접기$/);
