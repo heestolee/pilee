@@ -554,7 +554,7 @@ export default function (pi: ExtensionAPI) {
 		promptSnippet: "Create focused git commits from an explicit JSON plan or quick explicit-path hotfix input.",
 		promptGuidelines: [
 			"Use auto_commit with an explicit JSON commit plan whose file groups and messages are reviewable, or action=quick with explicit message+paths for tiny hotfix/copy changes.",
-			"auto_commit enforces a logical atom gate: each commit should have at most 1-2 primary files; test/generated/schema/lockfile companions are allowed only as support for that atom.",
+			"auto_commit enforces a logical atom gate: each commit should have at most 1-2 primary files; test/generated/schema/package metadata companions are allowed only as support for that atom.",
 			"For action=quick, default pushPolicy=push-if-tracking commits and pushes to the safe upstream feature branch when available.",
 			"Treat status=committed_not_pushed as incomplete when the user expected push; do not report done until push is resolved.",
 			"auto_commit rejects conventional commit scope parentheses by default; use messages like 'feat: 한글 설명'.",
