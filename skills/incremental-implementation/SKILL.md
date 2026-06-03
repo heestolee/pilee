@@ -40,7 +40,7 @@ For each slice:
 1. `GIT_OPTIONAL_LOCKS=0 git status --short --branch`와 `git diff --stat`으로 현재 slice 변경만 있는지 확인한다.
 2. `work_context action=commit_plan`으로 currentSlice scope 기반 `auto_commit` JSON plan을 만든다.
 3. plan의 `message`, `paths`, `push` 대상을 읽어 관련 없는 파일이 섞이지 않았는지 확인한다.
-4. 한 commit entry의 primary path가 3개 이상이면 `auto_commit` logical atom gate에 걸리므로, source/test/generated/schema companion 관계가 닫히는 더 작은 commit으로 쪼갠다.
+4. 한 commit entry의 primary path가 3개 이상이면 `auto_commit` diff-aware logical atom gate가 diff 양, layer mix, cluster/surface fan-out을 평가한다. warning allow가 아닌 block이면 source/test/generated/schema companion 관계가 닫히는 더 작은 commit으로 쪼갠다.
 5. 적절하면 `auto_commit action=apply planPath=<planPath>`를 호출한다. plan에 `push`가 있으면 commit+push까지 완료된다.
 6. `auto_commit` 결과가 `push: skipped`이고 사용자가 push 보류를 지시하지 않았다면, 즉시 `git push`까지 끝낸 뒤 보고한다.
 7. 아직 slice가 불완전하거나 검증 전이면 커밋을 미루되, `work_context action=checkpoint`에 이유를 남긴다.

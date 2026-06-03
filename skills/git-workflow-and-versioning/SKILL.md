@@ -103,7 +103,7 @@ You never lose more than one increment of work. If something goes wrong, `git re
 
 1. currentSlice의 claim/scope/evidence를 확인한다.
 2. 가까운 검증이 통과하면 `work_context action=commit_plan`으로 explicit `auto_commit` plan을 생성한다.
-3. plan을 검토할 때 한 commit entry의 primary path가 3개 이상이면 slice 단위로 만족하지 말고 logical atom 단위로 쪼갠다. test/generated/schema/package metadata은 companion으로만 붙인다.
+3. plan을 검토할 때 한 commit entry의 primary path가 3개 이상이면 파일 수만 보지 말고 diff 양, layer mix, cluster/surface fan-out을 확인한다. 작은 동일 cluster 변경은 warning allow가 가능하지만, 큰 diff나 layer-mixed 변경은 logical atom 단위로 쪼갠다. test/generated/schema/package metadata는 companion으로만 붙인다.
 4. plan을 검토한 뒤 `auto_commit action=apply`로 커밋한다.
 5. 커밋을 미루면 이유를 `work_context checkpoint`에 남긴다.
 
