@@ -1,6 +1,6 @@
 {
   "name": "pilee",
-  "version": "0.1.192",
+  "version": "0.1.193",
   "description": "Personal pi coding agent config 🔥",
   "private": true,
   "type": "module",
@@ -52,7 +52,8 @@
     "test:mcp-bridge": "node scripts/run-typescript-test.mjs extensions/mcp-bridge/digest.test.ts",
     "test:tool-group-renderer": "node scripts/run-typescript-test.mjs extensions/tool-group-renderer/mcp-renderer.test.ts",
     "test:to-production": "node scripts/run-typescript-test.mjs extensions/to-production/index.test.ts",
-    "test:update-branch": "node scripts/run-typescript-test.mjs extensions/update-branch/index.test.ts"
+    "test:update-branch": "node scripts/run-typescript-test.mjs extensions/update-branch/index.test.ts",
+    "test:pilee-update": "node scripts/run-typescript-test.mjs extensions/pilee-update/index.test.ts"
   },
   "dependencies": {
     "@mariozechner/pi-ai": "^0.70.0",
