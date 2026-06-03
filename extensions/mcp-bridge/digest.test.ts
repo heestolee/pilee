@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { __buildMcpDigestForTesting, __formatMcpOutputForTesting, __shouldReturnDigestForTesting } from "./index.ts";
+import { __buildMcpDigestForTesting, __buildMcpFullContentForTesting, __formatMcpOutputForTesting, __shouldReturnDigestForTesting } from "./index.ts";
 
 test("small JSON MCP output is digest-first instead of raw inline", () => {
 	const output = JSON.stringify({ ok: true, title: "작은 JSON", token: "secret-token-value" });
@@ -63,13 +63,32 @@ test("MCP output returns one-line card while keeping full digest in details", ()
 	const formatted = __formatMcpOutputForTesting({ server: "slack", tool: "slack_get_thread", output });
 	assert.equal(formatted.details?.mcpDigest, true);
 	assert.equal(formatted.details?.mcpCollapsed, true);
-	assert.match(formatted.text, /^💬 Slack thread · 1개 메시지 · 참여자 1명 · \d{2}:\d{2} · Ctrl\+O 펼쳐보기$/);
-	assert.doesNotMatch(formatted.text, /responseId|스크롤만 줄이면 됩니다|원문 artifact|raw json|full text/);
+	assert.match(formatted.text, /^💬 Slack thread · 1개 메시지 · 참여자 1명 · \d{2}:\d{2} · Ctrl\+O 펼쳐보기\nresponseId: mcp_/);
+	assert.match(formatted.text, /get_mcp_content\(responseId="mcp_[^"]+"\)/);
+	assert.doesNotMatch(formatted.text, /스크롤만 줄이면 됩니다|원문 artifact|raw json|full text/);
 	assert.match(String(formatted.details?.fullDigest), /responseId: mcp_/);
 	assert.match(String(formatted.details?.fullDigest), /스크롤만 줄이면 됩니다/);
 	assert.equal(Object.hasOwn(formatted.details ?? {}, "artifactPath"), false);
 	assert.equal(Object.hasOwn(formatted.details ?? {}, "rawJsonPath"), false);
 	assert.equal(Object.hasOwn(formatted.details ?? {}, "fullTextPath"), false);
+});
+
+test("get_mcp_content full content includes raw MCP result for lazy retrieval", () => {
+	const full = __buildMcpFullContentForTesting({
+		server: "creatrip-internal",
+		tool: "slack_getThreadReplies",
+		output: "💬 Slack thread · 4개 메시지 · Ctrl+O 펼쳐보기",
+		rawData: {
+			result: {
+				content: [{ type: "text", text: "💬 Slack thread · 4개 메시지 · Ctrl+O 펼쳐보기" }],
+				structuredContent: { messages: [{ username: "changhee", text: "원문 메시지" }] },
+			},
+		},
+	});
+	assert.match(full, /## MCP content text/);
+	assert.match(full, /## Raw MCP result/);
+	assert.match(full, /structuredContent/);
+	assert.match(full, /원문 메시지/);
 });
 
 test("Notion markdown image links are shortened without signed URLs", () => {
@@ -83,7 +102,8 @@ test("Notion markdown image links are shortened without signed URLs", () => {
 	assert.equal(formatted.details?.mcpDigest, true);
 	assert.equal(formatted.details?.mcpCollapsed, true);
 	assert.equal(formatted.details?.mcpSanitized, true);
-	assert.equal(formatted.text, "📝 Notion page · 취소/환불 정책 통합 변경 · 이미지 1개 · Ctrl+O 펼쳐보기");
+	assert.match(formatted.text, /^📝 Notion page · 취소\/환불 정책 통합 변경 · 이미지 1개 · Ctrl\+O 펼쳐보기\nresponseId: mcp_/);
+	assert.match(formatted.text, /get_mcp_content\(responseId="mcp_[^"]+"\)/);
 	assert.match(String(formatted.details?.fullDigest), /- 이미지: 08B5E9F1-48CE-486A-AE1E-A76F48A0915D\.png · Notion 원문에서 확인/);
 	assert.match(String(formatted.details?.fullDigest), /### 확인 완료 사항/);
 	assert.doesNotMatch(formatted.text, /prod-files-secure|X-Amz-|AWS4-HMAC|secret|본문입니다/);

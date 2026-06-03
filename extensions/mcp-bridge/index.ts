@@ -333,6 +333,15 @@ function tryParseJson(value: string): unknown | undefined {
 	return undefined;
 }
 
+function stringifyMcpRawData(rawData: unknown): string | undefined {
+	if (rawData === undefined) return undefined;
+	try {
+		return JSON.stringify(rawData, null, 2);
+	} catch {
+		return String(rawData);
+	}
+}
+
 function previewJsonValue(value: unknown): string {
 	if (value === null) return "null";
 	if (typeof value === "string") return JSON.stringify(truncateCompact(value, 120));
@@ -888,6 +897,18 @@ function buildMcpDigest(args: { responseId: string; server: string; tool: string
 	return lines.join("\n").trim();
 }
 
+function buildMcpModelLocator(args: { card: string; responseId: string; server: string; tool: string; action: string; output: string }): string {
+	return [
+		args.card,
+		`responseId: ${args.responseId}`,
+		`server: ${args.server}`,
+		`tool: ${args.tool}`,
+		`action: ${args.action}`,
+		`원문 크기: ${args.output.length.toLocaleString()} chars / ${args.output.split(/\r?\n/).length.toLocaleString()} lines`,
+		`원문/전체 digest가 필요하면 get_mcp_content(responseId="${args.responseId}")를 호출하세요.`,
+	].join("\n");
+}
+
 function formatMcpOutput(args: {
 	server: string;
 	tool: string;
@@ -914,7 +935,7 @@ function formatMcpOutput(args: {
 		rawData: args.rawData,
 	});
 	return {
-		text: card,
+		text: buildMcpModelLocator({ card, responseId, server: args.server, tool: args.tool, action: args.action, output: args.output }),
 		details: {
 			mcpDigest: true,
 			mcpCollapsed: true,
@@ -939,6 +960,37 @@ export function __formatMcpOutputForTesting(args: { server: string; tool: string
 
 export function __shouldReturnDigestForTesting(args: { action?: string; output: string }): boolean {
 	return shouldReturnDigest({ action: args.action ?? "call", output: args.output });
+}
+
+function buildMcpFullContent(stored: StoredMcpResult): string {
+	const lines = [
+		`MCP full content`,
+		`responseId: ${stored.id}`,
+		`server: ${stored.server}`,
+		`tool: ${stored.tool}`,
+		`action: ${stored.action}`,
+		"",
+		"## MCP content text",
+		stored.output,
+	];
+	const rawDataText = stringifyMcpRawData(stored.rawData);
+	if (rawDataText && rawDataText !== stored.output) {
+		lines.push("", "## Raw MCP result", rawDataText);
+	}
+	return lines.filter(Boolean).join("\n");
+}
+
+export function __buildMcpFullContentForTesting(args: { id?: string; server?: string; tool?: string; action?: string; output: string; rawData?: unknown }): string {
+	return buildMcpFullContent({
+		id: args.id ?? "mcp_test",
+		server: args.server ?? "test-server",
+		tool: args.tool ?? "test-tool",
+		action: args.action ?? "call",
+		args: undefined,
+		timestamp: 0,
+		output: args.output,
+		rawData: args.rawData,
+	});
 }
 
 function statusText(): string {
@@ -1158,16 +1210,7 @@ export default function (pi: ExtensionAPI) {
 		async execute(_id, params) {
 			const stored = storedMcpResults.get(params.responseId);
 			if (!stored) return text(`No stored MCP result for responseId "${params.responseId}". MCP 원문은 현재 세션 메모리에만 보존됩니다.`);
-			const lines = [
-				`MCP full content`,
-				`responseId: ${stored.id}`,
-				`server: ${stored.server}`,
-				`tool: ${stored.tool}`,
-				`action: ${stored.action}`,
-				"",
-				stored.output,
-			].filter(Boolean);
-			return text(lines.join("\n"), {
+			return text(buildMcpFullContent(stored), {
 				responseId: stored.id,
 				server: stored.server,
 				tool: stored.tool,
