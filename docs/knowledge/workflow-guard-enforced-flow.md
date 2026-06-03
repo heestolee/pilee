@@ -19,7 +19,7 @@ applies_to:
   - extensions/frame-studio
 source:
   - user-direction:2026-05-12-conductor-like-guards
-reviewed_at: 2026-06-02
+reviewed_at: 2026-06-03
 reviewed_commit: 61ccbc9d3fb4d6eb5cb7f0558dd056eb385b0410
 related:
   - workflow-weight-proportionality
@@ -51,7 +51,7 @@ title_en: Repeated workflow failures become enforced guard flows
 | UI choice continuity | hard result annotation | `tui_ask`/TFT Studio 선택 결과에 `nextActionRequired`를 붙여 선택 요약으로 멈추지 않게 함 |
 | 큰 commit 분리 | hard commit guard | staged diff가 크거나 여러 area를 섞으면 direct `git commit`을 차단하고 logical commit split을 요구 |
 | 상태 노트 오인 방지 | hard status-note path | dependency bootstrap READY, worktree cwd binding, workflow guard 같은 환경/상태 메시지는 사용자 task 지시가 아니므로 old work 재개와 tool call을 차단 |
-| 검증 명령 fan-out 제한 | hard prompt + selective bash block | `pnpm <script> -- <path>` wrapper가 실제로 path를 좁힌다고 가정하지 않고, 위험한 targeted-wrapper 명령과 package resolve 실패 뒤 wildcard workspace build를 차단 |
+| 검증 명령 fan-out 체크 | soft prompt + UI/result nudge | `pnpm <script> -- <path>` wrapper가 실제로 path를 좁힌다고 가정하지 않도록 예상 fan-out 체크리스트와 direct executable 추천을 주입한다. Wrapper 불확실성만으로는 차단하지 않고, 반복 dependency 실패 뒤 broad bootstrap/build 같은 고위험 승격만 scope gate로 막는다. |
 
 ## Audit Rule
 
@@ -86,10 +86,11 @@ Light PR/ship에서는 현재 diff, 최근 커밋, 사용자가 방금 확인한
 검증은 필요하지만, 검증 명령 자체가 작업 범위를 과하게 넓히면 workflow 실패가 됩니다. pilee는 validation을 “실행해야 할 의무”와 “실제 fan-out을 예측해야 할 의무”로 나눕니다.
 
 1. lint/test/type-check/build/bootstrap을 실행하기 전에는 해당 명령이 실제로 몇 개 파일·패키지·앱을 건드리는지 한 문장으로 예측합니다.
-2. `pnpm <script> -- <path>`는 targeted validation으로 간주하지 않습니다. wrapper script가 고정 glob을 갖거나 인자를 무시할 수 있으므로, package.json을 확인했거나 직접 실행 파일을 호출할 때만 targeted라고 봅니다.
+2. `pnpm <script> -- <path>`는 자동으로 targeted validation으로 믿지 않습니다. wrapper script가 고정 glob을 갖거나 인자를 무시할 수 있으므로, package.json을 확인했거나 직접 실행 파일을 호출할 때만 확실한 targeted evidence로 봅니다.
 3. 파일 단위가 필요하면 wrapper보다 `pnpm exec eslint <file>`, `pnpm vitest run <file>`, 앱 cwd의 direct executable처럼 fan-out이 명시적인 명령을 우선합니다.
-4. package/module resolve 실패는 dependency readiness 문제일 수 있지만, 곧바로 wildcard workspace build로 승격하지 않습니다. 첫 실패 후에는 해당 package 수준의 좁은 recovery만 허용하고, 두 번째 package/module resolve 실패부터는 broad bootstrap/build 전에 BLOCKED 보고 또는 사용자 확인이 필요합니다.
-5. `turbo build --filter='@scope*'` 같은 wildcard workspace build는 dependency recovery 목적이면 broad action입니다. 명시적으로 필요한 경우에는 이유를 밝히고 guard bypass marker를 남겨야 합니다.
+4. Wrapper 불확실성은 hard block 사유가 아니라 soft nudge입니다. 실행 전에는 `예상 fan-out: ...`을 적고, 실행 후에는 결과 주석으로 “wrapper가 정말 좁혔는지 확인 필요”를 남겨 다음 판단이 흐려지지 않게 합니다.
+5. package/module resolve 실패는 dependency readiness 문제일 수 있지만, 곧바로 wildcard workspace build로 승격하지 않습니다. 첫 실패 후에는 해당 package 수준의 좁은 recovery만 허용하고, 두 번째 package/module resolve 실패부터는 broad bootstrap/build 전에 BLOCKED 보고 또는 사용자 확인이 필요합니다.
+6. `turbo build --filter='@scope*'` 같은 wildcard workspace build는 dependency recovery 목적이면 broad action입니다. 명시적으로 필요한 경우에는 이유를 밝히고 guard bypass marker를 남겨야 합니다.
 
 이 규칙은 validation을 덜 하라는 뜻이 아닙니다. 현재 diff를 닫는 가장 가까운 증거를 먼저 만들고, 더 넓은 검증은 실제 risk가 관찰되거나 사용자가 요청할 때 승격합니다.
 

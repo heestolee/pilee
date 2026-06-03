@@ -193,8 +193,8 @@ function buildSystemPrompt(state: GuardState): string {
 
 	if (state.intent !== "status_note") {
 		lines.push(
-			"- Validation command fan-out discipline: before running lint/test/type-check/build/bootstrap, predict the actual fan-out in files/packages. Prefer direct executables with explicit paths over package-script wrappers when narrowing matters.",
-			"- Do not assume `pnpm <script> -- <path>` narrows the script. If a wrapper script might contain fixed globs or ignore args, inspect package.json or use a direct command such as `pnpm exec eslint <file>` / `pnpm vitest run <file>`.",
+			"- Validation command fan-out discipline is a soft nudge/checklist, not a hard block by itself: before running lint/test/type-check/build/bootstrap, state the expected file/package/app fan-out in one line and prefer direct executables with explicit paths when narrowing matters.",
+			"- Do not assume `pnpm <script> -- <path>` narrows the script. If a wrapper script might contain fixed globs or ignore args, inspect package.json or use a direct command such as `pnpm exec eslint <file>` / `pnpm vitest run <file>`. If you still use the wrapper, mention the uncertainty and expected fan-out.",
 			"- Whole app/repo/workspace validation or wildcard package builds require a one-line reason tied to the current diff. Dependency/bootstrap recovery gets one narrow package-level attempt; after a second missing package/module signal, stop and report BLOCKED or ask before broad workspace build.",
 			"- Search/history fan-out discipline: before the first investigative search/history command (`git log -S`, `git grep`, `rg`, `find`, `gh search`, `vcc_recall`), estimate ref/path/history/output fan-out. If the user gave anchors such as a symbol, file, URL, PR, commit, or branch, start with an anchored narrow lookup; broad repo/all-history/all-branch search is a soft fallback only after anchored lookup misses, and should be preceded by a one-line reason.",
 		);
@@ -338,14 +338,23 @@ function isBroadWildcardWorkspaceBuildCommand(command: string): boolean {
 		&& /--filter(?:=|\s+)@?[^\s]*\*/.test(compact);
 }
 
-function validationWrapperBlockReason(command: string): string {
+function validationWrapperNudgeNote(command: string): string {
 	return [
-		"workflow_guard blocked validation wrapper fan-out risk.",
-		"The command looks targeted, but package-script wrappers can ignore `-- <path>` or contain fixed broad globs.",
-		`Command: ${command}`,
-		"Inspect package.json first or use the direct executable with explicit paths, e.g. `pnpm exec eslint <file>` or `pnpm vitest run <file>`.",
-		"If you intentionally want the wrapper's full fan-out, retry with WORKFLOW_GUARD_ALLOW_WRAPPER_FANOUT=1 and state the reason.",
+		"",
+		"[workflow_guard] validationWrapperFanoutNudge: true",
+		"- 검증 wrapper 명령이 path 인자와 함께 실행됐습니다. 이것은 hard block이 아니라 soft nudge입니다.",
+		"- package.json script가 `-- <path>`를 실제로 전달하는지 확인했거나, 직접 executable을 쓰는 것이 더 안전합니다.",
+		`- Command: ${command}`,
+		"- 다음 검증 전에는 `예상 fan-out: <파일/패키지/앱 범위>`를 한 줄로 먼저 적고, 필요하면 `pnpm exec eslint <file>` / `pnpm vitest run <file>`처럼 fan-out이 명시적인 명령을 우선하세요.",
 	].join("\n");
+}
+
+function notifyValidationWrapperNudge(ctx: any): void {
+	try {
+		ctx?.ui?.notify?.("검증 wrapper fan-out 확인: hard block은 아니지만 package.json 인자 전달 근거 또는 direct executable을 우선하세요.", "warning");
+	} catch {
+		// UI notification is best-effort; the tool result annotation still carries the nudge.
+	}
 }
 
 function broadBootstrapBlockReason(command: string, failures: { count: number; packages: string[] } | undefined): string {
@@ -784,7 +793,7 @@ export default function workflowGuard(pi: ExtensionAPI) {
 		if (event.toolName === "bash") {
 			const command = String(event.input?.command ?? "");
 			if (isTargetedValidationWrapperCommand(command) && !validationWrapperBypass(command)) {
-				return { block: true, reason: validationWrapperBlockReason(command) };
+				notifyValidationWrapperNudge(ctx);
 			}
 			if (isBroadWildcardWorkspaceBuildCommand(command) && !broadBootstrapBypass(command)) {
 				const failures = packageResolveFailuresBySession.get(sessionKey(ctx));
@@ -842,10 +851,14 @@ export default function workflowGuard(pi: ExtensionAPI) {
 			}
 		}
 
+		const bashCommand = ctx && state && event.toolName === "bash" ? toolResultCommand(event) : "";
+		const validationWrapperNudge = bashCommand && isTargetedValidationWrapperCommand(bashCommand) && !validationWrapperBypass(bashCommand)
+			? validationWrapperNudgeNote(bashCommand)
+			: undefined;
 		let packageResolveNote: string | undefined;
 		let validationLoopNote: string | undefined;
 		if (ctx && state && event.toolName === "bash" && !toolResultSucceeded(event)) {
-			const command = toolResultCommand(event);
+			const command = bashCommand;
 			const output = (event.content ?? []).map((item: any) => String(item?.text ?? "")).join("\n");
 			const packages = packageResolveFailurePackages(output);
 			if (packages.length) {
@@ -866,10 +879,11 @@ export default function workflowGuard(pi: ExtensionAPI) {
 		const continuityNote = actionContinuityNote(event.toolName, event.details);
 		const commitStopLineNote = commitCompleteStopLineNote(state, event);
 		const paceNote = state ? fastPaceToolResultNote(state, event) : undefined;
-		const note = [continuityNote, packageResolveNote, validationLoopNote, commitStopLineNote, paceNote].filter(Boolean).join("\n");
+		const note = [continuityNote, validationWrapperNudge, packageResolveNote, validationLoopNote, commitStopLineNote, paceNote].filter(Boolean).join("\n");
 		if (!note) return undefined;
 		return appendWorkflowGuardResult(event, note, {
 			nextActionRequired: Boolean(continuityNote),
+			validationWrapperFanoutNudge: Boolean(validationWrapperNudge),
 			validationBootstrapScopeGate: Boolean(packageResolveNote),
 			validationLoopGate: Boolean(validationLoopNote),
 			commitCompleteStopLine: Boolean(commitStopLineNote),

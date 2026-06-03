@@ -162,6 +162,7 @@ AskUserQuestion으로 승격하는 경우:
 규칙:
 - 검증 명령은 claim과 연결한다. “명령이 성공했다”가 아니라 “이 명령이 무엇을 닫았는지”를 말한다.
 - wrapper script가 path 인자를 무시할 수 있으면 package.json을 확인하거나 직접 executable을 호출한다.
+- wrapper 불확실성만으로 검증을 hard block하지 않는다. 대신 실행 전 `예상 fan-out: ...` 체크리스트를 적고, 실행 후 결과가 실제로 그 범위를 닫았는지 확인한다.
 - whole app/repo/workspace validation은 current diff와 연결되는 이유를 한 줄로 남긴다.
 - 같은 validation family가 두 번 실패하면 조용히 재시도하지 말고 원인, 시도한 조치, 다음 선택지를 보고한다.
 

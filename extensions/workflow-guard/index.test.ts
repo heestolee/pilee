@@ -312,27 +312,36 @@ test("auto_commit committed_not_pushed result requires immediate push follow-up"
 	assert.match(result.content.at(-1).text, /push is not complete: failed/);
 });
 
-test("validation wrapper fan-out commands are blocked before broad suite execution", async () => {
+test("validation wrapper fan-out commands emit soft nudge instead of blocking", async () => {
 	const { hooks, ctx } = createHarness();
 	const start = await hooks.before_agent_start({ prompt: "스팟 리뷰 답글 기능 남은 작업 구현해줘", systemPrompt: "base" }, ctx);
 
-	assert.match(start.systemPrompt, /Validation command fan-out discipline/);
+	assert.match(start.systemPrompt, /Validation command fan-out discipline is a soft nudge\/checklist/);
 	assert.match(start.systemPrompt, /Do not assume `pnpm <script> -- <path>` narrows/);
 
-	const webTestBlock = await hooks.tool_call({
+	const wrapperCommand = "cd frontend && pnpm -F web test -- domain/travel/subdomain/spot/SpotReviewAdminReply.test.tsx";
+	const webTestCall = await hooks.tool_call({
 		toolName: "bash",
-		input: { command: "cd frontend && pnpm -F web test -- domain/travel/subdomain/spot/SpotReviewAdminReply.test.tsx" },
+		input: { command: wrapperCommand },
 	}, ctx);
-	assert.equal(webTestBlock?.block, true);
-	assert.match(webTestBlock.reason, /validation wrapper fan-out risk/);
-	assert.match(webTestBlock.reason, /pnpm vitest run/);
+	assert.equal(webTestCall, undefined);
 
-	const migrationLintBlock = await hooks.tool_call({
+	const webTestResult = await hooks.tool_result({
+		toolName: "bash",
+		input: { command: wrapperCommand },
+		content: [{ type: "text", text: "1 test passed" }],
+		details: { code: 0 },
+	}, ctx);
+	assert.equal(webTestResult.details.workflowGuard.validationWrapperFanoutNudge, true);
+	assert.match(webTestResult.content.at(-1).text, /validationWrapperFanoutNudge/);
+	assert.match(webTestResult.content.at(-1).text, /hard block이 아니라 soft nudge/);
+	assert.match(webTestResult.content.at(-1).text, /pnpm vitest run/);
+
+	const migrationLintCall = await hooks.tool_call({
 		toolName: "bash",
 		input: { command: "cd backend && pnpm lint:migration-algorithm -- apps/trip/migrations/20260527042440-add-display-author-type.js" },
 	}, ctx);
-	assert.equal(migrationLintBlock?.block, true);
-	assert.match(migrationLintBlock.reason, /package-script wrappers can ignore/);
+	assert.equal(migrationLintCall, undefined);
 
 	const flagOnlyWrapper = await hooks.tool_call({
 		toolName: "bash",
@@ -340,11 +349,13 @@ test("validation wrapper fan-out commands are blocked before broad suite executi
 	}, ctx);
 	assert.equal(flagOnlyWrapper, undefined);
 
-	const directVitest = await hooks.tool_call({
+	const directVitest = await hooks.tool_result({
 		toolName: "bash",
 		input: { command: "cd frontend/apps/web && pnpm vitest run domain/travel/subdomain/spot/SpotReviewAdminReply.test.tsx" },
+		content: [{ type: "text", text: "1 test passed" }],
+		details: { code: 0 },
 	}, ctx);
-	assert.equal(directVitest, undefined);
+	assert.equal(directVitest.details.workflowGuard.validationWrapperFanoutNudge, false);
 });
 
 test("package resolve failures gate broad wildcard workspace bootstrap", async () => {
