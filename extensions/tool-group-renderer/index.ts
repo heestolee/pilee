@@ -566,8 +566,9 @@ function conciseTimeRange(value: string | undefined): string | undefined {
 
 function mcpRenderableText(result?: ToolResultLike): string {
 	const details = toolResultDetails(result);
+	const fullContent = details?.mcpFullContent === true && typeof details.fullContent === "string" ? details.fullContent.trim() : undefined;
 	const fullDigest = typeof details?.fullDigest === "string" ? details.fullDigest.trim() : undefined;
-	return fullDigest || extractRawTextContent(result)?.trim() || "";
+	return fullContent || fullDigest || extractRawTextContent(result)?.trim() || "";
 }
 
 function isMcpFullContentResult(result?: ToolResultLike): boolean {
@@ -576,8 +577,8 @@ function isMcpFullContentResult(result?: ToolResultLike): boolean {
 }
 
 function formatMcpFullContentCollapsedLine(result: ToolResultLike | undefined, args: unknown, expanded: boolean): string {
-	const text = extractRawTextContent(result)?.trim() || "";
 	const details = toolResultDetails(result);
+	const text = typeof details?.fullContent === "string" ? details.fullContent.trim() : extractRawTextContent(result)?.trim() || "";
 	const server = detailString(details, "server") ?? extractLineValue(text, "server") ?? (isRecord(args) ? detailString(args, "server") : undefined) ?? "mcp";
 	const tool = detailString(details, "tool") ?? extractLineValue(text, "tool") ?? (isRecord(args) ? detailString(args, "tool") : undefined) ?? "tool";
 	const responseId = detailString(details, "responseId") ?? extractLineValue(text, "responseId");

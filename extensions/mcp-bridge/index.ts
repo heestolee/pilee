@@ -46,6 +46,15 @@ interface McpFormattedResult {
 	details?: Record<string, unknown>;
 }
 
+interface PendingMcpModelInjection {
+	responseId: string;
+	server: string;
+	tool: string;
+	fullContent: string;
+}
+
+const pendingMcpModelInjections: PendingMcpModelInjection[] = [];
+
 // --- Failure Tracker (in-memory, resets on session start) ---
 
 interface FailureRecord {
@@ -1015,6 +1024,21 @@ export function __formatMcpFullContentCardForTesting(args: { text: string; detai
 	return formatMcpFullContentCard(args);
 }
 
+function buildMcpModelInjection(injection: PendingMcpModelInjection): string {
+	return [
+		`[MCP full content for model-only context]`,
+		`responseId: ${injection.responseId}`,
+		`server: ${injection.server}`,
+		`tool: ${injection.tool}`,
+		"",
+		injection.fullContent,
+	].join("\n");
+}
+
+export function __buildMcpModelInjectionForTesting(injection: PendingMcpModelInjection): string {
+	return buildMcpModelInjection(injection);
+}
+
 function statusText(): string {
 	const configured = Object.keys(serverConfigs);
 	if (configured.length === 0) return "No MCP servers configured.";
@@ -1232,13 +1256,17 @@ export default function (pi: ExtensionAPI) {
 		async execute(_id, params) {
 			const stored = storedMcpResults.get(params.responseId);
 			if (!stored) return text(`No stored MCP result for responseId "${params.responseId}". MCP 원문은 현재 세션 메모리에만 보존됩니다.`);
-			return text(buildMcpFullContent(stored), {
+			const fullContent = buildMcpFullContent(stored);
+			const details = {
 				mcpFullContent: true,
 				responseId: stored.id,
 				server: stored.server,
 				tool: stored.tool,
 				action: stored.action,
-			});
+				fullContent,
+			};
+			pendingMcpModelInjections.push({ responseId: stored.id, server: stored.server, tool: stored.tool, fullContent });
+			return text(`${formatMcpFullContentCard({ text: fullContent, details })}\n모델 context에는 MCP 원문을 별도로 주입했습니다.`, details);
 		},
 		renderResult(result, { expanded, isPartial }, theme, context) {
 			const textComponent = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
@@ -1252,14 +1280,30 @@ export default function (pi: ExtensionAPI) {
 				textComponent.setText(resultText);
 				return textComponent;
 			}
-			const card = formatMcpFullContentCard({ text: resultText, details, expanded });
+			const fullContent = typeof details.fullContent === "string" ? details.fullContent : resultText;
+			const card = formatMcpFullContentCard({ text: fullContent, details, expanded });
 			if (!expanded) {
 				textComponent.setText(theme.fg("accent", card));
 				return textComponent;
 			}
-			textComponent.setText(`${theme.fg("toolTitle", theme.bold(card))}\n${resultText}`);
+			textComponent.setText(`${theme.fg("toolTitle", theme.bold(card))}\n${fullContent}`);
 			return textComponent;
 		},
+	});
+
+	pi.on("context", async (event) => {
+		if (pendingMcpModelInjections.length === 0) return;
+		const injections = pendingMcpModelInjections.splice(0, pendingMcpModelInjections.length);
+		return {
+			messages: [
+				...event.messages,
+				...injections.map((injection) => ({
+					role: "user" as const,
+					content: [{ type: "text" as const, text: buildMcpModelInjection(injection) }],
+					timestamp: Date.now(),
+				})),
+			],
+		};
 	});
 
 	// Auto-connect on session start (skip unhealthy servers)

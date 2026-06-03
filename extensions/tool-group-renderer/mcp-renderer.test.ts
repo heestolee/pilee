@@ -42,7 +42,7 @@ test("MCP Notion result collapses to page title and image count", () => {
 	assert.doesNotMatch(line, /X-Amz|prod-files-secure|본문입니다/);
 });
 
-test("get_mcp_content collapses in UI while preserving model-facing full content", () => {
+test("get_mcp_content collapses in UI while preserving full content in details for expansion", () => {
 	const fullContent = [
 		"MCP full content",
 		"responseId: mcp_test",
@@ -57,9 +57,16 @@ test("get_mcp_content collapses in UI while preserving model-facing full content
 		"## Raw MCP result",
 		'{ "structuredContent": { "messages": [{ "text": "원문 메시지" }] } }',
 	].join("\n");
-	const result = toolResult(fullContent, { mcpFullContent: true, responseId: "mcp_test", server: "creatrip-internal", tool: "slack_getThreadReplies" });
+	const result = toolResult("📦 MCP 원문 · creatrip-internal/slack_getThreadReplies · 4개 메시지 · mcp_test · Ctrl+O 펼쳐보기\n모델 context에는 MCP 원문을 별도로 주입했습니다.", {
+		mcpFullContent: true,
+		responseId: "mcp_test",
+		server: "creatrip-internal",
+		tool: "slack_getThreadReplies",
+		fullContent,
+	});
 
-	assert.match(result.content[0].text ?? "", /원문 메시지/, "model-facing content must keep full MCP text");
+	assert.doesNotMatch(result.content[0].text ?? "", /원문 메시지|structuredContent|Raw MCP result/, "user-visible tool content must stay collapsed");
+	assert.match(String(result.details?.fullContent), /원문 메시지/, "full MCP text remains available for UI expansion");
 	const line = __test__.formatMcpCollapsedLine(result);
 	assert.equal(line, "📦 MCP 원문 · creatrip-internal/slack_getThreadReplies · 4개 메시지 · mcp_test · Ctrl+O 펼쳐보기");
 	assert.doesNotMatch(line, /원문 메시지|structuredContent|Raw MCP result/);
