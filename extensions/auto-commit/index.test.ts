@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import test from "node:test";
-import autoCommit, { extractGitIndexLockPath, formatResult, shouldRemoveStaleIndexLockAfterLsof } from "./index.ts";
+import autoCommit, { assertLogicalAtomGate, buildLogicalAtomGateReport, extractGitIndexLockPath, formatResult, shouldRemoveStaleIndexLockAfterLsof } from "./index.ts";
 
 test("extractGitIndexLockPath reads git index.lock errors", () => {
 	const stderr = "fatal: Unable to create '/repo/.git/worktrees/foo/index.lock': File exists.";
@@ -19,6 +19,42 @@ test("shouldRemoveStaleIndexLockAfterLsof removes only when owner check is clean
 	assert.equal(shouldRemoveStaleIndexLockAfterLsof({ code: 1, stdout: "", stderr: "" }), true);
 	assert.equal(shouldRemoveStaleIndexLockAfterLsof({ code: 0, stdout: "COMMAND  PID USER\nGit 123 me", stderr: "" }), false);
 	assert.equal(shouldRemoveStaleIndexLockAfterLsof({ code: 127, stdout: "", stderr: "lsof: command not found" }), false);
+});
+
+test("logical atom gate rejects commits with three primary paths", () => {
+	const report = buildLogicalAtomGateReport({
+		commits: [{
+			message: "feat: 온라인 쿠폰 웹 카드 태그 추가",
+			paths: [
+				"frontend/apps/web/domain/travel/subdomain/spot/SpotThumbnailCard/parts/SpotThumbnailTags.tsx",
+				"frontend/apps/web/domain/travel/subdomain/spot/converter/spotThumbnailInfoConverter.ts",
+				"frontend/apps/web/domain/shared/map/cards/MapSpotCard.tsx",
+				"frontend/apps/web/domain/travel/subdomain/spot/SpotThumbnailCard/parts/SpotThumbnailTags.test.tsx",
+			],
+		}],
+	});
+
+	assert.match(report ?? "", /logical atom gate failed/);
+	assert.match(report ?? "", /has 3 primary paths/);
+	assert.match(report ?? "", /SpotThumbnailTags\.tsx/);
+	assert.match(report ?? "", /SpotThumbnailTags\.test\.tsx \(test\)/);
+	assert.throws(() => assertLogicalAtomGate({ commits: [{ message: "feat: too broad", paths: ["a.ts", "b.ts", "c.ts"] }] }), /logical atom gate failed/);
+});
+
+test("logical atom gate allows primary path with companion files", () => {
+	assert.doesNotThrow(() => assertLogicalAtomGate({
+		commits: [{
+			message: "feat: 온라인 쿠폰 태그 컴포넌트 추가",
+			paths: [
+				"frontend/apps/web/domain/travel/subdomain/spot/SpotThumbnailCard/parts/SpotThumbnailTags.tsx",
+				"frontend/apps/web/domain/travel/subdomain/spot/SpotThumbnailCard/parts/SpotThumbnailTags.test.tsx",
+				"frontend/apps/web/domain/travel/subdomain/spot/SpotThumbnailCard/parts/__generated__/SpotThumbnailTags.generated.ts",
+				"frontend/apps/admin/src/graphql/generated.tsx",
+				"frontend/schema.graphql",
+				"package.json",
+			],
+		}],
+	}));
 });
 
 test("formatResult makes unpushed commits explicit", () => {
@@ -100,6 +136,23 @@ test("action=status reports commit readiness and ship caveats", async () => {
 	assert.match(text, /split recommendation: RECOMMENDED/);
 	assert.match(text, /migration\/DB schema execution may still be pending/);
 	assert.match(text, /pending UI capture\/verify-report is a ship evidence caveat/);
+});
+
+test("action=quick rejects broad logical atom plans before git runs", async () => {
+	const tools: Record<string, any> = {};
+	autoCommit({
+		exec: async () => {
+			throw new Error("git should not run when logical atom gate fails");
+		},
+		registerCommand: () => undefined,
+		registerTool: (tool: any) => { tools[tool.name] = tool; },
+	} as any);
+
+	await assert.rejects(() => tools.auto_commit.execute("call-quick-wide", {
+		action: "quick",
+		message: "feat: too broad",
+		paths: ["a.ts", "b.ts", "c.ts"],
+	}, new AbortController().signal, () => undefined, { cwd: "/tmp" }), /logical atom gate failed/);
 });
 
 test("action=quick commits explicit paths and pushes to safe upstream", async () => {

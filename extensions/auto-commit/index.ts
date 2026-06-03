@@ -191,6 +191,82 @@ function pathCoveredByPlan(path: string, plannedPaths: string[]): boolean {
 	});
 }
 
+const LOGICAL_ATOM_PRIMARY_PATH_LIMIT = 2;
+
+type LogicalAtomPathRole = "primary" | "companion";
+
+interface LogicalAtomPathClassification {
+	path: string;
+	role: LogicalAtomPathRole;
+	reason?: string;
+}
+
+function companionReason(path: string): string | undefined {
+	const normalized = normalizeGitPath(path);
+	const fileName = normalized.split("/").at(-1) ?? normalized;
+	if (/(^|\/)(__generated__|generated|gen)(\/|$)/u.test(normalized)) return "generated";
+	if (/^(generated|schema|types)\.[cm]?[tj]sx?$/u.test(fileName)) return "generated";
+	if (/\.generated\.[cm]?[tj]sx?$/u.test(fileName)) return "generated";
+	if (/\.d\.ts$/u.test(fileName)) return "generated";
+	if (/^(schema\.(gql|graphql)|graphql-schema\.(json|graphql))$/u.test(fileName)) return "schema";
+	if (/^(package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock)$/u.test(fileName)) return "package-metadata";
+	if (/\.(test|spec)\.[cm]?[tj]sx?$/u.test(fileName)) return "test";
+	if (/(^|\/)(__tests__|tests)(\/|$)/u.test(normalized)) return "test";
+	return undefined;
+}
+
+function classifyLogicalAtomPaths(paths: string[]): LogicalAtomPathClassification[] {
+	return paths.map((path) => {
+		const normalized = normalizeGitPath(path);
+		const reason = companionReason(normalized);
+		return reason ? { path: normalized, role: "companion", reason } : { path: normalized, role: "primary" };
+	});
+}
+
+function formatPathList(paths: string[], prefix = "  - "): string[] {
+	return paths.length > 0 ? paths.map((path) => `${prefix}${path}`) : [`${prefix}(none)`];
+}
+
+function formatSuggestedLogicalAtomSplits(primaryPaths: string[], companionPaths: LogicalAtomPathClassification[]): string[] {
+	const rows = primaryPaths.map((path, index) => `  ${index + 1}. ${path}`);
+	if (companionPaths.length > 0) {
+		rows.push("  companion paths는 source/test/generated/schema 보조 관계가 닫히는 원자에만 붙이세요:");
+		for (const companion of companionPaths) rows.push(`    - ${companion.path}${companion.reason ? ` (${companion.reason})` : ""}`);
+	}
+	return rows;
+}
+
+export function buildLogicalAtomGateReport(plan: { commits: Array<{ message: string; paths: string[] }> }): string | undefined {
+	const violations: string[] = [];
+	for (const [index, entry] of plan.commits.entries()) {
+		const classifications = classifyLogicalAtomPaths(entry.paths);
+		const primaryPaths = classifications.filter((item) => item.role === "primary").map((item) => item.path);
+		if (primaryPaths.length <= LOGICAL_ATOM_PRIMARY_PATH_LIMIT) continue;
+		const companionPaths = classifications.filter((item) => item.role === "companion");
+		violations.push([
+			`commits[${index}] "${entry.message}" has ${primaryPaths.length} primary paths (limit ${LOGICAL_ATOM_PRIMARY_PATH_LIMIT}).`,
+			"primary paths:",
+			...formatPathList(primaryPaths),
+			"companion paths:",
+			...formatPathList(companionPaths.map((item) => `${item.path}${item.reason ? ` (${item.reason})` : ""}`)),
+			"suggested logical atom split:",
+			...formatSuggestedLogicalAtomSplits(primaryPaths, companionPaths),
+		].join("\n"));
+	}
+	if (violations.length === 0) return undefined;
+	return [
+		"auto-commit logical atom gate failed",
+		"한 커밋은 가능하면 1~2개의 primary file만 담아야 합니다. test/generated/schema/lockfile은 companion으로 허용되지만, 서로 다른 primary 변화 3개 이상은 reviewable logical atom으로 쪼개야 합니다.",
+		"",
+		...violations,
+	].join("\n");
+}
+
+export function assertLogicalAtomGate(plan: { commits: Array<{ message: string; paths: string[] }> }): void {
+	const report = buildLogicalAtomGateReport(plan);
+	if (report) throw new Error(report);
+}
+
 async function assertNoUnplannedChanges(pi: ExecHost, cwd: string, plan: AutoCommitPlan): Promise<void> {
 	if (plan.allowLeftovers) return;
 	const plannedPaths = plan.commits.flatMap((commit) => commit.paths).map(normalizeGitPath).filter(Boolean);
@@ -300,6 +376,7 @@ function assertPlan(plan: AutoCommitPlan): void {
 			}
 		}
 	}
+	assertLogicalAtomGate(plan);
 }
 
 async function loadPlan(cwd: string, planPath: string): Promise<AutoCommitPlan> {
@@ -477,6 +554,7 @@ export default function (pi: ExtensionAPI) {
 		promptSnippet: "Create focused git commits from an explicit JSON plan or quick explicit-path hotfix input.",
 		promptGuidelines: [
 			"Use auto_commit with an explicit JSON commit plan whose file groups and messages are reviewable, or action=quick with explicit message+paths for tiny hotfix/copy changes.",
+			"auto_commit enforces a logical atom gate: each commit should have at most 1-2 primary files; test/generated/schema/lockfile companions are allowed only as support for that atom.",
 			"For action=quick, default pushPolicy=push-if-tracking commits and pushes to the safe upstream feature branch when available.",
 			"Treat status=committed_not_pushed as incomplete when the user expected push; do not report done until push is resolved.",
 			"auto_commit rejects conventional commit scope parentheses by default; use messages like 'feat: 한글 설명'.",
