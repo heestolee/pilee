@@ -177,7 +177,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [AskUserQuestion은 의사결정 게이트다](./ask-user-question-decision-gates.md) | active | high | 2026-06-02 | ce5e875 | ask-user-question, tft, decision-gate, question, non-delegable, 질문 |
 | [AskUserQuestion 옵션은 행동 분기를 표현한다](./ask-user-question-option-design.md) | active | high | 2026-06-02 | ce5e875 | ask-user-question, option, wording, ceremony, tft, 질문 |
 | [Atomic evidence workflow는 작은 claim을 증거로 닫는다](./atomic-evidence-workflow.md) | active | high | 2026-06-02 | ce5e875 | atomic, evidence, claim, slice, verification, frame |
-| [Auto-commit은 명시 계획만 실행한다](./auto-commit-explicit-plan-gate.md) | active | high | 2026-06-04 | 238ee8d | auto-commit, git, commit, plan, safety |
+| [Auto-commit은 명시 계획만 실행한다](./auto-commit-explicit-plan-gate.md) | active | high | 2026-06-03 | 3b4357d | auto-commit, git, commit, plan, safety |
 | [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | high | 2026-06-02 | cc0bd98 | backlog, tasks, provenance, source-session, session, 맥락 |
 | [Bash tool override는 명령 의도와 출력 노이즈를 분리한다](./bash-tool-title-output-override.md) | active | high | 2026-06-02 | cc0bd98 | bash, tool, override, ui, output, title |
 | [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md) | active | high | 2026-06-02 | cc0bd98 | git, incremental, code-review, commit, quality, 통합 |
@@ -208,7 +208,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [세션 식별자는 파일명이 아니라 사람이 본 이름이다](./session-identity-over-filenames.md) | active | high | 2026-06-02 | e123af1 | session, title, identity, session_info, worktree, revive |
 | [Ship과 PR-Ship은 서로 다른 통합 단계다](./ship-pr-ship-review-boundary.md) | active | high | 2026-06-02 | e123af1 | ship, pr-ship, pr-review, github, commit, push |
 | [Skill은 재사용 가능한 절차다](./skills-as-portable-procedures.md) | active | high | 2026-06-02 | e123af1 | skill, skill-creator, procedure, porting, workflow, 스킬 |
-| [Slice 완료는 commit 후보를 만든다](./slice-auto-commit-rhythm.md) | active | high | 2026-06-04 | 238ee8d | frame, slice, auto-commit, work-context, git |
+| [Slice 완료는 commit 후보를 만든다](./slice-auto-commit-rhythm.md) | active | high | 2026-06-03 | 3b4357d | frame, slice, auto-commit, work-context, git |
 | [정확한 기획 근거가 있으면 Frame은 추적 매트릭스를 만든다](./source-grounded-frame-planning.md) | active | high | 2026-06-02 | 63f2a62 | frame, tft-studio, planning, requirements, traceability, work-map |
 | [Command shim은 reviewable workflow source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-06-02 | 83617e9 | command-shim, skill, tft, frame, slash-command, routing |
 | [TFT Preference Regression Gate는 사용자 선호 역전을 막는다](./tft-preference-regression-gate.md) | active | high | 2026-06-02 | 83617e9 | tft, frame, decide, verify, ask-user-question, regression |
