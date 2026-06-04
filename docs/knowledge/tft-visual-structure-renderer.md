@@ -18,7 +18,8 @@ applies_to:
   - skills/tft-guidelines
 source:
   - user-direction:2026-05-10-tft-visual-db-structure
-reviewed_at: 2026-06-02
+  - user-direction:2026-06-04-tft-visual-render-healing
+reviewed_at: 2026-06-04
 reviewed_commit: d8f8c4c56f23dcfda08b089b6d8ff5be4885e37c
 related:
   - frame-studio-interactive-decision-ui
@@ -56,6 +57,18 @@ TFT Studio는 `elkjs` 기반 top-down renderer를 기본으로 사용합니다. 
 `architecture-flow` kind는 lane-based renderer를 사용합니다. 각 node는 lane/row로 배치되고, SVG edge가 node 사이 데이터·로직 이동을 연결합니다. DB table node는 컬럼 목록과 constraint badge를 카드 안에 표시합니다. 복잡한 auto-layout보다 “전체 흐름을 한눈에 보는 안정적인 지도”를 우선합니다. lane이 많거나 가로 폭이 과도하면 renderer는 자동으로 세로 top-down 배치를 선택하고, 작은 그래프는 가로 배치를 유지합니다.
 
 기본 방향은 `auto`입니다. `auto`는 lane 수, 예상 canvas 폭, lane당 node 수를 보고 `DOWN` 또는 `RIGHT`를 고릅니다. 좌→우(`RIGHT`)는 lane 수가 적고 설명이 짧을 때만 명시합니다. lane이 많거나 긴 title/body가 많으면 top-down으로 전환하고, diagram 내부에서만 scroll되게 합니다.
+
+## Visual Healing Rule
+
+`tft-visual`은 하나의 고정 schema를 강제하지 않습니다. 구조를 설명하는 사고 표면은 backend layer map, architecture flow, DB table map처럼 상황마다 자연스러운 shape가 다릅니다. 따라서 renderer는 author에게 `tables`만 강제하기보다 입력 shape를 먼저 진단합니다.
+
+- `layers`가 있거나 `kind: "backend-layer-map"`이면 backend layer renderer로 보냅니다.
+- `nodes`/`edges`가 있거나 `kind: "architecture-flow"` 계열이면 architecture flow renderer로 보냅니다.
+- `tables`가 있으면 기존 table/ELK renderer로 보냅니다.
+- `kind`가 없지만 `nodes`/`edges`가 있으면 의미를 바꾸지 않고 architecture flow로 자동 해석하며, 화면에는 “자동 보정됨” 기록을 남깁니다.
+- 지원 shape를 찾지 못하거나 renderer 필수 필드가 비어 있으면 빨간 오류로 독자를 막지 않고 fallback card를 렌더링합니다. 원본 JSON은 접힌 영역에 보존합니다.
+
+이 self-healing은 요구사항, 성공 기준, edge 의미를 고치는 루프가 아닙니다. **표현 포맷만 치유**하고, 의미는 원본 JSON과 canonical frame/decision/verification artifact에 남깁니다. renderer가 자동 보정했다면 사용자는 화면에서 그 사실을 볼 수 있어야 합니다.
 
 ## Visual Semantics
 

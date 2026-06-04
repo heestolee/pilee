@@ -111,8 +111,25 @@ function loadStudioScript(fakeWindow: FakeWindow, fakeDocument: FakeDocument) {
 			if (count > limit) throw new Error("Timer queue did not settle");
 		}
 	}
-	const factory = new Function("window", "document", "EventSource", "fetch", "setTimeout", "requestAnimationFrame", `${script}\nreturn { render: render, selectTab: selectTab, renderArchitectureFlowElement: renderArchitectureFlowElement, renderBackendLayerVisualElement: renderBackendLayerVisualElement };`);
-	return { ...(factory(fakeWindow, fakeDocument, EventSource, fetch, queueTimer, queueTimer) as { render(state: any, options?: any): void; selectTab(key: string): void; renderArchitectureFlowElement(el: any, spec: any): void; renderBackendLayerVisualElement(el: any, spec: any): void }), flushTimers };
+	const factory = new Function("window", "document", "EventSource", "fetch", "setTimeout", "requestAnimationFrame", `${script}\nreturn { render: render, selectTab: selectTab, renderTftVisualElement: renderTftVisualElement, renderArchitectureFlowElement: renderArchitectureFlowElement, renderBackendLayerVisualElement: renderBackendLayerVisualElement };`);
+	return { ...(factory(fakeWindow, fakeDocument, EventSource, fetch, queueTimer, queueTimer) as { render(state: any, options?: any): void; selectTab(key: string): void; renderTftVisualElement(el: any): Promise<void>; renderArchitectureFlowElement(el: any, spec: any): void; renderBackendLayerVisualElement(el: any, spec: any): void }), flushTimers };
+}
+
+function makeVisualElement(source: unknown) {
+	let rendered = "0";
+	return {
+		id: "visual-healing-test",
+		className: "tft-visual",
+		innerHTML: "",
+		getAttribute(name: string) {
+			if (name === "data-rendered") return rendered;
+			if (name === "data-source") return encodeURIComponent(typeof source === "string" ? source : JSON.stringify(source));
+			return "";
+		},
+		setAttribute(name: string, value: string) {
+			if (name === "data-rendered") rendered = value;
+		},
+	};
 }
 
 function extractArchNodeBoxes(html: string) {
@@ -125,6 +142,76 @@ function extractArchLabelRects(html: string) {
 	return [...html.matchAll(/<rect class="arch-edge-label-bg" x="([\d.-]+)" y="([\d.-]+)" width="([\d.-]+)" height="([\d.-]+)"/g)]
 		.map((match) => ({ x: Number(match[1]), y: Number(match[2]), width: Number(match[3]), height: Number(match[4]) }));
 }
+
+test("TFT visual self-heals nodes/edges shape without requiring a fixed kind", async () => {
+	const browser = createFakeBrowser({ top: 0, viewport: 600, height: 1600 });
+	const studio = loadStudioScript(browser.window, browser.document);
+	const element = makeVisualElement({
+		title: "Generic action flow",
+		nodes: [
+			{ id: "admin", lane: "Admin", type: "screen", title: "Admin action" },
+			{ id: "mutation", lane: "Backend", type: "resolver", title: "singleUpdateToUsed" },
+		],
+		edges: [{ from: "admin", to: "mutation", label: "reuse" }],
+	});
+
+	await studio.renderTftVisualElement(element);
+
+	assert.equal(element.className, "arch-visual");
+	assert.match(element.innerHTML, /Generic action flow/);
+	assert.match(element.innerHTML, /자동 보정됨/);
+	assert.match(element.innerHTML, /nodes\/edges shape를 architecture-flow로 해석/);
+	assert.doesNotMatch(element.innerHTML, /tft-visual-error/);
+});
+
+test("TFT visual self-heals nodes/edges shape even when kind points at another renderer", async () => {
+	const browser = createFakeBrowser({ top: 0, viewport: 600, height: 1600 });
+	const studio = loadStudioScript(browser.window, browser.document);
+	const element = makeVisualElement({
+		kind: "backend-layer-map",
+		title: "Mismatched flow",
+		nodes: [
+			{ id: "ui", lane: "UI", type: "screen", title: "Admin table" },
+			{ id: "be", lane: "BE", type: "service", title: "Existing mutation" },
+		],
+		edges: [{ from: "ui", to: "be", label: "call" }],
+	});
+
+	await studio.renderTftVisualElement(element);
+
+	assert.equal(element.className, "arch-visual");
+	assert.match(element.innerHTML, /Mismatched flow/);
+	assert.match(element.innerHTML, /kind=backend-layer-map이지만 nodes\/edges shape를 architecture-flow로 해석/);
+	assert.doesNotMatch(element.innerHTML, /layers 배열이 필요/);
+	assert.doesNotMatch(element.innerHTML, /tft-visual-error/);
+});
+
+test("TFT visual fallback preserves unsupported shapes instead of showing a red error", async () => {
+	const browser = createFakeBrowser({ top: 0, viewport: 600, height: 1600 });
+	const studio = loadStudioScript(browser.window, browser.document);
+	const element = makeVisualElement({ title: "Unknown visual", widgets: [{ id: "w1" }] });
+
+	await studio.renderTftVisualElement(element);
+
+	assert.equal(element.className, "tft-visual");
+	assert.match(element.innerHTML, /렌더링 포맷 자동 치유/);
+	assert.match(element.innerHTML, /원본 visual JSON/);
+	assert.match(element.innerHTML, /Unknown visual/);
+	assert.doesNotMatch(element.innerHTML, /tft-visual-error/);
+});
+
+test("Known visual kind with missing required shape falls back without blocking the reader", () => {
+	const browser = createFakeBrowser({ top: 0, viewport: 600, height: 1600 });
+	const studio = loadStudioScript(browser.window, browser.document);
+	const element = { id: "missing-layer-fallback", className: "", innerHTML: "" };
+
+	studio.renderBackendLayerVisualElement(element, { kind: "backend-layer-map", title: "Missing layers" });
+
+	assert.equal(element.className, "tft-visual");
+	assert.match(element.innerHTML, /fallback/);
+	assert.match(element.innerHTML, /layers 배열이 필요/);
+	assert.doesNotMatch(element.innerHTML, /tft-visual-error/);
+});
 
 test("Backend layer visual keeps contract before the short learning helper", () => {
 	const browser = createFakeBrowser({ top: 0, viewport: 600, height: 1600 });

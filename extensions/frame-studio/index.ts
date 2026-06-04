@@ -671,6 +671,13 @@ h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .tft-relation-card strong, .tft-note-card strong { display:block; margin-bottom:4px; overflow-wrap:anywhere; }
 .tft-relation-card p, .tft-note-card p { margin:4px 0; color:var(--muted); font-size:12px; line-height:1.45; overflow-wrap:anywhere; }
 .tft-visual-error { border:1px solid #fecaca; background:#fef2f2; color:#991b1b; border-radius:14px; padding:12px; white-space:pre-wrap; }
+.tft-visual-healing { border:1px solid #bfdbfe; background:#eff6ff; color:#1d4ed8; border-radius:13px; padding:9px 10px; margin-top:12px; font-size:12px; font-weight:850; line-height:1.45; overflow-wrap:anywhere; }
+.tft-visual-fallback { border:1px solid #fde68a; background:#fffbeb; color:#713f12; border-radius:16px; padding:12px; margin-top:10px; }
+.tft-visual-fallback-title { font-weight:950; margin-bottom:5px; }
+.tft-visual-fallback-body { color:#854d0e; font-size:12px; line-height:1.45; margin-bottom:9px; }
+.tft-visual-fallback details { margin-top:8px; }
+.tft-visual-fallback summary { cursor:pointer; font-weight:850; }
+.tft-visual-fallback pre { white-space:pre-wrap; overflow:auto; max-height:260px; background:#292524; color:#fafaf9; border-radius:12px; padding:10px; font-size:11px; }
 .layer-visual { border:1px solid #dbeafe; background:linear-gradient(180deg,#f8fbff 0%,#ffffff 100%); border-radius:20px; padding:16px; margin:16px 0; overflow:hidden; min-width:0; max-width:100%; }
 .layer-visual-head { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start; margin-bottom:12px; }
 .layer-visual-title { font-size:18px; font-weight:950; color:#1e3a8a; overflow-wrap:anywhere; }
@@ -896,6 +903,26 @@ function renderLearningNotes(notes) {
     return '<div class="tft-note-card"><strong>' + esc(n.title || '설명') + '</strong>' + body + '</div>';
   }).join('') + '</div>';
 }
+function renderVisualHealing(spec) {
+  var notices = asTextArray(spec && spec.__tftHealing);
+  if (!notices.length) return '';
+  return '<div class="tft-visual-healing">' + notices.map(function(item) { return '자동 보정됨: ' + inline(item); }).join('<br>') + '</div>';
+}
+function cloneSpecWithHealing(spec, message) {
+  var copy = {};
+  Object.keys(spec || {}).forEach(function(key) { copy[key] = spec[key]; });
+  var notices = asTextArray(copy.__tftHealing);
+  if (message) notices.push(message);
+  copy.__tftHealing = notices;
+  return copy;
+}
+function renderVisualFallbackElement(el, spec, source, reason) {
+  var title = spec && (spec.title || spec.name || spec.id) ? spec.title || spec.name || spec.id : 'TFT visual fallback';
+  var raw = source || JSON.stringify(spec || {}, null, 2);
+  el.className = 'tft-visual';
+  el.innerHTML = '<div class="tft-visual-head"><div><div class="tft-visual-title">' + esc(title) + '</div><div class="tft-visual-subtitle">지원하지 않는 visual shape라 의미를 바꾸지 않고 fallback으로 표시합니다.</div></div><span class="badge">fallback</span></div>'
+    + '<div class="tft-visual-fallback"><div class="tft-visual-fallback-title">렌더링 포맷 자동 치유</div><div class="tft-visual-fallback-body">' + inline(reason || '지원 renderer를 찾지 못했습니다. 원본 JSON은 아래에 보존됩니다.') + '</div><details><summary>원본 visual JSON</summary><pre>' + esc(raw) + '</pre></details></div>';
+}
 function asTextArray(value) {
   if (!value) return [];
   if (Array.isArray(value)) return value.map(function(item) { return String(item || '').trim(); }).filter(Boolean);
@@ -1023,7 +1050,7 @@ function renderLayerGlossary(spec, layers) {
 }
 function renderBackendLayerVisualElement(el, spec) {
   var layers = (Array.isArray(spec.layers) ? spec.layers : []).map(normalizeLayer);
-  if (!layers.length) { el.innerHTML = '<div class="tft-visual-error">backend-layer-map visual에는 layers 배열이 필요합니다.</div>'; return; }
+  if (!layers.length) { renderVisualFallbackElement(el, spec, null, 'backend-layer-map은 layers 배열이 필요합니다. 원본은 fallback으로 보존했습니다.'); return; }
   var gap = 18;
   var tops = [];
   var heights = [];
@@ -1036,7 +1063,8 @@ function renderBackendLayerVisualElement(el, spec) {
     + renderFlowStrip(spec.flow || spec.story || spec.userFlow)
     + '<div class="layer-visual-diagram"><div class="layer-visual-canvas" style="height:' + canvasHeight + 'px">' + renderLayerRail(layers, tops, heights, canvasHeight) + cards + '</div></div>'
     + renderLayerGlossary(spec, layers)
-    + renderLearningNotes(spec.notes || spec.explanations);
+    + renderLearningNotes(spec.notes || spec.explanations)
+    + renderVisualHealing(spec);
 }
 function isBackendLayerVisualSpec(spec) {
   var kind = String(spec.kind || spec.type || '').toLowerCase();
@@ -1045,6 +1073,12 @@ function isBackendLayerVisualSpec(spec) {
 function isArchitectureFlowSpec(spec) {
   var kind = String(spec.kind || spec.type || '').toLowerCase();
   return kind === 'architecture-flow' || kind === 'data-flow-map' || kind === 'data-flow' || kind === 'architecture-data-flow';
+}
+function hasVisualNodesEdgesShape(spec) {
+  return Array.isArray(spec && spec.nodes) || Array.isArray(spec && spec.edges);
+}
+function hasVisualLayersShape(spec) {
+  return Array.isArray(spec && spec.layers);
 }
 function normalizeArchLane(value, index) {
   if (typeof value === 'string') return { id: layerKey(value), title: value, index:index };
@@ -1263,7 +1297,7 @@ function buildArchLaneBuckets(nodes, lanes) {
 function renderArchitectureFlowElement(el, spec) {
   var lanes = collectArchLanes(spec);
   var nodes = (Array.isArray(spec.nodes) ? spec.nodes : []).map(function(node, index) { return normalizeArchNode(node, index, lanes); });
-  if (!nodes.length) { el.innerHTML = '<div class="tft-visual-error">architecture-flow visual에는 nodes 배열이 필요합니다.</div>'; return; }
+  if (!nodes.length) { renderVisualFallbackElement(el, spec, null, 'architecture-flow는 nodes 배열이 필요합니다. 원본은 fallback으로 보존했습니다.'); return; }
   var orientation = archOrientation(spec, lanes, nodes);
   var laneGap = Number(spec.laneGap) || (orientation === 'DOWN' ? 34 : 56);
   var nodeWidth = Number(spec.nodeWidth) || (orientation === 'DOWN' ? 270 : 246);
@@ -1330,7 +1364,8 @@ function renderArchitectureFlowElement(el, spec) {
   el.innerHTML = '<div class="arch-visual-head"><div><div class="arch-visual-title">' + esc(spec.title || 'Architecture / Data Flow Map') + '</div>' + (spec.subtitle ? '<div class="arch-visual-subtitle">' + esc(spec.subtitle) + '</div>' : '<div class="arch-visual-subtitle">데이터와 로직이 UI/API/usecase/domain/repository/DB를 어떻게 지나가는지 보는 전체 지도입니다.</div>') + '</div><span class="badge">' + esc(orientationLabel) + '</span></div>'
     + '<div class="arch-visual-diagram"><div class="arch-canvas" style="width:' + canvasWidth + 'px;height:' + canvasHeight + 'px">' + laneHtml + edgeSvg + nodeHtml + '</div></div>'
     + renderArchLegend(spec)
-    + renderLearningNotes(spec.notes || spec.explanations);
+    + renderLearningNotes(spec.notes || spec.explanations)
+    + renderVisualHealing(spec);
 }
 function renderElkTable(table, node, scale, pad) {
   var status = table.status || 'same';
@@ -1349,12 +1384,26 @@ async function renderTftVisualElement(el) {
   el.setAttribute('data-rendered', '1');
   var source = decodeURIComponent(el.getAttribute('data-source') || '');
   var spec;
-  try { spec = JSON.parse(source); } catch (e) { el.innerHTML = '<div class="tft-visual-error">tft-visual JSON parse failed:\\n' + esc(e.message || e) + '</div>'; return; }
+  try { spec = JSON.parse(source); } catch (e) { renderVisualFallbackElement(el, null, source, 'JSON parse에 실패했습니다. 원문을 보존하고 화면은 fallback으로 표시합니다.'); return; }
+  if (hasVisualLayersShape(spec)) {
+    var layerSpec = isBackendLayerVisualSpec(spec) ? spec : cloneSpecWithHealing(spec, 'kind가 없지만 layers shape를 backend-layer-map으로 해석했습니다.');
+    renderBackendLayerVisualElement(el, layerSpec);
+    return;
+  }
+  if (hasVisualNodesEdgesShape(spec)) {
+    var kindLabel = String(spec.kind || spec.type || '').trim();
+    var flowMessage = kindLabel && !isArchitectureFlowSpec(spec)
+      ? 'kind=' + kindLabel + '이지만 nodes/edges shape를 architecture-flow로 해석했습니다.'
+      : 'kind가 없지만 nodes/edges shape를 architecture-flow로 해석했습니다.';
+    var flowSpec = isArchitectureFlowSpec(spec) ? spec : cloneSpecWithHealing(spec, flowMessage);
+    renderArchitectureFlowElement(el, flowSpec);
+    return;
+  }
   if (isBackendLayerVisualSpec(spec)) { renderBackendLayerVisualElement(el, spec); return; }
   if (isArchitectureFlowSpec(spec)) { renderArchitectureFlowElement(el, spec); return; }
-  if (!window.ELK) { el.innerHTML = '<div class="tft-visual-error">ELK renderer를 불러오지 못했습니다.</div>'; return; }
   var tables = Array.isArray(spec.tables) ? spec.tables : [];
-  if (!tables.length) { el.innerHTML = '<div class="tft-visual-error">tft-visual에는 tables 배열이 필요합니다.</div>'; return; }
+  if (!tables.length) { renderVisualFallbackElement(el, spec, source, 'tables/layers/nodes 중 지원 가능한 visual shape를 찾지 못했습니다.'); return; }
+  if (!window.ELK) { renderVisualFallbackElement(el, spec, source, 'ELK renderer를 불러오지 못해 table-map을 fallback으로 표시합니다.'); return; }
   var relations = Array.isArray(spec.relations) ? spec.relations : [];
   var direction = String(spec.direction || spec.layout || 'DOWN').toUpperCase();
   if (direction !== 'RIGHT') direction = 'DOWN';
@@ -1390,9 +1439,9 @@ async function renderTftVisualElement(el) {
     }).join('');
     var tableHtml = tables.map(function(t) { return renderElkTable(t, nodeById[String(t.id || t.name)], scale, pad); }).join('');
     var svg = '<svg width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '"><defs><marker id="' + markerId + '" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker></defs>' + edgeSvg + '</svg>';
-    el.innerHTML = '<div class="tft-visual-head"><div><div class="tft-visual-title">' + esc(spec.title || 'TFT visual') + '</div>' + (spec.subtitle ? '<div class="tft-visual-subtitle">' + esc(spec.subtitle) + '</div>' : '') + '</div>' + renderPill(direction === 'DOWN' ? 'top-down' : 'left-right') + '</div><div class="tft-visual-diagram"><div class="tft-elk-canvas" style="width:' + width + 'px;height:' + height + 'px">' + svg + tableHtml + '</div></div>' + renderRelationCards(relations) + renderLearningNotes(spec.notes || spec.explanations);
+    el.innerHTML = '<div class="tft-visual-head"><div><div class="tft-visual-title">' + esc(spec.title || 'TFT visual') + '</div>' + (spec.subtitle ? '<div class="tft-visual-subtitle">' + esc(spec.subtitle) + '</div>' : '') + '</div>' + renderPill(direction === 'DOWN' ? 'top-down' : 'left-right') + '</div><div class="tft-visual-diagram"><div class="tft-elk-canvas" style="width:' + width + 'px;height:' + height + 'px">' + svg + tableHtml + '</div></div>' + renderRelationCards(relations) + renderLearningNotes(spec.notes || spec.explanations) + renderVisualHealing(spec);
   } catch (e) {
-    el.innerHTML = '<div class="tft-visual-error">ELK layout failed:\\n' + esc(e && e.message ? e.message : e) + '</div>';
+    renderVisualFallbackElement(el, spec, source, 'ELK layout에 실패했습니다. 의미를 바꾸지 않고 fallback으로 표시합니다: ' + (e && e.message ? e.message : e));
   }
 }
 function renderPendingTftVisuals() {

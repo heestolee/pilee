@@ -212,7 +212,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [정확한 기획 근거가 있으면 Frame은 추적 매트릭스를 만든다](./source-grounded-frame-planning.md) | active | high | 2026-06-02 | 63f2a62 | frame, tft-studio, planning, requirements, traceability, work-map |
 | [Command shim은 reviewable workflow source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-06-02 | 83617e9 | command-shim, skill, tft, frame, slash-command, routing |
 | [TFT Preference Regression Gate는 사용자 선호 역전을 막는다](./tft-preference-regression-gate.md) | active | high | 2026-06-02 | 83617e9 | tft, frame, decide, verify, ask-user-question, regression |
-| [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-06-02 | d8f8c4c | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
+| [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-06-04 | d8f8c4c | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
 | [To-production은 source-preserving hotfix 이식이다](./to-production-source-preserving-hotfix.md) | active | high | 2026-06-02 | d8f8c4c | to-production, hotfix, production, git, worktree, source-preserving |
 | [TUI 질문은 작은 의사결정 게이트다](./tui-ask-decision-overlay.md) | active | high | 2026-06-02 | d8f8c4c | tui, ask-user-question, decision-gate, tool, overlay |
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
