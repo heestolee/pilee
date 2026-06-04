@@ -20,7 +20,7 @@ source:
   - user-direction:2026-05-10-tft-visual-db-structure
   - user-direction:2026-06-04-tft-visual-render-healing
 reviewed_at: 2026-06-04
-reviewed_commit: d8f8c4c56f23dcfda08b089b6d8ff5be4885e37c
+reviewed_commit: a38b2ff6fc8398a9fccdbc53852aeeab9a1c466c
 related:
   - frame-studio-interactive-decision-ui
   - frame-verify-contract
