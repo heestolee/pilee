@@ -7,6 +7,7 @@ import { SessionManager } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 
 const DEFAULT_BASE_REF = "origin/production";
+const DEFAULT_SOURCE_BASE_CANDIDATES = ["origin/development", "origin/develop", "origin/main", "origin/master", "origin/HEAD"];
 const ARTIFACT_ROOT = join(homedir(), ".pi", "agent", "to-production");
 const CUSTOM_TYPE = "pilee-to-production-report";
 
@@ -422,19 +423,7 @@ async function findRepoRoot(pi: ExtensionAPI, cwd: string): Promise<string> {
 	return gitCapture(pi, cwd, ["rev-parse", "--show-toplevel"]);
 }
 
-async function resolveCommitRange(pi: ExtensionAPI, repoRoot: string, parsed: ParsedArgs, upstream: string | null): Promise<{ range: string | null; source: string | null; commits: string[] }> {
-	let range: string | null = null;
-	let source: string | null = null;
-	if (parsed.range) {
-		range = parsed.range;
-		source = "explicit --range";
-	} else if (upstream) {
-		const mergeBase = await gitCapture(pi, repoRoot, ["merge-base", "HEAD", upstream]);
-		range = `${mergeBase}..HEAD`;
-		source = `upstream ${upstream}`;
-	}
-
-	if (!range) return { range: null, source: null, commits: [] };
+async function commitsForRange(pi: ExtensionAPI, repoRoot: string, range: string, source: string): Promise<{ range: string; source: string; commits: string[] }> {
 	const commitText = await gitCapture(pi, repoRoot, ["rev-list", "--reverse", range]);
 	const commits = commitText.split("\n").map((line) => line.trim()).filter(Boolean);
 	if (commits.length === 0) return { range, source, commits };
@@ -449,6 +438,42 @@ async function resolveCommitRange(pi: ExtensionAPI, repoRoot: string, parsed: Pa
 		].join("\n"));
 	}
 	return { range, source, commits };
+}
+
+function sameRef(a: string | null | undefined, b: string | null | undefined): boolean {
+	return Boolean(a && b && a.trim() === b.trim());
+}
+
+function sourceBaseCandidateRefs(parsed: ParsedArgs, upstream: string | null): string[] {
+	const seen = new Set<string>();
+	const candidates: string[] = [];
+	for (const ref of DEFAULT_SOURCE_BASE_CANDIDATES) {
+		if (sameRef(ref, upstream) || sameRef(ref, parsed.baseRef)) continue;
+		if (seen.has(ref)) continue;
+		seen.add(ref);
+		candidates.push(ref);
+	}
+	return candidates;
+}
+
+async function resolveCommitRange(pi: ExtensionAPI, repoRoot: string, parsed: ParsedArgs, upstream: string | null): Promise<{ range: string | null; source: string | null; commits: string[] }> {
+	if (parsed.range) return commitsForRange(pi, repoRoot, parsed.range, "explicit --range");
+
+	if (upstream) {
+		const mergeBase = await gitCapture(pi, repoRoot, ["merge-base", "HEAD", upstream]);
+		const upstreamRange = await commitsForRange(pi, repoRoot, `${mergeBase}..HEAD`, `upstream ${upstream}`);
+		if (upstreamRange.commits.length > 0) return upstreamRange;
+	}
+
+	for (const ref of sourceBaseCandidateRefs(parsed, upstream)) {
+		const exists = await tryGitCapture(pi, repoRoot, ["rev-parse", "--verify", ref]);
+		if (!exists) continue;
+		const mergeBase = await gitCapture(pi, repoRoot, ["merge-base", "HEAD", ref]);
+		const candidateRange = await commitsForRange(pi, repoRoot, `${mergeBase}..HEAD`, `source base ${ref}`);
+		if (candidateRange.commits.length > 0) return candidateRange;
+	}
+
+	return { range: null, source: null, commits: [] };
 }
 
 function defaultUntrackedCommitMessage(branch: string | null): string {
@@ -768,13 +793,13 @@ function helpText(): string {
 	return [
 		"/to-production [target-branch] [options]",
 		"",
-		"현재 worktree의 local commits/미커밋 diff를 source에 손대지 않고 최신 origin/production 기반 새 worktree로 이식합니다.",
+		"현재 worktree의 작업 commit/미커밋 diff를 source에 손대지 않고 최신 origin/production 기반 새 worktree로 이어갑니다.",
 		"",
 		"Options:",
 		"  -b, --branch <name>       target branch 이름. 기본: hotfix/<source>-<timestamp>",
 		"  --base <remote/branch>    production base. 기본: origin/production",
 		"  --path <path>             target worktree path. 기본: source sibling path",
-		"  --range <rev-range>       이식할 commit range를 명시. 기본: @{upstream} merge-base..HEAD",
+		"  --range <rev-range>       이식할 commit range를 명시. 기본: 현재 workspace의 작업 commit 자동 추론",
 		"  -m, --message <message>   미커밋 diff를 target에서 commit할 메시지",
 		"  --include-untracked       untracked 파일도 artifact 백업 후 target에 복사/commit",
 		"  --skip-untracked          untracked 파일은 source에 남기고 이번 이식에서 제외",
@@ -923,7 +948,7 @@ function errorReport(error: unknown): string {
 
 export default function toProduction(pi: ExtensionAPI) {
 	pi.registerCommand("to-production", {
-		description: "현재 worktree 변경을 source 손상 없이 최신 production 기반 새 worktree/branch로 이식",
+		description: "현재 worktree 작업을 source 손상 없이 production 기반 새 worktree/branch로 이어가기",
 		handler: async (args: string, ctx: ExtensionCommandContext) => {
 			try {
 				const parsed = parseArgs(args);
@@ -938,12 +963,13 @@ export default function toProduction(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "to_production",
 		label: "To Production",
-		description: "Run the dedicated /to-production source-preserving production/hotfix migration flow from natural-language requests.",
-		promptSnippet: "Use to_production when the user asks to move current work to production/hotfix/hotfeature or says '/to-production으로 해줘' in natural language.",
+		description: "Run the dedicated /to-production current-workspace production/hotfix continuation flow from natural-language requests.",
+		promptSnippet: "Use to_production when the user asks to make the current workspace continue on production/hotfix/hotfeature or says '/to-production으로 해줘' in natural language.",
 		promptGuidelines: [
-			"Use this dedicated tool instead of worktree_fork, worktree_create, manual git worktree add, checkout, stash, reset, or clean when the task is to move existing source work to production/hotfix/hotfeature.",
+			"Use this dedicated tool instead of worktree_fork, worktree_create, manual git worktree add, checkout, stash, reset, or clean when the task is to make the current workspace continue on production/hotfix/hotfeature.",
+			"The user-facing contract is: current workspace work continues on a production-based target. Do not expose upstream/range mechanics or ask the user to calculate a commit range unless the command itself reports true ambiguity.",
 			"The tool shares the same execution path as the /to-production slash command and preserves the source worktree by using artifact/backup branch + target worktree application.",
-			"If the user provided an exact /to-production argument string, pass it as args. Otherwise prefer structured parameters such as branch, range, base, path, message, untrackedMode, dryRun, and yes.",
+			"If the user provided an exact /to-production argument string, pass it as args. Otherwise prefer structured parameters such as branch, base, path, message, untrackedMode, dryRun, and yes. Omit range unless the user explicitly supplied one.",
 			"When source untracked files matter, choose untrackedMode explicitly: include copies them to target, skip leaves them only in source, commit creates a source commit before migration, block stops. In UI contexts ask is allowed.",
 			"Do not pass yes:true unless the user explicitly approved execution or asked you to run it now; without yes, UI contexts show the same confirmation as the slash command and headless contexts stop safely.",
 			"After a successful migration, the current panel must continue in the target worktree session. Use session switch when available, otherwise same-panel Ghostty relaunch. If neither is possible, block before migrating instead of asking the user to run /wt switch or continuing by absolute path.",

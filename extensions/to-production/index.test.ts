@@ -78,6 +78,43 @@ test("to-production tool parses raw args or structured params but not both", () 
 	assert.throws(() => __toProductionForTests.toolParamsToParsed({ includeUntracked: true, untrackedMode: "skip" }), /충돌/);
 });
 
+test("to-production treats pushed branch commits as current workspace work", async () => {
+	const repoRoot = mkdtempSync(join(tmpdir(), "pilee-to-production-pushed-source-"));
+	const calls: string[] = [];
+	const head = "1111111111111111111111111111111111111111";
+	const base = "0000000000000000000000000000000000000000";
+	const parsed = __toProductionForTests.parseArgs("--branch hotfeature/COM-1/foo");
+	const plan = await __toProductionForTests.buildPlan(
+		{ exec: async (command: string, args: string[]) => {
+			assert.equal(command, "git");
+			const joined = args.join(" ");
+			calls.push(joined);
+			if (joined === "rev-parse --show-toplevel") return { code: 0, stdout: repoRoot };
+			if (joined === "branch --show-current") return { code: 0, stdout: "feature/source\n" };
+			if (joined === "rev-parse HEAD") return { code: 0, stdout: `${head}\n` };
+			if (joined === "rev-parse --abbrev-ref --symbolic-full-name @{upstream}") return { code: 0, stdout: "origin/feature/source\n" };
+			if (joined === "status --short --branch") return { code: 0, stdout: "## feature/source...origin/feature/source\n" };
+			if (joined === "status --porcelain=v1") return { code: 0, stdout: "" };
+			if (joined === "diff --binary HEAD --") return { code: 0, stdout: "" };
+			if (joined === "ls-files --others --exclude-standard -z") return { code: 0, stdout: "" };
+			if (joined === "merge-base HEAD origin/feature/source") return { code: 0, stdout: `${head}\n` };
+			if (joined === `rev-list --reverse ${head}..HEAD`) return { code: 0, stdout: "" };
+			if (joined === "rev-parse --verify origin/development") return { code: 0, stdout: `${base}\n` };
+			if (joined === "merge-base HEAD origin/development") return { code: 0, stdout: `${base}\n` };
+			if (joined === `rev-list --reverse ${base}..HEAD`) return { code: 0, stdout: `${head}\n` };
+			if (joined === `rev-list --merges ${base}..HEAD`) return { code: 0, stdout: "" };
+			throw new Error(`unexpected git call: ${joined}`);
+		} } as any,
+		repoRoot,
+		parsed,
+		{ cwd: repoRoot, hasUI: false, ui: {} } as any,
+	);
+	assert.equal(plan.source.commitRange, `${base}..HEAD`);
+	assert.equal(plan.source.commitRangeSource, "source base origin/development");
+	assert.deepEqual(plan.source.commits, [head]);
+	assert.ok(calls.includes(`rev-list --reverse ${head}..HEAD`));
+});
+
 test("to-production asks before handling untracked files and can skip them", async () => {
 	const repoRoot = mkdtempSync(join(tmpdir(), "pilee-to-production-source-"));
 	const calls: string[] = [];

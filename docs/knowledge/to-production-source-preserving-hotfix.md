@@ -31,7 +31,9 @@ type: doctrine
 
 ## Judgment
 
-`/to-production`은 “현재 작업을 production base로 다시 옮긴다”가 아니라 **source worktree를 건드리지 않은 채 production 기반 target을 새로 만드는 작업**입니다. hotfix 전환 작업은 대개 이미 development 기반 worktree에 쌓인 diff/commit을 다루므로, source에서 checkout/stash/reset/clean을 실행하는 순간 사용자가 보존하려던 작업 상태가 사라질 수 있습니다.
+사용자 관점에서 `/to-production`은 **“지금 작업하는 workspace를 production을 바라보는 상태로 이어가기”**입니다. source-preserving target worktree 생성은 이 계약을 지키기 위한 내부 구현일 뿐, 사용자가 upstream/range/pushed 여부를 계산해야 하는 UX가 되면 실패입니다.
+
+hotfix 전환 작업은 대개 이미 development 기반 worktree에 쌓인 diff/commit을 다룹니다. source에서 checkout/stash/reset/clean을 실행하는 순간 사용자가 보존하려던 작업 상태가 사라질 수 있으므로, 구현은 source worktree를 건드리지 않은 채 production 기반 target을 새로 만들고 현재 패널을 그 target으로 이어가야 합니다.
 
 ## Source-preserving Rule
 
@@ -43,9 +45,18 @@ type: doctrine
 
 실제 변경 적용은 새 target worktree에서만 수행합니다. 단, 사용자가 untracked commit option을 선택한 경우 source에는 새 보존 commit이 생깁니다. target이 conflict 상태가 되어도 source checkout/reset/clean 없이 남아야 하므로, 실패 복구는 target과 artifact 기준으로 안내합니다.
 
-## Commit Range Rule
+## Workspace Work Detection Rule
 
-production hotfix로 옮길 때 `origin/production..HEAD`를 이식 range로 쓰면 안 됩니다. development 기반 branch에서는 production에 없는 unrelated development commit이 대량으로 섞일 수 있습니다. 기본 range는 현재 branch의 upstream과 `HEAD`의 merge-base부터 `HEAD`까지로 잡고, upstream이 없거나 판단이 애매하면 사용자가 `--range`로 명시해야 합니다.
+production hotfix로 옮길 때 `origin/production..HEAD`를 이식 range로 쓰면 안 됩니다. development 기반 branch에서는 production에 없는 unrelated development commit이 대량으로 섞일 수 있습니다. 하지만 기본 UX가 `@{upstream}..HEAD`에만 묶여서도 안 됩니다. 사용자가 이미 feature branch를 push했더라도 현재 workspace가 source base 대비 가진 작업 commit은 여전히 `/to-production` 대상입니다.
+
+기본 탐지는 다음 순서로 “현재 workspace 작업”을 찾습니다.
+
+1. 사용자가 `--range`를 명시했으면 그 range를 사용합니다.
+2. upstream 대비 아직 push되지 않은 commit이 있으면 그 commit을 사용합니다.
+3. upstream과 `HEAD`가 같아도 `origin/development`/`origin/develop`/`origin/main`/`origin/master`/`origin/HEAD` 같은 source base 대비 branch 고유 commit이 있으면 그 commit을 사용합니다.
+4. 그래도 후보가 없거나 merge commit/충돌처럼 진짜로 애매하면 설명하고 중단합니다.
+
+`--range`는 escape hatch일 뿐 기본 사용법이 아닙니다. dedicated command/tool 대신 사용자에게 commit range를 다시 계산해 입력하라고 떠넘기는 것은 Red Flag입니다.
 
 Merge commit은 MVP 자동화에서 중단합니다. `git format-patch`/`git am` 흐름은 선형 commit 이식에 맞춰져 있으므로, merge commit을 조용히 flatten하거나 cherry-pick하는 것은 hotfix diff를 오염시킬 수 있습니다.
 
@@ -54,7 +65,7 @@ Merge commit은 MVP 자동화에서 중단합니다. `git format-patch`/`git am`
 이식 전에는 항상 local artifact와 backup branch를 남깁니다.
 
 - `~/.pi/agent/to-production/<repo>-<hash>/<timestamp>/metadata.json`
-- `commits.patch` — local commit range가 있는 경우
+- `commits.patch` — workspace 작업 commit range가 있는 경우
 - `dirty.patch` — tracked/staged/unstaged diff가 있는 경우
 - `untracked/` — `--include-untracked`가 명시된 경우에도 먼저 복사 보존
 - `to-production/source-backup/<source>-<timestamp>` — source HEAD backup branch
@@ -85,4 +96,4 @@ Pi slash command는 입력 첫 토큰이 `/to-production`일 때만 command hand
 - `/wt fork`: 앞으로 작업할 실행 경계를 만든다.
 - `/to-production`/`to_production`: 이미 생긴 작업 상태를 source-preserving 방식으로 production base에 재현한다.
 
-따라서 `/to-production`은 원본 worktree를 정리하지 않고, target 생성·이식까지만 책임집니다. push, PR, 원본 삭제는 별도 검증과 사용자 확인 이후 단계입니다.
+따라서 `/to-production`은 원본 worktree를 정리하지 않고, target 생성·이식과 현재 패널 continuation까지만 책임집니다. push, PR, 원본 삭제는 별도 검증과 사용자 확인 이후 단계입니다.

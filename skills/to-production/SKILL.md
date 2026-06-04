@@ -1,16 +1,17 @@
 ---
 name: to-production
-description: 현재 worktree의 작업 내용이나 local commits를 최신 production 기반 hotfix branch/worktree로 안전하게 옮겨야 할 때 사용한다. "/to-production", "production으로 옮겨", "hotfix로 다시 쌓아", "development 기반 작업을 production base로 이식" 요청에 사용한다. source worktree 변경 유실 방지가 핵심이다.
+description: 현재 worktree의 작업 내용이나 workspace commit을 최신 production 기반 hotfix branch/worktree로 안전하게 이어가야 할 때 사용한다. "/to-production", "production으로 옮겨", "hotfix로 다시 쌓아", "development 기반 작업을 production base로 이식" 요청에 사용한다. source worktree 변경 유실 방지가 핵심이다.
 argument-hint: "[target-branch] [--include-untracked|--skip-untracked|--commit-untracked] [--message <commit-message>]"
 disable-model-invocation: false
 ---
 
 # to-production — source-preserving production 이식
 
-현재 worktree의 변경사항을 **source worktree에 손대지 않고** 최신 production 기반 새 branch/worktree로 옮기는 workflow다. 실제 자동화는 `/to-production` extension command 또는 같은 실행 경로를 쓰는 `to_production` tool이 담당하고, 이 skill은 언제 실행하고 어떻게 검증/복구할지의 판단 기준이다.
+사용자 관점의 `/to-production`은 **지금 작업하는 workspace를 production 기반 continuation으로 이어가게 하는 workflow**다. 내부적으로는 source worktree에 손대지 않고 최신 production 기반 새 branch/worktree를 만들 수 있지만, 사용자는 upstream/range 계산을 의식하지 않아야 한다. 실제 자동화는 `/to-production` extension command 또는 같은 실행 경로를 쓰는 `to_production` tool이 담당하고, 이 skill은 언제 실행하고 어떻게 검증/복구할지의 판단 기준이다.
 
 ## 핵심 원칙
 
+- **사용자 계약 우선**: `/to-production`은 “현재 workspace 작업을 production 기반으로 이어가기”다. 이미 push된 feature commit도 현재 workspace 작업이면 기본 이식 후보에 포함한다.
 - **원본 유실 금지**: source worktree에서 `checkout`, `stash`, `reset`, `clean`을 실행하지 않는다.
 - **먼저 보존, 나중에 적용**: patch artifact와 source backup branch를 만든 뒤 target worktree에만 적용한다.
 - **production base 명시**: 기본 base는 `origin/production`이다. 다른 base가 필요하면 `--base <remote/branch>`로 명시한다.
@@ -20,7 +21,7 @@ disable-model-invocation: false
 - **현재 패널 연속성**: 성공 후 현재 패널은 target worktree session을 바라봐야 한다. session switch 또는 interactive Ghostty 현재 패널 재실행이 불가능하면 이식 전에 중단한다.
 - **untracked는 선택 게이트**: UI가 있으면 포함/제외/source commit 후 진행/중단을 묻는다. headless에서는 `--include-untracked`, `--skip-untracked`, `--commit-untracked` 중 하나를 명시해야 한다.
 - **source commit은 명시 선택일 때만**: `--commit-untracked` 또는 UI 선택으로 untracked를 source에 commit할 수 있다. 이 경우 새 commit이 이식 range에 포함되어야 하므로 explicit range는 `...HEAD` 형태여야 한다.
-- **불명확하면 중단**: merge commit, 충돌, commit range 불명확성은 조용히 추측하지 않는다.
+- **불명확하면 설명하고 중단**: merge commit, 충돌, 진짜 commit range 불명확성은 조용히 추측하지 않는다. 단, dedicated command/tool 대신 사용자에게 range 계산을 떠넘기는 것은 실패다.
 
 ## 기본 사용
 
@@ -33,7 +34,7 @@ disable-model-invocation: false
 기본 동작:
 
 1. 현재 git repo/source branch/HEAD/upstream/status를 읽는다.
-2. local commits는 `@{upstream}`과의 merge-base부터 `HEAD`까지를 이식 대상으로 본다.
+2. 현재 workspace의 작업 commit을 자동 추론한다. 우선 upstream 대비 아직 push되지 않은 commit을 보고, 이미 push되어 upstream과 같으면 `origin/development`/`origin/develop`/`origin/main`/`origin/master`/`origin/HEAD` 같은 source base 대비 branch 고유 commit을 후보로 본다.
 3. tracked/staged/unstaged diff는 `git diff --binary HEAD` patch로 보존한다.
 4. untracked 파일이 있으면 UI에서 처리 방식을 묻거나 명시 옵션을 적용한다.
 5. `origin/production`을 fetch한다.
@@ -73,7 +74,7 @@ disable-model-invocation: false
 아래면 extension이 중단해야 한다.
 
 - source worktree에 conflict/unmerged file이 있다.
-- 옮길 local commit/diff/untracked가 없다.
+- 현재 workspace 기준으로 옮길 작업 commit/diff/untracked가 없다.
 - headless/no-UI에서 untracked 파일이 있는데 include/skip/commit 중 명시 선택이 없다.
 - `--commit-untracked`와 explicit `--range`를 함께 쓰면서 range가 `HEAD`를 포함하지 않는다.
 - target branch 또는 target worktree path가 이미 존재한다.
@@ -127,7 +128,8 @@ git commit -m "fix: ..." # dirty patch 단계에서 멈춘 경우
 - untracked 발견 시 선택지를 주지 않고 바로 중단한다.
 - 자연어 `/to-production` 요청을 generic `worktree_fork`/`worktree_create`로 처리한다.
 - dedicated command/tool 대신 사용자에게 commit range를 다시 계산해 입력하라고 떠넘긴다.
-- `origin/production..HEAD` 전체를 local commit range로 사용한다. development 기반 branch에서는 unrelated development commit이 섞일 수 있다.
+- 이미 push되어 `@{upstream}..HEAD`가 비었다는 이유만으로 “옮길 변경 없음”이라고 중단한다.
+- `origin/production..HEAD` 전체를 workspace commit range로 사용한다. development 기반 branch에서는 unrelated development commit이 섞일 수 있다.
 - untracked 파일을 조용히 무시하거나 사용자 선택 없이 source에 commit한다.
 - target 적용 실패 후 artifact/backup 없이 “다시 해보면 됨”으로 넘긴다.
 - 성공 직후 원본 worktree를 자동 삭제한다.
