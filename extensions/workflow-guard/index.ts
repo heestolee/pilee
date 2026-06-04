@@ -19,6 +19,7 @@ interface GuardState {
 	explicitCommitPushOnly: boolean;
 	explicitPrAction: boolean;
 	auditRequired: boolean;
+	sqlReview: boolean;
 	summary: string;
 	continuationCue: boolean;
 	createdAt: string;
@@ -105,6 +106,17 @@ function isContinuationCue(normalized: string): boolean {
 	return /^(계속|계속해|이어가|이어서|진행|진행해|다음|다음으로|continue|proceed|go on|next)$/.test(normalized);
 }
 
+function isSqlReviewPrompt(prompt: string, normalized: string): boolean {
+	const sqlMutationSignal = /(?:^|\n)\s*(?:START\s+TRANSACTION\s*;|UPDATE\s+[`\w.]+|INSERT\s+INTO\s+[`\w.]+|DELETE\s+FROM\s+[`\w.]+|COMMIT\s*;)/iu.test(prompt);
+	if (!sqlMutationSignal) return false;
+	return hasAny(normalized, [
+		/그대로.*(?:돼|되나|하면|실행)/,
+		/(?:이거|sql|쿼리).*(?:맞아|맞나|검토|봐줘|확인|실행|복구)/,
+		/(?:복구|원복|테스트\s*데이터|테스트\s*상태|verify[- ]?report).*(?:돼|되나|맞아|확인)/,
+		/(?:run|execute|review|check|ok|safe).*(?:sql|query|transaction)/,
+	]);
+}
+
 function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 	const normalized = normalizeText(prompt);
 	const statusNote = isStatusNotePrompt(prompt);
@@ -120,13 +132,14 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 		/(작업|워크플로|플로우).*(늘어지|지연|과했|과한|판단실수|스트레스)/,
 		/(already fixed|still missing|remaining gap|fixed vs)/,
 	]);
+	const sqlReview = !statusNote && isSqlReviewPrompt(prompt, normalized);
 	const verifyReport = explicitHeavy && hasAny(normalized, [/verify[- ]?report|검증\s*리포트|캡처\s*리포트/]);
 	const knowledge = !statusNote && hasAny(normalized, [/ember|knowledge|불씨|지식|stale|freshness/]);
 	const explicitPrAction = !statusNote && hasAny(normalized, [/\bpr\b|pull request|create-pr|pr\s*(생성|만들|올려|확인|체크)|리뷰\s*요청/]);
 	const ship = !statusNote && hasAny(normalized, [/\bpr\b|pull request|commit|push|merge|ship|릴리즈|커밋|푸시/]);
 	const hotfix = !statusNote && hasAny(normalized, [/hotfix|핫픽스|간단|문구|오타|copy|카피|one[- ]?line|한\s*줄|작은|small|quick|빨리|이거\s*하나/]);
 	const noMutation = hasAny(normalized, [/수정하지|고치지|변경하지|건드리지|커밋하지|푸시하지|하지\s*마|하지마|no\s*(edit|change|commit|push)|do\s*not\s*(edit|change|commit|push)/]);
-	const implement = !statusNote && !noMutation && hasAny(normalized, [/구현|수정|고쳐|고치|바꿔|변경|추가|삭제|반영|패치|생성|작성|만들|implement|fix|change|add|remove|update|create/]);
+	const implement = !statusNote && !sqlReview && !noMutation && hasAny(normalized, [/구현|수정|고쳐|고치|바꿔|변경|추가|삭제|반영|패치|생성|작성|만들|implement|fix|change|add|remove|update|create/]);
 	const readOnlyShipSignal = hasAny(normalized, [/확인|상태|왜|원인|알려|조회|봐줘|보여|status|check|view/]);
 	const explicitCommitPushOnly = ship && !implement && !noMutation && !readOnlyShipSignal && hasAny(normalized, [
 		/커밋\s*[\/]?\s*푸시/,
@@ -144,6 +157,7 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 	let intent: Intent = "unknown";
 	if (statusNote) intent = "status_note";
 	else if (auditRequired) intent = "audit";
+	else if (sqlReview) intent = "investigate";
 	else if (verifyReport) intent = "verify_report";
 	else if (knowledge && implement) intent = "knowledge";
 	else if (hotfix && implement) intent = "hotfix";
@@ -155,7 +169,8 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 	else if (knowledge) intent = "knowledge";
 
 	let weight: WorkflowWeight = "none";
-	if (intent === "verify_report" || explicitHeavy) weight = "full";
+	if (sqlReview) weight = "none";
+	else if (intent === "verify_report" || explicitHeavy) weight = "full";
 	else if (intent === "hotfix" || (intent === "ship" && explicitCommitPushOnly)) weight = "light";
 	else if (intent === "implement" || intent === "ship" || intent === "knowledge") weight = "standard";
 	else if (intent === "investigate" || intent === "audit" || intent === "answer") weight = "none";
@@ -168,11 +183,12 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 		`weight=${weight}`,
 		continuationCue ? "continuation=latest-intent" : null,
 		auditRequired ? "audit=required" : null,
-		explicitHeavy ? "heavy=explicit" : null,
+		sqlReview ? "sqlReview=detected" : null,
+		explicitHeavy && !sqlReview ? "heavy=explicit" : null,
 		!explicitMutation ? "mutation=not-requested" : null,
 	].filter(Boolean).join(" · ");
 
-	return { prompt, intent, weight, explicitHeavy, explicitMutation, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, auditRequired, summary, continuationCue, createdAt: new Date().toISOString(), sessionFile };
+	return { prompt, intent, weight, explicitHeavy, explicitMutation, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, auditRequired, sqlReview, summary, continuationCue, createdAt: new Date().toISOString(), sessionFile };
 }
 
 function fastPaceBudgetSeconds(state: GuardState): number | undefined {
@@ -216,6 +232,14 @@ function buildSystemPrompt(state: GuardState): string {
 		);
 	}
 
+	if (state.sqlReview) {
+		lines.push(
+			"- SQL REVIEW SOFT GATE: the prompt includes a concrete mutating SQL/transaction review request.",
+			"- If the answer depends on current row/table state, run a read-only DB SELECT with the project-approved DB tool before concluding.",
+			"- If DB access is unavailable or environment is unclear, say that the SQL cannot be confirmed from current row state yet; do not answer with speculative 가능성 language as if it were verified.",
+			"- Keep this as a reminder, not a hard block: syntax-only or conceptual SQL questions may be answered without DB lookup when current row state is irrelevant.",
+		);
+	}
 	if (state.intent === "status_note") {
 		lines.push(
 			"- HARD STATUS NOTE PATH: the latest prompt is an environment/readiness/context-binding note, not a user task directive.",

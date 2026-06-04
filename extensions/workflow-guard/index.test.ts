@@ -78,6 +78,24 @@ test("investigation prompts lock scope and require expansion handoff", async () 
 	assert.match(result.content.at(-1).text, /progress\/strategy-reset/);
 });
 
+test("pasted mutating SQL review stays read-only and injects DB evidence reminder", async () => {
+	const { hooks, ctx } = createHarness();
+	const prompt = [
+		"START TRANSACTION;",
+		"UPDATE reserve SET reserve_date = DATE_ADD(NOW(), INTERVAL 2 HOUR) WHERE reserve_code = '260507bwjuc0';",
+		"COMMIT;",
+		"이거 그대로 하면 verify-report 테스트 상태로 복구되는 거 맞아?",
+	].join("\n");
+	const start = await hooks.before_agent_start({ prompt, systemPrompt: "base" }, ctx);
+
+	assert.match(start.systemPrompt, /intent=investigate/);
+	assert.match(start.systemPrompt, /sqlReview=detected/);
+	assert.match(start.systemPrompt, /SQL REVIEW SOFT GATE/);
+	assert.match(start.systemPrompt, /read-only DB SELECT/);
+	assert.match(start.systemPrompt, /do not answer with speculative 가능성 language/);
+	assert.doesNotMatch(start.systemPrompt, /intent=implement/);
+});
+
 test("workflow weight controls fast response pace budget", async () => {
 	const { hooks, ctx } = createHarness();
 	const standard = await hooks.before_agent_start({ prompt: "결제 플로우 수정해줘", systemPrompt: "base" }, ctx);
