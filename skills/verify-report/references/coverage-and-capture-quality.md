@@ -61,10 +61,44 @@ Frame은 requirement source이고 verify-report는 evidence adjudicator다. Fram
 | sidebar/nav/menu | expanded, collapsed, role/account별 차이, before/after | nav 영역 crop |
 | typography/logo/token | screenshot, DOM class/token, computed style, before/after | crop + computed style text |
 | table/card/list | empty, data, overflow/scroll | section crop + data fixture 설명 |
+| repeated card/thumbnail/badge/tag/list item | consumer surface matrix, actual route subject, desktop/mobile variants, exclusion/gap classification | surface별 focused crop primary + full viewport supporting + DOM/network/API support |
 | default selection/option panel | no data, data exists, refresh/stale selection | UI crop + state/log excerpt |
 | primary create/update/read action | happy path, 저장/조회, downstream 표시, 필요한 regression path | UI crop/GIF + DB/API support |
 | network/event | trigger, non-trigger, request payload/count | network JSON/TXT + optional UI context |
 | BE/API/permission | authorized, unauthorized, error path | 하단 기술 보조 검증의 response JSON/status/log |
+
+## 1.1 Repeated surface fan-out preset
+
+반복 카드, 썸네일, badge, tag, list item, 공통 row 컴포넌트처럼 여러 consumer surface에 퍼지는 UI 변경은 단일 컴포넌트 캡처로 닫지 않는다. 사용자가 “모든 카드 surface를 봐줘”라고 말하지 않아도 `/verify-report`가 fan-out matrix를 만든다.
+
+Trigger 예시:
+
+- 공통 카드/썸네일 component, converter, fragment, tag/badge policy, display helper가 변경됐다.
+- 같은 필드나 label이 list/search/map/mobile/detail/sidebar/embed 등 여러 route에서 소비된다.
+- “카드에 태그 노출”, “badge 우선순위”, “혜택 문구”, “가격/할인/환급률 표시”처럼 반복 UI 정책이 바뀐다.
+
+Workflow:
+
+1. 변경 diff, Frame/PR test plan, import/consumer 관계, project overlay preset에서 후보 surface를 만든다.
+2. 각 surface를 `capture`, `technical evidence`, `exclusion/gap` 중 하나로 분류한다.
+3. `capture` surface는 actual route와 subject identity를 고정한다. 같은 subject를 못 쓰면 equivalent subject와 이유를 detail에 쓴다.
+4. 정적 UI는 focused element/section crop을 primary evidence로 두고, full viewport는 route/context supporting evidence로만 둔다.
+5. 모바일 전용 또는 responsive surface는 별도 viewport(예: 390×844)에서 캡처한다. desktop crop으로 mobile card PASS를 대체하지 않는다.
+6. DOM text assertion, GraphQL/network response, DB/read-only subject 탐색은 보조 evidence로 붙인다.
+7. actual route/subject가 없거나 구조상 적용 대상이 아니면 PASS가 아니라 exclusion/gap으로 명시한다.
+
+Surface matrix template:
+
+| surface | route/subject | expected oracle | evidence | status |
+|---------|---------------|-----------------|----------|--------|
+| list card | URL + item id | badge/tag text visible | focused crop + viewport | capture |
+| search result card | query + item id | same policy text visible | crop + network boolean | capture |
+| map desktop card | map route + poi id | card tag in desktop POI/list | crop + viewport | capture |
+| mobile selected card | mobile viewport + selected item | same tag in mobile card | 390×844 crop + viewport | capture |
+| nearby/recommendation card | detail route + related item | same card policy visible | section crop | capture |
+| embed/recent/history card | actual route if available | visible policy or not applicable | crop or code/route evidence | exclusion/gap |
+
+Hard gate: repeated-surface UI 변경인데 report에 consumer surface matrix가 없거나, 공통 component 한 장만으로 모든 surface PASS를 선언하면 해당 report는 coverage incomplete다.
 
 ## 2. Responsive preset
 
@@ -187,6 +221,7 @@ PASS 금지 예시:
 
 - 요구사항/기획 근거 또는 PM-readable 성공 기준이 없다.
 - UI item인데 primary 화면 캡처/GIF가 없거나, 캡처 안에 expected UI가 보이지 않는다.
+- 반복 카드/썸네일/badge/tag UI 변경인데 consumer surface matrix 없이 단일 surface나 공통 component 캡처만으로 전체 PASS를 선언했다.
 - Frame Requirement Matrix/verify focus가 있는데 reuse/revise/add/drop/blocked handoff 판정 없이 복사하거나 무시했다.
 - state transition/before-after claim인데 같은 subject identity가 보장되지 않고, equivalent path도 명시되지 않았다.
 - 과거 교정 literal이 비현실적인데 primary action과 correction intent를 재해석하지 않고 blocked/pass로 처리했다.
