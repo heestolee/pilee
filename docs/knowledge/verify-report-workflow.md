@@ -17,6 +17,8 @@ tags:
   - gif
   - report-lint
   - setup-noise
+  - surface-fan-out
+  - repeated-surface
   - pm-facing
   - requirement-mapping
   - capture-first
@@ -46,8 +48,9 @@ source:
   - user-feedback:2026-05-30-prior-correction-intent
   - user-feedback:2026-05-30-frame-handoff-adjudication
   - user-feedback:2026-05-31-motion-gif-quality-default
-reviewed_at: 2026-06-02
-reviewed_commit: 61ccbc9d3fb4d6eb5cb7f0558dd056eb385b0410
+  - user-feedback:2026-06-04-repeated-surface-capture-default
+reviewed_at: 2026-06-04
+reviewed_commit: 2553bebbd337740f45f27e197bd5e8bf5d0b916a
 related:
   - pilee-knowledge-system
   - web-search-curator
@@ -88,6 +91,14 @@ Frame은 requirement source이고 verify-report는 evidence adjudicator입니다
 기존 UI/동작을 바꾸는 작업은 before/after도 coverage 후보입니다. 같은 route, viewport, role, 데이터 상태로 작업 전 기준과 작업 후 결과를 나란히 보여주면 리뷰어가 “무엇이 바뀌었고 무엇은 유지됐는지”를 더 빨리 판단할 수 있습니다.
 
 계획한 축이 빠졌다면 캡처가 있더라도 PASS가 아닙니다. 해당 항목은 `unverified`, `blocked`, 또는 Coverage Gap으로 남겨야 합니다.
+
+## Surface Fan-out Rule
+
+반복 카드·썸네일·badge·tag·list item UI 변경은 사용자가 별도로 말하지 않아도 `/verify-report`가 consumer surface matrix를 만들어야 합니다. Preflight가 있으면 그 계약을 재사용하지만, preflight는 선택 단계이므로 source of truth가 아닙니다. Preflight가 없으면 diff, Frame, PR test plan, import/consumer 관계, project/private overlay preset에서 surface 후보를 도출합니다.
+
+각 surface는 `capture`, `technical evidence`, `exclusion/gap` 중 하나로 분류합니다. `capture` surface는 actual route와 subject identity를 고정하고 focused crop을 primary evidence로 둡니다. Full viewport는 route/context supporting evidence이며, 모바일 전용 surface는 390×844 같은 별도 viewport에서 캡처해야 합니다. DOM text assertion, GraphQL/network response, read-only data 탐색은 보조 evidence입니다.
+
+공통 component 한 장이나 한 route만 캡처하고 “모든 카드 surface PASS”라고 쓰는 것은 coverage incomplete입니다. actual route/subject가 없거나 구조상 적용 대상이 아니면 PASS가 아니라 exclusion/gap으로 명시해야 합니다. 프로젝트별 surface preset은 private overlay가 제공하고, public verify-report는 fan-out protocol만 소유합니다.
 
 ## Capture Quality Rule
 
