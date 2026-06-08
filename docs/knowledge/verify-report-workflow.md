@@ -19,6 +19,9 @@ tags:
   - setup-noise
   - surface-fan-out
   - repeated-surface
+  - screen-capture-bundle
+  - desktop-mobile
+  - contextual-crop
   - pm-facing
   - requirement-mapping
   - capture-first
@@ -49,8 +52,9 @@ source:
   - user-feedback:2026-05-30-frame-handoff-adjudication
   - user-feedback:2026-05-31-motion-gif-quality-default
   - user-feedback:2026-06-04-repeated-surface-capture-default
-reviewed_at: 2026-06-04
-reviewed_commit: 2553bebbd337740f45f27e197bd5e8bf5d0b916a
+  - user-feedback:2026-06-06-generic-ui-capture-bundle-default
+reviewed_at: 2026-06-06
+reviewed_commit: 694e15550ea75108754a1f787e960ea8c4e2253b
 related:
   - pilee-knowledge-system
   - web-search-curator
@@ -91,6 +95,14 @@ Frame은 requirement source이고 verify-report는 evidence adjudicator입니다
 기존 UI/동작을 바꾸는 작업은 before/after도 coverage 후보입니다. 같은 route, viewport, role, 데이터 상태로 작업 전 기준과 작업 후 결과를 나란히 보여주면 리뷰어가 “무엇이 바뀌었고 무엇은 유지됐는지”를 더 빨리 판단할 수 있습니다.
 
 계획한 축이 빠졌다면 캡처가 있더라도 PASS가 아닙니다. 해당 항목은 `unverified`, `blocked`, 또는 Coverage Gap으로 남겨야 합니다.
+
+## Screen Capture Bundle Rule
+
+모든 정적 UI 화면 검증은 카드나 썸네일에 한정하지 않고 `contextual focused crop + full viewport supporting + 적용 가능한 desktop/mobile` 번들을 기본값으로 둡니다. Contextual crop은 검증 포인트를 바로 보여주되, 너무 좁게 잘라 위치와 의미를 잃지 않도록 section heading, container edge, nearby label, selected tab, row/card title 같은 주변 UI를 포함해야 합니다.
+
+Full viewport는 같은 route/action/viewport의 visible viewport screenshot으로, crop이 실제 화면 어디에서 나온 evidence인지 설명하는 supporting context입니다. 긴 full-page/scroll capture는 여전히 supporting toggle/appendix이며 primary가 아닙니다. User-facing Web UI가 desktop과 mobile에서 모두 접근 가능하면 두 viewport를 모두 검증하고, admin desktop-only/mobile-only/native-only처럼 한쪽 viewport가 의미 없으면 생략 사유를 item detail 또는 Coverage Gap에 남깁니다.
+
+정적 UI item을 PASS로 두면서 contextual crop, full viewport context, 적용 가능한 desktop/mobile 중 하나가 빠지고 사유도 없다면 coverage incomplete입니다.
 
 ## Surface Fan-out Rule
 
