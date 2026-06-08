@@ -19,6 +19,10 @@ const checks = [
       '교정 literal과 intent를 분리',
       'equivalent path',
       'primary action happy path',
+      'UI 캡처 번들은 공통 기본값',
+      'contextual focused crop',
+      'full viewport',
+      'desktop과 mobile viewport',
     ],
   },
   {
@@ -51,6 +55,10 @@ const checks = [
       'Correction literal',
       'Correction intent',
       '과거 교정 literal이 비현실적인데 primary action과 correction intent를 재해석하지 않고 blocked/pass로 처리했다',
+      'UI capture bundle default',
+      'Contextual focused crop',
+      'Full viewport context',
+      'Desktop/mobile applicability',
     ],
   },
   {
@@ -64,6 +72,10 @@ const checks = [
       'primary feature verb',
       '과거 사용자 교정이나 실패 회고는 literal 요구가 아니라 intent 보존 제약',
       'equivalent core feature path',
+      'Screen Capture Bundle Rule',
+      'contextual focused crop',
+      'full viewport supporting',
+      'desktop과 mobile',
     ],
   },
   {

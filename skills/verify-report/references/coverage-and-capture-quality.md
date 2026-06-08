@@ -57,6 +57,7 @@ Frame은 requirement source이고 verify-report는 evidence adjudicator다. Fram
 
 | 변경 유형 | 필수 축 | 권장 evidence |
 |----------|---------|---------------|
+| static UI state/section/component | contextual crop, full viewport context, desktop/mobile applicability | contextual focused crop primary + same-route full viewport supporting + mobile/desktop pair when applicable |
 | responsive/layout class | mobile, breakpoint boundary, desktop, before/after | viewport screenshot + 문제 영역 crop |
 | sidebar/nav/menu | expanded, collapsed, role/account별 차이, before/after | nav 영역 crop |
 | typography/logo/token | screenshot, DOM class/token, computed style, before/after | crop + computed style text |
@@ -67,9 +68,31 @@ Frame은 requirement source이고 verify-report는 evidence adjudicator다. Fram
 | network/event | trigger, non-trigger, request payload/count | network JSON/TXT + optional UI context |
 | BE/API/permission | authorized, unauthorized, error path | 하단 기술 보조 검증의 response JSON/status/log |
 
-## 1.1 Repeated surface fan-out preset
+## 1.1 UI capture bundle default
 
-반복 카드, 썸네일, badge, tag, list item, 공통 row 컴포넌트처럼 여러 consumer surface에 퍼지는 UI 변경은 단일 컴포넌트 캡처로 닫지 않는다. 사용자가 “모든 카드 surface를 봐줘”라고 말하지 않아도 `/verify-report`가 fan-out matrix를 만든다.
+모든 정적 `UI_CAPTURE` item은 기본적으로 “contextual crop + full viewport + 적용 가능한 desktop/mobile” 번들을 갖는다. 이 규칙은 카드/썸네일에 한정되지 않고, 버튼, 배너, 폼, 테이블, 모달, 사이드바, 안내문, 설정 화면처럼 화면에 보이는 모든 UI claim에 적용한다.
+
+Evidence bundle:
+
+1. **Contextual focused crop — primary**
+   - 검증 포인트가 바로 보이는 crop을 primary evidence로 둔다.
+   - 너무 좁게 잘라 텍스트/상태만 남기지 않는다. 리뷰어가 위치와 의미를 인식할 수 있도록 section heading, container edge, nearby label, card title, selected tab, surrounding row 중 필요한 맥락을 포함한다.
+   - 반대로 full viewport 전체를 primary로 쓰고 리뷰어가 검증 포인트를 찾게 만들지 않는다.
+2. **Full viewport context — supporting**
+   - 같은 route/action/viewport에서 전체 visible viewport screenshot을 supporting evidence로 첨부한다.
+   - 여기서 full viewport는 현재 화면 높이의 일반 screenshot을 뜻한다. 긴 full-page/scroll capture는 여전히 supporting toggle/appendix이고 primary가 아니다.
+3. **Desktop/mobile applicability**
+   - user-facing Web UI가 desktop과 mobile에서 모두 접근 가능하면 두 viewport를 모두 검증한다. 기본 예시는 mobile 390×844 전후와 desktop 1320~1440px 전후다.
+   - responsive/layout 변경이면 section 2의 breakpoint boundary까지 추가한다.
+   - admin desktop-only, native-only, mobile-only, 특정 role/route에서 한 viewport만 의미 있는 경우에는 생략하지 말고 item detail 또는 Coverage Gap에 “왜 해당 viewport를 검증하지 않았는지”를 적는다.
+4. **Motion claim 예외**
+   - 클릭/전환/열림/닫힘 같은 flow는 GIF/짧은 영상이 primary이고, final-state contextual crop + full viewport가 supporting이다.
+
+Hard gate: 정적 UI item을 PASS로 두면서 contextual crop이 없거나, full viewport context가 없거나, user-facing Web의 desktop/mobile 한쪽을 검증하지 않았는데 사유가 없으면 coverage incomplete다.
+
+## 1.2 Repeated surface fan-out preset
+
+반복 카드, 썸네일, badge, tag, list item, 공통 row 컴포넌트처럼 여러 consumer surface에 퍼지는 UI 변경은 단일 컴포넌트 캡처로 닫지 않는다. 사용자가 “모든 카드 surface를 봐줘”라고 말하지 않아도 `/verify-report`가 fan-out matrix를 만든다. 이 preset은 section 1.1의 UI capture bundle을 각 surface에 반복 적용하는 특수 케이스다.
 
 Trigger 예시:
 
@@ -221,6 +244,7 @@ PASS 금지 예시:
 
 - 요구사항/기획 근거 또는 PM-readable 성공 기준이 없다.
 - UI item인데 primary 화면 캡처/GIF가 없거나, 캡처 안에 expected UI가 보이지 않는다.
+- 정적 UI item인데 contextual focused crop, same-route full viewport supporting, 적용 가능한 desktop/mobile viewport 중 하나가 없고 생략 사유도 없다.
 - 반복 카드/썸네일/badge/tag UI 변경인데 consumer surface matrix 없이 단일 surface나 공통 component 캡처만으로 전체 PASS를 선언했다.
 - Frame Requirement Matrix/verify focus가 있는데 reuse/revise/add/drop/blocked handoff 판정 없이 복사하거나 무시했다.
 - state transition/before-after claim인데 같은 subject identity가 보장되지 않고, equivalent path도 명시되지 않았다.
@@ -247,6 +271,8 @@ PASS는 아래가 모두 참일 때만 쓴다.
 아래 상황은 PASS 금지:
 
 - 모바일만 봤는데 desktop responsive 회귀 가능성이 남아 있음
+- desktop만 봤는데 user-facing mobile 화면도 접근 가능한 UI임
+- crop이 너무 좁아 위치/맥락을 알 수 없거나, full viewport supporting이 없어 실제 route context를 확인할 수 없음
 - before가 핵심인 UI 변경인데 after만 보고 완료 선언함
 - 캡처가 full-page 하나뿐이라 검증 포인트가 불명확함
 - 환경/계정/viewport를 알 수 없음
