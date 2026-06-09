@@ -16,6 +16,14 @@ const requiredSnippets = [
   '게시/수정 직후 응답의 `.body`를 확인한다.',
   '성공으로 보고하지 말고 즉시 `PATCH repos/<owner>/<repo>/pulls/comments/<reply_id>`',
   '최종 보고의 답글 URL은 body 검증이 끝난 뒤에만 적는다.',
+  '반드시 `리뷰 대응 평가`를 함께 포함한다.',
+  '그 리뷰가 대응할 만했는가, 대응이 과하지 않았는가',
+  '판정: <대응이 필요한 리뷰였는지 + 전체 대응이 과하지 않았는지 한 문장>',
+  '| 리뷰 | 대응 필요성 | 평가 |',
+  '### 과하지 않았나?',
+  '### 아쉬운 점',
+  '### 남은 후속 후보',
+  '실행 중 실수도 숨기지 않는다.',
 ];
 
 const missing = requiredSnippets.filter((snippet) => !text.includes(snippet));
