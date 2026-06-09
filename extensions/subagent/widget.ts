@@ -62,13 +62,43 @@ export type WidgetRenderCtx = {
 /** Fast timer that drives spinner animation while any run is active. */
 let spinnerTimer: ReturnType<typeof setInterval> | undefined;
 
+export function isStaleExtensionContextError(error: unknown): boolean {
+	const message = error instanceof Error ? error.message : String(error ?? "");
+	return message.includes("This extension ctx is stale after session replacement or reload");
+}
+
+export function runIgnoringStaleExtensionContextError(callback: () => void): boolean {
+	try {
+		callback();
+		return true;
+	} catch (error) {
+		if (!isStaleExtensionContextError(error)) throw error;
+		return false;
+	}
+}
+
+export function cleanupCommandRunsWidgetTimer(): void {
+	if (!spinnerTimer) return;
+	clearInterval(spinnerTimer);
+	spinnerTimer = undefined;
+}
+
+export function __hasCommandRunsWidgetTimerForTesting(): boolean {
+	return Boolean(spinnerTimer);
+}
+
+export function cleanupCommandRunsWidgetState(store: SubagentStore): void {
+	cleanupCommandRunsWidgetTimer();
+	store.commandWidgetCtx = null;
+	store.renderedRunWidgetIds.clear();
+}
+
 function manageSpinnerTimer(store: SubagentStore): void {
 	const hasRunning = Array.from(store.commandRuns.values()).some((r) => r.status === "running");
 	if (hasRunning && !spinnerTimer) {
 		spinnerTimer = setInterval(() => updateCommandRunsWidget(store), SPINNER_REFRESH_MS);
-	} else if (!hasRunning && spinnerTimer) {
-		clearInterval(spinnerTimer);
-		spinnerTimer = undefined;
+	} else if (!hasRunning) {
+		cleanupCommandRunsWidgetTimer();
 	}
 }
 
@@ -200,6 +230,18 @@ function composeRunLine(run: CommandRunState, ctx: WidgetRenderCtx, theme: Widge
 }
 
 export function updateCommandRunsWidget(store: SubagentStore, ctx?: WidgetRenderCtx): void {
+	try {
+		updateCommandRunsWidgetUnsafe(store, ctx);
+	} catch (error) {
+		if (isStaleExtensionContextError(error)) {
+			cleanupCommandRunsWidgetState(store);
+			return;
+		}
+		throw error;
+	}
+}
+
+function updateCommandRunsWidgetUnsafe(store: SubagentStore, ctx?: WidgetRenderCtx): void {
 	const activeCtx = ctx ?? store.commandWidgetCtx;
 	if (!activeCtx || !activeCtx.hasUI || !activeCtx.ui) return;
 	store.commandWidgetCtx = activeCtx;
@@ -272,7 +314,13 @@ export function updateCommandRunsWidget(store: SubagentStore, ctx?: WidgetRender
 				return {
 					render(width: number): string[] {
 						const innerWidth = Math.max(1, width - 2);
-						content.setText(composeRunLine(run, activeCtx, theme, innerWidth));
+						try {
+							content.setText(composeRunLine(run, activeCtx, theme, innerWidth));
+						} catch (error) {
+							if (!isStaleExtensionContextError(error)) throw error;
+							cleanupCommandRunsWidgetState(store);
+							content.setText(buildStatusLeft(run, theme, innerWidth));
+						}
 						return box.render(width);
 					},
 					invalidate() {

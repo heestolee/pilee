@@ -29,7 +29,7 @@ import { getSessionFileMtimeMs, readPersistedSessionSnapshot } from "./persisted
 import { getLastNonEmptyLine } from "./runner.js";
 import { createStore, type SubagentStore } from "./store.js";
 import type { CommandRunState } from "./types.js";
-import { updateCommandRunsWidget } from "./widget.js";
+import { cleanupCommandRunsWidgetState, runIgnoringStaleExtensionContextError, updateCommandRunsWidget } from "./widget.js";
 
 function reconcileRunWithPersistedSession(run: CommandRunState): void {
 	if (!run.sessionFile) return;
@@ -98,22 +98,24 @@ export function checkForHungRuns(store: SubagentStore, pi: ExtensionAPI): void {
 			return;
 		}
 
-		// Notify main session
-		pi.sendMessage(
-			{
-				customType: "subagent-command",
-				content: message,
-				display: true,
-				details: {
-					runId,
-					agent: run.agent,
-					task: run.task,
-					displayTask: run.displayTask,
-					status: "auto-aborted",
-					idleMs,
+		// Notify main session when the captured ExtensionAPI is still active.
+		runIgnoringStaleExtensionContextError(() =>
+			pi.sendMessage(
+				{
+					customType: "subagent-command",
+					content: message,
+					display: true,
+					details: {
+						runId,
+						agent: run.agent,
+						task: run.task,
+						displayTask: run.displayTask,
+						status: "auto-aborted",
+						idleMs,
+					},
 				},
-			},
-			{ deliverAs: "followUp", triggerTurn: false },
+				{ deliverAs: "followUp", triggerTurn: false },
+			),
 		);
 	}
 
@@ -144,5 +146,6 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_shutdown", async () => {
 		clearInterval(hangCheckTimer);
 		cleanupPixelTimer();
+		cleanupCommandRunsWidgetState(store);
 	});
 }
