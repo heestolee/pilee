@@ -45,6 +45,7 @@ SELECT * FROM target WHERE ... LIMIT 5;
 - 재실행 안전성을 둔다.
 - down()/rollback은 스크립트가 만든 것만 되돌린다.
 - 예약어 alias/컬럼명 사용을 피한다.
+- 프로젝트/서비스 overlay가 제공하는 migration static safety check가 있으면, 스크립트 작성 시점부터 그 룰을 반영한다.
 
 ```sql
 INSERT INTO target (col1, col2)
@@ -54,6 +55,15 @@ WHERE NOT EXISTS (
   SELECT 1 FROM target t WHERE t.col1 = s.col1
 );
 ```
+
+### Step 3.4. 정적 안전 검사
+
+프로젝트 CI나 private/project overlay에 migration 전용 정적 검사가 있으면 **Step 3.5 사용자 승인 전에** 같은 범위로 먼저 통과시킨다.
+
+- 검사 대상은 이번에 생성/수정한 migration 파일로 좁힌다.
+- 실패하면 실행 승인 질문을 하지 말고 스크립트 작성 원칙으로 돌아가 수정한다.
+- 통과한 명령과 결과를 Step 3.5 초안에 함께 제시한다.
+- overlay에 명시된 검사 명령이 없으면, CI workflow의 migration-only lint/check가 있는지 확인하고 해당 경로를 따른다.
 
 ### Step 3.5. 사용자 승인 게이트
 
@@ -65,6 +75,7 @@ WHERE NOT EXISTS (
 - up/down 핵심 SQL 요약
 - 사전 조사 결과와 예상 영향 row 수
 - 예상 실행 시간/락 영향
+- 프로젝트 migration static safety check 결과
 - rollback 전략
 
 승인 전에는 migration 실행을 하지 않는다.
@@ -86,6 +97,7 @@ WHERE NOT EXISTS (
 - [ ] set-based SQL
 - [ ] idempotent 조건
 - [ ] down()/rollback 명확
+- [ ] 프로젝트 migration static safety check 통과
 - [ ] 실행 전 사용자 승인
 - [ ] dev 실행 및 검증
 - [ ] prod 규모에서 배포 블록이 과하지 않음
