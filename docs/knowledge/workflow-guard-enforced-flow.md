@@ -64,6 +64,8 @@ title_en: Repeated workflow failures become enforced guard flows
 
 `workflow_guard(action="audit")`는 이 과정을 돕기 위해 최근 `docs/pilee-history.md` 후보를 보여줍니다. 후보는 판정이 아니라 evidence seed입니다.
 
+다만 사용자가 “사례를 뒤져보고”, “로그를 확인해서”, “추상화해서” 같은 조사 동사 뒤에 “개선해”, “반영해”, “작업해봐”, “고쳐” 같은 실행 동사를 붙이면 read-only audit가 아닙니다. 이 경우 evidence collection은 구현 전 단계일 뿐이며 guard는 `implement`로 승격해야 합니다. `audit=required` 신호는 유지해도 되지만, `HARD AUDIT PATH`나 mutation block이 명시 구현 지시를 다시 확인 질문으로 돌리면 안 됩니다.
+
 ## Lightweight Rule
 
 작은 hotfix나 문구 수정은 안전을 버리지 않고 절차를 줄입니다. 기본 경로는 다음 네 단계입니다.

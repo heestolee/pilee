@@ -139,7 +139,13 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 	const ship = !statusNote && hasAny(normalized, [/\bpr\b|pull request|commit|push|merge|ship|릴리즈|커밋|푸시/]);
 	const hotfix = !statusNote && hasAny(normalized, [/hotfix|핫픽스|간단|문구|오타|copy|카피|one[- ]?line|한\s*줄|작은|small|quick|빨리|이거\s*하나/]);
 	const noMutation = hasAny(normalized, [/수정하지|고치지|변경하지|건드리지|커밋하지|푸시하지|하지\s*마|하지마|no\s*(edit|change|commit|push)|do\s*not\s*(edit|change|commit|push)/]);
-	const implement = !statusNote && !sqlReview && !noMutation && hasAny(normalized, [/구현|수정|고쳐|고치|바꿔|변경|추가|삭제|반영|패치|생성|작성|만들|implement|fix|change|add|remove|update|create/]);
+	const implementationDirective = !statusNote && !sqlReview && !noMutation && hasAny(normalized, [
+		/구현|수정|고쳐|고치|바꿔|변경|추가|삭제|반영|적용|패치|생성|작성|만들|개선|보강|수습|처리|대응|자동화|고도화/,
+		/implement|fix|change|add|remove|update|create|improve|harden|patch|apply|wire/,
+		/작업\s*(?:해|해줘|해봐|하자|진행)/,
+		/진행\s*(?:해|해줘|해봐|하자)/,
+	]);
+	const implement = implementationDirective;
 	const readOnlyShipSignal = hasAny(normalized, [/확인|상태|왜|원인|알려|조회|봐줘|보여|status|check|view/]);
 	const explicitCommitPushOnly = ship && !implement && !noMutation && !readOnlyShipSignal && hasAny(normalized, [
 		/커밋\s*[\/]?\s*푸시/,
@@ -151,13 +157,13 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 		/(?:그냥|걍)?\s*푸시(?:해|해줘|하자|만)?/,
 		/\bpush\b\s*(?:it|this|해|해줘|하자|please|now)/,
 	]);
-	const investigate = !statusNote && hasAny(normalized, [/확인|봐줘|살펴|분석|조사|찾아|왜|원인|검토|audit|오디트|알아봐/]);
+	const investigate = !statusNote && !implementationDirective && hasAny(normalized, [/확인|봐줘|살펴|분석|조사|찾아|왜|원인|검토|audit|오디트|알아봐/]);
 	const answerOnly = !statusNote && hasAny(normalized, [/설명|알려줘|어떻게|무슨\s*뜻|질문|궁금|정리해줘/]) && !implement && !ship;
 
 	let intent: Intent = "unknown";
 	if (statusNote) intent = "status_note";
-	else if (auditRequired) intent = "audit";
 	else if (sqlReview) intent = "investigate";
+	else if (auditRequired && !implementationDirective) intent = "audit";
 	else if (verifyReport) intent = "verify_report";
 	else if (knowledge && implement) intent = "knowledge";
 	else if (hotfix && implement) intent = "hotfix";
@@ -175,7 +181,7 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 	else if (intent === "implement" || intent === "ship" || intent === "knowledge") weight = "standard";
 	else if (intent === "investigate" || intent === "audit" || intent === "answer") weight = "none";
 
-	const explicitMutation = !statusNote && !noMutation && (implement || ship || explicitCommitPushOnly || hasAny(normalized, [/작업해|진행해|만들어|적용해|커밋|푸시/]));
+	const explicitMutation = !statusNote && !noMutation && (implementationDirective || ship || explicitCommitPushOnly || hasAny(normalized, [/작업해|진행해|만들어|적용해|개선해|보강해|커밋|푸시/]));
 	const explicitSingleCommit = hasAny(normalized, [/단일\s*커밋|한\s*커밋|one\s*commit|single\s*commit|squash/]);
 
 	const summary = [
@@ -232,6 +238,13 @@ function buildSystemPrompt(state: GuardState): string {
 		);
 	}
 
+	if (state.auditRequired && state.explicitMutation && state.intent !== "audit") {
+		lines.push(
+			"- WORKFLOW FRICTION IMPLEMENTATION PATH: the user asked to inspect examples and improve the workflow, not to stop at a read-only audit.",
+			"- Use collected evidence to patch guard rules/tests/docs; do not ask for another implementation confirmation just because the prompt contains 조사/뒤져/사례 수집.",
+		);
+	}
+
 	if (state.sqlReview) {
 		lines.push(
 			"- SQL REVIEW SOFT GATE: the prompt includes a concrete mutating SQL/transaction review request.",
@@ -267,7 +280,7 @@ function buildSystemPrompt(state: GuardState): string {
 			"- Progress heartbeat: for quick lookup/triage, use the silence breaker when the first route stalls or broadens; for genuinely long investigations, send a short Korean progress update at least every 3 minutes explaining what you are checking and why it is taking time.",
 		);
 	}
-	if (state.auditRequired) {
+	if (state.intent === "audit") {
 		lines.push(
 			"- HARD AUDIT PATH: before saying an issue is still unresolved, map friction → response evidence → current state → remaining gap. Use the injected audit snapshot or workflow_guard(action=audit).",
 			"- Do not classify an item as 미대응 just because it appeared in an old friction session; first check whether a later commit/history entry already addressed it.",
@@ -308,6 +321,7 @@ function buildSystemPrompt(state: GuardState): string {
 }
 
 function mutationBlockReason(state: GuardState, toolName: string): string | undefined {
+	if (state.explicitMutation && state.intent !== "status_note") return undefined;
 	if (state.intent !== "answer" && state.intent !== "investigate" && state.intent !== "status_note") return undefined;
 	return [
 		`workflow_guard blocked ${toolName}: current request was classified as ${state.intent} (${state.summary}).`,

@@ -154,6 +154,29 @@ test("workflow drag prompts enter audit path", async () => {
 	assert.match(start.systemPrompt, /friction → response evidence → current state → remaining gap/);
 });
 
+test("evidence collection plus explicit improvement is implementation, not read-only investigation", async () => {
+	const { hooks, ctx } = createHarness();
+	const prompt = "이번주 대화 세션 다 뒤져보고 사례 수집하고 추상화해서 개선해. 작업해봐";
+	const start = await hooks.before_agent_start({ prompt, systemPrompt: "base" }, ctx);
+
+	assert.match(start.systemPrompt, /intent=implement · weight=standard/);
+	assert.doesNotMatch(start.systemPrompt, /intent=investigate/);
+	assert.doesNotMatch(start.systemPrompt, /HARD PATH: this turn is read-only/);
+
+	const writeCall = await hooks.tool_call({ toolName: "write", input: { path: join(process.cwd(), "tmp-workflow-guard-smoke.txt") } }, ctx);
+	assert.equal(writeCall, undefined);
+});
+
+test("workflow friction with explicit patch request stays implementation while preserving audit signal", async () => {
+	const { hooks, ctx } = createHarness();
+	const start = await hooks.before_agent_start({ prompt: "판단실수 때문에 스트레스야. 지난 작업 플로우가 늘어진 지점들을 뒤져보고 workflow guard에 반영해", systemPrompt: "base" }, ctx);
+
+	assert.match(start.systemPrompt, /intent=implement · weight=standard/);
+	assert.match(start.systemPrompt, /audit=required/);
+	assert.match(start.systemPrompt, /WORKFLOW FRICTION IMPLEMENTATION PATH/);
+	assert.doesNotMatch(start.systemPrompt, /HARD AUDIT PATH/);
+});
+
 test("status-only bootstrap messages do not resume prior work", async () => {
 	const { hooks, ctx } = createHarness();
 	const start = await hooks.before_agent_start({ prompt: "[dependency-bootstrap] READY — product: backend 준비 완료", systemPrompt: "base" }, ctx);
