@@ -22,8 +22,9 @@ source:
   - pilee-history:2026-05-06#65
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-10-deep-interview-frame
-reviewed_at: 2026-06-02
-reviewed_commit: 7861f10310348338896d444480de22f1ba919273
+  - user-direction:2026-06-16-data-model-migration-map
+reviewed_at: 2026-06-16
+reviewed_commit: 87c864fab621e6b45f1682954b3357dc3ab50aed
 related:
   - ask-user-question-decision-gates
   - evidence-first-verification-gate
@@ -43,7 +44,7 @@ Frame은 구현 전 자연어 메모가 아니라, Verify가 기계적으로 읽
 
 `frame.json`에는 성공 기준, 검증 계획, 범위 밖 항목, 엣지 케이스 seed, 위험 register, decision queue, `/decide`가 추가하는 `decisions[]`, provenance가 구조화되어야 합니다. Verify는 이 계약의 `success_criteria`를 행 단위로 PASS/FAIL 판정합니다. 새 의사결정이 필요하면 `/decide`로 분리하고, 결정 결과를 다시 계약에 반영합니다.
 
-정확한 기획 근거(Jira, Notion, Slack, wireframe, PRD 등)가 있으면 Frame은 추가로 `source_evidence`, `requirement_matrix`, `domain_work_map`을 갖는 source-grounded contract가 됩니다. backend/data/API/DB 흐름이 구현·검증 이해를 좌우하면 `backend_layer_map`뿐 아니라 `architecture_flow_map`도 계약 surface입니다. 이때 success criteria는 큰 목표만 적는 곳이 아니라, 기획 원문 요구사항 ID가 구현 계약·domain lane·architecture edge/source-of-truth·검증 증거에 연결됐는지 확인하는 행 단위 계약입니다.
+정확한 기획 근거(Jira, Notion, Slack, wireframe, PRD 등)가 있으면 Frame은 추가로 `source_evidence`, `requirement_matrix`, `domain_work_map`을 갖는 source-grounded contract가 됩니다. backend/data/API/DB 흐름이 구현·검증 이해를 좌우하면 `backend_layer_map`, `architecture_flow_map`, `data_model_migration_map`도 계약 surface입니다. 이때 success criteria는 큰 목표만 적는 곳이 아니라, 기획 원문 요구사항 ID가 구현 계약·domain lane·architecture edge/source-of-truth·DB entity/relationship/migration operation·검증 증거에 연결됐는지 확인하는 행 단위 계약입니다.
 
 `decisions[]`는 선택지만 저장하지 않습니다. `/decide`는 항상 tradeoff challenge를 수행하고, `challenge.intensity`, `challenge.objection`, 사용자 응답, 수용한 tradeoff와 완화책을 함께 저장합니다. source-grounded 결정에서는 `requirementIds`, `domainLanesImpacted`, `architectureFlowImpacts`, `verifyHandoffHints`도 함께 남겨야 합니다. 그래야 Verify가 “선택한 대안이 구현됐는가”뿐 아니라 “수용한 비용/완화책이 실제 구현과 맞는가”, “Frame requirement/source-of-truth 흐름이 결정 후에도 추적 가능한가”까지 대조할 수 있습니다.
 
@@ -53,7 +54,7 @@ Frame, Decide, Verify는 각각 canonical write가 성공한 뒤 TFT Studio stag
 
 코드 구조를 건드리는 작업에서는 architecture friction도 계약의 일부가 됩니다. 별도 schema가 없더라도 `review_lenses`, `risk_register`, `verify_plan.manual_checks`, decision tradeoff에 “다음 사람/AI가 길을 잃을 구조인가”를 남기면 Verify가 구조 side-effect를 확인할 수 있습니다.
 
-Verify는 frame의 success criteria뿐 아니라 requirement coverage, Domain Work Map lane coverage, Backend Layer Map 일치, Architecture/Data Flow 일치, diff가 유발한 failure mode를 함께 읽어야 합니다. [verify-risk-lens-overlay](./verify-risk-lens-overlay.md)는 public generic lens와 project/private overlay를 나눠, schema/cache/API/runbook 같은 고위험 변경을 단순 코드 위치 확인만으로 PASS 처리하지 않게 합니다. `/verify-report`는 이 결과를 PM-facing evidence item으로 넘겨받아 `reuse/revise/add/drop/blocked`로 최종 report coverage를 재판정합니다.
+Verify는 frame의 success criteria뿐 아니라 requirement coverage, Domain Work Map lane coverage, Backend Layer Map 일치, Architecture/Data Flow 일치, Data Model / Migration Map 일치, diff가 유발한 failure mode를 함께 읽어야 합니다. [verify-risk-lens-overlay](./verify-risk-lens-overlay.md)는 public generic lens와 project/private overlay를 나눠, schema/cache/API/runbook 같은 고위험 변경을 단순 코드 위치 확인만으로 PASS 처리하지 않게 합니다. `/verify-report`는 이 결과를 PM-facing evidence item으로 넘겨받아 `reuse/revise/add/drop/blocked`로 최종 report coverage를 재판정합니다.
 
 ## Co-thinking Boundary
 

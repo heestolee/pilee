@@ -155,7 +155,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-06-02 | 91c739f | verify, evidence, gate, done, ready, verification |
-| [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-06-02 | 7861f10 | frame, verify, frame-json, success-criteria, contract, verification |
+| [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-06-16 | 87c864f | frame, verify, frame-json, success-criteria, contract, verification |
 | [반복 검증 실패는 baseline cache로 분리한다](./validation-baseline-failure-cache.md) | active | high | 2026-06-02 | d8f8c4c | preflight, validation, baseline, failure, cache, verification |
 | [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-06-02 | 61ccbc9 | verify, invalidation, code-change, freshness, gate, 검증 |
 | [Verify Report 전에는 PM-facing 계약과 readiness를 먼저 잠근다](./verify-report-preflight-readiness.md) | active | high | 2026-06-02 | 91c739f | verify-report, preflight, readiness, capture, data, account |
@@ -191,7 +191,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-06-02 | 63f2a62 | fork-panel, revive, repanel, ghostty, spatial, panel |
 | [Frame은 마지막에 Plan을 합성한다](./frame-plan-synthesis-continuity.md) | active | high | 2026-06-02 | 7861f10 | frame, implementation-plan, tft-studio, worktree, continuity, planning |
 | [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-06-02 | 7861f10 | frame, planning, identity, home-directory, ticket, session-title |
-| [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-05-31 | 81a77af | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
+| [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-06-16 | 87c864f | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
 | [Interactive shell은 bash가 아닌 터미널 세션이다](./interactive-shell-overlay-tool.md) | active | high | 2026-06-02 | 7861f10 | interactive-shell, shell, tui, dev-server, overlay, dispatch |
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-06-02 | 7861f10 | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 264ea17 | local-dev, server, startup, diagnosis, dev |
