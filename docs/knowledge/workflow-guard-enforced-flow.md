@@ -20,7 +20,7 @@ applies_to:
 source:
   - user-direction:2026-05-12-conductor-like-guards
 reviewed_at: 2026-06-16
-reviewed_commit: 4f0c0b75803129d379f46f327a9f5e9ae8cafa55
+reviewed_commit: 824460c9c8676496c3cade6b6c969ca419cbb6d8
 related:
   - workflow-weight-proportionality
   - validation-baseline-failure-cache
