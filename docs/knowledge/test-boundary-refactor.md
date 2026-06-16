@@ -17,7 +17,7 @@ applies_to:
 source:
   - conversation:2026-06-16-test-refine-design
 reviewed_at: 2026-06-16
-reviewed_commit: 8e02ae52aad416a1d2d22412e22e7c55a86ce73d
+reviewed_commit: bc2032898ada07556b38449e0b336a16890a95c0
 related:
   - skills-as-portable-procedures
   - request-traceability-surgical-changes
@@ -40,6 +40,10 @@ related:
 ## Command/Skill Split
 
 사용자-facing entrypoint는 `/test-refine` 하나로 둡니다. 같은 이름의 skill을 만들면 `/test-refine`과 `/skill:test-refine`이 동시에 보여 혼란스러우므로, slash command는 `extensions/test-refine`, 판단 본체는 `skills/test-boundary-refactor`로 나눕니다.
+
+## Runbook Boundary
+
+실제 수정 단계에서는 `skills/test-boundary-refactor/references/test-refine-runbook.md`를 실행 체크리스트로 사용합니다. Knowledge 문서는 판단 단위를 보존하고, runbook은 diff audit → 테스트 경계 분류 → 수정 순서 → 가까운 검증을 반복 가능한 절차로 분리합니다.
 
 ## Practical Refactor Pattern
 

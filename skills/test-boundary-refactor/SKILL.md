@@ -16,6 +16,10 @@ disable-model-invocation: false
 > 내부 메서드/로직은 mock하지 않고 분리해서 직접 테스트한다.  
 > API, DB, OAuth, router, webview, third-party SDK 같은 외부 의존성만 mock으로 격리한다.
 
+## Runbook
+
+실제 코드 수정에 들어갈 때는 `references/test-refine-runbook.md`를 읽고 적용한다. `SKILL.md`는 판단 기준, runbook은 diff audit → 경계 분류 → 수정 순서 → 가까운 검증 순서를 담은 실행 체크리스트다.
+
 ## Test Boundary Matrix
 
 | 범주 | 무엇을 검증하나 | 좋은 테스트 | 피해야 할 냄새 |

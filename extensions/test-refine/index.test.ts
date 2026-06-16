@@ -17,6 +17,7 @@ test("buildTestRefinePrompt routes /test-refine through the differently named sk
 	assert.match(prompt, /test-boundary-refactor/);
 	assert.match(prompt, /skill name is intentionally different/);
 	assert.match(prompt, /behavior tests assert user-visible behavior/);
+	assert.match(prompt, /references\/test-refine-runbook\.md/);
 	assert.match(prompt, /src\/dropdown\.test\.tsx/);
 });
 
