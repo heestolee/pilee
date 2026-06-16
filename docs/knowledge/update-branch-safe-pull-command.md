@@ -31,7 +31,9 @@ related:
 
 ## Safety Rule
 
-`/update-branch`는 먼저 현재 위치가 git repo인지 확인하고, worktree가 dirty이면 pull을 중단합니다. 사용자의 미커밋 변경을 stash/commit/reset하지 않습니다.
+`/update-branch`는 먼저 현재 위치가 git repo인지 확인합니다. worktree가 dirty이면 기본적으로 중단하지 않고, 사용자의 미커밋 변경을 `git stash push --include-untracked`로 보존한 뒤 pull을 시도합니다. pull 후에는 `git stash apply --index`로 변경을 복원하고, 복원이 성공한 경우에만 stash를 drop합니다. 복원 충돌이나 실패가 있으면 stash를 삭제하지 않고 어떤 stash를 수동 확인해야 하는지 출력합니다.
+
+기존처럼 dirty worktree에서 바로 중단하고 싶을 때만 `/update-branch --no-autostash`를 사용합니다. 이 옵션은 “보존 가능한 변경도 막기”가 아니라, 자동 stash를 원하지 않는 사용자의 escape hatch입니다.
 
 기본 pull은 `git pull --ff-only`입니다. GitHub의 Update branch 버튼처럼 remote branch가 이미 갱신된 뒤 local branch를 fast-forward하는 일상 흐름을 안전하게 닫기 위해서입니다. merge pull이 필요하면 사용자가 명시적으로 `/update-branch --merge`를 선택합니다.
 
@@ -51,7 +53,8 @@ related:
 - 현재 repo root
 - 사용한 mode (`git pull --ff-only` 또는 `git pull`)
 - lock recovery 여부
+- dirty 변경 보존/복원 여부와 stash ref
 - 현재 HEAD
 - `git status --short --branch`
 
-실패/중단 시에는 dirty status, 점유 프로세스, pull 실패 메시지만 보여주고 충돌 해결이나 stash 같은 후속 작업을 자동 수행하지 않습니다.
+실패/중단 시에는 dirty status, 점유 프로세스, pull 실패 메시지, 보존 stash 상태를 보여줍니다. 충돌 해결을 자동으로 계속 진행하지는 않지만, pull 때문에 사용자 변경이 사라진 것처럼 보이지 않도록 stash 보존 여부를 명확히 출력합니다.

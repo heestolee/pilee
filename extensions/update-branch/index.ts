@@ -4,26 +4,29 @@ import { isAbsolute, resolve } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import type { AutocompleteItem } from "@mariozechner/pi-tui";
 
-const HELP = `Usage: /update-branch [--merge]
+const HELP = `Usage: /update-branch [--merge] [--no-autostash]
 
 현재 git repo 브랜치를 upstream 최신 상태로 맞춥니다.
 
 동작:
   1. git repo 여부 확인
-  2. dirty worktree면 중단
+  2. dirty worktree면 include-untracked stash로 사용자 변경 보존
   3. git pull --ff-only 실행
-  4. index.lock 고아 파일이면 제거 후 1회 재시도
-  5. 성공 시 HEAD / clean 여부 / branch sync 상태 요약
+  4. stash apply --index로 사용자 변경 복원, 성공 시 stash drop
+  5. index.lock 고아 파일이면 제거 후 1회 재시도
+  6. 성공 시 HEAD / branch sync 상태 / 복원된 dirty 상태 요약
 
 Options:
-  --merge    git pull --ff-only 대신 일반 git pull 실행
-  -h, --help 도움말 표시`;
+  --merge          git pull --ff-only 대신 일반 git pull 실행
+  --no-autostash   dirty worktree에서 자동 보존하지 않고 기존처럼 중단
+  -h, --help       도움말 표시`;
 
 type ExecLike = Pick<ExtensionAPI, "exec">;
 
 export type UpdateBranchOptions = {
 	help: boolean;
 	merge: boolean;
+	noAutostash: boolean;
 };
 
 export type CommandResult = {
@@ -46,6 +49,18 @@ type GitCommandResult = {
 	retried: boolean;
 };
 
+type StashPreservation = {
+	attempted: boolean;
+	dirtyBefore?: string;
+	stashRef?: string;
+	stashed?: boolean;
+	applied?: boolean;
+	dropped?: boolean;
+	kept?: boolean;
+	message?: string;
+	output?: string;
+};
+
 export type UpdateBranchResult = {
 	status: "pass" | "blocked" | "fail" | "help";
 	cwd: string;
@@ -55,6 +70,7 @@ export type UpdateBranchResult = {
 	branchStatus?: string;
 	pullOutput?: string;
 	dirtyStatus?: string;
+	preserve?: StashPreservation;
 	lockRecoveries: LockRecovery[];
 	message: string;
 };
@@ -63,12 +79,14 @@ export function parseUpdateBranchArgs(args: string): UpdateBranchOptions | { err
 	const tokens = args.trim().split(/\s+/u).filter(Boolean);
 	let help = false;
 	let merge = false;
+	let noAutostash = false;
 	for (const token of tokens) {
 		if (token === "-h" || token === "--help" || token === "help") help = true;
 		else if (token === "--merge") merge = true;
+		else if (token === "--no-autostash") noAutostash = true;
 		else return { error: `지원하지 않는 인자입니다: ${token}` };
 	}
-	return { help, merge };
+	return { help, merge, noAutostash };
 }
 
 export function isIndexLockError(text: string): boolean {
@@ -131,6 +149,43 @@ async function runGitWithLockRetry(pi: ExecLike, cwd: string, args: string[], lo
 	return { result: second, lockRecovery, retried: true };
 }
 
+async function findTopStashRef(pi: ExecLike, cwd: string, message: string): Promise<string | undefined> {
+	const list = await git(pi, ["stash", "list", "--format=%gd%x00%gs", "-n", "1"], cwd);
+	if (list.code !== 0) return undefined;
+	const line = (list.stdout ?? "").split(/\r?\n/u).find(Boolean);
+	if (!line) return undefined;
+	const [ref, subject = ""] = line.split("\x00");
+	return ref && subject.includes(message) ? ref : undefined;
+}
+
+async function applyPreservedChanges(pi: ExecLike, cwd: string, preserve: StashPreservation, lockPath: string, lockRecoveries: LockRecovery[]): Promise<boolean> {
+	if (!preserve.stashRef) return true;
+	const apply = await runGitWithLockRetry(pi, cwd, ["stash", "apply", "--index", preserve.stashRef], lockPath);
+	if (apply.lockRecovery) lockRecoveries.push(apply.lockRecovery);
+	const applyOutput = trimOutput(commandText(apply.result));
+	if (apply.result.code !== 0) {
+		preserve.applied = false;
+		preserve.kept = true;
+		preserve.output = applyOutput;
+		preserve.message = `보존 stash(${preserve.stashRef}) 복원 실패. stash는 삭제하지 않았습니다.`;
+		return false;
+	}
+
+	preserve.applied = true;
+	const drop = await runGitWithLockRetry(pi, cwd, ["stash", "drop", preserve.stashRef], lockPath);
+	if (drop.lockRecovery) lockRecoveries.push(drop.lockRecovery);
+	preserve.dropped = drop.result.code === 0;
+	if (!preserve.dropped) {
+		preserve.kept = true;
+		preserve.output = trimOutput(commandText(drop.result));
+		preserve.message = `보존 stash(${preserve.stashRef})는 적용됐지만 drop에 실패했습니다.`;
+		return false;
+	}
+	preserve.kept = false;
+	preserve.message = "dirty 변경을 stash로 보존한 뒤 pull 후 복원했습니다.";
+	return true;
+}
+
 async function resolveRepo(pi: ExecLike, cwd: string): Promise<{ repoRoot: string; lockPath: string } | { error: string }> {
 	const root = await git(pi, ["rev-parse", "--show-toplevel"], cwd);
 	if (root.code !== 0) {
@@ -171,17 +226,42 @@ export async function runUpdateBranch(pi: ExecLike, cwd: string, args = ""): Pro
 	}
 
 	const dirtyStatus = (porcelain.result.stdout ?? "").trim();
+	let preserve: StashPreservation | undefined;
 	if (dirtyStatus) {
 		const shortStatus = await runGitWithLockRetry(pi, repo.repoRoot, ["status", "--short", "--branch"], repo.lockPath);
 		if (shortStatus.lockRecovery) lockRecoveries.push(shortStatus.lockRecovery);
-		return {
-			status: "blocked",
-			cwd,
-			repoRoot: repo.repoRoot,
-			dirtyStatus: trimOutput((shortStatus.result.stdout ?? dirtyStatus).trim()),
-			lockRecoveries,
-			message: "작업트리가 dirty 상태라 pull을 중단했습니다. 변경을 커밋/stash/정리한 뒤 다시 실행하세요.",
-		};
+		const formattedDirtyStatus = trimOutput((shortStatus.result.stdout ?? dirtyStatus).trim());
+		if (options.noAutostash) {
+			return {
+				status: "blocked",
+				cwd,
+				repoRoot: repo.repoRoot,
+				dirtyStatus: formattedDirtyStatus,
+				lockRecoveries,
+				message: "작업트리가 dirty 상태라 pull을 중단했습니다. 기본 동작은 자동 보존이며, 이 중단은 --no-autostash 옵션 때문에 발생했습니다.",
+			};
+		}
+
+		const stashMessage = `pilee/update-branch ${new Date().toISOString()}`;
+		preserve = { attempted: true, dirtyBefore: formattedDirtyStatus };
+		const stash = await runGitWithLockRetry(pi, repo.repoRoot, ["stash", "push", "--include-untracked", "-m", stashMessage], repo.lockPath);
+		if (stash.lockRecovery) lockRecoveries.push(stash.lockRecovery);
+		const stashOutput = trimOutput(commandText(stash.result));
+		preserve.output = stashOutput;
+		if (stash.result.code !== 0) {
+			preserve.message = `dirty 변경 보존 stash 생성 실패: ${stashOutput || "unknown error"}`;
+			return {
+				status: "fail",
+				cwd,
+				repoRoot: repo.repoRoot,
+				dirtyStatus: formattedDirtyStatus,
+				preserve,
+				lockRecoveries,
+				message: preserve.message,
+			};
+		}
+		preserve.stashed = true;
+		preserve.stashRef = await findTopStashRef(pi, repo.repoRoot, stashMessage) ?? "stash@{0}";
 	}
 
 	const mode = options.merge ? "merge" : "ff-only";
@@ -191,15 +271,41 @@ export async function runUpdateBranch(pi: ExecLike, cwd: string, args = ""): Pro
 	const pullOutput = trimOutput(commandText(pull.result));
 	if (pull.result.code !== 0) {
 		const lockBlock = pull.lockRecovery?.blockedBy ? `\n\n점유 프로세스:\n${pull.lockRecovery.blockedBy}` : "";
+		if (preserve) await applyPreservedChanges(pi, repo.repoRoot, preserve, repo.lockPath, lockRecoveries);
+		const restoreNote = preserve?.applied ? " 보존했던 변경은 다시 복원했습니다." : preserve?.kept ? ` 보존 stash(${preserve.stashRef})는 삭제하지 않았습니다.` : "";
 		return {
 			status: isIndexLockError(pullOutput) ? "blocked" : "fail",
 			cwd,
 			repoRoot: repo.repoRoot,
 			mode,
 			pullOutput,
+			preserve,
 			lockRecoveries,
-			message: `git pull 실패: ${pullOutput || "unknown error"}${lockBlock}`,
+			message: `git pull 실패: ${pullOutput || "unknown error"}${lockBlock}${restoreNote}`,
 		};
+	}
+
+	if (preserve) {
+		const restored = await applyPreservedChanges(pi, repo.repoRoot, preserve, repo.lockPath, lockRecoveries);
+		if (!restored) {
+			const [branchStatusResult, headResult] = await Promise.all([
+				runGitWithLockRetry(pi, repo.repoRoot, ["status", "--short", "--branch"], repo.lockPath),
+				git(pi, ["log", "--oneline", "-1"], repo.repoRoot),
+			]);
+			if (branchStatusResult.lockRecovery) lockRecoveries.push(branchStatusResult.lockRecovery);
+			return {
+				status: "fail",
+				cwd,
+				repoRoot: repo.repoRoot,
+				mode,
+				head: (headResult.stdout ?? "").trim(),
+				branchStatus: trimOutput((branchStatusResult.result.stdout ?? "").trim()),
+				pullOutput,
+				preserve,
+				lockRecoveries,
+				message: `${preserve.message ?? "dirty 변경 복원 실패"} 브랜치 최신화는 진행됐지만 사용자 변경 복원은 수동 확인이 필요합니다.`,
+			};
+		}
 	}
 
 	const [branchStatusResult, headResult] = await Promise.all([
@@ -218,8 +324,9 @@ export async function runUpdateBranch(pi: ExecLike, cwd: string, args = ""): Pro
 		head,
 		branchStatus,
 		pullOutput,
+		preserve,
 		lockRecoveries,
-		message: "브랜치 최신화가 완료됐습니다.",
+		message: preserve ? "브랜치 최신화와 dirty 변경 복원이 완료됐습니다." : "브랜치 최신화가 완료됐습니다.",
 	};
 }
 
@@ -235,6 +342,13 @@ export function formatUpdateBranchResult(result: UpdateBranchResult): string {
 	for (const recovery of result.lockRecoveries) {
 		if (recovery.removed) lines.push("- lock: 고아 index.lock 제거 후 재시도");
 		else if (recovery.blockedBy) lines.push("- lock: 점유 프로세스가 있어 자동 제거하지 않음");
+	}
+	if (result.preserve?.attempted) {
+		lines.push(`- dirty preserve: ${result.preserve.stashRef ? `stash ${result.preserve.stashRef}` : "attempted"}`);
+		if (result.preserve.applied) lines.push("- dirty restore: stash apply 완료");
+		if (result.preserve.dropped) lines.push("- dirty stash: 복원 성공 후 drop 완료");
+		else if (result.preserve.kept) lines.push("- dirty stash: 수동 복구를 위해 stash 보존");
+		if (result.preserve.message) lines.push(`- dirty note: ${result.preserve.message}`);
 	}
 	if (result.head) lines.push(`- HEAD: ${result.head}`);
 	if (result.branchStatus) {
@@ -259,7 +373,7 @@ export function formatUpdateBranchResult(result: UpdateBranchResult): string {
 }
 
 function completions(prefix: string): AutocompleteItem[] | null {
-	const items = ["--help", "--merge"].map((value) => ({ value, label: value }));
+	const items = ["--help", "--merge", "--no-autostash"].map((value) => ({ value, label: value }));
 	const filtered = items.filter((item) => item.value.startsWith(prefix));
 	return filtered.length ? filtered : null;
 }
