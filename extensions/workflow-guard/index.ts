@@ -22,6 +22,7 @@ interface GuardState {
 	sqlReview: boolean;
 	summary: string;
 	continuationCue: boolean;
+	followUpCorrection: boolean;
 	createdAt: string;
 	sessionFile?: string;
 }
@@ -58,9 +59,11 @@ const workflowGuardToolSchema = Type.Object({
 	action: Type.Union([
 		Type.Literal("status"),
 		Type.Literal("classify"),
+		Type.Literal("adopt"),
 		Type.Literal("audit"),
 	], { description: "Workflow guard action." }),
-	prompt: Type.Optional(Type.String({ description: "Prompt/request text to classify or audit. Defaults to the current turn prompt when available." })),
+	prompt: Type.Optional(Type.String({ description: "Prompt/request text to classify/adopt or audit. Defaults to the current turn prompt when available." })),
+	reason: Type.Optional(Type.String({ description: "Why an adopted classification should replace the current session guard state." })),
 	topic: Type.Optional(Type.String({ description: "Audit topic or friction summary." })),
 	targets: Type.Optional(Type.Array(Type.String(), { description: "Optional target names, paths, commits, or worktree labels to search in recent history." })),
 	sinceDays: Type.Optional(Type.Number({ description: "How many days of local pilee history to scan for audit evidence. Default 14." })),
@@ -141,6 +144,24 @@ function hasShipDirective(normalized: string): boolean {
 	]);
 }
 
+function isFollowUpCorrectionPrompt(normalized: string): boolean {
+	const existingWorkReference = hasAny(normalized, [
+		/(?:니가|네가|너가|방금|아까|지금|현재|이번에).*(?:구현|만든|만들어|수정|고친|반영|작업)/,
+		/(?:와이어프레임|wireframe|지라|jira|기획|디자인|캡처|스크린샷).*(?:보면|기준|상|에는|대로|처럼)/,
+		/(?:위에|아래에|위쪽|아래쪽|왼쪽|오른쪽|안쪽|바깥|헤더|row|열|컬럼|위치).*(?:있|오|가|놓|나오)/,
+	]);
+	const correctionIntent = hasAny(normalized, [
+		/(?:아니|근데|그런데|니가|네가|너가|지금|현재|방금).*(?:잖아|아닌|틀리|다르|안\s*맞|불일치|이상|왜)/,
+		/(?:못해|못\s*해|맞춰|옮겨|바꿔|수정|고쳐|내려|올려)/,
+		/(?:위|아래|왼쪽|오른쪽|헤더|row|열|컬럼|위치).*(?:못해|해줘|맞춰|옮겨|바꿔|수정|고쳐|되게)/,
+	]);
+	if (existingWorkReference && correctionIntent) return true;
+	return hasAny(normalized, [
+		/(?:니가|네가|너가).*(?:구현|만든|수정|반영).*(?:위|아래|다르|틀리|잖아|못해)/,
+		/(?:와이어프레임|wireframe|지라|jira|기획).*(?:위|아래|위치|헤더|row|컬럼|열).*(?:못해|맞춰|옮겨|수정|고쳐|되게)/,
+	]);
+}
+
 function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 	const normalized = normalizeText(prompt);
 	const statusNote = isStatusNotePrompt(prompt);
@@ -154,6 +175,8 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 		/(이미|전에|기존|고친|해결|대응|미대응|남은|remaining|fixed|unfixed).*(구분|분리|확인|정리|audit|오디트)/,
 		/(불편|friction|느렸|느림|느린|오버헤드|과했|과한|늘어지|지연|판단실수|스트레스).*(대응|해결|남은|미대응|분석|정리|뒤져|찾아|조사)/,
 		/(작업|워크플로|플로우).*(늘어지|지연|과했|과한|판단실수|스트레스)/,
+		/(workflow[-_ ]?guard|workflow\s*guard|워크플로우\s*가드|가드).*(지랄|아직도|왜\s*이래|문제|막|차단|오분류|분류|불편|스트레스)/,
+		/(개선됐다매|개선됐다며|개선했다매|개선했다며).*(왜|아직|또|이래)/,
 		/(already fixed|still missing|remaining gap|fixed vs)/,
 	]);
 	const sqlReview = !statusNote && isSqlReviewPrompt(prompt, normalized);
@@ -162,7 +185,8 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 	const hotfix = !statusNote && hasAny(normalized, [/hotfix|핫픽스|간단|문구|오타|copy|카피|one[- ]?line|한\s*줄|작은|small|quick|빨리|이거\s*하나/]);
 	const noMutation = hasAny(normalized, [/수정하지|고치지|변경하지|건드리지|커밋하지|푸시하지|하지\s*마|하지마|no\s*(edit|change|commit|push)|do\s*not\s*(edit|change|commit|push)/]);
 	const readOnlyShipSignal = hasAny(normalized, [/확인|상태|왜|원인|알려|조회|봐줘|보여|분석|비교|검토|여부|됐는지|되었는지|반영됐|반영되었|diff|status|check|view|analy[sz]e|review|compare/]);
-	const implementationDirective = !statusNote && !sqlReview && !noMutation && hasImplementationDirective(normalized);
+	const followUpCorrection = !statusNote && !sqlReview && !noMutation && isFollowUpCorrectionPrompt(normalized);
+	const implementationDirective = !statusNote && !sqlReview && !noMutation && (hasImplementationDirective(normalized) || followUpCorrection);
 	const implement = implementationDirective;
 	const shipDirective = !statusNote && !noMutation && !readOnlyShipSignal && hasShipDirective(normalized);
 	const explicitPrAction = shipDirective && hasAny(normalized, [/create-pr|create\s+pr|open\s+pr|pull\s+request|\bpr\b\s*(?:생성|만들|올려|열어|작성|요청|리뷰\s*요청)/]);
@@ -207,13 +231,14 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 		`intent=${intent}`,
 		`weight=${weight}`,
 		continuationCue ? "continuation=latest-intent" : null,
+		followUpCorrection ? "followup=correction" : null,
 		auditRequired ? "audit=required" : null,
 		sqlReview ? "sqlReview=detected" : null,
 		explicitHeavy && !sqlReview ? "heavy=explicit" : null,
 		!explicitMutation ? "mutation=not-requested" : null,
 	].filter(Boolean).join(" · ");
 
-	return { prompt, intent, weight, explicitHeavy, explicitMutation, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, auditRequired, sqlReview, summary, continuationCue, createdAt: new Date().toISOString(), sessionFile };
+	return { prompt, intent, weight, explicitHeavy, explicitMutation, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, auditRequired, sqlReview, summary, continuationCue, followUpCorrection, createdAt: new Date().toISOString(), sessionFile };
 }
 
 function fastPaceBudgetSeconds(state: GuardState): number | undefined {
@@ -261,6 +286,13 @@ function buildSystemPrompt(state: GuardState): string {
 		lines.push(
 			"- WORKFLOW FRICTION IMPLEMENTATION PATH: the user asked to inspect examples and improve the workflow, not to stop at a read-only audit.",
 			"- Use collected evidence to patch guard rules/tests/docs; do not ask for another implementation confirmation just because the prompt contains 조사/뒤져/사례 수집.",
+		);
+	}
+	if (state.followUpCorrection) {
+		lines.push(
+			"- FOLLOW-UP CORRECTION PATH: the user is pointing out a mismatch in the just-implemented work.",
+			"- Treat 위치/문구/동작 불일치 feedback such as '니가 구현한 건 ...잖아' or '...에 있게는 못해?' as a fix request, not a read-only investigation.",
+			"- Do not ask for another implementation confirmation unless the correction has multiple risky product options.",
 		);
 	}
 
@@ -341,7 +373,7 @@ function buildSystemPrompt(state: GuardState): string {
 
 function mutationBlockReason(state: GuardState, toolName: string): string | undefined {
 	if (state.explicitMutation && state.intent !== "status_note") return undefined;
-	if (state.intent !== "answer" && state.intent !== "investigate" && state.intent !== "status_note") return undefined;
+	if (state.intent !== "answer" && state.intent !== "investigate" && state.intent !== "audit" && state.intent !== "status_note") return undefined;
 	return [
 		`workflow_guard blocked ${toolName}: current request was classified as ${state.intent} (${state.summary}).`,
 		state.intent === "status_note" ? "This prompt is a status note, not a user task directive." : "This path is read-only by default.",
@@ -952,13 +984,14 @@ export default function workflowGuard(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "workflow_guard",
 		label: "Workflow Guard",
-		description: "Inspect the current enforced workflow classification or build a fixed-vs-remaining audit snapshot. Use for request intent, light/hotfix path, and already-fixed-vs-unfixed audits.",
-		promptSnippet: "Use workflow_guard when the request is about workflow friction, already-fixed vs remaining gaps, or when you need to inspect the current request classification.",
+		description: "Inspect or update the current enforced workflow classification, or build a fixed-vs-remaining audit snapshot. Use for request intent, light/hotfix path, misclassification recovery, and already-fixed-vs-unfixed audits.",
+		promptSnippet: "Use workflow_guard when the request is about workflow friction, already-fixed vs remaining gaps, or when you need to inspect/adopt the current request classification.",
 		promptGuidelines: [
 			"For fixed-vs-unfixed audits, use action=audit and map friction → response evidence → current state → remaining gap.",
 			"For small hotfixes, respect the light path unless new risk axes appear; do not deep-scan transcripts/context just to satisfy a template.",
 			"If the user reports workflow drag, search for repeated judgment-drift patterns and translate them into guard rules.",
-			"Do not treat this tool as permission to mutate files during an answer/investigation-only turn.",
+			"Use action=adopt only when the current guard state is demonstrably wrong; include the reason so later tool blocks use the corrected state.",
+			"Do not treat this tool as permission to mutate files during an answer/investigation-only turn unless action=adopt has explicitly replaced a wrong read-only state.",
 		],
 		parameters: workflowGuardToolSchema,
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -970,6 +1003,11 @@ export default function workflowGuard(pi: ExtensionAPI) {
 			if (params.action === "classify") {
 				const state = classifyPrompt(String(params.prompt ?? current?.prompt ?? ""), ctx.sessionManager?.getSessionFile?.());
 				return toolText(`Classification: ${state.summary}`, { state });
+			}
+			if (params.action === "adopt") {
+				const state = classifyPrompt(String(params.prompt ?? current?.prompt ?? ""), ctx.sessionManager?.getSessionFile?.());
+				rememberGuardState(key, state);
+				return toolText(`Adopted workflow guard: ${state.summary}`, { previous: current ?? null, state, reason: params.reason });
 			}
 			if (params.action === "audit") {
 				const prompt = String(params.prompt ?? params.topic ?? current?.prompt ?? "");

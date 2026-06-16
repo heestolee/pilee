@@ -68,6 +68,8 @@ title_en: Repeated workflow failures become enforced guard flows
 
 반대로 `커밋 diff`, `어제 커밋`, `반영 여부`, `반영 상태`처럼 `커밋`/`반영`이 분석 대상이나 상태 명사로 쓰이면 ship/implement 신호가 아닙니다. Guard classifier는 bare keyword 포함이 아니라 실행형 동사 맥락(`커밋해`, `푸시해`, `반영해`, `개선해`)을 mutation으로 보고, 명사+확인/분석/비교/여부 맥락은 read-only investigation으로 유지해야 합니다.
 
+진행 중 구현 결과에 대한 QA 피드백은 별도 correction axis로 봅니다. 사용자가 `와이어프레임에는 여기인데`, `니가 구현한 건 위에 있잖아`, `아래쪽에 있게는 못해?`처럼 방금 구현한 결과와 요구사항의 불일치를 지적하면, 표면 동사가 `확인해봐`/`못해?`여도 read-only investigation이 아니라 follow-up fix입니다. Guard가 이미 read-only로 시작된 뒤 agent가 근거 있게 오분류를 확인한 경우에는 `workflow_guard(action="adopt")`로 새 분류를 현재 세션 state에 반영해 같은 edit/write 차단을 반복하지 않습니다. adopt는 우회권이 아니라 “현재 guard state가 틀렸다는 이유를 남기는 재분류”입니다.
+
 ## Lightweight Rule
 
 작은 hotfix나 문구 수정은 안전을 버리지 않고 절차를 줄입니다. 기본 경로는 다음 네 단계입니다.

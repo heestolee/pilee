@@ -226,6 +226,60 @@ test("short continuation cues continue latest non-status intent", async () => {
 	assert.doesNotMatch(start.systemPrompt, /HARD STATUS NOTE PATH/);
 });
 
+test("follow-up correction prompts request mutation even when phrased as checking or capability", async () => {
+	const { hooks, ctx } = createHarness();
+	const prompt = "와이어프레임에 보면 방문 일시 정렬이 어디있는지 확인해봐. 니가 구현한건 위에 있잖아. 아래쪽에 있게는 못해?";
+	const start = await hooks.before_agent_start({ prompt, systemPrompt: "base" }, ctx);
+
+	assert.match(start.systemPrompt, /intent=implement · weight=standard/);
+	assert.match(start.systemPrompt, /followup=correction/);
+	assert.match(start.systemPrompt, /FOLLOW-UP CORRECTION PATH/);
+	assert.doesNotMatch(start.systemPrompt, /HARD PATH: this turn is read-only/);
+
+	const editCall = await hooks.tool_call({ toolName: "edit", input: { path: join(process.cwd(), "follow-up-correction.ts") } }, ctx);
+	assert.equal(editCall, undefined);
+});
+
+test("workflow guard complaint prompts enter audit path instead of unknown", async () => {
+	const prompts = [
+		"워크플로우 가드 이새끼 아직도 지랄인데?",
+		"아니 개선됐다매. 왜 아직도 이래?",
+	];
+
+	for (const prompt of prompts) {
+		const { hooks, ctx } = createHarness();
+		const start = await hooks.before_agent_start({ prompt, systemPrompt: "base" }, ctx);
+
+		assert.match(start.systemPrompt, /intent=audit/);
+		assert.match(start.systemPrompt, /audit=required/);
+		assert.match(start.systemPrompt, /HARD AUDIT PATH/);
+		assert.match(start.systemPrompt, /mutation=not-requested/);
+
+		const writeBlock = await hooks.tool_call({ toolName: "write", input: { path: join(process.cwd(), "workflow-guard-complaint.txt") } }, ctx);
+		assert.equal(writeBlock?.block, true);
+	}
+});
+
+test("adopt action replaces stale read-only guard state", async () => {
+	const { hooks, tools, ctx } = createHarness();
+	await hooks.before_agent_start({ prompt: "현재 위치만 확인해봐", systemPrompt: "base" }, ctx);
+
+	const blockedEdit = await hooks.tool_call({ toolName: "edit", input: { path: join(process.cwd(), "blocked-before-adopt.ts") } }, ctx);
+	assert.equal(blockedEdit?.block, true);
+
+	const adoptResult = await tools.workflow_guard.execute(
+		"tool-call-id",
+		{ action: "adopt", prompt: "위치가 틀렸으니 아래쪽으로 옮겨줘", reason: "follow-up correction was misclassified as read-only" },
+		undefined,
+		undefined,
+		ctx,
+	);
+	assert.match(adoptResult.content.at(0).text, /Adopted workflow guard: intent=implement/);
+
+	const allowedEdit = await hooks.tool_call({ toolName: "edit", input: { path: join(process.cwd(), "allowed-after-adopt.ts") } }, ctx);
+	assert.equal(allowedEdit, undefined);
+});
+
 test("push status questions stay read-only instead of commit-push terminal path", async () => {
 	const { hooks, ctx } = createHarness();
 	const start = await hooks.before_agent_start({ prompt: "push 상태 확인해줘", systemPrompt: "base" }, ctx);
