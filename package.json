@@ -1,6 +1,6 @@
 {
   "name": "pilee",
-  "version": "0.1.202",
+  "version": "0.1.203",
   "description": "Personal pi coding agent config 🔥",
   "private": true,
   "type": "module",
@@ -55,7 +55,7 @@
     "test:update-branch": "node scripts/run-typescript-test.mjs extensions/update-branch/index.test.ts",
     "test:pilee-update": "node scripts/run-typescript-test.mjs extensions/pilee-update/index.test.ts",
     "test:subagent": "node scripts/run-typescript-test.mjs extensions/subagent/stale-ctx.test.ts",
-    "test:test-refine": "node scripts/run-typescript-test.mjs extensions/test-refine/index.test.ts"
+    "test:test-refine": "node scripts/run-typescript-test.mjs extensions/test-refine/index.test.ts extensions/test-refine/index.e2e.test.ts"
   },
   "dependencies": {
     "@mariozechner/pi-ai": "^0.70.0",
