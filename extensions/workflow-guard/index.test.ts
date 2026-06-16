@@ -231,8 +231,53 @@ test("push status questions stay read-only instead of commit-push terminal path"
 	const start = await hooks.before_agent_start({ prompt: "push 상태 확인해줘", systemPrompt: "base" }, ctx);
 
 	assert.match(start.systemPrompt, /intent=investigate/);
+	assert.match(start.systemPrompt, /mutation=not-requested/);
 	assert.match(start.systemPrompt, /HARD PATH/);
 	assert.doesNotMatch(start.systemPrompt, /HARD LIGHT PUSH TERMINAL PATH/);
+
+	const commitBlock = await hooks.tool_call({ toolName: "bash", input: { command: "git commit -m 'fix: should-block'" } }, ctx);
+	assert.equal(commitBlock?.block, true);
+});
+
+test("commit and apply noun contexts stay read-only", async () => {
+	const prompts = [
+		"어제 workflow-guard 커밋 diff랑 현재 injected guard 비교해서 실제 반영 여부 분석해줘",
+		"b866db7 커밋 반영 여부 확인해줘",
+		"커밋 로그랑 반영 상태만 봐줘",
+	];
+
+	for (const prompt of prompts) {
+		const { hooks, ctx } = createHarness();
+		const start = await hooks.before_agent_start({ prompt, systemPrompt: "base" }, ctx);
+
+		assert.match(start.systemPrompt, /intent=investigate/);
+		assert.match(start.systemPrompt, /weight=none/);
+		assert.match(start.systemPrompt, /mutation=not-requested/);
+		assert.match(start.systemPrompt, /HARD PATH: this turn is read-only/);
+		assert.doesNotMatch(start.systemPrompt, /intent=ship/);
+		assert.doesNotMatch(start.systemPrompt, /intent=implement/);
+		assert.doesNotMatch(start.systemPrompt, /Commit-complete stop-line/);
+
+		const writeBlock = await hooks.tool_call({ toolName: "write", input: { path: join(process.cwd(), "workflow-guard-should-block.txt") } }, ctx);
+		assert.equal(writeBlock?.block, true);
+	}
+});
+
+test("commit and apply directives still request mutation", async () => {
+	const apply = createHarness();
+	const applyStart = await apply.hooks.before_agent_start({ prompt: "workflow guard에 반영해", systemPrompt: "base" }, apply.ctx);
+	assert.match(applyStart.systemPrompt, /intent=implement · weight=standard/);
+	assert.doesNotMatch(applyStart.systemPrompt, /mutation=not-requested/);
+	const writeCall = await apply.hooks.tool_call({ toolName: "write", input: { path: join(process.cwd(), "workflow-guard-allow.txt") } }, apply.ctx);
+	assert.equal(writeCall, undefined);
+
+	const commit = createHarness();
+	const commitStart = await commit.hooks.before_agent_start({ prompt: "변경사항 커밋해줘", systemPrompt: "base" }, commit.ctx);
+	assert.match(commitStart.systemPrompt, /intent=ship · weight=light/);
+	assert.match(commitStart.systemPrompt, /HARD LIGHT PATH/);
+	assert.doesNotMatch(commitStart.systemPrompt, /mutation=not-requested/);
+	const commitCall = await commit.hooks.tool_call({ toolName: "bash", input: { command: "git commit -m 'fix: smoke'" } }, commit.ctx);
+	assert.equal(commitCall, undefined);
 });
 
 test("light commit-push prompt uses push terminal path", async () => {

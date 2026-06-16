@@ -117,6 +117,30 @@ function isSqlReviewPrompt(prompt: string, normalized: string): boolean {
 	]);
 }
 
+function hasImplementationDirective(normalized: string): boolean {
+	return hasAny(normalized, [
+		/(?:구현|수정|변경|추가|삭제|반영|적용|패치|생성|작성|개선|보강|수습|처리|대응|자동화|고도화)\s*(?:해|해주세요|해줘|해봐|하자|하라|하세요|한다|하고|해서|하면|하도록|되게|완료|진행|줘|라|자|길|주세요|해주)/,
+		/(?:고쳐|고치|바꿔|만들)\s*(?:줘|주세요|봐|라|자|도록|되게)?/,
+		/작업\s*(?:해|해줘|해봐|하자|진행)/,
+		/진행\s*(?:해|해줘|해봐|하자)/,
+		/\b(?:implement|fix|change|add|remove|update|create|improve|harden|patch|apply|wire)\b/,
+	]);
+}
+
+function hasShipDirective(normalized: string): boolean {
+	return hasAny(normalized, [
+		/create-pr|create\s+pr|open\s+pr|pull\s+request\s*(?:생성|만들|올려|열어|작성|create|open)/,
+		/\bpr\b\s*(?:생성|만들|올려|열어|작성|요청|리뷰\s*요청)/,
+		/커밋\s*(?:\/|&|\+|그리고|하고|해서)?\s*푸시\s*(?:해|해주세요|해줘|하자|하라|하세요|진행|완료)?/,
+		/커밋\s*(?:해|해주세요|해줘|하자|하라|하세요|하고|해서|진행|완료|남겨)/,
+		/푸시\s*(?:해|해주세요|해줘|하자|하라|하세요|하고|해서|진행|완료|올려)/,
+		/\bcommit\s+(?:and\s+)?push\b/,
+		/\bcommit\s+(?:it|this|changes?|now|please)\b/,
+		/\bpush\s+(?:it|this|now|please)\b/,
+		/\bship\b|릴리즈\s*(?:해|해주세요|해줘|하자|하라|하세요|진행)/,
+	]);
+}
+
 function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 	const normalized = normalizeText(prompt);
 	const statusNote = isStatusNotePrompt(prompt);
@@ -135,27 +159,22 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 	const sqlReview = !statusNote && isSqlReviewPrompt(prompt, normalized);
 	const verifyReport = explicitHeavy && hasAny(normalized, [/verify[- ]?report|검증\s*리포트|캡처\s*리포트/]);
 	const knowledge = !statusNote && hasAny(normalized, [/ember|knowledge|불씨|지식|stale|freshness/]);
-	const explicitPrAction = !statusNote && hasAny(normalized, [/\bpr\b|pull request|create-pr|pr\s*(생성|만들|올려|확인|체크)|리뷰\s*요청/]);
-	const ship = !statusNote && hasAny(normalized, [/\bpr\b|pull request|commit|push|merge|ship|릴리즈|커밋|푸시/]);
 	const hotfix = !statusNote && hasAny(normalized, [/hotfix|핫픽스|간단|문구|오타|copy|카피|one[- ]?line|한\s*줄|작은|small|quick|빨리|이거\s*하나/]);
 	const noMutation = hasAny(normalized, [/수정하지|고치지|변경하지|건드리지|커밋하지|푸시하지|하지\s*마|하지마|no\s*(edit|change|commit|push)|do\s*not\s*(edit|change|commit|push)/]);
-	const implementationDirective = !statusNote && !sqlReview && !noMutation && hasAny(normalized, [
-		/구현|수정|고쳐|고치|바꿔|변경|추가|삭제|반영|적용|패치|생성|작성|만들|개선|보강|수습|처리|대응|자동화|고도화/,
-		/implement|fix|change|add|remove|update|create|improve|harden|patch|apply|wire/,
-		/작업\s*(?:해|해줘|해봐|하자|진행)/,
-		/진행\s*(?:해|해줘|해봐|하자)/,
-	]);
+	const readOnlyShipSignal = hasAny(normalized, [/확인|상태|왜|원인|알려|조회|봐줘|보여|분석|비교|검토|여부|됐는지|되었는지|반영됐|반영되었|diff|status|check|view|analy[sz]e|review|compare/]);
+	const implementationDirective = !statusNote && !sqlReview && !noMutation && hasImplementationDirective(normalized);
 	const implement = implementationDirective;
-	const readOnlyShipSignal = hasAny(normalized, [/확인|상태|왜|원인|알려|조회|봐줘|보여|status|check|view/]);
-	const explicitCommitPushOnly = ship && !implement && !noMutation && !readOnlyShipSignal && hasAny(normalized, [
-		/커밋\s*[\/]?\s*푸시/,
+	const shipDirective = !statusNote && !noMutation && !readOnlyShipSignal && hasShipDirective(normalized);
+	const explicitPrAction = shipDirective && hasAny(normalized, [/create-pr|create\s+pr|open\s+pr|pull\s+request|\bpr\b\s*(?:생성|만들|올려|열어|작성|요청|리뷰\s*요청)/]);
+	const ship = shipDirective;
+	const explicitCommitPushOnly = shipDirective && !implement && hasAny(normalized, [
+		/커밋\s*(?:\/|&|\+|그리고|하고|해서)?\s*푸시/,
 		/커밋푸시/,
-		/커밋.*푸시/,
-		/푸시.*커밋/,
-		/commit\s*(?:and|&|\/)?\s*push/,
-		/push\s*(?:and|&|\/)?\s*commit/,
-		/(?:그냥|걍)?\s*푸시(?:해|해줘|하자|만)?/,
-		/\bpush\b\s*(?:it|this|해|해줘|하자|please|now)/,
+		/커밋\s*(?:해|해주세요|해줘|하자|하라|하세요|하고|해서|진행|완료|남겨)/,
+		/푸시\s*(?:해|해주세요|해줘|하자|하라|하세요|하고|해서|진행|완료|올려)/,
+		/\bcommit\s+(?:and\s+)?push\b/,
+		/\bcommit\s+(?:it|this|changes?|now|please)\b/,
+		/\bpush\s+(?:it|this|now|please)\b/,
 	]);
 	const investigate = !statusNote && !implementationDirective && hasAny(normalized, [/확인|봐줘|살펴|분석|조사|찾아|왜|원인|검토|audit|오디트|알아봐/]);
 	const answerOnly = !statusNote && hasAny(normalized, [/설명|알려줘|어떻게|무슨\s*뜻|질문|궁금|정리해줘/]) && !implement && !ship;
@@ -181,7 +200,7 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 	else if (intent === "implement" || intent === "ship" || intent === "knowledge") weight = "standard";
 	else if (intent === "investigate" || intent === "audit" || intent === "answer") weight = "none";
 
-	const explicitMutation = !statusNote && !noMutation && (implementationDirective || ship || explicitCommitPushOnly || hasAny(normalized, [/작업해|진행해|만들어|적용해|개선해|보강해|커밋|푸시/]));
+	const explicitMutation = !statusNote && !noMutation && (implementationDirective || shipDirective || explicitCommitPushOnly || hasAny(normalized, [/작업해|진행해|만들어|적용해|개선해|보강해|커밋\s*(?:해|해줘|해주세요|하자)|푸시\s*(?:해|해줘|해주세요|하자)/]));
 	const explicitSingleCommit = hasAny(normalized, [/단일\s*커밋|한\s*커밋|one\s*commit|single\s*commit|squash/]);
 
 	const summary = [

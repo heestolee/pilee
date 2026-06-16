@@ -66,6 +66,8 @@ title_en: Repeated workflow failures become enforced guard flows
 
 다만 사용자가 “사례를 뒤져보고”, “로그를 확인해서”, “추상화해서” 같은 조사 동사 뒤에 “개선해”, “반영해”, “작업해봐”, “고쳐” 같은 실행 동사를 붙이면 read-only audit가 아닙니다. 이 경우 evidence collection은 구현 전 단계일 뿐이며 guard는 `implement`로 승격해야 합니다. `audit=required` 신호는 유지해도 되지만, `HARD AUDIT PATH`나 mutation block이 명시 구현 지시를 다시 확인 질문으로 돌리면 안 됩니다.
 
+반대로 `커밋 diff`, `어제 커밋`, `반영 여부`, `반영 상태`처럼 `커밋`/`반영`이 분석 대상이나 상태 명사로 쓰이면 ship/implement 신호가 아닙니다. Guard classifier는 bare keyword 포함이 아니라 실행형 동사 맥락(`커밋해`, `푸시해`, `반영해`, `개선해`)을 mutation으로 보고, 명사+확인/분석/비교/여부 맥락은 read-only investigation으로 유지해야 합니다.
+
 ## Lightweight Rule
 
 작은 hotfix나 문구 수정은 안전을 버리지 않고 절차를 줄입니다. 기본 경로는 다음 네 단계입니다.
