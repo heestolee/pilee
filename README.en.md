@@ -228,6 +228,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | extension | `extensions/subagent` | [AI Worker Readiness Orchestrator](./docs/knowledge/ai-worker-readiness-orchestrator.md)<br>[Final Verification Parallelization](./docs/knowledge/final-verification-parallelization.md)<br>[Queued Command Prefill Boundary](./docs/knowledge/queued-command-prefill-boundary.md)<br>[Self Healing Actionable Loop](./docs/knowledge/self-healing-actionable-loop.md)<br>[Stress Interview Multi Axis Review](./docs/knowledge/stress-interview-multi-axis-review.md)<br>[Subagent Model Policy](./docs/knowledge/subagent-model-policy.md)<br>[Subagent Prompt Specificity](./docs/knowledge/subagent-prompt-specificity.md)<br>[Subagent Skill Delegation](./docs/knowledge/subagent-skill-delegation.md) |
 | extension | `extensions/supervisor` | [Supervisor Outcome Guardrail](./docs/knowledge/supervisor-outcome-guardrail.md) |
 | extension | `extensions/tasks` | [Ambient Status Surfaces](./docs/knowledge/ambient-status-surfaces.md)<br>[Backlog Source Session Provenance](./docs/knowledge/backlog-source-session-provenance.md)<br>[Queued Command Prefill Boundary](./docs/knowledge/queued-command-prefill-boundary.md)<br>[Source Grounded Frame Planning](./docs/knowledge/source-grounded-frame-planning.md)<br>[Task Work Map Overlay](./docs/knowledge/task-work-map-overlay.md)<br>[Working Context Card compresses large context into the current slice](./docs/knowledge/work-context-card-task-board.md) |
+| extension | `extensions/test-refine` | [Test Boundary Refactor](./docs/knowledge/test-boundary-refactor.md) |
 | extension | `extensions/tft-commands` | [Frame Planning Identity](./docs/knowledge/frame-planning-identity.md)<br>[Frame Studio Interactive Decision UI](./docs/knowledge/frame-studio-interactive-decision-ui.md)<br>[Queued Command Prefill Boundary](./docs/knowledge/queued-command-prefill-boundary.md)<br>[TFT Command Shim Skill Routing](./docs/knowledge/tft-command-shim-skill-routing.md) |
 | extension | `extensions/timestamp` | [Theme Information Hierarchy](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI Rendering Sanitization](./docs/knowledge/tui-rendering-sanitization.md) |
 | extension | `extensions/to-production` | [To Production Source Preserving Hotfix](./docs/knowledge/to-production-source-preserving-hotfix.md) |
@@ -267,6 +268,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | skill | `skills/start-local-dev` | [Local Dev Startup Diagnosis](./docs/knowledge/local-dev-startup-diagnosis.md)<br>[Private Overlay Package Boundary](./docs/knowledge/private-overlay-package-boundary.md) |
 | skill | `skills/stress-interview` | [AI Worker Readiness Orchestrator](./docs/knowledge/ai-worker-readiness-orchestrator.md)<br>[Self Healing Actionable Loop](./docs/knowledge/self-healing-actionable-loop.md)<br>[Stress Interview Multi Axis Review](./docs/knowledge/stress-interview-multi-axis-review.md)<br>[Subagent Model Policy](./docs/knowledge/subagent-model-policy.md)<br>[Subagent Prompt Specificity](./docs/knowledge/subagent-prompt-specificity.md) |
 | skill | `skills/systematic-debugging` | [Root Cause Before Fix](./docs/knowledge/root-cause-before-fix.md)<br>[Runtime Fanout Diagnosis](./docs/knowledge/runtime-fanout-diagnosis.md)<br>[Skills As Portable Procedures](./docs/knowledge/skills-as-portable-procedures.md) |
+| skill | `skills/test-boundary-refactor` | [Test Boundary Refactor](./docs/knowledge/test-boundary-refactor.md) |
 | skill | `skills/tft-guidelines` | [Ask User Question Decision Gates](./docs/knowledge/ask-user-question-decision-gates.md)<br>[Ask User Question Option Design](./docs/knowledge/ask-user-question-option-design.md)<br>[Backend Layer Map Frame Gate](./docs/knowledge/backend-layer-map-frame-gate.md)<br>[Policy Axis Frame Gate](./docs/knowledge/policy-axis-frame-gate.md)<br>[TFT Preference Regression Gate](./docs/knowledge/tft-preference-regression-gate.md)<br>[TFT Visual Structure Renderer](./docs/knowledge/tft-visual-structure-renderer.md)<br>[TUI Ask is a lightweight decision gate](./docs/knowledge/tui-ask-decision-overlay.md) |
 | skill | `skills/to-production` | [To Production Source Preserving Hotfix](./docs/knowledge/to-production-source-preserving-hotfix.md) |
 | skill | `skills/verify` | [Architecture Friction TFT Lens](./docs/knowledge/architecture-friction-tft-lens.md)<br>[Ask User Question Decision Gates](./docs/knowledge/ask-user-question-decision-gates.md)<br>[Ask User Question Option Design](./docs/knowledge/ask-user-question-option-design.md)<br>[Atomic Evidence Workflow](./docs/knowledge/atomic-evidence-workflow.md)<br>[Backend Layer Map Frame Gate](./docs/knowledge/backend-layer-map-frame-gate.md)<br>[Decide Tradeoff Challenge](./docs/knowledge/decide-tradeoff-challenge.md)<br>[Evidence First Verification Gate](./docs/knowledge/evidence-first-verification-gate.md)<br>[Frame Verify Contract](./docs/knowledge/frame-verify-contract.md)<br>[Policy Axis Frame Gate](./docs/knowledge/policy-axis-frame-gate.md)<br>[Request Traceability Surgical Changes](./docs/knowledge/request-traceability-surgical-changes.md)<br>[TFT Command Shim Skill Routing](./docs/knowledge/tft-command-shim-skill-routing.md)<br>[TFT Preference Regression Gate](./docs/knowledge/tft-preference-regression-gate.md)<br>[Repeated validation failures are separated by a baseline cache](./docs/knowledge/validation-baseline-failure-cache.md)<br>[Verification Invalidation On Change](./docs/knowledge/verification-invalidation-on-change.md)<br>[Verify Risk Lens Overlay](./docs/knowledge/verify-risk-lens-overlay.md) |
@@ -286,7 +288,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 ## Extensions
 
 <!-- PILEE_README_EXTENSIONS_START -->
-56 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
+57 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
 
 > Generated from `extensions/*` plus inventory metadata in `scripts/knowledge.mjs`; refresh with `node scripts/knowledge.mjs --graph`.
 
@@ -353,6 +355,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **memory-layer** | Long-term memory save/search |
 | **ember** | Friendly entrypoint for knowledge collect/add/check/refresh |
 | **ember-ship** | Knowledge maintenance release train from stale resolution to generated/history sync and merge |
+| **test-refine** | `/test-refine` command shim for refining test mocks, fixtures, and assertions by responsibility boundary |
 | **backlog** | Persistent backlog TUI |
 | **preflight** | Validation failure observer plus known-baseline separation tool |
 | **pr-comments** | PR unresolved review comment collection helper |
@@ -377,7 +380,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 ## Skills
 
 <!-- PILEE_README_SKILLS_START -->
-27 global workflow skills. Project-specific skills belong in project/private overlays.
+28 global workflow skills. Project-specific skills belong in project/private overlays.
 
 > Generated from `skills/*/SKILL.md` plus inventory metadata in `scripts/knowledge.mjs`; refresh with `node scripts/knowledge.mjs --graph`.
 
@@ -409,6 +412,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **git-workflow-and-versioning** | Git discipline, commits, branches, and worktrees |
 | **incremental-implementation** | Thin vertical slices with verification between steps |
 | **skill-creator** | Skill creation, improvement, and evaluation |
+| **test-boundary-refactor** | Practical test cleanup by behavior, internal logic, and external dependency mock boundaries |
 | **pilee-knowledge** | Promote private history into public/sanitized knowledge |
 | **pilee-final-check** | Final gate for pilee changes: gap review, re-verification, history, and push status |
 | **db-write** | Human-gated DB write guidance |

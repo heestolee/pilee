@@ -253,6 +253,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | extension | `extensions/subagent` | [Worker는 readiness ownership을 가진다](./docs/knowledge/ai-worker-readiness-orchestrator.md)<br>[최종 검증은 메인 세션을 막지 않고 병렬화한다](./docs/knowledge/final-verification-parallelization.md)<br>[Queued command는 실행 보장이 아니다](./docs/knowledge/queued-command-prefill-boundary.md)<br>[Self-healing은 actionable item만 수정한다](./docs/knowledge/self-healing-actionable-loop.md)<br>[Stress Interview는 다축 검토다](./docs/knowledge/stress-interview-multi-axis-review.md)<br>[Hybrid subagent 모델 운용 정책](./docs/knowledge/subagent-model-policy.md)<br>[Subagent 위임은 구체 프롬프트를 요구한다](./docs/knowledge/subagent-prompt-specificity.md)<br>[Subagent는 slash command가 아니라 skill prompt를 위임받는다](./docs/knowledge/subagent-skill-delegation.md) |
 | extension | `extensions/supervisor` | [Supervisor는 outcome guardrail이다](./docs/knowledge/supervisor-outcome-guardrail.md) |
 | extension | `extensions/tasks` | [Idle UI는 장식이 아니라 ambient status다](./docs/knowledge/ambient-status-surfaces.md)<br>[Backlog는 원 세션 출처를 보존한다](./docs/knowledge/backlog-source-session-provenance.md)<br>[Queued command는 실행 보장이 아니다](./docs/knowledge/queued-command-prefill-boundary.md)<br>[정확한 기획 근거가 있으면 Frame은 추적 매트릭스를 만든다](./docs/knowledge/source-grounded-frame-planning.md)<br>[Task overlay는 작업 맵을 보존한다](./docs/knowledge/task-work-map-overlay.md)<br>[Working Context Card는 큰 맥락을 현재 slice로 압축한다](./docs/knowledge/work-context-card-task-board.md) |
+| extension | `extensions/test-refine` | [테스트는 책임 경계에 맞춰 다듬는다](./docs/knowledge/test-boundary-refactor.md) |
 | extension | `extensions/tft-commands` | [Frame identity는 cwd보다 작업 의도를 우선한다](./docs/knowledge/frame-planning-identity.md)<br>[TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./docs/knowledge/frame-studio-interactive-decision-ui.md)<br>[Queued command는 실행 보장이 아니다](./docs/knowledge/queued-command-prefill-boundary.md)<br>[Command shim은 reviewable workflow source of truth를 지킨다](./docs/knowledge/tft-command-shim-skill-routing.md) |
 | extension | `extensions/timestamp` | [색상은 정보 위계다](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다](./docs/knowledge/tui-rendering-sanitization.md) |
 | extension | `extensions/to-production` | [To-production은 source-preserving hotfix 이식이다](./docs/knowledge/to-production-source-preserving-hotfix.md) |
@@ -292,6 +293,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | skill | `skills/start-local-dev` | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./docs/knowledge/local-dev-startup-diagnosis.md)<br>[Private overlay package는 회사·개인 실행 맥락을 담는다](./docs/knowledge/private-overlay-package-boundary.md) |
 | skill | `skills/stress-interview` | [Worker는 readiness ownership을 가진다](./docs/knowledge/ai-worker-readiness-orchestrator.md)<br>[Self-healing은 actionable item만 수정한다](./docs/knowledge/self-healing-actionable-loop.md)<br>[Stress Interview는 다축 검토다](./docs/knowledge/stress-interview-multi-axis-review.md)<br>[Hybrid subagent 모델 운용 정책](./docs/knowledge/subagent-model-policy.md)<br>[Subagent 위임은 구체 프롬프트를 요구한다](./docs/knowledge/subagent-prompt-specificity.md) |
 | skill | `skills/systematic-debugging` | [수정 전에 근본 원인을 좁힌다](./docs/knowledge/root-cause-before-fix.md)<br>[Runtime fan-out은 healthcheck 뒤의 실행 계약이다](./docs/knowledge/runtime-fanout-diagnosis.md)<br>[Skill은 재사용 가능한 절차다](./docs/knowledge/skills-as-portable-procedures.md) |
+| skill | `skills/test-boundary-refactor` | [테스트는 책임 경계에 맞춰 다듬는다](./docs/knowledge/test-boundary-refactor.md) |
 | skill | `skills/tft-guidelines` | [AskUserQuestion은 의사결정 게이트다](./docs/knowledge/ask-user-question-decision-gates.md)<br>[AskUserQuestion 옵션은 행동 분기를 표현한다](./docs/knowledge/ask-user-question-option-design.md)<br>[백엔드 레이어 맵은 Frame의 초기 이해 게이트다](./docs/knowledge/backend-layer-map-frame-gate.md)<br>[정책축 스캔은 Frame의 초기 게이트다](./docs/knowledge/policy-axis-frame-gate.md)<br>[TFT Preference Regression Gate는 사용자 선호 역전을 막는다](./docs/knowledge/tft-preference-regression-gate.md)<br>[TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./docs/knowledge/tft-visual-structure-renderer.md)<br>[TUI 질문은 작은 의사결정 게이트다](./docs/knowledge/tui-ask-decision-overlay.md) |
 | skill | `skills/to-production` | [To-production은 source-preserving hotfix 이식이다](./docs/knowledge/to-production-source-preserving-hotfix.md) |
 | skill | `skills/verify` | [Architecture friction은 TFT의 검증 축이다](./docs/knowledge/architecture-friction-tft-lens.md)<br>[AskUserQuestion은 의사결정 게이트다](./docs/knowledge/ask-user-question-decision-gates.md)<br>[AskUserQuestion 옵션은 행동 분기를 표현한다](./docs/knowledge/ask-user-question-option-design.md)<br>[Atomic evidence workflow는 작은 claim을 증거로 닫는다](./docs/knowledge/atomic-evidence-workflow.md)<br>[백엔드 레이어 맵은 Frame의 초기 이해 게이트다](./docs/knowledge/backend-layer-map-frame-gate.md)<br>[Decide는 선택을 한 번 공격한다](./docs/knowledge/decide-tradeoff-challenge.md)<br>[완료 선언은 증거 뒤에만 온다](./docs/knowledge/evidence-first-verification-gate.md)<br>[Frame과 Verify는 구조화 계약이다](./docs/knowledge/frame-verify-contract.md)<br>[정책축 스캔은 Frame의 초기 게이트다](./docs/knowledge/policy-axis-frame-gate.md)<br>[변경된 줄은 요청으로 추적 가능해야 한다](./docs/knowledge/request-traceability-surgical-changes.md)<br>[Command shim은 reviewable workflow source of truth를 지킨다](./docs/knowledge/tft-command-shim-skill-routing.md)<br>[TFT Preference Regression Gate는 사용자 선호 역전을 막는다](./docs/knowledge/tft-preference-regression-gate.md)<br>[반복 검증 실패는 baseline cache로 분리한다](./docs/knowledge/validation-baseline-failure-cache.md)<br>[검증 중 코드 변경은 이전 검증을 무효화한다](./docs/knowledge/verification-invalidation-on-change.md)<br>[Verify risk lens는 generic core와 private overlay로 나눈다](./docs/knowledge/verify-risk-lens-overlay.md) |
@@ -311,7 +313,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 ## Extensions
 
 <!-- PILEE_README_EXTENSIONS_START -->
-56개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
+57개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
 
 > `extensions/*`와 `scripts/knowledge.mjs`의 inventory metadata에서 생성됩니다. 변경 후 `node scripts/knowledge.mjs --graph`로 갱신합니다.
 
@@ -378,6 +380,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | **memory-layer** | 장기 기억 저장/검색 |
 | **ember** | 불씨(`/ember`) — knowledge 후보 찾기/add/check/refresh friendly entrypoint |
 | **ember-ship** | `/ember-ship` — knowledge stale 해소부터 generated/history/merge까지 닫는 release train |
+| **test-refine** | `/test-refine` — 테스트 mock/fixture/assertion을 책임 경계 기준으로 다듬는 command shim |
 | **backlog** | `/backlog` TUI — 작업 백로그 관리 |
 | **preflight** | validation 실패 관찰 + known baseline 자동 분리 tool |
 | **pr-comments** | PR unresolved review comment를 editor에 붙이는 helper |
@@ -402,7 +405,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 ## Skills
 
 <!-- PILEE_README_SKILLS_START -->
-27개. 글로벌 워크플로 스킬만 pilee에 포함. 프로젝트 고유 스킬(create-pr 등)은 해당 레포/private overlay에 위치.
+28개. 글로벌 워크플로 스킬만 pilee에 포함. 프로젝트 고유 스킬(create-pr 등)은 해당 레포/private overlay에 위치.
 
 > `skills/*/SKILL.md`와 `scripts/knowledge.mjs`의 inventory metadata에서 생성됩니다. 변경 후 `node scripts/knowledge.mjs --graph`로 갱신합니다.
 
@@ -434,6 +437,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | **git-workflow-and-versioning** | Git 워크플로와 변경 단위 discipline |
 | **incremental-implementation** | 검증 가능한 얇은 vertical slice로 점진 구현 |
 | **skill-creator** | 스킬 생성/개선/평가 워크플로 |
+| **test-boundary-refactor** | 기능 테스트·내부 로직·외부 의존성 mock 경계 기준으로 테스트를 실용적으로 정리 |
 | **pilee-knowledge** | private history → public/sanitized knowledge 승격 + 정합성 갱신 |
 | **pilee-final-check** | pilee 변경 마무리 전 구멍 리뷰·재검증·기록/push 상태 점검 |
 | **db-write** | 인간 실행 게이트를 둔 DB write guidance |
