@@ -761,6 +761,45 @@ h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .arch-legend-card { border:1px solid #e2e8f0; border-radius:14px; background:#fff; padding:9px 10px; }
 .arch-legend-card strong { display:block; color:#581c87; font-size:12px; }
 .arch-legend-card span { display:block; margin-top:3px; color:var(--muted); font-size:11px; line-height:1.4; }
+.data-visual { border:1px solid #bae6fd; background:linear-gradient(180deg,#f0fdfa 0%,#ffffff 100%); border-radius:20px; padding:16px; margin:16px 0; overflow:hidden; min-width:0; max-width:100%; }
+.data-visual-head { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start; margin-bottom:12px; }
+.data-visual-title { font-size:18px; font-weight:950; color:#0f766e; overflow-wrap:anywhere; }
+.data-visual-subtitle { margin-top:3px; color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
+.data-flow-strip { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 14px; }
+.data-flow-chip { border:1px solid #99f6e4; background:#ccfbf1; color:#0f766e; border-radius:999px; padding:5px 9px; font-size:11px; font-weight:850; }
+.data-visual-diagram { overflow:auto; border:1px solid #bae6fd; border-radius:18px; background:#fff; padding:14px; }
+.data-entity-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px; min-width:720px; }
+.data-entity-card { border:1px solid #99f6e4; border-top:7px solid #14b8a6; border-radius:18px; background:#ffffff; box-shadow:0 12px 26px rgba(15,118,110,.08); overflow:hidden; }
+.data-entity-card.new { border-top-color:#16a34a; }
+.data-entity-card.changed { border-top-color:#d97706; }
+.data-entity-card.removed, .data-entity-card.deleted { border-top-color:#dc2626; opacity:.94; }
+.data-entity-card.source-of-truth { box-shadow:0 0 0 2px rgba(14,165,233,.16),0 12px 26px rgba(15,118,110,.08); }
+.data-entity-head { padding:12px 13px; border-bottom:1px solid #ccfbf1; background:#f0fdfa; display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+.data-entity-title { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; font-weight:950; color:#134e4a; overflow-wrap:anywhere; }
+.data-entity-meta { display:flex; flex-wrap:wrap; gap:4px; justify-content:flex-end; }
+.data-entity-desc { padding:9px 13px 0; color:#475569; font-size:11.5px; line-height:1.42; overflow-wrap:anywhere; }
+.data-columns { display:grid; gap:0; padding:9px 13px 12px; }
+.data-column { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:flex-start; border-top:1px solid rgba(153,246,228,.65); padding:7px 0; }
+.data-column:first-child { border-top:0; }
+.data-column-name { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; font-weight:900; color:#0f172a; overflow-wrap:anywhere; }
+.data-column-type { display:block; color:#64748b; font-size:10px; margin-top:1px; }
+.data-column-desc { display:block; color:#475569; font-size:10.5px; margin-top:2px; line-height:1.35; }
+.data-column-badges { display:flex; flex-wrap:wrap; gap:3px; justify-content:flex-end; max-width:132px; }
+.data-badge { display:inline-flex; border:1px solid #ccfbf1; background:#f0fdfa; color:#0f766e; border-radius:999px; padding:2px 6px; font-size:9px; font-weight:950; white-space:nowrap; }
+.data-badge.pk { border-color:#bfdbfe; background:#eff6ff; color:#1d4ed8; }
+.data-badge.fk { border-color:#bbf7d0; background:#f0fdf4; color:#166534; }
+.data-badge.unique { border-color:#ddd6fe; background:#f5f3ff; color:#6d28d9; }
+.data-badge.not-null, .data-badge.required { border-color:#fed7aa; background:#fff7ed; color:#c2410c; }
+.data-badge.default { border-color:#e2e8f0; background:#f8fafc; color:#475569; }
+.data-badge.dml, .data-badge.backfill { border-color:#fde68a; background:#fffbeb; color:#92400e; }
+.data-badge.risk, .data-badge.removed, .data-badge.deleted { border-color:#fecaca; background:#fef2f2; color:#991b1b; }
+.data-badge.source-of-truth { border-color:#bae6fd; background:#ecfeff; color:#0e7490; }
+.data-relationships, .data-migration-grid, .data-verification-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:9px; margin-top:12px; }
+.data-section-title { margin:14px 0 8px; color:#0f766e; font-size:12px; font-weight:950; text-transform:uppercase; letter-spacing:.05em; }
+.data-relation-card, .data-op-card, .data-verify-card { border:1px solid #ccfbf1; border-radius:14px; background:#fff; padding:10px 11px; }
+.data-relation-card strong, .data-op-card strong, .data-verify-card strong { display:block; color:#134e4a; font-size:12px; margin-bottom:4px; overflow-wrap:anywhere; }
+.data-relation-card p, .data-op-card p, .data-verify-card p { margin:4px 0; color:#475569; font-size:11.5px; line-height:1.42; overflow-wrap:anywhere; }
+.data-op-sql { margin-top:7px; max-height:120px; overflow:auto; background:#292524; color:#fafaf9; border-radius:10px; padding:8px; font-size:10px; white-space:pre-wrap; }
 .question { border-color:#ddd6fe; background:#faf9ff; }
 .question-title { font-size:18px; font-weight:800; margin:0 0 12px; line-height:1.35; overflow-wrap:anywhere; }
 .question-context { margin:0 0 14px; padding:12px 14px; border:1px solid #ede9fe; border-radius:12px; background:#faf9ff; font-size:14px; line-height:1.55; }
@@ -1367,6 +1406,132 @@ function renderArchitectureFlowElement(el, spec) {
     + renderLearningNotes(spec.notes || spec.explanations)
     + renderVisualHealing(spec);
 }
+function isDataModelMigrationMapSpec(spec) {
+  var kind = String(spec && (spec.kind || spec.type) || '').toLowerCase();
+  return kind === 'data-model-migration-map' || kind === 'data-model-map' || kind === 'migration-map' || kind === 'db-migration-map' || kind === 'database-migration-map';
+}
+function hasDataModelMigrationShape(spec) {
+  return Array.isArray(spec && (spec.entities || spec.models || spec.dataEntities));
+}
+function dataEntities(spec) {
+  var raw = spec.entities || spec.models || spec.dataEntities || (isDataModelMigrationMapSpec(spec) ? spec.tables : []);
+  return Array.isArray(raw) ? raw.map(normalizeDataEntity) : [];
+}
+function normalizeDataEntity(entity, index) {
+  entity = entity || {};
+  var title = entity.title || entity.name || entity.table || entity.id || ('entity_' + (index + 1));
+  var status = normalizeVisualStatus(entity.status || entity.state, 'same');
+  var source = entity.sourceOfTruth || entity.source === true || entity.source === 'source-of-truth';
+  var columns = Array.isArray(entity.columns) ? entity.columns : Array.isArray(entity.fields) ? entity.fields : [];
+  return {
+    id: String(entity.id || entity.name || entity.table || title),
+    title: String(title),
+    status: status,
+    sourceOfTruth: Boolean(source),
+    description: String(entity.description || entity.role || entity.responsibility || ''),
+    badges: asTextArray(entity.badges || entity.flags || entity.requirements || entity.requirementIds),
+    columns: columns,
+  };
+}
+function dataBadgeClass(value) {
+  var key = layerKey(value);
+  if (key === 'primary-key') return 'pk';
+  if (key === 'foreign-key') return 'fk';
+  if (key === 'not-null') return 'not-null';
+  if (key === 'source') return 'source-of-truth';
+  return key;
+}
+function renderDataBadge(value) { return '<span class="data-badge ' + dataBadgeClass(value) + '">' + esc(value) + '</span>'; }
+function dataColumnBadges(column) {
+  var badges = asTextArray(column.badges || column.constraints || column.flags || column.badge);
+  if (column.pk || column.primaryKey) badges.push('PK');
+  if (column.fk || column.foreignKey || column.references || column.ref) badges.push('FK');
+  if (column.unique) badges.push('UNIQUE');
+  if (column.nullable === false || column.required || column.notNull) badges.push('NOT NULL');
+  if (column.defaultValue !== undefined || column.default !== undefined) badges.push('DEFAULT');
+  if (column.status) badges.push(column.status);
+  return Array.from(new Set(badges.filter(Boolean)));
+}
+function renderDataColumn(column) {
+  column = column || {};
+  var name = column.name || column.id || column.column || '';
+  var refs = column.references || column.ref || column.to;
+  var label = refs ? name + ' → ' + refs : name;
+  var type = column.type || column.dataType || column.kind || '';
+  var desc = column.description || column.meaning || column.note || '';
+  var badges = dataColumnBadges(column).map(renderDataBadge).join('');
+  return '<div class="data-column"><div><span class="data-column-name">' + esc(label) + '</span>' + (type ? '<span class="data-column-type">' + esc(type) + '</span>' : '') + (desc ? '<span class="data-column-desc">' + inline(desc) + '</span>' : '') + '</div><div class="data-column-badges">' + badges + '</div></div>';
+}
+function renderDataEntityCard(entity) {
+  var badges = entity.badges.slice();
+  if (entity.sourceOfTruth) badges.push('source-of-truth');
+  if (entity.status && entity.status !== 'same') badges.push(entity.status);
+  var classes = ['data-entity-card', entity.status].concat(entity.sourceOfTruth ? ['source-of-truth'] : []).join(' ');
+  var columns = entity.columns.length ? entity.columns.map(renderDataColumn).join('') : '<div class="data-column"><div><span class="data-column-name">columns?</span><span class="data-column-desc">Frame 단계에서 실제 DDL/ORM schema를 읽어 채워야 합니다.</span></div></div>';
+  return '<article class="' + esc(classes) + '"><div class="data-entity-head"><div class="data-entity-title">' + inline(entity.title) + '</div><div class="data-entity-meta">' + badges.map(renderDataBadge).join('') + '</div></div>' + (entity.description ? '<div class="data-entity-desc">' + inline(entity.description) + '</div>' : '') + '<div class="data-columns">' + columns + '</div></article>';
+}
+function dataRelationships(spec) {
+  var raw = spec.relationships || spec.relations || spec.edges || [];
+  return Array.isArray(raw) ? raw : [];
+}
+function renderDataRelationships(spec) {
+  var rels = dataRelationships(spec);
+  if (!rels.length) return '';
+  return '<div class="data-section-title">Relationships / Cardinality</div><div class="data-relationships">' + rels.map(function(rel, index) {
+    var label = rel.cardinality || rel.label || rel.kind || rel.type || ('R' + (index + 1));
+    var title = (rel.from || '?') + ' → ' + (rel.to || '?');
+    return '<div class="data-relation-card"><strong>' + esc(label) + ' · ' + inline(title) + '</strong>' + (rel.description ? '<p>' + inline(rel.description) + '</p>' : '') + (rel.why ? '<p><b>왜:</b> ' + inline(rel.why) + '</p>' : '') + '</div>';
+  }).join('') + '</div>';
+}
+function dataOperations(spec) {
+  var keys = ['migrationOperations', 'operations', 'ddl', 'dml', 'backfill', 'rollback', 'verificationOperations'];
+  var collected = [];
+  keys.forEach(function(key) {
+    var value = spec[key];
+    if (Array.isArray(value)) collected = collected.concat(value);
+  });
+  return collected.map(function(op) {
+    return typeof op === 'string' ? { title:op, type:'STEP' } : (op || {});
+  });
+}
+function renderDataOperations(spec) {
+  var ops = dataOperations(spec);
+  if (!ops.length) return '';
+  return '<div class="data-section-title">Migration Plan · DDL / DML / Backfill</div><div class="data-migration-grid">' + ops.map(function(op, index) {
+    var type = op.type || op.kind || op.operation || ('STEP ' + (index + 1));
+    var target = op.target || op.table || op.entity || op.column || '';
+    var title = (target ? target + ' · ' : '') + (op.title || op.name || type);
+    var badges = [type].concat(asTextArray(op.badges || op.flags || op.risks || op.safety)).slice(0, 4).map(renderDataBadge).join('');
+    return '<div class="data-op-card"><strong>' + inline(title) + '</strong><div>' + badges + '</div>' + (op.description ? '<p>' + inline(op.description) + '</p>' : '') + (op.rollback || op.down ? '<p><b>Rollback:</b> ' + inline(op.rollback || op.down) + '</p>' : '') + (op.sql ? '<pre class="data-op-sql">' + esc(op.sql) + '</pre>' : '') + '</div>';
+  }).join('') + '</div>';
+}
+function renderDataVerification(spec) {
+  var checks = spec.verificationQueries || spec.verifyQueries || spec.verification || spec.checks || [];
+  if (!Array.isArray(checks) || !checks.length) return '';
+  return '<div class="data-section-title">Verification Queries / Evidence</div><div class="data-verification-grid">' + checks.map(function(check, index) {
+    if (typeof check === 'string') return '<div class="data-verify-card"><strong>V' + (index + 1) + '</strong><p>' + inline(check) + '</p></div>';
+    return '<div class="data-verify-card"><strong>' + esc(check.title || check.id || ('V' + (index + 1))) + '</strong>' + (check.description ? '<p>' + inline(check.description) + '</p>' : '') + (check.sql ? '<pre class="data-op-sql">' + esc(check.sql) + '</pre>' : '') + '</div>';
+  }).join('') + '</div>';
+}
+function renderDataFlow(spec) {
+  var flow = spec.runtimeFlow || spec.flow || spec.displayFlow || spec.readFlow;
+  var items = asTextArray(flow);
+  if (!items.length) return '';
+  return '<div class="data-flow-strip">' + items.map(function(item, index) { return '<span class="data-flow-chip">' + (index + 1) + '. ' + inline(item) + '</span>'; }).join('') + '</div>';
+}
+function renderDataModelMigrationMapElement(el, spec) {
+  var entities = dataEntities(spec);
+  if (!entities.length) { renderVisualFallbackElement(el, spec, null, 'data-model-migration-map은 entities 배열이 필요합니다. 원본은 fallback으로 보존했습니다.'); return; }
+  el.className = 'data-visual';
+  el.innerHTML = '<div class="data-visual-head"><div><div class="data-visual-title">' + esc(spec.title || 'Data Model / Migration Map') + '</div>' + (spec.subtitle ? '<div class="data-visual-subtitle">' + esc(spec.subtitle) + '</div>' : '<div class="data-visual-subtitle">DDL/DML, table 관계, runtime 표시 흐름을 분리해서 보는 데이터 구조 지도입니다.</div>') + '</div><span class="badge">Data Model / Migration Map</span></div>'
+    + renderDataFlow(spec)
+    + '<div class="data-visual-diagram"><div class="data-entity-grid">' + entities.map(renderDataEntityCard).join('') + '</div></div>'
+    + renderDataRelationships(spec)
+    + renderDataOperations(spec)
+    + renderDataVerification(spec)
+    + renderLearningNotes(spec.notes || spec.explanations)
+    + renderVisualHealing(spec);
+}
 function renderElkTable(table, node, scale, pad) {
   var status = table.status || 'same';
   var rows = (table.columns || []).map(function(col) {
@@ -1385,6 +1550,12 @@ async function renderTftVisualElement(el) {
   var source = decodeURIComponent(el.getAttribute('data-source') || '');
   var spec;
   try { spec = JSON.parse(source); } catch (e) { renderVisualFallbackElement(el, null, source, 'JSON parse에 실패했습니다. 원문을 보존하고 화면은 fallback으로 표시합니다.'); return; }
+  if (isDataModelMigrationMapSpec(spec) || hasDataModelMigrationShape(spec)) {
+    var dataKindLabel = String(spec.kind || spec.type || '').trim();
+    var dataSpec = isDataModelMigrationMapSpec(spec) ? spec : cloneSpecWithHealing(spec, dataKindLabel ? 'kind=' + dataKindLabel + '이지만 entities shape를 data-model-migration-map으로 해석했습니다.' : 'kind가 없지만 entities shape를 data-model-migration-map으로 해석했습니다.');
+    renderDataModelMigrationMapElement(el, dataSpec);
+    return;
+  }
   if (hasVisualLayersShape(spec)) {
     var layerSpec = isBackendLayerVisualSpec(spec) ? spec : cloneSpecWithHealing(spec, 'kind가 없지만 layers shape를 backend-layer-map으로 해석했습니다.');
     renderBackendLayerVisualElement(el, layerSpec);
@@ -1402,7 +1573,7 @@ async function renderTftVisualElement(el) {
   if (isBackendLayerVisualSpec(spec)) { renderBackendLayerVisualElement(el, spec); return; }
   if (isArchitectureFlowSpec(spec)) { renderArchitectureFlowElement(el, spec); return; }
   var tables = Array.isArray(spec.tables) ? spec.tables : [];
-  if (!tables.length) { renderVisualFallbackElement(el, spec, source, 'tables/layers/nodes 중 지원 가능한 visual shape를 찾지 못했습니다.'); return; }
+  if (!tables.length) { renderVisualFallbackElement(el, spec, source, 'tables/layers/nodes/entities 중 지원 가능한 visual shape를 찾지 못했습니다.'); return; }
   if (!window.ELK) { renderVisualFallbackElement(el, spec, source, 'ELK renderer를 불러오지 못해 table-map을 fallback으로 표시합니다.'); return; }
   var relations = Array.isArray(spec.relations) ? spec.relations : [];
   var direction = String(spec.direction || spec.layout || 'DOWN').toUpperCase();

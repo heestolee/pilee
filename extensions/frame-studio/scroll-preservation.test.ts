@@ -111,8 +111,8 @@ function loadStudioScript(fakeWindow: FakeWindow, fakeDocument: FakeDocument) {
 			if (count > limit) throw new Error("Timer queue did not settle");
 		}
 	}
-	const factory = new Function("window", "document", "EventSource", "fetch", "setTimeout", "requestAnimationFrame", `${script}\nreturn { render: render, selectTab: selectTab, renderTftVisualElement: renderTftVisualElement, renderArchitectureFlowElement: renderArchitectureFlowElement, renderBackendLayerVisualElement: renderBackendLayerVisualElement };`);
-	return { ...(factory(fakeWindow, fakeDocument, EventSource, fetch, queueTimer, queueTimer) as { render(state: any, options?: any): void; selectTab(key: string): void; renderTftVisualElement(el: any): Promise<void>; renderArchitectureFlowElement(el: any, spec: any): void; renderBackendLayerVisualElement(el: any, spec: any): void }), flushTimers };
+	const factory = new Function("window", "document", "EventSource", "fetch", "setTimeout", "requestAnimationFrame", `${script}\nreturn { render: render, selectTab: selectTab, renderTftVisualElement: renderTftVisualElement, renderArchitectureFlowElement: renderArchitectureFlowElement, renderBackendLayerVisualElement: renderBackendLayerVisualElement, renderDataModelMigrationMapElement: renderDataModelMigrationMapElement };`);
+	return { ...(factory(fakeWindow, fakeDocument, EventSource, fetch, queueTimer, queueTimer) as { render(state: any, options?: any): void; selectTab(key: string): void; renderTftVisualElement(el: any): Promise<void>; renderArchitectureFlowElement(el: any, spec: any): void; renderBackendLayerVisualElement(el: any, spec: any): void; renderDataModelMigrationMapElement(el: any, spec: any): void }), flushTimers };
 }
 
 function makeVisualElement(source: unknown) {
@@ -197,6 +197,51 @@ test("TFT visual fallback preserves unsupported shapes instead of showing a red 
 	assert.match(element.innerHTML, /렌더링 포맷 자동 치유/);
 	assert.match(element.innerHTML, /원본 visual JSON/);
 	assert.match(element.innerHTML, /Unknown visual/);
+	assert.doesNotMatch(element.innerHTML, /tft-visual-error/);
+});
+
+test("Data Model / Migration Map visual renders entities, relationships, operations, and verification", async () => {
+	const browser = createFakeBrowser({ top: 0, viewport: 600, height: 1600 });
+	const studio = loadStudioScript(browser.window, browser.document);
+	const element = makeVisualElement({
+		kind: "data-model-migration-map",
+		title: "Spot Event / Special Price 데이터 구조",
+		runtimeFlow: ["spot_translation 기준 조회", "Special Price fallback source 선택"],
+		entities: [
+			{
+				name: "spot_translation",
+				description: "언어별 상세 정보 source-of-truth",
+				sourceOfTruth: true,
+				columns: [
+					{ name: "code", type: "string", primaryKey: true },
+					{ name: "spot_code", foreignKey: true, references: "spot.code" },
+				],
+			},
+			{
+				name: "spot_trans_fee_schedule_display_setting",
+				status: "new",
+				columns: [
+					{ name: "spot_trans_code", foreignKey: true, unique: true, nullable: false, references: "spot_translation.code" },
+					{ name: "is_collapsed", type: "boolean", defaultValue: false },
+				],
+			},
+		],
+		relationships: [{ from: "spot_translation.code", to: "spot_trans_fee_schedule_display_setting.spot_trans_code", cardinality: "1 : 0..1", description: "언어별 Special Price 섹션 설정" }],
+		migrationOperations: [{ type: "DDL", target: "spot_trans_fee_schedule_display_setting", description: "섹션 접힘 설정 테이블 생성", rollback: "drop table" }],
+		verificationQueries: [{ title: "UNIQUE 검증", sql: "select spot_trans_code, count(*) from spot_trans_fee_schedule_display_setting group by 1 having count(*) > 1;" }],
+	});
+
+	await studio.renderTftVisualElement(element);
+
+	assert.equal(element.className, "data-visual");
+	assert.match(element.innerHTML, /Data Model \/ Migration Map/);
+	assert.match(element.innerHTML, /spot_translation/);
+	assert.match(element.innerHTML, /spot_trans_fee_schedule_display_setting/);
+	assert.match(element.innerHTML, /source-of-truth/);
+	assert.match(element.innerHTML, /UNIQUE/);
+	assert.match(element.innerHTML, /Relationships \/ Cardinality/);
+	assert.match(element.innerHTML, /Migration Plan · DDL \/ DML \/ Backfill/);
+	assert.match(element.innerHTML, /Verification Queries \/ Evidence/);
 	assert.doesNotMatch(element.innerHTML, /tft-visual-error/);
 });
 

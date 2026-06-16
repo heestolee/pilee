@@ -82,6 +82,15 @@ test("Architecture/Data Flow Map 렌더러가 WebView bundle에 포함된다", (
 	assert.match(html, /FK/);
 });
 
+test("Data Model / Migration Map 렌더러가 WebView bundle에 포함된다", () => {
+	const html = buildPageHtml();
+	assert.match(html, /data-model-migration-map/);
+	assert.match(html, /renderDataModelMigrationMapElement/);
+	assert.match(html, /Data Model \/ Migration Map/);
+	assert.match(html, /Migration Plan · DDL \/ DML \/ Backfill/);
+	assert.match(html, /Verification Queries \/ Evidence/);
+});
+
 
 test("정적 TFT transcript HTML도 live visual renderer bundle을 사용한다", () => {
 	const dir = mkdtempSync(join(tmpdir(), "pilee-tft-static-"));
@@ -101,6 +110,12 @@ test("정적 TFT transcript HTML도 live visual renderer bundle을 사용한다"
 		title: "Backend boundary",
 		layers: [{ layer: "Entry/API boundary", title: "Existing approval API", role: "기존 backend 입구" }],
 	};
+	const dataModelMap = {
+		kind: "data-model-migration-map",
+		title: "Migration structure",
+		entities: [{ name: "fee_setting", status: "new", columns: [{ name: "spot_trans_code", foreignKey: true, unique: true }] }],
+		migrationOperations: [{ type: "DDL", target: "fee_setting", description: "설정 테이블 생성" }],
+	};
 	const markdown = [
 		"# Visual smoke",
 		"",
@@ -110,6 +125,10 @@ test("정적 TFT transcript HTML도 live visual renderer bundle을 사용한다"
 		"",
 		"```tft-visual",
 		JSON.stringify(backendLayerMap, null, 2),
+		"```",
+		"",
+		"```tft-visual",
+		JSON.stringify(dataModelMap, null, 2),
 		"```",
 	].join("\n");
 	try {
@@ -127,8 +146,10 @@ test("정적 TFT transcript HTML도 live visual renderer bundle을 사용한다"
 		assert.match(html, /var STATIC_STATE = /);
 		assert.match(html, /renderArchitectureFlowElement/);
 		assert.match(html, /renderBackendLayerVisualElement/);
+		assert.match(html, /renderDataModelMigrationMapElement/);
 		assert.match(html, /architecture-flow/);
 		assert.match(html, /backend-layer-map/);
+		assert.match(html, /data-model-migration-map/);
 		const scripts = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map((match) => match[1]);
 		assert.ok(scripts.length > 0);
 		for (const script of scripts) new Function(script);

@@ -59,6 +59,7 @@ Jira, Notion, Slack, wireframe, PRD, 디자인 캡처처럼 정확한 기획 근
 3. `domain_work_map` — FE Web/Admin/Mobile, BE, DB/Ops, Verification 같은 작업 레인 지도
 4. `backend_layer_map` — backend/action/API 경계가 얽힌 경우 요구사항 ID가 붙은 Backend Layer Map / Backend/Action Boundary Map / 레이어 책임 지도
 5. `architecture_flow_map` — 화면·action·API·DB·검증 증거 흐름이 구현·검증 이해를 좌우하면 요구사항 ID가 붙은 Architecture/Data Flow Map / Architecture/User Flow Map
+6. `data_model_migration_map` — DDL/DML/backfill/DB 관계가 이해·검증을 좌우하면 요구사항 ID가 붙은 Data Model / Migration Map
 
 규칙:
 - 기획 문장을 AI가 임의로 축소하지 않는다. 예를 들어 “컴포넌트 재사용”을 “같은 데이터 source 사용”, “동일 UX”, “유사 방식”으로 바꾸면 `gap` 또는 `decision-needed`다.
@@ -68,6 +69,7 @@ Jira, Notion, Slack, wireframe, PRD, 디자인 캡처처럼 정확한 기획 근
 - Backend/Action Boundary Map의 각 row는 `요구사항` 컬럼 또는 `requirementIds`를 가져야 한다. requirement ID 없는 layer map은 아키텍처 설명일 뿐 기획 책임 분배표가 아니다.
 - source-grounded Jira/기획 frame에서 사용자 action, 기존 API/action 재사용, cache/refresh, 동작 회귀 검증 중 하나라도 요구사항에 있으면 `backend_layer_map.mode="boundary-only"`라도 반드시 보여준다. **신규 backend 변경이 없다는 이유만으로 `triggered:false`로 숨기지 않는다.**
 - Architecture/User Flow는 주요 lane/node/edge가 요구사항 ID, source-of-truth 또는 consumer/action boundary, 검증 증거와 연결되어야 한다. UI-only처럼 보이는 작업도 화면 → action → 기존 boundary → refresh/검증 흐름이 있으면 `architecture_flow_map.mode="user-flow"`로 보여준다. 흐름이 있는데 `kind: "architecture-flow"` visual이나 이에 준하는 `architecture_flow_map`이 없으면 source-grounded full frame이 불완전하다.
+- DDL/DML/backfill, 새 테이블/컬럼/제약, PK/FK/UNIQUE, fallback source, row별/section별 설정처럼 데이터 모델 이해가 리뷰의 핵심이면 `data_model_migration_map`과 `kind: "data-model-migration-map"` visual을 별도 영역으로 보여준다. backend layer/architecture flow에 DB node가 있더라도 DDL/DML 구조 자체는 이 맵으로 분리한다.
 - matrix의 모든 요구사항 ID는 implementation plan slice 또는 out_of_scope/decision_queue/blocked 항목 중 하나에 연결되어야 한다.
 - verify plan은 테스트 통과 목록이 아니라 요구사항 ID별 PASS 증거 목록이어야 한다.
 - 세부 템플릿은 `references/source-grounded-planning.md`를 따른다.
@@ -126,9 +128,34 @@ Jira, Notion, Slack, wireframe, PRD, 디자인 캡처처럼 정확한 기획 근
 - 데이터/로직 흐름, 아키텍처 구조, DB PK/FK, resolver → usecase → service/domain/VO → repository → table 흐름이 구현 위치·검증 증거·source-of-truth 판단에 영향을 주면 `kind: "architecture-flow"` `tft-visual`을 함께 출력한다. 사용자가 명시적으로 원할 때만이 아니라, backend/data/API/DB 흐름이 작업 이해를 좌우하는 source-grounded full frame에서는 필수 surface다.
 - 화면 중심 작업이어도 Jira 요구사항이 사용자 action, 기존 action/API 재사용, refresh/cache, 동작 회귀를 포함하면 `kind:"architecture-flow"`로 **User/Action Flow Map**을 그린다. 이때 DB node가 없을 수 있지만, 화면 → shared action → existing boundary → verification edge가 요구사항 ID와 연결되어야 한다.
 - `triggered:false` 또는 `mode="not-applicable"`은 사용자 action/API/data/cache/refresh/verification flow가 정말 없고, 단순 copy/style처럼 구조 흐름 검수가 의미 없는 경우에만 쓴다.
-- 단, visual은 설명용이고 canonical 원천은 `backend_layer_map`과 `architecture_flow_map`이다.
+- 단, visual은 설명용이고 canonical 원천은 `backend_layer_map`, `architecture_flow_map`, `data_model_migration_map`이다.
 - 레이어 책임이 미해결이면 Step 3/4에서 “repo 조건인가, usecase 정책인가, VO 불변식인가”처럼 한 가지 분기로 묻는다.
 - 세부 템플릿은 `references/backend-layer-map.md`를 따른다.
+
+### 0-C. Data Model / Migration Map 게이트
+
+`/frame`은 DDL/DML/backfill 또는 DB 관계 변경이 작업 이해를 좌우하면 구현 plan 전에 **Data Model / Migration Map**을 별도 영역으로 그린다. Backend Layer Map은 “책임 위치”, Architecture Flow는 “런타임 흐름”, Data Model / Migration Map은 “실제 저장 구조와 migration 안전성”을 담당한다.
+
+트리거:
+- 새 테이블/컬럼/index/FK/UNIQUE/default/nullability, enum/schema 변경, 마이그레이션 파일이 영향 범위에 있음
+- DML/seed/backfill/runbook이 필요하거나 기존 row 보존·이관·idempotency가 성공 조건을 바꿈
+- row별 설정과 section/global 설정, source-of-truth와 fallback source, canonical table과 derived table 구분이 리뷰 핵심임
+- DBA/리뷰어가 DDL과 사용자-facing 동작의 연결을 한눈에 봐야 함
+
+필수 맵:
+1. Entities — table/entity 이름, source-of-truth 여부, 상태(new/changed/removed), 핵심 column/field
+2. Relationships — PK/FK/UNIQUE/cardinality와 왜 그 관계가 필요한지
+3. Migration Plan — DDL/DML/backfill/rollback/down/idempotency/row count 위험
+4. Runtime Display Flow — 실제 API/UI가 어느 source row를 읽고 fallback을 적용하는지
+5. Verification Queries — 사전 SELECT, 사후 SELECT, constraint 검증, generated/schema 검증
+
+규칙:
+- `frame.json.data_model_migration_map`이 canonical이고, Studio의 `kind: "data-model-migration-map"` visual은 사람이 읽는 generated view다.
+- `entities[].columns[]`는 실제 schema/DDL을 읽은 뒤 채운다. 아직 확인 전이면 `status:"open_question"`이나 verification gap으로 표시한다.
+- DDL과 DML을 한 문단에 섞지 않는다. `migrationOperations[].type`으로 `DDL`, `DML`, `BACKFILL`, `ROLLBACK`, `VERIFY`를 구분한다.
+- 데이터 구조가 runtime fallback/표시 흐름을 바꾸면 `runtimeFlow[]`에 “어느 translation/source row를 따르는지”를 명시한다.
+- migration 실행 자체가 나중으로 미뤄져도 code commit blocker로 오인하지 말고, `verificationQueries[]`와 verify plan caveat에 남긴다.
+- 세부 템플릿은 `references/data-model-migration-map.md`를 따른다.
 
 ### 0. Deep Interview 질문 규율
 
@@ -456,6 +483,7 @@ AI가 frame draft를 작성한다. `/frame` 초반에는 구현 계획을 만들
 - `policy_axis_scan`: 트리거된 작업이면 시간 기준, 적용 대상 수, DEFAULT/fallback, 소비 채널 매트릭스, 데이터/마이그레이션, API/cache identity의 결론과 열린 질문
 - `backend_layer_map`: 트리거된 작업이면 entry point, application flow, domain rule, data access, cache/batching, persistence, consumers의 책임과 call-flow. source-grounded mode에서는 각 레이어가 닫는 requirement ID도 함께 적고, markdown row에는 `요구사항` 컬럼을 둔다.
 - `architecture_flow_map`: 트리거된 작업이면 UI/API/Usecase/Domain/Repository/DB/Ops lane, 주요 node/edge, DB source-of-truth/PK/FK/legacy badge, 각 흐름이 닫는 requirement ID와 verification evidence를 적는다.
+- `data_model_migration_map`: 트리거된 작업이면 table/entity, column/constraint, relationship/cardinality, DDL/DML/backfill/rollback, runtime fallback/read flow, verification query를 요구사항 ID와 연결한다.
 - `edge_case_seeds[]`: Step 4/5 초점에 맞춘 3~5개
   - 구조 렌즈를 선택했다면 “다음 AI/사람이 변경 지점을 찾을 수 있는가” 같은 탐색성 edge도 포함
 - `verify_plan`: `{ commands[], manual_checks[] }`
@@ -478,7 +506,8 @@ Draft를 보여줄 때 맨 위에 반드시 다음을 붙인다:
 8. 정책축 스캔이 필요한 작업인데 시간 기준/DEFAULT/다중 적용/채널별 규칙이 빠지지 않았는가
 9. 백엔드 레이어 맵이 필요한 작업인데 resolver/usecase/repository/VO/loader 책임이 요구사항 ID와 연결됐는가
 10. Architecture Flow가 필요한 작업인데 UI/API/Usecase/Domain/Repository/DB/Ops 흐름, source-of-truth, 검증 증거가 요구사항 ID와 연결됐는가
-11. implementation plan이 frame/decide 결정과 matrix/work map에서 파생됐는가
+11. Data Model / Migration Map이 필요한 작업인데 DDL/DML/backfill, PK/FK/UNIQUE, fallback source, verification query가 요구사항 ID와 연결됐는가
+12. implementation plan이 frame/decide 결정과 matrix/work map에서 파생됐는가
 ```
 
 ### Step 7: AskUserQuestion — 구체 patch 메뉴
@@ -508,7 +537,7 @@ Draft를 보여줄 때 맨 위에 반드시 다음을 붙인다:
 저장은 반드시 아래 순서로 한다.
 
 1. `FrameDoc` 객체를 완성한다.
-2. source-grounded mode이면 `requirement_matrix`의 모든 ID가 `implementation_plan.slices[]`, `domain_work_map`, `backend_layer_map`, `architecture_flow_map`, `verify_plan`, `out_of_scope`, `decision_queue`, `blocked` 중 하나에 연결됐는지 확인한다. 미매핑 요구사항, `상태` 없는 matrix, requirement ID 없는 work/layer/flow map, 또는 원문 요구를 완화한 PASS 계약이 있으면 저장 전에 patch하거나 decision으로 큐잉한다.
+2. source-grounded mode이면 `requirement_matrix`의 모든 ID가 `implementation_plan.slices[]`, `domain_work_map`, `backend_layer_map`, `architecture_flow_map`, `data_model_migration_map`, `verify_plan`, `out_of_scope`, `decision_queue`, `blocked` 중 하나에 연결됐는지 확인한다. 미매핑 요구사항, `상태` 없는 matrix, requirement ID 없는 work/layer/flow/data map, 또는 원문 요구를 완화한 PASS 계약이 있으면 저장 전에 patch하거나 decision으로 큐잉한다.
 3. `implementation_plan`을 frame/decide 결정에서 합성한다.
    - `decision_queue[]`가 남아 있으면 `status="blocked_by_decision"`으로 저장하고, Plan을 ready로 선언하지 않는다.
    - 닫힌 결정만으로 실행 방향이 충분하면 `status="ready"`로 두고 `slices`, `firstSafeStep`, `readiness`, `gates`를 채운다.
@@ -520,6 +549,7 @@ Draft를 보여줄 때 맨 위에 반드시 다음을 붙인다:
    - 정책축 스캔 트리거 작업이면 `policy_axis_scan` 또는 이에 준하는 `review_lenses`/`risk_register`/`verify_plan` 반영 여부
    - 백엔드 레이어 맵 트리거 작업이면 `backend_layer_map` 또는 이에 준하는 `review_lenses`/`risk_register`/`verify_plan` 반영 여부. source-grounded UI/action 작업에서 기존 action/API boundary 재사용이 있으면 `mode="boundary-only"`라도 있어야 한다.
    - Architecture Flow 트리거 작업이면 `architecture_flow_map` 또는 이에 준하는 `review_lenses`/`risk_register`/`verify_plan` 반영 여부. source-grounded UI/action 작업에서 화면→action→기존 boundary→검증 흐름이 있으면 `mode="user-flow"`라도 있어야 한다.
+   - Data Model / Migration Map 트리거 작업이면 `data_model_migration_map` 또는 이에 준하는 `review_lenses`/`risk_register`/`verify_plan` 반영 여부. DDL/DML/backfill/PK/FK/UNIQUE/fallback source가 있으면 `kind:"data-model-migration-map"` visual 또는 canonical summary가 있어야 한다.
    - `decisions[]`는 없으면 빈 배열
    - `decision_queue[]`는 없으면 빈 배열
 5. canonical JSON을 먼저 쓴다.
@@ -721,6 +751,51 @@ type FrameDoc = {
       risk?: string;
       verification?: string;
     }>;
+    openQuestions?: string[];
+  };
+  data_model_migration_map?: {
+    triggered: boolean;
+    mode?: "data-model" | "migration-map" | "ddl" | "dml" | "backfill" | "not-applicable";
+    triggerReason: string;
+    entities: Array<{
+      id: string;
+      name: string;            // table/entity/source 이름
+      status: "new" | "changed" | "removed" | "same" | "open_question";
+      sourceOfTruth?: boolean;
+      description?: string;
+      requirementIds?: string[];
+      columns: Array<{
+        name: string;
+        type?: string;
+        description?: string;
+        primaryKey?: boolean;
+        foreignKey?: boolean;
+        references?: string;
+        unique?: boolean;
+        nullable?: boolean;
+        defaultValue?: string;
+        status?: "new" | "changed" | "removed" | "same" | "open_question";
+      }>;
+    }>;
+    relationships?: Array<{
+      from: string;
+      to: string;
+      cardinality: string;     // 1:N, 1:0..1 등
+      description?: string;
+      requirementIds?: string[];
+    }>;
+    migrationOperations?: Array<{
+      type: "DDL" | "DML" | "BACKFILL" | "ROLLBACK" | "VERIFY";
+      target: string;
+      description: string;
+      sql?: string;
+      rollback?: string;
+      idempotency?: string;
+      requirementIds?: string[];
+      status: "planned" | "confirmed" | "open_question" | "blocked";
+    }>;
+    runtimeFlow?: string[];
+    verificationQueries?: Array<{ id: string; title: string; sql?: string; description?: string }>;
     openQuestions?: string[];
   };
   productive_resistance: Array<{
