@@ -17,7 +17,24 @@ const SHIM_CUSTOM_TYPE = "pilee-ship-command-shim";
 const MAX_COLLECTED_CONTEXT_CHARS = 18_000;
 
 export type ShipCommandName = "ship" | "pr-ship" | "ci-ship";
+export type ParallelAnalysisCommandName = "ci-ship" | "pr-ship" | "self-healing";
+export type ParallelAnalysisSource = "command" | "steering";
+
+export const PARALLEL_WORKFLOW_ANALYSIS_EVENT = "pilee:parallel-workflow-analysis";
+
 type ShipContext = Pick<ExtensionContext, "cwd" | "sessionManager"> & { hasUI?: boolean; ui?: ExtensionCommandContext["ui"] };
+
+export interface ParallelWorkflowAnalysisRequest {
+	command: ParallelAnalysisCommandName;
+	args: string;
+	cwd: string;
+	source: ParallelAnalysisSource;
+	requestedAt: string;
+	sessionFile: string | null;
+	sessionName: string | null;
+	leafId: string | null;
+	panelLabel: string;
+}
 
 interface RepoInfo {
 	owner: string;
@@ -181,6 +198,34 @@ function parseBareNumber(args: string): number | null {
 	const trimmed = args.trim();
 	const match = trimmed.match(/^#?(\d+)$/u);
 	return match ? Number(match[1]) : null;
+}
+
+export function parseParallelAnalysisCommand(raw: string): { command: ParallelAnalysisCommandName; args: string } | null {
+	const match = raw.trim().match(/^\/(ci-ship|pr-ship|self-healing)(?:\s+([\s\S]*))?$/u);
+	if (!match) return null;
+	return {
+		command: match[1] as ParallelAnalysisCommandName,
+		args: match[2]?.trim() ?? "",
+	};
+}
+
+export function buildParallelAnalysisRequest(
+	ctx: ShipContext,
+	command: ParallelAnalysisCommandName,
+	args: string,
+	source: ParallelAnalysisSource,
+): ParallelWorkflowAnalysisRequest {
+	return {
+		command,
+		args,
+		cwd: ctx.cwd,
+		source,
+		requestedAt: new Date().toISOString(),
+		sessionFile: ctx.sessionManager.getSessionFile() ?? null,
+		sessionName: ctx.sessionManager.getSessionName?.() ?? null,
+		leafId: ctx.sessionManager.getLeafId?.() ?? null,
+		panelLabel: process.env.PI_FORK_PANEL_LABEL?.trim() || "P0",
+	};
 }
 
 async function fetchRepoInfo(pi: ExtensionAPI, cwd: string): Promise<RepoInfo | null> {
@@ -513,6 +558,73 @@ function formatRunContext(run: ActionsRunContext | null): string {
 	].filter(Boolean).join("\n");
 }
 
+function formatExecBlock(label: string, result: { stdout?: string; stderr?: string; code?: number | null } | null): string {
+	if (!result) return `### ${label}\n\n(command unavailable)`;
+	const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim() || `(no output; exit ${result.code ?? "unknown"})`;
+	return [`### ${label}`, "", fence(truncateTailText(output, 8_000), "text")].join("\n");
+}
+
+async function buildGenericWorkflowCollectedContext(pi: ExtensionAPI, ctx: ShipContext): Promise<string> {
+	const sections: string[] = [formatSessionRefs(ctx), "## Command-time repository snapshot"];
+	const commands: Array<[string, string, string[]]> = [
+		["git status", "git", ["status", "--short", "--branch"]],
+		["git HEAD", "git", ["rev-parse", "HEAD"]],
+		["recent commits", "git", ["log", "--oneline", "--decorate", "-5"]],
+		["current PR", "gh", ["pr", "view", "--json", "number,title,url,headRefName,headRefOid,baseRefName,mergeStateStatus,reviewDecision"]],
+	];
+	for (const [label, command, args] of commands) {
+		try {
+			sections.push(formatExecBlock(label, await pi.exec(command, args, { cwd: ctx.cwd, timeout: 60_000 })));
+		} catch (error) {
+			sections.push(`### ${label}\n\n${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+	return sections.join("\n\n---\n\n");
+}
+
+function formatParallelAnalysisMode(command: ParallelAnalysisCommandName, request?: ParallelWorkflowAnalysisRequest): string {
+	return [
+		"## Parallel analysis mode",
+		"",
+		`- command: /${command}${request?.args ? ` ${request.args}` : ""}`,
+		`- source: ${request?.source ?? "unknown"}`,
+		`- capturedAt: ${request?.requestedAt ?? new Date().toISOString()}`,
+		`- basis cwd: ${request?.cwd ?? "(current cwd)"}`,
+		`- basis session: ${request?.sessionFile ?? "(unknown)"}`,
+		`- basis leaf: ${request?.leafId ?? "(unknown)"}`,
+		"",
+		"Hard mode override:",
+		"- READ-ONLY ANALYSIS ONLY. Do not edit/write files, commit, push, rerun CI, post PR comments, request review, resolve threads, or run worker fixes.",
+		"- Treat collected context as the command-time snapshot. Include the basis SHA/check/comment ids in your result when available.",
+		"- If you find actionable work, report it as a Writer Queue Proposal for the main writer to apply after it rechecks latest HEAD.",
+		"- If the underlying skill normally performs a write phase, stop before that phase and explain exactly what the writer should do next.",
+		"- User-facing prose must be Korean; preserve commands, paths, URLs, SHAs, and raw logs exactly.",
+	].join("\n");
+}
+
+function formatParallelAnalysisFinalContract(): string {
+	return [
+		"## Required final shape",
+		"",
+		"```markdown",
+		"## Snapshot",
+		"- basis: <PR/check/comment/diff SHA or session leaf>",
+		"",
+		"## Read-only Findings",
+		"- <what was checked and root cause/risk>",
+		"",
+		"## Writer Queue Proposal",
+		"- Must fix now: <items with file/command evidence>",
+		"- Ask user: <items needing product/security/UX decision>",
+		"- Ignore/defer: <non-actionable or out-of-scope items>",
+		"",
+		"## Writer Safety Notes",
+		"- latest HEAD recheck needed: yes/no + why",
+		"- commands to verify after applying: `<command>`",
+		"```",
+	].join("\n");
+}
+
 async function buildCiShipCollectedContext(pi: ExtensionAPI, ctx: ShipContext, args: string): Promise<string> {
 	const explicitJob = parseActionsJobUrl(args.trim());
 	const pullRequest = await resolvePullRequestFromArgs(pi, ctx, args) ?? (explicitJob ? await resolvePullRequestFromJob(pi, ctx.cwd, explicitJob) : null);
@@ -630,6 +742,57 @@ export async function buildShipCommandPromptForSubagent(pi: ExtensionAPI, ctx: S
 	return buildShipPrompt(command, args, ctx.cwd, collectedContext, "subagent");
 }
 
+export async function buildParallelAnalysisPromptForSubagent(
+	pi: ExtensionAPI,
+	ctx: ShipContext,
+	command: ParallelAnalysisCommandName,
+	args: string,
+	request?: ParallelWorkflowAnalysisRequest,
+): Promise<string> {
+	const collectedContext = command === "ci-ship"
+		? await buildCiShipCollectedContext(pi, ctx, args)
+		: command === "pr-ship"
+			? await buildPrShipCollectedContext(pi, ctx, args)
+			: await buildGenericWorkflowCollectedContext(pi, ctx);
+	const skillNames = command === "self-healing"
+		? ["tft-guidelines", "ask-user-question-rules", "stress-interview", "self-healing"]
+		: [command];
+	const inlinedSkills = skillNames.map((skillName) => formatInlinedSkill(readSkill(skillName))).join("\n\n");
+	return [
+		"# pilee parallel workflow analysis",
+		"",
+		`You are analyzing \`/${command}${args.trim() ? ` ${args.trim()}` : ""}\` while the main session may already have an active writer turn.`,
+		"",
+		formatParallelAnalysisMode(command, request),
+		"",
+		"## Read-only collected context",
+		collectedContext,
+		"",
+		"## Inlined workflow skill reference",
+		inlinedSkills,
+		"",
+		formatParallelAnalysisFinalContract(),
+		"",
+		"Now perform only the read-only analysis/review part of this workflow and return the Writer Queue Proposal. Do not proceed to any write phase.",
+	].join("\n");
+}
+
+function emitParallelAnalysisRequest(
+	pi: ExtensionAPI,
+	ctx: ShipContext,
+	command: ParallelAnalysisCommandName,
+	args: string,
+	source: ParallelAnalysisSource,
+): void {
+	const request = buildParallelAnalysisRequest(ctx, command, args, source);
+	pi.events.emit(PARALLEL_WORKFLOW_ANALYSIS_EVENT, request);
+	notify(
+		ctx,
+		`/${command} 병렬 분석을 subagent queue로 보냈습니다. 실제 수정/커밋/push는 현재 writer 완료 후 최신 HEAD 기준으로 처리하세요.`,
+		"info",
+	);
+}
+
 function sendPrompt(pi: ExtensionAPI, ctx: ShipContext, command: ShipCommandName, args: string, prompt: string): void {
 	pi.sendMessage(
 		{
@@ -660,6 +823,10 @@ export default function shipCommands(pi: ExtensionAPI) {
 		description: "pilee /pr-ship — PR 리뷰 코멘트를 근본 대응하고 커밋·push·스레드 답글/re-request까지 진행 (--push-only 지원)",
 		handler: async (args, ctx) => {
 			try {
+				if (!ctx.isIdle()) {
+					emitParallelAnalysisRequest(pi, ctx, "pr-ship", args, "command");
+					return;
+				}
 				const collectedContext = await buildPrShipCollectedContext(pi, ctx, args);
 				sendPrompt(pi, ctx, "pr-ship", args, buildShipPrompt("pr-ship", args, ctx.cwd, collectedContext));
 			} catch (error) {
@@ -673,6 +840,10 @@ export default function shipCommands(pi: ExtensionAPI) {
 		description: "pilee /ci-ship — PR CI 실패 check/log를 분석하고 근본 대응·검증·커밋·push 진행",
 		handler: async (args, ctx) => {
 			try {
+				if (!ctx.isIdle()) {
+					emitParallelAnalysisRequest(pi, ctx, "ci-ship", args, "command");
+					return;
+				}
 				const collectedContext = await buildCiShipCollectedContext(pi, ctx, args);
 				sendPrompt(pi, ctx, "ci-ship", args, buildShipPrompt("ci-ship", args, ctx.cwd, collectedContext));
 			} catch (error) {

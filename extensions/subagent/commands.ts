@@ -40,7 +40,15 @@ import {
 	evictStalePendingGroupCompletions,
 	upsertPendingGroupCompletion,
 } from "./group-pending.js";
-import { buildShipCommandPromptForSubagent, type ShipCommandName } from "../ship-commands/index.ts";
+import {
+	buildParallelAnalysisPromptForSubagent,
+	buildParallelAnalysisRequest,
+	buildShipCommandPromptForSubagent,
+	PARALLEL_WORKFLOW_ANALYSIS_EVENT,
+	parseParallelAnalysisCommand,
+	type ParallelWorkflowAnalysisRequest,
+	type ShipCommandName,
+} from "../ship-commands/index.ts";
 import { enqueueSubagentInvocation } from "./invocation-queue.js";
 import { appendDisplayTaskUpdate, getSessionFileSize } from "./persisted-session.js";
 import { readSessionReplayItems, SubagentSessionReplayOverlay } from "./replay.js";
@@ -900,6 +908,21 @@ function finalizeHumanOnlyCompletion(
 
 // biome-ignore lint/complexity/noExcessiveLinesPerFunction: registration stays consolidated so commands, shortcuts, and event handlers share one store lifecycle.
 export function registerAll(pi: ExtensionAPI, store: SubagentStore): void {
+	let latestCtx: ExtensionContext | null = null;
+	const rememberCtx = (ctx: ExtensionContext): void => {
+		latestCtx = ctx;
+	};
+
+	pi.on("session_start", async (_event, ctx) => {
+		rememberCtx(ctx);
+	});
+	pi.on("agent_start", async (_event, ctx) => {
+		rememberCtx(ctx);
+	});
+	pi.on("turn_start", async (_event, ctx) => {
+		rememberCtx(ctx);
+	});
+
 	pi.registerTool({
 		name: "list-agents",
 		label: "List Agents",
@@ -1995,13 +2018,51 @@ export function registerAll(pi: ExtensionAPI, store: SubagentStore): void {
 		return true;
 	};
 
+	const runParallelWorkflowAnalysis = async (
+		request: ParallelWorkflowAnalysisRequest,
+		ctx: ExtensionContext,
+	): Promise<void> => {
+		try {
+			rememberCtx(ctx);
+			const prompt = await buildParallelAnalysisPromptForSubagent(pi, ctx, request.command, request.args, request);
+			const agents = request.command === "self-healing" ? ["verifier", "reviewer", "challenger"] : ["worker"];
+			for (const agent of agents) {
+				await subCommand.handler(`${agent} ${prompt}`, ctx, true, false);
+			}
+			ctx.ui.notify(
+				`/${request.command} 병렬 분석을 ${agents.join("+")} subagent에 위임했습니다. 수정/커밋/push는 main writer queue에서 처리하세요.`,
+				"info",
+			);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			ctx.ui.notify(`/${request.command} 병렬 분석 위임 실패: ${message}`, "error");
+		}
+	};
+
+	pi.events.on(PARALLEL_WORKFLOW_ANALYSIS_EVENT, (rawRequest: unknown) => {
+		const request = rawRequest as Partial<ParallelWorkflowAnalysisRequest>;
+		const allowed = request.command === "ci-ship" || request.command === "pr-ship" || request.command === "self-healing";
+		if (!allowed || typeof request.cwd !== "string" || !latestCtx) return;
+		void runParallelWorkflowAnalysis(request as ParallelWorkflowAnalysisRequest, latestCtx);
+	});
+
 	// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: >> / > / >>> shortcuts intentionally share one stateful input router.
 	pi.on("input", async (event, ctx) => {
+		rememberCtx(ctx);
 		if (event.source === "extension") {
 			return { action: "continue" as const };
 		}
 
 		const text = event.text ?? "";
+		const parallelCommand = parseParallelAnalysisCommand(text);
+		if (parallelCommand && !ctx.isIdle()) {
+			await runParallelWorkflowAnalysis(
+				buildParallelAnalysisRequest(ctx, parallelCommand.command, parallelCommand.args, "steering"),
+				ctx,
+			);
+			return { action: "handled" as const };
+		}
+
 		const isLegacyHiddenShortcut = text.startsWith(">>>");
 		const isVisibleShortcut = text.startsWith(">>") && !isLegacyHiddenShortcut;
 		const isHiddenShortcut = text.startsWith(">") && !isVisibleShortcut && !text.startsWith("><");
