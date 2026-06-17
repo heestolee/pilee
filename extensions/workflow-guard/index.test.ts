@@ -240,6 +240,38 @@ test("follow-up correction prompts request mutation even when phrased as checkin
 	assert.equal(editCall, undefined);
 });
 
+test("mixed implementation plus side question stays implementation and nudges subagent investigation", async () => {
+	const { hooks, ctx } = createHarness();
+	const prompt = "width 100으로 줄이자. 상태 칸에 오는 뱃지는 종류가 어떻게 돼?";
+	const start = await hooks.before_agent_start({ prompt, systemPrompt: "base" }, ctx);
+
+	assert.match(start.systemPrompt, /intent=implement · weight=standard/);
+	assert.match(start.systemPrompt, /mixed=implement\+investigate/);
+	assert.match(start.systemPrompt, /parallel=investigation-subagent/);
+	assert.match(start.systemPrompt, /MIXED REQUEST PATH/);
+	assert.match(start.systemPrompt, /Main agent owns the clear implementation path first/);
+	assert.match(start.systemPrompt, /Delegate the independent investigation\/answer question to a subagent/);
+	assert.doesNotMatch(start.systemPrompt, /HARD PATH: this turn is read-only/);
+
+	const editCall = await hooks.tool_call({ toolName: "edit", input: { path: join(process.cwd(), "mixed-request-width.ts") } }, ctx);
+	assert.equal(editCall, undefined);
+});
+
+test("dimension-change discussion questions stay read-only", async () => {
+	for (const prompt of ["왜 width를 줄이는 게 좋아?", "width를 100으로 줄이면 어때?"]) {
+		const { hooks, ctx } = createHarness();
+		const start = await hooks.before_agent_start({ prompt, systemPrompt: "base" }, ctx);
+
+		assert.match(start.systemPrompt, /intent=(?:investigate|answer) · weight=none/);
+		assert.match(start.systemPrompt, /mutation=not-requested/);
+		assert.match(start.systemPrompt, /HARD PATH: this turn is read-only/);
+		assert.doesNotMatch(start.systemPrompt, /mixed=implement\+investigate/);
+
+		const editBlock = await hooks.tool_call({ toolName: "edit", input: { path: join(process.cwd(), "dimension-question.ts") } }, ctx);
+		assert.equal(editBlock?.block, true);
+	}
+});
+
 test("workflow guard complaint prompts enter audit path instead of unknown", async () => {
 	const prompts = [
 		"워크플로우 가드 이새끼 아직도 지랄인데?",

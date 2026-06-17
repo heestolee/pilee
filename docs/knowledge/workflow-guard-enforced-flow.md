@@ -9,6 +9,7 @@ tags:
   - continuation
   - validation
   - fan-out
+  - mixed-intent
 category: workflow
 status: active
 confidence: high
@@ -19,7 +20,7 @@ applies_to:
   - extensions/frame-studio
 source:
   - user-direction:2026-05-12-conductor-like-guards
-reviewed_at: 2026-06-16
+reviewed_at: 2026-06-17
 reviewed_commit: 824460c9c8676496c3cade6b6c969ca419cbb6d8
 related:
   - workflow-weight-proportionality
@@ -51,6 +52,7 @@ title_en: Repeated workflow failures become enforced guard flows
 | UI choice continuity | hard result annotation | `tui_ask`/TFT Studio 선택 결과에 `nextActionRequired`를 붙여 선택 요약으로 멈추지 않게 함 |
 | 큰 commit 분리 | hard commit guard | staged diff가 크거나 여러 area를 섞으면 direct `git commit`을 차단하고 logical commit split을 요구 |
 | 상태 노트 오인 방지 | hard status-note path | dependency bootstrap READY, worktree cwd binding, workflow guard 같은 환경/상태 메시지는 사용자 task 지시가 아니므로 old work 재개와 tool call을 차단 |
+| 혼합 요청 분해 | hard prompt discipline | 작은 구현 지시와 독립 조사 질문이 한 턴에 섞이면 `mixed=implement+investigate`로 표기하고, main은 구현을 진행하며 조사 축은 subagent 병렬 위임을 기본 리듬으로 삼음 |
 | 검증 명령 fan-out 체크 | soft prompt + UI/result nudge | `pnpm <script> -- <path>` wrapper가 실제로 path를 좁힌다고 가정하지 않도록 예상 fan-out 체크리스트와 direct executable 추천을 주입한다. Wrapper 불확실성만으로는 차단하지 않고, 반복 dependency 실패 뒤 broad bootstrap/build 같은 고위험 승격만 scope gate로 막는다. |
 
 ## Audit Rule
@@ -127,6 +129,7 @@ Light PR/ship에서는 현재 diff, 최근 커밋, 사용자가 방금 확인한
 - **사용자 제안 절차 존중**: 사용자가 dev down/up, 임시 백업 후 복구처럼 구체적 검증 절차를 제안하면 먼저 그 목적을 수행 가능한 dev 검증으로 해석합니다. prod 배포 정석으로 일반화하려면 확인 질문을 둡니다.
 - **SQL ceremony 비례**: DB write/runbook에서 backup, rollback, DELETE SQL은 row 수·가역성·side effect에 비례해야 합니다. 작은 reversible 변경에 큰 안전장치를 자동으로 붙이지 않습니다.
 - **worker 절제**: standard 작업에서도 worker/subagent는 기본값이 아닙니다. 병렬 소유권, readiness 진단, explicit user request가 있을 때만 사용하고 이유를 남깁니다.
+- **혼합 요청 병렬화**: `width 100으로 줄이자. 상태 칸 뱃지는 뭐가 있어?`처럼 작은 구현 지시와 독립 질문이 한 턴에 섞이면 answer/read-only로 낮추지 않습니다. Guard는 `intent=implement · mixed=implement+investigate · parallel=investigation-subagent`를 주입하고, main agent는 구현을 먼저 진행합니다. 독립 조사 질문은 subagent에 위임하되, 조사 답이 구현 방향을 결정하는 blocker이면 한 문장 scope-gate 질문으로 좁힙니다.
 
 ## Status Note Rule
 

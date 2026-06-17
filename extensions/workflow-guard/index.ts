@@ -20,6 +20,8 @@ interface GuardState {
 	explicitPrAction: boolean;
 	auditRequired: boolean;
 	sqlReview: boolean;
+	mixedRequest: boolean;
+	parallelInvestigationSuggested: boolean;
 	summary: string;
 	continuationCue: boolean;
 	followUpCorrection: boolean;
@@ -124,6 +126,8 @@ function hasImplementationDirective(normalized: string): boolean {
 	return hasAny(normalized, [
 		/(?:구현|수정|변경|추가|삭제|반영|적용|패치|생성|작성|개선|보강|수습|처리|대응|자동화|고도화)\s*(?:해|해주세요|해줘|해봐|하자|하라|하세요|한다|하고|해서|하면|하도록|되게|완료|진행|줘|라|자|길|주세요|해주)/,
 		/(?:고쳐|고치|바꿔|만들)\s*(?:줘|주세요|봐|라|자|도록|되게)?/,
+		/(?:줄이|늘리|좁히|넓히|키우|낮추|올리)\s*(?:자|고|게|도록|줘|주세요|봐|라|세요)/,
+		/(?:줄여|늘려|좁혀|넓혀|키워|낮춰|올려)(?:\s*(?:줘|주세요|봐|라|자|도록|되게)|[.!?。！？]|$)/,
 		/작업\s*(?:해|해줘|해봐|하자|진행)/,
 		/진행\s*(?:해|해줘|해봐|하자)/,
 		/\b(?:implement|fix|change|add|remove|update|create|improve|harden|patch|apply|wire)\b/,
@@ -142,6 +146,32 @@ function hasShipDirective(normalized: string): boolean {
 		/\bpush\s+(?:it|this|now|please)\b/,
 		/\bship\b|릴리즈\s*(?:해|해주세요|해줘|하자|하라|하세요|진행)/,
 	]);
+}
+
+function isInvestigationOrAnswerClause(normalized: string): boolean {
+	return hasAny(normalized, [
+		/(?:뭐|무엇|뭔|어떤|종류|어떻게|왜|이유|어때|좋을까|괜찮|궁금|알려|설명)/,
+		/(?:확인|조사|찾아|살펴|검토|대조|알아봐|봐줘)/,
+		/\b(?:what|which|why|how|check|investigate|look\s+up|find\s+out|explain)\b/,
+	]);
+}
+
+function hasMixedImplementationInvestigationPrompt(prompt: string, normalized: string): boolean {
+	const chunks = prompt
+		.split(/(?:[.!?。！？\n]+|\s+(?:그리고|근데|그런데|또|추가로|별도로)\s+)/u)
+		.map(normalizeText)
+		.filter(Boolean);
+	const hasImplementationChunk = chunks.some((chunk) => hasImplementationDirective(chunk));
+	const hasIndependentInfoChunk = chunks.some(
+		(chunk) => !hasImplementationDirective(chunk) && isInvestigationOrAnswerClause(chunk),
+	);
+	if (hasImplementationChunk && hasIndependentInfoChunk) return true;
+
+	return hasImplementationDirective(normalized)
+		&& hasAny(normalized, [
+			/(?:그리고|근데|그런데|또|추가로|별도로).*(?:뭐|무엇|뭔|어떤|종류|어떻게|왜|이유|궁금|알려|설명|확인|조사|찾아|살펴|검토|대조|알아봐|봐줘)/,
+			/\b(?:and|also|separately)\b.*\b(?:what|which|why|how|check|investigate|look\s+up|find\s+out|explain)\b/,
+		]);
 }
 
 function isFollowUpCorrectionPrompt(normalized: string): boolean {
@@ -187,6 +217,8 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 	const readOnlyShipSignal = hasAny(normalized, [/확인|상태|왜|원인|알려|조회|봐줘|보여|분석|비교|검토|여부|됐는지|되었는지|반영됐|반영되었|diff|status|check|view|analy[sz]e|review|compare/]);
 	const followUpCorrection = !statusNote && !sqlReview && !noMutation && isFollowUpCorrectionPrompt(normalized);
 	const implementationDirective = !statusNote && !sqlReview && !noMutation && (hasImplementationDirective(normalized) || followUpCorrection);
+	const mixedRequest = implementationDirective && hasMixedImplementationInvestigationPrompt(prompt, normalized);
+	const parallelInvestigationSuggested = mixedRequest;
 	const implement = implementationDirective;
 	const shipDirective = !statusNote && !noMutation && !readOnlyShipSignal && hasShipDirective(normalized);
 	const explicitPrAction = shipDirective && hasAny(normalized, [/create-pr|create\s+pr|open\s+pr|pull\s+request|\bpr\b\s*(?:생성|만들|올려|열어|작성|요청|리뷰\s*요청)/]);
@@ -201,7 +233,7 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 		/\bpush\s+(?:it|this|now|please)\b/,
 	]);
 	const investigate = !statusNote && !implementationDirective && hasAny(normalized, [/확인|봐줘|살펴|분석|조사|찾아|왜|원인|검토|audit|오디트|알아봐/]);
-	const answerOnly = !statusNote && hasAny(normalized, [/설명|알려줘|어떻게|무슨\s*뜻|질문|궁금|정리해줘/]) && !implement && !ship;
+	const answerOnly = !statusNote && hasAny(normalized, [/설명|알려줘|어떻게|어때|좋을까|괜찮|무슨\s*뜻|질문|궁금|정리해줘/]) && !implement && !ship;
 
 	let intent: Intent = "unknown";
 	if (statusNote) intent = "status_note";
@@ -232,13 +264,15 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 		`weight=${weight}`,
 		continuationCue ? "continuation=latest-intent" : null,
 		followUpCorrection ? "followup=correction" : null,
+		mixedRequest ? "mixed=implement+investigate" : null,
+		parallelInvestigationSuggested ? "parallel=investigation-subagent" : null,
 		auditRequired ? "audit=required" : null,
 		sqlReview ? "sqlReview=detected" : null,
 		explicitHeavy && !sqlReview ? "heavy=explicit" : null,
 		!explicitMutation ? "mutation=not-requested" : null,
 	].filter(Boolean).join(" · ");
 
-	return { prompt, intent, weight, explicitHeavy, explicitMutation, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, auditRequired, sqlReview, summary, continuationCue, followUpCorrection, createdAt: new Date().toISOString(), sessionFile };
+	return { prompt, intent, weight, explicitHeavy, explicitMutation, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, auditRequired, sqlReview, mixedRequest, parallelInvestigationSuggested, summary, continuationCue, followUpCorrection, createdAt: new Date().toISOString(), sessionFile };
 }
 
 function fastPaceBudgetSeconds(state: GuardState): number | undefined {
@@ -293,6 +327,15 @@ function buildSystemPrompt(state: GuardState): string {
 			"- FOLLOW-UP CORRECTION PATH: the user is pointing out a mismatch in the just-implemented work.",
 			"- Treat 위치/문구/동작 불일치 feedback such as '니가 구현한 건 ...잖아' or '...에 있게는 못해?' as a fix request, not a read-only investigation.",
 			"- Do not ask for another implementation confirmation unless the correction has multiple risky product options.",
+		);
+	}
+	if (state.parallelInvestigationSuggested) {
+		lines.push(
+			"- MIXED REQUEST PATH: the user combined a concrete implementation directive with an independent investigation/answer question.",
+			"- Main agent owns the clear implementation path first; do not downgrade the whole turn to answer/investigate.",
+			"- Delegate the independent investigation/answer question to a subagent when it can proceed without blocking the implementation.",
+			"- Do not synchronously inspect the side question before the small implementation unless that answer is a blocker for the change.",
+			"- If the investigation determines the implementation direction, ask one narrow scope-gate question instead of guessing.",
 		);
 	}
 
