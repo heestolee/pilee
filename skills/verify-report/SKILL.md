@@ -20,6 +20,7 @@ argument-hint: "[base-url] [--upload] [--update] [--ask-before] [--no-workers]"
 - **Surface fan-out은 report 책임**: 반복 카드·썸네일·badge·tag·list item UI 변경은 사용자가 별도로 말하지 않아도 `/verify-report`가 consumer surface matrix를 만든다. 단일 공통 컴포넌트 캡처만으로 닫지 말고, 각 surface를 `capture`/`technical evidence`/`exclusion or gap`으로 분류한다. Preflight가 있으면 재사용하되, 없으면 diff/frame/user request/project overlay preset에서 자체 도출한다.
 - **Motion-first evidence**: 이동/전환/클릭/열림/닫힘/스무스함/끊김 없음처럼 시간 흐름이 claim이면 정적 PNG만으로 PASS 처리하지 않는다. GIF/짧은 영상이 primary evidence이고, 대표 final-state PNG/crop은 supporting evidence로 함께 둔다. GIF는 판독 가능한 품질이어야 하며, 기본 생성 경로는 `skills/verify-report/scripts/make-motion-gif.mjs` helper다. helper 기본값은 원본 해상도 유지(`--width source`), 12fps, 8초 trim, `palettegen/paletteuse` + `sierra2_4a` dithering이다. 저용량을 이유로 390px/8fps/no-palette처럼 텍스트와 색상이 깨지는 설정을 primary evidence에 쓰지 않는다.
 - **Setup noise 격리**: 로그인, 빌드, Metro/dev-server, pod/env/codegen, dependency bootstrap처럼 검증 전 준비 과정은 리포트의 PASS item에 넣지 않는다. setup 자체가 검증 대상이거나, 검증을 막은 blocked/coverage gap일 때만 짧게 남긴다.
+- **실패 리포트 export 금지**: 구현 완료 검증 목적의 PM-facing report는 `fail` 항목이 있으면 정적 HTML로 export하지 않는다. 실패를 발견하면 report 생성을 멈추고 구현 수정 → 재검증으로 돌아간다. 실패 재현/분석 리포트가 목적일 때만 `reportPurpose: "failure-analysis"` 또는 `allowFailingReport: true`를 명시한다.
 - **미검증 명시**: 자동화로 확인하지 못한 항목은 PASS로 쓰지 않고 `미검증`/`blocked`/`Coverage Gap`에 남긴다.
 - **렌더링 claim은 실제 렌더로 닫는다**: 구조도, TUI, WebView, Markdown/HTML preview, SVG/이미지 생성처럼 “보인다”가 성공 기준인 작업은 source text, Mermaid codeblock, raw inline SVG, HTML 파일 생성만으로 PASS가 아니다. 실제 artifact를 열어 렌더링된 결과를 확인하고, 가능하면 캡처를 evidence로 남긴다.
 - **짧고 초점 있는 primary evidence**: 리포트 본문 핵심 증거는 검증 claim을 직접 닫는 artifact여야 한다. 정적 UI는 viewport/섹션/element crop, flow UI는 GIF/짧은 영상이 primary다. 세로로 긴 full-page 캡처는 필요할 때만 보조 증거로 남기고 토글/appendix/link 뒤에 둔다. `role: "primary"`인 이미지/GIF는 renderer가 full-width로 보여주므로, 한 항목의 핵심 before/after 합성 이미지나 단일 핵심 crop에는 반드시 primary role을 붙인다.
@@ -357,9 +358,9 @@ Subagent launch가 필요한 경우, 현재 Pi subagent 규칙에 따라 먼저 
 
 ## Step 6: main 결과 adjudication → live preview 갱신 → 정적 HTML export → 유저 리뷰
 
-모든 case worker 결과를 main이 adjudication한 뒤 `verify_report_live action=update`로 각 항목의 최종 상태와 evidence를 반영하고, 마지막에 `verify_report_live action=finish`로 `.context/work/{workspace}/captures/report.html`을 export한다. live Glimpse 창은 최종 상태로 갱신되고, 이후에는 `/archive`로 다시 열 수 있다.
+모든 case worker 결과를 main이 adjudication한 뒤 `verify_report_live action=update`로 각 항목의 최종 상태와 evidence를 반영한다. 구현 완료 검증 목적이면 `fail` 항목이 하나라도 있는 상태에서 `verify_report_live action=finish`를 호출해 정적 HTML을 export하지 않는다. 먼저 구현 수정 → 재배포/재실행 → 재검증으로 돌아간다. 실패 재현/분석 자체가 사용자 요청인 경우에만 `reportPurpose: "failure-analysis"` 또는 `allowFailingReport: true`를 명시해 실패 리포트 export를 허용한다.
 
-finish 전에 결과를 네 그룹으로 분리한다. 상단은 PM-facing 캡처 검증이고, 로직/API/DB/code diff는 하단 기술 보조 검증으로 내린다. `verify_report_live finish`는 report lint도 실행해 motion claim의 GIF 누락, GIF+PNG pairing 누락, setup noise PASS item, primary tall image, evidence metadata 누락을 Report Lint 섹션과 tool details에 경고로 남긴다. 경고는 PASS를 자동으로 뒤집지는 않지만, motion claim의 GIF 누락처럼 PM-facing 이해를 깨는 항목은 Coverage Gap 후보로 보고 보완하거나 unverified 처리한다.
+finish 전에 결과를 네 그룹으로 분리한다. 상단은 PM-facing 캡처 검증이고, 로직/API/DB/code diff는 하단 기술 보조 검증으로 내린다. `verify_report_live finish`는 구현 검증 report에 `fail` 항목이 있으면 export를 차단하고, 허용 가능한 경우에는 report lint도 실행해 motion claim의 GIF 누락, GIF+PNG pairing 누락, setup noise PASS item, primary tall image, evidence metadata 누락을 Report Lint 섹션과 tool details에 경고로 남긴다. 경고는 PASS를 자동으로 뒤집지는 않지만, motion claim의 GIF 누락처럼 PM-facing 이해를 깨는 항목은 Coverage Gap 후보로 보고 보완하거나 unverified 처리한다.
 
 ```markdown
 Verified — PM-facing behavior
@@ -447,6 +448,7 @@ Blocked / Known unrelated failures
 | 사용자가 “추가로 X도 확인” | update 모드로 기존 리포트에 항목 append. |
 | 사용자가 “그 리포트에 교체/업데이트” | 새 리포트를 만들지 말고 기존 `captures/report.html`의 같은 item을 update/replace한다. archive copy는 자동으로 생겨도 workspace report는 같은 검증 artifact로 유지한다. |
 | 로그인/빌드/env/부트스트랩 삽질이 있었음 | 핵심 검증 target이 아니면 report item에서 제외한다. 필요한 경우 내부 setup note나 blocked 사유에만 짧게 남긴다. |
+| 구현 검증 중 `fail` 항목 발생 | 정적 report export로 마무리하지 않는다. 구현 수정 → 재검증으로 돌아가고, 실패 재현/분석 목적일 때만 명시적으로 failure report를 허용한다. |
 | subagent가 `UNVERIFIED` 반환 | main이 추가 evidence 수집/brief 수정 후 재위임/사용자 질문/Coverage Gap 중 하나로 처리한다. subagent가 계획 밖 새 캡처·질문을 하지 않는다. |
 | 사용자가 “업로드는 나중에” | confirm 모드로 종료하고 `/verify-report --upload` 안내. |
 | Glimpse 창이 안 뜸/닫힘 | 업로드하지 않고 `/archive --browser report.html` 또는 `open report.html` fallback 안내. |
