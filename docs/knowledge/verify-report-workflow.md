@@ -25,6 +25,8 @@ tags:
   - pm-facing
   - requirement-mapping
   - capture-first
+  - oracle-surface
+  - adjudication-surface
   - technical-appendix
   - subagent
   - fan-out
@@ -53,7 +55,8 @@ source:
   - user-feedback:2026-05-31-motion-gif-quality-default
   - user-feedback:2026-06-04-repeated-surface-capture-default
   - user-feedback:2026-06-06-generic-ui-capture-bundle-default
-reviewed_at: 2026-06-06
+  - user-feedback:2026-06-18-oracle-surface-gate
+reviewed_at: 2026-06-18
 reviewed_commit: 694e15550ea75108754a1f787e960ea8c4e2253b
 related:
   - pilee-knowledge-system
@@ -91,6 +94,10 @@ Frame은 requirement source이고 verify-report는 evidence adjudicator입니다
 ## Coverage Rule
 
 캡처는 coverage 계획 뒤에 옵니다. responsive/layout 변경이면 mobile, breakpoint boundary, desktop을 각각 확인하고, nav 변경이면 expanded/collapsed와 role 차이를 봅니다. typography 변경은 screenshot만으로 닫지 않고 DOM class/token과 computed style을 함께 확인하되, 이런 기술 확인은 PM-facing 화면 증거를 보조하는 하단 근거로 둡니다.
+
+각 claim은 먼저 **oracle surface**를 가져야 합니다. Oracle surface는 “무엇이 보이면 성공인가”를 넘어서 “그 성공/실패를 판정하려면 전체 어디까지 봐야 하는가”를 정의하는 경계입니다. 첫 viewport, 대표 row, 첫 page, 최종 상태 1장은 claim 전체를 닫을 때만 primary evidence가 될 수 있습니다. 리스트/캐러셀/페이지네이션/검색 결과처럼 전체 range가 claim이면 전체 range 또는 명시한 sampling boundary를 같은 interaction path로 보여야 합니다. create/update/save claim이면 입력과 toast에서 멈추지 않고 reload/read/downstream user-facing 표시까지 봐야 합니다. role/permission claim이면 허용 role 성공과 차단 role 실패를 분리하고, 잘못된 role 실패를 기능 blocker로 오인하지 않아야 합니다.
+
+이 규칙은 특정 캐러셀 케이스가 아니라 모든 verify-report의 판정 표면 규칙입니다. Evidence가 oracle surface 전체를 덮지 못하면 캡처가 있어도 PASS가 아니라 `unverified`, `blocked`, 또는 Coverage Gap입니다.
 
 기존 UI/동작을 바꾸는 작업은 before/after도 coverage 후보입니다. 같은 route, viewport, role, 데이터 상태로 작업 전 기준과 작업 후 결과를 나란히 보여주면 리뷰어가 “무엇이 바뀌었고 무엇은 유지됐는지”를 더 빨리 판단할 수 있습니다.
 

@@ -15,6 +15,7 @@ Verify Report는 개발자용 디버깅 로그가 아니라 구현 공유 문서
 | Actor / role | 누가 조작하거나 보는가? admin/member/partner/anonymous 등 |
 | Subject identity | 같은 row/order/review/user/item임을 무엇으로 보장하는가? |
 | User-facing oracle | 화면에서 무엇이 보여야 성공인가? |
+| Oracle surface | 그 oracle을 판정하려면 전체 어디까지 봐야 하는가? 첫 viewport/대표 1건인가, 전체 list/page/carousel/option/role/state/downstream인가? |
 | Primary capture | focused crop/GIF/viewport 중 무엇이 primary인가? |
 | Technical support | API/DB/code/test는 어떤 claim을 보조하는가? |
 | Excluded setup noise | 로그인/빌드/bootstrap/selector 시행착오 중 report에서 숨길 것은 무엇인가? |
@@ -54,6 +55,32 @@ Frame은 requirement source이고 verify-report는 evidence adjudicator다. Fram
 ## 1. Coverage matrix first
 
 검증 시작 전에 기획 근거와 요구사항을 보고 축을 만든다. 구현 diff는 누락 리스크를 보완하는 보조 입력이며, PM-facing UI 기능에서 code diff만으로 상단 PASS를 닫지 않는다.
+
+### 1.0 Oracle surface gate
+
+각 claim은 evidence 수집 전에 “무엇이 보이면 성공인가”뿐 아니라 “그 판정을 위해 전체 어디까지 봐야 하는가”를 가져야 한다. 이를 oracle surface라고 부른다. Oracle surface는 케이스별 UI 요소명이 아니라 claim의 판정 경계다.
+
+원칙:
+
+1. **Partial view는 partial evidence**다. 첫 viewport, 대표 row, 첫 page, 최종 상태 1장은 claim 전체를 닫을 때만 primary가 될 수 있다.
+2. **같은 claim은 같은 path로 비교**한다. before/after, role별 허용/차단, option state 비교는 route, subject, viewport, role, interaction path를 맞춘다.
+3. **전체 range claim은 전체 range를 덮는다.** 리스트/캐러셀/페이지네이션/검색 결과/option set/count/rank/order claim은 전체 item range 또는 명시한 sampling boundary를 보여야 한다.
+4. **Downstream claim은 downstream까지 간다.** create/update/save가 성공 기준이면 저장 직후 화면뿐 아니라 reload/read/downstream user-facing 표시까지 봐야 한다.
+5. **기술 evidence는 보조다.** code/id/API JSON은 UI motion/crop이 보여주는 판정을 검산하는 supporting evidence이며, 사용자-facing claim을 대체하지 않는다.
+
+Oracle surface template:
+
+| Claim type | Oracle surface | PASS 금지 예시 |
+|------------|----------------|----------------|
+| list/carousel/page 중복·정렬·누락 | 전체 item range와 순서. before/after면 같은 interaction path로 끝까지 비교 | 첫 화면 3개만 보고 9개 전체 동일/분리 PASS |
+| filter/search/result count | 입력 조건, empty/data/overflow, 전체 result boundary 또는 sampling 기준 | 첫 page만 보고 전체 filter PASS |
+| option/default/selection | no data, existing data, refresh/stale, 저장 후 재조회 | 기본 선택 첫 렌더만 보고 저장/유지 PASS |
+| create/update action | 입력 → 저장 → reload/read → downstream 표시 | toast만 보고 실제 저장/표시 PASS |
+| permission/role | 허용 role success + 차단 role denial + 잘못된 role blocker 배제 | admin 기능을 partner 실패로 blocked 처리 |
+| responsive/layout | mobile/boundary/desktop의 문제 표면 전체 | desktop crop 하나로 responsive PASS |
+| event/network | trigger/non-trigger path, payload/count, duplicate emission | 이벤트 1회 발화만 보고 미발화/중복 없음 PASS |
+
+Hard gate: item detail 또는 plan에 oracle surface가 없거나, evidence가 surface 전체를 덮지 못했는데 PASS라면 coverage incomplete다.
 
 | 변경 유형 | 필수 축 | 권장 evidence |
 |----------|---------|---------------|
