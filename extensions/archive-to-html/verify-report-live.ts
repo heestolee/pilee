@@ -84,6 +84,12 @@ interface ReportLintWarning {
 	detail: string;
 }
 
+interface FailingReportFinishCheck {
+	blocked: boolean;
+	failItems: Array<{ id: string; title: string }>;
+	reason?: string;
+}
+
 interface Evidence {
 	label?: string;
 	kind?: EvidenceKind;
@@ -665,6 +671,24 @@ function pushLintWarning(warnings: ReportLintWarning[], warning: ReportLintWarni
 	const key = `${warning.severity}:${warning.itemId ?? ""}:${warning.title}:${warning.detail}`;
 	if (warnings.some((existing) => `${existing.severity}:${existing.itemId ?? ""}:${existing.title}:${existing.detail}` === key)) return;
 	warnings.push(warning);
+}
+
+function isExplicitFailureReportMode(params: Record<string, unknown>): boolean {
+	if (params.allowFailingReport === true) return true;
+	const reportPurpose = typeof params.reportPurpose === "string" ? params.reportPurpose.trim().toLowerCase() : "";
+	return ["failure-analysis", "bug-reproduction", "negative-test", "coverage-audit"].includes(reportPurpose);
+}
+
+function checkFailingReportFinish(state: VerifyReportState, params: Record<string, unknown>): FailingReportFinishCheck {
+	const failItems = state.items
+		.filter((item) => item.status === "fail")
+		.map((item) => ({ id: item.id, title: item.title }));
+	if (!failItems.length || isExplicitFailureReportMode(params)) return { blocked: false, failItems };
+	return {
+		blocked: true,
+		failItems,
+		reason: "Implementation verification has FAIL item(s). Fix the implementation or re-run verification; only explicit failure-analysis reports may be exported with FAIL items.",
+	};
 }
 
 export function lintVerifyReport(state: VerifyReportState): ReportLintWarning[] {
@@ -1277,6 +1301,7 @@ export function registerVerifyReportLive(pi: ExtensionAPI) {
 			"Tall/full-page images are auto-collapsed in the report and should be supporting context only.",
 			"Keep login/build/dev-server/env/bootstrap setup noise out of PASS items unless setup itself is the verification target or a blocking coverage gap.",
 			"When existing UI/behavior is the baseline, include Before and After image evidence in the same item when practical, with labels that state environment/viewport/role.",
+			"For implementation verification, do not finish/export a PM-facing report with FAIL items. Fix and re-verify first; use allowFailingReport/reportPurpose only for explicit failure-analysis or bug-reproduction reports.",
 			"Do not use verify_report_live to upload reports or modify PRs; upload remains opt-in via the verify-report skill.",
 		],
 		parameters: Type.Object({
@@ -1287,6 +1312,8 @@ export function registerVerifyReportLive(pi: ExtensionAPI) {
 			ticket: Type.Optional(Type.String({ description: "Jira ticket or PR identifier." })),
 			summary: Type.Optional(Type.String({ description: "Short report summary or update summary." })),
 			finalSummary: Type.Optional(Type.String({ description: "Final report summary written on finish." })),
+			reportPurpose: Type.Optional(Type.String({ description: "implementation-verification(default)|failure-analysis|bug-reproduction|negative-test|coverage-audit. FAIL items block finish unless this is an explicit failure report purpose." })),
+			allowFailingReport: Type.Optional(Type.Boolean({ description: "Explicit escape hatch for failure-analysis/bug-reproduction reports. Do not use for implementation verification." })),
 			item: Type.Optional(itemSchema),
 			items: Type.Optional(Type.Array(itemSchema)),
 		}),
@@ -1360,8 +1387,18 @@ export function registerVerifyReportLive(pi: ExtensionAPI) {
 			if (action === "finish") {
 				if (params.summary) state.summary = params.summary;
 				if (params.finalSummary) state.finalSummary = params.finalSummary;
-				materializeEvidenceAssets(state);
 				state.lintWarnings = lintVerifyReport(state);
+				const finishCheck = checkFailingReportFinish(state, params as Record<string, unknown>);
+				if (finishCheck.blocked) {
+					addLog(state, `Static report export blocked: ${finishCheck.failItems.length} FAIL item(s).`);
+					pushState(handle);
+					const failList = finishCheck.failItems.map((item) => `${item.id} — ${item.title}`).join("; ");
+					return {
+						content: [{ type: "text", text: `Blocked Verify Report finish (${state.runId}). Implementation verification has FAIL item(s): ${failList}. Fix/re-verify first, or set allowFailingReport=true/reportPurpose=failure-analysis only for an explicit failure report.` }],
+						details: { runId: state.runId, url: state.url, blocked: true, reason: finishCheck.reason, failItems: finishCheck.failItems, lintWarnings: state.lintWarnings },
+					};
+				}
+				materializeEvidenceAssets(state);
 				state.status = "done";
 				addLog(state, state.lintWarnings.length ? `Report lint completed with ${state.lintWarnings.length} warning(s).` : "Report lint completed with no warnings.");
 				addLog(state, "Static report.html exported.");
