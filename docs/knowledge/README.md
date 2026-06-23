@@ -202,6 +202,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Private overlay package는 회사·개인 실행 맥락을 담는다](./private-overlay-package-boundary.md) | active | high | 2026-06-02 | fad9c36 | privacy, package, overlay, skill, company-context |
 | [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-06-02 | fad9c36 | queued-messages, slash-command, prefill, worktree, session, boundary |
 | [Read/Edit tool override는 필요한 증거만 펼친다](./read-edit-tool-output-override.md) | active | high | 2026-06-02 | 41c70e0 | read, edit, tool, override, diff, preview |
+| [Repo status polling은 index.lock을 만들지 않도록 조율한다](./repo-status-index-lock-coordination.md) | active | high | 2026-06-23 | 458a2c4 | repo-status, git, index-lock, polling, auto-commit, workflow |
 | [변경된 줄은 요청으로 추적 가능해야 한다](./request-traceability-surgical-changes.md) | active | high | 2026-06-02 | 41c70e0 | request-traceability, surgical-change, karpathy, diff, scope, review |
 | [종료된 포크는 transcript 주입보다 revive가 우선이다](./revive-over-transcript-recall.md) | active | high | 2026-06-02 | 41c70e0 | revive, recall, fork-panel, session, continuity, 세션 |
 | [세션 분류는 원본 위의 sidecar다](./session-classification-sidecar.md) | active | high | 2026-06-02 | 91c739f | archive, show-report, session-classification, sidecar, session, ai-suggestion |
@@ -312,6 +313,7 @@ graph TD
   doc_private_overlay_package_boundary["Private overlay package는 회사·개인 실행 맥락을 담는다"]
   doc_queued_command_prefill_boundary["Queued command는 실행 보장이 아니다"]
   doc_read_edit_tool_output_override["Read/Edit tool override는 필요한 증거만 펼친다"]
+  doc_repo_status_index_lock_coordination["Repo status polling은 index.lock을 만들지 않도록 조율한다"]
   doc_request_traceability_surgical_changes["변경된 줄은 요청으로 추적 가능해야 한다"]
   doc_revive_over_transcript_recall["종료된 포크는 transcript 주입보다 revive가 우선이다"]
   doc_session_classification_sidecar["세션 분류는 원본 위의 sidecar다"]
@@ -613,6 +615,9 @@ graph TD
   doc_read_edit_tool_output_override --> doc_atomic_evidence_workflow
   doc_read_edit_tool_output_override --> doc_bash_tool_title_output_override
   doc_read_edit_tool_output_override --> doc_tool_output_noise_management
+  doc_repo_status_index_lock_coordination --> doc_auto_commit_explicit_plan_gate
+  doc_repo_status_index_lock_coordination --> doc_update_branch_safe_pull_command
+  doc_repo_status_index_lock_coordination --> doc_workflow_weight_proportionality
   doc_request_traceability_surgical_changes --> doc_change_integration_discipline
   doc_request_traceability_surgical_changes --> doc_evidence_first_verification_gate
   doc_request_traceability_surgical_changes --> doc_frame_verify_contract
@@ -705,7 +710,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 105
-- Links: 365
+- Documents: 106
+- Links: 368
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

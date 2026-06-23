@@ -1,9 +1,10 @@
-import { readFile, rm } from "node:fs/promises";
+import { readFile, rm, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { Type, type Static } from "typebox";
 import { buildCommitReadinessDiagnostic, formatCommitReadinessDiagnostic, pathsFromGitStatus } from "../utils/commit-readiness.ts";
+import { withRepoStatusPaused } from "../utils/repo-status-coordination.ts";
 
 interface CommitPlanEntry {
 	message: string;
@@ -75,6 +76,9 @@ interface GitExecOptions {
 }
 
 const INDEX_LOCK_PATTERN = /Unable to create '([^']*index\.lock)'/u;
+const STALE_INDEX_LOCK_MIN_AGE_MS = 1_500;
+const GIT_STATUS_OWNER_WAIT_MS = 1_500;
+const GIT_STATUS_OWNER_POLL_MS = 100;
 
 function lines(text: string | undefined): string[] {
 	return (text ?? "")
@@ -94,16 +98,100 @@ export function shouldRemoveStaleIndexLockAfterLsof(result: { code?: number; std
 	return true;
 }
 
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function extractLsofPids(output: string | undefined): string[] {
+	return lines(output)
+		.filter((line) => !line.startsWith("COMMAND "))
+		.map((line) => line.split(/\s+/u)[1])
+		.filter((pid): pid is string => Boolean(pid) && /^\d+$/u.test(pid));
+}
+
+export function isRepoStatusGitStatusCommand(command: string): boolean {
+	return /\bgit\s+(?:--no-optional-locks\s+)?status\s+--porcelain=v2\s+--branch\s+--untracked-files=normal\b/u.test(command);
+}
+
+async function readOwnerCommands(pi: ExecHost, cwd: string, pids: string[]): Promise<string> {
+	if (pids.length === 0) return "";
+	const ps = await pi.exec("ps", ["-o", "pid=,command=", "-p", pids.join(",")], { cwd }).catch((error: unknown) => ({ code: 1, stdout: "", stderr: String(error) }));
+	return [ps.stdout ?? "", ps.stderr ?? ""].filter(Boolean).join("\n").trim();
+}
+
+async function lockExists(lockPath: string): Promise<boolean> {
+	try {
+		await stat(lockPath);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+async function lockAgeMs(lockPath: string): Promise<number> {
+	try {
+		const info = await stat(lockPath);
+		return Math.max(0, Date.now() - info.mtimeMs);
+	} catch {
+		return Number.POSITIVE_INFINITY;
+	}
+}
+
+async function waitForLockToDisappear(lockPath: string, timeoutMs: number): Promise<boolean> {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() <= deadline) {
+		if (!(await lockExists(lockPath))) return true;
+		await sleep(GIT_STATUS_OWNER_POLL_MS);
+	}
+	return !(await lockExists(lockPath));
+}
+
+async function retryLsof(pi: ExecHost, cwd: string, lockPath: string): Promise<{ code?: number; stdout?: string; stderr?: string }> {
+	return await pi.exec("lsof", [lockPath], { cwd, timeout: 5_000 }).catch((error: unknown) => ({ code: 1, stdout: "", stderr: String(error) }));
+}
+
+async function handleGitStatusLockOwner(pi: ExecHost, cwd: string, lockPath: string, lsofOutput: string): Promise<string> {
+	const pids = extractLsofPids(lsofOutput);
+	const ownerCommands = await readOwnerCommands(pi, cwd, pids);
+	if (!ownerCommands || !ownerCommands.split(/\r?\n/u).every(isRepoStatusGitStatusCommand)) {
+		return `index.lock is still owned; not removing: ${lockPath}\n${lsofOutput.trim()}`;
+	}
+
+	if (await waitForLockToDisappear(lockPath, GIT_STATUS_OWNER_WAIT_MS)) {
+		return `index.lock owner git status finished; retried: ${lockPath}`;
+	}
+
+	await pi.exec("kill", pids, { cwd }).catch(() => ({ code: 1, stdout: "", stderr: "" }));
+	if (await waitForLockToDisappear(lockPath, GIT_STATUS_OWNER_WAIT_MS)) {
+		return `stopped repo-status git status owner and retried: ${lockPath}`;
+	}
+
+	return `index.lock is still owned by repo-status git status; not removing: ${lockPath}\n${ownerCommands}`;
+}
+
 async function removeStaleIndexLockIfSafe(pi: ExecHost, cwd: string, stderr: string, stdout: string): Promise<string | undefined> {
 	const lockPath = extractGitIndexLockPath(stderr, stdout);
 	if (!lockPath) return undefined;
-	const lsof = await pi.exec("lsof", [lockPath], { cwd }).catch((error: unknown) => ({ code: 1, stdout: "", stderr: String(error) }));
+	let lsof = await retryLsof(pi, cwd, lockPath);
 	if ((lsof.stdout ?? "").trim()) {
-		return `index.lock is still owned; not removing: ${lockPath}`;
+		return await handleGitStatusLockOwner(pi, cwd, lockPath, lsof.stdout ?? "");
 	}
 	if (!shouldRemoveStaleIndexLockAfterLsof(lsof)) {
 		return `index.lock owner check failed; not removing: ${lockPath}`;
 	}
+
+	const age = await lockAgeMs(lockPath);
+	if (age < STALE_INDEX_LOCK_MIN_AGE_MS) {
+		await sleep(STALE_INDEX_LOCK_MIN_AGE_MS - age);
+		lsof = await retryLsof(pi, cwd, lockPath);
+		if ((lsof.stdout ?? "").trim()) {
+			return await handleGitStatusLockOwner(pi, cwd, lockPath, lsof.stdout ?? "");
+		}
+		if (!shouldRemoveStaleIndexLockAfterLsof(lsof)) {
+			return `index.lock owner check failed; not removing: ${lockPath}`;
+		}
+	}
+
 	await rm(lockPath, { force: true });
 	return `removed stale index.lock and retried: ${lockPath}`;
 }
@@ -121,7 +209,7 @@ async function execGit(
 	let stderr = result.stderr ?? "";
 	if ((result.code ?? 1) !== 0 && options.retryStaleLock !== false && !options.optionalLocks) {
 		const retryNote = await removeStaleIndexLockIfSafe(pi, cwd, stderr, stdout);
-		if (retryNote?.startsWith("removed stale")) {
+		if (retryNote?.includes("retried")) {
 			result = await pi.exec(command, finalArgs, { cwd });
 			stdout = result.stdout ?? "";
 			stderr = [retryNote, result.stderr ?? ""].filter(Boolean).join("\n");
@@ -607,34 +695,36 @@ async function commitEntry(
 
 async function applyPlan(pi: ExecHost, cwd: string, mode: AutoCommitMode, plan: AutoCommitPlan): Promise<AutoCommitResult> {
 	await assertExpectedHead(pi, cwd, plan.expectedHead);
-	if (mode === "split-head") {
-		const currentStatus = await statusLines(pi, cwd);
-		if (currentStatus.length > 0) {
-			throw new Error(`split-head requires a clean worktree before reset. Dirty entries:\n${currentStatus.join("\n")}`);
+	return await withRepoStatusPaused(cwd, async () => {
+		if (mode === "split-head") {
+			const currentStatus = await statusLines(pi, cwd);
+			if (currentStatus.length > 0) {
+				throw new Error(`split-head requires a clean worktree before reset. Dirty entries:\n${currentStatus.join("\n")}`);
+			}
+			await maybeCreateBackupBranch(pi, cwd, plan.backupBranch);
+			await git(pi, cwd, ["reset", "--mixed", plan.resetTo ?? "HEAD~1"], "git reset --mixed");
 		}
-		await maybeCreateBackupBranch(pi, cwd, plan.backupBranch);
-		await git(pi, cwd, ["reset", "--mixed", plan.resetTo ?? "HEAD~1"], "git reset --mixed");
-	}
 
-	await assertNoUnplannedChanges(pi, cwd, plan);
-	const warnings = await assertLogicalAtomGateForWorkingTree(pi, cwd, plan);
+		await assertNoUnplannedChanges(pi, cwd, plan);
+		const warnings = await assertLogicalAtomGateForWorkingTree(pi, cwd, plan);
 
-	const commits: AutoCommitResult["commits"] = [];
-	try {
-		for (const entry of plan.commits) {
-			commits.push(await commitEntry(pi, cwd, entry, plan.commitNoVerify));
+		const commits: AutoCommitResult["commits"] = [];
+		try {
+			for (const entry of plan.commits) {
+				commits.push(await commitEntry(pi, cwd, entry, plan.commitNoVerify));
+			}
+			await git(pi, cwd, ["reset"], "git reset");
+			const leftovers = await statusLines(pi, cwd);
+			if (leftovers.length > 0 && !plan.allowLeftovers) {
+				throw new Error(`auto-commit plan left unstaged changes:\n${leftovers.join("\n")}`);
+			}
+			const push = await runPush(pi, cwd, plan.push, plan.pushPolicy);
+			return { mode, backupBranch: plan.backupBranch, commits, leftovers, pushed: push.status === "done", push, completion: completionFromPush(push), warnings };
+		} catch (error) {
+			await gitCode(pi, cwd, ["reset"]);
+			throw error;
 		}
-		await git(pi, cwd, ["reset"], "git reset");
-		const leftovers = await statusLines(pi, cwd);
-		if (leftovers.length > 0 && !plan.allowLeftovers) {
-			throw new Error(`auto-commit plan left unstaged changes:\n${leftovers.join("\n")}`);
-		}
-		const push = await runPush(pi, cwd, plan.push, plan.pushPolicy);
-		return { mode, backupBranch: plan.backupBranch, commits, leftovers, pushed: push.status === "done", push, completion: completionFromPush(push), warnings };
-	} catch (error) {
-		await gitCode(pi, cwd, ["reset"]);
-		throw error;
-	}
+	}, { reason: `auto_commit:${mode}` });
 }
 
 function buildQuickPlan(params: { message?: string; paths?: string[]; pushPolicy?: PushPolicy; allowLeftovers?: boolean }): AutoCommitPlan {

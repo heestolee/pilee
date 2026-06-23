@@ -3,6 +3,7 @@ import { fetchUnresolvedPullRequestReviewCommentsCount, isNoPullRequestError } f
 import { type CheckSummary, parseGitStatusPorcelainV2, summarizeChecks } from "./git-utils.ts";
 import {
 	acquireRepoStatusLease,
+	isRepoStatusPaused,
 	readRepoStatusCache,
 	REPO_STATUS_CACHE_MAX_AGE_MS,
 	type RepoStatusCommandResult,
@@ -406,6 +407,7 @@ export function createRepoStatusTracker(pi: ExtensionAPI, cwd: string): RepoStat
 	const readCoordinatedGitStatus = async (): Promise<RepoStatusCommandResult | null> => {
 		const cached = await readRepoStatusCache(cwd, REPO_STATUS_CACHE_MAX_AGE_MS);
 		if (cached) return cached;
+		if (await isRepoStatusPaused(cwd)) return null;
 
 		const lease = await acquireRepoStatusLease(cwd);
 		if (!lease) {

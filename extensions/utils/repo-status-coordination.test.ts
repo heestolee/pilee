@@ -5,10 +5,12 @@ import { join } from "node:path";
 import test from "node:test";
 import {
 	acquireRepoStatusLease,
+	isRepoStatusPaused,
 	readRepoStatusCache,
 	REPO_STATUS_CACHE_MAX_AGE_MS,
 	REPO_STATUS_LEASE_TTL_MS,
 	waitForRepoStatusCache,
+	withRepoStatusPaused,
 	writeRepoStatusCache,
 } from "./repo-status-coordination.ts";
 
@@ -78,5 +80,15 @@ test("waitForRepoStatusCache observes cache written by another owner", async () 
 
 		const cached = await waitForRepoStatusCache(cwd, { timeoutMs: 500, intervalMs: 10 });
 		assert.deepEqual(cached, { code: 0, stdout: "# branch.head feature\n", stderr: "" });
+	});
+});
+
+test("repo status pause marker is scoped and released", async () => {
+	await withIsolatedState(async (cwd) => {
+		assert.equal(await isRepoStatusPaused(cwd), false);
+		await withRepoStatusPaused(cwd, async () => {
+			assert.equal(await isRepoStatusPaused(cwd), true);
+		}, { reason: "test" });
+		assert.equal(await isRepoStatusPaused(cwd), false);
 	});
 });

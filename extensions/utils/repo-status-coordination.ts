@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -23,6 +23,16 @@ interface RepoStatusLeaseRecord {
 	updatedAt: number;
 }
 
+interface RepoStatusPauseRecord {
+	version: 1;
+	cwd: string;
+	token: string;
+	pid: number;
+	reason: string;
+	updatedAt: number;
+	expiresAt: number;
+}
+
 export interface RepoStatusLease {
 	token: string;
 	cwd: string;
@@ -31,6 +41,7 @@ export interface RepoStatusLease {
 
 export const REPO_STATUS_CACHE_MAX_AGE_MS = 45_000;
 export const REPO_STATUS_LEASE_TTL_MS = 30_000;
+export const REPO_STATUS_PAUSE_TTL_MS = 120_000;
 
 function stateRoot(): string {
 	return process.env.PILEE_REPO_STATUS_STATE_DIR ?? join(homedir(), ".pi", "agent", "state", "repo-status");
@@ -58,6 +69,7 @@ async function pathsForCwd(cwd: string) {
 		cachePath: join(root, `${key}.json`),
 		leaseDir: join(root, `${key}.lease`),
 		leaseOwnerPath: join(root, `${key}.lease`, "owner.json"),
+		pauseDir: join(root, `${key}.pause`),
 	};
 }
 
@@ -91,6 +103,20 @@ function isLeaseRecord(value: unknown): value is RepoStatusLeaseRecord {
 		typeof record.token === "string" &&
 		typeof record.pid === "number" &&
 		typeof record.updatedAt === "number"
+	);
+}
+
+function isPauseRecord(value: unknown): value is RepoStatusPauseRecord {
+	if (!value || typeof value !== "object") return false;
+	const record = value as Partial<RepoStatusPauseRecord>;
+	return (
+		record.version === 1 &&
+		typeof record.cwd === "string" &&
+		typeof record.token === "string" &&
+		typeof record.pid === "number" &&
+		typeof record.reason === "string" &&
+		typeof record.updatedAt === "number" &&
+		typeof record.expiresAt === "number"
 	);
 }
 
@@ -154,6 +180,56 @@ async function tryCreateLease(cwd: string, now: number): Promise<RepoStatusLease
 		cwd: paths.canonical,
 		release: () => releaseLease(paths.leaseDir, paths.leaseOwnerPath, token),
 	};
+}
+
+export async function isRepoStatusPaused(cwd: string, now = Date.now()): Promise<boolean> {
+	const paths = await pathsForCwd(cwd);
+	let entries: string[];
+	try {
+		entries = await readdir(paths.pauseDir);
+	} catch {
+		return false;
+	}
+
+	let paused = false;
+	await Promise.all(entries.map(async (entry) => {
+		const path = join(paths.pauseDir, entry);
+		const record = await readJson<unknown>(path);
+		if (!isPauseRecord(record) || record.cwd !== paths.canonical || record.expiresAt <= now) {
+			await rm(path, { force: true });
+			return;
+		}
+		paused = true;
+	}));
+	return paused;
+}
+
+export async function withRepoStatusPaused<T>(
+	cwd: string,
+	callback: () => Promise<T>,
+	options: { reason?: string; ttlMs?: number } = {},
+): Promise<T> {
+	const paths = await pathsForCwd(cwd);
+	const token = randomUUID();
+	const now = Date.now();
+	const ttlMs = options.ttlMs ?? REPO_STATUS_PAUSE_TTL_MS;
+	await mkdir(paths.pauseDir, { recursive: true });
+	const pausePath = join(paths.pauseDir, `${token}.json`);
+	const record: RepoStatusPauseRecord = {
+		version: 1,
+		cwd: paths.canonical,
+		token,
+		pid: process.pid,
+		reason: options.reason ?? "git-mutation",
+		updatedAt: now,
+		expiresAt: now + ttlMs,
+	};
+	await writeFile(pausePath, `${JSON.stringify(record)}\n`, "utf8");
+	try {
+		return await callback();
+	} finally {
+		await rm(pausePath, { force: true });
+	}
 }
 
 export async function acquireRepoStatusLease(

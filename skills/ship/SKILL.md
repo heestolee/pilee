@@ -42,7 +42,7 @@ git log --oneline --decorate -5
 - base/main/development 브랜치에서 직접 push하려는 상황이면 프로젝트 규칙을 확인한다. 위험하면 멈춘다.
 - unrelated dirty file은 건드리지 않는다. stage는 요청과 직접 관련된 파일만 한다.
 - 단일 문구/CTA/작은 리뷰 반영 같은 light ship은 subagent/self-healing/verify-report를 기본 실행하지 않는다. focused edit → 가까운 lint/diff-check → commit → push로 닫는다. PR 상태 확인은 사용자가 명시했거나 push 실패·rejected 때만 한다.
-- `index.lock`이 나오면 먼저 `lsof <index.lock>`로 소유자를 확인한다. 소유자가 없으면 고아 lock으로 보고 제거 후 재시도한다. 단순 status 확인은 `GIT_OPTIONAL_LOCKS=0`를 우선한다.
+- `index.lock`이 나오면 먼저 `lsof <index.lock>`로 소유자를 확인한다. 소유자가 없고 lock age가 충분하면 고아 lock으로 보고 제거 후 재시도한다. 소유자가 repo-status용 `git status --porcelain=v2 --branch --untracked-files=normal`이면 짧게 기다리거나 해당 status 프로세스만 중단하고, `git commit/add/reset` 소유자는 건드리지 않는다. 단순 status 확인은 `GIT_OPTIONAL_LOCKS=0`를 우선한다.
 
 ### 2. 의도 단위 커밋 계획
 

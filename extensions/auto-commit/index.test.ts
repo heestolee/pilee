@@ -4,7 +4,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import test from "node:test";
-import autoCommit, { assertLogicalAtomGate, buildLogicalAtomGateReport, evaluateLogicalAtomGate, extractGitIndexLockPath, formatResult, shouldRemoveStaleIndexLockAfterLsof } from "./index.ts";
+import autoCommit, {
+	assertLogicalAtomGate,
+	buildLogicalAtomGateReport,
+	evaluateLogicalAtomGate,
+	extractGitIndexLockPath,
+	extractLsofPids,
+	formatResult,
+	isRepoStatusGitStatusCommand,
+	shouldRemoveStaleIndexLockAfterLsof,
+} from "./index.ts";
+import { isRepoStatusPaused } from "../utils/repo-status-coordination.ts";
 
 test("extractGitIndexLockPath reads git index.lock errors", () => {
 	const stderr = "fatal: Unable to create '/repo/.git/worktrees/foo/index.lock': File exists.";
@@ -19,6 +29,14 @@ test("shouldRemoveStaleIndexLockAfterLsof removes only when owner check is clean
 	assert.equal(shouldRemoveStaleIndexLockAfterLsof({ code: 1, stdout: "", stderr: "" }), true);
 	assert.equal(shouldRemoveStaleIndexLockAfterLsof({ code: 0, stdout: "COMMAND  PID USER\nGit 123 me", stderr: "" }), false);
 	assert.equal(shouldRemoveStaleIndexLockAfterLsof({ code: 127, stdout: "", stderr: "lsof: command not found" }), false);
+});
+
+test("index.lock recovery recognizes repo status polling owners", () => {
+	const lsofOutput = "COMMAND   PID USER\ngit     1234 me\nGit     5678 me\n";
+	assert.deepEqual(extractLsofPids(lsofOutput), ["1234", "5678"]);
+	assert.equal(isRepoStatusGitStatusCommand("/Applications/Xcode.app/Contents/Developer/usr/bin/git status --porcelain=v2 --branch --untracked-files=normal"), true);
+	assert.equal(isRepoStatusGitStatusCommand("/Applications/Xcode.app/Contents/Developer/usr/bin/git --no-optional-locks status --porcelain=v2 --branch --untracked-files=normal"), true);
+	assert.equal(isRepoStatusGitStatusCommand("git commit -m test"), false);
 });
 
 test("logical atom gate warns for small same-cluster three-primary changes", () => {
@@ -208,6 +226,50 @@ test("action=quick allows warning-only same-cluster fanout and reports warning",
 	assert.match(result.content[0].text, /warnings:/);
 	assert.match(result.content[0].text, /3 primary paths/);
 	assert.equal((await git(repo, "rev-list", "--count", "HEAD")).trim(), "2");
+});
+
+test("action=quick pauses repo status polling during git mutations", async () => {
+	const root = await mkdtemp(join(tmpdir(), "auto-commit-pause-"));
+	const repo = join(root, "repo");
+	const previousStateDir = process.env.PILEE_REPO_STATUS_STATE_DIR;
+	process.env.PILEE_REPO_STATUS_STATE_DIR = join(root, "state");
+	try {
+		await git(root, "init", "-b", "main", repo);
+		await git(repo, "config", "user.email", "test@example.com");
+		await git(repo, "config", "user.name", "Test User");
+		await writeFile(join(repo, "README.md"), "init\n");
+		await git(repo, "add", "README.md");
+		await git(repo, "commit", "-m", "chore: init");
+		await writeFile(join(repo, "copy.txt"), "changed\n");
+
+		const pauseObserved: boolean[] = [];
+		const tools: Record<string, any> = {};
+		autoCommit({
+			exec: async (command: string, args: string[], options: { cwd?: string } = {}) => {
+				if (command === "git" && ["reset", "add", "commit"].includes(args[0] ?? "")) {
+					pauseObserved.push(await isRepoStatusPaused(options.cwd ?? repo));
+				}
+				return exec(command, args, options.cwd ?? repo);
+			},
+			registerCommand: () => undefined,
+			registerTool: (tool: any) => { tools[tool.name] = tool; },
+		} as any);
+
+		const result = await tools.auto_commit.execute("call-quick-pause", {
+			action: "quick",
+			message: "fix: 문구 수정",
+			paths: ["copy.txt"],
+			pushPolicy: "commit-only",
+		}, new AbortController().signal, () => undefined, { cwd: repo });
+
+		assert.equal(result.details.completion, "committed_not_pushed");
+		assert.ok(pauseObserved.length >= 3);
+		assert.deepEqual([...new Set(pauseObserved)], [true]);
+		assert.equal(await isRepoStatusPaused(repo), false);
+	} finally {
+		if (previousStateDir === undefined) delete process.env.PILEE_REPO_STATUS_STATE_DIR;
+		else process.env.PILEE_REPO_STATUS_STATE_DIR = previousStateDir;
+	}
 });
 
 test("action=quick commits explicit paths and pushes to safe upstream", async () => {
