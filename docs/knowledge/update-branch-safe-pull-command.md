@@ -15,8 +15,8 @@ applies_to:
   - slash-command:/update-branch
 source:
   - user-direction:2026-05-27-update-branch-command
-reviewed_at: 2026-06-02
-reviewed_commit: d8f8c4c56f23dcfda08b089b6d8ff5be4885e37c
+reviewed_at: 2026-06-23
+reviewed_commit: 98d7502b5b6a46e2b3cfacddd9695a99bbf8e047
 related:
   - worktree-execution-boundary
   - change-integration-discipline
@@ -39,9 +39,11 @@ related:
 
 ## Lock Recovery Rule
 
-`index.lock` 때문에 `git status`나 `git pull`이 실패하면, command는 `lsof`로 점유 프로세스를 먼저 확인합니다.
+`index.lock` 때문에 `git status`, `git stash`, `git pull`, `git stash apply`가 실패하면, command는 `lsof`로 점유 프로세스를 먼저 확인합니다.
 
-- 점유 프로세스가 있으면 자동 제거하지 않고 중단합니다.
+- dirty 보존 stash / pull / stash apply 구간에서는 worktree-scoped repo-status pause marker를 남겨 새 polling이 들어오지 않게 합니다.
+- 점유 프로세스가 repo-status용 `git status --porcelain=v2 --branch --untracked-files=normal`이면 짧게 기다립니다. 계속 lock을 잡고 있으면 해당 status process만 중단한 뒤 같은 git command를 한 번 재시도합니다.
+- 점유 프로세스가 `git add`, `git commit`, `git reset`, `git merge`처럼 실제 mutation이면 자동 제거하거나 kill하지 않고 중단합니다.
 - 점유 프로세스가 없고 lock 파일만 남았으면 고아 lock으로 보고 제거한 뒤 같은 git command를 한 번만 재시도합니다.
 
 이 흐름은 반복되는 수동 `lsof → rm index.lock → git pull`을 자동화하되, 실제로 git 작업 중인 프로세스를 방해하지 않는 경계입니다.

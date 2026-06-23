@@ -3,6 +3,7 @@ import { unlink } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import type { AutocompleteItem } from "@mariozechner/pi-tui";
+import { withRepoStatusPaused } from "../utils/repo-status-coordination.ts";
 
 const HELP = `Usage: /update-branch [--merge] [--no-autostash]
 
@@ -42,6 +43,10 @@ type LockRecovery = {
 	blockedBy?: string;
 	message?: string;
 };
+
+const GIT_STATUS_OWNER_WAIT_MS = 1_500;
+const GIT_STATUS_OWNER_POLL_MS = 100;
+const REPO_STATUS_PAUSE_FOR_UPDATE_BRANCH_MS = 180_000;
 
 type GitCommandResult = {
 	result: CommandResult;
@@ -111,6 +116,63 @@ async function git(pi: ExecLike, args: string[], cwd: string): Promise<CommandRe
 	return await pi.exec("git", args, { cwd });
 }
 
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function lines(text: string | undefined): string[] {
+	return (text ?? "")
+		.split(/\r?\n/u)
+		.map((line) => line.trim())
+		.filter(Boolean);
+}
+
+function extractLsofPids(output: string): string[] {
+	return lines(output)
+		.filter((line) => !line.startsWith("COMMAND "))
+		.map((line) => line.split(/\s+/u)[1])
+		.filter((pid): pid is string => Boolean(pid) && /^\d+$/u.test(pid));
+}
+
+function isRepoStatusGitStatusCommand(command: string): boolean {
+	return /\bgit\s+(?:--no-optional-locks\s+)?status\s+--porcelain=v2\s+--branch\s+--untracked-files=normal\b/u.test(command);
+}
+
+async function waitForLockToDisappear(lockPath: string, timeoutMs: number): Promise<boolean> {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() <= deadline) {
+		if (!existsSync(lockPath)) return true;
+		await sleep(GIT_STATUS_OWNER_POLL_MS);
+	}
+	return !existsSync(lockPath);
+}
+
+async function readOwnerCommands(pi: ExecLike, cwd: string, pids: string[]): Promise<string> {
+	if (pids.length === 0) return "";
+	const ps = await pi.exec("ps", ["-o", "pid=,command=", "-p", pids.join(",")], { cwd }).catch((error: unknown) => ({ code: 1, stdout: "", stderr: String(error) }));
+	return [ps.stdout ?? "", ps.stderr ?? ""].filter(Boolean).join("\n").trim();
+}
+
+async function recoverRepoStatusLockOwner(pi: ExecLike, cwd: string, lockPath: string, blocker: string): Promise<LockRecovery> {
+	const pids = extractLsofPids(blocker);
+	const ownerCommands = await readOwnerCommands(pi, cwd, pids);
+	const ownerCommandLines = lines(ownerCommands);
+	if (pids.length === 0 || ownerCommandLines.length === 0 || !ownerCommandLines.every(isRepoStatusGitStatusCommand)) {
+		return { attempted: true, removed: false, blockedBy: trimOutput(blocker), message: "index.lock을 점유 중인 프로세스가 있어 중단했습니다." };
+	}
+
+	if (await waitForLockToDisappear(lockPath, GIT_STATUS_OWNER_WAIT_MS)) {
+		return { attempted: true, removed: true, message: "repo-status git status가 종료되어 재시도합니다." };
+	}
+
+	await pi.exec("kill", pids, { cwd }).catch(() => ({ code: 1, stdout: "", stderr: "" }));
+	if (await waitForLockToDisappear(lockPath, GIT_STATUS_OWNER_WAIT_MS)) {
+		return { attempted: true, removed: true, message: "repo-status git status 프로세스를 중단하고 재시도합니다." };
+	}
+
+	return { attempted: true, removed: false, blockedBy: trimOutput(ownerCommands), message: "repo-status git status가 index.lock을 계속 점유해 중단했습니다." };
+}
+
 async function clearStaleIndexLock(pi: ExecLike, cwd: string, lockPath: string): Promise<LockRecovery> {
 	if (!lockPath || !existsSync(lockPath)) {
 		return { attempted: true, removed: false, message: "index.lock 파일이 이미 없습니다." };
@@ -119,7 +181,7 @@ async function clearStaleIndexLock(pi: ExecLike, cwd: string, lockPath: string):
 	const lsof = await pi.exec("lsof", [lockPath], { cwd, timeout: 5000 });
 	const blocker = commandText(lsof);
 	if (lsof.code === 0 && blocker) {
-		return { attempted: true, removed: false, blockedBy: trimOutput(blocker), message: "index.lock을 점유 중인 프로세스가 있어 중단했습니다." };
+		return await recoverRepoStatusLockOwner(pi, cwd, lockPath, blocker);
 	}
 
 	try {
@@ -200,18 +262,12 @@ async function resolveRepo(pi: ExecLike, cwd: string): Promise<{ repoRoot: strin
 	return { repoRoot, lockPath };
 }
 
-export async function runUpdateBranch(pi: ExecLike, cwd: string, args = ""): Promise<UpdateBranchResult> {
-	const options = parseUpdateBranchArgs(args);
-	if ("error" in options) {
-		return { status: "fail", cwd, lockRecoveries: [], message: `${options.error}\n\n${HELP}` };
-	}
-	if (options.help) return { status: "help", cwd, lockRecoveries: [], message: HELP };
-
-	const repo = await resolveRepo(pi, cwd);
-	if ("error" in repo) {
-		return { status: "blocked", cwd, lockRecoveries: [], message: `git repo 확인 실패: ${repo.error}` };
-	}
-
+async function runUpdateBranchWithRepo(
+	pi: ExecLike,
+	cwd: string,
+	options: UpdateBranchOptions,
+	repo: { repoRoot: string; lockPath: string },
+): Promise<UpdateBranchResult> {
 	const lockRecoveries: LockRecovery[] = [];
 	const porcelain = await runGitWithLockRetry(pi, repo.repoRoot, ["status", "--porcelain"], repo.lockPath);
 	if (porcelain.lockRecovery) lockRecoveries.push(porcelain.lockRecovery);
@@ -330,6 +386,24 @@ export async function runUpdateBranch(pi: ExecLike, cwd: string, args = ""): Pro
 	};
 }
 
+export async function runUpdateBranch(pi: ExecLike, cwd: string, args = ""): Promise<UpdateBranchResult> {
+	const options = parseUpdateBranchArgs(args);
+	if ("error" in options) {
+		return { status: "fail", cwd, lockRecoveries: [], message: `${options.error}\n\n${HELP}` };
+	}
+	if (options.help) return { status: "help", cwd, lockRecoveries: [], message: HELP };
+
+	const repo = await resolveRepo(pi, cwd);
+	if ("error" in repo) {
+		return { status: "blocked", cwd, lockRecoveries: [], message: `git repo 확인 실패: ${repo.error}` };
+	}
+
+	return await withRepoStatusPaused(repo.repoRoot, () => runUpdateBranchWithRepo(pi, cwd, options, repo), {
+		reason: "update-branch",
+		ttlMs: REPO_STATUS_PAUSE_FOR_UPDATE_BRANCH_MS,
+	});
+}
+
 export function formatUpdateBranchResult(result: UpdateBranchResult): string {
 	if (result.status === "help") return result.message;
 	const lines: string[] = [];
@@ -340,8 +414,8 @@ export function formatUpdateBranchResult(result: UpdateBranchResult): string {
 	if (result.mode) lines.push(`- mode: git pull ${result.mode === "ff-only" ? "--ff-only" : ""}`.trimEnd());
 	if (result.message) lines.push(`- 결과: ${result.message}`);
 	for (const recovery of result.lockRecoveries) {
-		if (recovery.removed) lines.push("- lock: 고아 index.lock 제거 후 재시도");
-		else if (recovery.blockedBy) lines.push("- lock: 점유 프로세스가 있어 자동 제거하지 않음");
+		if (recovery.removed) lines.push(`- lock: ${recovery.message ?? "index.lock 복구 후 재시도"}`);
+		else if (recovery.blockedBy) lines.push(`- lock: ${recovery.message ?? "점유 프로세스가 있어 자동 제거하지 않음"}`);
 	}
 	if (result.preserve?.attempted) {
 		lines.push(`- dirty preserve: ${result.preserve.stashRef ? `stash ${result.preserve.stashRef}` : "attempted"}`);

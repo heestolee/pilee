@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -13,6 +13,20 @@ import updateBranch, {
 } from "./index.ts";
 
 type ExecCall = { command: string; args: string[]; cwd?: string };
+
+const ORIGINAL_REPO_STATUS_STATE_DIR = process.env.PILEE_REPO_STATUS_STATE_DIR;
+
+test.beforeEach(async () => {
+	process.env.PILEE_REPO_STATUS_STATE_DIR = await mkdtemp(join(tmpdir(), "update-branch-repo-status-state-"));
+});
+
+test.afterEach(() => {
+	if (ORIGINAL_REPO_STATUS_STATE_DIR === undefined) {
+		delete process.env.PILEE_REPO_STATUS_STATE_DIR;
+	} else {
+		process.env.PILEE_REPO_STATUS_STATE_DIR = ORIGINAL_REPO_STATUS_STATE_DIR;
+	}
+});
 
 function mockPi(handler: (command: string, args: string[], options: any) => Promise<CommandResult> | CommandResult) {
 	const calls: ExecCall[] = [];
@@ -160,6 +174,50 @@ test("runUpdateBranch removes stale index.lock and retries once", async () => {
 	assert.equal(statusAttempts, 2);
 	assert.equal(existsSync(lockPath), false);
 	assert.equal(result.lockRecoveries.some((recovery) => recovery.removed), true);
+});
+
+test("runUpdateBranch stops repo-status git status owner and retries", async () => {
+	const root = await mkdtemp(join(tmpdir(), "update-branch-repo-status-owner-"));
+	const lockPath = join(root, "index.lock");
+	await writeFile(lockPath, "repo-status-owner");
+	let statusAttempts = 0;
+	let killed = false;
+	const { pi, calls } = mockPi(async (command, args) => {
+		const key = args.join(" ");
+		if (command === "lsof") {
+			return {
+				code: 0,
+				stdout: `COMMAND   PID USER   FD   TYPE DEVICE SIZE/OFF NODE NAME\ngit     12345 user    3u   REG    1,1        0  123 ${lockPath}\n`,
+			};
+		}
+		if (command === "ps" && key === "-o pid=,command= -p 12345") {
+			return { code: 0, stdout: "12345 /Applications/Xcode.app/Contents/Developer/usr/bin/git status --porcelain=v2 --branch --untracked-files=normal\n" };
+		}
+		if (command === "kill" && key === "12345") {
+			killed = true;
+			await unlink(lockPath);
+			return { code: 0, stdout: "" };
+		}
+		if (key === "rev-parse --show-toplevel") return { code: 0, stdout: `${root}\n` };
+		if (key === "rev-parse --git-path index.lock") return { code: 0, stdout: "index.lock\n" };
+		if (key === "status --porcelain") {
+			statusAttempts += 1;
+			if (statusAttempts === 1) return { code: 128, stderr: `fatal: Unable to create '${lockPath}': File exists.\n` };
+			return { code: 0, stdout: "" };
+		}
+		if (key === "pull --ff-only") return { code: 0, stdout: "Updating abc..def\n" };
+		if (key === "status --short --branch") return { code: 0, stdout: "## feature/x...origin/feature/x\n" };
+		if (key === "log --oneline -1") return { code: 0, stdout: "def5678 latest\n" };
+		throw new Error(`unexpected command: ${command} ${key}`);
+	});
+
+	const result = await runUpdateBranch(pi as any, root);
+	assert.equal(result.status, "pass");
+	assert.equal(statusAttempts, 2);
+	assert.equal(killed, true);
+	assert.ok(calls.some((call) => call.command === "kill" && call.args.join(" ") === "12345"));
+	assert.match(result.lockRecoveries.map((recovery) => recovery.message).join("\n"), /repo-status git status/);
+	assert.match(formatUpdateBranchResult(result), /repo-status git status 프로세스를 중단하고 재시도/);
 });
 
 test("command registers slash command and emits visible summary", async () => {
