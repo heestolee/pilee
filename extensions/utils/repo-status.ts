@@ -1,6 +1,14 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { fetchUnresolvedPullRequestReviewCommentsCount, isNoPullRequestError } from "./github-pr-review-comments.ts";
 import { type CheckSummary, parseGitStatusPorcelainV2, summarizeChecks } from "./git-utils.ts";
+import {
+	acquireRepoStatusLease,
+	readRepoStatusCache,
+	REPO_STATUS_CACHE_MAX_AGE_MS,
+	type RepoStatusCommandResult,
+	waitForRepoStatusCache,
+	writeRepoStatusCache,
+} from "./repo-status-coordination.ts";
 
 const GIT_STATUS_ARGS = ["--no-optional-locks", "status", "--porcelain=v2", "--branch", "--untracked-files=normal"] as const;
 const PR_VIEW_ARGS = [
@@ -384,6 +392,36 @@ export function createRepoStatusTracker(pi: ExtensionAPI, cwd: string): RepoStat
 		}
 	};
 
+	const applyGitStatusResult = (result: RepoStatusCommandResult) => {
+		if (result.code !== 0) {
+			clearSnapshot();
+			return;
+		}
+		const { branchChanged, nextBranch } = applyGitStatus(result.stdout);
+		if (branchChanged) {
+			void refreshPrState(nextBranch);
+		}
+	};
+
+	const readCoordinatedGitStatus = async (): Promise<RepoStatusCommandResult | null> => {
+		const cached = await readRepoStatusCache(cwd, REPO_STATUS_CACHE_MAX_AGE_MS);
+		if (cached) return cached;
+
+		const lease = await acquireRepoStatusLease(cwd);
+		if (!lease) {
+			return await waitForRepoStatusCache(cwd, { maxAgeMs: REPO_STATUS_CACHE_MAX_AGE_MS });
+		}
+
+		try {
+			const result = await pi.exec("git", [...GIT_STATUS_ARGS], { cwd });
+			const normalized = { code: result.code ?? 1, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+			await writeRepoStatusCache(cwd, normalized);
+			return normalized;
+		} finally {
+			await lease.release();
+		}
+	};
+
 	const refreshGitState = async () => {
 		if (disposed) return;
 		if (gitRefreshRunning) {
@@ -393,16 +431,9 @@ export function createRepoStatusTracker(pi: ExtensionAPI, cwd: string): RepoStat
 
 		gitRefreshRunning = true;
 		try {
-			const result = await pi.exec("git", [...GIT_STATUS_ARGS], { cwd });
-			if (disposed) return;
-			if (result.code !== 0) {
-				clearSnapshot();
-				return;
-			}
-			const { branchChanged, nextBranch } = applyGitStatus(result.stdout ?? "");
-			if (branchChanged) {
-				void refreshPrState(nextBranch);
-			}
+			const result = await readCoordinatedGitStatus();
+			if (disposed || !result) return;
+			applyGitStatusResult(result);
 		} catch {
 			if (!disposed) {
 				clearSnapshot();
