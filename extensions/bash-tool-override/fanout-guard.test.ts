@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import registerBashToolOverride from "./index.ts";
 import { analyzeValidationFanout, formatValidationFanoutGuardBlock } from "./fanout-guard.ts";
 
 describe("validation fan-out guard", () => {
@@ -56,5 +57,29 @@ describe("validation fan-out guard", () => {
 	test("allows explicit broad validation bypass marker", () => {
 		assert.equal(analyzeValidationFanout("ALLOW_BROAD_VALIDATION=1 pnpm --dir frontend -F admin test"), null);
 		assert.equal(analyzeValidationFanout("pnpm --dir frontend -F admin test # allow-broad-validation"), null);
+	});
+
+	test("registered bash tool blocks risky validation before delegating to builtin bash", async () => {
+		let registeredTool: any;
+		registerBashToolOverride({
+			registerTool(tool: any) {
+				registeredTool = tool;
+			},
+		} as any);
+
+		await assert.rejects(
+			() =>
+				registeredTool.execute(
+					"tool-call-id",
+					{
+						command: "pnpm --dir frontend -F admin test -- src/foo.test.ts",
+						title: "위험한 테스트 명령 실행",
+					},
+					new AbortController().signal,
+					() => undefined,
+					{ cwd: "/tmp" },
+				),
+			/error.*fan-out guard|validation fan-out guard/i,
+		);
 	});
 });
