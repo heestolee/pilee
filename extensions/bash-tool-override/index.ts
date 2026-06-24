@@ -11,6 +11,7 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import { Text, truncateToWidth, type Component } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
+import { analyzeValidationFanout, formatValidationFanoutGuardBlock } from "./fanout-guard.ts";
 
 const TAIL_LINES = 5;
 const MAX_COMMAND_PREVIEW = 120;
@@ -192,6 +193,7 @@ To execute a command that doesn't need the user to see its output, prefix it wit
 		promptSnippet: "Execute commands in a bash shell; use title to describe the command's purpose",
 		promptGuidelines: [
 			"Always provide a concise title for bash commands describing what the command accomplishes. Write the title in Korean (한글).",
+			"Prefer direct, narrow validation commands such as `pnpm exec eslint <file>` or package-cwd `pnpm exec vitest run <spec>`. Do not use package-manager validation wrappers like `pnpm test -- <path>` as targeted evidence; the bash tool may block broad/fan-out validation unless explicitly bypassed with ALLOW_BROAD_VALIDATION=1 after stating the reason.",
 		],
 		prepareArguments(args: unknown): { command: string; title: string; timeout?: number } {
 			if (!args || typeof args !== "object") return args as never;
@@ -242,6 +244,11 @@ To execute a command that doesn't need the user to see its output, prefix it wit
 		},
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
 			const { title: _title, ...bashParams } = params as { command: string; title: string; timeout?: number };
+			const fanoutBlock = analyzeValidationFanout(bashParams.command);
+			if (fanoutBlock) {
+				throw new Error(formatValidationFanoutGuardBlock(fanoutBlock));
+			}
+
 			const builtinTool = createBashToolDefinition(ctx.cwd);
 			return builtinTool.execute(toolCallId, bashParams, signal, onUpdate, ctx);
 		},
