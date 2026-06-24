@@ -179,7 +179,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Atomic evidence workflow는 작은 claim을 증거로 닫는다](./atomic-evidence-workflow.md) | active | high | 2026-06-02 | ce5e875 | atomic, evidence, claim, slice, verification, frame |
 | [Auto-commit은 명시 계획만 실행한다](./auto-commit-explicit-plan-gate.md) | active | high | 2026-06-03 | 3b4357d | auto-commit, git, commit, plan, safety |
 | [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | high | 2026-06-02 | cc0bd98 | backlog, tasks, provenance, source-session, session, 맥락 |
-| [Bash tool override는 명령 의도와 출력 노이즈를 분리한다](./bash-tool-title-output-override.md) | active | high | 2026-06-02 | cc0bd98 | bash, tool, override, ui, output, title |
+| [Bash tool override는 명령 의도와 출력 노이즈를 분리한다](./bash-tool-title-output-override.md) | active | high | 2026-06-24 | fae9aa3 | bash, tool, override, ui, output, title |
 | [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md) | active | high | 2026-06-02 | cc0bd98 | git, incremental, code-review, commit, quality, 통합 |
 | [CI-Ship은 PR 후 검증 실패 대응 단계다](./ci-ship-failure-response-boundary.md) | active | high | 2026-06-02 | cc0bd98 | ci-ship, ci, github-actions, pull-request, failure-analysis, ship |
 | [Clean handoff는 compact와 새 세션 사이의 전환 계약이다](./clean-handoff-session-continuation.md) | active | high | 2026-06-02 | cc0bd98 | session, handoff, compact, context, archive, continue-clean |
@@ -221,7 +221,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
 | [Update branch는 안전한 pull command다](./update-branch-safe-pull-command.md) | active | high | 2026-06-23 | 98d7502 | update-branch, slash-command, git, pull, index-lock, workflow |
 | [Working Context Card는 큰 맥락을 현재 slice로 압축한다](./work-context-card-task-board.md) | active | high | 2026-06-02 | 61ccbc9 | work-context, tasks, workflow, context, guard |
-| [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-06-17 | 824460c | workflow, guard, intent, audit, hotfix, continuation |
+| [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-06-24 | fae9aa3 | workflow, guard, intent, audit, hotfix, continuation |
 | [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-06-02 | 61ccbc9 | workflow, frame, tft, hotfix, scope, incremental |
 | [Worktree 생성은 현재 패널 대화가 source다](./worktree-creation-parent-gate.md) | active | high | 2026-06-02 | 61ccbc9 | worktree, fork-panel, current-panel, hotfix, context, profile-driven |
 | [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-06-02 | 63f2a62 | worktree, dependencies, bootstrap, profile-driven, worker, subagent |

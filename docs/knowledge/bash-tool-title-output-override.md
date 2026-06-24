@@ -21,8 +21,8 @@ source:
   - user-direction:2026-05-14-my-pi-bash-tool-override
   - user-direction:2026-06-24-validation-fanout-guard
   - github:jonghakseo/my-pi/extensions/bash-tool-override
-reviewed_at: 2026-06-02
-reviewed_commit: cc0bd9893b2bcb593c3c66305002a0599e6c1b5d
+reviewed_at: 2026-06-24
+reviewed_commit: fae9aa375e31fdb76544f256fcae6f692565c991
 related:
   - tool-output-noise-management
   - korean-first-user-facing-output
