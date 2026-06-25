@@ -260,7 +260,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | extension | `extensions/tool-group-renderer` | [도구 출력은 대화 흐름을 침범하지 않는다](./docs/knowledge/tool-output-noise-management.md) |
 | extension | `extensions/tui-ask` | [색상은 정보 위계다](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI 질문은 작은 의사결정 게이트다](./docs/knowledge/tui-ask-decision-overlay.md)<br>[반복 워크플로 실패는 guard/flow로 고정한다](./docs/knowledge/workflow-guard-enforced-flow.md) |
 | extension | `extensions/until` | [Until loop는 종료 조건을 명시 보고한다](./docs/knowledge/until-loop-explicit-reporting.md) |
-| extension | `extensions/update-branch` | [Repo status polling은 index.lock을 만들지 않도록 조율한다](./docs/knowledge/repo-status-index-lock-coordination.md)<br>[Update branch는 안전한 pull command다](./docs/knowledge/update-branch-safe-pull-command.md) |
+| extension | `extensions/update-branch` | [Repo status polling은 index.lock을 만들지 않도록 조율한다](./docs/knowledge/repo-status-index-lock-coordination.md)<br>[Update branch는 remote-first sync command다](./docs/knowledge/update-branch-safe-pull-command.md) |
 | extension | `extensions/usage-analytics` | [도구 출력은 대화 흐름을 침범하지 않는다](./docs/knowledge/tool-output-noise-management.md) |
 | extension | `extensions/usage-reporter` | [Idle UI는 장식이 아니라 ambient status다](./docs/knowledge/ambient-status-surfaces.md)<br>[도구 출력은 대화 흐름을 침범하지 않는다](./docs/knowledge/tool-output-noise-management.md) |
 | extension | `extensions/user-facing-language` | [User-facing 출력은 한국어를 기본으로 한다](./docs/knowledge/korean-first-user-facing-output.md) |
@@ -385,7 +385,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | **preflight** | validation 실패 관찰 + known baseline 자동 분리 tool |
 | **pr-comments** | PR unresolved review comment를 editor에 붙이는 helper |
 | **pr-review-re-request** | 승인되지 않은 PR reviewer/team에게 review re-request |
-| **update-branch** | `/update-branch` — 현재 git 브랜치를 upstream 최신 상태로 안전하게 pull |
+| **update-branch** | `/update-branch` — GitHub Update branch 트리거와 local worktree 동기화 |
 | **pilee-update** | `/pilee-update` — pilee package update 후 현재 세션 reload까지 한 번에 실행 |
 | **until** | 반복 작업 추적 |
 | **usage-analytics** | 에이전트/스킬 사용량 통계 |

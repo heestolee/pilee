@@ -360,7 +360,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **preflight** | Validation failure observer plus known-baseline separation tool |
 | **pr-comments** | PR unresolved review comment collection helper |
 | **pr-review-re-request** | Re-request review from non-approved PR reviewers/teams |
-| **update-branch** | `/update-branch` safely pulls the current git branch from upstream |
+| **update-branch** | `/update-branch` triggers GitHub Update branch and syncs the local worktree |
 | **pilee-update** | `/pilee-update` runs pilee package update and reloads the current session |
 | **until** | Explicit until-loop progress reporting |
 | **usage-analytics** | Agent and skill usage statistics |

@@ -5,29 +5,37 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-cod
 import type { AutocompleteItem } from "@mariozechner/pi-tui";
 import { withRepoStatusPaused } from "../utils/repo-status-coordination.ts";
 
-const HELP = `Usage: /update-branch [--merge] [--no-autostash]
+const HELP = `Usage: /update-branch [--sync-only] [--no-wait] [--local] [--merge] [--no-autostash]
 
-현재 git repo 브랜치를 upstream 최신 상태로 맞춥니다.
+현재 git repo의 PR 브랜치를 GitHub Update branch와 local worktree까지 동기화합니다.
 
-동작:
-  1. git repo 여부 확인
-  2. dirty worktree면 include-untracked stash로 사용자 변경 보존
-  3. git pull --ff-only 실행
-  4. stash apply --index로 사용자 변경 복원, 성공 시 stash drop
-  5. index.lock 고아 파일이면 제거 후 1회 재시도
-  6. 성공 시 HEAD / branch sync 상태 / 복원된 dirty 상태 요약
+기본 동작(remote-first):
+  1. 현재 git repo와 PR 확인
+  2. local HEAD가 PR head와 같은지 확인
+  3. GitHub PR Update branch를 원격에서 트리거
+  4. PR head 갱신을 짧게 기다림
+  5. 기존 safe pull 경로로 local branch를 ff-only 동기화
+     - dirty worktree면 include-untracked stash로 사용자 변경 보존
+     - pull 후 stash apply --index로 사용자 변경 복원, 성공 시 stash drop
+  6. 성공 시 HEAD / branch sync 상태 / 복원된 dirty 상태 / CI check 링크 요약
 
 Options:
-  --merge          git pull --ff-only 대신 일반 git pull 실행
-  --no-autostash   dirty worktree에서 자동 보존하지 않고 기존처럼 중단
+  --sync-only      GitHub Update branch 트리거 없이 local branch를 ff-only 동기화
+  --no-wait        GitHub Update branch만 트리거하고 local sync는 생략
+  --local          기존 방식: git pull --ff-only 실행
+  --merge          기존 방식: git pull 실행 (--local merge pull shorthand)
+  --no-autostash   dirty worktree에서 자동 보존하지 않고 중단
   -h, --help       도움말 표시`;
 
 type ExecLike = Pick<ExtensionAPI, "exec">;
 
 export type UpdateBranchOptions = {
 	help: boolean;
+	local: boolean;
 	merge: boolean;
 	noAutostash: boolean;
+	syncOnly: boolean;
+	noWait: boolean;
 };
 
 export type CommandResult = {
@@ -47,6 +55,8 @@ type LockRecovery = {
 const GIT_STATUS_OWNER_WAIT_MS = 1_500;
 const GIT_STATUS_OWNER_POLL_MS = 100;
 const REPO_STATUS_PAUSE_FOR_UPDATE_BRANCH_MS = 180_000;
+const REMOTE_UPDATE_POLL_INTERVAL_MS = 2_000;
+const REMOTE_UPDATE_POLL_TIMEOUT_MS = 90_000;
 
 type GitCommandResult = {
 	result: CommandResult;
@@ -66,11 +76,36 @@ type StashPreservation = {
 	output?: string;
 };
 
+type UpdateMode = "remote" | "sync-only" | "ff-only" | "merge";
+
+type CheckSummary = {
+	name?: string;
+	workflowName?: string;
+	status?: string;
+	conclusion?: string;
+	detailsUrl?: string;
+};
+
+type PrInfo = {
+	number: number;
+	url?: string;
+	headRefName: string;
+	headRefOid: string;
+	baseRefName?: string;
+	mergeStateStatus?: string;
+	statusCheckRollup?: CheckSummary[];
+};
+
 export type UpdateBranchResult = {
 	status: "pass" | "blocked" | "fail" | "help";
 	cwd: string;
 	repoRoot?: string;
-	mode?: "ff-only" | "merge";
+	mode?: UpdateMode;
+	pr?: PrInfo;
+	remoteUpdateTriggered?: boolean;
+	remoteHeadBefore?: string;
+	remoteHeadAfter?: string;
+	remoteUpdateOutput?: string;
 	head?: string;
 	branchStatus?: string;
 	pullOutput?: string;
@@ -83,15 +118,23 @@ export type UpdateBranchResult = {
 export function parseUpdateBranchArgs(args: string): UpdateBranchOptions | { error: string } {
 	const tokens = args.trim().split(/\s+/u).filter(Boolean);
 	let help = false;
+	let local = false;
 	let merge = false;
 	let noAutostash = false;
+	let syncOnly = false;
+	let noWait = false;
 	for (const token of tokens) {
 		if (token === "-h" || token === "--help" || token === "help") help = true;
+		else if (token === "--local") local = true;
 		else if (token === "--merge") merge = true;
 		else if (token === "--no-autostash") noAutostash = true;
+		else if (token === "--sync-only") syncOnly = true;
+		else if (token === "--no-wait") noWait = true;
 		else return { error: `지원하지 않는 인자입니다: ${token}` };
 	}
-	return { help, merge, noAutostash };
+	if (syncOnly && noWait) return { error: "--sync-only와 --no-wait는 함께 사용할 수 없습니다." };
+	if ((syncOnly || noWait) && (local || merge)) return { error: "remote-first 옵션(--sync-only/--no-wait)과 local pull 옵션(--local/--merge)은 함께 사용할 수 없습니다." };
+	return { help, local, merge, noAutostash, syncOnly, noWait };
 }
 
 export function isIndexLockError(text: string): boolean {
@@ -114,6 +157,10 @@ function trimOutput(text: string, maxChars = 4000): string {
 
 async function git(pi: ExecLike, args: string[], cwd: string): Promise<CommandResult> {
 	return await pi.exec("git", args, { cwd });
+}
+
+async function gh(pi: ExecLike, args: string[], cwd: string): Promise<CommandResult> {
+	return await pi.exec("gh", args, { cwd });
 }
 
 function sleep(ms: number): Promise<void> {
@@ -262,7 +309,192 @@ async function resolveRepo(pi: ExecLike, cwd: string): Promise<{ repoRoot: strin
 	return { repoRoot, lockPath };
 }
 
-async function runUpdateBranchWithRepo(
+function parseGhJson<T>(result: CommandResult): T | { error: string } {
+	const output = (result.stdout ?? "").trim();
+	if (result.code !== 0) return { error: trimOutput(commandText(result)) || "gh command failed" };
+	try {
+		return JSON.parse(output) as T;
+	} catch (error) {
+		return { error: `gh JSON 파싱 실패: ${(error as Error).message}` };
+	}
+}
+
+function normalizePrInfo(value: unknown): PrInfo | { error: string } {
+	const raw = value as Partial<PrInfo> | undefined;
+	if (!raw || typeof raw !== "object") return { error: "PR 정보를 읽지 못했습니다." };
+	if (typeof raw.number !== "number") return { error: "PR 번호를 확인하지 못했습니다." };
+	if (typeof raw.headRefName !== "string" || !raw.headRefName) return { error: "PR head branch를 확인하지 못했습니다." };
+	if (typeof raw.headRefOid !== "string" || !raw.headRefOid) return { error: "PR head SHA를 확인하지 못했습니다." };
+	return {
+		number: raw.number,
+		url: typeof raw.url === "string" ? raw.url : undefined,
+		headRefName: raw.headRefName,
+		headRefOid: raw.headRefOid,
+		baseRefName: typeof raw.baseRefName === "string" ? raw.baseRefName : undefined,
+		mergeStateStatus: typeof raw.mergeStateStatus === "string" ? raw.mergeStateStatus : undefined,
+		statusCheckRollup: Array.isArray(raw.statusCheckRollup) ? raw.statusCheckRollup : undefined,
+	};
+}
+
+async function readPrInfo(pi: ExecLike, cwd: string, selector?: string | number): Promise<PrInfo | { error: string }> {
+	const args = ["pr", "view"];
+	if (selector !== undefined) args.push(String(selector));
+	args.push("--json", "number,url,headRefName,headRefOid,baseRefName,mergeStateStatus,statusCheckRollup");
+	const result = await gh(pi, args, cwd);
+	const parsed = parseGhJson<unknown>(result);
+	if ("error" in parsed) return { error: parsed.error };
+	return normalizePrInfo(parsed);
+}
+
+async function localHead(pi: ExecLike, cwd: string): Promise<string | { error: string }> {
+	const result = await git(pi, ["rev-parse", "HEAD"], cwd);
+	if (result.code !== 0) return { error: firstUsefulLine(commandText(result)) || "local HEAD를 확인하지 못했습니다." };
+	const head = (result.stdout ?? "").trim();
+	return head || { error: "local HEAD가 비어 있습니다." };
+}
+
+function statusRollupLines(pr: PrInfo | undefined): string[] {
+	const rollup = pr?.statusCheckRollup ?? [];
+	return rollup
+		.map((check) => {
+			const name = check.name ?? check.workflowName ?? "check";
+			const state = check.conclusion ?? check.status ?? "unknown";
+			return check.detailsUrl ? `${name}: ${state} ${check.detailsUrl}` : `${name}: ${state}`;
+		})
+		.slice(0, 8);
+}
+
+function remoteUpdateLooksAlreadyCurrent(output: string): boolean {
+	return /already|up[ -]?to[ -]?date|not behind|no update/i.test(output);
+}
+
+async function waitForRemoteHeadChange(pi: ExecLike, cwd: string, prNumber: number, before: string, updateOutput: string): Promise<{ pr: PrInfo; timedOut: boolean }> {
+	let last = await readPrInfo(pi, cwd, prNumber);
+	if (!("error" in last) && (last.headRefOid !== before || remoteUpdateLooksAlreadyCurrent(updateOutput))) {
+		return { pr: last, timedOut: false };
+	}
+
+	const deadline = Date.now() + REMOTE_UPDATE_POLL_TIMEOUT_MS;
+	while (Date.now() < deadline) {
+		await sleep(REMOTE_UPDATE_POLL_INTERVAL_MS);
+		last = await readPrInfo(pi, cwd, prNumber);
+		if (!("error" in last) && last.headRefOid !== before) return { pr: last, timedOut: false };
+	}
+
+	if ("error" in last) {
+		return {
+			pr: { number: prNumber, headRefName: "unknown", headRefOid: before },
+			timedOut: true,
+		};
+	}
+	return { pr: last, timedOut: true };
+}
+
+async function collectBranchSnapshot(pi: ExecLike, repo: { repoRoot: string; lockPath: string }, lockRecoveries: LockRecovery[]): Promise<{ head?: string; branchStatus?: string }> {
+	const [branchStatusResult, headResult] = await Promise.all([
+		runGitWithLockRetry(pi, repo.repoRoot, ["status", "--short", "--branch"], repo.lockPath),
+		git(pi, ["log", "--oneline", "-1"], repo.repoRoot),
+	]);
+	if (branchStatusResult.lockRecovery) lockRecoveries.push(branchStatusResult.lockRecovery);
+	return {
+		head: (headResult.stdout ?? "").trim(),
+		branchStatus: trimOutput((branchStatusResult.result.stdout ?? "").trim()),
+	};
+}
+
+async function runRemoteUpdateBranchWithRepo(
+	pi: ExecLike,
+	cwd: string,
+	options: UpdateBranchOptions,
+	repo: { repoRoot: string; lockPath: string },
+): Promise<UpdateBranchResult> {
+	const pr = await readPrInfo(pi, repo.repoRoot);
+	if ("error" in pr) {
+		return { status: "blocked", cwd, repoRoot: repo.repoRoot, lockRecoveries: [], message: `현재 브랜치의 GitHub PR 확인 실패: ${pr.error}` };
+	}
+
+	const head = await localHead(pi, repo.repoRoot);
+	if (typeof head !== "string") {
+		return { status: "blocked", cwd, repoRoot: repo.repoRoot, pr, lockRecoveries: [], message: `local HEAD 확인 실패: ${head.error}` };
+	}
+
+	if (options.syncOnly) {
+		const sync = await runLocalUpdateBranchWithRepo(pi, cwd, { ...options, local: true, merge: false }, repo);
+		return {
+			...sync,
+			mode: "sync-only",
+			pr,
+			remoteHeadBefore: pr.headRefOid,
+			remoteHeadAfter: pr.headRefOid,
+			message: sync.status === "pass" ? "remote trigger 없이 local branch sync가 완료됐습니다." : sync.message,
+		};
+	}
+
+	if (head !== pr.headRefOid) {
+		return {
+			status: "blocked",
+			cwd,
+			repoRoot: repo.repoRoot,
+			pr,
+			remoteHeadBefore: pr.headRefOid,
+			head,
+			lockRecoveries: [],
+			message: "local HEAD와 PR head가 달라 원격 update branch를 중단했습니다. 먼저 /update-branch --sync-only 또는 수동 확인이 필요합니다.",
+		};
+	}
+
+	const update = await gh(pi, ["pr", "update-branch", String(pr.number)], repo.repoRoot);
+	const remoteUpdateOutput = trimOutput(commandText(update));
+	if (update.code !== 0 && !remoteUpdateLooksAlreadyCurrent(remoteUpdateOutput)) {
+		return {
+			status: "fail",
+			cwd,
+			repoRoot: repo.repoRoot,
+			mode: "remote",
+			pr,
+			remoteHeadBefore: pr.headRefOid,
+			remoteUpdateOutput,
+			lockRecoveries: [],
+			message: `GitHub Update branch 트리거 실패: ${remoteUpdateOutput || "unknown error"}`,
+		};
+	}
+
+	if (options.noWait) {
+		const lockRecoveries: LockRecovery[] = [];
+		const snapshot = await collectBranchSnapshot(pi, repo, lockRecoveries);
+		return {
+			status: "pass",
+			cwd,
+			repoRoot: repo.repoRoot,
+			mode: "remote",
+			pr,
+			remoteUpdateTriggered: true,
+			remoteHeadBefore: pr.headRefOid,
+			remoteUpdateOutput,
+			...snapshot,
+			lockRecoveries,
+			message: "GitHub Update branch를 트리거했습니다. --no-wait 옵션 때문에 local sync는 생략했습니다.",
+		};
+	}
+
+	const waited = await waitForRemoteHeadChange(pi, repo.repoRoot, pr.number, pr.headRefOid, remoteUpdateOutput);
+	const sync = await runLocalUpdateBranchWithRepo(pi, cwd, { ...options, local: true, merge: false }, repo);
+	const remoteMessage = waited.timedOut
+		? "GitHub Update branch 트리거 후 remote head 변경 확인은 시간 내 완료되지 않았고, local sync를 시도했습니다."
+		: "GitHub Update branch 트리거와 local branch sync가 완료됐습니다.";
+	return {
+		...sync,
+		mode: "remote",
+		pr: waited.pr,
+		remoteUpdateTriggered: true,
+		remoteHeadBefore: pr.headRefOid,
+		remoteHeadAfter: waited.pr.headRefOid,
+		remoteUpdateOutput,
+		message: sync.status === "pass" ? remoteMessage : `${remoteMessage} 하지만 local sync가 실패했습니다: ${sync.message}`,
+	};
+}
+
+async function runLocalUpdateBranchWithRepo(
 	pi: ExecLike,
 	cwd: string,
 	options: UpdateBranchOptions,
@@ -398,7 +630,10 @@ export async function runUpdateBranch(pi: ExecLike, cwd: string, args = ""): Pro
 		return { status: "blocked", cwd, lockRecoveries: [], message: `git repo 확인 실패: ${repo.error}` };
 	}
 
-	return await withRepoStatusPaused(repo.repoRoot, () => runUpdateBranchWithRepo(pi, cwd, options, repo), {
+	return await withRepoStatusPaused(repo.repoRoot, () => {
+		if (options.local || options.merge) return runLocalUpdateBranchWithRepo(pi, cwd, options, repo);
+		return runRemoteUpdateBranchWithRepo(pi, cwd, options, repo);
+	}, {
 		reason: "update-branch",
 		ttlMs: REPO_STATUS_PAUSE_FOR_UPDATE_BRANCH_MS,
 	});
@@ -411,7 +646,16 @@ export function formatUpdateBranchResult(result: UpdateBranchResult): string {
 	lines.push(`${icon} /update-branch ${result.status === "pass" ? "완료" : result.status === "blocked" ? "중단" : "실패"}`);
 	lines.push(`- cwd: ${result.cwd}`);
 	if (result.repoRoot) lines.push(`- repo: ${result.repoRoot}`);
-	if (result.mode) lines.push(`- mode: git pull ${result.mode === "ff-only" ? "--ff-only" : ""}`.trimEnd());
+	if (result.mode === "remote") lines.push("- mode: GitHub Update branch → git pull --ff-only");
+	else if (result.mode === "sync-only") lines.push("- mode: git pull --ff-only (sync only)");
+	else if (result.mode) lines.push(`- mode: git pull ${result.mode === "ff-only" ? "--ff-only" : ""}`.trimEnd());
+	if (result.pr) {
+		lines.push(`- PR: #${result.pr.number}${result.pr.url ? ` ${result.pr.url}` : ""}`);
+		lines.push(`- PR branch: ${result.pr.headRefName}${result.pr.baseRefName ? ` ← ${result.pr.baseRefName}` : ""}`);
+	}
+	if (result.remoteHeadBefore) lines.push(`- remote head before: ${result.remoteHeadBefore.slice(0, 12)}`);
+	if (result.remoteHeadAfter) lines.push(`- remote head after: ${result.remoteHeadAfter.slice(0, 12)}`);
+	if (result.remoteUpdateTriggered) lines.push("- remote update: triggered");
 	if (result.message) lines.push(`- 결과: ${result.message}`);
 	for (const recovery of result.lockRecoveries) {
 		if (recovery.removed) lines.push(`- lock: ${recovery.message ?? "index.lock 복구 후 재시도"}`);
@@ -437,17 +681,28 @@ export function formatUpdateBranchResult(result: UpdateBranchResult): string {
 		lines.push(result.dirtyStatus);
 		lines.push("```");
 	}
+	if (result.remoteUpdateOutput) {
+		lines.push("- remote update output:");
+		lines.push("```text");
+		lines.push(result.remoteUpdateOutput);
+		lines.push("```");
+	}
 	if (result.pullOutput && result.status !== "pass") {
 		lines.push("- pull output:");
 		lines.push("```text");
 		lines.push(result.pullOutput);
 		lines.push("```");
 	}
+	const checks = statusRollupLines(result.pr);
+	if (checks.length > 0) {
+		lines.push("- checks:");
+		for (const check of checks) lines.push(`  - ${check}`);
+	}
 	return lines.join("\n");
 }
 
 function completions(prefix: string): AutocompleteItem[] | null {
-	const items = ["--help", "--merge", "--no-autostash"].map((value) => ({ value, label: value }));
+	const items = ["--help", "--sync-only", "--no-wait", "--local", "--merge", "--no-autostash"].map((value) => ({ value, label: value }));
 	const filtered = items.filter((item) => item.value.startsWith(prefix));
 	return filtered.length ? filtered : null;
 }
@@ -458,7 +713,7 @@ function notify(ctx: ExtensionCommandContext, message: string, level: "info" | "
 
 export default function (pi: ExtensionAPI) {
 	pi.registerCommand("update-branch", {
-		description: "현재 git 브랜치를 upstream 최신 상태로 안전하게 pull",
+		description: "현재 PR 브랜치를 GitHub Update branch와 local worktree까지 동기화",
 		getArgumentCompletions: completions,
 		handler: async (args: string, ctx: ExtensionCommandContext) => {
 			ctx.ui.setStatus?.("update-branch", "브랜치 최신화 중…");

@@ -151,7 +151,7 @@ git merge --no-edit origin/<baseRefName>
 git push origin HEAD:<headRefName>
 ```
 
-GitHub의 `Update branch` 버튼과 같은 효과가 필요하더라도 기본은 로컬 merge + push로 수행한다. `gh pr update-branch`는 로컬 branch 상태 추적이 어렵기 때문에, 사용자가 명시 요청하거나 로컬 merge가 불가능한 특수 상황에서만 고려한다. `--rebase`는 사용하지 않는다.
+GitHub의 `Update branch` 버튼과 같은 효과가 필요하면 기본은 `/update-branch`를 사용한다. 이 명령은 현재 PR을 식별해 `gh pr update-branch`를 원격에서 트리거하고, remote head 갱신 후 local worktree를 `git pull --ff-only`로 동기화한다. dirty worktree는 명령의 autostash 안전장치에 맡기되, local HEAD와 PR head가 다르거나 conflict로 GitHub update가 실패하면 로컬 merge로 억지 진행하지 말고 blocked로 보고한다. `--rebase`는 사용하지 않는다.
 
 ### 5. Decide Whether to Modify
 
