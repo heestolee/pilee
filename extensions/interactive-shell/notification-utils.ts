@@ -44,6 +44,9 @@ export function buildHandsFreeUpdateMessage(
 		case "user-takeover":
 			statusLine = `Session ${update.sessionId}: user took over (${formatDurationMs(update.runtime)})`;
 			break;
+		case "backgrounded":
+			statusLine = `Session ${update.sessionId}: moved to background (${formatDurationMs(update.runtime)})`;
+			break;
 		default:
 			statusLine = `Session ${update.sessionId} update (${formatDurationMs(update.runtime)})`;
 	}

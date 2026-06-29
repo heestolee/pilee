@@ -204,6 +204,8 @@ interactive_shell({ sessionId: 'calm-reef', input: 'y', inputKeys: ['enter'] })
 
 ## Background session management
 
+`Ctrl+B` or `background: true` means “move this overlay/process to a background session”. Do not describe it as the user taking over terminal input; reserve takeover language for arbitrary user input sent to a hands-free session.
+
 ```typescript
 interactive_shell({ sessionId: 'calm-reef', background: true })
 interactive_shell({ listBackground: true })

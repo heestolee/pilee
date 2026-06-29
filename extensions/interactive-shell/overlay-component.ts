@@ -672,6 +672,19 @@ export class InteractiveShellOverlay implements Component, Focusable {
 			handoffPreview,
 			handoff,
 		};
+		if (this.options.onHandsFreeUpdate && this.sessionId) {
+			this.options.onHandsFreeUpdate({
+				status: "backgrounded",
+				sessionId: this.sessionId,
+				runtime: Date.now() - this.startTime,
+				tail: [],
+				tailTruncated: false,
+				backgroundId: id,
+				userTookOver: this.userTookOver,
+				totalCharsSent: this.totalCharsSent,
+				budgetExhausted: this.budgetExhausted,
+			});
+		}
 		this.completionResult = result;
 		this.triggerCompleteCallbacks();
 
@@ -827,11 +840,9 @@ export class InteractiveShellOverlay implements Component, Focusable {
 			return;
 		}
 
-		// Ctrl+B: Quick background - dismiss overlay, keep process running
+		// Ctrl+B: Quick background - dismiss overlay, keep process running.
+		// This is a lifecycle action, not a user takeover of terminal input.
 		if (matchesKey(data, "ctrl+b") && !this.session.exited) {
-			if (this.state === "hands-free") {
-				this.triggerUserTakeover();
-			}
 			this.finishWithBackground();
 			return;
 		}

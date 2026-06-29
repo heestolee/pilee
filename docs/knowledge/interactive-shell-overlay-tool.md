@@ -19,8 +19,8 @@ source:
   - user-direction:2026-05-14-my-pi-tool-overrides
   - github:jonghakseo/my-pi/extensions/interactive-shell
   - github:jonghakseo/my-pi/skills/interactive-shell
-reviewed_at: 2026-06-02
-reviewed_commit: 7861f10310348338896d444480de22f1ba919273
+reviewed_at: 2026-06-29
+reviewed_commit: 680f93729593fe7d0a193178d6a4bb15f7bb47c5
 related:
   - bash-tool-title-output-override
   - tool-output-noise-management
@@ -53,3 +53,4 @@ my-pi의 `interactive-shell`은 이 경계를 별도 tool로 둡니다. pilee도
 - `timeout`은 장시간 실행 프로세스를 자동 종료하는 안전장치입니다.
 - 장시간 dev server/log viewer는 `handsFree.autoExitOnQuiet:false` 같은 설정이 필요할 수 있습니다.
 - 완료 알림과 background widget은 편의 장치이며, 실제 검증 결과를 대신하지 않습니다.
+- `Ctrl+B`/background 전환은 overlay를 숨기고 프로세스를 background session으로 옮기는 **lifecycle action**입니다. 사용자가 PTY 입력을 이어받은 것이 아니므로 `user took over`와 구분해야 합니다.

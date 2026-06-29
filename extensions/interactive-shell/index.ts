@@ -968,6 +968,9 @@ export default function interactiveShellExtension(pi: ExtensionAPI) {
 													case "user-takeover":
 														statusText = `User took over session ${update.sessionId}`;
 														break;
+													case "backgrounded":
+														statusText = `Session ${update.sessionId} moved to background`;
+														break;
 													case "exited":
 														statusText = `Session ${update.sessionId} exited`;
 														break;
@@ -991,6 +994,7 @@ export default function interactiveShellExtension(pi: ExtensionAPI) {
 														totalCharsSent: update.totalCharsSent,
 														budgetExhausted: update.budgetExhausted,
 														userTookOver: update.userTookOver,
+														backgroundId: update.backgroundId,
 													},
 												});
 												pi.events.emit("interactive-shell:update", update);

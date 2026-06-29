@@ -37,11 +37,12 @@ export interface InteractiveShellResult {
 }
 
 export interface HandsFreeUpdate {
-	status: "running" | "user-takeover" | "exited" | "killed";
+	status: "running" | "user-takeover" | "backgrounded" | "exited" | "killed";
 	sessionId: string;
 	runtime: number;
 	tail: string[];
 	tailTruncated: boolean;
+	backgroundId?: string;
 	userTookOver?: boolean;
 	// Budget tracking
 	totalCharsSent?: number;
