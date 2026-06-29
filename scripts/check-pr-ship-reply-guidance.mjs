@@ -24,6 +24,15 @@ const requiredSnippets = [
   '### 아쉬운 점',
   '### 남은 후속 후보',
   '실행 중 실수도 숨기지 않는다.',
+  'Comment Placement Gate',
+  '게시 전 반드시 comment surface를 아래 중 하나로 분류한다.',
+  '`review_thread_reply`',
+  '`draft_only`',
+  '`pr_timeline_comment`',
+  'comment URL/thread가 없으면 기본값은 `draft_only`다.',
+  'PR timeline 일반 코멘트를 달지 않는다.',
+  '잘못된 surface를 고치려고 delete/repost/PATCH하지 않는다.',
+  'PR timeline 일반 코멘트 작성: 사용자가 명시적으로 요청한 경우에만',
 ];
 
 const missing = requiredSnippets.filter((snippet) => !text.includes(snippet));

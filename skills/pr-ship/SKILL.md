@@ -19,9 +19,15 @@ AI가 기본으로 할 수 있는 것:
 - 의도 단위 커밋
 - 관련 검증 실행
 - push
-- 기본 모드: 해당 review conversation에 관련 커밋 링크 또는 근거가 포함된 답글 작성
+- 기본 모드: **수집한 review thread/comment의 해당 conversation에만** 관련 커밋 링크 또는 근거가 포함된 답글 작성
 - 기본 모드: 답글 후 승인되지 않은 리뷰어에게 review re-request
 - `--push-only` 모드: GitHub 코멘트/re-request 없이 수동 게시용 답글 초안을 세션에 작성
+
+기본 모드라도 AI가 임의로 하면 안 되는 것:
+
+- review thread가 없는 자가 발견/후속 보정/검증 보강을 PR timeline 일반 코멘트(issue comment)로 게시
+- 잘못된 위치에 게시한 코멘트를 삭제하고 “올바른 위치”에 새로 다시 게시
+- AI 리뷰/사용자 리뷰가 이미 다시 돌기 시작한 뒤, 코멘트 위치를 고치려고 delete/repost/PATCH 등 추가 GitHub 액션 수행
 
 AI가 사용자 명시 승인 없이 하면 안 되는 것:
 
@@ -147,7 +153,34 @@ git push
 
 ### 8. Reply to Review Conversation or Draft
 
-기본 모드에서는 각 thread의 **해당 conversation**에 답글을 단다. 전체 PR comment 하나로 여러 line thread를 대체하지 않는다.
+#### 8.1 Comment Placement Gate — 게시 위치를 먼저 확정
+
+기본 모드에서는 각 thread의 **해당 conversation**에만 답글을 단다. 전체 PR comment 하나로 여러 line thread를 대체하지 않는다.
+
+게시 전 반드시 comment surface를 아래 중 하나로 분류한다.
+
+| Surface | 언제 허용 | API |
+|---|---|---|
+| `review_thread_reply` | 특정 review comment URL/thread, unresolved review thread, 또는 이번 대응이 명확히 어떤 review conversation을 닫는 경우 | `repos/<owner>/<repo>/pulls/<pr>/comments/<comment_id>/replies` |
+| `draft_only` | 관련 review thread가 없거나, 자가 발견/후속 보정/검증 보강처럼 특정 thread에 매달 수 없는 경우 | GitHub 게시 금지. 최종 응답에 수동 게시용 초안만 제공 |
+| `pr_timeline_comment` | 사용자가 “PR에 일반 코멘트 남겨줘”, “요약 코멘트를 달아줘”처럼 timeline comment를 명시적으로 요청한 경우에만 | `repos/<owner>/<repo>/issues/<pr>/comments` |
+
+**Hard rules**:
+
+- comment URL/thread가 없으면 기본값은 `draft_only`다. “그래도 알려야 하니까”라는 이유로 PR timeline 일반 코멘트를 달지 않는다.
+- `/pr-ship` full-response는 “review thread 답글 + re-request”이지 “PR timeline에 작업 로그 남기기”가 아니다.
+- 사용자가 위치를 지정하지 않은 자가 발견 수정은 코드 수정·검증·커밋·푸시 후 최종 보고에 코멘트 초안을 남긴다.
+- AI 리뷰/사용자 리뷰가 이미 다시 돌기 시작했거나 review request가 걸린 뒤에는 코멘트 위치 보정을 위해 삭제/재게시/PATCH하지 않는다. 잘못 게시했으면 추가 GitHub 액션을 멈추고 사용자에게 현재 상태와 실수를 보고한다.
+
+#### 8.2 One-shot Publication Rule — 게시 전 본문 검증
+
+GitHub에 쓰는 코멘트는 한 번 게시하면 위치를 옮길 수 없다고 가정한다. 따라서 POST 전에 다음을 완료한다.
+
+1. surface가 `review_thread_reply`인지, `draft_only`인지, 명시 승인된 `pr_timeline_comment`인지 기록한다.
+2. POST 대상 URL/API가 surface와 일치하는지 확인한다.
+3. 본문을 임시 파일 또는 single-quoted heredoc로 만들고, shell command substitution이 일어나지 않게 한다.
+4. 게시 직전 로컬에서 렌더링될 본문 문자열을 출력/검사해 백틱 예시, commit link, 검증 요약이 빠지지 않았는지 확인한다.
+5. 게시 후 PATCH는 전송 아티팩트(`@/tmp`, `body=@`, 파일 경로 literal) 제거처럼 **같은 위치의 payload 오류**에만 사용한다. 잘못된 surface를 고치려고 delete/repost/PATCH하지 않는다.
 
 답글 payload는 파일 경로 literal이 GitHub에 올라가지 않도록 안전하게 전송한다.
 
@@ -167,7 +200,7 @@ jq -n --arg body "$body" '{body: $body}' \
 - 게시/수정 직후 응답의 `.body`를 확인한다. `@/tmp/`, `/tmp/`, `reply.md`, `body=@` 같은 전송 아티팩트가 보이면 성공으로 보고하지 말고 즉시 `PATCH repos/<owner>/<repo>/pulls/comments/<reply_id>`로 실제 본문을 덮어쓴 뒤 다시 확인한다.
 - 최종 보고의 답글 URL은 body 검증이 끝난 뒤에만 적는다.
 
-`push-only` 모드에서는 GitHub에 답글을 달지 않는다. 대신 아래 형식을 바탕으로 수동 게시용 초안을 최종 응답에 포함한다. 초안에는 commit 링크, 근본 원인, 대응, 검증을 포함하되 “반영 완료”처럼 게시 사실을 암시하는 표현은 사용자가 실제 게시하기 전까지 조심한다.
+`push-only` 모드 또는 `draft_only` surface에서는 GitHub에 답글을 달지 않는다. 대신 아래 형식을 바탕으로 수동 게시용 초안을 최종 응답에 포함한다. 초안에는 commit 링크, 근본 원인, 대응, 검증을 포함하되 “반영 완료”처럼 게시 사실을 암시하는 표현은 사용자가 실제 게시하기 전까지 조심한다.
 
 코드 수정 답글:
 
@@ -222,8 +255,9 @@ jq -n --arg body "$body" '{body: $body}' \
 
 - 댓글 조회: `gh api repos/<owner>/<repo>/pulls/comments/<comment_id>`
 - thread 목록: GraphQL `pullRequest.reviewThreads`
-- 답글 작성: `jq -n --arg body "$body" '{body: $body}' | gh api repos/<owner>/<repo>/pulls/<pr>/comments/<comment_id>/replies --method POST --input - --jq '{id, html_url, body}'`
-- 답글 수정: `jq -n --arg body "$body" '{body: $body}' | gh api repos/<owner>/<repo>/pulls/comments/<reply_id> --method PATCH --input - --jq '{html_url, body}'`
+- review thread 답글 작성: `jq -n --arg body "$body" '{body: $body}' | gh api repos/<owner>/<repo>/pulls/<pr>/comments/<comment_id>/replies --method POST --input - --jq '{id, html_url, body}'`
+- review thread 답글 payload 수정: `jq -n --arg body "$body" '{body: $body}' | gh api repos/<owner>/<repo>/pulls/comments/<reply_id> --method PATCH --input - --jq '{html_url, body}'`
+- PR timeline 일반 코멘트 작성: 사용자가 명시적으로 요청한 경우에만 `repos/<owner>/<repo>/issues/<pr>/comments` 사용
 - review re-request: `gh api --method POST repos/<owner>/<repo>/pulls/<pr>/requested_reviewers -f reviewers[]=<login>` 또는 `team_reviewers[]=<slug>`
 - `resolveReviewThread`, `unresolveReviewThread` mutation은 사용자 명시 승인 없이는 사용하지 않는다.
 
@@ -278,8 +312,12 @@ jq -n --arg body "$body" '{body: $body}' \
 
 - 리뷰 문구만 맞추고 실제 원인을 확인하지 않음
 - comment URL이 있는데 전체 PR comment로만 답변
+- 관련 review thread가 없는데 자가 발견 수정/후속 보정을 PR timeline 일반 코멘트로 게시
+- 잘못된 위치에 게시한 뒤 삭제하고 새 위치에 다시 게시하려고 함
+- AI 리뷰/사용자 리뷰가 다시 돌기 시작한 뒤 코멘트 위치를 보정하려고 GitHub 액션을 추가 수행
 - commit message 링크 없는 raw SHA만 있는 “반영했습니다” 답글
 - `@/tmp/reply.md`, `body=@...`, `/tmp/...` 같은 파일 경로 literal이 GitHub 답글 본문에 남았는데 성공으로 보고
+- 백틱이 있는 본문을 unquoted heredoc/command substitution으로 만들어 예시 토큰이 사라진 상태로 게시
 - 검증 없이 push/comment
 - 사용자가 요청하지 않은 thread resolve/unresolve
 - `--push-only`인데 GitHub comment/re-request 실행
