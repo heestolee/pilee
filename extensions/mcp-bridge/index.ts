@@ -25,9 +25,23 @@ interface Connection {
 	client: Client;
 	transport: StdioClientTransport;
 	tools: McpTool[];
-	status: "connected" | "disconnected" | "error";
+	status: "connected" | "disconnected" | "error" | "restarting";
 	error?: string;
 	lastUsedAt: number;
+	generation: number;
+	lastDisconnectAt?: number;
+	disconnectReason?: string;
+}
+
+interface RuntimeState {
+	reconnectCount: number;
+	autoRetryCount: number;
+	lastReconnectAt?: number;
+	lastReconnectReason?: string;
+	lastAutoRetryAt?: number;
+	lastDisconnectAt?: number;
+	lastDisconnectReason?: string;
+	lastError?: string;
 }
 
 interface StoredMcpResult {
@@ -175,9 +189,13 @@ function updateNpxCache(config: ServerConfig) {
 // --- Core ---
 
 const connections = new Map<string, Connection>();
+const reconnectingServers = new Map<string, Promise<Connection>>();
+const expectedTransportCloses = new Set<string>();
+const runtimeStates = new Map<string, RuntimeState>();
 const storedMcpResults = new Map<string, StoredMcpResult>();
 let serverConfigs: Record<string, ServerConfig> = {};
 let idleCheckInterval: ReturnType<typeof setInterval> | null = null;
+let connectionGeneration = 0;
 
 const IDLE_TIMEOUT = 10 * 60 * 1000;
 const IDLE_CHECK_INTERVAL = 60 * 1000;
@@ -223,9 +241,116 @@ function drainServerStderr(transport: StdioClientTransport) {
 	stderr.on("error", () => {});
 }
 
-async function connectServer(name: string, config: ServerConfig): Promise<Connection> {
+function runtimeState(name: string): RuntimeState {
+	const existing = runtimeStates.get(name);
+	if (existing) return existing;
+	const created: RuntimeState = { reconnectCount: 0, autoRetryCount: 0 };
+	runtimeStates.set(name, created);
+	return created;
+}
+
+function noteRuntimeError(name: string, error: string) {
+	const state = runtimeState(name);
+	state.lastError = error;
+}
+
+function noteTransportDisconnect(name: string, reason: string, expected: boolean) {
+	const conn = connections.get(name);
+	const now = Date.now();
+	if (conn) {
+		conn.status = "disconnected";
+		conn.error = reason;
+		conn.lastDisconnectAt = now;
+		conn.disconnectReason = reason;
+	}
+	const state = runtimeState(name);
+	state.lastDisconnectAt = now;
+	state.lastDisconnectReason = reason;
+	if (!expected) {
+		state.lastError = reason;
+		recordFailure(name, reason);
+	}
+}
+
+function installTransportLifecycleHooks(name: string, transport: StdioClientTransport) {
+	const previousOnClose = transport.onclose;
+	transport.onclose = () => {
+		previousOnClose?.();
+		const current = connections.get(name);
+		if (current?.transport !== transport) return;
+		const expected = expectedTransportCloses.delete(name);
+		noteTransportDisconnect(name, expected ? "closed" : "transport closed", expected);
+	};
+
+	const previousOnError = transport.onerror;
+	transport.onerror = (error) => {
+		previousOnError?.(error);
+		const current = connections.get(name);
+		if (current?.transport !== transport) return;
+		const errorMsg = error instanceof Error ? error.message : String(error);
+		current.error = errorMsg;
+		noteRuntimeError(name, errorMsg);
+	};
+}
+
+function normalizeToolNameForPolicy(toolName: string): string[] {
+	return toolName
+		.replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+		.toLowerCase()
+		.split(/[^a-z0-9]+/)
+		.filter(Boolean);
+}
+
+const READ_ONLY_MCP_VERBS = new Set(["read", "get", "list", "search", "find", "fetch", "query", "lookup", "describe", "retrieve", "view", "show", "browse", "load", "download", "export"]);
+const SIDE_EFFECT_MCP_VERBS = new Set(["add", "assign", "approve", "archive", "close", "comment", "create", "delete", "execute", "insert", "invite", "merge", "move", "mutate", "open", "patch", "post", "publish", "put", "react", "reject", "remove", "reply", "resolve", "run", "send", "set", "transition", "trigger", "unarchive", "update", "upload", "upsert", "write"]);
+
+function isReadOnlyMcpToolName(toolName: string): boolean {
+	const tokens = normalizeToolNameForPolicy(toolName);
+	if (tokens.some((token) => SIDE_EFFECT_MCP_VERBS.has(token))) return false;
+	return tokens.some((token) => READ_ONLY_MCP_VERBS.has(token));
+}
+
+function isReconnectableMcpError(error: string): boolean {
+	return /\b(not connected|transport closed|connection closed|server disconnected|disconnected|closed|eof|epipe|econnreset|broken pipe|socket hang up|write after end|stdin|stdout)\b/i.test(error);
+}
+
+function formatAutoHealStatus(name: string): string {
+	const state = runtimeStates.get(name);
+	if (!state) return "자동복구: 재연결 0회, read 재시도 0회";
+	const parts = [`자동복구: 재연결 ${state.reconnectCount}회`, `read 재시도 ${state.autoRetryCount}회`];
+	if (state.lastReconnectAt) parts.push(`마지막 재연결 ${formatTimeAgo(state.lastReconnectAt)}${state.lastReconnectReason ? ` (${state.lastReconnectReason})` : ""}`);
+	if (state.lastDisconnectAt) parts.push(`마지막 끊김 ${formatTimeAgo(state.lastDisconnectAt)}${state.lastDisconnectReason ? ` (${state.lastDisconnectReason})` : ""}`);
+	return parts.join(", ");
+}
+
+async function connectServer(name: string, config: ServerConfig, options: { force?: boolean; reason?: string } = {}): Promise<Connection> {
 	const existing = connections.get(name);
-	if (existing?.status === "connected") return existing;
+	if (!options.force && existing?.status === "connected") return existing;
+	const inFlight = reconnectingServers.get(name);
+	if (inFlight) return inFlight;
+
+	const promise = connectServerOnce(name, config, options);
+	reconnectingServers.set(name, promise);
+	try {
+		return await promise;
+	} finally {
+		reconnectingServers.delete(name);
+	}
+}
+
+async function connectServerOnce(name: string, config: ServerConfig, options: { force?: boolean; reason?: string } = {}): Promise<Connection> {
+	const existing = connections.get(name);
+	if (existing && existing.status !== "connected") {
+		existing.status = "restarting";
+	}
+	if (options.force && existing) {
+		connections.delete(name);
+		expectedTransportCloses.add(name);
+		try {
+			await existing.transport.close();
+		} catch {}
+		expectedTransportCloses.delete(name);
+	}
 
 	const effectiveConfig = applyNpxCache(config);
 
@@ -236,21 +361,31 @@ async function connectServer(name: string, config: ServerConfig): Promise<Connec
 		stderr: "pipe",
 	});
 	drainServerStderr(transport);
+	installTransportLifecycleHooks(name, transport);
 
 	const client = new Client({ name: `pilee-${name}`, version: "0.1.0" }, { capabilities: {} });
+	const generation = ++connectionGeneration;
 
 	try {
 		await client.connect(transport);
 		const { tools } = await client.listTools();
+		const now = Date.now();
 		const conn: Connection = {
 			client,
 			transport,
 			tools: tools.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema as Record<string, unknown> })),
 			status: "connected",
-			lastUsedAt: Date.now(),
+			lastUsedAt: now,
+			generation,
 		};
 		connections.set(name, conn);
 		recordSuccess(name);
+		if (options.reason) {
+			const state = runtimeState(name);
+			state.reconnectCount++;
+			state.lastReconnectAt = now;
+			state.lastReconnectReason = options.reason;
+		}
 		updateNpxCache(config);
 		return conn;
 	} catch (e) {
@@ -262,8 +397,10 @@ async function connectServer(name: string, config: ServerConfig): Promise<Connec
 			status: "error",
 			error: errorMsg,
 			lastUsedAt: Date.now(),
+			generation,
 		};
 		connections.set(name, conn);
+		noteRuntimeError(name, errorMsg);
 		recordFailure(name, errorMsg);
 		throw e;
 	}
@@ -272,9 +409,11 @@ async function connectServer(name: string, config: ServerConfig): Promise<Connec
 async function disconnectServer(name: string): Promise<void> {
 	const conn = connections.get(name);
 	if (!conn) return;
+	expectedTransportCloses.add(name);
 	try {
 		await conn.transport.close();
 	} catch {}
+	expectedTransportCloses.delete(name);
 	conn.status = "disconnected";
 	connections.delete(name);
 }
@@ -282,10 +421,15 @@ async function disconnectServer(name: string): Promise<void> {
 async function idleDisconnectServer(name: string): Promise<void> {
 	const conn = connections.get(name);
 	if (!conn || conn.status !== "connected") return;
+	expectedTransportCloses.add(name);
 	try {
 		await conn.transport.close();
 	} catch {}
+	expectedTransportCloses.delete(name);
 	conn.status = "disconnected";
+	conn.error = "idle-timeout";
+	conn.lastDisconnectAt = Date.now();
+	conn.disconnectReason = "idle-timeout";
 	recordIdleDisconnect(name);
 }
 
@@ -1047,15 +1191,18 @@ function statusText(): string {
 	for (const name of configured) {
 		const conn = connections.get(name);
 		const failInfo = failureStatusText(name);
+		const healInfo = formatAutoHealStatus(name);
 		const unhealthy = isUnhealthy(name) ? " [unhealthy]" : "";
 		if (!conn) {
-			lines.push(`  ${name}: not connected${unhealthy} | ${failInfo}`);
+			lines.push(`  ${name}: not connected${unhealthy} | ${failInfo} | ${healInfo}`);
 		} else if (conn.status === "error") {
-			lines.push(`  ${name}: error — ${conn.error}${unhealthy} | ${failInfo}`);
+			lines.push(`  ${name}: error — ${conn.error}${unhealthy} | ${failInfo} | ${healInfo}`);
 		} else if (conn.status === "disconnected") {
-			lines.push(`  ${name}: disconnected (idle)${unhealthy} | ${failInfo}`);
+			lines.push(`  ${name}: disconnected (${conn.disconnectReason ?? "idle"})${unhealthy} | ${failInfo} | ${healInfo}`);
+		} else if (conn.status === "restarting") {
+			lines.push(`  ${name}: restarting${unhealthy} | ${failInfo} | ${healInfo}`);
 		} else {
-			lines.push(`  ${name}: connected (${conn.tools.length} tools) | ${failInfo}`);
+			lines.push(`  ${name}: connected (${conn.tools.length} tools) | ${failInfo} | ${healInfo}`);
 		}
 	}
 	return lines.join("\n");
@@ -1119,53 +1266,132 @@ function findToolServer(toolName: string, preferredServer?: string): { server: s
 	return null;
 }
 
+async function ensureConnectedServer(server: string, reason: string): Promise<Connection> {
+	const existing = connections.get(server);
+	if (existing?.status === "connected") return existing;
+	return reconnectServer(server, reason);
+}
+
+async function reconnectServer(server: string, reason: string): Promise<Connection> {
+	const config = serverConfigs[server];
+	if (!config) throw new Error(`Server "${server}" 설정을 찾지 못해 자동 재연결할 수 없습니다.`);
+	return connectServer(server, config, { force: true, reason });
+}
+
+async function findToolServerForCall(toolName: string, preferredServer?: string): Promise<{ server: string; conn: Connection } | null> {
+	if (preferredServer && serverConfigs[preferredServer]) {
+		try {
+			const conn = await ensureConnectedServer(preferredServer, "before-call");
+			if (conn.tools.some((t) => t.name === toolName)) return { server: preferredServer, conn };
+		} catch {}
+	}
+	return findToolServer(toolName, preferredServer);
+}
+
+async function invokeMcpTool(server: string, conn: Connection, toolName: string, args?: Record<string, unknown>): Promise<McpFormattedResult> {
+	conn.lastUsedAt = Date.now();
+	const result = await conn.client.callTool({ name: toolName, arguments: args ?? {} });
+	const content = Array.isArray((result as any).content) ? (result as any).content as Array<{ type: string; text?: string }> : [];
+	const parts = content
+		.filter((c) => c.type === "text" && c.text)
+		.map((c) => c.text!);
+	const nonText = content
+		.filter((c) => c.type !== "text")
+		.map((c) => `[${c.type} content stored in raw json]`);
+	const output = [...parts, ...nonText].join("\n") || "(empty response)";
+	recordSuccess(server);
+	return formatMcpOutput({
+		server,
+		tool: toolName,
+		action: "call",
+		output,
+		rawData: { result, arguments: args ?? {} },
+		args,
+	});
+}
+
+export function __isReadOnlyMcpToolNameForTesting(toolName: string): boolean {
+	return isReadOnlyMcpToolName(toolName);
+}
+
+export function __isReconnectableMcpErrorForTesting(error: string): boolean {
+	return isReconnectableMcpError(error);
+}
+
+export function __formatAutoHealStatusForTesting(name: string): string {
+	return formatAutoHealStatus(name);
+}
+
 async function callTool(toolName: string, args?: Record<string, unknown>, preferredServer?: string): Promise<McpFormattedResult> {
-	const found = findToolServer(toolName, preferredServer);
+	const found = await findToolServerForCall(toolName, preferredServer);
 	if (!found) return { text: `Tool "${toolName}" not found. Use action:"status" or action:"list" to see available tools.` };
 
-	if (found.conn.status === "disconnected") {
-		const config = serverConfigs[found.server];
-		if (!config) return { text: `Server "${found.server}" config not found, cannot auto-reconnect.` };
-		try {
-			const reconnected = await connectServer(found.server, config);
-			found.conn = reconnected;
-		} catch (e) {
-			return { text: `Auto-reconnect to "${found.server}" failed: ${e instanceof Error ? e.message : e}` };
-		}
+	let activeConn = found.conn;
+	try {
+		activeConn = await ensureConnectedServer(found.server, activeConn.status === "disconnected" ? "idle-reconnect" : "before-call");
+	} catch (e) {
+		return { text: `"${found.server}" MCP 자동 재연결 실패: ${e instanceof Error ? e.message : e}` };
 	}
 
-	found.conn.lastUsedAt = Date.now();
-
 	try {
-		const result = await found.conn.client.callTool({ name: toolName, arguments: args ?? {} });
-		const content = Array.isArray((result as any).content) ? (result as any).content as Array<{ type: string; text?: string }> : [];
-		const parts = content
-			.filter((c) => c.type === "text" && c.text)
-			.map((c) => c.text!);
-		const nonText = content
-			.filter((c) => c.type !== "text")
-			.map((c) => `[${c.type} content stored in raw json]`);
-		const output = [...parts, ...nonText].join("\n") || "(empty response)";
-		recordSuccess(found.server);
-		return formatMcpOutput({
-			server: found.server,
-			tool: toolName,
-			action: "call",
-			output,
-			rawData: { result, arguments: args ?? {} },
-			args,
-		});
+		return await invokeMcpTool(found.server, activeConn, toolName, args);
 	} catch (e) {
 		const errorMsg = e instanceof Error ? e.message : String(e);
 		recordFailure(found.server, errorMsg);
-		return formatMcpOutput({
-			server: found.server,
-			tool: toolName,
-			action: "call-error",
-			output: `Error calling ${toolName}: ${errorMsg}`,
-			rawData: { error: errorMsg, arguments: args ?? {} },
-			args,
-		});
+		if (!isReconnectableMcpError(errorMsg)) {
+			return formatMcpOutput({
+				server: found.server,
+				tool: toolName,
+				action: "call-error",
+				output: `${toolName} 호출 실패: ${errorMsg}`,
+				rawData: { error: errorMsg, arguments: args ?? {} },
+				args,
+			});
+		}
+
+		let reconnected: Connection;
+		try {
+			reconnected = await reconnectServer(found.server, "call-failure");
+		} catch (reconnectError) {
+			return formatMcpOutput({
+				server: found.server,
+				tool: toolName,
+				action: "call-error",
+				output: `${toolName} 호출 실패: ${errorMsg}\n\n"${found.server}" MCP 자동 재연결도 실패했습니다: ${reconnectError instanceof Error ? reconnectError.message : reconnectError}`,
+				rawData: { error: errorMsg, reconnectError: reconnectError instanceof Error ? reconnectError.message : String(reconnectError), arguments: args ?? {} },
+				args,
+			});
+		}
+
+		if (!isReadOnlyMcpToolName(toolName)) {
+			return formatMcpOutput({
+				server: found.server,
+				tool: toolName,
+				action: "call-error",
+				output: `${toolName} 호출 실패: ${errorMsg}\n\n"${found.server}" MCP 서버는 자동 재연결했지만, "${toolName}"은 쓰기/side effect 가능성이 있어 Pi가 자동 replay하지 않았습니다. 필요하면 명시적으로 다시 호출하세요.`,
+				rawData: { error: errorMsg, autoReconnected: true, autoRetrySkipped: "side-effect-risk", arguments: args ?? {} },
+				args,
+			});
+		}
+
+		try {
+			const retried = await invokeMcpTool(found.server, reconnected, toolName, args);
+			const state = runtimeState(found.server);
+			state.autoRetryCount++;
+			state.lastAutoRetryAt = Date.now();
+			return { ...retried, details: { ...(retried.details ?? {}), mcpAutoHealed: true, mcpAutoHeal: { server: found.server, retry: "read-only-once", originalError: errorMsg } } };
+		} catch (retryError) {
+			const retryErrorMsg = retryError instanceof Error ? retryError.message : String(retryError);
+			recordFailure(found.server, retryErrorMsg);
+			return formatMcpOutput({
+				server: found.server,
+				tool: toolName,
+				action: "call-error",
+				output: `${toolName} 호출 실패: ${errorMsg}\n\nMCP 자동 재연결은 성공했지만 read-only 1회 재시도도 실패했습니다: ${retryErrorMsg}`,
+				rawData: { error: errorMsg, retryError: retryErrorMsg, autoReconnected: true, arguments: args ?? {} },
+				args,
+			});
+		}
 	}
 }
 
@@ -1300,6 +1526,8 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx) => {
 		serverConfigs = loadConfig();
 		failures.clear();
+		runtimeStates.clear();
+		expectedTransportCloses.clear();
 		const names = Object.keys(serverConfigs);
 		if (names.length === 0) return;
 
@@ -1376,7 +1604,10 @@ export default function (pi: ExtensionAPI) {
 	// Cleanup on shutdown
 	pi.on("session_shutdown", async () => {
 		stopIdleChecker();
-		storedMcpResults.clear();
 		await disconnectAll();
+		storedMcpResults.clear();
+		reconnectingServers.clear();
+		runtimeStates.clear();
+		expectedTransportCloses.clear();
 	});
 }

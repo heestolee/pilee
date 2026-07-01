@@ -1,6 +1,88 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import test from "node:test";
-import { __buildMcpDigestForTesting, __buildMcpFullContentForTesting, __buildMcpModelInjectionForTesting, __formatMcpFullContentCardForTesting, __formatMcpOutputForTesting, __shouldReturnDigestForTesting } from "./index.ts";
+import mcpBridge, { __buildMcpDigestForTesting, __buildMcpFullContentForTesting, __buildMcpModelInjectionForTesting, __formatMcpFullContentCardForTesting, __formatMcpOutputForTesting, __isReadOnlyMcpToolNameForTesting, __isReconnectableMcpErrorForTesting, __shouldReturnDigestForTesting } from "./index.ts";
+
+test("MCP auto-heal retries only read-like tools", () => {
+	assert.equal(__isReadOnlyMcpToolNameForTesting("notion_readPage"), true);
+	assert.equal(__isReadOnlyMcpToolNameForTesting("slack_getThreadReplies"), true);
+	assert.equal(__isReadOnlyMcpToolNameForTesting("jira_search"), true);
+	assert.equal(__isReadOnlyMcpToolNameForTesting("jira_updateIssue"), false);
+	assert.equal(__isReadOnlyMcpToolNameForTesting("slack_postMessage"), false);
+	assert.equal(__isReadOnlyMcpToolNameForTesting("notion_createPage"), false);
+	assert.equal(__isReadOnlyMcpToolNameForTesting("ambiguous_tool"), false);
+});
+
+test("MCP auto-heal recognizes transport disconnect errors", () => {
+	assert.equal(__isReconnectableMcpErrorForTesting("Error: Transport closed"), true);
+	assert.equal(__isReconnectableMcpErrorForTesting("write EPIPE"), true);
+	assert.equal(__isReconnectableMcpErrorForTesting("Not connected"), true);
+	assert.equal(__isReconnectableMcpErrorForTesting("ECONNRESET while reading stdout"), true);
+	assert.equal(__isReconnectableMcpErrorForTesting("Invalid Jira JQL syntax"), false);
+});
+
+test("MCP auto-heal reconnects and retries one read-only call through the registered tool", async () => {
+	const repoRoot = process.cwd();
+	const tempDir = mkdtempSync(join(tmpdir(), "pilee-mcp-auto-heal-"));
+	const countPath = join(tempDir, "attempts.txt");
+	const serverPath = join(tempDir, "flaky-server.mjs");
+	const sdkMcpUrl = pathToFileURL(join(repoRoot, "node_modules", "@modelcontextprotocol", "sdk", "dist", "esm", "server", "mcp.js")).href;
+	const sdkStdioUrl = pathToFileURL(join(repoRoot, "node_modules", "@modelcontextprotocol", "sdk", "dist", "esm", "server", "stdio.js")).href;
+	writeFileSync(serverPath, [
+		`import { readFileSync, writeFileSync } from "node:fs";`,
+		`import { McpServer } from ${JSON.stringify(sdkMcpUrl)};`,
+		`import { StdioServerTransport } from ${JSON.stringify(sdkStdioUrl)};`,
+		`const countPath = ${JSON.stringify(countPath)};`,
+		`const server = new McpServer({ name: "flaky", version: "1.0.0" });`,
+		`server.registerTool("notion_readPage", { description: "read page", inputSchema: {} }, async () => {`,
+		`  let attempts = 0;`,
+		`  try { attempts = Number(readFileSync(countPath, "utf8")); } catch {}`,
+		`  if (attempts === 0) { writeFileSync(countPath, "1"); process.exit(42); }`,
+		`  writeFileSync(countPath, String(attempts + 1));`,
+		`  return { content: [{ type: "text", text: "auto-heal-ok" }] };`,
+		`});`,
+		`await server.connect(new StdioServerTransport());`,
+	].join("\n"));
+	writeFileSync(join(tempDir, ".mcp.json"), JSON.stringify({ mcpServers: { flaky: { command: process.execPath, args: [serverPath] } } }, null, 2));
+
+	const tools = new Map<string, { execute: (id: string, params: any) => Promise<any> }>();
+	const events = new Map<string, (event: any, ctx: any) => Promise<void>>();
+	const fakePi = {
+		registerTool(tool: { name: string; execute: (id: string, params: any) => Promise<any> }) {
+			tools.set(tool.name, tool);
+		},
+		registerToolResultRenderer() {},
+		registerCommand() {},
+		on(name: string, handler: (event: any, ctx: any) => Promise<void>) {
+			events.set(name, handler);
+		},
+	};
+
+	const oldCwd = process.cwd();
+	const oldHome = process.env.HOME;
+	try {
+		process.chdir(tempDir);
+		process.env.HOME = tempDir;
+		mcpBridge(fakePi as any);
+		await events.get("session_start")?.({}, { hasUI: false });
+		const result = await tools.get("mcp")?.execute("tool-call-1", { action: "call", server: "flaky", tool: "notion_readPage", args: "{}" });
+		assert.match(result.content[0].text, /auto-heal-ok/);
+		assert.equal(result.details?.mcpAutoHealed, true);
+		assert.equal(result.details?.mcpAutoHeal?.retry, "read-only-once");
+		assert.equal(readFileSync(countPath, "utf8"), "2");
+		const status = await tools.get("mcp")?.execute("tool-call-2", { action: "status" });
+		assert.match(status.content[0].text, /read 재시도 1회/);
+	} finally {
+		await events.get("session_shutdown")?.({}, { hasUI: false });
+		process.chdir(oldCwd);
+		if (oldHome === undefined) delete process.env.HOME;
+		else process.env.HOME = oldHome;
+		rmSync(tempDir, { recursive: true, force: true });
+	}
+});
 
 test("small JSON MCP output is digest-first instead of raw inline", () => {
 	const output = JSON.stringify({ ok: true, title: "작은 JSON", token: "secret-token-value" });
