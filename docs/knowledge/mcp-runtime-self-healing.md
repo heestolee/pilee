@@ -13,8 +13,9 @@ applies_to:
   - extensions/mcp-bridge
 source:
   - user-direction:2026-07-01-mcp-runtime-self-healing
-reviewed_at: 2026-07-01
-reviewed_commit: 0f1e690
+  - user-direction:2026-07-02-mcp-bootstrap-diagnostics
+reviewed_at: 2026-07-02
+reviewed_commit: eda675a
 related:
   - mcp-digest-first-artifacts
   - mcp-stderr-isolation
@@ -27,6 +28,8 @@ related:
 
 특히 Notion/Slack/Jira 같은 읽기 중심 MCP는 사용자가 “문서를 읽고 싶다”는 작업 흐름 안에 들어오므로, 서버 프로세스 종료·transport close·stdio pipe 오류를 사용자-facing 실패로 바로 노출하기보다 자동 재연결과 안전한 read retry를 먼저 시도해야 합니다.
 
+다만 self-healing은 “끊긴 서버를 다시 붙이는 것”만이 아닙니다. `npx`/npm registry/auth/package 404처럼 MCP 서버가 시작 자체를 못 하는 경우도 장시간 세션에서 똑같이 `Connection closed`로 보이므로, bridge는 stderr tail을 보존하고 bootstrap 실패를 분류해 사용자가 실제 원인을 볼 수 있게 해야 합니다.
+
 ## Self-Healing Rule
 
 `extensions/mcp-bridge`는 서버별 runtime state를 유지합니다.
@@ -38,6 +41,18 @@ related:
 - write/side-effect 가능성이 있는 tool name(`create`, `update`, `delete`, `send`, `post`, `comment`, `reply`, `upload`, `run`, `execute`, `set` 등)은 서버만 복구하고 호출 replay는 하지 않습니다.
 
 이 정책은 “사용자가 요청한 읽기 작업을 계속 진행”하는 것과 “외부 시스템에 중복 side effect를 만들지 않기”를 동시에 지키기 위한 경계입니다.
+
+## Bootstrap Diagnostics Rule
+
+MCP server stderr는 TUI에 그대로 흘리면 안 되지만, 완전히 버려서도 안 됩니다. bridge는 서버별 stderr tail을 작은 ring buffer로 보존하고 민감정보를 redaction한 뒤, connect/list/call/status 실패 진단에 사용합니다.
+
+- `npm ERR! 404`, `is not in this registry` → `npm_package_not_found`
+- `E401`, `E403`, `unauthorized`, `forbidden` → `npm_auth_required`
+- registry/network/certificate 계열 npm 오류 → `npm_registry_error`
+- `ENOENT`, `command not found` → `command_not_found`
+- stderr 없이 `Connection closed`만 있으면 `transport_closed`로 분류하고 stderr 부재 자체를 진단 정보로 남깁니다.
+
+`mcp connect`와 server-scoped `mcp list`/`mcp call`은 실패 시 `Connection closed`만 반환하지 않고, 분류·힌트·sanitized stderr tail을 함께 보여야 합니다. 반면 전체 `mcp status`는 운영 표면이므로 stderr 전문은 덤프하지 않고 분류와 힌트만 표시합니다.
 
 ## Status Rule
 
