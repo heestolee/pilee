@@ -217,7 +217,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Command shim은 reviewable workflow source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-06-02 | 83617e9 | command-shim, skill, tft, frame, slash-command, routing |
 | [TFT Preference Regression Gate는 사용자 선호 역전을 막는다](./tft-preference-regression-gate.md) | active | high | 2026-06-02 | 83617e9 | tft, frame, decide, verify, ask-user-question, regression |
 | [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-06-04 | a38b2ff | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
-| [To-production은 source-preserving hotfix 이식이다](./to-production-source-preserving-hotfix.md) | active | high | 2026-06-02 | d8f8c4c | to-production, hotfix, production, git, worktree, source-preserving |
+| [To-production은 현재 worktree의 production 기반 branch 전환이다](./to-production-source-preserving-hotfix.md) | active | high | 2026-07-02 | 5e6348a | to-production, hotfix, production, git, in-place, branch-switch |
 | [TUI 질문은 작은 의사결정 게이트다](./tui-ask-decision-overlay.md) | active | high | 2026-06-02 | d8f8c4c | tui, ask-user-question, decision-gate, tool, overlay |
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
 | [Update branch는 remote-first sync command다](./update-branch-safe-pull-command.md) | active | high | 2026-06-25 | 98d7502 | update-branch, slash-command, git, pull, index-lock, workflow |
@@ -329,7 +329,7 @@ graph TD
   doc_tft_command_shim_skill_routing["Command shim은 reviewable workflow source of truth를 지킨다"]
   doc_tft_preference_regression_gate["TFT Preference Regression Gate는 사용자 선호 역전을 막는다"]
   doc_tft_visual_structure_renderer["TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다"]
-  doc_to_production_source_preserving_hotfix["To-production은 source-preserving hotfix 이식이다"]
+  doc_to_production_source_preserving_hotfix["To-production은 현재 worktree의 production 기반 branch 전환이다"]
   doc_tui_ask_decision_overlay["TUI 질문은 작은 의사결정 게이트다"]
   doc_until_loop_explicit_reporting["Until loop는 종료 조건을 명시 보고한다"]
   doc_update_branch_safe_pull_command["Update branch는 remote-first sync command다"]
