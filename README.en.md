@@ -320,7 +320,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **fork-panel** | Ghostty split panels, `P0/P1/P2` labels, handoff inbox, revive, and repanel |
 | **workspace** | Ghostty window/tab/split workspace snapshots and append restore |
 | **continue-clean** | Continue in a clean new session with only a minimal handoff |
-| **to-production** | Moves current worktree changes to a fresh production-based target worktree/branch without mutating the source |
+| **to-production** | Switches the current worktree to a production-based branch and cherry-picks existing commits |
 | **session-title** | Automatic session titles |
 
 ### UI / UX
@@ -419,7 +419,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **db-write-migration** | Migration design and verification guidance |
 | **jira-issue-management** | Jira issue preparation with preview gate |
 | **ship** | Pre-PR commit, verification, and push workflow |
-| **to-production** | Source-preserving migration of current worktree changes to a production-based hotfix target |
+| **to-production** | In-place switch of the current worktree to a production-based hotfix branch with cherry-pick replay |
 | **pr-ship** | Post-PR review response with commit, push, thread reply, review re-request, and `--push-only` mode |
 | **ci-ship** | Post-PR CI failure analysis, fix, verification, and push workflow |
 | **runtime-fanout-triage** | Diagnoses healthcheck, preview, and deploy failures with fan-out maps and contract reproduction |
