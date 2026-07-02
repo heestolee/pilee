@@ -220,7 +220,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [To-production은 현재 worktree의 production 기반 branch 전환이다](./to-production-source-preserving-hotfix.md) | active | high | 2026-07-02 | 5e6348a | to-production, hotfix, production, git, in-place, branch-switch |
 | [TUI 질문은 작은 의사결정 게이트다](./tui-ask-decision-overlay.md) | active | high | 2026-06-02 | d8f8c4c | tui, ask-user-question, decision-gate, tool, overlay |
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
-| [Update branch는 remote-first sync command다](./update-branch-safe-pull-command.md) | active | high | 2026-06-25 | 98d7502 | update-branch, slash-command, git, pull, index-lock, workflow |
+| [Update branch는 remote-first sync command다](./update-branch-safe-pull-command.md) | active | high | 2026-07-02 | 98d7502 | update-branch, slash-command, git, pull, index-lock, workflow |
 | [Working Context Card는 큰 맥락을 현재 slice로 압축한다](./work-context-card-task-board.md) | active | high | 2026-06-02 | 61ccbc9 | work-context, tasks, workflow, context, guard |
 | [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-06-24 | fae9aa3 | workflow, guard, intent, audit, hotfix, continuation |
 | [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-06-02 | 61ccbc9 | workflow, frame, tft, hotfix, scope, incremental |

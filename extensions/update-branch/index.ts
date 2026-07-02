@@ -11,8 +11,8 @@ const HELP = `Usage: /update-branch [--sync-only] [--no-wait] [--local] [--merge
 
 기본 동작(remote-first):
   1. 현재 git repo와 PR 확인
-  2. local HEAD가 PR head와 같은지 확인
-  3. GitHub PR Update branch를 원격에서 트리거
+  2. local HEAD가 PR head와 다르면 먼저 safe pull 경로로 ff-only sync
+  3. sync 후 local HEAD와 PR head가 맞으면 GitHub PR Update branch를 원격에서 트리거
   4. PR head 갱신을 짧게 기다림
   5. 기존 safe pull 경로로 local branch를 ff-only 동기화
      - dirty worktree면 include-untracked stash로 사용자 변경 보존
@@ -430,17 +430,47 @@ async function runRemoteUpdateBranchWithRepo(
 		};
 	}
 
+	const preSyncLockRecoveries: LockRecovery[] = [];
 	if (head !== pr.headRefOid) {
-		return {
-			status: "blocked",
-			cwd,
-			repoRoot: repo.repoRoot,
-			pr,
-			remoteHeadBefore: pr.headRefOid,
-			head,
-			lockRecoveries: [],
-			message: "local HEAD와 PR head가 달라 원격 update branch를 중단했습니다. 먼저 /update-branch --sync-only 또는 수동 확인이 필요합니다.",
-		};
+		const preSync = await runLocalUpdateBranchWithRepo(pi, cwd, { ...options, local: true, merge: false }, repo);
+		preSyncLockRecoveries.push(...preSync.lockRecoveries);
+		if (preSync.status !== "pass") {
+			return {
+				...preSync,
+				mode: "sync-only",
+				pr,
+				remoteHeadBefore: pr.headRefOid,
+				head,
+				lockRecoveries: preSyncLockRecoveries,
+				message: `local HEAD와 PR head가 달라 먼저 local sync를 시도했지만 실패했습니다: ${preSync.message}`,
+			};
+		}
+
+		const syncedHead = await localHead(pi, repo.repoRoot);
+		if (typeof syncedHead !== "string") {
+			return {
+				status: "blocked",
+				cwd,
+				repoRoot: repo.repoRoot,
+				pr,
+				remoteHeadBefore: pr.headRefOid,
+				head,
+				lockRecoveries: preSyncLockRecoveries,
+				message: `local sync 후 HEAD 확인 실패: ${syncedHead.error}`,
+			};
+		}
+		if (syncedHead !== pr.headRefOid) {
+			return {
+				status: "blocked",
+				cwd,
+				repoRoot: repo.repoRoot,
+				pr,
+				remoteHeadBefore: pr.headRefOid,
+				head: syncedHead,
+				lockRecoveries: preSyncLockRecoveries,
+				message: "local sync 후에도 local HEAD와 PR head가 달라 원격 update branch를 중단했습니다. 수동 확인이 필요합니다.",
+			};
+		}
 	}
 
 	const update = await gh(pi, ["pr", "update-branch", String(pr.number)], repo.repoRoot);
@@ -454,13 +484,13 @@ async function runRemoteUpdateBranchWithRepo(
 			pr,
 			remoteHeadBefore: pr.headRefOid,
 			remoteUpdateOutput,
-			lockRecoveries: [],
+			lockRecoveries: preSyncLockRecoveries,
 			message: `GitHub Update branch 트리거 실패: ${remoteUpdateOutput || "unknown error"}`,
 		};
 	}
 
 	if (options.noWait) {
-		const lockRecoveries: LockRecovery[] = [];
+		const lockRecoveries: LockRecovery[] = [...preSyncLockRecoveries];
 		const snapshot = await collectBranchSnapshot(pi, repo, lockRecoveries);
 		return {
 			status: "pass",
@@ -490,6 +520,7 @@ async function runRemoteUpdateBranchWithRepo(
 		remoteHeadBefore: pr.headRefOid,
 		remoteHeadAfter: waited.pr.headRefOid,
 		remoteUpdateOutput,
+		lockRecoveries: [...preSyncLockRecoveries, ...sync.lockRecoveries],
 		message: sync.status === "pass" ? remoteMessage : `${remoteMessage} 하지만 local sync가 실패했습니다: ${sync.message}`,
 	};
 }

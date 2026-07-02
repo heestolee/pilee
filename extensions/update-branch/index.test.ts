@@ -127,6 +127,42 @@ test("runUpdateBranch sync-only allows local branch to be behind PR head", async
 	assert.ok(calls.some((call) => call.command === "git" && call.args.join(" ") === "pull --ff-only"));
 });
 
+test("runUpdateBranch auto-syncs when local branch is behind PR head before remote update", async () => {
+	const repo = "/repo";
+	const local = "a".repeat(40);
+	const remoteBefore = "b".repeat(40);
+	const remoteAfter = "c".repeat(40);
+	const prBefore = { number: 123, headRefName: "feature/x", headRefOid: remoteBefore, baseRefName: "development" };
+	const prAfter = { ...prBefore, headRefOid: remoteAfter };
+	let headCalls = 0;
+	const { pi, calls } = mockPi((command, args) => {
+		const key = args.join(" ");
+		if (command === "gh" && key.startsWith("pr view --json ")) return { code: 0, stdout: `${JSON.stringify(prBefore)}\n` };
+		if (command === "gh" && key === "pr update-branch 123") return { code: 0, stdout: "✓ Updated branch feature/x\n" };
+		if (command === "gh" && key.startsWith("pr view 123 --json ")) return { code: 0, stdout: `${JSON.stringify(prAfter)}\n` };
+		if (key === "rev-parse --show-toplevel") return { code: 0, stdout: `${repo}\n` };
+		if (key === "rev-parse --git-path index.lock") return { code: 0, stdout: `${repo}/.git/index.lock\n` };
+		if (key === "rev-parse HEAD") {
+			headCalls += 1;
+			return { code: 0, stdout: `${headCalls === 1 ? local : remoteBefore}\n` };
+		}
+		if (key === "status --porcelain") return { code: 0, stdout: "" };
+		if (key === "pull --ff-only") return { code: 0, stdout: "Updating branch\n" };
+		if (key === "status --short --branch") return { code: 0, stdout: "## feature/x...origin/feature/x\n" };
+		if (key === "log --oneline -1") return { code: 0, stdout: "ccc1234 latest\n" };
+		throw new Error(`unexpected ${command} args: ${key}`);
+	});
+
+	const result = await runUpdateBranch(pi as any, repo);
+	assert.equal(result.status, "pass");
+	assert.equal(result.mode, "remote");
+	assert.equal(result.remoteUpdateTriggered, true);
+	assert.equal(result.remoteHeadBefore, remoteBefore);
+	assert.equal(result.remoteHeadAfter, remoteAfter);
+	assert.equal(calls.filter((call) => call.command === "git" && call.args.join(" ") === "pull --ff-only").length, 2);
+	assert.ok(calls.some((call) => call.command === "gh" && call.args.join(" ") === "pr update-branch 123"));
+});
+
 test("runUpdateBranch treats already up-to-date remote response as no-op success", async () => {
 	const repo = "/repo";
 	const head = "a".repeat(40);
