@@ -42,6 +42,14 @@ interface RuntimeState {
 	lastDisconnectAt?: number;
 	lastDisconnectReason?: string;
 	lastError?: string;
+	stderrTail?: string;
+	bootstrapDiagnosis?: BootstrapDiagnosis;
+}
+
+interface BootstrapDiagnosis {
+	kind: "npm_package_not_found" | "npm_auth_required" | "npm_registry_error" | "command_not_found" | "process_exited" | "transport_closed" | "unknown";
+	summary: string;
+	hint?: string;
 }
 
 interface StoredMcpResult {
@@ -135,6 +143,7 @@ const MCP_DIGEST_THRESHOLD_CHARS = 12_000;
 const MCP_DIGEST_THRESHOLD_LINES = 240;
 const MCP_DIGEST_PREVIEW_CHARS = 700;
 const MCP_DIGEST_MAX_REFERENCES = 24;
+const MCP_STDERR_TAIL_CHARS = 2_400;
 
 interface NpxCacheData {
 	[key: string]: { resolvedAt: number };
@@ -234,11 +243,76 @@ function expandEnv(env: Record<string, string> | undefined): Record<string, stri
 	return result;
 }
 
-function drainServerStderr(transport: StdioClientTransport) {
+function sanitizeMcpStderr(value: string): string {
+	return value
+		.replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [redacted]")
+		.replace(/((?:token|secret|password|authorization|cookie|api[_-]?key|access[_-]?token|refresh[_-]?token)\s*[=:]\s*)([^\s,}\]]{4,})/gi, "$1[redacted]")
+		.replace(/\b(npm|ghp|github_pat)_[A-Za-z0-9_=-]{16,}\b/g, "[redacted-token]");
+}
+
+function classifyBootstrapFailure(error: string, stderrTail = ""): BootstrapDiagnosis {
+	const combined = `${error}\n${stderrTail}`.trim();
+	if (/npm\s+ERR!\s+code\s+E404|404\s+Not Found|is not in this registry/i.test(combined)) {
+		return {
+			kind: "npm_package_not_found",
+			summary: "npm package를 찾지 못해 MCP 서버가 시작되지 않았습니다.",
+			hint: "패키지명, registry, GitHub Packages 권한/가시성, npm scope 설정을 확인하세요.",
+		};
+	}
+	if (/npm\s+ERR!\s+code\s+E401|npm\s+ERR!\s+code\s+E403|unauthorized|forbidden|authentication|permission denied/i.test(combined)) {
+		return {
+			kind: "npm_auth_required",
+			summary: "npm registry 인증/권한 문제로 MCP 서버가 시작되지 않았습니다.",
+			hint: "npm token, scope registry, package 권한을 확인하세요.",
+		};
+	}
+	if (/npm\s+ERR!|registry|ETIMEDOUT|ENOTFOUND|ECONNREFUSED|EAI_AGAIN|CERT_|certificate/i.test(combined)) {
+		return {
+			kind: "npm_registry_error",
+			summary: "npm/registry 접근 오류로 MCP 서버가 시작되지 않았습니다.",
+			hint: "registry 설정, 네트워크, 인증서, npm 캐시 상태를 확인하세요.",
+		};
+	}
+	if (/ENOENT|command not found|spawn .* ENOENT/i.test(combined)) {
+		return {
+			kind: "command_not_found",
+			summary: "MCP server command를 찾지 못했습니다.",
+			hint: "command 경로와 현재 Pi 실행 PATH를 확인하세요.",
+		};
+	}
+	if (/connection closed|transport closed|not connected/i.test(combined)) {
+		return {
+			kind: "transport_closed",
+			summary: "MCP transport가 초기화 중 닫혔습니다.",
+			hint: stderrTail ? "stderr tail의 실제 원인을 먼저 확인하세요." : "stderr가 없으면 서버가 stdout protocol 전에 조용히 종료됐는지 확인하세요.",
+		};
+	}
+	if (/exited|exit code|process/i.test(combined)) {
+		return {
+			kind: "process_exited",
+			summary: "MCP server process가 초기화 전에 종료됐습니다.",
+			hint: "server stderr와 실행 command를 확인하세요.",
+		};
+	}
+	return {
+		kind: "unknown",
+		summary: "MCP 서버 시작 실패 원인을 분류하지 못했습니다.",
+		hint: stderrTail ? "stderr tail을 보고 command/registry/auth/runtime 문제를 확인하세요." : undefined,
+	};
+}
+
+function appendServerStderr(name: string, chunk: string) {
+	const state = runtimeState(name);
+	const next = sanitizeMcpStderr(`${state.stderrTail ?? ""}${chunk}`);
+	state.stderrTail = next.length > MCP_STDERR_TAIL_CHARS ? next.slice(-MCP_STDERR_TAIL_CHARS) : next;
+	if (state.lastError) state.bootstrapDiagnosis = classifyBootstrapFailure(state.lastError, state.stderrTail);
+}
+
+function drainServerStderr(name: string, transport: StdioClientTransport) {
 	const stderr = transport.stderr;
 	if (!stderr) return;
-	stderr.on("data", () => {});
-	stderr.on("error", () => {});
+	stderr.on("data", (chunk) => appendServerStderr(name, Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk)));
+	stderr.on("error", (error) => appendServerStderr(name, `\n[stderr error] ${error instanceof Error ? error.message : String(error)}\n`));
 }
 
 function runtimeState(name: string): RuntimeState {
@@ -252,6 +326,7 @@ function runtimeState(name: string): RuntimeState {
 function noteRuntimeError(name: string, error: string) {
 	const state = runtimeState(name);
 	state.lastError = error;
+	state.bootstrapDiagnosis = classifyBootstrapFailure(error, state.stderrTail ?? "");
 }
 
 function noteTransportDisconnect(name: string, reason: string, expected: boolean) {
@@ -266,6 +341,7 @@ function noteTransportDisconnect(name: string, reason: string, expected: boolean
 	const state = runtimeState(name);
 	state.lastDisconnectAt = now;
 	state.lastDisconnectReason = reason;
+	state.bootstrapDiagnosis = classifyBootstrapFailure(reason, state.stderrTail ?? "");
 	if (!expected) {
 		state.lastError = reason;
 		recordFailure(name, reason);
@@ -323,6 +399,32 @@ function formatAutoHealStatus(name: string): string {
 	return parts.join(", ");
 }
 
+function formatBootstrapDiagnosis(name: string, options: { includeStderr?: boolean } = {}): string {
+	const state = runtimeStates.get(name);
+	const diagnosis = state?.bootstrapDiagnosis;
+	const stderrTail = state?.stderrTail?.trim();
+	if (!diagnosis && !stderrTail) return "";
+	const lines: string[] = [];
+	if (diagnosis) {
+		lines.push(`진단: ${diagnosis.summary}`);
+		lines.push(`분류: ${diagnosis.kind}`);
+		if (diagnosis.hint) lines.push(`힌트: ${diagnosis.hint}`);
+	}
+	if (options.includeStderr && stderrTail) {
+		lines.push("stderr tail:");
+		lines.push(stderrTail);
+	}
+	return lines.join("\n");
+}
+
+function serverFailureText(name: string, error: unknown, action: string): string {
+	const errorMsg = error instanceof Error ? error.message : String(error);
+	const state = runtimeState(name);
+	if (!state.bootstrapDiagnosis) state.bootstrapDiagnosis = classifyBootstrapFailure(errorMsg, state.stderrTail ?? "");
+	const diagnostic = formatBootstrapDiagnosis(name, { includeStderr: true });
+	return [`"${name}" MCP ${action} 실패: ${errorMsg}`, diagnostic].filter(Boolean).join("\n\n");
+}
+
 async function connectServer(name: string, config: ServerConfig, options: { force?: boolean; reason?: string } = {}): Promise<Connection> {
 	const existing = connections.get(name);
 	if (!options.force && existing?.status === "connected") return existing;
@@ -360,7 +462,7 @@ async function connectServerOnce(name: string, config: ServerConfig, options: { 
 		env: expandEnv(effectiveConfig.env),
 		stderr: "pipe",
 	});
-	drainServerStderr(transport);
+	drainServerStderr(name, transport);
 	installTransportLifecycleHooks(name, transport);
 
 	const client = new Client({ name: `pilee-${name}`, version: "0.1.0" }, { capabilities: {} });
@@ -1192,6 +1294,7 @@ function statusText(): string {
 		const conn = connections.get(name);
 		const failInfo = failureStatusText(name);
 		const healInfo = formatAutoHealStatus(name);
+		const diagnostic = formatBootstrapDiagnosis(name);
 		const unhealthy = isUnhealthy(name) ? " [unhealthy]" : "";
 		if (!conn) {
 			lines.push(`  ${name}: not connected${unhealthy} | ${failInfo} | ${healInfo}`);
@@ -1204,19 +1307,31 @@ function statusText(): string {
 		} else {
 			lines.push(`  ${name}: connected (${conn.tools.length} tools) | ${failInfo} | ${healInfo}`);
 		}
+		if (diagnostic && conn?.status !== "connected") lines.push(...diagnostic.split("\n").map((line) => `    ${line}`));
 	}
 	return lines.join("\n");
 }
 
-function listTools(server?: string): string {
+async function listTools(server?: string): Promise<string> {
 	if (server) {
-		const conn = connections.get(server);
-		if (!conn) return `Server "${server}" not connected. Use action:"connect" first.`;
-		return conn.tools.map((t) => `  ${t.name} — ${t.description ?? "(no description)"}`).join("\n") || "No tools.";
+		try {
+			const conn = await ensureConnectedServer(server, "list-tools");
+			return conn.tools.map((t) => `  ${t.name} — ${t.description ?? "(no description)"}`).join("\n") || "No tools.";
+		} catch (error) {
+			return serverFailureText(server, error, "도구 목록 조회");
+		}
 	}
 	const lines: string[] = [];
-	for (const [name, conn] of connections) {
-		if (conn.status !== "connected" && conn.status !== "disconnected") continue;
+	for (const name of Object.keys(serverConfigs)) {
+		const conn = connections.get(name);
+		if (!conn || (conn.status !== "connected" && conn.status !== "disconnected")) {
+			const diagnostic = formatBootstrapDiagnosis(name);
+			if (diagnostic) {
+				lines.push(`[${name}] unavailable`);
+				lines.push(...diagnostic.split("\n").map((line) => `  ${line}`));
+			}
+			continue;
+		}
 		if (conn.tools.length === 0) continue;
 		lines.push(`[${name}]${conn.status === "disconnected" ? " (idle — will reconnect on use)" : ""}`);
 		for (const t of conn.tools) lines.push(`  ${t.name} — ${t.description ?? ""}`);
@@ -1280,10 +1395,9 @@ async function reconnectServer(server: string, reason: string): Promise<Connecti
 
 async function findToolServerForCall(toolName: string, preferredServer?: string): Promise<{ server: string; conn: Connection } | null> {
 	if (preferredServer && serverConfigs[preferredServer]) {
-		try {
-			const conn = await ensureConnectedServer(preferredServer, "before-call");
-			if (conn.tools.some((t) => t.name === toolName)) return { server: preferredServer, conn };
-		} catch {}
+		const conn = await ensureConnectedServer(preferredServer, "before-call");
+		if (conn.tools.some((t) => t.name === toolName)) return { server: preferredServer, conn };
+		return null;
 	}
 	return findToolServer(toolName, preferredServer);
 }
@@ -1318,13 +1432,26 @@ export function __isReconnectableMcpErrorForTesting(error: string): boolean {
 	return isReconnectableMcpError(error);
 }
 
+export function __classifyBootstrapFailureForTesting(error: string, stderrTail = ""): BootstrapDiagnosis {
+	return classifyBootstrapFailure(error, stderrTail);
+}
+
+export function __sanitizeMcpStderrForTesting(value: string): string {
+	return sanitizeMcpStderr(value);
+}
+
 export function __formatAutoHealStatusForTesting(name: string): string {
 	return formatAutoHealStatus(name);
 }
 
 async function callTool(toolName: string, args?: Record<string, unknown>, preferredServer?: string): Promise<McpFormattedResult> {
-	const found = await findToolServerForCall(toolName, preferredServer);
-	if (!found) return { text: `Tool "${toolName}" not found. Use action:"status" or action:"list" to see available tools.` };
+	let found: { server: string; conn: Connection } | null;
+	try {
+		found = await findToolServerForCall(toolName, preferredServer);
+	} catch (error) {
+		return { text: preferredServer ? serverFailureText(preferredServer, error, "호출 준비") : `Tool "${toolName}" lookup failed: ${error instanceof Error ? error.message : error}` };
+	}
+	if (!found) return { text: preferredServer ? `"${preferredServer}" 서버에 Tool "${toolName}"이 없습니다. action:"list"로 사용 가능한 도구를 확인하세요.` : `Tool "${toolName}" not found. Use action:"status" or action:"list" to see available tools.` };
 
 	let activeConn = found.conn;
 	try {
@@ -1432,7 +1559,8 @@ export default function (pi: ExtensionAPI) {
 				case "status":
 					return text(statusText());
 				case "list": {
-					const result = formatMcpOutput({ server: params.server ?? "all", tool: "list", action: "list", output: listTools(params.server), rawData: { server: params.server } });
+					const output = await listTools(params.server);
+					const result = formatMcpOutput({ server: params.server ?? "all", tool: "list", action: "list", output, rawData: { server: params.server } });
 					return text(result.text, result.details);
 				}
 				case "describe": {
@@ -1449,10 +1577,10 @@ export default function (pi: ExtensionAPI) {
 					const config = serverConfigs[name];
 					if (!config) return text(`Server "${name}" not found in config. Available: ${Object.keys(serverConfigs).join(", ")}`);
 					try {
-						const conn = await connectServer(name, config);
+						const conn = await connectServer(name, config, { force: true, reason: "manual-connect" });
 						return text(`Connected to "${name}" — ${conn.tools.length} tools available.`);
 					} catch (e) {
-						return text(`Failed to connect to "${name}": ${e instanceof Error ? e.message : e}`);
+						return text(serverFailureText(name, e, "연결"));
 					}
 				}
 				case "call": {

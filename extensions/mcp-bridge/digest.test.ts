@@ -4,7 +4,23 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
-import mcpBridge, { __buildMcpDigestForTesting, __buildMcpFullContentForTesting, __buildMcpModelInjectionForTesting, __formatMcpFullContentCardForTesting, __formatMcpOutputForTesting, __isReadOnlyMcpToolNameForTesting, __isReconnectableMcpErrorForTesting, __shouldReturnDigestForTesting } from "./index.ts";
+import mcpBridge, { __buildMcpDigestForTesting, __buildMcpFullContentForTesting, __buildMcpModelInjectionForTesting, __classifyBootstrapFailureForTesting, __formatMcpFullContentCardForTesting, __formatMcpOutputForTesting, __isReadOnlyMcpToolNameForTesting, __isReconnectableMcpErrorForTesting, __sanitizeMcpStderrForTesting, __shouldReturnDigestForTesting } from "./index.ts";
+
+function createFakePi() {
+	const tools = new Map<string, { execute: (id: string, params: any) => Promise<any> }>();
+	const events = new Map<string, (event: any, ctx: any) => Promise<void>>();
+	const fakePi = {
+		registerTool(tool: { name: string; execute: (id: string, params: any) => Promise<any> }) {
+			tools.set(tool.name, tool);
+		},
+		registerToolResultRenderer() {},
+		registerCommand() {},
+		on(name: string, handler: (event: any, ctx: any) => Promise<void>) {
+			events.set(name, handler);
+		},
+	};
+	return { fakePi, tools, events };
+}
 
 test("MCP auto-heal retries only read-like tools", () => {
 	assert.equal(__isReadOnlyMcpToolNameForTesting("notion_readPage"), true);
@@ -22,6 +38,69 @@ test("MCP auto-heal recognizes transport disconnect errors", () => {
 	assert.equal(__isReconnectableMcpErrorForTesting("Not connected"), true);
 	assert.equal(__isReconnectableMcpErrorForTesting("ECONNRESET while reading stdout"), true);
 	assert.equal(__isReconnectableMcpErrorForTesting("Invalid Jira JQL syntax"), false);
+});
+
+test("MCP bootstrap diagnostics classify npm package-not-found and redact secrets", () => {
+	const stderr = [
+		"npm ERR! code E404",
+		"npm ERR! 404 Not Found - GET https://npm.pkg.github.com/@creatrip%2fmcp-server",
+		"npm ERR! 404 '@creatrip/mcp-server@latest' is not in this registry.",
+		"token=npm_abcdefghijklmnopqrstuvwxyz123456",
+		"standalone npm_abcdefghijklmnopqrstuvwxyz123456",
+	].join("\n");
+	const diagnosis = __classifyBootstrapFailureForTesting("MCP error -32000: Connection closed", stderr);
+	assert.equal(diagnosis.kind, "npm_package_not_found");
+	assert.match(diagnosis.summary, /npm package/);
+	const sanitized = __sanitizeMcpStderrForTesting(stderr);
+	assert.doesNotMatch(sanitized, /npm_abcdefghijklmnopqrstuvwxyz/);
+	assert.match(sanitized, /token=\[redacted\]/);
+	assert.match(sanitized, /standalone \[redacted-token\]/);
+});
+
+test("MCP connect/list/call/status expose bootstrap stderr diagnostics", async () => {
+	const tempDir = mkdtempSync(join(tmpdir(), "pilee-mcp-bootstrap-fail-"));
+	const serverPath = join(tempDir, "missing-package-server.mjs");
+	writeFileSync(serverPath, [
+		`console.error("npm ERR! code E404");`,
+		`console.error("npm ERR! 404 Not Found - GET https://npm.pkg.github.com/@creatrip%2fmcp-server");`,
+		`console.error("npm ERR! 404 '@creatrip/mcp-server@latest' is not in this registry.");`,
+		`console.error("token=npm_abcdefghijklmnopqrstuvwxyz123456");`,
+		`process.exit(1);`,
+	].join("\n"));
+	writeFileSync(join(tempDir, ".mcp.json"), JSON.stringify({ mcpServers: { broken: { command: process.execPath, args: [serverPath] } } }, null, 2));
+	const { fakePi, tools, events } = createFakePi();
+	const oldCwd = process.cwd();
+	const oldHome = process.env.HOME;
+	try {
+		process.chdir(tempDir);
+		process.env.HOME = tempDir;
+		mcpBridge(fakePi as any);
+		await events.get("session_start")?.({}, { hasUI: false });
+		const connect = await tools.get("mcp")?.execute("connect", { action: "connect", server: "broken" });
+		assert.match(connect.content[0].text, /npm package를 찾지 못해/);
+		assert.match(connect.content[0].text, /stderr tail:/);
+		assert.match(connect.content[0].text, /@creatrip\/mcp-server@latest/);
+		assert.doesNotMatch(connect.content[0].text, /npm_abcdefghijklmnopqrstuvwxyz/);
+
+		const list = await tools.get("mcp")?.execute("list", { action: "list", server: "broken" });
+		assert.match(list.content[0].text, /도구 목록 조회 실패|npm package를 찾지 못해|package_not_found/);
+		assert.doesNotMatch(list.content[0].text, /npm_abcdefghijklmnopqrstuvwxyz/);
+
+		const call = await tools.get("mcp")?.execute("call", { action: "call", server: "broken", tool: "notion_readPage", args: "{}" });
+		assert.match(call.content[0].text, /호출 준비 실패/);
+		assert.match(call.content[0].text, /npm_package_not_found/);
+
+		const status = await tools.get("mcp")?.execute("status", { action: "status" });
+		assert.match(status.content[0].text, /진단: npm package를 찾지 못해/);
+		assert.match(status.content[0].text, /분류: npm_package_not_found/);
+		assert.doesNotMatch(status.content[0].text, /stderr tail:/, "status should not dump stderr by default");
+	} finally {
+		await events.get("session_shutdown")?.({}, { hasUI: false });
+		process.chdir(oldCwd);
+		if (oldHome === undefined) delete process.env.HOME;
+		else process.env.HOME = oldHome;
+		rmSync(tempDir, { recursive: true, force: true });
+	}
 });
 
 test("MCP auto-heal reconnects and retries one read-only call through the registered tool", async () => {
