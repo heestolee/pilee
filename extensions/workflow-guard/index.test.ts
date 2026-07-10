@@ -9,6 +9,7 @@ import workflowGuard from "./index.ts";
 function createHarness() {
 	const hooks: Record<string, any> = {};
 	const tools: Record<string, any> = {};
+	let thinkingLevel = "high";
 	const pi = {
 		on(name: string, fn: any) {
 			hooks[name] = fn;
@@ -17,14 +18,43 @@ function createHarness() {
 			tools[tool.name] = tool;
 		},
 		exec: async () => ({ code: 0, stdout: "", stderr: "" }),
+		getThinkingLevel: () => thinkingLevel,
 	} as any;
 	workflowGuard(pi);
 	const ctx = {
 		cwd: process.cwd(),
 		sessionManager: { getSessionFile: () => "/tmp/workflow-guard-test.jsonl" },
 	};
-	return { hooks, tools, ctx };
+	return { hooks, tools, ctx, setThinkingLevel: (level: string) => { thinkingLevel = level; } };
 }
+
+test("ultra enables proactive delegation without bypassing safety gates", async () => {
+	const { hooks, ctx, setThinkingLevel } = createHarness();
+	setThinkingLevel("ultra");
+	const start = await hooks.before_agent_start({ prompt: "결제 플로우 수정해줘", systemPrompt: "base" }, ctx);
+
+	assert.match(start.systemPrompt, /ULTRA PROACTIVE DELEGATION MODE/);
+	assert.match(start.systemPrompt, /explicit user request before spawning sub-agents no longer applies/);
+	assert.match(start.systemPrompt, /parallel work would materially improve speed or quality/);
+	assert.match(start.systemPrompt, /Existing read-only, mutation, side-effect, and light-path safety gates still apply/);
+	assert.doesNotMatch(start.systemPrompt, /worker\/subagent orchestration is opt-in/);
+	assert.equal(start.message.details.ultraMode, true);
+
+	const lightStart = await hooks.before_agent_start({ prompt: "작은 문구만 수정해줘", systemPrompt: "base" }, ctx);
+	const subagentBlock = await hooks.tool_call({ toolName: "subagent", input: { command: "subagent run worker -- 문구 수정" } }, ctx);
+	assert.match(lightStart.systemPrompt, /ULTRA PROACTIVE DELEGATION MODE/);
+	assert.equal(subagentBlock?.block, true);
+	assert.match(subagentBlock.reason, /subagent fan-out/);
+});
+
+test("non-ultra keeps explicit-request worker discipline", async () => {
+	const { hooks, ctx } = createHarness();
+	const start = await hooks.before_agent_start({ prompt: "결제 플로우 수정해줘", systemPrompt: "base" }, ctx);
+
+	assert.doesNotMatch(start.systemPrompt, /ULTRA PROACTIVE DELEGATION MODE/);
+	assert.match(start.systemPrompt, /worker\/subagent orchestration is opt-in/);
+	assert.equal(start.message.details.ultraMode, false);
+});
 
 test("light hotfix PR path blocks deep context mining", async () => {
 	const { hooks, ctx } = createHarness();

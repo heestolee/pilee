@@ -283,7 +283,7 @@ function fastPaceBudgetSeconds(state: GuardState): number | undefined {
 	return undefined;
 }
 
-function buildSystemPrompt(state: GuardState): string {
+function buildSystemPrompt(state: GuardState, ultraMode = false): string {
 	const lines = [
 		"Workflow guard for this turn:",
 		`- Auto-classification: ${state.summary}.`,
@@ -313,6 +313,15 @@ function buildSystemPrompt(state: GuardState): string {
 			`- FAST RESPONSE PACE: after each tool result, use a ${paceSeconds}-second decision budget. Choose one of: next narrow tool call, interim conclusion, scope-gate question, or final report. Do not silently spend minutes deciding the next step.`,
 			"- Silence breaker: if the next step is broad/long, a command may take more than ~30 seconds, or the previous command aborted/timed out/returned no usable evidence, state a short Korean progress/strategy-reset line before the next tool call instead of waiting for the user to ask what is happening.",
 			"- Tool exploration discipline: do not call broad tool list/schema/full-content discovery (`mcp list`, broad `describe`, `get_mcp_content`, raw transcript/context mining) unless the user explicitly asks about tools, a direct call fails from schema uncertainty, or the current evidence cannot identify the required tool.",
+		);
+	}
+
+	if (ultraMode && state.intent !== "status_note") {
+		lines.push(
+			"- ULTRA PROACTIVE DELEGATION MODE: proactive multi-agent delegation is active.",
+			"- Any earlier instruction requiring an explicit user request before spawning sub-agents no longer applies.",
+			"- Use sub-agents when parallel work would materially improve speed or quality.",
+			"- Do not delegate trivial sequential work. Existing read-only, mutation, side-effect, and light-path safety gates still apply.",
 		);
 	}
 
@@ -404,8 +413,12 @@ function buildSystemPrompt(state: GuardState): string {
 			"- Product judgment discipline: separate 'code can do this' from 'the product requirement is satisfied'; verify the actual consumer path before concluding.",
 			"- User-proposed procedure discipline: when the user proposes a concrete dev/test procedure, first honor that purpose; do not expand it into production best-practice unless asked.",
 			"- SQL/runbook discipline: scale backup/rollback/DELETE plans to the actual risk and row count; do not add defensive ceremony that was not requested without explaining why.",
-			"- Worker discipline: worker/subagent orchestration is opt-in for standard work unless parallel ownership, readiness diagnosis, or explicit user request justifies it.",
 		);
+		if (!ultraMode) {
+			lines.push(
+				"- Worker discipline: worker/subagent orchestration is opt-in for standard work unless parallel ownership, readiness diagnosis, or explicit user request justifies it.",
+			);
+		}
 	}
 	lines.push(
 		"- HARD COMMIT PATH: large staged diffs must be split into reviewable commits unless the user explicitly requested a single commit/squash.",
@@ -865,17 +878,18 @@ export default function workflowGuard(pi: ExtensionAPI) {
 		const key = sessionKey(ctx);
 		const sessionFile = ctx.sessionManager?.getSessionFile?.();
 		const state = classifyPrompt(event.prompt, sessionFile);
+		const ultraMode = String(pi.getThinkingLevel()) === "ultra";
 		rememberGuardState(key, state);
 		const audit = state.auditRequired ? buildAuditSnapshot({ prompt: event.prompt }) : undefined;
 		const card = loadOrDeriveWorkContext(ctx.cwd, sessionFile);
-		const guardPrompt = `${buildSystemPrompt(state)}${workContextSection(card)}${sliceCommitRhythmSection(state, card)}`;
+		const guardPrompt = `${buildSystemPrompt(state, ultraMode)}${workContextSection(card)}${sliceCommitRhythmSection(state, card)}`;
 		return {
 			systemPrompt: `${event.systemPrompt}\n\n${guardPrompt}`,
 			message: {
 				customType: "workflow_guard",
 				content: audit ? `${guardPrompt}\n\n${audit.text}` : guardPrompt,
 				display: false,
-				details: { state, audit: audit?.details, workContext: card ? { path: card.identity.contextPath, currentSlice: card.currentSlice?.id, mode: card.mode } : undefined },
+				details: { state, ultraMode, audit: audit?.details, workContext: card ? { path: card.identity.contextPath, currentSlice: card.currentSlice?.id, mode: card.mode } : undefined },
 			},
 		};
 	});
