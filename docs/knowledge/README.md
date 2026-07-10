@@ -73,6 +73,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Subagent 위임은 구체 프롬프트를 요구한다](./subagent-prompt-specificity.md) | active | high | 2026-06-02 | 83617e9 | subagent, prompt, delegation, worker, context, 위임 |
 | [Subagent는 slash command가 아니라 skill prompt를 위임받는다](./subagent-skill-delegation.md) | active | high | 2026-06-02 | 83617e9 | subagent, skill, slash-command, delegation, ship, ci-ship |
 | [Supervisor는 outcome guardrail이다](./supervisor-outcome-guardrail.md) | active | high | 2026-06-02 | 63f2a62 | supervisor, outcome, guardrail, steering, agent |
+| [Ultra는 Max reasoning과 proactive delegation을 결합한 로컬 mode다](./ultra-proactive-delegation-mode.md) | active | high | 2026-07-10 | 6ad26cd | ultra, reasoning, codex, subagent, delegation, workflow-guard |
 
 ### architecture
 
@@ -222,7 +223,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
 | [Update branch는 remote-first sync command다](./update-branch-safe-pull-command.md) | active | high | 2026-07-02 | 98d7502 | update-branch, slash-command, git, pull, index-lock, workflow |
 | [Working Context Card는 큰 맥락을 현재 slice로 압축한다](./work-context-card-task-board.md) | active | high | 2026-06-02 | 61ccbc9 | work-context, tasks, workflow, context, guard |
-| [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-06-24 | fae9aa3 | workflow, guard, intent, audit, hotfix, continuation |
+| [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-07-10 | 6ad26cd | workflow, guard, intent, audit, hotfix, continuation |
 | [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-06-02 | 61ccbc9 | workflow, frame, tft, hotfix, scope, incremental |
 | [Worktree 생성은 현재 패널 대화가 source다](./worktree-creation-parent-gate.md) | active | high | 2026-06-02 | 61ccbc9 | worktree, fork-panel, current-panel, hotfix, context, profile-driven |
 | [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-06-02 | 63f2a62 | worktree, dependencies, bootstrap, profile-driven, worker, subagent |
@@ -240,6 +241,7 @@ graph TD
   doc_subagent_prompt_specificity["Subagent 위임은 구체 프롬프트를 요구한다"]
   doc_subagent_skill_delegation["Subagent는 slash command가 아니라 skill prompt를 위임받는다"]
   doc_supervisor_outcome_guardrail["Supervisor는 outcome guardrail이다"]
+  doc_ultra_proactive_delegation_mode["Ultra는 Max reasoning과 proactive delegation을 결합한 로컬 mode다"]
   doc_architecture_friction_tft_lens["Architecture friction은 TFT의 검증 축이다"]
   doc_utility_surface_stays_invisible["Utils surface는 사용자 계약을 만들지 않는다"]
   doc_database_write_human_execution_gate["DB write는 인간 실행 게이트를 가진다"]
@@ -362,6 +364,9 @@ graph TD
   doc_subagent_skill_delegation --> doc_subagent_prompt_specificity
   doc_supervisor_outcome_guardrail --> doc_ask_user_question_decision_gates
   doc_supervisor_outcome_guardrail --> doc_subagent_prompt_specificity
+  doc_ultra_proactive_delegation_mode --> doc_ai_worker_readiness_orchestrator
+  doc_ultra_proactive_delegation_mode --> doc_subagent_model_policy
+  doc_ultra_proactive_delegation_mode --> doc_workflow_guard_enforced_flow
   doc_architecture_friction_tft_lens --> doc_decide_tradeoff_challenge
   doc_architecture_friction_tft_lens --> doc_evidence_first_verification_gate
   doc_architecture_friction_tft_lens --> doc_frame_verify_contract
@@ -693,6 +698,7 @@ graph TD
   doc_workflow_guard_enforced_flow --> doc_change_integration_discipline
   doc_workflow_guard_enforced_flow --> doc_frame_studio_interactive_decision_ui
   doc_workflow_guard_enforced_flow --> doc_tui_ask_decision_overlay
+  doc_workflow_guard_enforced_flow --> doc_ultra_proactive_delegation_mode
   doc_workflow_guard_enforced_flow --> doc_validation_baseline_failure_cache
   doc_workflow_guard_enforced_flow --> doc_workflow_weight_proportionality
   doc_workflow_weight_proportionality --> doc_frame_verify_contract
@@ -715,7 +721,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 107
-- Links: 371
+- Documents: 108
+- Links: 375
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

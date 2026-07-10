@@ -20,8 +20,8 @@ applies_to:
   - extensions/frame-studio
 source:
   - user-direction:2026-05-12-conductor-like-guards
-reviewed_at: 2026-06-24
-reviewed_commit: fae9aa375e31fdb76544f256fcae6f692565c991
+reviewed_at: 2026-07-10
+reviewed_commit: 6ad26cd
 related:
   - workflow-weight-proportionality
   - validation-baseline-failure-cache
@@ -29,6 +29,7 @@ related:
   - tui-ask-decision-overlay
   - frame-studio-interactive-decision-ui
   - change-integration-discipline
+  - ultra-proactive-delegation-mode
 title_en: Repeated workflow failures become enforced guard flows
 ---
 
@@ -132,7 +133,7 @@ Light PR/ship에서는 현재 diff, 최근 커밋, 사용자가 방금 확인한
 - **제품 판단 분리**: “코드상 계산 가능”과 “제품 요구를 충족”은 다릅니다. 실제 소비 경로(UI, 알림, 지급, 운영자 확인)가 값을 쓰는지 확인하기 전에는 완료 판단을 하지 않습니다.
 - **사용자 제안 절차 존중**: 사용자가 dev down/up, 임시 백업 후 복구처럼 구체적 검증 절차를 제안하면 먼저 그 목적을 수행 가능한 dev 검증으로 해석합니다. prod 배포 정석으로 일반화하려면 확인 질문을 둡니다.
 - **SQL ceremony 비례**: DB write/runbook에서 backup, rollback, DELETE SQL은 row 수·가역성·side effect에 비례해야 합니다. 작은 reversible 변경에 큰 안전장치를 자동으로 붙이지 않습니다.
-- **worker 절제**: standard 작업에서도 worker/subagent는 기본값이 아닙니다. 병렬 소유권, readiness 진단, explicit user request가 있을 때만 사용하고 이유를 남깁니다.
+- **worker 절제**: standard 작업에서도 worker/subagent는 기본값이 아닙니다. 병렬 소유권, readiness 진단, explicit user request가 있을 때만 사용하고 이유를 남깁니다. 단, 사용자가 Ultra thinking mode를 선택한 turn은 [Ultra proactive delegation mode](./ultra-proactive-delegation-mode.md)에 따라 explicit-request 조건을 해제하되 trivial task와 기존 safety gate는 그대로 유지합니다.
 - **혼합 요청 병렬화**: `width 100으로 줄이자. 상태 칸 뱃지는 뭐가 있어?`처럼 작은 구현 지시와 독립 질문이 한 턴에 섞이면 answer/read-only로 낮추지 않습니다. Guard는 `intent=implement · mixed=implement+investigate · parallel=investigation-subagent`를 주입하고, main agent는 구현을 먼저 진행합니다. 독립 조사 질문은 subagent에 위임하되, 조사 답이 구현 방향을 결정하는 blocker이면 한 문장 scope-gate 질문으로 좁힙니다.
 
 ## Status Note Rule
