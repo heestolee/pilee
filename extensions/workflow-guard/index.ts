@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
+import { loadUltraModeState, resolveUltraMode } from "../ultra-mode/index.ts";
 import { formatWorkContextCard, gateWorkContext, loadOrDeriveWorkContext, type WorkContextCard, type WorkContextGateResult } from "../utils/work-context.ts";
 
 type Intent = "answer" | "investigate" | "implement" | "hotfix" | "verify_report" | "audit" | "ship" | "knowledge" | "status_note" | "unknown";
@@ -878,7 +879,8 @@ export default function workflowGuard(pi: ExtensionAPI) {
 		const key = sessionKey(ctx);
 		const sessionFile = ctx.sessionManager?.getSessionFile?.();
 		const state = classifyPrompt(event.prompt, sessionFile);
-		const ultraMode = String(pi.getThinkingLevel()) === "ultra";
+		const ultraMode = resolveUltraMode(ctx.model, loadUltraModeState());
+		if (ultraMode) pi.setThinkingLevel("max");
 		rememberGuardState(key, state);
 		const audit = state.auditRequired ? buildAuditSnapshot({ prompt: event.prompt }) : undefined;
 		const card = loadOrDeriveWorkContext(ctx.cwd, sessionFile);

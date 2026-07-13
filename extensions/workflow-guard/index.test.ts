@@ -1,15 +1,20 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { mkdtempSync } from "node:fs";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { saveUltraModeState } from "../ultra-mode/index.ts";
 import workflowGuard from "./index.ts";
+
+process.env.PILEE_ULTRA_MODE_STATE_FILE = join(mkdtempSync(join(tmpdir(), "workflow-guard-ultra-")), "state.json");
 
 function createHarness() {
 	const hooks: Record<string, any> = {};
 	const tools: Record<string, any> = {};
-	let thinkingLevel = "high";
+	const thinkingLevels: string[] = [];
+	saveUltraModeState({ enabled: false });
 	const pi = {
 		on(name: string, fn: any) {
 			hooks[name] = fn;
@@ -18,19 +23,20 @@ function createHarness() {
 			tools[tool.name] = tool;
 		},
 		exec: async () => ({ code: 0, stdout: "", stderr: "" }),
-		getThinkingLevel: () => thinkingLevel,
+		setThinkingLevel: (level: string) => thinkingLevels.push(level),
 	} as any;
 	workflowGuard(pi);
 	const ctx = {
 		cwd: process.cwd(),
+		model: { provider: "openai-codex", id: "gpt-5.6-sol" },
 		sessionManager: { getSessionFile: () => "/tmp/workflow-guard-test.jsonl" },
 	};
-	return { hooks, tools, ctx, setThinkingLevel: (level: string) => { thinkingLevel = level; } };
+	return { hooks, tools, ctx, thinkingLevels, setUltraEnabled: (enabled: boolean) => saveUltraModeState({ enabled }) };
 }
 
-test("ultra enables proactive delegation without bypassing safety gates", async () => {
-	const { hooks, ctx, setThinkingLevel } = createHarness();
-	setThinkingLevel("ultra");
+test("pilee-owned ultra enables proactive delegation without bypassing safety gates", async () => {
+	const { hooks, ctx, thinkingLevels, setUltraEnabled } = createHarness();
+	setUltraEnabled(true);
 	const start = await hooks.before_agent_start({ prompt: "결제 플로우 수정해줘", systemPrompt: "base" }, ctx);
 
 	assert.match(start.systemPrompt, /ULTRA PROACTIVE DELEGATION MODE/);
@@ -39,6 +45,7 @@ test("ultra enables proactive delegation without bypassing safety gates", async 
 	assert.match(start.systemPrompt, /Existing read-only, mutation, side-effect, and light-path safety gates still apply/);
 	assert.doesNotMatch(start.systemPrompt, /worker\/subagent orchestration is opt-in/);
 	assert.equal(start.message.details.ultraMode, true);
+	assert.deepEqual(thinkingLevels, ["max"]);
 
 	const lightStart = await hooks.before_agent_start({ prompt: "작은 문구만 수정해줘", systemPrompt: "base" }, ctx);
 	const subagentBlock = await hooks.tool_call({ toolName: "subagent", input: { command: "subagent run worker -- 문구 수정" } }, ctx);
@@ -47,13 +54,22 @@ test("ultra enables proactive delegation without bypassing safety gates", async 
 	assert.match(subagentBlock.reason, /subagent fan-out/);
 });
 
-test("non-ultra keeps explicit-request worker discipline", async () => {
-	const { hooks, ctx } = createHarness();
-	const start = await hooks.before_agent_start({ prompt: "결제 플로우 수정해줘", systemPrompt: "base" }, ctx);
+test("disabled or unsupported pilee ultra keeps explicit-request worker discipline", async () => {
+	const disabled = createHarness();
+	const disabledStart = await disabled.hooks.before_agent_start({ prompt: "결제 플로우 수정해줘", systemPrompt: "base" }, disabled.ctx);
 
-	assert.doesNotMatch(start.systemPrompt, /ULTRA PROACTIVE DELEGATION MODE/);
-	assert.match(start.systemPrompt, /worker\/subagent orchestration is opt-in/);
-	assert.equal(start.message.details.ultraMode, false);
+	assert.doesNotMatch(disabledStart.systemPrompt, /ULTRA PROACTIVE DELEGATION MODE/);
+	assert.match(disabledStart.systemPrompt, /worker\/subagent orchestration is opt-in/);
+	assert.equal(disabledStart.message.details.ultraMode, false);
+	assert.deepEqual(disabled.thinkingLevels, []);
+
+	const unsupported = createHarness();
+	unsupported.setUltraEnabled(true);
+	unsupported.ctx.model.id = "gpt-5.6-luna";
+	const unsupportedStart = await unsupported.hooks.before_agent_start({ prompt: "결제 플로우 수정해줘", systemPrompt: "base" }, unsupported.ctx);
+	assert.doesNotMatch(unsupportedStart.systemPrompt, /ULTRA PROACTIVE DELEGATION MODE/);
+	assert.equal(unsupportedStart.message.details.ultraMode, false);
+	assert.deepEqual(unsupported.thinkingLevels, []);
 });
 
 test("light hotfix PR path blocks deep context mining", async () => {
