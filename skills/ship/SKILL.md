@@ -12,8 +12,20 @@ disable-model-invocation: false
 ## Scope
 
 - 기본 동작: commit → verify → push
-- PR 생성은 기본 범위가 아니다. 사용자가 PR 생성까지 명시하면 프로젝트의 PR 생성 스킬/규칙을 따른다.
+- PR 생성은 기본 범위가 아니다. 사용자가 PR 생성까지 명시하면 프로젝트의 PR 생성 스킬/규칙과 아래 External Publish Gate를 따른다.
 - PR 리뷰 코멘트 대응은 `pr-ship`을 사용한다. `ship`은 PR 전 또는 일반 push 전 정리용이다.
+
+## External Publish Gate
+
+외부 저장소에 Issue 또는 PR을 생성할 때 최초 요청의 “만들어줘/PR까지”는 최종 게시 승인이 아니다.
+
+1. 대상 저장소의 `CONTRIBUTING.md`와 연결된 기여 지침을 먼저 끝까지 읽는다.
+2. 구현 가능성과 upstream contribution 적합성을 분리해 판단하고, issue-first/contributor approval/scope 규칙을 확인한다.
+3. repo, 계정, 제목, 본문, base/head, 규칙 준수 결과를 사용자에게 preview한다.
+4. preview 이후 사용자의 별도 명시적 최종 승인을 기다린다.
+5. 승인 전에는 `gh issue create`, `gh pr create`, REST/MCP 외부 write를 실행하지 않는다.
+
+GitHub CLI 생성 명령은 최종 승인 턴에만 `WORKFLOW_GUARD_CONTRIBUTING_CHECKED=1`과 `WORKFLOW_GUARD_EXTERNAL_PUBLISH_APPROVED=1`을 함께 붙인다.
 
 ## Stop Conditions
 
