@@ -259,6 +259,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | extension | `extensions/to-production` | [To-production은 현재 worktree의 production 기반 branch 전환이다](./docs/knowledge/to-production-source-preserving-hotfix.md) |
 | extension | `extensions/tool-group-renderer` | [도구 출력은 대화 흐름을 침범하지 않는다](./docs/knowledge/tool-output-noise-management.md) |
 | extension | `extensions/tui-ask` | [색상은 정보 위계다](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI 질문은 작은 의사결정 게이트다](./docs/knowledge/tui-ask-decision-overlay.md)<br>[반복 워크플로 실패는 guard/flow로 고정한다](./docs/knowledge/workflow-guard-enforced-flow.md) |
+| extension | `extensions/ultra-mode` | [Ultra는 Max reasoning과 proactive delegation을 결합한 로컬 mode다](./docs/knowledge/ultra-proactive-delegation-mode.md) |
 | extension | `extensions/until` | [Until loop는 종료 조건을 명시 보고한다](./docs/knowledge/until-loop-explicit-reporting.md) |
 | extension | `extensions/update-branch` | [Repo status polling은 index.lock을 만들지 않도록 조율한다](./docs/knowledge/repo-status-index-lock-coordination.md)<br>[Update branch는 remote-first sync command다](./docs/knowledge/update-branch-safe-pull-command.md) |
 | extension | `extensions/usage-analytics` | [도구 출력은 대화 흐름을 침범하지 않는다](./docs/knowledge/tool-output-noise-management.md) |
@@ -313,7 +314,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 ## Extensions
 
 <!-- PILEE_README_EXTENSIONS_START -->
-57개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
+58개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
 
 > `extensions/*`와 `scripts/knowledge.mjs`의 inventory metadata에서 생성됩니다. 변경 후 `node scripts/knowledge.mjs --graph`로 갱신합니다.
 
@@ -397,6 +398,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 
 | 이름 | 설명 |
 |---|---|
+| **ultra-mode** | TODO: inventory 설명 필요 |
 | **work-context** | TODO: inventory 설명 필요 |
 <!-- PILEE_README_EXTENSIONS_END -->
 

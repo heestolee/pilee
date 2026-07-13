@@ -73,7 +73,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Subagent 위임은 구체 프롬프트를 요구한다](./subagent-prompt-specificity.md) | active | high | 2026-06-02 | 83617e9 | subagent, prompt, delegation, worker, context, 위임 |
 | [Subagent는 slash command가 아니라 skill prompt를 위임받는다](./subagent-skill-delegation.md) | active | high | 2026-06-02 | 83617e9 | subagent, skill, slash-command, delegation, ship, ci-ship |
 | [Supervisor는 outcome guardrail이다](./supervisor-outcome-guardrail.md) | active | high | 2026-06-02 | 63f2a62 | supervisor, outcome, guardrail, steering, agent |
-| [Ultra는 Max reasoning과 proactive delegation을 결합한 로컬 mode다](./ultra-proactive-delegation-mode.md) | active | high | 2026-07-10 | 6ad26cd | ultra, reasoning, codex, subagent, delegation, workflow-guard |
+| [Ultra는 Max reasoning과 proactive delegation을 결합한 로컬 mode다](./ultra-proactive-delegation-mode.md) | active | high | 2026-07-11 | de70f71 | ultra, reasoning, codex, subagent, delegation, workflow-guard |
 
 ### architecture
 

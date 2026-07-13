@@ -234,6 +234,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | extension | `extensions/to-production` | [To Production Source Preserving Hotfix](./docs/knowledge/to-production-source-preserving-hotfix.md) |
 | extension | `extensions/tool-group-renderer` | [Tool Output Noise Management](./docs/knowledge/tool-output-noise-management.md) |
 | extension | `extensions/tui-ask` | [Theme Information Hierarchy](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI Ask is a lightweight decision gate](./docs/knowledge/tui-ask-decision-overlay.md)<br>[Repeated workflow failures become enforced guard flows](./docs/knowledge/workflow-guard-enforced-flow.md) |
+| extension | `extensions/ultra-mode` | [Ultra Proactive Delegation Mode](./docs/knowledge/ultra-proactive-delegation-mode.md) |
 | extension | `extensions/until` | [Until Loop Explicit Reporting](./docs/knowledge/until-loop-explicit-reporting.md) |
 | extension | `extensions/update-branch` | [Repo Status Index Lock Coordination](./docs/knowledge/repo-status-index-lock-coordination.md)<br>[Update Branch Safe Pull Command](./docs/knowledge/update-branch-safe-pull-command.md) |
 | extension | `extensions/usage-analytics` | [Tool Output Noise Management](./docs/knowledge/tool-output-noise-management.md) |
@@ -288,7 +289,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 ## Extensions
 
 <!-- PILEE_README_EXTENSIONS_START -->
-57 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
+58 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
 
 > Generated from `extensions/*` plus inventory metadata in `scripts/knowledge.mjs`; refresh with `node scripts/knowledge.mjs --graph`.
 
@@ -372,6 +373,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 
 | Name | Role |
 |---|---|
+| **ultra-mode** | TODO: inventory role needed |
 | **work-context** | TODO: inventory role needed |
 <!-- PILEE_README_EXTENSIONS_END -->
 
