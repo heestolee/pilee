@@ -72,6 +72,34 @@ test("disabled or unsupported pilee ultra keeps explicit-request worker discipli
 	assert.deepEqual(unsupported.thinkingLevels, []);
 });
 
+test("external Issue and PR creation requires CONTRIBUTING review plus separate final approval", async () => {
+	const { hooks, ctx } = createHarness();
+	const start = await hooks.before_agent_start({ prompt: "upstream에 이슈와 PR 만들어줘", systemPrompt: "base" }, ctx);
+
+	assert.match(start.systemPrompt, /EXTERNAL ISSUE\/PR PUBLISH GATE/);
+	assert.match(start.systemPrompt, /CONTRIBUTING\.md/);
+	assert.match(start.systemPrompt, /initial request.*is not final approval/i);
+	assert.match(start.message.details.state.summary, /externalPublish=approval-gated/);
+
+	const issueBlock = await hooks.tool_call({ toolName: "bash", input: { command: "gh issue create --title test --body body" } }, ctx);
+	assert.equal(issueBlock?.block, true);
+	assert.match(issueBlock.reason, /CONTRIBUTING review and final user approval/);
+
+	const prBlock = await hooks.tool_call({ toolName: "bash", input: { command: "WORKFLOW_GUARD_CONTRIBUTING_CHECKED=1 gh pr create --title test --body body" } }, ctx);
+	assert.equal(prBlock?.block, true);
+
+	const apiBlock = await hooks.tool_call({ toolName: "bash", input: { command: "gh api --method POST repos/acme/repo/issues -f title=test" } }, ctx);
+	assert.equal(apiBlock?.block, true);
+
+	const approved = await hooks.tool_call({
+		toolName: "bash",
+		input: {
+			command: "WORKFLOW_GUARD_CONTRIBUTING_CHECKED=1 WORKFLOW_GUARD_EXTERNAL_PUBLISH_APPROVED=1 gh issue create --title test --body body",
+		},
+	}, ctx);
+	assert.equal(approved, undefined);
+});
+
 test("light hotfix PR path blocks deep context mining", async () => {
 	const { hooks, ctx } = createHarness();
 	const start = await hooks.before_agent_start({ prompt: "/create-pr hotfix/foo 생성해줘", systemPrompt: "base" }, ctx);

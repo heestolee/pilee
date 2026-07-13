@@ -19,6 +19,7 @@ interface GuardState {
 	explicitSingleCommit: boolean;
 	explicitCommitPushOnly: boolean;
 	explicitPrAction: boolean;
+	explicitExternalPublish: boolean;
 	auditRequired: boolean;
 	sqlReview: boolean;
 	mixedRequest: boolean;
@@ -223,6 +224,8 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 	const implement = implementationDirective;
 	const shipDirective = !statusNote && !noMutation && !readOnlyShipSignal && hasShipDirective(normalized);
 	const explicitPrAction = shipDirective && hasAny(normalized, [/create-pr|create\s+pr|open\s+pr|pull\s+request|\bpr\b\s*(?:생성|만들|올려|열어|작성|요청|리뷰\s*요청)/]);
+	const explicitIssueAction = hasAny(normalized, [/(?:github\s*)?(?:issue|이슈)\s*(?:생성|만들|올려|열어|작성|create|open)/, /(?:create|open)\s+(?:an?\s+)?issue/]);
+	const explicitExternalPublish = explicitPrAction || explicitIssueAction;
 	const ship = shipDirective;
 	const explicitCommitPushOnly = shipDirective && !implement && hasAny(normalized, [
 		/커밋\s*(?:\/|&|\+|그리고|하고|해서)?\s*푸시/,
@@ -267,13 +270,14 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 		followUpCorrection ? "followup=correction" : null,
 		mixedRequest ? "mixed=implement+investigate" : null,
 		parallelInvestigationSuggested ? "parallel=investigation-subagent" : null,
+		explicitExternalPublish ? "externalPublish=approval-gated" : null,
 		auditRequired ? "audit=required" : null,
 		sqlReview ? "sqlReview=detected" : null,
 		explicitHeavy && !sqlReview ? "heavy=explicit" : null,
 		!explicitMutation ? "mutation=not-requested" : null,
 	].filter(Boolean).join(" · ");
 
-	return { prompt, intent, weight, explicitHeavy, explicitMutation, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, auditRequired, sqlReview, mixedRequest, parallelInvestigationSuggested, summary, continuationCue, followUpCorrection, createdAt: new Date().toISOString(), sessionFile };
+	return { prompt, intent, weight, explicitHeavy, explicitMutation, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, explicitExternalPublish, auditRequired, sqlReview, mixedRequest, parallelInvestigationSuggested, summary, continuationCue, followUpCorrection, createdAt: new Date().toISOString(), sessionFile };
 }
 
 function fastPaceBudgetSeconds(state: GuardState): number | undefined {
@@ -314,6 +318,16 @@ function buildSystemPrompt(state: GuardState, ultraMode = false): string {
 			`- FAST RESPONSE PACE: after each tool result, use a ${paceSeconds}-second decision budget. Choose one of: next narrow tool call, interim conclusion, scope-gate question, or final report. Do not silently spend minutes deciding the next step.`,
 			"- Silence breaker: if the next step is broad/long, a command may take more than ~30 seconds, or the previous command aborted/timed out/returned no usable evidence, state a short Korean progress/strategy-reset line before the next tool call instead of waiting for the user to ask what is happening.",
 			"- Tool exploration discipline: do not call broad tool list/schema/full-content discovery (`mcp list`, broad `describe`, `get_mcp_content`, raw transcript/context mining) unless the user explicitly asks about tools, a direct call fails from schema uncertainty, or the current evidence cannot identify the required tool.",
+		);
+	}
+
+	if (state.explicitExternalPublish && state.intent !== "status_note") {
+		lines.push(
+			"- EXTERNAL ISSUE/PR PUBLISH GATE: do not create or submit an external Issue or PR in this turn.",
+			"- First read the target repository's CONTRIBUTING.md and every contribution guide it links that affects eligibility, scope, issue-first flow, or contributor approval.",
+			"- Separate technical feasibility from upstream contribution fit, then show the user a final preview containing repository, account, title, body, base/head, and rule-compliance findings.",
+			"- The initial request to create an Issue/PR is not final approval. Wait for a separate explicit approval after the preview before any external write.",
+			"- Only on that later approved turn may a GitHub CLI create command carry both WORKFLOW_GUARD_CONTRIBUTING_CHECKED=1 and WORKFLOW_GUARD_EXTERNAL_PUBLISH_APPROVED=1.",
 		);
 	}
 
@@ -456,6 +470,26 @@ function isGitCommitCommand(command: string): boolean {
 
 function isGitPushCommand(command: string): boolean {
 	return /(^|[;&|]\s*)git\s+push\b/.test(command.replace(/\s+/g, " "));
+}
+
+function isExternalIssueOrPrCreateCommand(command: string): boolean {
+	const compact = command.replace(/\s+/g, " ").trim();
+	const commandPrefix = "(?:[A-Z_][A-Z0-9_]*=[^\\s]+\\s+)*";
+	return new RegExp(`(^|[;&|]\\s*)${commandPrefix}gh\\s+(issue|pr)\\s+create\\b`).test(compact)
+		|| new RegExp(`(^|[;&|]\\s*)${commandPrefix}gh\\s+api\\b(?=[^;&|]*(?:--method|-X)\\s+POST\\b)(?=[^;&|]*\\/(?:issues|pulls)(?:\\s|$|\\?))`).test(compact);
+}
+
+function hasExternalPublishApproval(command: string): boolean {
+	return /WORKFLOW_GUARD_CONTRIBUTING_CHECKED=1/.test(command)
+		&& /WORKFLOW_GUARD_EXTERNAL_PUBLISH_APPROVED=1/.test(command);
+}
+
+function externalPublishBlockReason(): string {
+	return [
+		"workflow_guard blocked external Issue/PR creation: CONTRIBUTING review and final user approval are both required.",
+		"Read CONTRIBUTING.md and linked contribution rules, assess upstream fit, and show the complete publish preview first.",
+		"The initial create request is not final approval. After a separate explicit approval, retry with both WORKFLOW_GUARD_CONTRIBUTING_CHECKED=1 and WORKFLOW_GUARD_EXTERNAL_PUBLISH_APPROVED=1.",
+	].join("\n");
 }
 
 function validationWrapperBypass(command: string): boolean {
@@ -940,6 +974,9 @@ export default function workflowGuard(pi: ExtensionAPI) {
 
 		if (event.toolName === "bash") {
 			const command = String(event.input?.command ?? "");
+			if (isExternalIssueOrPrCreateCommand(command) && !hasExternalPublishApproval(command)) {
+				return { block: true, reason: externalPublishBlockReason() };
+			}
 			if (isTargetedValidationWrapperCommand(command) && !validationWrapperBypass(command)) {
 				notifyValidationWrapperNudge(ctx);
 			}
