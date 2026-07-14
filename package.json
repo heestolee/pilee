@@ -1,6 +1,6 @@
 {
   "name": "pilee",
-  "version": "0.1.216",
+  "version": "0.1.217",
   "description": "Personal pi coding agent config 🔥",
   "private": true,
   "type": "module",
@@ -48,7 +48,6 @@
     "test:work-context": "node scripts/run-typescript-test.mjs extensions/work-context/slice-commit-plan.test.ts",
     "test:auto-commit": "node scripts/run-typescript-test.mjs extensions/auto-commit/index.test.ts",
     "test:codex-fast-mode": "node scripts/run-typescript-test.mjs extensions/codex-fast-mode/index.test.ts",
-    "test:ultra-mode": "node scripts/run-typescript-test.mjs extensions/ultra-mode/index.test.ts",
     "test:workflow-guard": "node scripts/run-typescript-test.mjs extensions/workflow-guard/index.test.ts",
     "test:mcp-bridge": "node scripts/run-typescript-test.mjs extensions/mcp-bridge/digest.test.ts",
     "test:tool-group-renderer": "node scripts/run-typescript-test.mjs extensions/tool-group-renderer/mcp-renderer.test.ts",
