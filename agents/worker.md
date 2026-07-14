@@ -2,9 +2,9 @@
 name: worker
 description: General-purpose implementation agent — use for complex multi-file changes, architectural refactoring, and heavy implementation tasks
 tools: read, grep, find, ls, bash, edit, write
-model: openai-codex/gpt-5.5
+model: openai-codex/gpt-5.6-sol
 runtime: pi
-thinking: medium
+thinking: max
 ---
 
 <system_prompt agent="worker">
