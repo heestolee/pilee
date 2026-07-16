@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
+import { setGlimpseOpenForTests } from "../utils/glimpse.ts";
 import { buildStudyHardStudioHtml, buildStudyNoteExportHtml, createInitialBoardState, layoutStudyGraph, loadPersistedStudyHardState, mergeBoardState, openExistingStudyHardStudio, registerStudyHardBoardTool, startStudyHardStudio, stopStudyHardStudios, updateStudyHardStudio } from "./studio.ts";
 
 const originalStateDir = process.env.STUDY_HARD_STATE_DIR;
@@ -150,6 +151,24 @@ test("mergeBoardState normalizes flow and annotated note blocks with stable sema
 	}), /outside 1-1/);
 });
 
+test("mergeBoardState preserves TFT visual specs as stable learning-note blocks", () => {
+	const current = createInitialBoardState({ url: "https://example.com", runId: "visual-contract" });
+	const visual = {
+		kind: "architecture-flow",
+		title: "저장 경로",
+		lanes: ["Frame", "Study Hard", "Export"],
+		nodes: [{ id: "frame", lane: "Frame", title: "TFT visual" }, { id: "note", lane: "Study Hard", title: "visual block" }],
+		edges: [{ from: "frame", to: "note", label: "원본 spec 보존" }],
+	};
+	const next = mergeBoardState(current, {
+		noteDocument: { title: "Visual note", sections: [{ id: "visuals", kind: "flow", title: "시각화", blocks: [{ id: "architecture", type: "visual", title: "저장 경로", body: "같은 spec을 모든 표면에서 사용한다.", visual }] }] },
+	});
+	assert.deepEqual(next.noteDocument.sections[0]?.blocks[0]?.visual, visual);
+	assert.throws(() => mergeBoardState(next, {
+		noteDocument: { title: "Invalid", sections: [{ id: "visuals", kind: "flow", title: "시각화", blocks: [{ id: "missing", type: "visual" }] }] },
+	}), /visual note block requires a visual spec/);
+});
+
 test("mergeBoardState clears a stale flow step when switching variants", () => {
 	const current = createInitialBoardState({ url: "https://example.com", runId: "flow-clear" });
 	current.flows = [
@@ -269,10 +288,16 @@ test("buildStudyHardStudioHtml centers the learning note, Before/After diagram, 
 	assert.match(html, /isMemo\?summary\.split/);
 	assert.match(html, /X-Study-Hard-Capability/);
 	assert.match(buildStudyHardStudioHtml("capability-test"), /capability-test/);
+	assert.match(buildStudyHardStudioHtml("capability-test", true), /nativeVisualCapture=true/);
+	assert.match(html, /nativeVisualCapture=false/);
 	assert.match(html, /post\('\/export\/html'/);
 	assert.match(html, /post\('\/export\/notion'/);
 	assert.match(html, /svgToPngDataUrl/);
 	assert.match(html, /collectNotionDiagramAssets/);
+	assert.match(html, /data-note-visual/);
+	assert.match(html, /\/note-visual\//);
+	assert.match(html, /captureVisualFrame/);
+	assert.match(html, /captureTftVisualPng/);
 	assert.match(html, /Downloads 저장됨/);
 	assert.doesNotMatch(html, /link\.download/);
 	assert.match(html, /post\('\/history\/restore'/);
@@ -336,6 +361,34 @@ test("buildStudyNoteExportHtml creates a standalone learning note with Mermaid a
 	assert.doesNotMatch(html, /htmlExportButton/);
 });
 
+test("buildStudyNoteExportHtml preserves an interactive TFT visual, PNG fallback, and source spec", () => {
+	const state = createInitialBoardState({ url: "https://example.com/source", runId: "visual-export" });
+	const visual = {
+		kind: "architecture-flow",
+		title: "Frame에서 저장까지",
+		lanes: ["Frame", "Study Hard", "Export"],
+		nodes: [{ id: "frame", lane: "Frame", title: "TFT visual" }, { id: "note", lane: "Study Hard", title: "학습 노트" }],
+		edges: [{ from: "frame", to: "note", label: "spec" }],
+	};
+	state.noteDocument = { title: "Visual export", sections: [{ id: "visuals", kind: "flow", title: "시각화", blocks: [{ id: "visual-1", type: "visual", title: "Frame에서 저장까지", body: "사용자가 다듬은 구조", visual }] }] };
+	const pngPath = join(testStateDir, "visual-fallback.png");
+	writeFileSync(pngPath, Buffer.from("visual-png"));
+	const html = buildStudyNoteExportHtml(state, [{ blockId: "visual-1", fileName: "visual-1.png", mimeType: "image/png", path: pngPath, sha256: "test" }] as any);
+	assert.match(html, /class="visualFrame"/);
+	assert.match(html, /PNG fallback 보기/);
+	assert.match(html, /data:image\/png;base64/);
+	assert.match(html, /원본 visual spec 보기/);
+	assert.match(html, /architecture-flow/);
+	const source = /<iframe[^>]+src="data:text\/html;base64,([^"]+)"/.exec(html)?.[1];
+	assert.ok(source);
+	const embedHtml = Buffer.from(source, "base64").toString("utf-8");
+	assert.match(embedHtml, /tft-visual-only/);
+	assert.match(embedHtml, /captureTftVisualPng/);
+	assert.match(embedHtml, /Frame에서 저장까지/);
+	assert.ok(Buffer.byteLength(embedHtml) < 400_000, "dedicated Frame visuals should not duplicate the ELK bundle");
+	for (const script of [...embedHtml.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map((match) => match[1])) new Function(script);
+});
+
 test("export routes write HTML to Downloads and pass rendered diagrams to Notion sync", async () => {
 	const fakeSyncScript = join(testStateDir, "fake-study-hard-sync.py");
 	writeFileSync(fakeSyncScript, "import json\nprint(json.dumps({'pageId':'page-1','pageUrl':'https://notion.so/page1','sessionId':'session-1','sectionHashes':{'#document':'hash-1'}}))\n", "utf-8");
@@ -380,6 +433,70 @@ test("export routes write HTML to Downloads and pass rendered diagrams to Notion
 		assert.equal(syncInput.diagramAssets[0].blockId, "diagram");
 		assert.equal(readFileSync(syncInput.diagramAssets[0].path, "utf-8"), "rendered-png");
 	} finally {
+		stopStudyHardStudios();
+	}
+});
+
+test("visual export routes use native snapshots for HTML fallback and Notion assets", async () => {
+	const fakeOpen = (() => {
+		return (_html: string, _options: Record<string, unknown>) => {
+			const listeners = new Map<string, Array<(data?: any) => void>>();
+			const emit = (event: string, data?: unknown) => {
+				for (const listener of listeners.get(event) || []) listener(data);
+			};
+			const window = {
+				on(event: string, handler: (data?: any) => void) {
+					const current = listeners.get(event) || [];
+					current.push(handler);
+					listeners.set(event, current);
+				},
+				close() {},
+				_write(message: Record<string, unknown>) {
+					if (message.type === "resize") {
+						queueMicrotask(() => emit("message", { type: "tft-visual-ready", width: message.width, height: message.height }));
+						return;
+					}
+					if (message.type !== "snapshot") return;
+					queueMicrotask(() => emit("message", {
+						type: "snapshot",
+						requestId: message.requestId,
+						width: 900,
+						height: 620,
+						pixelWidth: 1800,
+						pixelHeight: 1240,
+						dataUrl: `data:image/png;base64,${Buffer.from("native-visual-png").toString("base64")}`,
+					}));
+				},
+			};
+			queueMicrotask(() => emit("message", { type: "tft-visual-ready", width: 900, height: 620 }));
+			return window;
+		};
+	})();
+	setGlimpseOpenForTests(fakeOpen as any);
+	const fakeSyncScript = join(testStateDir, "fake-visual-sync.py");
+	writeFileSync(fakeSyncScript, "import json\nprint(json.dumps({'pageId':'visual-page','pageUrl':'https://notion.so/visual','sessionId':'visual-session','sectionHashes':{'#document':'visual-hash'}}))\n", "utf-8");
+	const downloadDir = join(testStateDir, "VisualDownloads");
+	const runId = "visual-export-routes";
+	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/visual-export", runId, syncScript: fakeSyncScript, downloadDir });
+	try {
+		updateStudyHardStudio(runId, {
+			noteDocument: { title: "Visual Export", sections: [{ id: "visuals", kind: "flow", title: "시각화", blocks: [{ id: "architecture", type: "visual", title: "Frame에서 저장까지", visual: { kind: "architecture-flow", title: "Frame에서 저장까지", lanes: ["Frame", "Study Hard"], nodes: [{ id: "frame", lane: "Frame", title: "TFT visual" }], edges: [] } }] }] },
+		});
+		const headers = authorizedHeaders(handle);
+		let response = await fetch(new URL("/export/html", handle.url), { method: "POST", headers, body: "{}" });
+		assert.equal(response.status, 200);
+		const htmlResult = await response.json() as any;
+		const exported = readFileSync(htmlResult.path, "utf-8");
+		assert.match(exported, /PNG fallback 보기/);
+		assert.match(exported, /data:image\/png;base64/);
+		response = await fetch(new URL("/export/notion", handle.url), { method: "POST", headers, body: "{}" });
+		assert.equal(response.status, 200);
+		const syncInput = JSON.parse(readFileSync(join(testStateDir, `${runId}-exports`, "notion-sync.json"), "utf-8"));
+		assert.equal(syncInput.diagramAssets[0]?.blockId, "architecture");
+		assert.equal(readFileSync(syncInput.diagramAssets[0]?.path, "utf-8"), "native-visual-png");
+	} finally {
+		setGlimpseOpenForTests(undefined);
 		stopStudyHardStudios();
 	}
 });
@@ -799,6 +916,7 @@ test("오른쪽 질문 3개는 Tutor에서 병렬 처리된 뒤 Editor가 한 �
 		}
 		assert.equal(request.role, "editor");
 		assert.equal(completedTutors, 3);
+		assert.match(request.prompt, /type: "visual"[\s\S]*원본 spec 전체를 그대로 보존/);
 		editorCalls += 1;
 		const baseRevision = Number(/## 기준 revision\n(\d+)/.exec(request.prompt)?.[1]);
 		return JSON.stringify({
