@@ -825,6 +825,10 @@ function statePathFor(runId: string): string {
 	return join(stateDir(), `${validateRunId(runId)}.json`);
 }
 
+export function studyHardStatePathFor(runId: string): string {
+	return statePathFor(runId);
+}
+
 function normalizePersistedState(value: unknown): StudyHardBoardState {
 	if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Study Hard state must be an object");
 	const raw = value as Record<string, unknown>;
