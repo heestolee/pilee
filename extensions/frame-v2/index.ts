@@ -54,6 +54,25 @@ interface FrameV2CommandContextRecord {
 const commandContexts = new Map<string, FrameV2CommandContextRecord>();
 let latestContextKey: string | null = null;
 
+type FrameV2ForkRunner = (
+	pi: ExtensionAPI,
+	args: string,
+	ctx: ExtensionCommandContext,
+	options: { afterSwitchFollowUp: { customType: string; content: string; display: boolean; details: Record<string, unknown> } },
+) => Promise<any>;
+
+let frameV2ForkRunnerOverride: FrameV2ForkRunner | undefined;
+
+export function setFrameV2ForkRunnerForTests(runner?: FrameV2ForkRunner): void {
+	frameV2ForkRunnerOverride = runner;
+}
+
+async function resolveFrameV2ForkRunner(): Promise<FrameV2ForkRunner> {
+	if (frameV2ForkRunnerOverride) return frameV2ForkRunnerOverride;
+	const { runWorktreeForkFromCommandContext } = await import("../worktree/index.ts");
+	return runWorktreeForkFromCommandContext;
+}
+
 function pruneContexts(now = Date.now()): void {
 	for (const [key, record] of commandContexts.entries()) {
 		if (now - record.createdAt > FRAME_V2_CONTEXT_TTL_MS) commandContexts.delete(key);
@@ -155,6 +174,24 @@ export function buildFrameV2Prompt(params: {
 	].join("\n");
 }
 
+export function validateFrameV2ReadyFrame(framePath: string, expectedIdentityKey: string): { ok: true; frame: Record<string, unknown> } | { ok: false; error: string } {
+	if (!existsSync(framePath)) return { ok: false, error: `표준 frame.json이 없습니다: ${framePath}` };
+	try {
+		const frame = JSON.parse(readFileSync(framePath, "utf8")) as Record<string, unknown>;
+		const identity = frame.identity as Record<string, unknown> | undefined;
+		if (frame.version !== 1) return { ok: false, error: "frame.json version은 1이어야 합니다." };
+		if (identity?.key !== expectedIdentityKey) return { ok: false, error: `frame.json identity.key가 Frame v2 identity와 다릅니다: ${String(identity?.key ?? "(missing)")}` };
+		if (typeof frame.goal !== "string" || !frame.goal.trim()) return { ok: false, error: "frame.json goal이 비어 있습니다." };
+		if (!Array.isArray(frame.success_criteria) || frame.success_criteria.length === 0) return { ok: false, error: "frame.json success_criteria가 비어 있습니다." };
+		if (!frame.verify_plan || typeof frame.verify_plan !== "object" || Array.isArray(frame.verify_plan)) return { ok: false, error: "frame.json verify_plan이 없습니다." };
+		if (!frame.implementation_plan || typeof frame.implementation_plan !== "object" || Array.isArray(frame.implementation_plan)) return { ok: false, error: "frame.json implementation_plan이 없습니다." };
+		if (!frame.provenance || typeof frame.provenance !== "object" || Array.isArray(frame.provenance)) return { ok: false, error: "frame.json provenance가 없습니다." };
+		return { ok: true, frame };
+	} catch (error) {
+		return { ok: false, error: `frame.json을 읽을 수 없습니다: ${error instanceof Error ? error.message : String(error)}` };
+	}
+}
+
 function sameSession(record: FrameV2CommandContextRecord, toolCtx: ExtensionContext): boolean {
 	const currentSessionFile = toolCtx.sessionManager.getSessionFile?.();
 	return !(currentSessionFile && record.sessionFile && currentSessionFile !== record.sessionFile);
@@ -195,7 +232,8 @@ function registerFrameV2StateTool(pi: ExtensionAPI): void {
 			if (!sameSession(record, toolCtx)) return blockedResult("BLOCKED: 현재 tool session과 /frame-v2 command session이 달라 상태를 변경하지 않습니다.", { action: FRAME_V2_STATE_TOOL, reason: "session mismatch" });
 			const framePath = join(record.identity.storageDir, "frame.json");
 			if (params.action === "ready") {
-				if (!existsSync(framePath)) return blockedResult(`BLOCKED: 표준 frame.json이 없습니다: ${framePath}`, { action: FRAME_V2_STATE_TOOL, framePath });
+				const readiness = validateFrameV2ReadyFrame(framePath, record.identity.key);
+				if (!readiness.ok) return blockedResult(`BLOCKED: ${readiness.error}`, { action: FRAME_V2_STATE_TOOL, framePath });
 				const manifest = updateFrameV2ManifestStatus(record.manifestPath, "ready");
 				return { content: [{ type: "text" as const, text: `✓ Frame v2 ready: ${framePath}` }], details: { action: FRAME_V2_STATE_TOOL, manifestPath: record.manifestPath, framePath, manifest } };
 			}
@@ -229,12 +267,13 @@ function registerFrameV2ForkTool(pi: ExtensionAPI): void {
 			if (!record) return blockedResult("BLOCKED: 이 /frame-v2 실행의 command context를 찾지 못해 worktree를 만들지 않습니다.", { action: FRAME_V2_FORK_TOOL });
 			if (!sameSession(record, toolCtx)) return blockedResult("BLOCKED: 현재 tool session과 /frame-v2 command session이 달라 fork 연속성을 보장할 수 없습니다.", { action: FRAME_V2_FORK_TOOL, reason: "session mismatch" });
 			const framePath = join(record.identity.storageDir, "frame.json");
-			if (!existsSync(framePath)) return blockedResult(`BLOCKED: 표준 frame.json이 없어 fork를 시작하지 않습니다: ${framePath}`, { action: FRAME_V2_FORK_TOOL, framePath });
+			const readiness = validateFrameV2ReadyFrame(framePath, record.identity.key);
+			if (!readiness.ok) return blockedResult(`BLOCKED: 표준 frame.json이 준비되지 않아 fork를 시작하지 않습니다: ${readiness.error}`, { action: FRAME_V2_FORK_TOOL, framePath });
 			const manifest = JSON.parse(readFileSync(record.manifestPath, "utf8")) as { status?: string };
 			if (manifest.status !== "ready") return blockedResult("BLOCKED: Frame v2 manifest가 ready가 아닙니다. 먼저 refinement와 frame_v2_state ready를 완료하세요.", { action: FRAME_V2_FORK_TOOL, status: manifest.status });
 
 			const args = buildFrameWorktreeForkArgs(params, record.identity);
-			const { runWorktreeForkFromCommandContext } = await import("../worktree/index.ts");
+			const runWorktreeForkFromCommandContext = await resolveFrameV2ForkRunner();
 			const result = await runWorktreeForkFromCommandContext(pi, args, record.ctx, {
 				afterSwitchFollowUp: {
 					customType: FRAME_V2_CONTINUATION_TYPE,

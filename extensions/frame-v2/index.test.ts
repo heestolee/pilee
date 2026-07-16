@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import type { FrameIdentity } from "../tft-commands/frame-identity.ts";
 import { parseFrameV2Args } from "./artifact.ts";
-import frameV2, { buildFrameV2Prompt } from "./index.ts";
+import frameV2, { buildFrameV2Prompt, setFrameV2ForkRunnerForTests } from "./index.ts";
 
 function testIdentity(storageDir: string): FrameIdentity {
 	return {
@@ -16,6 +16,18 @@ function testIdentity(storageDir: string): FrameIdentity {
 		cwd: "/tmp",
 		reason: "test",
 		sessionFile: "/tmp/frame-v2-session.jsonl",
+	};
+}
+
+function readyFrame(identityKey: string) {
+	return {
+		version: 1,
+		identity: { key: identityKey },
+		goal: "Frame v2 구현",
+		success_criteria: [{ id: "SC-1", statement: "ready", evidence_locator: "test" }],
+		verify_plan: { commands: [], manual_checks: [] },
+		implementation_plan: { status: "ready", derivedFrom: { decisionIds: [] }, slices: [], firstSafeStep: "start", readiness: {}, gates: [] },
+		provenance: { notes: ["Frame v2 test"] },
 	};
 }
 
@@ -41,6 +53,19 @@ test("Frame v2 prompt keeps two-stage visual/refinement and work-start gates", (
 	assert.match(prompt, /frame_v2_state action=ready/);
 	assert.match(prompt, /frame_v2_worktree_fork/);
 	assert.match(prompt, /Do not fetch it/);
+
+	const guidedInvocation = parseFrameV2Args("checkout", identity.key) as any;
+	const guidedPrompt = buildFrameV2Prompt({
+		args: "checkout",
+		cwd: "/tmp",
+		identity,
+		invocation: guidedInvocation,
+		runId: "frame-v2-guided-test",
+		statePath: "/tmp/frame-v2-guided-test.json",
+		manifestPath: "/tmp/frame-v2-guided.json",
+	});
+	assert.match(guidedPrompt, /Guided mode: follow the current frame Deep Interview/);
+	assert.doesNotMatch(guidedPrompt, /Draft-first mode/);
 });
 
 test("/frame-v2 registers independent command and persists command-context manifest", async () => {
@@ -102,10 +127,30 @@ test("/frame-v2 registers independent command and persists command-context manif
 		assert.match(blocked.content[0].text, /frame\.json이 없습니다/);
 
 		writeFileSync(join(piDir, "frame.json"), "{}\n");
-		const ready = await tools.get("frame_v2_state").execute("state-2", { action: "ready" }, new AbortController().signal, () => {}, toolCtx);
+		const invalid = await tools.get("frame_v2_state").execute("state-2", { action: "ready" }, new AbortController().signal, () => {}, toolCtx);
+		assert.equal(invalid.details.blocked, true);
+		assert.match(invalid.content[0].text, /version은 1/);
+
+		writeFileSync(join(piDir, "frame.json"), `${JSON.stringify(readyFrame(manifest.identity.key), null, 2)}\n`);
+		const ready = await tools.get("frame_v2_state").execute("state-3", { action: "ready" }, new AbortController().signal, () => {}, toolCtx);
 		assert.equal(ready.details.manifest.status, "ready");
 		assert.equal(JSON.parse(readFileSync(manifestPath, "utf8")).status, "ready");
+
+		let forkArgs = "";
+		let continuation = "";
+		setFrameV2ForkRunnerForTests(async (_pi, args, _ctx, options) => {
+			forkArgs = args;
+			continuation = options.afterSwitchFollowUp.content;
+			return { status: "switched", name: "frame-v2-impl", branch: "feature/frame-v2-impl", path: "/tmp/frame-v2-impl", sessionFile: "/tmp/frame-v2-impl.jsonl", contextMode: "full" };
+		});
+		const forked = await tools.get("frame_v2_worktree_fork").execute("fork-ready", {}, new AbortController().signal, () => {}, toolCtx);
+		assert.equal(forked.details.autoStarted, true);
+		assert.match(forked.content[0].text, /Frame v2 구현 세션 시작/);
+		assert.match(forkArgs, /--full-context/);
+		assert.match(continuation, /promoted `.pi\/frame\.json`/);
+		assert.equal(JSON.parse(readFileSync(manifestPath, "utf8")).status, "started");
 	} finally {
+		setFrameV2ForkRunnerForTests(undefined);
 		rmSync(root, { recursive: true, force: true });
 	}
 });
@@ -134,7 +179,7 @@ test("Frame v2 fork tool blocks before canonical frame readiness", async () => {
 		await command.handler("checkout", ctx);
 		const result = await tools.get("frame_v2_worktree_fork").execute("fork-1", {}, new AbortController().signal, () => {}, { sessionManager: { getSessionFile: () => sessionFile } });
 		assert.equal(result.details.blocked, true);
-		assert.match(result.content[0].text, /표준 frame\.json이 없어/);
+		assert.match(result.content[0].text, /표준 frame\.json이 준비되지 않아/);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}

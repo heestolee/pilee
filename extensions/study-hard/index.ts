@@ -15,7 +15,7 @@ Flow:
   1. URL 내용을 가져온다.
   2. 요약만 하지 않고 질문-답변을 한 문제씩 반복한다.
   3. 사용자가 이해했다고 할 때까지 오개념을 짚고 다음 질문을 낸다.
-  4. "노션에 저장"/"저장해줘" 요청 시 automation-scripts의 study_hard_sync.py로 날짜별 학습 페이지를 부분 업데이트한다.`;
+  4. "노션에 저장"/"저장해줘" 요청 시 runtime profile에 설정된 외부 sync script로 학습 페이지를 부분 업데이트한다.`;
 
 export interface StudyHardInvocation {
 	url: string;
