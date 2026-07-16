@@ -139,6 +139,8 @@ export function buildFrameV2Prompt(params: {
 		"- Existing `/frame`, `/decide`, and `/study-hard` behavior is out of scope; do not edit or reinterpret those workflows during this invocation.",
 		"- Do not start implementation until the user explicitly confirms understanding and a standard frame.json is written.",
 		"- Use TFT Studio first for the initial note and current Frame tft-visual renderers; only then start the Study Hard board for refinement.",
+		"- Choose the visual form that best explains each subject: TFT visual, Mermaid, Study Hard flow, or a mixture. Do not force one renderer onto every concept.",
+		"- Any fenced tft-visual that should survive refinement must be transferred into noteDocument as a stable `{type:\"visual\", visual:{...original spec...}}` block; do not flatten it into prose or a screenshot-only placeholder.",
 		params.invocation.mode === "draft"
 			? "- Draft-first mode: show a researched initial note before asking contract questions. Mark uncertainty instead of silently deciding it."
 			: "- Guided mode: follow the current frame Deep Interview/(명백)/Productive Resistance rules without reducing them to a shorter substitute.",

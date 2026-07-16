@@ -50,6 +50,9 @@ test("Frame v2 prompt keeps two-stage visual/refinement and work-start gates", (
 	assert.match(prompt, /backend-layer-map/);
 	assert.match(prompt, /architecture-flow/);
 	assert.match(prompt, /data-model-migration-map/);
+	assert.match(prompt, /type:"visual"/);
+	assert.match(prompt, /original spec/);
+	assert.match(prompt, /TFT visual, Mermaid, Study Hard flow/);
 	assert.match(prompt, /frame_v2_state action=ready/);
 	assert.match(prompt, /frame_v2_worktree_fork/);
 	assert.match(prompt, /Do not fetch it/);

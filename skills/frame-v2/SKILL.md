@@ -101,9 +101,10 @@ Command shim이 다음 값을 prompt에 제공한다.
    - `kind: "backend-layer-map"`
    - `kind: "architecture-flow"`
    - `kind: "data-model-migration-map"`
-4. 시각 자료 선택 기준은 `../frame/SKILL.md` gate를 그대로 따른다. 단순 작업에 모든 지도를 의례적으로 그리지 않는다.
-5. guided mode 질문은 `frame_studio action=ask tab=frame`으로 묻는다. `unavailable/cancelled/timeout`일 때만 번호형 fallback을 쓴다.
-6. 최초 노트가 정리되면 Studio에 “Study Hard로 넘길 내용”을 한 번 보여주고 `frame_studio action=finish tab=frame`으로 닫는다.
+4. 시각 자료 선택 기준은 `../frame/SKILL.md` gate를 그대로 따른다. TFT visual, Mermaid, Study Hard flow 중 주제에 가장 적합한 표현을 고르고, 단순 작업에 모든 지도를 의례적으로 그리지 않는다.
+5. Study Hard에서도 계속 볼 TFT visual은 원본 spec을 유지한 stable note block으로 넘긴다: `{"id":"...","type":"visual","title":"...","body":"...","visual":{...}}`. prose나 screenshot-only placeholder로 평탄화하지 않는다.
+6. guided mode 질문은 `frame_studio action=ask tab=frame`으로 묻는다. `unavailable/cancelled/timeout`일 때만 번호형 fallback을 쓴다.
+7. 최초 노트가 정리되면 Studio에 “Study Hard로 넘길 내용”을 한 번 보여주고 `frame_studio action=finish tab=frame`으로 닫는다.
 
 ### 4. Study Hard board로 전환한다
 
@@ -112,7 +113,7 @@ Command shim이 다음 값을 prompt에 제공한다.
 필수 전달값:
 
 - command shim의 `runId`, `sourceUrl`, title, hints
-- `noteDocument`: TFT Studio 최초 학습노트의 구조화 버전
+- `noteDocument`: TFT Studio 최초 학습노트의 구조화 버전. 보존할 TFT visual은 `type: "visual"` block과 원본 `visual` spec을 포함한다.
 - `nodes/edges`: 개념·책임의 hierarchy만 표현
 - `flows`: runtime/data/user-action sequence
 - `mermaid`: ERD처럼 관계도가 더 직관적인 경우 보조 사용
@@ -131,8 +132,8 @@ Command shim이 다음 값을 prompt에 제공한다.
 
 ### 6. Export
 
-- HTML은 Study Hard board의 `HTML 내보내기`를 사용한다.
-- Notion은 runtime profile/`STUDY_HARD_SYNC_SCRIPT`가 있을 때 `Notion 저장`을 사용한다.
+- HTML은 Study Hard board의 `HTML 내보내기`를 사용한다. TFT visual은 동작하는 self-contained renderer와 PNG fallback, 원본 spec을 함께 보존한다.
+- Notion은 runtime profile/`STUDY_HARD_SYNC_SCRIPT`가 있을 때 `Notion 저장`을 사용한다. TFT visual은 전체 container 고해상도 PNG와 설명, 원본 spec toggle로 저장한다.
 - Notion publisher가 없어도 HTML과 작업 시작은 막지 않는다.
 - export는 현재 revision snapshot 기준이며, 저장 중 바뀐 revision은 사용자에게 알린다.
 
@@ -179,7 +180,8 @@ Command shim이 다음 값을 prompt에 제공한다.
 - [ ] `--draft`가 최초 노트 전 질문을 강제하지 않았다.
 - [ ] guided mode가 현재 Frame 질문 규율을 임의로 재해석하지 않았다.
 - [ ] 필요한 ERD/flow/layer map이 TFT Studio에서 직관적으로 보였다.
-- [ ] Study Hard board에 최초 노트가 구조 손실 없이 넘어갔다.
+- [ ] Study Hard board에 최초 노트가 구조 손실 없이 넘어갔고, 보존 대상 TFT visual은 `visual` block 원본 spec으로 다시 렌더됐다.
+- [ ] 같은 visual fixture가 live note, HTML renderer + PNG fallback, Notion PNG + spec toggle에 모두 연결됐다.
 - [ ] 사용자가 이해 완료를 말하기 전 `frame.json` ready/구현 시작을 선언하지 않았다.
 - [ ] export와 worktree 시작이 서로 독립적으로 가능하다.
 - [ ] 기존 `/frame`, `/study-hard` 동작을 변경하지 않았다.
