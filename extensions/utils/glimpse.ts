@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
@@ -17,7 +17,21 @@ export interface GlimpseWindow {
 
 export type GlimpseOpen = (html: string, opts: Record<string, unknown>) => GlimpseWindow;
 
+export interface GlimpsePngCapture {
+	dataUrl: string;
+	width: number;
+	height: number;
+	pixelWidth: number;
+	pixelHeight: number;
+}
+
 let glimpseOpen: GlimpseOpen | null | undefined;
+let glimpseOpenTestOverride = false;
+
+export function setGlimpseOpenForTests(open: GlimpseOpen | null | undefined): void {
+	glimpseOpen = open;
+	glimpseOpenTestOverride = open !== undefined;
+}
 
 function findGlimpseMjs(): string | null {
 	try {
@@ -36,7 +50,7 @@ function shellQuote(value: string): string {
 	return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
-function patchDarwinWebViewShortcutSupport(source: string): string | null {
+export function patchDarwinWebViewShortcutSupport(source: string): string | null {
 	const originalPanel = `class GlimpsePanel: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
@@ -323,6 +337,30 @@ function patchDarwinWebViewShortcutSupport(source: string): string | null {
                 popoverViewController?.preferredContentSize = NSSize(width: w, height: h)
             } else {
                 window.setFrame(frame, display: true, animate: false)
+            }
+        case "snapshot":
+            let requestId = json["requestId"] as? String ?? UUID().uuidString
+            let x = (json["x"] as? NSNumber)?.doubleValue ?? 0
+            let y = (json["y"] as? NSNumber)?.doubleValue ?? 0
+            let width = max(1, (json["width"] as? NSNumber)?.doubleValue ?? Double(webView.bounds.width))
+            let height = max(1, (json["height"] as? NSNumber)?.doubleValue ?? Double(webView.bounds.height))
+            let pixelWidth = max(1, (json["pixelWidth"] as? NSNumber)?.doubleValue ?? width)
+            let snapshot = WKSnapshotConfiguration()
+            snapshot.rect = CGRect(x: x, y: y, width: width, height: height)
+            snapshot.snapshotWidth = NSNumber(value: pixelWidth)
+            webView.takeSnapshot(with: snapshot) { image, error in
+                var payload: [String: Any] = ["type": "snapshot", "requestId": requestId, "width": width, "height": height]
+                if let image,
+                   let tiff = image.tiffRepresentation,
+                   let bitmap = NSBitmapImageRep(data: tiff),
+                   let png = bitmap.representation(using: .png, properties: [:]) {
+                    payload["dataUrl"] = "data:image/png;base64," + png.base64EncodedString()
+                    payload["pixelWidth"] = bitmap.pixelsWide
+                    payload["pixelHeight"] = bitmap.pixelsHigh
+                } else {
+                    payload["error"] = error?.localizedDescription ?? "WKWebView snapshot failed"
+                }
+                writeToStdout(["type": "message", "data": payload])
             }`;
 	if (!source.includes(originalPanel) || !source.includes(originalMonitorSlot) || !source.includes(originalLaunch) || !source.includes(originalSetupWindow) || !source.includes(originalSetupWebView) || !source.includes(originalDelegate) || !source.includes(originalResizeCommand)) return null;
 	return source
@@ -406,4 +444,73 @@ export async function getGlimpseOpen(): Promise<GlimpseOpen | null> {
 	}
 	glimpseOpen = null;
 	return glimpseOpen;
+}
+
+export async function captureGlimpseHtmlPng(html: string, options: { title?: string; timeoutMs?: number } = {}): Promise<GlimpsePngCapture> {
+	if (process.platform !== "darwin" && !glimpseOpenTestOverride) throw new Error("Glimpse native PNG capture는 현재 macOS WKWebView host에서만 지원합니다.");
+	const open = await getGlimpseOpen();
+	if (!open) throw new Error("Glimpse WebView를 사용할 수 없어 native PNG capture를 시작하지 못했습니다.");
+	const requestId = randomUUID();
+	const timeoutMs = Math.max(1_000, options.timeoutMs ?? 20_000);
+	const win = open(html, { title: options.title || "Glimpse PNG capture", width: 1100, height: 800, hidden: true, noDock: true });
+	return await new Promise<GlimpsePngCapture>((resolve, reject) => {
+		let settled = false;
+		let resizeRequested = false;
+		let snapshotRequested = false;
+		let snapshotFallbackTimer: ReturnType<typeof setTimeout> | undefined;
+		const requestSnapshot = (message: Record<string, unknown>) => {
+			if (snapshotRequested || settled) return;
+			snapshotRequested = true;
+			if (snapshotFallbackTimer) clearTimeout(snapshotFallbackTimer);
+			const width = Math.max(1, Math.min(16_000, Number(message.width) || 1));
+			const height = Math.max(1, Math.min(20_000, Number(message.height) || 1));
+			const scale = Math.max(0.5, Math.min(2, 2_800 / width, Math.sqrt(10_000_000 / (width * height))));
+			win._write?.({ type: "snapshot", requestId, x: 0, y: 0, width, height, pixelWidth: Math.max(1, Math.ceil(width * scale)) });
+		};
+		const finish = (error?: Error, value?: GlimpsePngCapture) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			if (snapshotFallbackTimer) clearTimeout(snapshotFallbackTimer);
+			try { win.close(); } catch {}
+			if (error) reject(error);
+			else if (value) resolve(value);
+		};
+		const timer = setTimeout(() => finish(new Error(`Glimpse native PNG capture timed out after ${timeoutMs}ms.`)), timeoutMs);
+		win.on("closed", () => {
+			if (!settled) finish(new Error("Glimpse WebView가 PNG capture 전에 닫혔습니다."));
+		});
+		win.on("message", (data) => {
+			if (!data || typeof data !== "object") return;
+			const message = data as Record<string, unknown>;
+			if (message.type === "tft-visual-ready" && !snapshotRequested) {
+				if (!resizeRequested) {
+					resizeRequested = true;
+					const width = Math.max(1, Math.min(16_000, Number(message.width) || 1));
+					const height = Math.max(1, Math.min(20_000, Number(message.height) || 1));
+					win._write?.({ type: "resize", width: Math.ceil(width), height: Math.ceil(height) });
+					snapshotFallbackTimer = setTimeout(() => requestSnapshot(message), 300);
+					return;
+				}
+				requestSnapshot(message);
+				return;
+			}
+			if (message.type !== "snapshot" || message.requestId !== requestId) return;
+			if (typeof message.error === "string" && message.error) {
+				finish(new Error(`Glimpse native PNG capture failed: ${message.error}`));
+				return;
+			}
+			if (typeof message.dataUrl !== "string" || !/^data:image\/png;base64,/.test(message.dataUrl)) {
+				finish(new Error("Glimpse native PNG capture did not return a PNG data URL."));
+				return;
+			}
+			finish(undefined, {
+				dataUrl: message.dataUrl,
+				width: Number(message.width) || 0,
+				height: Number(message.height) || 0,
+				pixelWidth: Number(message.pixelWidth) || 0,
+				pixelHeight: Number(message.pixelHeight) || 0,
+			});
+		});
+	});
 }

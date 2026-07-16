@@ -578,11 +578,14 @@ function listenOnLoopback(server: Server): Promise<string> {
 	});
 }
 
-export function buildPageHtml(options: { staticState?: unknown; inlineElk?: boolean } = {}): string {
+export function buildPageHtml(options: { staticState?: unknown; inlineElk?: boolean; omitElk?: boolean; visualOnly?: boolean } = {}): string {
 	const staticStateScript = options.staticState ? scriptSafeJson(options.staticState) : "null";
-	const elkScript = options.inlineElk
-		? `<script>${scriptSafeContent(tftStudioElkBundleSource() || "")}</script>`
-		: `<script src="/elk.bundled.js"></script>`;
+	const elkScript = options.omitElk
+		? ""
+		: options.inlineElk
+			? `<script>${scriptSafeContent(tftStudioElkBundleSource() || "")}</script>`
+			: `<script src="/elk.bundled.js"></script>`;
+	const bodyClass = options.visualOnly ? ` class="tft-visual-only"` : "";
 	return String.raw`<!doctype html>
 <html lang="ko">
 <head>
@@ -844,9 +847,28 @@ button { border:0; border-radius:12px; padding:10px 15px; font-weight:800; curso
 .timeline summary { cursor:pointer; font-weight:800; color:var(--text); }
 .logs { color:var(--muted); font-size:12px; max-height:160px; overflow:auto; }
 .empty { color:var(--muted); padding:24px; text-align:center; }
+body.tft-visual-only { background:transparent; overflow:hidden; }
+body.tft-visual-only .app { max-width:none; margin:0; padding:0; }
+body.tft-visual-only .hero,
+body.tft-visual-only .stage-head,
+body.tft-visual-only .layout > .card:last-child,
+body.tft-visual-only .timeline-head,
+body.tft-visual-only .stage-run-head { display:none !important; }
+body.tft-visual-only .layout { display:block; margin:0; }
+body.tft-visual-only .layout > .card:first-child,
+body.tft-visual-only .timeline-item { border:0; border-radius:0; background:transparent; padding:0; margin:0; box-shadow:none; }
+body.tft-visual-only .timeline,
+body.tft-visual-only .stage-runs,
+body.tft-visual-only .stage-run,
+body.tft-visual-only .stage-run-body,
+body.tft-visual-only .timeline-body { display:block; border:0; background:transparent; padding:0; margin:0; }
+body.tft-visual-only .tft-visual,
+body.tft-visual-only .layer-visual,
+body.tft-visual-only .arch-visual,
+body.tft-visual-only .data-visual { margin:0; }
 </style>
 </head>
-<body>
+<body${bodyClass}>
 <div class="app">
   <section class="hero">
     <div class="kicker">TFT Studio</div>
@@ -1618,6 +1640,101 @@ async function renderTftVisualElement(el) {
 function renderPendingTftVisuals() {
   return Promise.all(Array.prototype.slice.call(document.querySelectorAll('.tft-visual[data-source]')).map(function(el) { return renderTftVisualElement(el); }));
 }
+function isVisualOnlyEmbed() { return document.body && document.body.classList.contains('tft-visual-only'); }
+function visualEmbedRoot() { return document.querySelector('.tft-visual, .layer-visual, .arch-visual, .data-visual'); }
+function notifyVisualEmbedReady() {
+  if (!isVisualOnlyEmbed()) return;
+  setTimeout(function() {
+    var root = visualEmbedRoot();
+    if (!root) return;
+    var rect = root.getBoundingClientRect();
+    var scrollWidths = Array.prototype.slice.call(root.querySelectorAll('.tft-visual-diagram, .layer-visual-diagram, .arch-visual-diagram, .data-visual-diagram')).map(function(node) { return Number(node.scrollWidth || 0) + 32; });
+    var width = Math.ceil(Math.max.apply(Math, [root.scrollWidth, rect.width, 1].concat(scrollWidths)));
+    var height = Math.ceil(Math.max(root.scrollHeight, rect.height, 1));
+    if (window.glimpse && typeof window.glimpse.send === 'function') window.glimpse.send({ type:'tft-visual-ready', width:width, height:height });
+    if (window.parent !== window) window.parent.postMessage({ type:'pilee:tft-visual-ready', width:width, height:height }, '*');
+  }, 0);
+}
+function inlineVisualComputedStyles(source, target) {
+  if (!source || !target || source.nodeType !== 1 || target.nodeType !== 1) return;
+  var computed = window.getComputedStyle(source);
+  if (target.style && computed) {
+    for (var i = 0; i < computed.length; i++) {
+      var property = computed[i];
+      target.style.setProperty(property, computed.getPropertyValue(property), computed.getPropertyPriority(property));
+    }
+  }
+  var sourceChildren = source.children || [];
+  var targetChildren = target.children || [];
+  for (var childIndex = 0; childIndex < sourceChildren.length; childIndex++) inlineVisualComputedStyles(sourceChildren[childIndex], targetChildren[childIndex]);
+}
+async function captureTftVisualPng() {
+  await renderPendingTftVisuals();
+  await new Promise(function(resolve) { requestAnimationFrame(function() { requestAnimationFrame(resolve); }); });
+  var root = visualEmbedRoot();
+  if (!root) throw new Error('캡처할 TFT visual을 찾지 못했습니다.');
+  var clone = root.cloneNode(true);
+  inlineVisualComputedStyles(root, clone);
+  var scrollSelector = '.tft-visual-diagram, .layer-visual-diagram, .arch-visual-diagram, .data-visual-diagram';
+  var sourceScrolls = root.querySelectorAll(scrollSelector);
+  var cloneScrolls = clone.querySelectorAll(scrollSelector);
+  var fullWidth = Math.max(root.scrollWidth, root.getBoundingClientRect().width, 1);
+  for (var scrollIndex = 0; scrollIndex < sourceScrolls.length; scrollIndex++) {
+    var sourceScroll = sourceScrolls[scrollIndex];
+    var cloneScroll = cloneScrolls[scrollIndex];
+    var expandedWidth = Math.max(sourceScroll.scrollWidth, sourceScroll.getBoundingClientRect().width, 1);
+    var expandedHeight = Math.max(sourceScroll.scrollHeight, sourceScroll.getBoundingClientRect().height, 1);
+    fullWidth = Math.max(fullWidth, expandedWidth + 32);
+    if (cloneScroll && cloneScroll.style) {
+      cloneScroll.style.setProperty('width', expandedWidth + 'px');
+      cloneScroll.style.setProperty('height', expandedHeight + 'px');
+      cloneScroll.style.setProperty('max-width', 'none');
+      cloneScroll.style.setProperty('overflow', 'visible');
+    }
+  }
+  clone.style.setProperty('width', Math.ceil(fullWidth) + 'px');
+  clone.style.setProperty('max-width', 'none');
+  clone.style.setProperty('height', 'auto');
+  clone.style.setProperty('overflow', 'visible');
+  clone.style.setProperty('margin', '0');
+  clone.style.setProperty('background', '#ffffff');
+  var staging = document.createElement('div');
+  staging.style.cssText = 'position:fixed;left:-100000px;top:0;z-index:-1;pointer-events:none;background:#fff;width:' + Math.ceil(fullWidth) + 'px;';
+  staging.appendChild(clone);
+  document.body.appendChild(staging);
+  await new Promise(function(resolve) { requestAnimationFrame(resolve); });
+  var width = Math.ceil(Math.max(clone.scrollWidth, clone.getBoundingClientRect().width, fullWidth, 1));
+  var height = Math.ceil(Math.max(clone.scrollHeight, clone.getBoundingClientRect().height, 1));
+  clone.style.setProperty('width', width + 'px');
+  clone.style.setProperty('height', height + 'px');
+  clone.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+  var serialized = new XMLSerializer().serializeToString(clone);
+  staging.remove();
+  var svgSource = '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '"><foreignObject width="100%" height="100%">' + serialized + '</foreignObject></svg>';
+  var objectUrl = URL.createObjectURL(new Blob([svgSource], { type:'image/svg+xml;charset=utf-8' }));
+  try {
+    var image = await new Promise(function(resolve, reject) {
+      var next = new Image();
+      next.onload = function() { resolve(next); };
+      next.onerror = function() { reject(new Error('TFT visual을 PNG로 변환하지 못했습니다.')); };
+      next.src = objectUrl;
+    });
+    var scale = Math.max(.5, Math.min(2, 2800 / width, Math.sqrt(10000000 / (width * height))));
+    var canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.ceil(width * scale));
+    canvas.height = Math.max(1, Math.ceil(height * scale));
+    var context = canvas.getContext('2d');
+    if (!context) throw new Error('TFT visual PNG canvas context를 만들지 못했습니다.');
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return { dataUrl:canvas.toDataURL('image/png'), width:width, height:height, pixelWidth:canvas.width, pixelHeight:canvas.height };
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+window.captureTftVisualPng = captureTftVisualPng;
+window.addEventListener('resize', notifyVisualEmbedReady);
 function pageScrollTop() {
   var doc = document.documentElement || {};
   var body = document.body || {};
@@ -1958,7 +2075,8 @@ function render(s, options) {
   setTimeout(function() {
     var visualRender = renderPendingTftVisuals();
     restoreScrollAfterRender(scrollSnapshot);
-    if (visualRender && typeof visualRender.then === 'function') visualRender.then(function() { restoreScrollAfterRender(scrollSnapshot); }).catch(function() { restoreScrollAfterRender(scrollSnapshot); });
+    if (visualRender && typeof visualRender.then === 'function') visualRender.then(function() { restoreScrollAfterRender(scrollSnapshot); notifyVisualEmbedReady(); }).catch(function() { restoreScrollAfterRender(scrollSnapshot); notifyVisualEmbedReady(); });
+    else notifyVisualEmbedReady();
   }, 0);
   document.getElementById('logs').innerHTML = (s.logs || []).slice().reverse().map(function(log) {
     return '<div>' + new Date(log.time).toLocaleTimeString() + ' · ' + esc(log.message) + '</div>';
@@ -2031,6 +2149,32 @@ if (STATIC_STATE) {
 </script>
 </body>
 </html>`;
+}
+
+export function buildTftVisualEmbedHtml(spec: Record<string, unknown>): string {
+	if (!spec || typeof spec !== "object" || Array.isArray(spec)) throw new Error("TFT visual spec must be an object.");
+	const normalizedSpec = JSON.parse(JSON.stringify(spec)) as Record<string, unknown>;
+	const title = typeof normalizedSpec.title === "string" && normalizedSpec.title.trim() ? normalizedSpec.title.trim() : "TFT visual";
+	const markdown = `\`\`\`tft-visual\n${JSON.stringify(normalizedSpec, null, 2)}\n\`\`\``;
+	const state = {
+		runId: "visual-embed",
+		identity: { mode: "planning-session", key: "visual-embed", displayTitle: title, storageDir: "", cwd: "", reason: "embedded TFT visual" },
+		title,
+		markdown,
+		step: "Visual",
+		activeTab: "frame",
+		tabs: { frame: { markdown, step: "Visual", updatedAt: 0 } },
+		status: "done",
+		url: "",
+		transcriptPath: "",
+		createdAt: 0,
+		updatedAt: 0,
+		timeline: [{ id: "visual", time: 0, kind: "update", tab: "frame", step: "Visual", markdown }],
+		logs: [],
+	};
+	const kind = typeof normalizedSpec.kind === "string" ? normalizedSpec.kind : "";
+	const usesDedicatedLayout = ["architecture-flow", "backend-layer-map", "data-model-migration-map"].includes(kind);
+	return buildPageHtml({ staticState: state, inlineElk: !usesDedicatedLayout, omitElk: usesDedicatedLayout, visualOnly: true });
 }
 
 export function buildStaticTftStudioHtmlFromTranscript(filePath: string): string {
