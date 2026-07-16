@@ -113,6 +113,11 @@ export interface RetroProfile {
 	uploadScript?: string;
 }
 
+export interface StudyHardProfile {
+	syncScript?: string;
+	downloadDir?: string;
+}
+
 export interface PileeRuntimeProfile {
 	worktree?: {
 		repos?: WorktreeRepoProfile[];
@@ -121,6 +126,7 @@ export interface PileeRuntimeProfile {
 	preflight?: PreflightProfile;
 	conductor?: ConductorProfile;
 	retro?: RetroProfile;
+	studyHard?: StudyHardProfile;
 }
 
 function safeReadDir(dir: string): string[] {
@@ -234,6 +240,10 @@ export function loadConductorProfiles(cwd?: string): ConductorProfile[] {
 
 export function loadRetroProfiles(cwd?: string): RetroProfile[] {
 	return loadPileeRuntimeProfiles(cwd).map((profile) => profile.retro).filter((profile): profile is RetroProfile => Boolean(profile));
+}
+
+export function loadStudyHardProfiles(cwd?: string): StudyHardProfile[] {
+	return loadPileeRuntimeProfiles(cwd).map((profile) => profile.studyHard).filter((profile): profile is StudyHardProfile => Boolean(profile));
 }
 
 export function expandProfileTemplate(value: string, vars: Record<string, string | undefined> = {}): string {
