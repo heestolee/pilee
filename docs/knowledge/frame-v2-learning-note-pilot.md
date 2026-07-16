@@ -18,7 +18,7 @@ applies_to:
 source:
   - user-direction:2026-07-17-frame-v2-learning-note-pilot
 reviewed_at: 2026-07-17
-reviewed_commit: 79dc80b3cf3fe9f4560c66ad973c087a0504e8fb
+reviewed_commit: e3e2eeec15b54d4b1401ef01e51c5b93bc766902
 related:
   - frame-verify-contract
   - frame-studio-interactive-decision-ui
@@ -58,11 +58,25 @@ HTML / optional Notion export
 TFT Studio와 Study Hard board는 동시에 유지되는 두 canonical이 아닙니다.
 
 1. TFT Studio는 최초 구조화와 시각화 surface입니다. 현재 `tft-visual` renderer의 backend layer, architecture flow, data model/migration map을 그대로 사용합니다.
-2. 최초 노트가 정리되면 이를 구조화된 `noteDocument`, concept hierarchy, runtime flow, Mermaid ERD로 Study Hard board에 넘깁니다.
+2. 최초 노트가 정리되면 이를 구조화된 `noteDocument`, concept hierarchy, runtime flow, Mermaid ERD로 Study Hard board에 넘깁니다. 계속 다듬을 TFT visual은 stable `type: "visual"` block과 원본 `visual` spec으로 전달합니다.
 3. 전환 뒤에는 Study Hard state가 refinement 원천입니다. TFT markdown 복사본을 계속 수동 동기화하지 않습니다.
 4. 사용자가 이해 완료를 명시하면 표준 `frame.json`이 작업 canonical로 승격됩니다.
 
 이 순서 덕분에 Frame의 직관적인 ERD·flow 표현과 Study Hard의 문단 선택·Tutor/Editor/Coach·revision 흐름을 둘 다 보존할 수 있습니다.
+
+## Visual Preservation Rule
+
+시각화 형식을 하나로 강제하지 않습니다. 구조·관계·행동 중 무엇을 설명하는지에 따라 TFT visual, Mermaid, Study Hard flow를 고르고 한 노트에서 함께 사용할 수 있습니다.
+
+TFT visual을 선택했다면 원본 spec이 canonical이고 PNG는 저장용 파생 artifact입니다.
+
+- Study Hard live note는 동일 TFT renderer로 spec을 다시 렌더합니다.
+- Editor는 사용자가 시각화 변경을 명시하지 않은 한 visual spec 전체를 보존합니다.
+- HTML은 self-contained interactive renderer, 고해상도 PNG fallback, 원본 spec을 함께 저장합니다.
+- Notion은 전체 visual container PNG, 설명, 원본 spec toggle로 저장합니다.
+- 첫 viewport만 캡처하지 않습니다. 가로로 넓거나 세로로 긴 visual도 전체 container 범위를 캡처해야 합니다.
+
+이 계약 덕분에 Study Hard에서 설명을 다듬어도 시각 구조가 prose나 screenshot-only placeholder로 평탄화되지 않습니다.
 
 ## Understanding Gate
 

@@ -15,7 +15,7 @@ applies_to:
 source:
   - user-direction:2026-07-17-study-hard-public-migration
 reviewed_at: 2026-07-17
-reviewed_commit: 79dc80b3cf3fe9f4560c66ad973c087a0504e8fb
+reviewed_commit: 851003a7a92f465159d30bc57ad5bf0a5ca7cdb9
 related:
   - private-overlay-package-boundary
   - live-artifact-preview-pattern
@@ -35,11 +35,12 @@ Public `extensions/study-hard`가 소유하는 범위:
 
 - `/study-hard` command와 `study_hard_board` tool
 - concept hierarchy와 runtime flow model
-- 구조화 `noteDocument`
+- 구조화 `noteDocument`와 canonical TFT `visual` block
 - Tutor 병렬 처리, Editor merge, Coach navigation
 - Q&A transcript integration
 - revision/history snapshot과 restore
-- standalone HTML export
+- standalone HTML export와 interactive visual/PNG fallback
+- macOS Glimpse native visual snapshot, 비-macOS browser capture fallback
 - `~/.pi/agent/study-hard` local state lifecycle
 - capability token, origin/host check, worker secret stripping
 
@@ -60,7 +61,7 @@ Public engine은 다음 generic 설정만 읽습니다.
 
 환경변수 `STUDY_HARD_SYNC_SCRIPT`, `STUDY_HARD_DOWNLOAD_DIR`가 profile보다 우선합니다. 구체적인 개인 경로와 Notion destination 규칙은 private overlay 또는 local config에 남습니다.
 
-Notion token, database ID, page naming, upload body schema를 public extension에 넣지 않습니다. Publisher가 없으면 Notion 저장만 unavailable이고 HTML export와 학습·작업 시작은 계속 가능합니다.
+Notion token, database ID, page naming, upload body schema를 public extension에 넣지 않습니다. Public engine은 generic visual PNG asset과 원본 spec까지만 publisher에 넘기고, private publisher가 이를 Notion image block·설명·spec toggle로 변환합니다. Publisher가 없어도 HTML export와 학습·작업 시작은 계속 가능합니다.
 
 ## Migration Rule
 

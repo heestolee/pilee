@@ -80,7 +80,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [Architecture friction은 TFT의 검증 축이다](./architecture-friction-tft-lens.md) | active | high | 2026-06-02 | ce5e875 | architecture, frame, decide, verify, deep-module, shallow-module |
-| [Study Hard 엔진은 public이고 개인 publisher만 private다](./study-hard-public-engine-private-publisher.md) | active | high | 2026-07-17 | 79dc80b | study-hard, public-private-boundary, notion, runtime-profile, local-state |
+| [Study Hard 엔진은 public이고 개인 publisher만 private다](./study-hard-public-engine-private-publisher.md) | active | high | 2026-07-17 | 851003a | study-hard, public-private-boundary, notion, runtime-profile, local-state |
 | [Utils surface는 사용자 계약을 만들지 않는다](./utility-surface-stays-invisible.md) | active | high | 2026-06-02 | d8f8c4c | utils, internal, surface, abstraction, extension |
 
 ### database
@@ -137,7 +137,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [MCP runtime은 장시간 세션에서 self-healing해야 한다](./mcp-runtime-self-healing.md) | active | high | 2026-07-02 | eda675a | mcp, runtime, self-healing, reconnect, retry |
 | [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-06-02 | fad9c36 | mcp, stderr, stdio, terminal, tui, noise |
 | [Runtime fan-out은 healthcheck 뒤의 실행 계약이다](./runtime-fanout-diagnosis.md) | active | high | 2026-06-02 | 91c739f | runtime, fanout, healthcheck, deployment, triage, root-cause |
-| [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-06-02 | 83617e9 | terminal, ghostty, applescript, notify, host, integration |
+| [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-07-17 | e3e2eee | terminal, ghostty, applescript, notify, host, integration |
 | [터미널 workspace 복원은 snapshot과 host adapter를 분리한다](./terminal-workspace-restore.md) | active | high | 2026-06-02 | 83617e9 | workspace, terminal, ghostty, snapshot, restore, session |
 
 ### ui
@@ -195,7 +195,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Frame은 마지막에 Plan을 합성한다](./frame-plan-synthesis-continuity.md) | active | high | 2026-06-02 | 7861f10 | frame, implementation-plan, tft-studio, worktree, continuity, planning |
 | [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-06-02 | 7861f10 | frame, planning, identity, home-directory, ticket, session-title |
 | [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-06-16 | 87c864f | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
-| [Frame v2는 이해를 학습노트로 만든 뒤 작업 계약으로 승격한다](./frame-v2-learning-note-pilot.md) | active | high | 2026-07-17 | 79dc80b | frame-v2, frame, study-hard, learning-note, tft-studio, worktree |
+| [Frame v2는 이해를 학습노트로 만든 뒤 작업 계약으로 승격한다](./frame-v2-learning-note-pilot.md) | active | high | 2026-07-17 | e3e2eee | frame-v2, frame, study-hard, learning-note, tft-studio, worktree |
 | [Interactive shell은 bash가 아닌 터미널 세션이다](./interactive-shell-overlay-tool.md) | active | high | 2026-06-29 | 680f937 | interactive-shell, shell, tui, dev-server, overlay, dispatch |
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-06-02 | 7861f10 | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 264ea17 | local-dev, server, startup, diagnosis, dev |
