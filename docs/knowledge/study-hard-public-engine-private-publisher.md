@@ -15,7 +15,7 @@ applies_to:
 source:
   - user-direction:2026-07-17-study-hard-public-migration
 reviewed_at: 2026-07-17
-reviewed_commit: 6bfcd8a8d9ab9b557682d45bbc49885a7e8ddd52
+reviewed_commit: 79dc80b3cf3fe9f4560c66ad973c087a0504e8fb
 related:
   - private-overlay-package-boundary
   - live-artifact-preview-pattern
