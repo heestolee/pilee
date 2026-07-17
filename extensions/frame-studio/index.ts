@@ -718,6 +718,45 @@ h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .layer-glossary-card { border:1px solid #e2e8f0; border-radius:14px; background:#fff; padding:9px 10px; }
 .layer-glossary-card strong { display:block; font-size:12px; color:#1e3a8a; }
 .layer-glossary-card span { display:block; margin-top:3px; color:var(--muted); font-size:11px; line-height:1.4; }
+.phase-visual { border:1px solid #cbd5e1; background:linear-gradient(180deg,#f8fafc 0%,#ffffff 100%); border-radius:20px; padding:16px; margin:16px 0; overflow:hidden; min-width:0; max-width:100%; }
+.phase-visual-head { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start; margin-bottom:12px; }
+.phase-visual-title { font-size:18px; font-weight:950; color:#0f172a; overflow-wrap:anywhere; }
+.phase-visual-subtitle { margin-top:3px; color:var(--muted); font-size:12px; line-height:1.45; overflow-wrap:anywhere; }
+.phase-visual-summary { border:1px solid #dbeafe; background:#eff6ff; color:#1e3a8a; border-radius:13px; padding:9px 11px; margin-bottom:12px; font-size:12px; line-height:1.5; }
+.phase-panel-stack { display:grid; gap:16px; }
+.phase-panel { border:1px solid #cbd5e1; border-radius:18px; padding:14px; background:#fff; min-width:0; }
+.phase-panel.phase-a { border-color:#c4b5fd; background:#fdfbff; }
+.phase-panel.phase-b { border-color:#93c5fd; background:#f8fbff; }
+.phase-panel-head { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; padding-bottom:10px; margin-bottom:12px; border-bottom:1px solid rgba(148,163,184,.28); }
+.phase-panel-title { font-size:16px; font-weight:950; color:#0f172a; }
+.phase-panel-count { flex:0 0 auto; border:1px solid #cbd5e1; background:#fff; color:#475569; border-radius:999px; padding:3px 8px; font-size:10px; font-weight:900; }
+.phase-stage-list { display:grid; gap:10px; }
+.phase-stage { border:1px solid #e2e8f0; border-radius:15px; background:rgba(255,255,255,.88); padding:10px; }
+.phase-stage-label { display:inline-flex; align-items:center; border-radius:999px; background:#0f172a; color:#fff; padding:3px 8px; font-size:10px; font-weight:950; margin-bottom:8px; }
+.phase-stage-steps { display:flex; gap:22px; overflow-x:auto; padding:2px 5px 8px 2px; overscroll-behavior:contain; }
+.phase-step { position:relative; flex:1 0 220px; border:1px solid #dbeafe; border-top:4px solid #2563eb; border-radius:13px; background:#fff; padding:9px 10px; min-width:0; }
+.phase-step:not(:last-child)::after { content:'→'; position:absolute; right:-18px; top:50%; transform:translateY(-50%); color:#64748b; font-size:16px; font-weight:950; }
+.phase-panel.phase-a .phase-step { border-top-color:#7c3aed; }
+.phase-step-code { display:block; margin-bottom:4px; color:#64748b; font-size:9.5px; font-weight:900; text-transform:uppercase; letter-spacing:.03em; }
+.phase-step-title { display:block; color:#111827; font-size:12px; font-weight:950; line-height:1.35; overflow-wrap:anywhere; }
+.phase-step-tech { display:block; margin-top:4px; color:#475569; font:10px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace; overflow-wrap:anywhere; }
+.phase-step-desc { margin:6px 0 0; color:#475569; font-size:11px; line-height:1.45; overflow-wrap:anywhere; }
+.phase-stage-arrow { text-align:center; color:#64748b; font-size:18px; font-weight:950; line-height:1; }
+.phase-exceptions { margin-top:12px; border:1px solid #fecaca; border-radius:14px; background:#fff7f7; padding:10px; }
+.phase-exceptions-title { color:#991b1b; font-size:11px; font-weight:950; margin-bottom:7px; }
+.phase-exception-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:8px; }
+.phase-exception { border:1px solid #fecaca; border-left:5px solid #dc2626; border-radius:12px; background:#fff; padding:9px 10px; }
+.phase-exception strong { display:block; color:#7f1d1d; font-size:11.5px; }
+.phase-exception p { margin:5px 0 0; color:#7f1d1d; font-size:10.5px; line-height:1.42; }
+.phase-reentry { display:block; margin-top:6px; color:#b91c1c; font-size:10px; font-weight:900; }
+.phase-boundary { border:1px dashed #94a3b8; border-radius:14px; background:#f8fafc; color:#334155; padding:10px 12px; text-align:center; font-size:11px; font-weight:900; line-height:1.45; }
+.phase-panel-details { margin-top:12px; border-top:1px solid rgba(148,163,184,.28); padding-top:10px; }
+.phase-panel-details summary { cursor:pointer; color:#334155; font-size:11px; font-weight:950; }
+.phase-panel-note-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:8px; margin-top:9px; }
+.phase-panel-note { border:1px solid #e2e8f0; border-radius:12px; background:#fff; padding:9px 10px; }
+.phase-panel-note strong { display:block; color:#0f172a; font-size:11px; }
+.phase-panel-note ul { margin:6px 0 0; padding-left:17px; }
+.phase-panel-note li { margin:3px 0; color:#475569; font-size:10.5px; line-height:1.4; }
 .arch-visual { border:1px solid #e9d5ff; background:linear-gradient(180deg,#fdfbff 0%,#ffffff 100%); border-radius:20px; padding:16px; margin:16px 0; overflow:hidden; min-width:0; max-width:100%; }
 .arch-visual-head { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start; margin-bottom:12px; }
 .arch-visual-title { font-size:18px; font-weight:950; color:#581c87; overflow-wrap:anywhere; }
@@ -907,6 +946,7 @@ body.tft-visual-only .stage-run-body,
 body.tft-visual-only .timeline-body { display:block; border:0; background:transparent; padding:0; margin:0; }
 body.tft-visual-only .tft-visual,
 body.tft-visual-only .layer-visual,
+body.tft-visual-only .phase-visual,
 body.tft-visual-only .arch-visual,
 body.tft-visual-only .data-visual { margin:0; }
 </style>
@@ -1169,6 +1209,75 @@ function renderBackendLayerVisualElement(el, spec) {
     + renderLayerGlossary(spec, layers)
     + renderLearningNotes(spec.notes || spec.explanations)
     + renderVisualHealing(spec);
+}
+function isPhasePanelVisualSpec(spec) {
+  var layers = Array.isArray(spec && spec.layers) ? spec.layers : [];
+  var nodes = Array.isArray(spec && spec.nodes) ? spec.nodes : [];
+  if (layers.length !== 2 || nodes.length < 2) return false;
+  var laneIds = new Set(layers.map(function(layer, index) { return layerKey(layer && (layer.id || layer.key || layer.title) || ('panel-' + index)); }));
+  return nodes.some(function(node) { return laneIds.has(layerKey(node && (node.lane || node.group || node.layer))); });
+}
+function phaseStageKey(node) {
+  var step = String(node && node.step || '').replace(/^[AB]\s*·\s*/, '').trim();
+  var numbered = /[①②③④⑤⑥⑦⑧⑨⑩]/.exec(step);
+  if (numbered) return numbered[0];
+  if (/완료/.test(step)) return '완료';
+  if (/시작/.test(step)) return '시작';
+  return step || '과정';
+}
+function isPhaseExceptionNode(node) {
+  var value = [node && node.status, node && node.step, node && node.title].join(' ').toLowerCase();
+  return /blocked|failed|exception|예외|실패/.test(value);
+}
+function renderPhaseStep(node) {
+  return '<article class="phase-step"><span class="phase-step-code">' + esc(node.step || 'step') + '</span><strong class="phase-step-title">' + esc(node.title || node.id || '처리 단계') + '</strong>' + (node.technicalLabel ? '<code class="phase-step-tech">' + esc(node.technicalLabel) + '</code>' : '') + (node.description ? '<p class="phase-step-desc">' + esc(node.description) + '</p>' : '') + '</article>';
+}
+function renderPhaseStages(nodes) {
+  var groups = [];
+  var byKey = new Map();
+  nodes.filter(function(node) { return !isPhaseExceptionNode(node); }).forEach(function(node) {
+    var key = phaseStageKey(node), group = byKey.get(key);
+    if (!group) { group = { key:key, nodes:[] }; byKey.set(key, group); groups.push(group); }
+    group.nodes.push(node);
+  });
+  return groups.map(function(group, index) {
+    return '<section class="phase-stage"><span class="phase-stage-label">' + esc(group.key) + '</span><div class="phase-stage-steps">' + group.nodes.map(renderPhaseStep).join('') + '</div></section>' + (index < groups.length - 1 ? '<div class="phase-stage-arrow">↓</div>' : '');
+  }).join('');
+}
+function renderPhaseExceptions(nodes) {
+  var exceptions = nodes.filter(isPhaseExceptionNode);
+  if (!exceptions.length) return '';
+  return '<section class="phase-exceptions"><div class="phase-exceptions-title">예외·복구 · 정상 흐름과 분리</div><div class="phase-exception-grid">' + exceptions.map(function(node) {
+    return '<article class="phase-exception"><strong>' + esc(node.title || node.id || '예외') + '</strong>' + (node.description ? '<p>' + esc(node.description) + '</p>' : '') + (node.reentryTarget ? '<span class="phase-reentry">↻ 재진입 · ' + esc(node.reentryTarget) + '</span>' : '') + '</article>';
+  }).join('') + '</div></section>';
+}
+function phaseNotesForPanel(notes, index) {
+  return notes.filter(function(note) {
+    var title = String(note && note.title || '');
+    if (/^(CONTRACT|LEARNING)$/i.test(title)) return false;
+    var belongsToB = /④|사용자 조회|조회 정책/.test(title);
+    return index === 1 ? belongsToB : !belongsToB;
+  });
+}
+function renderPhasePanelNotes(notes, panelTitle) {
+  if (!notes.length) return '';
+  return '<details class="phase-panel-details"><summary>' + esc(panelTitle) + ' 상세 설명 · ' + notes.length + '개</summary><div class="phase-panel-note-grid">' + notes.map(function(note) {
+    return '<article class="phase-panel-note"><strong>' + esc(note.title || '설명') + '</strong><ul>' + asTextArray(note.body || note.items).map(function(item) { return '<li>' + inline(item) + '</li>'; }).join('') + '</ul></article>';
+  }).join('') + '</div></details>';
+}
+function renderPhasePanelVisualElement(el, spec) {
+  var layers = Array.isArray(spec.layers) ? spec.layers : [];
+  var nodes = Array.isArray(spec.nodes) ? spec.nodes : [];
+  var notes = Array.isArray(spec.notes) ? spec.notes : [];
+  var panels = layers.map(function(layer, index) {
+    var id = layerKey(layer && (layer.id || layer.key || layer.title) || ('panel-' + index));
+    var title = String(layer && (layer.title || layer.label || layer.id) || ('Panel ' + (index + 1)));
+    var panelNodes = nodes.filter(function(node) { return layerKey(node && (node.lane || node.group || node.layer)) === id; });
+    return '<section class="phase-panel ' + (index === 0 ? 'phase-a' : 'phase-b') + '"><div class="phase-panel-head"><div class="phase-panel-title">' + esc(title) + '</div><span class="phase-panel-count">단계 ' + panelNodes.filter(function(node) { return !isPhaseExceptionNode(node); }).length + ' · 예외 ' + panelNodes.filter(isPhaseExceptionNode).length + '</span></div><div class="phase-stage-list">' + renderPhaseStages(panelNodes) + '</div>' + renderPhaseExceptions(panelNodes) + renderPhasePanelNotes(phaseNotesForPanel(notes, index), title) + '</section>';
+  });
+  var boundary = spec.subtitle || '패널 사이에 자동 실행선이 없습니다. 다음 패널은 독립 조건으로 시작합니다.';
+  el.className = 'phase-visual';
+  el.innerHTML = '<div class="phase-visual-head"><div><div class="phase-visual-title">' + esc(spec.title || '두 구간 실행 흐름') + '</div><div class="phase-visual-subtitle">처리 순서와 실행 계층을 패널 안에서 함께 읽습니다.</div></div><span class="badge">독립 phase panel</span></div>' + (spec.body ? '<div class="phase-visual-summary">' + esc(spec.body) + '</div>' : '') + '<div class="phase-panel-stack">' + panels[0] + '<div class="phase-boundary">' + esc(boundary) + '</div>' + panels[1] + '</div>' + renderVisualHealing(spec);
 }
 function isBackendLayerVisualSpec(spec) {
   var kind = String(spec.kind || spec.type || '').toLowerCase();
@@ -1650,6 +1759,10 @@ async function renderTftVisualElement(el) {
     renderDataModelMigrationMapElement(el, dataSpec);
     return;
   }
+  if (isPhasePanelVisualSpec(spec)) {
+    renderPhasePanelVisualElement(el, spec);
+    return;
+  }
   if (hasVisualLayersShape(spec)) {
     var layerSpec = isBackendLayerVisualSpec(spec) ? spec : cloneSpecWithHealing(spec, 'kind가 없지만 layers shape를 backend-layer-map으로 해석했습니다.');
     renderBackendLayerVisualElement(el, layerSpec);
@@ -1713,14 +1826,14 @@ function renderPendingTftVisuals() {
   return Promise.all(Array.prototype.slice.call(document.querySelectorAll('.tft-visual[data-source]')).map(function(el) { return renderTftVisualElement(el); }));
 }
 function isVisualOnlyEmbed() { return document.body && document.body.classList.contains('tft-visual-only'); }
-function visualEmbedRoot() { return document.querySelector('.tft-visual, .layer-visual, .arch-visual, .data-visual'); }
+function visualEmbedRoot() { return document.querySelector('.tft-visual, .layer-visual, .phase-visual, .arch-visual, .data-visual'); }
 function notifyVisualEmbedReady() {
   if (!isVisualOnlyEmbed()) return;
   setTimeout(function() {
     var root = visualEmbedRoot();
     if (!root) return;
     var rect = root.getBoundingClientRect();
-    var scrollWidths = Array.prototype.slice.call(root.querySelectorAll('.tft-visual-diagram, .layer-visual-diagram, .arch-visual-diagram, .data-visual-diagram')).map(function(node) { return Number(node.scrollWidth || 0) + 32; });
+    var scrollWidths = Array.prototype.slice.call(root.querySelectorAll('.tft-visual-diagram, .layer-visual-diagram, .phase-panel-stack, .arch-visual-diagram, .data-visual-diagram')).map(function(node) { return Number(node.scrollWidth || 0) + 32; });
     var width = Math.ceil(Math.max.apply(Math, [root.scrollWidth, rect.width, 1].concat(scrollWidths)));
     var height = Math.ceil(Math.max(root.scrollHeight, rect.height, 1));
     if (window.glimpse && typeof window.glimpse.send === 'function') window.glimpse.send({ type:'tft-visual-ready', width:width, height:height });
@@ -1747,7 +1860,7 @@ async function captureTftVisualPng() {
   if (!root) throw new Error('캡처할 TFT visual을 찾지 못했습니다.');
   var clone = root.cloneNode(true);
   inlineVisualComputedStyles(root, clone);
-  var scrollSelector = '.tft-visual-diagram, .layer-visual-diagram, .arch-visual-diagram, .data-visual-diagram';
+  var scrollSelector = '.tft-visual-diagram, .layer-visual-diagram, .phase-panel-stack, .arch-visual-diagram, .data-visual-diagram';
   var sourceScrolls = root.querySelectorAll(scrollSelector);
   var cloneScrolls = clone.querySelectorAll(scrollSelector);
   var fullWidth = Math.max(root.scrollWidth, root.getBoundingClientRect().width, 1);

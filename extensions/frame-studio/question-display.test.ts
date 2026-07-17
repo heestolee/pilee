@@ -65,6 +65,10 @@ test("Backend Layer Visual Map 렌더러가 WebView bundle에 포함된다", () 
 	const html = buildPageHtml();
 	assert.match(html, /backend-layer-map/);
 	assert.match(html, /renderBackendLayerVisualElement/);
+	assert.match(html, /renderPhasePanelVisualElement/);
+	assert.match(html, /독립 phase panel/);
+	assert.match(html, /phase-step:not\(:last-child\)::after/);
+	assert.match(html, /content:'→'/);
 	assert.match(html, /SVG layer map/);
 	assert.match(html, /요청 접수창/);
 	assert.match(html, /업무 총괄자/);

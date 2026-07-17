@@ -113,8 +113,8 @@ function loadStudioScript(fakeWindow: FakeWindow, fakeDocument: FakeDocument) {
 			if (count > limit) throw new Error("Timer queue did not settle");
 		}
 	}
-	const factory = new Function("window", "document", "EventSource", "fetch", "setTimeout", "requestAnimationFrame", `${script}\nreturn { render: render, selectTab: selectTab, renderTftVisualElement: renderTftVisualElement, renderArchitectureFlowElement: renderArchitectureFlowElement, renderBackendLayerVisualElement: renderBackendLayerVisualElement, renderDataModelMigrationMapElement: renderDataModelMigrationMapElement };`);
-	return { ...(factory(fakeWindow, fakeDocument, EventSource, fetch, queueTimer, queueTimer) as { render(state: any, options?: any): void; selectTab(key: string): void; renderTftVisualElement(el: any): Promise<void>; renderArchitectureFlowElement(el: any, spec: any): void; renderBackendLayerVisualElement(el: any, spec: any): void; renderDataModelMigrationMapElement(el: any, spec: any): void }), flushTimers };
+	const factory = new Function("window", "document", "EventSource", "fetch", "setTimeout", "requestAnimationFrame", `${script}\nreturn { render: render, selectTab: selectTab, renderTftVisualElement: renderTftVisualElement, renderArchitectureFlowElement: renderArchitectureFlowElement, renderBackendLayerVisualElement: renderBackendLayerVisualElement, renderPhasePanelVisualElement: renderPhasePanelVisualElement, renderDataModelMigrationMapElement: renderDataModelMigrationMapElement };`);
+	return { ...(factory(fakeWindow, fakeDocument, EventSource, fetch, queueTimer, queueTimer) as { render(state: any, options?: any): void; selectTab(key: string): void; renderTftVisualElement(el: any): Promise<void>; renderArchitectureFlowElement(el: any, spec: any): void; renderBackendLayerVisualElement(el: any, spec: any): void; renderPhasePanelVisualElement(el: any, spec: any): void; renderDataModelMigrationMapElement(el: any, spec: any): void }), flushTimers };
 }
 
 function makeVisualElement(source: unknown) {
@@ -186,6 +186,50 @@ test("TFT visual self-heals nodes/edges shape even when kind points at another r
 	assert.match(element.innerHTML, /kind=backend-layer-map이지만 nodes\/edges shape를 architecture-flow로 해석/);
 	assert.doesNotMatch(element.innerHTML, /layers 배열이 필요/);
 	assert.doesNotMatch(element.innerHTML, /tft-visual-error/);
+});
+
+test("layers와 nodes가 함께 있는 두 구간 flow는 독립 phase panel로 렌더링한다", async () => {
+	const browser = createFakeBrowser({ top: 0, viewport: 600, height: 1600 });
+	const studio = loadStudioScript(browser.window, browser.document);
+	const element = makeVisualElement({
+		kind: "backend-layer-map",
+		title: "A. 알림 적재 / B. 사용자 조회",
+		subtitle: "A→B 실행 연결 없음",
+		body: "처리 순서와 실행 계층을 패널별로 읽습니다.",
+		layers: [
+			{ id: "panel-a", title: "A. 알림 적재" },
+			{ id: "panel-b", title: "B. 사용자 조회" },
+		],
+		nodes: [
+			{ id: "source", lane: "panel-a", step: "A · ①-a", title: "[Source DB] 업무 row 변경", technicalLabel: "Source transaction", description: "업무 변경을 준비합니다." },
+			{ id: "worker", lane: "panel-a", step: "A · ②-a", title: "[Backend] PENDING 이벤트 claim", description: "commit 뒤 비동기로 처리합니다." },
+			{ id: "blocked", lane: "panel-a", step: "A · ② 업무 예외", title: "[예외] 활성 수신자 없음", description: "데이터 수정 뒤 replay합니다.", reentryTarget: "worker", status: "blocked" },
+			{ id: "request", lane: "panel-b", step: "B · ④-a", title: "[Frontend] 조회 요청", description: "사용자 요청으로 B를 시작합니다." },
+			{ id: "select", lane: "panel-b", step: "B · ④-c", title: "[Partner DB] 알림 SELECT", description: "A가 commit한 데이터를 읽습니다." },
+		],
+		edges: [{ source: "source", target: "worker" }, { source: "request", target: "select" }],
+		notes: [
+			{ title: "CONTRACT", body: ["하단 중복 계약"] },
+			{ title: "LEARNING", body: ["하단 중복 학습 문구"] },
+			{ title: "① Source local transaction", body: ["A 상세"] },
+			{ title: "④ 사용자 조회", body: ["B 상세"] },
+		],
+	});
+
+	await studio.renderTftVisualElement(element);
+
+	assert.equal(element.className, "phase-visual");
+	assert.match(element.innerHTML, /A\. 알림 적재/);
+	assert.match(element.innerHTML, /B\. 사용자 조회/);
+	assert.match(element.innerHTML, /업무 row 변경/);
+	assert.match(element.innerHTML, /PENDING 이벤트 claim/);
+	assert.match(element.innerHTML, /활성 수신자 없음/);
+	assert.match(element.innerHTML, /예외·복구 · 정상 흐름과 분리/);
+	assert.match(element.innerHTML, /↻ 재진입 · worker/);
+	assert.match(element.innerHTML, /A→B 실행 연결 없음/);
+	assert.match(element.innerHTML, /① Source local transaction/);
+	assert.match(element.innerHTML, /④ 사용자 조회/);
+	assert.doesNotMatch(element.innerHTML, /Contract · 책임|Learning ·|이 레이어가 닫는 책임|PASS 증거|하단 중복 계약|하단 중복 학습 문구/);
 });
 
 test("TFT visual fallback preserves unsupported shapes instead of showing a red error", async () => {
