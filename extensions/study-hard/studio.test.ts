@@ -249,7 +249,7 @@ test("layoutStudyGraph builds non-overlapping subtree regions instead of trustin
 	assert.deepEqual({ x: laidOut.find((node) => node.id === "solution")?.x, y: laidOut.find((node) => node.id === "solution")?.y }, { x: 292, y: 204 });
 });
 
-test("buildStudyHardStudioHtml centers the learning note, Before/After diagram, and thought board", () => {
+test("buildStudyHardStudioHtml gives the note the left+center width and overlays one drawer at a time", () => {
 	const html = buildStudyHardStudioHtml();
 	assert.match(html, /reactflow@11/);
 	assert.match(html, /mermaid@11/);
@@ -320,6 +320,11 @@ test("buildStudyHardStudioHtml centers the learning note, Before/After diagram, 
 	assert.match(html, /lineNumberMode/);
 	assert.match(html, /annotations/);
 	assert.match(html, /drawer right/);
+	assert.match(html, /--drawer-width:min\(430px,max\(360px,34vw\),calc\(100vw - 32px\)\)/);
+	assert.match(html, /\.noteDocument \{ max-width:1120px/);
+	assert.match(html, /#workspace\.rightDrawerOpen #noteSurface \.noteBody/);
+	assert.match(html, /id==='detailDrawer'[\s\S]*statusDrawer'[\s\S]*historyDrawer'/);
+	assert.doesNotMatch(html, /max-width:860px/);
 	assert.match(html, /\/workspace/);
 	assert.match(html, /\/answer/);
 	assert.match(html, /\/position/);
@@ -327,6 +332,11 @@ test("buildStudyHardStudioHtml centers the learning note, Before/After diagram, 
 	assert.match(html, /onNodeDragStop/);
 	assert.match(html, /safeUrl/);
 	assert.match(html, /EventSource\('\/events'\)/);
+	assert.match(html, /clipboardImageFiles/);
+	assert.match(html, /이미지는 입력창에 ⌘V로 붙여넣기/);
+	assert.match(html, /questionDraftAttachments/);
+	assert.match(html, /attachmentIds:pendingAttachments/);
+	assert.match(html, /post\('\/attachments\/remove'/);
 	assert.doesNotMatch(html, /grid-template-columns:\s*288px minmax\(640px,1fr\) 440px/);
 });
 
@@ -336,6 +346,26 @@ test("buildStudyHardStudioHtml inline browser script parses", () => {
 	assert.ok(inlineScripts.length > 0);
 	for (const script of inlineScripts) {
 		new Function(script);
+	}
+});
+
+test("Study Hard window uses the shared Glimpse host adapter", async () => {
+	let openCalls = 0;
+	let openedHtml = "";
+	setGlimpseOpenForTests(((html: string, options: Record<string, unknown>) => {
+		openCalls += 1;
+		openedHtml = html;
+		assert.equal(options.width, 1220);
+		return { on() {}, show() {}, close() {} } as any;
+	}) as any);
+	const fakePi = { exec() { throw new Error("browser fallback must not run"); }, sendMessage() {} } as any;
+	try {
+		await startStudyHardStudio(fakePi, { hasUI: true, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/shared-glimpse", runId: "shared-glimpse" });
+		assert.equal(openCalls, 1);
+		assert.match(openedHtml, /Study Hard Studio 열기/);
+	} finally {
+		setGlimpseOpenForTests(undefined);
+		stopStudyHardStudios();
 	}
 });
 
@@ -945,6 +975,82 @@ test("Glimpse node thread keeps learner questions and coach answers on the same 
 		assert.equal(nodeAnswerMessage?.options.triggerTurn, true);
 		assert.match(nodeAnswerMessage?.message.content, /Study Hard node answer/);
 		assert.match(nodeAnswerMessage?.message.content, /개념을 코드 경로와 연결/);
+	} finally {
+		stopStudyHardStudios();
+	}
+});
+
+test("붙여넣은 이미지는 질문에 연결되어 Tutor의 multimodal file argument로 전달된다", async () => {
+	const noteDocument = { title: "Image Question", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "visual-question", type: "paragraph", text: "이미지를 보며 질문할 블록" }] }] };
+	let tutorRequest: any;
+	const agentRunner = async (request: any): Promise<string> => {
+		if (request.role === "tutor") {
+			tutorRequest = request;
+			return "첨부 이미지를 함께 본 Tutor 답변";
+		}
+		const baseRevision = Number(/## 기준 revision\n(\d+)/.exec(request.prompt)?.[1]);
+		return JSON.stringify({ baseRevision, noteDocument });
+	};
+	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, {
+		url: "https://example.com/image-question",
+		runId: "image-question",
+		agentRunner,
+		questionBatchWindowMs: 0,
+	});
+	try {
+		updateStudyHardStudio(handle.state.runId, { noteDocument });
+		let response = await fetch(new URL("/attachments", handle.url), {
+			method: "POST",
+			headers: authorizedHeaders(handle),
+			body: JSON.stringify({ scope: "note-block", noteBlockId: "visual-question", name: "clipboard.png", mimeType: "image/png", dataUrl: `data:image/png;base64,${Buffer.from("question-image").toString("base64")}` }),
+		});
+		assert.equal(response.status, 200);
+		const upload = await response.json() as any;
+		assert.equal(upload.attachment.scope, "note-block");
+		assert.equal(upload.attachment.targetNoteBlockId, "visual-question");
+		assert.equal(existsSync(upload.attachment.path), true);
+
+		response = await fetch(new URL("/ask", handle.url), {
+			method: "POST",
+			headers: authorizedHeaders(handle),
+			body: JSON.stringify({ scope: "note-block", noteBlockId: "visual-question", question: "이 이미지에서 잘린 부분을 설명해줘", attachmentIds: ["missing-attachment"] }),
+		});
+		assert.equal(response.status, 400);
+
+		response = await fetch(new URL("/ask", handle.url), {
+			method: "POST",
+			headers: authorizedHeaders(handle),
+			body: JSON.stringify({ scope: "note-block", noteBlockId: "visual-question", question: "이 이미지에서 잘린 부분을 설명해줘", attachmentIds: [upload.attachment.id] }),
+		});
+		assert.equal(response.status, 202);
+		const state = await waitForStudyState(handle, (candidate) => candidate.questions[0]?.processingStatus === "applied");
+		assert.deepEqual(state.questions[0]?.attachmentIds, [upload.attachment.id]);
+		assert.deepEqual(tutorRequest.imagePaths, [upload.attachment.path]);
+		assert.match(tutorRequest.prompt, /clipboard\.png/);
+		assert.match(tutorRequest.prompt, /첨부 이미지가 전달된 질문/);
+
+		response = await fetch(new URL("/attachments/remove", handle.url), {
+			method: "POST",
+			headers: authorizedHeaders(handle),
+			body: JSON.stringify({ attachmentId: upload.attachment.id }),
+		});
+		assert.equal(response.status, 409);
+
+		response = await fetch(new URL("/attachments", handle.url), {
+			method: "POST",
+			headers: authorizedHeaders(handle),
+			body: JSON.stringify({ scope: "session", name: "pending.png", mimeType: "image/png", dataUrl: `data:image/png;base64,${Buffer.from("pending-image").toString("base64")}` }),
+		});
+		const pendingUpload = await response.json() as any;
+		assert.equal(existsSync(pendingUpload.attachment.path), true);
+		response = await fetch(new URL("/attachments/remove", handle.url), {
+			method: "POST",
+			headers: authorizedHeaders(handle),
+			body: JSON.stringify({ attachmentId: pendingUpload.attachment.id }),
+		});
+		assert.equal(response.status, 200);
+		assert.equal(existsSync(pendingUpload.attachment.path), false);
 	} finally {
 		stopStudyHardStudios();
 	}

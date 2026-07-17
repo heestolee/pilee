@@ -2,10 +2,8 @@ import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { createServer, type Server, type ServerResponse } from "node:http";
-import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
-import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
@@ -26,7 +24,7 @@ import {
 	type LearningProposalInput,
 	type LearningProposalStatus,
 } from "../learning-companion/state.ts";
-import { captureGlimpseHtmlPng } from "../utils/glimpse.ts";
+import { captureGlimpseHtmlPng, getGlimpseOpen } from "../utils/glimpse.ts";
 import { buildStudyHardStudioHtml } from "./studio-html.ts";
 import { parseStudyLearningAgentJson, runIsolatedStudyLearningAgent, type StudyLearningAgentRunner } from "./learning-agents.ts";
 import { resolveStudyHardRuntimeConfig } from "./runtime-config.ts";
@@ -48,6 +46,9 @@ export type StudySurface = "map" | "flow" | "note";
 export type StudyFlowVariant = "before" | "after" | "current";
 export type StudyNoteSectionKind = "overview" | "node" | "flow" | "practice" | "reflection";
 export type StudyNoteBlockType = "heading" | "paragraph" | "callout" | "list" | "code" | "reference-list" | "flow-ref" | "visual" | "divider";
+
+const MAX_QUESTION_ATTACHMENTS = 4;
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
 export interface StudyNodeReference {
 	id?: string;
@@ -174,6 +175,7 @@ export interface StudyQuestionCard {
 	targetFlowId?: string;
 	targetFlowStepId?: string;
 	targetNoteBlockId?: string;
+	attachmentIds?: string[];
 	createdAt?: number;
 	answeredAt?: number;
 	processingStatus?: StudyQuestionProcessingStatus;
@@ -183,7 +185,11 @@ export interface StudyQuestionCard {
 
 export interface StudyAttachment {
 	id: string;
+	scope?: Exclude<StudyQuestionScope, "coach">;
 	nodeId?: string;
+	targetFlowId?: string;
+	targetFlowStepId?: string;
+	targetNoteBlockId?: string;
 	name: string;
 	mimeType?: string;
 	path?: string;
@@ -588,6 +594,7 @@ function normalizeQuestions(value: unknown): StudyQuestionCard[] | undefined {
 			targetFlowId: typeof item.targetFlowId === "string" ? item.targetFlowId : undefined,
 			targetFlowStepId: typeof item.targetFlowStepId === "string" ? item.targetFlowStepId : undefined,
 			targetNoteBlockId: typeof item.targetNoteBlockId === "string" ? item.targetNoteBlockId : undefined,
+			attachmentIds: Array.isArray(item.attachmentIds) ? [...new Set(item.attachmentIds.filter((id): id is string => typeof id === "string" && !!id.trim()))].slice(0, MAX_QUESTION_ATTACHMENTS) : undefined,
 			createdAt: typeof item.createdAt === "number" ? item.createdAt : undefined,
 			answeredAt: typeof item.answeredAt === "number" ? item.answeredAt : undefined,
 			processingStatus: ["queued", "running", "answered", "merging", "applied", "failed"].includes(String(item.processingStatus)) ? String(item.processingStatus) as StudyQuestionProcessingStatus : undefined,
@@ -607,7 +614,11 @@ function normalizeAttachments(value: unknown): StudyAttachment[] | undefined {
 		.filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
 		.map((item, index) => ({
 			id: String(item.id || `attachment-${index + 1}`),
+			scope: ["session", "node", "flow-step", "note-block"].includes(String(item.scope)) ? String(item.scope) as Exclude<StudyQuestionScope, "coach"> : undefined,
 			nodeId: typeof item.nodeId === "string" ? item.nodeId : undefined,
+			targetFlowId: typeof item.targetFlowId === "string" ? item.targetFlowId : undefined,
+			targetFlowStepId: typeof item.targetFlowStepId === "string" ? item.targetFlowStepId : undefined,
+			targetNoteBlockId: typeof item.targetNoteBlockId === "string" ? item.targetNoteBlockId : undefined,
 			name: String(item.name || item.filename || `attachment-${index + 1}`),
 			mimeType: typeof item.mimeType === "string" ? item.mimeType : typeof item.type === "string" ? item.type : undefined,
 			path: typeof item.path === "string" ? item.path : undefined,
@@ -1631,6 +1642,23 @@ function updateQuestionCards(
 	});
 }
 
+function questionAttachmentRecords(state: StudyHardBoardState, question: StudyQuestionCard): StudyAttachment[] {
+	const explicitIds = new Set(question.attachmentIds || []);
+	if (explicitIds.size) return state.attachments.filter((attachment) => explicitIds.has(attachment.id));
+	if (question.targetNodeId) return state.attachments.filter((attachment) => attachment.nodeId === question.targetNodeId);
+	return [];
+}
+
+function questionImagePaths(state: StudyHardBoardState, question: StudyQuestionCard): string[] {
+	const root = resolve(attachmentDir(state.runId));
+	return questionAttachmentRecords(state, question).flatMap((attachment) => {
+		if (!attachment.mimeType?.startsWith("image/") || !attachment.path) return [];
+		const filePath = resolve(attachment.path);
+		if (!filePath.startsWith(`${root}${sep}`) || !existsSync(filePath)) return [];
+		return [filePath];
+	});
+}
+
 function questionContextSnapshot(state: StudyHardBoardState, question: StudyQuestionCard): Record<string, unknown> {
 	const node = findNode(state, question.targetNodeId);
 	const flow = state.flows.find((item) => item.id === question.targetFlowId);
@@ -1644,9 +1672,8 @@ function questionContextSnapshot(state: StudyHardBoardState, question: StudyQues
 		flow: flow && { id: flow.id, title: flow.title, variant: flow.variant, summary: flow.summary },
 		flowStep,
 		noteBlock,
-		attachments: state.attachments
-			.filter((attachment) => attachment.nodeId === question.targetNodeId)
-			.map(({ id, name, mimeType, note }) => ({ id, name, mimeType, note })),
+		attachments: questionAttachmentRecords(state, question)
+			.map(({ id, name, mimeType, note, url }) => ({ id, name, mimeType, note, url })),
 	};
 }
 
@@ -1659,7 +1686,7 @@ function tutorLearningContext(state: StudyHardBoardState, question: StudyQuestio
 }
 
 function buildTutorPrompt(state: StudyHardBoardState, question: StudyQuestionCard): string {
-	return `# Study Hard Tutor\n\n사용자의 질문에 현재 학습 상태만 근거로 답하세요. 상태를 수정하거나 도구를 호출했다고 주장하지 마세요.\n\n## 질문\n${JSON.stringify({ id: question.id, scope: question.scope, question: question.question, context: questionContextSnapshot(state, question) }, null, 2)}\n\n## 학습 맥락\n${JSON.stringify(tutorLearningContext(state, question), null, 2)}\n\n## 답변 규칙\n- 한국어로 질문에 직접 답합니다.\n- 사용자의 선행지식을 추정하지 말고 질문에 드러난 출발점부터 설명합니다.\n- 선택된 node, flow-step, note-block 질문은 해당 범위를 중심으로 답하고 다른 section 설명을 반복하지 않습니다.\n- 생소한 구조는 세부 코드보다 mental model과 실행 순서를 먼저 설명합니다.\n- 근거가 snapshot에 없으면 추측하지 말고 한계를 밝힙니다.\n- 최종 답변 Markdown만 반환하고 JSON, 상태 patch, 도구 호출은 반환하지 않습니다.`;
+	return `# Study Hard Tutor\n\n사용자의 질문에 현재 학습 상태만 근거로 답하세요. 상태를 수정하거나 도구를 호출했다고 주장하지 마세요.\n\n## 질문\n${JSON.stringify({ id: question.id, scope: question.scope, question: question.question, context: questionContextSnapshot(state, question) }, null, 2)}\n\n## 학습 맥락\n${JSON.stringify(tutorLearningContext(state, question), null, 2)}\n\n## 답변 규칙\n- 한국어로 질문에 직접 답합니다.\n- 사용자의 선행지식을 추정하지 말고 질문에 드러난 출발점부터 설명합니다.\n- 선택된 node, flow-step, note-block 질문은 해당 범위를 중심으로 답하고 다른 section 설명을 반복하지 않습니다.\n- 첨부 이미지가 전달된 질문은 이미지의 실제 내용과 질문 문장을 함께 근거로 답합니다.\n- 생소한 구조는 세부 코드보다 mental model과 실행 순서를 먼저 설명합니다.\n- 근거가 snapshot에 없으면 추측하지 말고 한계를 밝힙니다.\n- 최종 답변 Markdown만 반환하고 JSON, 상태 patch, 도구 호출은 반환하지 않습니다.`;
 }
 
 function semanticMergeFingerprint(state: StudyHardBoardState): string {
@@ -1697,6 +1724,7 @@ async function runTutorQuestion(handle: StudyHardHandle, snapshot: StudyHardBoar
 		const output = await handle.agentRunner({
 			role: "tutor",
 			prompt: buildTutorPrompt(snapshot, question),
+			imagePaths: questionImagePaths(snapshot, question),
 			cwd: handle.cwd || process.cwd(),
 			model: learningAgentModel(handle, "tutor"),
 			thinking: handle.agentThinking,
@@ -2291,6 +2319,9 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 				const flowId = scope === "flow-step" ? typeof body.flowId === "string" ? body.flowId : handle.state.selectedFlowId : undefined;
 				const flowStepId = scope === "flow-step" ? typeof body.flowStepId === "string" ? body.flowStepId : handle.state.selectedFlowStepId : undefined;
 				const noteBlockId = scope === "note-block" ? typeof body.noteBlockId === "string" ? body.noteBlockId : handle.state.selectedNoteBlockId : undefined;
+				const attachmentIds = Array.isArray(body.attachmentIds)
+					? [...new Set(body.attachmentIds.filter((id): id is string => typeof id === "string" && !!id.trim()))].slice(0, MAX_QUESTION_ATTACHMENTS)
+					: [];
 				if (!questionText) {
 					sendJson(res, 400, { ok: false, error: "question is required" });
 					return;
@@ -2307,6 +2338,11 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 					sendJson(res, 400, { ok: false, error: "known noteBlockId is required" });
 					return;
 				}
+				const knownAttachmentIds = new Set(handle.state.attachments.map((attachment) => attachment.id));
+				if (attachmentIds.some((id) => !knownAttachmentIds.has(id))) {
+					sendJson(res, 400, { ok: false, error: "known attachmentIds are required" });
+					return;
+				}
 				const orchestrationId = `tutor-${randomUUID()}`;
 				const question: StudyQuestionCard = {
 					id: nextQuestionId(handle.state),
@@ -2318,6 +2354,7 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 					targetFlowId: flowId,
 					targetFlowStepId: flowStepId,
 					targetNoteBlockId: noteBlockId,
+					attachmentIds: attachmentIds.length ? attachmentIds : undefined,
 					createdAt: Date.now(),
 					processingStatus: "queued",
 					orchestrationId,
@@ -2371,7 +2408,11 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 			}
 			if (pathname === "/attachments" && req.method === "POST") {
 				const body = await readJsonBody(req);
-				const nodeId = typeof body.nodeId === "string" ? body.nodeId : handle.state.selectedNodeId;
+				const requestedScope = ["session", "node", "flow-step", "note-block"].includes(String(body.scope))
+					? String(body.scope) as Exclude<StudyQuestionScope, "coach">
+					: undefined;
+				const nodeId = typeof body.nodeId === "string" ? body.nodeId : requestedScope === "node" ? handle.state.selectedNodeId : undefined;
+				const scope = requestedScope || (nodeId ? "node" : "session");
 				const name = safeFileName(typeof body.name === "string" ? body.name : "attachment");
 				const dataUrl = typeof body.dataUrl === "string" ? body.dataUrl : "";
 				if (!dataUrl) {
@@ -2379,16 +2420,61 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 					return;
 				}
 				const decoded = decodeDataUrl(dataUrl);
+				if (!decoded.data.length || decoded.data.length > MAX_ATTACHMENT_BYTES) {
+					sendJson(res, decoded.data.length ? 413 : 400, { ok: false, error: decoded.data.length ? "attachment exceeds 10MB" : "attachment is empty" });
+					return;
+				}
 				const mimeType = typeof body.mimeType === "string" ? body.mimeType : decoded.mimeType;
 				const id = `${Date.now()}-${randomUUID().slice(0, 8)}`;
 				const fileName = `${id}-${name}${name.includes(".") ? "" : extensionFromMime(mimeType)}`;
 				const filePath = join(attachmentDir(handle.state.runId), fileName);
 				writeFileSync(filePath, decoded.data);
-				const attachment: StudyAttachment = { id, nodeId, name, mimeType, path: filePath, url: `/attachments/${encodeURIComponent(fileName)}`, note: typeof body.note === "string" ? body.note : undefined, createdAt: Date.now() };
-				handle.state = mergeBoardState(handle.state, { selectedNodeId: nodeId, attachments: [...handle.state.attachments, attachment] });
+				const attachment: StudyAttachment = {
+					id,
+					scope,
+					nodeId,
+					targetFlowId: typeof body.flowId === "string" ? body.flowId : undefined,
+					targetFlowStepId: typeof body.flowStepId === "string" ? body.flowStepId : undefined,
+					targetNoteBlockId: typeof body.noteBlockId === "string" ? body.noteBlockId : undefined,
+					name,
+					mimeType,
+					path: filePath,
+					url: `/attachments/${encodeURIComponent(fileName)}`,
+					note: typeof body.note === "string" ? body.note : undefined,
+					createdAt: Date.now(),
+				};
+				handle.state = mergeBoardState(handle.state, {
+					selectedNodeId: scope === "node" && nodeId ? nodeId : handle.state.selectedNodeId,
+					attachments: [...handle.state.attachments, attachment],
+				});
 				saveState(handle);
 				broadcast(handle);
 				sendJson(res, 200, { ok: true, attachment });
+				return;
+			}
+			if (pathname === "/attachments/remove" && req.method === "POST") {
+				const body = await readJsonBody(req);
+				const attachmentId = typeof body.attachmentId === "string" ? body.attachmentId : "";
+				const attachment = handle.state.attachments.find((item) => item.id === attachmentId);
+				if (!attachment) {
+					sendJson(res, 404, { ok: false, error: "attachment not found" });
+					return;
+				}
+				if (handle.state.questions.some((question) => question.attachmentIds?.includes(attachmentId))) {
+					sendJson(res, 409, { ok: false, error: "attachment is already linked to a question" });
+					return;
+				}
+				if (attachment.path) {
+					const root = resolve(attachmentDir(handle.state.runId));
+					const filePath = resolve(attachment.path);
+					if (filePath.startsWith(`${root}${sep}`)) {
+						try { unlinkSync(filePath); } catch {}
+					}
+				}
+				handle.state = mergeBoardState(handle.state, { attachments: handle.state.attachments.filter((item) => item.id !== attachmentId) });
+				saveState(handle);
+				broadcast(handle);
+				sendJson(res, 200, { ok: true, attachmentId });
 				return;
 			}
 			if (pathname.startsWith("/attachments/") && req.method === "GET") {
@@ -2499,17 +2585,6 @@ export function stopStudyHardStudios(): void {
 	for (const handle of handles.values()) disposeStudyHardHandle(handle);
 	handles.clear();
 	latestRunId = undefined;
-}
-
-async function getGlimpseOpen(): Promise<((html: string, opts: Record<string, unknown>) => any) | null> {
-	try {
-		const req = createRequire(import.meta.url);
-		const resolved = req.resolve("glimpseui");
-		const mod = await import(pathToFileURL(resolved).href);
-		return typeof mod.open === "function" ? mod.open : null;
-	} catch {
-		return null;
-	}
 }
 
 async function openStudyHardWindow(pi: ExtensionAPI, ctx: ExtensionCommandContext | ExtensionContext, handle: StudyHardHandle): Promise<"glimpse" | "browser" | "none"> {
