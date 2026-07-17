@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { setGlimpseOpenForTests } from "../utils/glimpse.ts";
 import type { LearningCompanionManifest } from "../learning-companion/state.ts";
-import { attachStudyHardLearningCompanion, buildStudyHardStudioHtml, buildStudyNoteExportHtml, checkpointStudyHardLearning, createInitialBoardState, layoutStudyGraph, loadPersistedStudyHardState, mergeBoardState, openExistingStudyHardStudio, proposeStudyHardLearningChange, recordStudyHardLearningEvent, registerStudyHardBoardTool, resolveStudyNoteBlockVisual, startStudyHardStudio, stopStudyHardStudios, updateStudyHardStudio } from "./studio.ts";
+import { attachStudyHardLearningCompanion, buildStudyHardStudioHtml, buildStudyNoteExportHtml, checkpointStudyHardLearning, createInitialBoardState, layoutStudyGraph, loadPersistedStudyHardState, mergeBoardState, openExistingStudyHardStudio, proposeStudyHardLearningChange, recordStudyHardLearningEvent, registerStudyHardBoardTool, resolveStudyNoteBlockVisual, respondStudyHardQuestion, startStudyHardStudio, stopStudyHardStudios, updateStudyHardStudio } from "./studio.ts";
 
 const originalStateDir = process.env.STUDY_HARD_STATE_DIR;
 const testStateDir = mkdtempSync(join(tmpdir(), "study-hard-state-"));
@@ -303,14 +303,12 @@ test("buildStudyHardStudioHtml gives the note the left+center width and overlays
 	assert.match(html, /전체 실행 흐름을 요약 비교/);
 	assert.match(html, /학습 코치/);
 	assert.match(html, /학습 내용이 아니라 학습 방향을 묻는 곳/);
-	assert.match(html, /최대 3개까지 병렬 처리/);
+	assert.match(html, /현재 Pi 대화에 전송/);
 	assert.match(html, /processingStage/);
-	assert.match(html, /Tutor 답변 완료 · 노트 반영 실패/);
-	assert.match(html, /노트 반영만 재시도/);
-	assert.match(html, /선택 블록을 다듬는 중/);
-	assert.match(html, /노트 다듬기 실패/);
-	assert.match(html, /다시 다듬기/);
-	assert.match(html, /다듬기 요청/);
+	assert.match(html, /현재 Pi 응답 대기 중/);
+	assert.match(html, /Pi 응답 처리 실패/);
+	assert.match(html, /Pi에 다시 보내기/);
+	assert.match(html, /Pi에 보내기/);
 	assert.match(html, /activeQuestionProcessing/);
 	const activeQuestionProcessingSource = /function activeQuestionProcessing\(items\)\{[^}]+\}/.exec(html)?.[0];
 	assert.ok(activeQuestionProcessingSource);
@@ -333,7 +331,7 @@ test("buildStudyHardStudioHtml gives the note the left+center width and overlays
 	assert.match(html, /isQuestionSubmitShortcut/);
 	assert.match(html, /event\.altKey/);
 	assert.match(html, /event\.metaKey/);
-	assert.match(html, /⌥↵ 또는 ⌘↵로 전송/);
+	assert.match(html, /⌥↵ 또는 ⌘↵로 현재 Pi 대화에 전송/);
 	assert.match(html, /questionDrafts\[draftKey\]='';\s*input\.value='';\s*status\.innerHTML/);
 	assert.match(html, /function companionHtml/);
 	assert.match(html, /작업과 함께 쌓인 학습 기록/);
@@ -1103,327 +1101,135 @@ test("Glimpse node thread keeps learner questions and coach answers on the same 
 	}
 });
 
-test("붙여넣은 이미지는 note-block Direct Refiner의 multimodal file argument로 전달된다", async () => {
-	const noteDocument = { title: "Image Question", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "visual-question", type: "paragraph", text: "이미지를 보며 질문할 블록" }] }] };
-	let refinerRequest: any;
-	const agentRunner = async (request: any): Promise<string> => {
-		assert.equal(request.role, "editor");
-		refinerRequest = request;
-		const baseRevision = Number(/## 기준 revision\n(\d+)/.exec(request.prompt)?.[1]);
-		return JSON.stringify({
-			baseRevision,
-			feedback: "첨부 이미지에서 잘린 설명을 확인해 선택 블록에 반영했습니다.",
-			action: "replace",
-			block: { id: "visual-question", type: "paragraph", text: "이미지 설명을 반영한 블록" },
-		});
-	};
-	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
+test("오른쪽 입력은 모든 scope를 격리 agent 없이 현재 Pi session으로 전달한다", async () => {
+	const messages: Array<{ message: any; options: any }> = [];
+	let isolatedCalls = 0;
+	const fakePi = {
+		sendMessage(message: any, options: any) { messages.push({ message, options }); },
+		exec() { throw new Error("no browser fallback in test"); },
+	} as any;
 	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, {
-		url: "https://example.com/image-question",
-		runId: "image-question",
-		agentRunner,
-		questionBatchWindowMs: 0,
+		url: "https://example.com/current-session-input",
+		runId: "current-session-input",
+		agentRunner: async () => { isolatedCalls += 1; throw new Error("learner input must not use isolated agent"); },
 	});
 	try {
-		updateStudyHardStudio(handle.state.runId, { noteDocument });
-		let response = await fetch(new URL("/attachments", handle.url), {
-			method: "POST",
-			headers: authorizedHeaders(handle),
-			body: JSON.stringify({ scope: "note-block", noteBlockId: "visual-question", name: "clipboard.png", mimeType: "image/png", dataUrl: `data:image/png;base64,${Buffer.from("question-image").toString("base64")}` }),
+		updateStudyHardStudio(handle.state.runId, {
+			flows: [{ id: "after", title: "After", variant: "after", actors: [{ id: "web", label: "Web" }, { id: "api", label: "API" }], steps: [{ id: "request", order: 1, from: "web", to: "api", action: "request" }] }],
+			noteDocument: { title: "Current Session", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "mental-model", type: "paragraph", text: "현재 설명" }] }] },
 		});
-		assert.equal(response.status, 200);
-		const upload = await response.json() as any;
-		assert.equal(upload.attachment.scope, "note-block");
-		assert.equal(upload.attachment.targetNoteBlockId, "visual-question");
-		assert.equal(existsSync(upload.attachment.path), true);
+		const requests = [
+			{ scope: "node", nodeId: "goal", question: "노드 질문" },
+			{ scope: "session", question: "전체 질문" },
+			{ scope: "flow-step", flowId: "after", flowStepId: "request", question: "흐름 질문" },
+			{ scope: "note-block", noteBlockId: "mental-model", question: "노트 질문" },
+		];
+		for (const body of requests) {
+			const response = await fetch(new URL("/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify(body) });
+			assert.equal(response.status, 202);
+		}
+		let state = await fetch(new URL("/state", handle.url)).then((response) => response.json() as Promise<any>);
+		assert.equal(isolatedCalls, 0);
+		assert.deepEqual(state.questions.map((question: any) => question.scope), ["node", "session", "flow-step", "note-block"]);
+		assert.ok(state.questions.every((question: any) => question.processingStatus === "queued" && /^pi-/.test(question.orchestrationId)));
+		const sessionRequests = messages.filter(({ message }) => message.customType === "heestolee.study-hard.learner-request");
+		assert.equal(sessionRequests.length, 4);
+		assert.ok(sessionRequests.every(({ message, options }) => message.display === false && options.deliverAs === "followUp" && options.triggerTurn === true));
+		assert.ok(sessionRequests.every(({ message }) => /현재 Pi 대화의 직접 요청/.test(message.content) && /action="respond"/.test(message.content) && /statePath:/.test(message.content)));
+		const transcriptQuestions = messages.filter(({ message }) => message.customType === "heestolee.study-hard.transcript" && message.details.eventKind === "learner-question");
+		assert.equal(transcriptQuestions.length, 4);
+		assert.ok(transcriptQuestions.every(({ message, options }) => message.display === true && options.triggerTurn === false));
 
-		response = await fetch(new URL("/ask", handle.url), {
-			method: "POST",
-			headers: authorizedHeaders(handle),
-			body: JSON.stringify({ scope: "note-block", noteBlockId: "visual-question", question: "이 이미지에서 잘린 부분을 설명해줘", attachmentIds: ["missing-attachment"] }),
-		});
-		assert.equal(response.status, 400);
-
-		response = await fetch(new URL("/ask", handle.url), {
-			method: "POST",
-			headers: authorizedHeaders(handle),
-			body: JSON.stringify({ scope: "note-block", noteBlockId: "visual-question", question: "이 이미지에서 잘린 부분을 설명해줘", attachmentIds: [upload.attachment.id] }),
-		});
-		assert.equal(response.status, 202);
-		const state = await waitForStudyState(handle, (candidate) => candidate.questions[0]?.processingStatus === "applied");
-		assert.deepEqual(state.questions[0]?.attachmentIds, [upload.attachment.id]);
-		assert.equal(state.noteDocument.sections[0].blocks[0].text, "이미지 설명을 반영한 블록");
-		assert.deepEqual(refinerRequest.imagePaths, [upload.attachment.path]);
-		assert.match(refinerRequest.prompt, /# Study Hard Note Block Direct Refiner/);
-		assert.match(refinerRequest.prompt, /clipboard\.png/);
-		assert.match(refinerRequest.prompt, /첨부 이미지가 전달된 질문/);
-
-		response = await fetch(new URL("/attachments/remove", handle.url), {
-			method: "POST",
-			headers: authorizedHeaders(handle),
-			body: JSON.stringify({ attachmentId: upload.attachment.id }),
-		});
-		assert.equal(response.status, 409);
-
-		response = await fetch(new URL("/attachments", handle.url), {
-			method: "POST",
-			headers: authorizedHeaders(handle),
-			body: JSON.stringify({ scope: "session", name: "pending.png", mimeType: "image/png", dataUrl: `data:image/png;base64,${Buffer.from("pending-image").toString("base64")}` }),
-		});
-		const pendingUpload = await response.json() as any;
-		assert.equal(existsSync(pendingUpload.attachment.path), true);
-		response = await fetch(new URL("/attachments/remove", handle.url), {
-			method: "POST",
-			headers: authorizedHeaders(handle),
-			body: JSON.stringify({ attachmentId: pendingUpload.attachment.id }),
-		});
-		assert.equal(response.status, 200);
-		assert.equal(existsSync(pendingUpload.attachment.path), false);
+		respondStudyHardQuestion(handle.state.runId, state.revision, state.questions[0].id, "현재 Pi session 맥락으로 답했습니다.");
+		state = await fetch(new URL("/state", handle.url)).then((response) => response.json() as Promise<any>);
+		assert.equal(state.questions[0].processingStatus, "applied");
+		assert.equal(state.questions[0].feedback, "현재 Pi session 맥락으로 답했습니다.");
+		assert.ok(messages.some(({ message }) => message.details?.eventKind === "pi-answer"));
 	} finally {
 		stopStudyHardStudios();
 	}
 });
 
-test("오른쪽 질문 3개는 Tutor에서 병렬 처리된 뒤 Editor가 한 번에 노트에 반영한다", async () => {
-	let activeTutors = 0;
-	let maxActiveTutors = 0;
-	let startedTutors = 0;
-	let completedTutors = 0;
-	let editorCalls = 0;
-	let releaseTutors!: () => void;
-	const allTutorsStarted = new Promise<void>((resolve) => { releaseTutors = resolve; });
+test("현재 Pi 요청은 이미지 경로를 받고 하나의 block을 여러 block으로 구조 변경할 수 있다", async () => {
 	const messages: Array<{ message: any; options: any }> = [];
 	const fakePi = {
 		sendMessage(message: any, options: any) { messages.push({ message, options }); },
 		exec() { throw new Error("no browser fallback in test"); },
-		getThinkingLevel() { return "high"; },
 	} as any;
-	const agentRunner = async (request: any): Promise<string> => {
-		if (request.role === "tutor") {
-			activeTutors += 1;
-			startedTutors += 1;
-			maxActiveTutors = Math.max(maxActiveTutors, activeTutors);
-			if (startedTutors === 3) releaseTutors();
-			await allTutorsStarted;
-			await new Promise((resolve) => setTimeout(resolve, 5));
-			activeTutors -= 1;
-			completedTutors += 1;
-			return `Tutor 답변 ${completedTutors}`;
-		}
-		assert.equal(request.role, "editor");
-		assert.equal(completedTutors, 3);
-		assert.match(request.prompt, /type: "visual"[\s\S]*원본 spec 전체를 그대로 보존/);
-		editorCalls += 1;
-		const baseRevision = Number(/## 기준 revision\n(\d+)/.exec(request.prompt)?.[1]);
-		return JSON.stringify({
-			baseRevision,
-			noteDocument: {
-				title: "병렬 학습 노트",
-				sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "mental-model", type: "callout", tone: "success", title: "Mental model", body: "세 Tutor 답변을 중복 없이 한 번에 반영했다." }] }],
-			},
-		});
-	};
 	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, {
-		url: "https://example.com/parallel-tutors",
-		runId: "parallel-tutors",
-		agentRunner,
-		questionBatchWindowMs: 50,
+		url: "https://example.com/current-session-image",
+		runId: "current-session-image",
+		agentRunner: async () => { throw new Error("isolated agent must not run"); },
 	});
 	try {
 		updateStudyHardStudio(handle.state.runId, {
-			noteDocument: { title: "병렬 학습 노트", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "mental-model", type: "callout", tone: "success", title: "Mental model", body: "기존 설명" }] }] },
+			noteDocument: { title: "Image Question", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "combined", type: "paragraph", text: "A와 B가 합쳐진 설명" }] }] },
 		});
-		const responses = await Promise.all(["첫 질문", "둘째 질문", "셋째 질문"].map((question) => fetch(new URL("/ask", handle.url), {
+		let response = await fetch(new URL("/attachments", handle.url), {
 			method: "POST",
 			headers: authorizedHeaders(handle),
-			body: JSON.stringify({ scope: "session", question }),
-		})));
-		assert.deepEqual(responses.map((response) => response.status), [202, 202, 202]);
-
-		const state = await waitForStudyState(handle, (candidate) => candidate.questions.length === 3 && candidate.questions.every((question: any) => question.processingStatus === "applied"));
-		assert.equal(maxActiveTutors, 3);
-		assert.equal(editorCalls, 1);
-		assert.deepEqual(state.questions.map((question: any) => question.status), ["answered", "answered", "answered"]);
-		assert.match(state.noteDocument.sections[0].blocks[0].body, /한 번에 반영/);
-		const eventKinds = messages.map(({ message }) => message.details.eventKind);
-		assert.equal(eventKinds.filter((kind) => kind === "learner-question").length, 3);
-		assert.equal(eventKinds.filter((kind) => kind === "tutor-answer").length, 3);
-		assert.equal(eventKinds.filter((kind) => kind === "note-merged").length, 1);
-		assert.ok(messages.filter(({ message }) => message.details.eventKind === "tutor-answer").every(({ message }) => /질문: (첫 질문|둘째 질문|셋째 질문)\n\n답변:/.test(message.content)));
-		assert.ok(messages.every(({ message, options }) => message.display === true && options.triggerTurn === false));
-		assert.match(messages.find(({ message }) => message.details.eventKind === "note-merged")?.message.content, /질문 3개의 답변.*revision/);
-		assert.ok(messages.every(({ message }) => !/# Study Hard Tutor|baseRevision|noteDocument.*sections/.test(message.content)));
+			body: JSON.stringify({ scope: "note-block", noteBlockId: "combined", name: "clipboard.png", mimeType: "image/png", dataUrl: `data:image/png;base64,${Buffer.from("question-image").toString("base64")}` }),
+		});
+		assert.equal(response.status, 200);
+		const upload = await response.json() as any;
+		response = await fetch(new URL("/ask", handle.url), {
+			method: "POST",
+			headers: authorizedHeaders(handle),
+			body: JSON.stringify({ scope: "note-block", noteBlockId: "combined", question: "이미지를 보고 A와 B를 분리해줘", attachmentIds: [upload.attachment.id] }),
+		});
+		assert.equal(response.status, 202);
+		let state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		assert.equal(state.questions[0].processingStatus, "queued");
+		const request = messages.find(({ message }) => message.customType === "heestolee.study-hard.learner-request");
+		assert.match(request?.message.content || "", /clipboard\.png/);
+		assert.match(request?.message.content || "", new RegExp(upload.attachment.path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+		assert.throws(() => respondStudyHardQuestion(handle.state.runId, state.revision, state.questions[0].id, "잘못된 응답", { questions: [] }), /questions를 자동 갱신/);
+		const splitNote = { title: "Image Question", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [
+			{ id: "panel-a", type: "paragraph", text: "A 독립 설명" },
+			{ id: "panel-b", type: "paragraph", text: "B 독립 설명" },
+		] }] };
+		respondStudyHardQuestion(handle.state.runId, state.revision, state.questions[0].id, "현재 Pi 맥락으로 A와 B를 독립 block으로 분리했습니다.", { noteDocument: splitNote });
+		state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		assert.deepEqual(state.noteDocument.sections[0].blocks.map((block: any) => block.id), ["panel-a", "panel-b"]);
+		assert.equal(state.questions[0].processingStatus, "applied");
+		assert.deepEqual(messages.filter(({ message }) => message.details?.eventKind === "pi-answer").length, 1);
+		assert.deepEqual(messages.filter(({ message }) => message.details?.eventKind === "note-merged").length, 1);
 	} finally {
 		stopStudyHardStudios();
 	}
 });
 
-test("note-block Direct Refiner는 선택 블록만 받고 session Tutor는 전체 자료를 받는다", async () => {
-	const noteDocument = {
-		title: "Scoped Tutor Note",
-		sections: [
-			{ id: "selected-section", kind: "node", title: "선택 영역", blocks: [{ id: "selected-block", type: "paragraph", text: "선택 블록의 핵심 설명" }] },
-			{ id: "unrelated-section", kind: "reflection", title: "다른 영역", blocks: [{ id: "unrelated-block", type: "paragraph", text: "다른 질문의 오래된 설명" }] },
-		],
-	};
-	const flows = [{ id: "unrelated-flow", title: "다른 데이터 흐름", variant: "after", actors: [{ id: "a", label: "A" }, { id: "b", label: "B" }], steps: [{ id: "step", order: 1, from: "a", to: "b", action: "unrelated action" }] }];
-	let tutorCalls = 0;
-	let editorCalls = 0;
-	const repeatedTranscript = `${"[heestolee.study-hard.transcript]"}\n\n반복된 이전 답변`;
-	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
-	const agentRunner = async (request: any): Promise<string> => {
-		const baseRevision = Number(/## 기준 revision\n(\d+)/.exec(request.prompt)?.[1]);
-		if (request.role === "tutor") {
-			tutorCalls += 1;
-			assert.match(request.prompt, /unrelated-block/);
-			assert.match(request.prompt, /unrelated-flow/);
-			return "전체 자료 Tutor 답변";
-		}
-		editorCalls += 1;
-		if (editorCalls === 1) {
-			assert.match(request.prompt, /# Study Hard Note Block Direct Refiner/);
-			assert.match(request.prompt, /selected-block/);
-			assert.match(request.prompt, /선택 블록의 핵심 설명/);
-			assert.doesNotMatch(request.prompt, /unrelated-block|다른 질문의 오래된 설명|unrelated-flow/);
-			assert.equal((request.prompt.match(/\[heestolee\.study-hard\.transcript\]/g) || []).length, 1);
-			assert.match(request.prompt, /중복 Study Hard transcript 1개 생략/);
-			return JSON.stringify({
-				baseRevision,
-				feedback: "선택 블록의 역할을 직접 설명했습니다. 내용 수정은 필요하지 않습니다.",
-				action: "none",
-				block: null,
-			});
-		}
-		assert.match(request.prompt, /# Study Hard Editor \/ Merger/);
-		return JSON.stringify({
-			baseRevision,
-			noteDocument: {
-				...noteDocument,
-				sections: noteDocument.sections.map((section) => section.id === "selected-section" ? { ...section, blocks: [{ id: "selected-block", type: "paragraph", text: "전체 자료 Tutor 답변 반영" }] } : section),
-			},
-		});
-	};
+test("현재 Pi 전달 실패는 재시도하고 respond는 stale revision을 거부한다", async () => {
+	const messages: Array<{ message: any; options: any }> = [];
+	let failDelivery = true;
+	const fakePi = {
+		sendMessage(message: any, options: any) {
+			messages.push({ message, options });
+			if (message.customType === "heestolee.study-hard.learner-request" && failDelivery) throw new Error("current session delivery failed");
+		},
+		exec() { throw new Error("no browser fallback in test"); },
+	} as any;
 	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, {
-		url: "https://example.com/scoped-tutor",
-		runId: "scoped-tutor",
-		agentRunner,
-		questionBatchWindowMs: 0,
+		url: "https://example.com/current-session-retry",
+		runId: "current-session-retry",
 	});
 	try {
-		updateStudyHardStudio(handle.state.runId, { noteDocument, flows });
-		let response = await fetch(new URL("/ask", handle.url), {
-			method: "POST",
-			headers: authorizedHeaders(handle),
-			body: JSON.stringify({ scope: "note-block", noteBlockId: "selected-block", question: `이 블록만 설명해줘\n\n${repeatedTranscript}\n\n${repeatedTranscript}` }),
-		});
+		let response = await fetch(new URL("/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ scope: "session", question: "재시도해줘" }) });
+		assert.equal(response.status, 500);
+		let state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		assert.equal(state.questions[0].processingStatus, "failed");
+		failDelivery = false;
+		response = await fetch(new URL("/questions/retry", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ questionId: state.questions[0].id }) });
 		assert.equal(response.status, 202);
-		let state = await waitForStudyState(handle, (candidate) => candidate.questions.length === 1 && candidate.questions[0]?.processingStatus === "applied");
-		assert.equal(state.noteDocument.sections[0].blocks[0].text, "선택 블록의 핵심 설명");
-		assert.equal(state.noteDocument.sections[1].blocks[0].text, "다른 질문의 오래된 설명");
-		assert.match(state.questions[0].feedback, /내용 수정은 필요하지 않습니다/);
-		assert.match(state.questions[0].orchestrationId, /^refiner-/);
-
-		response = await fetch(new URL("/ask", handle.url), {
-			method: "POST",
-			headers: authorizedHeaders(handle),
-			body: JSON.stringify({ scope: "session", question: "전체 자료를 설명해줘" }),
-		});
-		assert.equal(response.status, 202);
-		state = await waitForStudyState(handle, (candidate) => candidate.questions.length === 2 && candidate.questions.every((question: any) => question.processingStatus === "applied"));
-		assert.equal(state.noteDocument.sections[0].blocks[0].text, "전체 자료 Tutor 답변 반영");
-		assert.equal(state.noteDocument.sections[1].blocks[0].text, "다른 질문의 오래된 설명");
-		assert.equal(tutorCalls, 1);
-		assert.equal(editorCalls, 2);
-	} finally {
-		stopStudyHardStudios();
-	}
-});
-
-test("note-block 삭제 요청은 빈 replacement 없이 target block만 삭제한다", async () => {
-	const noteDocument = {
-		title: "Refinement Delete Note",
-		sections: [
-			{
-				id: "architecture",
-				kind: "flow",
-				title: "Architecture",
-				blocks: [
-					{ id: "architecture-heading", type: "heading", level: 2, text: "Architecture" },
-					{ id: "timeout-meta", type: "callout", title: "Study Hard timeout", body: "제품 요구사항과 무관한 메타 설명" },
-					{ id: "architecture-keep", type: "paragraph", text: "보존해야 하는 제품 설명" },
-				],
-			},
-			{ id: "unrelated", kind: "overview", title: "Unrelated", blocks: [{ id: "unrelated-block", type: "paragraph", text: "대상 밖 설명" }] },
-		],
-	};
-	let editorCalls = 0;
-	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
-	const agentRunner = async (request: any): Promise<string> => {
-		assert.equal(request.role, "editor");
-		editorCalls += 1;
-		const baseRevision = Number(/## 기준 revision\n(\d+)/.exec(request.prompt)?.[1]);
-		assert.match(request.prompt, /# Study Hard Note Block Direct Refiner/);
-		assert.match(request.prompt, /빈 블록으로 삭제를 흉내 내지 않습니다/);
-		if (editorCalls === 1) return JSON.stringify({
-			baseRevision,
-			feedback: "제품 요구사항과 무관한 메타 설명이라 선택 블록을 삭제했습니다.",
-			action: "delete",
-			block: null,
-		});
-		if (editorCalls === 2) return JSON.stringify({
-			baseRevision,
-			feedback: "대상 밖 블록으로 바꾸려는 잘못된 결과",
-			action: "replace",
-			block: { id: "unrelated-block", type: "paragraph", text: "허용되지 않은 교체" },
-		});
-		return JSON.stringify({
-			baseRevision,
-			feedback: "재시도에서 선택 블록만 명확하게 다듬었습니다.",
-			action: "replace",
-			block: { id: "architecture-keep", type: "paragraph", text: "재시도로 다듬은 제품 설명" },
-		});
-	};
-	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, {
-		url: "https://example.com/refinement-delete",
-		runId: "refinement-delete",
-		agentRunner,
-		questionBatchWindowMs: 0,
-	});
-	try {
-		updateStudyHardStudio(handle.state.runId, { noteDocument });
-		let response = await fetch(new URL("/ask", handle.url), {
-			method: "POST",
-			headers: authorizedHeaders(handle),
-			body: JSON.stringify({ scope: "note-block", noteBlockId: "timeout-meta", question: "2504와 무관한 Study Hard 메타 블록을 제거해줘" }),
-		});
-		assert.equal(response.status, 202);
-		let state = await waitForStudyState(handle, (candidate) => candidate.questions[0]?.processingStatus === "applied");
-		assert.deepEqual(state.noteDocument.sections[0].blocks.map((block: any) => block.id), ["architecture-heading", "architecture-keep"]);
-		assert.equal(state.noteDocument.sections[1].blocks[0].text, "대상 밖 설명");
-		assert.doesNotMatch(state.questions[0].feedback || "", /직접 수정할 수 없|읽기 전용/);
-
-		response = await fetch(new URL("/ask", handle.url), {
-			method: "POST",
-			headers: authorizedHeaders(handle),
-			body: JSON.stringify({ scope: "note-block", noteBlockId: "architecture-keep", question: "이 블록만 다듬어줘" }),
-		});
-		assert.equal(response.status, 202);
-		state = await waitForStudyState(handle, (candidate) => candidate.questions[1]?.processingStatus === "failed");
-		assert.match(state.questions[1].processingError || "", /block id\/type을 바꿀 수 없습니다/);
-		assert.equal(state.questions[1].feedback, undefined);
-		assert.equal(state.noteDocument.sections[0].blocks.find((block: any) => block.id === "architecture-keep")?.text, "보존해야 하는 제품 설명");
-		assert.equal(state.noteDocument.sections[1].blocks[0].text, "대상 밖 설명");
-
-		response = await fetch(new URL("/questions/retry", handle.url), {
-			method: "POST",
-			headers: authorizedHeaders(handle),
-			body: JSON.stringify({ questionId: state.questions[1].id }),
-		});
-		assert.equal(response.status, 202);
-		assert.equal((await response.json() as any).retryMode, "refiner");
-		state = await waitForStudyState(handle, (candidate) => candidate.questions[1]?.processingStatus === "applied");
-		assert.equal(state.noteDocument.sections[0].blocks.find((block: any) => block.id === "architecture-keep")?.text, "재시도로 다듬은 제품 설명");
-		assert.equal(editorCalls, 3);
+		assert.equal((await response.json() as any).retryMode, "pi");
+		state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		assert.equal(state.questions[0].processingStatus, "queued");
+		assert.throws(() => respondStudyHardQuestion(handle.state.runId, state.revision - 1, state.questions[0].id, "오래된 응답"), /stale Study Hard revision/);
+		respondStudyHardQuestion(handle.state.runId, state.revision, state.questions[0].id, "재시도 뒤 현재 Pi가 답했습니다.");
+		state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		assert.equal(state.questions[0].processingStatus, "applied");
+		assert.equal(state.questions[0].feedback, "재시도 뒤 현재 Pi가 답했습니다.");
+		assert.equal(messages.filter(({ message }) => message.customType === "heestolee.study-hard.learner-request").length, 2);
 	} finally {
 		stopStudyHardStudios();
 	}
@@ -1634,161 +1440,66 @@ test("학습 코치의 잘못된 enum은 기존 이해 상태를 바꾸지 않�
 	}
 });
 
-test("Editor의 partial state patch를 거부하고 재시도할 때 Tutor 답변을 재사용한다", async () => {
-	let tutorCalls = 0;
-	let editorCalls = 0;
-	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
-	const agentRunner = async (request: any): Promise<string> => {
-		if (request.role === "tutor") {
-			tutorCalls += 1;
-			return "Tutor의 정상 답변";
-		}
-		editorCalls += 1;
-		const baseRevision = Number(/## 기준 revision\n(\d+)/.exec(request.prompt)?.[1]);
-		if (editorCalls === 1) return JSON.stringify({
-			baseRevision,
-			noteDocument: { title: "Retry Note", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "lead", type: "paragraph", text: "적용되면 안 되는 노트" }] }] },
-			nodes: [{ id: "goal" }],
-		});
-		return JSON.stringify({
-			baseRevision,
-			noteDocument: { title: "Retry Note", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "lead", type: "paragraph", text: "재시도 뒤 한 번만 반영" }] }] },
-		});
-	};
-	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, {
-		url: "https://example.com/editor-retry",
-		runId: "editor-retry",
-		agentRunner,
-		questionBatchWindowMs: 0,
-	});
-	try {
-		updateStudyHardStudio(handle.state.runId, {
-			noteDocument: { title: "Retry Note", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "lead", type: "paragraph", text: "원래 노트" }] }] },
-			nodes: handle.state.nodes.map((node) => node.id === "goal" ? { ...node, status: "understood", summary: "보존해야 하는 목표 설명" } : node),
-		});
-		let response = await fetch(new URL("/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ scope: "session", question: "실패 뒤 재시도할 수 있어?" }) });
-		assert.equal(response.status, 202);
-		let state = await waitForStudyState(handle, (candidate) => candidate.questions[0]?.processingStatus === "failed");
-		assert.equal(state.noteDocument.sections[0].blocks[0].text, "원래 노트");
-		assert.equal(state.nodes.find((node: any) => node.id === "goal")?.status, "understood");
-		assert.equal(state.nodes.find((node: any) => node.id === "goal")?.summary, "보존해야 하는 목표 설명");
-		assert.equal(state.questions[0].feedback, "Tutor의 정상 답변");
-		assert.equal(state.questions[0].processingErrorStage, "editor");
-		assert.match(state.questions[0].processingError, /noteDocument 외 상태.*nodes/);
-
-		response = await fetch(new URL("/questions/retry", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ questionId: state.questions[0].id }) });
-		assert.equal(response.status, 202);
-		assert.equal((await response.json() as any).retryMode, "merge");
-		state = await waitForStudyState(handle, (candidate) => candidate.questions[0]?.processingStatus === "applied");
-		assert.equal(state.noteDocument.sections[0].blocks[0].text, "재시도 뒤 한 번만 반영");
-		assert.equal(tutorCalls, 1);
-		assert.equal(editorCalls, 2);
-	} finally {
-		stopStudyHardStudios();
-	}
-});
-
-test("Editor 실행 중 노트가 바뀌면 최신 semantic snapshot으로 한 번 재실행한다", async () => {
-	let editorCalls = 0;
-	let handle: any;
-	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
-	const agentRunner = async (request: any): Promise<string> => {
-		if (request.role === "tutor") return "동시 변경을 고려한 Tutor 답변";
-		editorCalls += 1;
-		const baseRevision = Number(/## 기준 revision\n(\d+)/.exec(request.prompt)?.[1]);
-		if (editorCalls === 1) {
-			updateStudyHardStudio(handle.state.runId, { noteDocument: { title: "Stale Note", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "lead", type: "paragraph", text: "사용자가 동시에 고친 설명" }] }] } });
-			return JSON.stringify({ baseRevision, noteDocument: { title: "Stale Note", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "lead", type: "paragraph", text: "오래된 Editor 결과" }] }] } });
-		}
-		return JSON.stringify({ baseRevision, noteDocument: { title: "Stale Note", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "lead", type: "paragraph", text: "사용자 설명을 보존하고 Tutor 답변을 병합" }] }] } });
-	};
-	handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, {
-		url: "https://example.com/editor-stale",
-		runId: "editor-stale",
-		agentRunner,
-		questionBatchWindowMs: 0,
-	});
-	try {
-		updateStudyHardStudio(handle.state.runId, { noteDocument: { title: "Stale Note", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "lead", type: "paragraph", text: "처음 설명" }] }] } });
-		const response = await fetch(new URL("/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ scope: "session", question: "동시 변경도 보존해줘" }) });
-		assert.equal(response.status, 202);
-		const state = await waitForStudyState(handle, (candidate) => candidate.questions[0]?.processingStatus === "applied");
-		assert.equal(editorCalls, 2);
-		assert.equal(state.noteDocument.sections[0].blocks[0].text, "사용자 설명을 보존하고 Tutor 답변을 병합");
-	} finally {
-		stopStudyHardStudios();
-	}
-});
-
-test("Studio를 닫으면 실행 중인 Tutor signal을 취소한다", async () => {
-	let startedResolve!: () => void;
-	const started = new Promise<void>((resolve) => { startedResolve = resolve; });
-	let aborted = false;
-	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
-	const agentRunner = async (request: any): Promise<string> => {
-		assert.equal(request.role, "tutor");
-		startedResolve();
-		return new Promise<string>((_resolve, reject) => {
-			request.signal.addEventListener("abort", () => {
-				aborted = true;
-				reject(new Error("aborted by test"));
-			}, { once: true });
-		});
-	};
-	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, {
-		url: "https://example.com/abort-tutor",
-		runId: "abort-tutor",
-		agentRunner,
-		questionBatchWindowMs: 0,
-	});
-	await fetch(new URL("/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ scope: "session", question: "오래 걸리는 질문" }) });
-	await started;
-	stopStudyHardStudios();
-	await new Promise((resolve) => setTimeout(resolve, 5));
-	assert.equal(aborted, true);
-});
-
-test("Studio 재시작은 중단된 질문을 queued 상태로 복구해 다시 처리한다", async () => {
-	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
-	const runId = "resume-interrupted-question";
-	let handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, {
-		url: "https://example.com/resume-question",
+test("study_hard_board respond action은 질문 답변과 구조 patch를 원자적으로 반영한다", async () => {
+	const harness = createStudyHardBoardHarness();
+	const runId = "tool-current-session-respond";
+	await harness.execute({
+		action: "start",
+		url: "https://example.com/tool-current-session-respond",
 		runId,
-		questionBatchWindowMs: 60_000,
-		agentRunner: async () => { throw new Error("first runtime must stop before agent execution"); },
+		noteDocument: { title: "Tool Respond", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "combined", type: "paragraph", text: "합쳐진 설명" }] }] },
 	});
-	updateStudyHardStudio(runId, { noteDocument: { title: "Resume Question", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "lead", type: "paragraph", text: "중단 전" }] }] } });
-	let response = await fetch(new URL("/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ scope: "session", question: "재시작해도 이어져?" }) });
+	let handle = updateStudyHardStudio(runId, {
+		questions: [{ id: "Q001", origin: "learner", scope: "note-block", question: "분리해줘", status: "open", targetNoteBlockId: "combined", processingStatus: "queued", orchestrationId: "pi-test" }],
+	});
+	const result = await harness.execute({
+		action: "respond",
+		runId,
+		expectedRevision: handle.state.revision,
+		questionId: "Q001",
+		feedback: "현재 Pi가 구조를 분리했습니다.",
+		noteDocument: { title: "Tool Respond", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "a", type: "paragraph", text: "A" }, { id: "b", type: "paragraph", text: "B" }] }] },
+	});
+	assert.equal(result.details.action, "responded");
+	handle = updateStudyHardStudio(runId, {});
+	assert.equal(handle.state.questions[0].feedback, "현재 Pi가 구조를 분리했습니다.");
+	assert.equal(handle.state.questions[0].processingStatus, "applied");
+	assert.deepEqual(handle.state.noteDocument.sections[0].blocks.map((block) => block.id), ["a", "b"]);
+	await assert.rejects(() => harness.execute({ action: "respond", runId, expectedRevision: handle.state.revision, questionId: "Q001", feedback: "", questions: [] }), /feedback이 필요합니다/);
+});
+
+test("Studio 재시작은 중단된 learner 질문을 현재 Pi session에 다시 전달한다", async () => {
+	const runId = "resume-current-session-question";
+	const firstMessages: Array<{ message: any; options: any }> = [];
+	let handle = await startStudyHardStudio({
+		sendMessage(message: any, options: any) { firstMessages.push({ message, options }); },
+		exec() { throw new Error("no browser fallback in test"); },
+	} as any, { hasUI: false, cwd: "/tmp/study-hard" } as any, {
+		url: "https://example.com/resume-current-session",
+		runId,
+	});
+	let response = await fetch(new URL("/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ scope: "session", question: "재시작해도 현재 대화로 이어져?" }) });
 	assert.equal(response.status, 202);
 	let state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
 	assert.equal(state.questions[0].processingStatus, "queued");
-	updateStudyHardStudio(runId, {
-		questions: [...state.questions, { id: "Q002", origin: "learner", scope: "session", question: "구버전 무상태 질문도 이어져?", status: "open" }],
-	});
+	assert.equal(firstMessages.filter(({ message }) => message.customType === "heestolee.study-hard.learner-request").length, 1);
 	stopStudyHardStudios();
 
-	let tutorCalls = 0;
-	let editorCalls = 0;
-	const agentRunner = async (request: any): Promise<string> => {
-		if (request.role === "tutor") {
-			tutorCalls += 1;
-			return "재시작 뒤 Tutor 답변";
-		}
-		editorCalls += 1;
-		const baseRevision = Number(/## 기준 revision\n(\d+)/.exec(request.prompt)?.[1]);
-		return JSON.stringify({ baseRevision, noteDocument: { title: "Resume Question", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "lead", type: "paragraph", text: "재시작 뒤 병합 완료" }] }] } });
-	};
-	handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, {
-		url: "https://example.com/resume-question",
+	const resumedMessages: Array<{ message: any; options: any }> = [];
+	handle = await startStudyHardStudio({
+		sendMessage(message: any, options: any) { resumedMessages.push({ message, options }); },
+		exec() { throw new Error("no browser fallback in test"); },
+	} as any, { hasUI: false, cwd: "/tmp/study-hard", sessionManager: { getBranch: () => [] } } as any, {
+		url: "https://example.com/resume-current-session",
 		runId,
-		questionBatchWindowMs: 0,
-		agentRunner,
 	});
 	try {
-		state = await waitForStudyState(handle, (candidate) => candidate.questions.length === 2 && candidate.questions.every((question: any) => question.processingStatus === "applied"));
-		assert.equal(tutorCalls, 2);
-		assert.equal(editorCalls, 1);
-		assert.equal(state.noteDocument.sections[0].blocks[0].text, "재시작 뒤 병합 완료");
+		state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		assert.equal(state.questions[0].processingStatus, "queued");
+		const requests = resumedMessages.filter(({ message }) => message.customType === "heestolee.study-hard.learner-request");
+		assert.equal(requests.length, 1);
+		assert.equal(requests[0].options.triggerTurn, true);
+		assert.match(requests[0].message.content, /현재 Pi 대화의 직접 요청/);
 	} finally {
 		stopStudyHardStudios();
 	}
