@@ -55,18 +55,32 @@ export function parseStudyLearningAgentJson<T extends Record<string, unknown>>(o
 	throw new Error("학습 agent가 유효한 JSON 객체를 반환하지 않았습니다.");
 }
 
-function getFinalAssistantText(event: unknown): string | undefined {
-	if (!event || typeof event !== "object") return undefined;
-	const item = event as Record<string, unknown>;
-	if (item.type !== "message_end" || !item.message || typeof item.message !== "object") return undefined;
-	const message = item.message as Record<string, unknown>;
-	if (message.role !== "assistant" || !Array.isArray(message.content)) return undefined;
-	const text = message.content
+function assistantMessageText(message: unknown): string | undefined {
+	if (!message || typeof message !== "object") return undefined;
+	const item = message as Record<string, unknown>;
+	if (item.role !== "assistant" || !Array.isArray(item.content)) return undefined;
+	const text = item.content
 		.filter((part): part is Record<string, unknown> => !!part && typeof part === "object" && (part as Record<string, unknown>).type === "text")
 		.map((part) => String(part.text || ""))
 		.join("\n")
 		.trim();
 	return text || undefined;
+}
+
+function assistantTextFromEvent(event: Record<string, unknown>): { text?: string; partial: boolean } {
+	if (["message_end", "turn_end"].includes(String(event.type))) return { text: assistantMessageText(event.message), partial: false };
+	if (event.type === "message_update") return { text: assistantMessageText(event.message), partial: true };
+	if (event.type === "agent_end" && Array.isArray(event.messages)) {
+		for (const message of [...event.messages].reverse()) {
+			const text = assistantMessageText(message);
+			if (text) return { text, partial: false };
+		}
+	}
+	return { partial: false };
+}
+
+function eventSummary(counts: Map<string, number>): string {
+	return [...counts.entries()].map(([type, count]) => `${type}×${count}`).join(",") || "none";
 }
 
 function piInvocation(args: string[]): { command: string; args: string[] } {
@@ -99,8 +113,12 @@ export const runIsolatedStudyLearningAgent: StudyLearningAgentRunner = async (re
 				stdio: ["ignore", "pipe", "pipe"],
 			});
 			let stdoutBuffer = "";
+			let stdoutBytes = 0;
+			let invalidJsonLines = 0;
+			const eventCounts = new Map<string, number>();
 			let stderr = "";
 			let finalText = "";
+			let partialText = "";
 			let settled = false;
 			const finish = (error?: Error) => {
 				if (settled) return;
@@ -129,11 +147,20 @@ export const runIsolatedStudyLearningAgent: StudyLearningAgentRunner = async (re
 			const processLine = (line: string) => {
 				if (!line.trim()) return;
 				try {
-					const text = getFinalAssistantText(JSON.parse(line));
-					if (text) finalText = text;
-				} catch {}
+					const event = JSON.parse(line) as Record<string, unknown>;
+					const type = typeof event.type === "string" ? event.type : "unknown";
+					eventCounts.set(type, (eventCounts.get(type) || 0) + 1);
+					const candidate = assistantTextFromEvent(event);
+					if (candidate.text) {
+						if (candidate.partial) partialText = candidate.text;
+						else finalText = candidate.text;
+					}
+				} catch {
+					invalidJsonLines += 1;
+				}
 			};
 			child.stdout.on("data", (chunk) => {
+				stdoutBytes += Buffer.byteLength(chunk);
 				stdoutBuffer += String(chunk);
 				const lines = stdoutBuffer.split("\n");
 				stdoutBuffer = lines.pop() || "";
@@ -150,8 +177,11 @@ export const runIsolatedStudyLearningAgent: StudyLearningAgentRunner = async (re
 					finish(new Error(`학습 agent가 종료 코드 ${code}로 실패했습니다.${stderr.trim() ? ` ${stderr.trim()}` : ""}`));
 					return;
 				}
+				if (!finalText && partialText) finalText = partialText;
 				if (!finalText) {
-					finish(new Error(`학습 agent가 답변을 반환하지 않았습니다.${stderr.trim() ? ` ${stderr.trim()}` : ""}`));
+					const roleLabel = request.role === "tutor" ? "Tutor" : request.role === "editor" ? "Editor" : "Coach";
+					const diagnostic = `stdout=${stdoutBytes}B, events=${eventSummary(eventCounts)}, invalidJsonLines=${invalidJsonLines}`;
+					finish(new Error(`Study Hard ${roleLabel} agent가 최종 답변을 반환하지 않았습니다. (${diagnostic})${stderr.trim() ? ` ${stderr.trim()}` : ""}`));
 					return;
 				}
 				finish();

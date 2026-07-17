@@ -51,11 +51,11 @@ test("Editor와 Coach의 JSON 응답은 raw 또는 fenced 객체만 허용한다
 	assert.throws(() => parseStudyLearningAgentJson("설명만 반환"), /유효한 JSON 객체/);
 });
 
-test("격리 runner는 JSONL 성공·non-zero·timeout·abort와 SIGKILL fallback을 처리한다", async () => {
+test("격리 runner는 JSONL 최종·stream fallback·빈 응답 진단·timeout·abort를 처리한다", async () => {
 	const fixtureDir = mkdtempSync(join(tmpdir(), "study-hard-fake-pi-"));
 	const executable = join(fixtureDir, "fake-pi.mjs");
 	const pidFile = join(fixtureDir, "pid");
-	writeFileSync(executable, `#!/usr/bin/env node\nimport { writeFileSync } from "node:fs";\nconst mode = process.env.FAKE_PI_MODE || "success";\nif (process.env.FAKE_PI_PID_FILE) writeFileSync(process.env.FAKE_PI_PID_FILE, String(process.pid));\nif (mode === "success") {\n  console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "격리 답변" }] } }));\n} else if (mode === "fail") {\n  console.error("fake failure");\n  process.exit(7);\n} else {\n  process.on("SIGTERM", () => {});\n  setInterval(() => {}, 1000);\n}\n`, "utf-8");
+	writeFileSync(executable, `#!/usr/bin/env node\nimport { writeFileSync } from "node:fs";\nconst mode = process.env.FAKE_PI_MODE || "success";\nif (process.env.FAKE_PI_PID_FILE) writeFileSync(process.env.FAKE_PI_PID_FILE, String(process.pid));\nif (mode === "success") {\n  console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "격리 답변" }] } }));\n} else if (mode === "update-only") {\n  console.log(JSON.stringify({ type: "message_update", message: { role: "assistant", content: [{ type: "text", text: "스트리밍 복구 답변" }] }, assistantMessageEvent: { type: "text_delta", delta: "스트리밍 복구 답변" } }));\n} else if (mode === "agent-end") {\n  console.log(JSON.stringify({ type: "agent_end", messages: [{ role: "assistant", content: [{ type: "text", text: "agent_end 복구 답변" }] }] }));\n} else if (mode === "empty") {\n  console.log(JSON.stringify({ type: "session", version: 3 }));\n  console.log(JSON.stringify({ type: "agent_start" }));\n  console.log(JSON.stringify({ type: "agent_end", messages: [] }));\n} else if (mode === "fail") {\n  console.error("fake failure");\n  process.exit(7);\n} else {\n  process.on("SIGTERM", () => {});\n  setInterval(() => {}, 1000);\n}\n`, "utf-8");
 	chmodSync(executable, 0o755);
 	const originalExecutable = process.env.STUDY_HARD_PI_EXECUTABLE;
 	const originalMode = process.env.FAKE_PI_MODE;
@@ -74,6 +74,18 @@ test("격리 runner는 JSONL 성공·non-zero·timeout·abort와 SIGKILL fallbac
 		process.env.FAKE_PI_PID_FILE = pidFile;
 		process.env.FAKE_PI_MODE = "success";
 		assert.equal(await runIsolatedStudyLearningAgent({ role: "tutor", prompt: "정상", cwd: fixtureDir, timeoutMs: 1_000 }), "격리 답변");
+
+		process.env.FAKE_PI_MODE = "update-only";
+		assert.equal(await runIsolatedStudyLearningAgent({ role: "editor", prompt: "message_end 누락", cwd: fixtureDir, timeoutMs: 1_000 }), "스트리밍 복구 답변");
+
+		process.env.FAKE_PI_MODE = "agent-end";
+		assert.equal(await runIsolatedStudyLearningAgent({ role: "editor", prompt: "agent_end fallback", cwd: fixtureDir, timeoutMs: 1_000 }), "agent_end 복구 답변");
+
+		process.env.FAKE_PI_MODE = "empty";
+		await assert.rejects(
+			() => runIsolatedStudyLearningAgent({ role: "editor", prompt: "민감한 원문", cwd: fixtureDir, timeoutMs: 1_000 }),
+			/Study Hard Editor agent가 최종 답변을 반환하지 않았습니다\. \(stdout=\d+B, events=session×1,agent_start×1,agent_end×1, invalidJsonLines=0\)/,
+		);
 
 		process.env.FAKE_PI_MODE = "fail";
 		assert.rejects(() => runIsolatedStudyLearningAgent({ role: "tutor", prompt: "실패", cwd: fixtureDir, timeoutMs: 1_000 }), /종료 코드 7.*fake failure/);
