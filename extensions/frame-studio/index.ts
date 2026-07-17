@@ -759,6 +759,67 @@ h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .phase-panel-note strong { display:block; color:#0f172a; font-size:11px; }
 .phase-panel-note ul { margin:6px 0 0; padding-left:17px; }
 .phase-panel-note li { margin:3px 0; color:#475569; font-size:10.5px; line-height:1.4; }
+.ifp-visual { border:1px solid #cbd5e1; background:#f8fafc; border-radius:22px; padding:18px; margin:16px 0; overflow:hidden; min-width:0; max-width:100%; }
+.ifp-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; flex-wrap:wrap; }
+.ifp-title { color:#0f172a; font-size:19px; font-weight:950; line-height:1.3; overflow-wrap:anywhere; }
+.ifp-subtitle { margin-top:4px; color:#475569; font-size:12px; line-height:1.45; overflow-wrap:anywhere; }
+.ifp-overview { margin-top:13px; border:1px solid #bfdbfe; border-left:5px solid #2563eb; border-radius:13px; background:#eff6ff; color:#1e3a8a; padding:10px 12px; font-size:12px; line-height:1.5; }
+.ifp-relations { display:grid; gap:8px; margin:14px 0 18px; }
+.ifp-relation { display:grid; grid-template-columns:minmax(120px,auto) auto minmax(120px,auto) minmax(240px,1fr); gap:9px; align-items:center; border:1px dashed #94a3b8; border-radius:13px; background:#fff; padding:9px 11px; }
+.ifp-relation-end { color:#0f172a; font-size:11px; font-weight:950; }
+.ifp-relation-type { border:1px solid #fbbf24; border-radius:999px; background:#fffbeb; color:#92400e; padding:3px 8px; font-size:9.5px; font-weight:950; white-space:nowrap; }
+.ifp-relation-label { color:#475569; font-size:11px; line-height:1.4; }
+.ifp-panel-stack { display:grid; gap:24px; }
+.ifp-panel { border:2px solid #c4b5fd; border-radius:20px; background:#fdfbff; box-shadow:0 14px 34px rgba(15,23,42,.07); overflow:hidden; }
+.ifp-panel:nth-child(even) { border-color:#93c5fd; background:#f8fbff; }
+.ifp-panel-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; padding:14px 15px; border-bottom:1px solid rgba(124,58,237,.18); background:rgba(255,255,255,.82); }
+.ifp-panel:nth-child(even) .ifp-panel-head { border-bottom-color:rgba(37,99,235,.18); }
+.ifp-panel-title { color:#0f172a; font-size:17px; font-weight:950; line-height:1.35; }
+.ifp-panel-badge { flex:0 0 auto; border:1px solid currentColor; border-radius:999px; color:#6d28d9; background:#fff; padding:4px 8px; font-size:9.5px; font-weight:950; }
+.ifp-panel:nth-child(even) .ifp-panel-badge { color:#1d4ed8; }
+.ifp-panel-meta { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; padding:12px 14px 2px; }
+.ifp-meta-card { border:1px solid #e2e8f0; border-radius:12px; background:#fff; padding:9px 10px; }
+.ifp-meta-card strong { display:block; margin-bottom:4px; color:#64748b; font-size:9px; font-weight:950; text-transform:uppercase; letter-spacing:.05em; }
+.ifp-meta-card span { display:block; color:#1f2937; font-size:11.5px; line-height:1.45; overflow-wrap:anywhere; }
+.ifp-stage-list { display:grid; gap:11px; padding:12px 14px 14px; }
+.ifp-stage { border:1px solid #e2e8f0; border-radius:15px; background:rgba(255,255,255,.92); padding:10px; }
+.ifp-stage-head { display:flex; justify-content:space-between; gap:8px; align-items:flex-start; margin-bottom:9px; }
+.ifp-stage-title { color:#111827; font-size:12px; font-weight:950; }
+.ifp-stage-summary { display:block; margin-top:3px; color:#64748b; font-size:10.5px; line-height:1.4; }
+.ifp-stage-mode { flex:0 0 auto; border:1px solid #cbd5e1; border-radius:999px; background:#f8fafc; color:#475569; padding:2px 7px; font-size:9px; font-weight:950; }
+.ifp-step-rail { display:flex; gap:22px; overflow-x:auto; padding:2px 5px 8px 2px; overscroll-behavior:contain; }
+.ifp-step { position:relative; flex:1 0 210px; border:1px solid #ddd6fe; border-top:4px solid #7c3aed; border-radius:13px; background:#fff; padding:9px 10px; }
+.ifp-panel:nth-child(even) .ifp-step { border-color:#bfdbfe; border-top-color:#2563eb; }
+.ifp-step:not(:last-child)::after { content:'→'; position:absolute; right:-18px; top:50%; transform:translateY(-50%); color:#64748b; font-size:16px; font-weight:950; }
+.ifp-stage.alternatives .ifp-step:not(:last-child)::after { content:'또는'; right:-21px; border-radius:999px; background:#fff; color:#475569; font-size:8.5px; }
+.ifp-stage.parallel .ifp-step:not(:last-child)::after { content:'＋'; color:#0f766e; }
+.ifp-step-actor { display:inline-block; margin-bottom:5px; border-radius:999px; background:#f1f5f9; color:#475569; padding:2px 7px; font-size:9px; font-weight:950; }
+.ifp-step-title { display:block; color:#111827; font-size:12px; font-weight:950; line-height:1.35; }
+.ifp-step-tech { display:block; margin-top:4px; color:#475569; font:10px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace; overflow-wrap:anywhere; }
+.ifp-step-desc { margin:6px 0 0; color:#475569; font-size:10.5px; line-height:1.45; }
+.ifp-exceptions { margin:0 14px 14px; border:1px solid #fecaca; border-radius:14px; background:#fff7f7; padding:10px; }
+.ifp-section-label { margin-bottom:7px; color:#991b1b; font-size:10px; font-weight:950; text-transform:uppercase; letter-spacing:.04em; }
+.ifp-exception-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:8px; }
+.ifp-exception { border:1px solid #fecaca; border-left:5px solid #dc2626; border-radius:11px; background:#fff; padding:9px 10px; }
+.ifp-exception strong { display:block; color:#7f1d1d; font-size:11.5px; }
+.ifp-exception p { margin:5px 0 0; color:#7f1d1d; font-size:10.5px; line-height:1.4; }
+.ifp-reentry { display:block; margin-top:6px; color:#b91c1c; font-size:10px; font-weight:900; }
+.ifp-annotations { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; margin:0 14px 14px; }
+.ifp-annotation { border:1px solid #e2e8f0; border-radius:13px; background:#fff; padding:10px; }
+.ifp-annotation.contract { border-color:#a7f3d0; background:#f0fdf4; }
+.ifp-annotation.learning { border-color:#fde68a; background:#fffbeb; }
+.ifp-annotation-title { color:#334155; font-size:10px; font-weight:950; text-transform:uppercase; letter-spacing:.04em; }
+.ifp-annotation ul { margin:7px 0 0; padding-left:17px; }
+.ifp-annotation li { margin:4px 0; color:#334155; font-size:10.5px; line-height:1.4; }
+.ifp-contract-label { color:#047857; font-weight:950; }
+.ifp-commands { margin-top:18px; border:1px dashed #94a3b8; border-radius:16px; background:#fff; padding:12px; }
+.ifp-commands-head { margin-bottom:9px; color:#334155; font-size:12px; font-weight:950; }
+.ifp-command-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:8px; }
+.ifp-command { border:1px solid #cbd5e1; border-top:4px solid #64748b; border-radius:12px; background:#f8fafc; padding:9px 10px; }
+.ifp-command strong { display:block; color:#0f172a; font-size:11.5px; }
+.ifp-command-trigger { display:block; margin-top:4px; color:#475569; font-size:10px; font-weight:900; }
+.ifp-command p { margin:5px 0 0; color:#475569; font-size:10.5px; line-height:1.4; }
+@media (max-width:760px) { .ifp-relation { grid-template-columns:1fr; } .ifp-panel-meta, .ifp-annotations { grid-template-columns:1fr; } }
 .arch-visual { border:1px solid #e9d5ff; background:linear-gradient(180deg,#fdfbff 0%,#ffffff 100%); border-radius:20px; padding:16px; margin:16px 0; overflow:hidden; min-width:0; max-width:100%; }
 .arch-visual-head { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start; margin-bottom:12px; }
 .arch-visual-title { font-size:18px; font-weight:950; color:#581c87; overflow-wrap:anywhere; }
@@ -947,6 +1008,7 @@ body.tft-visual-only .stage-run,
 body.tft-visual-only .stage-run-body,
 body.tft-visual-only .timeline-body { display:block; border:0; background:transparent; padding:0; margin:0; }
 body.tft-visual-only .tft-visual,
+body.tft-visual-only .ifp-visual,
 body.tft-visual-only .layer-visual,
 body.tft-visual-only .phase-visual,
 body.tft-visual-only .arch-visual,
@@ -1211,6 +1273,101 @@ function renderBackendLayerVisualElement(el, spec) {
     + renderLayerGlossary(spec, layers)
     + renderLearningNotes(spec.notes || spec.explanations)
     + renderVisualHealing(spec);
+}
+function isIndependentFlowPanelsSpec(spec) {
+  return String(spec && (spec.kind || spec.type) || '').toLowerCase() === 'independent-flow-panels';
+}
+function independentFlowPanelId(panel, index) {
+  return layerKey(panel && (panel.id || panel.key || panel.title) || ('panel-' + index));
+}
+function independentFlowSpecErrors(spec) {
+  var errors = [], panels = Array.isArray(spec && spec.panels) ? spec.panels : [];
+  if (!panels.length) errors.push('panels 배열이 필요합니다.');
+  ['layers','nodes','edges','notes'].forEach(function(field) { if (spec && spec[field] !== undefined) errors.push(field + '는 이 kind에서 사용하지 않습니다.'); });
+  var ids = new Set();
+  panels.forEach(function(panel, panelIndex) {
+    var id = independentFlowPanelId(panel, panelIndex);
+    if (ids.has(id)) errors.push('panel id가 중복되었습니다: ' + id); else ids.add(id);
+    if (!String(panel && panel.title || '').trim()) errors.push('panel title이 필요합니다: ' + id);
+    var stages = Array.isArray(panel && panel.stages) ? panel.stages : [];
+    if (!stages.length) errors.push('panel stages가 필요합니다: ' + id);
+    stages.forEach(function(stage, stageIndex) {
+      var stageLabel = String(stage && (stage.id || stage.title) || ('stage-' + stageIndex));
+      if (!String(stage && stage.title || '').trim()) errors.push('stage title이 필요합니다: ' + id + '/' + stageLabel);
+      var mode = String(stage && stage.mode || 'sequence');
+      if (!['sequence','alternatives','parallel'].includes(mode)) errors.push('stage mode가 유효하지 않습니다: ' + id + '/' + stageLabel + '/' + mode);
+      var steps = Array.isArray(stage && stage.steps) ? stage.steps : [];
+      if (!steps.length) errors.push('stage steps가 필요합니다: ' + id + '/' + stageLabel);
+      steps.forEach(function(step, stepIndex) { if (!String(step && step.title || '').trim()) errors.push('step title이 필요합니다: ' + id + '/' + stageLabel + '/' + stepIndex); });
+    });
+  });
+  (Array.isArray(spec && spec.relations) ? spec.relations : []).forEach(function(relation, index) {
+    var from = layerKey(relation && relation.from), to = layerKey(relation && relation.to), type = String(relation && relation.type || 'data-condition');
+    if (!ids.has(from) || !ids.has(to)) errors.push('relation이 존재하지 않는 panel을 참조합니다: ' + (relation && relation.from) + ' → ' + (relation && relation.to));
+    if (!['data-condition','shared-state','reference'].includes(type)) errors.push('relation type이 유효하지 않습니다: ' + type + ' (#' + (index + 1) + ')');
+  });
+  return errors;
+}
+function renderIndependentFlowStep(step) {
+  return '<article class="ifp-step">' + (step.actor ? '<span class="ifp-step-actor">' + esc(step.actor) + '</span>' : '') + '<strong class="ifp-step-title">' + esc(step.title) + '</strong>' + (step.technicalLabel ? '<code class="ifp-step-tech">' + esc(step.technicalLabel) + '</code>' : '') + (step.description ? '<p class="ifp-step-desc">' + esc(step.description) + '</p>' : '') + '</article>';
+}
+function renderIndependentFlowStage(stage) {
+  var steps = Array.isArray(stage.steps) ? stage.steps : [], mode = String(stage.mode || 'sequence');
+  var modeLabel = mode === 'alternatives' ? '대안 분기' : mode === 'parallel' ? '병렬 결과' : '순차 실행';
+  return '<section class="ifp-stage ' + esc(mode) + '"><div class="ifp-stage-head"><div><strong class="ifp-stage-title">' + esc(stage.title) + '</strong>' + (stage.summary ? '<span class="ifp-stage-summary">' + esc(stage.summary) + '</span>' : '') + '</div><span class="ifp-stage-mode">' + esc(modeLabel) + '</span></div><div class="ifp-step-rail">' + steps.map(renderIndependentFlowStep).join('') + '</div></section>';
+}
+function renderIndependentFlowExceptions(panel) {
+  var exceptions = Array.isArray(panel.exceptions) ? panel.exceptions : [];
+  if (!exceptions.length) return '';
+  return '<section class="ifp-exceptions"><div class="ifp-section-label">예외 · 복구 경로</div><div class="ifp-exception-grid">' + exceptions.map(function(item) {
+    return '<article class="ifp-exception"><strong>' + esc(item.title || item.id || '예외') + '</strong>' + (item.description ? '<p>' + esc(item.description) + '</p>' : '') + (item.reentry ? '<span class="ifp-reentry">↻ 재진입 · ' + esc(item.reentry) + '</span>' : '') + '</article>';
+  }).join('') + '</div></section>';
+}
+function independentFlowContractText(item) {
+  if (typeof item === 'string') return { label:'', value:item };
+  item = item || {};
+  return { label:String(item.label || item.title || ''), value:String(item.value || item.description || item.body || '') };
+}
+function renderIndependentFlowAnnotations(panel) {
+  var contract = Array.isArray(panel.contract) ? panel.contract.map(independentFlowContractText).filter(function(item) { return item.label || item.value; }) : [];
+  var learning = asTextArray(panel.learning);
+  if (!contract.length && !learning.length) return '';
+  var contractHtml = contract.length ? '<section class="ifp-annotation contract"><div class="ifp-annotation-title">Contract · 반드시 지킬 조건</div><ul>' + contract.map(function(item) { return '<li>' + (item.label ? '<span class="ifp-contract-label">' + esc(item.label) + '</span> · ' : '') + esc(item.value) + '</li>'; }).join('') + '</ul></section>' : '';
+  var learningHtml = learning.length ? '<section class="ifp-annotation learning"><div class="ifp-annotation-title">Learning · 이 구조를 읽는 핵심</div><ul>' + learning.map(function(item) { return '<li>' + inline(item) + '</li>'; }).join('') + '</ul></section>' : '';
+  return '<div class="ifp-annotations">' + contractHtml + learningHtml + '</div>';
+}
+function renderIndependentFlowPanel(panel, index) {
+  var stages = Array.isArray(panel.stages) ? panel.stages : [];
+  var meta = (panel.purpose ? '<article class="ifp-meta-card"><strong>Purpose</strong><span>' + esc(panel.purpose) + '</span></article>' : '') + (panel.trigger ? '<article class="ifp-meta-card"><strong>Trigger</strong><span>' + esc(panel.trigger) + '</span></article>' : '');
+  return '<section class="ifp-panel"><div class="ifp-panel-head"><div class="ifp-panel-title">' + esc(panel.title) + '</div><span class="ifp-panel-badge">독립 실행 패널</span></div>' + (meta ? '<div class="ifp-panel-meta">' + meta + '</div>' : '') + '<div class="ifp-stage-list">' + stages.map(renderIndependentFlowStage).join('') + '</div>' + renderIndependentFlowExceptions(panel) + renderIndependentFlowAnnotations(panel) + '</section>';
+}
+function independentRelationTypeLabel(type) {
+  if (type === 'shared-state') return '공유 상태 · 실행 호출 아님';
+  if (type === 'reference') return '참조 관계 · 실행 호출 아님';
+  return '데이터 조건 · 실행 호출 아님';
+}
+function renderIndependentFlowRelations(spec, panels) {
+  var relations = Array.isArray(spec.relations) ? spec.relations : [];
+  if (!relations.length) return '';
+  var titles = new Map(panels.map(function(panel, index) { return [independentFlowPanelId(panel, index), String(panel.title || panel.id)]; }));
+  return '<section class="ifp-relations">' + relations.map(function(relation) {
+    var type = String(relation.type || 'data-condition');
+    return '<article class="ifp-relation"><span class="ifp-relation-end">' + esc(titles.get(layerKey(relation.from)) || relation.from) + '</span><span class="ifp-relation-type">' + esc(independentRelationTypeLabel(type)) + '</span><span class="ifp-relation-end">' + esc(titles.get(layerKey(relation.to)) || relation.to) + '</span><span class="ifp-relation-label">' + esc(relation.label || '') + '</span></article>';
+  }).join('') + '</section>';
+}
+function renderIndependentFlowCommands(spec) {
+  var commands = Array.isArray(spec.commands) ? spec.commands : [];
+  if (!commands.length) return '';
+  return '<section class="ifp-commands"><div class="ifp-commands-head">별도 상태 변경 명령 · 위 조회선의 후속 단계가 아님</div><div class="ifp-command-grid">' + commands.map(function(command) {
+    return '<article class="ifp-command"><strong>' + esc(command.title || command.id || 'command') + '</strong>' + (command.trigger ? '<span class="ifp-command-trigger">Trigger · ' + esc(command.trigger) + '</span>' : '') + (command.description ? '<p>' + esc(command.description) + '</p>' : '') + '</article>';
+  }).join('') + '</div></section>';
+}
+function renderIndependentFlowPanelsElement(el, spec) {
+  var errors = independentFlowSpecErrors(spec);
+  if (errors.length) { renderVisualFallbackElement(el, spec, null, 'independent-flow-panels 검증 실패: ' + errors.join(' ')); return; }
+  var panels = spec.panels;
+  el.className = 'ifp-visual';
+  el.innerHTML = '<div class="ifp-head"><div><div class="ifp-title">' + esc(spec.title || '독립 실행 흐름') + '</div>' + (spec.subtitle ? '<div class="ifp-subtitle">' + esc(spec.subtitle) + '</div>' : '') + '</div><span class="badge">독립 실행 흐름</span></div>' + (spec.overview ? '<div class="ifp-overview">' + esc(spec.overview) + '</div>' : '') + renderIndependentFlowRelations(spec, panels) + '<div class="ifp-panel-stack">' + panels.map(renderIndependentFlowPanel).join('') + '</div>' + renderIndependentFlowCommands(spec);
 }
 function isPhasePanelVisualSpec(spec) {
   var layers = Array.isArray(spec && spec.layers) ? spec.layers : [];
@@ -1773,6 +1930,10 @@ async function renderTftVisualElement(el) {
   var source = decodeURIComponent(el.getAttribute('data-source') || '');
   var spec;
   try { spec = JSON.parse(source); } catch (e) { renderVisualFallbackElement(el, null, source, 'JSON parse에 실패했습니다. 원문을 보존하고 화면은 fallback으로 표시합니다.'); return; }
+  if (isIndependentFlowPanelsSpec(spec)) {
+    renderIndependentFlowPanelsElement(el, spec);
+    return;
+  }
   if (isDataModelMigrationMapSpec(spec) || hasDataModelMigrationShape(spec)) {
     var dataKindLabel = String(spec.kind || spec.type || '').trim();
     var dataSpec = isDataModelMigrationMapSpec(spec) ? spec : cloneSpecWithHealing(spec, dataKindLabel ? 'kind=' + dataKindLabel + '이지만 entities shape를 data-model-migration-map으로 해석했습니다.' : 'kind가 없지만 entities shape를 data-model-migration-map으로 해석했습니다.');
@@ -1846,7 +2007,7 @@ function renderPendingTftVisuals() {
   return Promise.all(Array.prototype.slice.call(document.querySelectorAll('.tft-visual[data-source]')).map(function(el) { return renderTftVisualElement(el); }));
 }
 function isVisualOnlyEmbed() { return document.body && document.body.classList.contains('tft-visual-only'); }
-function visualEmbedRoot() { return document.querySelector('.tft-visual, .layer-visual, .phase-visual, .arch-visual, .data-visual'); }
+function visualEmbedRoot() { return document.querySelector('.tft-visual, .ifp-visual, .layer-visual, .phase-visual, .arch-visual, .data-visual'); }
 function notifyVisualEmbedReady() {
   if (!isVisualOnlyEmbed()) return;
   setTimeout(function() {
@@ -2378,7 +2539,7 @@ export function buildTftVisualEmbedHtml(spec: Record<string, unknown>): string {
 		logs: [],
 	};
 	const kind = typeof normalizedSpec.kind === "string" ? normalizedSpec.kind : "";
-	const usesDedicatedLayout = ["architecture-flow", "backend-layer-map", "data-model-migration-map"].includes(kind);
+	const usesDedicatedLayout = ["architecture-flow", "backend-layer-map", "data-model-migration-map", "independent-flow-panels"].includes(kind);
 	return buildPageHtml({ staticState: state, inlineElk: !usesDedicatedLayout, omitElk: usesDedicatedLayout, visualOnly: true });
 }
 

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { buildPageHtml } from "./index.ts";
+
+const independentFlowMaster = JSON.parse(readFileSync(new URL("./fixtures/independent-flow-panels.master.json", import.meta.url), "utf-8"));
 
 interface FakeWindow {
 	pageYOffset: number;
@@ -113,8 +116,8 @@ function loadStudioScript(fakeWindow: FakeWindow, fakeDocument: FakeDocument) {
 			if (count > limit) throw new Error("Timer queue did not settle");
 		}
 	}
-	const factory = new Function("window", "document", "EventSource", "fetch", "setTimeout", "requestAnimationFrame", `${script}\nreturn { render: render, selectTab: selectTab, renderTftVisualElement: renderTftVisualElement, renderArchitectureFlowElement: renderArchitectureFlowElement, renderBackendLayerVisualElement: renderBackendLayerVisualElement, renderPhasePanelVisualElement: renderPhasePanelVisualElement, renderDataModelMigrationMapElement: renderDataModelMigrationMapElement };`);
-	return { ...(factory(fakeWindow, fakeDocument, EventSource, fetch, queueTimer, queueTimer) as { render(state: any, options?: any): void; selectTab(key: string): void; renderTftVisualElement(el: any): Promise<void>; renderArchitectureFlowElement(el: any, spec: any): void; renderBackendLayerVisualElement(el: any, spec: any): void; renderPhasePanelVisualElement(el: any, spec: any): void; renderDataModelMigrationMapElement(el: any, spec: any): void }), flushTimers };
+	const factory = new Function("window", "document", "EventSource", "fetch", "setTimeout", "requestAnimationFrame", `${script}\nreturn { render: render, selectTab: selectTab, renderTftVisualElement: renderTftVisualElement, renderArchitectureFlowElement: renderArchitectureFlowElement, renderBackendLayerVisualElement: renderBackendLayerVisualElement, renderPhasePanelVisualElement: renderPhasePanelVisualElement, renderIndependentFlowPanelsElement: renderIndependentFlowPanelsElement, renderDataModelMigrationMapElement: renderDataModelMigrationMapElement };`);
+	return { ...(factory(fakeWindow, fakeDocument, EventSource, fetch, queueTimer, queueTimer) as { render(state: any, options?: any): void; selectTab(key: string): void; renderTftVisualElement(el: any): Promise<void>; renderArchitectureFlowElement(el: any, spec: any): void; renderBackendLayerVisualElement(el: any, spec: any): void; renderPhasePanelVisualElement(el: any, spec: any): void; renderIndependentFlowPanelsElement(el: any, spec: any): void; renderDataModelMigrationMapElement(el: any, spec: any): void }), flushTimers };
 }
 
 function makeVisualElement(source: unknown) {
@@ -186,6 +189,78 @@ test("TFT visual self-heals nodes/edges shape even when kind points at another r
 	assert.match(element.innerHTML, /kind=backend-layer-map이지만 nodes\/edges shape를 architecture-flow로 해석/);
 	assert.doesNotMatch(element.innerHTML, /layers 배열이 필요/);
 	assert.doesNotMatch(element.innerHTML, /tft-visual-error/);
+});
+
+test("independent-flow-panels master fixture는 실행 패널·annotation·command를 명시적 영역으로 분리한다", async () => {
+	const browser = createFakeBrowser({ top: 0, viewport: 700, height: 2200 });
+	const studio = loadStudioScript(browser.window, browser.document);
+	const element = makeVisualElement(independentFlowMaster);
+
+	await studio.renderTftVisualElement(element);
+
+	assert.equal(element.className, "ifp-visual");
+	assert.equal((element.innerHTML.match(/class="ifp-panel"/g) || []).length, 2);
+	assert.match(element.innerHTML, /A\. 알림 적재/);
+	assert.match(element.innerHTML, /B\. 사용자 조회/);
+	assert.match(element.innerHTML, /Purpose/);
+	assert.match(element.innerHTML, /Trigger/);
+	assert.match(element.innerHTML, /Source transaction/);
+	assert.match(element.innerHTML, /비동기 전달/);
+	assert.match(element.innerHTML, /class="ifp-stage parallel"/);
+	assert.match(element.innerHTML, /병렬 결과/);
+	assert.match(element.innerHTML, /class="ifp-stage alternatives"/);
+	assert.match(element.innerHTML, /대안 분기/);
+	assert.match(element.innerHTML, /목록 page SELECT/);
+	assert.match(element.innerHTML, /최근 100건 badge SELECT/);
+	assert.match(element.innerHTML, /예외 · 복구 경로/);
+	assert.match(element.innerHTML, /↻ 재진입 · PENDING event claim/);
+	assert.match(element.innerHTML, /Contract · 반드시 지킬 조건/);
+	assert.match(element.innerHTML, /Learning · 이 구조를 읽는 핵심/);
+	assert.match(element.innerHTML, /데이터 조건 · 실행 호출 아님/);
+	assert.match(element.innerHTML, /Partner commit은 B에서 보이기 위한 데이터 조건/);
+	assert.match(element.innerHTML, /별도 상태 변경 명령 · 위 조회선의 후속 단계가 아님/);
+	assert.match(element.innerHTML, />readAll</);
+	assert.doesNotMatch(element.innerHTML, /phase-stage-label|placeholder|렌더링 포맷 자동 치유/);
+});
+
+test("independent-flow-panels는 세 패널과 선택 annotation 부재를 placeholder 없이 처리한다", async () => {
+	const browser = createFakeBrowser({ top: 0, viewport: 700, height: 2200 });
+	const studio = loadStudioScript(browser.window, browser.document);
+	const panels = ["수집", "처리", "조회"].map((title, index) => ({
+		id: `panel-${index + 1}`,
+		title,
+		stages: [{ id: `stage-${index + 1}`, title: `${title} 단계`, steps: [{ id: `step-${index + 1}`, title: `${title} 실행` }] }],
+	}));
+	const element = makeVisualElement({ kind: "independent-flow-panels", title: "세 독립 경로", panels });
+
+	await studio.renderTftVisualElement(element);
+
+	assert.equal(element.className, "ifp-visual");
+	assert.equal((element.innerHTML.match(/class="ifp-panel"/g) || []).length, 3);
+	assert.match(element.innerHTML, /수집 실행/);
+	assert.match(element.innerHTML, /처리 실행/);
+	assert.match(element.innerHTML, /조회 실행/);
+	assert.doesNotMatch(element.innerHTML, /Contract ·|Learning ·|별도 상태 변경 명령|placeholder/);
+});
+
+test("independent-flow-panels는 legacy shape와 잘못된 relation을 숨기지 않고 진단한다", async () => {
+	const browser = createFakeBrowser({ top: 0, viewport: 700, height: 1600 });
+	const studio = loadStudioScript(browser.window, browser.document);
+	const element = makeVisualElement({
+		kind: "independent-flow-panels",
+		title: "Invalid explicit flow",
+		panels: [{ id: "a", title: "A", stages: [{ id: "s", title: "단계", steps: [{ id: "x", title: "실행" }] }] }],
+		relations: [{ from: "a", to: "missing", type: "data-condition", label: "invalid" }],
+		layers: [{ id: "legacy" }],
+	});
+
+	await studio.renderTftVisualElement(element);
+
+	assert.equal(element.className, "tft-visual");
+	assert.match(element.innerHTML, /independent-flow-panels 검증 실패/);
+	assert.match(element.innerHTML, /layers는 이 kind에서 사용하지 않습니다/);
+	assert.match(element.innerHTML, /존재하지 않는 panel을 참조/);
+	assert.match(element.innerHTML, /원본 visual JSON/);
 });
 
 test("layers와 nodes가 함께 있는 두 구간 flow는 독립 phase panel로 렌더링한다", async () => {

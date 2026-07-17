@@ -77,6 +77,20 @@ test("Backend Layer Visual Map 렌더러가 WebView bundle에 포함된다", () 
 	assert.match(html, /DB·외부 저장소 창구/);
 });
 
+test("Independent Flow Panels 렌더러가 WebView bundle에 포함된다", () => {
+	const html = buildPageHtml();
+	assert.match(html, /independent-flow-panels/);
+	assert.match(html, /renderIndependentFlowPanelsElement/);
+	assert.match(html, /독립 실행 흐름/);
+	assert.match(html, /독립 실행 패널/);
+	assert.match(html, /데이터 조건 · 실행 호출 아님/);
+	assert.match(html, /별도 상태 변경 명령 · 위 조회선의 후속 단계가 아님/);
+	assert.match(html, /Contract · 반드시 지킬 조건/);
+	assert.match(html, /Learning · 이 구조를 읽는 핵심/);
+	assert.match(html, /대안 분기/);
+	assert.match(html, /병렬 결과/);
+});
+
 test("Architecture/Data Flow Map 렌더러가 WebView bundle에 포함된다", () => {
 	const html = buildPageHtml();
 	assert.match(html, /architecture-flow/);
