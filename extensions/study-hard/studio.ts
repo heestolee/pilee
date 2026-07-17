@@ -1985,7 +1985,7 @@ function sendNodeAnswerToAgent(handle: StudyHardHandle, question: StudyQuestionC
 	}, { deliverAs: "followUp", triggerTurn: true });
 }
 
-export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionCommandContext | ExtensionContext, params: { url: string; title?: string; hints?: string; runId?: string; syncScript?: string; downloadDir?: string; agentRunner?: StudyLearningAgentRunner; questionBatchWindowMs?: number; initialPatch?: Record<string, unknown> }): Promise<StudyHardHandle> {
+export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionCommandContext | ExtensionContext, params: { url: string; title?: string; hints?: string; runId?: string; syncScript?: string; downloadDir?: string; agentRunner?: StudyLearningAgentRunner; initialPatch?: Record<string, unknown> }): Promise<StudyHardHandle> {
 	const requestedRunId = params.runId ? validateRunId(params.runId) : undefined;
 	const canonicalUrl = normalizeHttpUrl(params.url);
 	if (!canonicalUrl) throw new Error("Study Hard requires an http(s) url");

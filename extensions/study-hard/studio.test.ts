@@ -987,7 +987,6 @@ test("Glimpse node thread keeps learner questions and coach answers on the same 
 	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, {
 		url: "https://example.com/article",
 		runId: "route-smoke",
-		questionBatchWindowMs: 60_000,
 		agentRunner: async () => { throw new Error("queued questions must not start during this route test"); },
 	});
 	try {
