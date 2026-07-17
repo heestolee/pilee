@@ -394,6 +394,8 @@ test("Architecture schema diff theme renders semantic column lifecycle colors an
 
 	const pageHtml = buildPageHtml();
 	assert.match(pageHtml, /\.arch-column\.removed \.arch-column-name \{ text-decoration:line-through/);
+	assert.match(pageHtml, /\.arch-node\.before \{ border-top-color:#38bdf8/);
+	assert.match(pageHtml, /\.arch-node\.after \{ border-top-color:#22c55e/);
 	assert.match(pageHtml, /\.arch-visual\.schema-diff-dark \.arch-column\.new/);
 	assert.match(pageHtml, /\.arch-visual\.schema-diff-dark \.arch-node\.after/);
 });

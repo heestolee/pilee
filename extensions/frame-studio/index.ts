@@ -736,6 +736,8 @@ h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .arch-node.repository, .arch-node.repo { border-top-color:#d97706; background:#fffaf3; }
 .arch-node.table, .arch-node.db { border-top-color:#b45309; background:#fff7ed; }
 .arch-node.ops, .arch-node.review { border-top-color:#dc2626; background:#fff7f7; }
+.arch-node.before { border-top-color:#38bdf8; }
+.arch-node.after { border-top-color:#22c55e; }
 .arch-node.legacy { opacity:.94; border-style:dashed; }
 .arch-node-title { font-size:13px; font-weight:950; line-height:1.25; overflow-wrap:anywhere; }
 .arch-node-kind { display:inline-flex; margin-top:5px; border:1px solid #ddd6fe; background:#f5f3ff; color:#6d28d9; border-radius:999px; padding:2px 7px; font-size:10px; font-weight:900; }
