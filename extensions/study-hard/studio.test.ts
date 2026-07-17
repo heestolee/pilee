@@ -308,6 +308,11 @@ test("buildStudyHardStudioHtml gives the note the left+center width and overlays
 	assert.match(html, /\/history\//);
 	assert.match(html, /sequenceDiagram/);
 	assert.match(html, /renderNoteMermaidDiagrams/);
+	assert.match(html, /mermaidCompare \{ display:grid; grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+	assert.match(html, /mermaidComparePanel \.noteDiagramCanvas \{ min-height:210px; max-height:380px/);
+	assert.match(html, /function noteSectionBlocksHtml/);
+	assert.match(html, /mermaidComparisonSide\(beforeLabel\)==='before'/);
+	assert.match(html, /왼쪽 현재 구조에서 오른쪽 제안 구조로 비교하세요/);
 	assert.match(html, /data-mermaid-source/);
 	assert.match(html, /data-inline-flow/);
 	assert.match(html, /sequenceSource\(flow\)/);
