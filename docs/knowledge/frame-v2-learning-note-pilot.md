@@ -18,7 +18,7 @@ applies_to:
 source:
   - user-direction:2026-07-17-frame-v2-learning-note-pilot
 reviewed_at: 2026-07-17
-reviewed_commit: e3e2eeec15b54d4b1401ef01e51c5b93bc766902
+reviewed_commit: f24686c02d8552809de904565e22ae22905b227b
 related:
   - frame-verify-contract
   - frame-studio-interactive-decision-ui
@@ -26,6 +26,7 @@ related:
   - source-grounded-frame-planning
   - worktree-session-continuity
   - study-hard-public-engine-private-publisher
+  - learning-note-companion-artifact
 ---
 
 ## Judgment
@@ -89,6 +90,7 @@ Artifact 생성, 질문 정답, AI의 coach 판정은 사용자의 이해 완료
 - `frame-v2.json`: identity, mode, Study Hard run, lifecycle만 담는 runtime manifest
 - Study Hard state: refinement 중 학습노트 canonical
 - `frame.json`: 작업 준비 완료 후 `/decide`, `/verify`, worktree promotion이 읽는 canonical
+- `learning-companion.json`: Frame ref와 Study Hard runId를 연결하는 sidecar. 내용 canonical이 아니며 실패해도 작업을 막지 않음
 - `frame.md`, TFT transcript, HTML/Notion: mirror 또는 provenance
 
 Frame v2 전용 축약 `frame.json` schema를 만들지 않습니다. 현재 `skills/frame/SKILL.md`의 atomic write, canonical hash, mirror sanity, implementation plan 규칙을 그대로 사용합니다.
@@ -99,9 +101,10 @@ Frame v2 전용 축약 `frame.json` schema를 만들지 않습니다. 현재 `sk
 
 - standard `frame.json`이 없거나 manifest가 `ready`가 아니면 fork를 차단합니다.
 - planning frame은 target worktree `.pi/frame.json`으로 승격됩니다.
-- 새 세션은 promoted frame을 읽고 첫 ready slice부터 시작합니다.
+- `learning-companion.json`도 target `.pi`로 retarget하되 stable companionId와 Study Hard runId를 유지합니다.
+- 새 세션은 promoted frame을 읽고 첫 ready slice부터 시작하며, 필요할 때 `/study-hard current`로 같은 학습노트를 다시 엽니다.
 - BLOCKED이면 절대경로 구현으로 우회하지 않습니다.
 
 ## Boundary
 
-Frame v2는 pilot입니다. 기존 `/frame`, `/decide`, `/study-hard` command나 저장 구조를 자동 교체하지 않습니다. 실제 사용에서 두-stage 전환이 더 낫다는 증거가 쌓인 뒤에만 기존 Frame으로의 흡수 여부를 다시 결정합니다.
+Frame v2는 pilot입니다. 기존 `/frame`, `/decide`, URL 기반 `/study-hard` command나 저장 구조를 자동 교체하지 않습니다. 작업 시작 뒤 companion은 의미 있는 slice/verify/PR/review checkpoint만 append하고, 학습 인사이트는 사용자 수락과 기존 workflow 적용 전까지 작업 canonical을 바꾸지 않습니다. 실제 사용에서 두-stage 전환이 더 낫다는 증거가 쌓인 뒤에만 기존 Frame으로의 흡수 여부를 다시 결정합니다.
