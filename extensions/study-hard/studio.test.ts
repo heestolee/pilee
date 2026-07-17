@@ -1324,6 +1324,84 @@ test("note-block Tutor는 선택 블록만 받고 session Tutor는 전체 자료
 	}
 });
 
+test("note-block 삭제 요청은 빈 replacement 없이 target block만 삭제한다", async () => {
+	const noteDocument = {
+		title: "Refinement Delete Note",
+		sections: [
+			{
+				id: "architecture",
+				kind: "flow",
+				title: "Architecture",
+				blocks: [
+					{ id: "architecture-heading", type: "heading", level: 2, text: "Architecture" },
+					{ id: "timeout-meta", type: "callout", title: "Study Hard timeout", body: "제품 요구사항과 무관한 메타 설명" },
+					{ id: "architecture-keep", type: "paragraph", text: "보존해야 하는 제품 설명" },
+				],
+			},
+			{ id: "unrelated", kind: "overview", title: "Unrelated", blocks: [{ id: "unrelated-block", type: "paragraph", text: "대상 밖 설명" }] },
+		],
+	};
+	let tutorCalls = 0;
+	let editorCalls = 0;
+	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
+	const agentRunner = async (request: any): Promise<string> => {
+		if (request.role === "tutor") {
+			tutorCalls += 1;
+			assert.match(request.prompt, /뒤이은 Editor가 실제 학습 노트를 다듬는 입력/);
+			assert.match(request.prompt, /수정·삭제 요청이면 변경 의도와 대상을 명확히 답하고/);
+			return tutorCalls === 1 ? "제품 요구사항과 무관한 timeout 메타 callout이므로 선택 블록을 삭제합니다." : "선택 블록만 다듬습니다.";
+		}
+		editorCalls += 1;
+		const baseRevision = Number(/## 기준 revision\n(\d+)/.exec(request.prompt)?.[1]);
+		assert.match(request.prompt, /blockDeletes/);
+		assert.match(request.prompt, /빈 제목·빈 본문의 replacement로 삭제를 흉내 내지 않습니다/);
+		if (editorCalls === 1) return JSON.stringify({
+			baseRevision,
+			blockReplacements: [],
+			blockDeletes: [{ sectionId: "architecture", blockId: "timeout-meta" }],
+		});
+		return JSON.stringify({
+			baseRevision,
+			blockReplacements: [],
+			blockDeletes: [{ sectionId: "unrelated", blockId: "unrelated-block" }],
+		});
+	};
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, {
+		url: "https://example.com/refinement-delete",
+		runId: "refinement-delete",
+		agentRunner,
+		questionBatchWindowMs: 0,
+	});
+	try {
+		updateStudyHardStudio(handle.state.runId, { noteDocument });
+		let response = await fetch(new URL("/ask", handle.url), {
+			method: "POST",
+			headers: authorizedHeaders(handle),
+			body: JSON.stringify({ scope: "note-block", noteBlockId: "timeout-meta", question: "2504와 무관한 Study Hard 메타 블록을 제거해줘" }),
+		});
+		assert.equal(response.status, 202);
+		let state = await waitForStudyState(handle, (candidate) => candidate.questions[0]?.processingStatus === "applied");
+		assert.deepEqual(state.noteDocument.sections[0].blocks.map((block: any) => block.id), ["architecture-heading", "architecture-keep"]);
+		assert.equal(state.noteDocument.sections[1].blocks[0].text, "대상 밖 설명");
+		assert.doesNotMatch(state.questions[0].feedback || "", /직접 수정할 수 없|읽기 전용/);
+
+		response = await fetch(new URL("/ask", handle.url), {
+			method: "POST",
+			headers: authorizedHeaders(handle),
+			body: JSON.stringify({ scope: "note-block", noteBlockId: "architecture-keep", question: "이 블록만 다듬어줘" }),
+		});
+		assert.equal(response.status, 202);
+		state = await waitForStudyState(handle, (candidate) => candidate.questions[1]?.processingStatus === "failed");
+		assert.match(state.questions[1].processingError || "", /허용되지 않은 블록을 삭제했습니다/);
+		assert.equal(state.noteDocument.sections[0].blocks.find((block: any) => block.id === "architecture-keep")?.text, "보존해야 하는 제품 설명");
+		assert.equal(state.noteDocument.sections[1].blocks[0].text, "대상 밖 설명");
+		assert.equal(tutorCalls, 2);
+		assert.equal(editorCalls, 2);
+	} finally {
+		stopStudyHardStudios();
+	}
+});
+
 test("persisted Q&A는 같은 session에서 중복하지 않고 새 session에는 summary 하나만 연결한다", async () => {
 	const runId = "transcript-backfill";
 	const firstMessages: Array<{ message: any; options: any }> = [];

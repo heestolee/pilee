@@ -1866,7 +1866,7 @@ function compactLearningQuestion(value: string): string {
 }
 
 function buildTutorPrompt(state: StudyHardBoardState, question: StudyQuestionCard): string {
-	return `# Study Hard Tutor\n\n사용자의 질문에 현재 학습 상태만 근거로 답하세요. 상태를 수정하거나 도구를 호출했다고 주장하지 마세요.\n\n## 질문\n${JSON.stringify({ id: question.id, scope: question.scope, question: compactLearningQuestion(question.question), context: questionContextSnapshot(state, question) }, null, 2)}\n\n## 학습 맥락\n${JSON.stringify(tutorLearningContext(state, question), null, 2)}\n\n## 답변 규칙\n- 한국어로 질문에 직접 답합니다.\n- 사용자의 선행지식을 추정하지 말고 질문에 드러난 출발점부터 설명합니다.\n- 선택된 node, flow-step, note-block 질문은 해당 범위를 중심으로 답하고 다른 section 설명을 반복하지 않습니다.\n- 첨부 이미지가 전달된 질문은 이미지의 실제 내용과 질문 문장을 함께 근거로 답합니다.\n- 생소한 구조는 세부 코드보다 mental model과 실행 순서를 먼저 설명합니다.\n- 근거가 snapshot에 없으면 추측하지 말고 한계를 밝힙니다.\n- 최종 답변 Markdown만 반환하고 JSON, 상태 patch, 도구 호출은 반환하지 않습니다.`;
+	return `# Study Hard Tutor\n\n사용자의 질문에 현재 학습 상태만 근거로 답하세요. 이 답은 뒤이은 Editor가 실제 학습 노트를 다듬는 입력입니다. 사용자에게 역할 한계나 내부 처리 단계를 설명하지 마세요.\n\n## 질문\n${JSON.stringify({ id: question.id, scope: question.scope, question: compactLearningQuestion(question.question), context: questionContextSnapshot(state, question) }, null, 2)}\n\n## 학습 맥락\n${JSON.stringify(tutorLearningContext(state, question), null, 2)}\n\n## 답변 규칙\n- 한국어로 질문에 직접 답합니다.\n- 사용자의 선행지식을 추정하지 말고 질문에 드러난 출발점부터 설명합니다.\n- 선택된 node, flow-step, note-block 질문은 해당 범위를 중심으로 답하고 다른 section 설명을 반복하지 않습니다.\n- 수정·삭제 요청이면 변경 의도와 대상을 명확히 답하고, "직접 수정할 수 없다"거나 "읽기 전용"이라는 거절·메타 설명을 하지 않습니다.\n- 실제 반영 완료나 도구 호출을 주장하지 않습니다. 적용은 뒤이은 Editor가 담당합니다.\n- 첨부 이미지가 전달된 질문은 이미지의 실제 내용과 질문 문장을 함께 근거로 답합니다.\n- 생소한 구조는 세부 코드보다 mental model과 실행 순서를 먼저 설명합니다.\n- 근거가 snapshot에 없으면 추측하지 말고 한계를 밝힙니다.\n- 최종 답변 Markdown만 반환하고 JSON, 상태 patch, 도구 호출은 반환하지 않습니다.`;
 }
 
 function semanticMergeFingerprint(state: StudyHardBoardState): string {
@@ -1906,7 +1906,7 @@ function buildNoteBlockEditorPrompt(state: StudyHardBoardState, targets: NoteBlo
 		sectionTitle: section.title,
 		blocks: section.blocks.map((block) => ({ id: block.id, type: block.type })),
 	}));
-	return `# Study Hard Note Block Editor\n\nTutor 답변을 지정된 학습 노트 블록에만 병합하세요. 전체 noteDocument를 다시 만들지 말고, 부모 서버가 원자적으로 교체할 완전한 블록만 반환합니다.\n\n## 기준 revision\n${state.revision}\n\n## 문서 index\n${JSON.stringify(documentIndex, null, 2)}\n\n## 수정 대상\n${JSON.stringify(targets, null, 2)}\n\n## 병합 규칙\n- blockReplacements에는 위 수정 대상과 정확히 같은 sectionId와 blockId만 한 번씩 반환합니다.\n- replacement block의 id와 type은 기존 값과 같아야 합니다.\n- type: "visual"은 body, nodes, edges, notes를 포함한 완전한 유효 visual spec을 반환합니다.\n- 단순 Q&A 로그를 붙이지 말고 Tutor 답변의 결론을 기존 블록 설명과 구조에 자연스럽게 반영합니다.\n- 다른 section/block, nodes, edges, flows, goals, questions는 출력하거나 수정하지 않습니다.\n- 반드시 아래 JSON 객체만 반환합니다. Markdown fence나 설명을 덧붙이지 않습니다.\n\n{\n  "baseRevision": ${state.revision},\n  "blockReplacements": [\n    {"sectionId":"...","blockId":"...","block":{"id":"...","type":"..."}}\n  ]\n}`;
+	return `# Study Hard Note Block Editor\n\nTutor 답변을 지정된 학습 노트 블록에만 적용하세요. 전체 noteDocument를 다시 만들지 말고, 부모 서버가 원자적으로 적용할 완전한 블록 교체 또는 삭제 action만 반환합니다.\n\n## 기준 revision\n${state.revision}\n\n## 문서 index\n${JSON.stringify(documentIndex, null, 2)}\n\n## 수정 대상\n${JSON.stringify(targets, null, 2)}\n\n## 병합 규칙\n- 위 수정 대상마다 blockReplacements 또는 blockDeletes 중 정확히 한 action을 반환합니다.\n- blockReplacements와 blockDeletes에는 수정 대상과 정확히 같은 sectionId와 blockId만 사용할 수 있습니다.\n- 사용자가 블록 제거를 요청하고 Tutor 답변도 삭제가 타당하다고 판단하면 blockDeletes를 사용합니다. 빈 제목·빈 본문의 replacement로 삭제를 흉내 내지 않습니다.\n- replacement block의 id와 type은 기존 값과 같아야 합니다.\n- type: "visual" replacement는 body, nodes, edges, notes를 포함한 완전한 유효 visual spec을 반환합니다.\n- 단순 Q&A 로그를 붙이지 말고 Tutor 답변의 결론을 기존 블록 설명과 구조에 자연스럽게 반영합니다.\n- 다른 section/block, nodes, edges, flows, goals, questions는 출력하거나 수정하지 않습니다.\n- 반드시 아래 JSON 객체만 반환합니다. Markdown fence나 설명을 덧붙이지 않습니다.\n\n{\n  "baseRevision": ${state.revision},\n  "blockReplacements": [\n    {"sectionId":"...","blockId":"...","block":{"id":"...","type":"..."}}\n  ],\n  "blockDeletes": [\n    {"sectionId":"...","blockId":"..."}\n  ]\n}`;
 }
 
 function assertPreservedIds(label: string, before: string[], after: string[]): void {
@@ -1931,9 +1931,10 @@ function validatedEditorPatch(state: StudyHardBoardState, output: string, baseRe
 function validatedNoteBlockEditorPatch(state: StudyHardBoardState, output: string, baseRevision: number, targets: NoteBlockEditorTarget[]): Record<string, unknown> {
 	const result = parseStudyLearningAgentJson<Record<string, unknown>>(output);
 	if (result.baseRevision !== baseRevision) throw new Error(`Editor baseRevision 불일치: expected ${baseRevision}, received ${String(result.baseRevision)}`);
-	const extraFields = Object.keys(result).filter((field) => !["baseRevision", "blockReplacements"].includes(field));
-	if (extraFields.length) throw new Error(`Note Block Editor는 blockReplacements 외 상태를 수정할 수 없습니다: ${extraFields.join(", ")}`);
+	const extraFields = Object.keys(result).filter((field) => !["baseRevision", "blockReplacements", "blockDeletes"].includes(field));
+	if (extraFields.length) throw new Error(`Note Block Editor는 blockReplacements/blockDeletes 외 상태를 수정할 수 없습니다: ${extraFields.join(", ")}`);
 	if (!Array.isArray(result.blockReplacements)) throw new Error("Note Block Editor 결과에 blockReplacements가 없습니다.");
+	if (result.blockDeletes !== undefined && !Array.isArray(result.blockDeletes)) throw new Error("Note Block Editor blockDeletes가 배열이 아닙니다.");
 	const expected = new Map(targets.map((target) => [`${target.sectionId}:${target.block.id}`, target]));
 	const replacements = new Map<string, Record<string, unknown>>();
 	for (const raw of result.blockReplacements) {
@@ -1948,19 +1949,33 @@ function validatedNoteBlockEditorPatch(state: StudyHardBoardState, output: strin
 		if (block.id !== target.block.id || block.type !== target.block.type) throw new Error(`Note Block Editor는 block id/type을 바꿀 수 없습니다: ${key}`);
 		replacements.set(key, block);
 	}
-	const missing = [...expected.keys()].filter((key) => !replacements.has(key));
-	if (missing.length) throw new Error(`Note Block Editor replacement가 누락되었습니다: ${missing.join(", ")}`);
+	const deletions = new Set<string>();
+	for (const raw of (result.blockDeletes as unknown[] | undefined) || []) {
+		if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("Note Block Editor deletion이 유효한 객체가 아닙니다.");
+		const item = raw as Record<string, unknown>;
+		const key = `${String(item.sectionId || "")}:${String(item.blockId || "")}`;
+		if (!expected.has(key)) throw new Error(`Note Block Editor가 허용되지 않은 블록을 삭제했습니다: ${key}`);
+		if (deletions.has(key) || replacements.has(key)) throw new Error(`Note Block Editor action이 중복되었습니다: ${key}`);
+		deletions.add(key);
+	}
+	const missing = [...expected.keys()].filter((key) => !replacements.has(key) && !deletions.has(key));
+	if (missing.length) throw new Error(`Note Block Editor action이 누락되었습니다: ${missing.join(", ")}`);
 	const draft = JSON.parse(JSON.stringify(state.noteDocument)) as StudyNoteDocument;
 	for (const section of draft.sections) {
-		section.blocks = section.blocks.map((block) => {
-			const replacement = replacements.get(`${section.id}:${block.id}`);
-			return replacement ? replacement as unknown as StudyNoteBlock : block;
-		});
+		section.blocks = section.blocks
+			.filter((block) => !deletions.has(`${section.id}:${block.id}`))
+			.map((block) => {
+				const replacement = replacements.get(`${section.id}:${block.id}`);
+				return replacement ? replacement as unknown as StudyNoteBlock : block;
+			});
 	}
 	const noteDocument = normalizeNoteDocument(draft, state.title);
 	if (!noteDocument) throw new Error("Note Block Editor 결과를 유효한 noteDocument로 조립하지 못했습니다.");
 	assertPreservedIds("note section", state.noteDocument.sections.map((section) => section.id), noteDocument.sections.map((section) => section.id));
-	assertPreservedIds("note block", state.noteDocument.sections.flatMap((section) => section.blocks.map((block) => block.id)), noteDocument.sections.flatMap((section) => section.blocks.map((block) => block.id)));
+	const preservedBlockIds = state.noteDocument.sections.flatMap((section) => section.blocks
+		.filter((block) => !deletions.has(`${section.id}:${block.id}`))
+		.map((block) => block.id));
+	assertPreservedIds("note block", preservedBlockIds, noteDocument.sections.flatMap((section) => section.blocks.map((block) => block.id)));
 	return { noteDocument };
 }
 
