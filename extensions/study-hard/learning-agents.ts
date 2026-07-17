@@ -8,6 +8,7 @@ export type StudyLearningAgentRole = "tutor" | "editor" | "coach";
 export interface StudyLearningAgentRequest {
 	role: StudyLearningAgentRole;
 	prompt: string;
+	imagePaths?: string[];
 	cwd: string;
 	model?: string;
 	thinking?: string;
@@ -25,7 +26,9 @@ export function buildStudyLearningAgentArgs(request: StudyLearningAgentRequest, 
 	const args = ["--mode", "json", "-p", "--no-session", "--no-tools", "--no-extensions", "--no-skills", "--no-context-files"];
 	if (request.model) args.push("--model", request.model);
 	if (request.thinking) args.push("--thinking", request.thinking);
-	args.push("--append-system-prompt", promptPath, `Run the Study Hard ${request.role} task from the system prompt.`);
+	args.push("--append-system-prompt", promptPath);
+	for (const imagePath of request.imagePaths || []) args.push(`@${imagePath}`);
+	args.push(`Run the Study Hard ${request.role} task from the system prompt.`);
 	return args;
 }
 
