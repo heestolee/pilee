@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, writeFi
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
+import { writeLearningCompanionManifest } from "../learning-companion/state.ts";
 import { promotePlanningWorkArtifactsToWorktree, workUnitDirForSessionFile } from "./frame-artifacts.ts";
 
 function writeJson(path: string, value: unknown) {
@@ -21,6 +22,15 @@ test("planning frame promotion carries task board into worktree work-unit", () =
 	const sourceSessionFile = join(root, "source-session.jsonl");
 	writeFileSync(sourceSessionFile, "");
 	const sourceFramePath = join(root, "planning", "frame.json");
+	const sourceCompanion = writeLearningCompanionManifest({
+		storageDir: dirname(sourceFramePath),
+		identityKey: "planning:session:artifact-test",
+		framePath: sourceFramePath,
+		runId: "frame-v2-artifact-test",
+		statePath: join(root, "study-hard", "frame-v2-artifact-test.json"),
+		canonicalHash: "planning-frame-hash",
+		now: 100,
+	}).manifest;
 	const sourceTasksPath = join(workUnitDirForSessionFile(sourceSessionFile, workUnitsRoot), "work-tasks.json");
 	writeJson(sourceTasksPath, {
 		nextId: 3,
@@ -78,6 +88,14 @@ test("planning frame promotion carries task board into worktree work-unit", () =
 	assert.equal(result.tasks.status, "copied");
 	assert.equal(result.tasks.count, 1);
 	assert.equal(result.context.status, "refreshed");
+	assert.equal(result.companion.status, "copied");
+	assert.equal(result.companion.companionId, sourceCompanion.companionId);
+	assert.equal(result.companion.runId, sourceCompanion.runId);
+	const targetCompanion = readJson(join(worktreePath, ".pi", "learning-companion.json"));
+	assert.equal(targetCompanion.frame.path, targetFramePath);
+	assert.equal(targetCompanion.frame.identityKey, "worktree:test");
+	assert.equal(targetCompanion.phase, "implementing");
+	assert.equal(targetCompanion.studyHard.statePath, sourceCompanion.studyHard.statePath);
 
 	const targetTasksPath = join(worktreePath, ".pi", "work-tasks.json");
 	const targetTasks = readJson(targetTasksPath);
@@ -102,5 +120,7 @@ test("planning frame promotion carries task board into worktree work-unit", () =
 		workUnitsRoot,
 	});
 	assert.equal(second.tasks.status, "target-exists");
+	assert.equal(second.companion.status, "target-exists");
+	assert.equal(second.companion.runId, sourceCompanion.runId);
 	assert.equal(readJson(targetTasksPath).tasks.length, 1);
 });

@@ -2,6 +2,11 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import {
+	learningCompanionManifestPath,
+	readLearningCompanionManifest,
+	retargetLearningCompanionManifest,
+} from "../learning-companion/state.ts";
 import { refreshWorkContext } from "../utils/work-context.ts";
 
 export type WorkArtifactStatus = "copied" | "target-exists" | "missing-source" | "missing-source-session" | "error" | "refreshed" | "skipped";
@@ -17,6 +22,14 @@ export interface WorkArtifactPromotionResult {
 	context: {
 		status: WorkArtifactStatus;
 		targetPath?: string;
+		error?: string;
+	};
+	companion: {
+		status: WorkArtifactStatus;
+		sourcePath?: string;
+		targetPath?: string;
+		companionId?: string;
+		runId?: string;
 		error?: string;
 	};
 }
@@ -137,9 +150,11 @@ export function retargetPlanningTaskBoard(board: any, options: {
 
 export function promotePlanningWorkArtifactsToWorktree(options: PromotePlanningWorkArtifactsOptions): WorkArtifactPromotionResult {
 	const targetTasksPath = join(options.worktreePath, ".pi", "work-tasks.json");
+	const targetCompanionPath = learningCompanionManifestPath(join(options.worktreePath, ".pi"));
 	const result: WorkArtifactPromotionResult = {
 		tasks: { status: "missing-source", targetPath: targetTasksPath },
 		context: { status: "skipped", targetPath: join(options.worktreePath, ".pi", "work-context.json") },
+		companion: { status: "missing-source", targetPath: targetCompanionPath },
 	};
 
 	const sourceSessionFile = sourceSessionFileFromFrame(options.frame);
@@ -180,6 +195,45 @@ export function promotePlanningWorkArtifactsToWorktree(options: PromotePlanningW
 			} catch (error) {
 				result.tasks.status = "error";
 				result.tasks.error = error instanceof Error ? error.message : String(error);
+			}
+		}
+	}
+
+	if (options.sourceFramePath) {
+		const sourceCompanionPath = learningCompanionManifestPath(dirname(options.sourceFramePath));
+		result.companion.sourcePath = sourceCompanionPath;
+		if (existsSync(targetCompanionPath)) {
+			const target = readLearningCompanionManifest(targetCompanionPath);
+			result.companion.status = target ? "target-exists" : "error";
+			result.companion.companionId = target?.companionId;
+			result.companion.runId = target?.runId;
+			if (!target) result.companion.error = "target companion manifest is malformed";
+		} else if (existsSync(sourceCompanionPath)) {
+			try {
+				const source = readLearningCompanionManifest(sourceCompanionPath);
+				if (!source) throw new Error("source companion manifest is malformed");
+				const frameIdentity = options.frame?.identity && typeof options.frame.identity === "object"
+					? options.frame.identity as Record<string, unknown>
+					: undefined;
+				const provenance = options.frame?.provenance && typeof options.frame.provenance === "object"
+					? options.frame.provenance as Record<string, unknown>
+					: undefined;
+				const identityKey = typeof frameIdentity?.key === "string" && frameIdentity.key
+					? frameIdentity.key
+					: `worktree:${sha(options.worktreePath)}`;
+				const promoted = retargetLearningCompanionManifest(source, {
+					storageDir: join(options.worktreePath, ".pi"),
+					identityKey,
+					framePath: options.targetFramePath,
+					canonicalHash: typeof provenance?.canonicalHash === "string" ? provenance.canonicalHash : undefined,
+					now: options.now,
+				});
+				result.companion.status = "copied";
+				result.companion.companionId = promoted.manifest.companionId;
+				result.companion.runId = promoted.manifest.runId;
+			} catch (error) {
+				result.companion.status = "error";
+				result.companion.error = error instanceof Error ? error.message : String(error);
 			}
 		}
 	}
