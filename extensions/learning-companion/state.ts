@@ -227,6 +227,67 @@ export function retargetLearningCompanionManifest(source: LearningCompanionManif
 	return { path, manifest };
 }
 
+export function normalizeLearningCompanionState(value: unknown): LearningCompanionState | undefined {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+	const item = value as Record<string, any>;
+	if (item.schemaVersion !== 1
+		|| typeof item.companionId !== "string"
+		|| !["framed", "implementing", "verifying", "reviewing", "merged", "post-merge"].includes(item.phase)
+		|| typeof item.frame?.path !== "string"
+		|| typeof item.frame?.identityKey !== "string"
+		|| !Array.isArray(item.events)
+		|| !Array.isArray(item.checkpoints)
+		|| !Array.isArray(item.proposals)) return undefined;
+	return {
+		schemaVersion: 1,
+		companionId: item.companionId,
+		phase: item.phase,
+		frame: {
+			path: item.frame.path,
+			identityKey: item.frame.identityKey,
+			initialCanonicalHash: typeof item.frame.initialCanonicalHash === "string" ? item.frame.initialCanonicalHash : undefined,
+			latestCanonicalHash: typeof item.frame.latestCanonicalHash === "string" ? item.frame.latestCanonicalHash : undefined,
+		},
+		events: item.events.filter((event: unknown): event is LearningEvent => {
+			if (!event || typeof event !== "object" || Array.isArray(event)) return false;
+			const candidate = event as Record<string, unknown>;
+			return typeof candidate.id === "string"
+				&& Number.isInteger(candidate.sequence)
+				&& typeof candidate.kind === "string"
+				&& typeof candidate.summary === "string"
+				&& typeof candidate.source === "string"
+				&& typeof candidate.dedupeKey === "string"
+				&& Number.isFinite(candidate.occurredAt);
+		}),
+		checkpoints: item.checkpoints.filter((checkpoint: unknown): checkpoint is LearningCheckpoint => {
+			if (!checkpoint || typeof checkpoint !== "object" || Array.isArray(checkpoint)) return false;
+			const candidate = checkpoint as Record<string, any>;
+			return typeof candidate.id === "string"
+				&& typeof candidate.kind === "string"
+				&& Number.isInteger(candidate.revision)
+				&& typeof candidate.noteHash === "string"
+				&& Number.isInteger(candidate.eventRange?.from)
+				&& Number.isInteger(candidate.eventRange?.to)
+				&& Number.isFinite(candidate.createdAt);
+		}),
+		proposals: item.proposals.filter((proposal: unknown): proposal is LearningProposal => {
+			if (!proposal || typeof proposal !== "object" || Array.isArray(proposal)) return false;
+			const candidate = proposal as Record<string, unknown>;
+			return typeof candidate.id === "string"
+				&& typeof candidate.summary === "string"
+				&& typeof candidate.rationale === "string"
+				&& Array.isArray(candidate.sourceEventIds)
+				&& typeof candidate.target === "string"
+				&& typeof candidate.proposedChange === "string"
+				&& typeof candidate.status === "string"
+				&& Number.isFinite(candidate.createdAt)
+				&& Number.isFinite(candidate.updatedAt);
+		}),
+		createdAt: Number.isFinite(item.createdAt) ? Number(item.createdAt) : Date.now(),
+		updatedAt: Number.isFinite(item.updatedAt) ? Number(item.updatedAt) : Date.now(),
+	};
+}
+
 export function createLearningCompanionState(manifest: LearningCompanionManifest, now = Date.now()): LearningCompanionState {
 	return {
 		schemaVersion: 1,

@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import { setGlimpseOpenForTests } from "../utils/glimpse.ts";
-import { buildStudyHardStudioHtml, buildStudyNoteExportHtml, createInitialBoardState, layoutStudyGraph, loadPersistedStudyHardState, mergeBoardState, openExistingStudyHardStudio, registerStudyHardBoardTool, startStudyHardStudio, stopStudyHardStudios, updateStudyHardStudio } from "./studio.ts";
+import type { LearningCompanionManifest } from "../learning-companion/state.ts";
+import { attachStudyHardLearningCompanion, buildStudyHardStudioHtml, buildStudyNoteExportHtml, checkpointStudyHardLearning, createInitialBoardState, layoutStudyGraph, loadPersistedStudyHardState, mergeBoardState, openExistingStudyHardStudio, recordStudyHardLearningEvent, registerStudyHardBoardTool, startStudyHardStudio, stopStudyHardStudios, updateStudyHardStudio } from "./studio.ts";
 
 const originalStateDir = process.env.STUDY_HARD_STATE_DIR;
 const testStateDir = mkdtempSync(join(tmpdir(), "study-hard-state-"));
@@ -698,6 +699,51 @@ test("persisted run resumes after shutdown and same-run start never overwrites c
 	assert.equal(sameRun.url, restored.url);
 	assert.equal(sameRun.state.revision, savedRevision);
 	await assert.rejects(() => startStudyHardStudio(fakePi, context, { url: "https://example.com", runId: "../escape" }), /invalid Study Hard runId/);
+	stopStudyHardStudios();
+});
+
+test("learning companion metadata, events, and checkpoints survive Study Hard reopen", async () => {
+	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
+	const context = { hasUI: false, cwd: "/tmp/study-hard" } as any;
+	const runId = "learning-companion-lifecycle";
+	const handle = await startStudyHardStudio(fakePi, context, { url: "https://example.com/companion", runId });
+	const manifest: LearningCompanionManifest = {
+		schemaVersion: 1,
+		companionId: "learning-test",
+		runId,
+		status: "active",
+		phase: "framed",
+		frame: { path: "/tmp/work/.pi/frame.json", identityKey: "worktree:test", initialCanonicalHash: "hash-1", latestCanonicalHash: "hash-1" },
+		studyHard: { statePath: join(testStateDir, `${runId}.json`) },
+		origin: { kind: "frame-v2", manifestPath: "/tmp/frame-v2.json" },
+		createdAt: 10,
+		updatedAt: 10,
+	};
+
+	attachStudyHardLearningCompanion(manifest);
+	assert.equal(handle.state.companion?.companionId, "learning-test");
+	assert.equal(handle.state.companion?.events[0]?.kind, "frame_ready");
+	const eventCount = handle.state.companion?.events.length;
+	attachStudyHardLearningCompanion(manifest);
+	assert.equal(handle.state.companion?.events.length, eventCount, "frame_ready must dedupe");
+	recordStudyHardLearningEvent(runId, {
+		kind: "slice_completed",
+		summary: "S1 완료",
+		source: "work-context",
+		refs: { sliceId: "S1", commit: "abc123" },
+		dedupeKey: "slice-completed:S1:abc123",
+	}, "implementing");
+	checkpointStudyHardLearning(runId, "slice-complete", { sliceId: "S1", commit: "abc123" });
+	assert.equal(handle.state.companion?.phase, "implementing");
+	assert.equal(handle.state.companion?.events.at(-1)?.refs?.commit, "abc123");
+	assert.equal(handle.state.companion?.checkpoints.at(-1)?.kind, "slice-complete");
+	assert.ok(handle.state.companion?.checkpoints.at(-1)?.noteHash);
+
+	stopStudyHardStudios();
+	const reopened = await openExistingStudyHardStudio(fakePi, context, runId);
+	assert.equal(reopened.state.companion?.companionId, "learning-test");
+	assert.equal(reopened.state.companion?.events.length, 2);
+	assert.equal(reopened.state.companion?.checkpoints.length, 1);
 	stopStudyHardStudios();
 });
 

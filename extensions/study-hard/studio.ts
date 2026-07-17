@@ -10,6 +10,17 @@ import { promisify } from "node:util";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import { buildTftVisualEmbedHtml } from "../frame-studio/index.ts";
+import {
+	createLearningCompanionState,
+	normalizeLearningCompanionState,
+	recordLearningCheckpoint,
+	recordLearningEvent,
+	type LearningCheckpoint,
+	type LearningCompanionManifest,
+	type LearningCompanionPhase,
+	type LearningCompanionState,
+	type LearningEventInput,
+} from "../learning-companion/state.ts";
 import { captureGlimpseHtmlPng } from "../utils/glimpse.ts";
 import { buildStudyHardStudioHtml } from "./studio-html.ts";
 import { parseStudyLearningAgentJson, runIsolatedStudyLearningAgent, type StudyLearningAgentRunner } from "./learning-agents.ts";
@@ -242,6 +253,7 @@ export interface StudyHardBoardState {
 	questions: StudyQuestionCard[];
 	attachments: StudyAttachment[];
 	notionSync?: StudyNotionSyncState;
+	companion?: LearningCompanionState;
 	selectedNodeId?: string;
 	recommendedNodeId?: string;
 	currentQuestionId?: string;
@@ -875,6 +887,7 @@ function normalizePersistedState(value: unknown): StudyHardBoardState {
 		questions: normalizeQuestions(raw.questions) || [],
 		attachments: normalizeAttachments(raw.attachments) || [],
 		notionSync: normalizeNotionSync(raw.notionSync),
+		companion: normalizeLearningCompanionState(raw.companion),
 		selectedNodeId: typeof raw.selectedNodeId === "string" ? raw.selectedNodeId : nodes[0]?.id,
 		recommendedNodeId: typeof raw.recommendedNodeId === "string" ? raw.recommendedNodeId : undefined,
 		currentQuestionId: typeof raw.currentQuestionId === "string" ? raw.currentQuestionId : undefined,
@@ -1037,6 +1050,81 @@ function broadcast(handle: StudyHardHandle): void {
 		try { client.write(payload); } catch { handle.clients.delete(client); }
 	}
 	syncStudyHardTranscript(handle);
+}
+
+function mutateStudyHardCompanion(runId: string, mutate: (board: StudyHardBoardState, companion: LearningCompanionState | undefined) => LearningCompanionState): StudyHardBoardState {
+	const id = validateRunId(runId);
+	const active = handles.get(id);
+	const current = active?.state ?? loadPersistedStudyHardState(id);
+	if (!current) throw new Error(`Study Hard Studio run을 찾을 수 없습니다: ${id}`);
+	const companion = mutate(current, current.companion);
+	const next: StudyHardBoardState = {
+		...current,
+		companion,
+		revision: current.revision + 1,
+		updatedAt: Math.max(Date.now(), companion.updatedAt),
+	};
+	if (active) {
+		const previous = active.state;
+		active.state = next;
+		try {
+			saveState(active);
+			broadcast(active);
+		} catch (error) {
+			active.state = previous;
+			throw error;
+		}
+	} else {
+		const detached = {
+			state: next,
+			statePath: statePathFor(id),
+			clients: new Set<ServerResponse>(),
+		} as StudyHardHandle;
+		saveState(detached);
+	}
+	return next;
+}
+
+export function attachStudyHardLearningCompanion(manifest: LearningCompanionManifest): StudyHardBoardState {
+	return mutateStudyHardCompanion(manifest.runId, (_board, current) => {
+		if (current && current.companionId !== manifest.companionId) {
+			throw new Error(`Study Hard run ${manifest.runId}은 다른 companion에 연결되어 있습니다.`);
+		}
+		const base = current
+			? { ...current, phase: manifest.phase, frame: { ...manifest.frame }, updatedAt: Date.now() }
+			: createLearningCompanionState(manifest);
+		return recordLearningEvent(base, {
+			kind: "frame_ready",
+			summary: "Frame 계약과 학습노트 canonical을 연결했습니다.",
+			source: "frame",
+			refs: { frameHash: manifest.frame.latestCanonicalHash },
+			dedupeKey: `frame-ready:${manifest.frame.latestCanonicalHash || manifest.companionId}`,
+		}).state;
+	});
+}
+
+export function recordStudyHardLearningEvent(runId: string, input: LearningEventInput, phase?: LearningCompanionPhase): StudyHardBoardState {
+	return mutateStudyHardCompanion(runId, (_board, current) => {
+		if (!current) throw new Error(`Study Hard run ${runId}에 learning companion이 연결되지 않았습니다.`);
+		const recorded = recordLearningEvent(current, input).state;
+		return phase && recorded.phase !== phase ? { ...recorded, phase, updatedAt: input.occurredAt ?? Date.now() } : recorded;
+	});
+}
+
+export function checkpointStudyHardLearning(runId: string, kind: LearningCheckpoint["kind"], refs?: LearningCheckpoint["refs"]): StudyHardBoardState {
+	return mutateStudyHardCompanion(runId, (board, current) => {
+		if (!current) throw new Error(`Study Hard run ${runId}에 learning companion이 연결되지 않았습니다.`);
+		const lastSequence = current.events.at(-1)?.sequence ?? 0;
+		const previousTo = current.checkpoints.at(-1)?.eventRange.to ?? 0;
+		const noteHash = noteHistoryHash(board.noteDocument, referencedHistoryFlows(board));
+		return recordLearningCheckpoint(current, {
+			kind,
+			revision: board.revision,
+			noteHash,
+			eventRange: { from: previousTo < lastSequence ? previousTo + 1 : lastSequence, to: lastSequence },
+			refs,
+		});
+	});
 }
 
 function sendJson(res: ServerResponse, status: number, value: unknown): void {
