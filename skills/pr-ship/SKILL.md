@@ -251,6 +251,17 @@ jq -n --arg body "$body" '{body: $body}' \
 
 수동 명령이 필요하면 `/github:pr-review-re-request`를 사용할 수 있다.
 
+### 10. Frame v2 learning companion — 조건부 review checkpoint
+
+현재 worktree의 `.pi/learning-companion.json`이 있을 때만 리뷰 대응 묶음이 끝난 뒤 학습 기록을 추가한다.
+
+- 대응이 필요했던 리뷰: `review_applied` event에 review URL, 대응 commit, 검증 evidence를 기록한다.
+- 코드 변경이 불필요했던 리뷰: `review_received` event에 왜 변경하지 않았는지 판단만 기록한다.
+- 한 번의 대응 묶음마다 `review-round` checkpoint는 최대 하나만 만든다.
+- 리뷰에서 더 나은 방향을 발견했지만 현재 대응에 바로 넣지 않으면 `learning_companion action=propose`로 남긴다. 제안만으로 task/frame/code를 바꾸지 않는다.
+- companion 기록 실패·누락은 이미 성공한 수정, push, thread reply, re-request를 실패로 바꾸거나 되돌리지 않는다.
+- 이 로컬 학습 기록을 PR timeline 일반 코멘트로 자동 게시하지 않는다.
+
 ## GitHub API Guidance
 
 - 댓글 조회: `gh api repos/<owner>/<repo>/pulls/comments/<comment_id>`

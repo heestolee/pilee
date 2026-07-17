@@ -157,6 +157,15 @@ git push -u origin "$(git branch --show-current)"
 
 PR/status 확인을 사용자가 명시하지 않은 light ship에서는 push 성공 출력이 terminal condition이다. 사용자가 불만을 표한 뒤 말하는 “걍 커밋푸시해” 같은 탈출 문구를 기다리지 말고, 성공한 push 직후 추가 `git status`, `git log`, `gh pr view`, work_context checkpoint를 실행하지 않은 채 한 줄 완료 보고로 멈춘다.
 
+#### Frame v2 learning companion — 조건부 후속
+
+standard/full Frame v2 작업에서 `.pi/learning-companion.json`이 이미 있을 때만 push 성공 후 `learning_companion`에 `push_completed` event와 필요 시 `pre-pr` checkpoint를 기록한다. commit SHA, branch, 검증 evidence ref만 남기고 전체 diff/log를 복사하지 않는다.
+
+- light ship의 push terminal condition이 우선이며 이 후속을 실행하지 않는다.
+- companion을 찾기 위한 broad scan을 하지 않는다. 현재 `.pi` sidecar만 본다.
+- 기록 실패나 sidecar 누락은 ship 성공을 실패로 바꾸지 않는다.
+- 학습노트 내용을 PR timeline comment로 자동 게시하지 않는다.
+
 ### 7. Final Report
 
 최종 응답에는 아래를 짧게 포함한다.

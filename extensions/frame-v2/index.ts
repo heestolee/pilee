@@ -263,7 +263,8 @@ function buildContinuationPrompt(record: FrameV2CommandContextRecord): string {
 		`3. Study Hard state remains the learning canonical: ${record.statePath}`,
 		`4. Source Frame v2 manifest: ${record.manifestPath}`,
 		"5. Refresh work_context, select the first ready implementation slice, and implement from the canonical frame contract.",
-		"6. Do not rerun the Frame v2 interview or resume refinement unless the canonical frame has an explicit gap.",
+		"6. If `.pi/learning-companion.json` exists, use learning_companion only for meaningful slice/verify/PR/review checkpoints and explicit learning proposals. Missing companion never blocks work.",
+		"7. Do not rerun the Frame v2 interview or resume refinement unless the canonical frame has an explicit gap.",
 	].join("\n");
 }
 

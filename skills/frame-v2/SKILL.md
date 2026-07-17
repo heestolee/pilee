@@ -36,6 +36,7 @@ HTML / Notion export
 5. `--draft`는 최초 학습노트를 보여주기 전 계약 질문을 하지 않는다. 불확실성은 가정·열린 질문으로 표시한다.
 6. guided mode는 질문을 임의로 줄이거나 늘리지 않고 현재 `../frame/SKILL.md`의 Deep Interview, `(명백)`, Productive Resistance 규율을 그대로 따른다.
 7. 코드·문서·티켓으로 확인 가능한 사실을 사용자에게 되묻지 않는다. 다만 목표·범위·성공 기준·검증 축처럼 사용자의 계약을 바꾸는 값은 현재 Frame 규칙대로 확인한다.
+8. 작업 시작 뒤에도 Study Hard와 Frame을 하나의 canonical로 합치지 않는다. `frame.json`은 작업 canonical, Study Hard state는 학습 canonical이며 `learning-companion.json`은 두 원천을 잇는 sidecar다. sidecar 실패는 구현·검증·commit·push를 막지 않는다.
 
 ## Runtime contract
 
@@ -45,6 +46,7 @@ Command shim이 다음 값을 prompt에 제공한다.
 - frame identity와 storage dir
 - `frame-v2.json` manifest path
 - Study Hard `runId`, source URL, 예상 state path
+- ready 이후 생성되는 `learning-companion.json` sidecar
 - 초기 학습노트 skeleton
 
 상세 저장 계약은 `references/artifact-contract.md`를 읽는다.
@@ -147,7 +149,8 @@ Command shim이 다음 값을 prompt에 제공한다.
 4. `canonicalHash`를 계산하고 `frame.md` mirror를 재생성한다.
 5. 남은 decision은 `decision_queue`, 열린 검증은 `verify_plan`, 실행 단위는 `implementation_plan.slices[]`로 보존한다.
 6. `frame-v2.json.status`를 `ready`로 갱신한다.
-7. canonical write 전에는 worktree fork나 구현을 시작하지 않는다.
+7. `frame_v2_state action=ready`가 Frame ref와 Study Hard runId를 `learning-companion.json`으로 연결한다. Study Hard state가 아직 없으면 sidecar만 보존하고 작업은 계속한다.
+8. canonical write 전에는 worktree fork나 구현을 시작하지 않는다.
 
 ### 8. 다음 행동
 
@@ -163,6 +166,15 @@ Command shim이 다음 값을 prompt에 제공한다.
 - `fork해서 구현 시작`이면 `frame_v2_worktree_fork` tool을 호출한다.
 - tool이 `BLOCKED`면 절대경로로 구현을 이어가지 말고 이유를 보고한다.
 - 현재 worktree 구현이면 `work_context refresh/set_slice` 후 첫 slice부터 시작한다.
+
+### 작업 시작 뒤 Companion continuity
+
+- worktree fork는 `.pi/learning-companion.json`을 retarget하되 같은 `companionId`와 Study Hard `runId`를 유지한다.
+- `/study-hard current`는 현재 sidecar의 run을 다시 열며 새 URL 학습 prompt를 시작하지 않는다.
+- `learning_companion record/checkpoint`는 slice 완료, 검증 판정, pre-PR, review round, merge처럼 의미 있는 전환에만 사용한다. 모든 tool call이나 commit 준비 과정을 기록하지 않는다.
+- 학습 중 더 나은 방향을 발견하면 `learning_companion action=propose`로 먼저 제안한다. `proposed`/`accepted` 상태는 `frame.json`, work context, task, 코드를 직접 수정하지 않는다.
+- 사용자가 수락하면 기존 `/decide`, `work_context`, task, `/verify`, 구현 workflow로 반영하고, 실제 decision/task/commit/evidence ref가 생긴 뒤에만 proposal을 `applied`로 닫는다.
+- companion이 없거나 손상됐으면 경고만 남기고 기존 작업 흐름을 계속한다.
 
 ## Output contract
 
@@ -184,4 +196,7 @@ Command shim이 다음 값을 prompt에 제공한다.
 - [ ] 같은 visual fixture가 live note, HTML renderer + PNG fallback, Notion PNG + spec toggle에 모두 연결됐다.
 - [ ] 사용자가 이해 완료를 말하기 전 `frame.json` ready/구현 시작을 선언하지 않았다.
 - [ ] export와 worktree 시작이 서로 독립적으로 가능하다.
-- [ ] 기존 `/frame`, `/study-hard` 동작을 변경하지 않았다.
+- [ ] worktree 전환 뒤에도 같은 companionId/runId로 `/study-hard current`가 열린다.
+- [ ] 학습 제안은 사용자 수락과 기존 workflow 적용 전 작업 canonical을 바꾸지 않는다.
+- [ ] companion 누락·손상이 구현·검증·commit·push를 차단하지 않는다.
+- [ ] 기존 `/frame`, URL 기반 `/study-hard` 동작을 변경하지 않았다.
