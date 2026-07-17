@@ -392,8 +392,23 @@ test("Architecture schema diff theme renders semantic column lifecycle colors an
 	assert.match(element.innerHTML, /class="arch-badge changed">확장/);
 	assert.match(element.innerHTML, /class="arch-badge reused">재사용/);
 
+	const lightElement = { id: "arch-schema-diff-light-test", className: "", innerHTML: "" };
+	studio.renderArchitectureFlowElement(lightElement, {
+		kind: "architecture-flow",
+		theme: "schema-diff-light",
+		lanes: ["Before", "After"],
+		nodes: [
+			{ id: "light-before", lane: "Before", type: "table", title: "before_table", status: "before", columns: [{ name: "id", status: "same" }] },
+			{ id: "light-after", lane: "After", type: "table", title: "after_table", status: "after", columns: [{ name: "new_field", status: "new" }] },
+		],
+		edges: [],
+	});
+	assert.equal(lightElement.className, "arch-visual schema-diff-light");
+	assert.match(lightElement.innerHTML, /class="arch-column new"/);
+
 	const pageHtml = buildPageHtml();
 	assert.match(pageHtml, /\.arch-column\.removed \.arch-column-name \{ text-decoration:line-through/);
+	assert.match(pageHtml, /\.arch-visual\.schema-diff-light \.arch-canvas \{ min-width:0/);
 	assert.match(pageHtml, /\.arch-node\.before \{ border-top-color:#38bdf8/);
 	assert.match(pageHtml, /\.arch-node\.after \{ border-top-color:#22c55e/);
 	assert.match(pageHtml, /\.arch-visual\.schema-diff-dark \.arch-column\.new/);

@@ -778,6 +778,9 @@ h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .arch-legend-card { border:1px solid #e2e8f0; border-radius:14px; background:#fff; padding:9px 10px; }
 .arch-legend-card strong { display:block; color:#581c87; font-size:12px; }
 .arch-legend-card span { display:block; margin-top:3px; color:var(--muted); font-size:11px; line-height:1.4; }
+.arch-visual.schema-diff-light { border-color:#dbeafe; background:#ffffff; }
+.arch-visual.schema-diff-light .arch-visual-diagram { border-color:#dbeafe; background:#ffffff; }
+.arch-visual.schema-diff-light .arch-canvas { min-width:0; }
 .arch-visual.schema-diff-dark { border-color:#334155; background:#111827; color:#e5e7eb; }
 .arch-visual.schema-diff-dark .arch-visual-title { color:#f8fafc; }
 .arch-visual.schema-diff-dark .arch-visual-subtitle { color:#94a3b8; }
@@ -1479,7 +1482,11 @@ function renderArchitectureFlowElement(el, spec) {
   var nodeHtml = nodes.map(function(node) { return renderArchNode(node, layouts[node.id]); }).join('');
   var orientationLabel = orientation === 'DOWN' ? 'Architecture flow · 세로 자동 배치' : 'Architecture flow · 가로 배치';
   var visualTheme = layerKey(spec.theme || spec.visualTheme || spec.variant || '');
-  var themeClass = visualTheme === 'schema-diff-dark' || visualTheme === 'dark-schema-diff' ? ' schema-diff-dark' : '';
+  var themeClass = visualTheme === 'schema-diff-dark' || visualTheme === 'dark-schema-diff'
+    ? ' schema-diff-dark'
+    : visualTheme === 'schema-diff-light' || visualTheme === 'schema-diff'
+      ? ' schema-diff-light'
+      : '';
   el.className = 'arch-visual' + themeClass;
   el.innerHTML = '<div class="arch-visual-head"><div><div class="arch-visual-title">' + esc(spec.title || 'Architecture / Data Flow Map') + '</div>' + (spec.subtitle ? '<div class="arch-visual-subtitle">' + esc(spec.subtitle) + '</div>' : '<div class="arch-visual-subtitle">데이터와 로직이 UI/API/usecase/domain/repository/DB를 어떻게 지나가는지 보는 전체 지도입니다.</div>') + '</div><span class="badge">' + esc(orientationLabel) + '</span></div>'
     + '<div class="arch-visual-diagram"><div class="arch-canvas" style="width:' + canvasWidth + 'px;height:' + canvasHeight + 'px">' + laneHtml + edgeSvg + nodeHtml + '</div></div>'
