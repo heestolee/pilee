@@ -1268,7 +1268,7 @@ function questionContextLabel(state: StudyHardBoardState, question: StudyQuestio
 	return "전체 자료";
 }
 
-type StudyHardTranscriptEventKind = "learner-question" | "tutor-answer" | "coach-question" | "learner-answer" | "coach-feedback" | "processing-failed" | "note-merged" | "history-summary";
+type StudyHardTranscriptEventKind = "learner-question" | "tutor-answer" | "refiner-answer" | "coach-question" | "learner-answer" | "coach-feedback" | "processing-failed" | "note-merged" | "history-summary";
 
 function transcriptContentHash(value: string): string {
 	return createHash("sha256").update(value).digest("hex").slice(0, 12);
@@ -1320,7 +1320,7 @@ function questionTranscriptEvents(question: StudyQuestionCard): StudyHardQuestio
 		if (question.feedback) events.push({ eventKind: "coach-feedback", text: question.feedback });
 	} else {
 		events.push({ eventKind: "learner-question", text: question.question });
-		if (question.feedback) events.push({ eventKind: question.scope === "coach" ? "coach-feedback" : "tutor-answer", text: question.feedback });
+		if (question.feedback) events.push({ eventKind: question.scope === "coach" ? "coach-feedback" : question.scope === "note-block" ? "refiner-answer" : "tutor-answer", text: question.feedback });
 	}
 	if (question.processingStatus === "failed" && question.processingError) {
 		events.push({ eventKind: "processing-failed", text: `질문: ${question.question}\n\n원인: ${question.processingError}` });
@@ -1337,6 +1337,7 @@ function publishQuestionTranscriptEvent(handle: StudyHardHandle, question: Study
 	const labels: Record<StudyHardTranscriptEventKind, string> = {
 		"learner-question": "📚 Study Hard 질문",
 		"tutor-answer": "📖 Study Hard Tutor 답변",
+		"refiner-answer": "🛠 Study Hard 다듬기 결과",
 		"coach-question": "🧭 Study Hard 이해 확인 질문",
 		"learner-answer": "✍️ Study Hard 내 답변",
 		"coach-feedback": "🧭 Study Hard 학습 코치",
@@ -1345,7 +1346,7 @@ function publishQuestionTranscriptEvent(handle: StudyHardHandle, question: Study
 		"history-summary": "📚 Study Hard 기존 Q&A 요약",
 	};
 	const eventKey = questionTranscriptEventKey(question, { eventKind, text });
-	const body = eventKind === "tutor-answer"
+	const body = eventKind === "tutor-answer" || eventKind === "refiner-answer"
 		? `질문: ${question.question}\n\n답변:\n${text}`
 		: eventKind === "coach-feedback"
 			? `질문: ${question.question}\n\n피드백:\n${text}`
@@ -1909,6 +1910,10 @@ function buildNoteBlockEditorPrompt(state: StudyHardBoardState, targets: NoteBlo
 	return `# Study Hard Note Block Editor\n\nTutor 답변을 지정된 학습 노트 블록에만 적용하세요. 전체 noteDocument를 다시 만들지 말고, 부모 서버가 원자적으로 적용할 완전한 블록 교체 또는 삭제 action만 반환합니다.\n\n## 기준 revision\n${state.revision}\n\n## 문서 index\n${JSON.stringify(documentIndex, null, 2)}\n\n## 수정 대상\n${JSON.stringify(targets, null, 2)}\n\n## 병합 규칙\n- 위 수정 대상마다 blockReplacements 또는 blockDeletes 중 정확히 한 action을 반환합니다.\n- blockReplacements와 blockDeletes에는 수정 대상과 정확히 같은 sectionId와 blockId만 사용할 수 있습니다.\n- 사용자가 블록 제거를 요청하고 Tutor 답변도 삭제가 타당하다고 판단하면 blockDeletes를 사용합니다. 빈 제목·빈 본문의 replacement로 삭제를 흉내 내지 않습니다.\n- replacement block의 id와 type은 기존 값과 같아야 합니다.\n- type: "visual" replacement는 body, nodes, edges, notes를 포함한 완전한 유효 visual spec을 반환합니다.\n- 단순 Q&A 로그를 붙이지 말고 Tutor 답변의 결론을 기존 블록 설명과 구조에 자연스럽게 반영합니다.\n- 다른 section/block, nodes, edges, flows, goals, questions는 출력하거나 수정하지 않습니다.\n- 반드시 아래 JSON 객체만 반환합니다. Markdown fence나 설명을 덧붙이지 않습니다.\n\n{\n  "baseRevision": ${state.revision},\n  "blockReplacements": [\n    {"sectionId":"...","blockId":"...","block":{"id":"...","type":"..."}}\n  ],\n  "blockDeletes": [\n    {"sectionId":"...","blockId":"..."}\n  ]\n}`;
 }
 
+function buildNoteBlockRefinerPrompt(state: StudyHardBoardState, target: NoteBlockEditorTarget, question: StudyQuestionCard): string {
+	return `# Study Hard Note Block Direct Refiner\n\n사용자의 메시지에 직접 답하면서 선택된 학습 노트 블록을 필요한 경우 즉시 다듬으세요. Tutor에게 넘기거나 역할 한계를 설명하지 말고, 부모 서버가 검증·적용할 단일 JSON 결과를 반환합니다.\n\n## 기준 revision\n${state.revision}\n\n## 선택 블록\n${JSON.stringify({ sectionId: target.sectionId, sectionTitle: target.sectionTitle, block: target.block }, null, 2)}\n\n## 사용자 메시지\n${JSON.stringify({ id: question.id, question: compactLearningQuestion(question.question), context: questionContextSnapshot(state, question) }, null, 2)}\n\n## 다듬기 규칙\n- feedback에는 사용자 질문에 대한 직접 답변과 실제로 반영할 변경을 한국어로 명확히 씁니다. \"수정할 수 없다\", \"읽기 전용\", \"Tutor/Editor에게 넘긴다\" 같은 메타 설명은 금지합니다.\n- 설명만 필요한 질문이고 블록 변경이 불필요하면 action을 \"none\"으로 반환합니다.\n- 수정·개선·추가 요청이면 action을 \"replace\"로 반환하고, 기존 id와 type을 유지한 완전한 replacement block을 반환합니다.\n- 명시적인 제거 요청이면 action을 \"delete\"로 반환합니다. 빈 블록으로 삭제를 흉내 내지 않습니다.\n- visual replacement는 body와 visual spec 전체를 포함한 완전한 유효 블록이어야 합니다. 화면 위치를 지목한 요청은 하단 notes가 아니라 해당 visual/node/layer 필드에 직접 반영합니다.\n- 첨부 이미지가 전달된 질문은 이미지의 실제 내용과 사용자 메시지를 함께 근거로 답하고 수정합니다.\n- 선택 블록 밖의 section/block이나 nodes, edges, flows, goals, questions 등 다른 board state는 출력하거나 수정하지 않습니다.\n- 반드시 아래 JSON 객체만 반환합니다. Markdown fence나 추가 설명을 덧붙이지 않습니다.\n\n{\n  \"baseRevision\": ${state.revision},\n  \"feedback\": \"사용자에게 보여줄 직접 답변\",\n  \"action\": \"none | replace | delete\",\n  \"block\": null\n}`;
+}
+
 function assertPreservedIds(label: string, before: string[], after: string[]): void {
 	const afterIds = new Set(after);
 	const missing = before.filter((id) => !afterIds.has(id));
@@ -1979,6 +1984,86 @@ function validatedNoteBlockEditorPatch(state: StudyHardBoardState, output: strin
 	return { noteDocument };
 }
 
+interface ValidatedNoteBlockRefinement {
+	feedback: string;
+	patch: Record<string, unknown>;
+	changed: boolean;
+}
+
+function validatedNoteBlockRefinerResult(state: StudyHardBoardState, output: string, baseRevision: number, target: NoteBlockEditorTarget): ValidatedNoteBlockRefinement {
+	const result = parseStudyLearningAgentJson<Record<string, unknown>>(output);
+	if (result.baseRevision !== baseRevision) throw new Error(`Direct Refiner baseRevision 불일치: expected ${baseRevision}, received ${String(result.baseRevision)}`);
+	const extraFields = Object.keys(result).filter((field) => !["baseRevision", "feedback", "action", "block"].includes(field));
+	if (extraFields.length) throw new Error(`Direct Refiner는 feedback/action/block 외 상태를 수정할 수 없습니다: ${extraFields.join(", ")}`);
+	const feedback = typeof result.feedback === "string" ? result.feedback.trim().slice(0, MAX_TUTOR_ANSWER_LENGTH) : "";
+	if (!feedback) throw new Error("Direct Refiner 결과에 사용자 답변이 없습니다.");
+	const action = String(result.action || "");
+	if (!['none', 'replace', 'delete'].includes(action)) throw new Error(`Direct Refiner action이 유효하지 않습니다: ${action}`);
+	if (action === "none") {
+		if (result.block !== undefined && result.block !== null) throw new Error("Direct Refiner none action에는 block을 반환할 수 없습니다.");
+		return { feedback, patch: {}, changed: false };
+	}
+	if (action === "delete") {
+		if (result.block !== undefined && result.block !== null) throw new Error("Direct Refiner delete action에는 block을 반환할 수 없습니다.");
+		const patch = validatedNoteBlockEditorPatch(state, JSON.stringify({
+			baseRevision,
+			blockReplacements: [],
+			blockDeletes: [{ sectionId: target.sectionId, blockId: target.block.id }],
+		}), baseRevision, [target]);
+		return { feedback, patch, changed: true };
+	}
+	if (!result.block || typeof result.block !== "object" || Array.isArray(result.block)) throw new Error("Direct Refiner replace action에 block이 없습니다.");
+	const patch = validatedNoteBlockEditorPatch(state, JSON.stringify({
+		baseRevision,
+		blockReplacements: [{ sectionId: target.sectionId, blockId: target.block.id, block: result.block }],
+		blockDeletes: [],
+	}), baseRevision, [target]);
+	return { feedback, patch, changed: true };
+}
+
+async function runNoteBlockRefinement(handle: StudyHardHandle, questionId: string): Promise<void> {
+	try {
+		for (let attempt = 0; attempt < 2; attempt += 1) {
+			const snapshot = cloneBoardState(handle.state);
+			const question = snapshot.questions.find((item) => item.id === questionId);
+			if (!question || question.scope !== "note-block" || !question.targetNoteBlockId) throw new Error("Direct Refiner에 유효한 note-block 질문이 없습니다.");
+			const target = noteBlockEditorTargets(snapshot, [{ question, answer: "" }])?.[0];
+			if (!target) throw new Error("Direct Refiner 대상 블록을 찾지 못했습니다.");
+			const fingerprint = semanticMergeFingerprint(snapshot);
+			const output = await handle.agentRunner({
+				role: "editor",
+				prompt: buildNoteBlockRefinerPrompt(snapshot, target, question),
+				imagePaths: questionImagePaths(snapshot, question),
+				cwd: handle.cwd || process.cwd(),
+				model: learningAgentModel(handle, "editor"),
+				thinking: handle.agentThinking,
+				signal: handle.orchestrationAbort.signal,
+			});
+			const refinement = validatedNoteBlockRefinerResult(snapshot, output, snapshot.revision, target);
+			if (semanticMergeFingerprint(handle.state) !== fingerprint) {
+				if (attempt === 0) continue;
+				throw new Error("Direct Refiner 실행 중 학습 노트가 다시 바뀌어 안전하게 반영하지 못했습니다.");
+			}
+			commitHandlePatch(handle, {
+				...refinement.patch,
+				questions: handle.state.questions.map((current) => current.id === questionId ? {
+					...current,
+					feedback: refinement.feedback,
+					status: "answered",
+					answeredAt: Date.now(),
+					processingStatus: "applied",
+					processingError: "",
+					processingErrorStage: undefined,
+				} : current),
+			});
+			if (refinement.changed) publishNoteMergeTranscript(handle, [questionId], snapshot.noteDocument);
+			return;
+		}
+	} catch (error) {
+		if (!handle.closed) updateQuestionCards(handle, [questionId], (question) => ({ ...question, processingStatus: "failed", processingError: error instanceof Error ? error.message : String(error), processingErrorStage: "editor" }));
+	}
+}
+
 async function runTutorQuestion(handle: StudyHardHandle, snapshot: StudyHardBoardState, questionId: string): Promise<{ question: StudyQuestionCard; answer: string } | undefined> {
 	const question = snapshot.questions.find((item) => item.id === questionId);
 	if (!question) return undefined;
@@ -2039,9 +2124,19 @@ async function mergeTutorAnswers(handle: StudyHardHandle, answers: Array<{ quest
 }
 
 async function runQuestionBatch(handle: StudyHardHandle, questionIds: string[]): Promise<void> {
-	updateQuestionCards(handle, questionIds, (question) => ({ ...question, processingStatus: "running", processingError: "", processingErrorStage: undefined }));
+	const noteBlockQuestionIds = questionIds.filter((questionId) => handle.state.questions.find((question) => question.id === questionId)?.scope === "note-block");
+	const tutorQuestionIds = questionIds.filter((questionId) => !noteBlockQuestionIds.includes(questionId));
+	if (noteBlockQuestionIds.length) {
+		updateQuestionCards(handle, noteBlockQuestionIds, (question) => ({ ...question, processingStatus: "running", processingError: "", processingErrorStage: undefined }));
+		for (const questionId of noteBlockQuestionIds) {
+			if (handle.closed) return;
+			await runNoteBlockRefinement(handle, questionId);
+		}
+	}
+	if (!tutorQuestionIds.length || handle.closed) return;
+	updateQuestionCards(handle, tutorQuestionIds, (question) => ({ ...question, processingStatus: "running", processingError: "", processingErrorStage: undefined }));
 	const snapshot = cloneBoardState(handle.state);
-	const answers = (await Promise.all(questionIds.map((questionId) => runTutorQuestion(handle, snapshot, questionId))))
+	const answers = (await Promise.all(tutorQuestionIds.map((questionId) => runTutorQuestion(handle, snapshot, questionId))))
 		.filter((answer): answer is { question: StudyQuestionCard; answer: string } => !!answer);
 	if (answers.length && !handle.closed) await mergeTutorAnswers(handle, answers);
 }
@@ -2609,7 +2704,7 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 					sendJson(res, 400, { ok: false, error: "known attachmentIds are required" });
 					return;
 				}
-				const orchestrationId = `tutor-${randomUUID()}`;
+				const orchestrationId = `${scope === "note-block" ? "refiner" : "tutor"}-${randomUUID()}`;
 				const question: StudyQuestionCard = {
 					id: nextQuestionId(handle.state),
 					question: questionText,
@@ -2640,8 +2735,10 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 					sendJson(res, 400, { ok: false, error: "failed learner question is required" });
 					return;
 				}
-				const mergeOnly = !!existing.feedback;
-				const orchestrationId = `${mergeOnly ? "editor" : "tutor"}-${randomUUID()}`;
+				const directRefinement = existing.scope === "note-block";
+				const mergeOnly = !directRefinement && !!existing.feedback;
+				const retryMode = directRefinement ? "refiner" : mergeOnly ? "merge" : "tutor";
+				const orchestrationId = `${retryMode === "merge" ? "editor" : retryMode}-${randomUUID()}`;
 				if (mergeOnly) {
 					const retryQuestion = { ...existing, processingStatus: "answered" as const, processingError: "", processingErrorStage: undefined, orchestrationId };
 					updateQuestionCards(handle, [questionId], () => retryQuestion);
@@ -2650,7 +2747,7 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 					updateQuestionCards(handle, [questionId], (question) => ({ ...question, status: "open", feedback: undefined, answeredAt: undefined, processingStatus: "queued", processingError: "", processingErrorStage: undefined, orchestrationId }));
 					enqueueTutorQuestion(handle, questionId);
 				}
-				sendJson(res, 202, { ok: true, orchestrationId, questionId, retryMode: mergeOnly ? "merge" : "tutor" });
+				sendJson(res, 202, { ok: true, orchestrationId, questionId, retryMode });
 				return;
 			}
 			if (pathname === "/answer" && req.method === "POST") {
