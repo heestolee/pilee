@@ -4,6 +4,7 @@ import test from "node:test";
 import { buildPageHtml } from "./index.ts";
 
 const independentFlowMaster = JSON.parse(readFileSync(new URL("./fixtures/independent-flow-panels.master.json", import.meta.url), "utf-8"));
+const dataModelLearningMaster = JSON.parse(readFileSync(new URL("./fixtures/data-model-learning.master.json", import.meta.url), "utf-8"));
 
 interface FakeWindow {
 	pageYOffset: number;
@@ -368,6 +369,31 @@ test("Data Model / Migration Map visual renders entities, relationships, operati
 	assert.match(element.innerHTML, /Migration Plan · DDL \/ DML \/ Backfill/);
 	assert.match(element.innerHTML, /Verification Queries \/ Evidence/);
 	assert.doesNotMatch(element.innerHTML, /tft-visual-error/);
+});
+
+test("Data Model learning fixture는 역할 색·저장 spine·학습 위계·접힌 보조 정보를 렌더링한다", async () => {
+	const browser = createFakeBrowser({ top: 0, viewport: 700, height: 2200 });
+	const studio = loadStudioScript(browser.window, browser.document);
+	const element = makeVisualElement(dataModelLearningMaster);
+
+	await studio.renderTftVisualElement(element);
+
+	assert.equal(element.className, "data-visual");
+	assert.equal((element.innerHTML.match(/class="data-spine-node/g) || []).length, 4);
+	assert.match(element.innerHTML, /same transaction/);
+	assert.match(element.innerHTML, /worker materialize/);
+	assert.match(element.innerHTML, /role-unchanged/);
+	assert.match(element.innerHTML, /role-transport/);
+	assert.match(element.innerHTML, /role-core/);
+	assert.match(element.innerHTML, /role-recipient/);
+	assert.match(element.innerHTML, /왜 존재하는가/);
+	assert.match(element.innerHTML, /핵심 key · 불변식/);
+	assert.match(element.innerHTML, /변경되는 상태/);
+	assert.match(element.innerHTML, /Schema fields · 4개/);
+	assert.match(element.innerHTML, /<details class="data-secondary"><summary>Relationships \/ Cardinality · 2개/);
+	assert.match(element.innerHTML, /<details class="data-secondary"><summary>Migration Plan · DDL \/ DML \/ Backfill · 3개/);
+	assert.match(element.innerHTML, /<details class="data-secondary"><summary>Verification Queries \/ Evidence · 3개/);
+	assert.doesNotMatch(element.innerHTML, /columns\?|data-flow-chip/);
 });
 
 test("Known visual kind with missing required shape falls back without blocking the reader", () => {

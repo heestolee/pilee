@@ -948,6 +948,49 @@ h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .data-relation-card strong, .data-op-card strong, .data-verify-card strong { display:block; color:#134e4a; font-size:12px; margin-bottom:4px; overflow-wrap:anywhere; }
 .data-relation-card p, .data-op-card p, .data-verify-card p { margin:4px 0; color:#475569; font-size:11.5px; line-height:1.42; overflow-wrap:anywhere; }
 .data-op-sql { margin-top:7px; max-height:120px; overflow:auto; background:#292524; color:#fafaf9; border-radius:10px; padding:8px; font-size:10px; white-space:pre-wrap; }
+.data-model-spine { display:flex; align-items:stretch; gap:10px; overflow-x:auto; margin:10px 0 14px; padding:2px 2px 8px; overscroll-behavior:contain; }
+.data-spine-node { flex:1 0 190px; border:2px solid #cbd5e1; border-top-width:6px; border-radius:15px; background:#fff; padding:10px 11px; }
+.data-spine-node.role-source, .data-spine-node.role-unchanged { border-color:#94a3b8; background:#f8fafc; }
+.data-spine-node.role-transport { border-color:#f59e0b; background:#fffbeb; }
+.data-spine-node.role-core { border-color:#8b5cf6; background:#faf5ff; }
+.data-spine-node.role-recipient { border-color:#3b82f6; background:#eff6ff; }
+.data-spine-role { display:block; color:#64748b; font-size:9px; font-weight:950; text-transform:uppercase; letter-spacing:.05em; }
+.data-spine-title { display:block; margin-top:4px; color:#0f172a; font-size:12px; font-weight:950; }
+.data-spine-responsibility { display:block; margin-top:5px; color:#334155; font-size:10.5px; line-height:1.4; }
+.data-spine-link { position:relative; flex:0 0 100px; display:flex; align-items:center; justify-content:center; color:#64748b; text-align:center; font-size:9.5px; font-weight:900; line-height:1.3; }
+.data-spine-link::after { content:'→'; position:absolute; right:-2px; top:50%; transform:translateY(-50%); color:#475569; font-size:18px; }
+.data-boundaries { display:grid; gap:8px; margin-bottom:14px; }
+.data-boundary { border:1px dashed #94a3b8; border-radius:13px; background:#f8fafc; padding:9px 11px; }
+.data-boundary strong { color:#334155; font-size:11px; }
+.data-boundary span { display:block; margin-top:3px; color:#64748b; font-size:10.5px; line-height:1.4; }
+.data-entity-card.role-unchanged { border-color:#cbd5e1; border-top-color:#94a3b8; background:#f8fafc; box-shadow:none; opacity:.82; }
+.data-entity-card.role-unchanged .data-entity-head { border-color:#e2e8f0; background:#f1f5f9; }
+.data-entity-card.role-transport { border-color:#fcd34d; border-top-color:#f59e0b; box-shadow:0 12px 26px rgba(217,119,6,.09); }
+.data-entity-card.role-transport .data-entity-head { border-color:#fde68a; background:#fffbeb; }
+.data-entity-card.role-core { border-color:#c4b5fd; border-top-color:#8b5cf6; box-shadow:0 12px 26px rgba(124,58,237,.09); }
+.data-entity-card.role-core .data-entity-head { border-color:#ddd6fe; background:#faf5ff; }
+.data-entity-card.role-recipient { border-color:#93c5fd; border-top-color:#3b82f6; box-shadow:0 12px 26px rgba(37,99,235,.09); }
+.data-entity-card.role-recipient .data-entity-head { border-color:#bfdbfe; background:#eff6ff; }
+.data-role-badge { display:inline-flex; border:1px solid currentColor; border-radius:999px; background:#fff; padding:2px 6px; font-size:9px; font-weight:950; }
+.data-role-badge.role-unchanged { color:#64748b; }
+.data-role-badge.role-transport { color:#b45309; }
+.data-role-badge.role-core { color:#6d28d9; }
+.data-role-badge.role-recipient { color:#1d4ed8; }
+.data-learning-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; padding:9px 12px 11px; }
+.data-learning-block { border:1px solid #e2e8f0; border-radius:11px; background:rgba(255,255,255,.88); padding:8px 9px; }
+.data-learning-block.purpose { grid-column:1/-1; }
+.data-learning-block strong { display:block; margin-bottom:4px; color:#475569; font-size:9px; font-weight:950; text-transform:uppercase; letter-spacing:.04em; }
+.data-learning-block p { margin:0; color:#1f2937; font-size:10.5px; line-height:1.42; }
+.data-learning-block ul { margin:0; padding-left:16px; }
+.data-learning-block li { margin:3px 0; color:#334155; font-size:10.5px; line-height:1.4; }
+.data-schema-details { margin:0 12px 12px; border:1px solid #e2e8f0; border-radius:11px; background:#fff; }
+.data-schema-details summary { cursor:pointer; padding:8px 9px; color:#475569; font-size:10px; font-weight:950; }
+.data-schema-details .data-columns { padding-top:0; }
+.data-secondary { margin-top:12px; border:1px solid #cbd5e1; border-radius:14px; background:#fff; }
+.data-secondary > summary { cursor:pointer; padding:10px 11px; color:#334155; font-size:11px; font-weight:950; }
+.data-secondary > .data-section-title { margin:0; padding:0 11px; color:#64748b; font-size:9px; }
+.data-secondary > .data-relationships, .data-secondary > .data-migration-grid, .data-secondary > .data-verification-grid { margin:8px 11px 11px; }
+@media (max-width:760px) { .data-learning-grid { grid-template-columns:1fr; } .data-learning-block.purpose { grid-column:auto; } }
 .question { border-color:#ddd6fe; background:#faf9ff; }
 .question-title { font-size:18px; font-weight:800; margin:0 0 12px; line-height:1.35; overflow-wrap:anywhere; }
 .question-context { margin:0 0 14px; padding:12px 14px; border:1px solid #ede9fe; border-radius:12px; background:#faf9ff; font-size:14px; line-height:1.55; }
@@ -1809,6 +1852,12 @@ function normalizeDataEntity(entity, index) {
     status: status,
     sourceOfTruth: Boolean(source),
     description: String(entity.description || entity.role || entity.responsibility || ''),
+    learningRole: layerKey(entity.learningRole || entity.modelRole || entity.visualRole || ''),
+    roleLabel: String(entity.roleLabel || ''),
+    purpose: String(entity.purpose || entity.why || ''),
+    keyRules: asTextArray(entity.keyRules || entity.keys || entity.invariants),
+    mutableState: asTextArray(entity.mutableState || entity.stateChanges || entity.lifecycle),
+    collapseColumns: entity.collapseColumns !== false,
     badges: asTextArray(entity.badges || entity.flags || entity.requirements || entity.requirementIds),
     columns: columns,
   };
@@ -1842,13 +1891,51 @@ function renderDataColumn(column) {
   var badges = dataColumnBadges(column).map(renderDataBadge).join('');
   return '<div class="data-column"><div><span class="data-column-name">' + esc(label) + '</span>' + (type ? '<span class="data-column-type">' + esc(type) + '</span>' : '') + (desc ? '<span class="data-column-desc">' + inline(desc) + '</span>' : '') + '</div><div class="data-column-badges">' + badges + '</div></div>';
 }
+function dataLearningRole(value) {
+  var role = layerKey(value);
+  return ['unchanged','transport','core','recipient','source'].includes(role) ? role : '';
+}
+function dataLearningRoleLabel(role) {
+  if (role === 'unchanged') return '기존 경계';
+  if (role === 'transport') return '전달 장부';
+  if (role === 'core') return '사건 원본';
+  if (role === 'recipient') return 'member 상태';
+  if (role === 'source') return '업무 commit';
+  return '';
+}
+function renderDataLearningList(title, items) {
+  if (!items.length) return '';
+  return '<section class="data-learning-block"><strong>' + esc(title) + '</strong><ul>' + items.map(function(item) { return '<li>' + inline(item) + '</li>'; }).join('') + '</ul></section>';
+}
 function renderDataEntityCard(entity) {
-  var badges = entity.badges.slice();
+  var badges = entity.badges.slice(), role = dataLearningRole(entity.learningRole);
   if (entity.sourceOfTruth) badges.push('source-of-truth');
   if (entity.status && entity.status !== 'same') badges.push(entity.status);
-  var classes = ['data-entity-card', entity.status].concat(entity.sourceOfTruth ? ['source-of-truth'] : []).join(' ');
+  var classes = ['data-entity-card', entity.status].concat(entity.sourceOfTruth ? ['source-of-truth'] : []).concat(role ? ['role-' + role] : []).join(' ');
+  var roleBadge = role ? '<span class="data-role-badge role-' + esc(role) + '">' + esc(entity.roleLabel || dataLearningRoleLabel(role)) + '</span>' : '';
   var columns = entity.columns.length ? entity.columns.map(renderDataColumn).join('') : '<div class="data-column"><div><span class="data-column-name">columns?</span><span class="data-column-desc">Frame 단계에서 실제 DDL/ORM schema를 읽어 채워야 합니다.</span></div></div>';
-  return '<article class="' + esc(classes) + '"><div class="data-entity-head"><div class="data-entity-title">' + inline(entity.title) + '</div><div class="data-entity-meta">' + badges.map(renderDataBadge).join('') + '</div></div>' + (entity.description ? '<div class="data-entity-desc">' + inline(entity.description) + '</div>' : '') + '<div class="data-columns">' + columns + '</div></article>';
+  var hasLearning = Boolean(entity.purpose || entity.keyRules.length || entity.mutableState.length);
+  var learning = hasLearning ? '<div class="data-learning-grid">' + (entity.purpose ? '<section class="data-learning-block purpose"><strong>왜 존재하는가</strong><p>' + inline(entity.purpose) + '</p></section>' : '') + renderDataLearningList('핵심 key · 불변식', entity.keyRules) + renderDataLearningList('변경되는 상태', entity.mutableState) + '</div>' : '';
+  var schema = hasLearning ? '<details class="data-schema-details"' + (entity.collapseColumns ? '' : ' open') + '><summary>Schema fields · ' + entity.columns.length + '개</summary><div class="data-columns">' + columns + '</div></details>' : '<div class="data-columns">' + columns + '</div>';
+  return '<article class="' + esc(classes) + '"><div class="data-entity-head"><div class="data-entity-title">' + inline(entity.title) + '</div><div class="data-entity-meta">' + roleBadge + badges.map(renderDataBadge).join('') + '</div></div>' + (entity.description ? '<div class="data-entity-desc">' + inline(entity.description) + '</div>' : '') + learning + schema + '</article>';
+}
+function renderDataModelSpine(spec) {
+  var items = Array.isArray(spec.modelSpine) ? spec.modelSpine : [];
+  if (!items.length) return '';
+  return '<div class="data-model-spine">' + items.map(function(item, index) {
+    var role = dataLearningRole(item && item.role), roleLabel = item && (item.roleLabel || dataLearningRoleLabel(role));
+    var link = index > 0 ? '<div class="data-spine-link">' + esc(item.relation || item.fromPrevious || '') + '</div>' : '';
+    return link + '<article class="data-spine-node role-' + esc(role || 'source') + '"><span class="data-spine-role">' + esc(roleLabel || '저장 단계') + '</span><strong class="data-spine-title">' + esc(item.title || item.label || item.id || '단계') + '</strong>' + (item.responsibility || item.description ? '<span class="data-spine-responsibility">' + esc(item.responsibility || item.description) + '</span>' : '') + '</article>';
+  }).join('') + '</div>';
+}
+function renderDataBoundaries(spec) {
+  var items = Array.isArray(spec.boundaries) ? spec.boundaries : [];
+  if (!items.length) return '';
+  return '<div class="data-boundaries">' + items.map(function(item) { return '<article class="data-boundary"><strong>' + esc(item.title || item.label || '경계') + '</strong>' + (item.description ? '<span>' + esc(item.description) + '</span>' : '') + '</article>'; }).join('') + '</div>';
+}
+function dataSectionAsDetails(spec, key) {
+  var presentation = spec && spec.presentation && typeof spec.presentation === 'object' ? spec.presentation : {};
+  return String(presentation[key] || '').toLowerCase() === 'details';
 }
 function dataRelationships(spec) {
   var raw = spec.relationships || spec.relations || spec.edges || [];
@@ -1857,11 +1944,12 @@ function dataRelationships(spec) {
 function renderDataRelationships(spec) {
   var rels = dataRelationships(spec);
   if (!rels.length) return '';
-  return '<div class="data-section-title">Relationships / Cardinality</div><div class="data-relationships">' + rels.map(function(rel, index) {
+  var body = '<div class="data-relationships">' + rels.map(function(rel, index) {
     var label = rel.cardinality || rel.label || rel.kind || rel.type || ('R' + (index + 1));
     var title = (rel.from || '?') + ' → ' + (rel.to || '?');
     return '<div class="data-relation-card"><strong>' + esc(label) + ' · ' + inline(title) + '</strong>' + (rel.description ? '<p>' + inline(rel.description) + '</p>' : '') + (rel.why ? '<p><b>왜:</b> ' + inline(rel.why) + '</p>' : '') + '</div>';
   }).join('') + '</div>';
+  return dataSectionAsDetails(spec, 'relationships') ? '<details class="data-secondary"><summary>Relationships / Cardinality · ' + rels.length + '개</summary>' + body + '</details>' : '<div class="data-section-title">Relationships / Cardinality</div>' + body;
 }
 function dataOperations(spec) {
   var keys = ['migrationOperations', 'operations', 'ddl', 'dml', 'backfill', 'rollback', 'verificationOperations'];
@@ -1877,21 +1965,23 @@ function dataOperations(spec) {
 function renderDataOperations(spec) {
   var ops = dataOperations(spec);
   if (!ops.length) return '';
-  return '<div class="data-section-title">Migration Plan · DDL / DML / Backfill</div><div class="data-migration-grid">' + ops.map(function(op, index) {
+  var body = '<div class="data-migration-grid">' + ops.map(function(op, index) {
     var type = op.type || op.kind || op.operation || ('STEP ' + (index + 1));
     var target = op.target || op.table || op.entity || op.column || '';
     var title = (target ? target + ' · ' : '') + (op.title || op.name || type);
     var badges = [type].concat(asTextArray(op.badges || op.flags || op.risks || op.safety)).slice(0, 4).map(renderDataBadge).join('');
     return '<div class="data-op-card"><strong>' + inline(title) + '</strong><div>' + badges + '</div>' + (op.description ? '<p>' + inline(op.description) + '</p>' : '') + (op.rollback || op.down ? '<p><b>Rollback:</b> ' + inline(op.rollback || op.down) + '</p>' : '') + (op.sql ? '<pre class="data-op-sql">' + esc(op.sql) + '</pre>' : '') + '</div>';
   }).join('') + '</div>';
+  return dataSectionAsDetails(spec, 'migration') ? '<details class="data-secondary"><summary>Migration Plan · DDL / DML / Backfill · ' + ops.length + '개</summary>' + body + '</details>' : '<div class="data-section-title">Migration Plan · DDL / DML / Backfill</div>' + body;
 }
 function renderDataVerification(spec) {
   var checks = spec.verificationQueries || spec.verifyQueries || spec.verification || spec.checks || [];
   if (!Array.isArray(checks) || !checks.length) return '';
-  return '<div class="data-section-title">Verification Queries / Evidence</div><div class="data-verification-grid">' + checks.map(function(check, index) {
+  var body = '<div class="data-verification-grid">' + checks.map(function(check, index) {
     if (typeof check === 'string') return '<div class="data-verify-card"><strong>V' + (index + 1) + '</strong><p>' + inline(check) + '</p></div>';
     return '<div class="data-verify-card"><strong>' + esc(check.title || check.id || ('V' + (index + 1))) + '</strong>' + (check.description ? '<p>' + inline(check.description) + '</p>' : '') + (check.sql ? '<pre class="data-op-sql">' + esc(check.sql) + '</pre>' : '') + '</div>';
   }).join('') + '</div>';
+  return dataSectionAsDetails(spec, 'verification') ? '<details class="data-secondary"><summary>Verification Queries / Evidence · ' + checks.length + '개</summary>' + body + '</details>' : '<div class="data-section-title">Verification Queries / Evidence</div>' + body;
 }
 function renderDataFlow(spec) {
   var flow = spec.runtimeFlow || spec.flow || spec.displayFlow || spec.readFlow;
@@ -1904,6 +1994,8 @@ function renderDataModelMigrationMapElement(el, spec) {
   if (!entities.length) { renderVisualFallbackElement(el, spec, null, 'data-model-migration-map은 entities 배열이 필요합니다. 원본은 fallback으로 보존했습니다.'); return; }
   el.className = 'data-visual';
   el.innerHTML = '<div class="data-visual-head"><div><div class="data-visual-title">' + esc(spec.title || 'Data Model / Migration Map') + '</div>' + (spec.subtitle ? '<div class="data-visual-subtitle">' + esc(spec.subtitle) + '</div>' : '<div class="data-visual-subtitle">DDL/DML, table 관계, runtime 표시 흐름을 분리해서 보는 데이터 구조 지도입니다.</div>') + '</div><span class="badge">Data Model / Migration Map</span></div>'
+    + renderDataModelSpine(spec)
+    + renderDataBoundaries(spec)
     + renderDataFlow(spec)
     + '<div class="data-visual-diagram"><div class="data-entity-grid">' + entities.map(renderDataEntityCard).join('') + '</div></div>'
     + renderDataRelationships(spec)

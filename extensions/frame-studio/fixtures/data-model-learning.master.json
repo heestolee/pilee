@@ -1,0 +1,223 @@
+{
+  "id": "event-inbox-learning-model",
+  "kind": "data-model-migration-map",
+  "title": "이벤트 Inbox 저장 구조",
+  "subtitle": "세 저장소의 책임과 연결을 먼저 읽고 schema·migration은 필요할 때 펼칩니다.",
+  "modelSpine": [
+    {
+      "id": "source",
+      "title": "Source transaction",
+      "role": "source",
+      "responsibility": "업무 변경과 outbox event를 함께 commit"
+    },
+    {
+      "id": "outbox",
+      "title": "Outbox",
+      "role": "transport",
+      "relation": "same transaction",
+      "responsibility": "재시도 가능한 전달 장부"
+    },
+    {
+      "id": "notification",
+      "title": "Notification",
+      "role": "core",
+      "relation": "worker materialize",
+      "responsibility": "channel과 무관한 사건 원본"
+    },
+    {
+      "id": "recipient",
+      "title": "Recipient",
+      "role": "recipient",
+      "relation": "1 : N",
+      "responsibility": "member별 read·delete 상태"
+    }
+  ],
+  "boundaries": [
+    {
+      "title": "기존 Admin 알림은 unchanged",
+      "description": "새 Partner inbox는 기존 Admin table·API·UI를 확장하지 않고 별도 bounded context로 저장합니다."
+    }
+  ],
+  "entities": [
+    {
+      "name": "admin_notification*",
+      "status": "same",
+      "learningRole": "unchanged",
+      "description": "기존 운영팀 알림 경계",
+      "purpose": "회귀 대상일 뿐 새 Partner event를 저장하지 않습니다.",
+      "keyRules": [
+        "기존 schema·API·UI 변경 없음"
+      ],
+      "mutableState": [
+        "이번 구현에서 없음"
+      ],
+      "columns": [
+        {
+          "name": "existing schema / API / UI",
+          "status": "same"
+        }
+      ]
+    },
+    {
+      "name": "partner_notification_outbox",
+      "status": "new",
+      "learningRole": "transport",
+      "description": "durable delivery ledger",
+      "purpose": "Source 성공과 알림 event 기록을 한 transaction으로 묶고 실패한 전달을 다시 시작합니다.",
+      "keyRules": [
+        "event_key UNIQUE",
+        "source row와 PENDING event atomic commit"
+      ],
+      "mutableState": [
+        "PENDING → PROCESSING → COMPLETED",
+        "FAILED / BLOCKED_RECIPIENT → retry·replay"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "primaryKey": true,
+          "status": "new"
+        },
+        {
+          "name": "event_key",
+          "unique": true,
+          "status": "new"
+        },
+        {
+          "name": "event_type / payload_json",
+          "status": "new"
+        },
+        {
+          "name": "status / retry_count / next_retry_at / last_error",
+          "status": "new"
+        }
+      ]
+    },
+    {
+      "name": "partner_notification",
+      "status": "new",
+      "learningRole": "core",
+      "description": "channel-independent event fact",
+      "purpose": "한 번 발생한 Partner 사건의 의미·등급·resource를 recipient 상태와 분리해 보존합니다.",
+      "keyRules": [
+        "idempotency_key UNIQUE",
+        "action_type·grade·resource가 사건 의미를 고정"
+      ],
+      "mutableState": [
+        "생성 후 사건 원본은 불변에 가깝게 유지",
+        "copy·target semantics는 열린 설계"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "primaryKey": true,
+          "status": "new"
+        },
+        {
+          "name": "action_type / grade",
+          "status": "new"
+        },
+        {
+          "name": "resource_type / resource_id",
+          "status": "new"
+        },
+        {
+          "name": "idempotency_key",
+          "unique": true,
+          "status": "new"
+        }
+      ]
+    },
+    {
+      "name": "partner_notification_recipient",
+      "status": "new",
+      "learningRole": "recipient",
+      "description": "member-scoped inbox state",
+      "purpose": "같은 사건을 누가 받았고 각 member가 읽거나 숨겼는지를 사건 원본과 독립적으로 관리합니다.",
+      "keyRules": [
+        "UNIQUE(notification_id, member_code)",
+        "member_code scope를 모든 조회·변경에 적용"
+      ],
+      "mutableState": [
+        "read_at",
+        "deleted_at"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "primaryKey": true,
+          "status": "new"
+        },
+        {
+          "name": "partner_notification_id",
+          "foreignKey": true,
+          "references": "partner_notification.id",
+          "status": "new"
+        },
+        {
+          "name": "member_code",
+          "foreignKey": true,
+          "references": "member.code",
+          "status": "new"
+        },
+        {
+          "name": "read_at / deleted_at",
+          "status": "new"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "from": "partner_notification.id",
+      "to": "partner_notification_recipient.partner_notification_id",
+      "cardinality": "1 : N",
+      "description": "사건 원본과 member별 상태 분리"
+    },
+    {
+      "from": "partner_notification_recipient.member_code",
+      "to": "member.code",
+      "cardinality": "N : 1",
+      "description": "인증 member scope"
+    }
+  ],
+  "migrationOperations": [
+    {
+      "type": "CREATE TABLE",
+      "target": "partner_notification_outbox",
+      "description": "event_key UNIQUE + status/retry index"
+    },
+    {
+      "type": "CREATE TABLE",
+      "target": "partner_notification",
+      "description": "idempotency/resource/created indexes"
+    },
+    {
+      "type": "CREATE TABLE",
+      "target": "partner_notification_recipient",
+      "description": "notification+member UNIQUE + member/read/delete indexes"
+    }
+  ],
+  "verificationQueries": [
+    {
+      "id": "V1",
+      "title": "orphan 0건",
+      "description": "notification 없는 recipient 0"
+    },
+    {
+      "id": "V2",
+      "title": "중복 0건",
+      "description": "event_key와 notification-member unique"
+    },
+    {
+      "id": "V3",
+      "title": "scope 격리",
+      "description": "타 member recipient 노출 0"
+    }
+  ],
+  "presentation": {
+    "relationships": "details",
+    "migration": "details",
+    "verification": "details"
+  }
+}
