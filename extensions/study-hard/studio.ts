@@ -206,6 +206,7 @@ export interface StudyAttachment {
 
 export interface StudyNotionSyncState {
 	pageId?: string;
+	calendarDate?: string;
 	pageUrl?: string;
 	sessionId?: string;
 	sectionHashes?: Record<string, string>;
@@ -698,6 +699,7 @@ function normalizeNotionSync(value: unknown): StudyNotionSyncState | undefined {
 		: undefined;
 	return {
 		pageId: typeof item.pageId === "string" ? item.pageId : undefined,
+		calendarDate: typeof item.calendarDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(item.calendarDate) ? item.calendarDate : undefined,
 		pageUrl: normalizeHttpUrl(item.pageUrl),
 		sessionId: typeof item.sessionId === "string" ? item.sessionId : undefined,
 		sectionHashes,
@@ -1451,16 +1453,51 @@ function exportReferenceHtml(reference: StudyNodeReference): string {
 	return `<article class="reference"><strong>${escapeExportHtml(reference.label)}</strong>${locus ? `<div class="muted">${escapeExportHtml(locus)}</div>` : ""}${reference.note ? `<p>${escapeExportHtml(reference.note)}</p>` : ""}${url ? `<a href="${escapeExportHtml(url)}" target="_blank" rel="noreferrer">원문 열기 ↗</a>` : ""}</article>`;
 }
 
+function exportCalloutMeta(tone?: StudyNoteBlock["tone"]): { icon: string; label: string } {
+	if (tone === "warning") return { icon: "⚠️", label: "주의" };
+	if (tone === "success") return { icon: "✅", label: "확인" };
+	if (tone === "question") return { icon: "❓", label: "질문" };
+	return { icon: "💡", label: "정보" };
+}
+
+function exportListItemDepth(value: string): { depth: number; text: string } {
+	const prefix = value.match(/^[\t ]*/)?.[0] || "";
+	const tabs = [...prefix].filter((character) => character === "\t").length;
+	const spaces = [...prefix].filter((character) => character === " ").length;
+	return { depth: tabs + Math.floor(spaces / 2), text: value.slice(prefix.length) };
+}
+
+function exportListHtml(items: string[], ordered: boolean): string {
+	type Item = { text: string; children: Item[] };
+	const roots: Item[] = [];
+	const stack: Item[] = [];
+	for (const raw of items) {
+		const parsed = exportListItemDepth(raw);
+		const depth = Math.min(parsed.depth, stack.length);
+		const item: Item = { text: parsed.text, children: [] };
+		if (depth > 0 && stack[depth - 1]) stack[depth - 1].children.push(item);
+		else roots.push(item);
+		stack[depth] = item;
+		stack.length = depth + 1;
+	}
+	const tag = ordered ? "ol" : "ul";
+	const render = (nodes: Item[]): string => `<${tag}>${nodes.map((item) => `<li>${escapeExportHtml(item.text)}${item.children.length ? render(item.children) : ""}</li>`).join("")}</${tag}>`;
+	return render(roots);
+}
+
 function exportCodeHtml(sample?: StudyCodeSample): string {
 	if (!sample?.code) return "";
 	if (String(sample.language || "").toLowerCase() === "mermaid") return `<div class="diagram"><pre class="mermaid">${escapeExportHtml(sample.code)}</pre></div>`;
 	const reference = sample.reference;
 	const heading = [reference?.path, reference?.symbol, reference?.revision].filter(Boolean).join(" · ") || sample.language || "code";
+	const mode = sample.lineNumberMode || "relative";
+	const startLine = mode === "source" ? Number(sample.startLine || 1) : 1;
+	const numbering = mode === "none" ? "" : `<div class="codeMeta"><em>Line numbering: ${escapeExportHtml(mode)}, start ${escapeExportHtml(startLine)}</em></div>`;
 	const annotations = (sample.annotations || []).map((annotation) => {
 		const range = annotation.endLine && annotation.endLine !== annotation.line ? `${annotation.line}–${annotation.endLine}` : String(annotation.line);
 		return `<li><strong>L${escapeExportHtml(range)} · ${escapeExportHtml(annotation.kind || "explain")}</strong><span>${escapeExportHtml(annotation.text)}</span></li>`;
 	}).join("");
-	return `<div class="codeStudy"><div class="codeTitle">${escapeExportHtml(heading)}</div><pre><code>${escapeExportHtml(sample.code)}</code></pre>${annotations ? `<ol class="annotations">${annotations}</ol>` : ""}</div>`;
+	return `<div class="codeStudy"><div class="codeTitle">${escapeExportHtml(heading)}</div>${numbering}<pre><code>${escapeExportHtml(sample.code)}</code></pre>${annotations ? `<ol class="annotations">${annotations}</ol>` : ""}</div>`;
 }
 
 function exportDiagramDataUrl(asset?: StudyDiagramExportAsset): string | undefined {
@@ -1474,11 +1511,11 @@ function exportNoteBlockHtml(block: StudyNoteBlock, state: StudyHardBoardState, 
 		return `<h${level}>${escapeExportHtml(block.text || block.title)}</h${level}>`;
 	}
 	if (block.type === "paragraph") return `<p>${escapeExportHtml(block.text)}</p>`;
-	if (block.type === "callout") return `<aside class="callout ${escapeExportHtml(block.tone || "info")}"><strong>${escapeExportHtml(block.title || "핵심")}</strong><p>${escapeExportHtml(block.body || block.text)}</p></aside>`;
-	if (block.type === "list") {
-		const tag = block.ordered ? "ol" : "ul";
-		return `<${tag}>${(block.items || []).map((item) => `<li>${escapeExportHtml(item)}</li>`).join("")}</${tag}>`;
+	if (block.type === "callout") {
+		const meta = exportCalloutMeta(block.tone);
+		return `<aside class="callout ${escapeExportHtml(block.tone || "info")}"><strong><span class="calloutIcon" aria-label="${meta.label}">${meta.icon}</span>${escapeExportHtml(block.title || "핵심")}</strong><p>${escapeExportHtml(block.body || block.text)}</p></aside>`;
 	}
+	if (block.type === "list") return exportListHtml(block.items || [], block.ordered === true);
 	if (block.type === "code") return exportCodeHtml(block.code);
 	if (block.type === "reference-list") return `<div class="references">${(block.references || []).map(exportReferenceHtml).join("")}</div>`;
 	const resolvedVisual = resolveStudyNoteBlockVisual(state.noteDocument, block);
@@ -1508,15 +1545,30 @@ function exportLearningCompanionHtml(state: StudyHardBoardState): string {
 	return `<section id="learning-companion"><h2>작업과 함께 쌓인 학습 기록</h2><aside class="callout"><strong>Companion · ${escapeExportHtml(companion.phase)}</strong><p>Frame과 코드는 작업 canonical로 유지하고, 이 섹션에는 의미 있는 변화와 학습 인사이트만 기록합니다.</p></aside><h3>작업 추적 · ${companion.events.length} events · ${companion.checkpoints.length} checkpoints</h3>${events ? `<ol>${events}</ol>` : `<p class="muted">아직 작업 checkpoint가 없습니다.</p>`}${proposals ? `<h3>작업 반영 제안</h3><div class="references">${proposals}</div>` : ""}</section>`;
 }
 
+function exportNoteSectionHtml(section: StudyNoteSection, state: StudyHardBoardState, diagramAssets: Map<string, StudyDiagramExportAsset>): string {
+	let headingLevel = 1;
+	const blocks = section.blocks.map((block) => {
+		if (block.type === "heading") {
+			const explicitLevel = Number(block.level);
+			headingLevel = [1, 2, 3].includes(explicitLevel) ? explicitLevel : Math.min(3, Math.max(2, headingLevel + 1));
+			const rendered = exportNoteBlockHtml({ ...block, level: headingLevel as 1 | 2 | 3 }, state, diagramAssets);
+			return `<div class="noteDepth${Math.max(0, headingLevel - 2)}">${rendered}</div>`;
+		}
+		const depth = Math.max(0, Math.min(2, headingLevel - 1));
+		return `<div class="noteDepth${depth}">${exportNoteBlockHtml(block, state, diagramAssets)}</div>`;
+	}).join("");
+	return `<section id="${escapeExportHtml(section.id)}"><h2>${escapeExportHtml(section.title)}</h2>${blocks}</section>`;
+}
+
 export function buildStudyNoteExportHtml(state: StudyHardBoardState, diagramAssetList: StudyDiagramExportAsset[] = []): string {
 	const document = state.noteDocument;
 	const diagramAssets = new Map(diagramAssetList.map((asset) => [asset.blockId, asset]));
-	const sections = document.sections.map((section) => `<section id="${escapeExportHtml(section.id)}"><h2>${escapeExportHtml(section.title)}</h2>${section.blocks.map((block) => exportNoteBlockHtml(block, state, diagramAssets)).join("")}</section>`).join("");
+	const sections = document.sections.map((section) => exportNoteSectionHtml(section, state, diagramAssets)).join("");
 	const companion = exportLearningCompanionHtml(state);
 	const sourceUrl = normalizeHttpUrl(state.url);
 	return `<!doctype html>
 <html lang="ko"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${escapeExportHtml(document.title)}</title>
-<style>:root{color-scheme:light;--text:#2d2925;--muted:#756e66;--line:#d8cfc1;--panel:#fffdf8;--accent:#157a6e;--warn:#b7791f;--ok:#3f7d54;--review:#7660a9}*{box-sizing:border-box}body{margin:0;background:#f6f1e7;color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}.page{max-width:920px;margin:0 auto;padding:48px 28px 90px}.hero{padding-bottom:22px;border-bottom:1px solid var(--line);margin-bottom:32px}.hero h1{font-size:34px;line-height:1.25;margin:0 0 10px}.meta,.muted{color:var(--muted);font-size:12px;line-height:1.6}.meta a{color:var(--accent)}section{margin:0 0 42px}section>h2{font-size:23px;padding-bottom:9px;border-bottom:1px solid var(--line)}h3{font-size:17px}p,li{line-height:1.75}li{margin:4px 0}.callout{border:1px solid #bfd1d8;border-left:5px solid #4f87a4;border-radius:12px;padding:13px 15px;background:#edf4f6;margin:15px 0}.callout.warning{border-left-color:var(--warn);background:#fff4dc}.callout.success{border-left-color:var(--ok);background:#edf6ee}.callout.question{border-left-color:var(--review);background:#f2edf8}.callout strong{display:block;margin-bottom:6px}.callout p{margin:0;white-space:pre-wrap}.diagram,.codeStudy,.reference{border:1px solid #d2c7b9;border-radius:14px;background:var(--panel);padding:14px;margin:15px 0;overflow:auto}.diagram svg{display:block;max-width:100%;height:auto;margin:auto}.codeTitle{font-size:11px;color:var(--muted);font-weight:700;margin-bottom:9px}.codeStudy pre{margin:0;padding:14px;background:#f1ece3;border-radius:10px;overflow:auto;font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace}.annotations{margin:12px 0 0;padding-left:24px}.annotations li{font-size:12px}.annotations strong,.annotations span{display:block}.references{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}.reference{margin:0}.reference p{font-size:12px}.reference a{color:var(--accent);font-weight:700;font-size:12px}.visualStudy{border:1px solid #d2c7b9;border-radius:16px;background:var(--panel);padding:14px;margin:16px 0}.visualStudy figcaption{display:grid;gap:4px;margin-bottom:10px}.visualStudy figcaption span{color:var(--muted);font-size:12px}.visualFrame{display:block;width:100%;min-height:280px;border:0;background:#fff;border-radius:12px}.visualFallback,.visualSpec{margin-top:10px}.visualFallback summary,.visualSpec summary{cursor:pointer;font-size:12px;font-weight:700;color:var(--accent)}.visualFallback img{display:block;max-width:100%;height:auto;margin:10px auto 0}.visualSpec pre{max-height:320px;overflow:auto;background:#f1ece3;border-radius:10px;padding:12px;font:11px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap}hr{border:0;border-top:1px solid var(--line);margin:28px 0}@media(max-width:640px){.page{padding:28px 16px 60px}.hero h1{font-size:27px}}</style>
+<style>:root{color-scheme:light;--text:#2d2925;--muted:#756e66;--line:#d8cfc1;--panel:#fffdf8;--accent:#157a6e;--warn:#b7791f;--ok:#3f7d54;--review:#7660a9}*{box-sizing:border-box}body{margin:0;background:#f6f1e7;color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}.page{max-width:920px;margin:0 auto;padding:48px 28px 90px}.hero{padding-bottom:22px;border-bottom:1px solid var(--line);margin-bottom:32px}.hero h1{font-size:34px;line-height:1.25;margin:0 0 10px}.meta,.muted{color:var(--muted);font-size:12px;line-height:1.6}.meta a{color:var(--accent)}section{margin:0 0 42px}section>h2{font-size:23px;padding-bottom:9px;border-bottom:1px solid var(--line)}h3{font-size:17px}p,li{line-height:1.75}li{margin:4px 0}.noteDepth1{margin-left:26px}.noteDepth2{margin-left:52px}.callout{border:1px solid #b9d6df;border-left:5px solid #4f87a4;border-radius:12px;padding:13px 15px;background:#edf6f8;margin:15px 0}.callout.warning{border-color:#e4c48d;border-left-color:var(--warn);background:#fff3df}.callout.success{border-color:#bbd9c0;border-left-color:var(--ok);background:#edf7ef}.callout.question{border-color:#cfc3e9;border-left-color:var(--review);background:#f3effa}.callout strong{display:flex;align-items:center;gap:7px;margin-bottom:6px}.calloutIcon{font-size:14px}.callout p{margin:0;white-space:pre-wrap}.diagram,.codeStudy,.reference{border:1px solid #d2c7b9;border-radius:14px;background:var(--panel);padding:14px;margin:15px 0;overflow:auto}.diagram svg{display:block;max-width:100%;height:auto;margin:auto}.codeTitle{font-size:11px;color:var(--muted);font-weight:700;margin-bottom:5px}.codeMeta{font-size:11px;color:var(--muted);margin:0 0 9px}.codeStudy pre{margin:0;padding:14px;background:#f1ece3;border-radius:10px;overflow:auto;font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace}.annotations{margin:12px 0 0;padding-left:24px}.annotations li{font-size:12px}.annotations strong,.annotations span{display:block}.references{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}.reference{margin:0}.reference p{font-size:12px}.reference a{color:var(--accent);font-weight:700;font-size:12px}.visualStudy{border:1px solid #d2c7b9;border-radius:16px;background:var(--panel);padding:14px;margin:16px 0}.visualStudy figcaption{display:grid;gap:4px;margin-bottom:10px}.visualStudy figcaption span{color:var(--muted);font-size:12px}.visualFrame{display:block;width:100%;min-height:280px;border:0;background:#fff;border-radius:12px}.visualFallback,.visualSpec{margin-top:10px}.visualFallback summary,.visualSpec summary{cursor:pointer;font-size:12px;font-weight:700;color:var(--accent)}.visualFallback img{display:block;max-width:100%;height:auto;margin:10px auto 0}.visualSpec pre{max-height:320px;overflow:auto;background:#f1ece3;border-radius:10px;padding:12px;font:11px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap}hr{border:0;border-top:1px solid var(--line);margin:28px 0}@media(max-width:640px){.page{padding:28px 16px 60px}.hero h1{font-size:27px}.noteDepth1{margin-left:14px}.noteDepth2{margin-left:28px}}</style>
 </head><body><main class="page"><header class="hero"><h1>${escapeExportHtml(document.title)}</h1><div class="meta">Study Hard · revision ${state.revision} · ${escapeExportHtml(new Date(state.updatedAt).toLocaleString("ko-KR"))}${sourceUrl ? ` · <a href="${escapeExportHtml(sourceUrl)}">원본 자료</a>` : ""}</div></header>${sections}${companion}</main><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script><script>window.addEventListener('message',function(event){if(!event.data||event.data.type!=='pilee:tft-visual-ready')return;document.querySelectorAll('iframe.visualFrame').forEach(function(frame){if(frame.contentWindow===event.source){var height=Math.max(220,Math.min(12000,Number(event.data.height)||0));if(height)frame.style.height=height+'px';}});});mermaid.initialize({startOnLoad:true,theme:'base',securityLevel:'strict'});</script></body></html>`;
 }
 
@@ -1620,9 +1672,16 @@ async function prepareExportDiagramAssets(state: StudyHardBoardState, value: unk
 	}
 }
 
+function localCalendarDate(now = new Date()): string {
+	const parts = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
+	const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+	return `${value.year}-${value.month}-${value.day}`;
+}
+
 function buildNotionSyncPayload(state: StudyHardBoardState, diagramAssets: StudyDiagramExportAsset[]): Record<string, unknown> {
 	return {
 		...materializeVisualReferences(state),
+		date: state.notionSync?.calendarDate || localCalendarDate(),
 		sourceUrl: state.url,
 		sessionId: state.runId,
 		qa: state.questions,
@@ -1657,14 +1716,16 @@ async function runStudyHardNotionSync(handle: StudyHardHandle, diagramAssets: St
 		const inputPath = join(exportDir(handle.state.runId), "notion-sync.json");
 		const syncedRevision = handle.state.revision;
 		const syncedHash = buildNoteHistoryBundle(handle.state).hash;
-		writeFileSync(inputPath, JSON.stringify(buildNotionSyncPayload(handle.state, diagramAssets), null, 2), "utf-8");
-		const { stdout } = await execFileAsync(process.env.STUDY_HARD_PYTHON || "python3", [handle.syncScript, "--file", inputPath], { maxBuffer: 4 * 1024 * 1024, timeout: 120_000 });
+		const syncPayload = buildNotionSyncPayload(handle.state, diagramAssets);
+		writeFileSync(inputPath, JSON.stringify(syncPayload, null, 2), "utf-8");
+		const { stdout } = await execFileAsync(process.env.STUDY_HARD_PYTHON || "python3", [handle.syncScript, "--file", inputPath], { maxBuffer: 4 * 1024 * 1024, timeout: 300_000 });
 		const result = JSON.parse(String(stdout).trim()) as Record<string, unknown>;
 		const currentRevision = handle.state.revision;
 		const staleAfterSync = buildNoteHistoryBundle(handle.state).hash !== syncedHash;
 		handle.state = mergeBoardState(handle.state, {
 			notionSync: {
 				pageId: result.pageId,
+				calendarDate: typeof result.calendarDate === "string" ? result.calendarDate : String(syncPayload.date || ""),
 				pageUrl: result.pageUrl,
 				sessionId: result.sessionId,
 				sectionHashes: result.sectionHashes,

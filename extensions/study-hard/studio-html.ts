@@ -102,6 +102,8 @@ export function buildStudyHardStudioHtml(capabilityToken = "", nativeVisualCaptu
     .noteSection { margin:0 0 34px; scroll-margin-top:80px; }
     .noteSection > h2 { font-size:21px; margin:0 0 14px; padding-bottom:8px; border-bottom:1px solid #d8cfc1; }
     .noteBlock { margin:12px 0; }
+    .noteDepth1 { margin-left:26px; }
+    .noteDepth2 { margin-left:52px; }
     .noteDiagram, .inlineFlow { border:1px solid #d2c7b9; border-radius:16px; background:#fffdf8; overflow:hidden; }
     .noteVisual { border:1px solid #d2c7b9; border-radius:16px; background:#fffdf8; padding:12px; overflow:hidden; }
     .noteVisualHeader { display:grid; gap:3px; margin:0 2px 10px; }
@@ -127,11 +129,12 @@ export function buildStudyHardStudioHtml(capabilityToken = "", nativeVisualCaptu
     .mermaidCompareGuide b { flex:0 0 auto; color:#2d5f70; }
     .noteBlock h1,.noteBlock h2,.noteBlock h3 { margin:18px 0 9px; }
     .noteBlock p { color:#453f38; line-height:1.72; margin:0; white-space:pre-wrap; }
-    .callout { border:1px solid #bfd1d8; border-left:5px solid #4f87a4; border-radius:12px; padding:12px 14px; background:#edf4f6; }
-    .callout.warning { border-left-color:var(--warn); background:#fff4dc; }
-    .callout.success { border-left-color:var(--ok); background:#edf6ee; }
-    .callout.question { border-left-color:var(--review); background:#f2edf8; }
-    .callout b { display:block; margin-bottom:5px; }
+    .callout { border:1px solid #b9d6df; border-left:5px solid #4f87a4; border-radius:12px; padding:12px 14px; background:#edf6f8; }
+    .callout.warning { border-color:#e4c48d; border-left-color:var(--warn); background:#fff3df; }
+    .callout.success { border-color:#bbd9c0; border-left-color:var(--ok); background:#edf7ef; }
+    .callout.question { border-color:#cfc3e9; border-left-color:var(--review); background:#f3effa; }
+    .callout b { display:flex; align-items:center; gap:7px; margin-bottom:5px; }
+    .calloutIcon { font-size:14px; }
     .noteList { margin:8px 0; padding-left:22px; color:#453f38; line-height:1.7; }
     .codeStudy { border:1px solid #d2c7b9; border-radius:14px; overflow:hidden; background:#fdfbf7; }
     .codeHeader { display:flex; justify-content:space-between; gap:10px; padding:8px 11px; background:#eee8de; border-bottom:1px solid #d8cfc1; color:#6f665e; font-size:10px; }
@@ -210,6 +213,8 @@ export function buildStudyHardStudioHtml(capabilityToken = "", nativeVisualCaptu
       .stepMain { grid-column:2 / -1; }
       .codeGrid { display:block; }
       .annotations { border-left:0; border-top:1px solid #293647; }
+      .noteDepth1 { margin-left:14px; }
+      .noteDepth2 { margin-left:28px; }
     }
   </style>
 </head>
@@ -249,12 +254,17 @@ export function buildStudyHardStudioHtml(capabilityToken = "", nativeVisualCaptu
     function mermaidComparisonSide(block){if(!block||block.type!=='heading')return'';var text=String(block.text||block.title||'').trim().toLowerCase();if(text==='before'||text==='현재'||text==='현재 구조')return'before';if(text==='after'||text==='제안'||text==='제안 구조'||text==='확장 구조'||text==='확장 후 구조')return'after';return'';}
     function isMermaidNoteBlock(block){return!!block&&block.type==='code'&&block.code&&String(block.code.language||'').toLowerCase()==='mermaid';}
     function mermaidComparisonPanelHtml(side,label,diagram,caption){var badge=side==='before'?'Before':'After';return'<article class="mermaidComparePanel '+side+'"><div class="mermaidCompareTitle" data-note-block="'+esc(label.id)+'"><span class="pill">'+badge+'</span>'+esc(label.text||label.title||badge)+'</div>'+noteBlockHtml(diagram)+'<div class="mermaidCompareCaption">'+noteBlockHtml(caption)+'</div></article>';}
-    function noteSectionBlocksHtml(blocks){var html='',index=0;while(index<blocks.length){var beforeLabel=blocks[index],beforeDiagram=blocks[index+1],beforeCaption=blocks[index+2],afterLabel=blocks[index+3],afterDiagram=blocks[index+4],afterCaption=blocks[index+5],paired=mermaidComparisonSide(beforeLabel)==='before'&&isMermaidNoteBlock(beforeDiagram)&&beforeCaption&&beforeCaption.type==='paragraph'&&mermaidComparisonSide(afterLabel)==='after'&&isMermaidNoteBlock(afterDiagram)&&afterCaption&&afterCaption.type==='paragraph';if(paired){html+='<div class="mermaidCompare">'+mermaidComparisonPanelHtml('before',beforeLabel,beforeDiagram,beforeCaption)+mermaidComparisonPanelHtml('after',afterLabel,afterDiagram,afterCaption)+'<div class="mermaidCompareGuide"><b>읽는 법</b><span>왼쪽 현재 구조에서 오른쪽 제안 구조로 비교하세요. 먼저 선과 노드·엔티티의 변화를 보고, 각 카드 아래 설명에서 저장 책임과 미정 제약을 확인합니다.</span></div></div>';index+=6;continue;}html+=noteBlockHtml(blocks[index]);index+=1;}return html;}
+    function calloutToneMeta(tone){if(tone==='warning')return{icon:'⚠️',label:'주의'};if(tone==='success')return{icon:'✅',label:'확인'};if(tone==='question')return{icon:'❓',label:'질문'};return{icon:'💡',label:'정보'};}
+    function noteListItemDepth(value){var source=String(value||''),prefix=(source.match(/^[\t ]*/)||[''])[0],tabs=(prefix.match(/\t/g)||[]).length,spaces=(prefix.match(/ /g)||[]).length;return{depth:tabs+Math.floor(spaces/2),text:source.slice(prefix.length)};}
+    function noteListHtml(items,ordered){var roots=[],stack=[],tag=ordered?'ol':'ul';(items||[]).forEach(function(raw){var parsed=noteListItemDepth(raw),depth=Math.min(parsed.depth,stack.length),item={text:parsed.text,children:[]};if(depth>0&&stack[depth-1])stack[depth-1].children.push(item);else roots.push(item);stack[depth]=item;stack.length=depth+1;});function render(nodes){return'<'+tag+' class="noteList">'+nodes.map(function(item){return'<li>'+esc(item.text)+(item.children.length?render(item.children):'')+'</li>';}).join('')+'</'+tag+'>';}return render(roots);}
+    function effectiveNoteHeadingLevel(block,current){var explicit=Number(block&&block.level);return[1,2,3].includes(explicit)?explicit:Math.min(3,Math.max(2,current+1));}
+    function noteDepthHtml(html,depth){return'<div class="noteDepth'+Math.max(0,Math.min(2,depth))+'">'+html+'</div>';}
+    function noteSectionBlocksHtml(blocks){var html='',index=0,headingLevel=1;while(index<blocks.length){var beforeLabel=blocks[index],beforeDiagram=blocks[index+1],beforeCaption=blocks[index+2],afterLabel=blocks[index+3],afterDiagram=blocks[index+4],afterCaption=blocks[index+5],paired=mermaidComparisonSide(beforeLabel)==='before'&&isMermaidNoteBlock(beforeDiagram)&&beforeCaption&&beforeCaption.type==='paragraph'&&mermaidComparisonSide(afterLabel)==='after'&&isMermaidNoteBlock(afterDiagram)&&afterCaption&&afterCaption.type==='paragraph';if(paired){html+=noteDepthHtml('<div class="mermaidCompare">'+mermaidComparisonPanelHtml('before',beforeLabel,beforeDiagram,beforeCaption)+mermaidComparisonPanelHtml('after',afterLabel,afterDiagram,afterCaption)+'<div class="mermaidCompareGuide"><b>읽는 법</b><span>왼쪽 현재 구조에서 오른쪽 제안 구조로 비교하세요. 먼저 선과 노드·엔티티의 변화를 보고, 각 카드 아래 설명에서 저장 책임과 미정 제약을 확인합니다.</span></div></div>',headingLevel-1);index+=6;continue;}var block=blocks[index];if(block&&block.type==='heading'){headingLevel=effectiveNoteHeadingLevel(block,headingLevel);html+=noteDepthHtml(noteBlockHtml(Object.assign({},block,{level:headingLevel})),headingLevel-2);}else html+=noteDepthHtml(noteBlockHtml(block),headingLevel-1);index+=1;}return html;}
     function noteBlockHtml(b){
       if(b.type==='heading'){var l=Math.min(3,Math.max(1,Number(b.level||2)));return'<div class="noteBlock" data-note-block="'+esc(b.id)+'"><h'+l+'>'+esc(b.text||b.title||'')+'</h'+l+'></div>';}
       if(b.type==='paragraph')return'<div class="noteBlock" data-note-block="'+esc(b.id)+'"><p>'+esc(b.text||'')+'</p></div>';
-      if(b.type==='callout')return'<div class="noteBlock callout '+esc(b.tone||'info')+'" data-note-block="'+esc(b.id)+'"><b>'+esc(b.title||'핵심')+'</b><p>'+esc(b.body||b.text||'')+'</p></div>';
-      if(b.type==='list'){var tag=b.ordered?'ol':'ul';return'<div class="noteBlock" data-note-block="'+esc(b.id)+'"><'+tag+' class="noteList">'+(b.items||[]).map(function(x){return'<li>'+esc(x)+'</li>';}).join('')+'</'+tag+'></div>';}
+      if(b.type==='callout'){var meta=calloutToneMeta(b.tone);return'<div class="noteBlock callout '+esc(b.tone||'info')+'" data-note-block="'+esc(b.id)+'"><b><span class="calloutIcon" aria-label="'+esc(meta.label)+'">'+meta.icon+'</span>'+esc(b.title||'핵심')+'</b><p>'+esc(b.body||b.text||'')+'</p></div>';}
+      if(b.type==='list')return'<div class="noteBlock" data-note-block="'+esc(b.id)+'">'+noteListHtml(b.items||[],b.ordered===true)+'</div>';
       if(b.type==='visual'&&b.visual){var visualTitle=b.title||b.visual.title||'TFT visual';return'<div class="noteBlock noteVisual" data-note-block="'+esc(b.id)+'"><div class="noteVisualHeader"><b>'+esc(visualTitle)+'</b>'+(b.body?'<span class="small">'+esc(b.body)+'</span>':'')+'</div><iframe class="noteVisualFrame" data-note-visual="'+esc(b.id)+'" title="'+esc(visualTitle)+'" loading="eager" src="/note-visual/'+encodeURIComponent(b.id)+'"></iframe><details class="noteVisualSpec"><summary>원본 visual spec 보기</summary><pre>'+esc(JSON.stringify(b.visual,null,2))+'</pre></details></div>';}
       if(b.type==='code'&&b.code&&String(b.code.language||'').toLowerCase()==='mermaid')return'<div class="noteBlock noteDiagram" data-note-block="'+esc(b.id)+'"><div class="noteDiagramCanvas" data-mermaid-source="'+esc(encodeURIComponent(b.code.code||''))+'"><span class="small">다이어그램을 렌더링하는 중...</span></div></div>';
       if(b.type==='code')return'<div class="noteBlock" data-note-block="'+esc(b.id)+'">'+codeSampleHtml(b.code)+'</div>';

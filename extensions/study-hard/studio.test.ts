@@ -346,6 +346,10 @@ test("buildStudyHardStudioHtml gives the note the left+center width and overlays
 	assert.match(html, /mermaidCompare \{ display:grid; grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
 	assert.match(html, /mermaidComparePanel \.noteDiagramCanvas \{ min-height:210px; max-height:380px/);
 	assert.match(html, /function noteSectionBlocksHtml/);
+	assert.match(html, /function noteListHtml/);
+	assert.match(html, /function effectiveNoteHeadingLevel/);
+	assert.match(html, /function calloutToneMeta/);
+	assert.match(html, /\.noteDepth2 \{ margin-left:52px; \}/);
 	assert.match(html, /mermaidComparisonSide\(beforeLabel\)==='before'/);
 	assert.match(html, /왼쪽 현재 구조에서 오른쪽 제안 구조로 비교하세요/);
 	assert.match(html, /data-mermaid-source/);
@@ -419,7 +423,11 @@ test("buildStudyNoteExportHtml creates a standalone learning note with Mermaid a
 			kind: "overview",
 			title: "핵심 구조",
 			blocks: [
-				{ id: "mental-model", type: "callout", tone: "success", title: "한 문장", body: "공통 core와 platform edge를 분리한다." },
+				{ id: "structure", type: "heading", level: 2, text: "구조" },
+				{ id: "before", type: "heading", level: 3, text: "Before" },
+				{ id: "mental-model", type: "callout", tone: "question", title: "한 문장", body: "공통 core와 platform edge를 분리한다." },
+				{ id: "nested-list", type: "list", items: ["상위", "\t하위", "  같은 하위"] },
+				{ id: "code", type: "code", code: { language: "text", code: "JS -> Native", lineNumberMode: "relative" } },
 				{ id: "diagram", type: "code", code: { language: "mermaid", code: "flowchart LR\n  JS --> Native" } },
 				{ id: "refs", type: "reference-list", references: [{ kind: "link", label: "공식 문서", url: "https://reactnative.dev/architecture/xplat-implementation" }] },
 			],
@@ -432,6 +440,11 @@ test("buildStudyNoteExportHtml creates a standalone learning note with Mermaid a
 	assert.match(html, /flowchart LR/);
 	assert.match(html, /공식 문서/);
 	assert.match(html, /mermaid@11/);
+	assert.match(html, /class="noteDepth2"/);
+	assert.match(html, /<ul><li>상위<ul><li>하위<\/li><li>같은 하위<\/li><\/ul><\/li><\/ul>/);
+	assert.match(html, /<em>Line numbering: relative, start 1<\/em>/);
+	assert.match(html, /class="callout question"/);
+	assert.match(html, /aria-label="질문">❓<\/span>/);
 	assert.doesNotMatch(html, /htmlExportButton/);
 });
 
@@ -499,10 +512,12 @@ test("export routes write HTML to Downloads and pass rendered diagrams to Notion
 		assert.equal(notionResult.staleAfterSync, false);
 		const state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
 		assert.equal(state.notionSync.pageId, "page-1");
+		assert.match(state.notionSync.calendarDate, /^\d{4}-\d{2}-\d{2}$/);
 		assert.equal(state.notionSync.lastSyncedRevision, 1);
 		assert.equal(state.notionSync.sectionHashes["#document"], "hash-1");
 		const syncInput = JSON.parse(readFileSync(join(testStateDir, `${runId}-exports`, "notion-sync.json"), "utf-8"));
 		assert.equal(syncInput.qa[0].id, "Q001");
+		assert.equal(syncInput.date, state.notionSync.calendarDate);
 		assert.equal(syncInput.sourceUrl, "https://example.com/export");
 		assert.equal(syncInput.diagramAssets[0].blockId, "diagram");
 		assert.equal(readFileSync(syncInput.diagramAssets[0].path, "utf-8"), "rendered-png");
