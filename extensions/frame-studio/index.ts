@@ -758,6 +758,8 @@ h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .arch-badge.source-of-truth { border-color:#bae6fd; background:#ecfeff; color:#0e7490; }
 .arch-columns { margin-top:8px; display:grid; gap:4px; }
 .arch-column { display:flex; justify-content:space-between; gap:7px; align-items:flex-start; border-top:1px solid rgba(148,163,184,.28); padding-top:4px; font-size:10px; }
+.arch-column-copy { min-width:0; flex:1; display:grid; gap:2px; }
+.arch-column-desc { color:#64748b; font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; font-size:9px; line-height:1.32; overflow-wrap:anywhere; }
 .arch-column.new, .arch-column.removed, .arch-column.changed, .arch-column.reused, .arch-column.same { border-top:0; border-left:3px solid transparent; border-radius:8px; padding:5px 7px; }
 .arch-column.new { border-left-color:#16a34a; background:#f0fdf4; }
 .arch-column.removed { border-left-color:#dc2626; background:#fef2f2; color:#991b1b; }
@@ -766,7 +768,7 @@ h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .arch-column.same { border-left-color:#94a3b8; background:#f8fafc; }
 .arch-column.removed .arch-column-name { text-decoration:line-through; text-decoration-thickness:1.5px; }
 .arch-column-name { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; overflow-wrap:anywhere; }
-.arch-column-badges { display:flex; flex-wrap:wrap; gap:3px; justify-content:flex-end; }
+.arch-column-badges { display:flex; flex:0 0 auto; flex-wrap:wrap; gap:3px; justify-content:flex-end; max-width:148px; }
 .arch-badge.new { border-color:#86efac; background:#dcfce7; color:#166534; }
 .arch-badge.removed { border-color:#fca5a5; background:#fee2e2; color:#991b1b; }
 .arch-badge.changed { border-color:#fcd34d; background:#fef3c7; color:#92400e; }
@@ -796,6 +798,7 @@ h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .arch-visual.schema-diff-dark .arch-node-desc { color:#cbd5e1; }
 .arch-visual.schema-diff-dark .arch-node-badges .arch-badge { border-color:#475569; background:#1f2937; color:#cbd5e1; }
 .arch-visual.schema-diff-dark .arch-column { border-color:#334155; color:#e2e8f0; }
+.arch-visual.schema-diff-dark .arch-column-desc { color:#94a3b8; }
 .arch-visual.schema-diff-dark .arch-column.new { border-left-color:#22c55e; background:rgba(34,197,94,.13); }
 .arch-visual.schema-diff-dark .arch-column.removed { border-left-color:#ef4444; background:rgba(239,68,68,.14); color:#fecaca; }
 .arch-visual.schema-diff-dark .arch-column.changed { border-left-color:#f59e0b; background:rgba(245,158,11,.14); }
@@ -1194,14 +1197,16 @@ function archTextLines(value, charsPerLine, maxLines) {
   return Math.max(1, Math.min(maxLines || 5, lines));
 }
 function archNodeHeight(node) {
-  var cols = Array.isArray(node.columns) ? node.columns.length : 0;
+  var columns = Array.isArray(node.columns) ? node.columns : [];
+  var cols = columns.length;
+  var columnDescriptionLines = columns.reduce(function(total, column) { return total + archTextLines(column && (column.description || column.detail || column.note || column.summary), 44, 2); }, 0);
   var badgeCount = asTextArray(node.badges || node.flags || node.requirements).length;
   var titleExtra = Math.max(0, archTextLines(node.title || node.name || node.id, 24, 3) - 1) * 18;
   var descExtra = Math.max(0, archTextLines(node.description || node.beginnerDescription || node.role, 48, 5) - 2) * 15;
   var contractCount = (node.responsibility || node.contract || node.owns ? 1 : 0) + (asTextArray(node.evidence || node.verify || node.verification).length ? 1 : 0);
   var learningCount = [node.frontendAnalogy || node.frontEndAnalogy || node.analogy || node.frontendMentalModel, node.whyHere || node.whyThisNode || node.rationale, node.ifWrong || node.failureMode || node.wrongLayerRisk].filter(Boolean).length;
   var base = node.type === 'table' || node.kind === 'table' ? 194 : 160;
-  return Math.max(base, 126 + titleExtra + descExtra + contractCount * 34 + Math.min(2, learningCount) * 20 + cols * 24 + Math.ceil(badgeCount / 3) * 16);
+  return Math.max(base, 126 + titleExtra + descExtra + contractCount * 34 + Math.min(2, learningCount) * 20 + cols * 24 + columnDescriptionLines * 13 + Math.ceil(badgeCount / 3) * 16);
 }
 function collectArchLanes(spec) {
   var explicit = Array.isArray(spec.lanes) ? spec.lanes.map(normalizeArchLane) : [];
@@ -1287,7 +1292,8 @@ function renderArchColumns(columns) {
     var badges = renderArchStatusBadge(status, archColumnStatusLabel(column, status)) + columnBadges(column).map(renderArchBadge).join('');
     var refs = column.references || column.ref || column.to;
     var label = refs ? name + ' → ' + refs : name;
-    return '<div class="arch-column' + (status ? ' ' + status : '') + '"><span class="arch-column-name">' + esc(label) + '</span><span class="arch-column-badges">' + badges + '</span></div>';
+    var description = column.description || column.detail || column.note || column.summary || '';
+    return '<div class="arch-column' + (status ? ' ' + status : '') + '"><span class="arch-column-copy"><span class="arch-column-name">' + esc(label) + '</span>' + (description ? '<span class="arch-column-desc">' + inline(shortText(description, 110)) + '</span>' : '') + '</span><span class="arch-column-badges">' + badges + '</span></div>';
   }).join('') + '</div>';
 }
 function renderArchContract(node) {

@@ -361,8 +361,8 @@ test("Architecture schema diff theme renders semantic column lifecycle colors an
 				title: "legacy_table",
 				status: "before",
 				columns: [
-					{ name: "id", status: "same", statusLabel: "유지" },
-					{ name: "legacy_image", status: "removed", statusLabel: "삭제" },
+					{ name: "id", status: "same", statusLabel: "유지", description: "기존 식별자를 그대로 유지" },
+					{ name: "legacy_image", status: "removed", statusLabel: "삭제", description: "정규화 이후 사용하지 않는 이미지 컬럼" },
 				],
 			},
 			{
@@ -372,9 +372,9 @@ test("Architecture schema diff theme renders semantic column lifecycle colors an
 				title: "normalized_table",
 				status: "after",
 				columns: [
-					{ name: "section_title", status: "new", statusLabel: "신규" },
-					{ name: "writer_type", status: "changed", statusLabel: "확장" },
-					{ name: "content", status: "reused", statusLabel: "재사용" },
+					{ name: "section_title", status: "new", statusLabel: "신규", description: "섹션 제목을 별도 저장" },
+					{ name: "writer_type", status: "changed", statusLabel: "확장", description: "SYSTEM 작성자 유형 추가" },
+					{ name: "content", status: "reused", statusLabel: "재사용", description: "기존 본문 컬럼에 최종 HTML 저장" },
 				],
 			},
 		],
@@ -391,6 +391,9 @@ test("Architecture schema diff theme renders semantic column lifecycle colors an
 	assert.match(element.innerHTML, /class="arch-badge new">신규/);
 	assert.match(element.innerHTML, /class="arch-badge changed">확장/);
 	assert.match(element.innerHTML, /class="arch-badge reused">재사용/);
+	assert.match(element.innerHTML, /class="arch-column-desc">섹션 제목을 별도 저장/);
+	assert.match(element.innerHTML, /class="arch-column-desc">SYSTEM 작성자 유형 추가/);
+	assert.match(element.innerHTML, /class="arch-column-desc">기존 본문 컬럼에 최종 HTML 저장/);
 
 	const lightElement = { id: "arch-schema-diff-light-test", className: "", innerHTML: "" };
 	studio.renderArchitectureFlowElement(lightElement, {
@@ -408,6 +411,8 @@ test("Architecture schema diff theme renders semantic column lifecycle colors an
 
 	const pageHtml = buildPageHtml();
 	assert.match(pageHtml, /\.arch-column\.removed \.arch-column-name \{ text-decoration:line-through/);
+	assert.match(pageHtml, /\.arch-column-desc \{ color:#64748b/);
+	assert.match(pageHtml, /columnDescriptionLines \* 13/);
 	assert.match(pageHtml, /\.arch-visual\.schema-diff-light \.arch-canvas \{ min-width:0/);
 	assert.match(pageHtml, /\.arch-node\.before \{ border-top-color:#38bdf8/);
 	assert.match(pageHtml, /\.arch-node\.after \{ border-top-color:#22c55e/);
