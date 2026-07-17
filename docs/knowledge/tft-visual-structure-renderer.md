@@ -19,8 +19,9 @@ applies_to:
 source:
   - user-direction:2026-05-10-tft-visual-db-structure
   - user-direction:2026-06-04-tft-visual-render-healing
-reviewed_at: 2026-06-04
-reviewed_commit: a38b2ff6fc8398a9fccdbc53852aeeab9a1c466c
+  - user-direction:2026-07-17-schema-diff-column-lifecycle
+reviewed_at: 2026-07-17
+reviewed_commit: e8a5212fb8212e0ebd97a9baa6b6da0791e630ff
 related:
   - frame-studio-interactive-decision-ui
   - frame-verify-contract
@@ -76,13 +77,24 @@ TFT Studio는 `elkjs` 기반 top-down renderer를 기본으로 사용합니다. 
 
 - `new` — 새 테이블/컬럼/source-of-truth
 - `changed` / `semantic change` — 기존 구조의 의미나 제약이 바뀜
+- `reused` / `repurposed` — 기존 컬럼을 다른 event/책임에서도 재사용함
 - `removed` / `deleted` — 제거되는 컬럼, 하드코딩, assumption
 - `same` — 유지되는 항목
 - `fk` — 다른 테이블을 참조하는 관계
 - `unique` — 중복을 막는 invariant
 - `unique part` — 복합 unique의 일부
 
+색만으로 상태를 전달하지 않습니다. 컬럼 행의 border/background와 함께 `신규`, `확장`, `재사용`, `삭제`, `유지` 같은 text badge를 표시합니다. `removed`는 빨강과 취소선을 함께 사용하고, 실제 변경에 삭제가 없으면 예시를 위해 삭제 행을 만들어내지 않습니다.
+
 관계선은 긴 문장을 edge label에 직접 쓰지 않습니다. Edge에는 짧은 label을 두고, label은 흰 배경 pill로 렌더링합니다. Edge path는 카드 본문을 가로지르지 않고 lane gutter 또는 하단/right-side bus를 통해 우회해야 합니다. 자세한 `from → to`, 왜 필요한지, 검증 포인트는 relation card나 note에서 설명합니다. 이렇게 해야 label이 카드와 겹치지 않고, 사용자가 관계를 학습할 수 있습니다.
+
+## Schema Diff Comparison Rule
+
+Before/After schema diff는 “ERD를 그린다”는 이름보다 사용자가 비교를 읽는 방식이 중요합니다. 확정되지 않은 FK/cardinality를 억지 관계선으로 만들지 않고, 현재 구조와 변경 후 구조를 같은 table-card 문법으로 나란히 보여줍니다. 각 컬럼의 lifecycle 차이가 첫 시선에 들어와야 하며, 긴 prose나 중복 table card가 diff보다 먼저 보이면 실패입니다.
+
+Study Hard처럼 이미 밝은 문서 surface 안에 들어가는 visual은 `schema-diff-light`를 기본 선택으로 사용합니다. 어두운 패널을 중첩하면 시각적으로 무거워지고 주변 노트와 정보 위계가 끊길 수 있습니다. dark variant는 사용자가 명시적으로 원하거나 독립 visual surface에서 대비가 필요한 경우에만 선택합니다.
+
+`schema-diff-light`는 공용 architecture flow의 넓은 canvas 최소 폭을 그대로 강제하지 않습니다. 두 lane의 명시적 `nodeWidth`, `laneWidth`, `laneGap`으로 실제 consumer iframe에 맞추고, renderer는 schema diff canvas의 `min-width`를 해제합니다. 일반 architecture flow의 넓은 diagram containment/내부 scroll 규칙은 유지합니다. 구현 가능성만 보고 PASS하지 않고 Study Hard iframe 같은 실제 consumer width와 visual-only endpoint를 모두 캡처해 두 카드가 잘리지 않는지 확인합니다.
 
 ## Learning Rule
 

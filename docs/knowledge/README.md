@@ -81,7 +81,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 |---|---|---:|---:|---:|---|
 | [Architecture friction은 TFT의 검증 축이다](./architecture-friction-tft-lens.md) | active | high | 2026-06-02 | ce5e875 | architecture, frame, decide, verify, deep-module, shallow-module |
 | [학습노트 companion은 독립 canonical을 sidecar로 연결한다](./learning-note-companion-artifact.md) | active | high | 2026-07-17 | f24686c | learning-note, companion-artifact, frame-v2, study-hard, worktree, checkpoint |
-| [Study Hard 엔진은 public이고 개인 publisher만 private다](./study-hard-public-engine-private-publisher.md) | active | high | 2026-07-17 | f24686c | study-hard, public-private-boundary, notion, runtime-profile, local-state |
+| [Study Hard 엔진은 public이고 개인 publisher만 private다](./study-hard-public-engine-private-publisher.md) | active | high | 2026-07-17 | e8a5212 | study-hard, public-private-boundary, notion, runtime-profile, local-state |
 | [Utils surface는 사용자 계약을 만들지 않는다](./utility-surface-stays-invisible.md) | active | high | 2026-06-02 | d8f8c4c | utils, internal, surface, abstraction, extension |
 
 ### database
@@ -220,7 +220,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [테스트는 책임 경계에 맞춰 다듬는다](./test-boundary-refactor.md) | active | high | 2026-06-16 | bc20328 | testing, mock, refactor, boundary, unit-test, contract-test |
 | [Command shim은 reviewable workflow source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-06-02 | 83617e9 | command-shim, skill, tft, frame, slash-command, routing |
 | [TFT Preference Regression Gate는 사용자 선호 역전을 막는다](./tft-preference-regression-gate.md) | active | high | 2026-06-02 | 83617e9 | tft, frame, decide, verify, ask-user-question, regression |
-| [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-06-04 | a38b2ff | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
+| [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-07-17 | e8a5212 | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
 | [To-production은 현재 worktree의 production 기반 branch 전환이다](./to-production-source-preserving-hotfix.md) | active | high | 2026-07-02 | 5e6348a | to-production, hotfix, production, git, in-place, branch-switch |
 | [TUI 질문은 작은 의사결정 게이트다](./tui-ask-decision-overlay.md) | active | high | 2026-06-02 | d8f8c4c | tui, ask-user-question, decision-gate, tool, overlay |
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
@@ -381,6 +381,7 @@ graph TD
   doc_learning_note_companion_artifact --> doc_slice_auto_commit_rhythm
   doc_learning_note_companion_artifact --> doc_study_hard_public_engine_private_publisher
   doc_learning_note_companion_artifact --> doc_worktree_session_continuity
+  doc_study_hard_public_engine_private_publisher --> doc_context_loading_minimal_surface
   doc_study_hard_public_engine_private_publisher --> doc_embedded_webview_script_escape_boundary
   doc_study_hard_public_engine_private_publisher --> doc_frame_v2_learning_note_pilot
   doc_study_hard_public_engine_private_publisher --> doc_learning_note_companion_artifact
@@ -745,6 +746,6 @@ graph TD
 ## Review Metadata Summary
 
 - Documents: 111
-- Links: 392
+- Links: 393
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
