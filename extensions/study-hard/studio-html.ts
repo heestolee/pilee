@@ -291,7 +291,7 @@ export function buildStudyHardStudioHtml(capabilityToken = "", nativeVisualCaptu
     }
     function bindQuestionRetries(){document.querySelectorAll('[data-question-retry]').forEach(function(button){button.addEventListener('click',function(){button.disabled=true;post('/questions/retry',{questionId:button.dataset.questionRetry}).catch(function(error){window.alert('질문을 다시 처리하지 못했습니다: '+error.message);}).finally(function(){button.disabled=false;});});});}
     function questionDraftKey(context){return questionScope==='session'?'session':context.scope+':'+[context.nodeId,context.flowId,context.flowStepId,context.noteBlockId].filter(Boolean).join(':');}
-    function activeQuestionProcessing(items){var stages=new Set(['queued','running','answered','merging','failed']);return items.slice().reverse().find(function(q){return stages.has(q.processingStatus);});}
+    function activeQuestionProcessing(items){var latest=items[items.length-1],stages=new Set(['queued','running','answered','merging','failed']);return latest&&stages.has(latest.processingStatus)?latest:null;}
     function scrollThreadToBottom(thread){if(!thread)return;var apply=function(){thread.scrollTop=thread.scrollHeight;};requestAnimationFrame(apply);setTimeout(apply,0);}
     function isEnterKey(event){var key=event&&event.key||'',code=event&&event.code||'';return key==='Enter'||key==='NumpadEnter'||code==='Enter'||code==='NumpadEnter';}
     function isQuestionSubmitShortcut(event){if(!event||event.isComposing||!isEnterKey(event)||event.ctrlKey||event.shiftKey)return false;return(event.altKey&&!event.metaKey)||(event.metaKey&&!event.altKey);}

@@ -309,6 +309,11 @@ test("buildStudyHardStudioHtml gives the note the left+center width and overlays
 	assert.match(html, /노트 반영만 재시도/);
 	assert.match(html, /Editor가 대상 노트 블록에 반영 중/);
 	assert.match(html, /activeQuestionProcessing/);
+	const activeQuestionProcessingSource = /function activeQuestionProcessing\(items\)\{[^}]+\}/.exec(html)?.[0];
+	assert.ok(activeQuestionProcessingSource);
+	const activeQuestionProcessing = new Function(`return (${activeQuestionProcessingSource})`)() as (items: Array<{ id: string; processingStatus: string }>) => { id: string } | null;
+	assert.equal(activeQuestionProcessing([{ id: "old-failure", processingStatus: "failed" }, { id: "latest-success", processingStatus: "applied" }]), null);
+	assert.equal(activeQuestionProcessing([{ id: "old-success", processingStatus: "applied" }, { id: "latest-failure", processingStatus: "failed" }])?.id, "latest-failure");
 	assert.match(html, /composerState/);
 	assert.match(html, /conversationCard/);
 	assert.match(html, /#detailDrawer #conversation \{ flex:0 0 560px; height:560px; min-height:560px; display:flex; flex-direction:column; \}/);
