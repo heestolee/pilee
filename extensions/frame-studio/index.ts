@@ -732,7 +732,9 @@ h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .phase-panel-count { flex:0 0 auto; border:1px solid #cbd5e1; background:#fff; color:#475569; border-radius:999px; padding:3px 8px; font-size:10px; font-weight:900; }
 .phase-stage-list { display:grid; gap:10px; }
 .phase-stage { border:1px solid #e2e8f0; border-radius:15px; background:rgba(255,255,255,.88); padding:10px; }
-.phase-stage-label { display:inline-flex; align-items:center; border-radius:999px; background:#0f172a; color:#fff; padding:3px 8px; font-size:10px; font-weight:950; margin-bottom:8px; }
+.phase-stage-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+.phase-stage-label { display:inline-flex; align-items:center; flex:0 0 auto; border-radius:999px; background:#0f172a; color:#fff; padding:3px 8px; font-size:10px; font-weight:950; }
+.phase-stage-summary { color:#334155; font-size:11.5px; font-weight:900; line-height:1.4; overflow-wrap:anywhere; }
 .phase-stage-steps { display:flex; gap:22px; overflow-x:auto; padding:2px 5px 8px 2px; overscroll-behavior:contain; }
 .phase-step { position:relative; flex:1 0 220px; border:1px solid #dbeafe; border-top:4px solid #2563eb; border-radius:13px; background:#fff; padding:9px 10px; min-width:0; }
 .phase-step:not(:last-child)::after { content:'→'; position:absolute; right:-18px; top:50%; transform:translateY(-50%); color:#64748b; font-size:16px; font-weight:950; }
@@ -1232,6 +1234,24 @@ function isPhaseExceptionNode(node) {
 function renderPhaseStep(node) {
   return '<article class="phase-step"><span class="phase-step-code">' + esc(node.step || 'step') + '</span><strong class="phase-step-title">' + esc(node.title || node.id || '처리 단계') + '</strong>' + (node.technicalLabel ? '<code class="phase-step-tech">' + esc(node.technicalLabel) + '</code>' : '') + (node.description ? '<p class="phase-step-desc">' + esc(node.description) + '</p>' : '') + '</article>';
 }
+function phaseNodeArea(node) {
+  var match = /^\[([^\]]+)\]/.exec(String(node && node.title || ''));
+  return match ? match[1].trim() : '';
+}
+function phasePlainTitle(node) {
+  return String(node && (node.title || node.id) || '처리 단계').replace(/^\[[^\]]+\]\s*/, '').trim();
+}
+function phaseStageSummary(nodes) {
+  if (!nodes.length) return '';
+  var areas = [];
+  nodes.forEach(function(node) {
+    var area = phaseNodeArea(node);
+    if (area && areas[areas.length - 1] !== area) areas.push(area);
+  });
+  var first = phasePlainTitle(nodes[0]), last = phasePlainTitle(nodes[nodes.length - 1]);
+  var process = first === last ? first : first + ' → ' + last;
+  return (areas.length ? areas.join(' → ') + ' · ' : '') + process;
+}
 function renderPhaseStages(nodes) {
   var groups = [];
   var byKey = new Map();
@@ -1241,7 +1261,7 @@ function renderPhaseStages(nodes) {
     group.nodes.push(node);
   });
   return groups.map(function(group, index) {
-    return '<section class="phase-stage"><span class="phase-stage-label">' + esc(group.key) + '</span><div class="phase-stage-steps">' + group.nodes.map(renderPhaseStep).join('') + '</div></section>' + (index < groups.length - 1 ? '<div class="phase-stage-arrow">↓</div>' : '');
+    return '<section class="phase-stage"><div class="phase-stage-head"><span class="phase-stage-label">' + esc(group.key) + '</span><span class="phase-stage-summary">' + esc(phaseStageSummary(group.nodes)) + '</span></div><div class="phase-stage-steps">' + group.nodes.map(renderPhaseStep).join('') + '</div></section>' + (index < groups.length - 1 ? '<div class="phase-stage-arrow">↓</div>' : '');
   }).join('');
 }
 function renderPhaseExceptions(nodes) {

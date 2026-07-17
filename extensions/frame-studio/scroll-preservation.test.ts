@@ -221,6 +221,10 @@ test("layers와 nodes가 함께 있는 두 구간 flow는 독립 phase panel로 
 	assert.equal(element.className, "phase-visual");
 	assert.match(element.innerHTML, /A\. 알림 적재/);
 	assert.match(element.innerHTML, /B\. 사용자 조회/);
+	assert.match(element.innerHTML, /phase-stage-summary/);
+	assert.match(element.innerHTML, /Source DB · 업무 row 변경/);
+	assert.match(element.innerHTML, /Backend · PENDING 이벤트 claim/);
+	assert.match(element.innerHTML, /Frontend → Partner DB · 조회 요청 → 알림 SELECT/);
 	assert.match(element.innerHTML, /업무 row 변경/);
 	assert.match(element.innerHTML, /PENDING 이벤트 claim/);
 	assert.match(element.innerHTML, /활성 수신자 없음/);
