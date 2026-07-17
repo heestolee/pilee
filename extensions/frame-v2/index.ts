@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import { learningCompanionManifestPath, writeLearningCompanionManifest } from "../learning-companion/state.ts";
-import { studyHardStatePathFor } from "../study-hard/studio.ts";
+import { attachStudyHardLearningCompanion, studyHardStatePathFor } from "../study-hard/studio.ts";
 import { buildFrameIdentity, type FrameIdentity, formatFrameIdentityHint } from "../tft-commands/frame-identity.ts";
 import { buildFrameWorktreeForkArgs, type FrameWorktreeForkParams } from "../tft-commands/frame-worktree-fork.ts";
 import {
@@ -111,6 +111,7 @@ function attachFrameV2LearningCompanion(record: FrameV2CommandContextRecord, fra
 	manifestPath?: string;
 	companionId?: string;
 	warning?: string;
+	stateAttached?: boolean;
 	frameV2Manifest?: Record<string, unknown>;
 } {
 	try {
@@ -127,9 +128,19 @@ function attachFrameV2LearningCompanion(record: FrameV2CommandContextRecord, fra
 			manifestPath: companion.path,
 			companionId: companion.manifest.companionId,
 		});
+		let stateAttached = false;
+		let warning: string | undefined;
+		try {
+			attachStudyHardLearningCompanion(companion.manifest);
+			stateAttached = true;
+		} catch (error) {
+			warning = `Study Hard state 반영 보류: ${error instanceof Error ? error.message : String(error)}`;
+		}
 		return {
 			manifestPath: companion.path,
 			companionId: companion.manifest.companionId,
+			stateAttached,
+			warning,
 			frameV2Manifest: manifest as unknown as Record<string, unknown>,
 		};
 	} catch (error) {
@@ -282,7 +293,9 @@ function registerFrameV2StateTool(pi: ExtensionAPI): void {
 				const companion = attachFrameV2LearningCompanion(record, readiness.frame);
 				const manifest = companion.frameV2Manifest ?? readyManifest;
 				const companionLine = companion.warning
-					? `\n⚠ 학습노트 companion 연결은 건너뛰었습니다: ${companion.warning}`
+					? companion.manifestPath
+						? `\n⚠ 학습노트 companion sidecar는 저장했고 ${companion.warning}`
+						: `\n⚠ 학습노트 companion 연결은 건너뛰었습니다: ${companion.warning}`
 					: `\n✓ 학습노트 companion: ${companion.manifestPath}`;
 				return {
 					content: [{ type: "text" as const, text: `✓ Frame v2 ready: ${framePath}${companionLine}` }],

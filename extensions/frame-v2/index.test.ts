@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { loadPersistedStudyHardState, startStudyHardStudio, stopStudyHardStudios } from "../study-hard/studio.ts";
 import type { FrameIdentity } from "../tft-commands/frame-identity.ts";
 import { parseFrameV2Args } from "./artifact.ts";
 import frameV2, { buildFrameV2Prompt, setFrameV2ForkRunnerForTests } from "./index.ts";
@@ -74,6 +75,8 @@ test("Frame v2 prompt keeps two-stage visual/refinement and work-start gates", (
 test("/frame-v2 registers independent command and persists command-context manifest", async () => {
 	const root = mkdtempSync(join(tmpdir(), "frame-v2-command-"));
 	const piDir = join(root, ".pi");
+	const originalStateDir = process.env.STUDY_HARD_STATE_DIR;
+	process.env.STUDY_HARD_STATE_DIR = join(root, "study-hard");
 	mkdirSync(piDir, { recursive: true });
 	writeFileSync(join(piDir, "worktree-meta.json"), JSON.stringify({ name: "frame-v2-test", branch: "feature/test" }));
 
@@ -123,6 +126,11 @@ test("/frame-v2 registers independent command and persists command-context manif
 		assert.equal(manifest.status, "drafting");
 		assert.equal(manifest.mode, "draft");
 		assert.match(manifest.studyHard.runId, /^frame-v2-/);
+		await startStudyHardStudio(fakePi, ctx, {
+			url: manifest.studyHard.sourceUrl,
+			runId: manifest.studyHard.runId,
+			title: "Frame v2 command test",
+		});
 
 		const toolCtx = { sessionManager: { getSessionFile: () => sessionFile } } as any;
 		const blocked = await tools.get("frame_v2_state").execute("state-1", { action: "ready" }, new AbortController().signal, () => {}, toolCtx);
@@ -147,6 +155,10 @@ test("/frame-v2 registers independent command and persists command-context manif
 		assert.equal(companion.frame.initialCanonicalHash, "frame-v2-test-hash");
 		assert.equal(readyManifest.learningCompanion.manifestPath, companionPath);
 		assert.equal(readyManifest.learningCompanion.companionId, companion.companionId);
+		assert.equal(ready.details.companion.stateAttached, true);
+		const learningState = loadPersistedStudyHardState(manifest.studyHard.runId);
+		assert.equal(learningState?.companion?.companionId, companion.companionId);
+		assert.equal(learningState?.companion?.events[0]?.kind, "frame_ready");
 		assert.match(ready.content[0].text, /학습노트 companion/);
 
 		let forkArgs = "";
@@ -166,6 +178,9 @@ test("/frame-v2 registers independent command and persists command-context manif
 		assert.equal(JSON.parse(readFileSync(manifestPath, "utf8")).status, "started");
 	} finally {
 		setFrameV2ForkRunnerForTests(undefined);
+		stopStudyHardStudios();
+		if (originalStateDir === undefined) delete process.env.STUDY_HARD_STATE_DIR;
+		else process.env.STUDY_HARD_STATE_DIR = originalStateDir;
 		rmSync(root, { recursive: true, force: true });
 	}
 });
