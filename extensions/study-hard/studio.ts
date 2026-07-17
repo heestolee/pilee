@@ -45,7 +45,7 @@ export type StudyLayoutMode = "auto" | "manual";
 export type StudySurface = "map" | "flow" | "note";
 export type StudyFlowVariant = "before" | "after" | "current";
 export type StudyNoteSectionKind = "overview" | "node" | "flow" | "practice" | "reflection";
-export type StudyNoteBlockType = "heading" | "paragraph" | "callout" | "list" | "code" | "reference-list" | "flow-ref" | "visual" | "divider";
+export type StudyNoteBlockType = "heading" | "paragraph" | "callout" | "list" | "code" | "reference-list" | "flow-ref" | "visual" | "visual-ref" | "divider";
 
 const MAX_QUESTION_ATTACHMENTS = 4;
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
@@ -81,6 +81,11 @@ export interface StudyCodeSample {
 	annotations?: StudyCodeAnnotation[];
 }
 
+export interface StudyNoteVisualRef {
+	sourceBlockId: string;
+	laneId?: string;
+}
+
 export interface StudyNoteBlock {
 	id: string;
 	type: StudyNoteBlockType;
@@ -95,6 +100,7 @@ export interface StudyNoteBlock {
 	references?: StudyNodeReference[];
 	flowId?: string;
 	visual?: Record<string, unknown>;
+	visualRef?: StudyNoteVisualRef;
 }
 
 export interface StudyNoteSection {
@@ -459,10 +465,13 @@ function normalizeNoteBlocks(value: unknown): StudyNoteBlock[] | undefined {
 			const id = String(item.id || `block-${index + 1}`);
 			if (seen.has(id)) throw new Error(`duplicate note block id: ${id}`);
 			seen.add(id);
-			const type = ["heading", "paragraph", "callout", "list", "code", "reference-list", "flow-ref", "visual", "divider"].includes(String(item.type)) ? String(item.type) as StudyNoteBlockType : undefined;
+			const type = ["heading", "paragraph", "callout", "list", "code", "reference-list", "flow-ref", "visual", "visual-ref", "divider"].includes(String(item.type)) ? String(item.type) as StudyNoteBlockType : undefined;
 			if (!type) throw new Error(`unknown note block type: ${item.type}`);
 			const visual = item.visual && typeof item.visual === "object" && !Array.isArray(item.visual) ? JSON.parse(JSON.stringify(item.visual)) as Record<string, unknown> : undefined;
+			const visualRefItem = item.visualRef && typeof item.visualRef === "object" && !Array.isArray(item.visualRef) ? item.visualRef as Record<string, unknown> : undefined;
+			const visualRef = visualRefItem && typeof visualRefItem.sourceBlockId === "string" ? { sourceBlockId: visualRefItem.sourceBlockId, laneId: typeof visualRefItem.laneId === "string" ? visualRefItem.laneId : undefined } : undefined;
 			if (type === "visual" && !visual) throw new Error(`visual note block requires a visual spec: ${id}`);
+			if (type === "visual-ref" && !visualRef) throw new Error(`visual-ref note block requires sourceBlockId: ${id}`);
 			return {
 				id,
 				type,
@@ -477,6 +486,7 @@ function normalizeNoteBlocks(value: unknown): StudyNoteBlock[] | undefined {
 				references: normalizeReferences(item.references),
 				flowId: typeof item.flowId === "string" ? item.flowId : undefined,
 				visual,
+				visualRef,
 			};
 		});
 }
@@ -501,7 +511,59 @@ function normalizeNoteDocument(value: unknown, fallbackTitle: string): StudyNote
 				blocks: normalizeNoteBlocks(section.blocks) || [],
 			};
 		});
-	return { title: typeof item.title === "string" ? item.title : fallbackTitle, sections };
+	const document = { title: typeof item.title === "string" ? item.title : fallbackTitle, sections };
+	for (const block of sections.flatMap((section) => section.blocks)) {
+		if (block.type === "visual-ref") resolveStudyNoteBlockVisual(document, block);
+	}
+	return document;
+}
+
+function visualLaneKey(value: unknown): string | undefined {
+	if (typeof value === "string") return value;
+	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+	const lane = value as Record<string, unknown>;
+	return typeof lane.id === "string" ? lane.id : typeof lane.title === "string" ? lane.title : undefined;
+}
+
+export function resolveStudyNoteBlockVisual(document: StudyNoteDocument, block: StudyNoteBlock): Record<string, unknown> | undefined {
+	if (block.type === "visual" && block.visual) return JSON.parse(JSON.stringify(block.visual)) as Record<string, unknown>;
+	if (block.type !== "visual-ref" || !block.visualRef) return undefined;
+	const source = document.sections.flatMap((section) => section.blocks).find((candidate) => candidate.id === block.visualRef?.sourceBlockId);
+	if (!source || source.type !== "visual" || !source.visual) throw new Error(`visual-ref source must be a visual block: ${block.id} -> ${block.visualRef.sourceBlockId}`);
+	const derived = JSON.parse(JSON.stringify(source.visual)) as Record<string, unknown>;
+	if (block.visualRef.laneId) {
+		const lanes = Array.isArray(derived.lanes) ? derived.lanes : [];
+		const lane = lanes.find((candidate) => visualLaneKey(candidate) === block.visualRef?.laneId);
+		if (!lane) throw new Error(`visual-ref lane not found: ${block.id} -> ${block.visualRef.laneId}`);
+		const nodes = Array.isArray(derived.nodes) ? derived.nodes.filter((candidate) => candidate && typeof candidate === "object" && !Array.isArray(candidate) && String((candidate as Record<string, unknown>).lane || "") === block.visualRef?.laneId) : [];
+		if (!nodes.length) throw new Error(`visual-ref lane has no nodes: ${block.id} -> ${block.visualRef.laneId}`);
+		const nodeIds = new Set(nodes.map((candidate) => String((candidate as Record<string, unknown>).id || "")));
+		derived.lanes = [lane];
+		derived.nodes = nodes;
+		derived.edges = Array.isArray(derived.edges) ? derived.edges.filter((candidate) => {
+			if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return false;
+			const edge = candidate as Record<string, unknown>;
+			return nodeIds.has(String(edge.source || "")) && nodeIds.has(String(edge.target || ""));
+		}) : [];
+	}
+	if (block.title) derived.title = block.title;
+	if (block.body) derived.subtitle = block.body;
+	return derived;
+}
+
+function materializeVisualReferences(state: StudyHardBoardState): StudyHardBoardState {
+	const materialized = JSON.parse(JSON.stringify(state)) as StudyHardBoardState;
+	for (const section of materialized.noteDocument.sections) {
+		for (const block of section.blocks) {
+			if (block.type !== "visual-ref") continue;
+			const original = state.noteDocument.sections.flatMap((candidate) => candidate.blocks).find((candidate) => candidate.id === block.id);
+			if (!original) continue;
+			block.type = "visual";
+			block.visual = resolveStudyNoteBlockVisual(state.noteDocument, original);
+			delete block.visualRef;
+		}
+	}
+	return materialized;
 }
 
 function normalizeFlows(value: unknown): StudyDataFlow[] | undefined {
@@ -1061,7 +1123,7 @@ function saveState(handle: StudyHardHandle): void {
 }
 
 function broadcast(handle: StudyHardHandle): void {
-	const payload = `data: ${JSON.stringify(handle.state)}\n\n`;
+	const payload = `data: ${JSON.stringify(materializeVisualReferences(handle.state))}\n\n`;
 	for (const client of [...handle.clients]) {
 		try { client.write(payload); } catch { handle.clients.delete(client); }
 	}
@@ -1419,12 +1481,13 @@ function exportNoteBlockHtml(block: StudyNoteBlock, state: StudyHardBoardState, 
 	}
 	if (block.type === "code") return exportCodeHtml(block.code);
 	if (block.type === "reference-list") return `<div class="references">${(block.references || []).map(exportReferenceHtml).join("")}</div>`;
-	if (block.type === "visual" && block.visual) {
-		const visualTitle = block.title || (typeof block.visual.title === "string" ? block.visual.title : "TFT visual");
-		const embedHtml = buildTftVisualEmbedHtml(block.visual);
+	const resolvedVisual = resolveStudyNoteBlockVisual(state.noteDocument, block);
+	if (resolvedVisual) {
+		const visualTitle = block.title || (typeof resolvedVisual.title === "string" ? resolvedVisual.title : "TFT visual");
+		const embedHtml = buildTftVisualEmbedHtml(resolvedVisual);
 		const embedSource = `data:text/html;base64,${Buffer.from(embedHtml).toString("base64")}`;
 		const fallbackSource = exportDiagramDataUrl(diagramAssets.get(block.id));
-		return `<figure class="visualStudy"><figcaption><strong>${escapeExportHtml(visualTitle)}</strong>${block.body ? `<span>${escapeExportHtml(block.body)}</span>` : ""}</figcaption><iframe class="visualFrame" title="${escapeExportHtml(visualTitle)}" sandbox="allow-scripts" loading="eager" src="${embedSource}"></iframe>${fallbackSource ? `<details class="visualFallback"><summary>PNG fallback 보기</summary><img src="${fallbackSource}" alt="${escapeExportHtml(visualTitle)} PNG fallback" /></details>` : ""}<details class="visualSpec"><summary>원본 visual spec 보기</summary><pre>${escapeExportHtml(JSON.stringify(block.visual, null, 2))}</pre></details></figure>`;
+		return `<figure class="visualStudy"><figcaption><strong>${escapeExportHtml(visualTitle)}</strong>${block.body ? `<span>${escapeExportHtml(block.body)}</span>` : ""}</figcaption><iframe class="visualFrame" title="${escapeExportHtml(visualTitle)}" sandbox="allow-scripts" loading="eager" src="${embedSource}"></iframe>${fallbackSource ? `<details class="visualFallback"><summary>PNG fallback 보기</summary><img src="${fallbackSource}" alt="${escapeExportHtml(visualTitle)} PNG fallback" /></details>` : ""}<details class="visualSpec"><summary>${block.type === "visual-ref" ? "파생 visual spec 보기" : "원본 visual spec 보기"}</summary><pre>${escapeExportHtml(JSON.stringify(resolvedVisual, null, 2))}</pre></details></figure>`;
 	}
 	if (block.type === "flow-ref") {
 		const flow = state.flows.find((item) => item.id === block.flowId);
@@ -1479,7 +1542,10 @@ function browserDiagramBlockIds(state: StudyHardBoardState): string[] {
 }
 
 function visualNoteBlocks(state: StudyHardBoardState): StudyNoteBlock[] {
-	return state.noteDocument.sections.flatMap((section) => section.blocks).filter((block) => block.type === "visual" && !!block.visual);
+	return state.noteDocument.sections.flatMap((section) => section.blocks).flatMap((block) => {
+		const visual = resolveStudyNoteBlockVisual(state.noteDocument, block);
+		return visual ? [{ ...block, type: "visual" as const, visual, visualRef: undefined }] : [];
+	});
 }
 
 function persistNotionDiagramAssets(state: StudyHardBoardState, value: unknown, expected = [...browserDiagramBlockIds(state), ...visualNoteBlocks(state).map((block) => block.id)]): StudyDiagramExportAsset[] {
@@ -1556,7 +1622,7 @@ async function prepareExportDiagramAssets(state: StudyHardBoardState, value: unk
 
 function buildNotionSyncPayload(state: StudyHardBoardState, diagramAssets: StudyDiagramExportAsset[]): Record<string, unknown> {
 	return {
-		...state,
+		...materializeVisualReferences(state),
 		sourceUrl: state.url,
 		sessionId: state.runId,
 		qa: state.questions,
@@ -1695,7 +1761,7 @@ function semanticMergeFingerprint(state: StudyHardBoardState): string {
 }
 
 function buildEditorPrompt(state: StudyHardBoardState, answers: Array<{ question: StudyQuestionCard; answer: string }>): string {
-	return `# Study Hard Editor / Merger\n\n여러 Tutor 답변을 현재 학습 노트에 한 번만 병합하세요. 직접 상태를 수정할 수 없으며, 부모 서버가 검증할 JSON 제안만 반환합니다.\n\n## 기준 revision\n${state.revision}\n\n## 현재 학습 상태\n${JSON.stringify({ noteDocument: state.noteDocument, nodes: state.nodes, edges: state.edges, flows: state.flows, goals: state.goals, recommendedNodeId: state.recommendedNodeId, summary: state.summary, followups: state.followups }, null, 2)}\n\n## Tutor 답변\n${JSON.stringify(answers.map(({ question, answer }) => ({ questionId: question.id, scope: question.scope, question: question.question, context: questionContextSnapshot(state, question), answer })), null, 2)}\n\n## 병합 규칙\n- 기존 section/block id와 내용을 삭제하지 않습니다. 필요한 설명을 보강하거나 새 stable id를 추가합니다.\n- type: "visual" block의 visual spec은 canonical 구조 자료입니다. 사용자가 해당 시각화를 바꾸라고 명시하지 않았다면 원본 spec 전체를 그대로 보존하고, 변경할 때도 완전한 유효 spec을 출력합니다.\n- 단순 Q&A 로그를 붙이지 말고 기존 문단의 mental model, 실행 순서, 코드 설명, 오해 방지 문장을 자연스럽게 다듬습니다.\n- 여러 답변이 같은 내용을 다루면 중복을 제거합니다.\n- nodes, edges, flows, goals, questions 등 다른 board state는 참고만 하고 절대 출력하거나 수정하지 않습니다.\n- 반드시 아래 JSON 객체만 반환합니다. Markdown fence나 설명을 덧붙이지 않습니다.\n\n{\n  "baseRevision": ${state.revision},\n  "noteDocument": {"title":"...","sections":[]}\n}\n\nnoteDocument와 baseRevision은 반드시 포함합니다.`;
+	return `# Study Hard Editor / Merger\n\n여러 Tutor 답변을 현재 학습 노트에 한 번만 병합하세요. 직접 상태를 수정할 수 없으며, 부모 서버가 검증할 JSON 제안만 반환합니다.\n\n## 기준 revision\n${state.revision}\n\n## 현재 학습 상태\n${JSON.stringify({ noteDocument: state.noteDocument, nodes: state.nodes, edges: state.edges, flows: state.flows, goals: state.goals, recommendedNodeId: state.recommendedNodeId, summary: state.summary, followups: state.followups }, null, 2)}\n\n## Tutor 답변\n${JSON.stringify(answers.map(({ question, answer }) => ({ questionId: question.id, scope: question.scope, question: question.question, context: questionContextSnapshot(state, question), answer })), null, 2)}\n\n## 병합 규칙\n- 기존 section/block id와 내용을 삭제하지 않습니다. 필요한 설명을 보강하거나 새 stable id를 추가합니다.\n- type: "visual" block의 visual spec은 canonical 구조 자료입니다. 사용자가 해당 시각화를 바꾸라고 명시하지 않았다면 원본 spec 전체를 그대로 보존하고, 변경할 때도 완전한 유효 spec을 출력합니다.\n- type: "visual-ref" block은 sourceBlockId와 laneId만 보존하며 원본 visual spec을 복제하지 않습니다.\n- 단순 Q&A 로그를 붙이지 말고 기존 문단의 mental model, 실행 순서, 코드 설명, 오해 방지 문장을 자연스럽게 다듬습니다.\n- 여러 답변이 같은 내용을 다루면 중복을 제거합니다.\n- nodes, edges, flows, goals, questions 등 다른 board state는 참고만 하고 절대 출력하거나 수정하지 않습니다.\n- 반드시 아래 JSON 객체만 반환합니다. Markdown fence나 설명을 덧붙이지 않습니다.\n\n{\n  "baseRevision": ${state.revision},\n  "noteDocument": {"title":"...","sections":[]}\n}\n\nnoteDocument와 baseRevision은 반드시 포함합니다.`;
 }
 
 function assertPreservedIds(label: string, before: string[], after: string[]): void {
@@ -2045,25 +2111,26 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 					"Cache-Control": "no-cache",
 					Connection: "keep-alive",
 				});
-				res.write(`data: ${JSON.stringify(handle.state)}\n\n`);
+				res.write(`data: ${JSON.stringify(materializeVisualReferences(handle.state))}\n\n`);
 				clients.add(res);
 				req.on("close", () => clients.delete(res));
 				return;
 			}
 			if (pathname === "/state") {
-				sendJson(res, 200, handle.state);
+				sendJson(res, 200, materializeVisualReferences(handle.state));
 				return;
 			}
 			const noteVisualMatch = /^\/note-visual\/([^/]+)$/.exec(pathname);
 			if (noteVisualMatch && req.method === "GET") {
 				const blockId = decodeURIComponent(noteVisualMatch[1] || "");
-				const block = handle.state.noteDocument.sections.flatMap((section) => section.blocks).find((item) => item.id === blockId && item.type === "visual" && !!item.visual);
-				if (!block?.visual) {
+				const block = handle.state.noteDocument.sections.flatMap((section) => section.blocks).find((item) => item.id === blockId);
+				const visual = block ? resolveStudyNoteBlockVisual(handle.state.noteDocument, block) : undefined;
+				if (!visual) {
 					sendJson(res, 404, { ok: false, error: `TFT visual block not found: ${blockId}` });
 					return;
 				}
 				res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
-				res.end(buildTftVisualEmbedHtml(block.visual));
+				res.end(buildTftVisualEmbedHtml(visual));
 				return;
 			}
 			if (pathname === "/export/html" && req.method === "POST") {

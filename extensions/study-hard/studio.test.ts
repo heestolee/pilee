@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { setGlimpseOpenForTests } from "../utils/glimpse.ts";
 import type { LearningCompanionManifest } from "../learning-companion/state.ts";
-import { attachStudyHardLearningCompanion, buildStudyHardStudioHtml, buildStudyNoteExportHtml, checkpointStudyHardLearning, createInitialBoardState, layoutStudyGraph, loadPersistedStudyHardState, mergeBoardState, openExistingStudyHardStudio, proposeStudyHardLearningChange, recordStudyHardLearningEvent, registerStudyHardBoardTool, startStudyHardStudio, stopStudyHardStudios, updateStudyHardStudio } from "./studio.ts";
+import { attachStudyHardLearningCompanion, buildStudyHardStudioHtml, buildStudyNoteExportHtml, checkpointStudyHardLearning, createInitialBoardState, layoutStudyGraph, loadPersistedStudyHardState, mergeBoardState, openExistingStudyHardStudio, proposeStudyHardLearningChange, recordStudyHardLearningEvent, registerStudyHardBoardTool, resolveStudyNoteBlockVisual, startStudyHardStudio, stopStudyHardStudios, updateStudyHardStudio } from "./studio.ts";
 
 const originalStateDir = process.env.STUDY_HARD_STATE_DIR;
 const testStateDir = mkdtempSync(join(tmpdir(), "study-hard-state-"));
@@ -168,6 +168,41 @@ test("mergeBoardState preserves TFT visual specs as stable learning-note blocks"
 	assert.throws(() => mergeBoardState(next, {
 		noteDocument: { title: "Invalid", sections: [{ id: "visuals", kind: "flow", title: "시각화", blocks: [{ id: "missing", type: "visual" }] }] },
 	}), /visual note block requires a visual spec/);
+});
+
+test("visual-ref derives one lane from the canonical visual spec without copying it", () => {
+	const current = createInitialBoardState({ url: "https://example.com", runId: "visual-ref-contract" });
+	const visual = {
+		kind: "architecture-flow",
+		title: "Schema Diff",
+		lanes: [{ id: "before", title: "Phase 1" }, { id: "after", title: "Phase 2" }],
+		nodes: [
+			{ id: "before-table", lane: "before", title: "현재" },
+			{ id: "after-table", lane: "after", title: "확장" },
+		],
+		edges: [{ source: "before-table", target: "after-table", label: "확장" }],
+	};
+	const next = mergeBoardState(current, {
+		noteDocument: { title: "Visual ref", sections: [{ id: "visuals", kind: "flow", title: "시각화", blocks: [
+			{ id: "schema-diff", type: "visual", visual },
+			{ id: "phase-two", type: "visual-ref", title: "Phase 2 · 컬럼 변화", body: "확장 구조만 자세히 봅니다.", visualRef: { sourceBlockId: "schema-diff", laneId: "after" } },
+		] }] },
+	});
+	const reference = next.noteDocument.sections[0]?.blocks[1];
+	assert.deepEqual(reference?.visualRef, { sourceBlockId: "schema-diff", laneId: "after" });
+	assert.equal(reference?.visual, undefined);
+	const derived = resolveStudyNoteBlockVisual(next.noteDocument, reference!);
+	assert.deepEqual(derived?.lanes, [{ id: "after", title: "Phase 2" }]);
+	assert.deepEqual((derived?.nodes as any[]).map((node) => node.id), ["after-table"]);
+	assert.deepEqual(derived?.edges, []);
+	assert.equal(derived?.title, "Phase 2 · 컬럼 변화");
+	assert.equal(derived?.subtitle, "확장 구조만 자세히 봅니다.");
+	assert.throws(() => mergeBoardState(next, {
+		noteDocument: { title: "Invalid", sections: [{ id: "visuals", kind: "flow", title: "시각화", blocks: [
+			{ id: "schema-diff", type: "visual", visual },
+			{ id: "bad-ref", type: "visual-ref", visualRef: { sourceBlockId: "schema-diff", laneId: "missing" } },
+		] }] },
+	}), /visual-ref lane not found/);
 });
 
 test("mergeBoardState clears a stale flow step when switching variants", () => {
@@ -520,20 +555,42 @@ test("visual export routes use native snapshots for HTML fallback and Notion ass
 	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/visual-export", runId, syncScript: fakeSyncScript, downloadDir });
 	try {
 		updateStudyHardStudio(runId, {
-			noteDocument: { title: "Visual Export", sections: [{ id: "visuals", kind: "flow", title: "시각화", blocks: [{ id: "architecture", type: "visual", title: "Frame에서 저장까지", visual: { kind: "architecture-flow", title: "Frame에서 저장까지", lanes: ["Frame", "Study Hard"], nodes: [{ id: "frame", lane: "Frame", title: "TFT visual" }], edges: [] } }] }] },
+			noteDocument: { title: "Visual Export", sections: [{ id: "visuals", kind: "flow", title: "시각화", blocks: [
+				{ id: "schema-diff", type: "visual", title: "Schema Diff", visual: { kind: "architecture-flow", title: "Schema Diff", lanes: [{ id: "before", title: "Phase 1" }, { id: "after", title: "Phase 2" }], nodes: [{ id: "before-table", lane: "before", title: "현재 컬럼" }, { id: "after-table", lane: "after", title: "확장 컬럼" }], edges: [{ source: "before-table", target: "after-table", label: "확장" }] } },
+				{ id: "phase-two", type: "visual-ref", title: "Phase 2 · 컬럼 변화 시각표", body: "Schema Diff의 확장 구조만 파생합니다.", visualRef: { sourceBlockId: "schema-diff", laneId: "after" } },
+				{ id: "phase-two-description", type: "callout", tone: "info", title: "변경 내용", body: "신규 · 값 확장 · 재사용 · 유지" },
+			] }] },
 		});
+		assert.equal(handle.state.noteDocument.sections[0]?.blocks[1]?.type, "visual-ref");
+		assert.equal(handle.state.noteDocument.sections[0]?.blocks[1]?.visual, undefined);
 		const headers = authorizedHeaders(handle);
-		let response = await fetch(new URL("/export/html", handle.url), { method: "POST", headers, body: "{}" });
+		let response = await fetch(new URL("/state", handle.url));
+		const browserState = await response.json() as any;
+		assert.equal(browserState.noteDocument.sections[0].blocks[1].type, "visual");
+		assert.equal(browserState.noteDocument.sections[0].blocks[1].visualRef, undefined);
+		assert.deepEqual(browserState.noteDocument.sections[0].blocks[1].visual.nodes.map((node: any) => node.id), ["after-table"]);
+		response = await fetch(new URL("/note-visual/phase-two", handle.url));
+		const phaseTwoHtml = await response.text();
+		assert.match(phaseTwoHtml, /after-table|확장 컬럼/);
+		assert.doesNotMatch(phaseTwoHtml, /before-table|현재 컬럼/);
+		response = await fetch(new URL("/export/html", handle.url), { method: "POST", headers, body: "{}" });
 		assert.equal(response.status, 200);
 		const htmlResult = await response.json() as any;
 		const exported = readFileSync(htmlResult.path, "utf-8");
 		assert.match(exported, /PNG fallback 보기/);
+		assert.match(exported, /Phase 2 · 컬럼 변화 시각표/);
+		assert.match(exported, /파생 visual spec 보기/);
 		assert.match(exported, /data:image\/png;base64/);
 		response = await fetch(new URL("/export/notion", handle.url), { method: "POST", headers, body: "{}" });
 		assert.equal(response.status, 200);
 		const syncInput = JSON.parse(readFileSync(join(testStateDir, `${runId}-exports`, "notion-sync.json"), "utf-8"));
-		assert.equal(syncInput.diagramAssets[0]?.blockId, "architecture");
-		assert.equal(readFileSync(syncInput.diagramAssets[0]?.path, "utf-8"), "native-visual-png");
+		assert.deepEqual(syncInput.diagramAssets.map((asset: any) => asset.blockId), ["schema-diff", "phase-two"]);
+		assert.ok(syncInput.diagramAssets.every((asset: any) => readFileSync(asset.path, "utf-8") === "native-visual-png"));
+		const syncedRef = syncInput.noteDocument.sections[0].blocks[1];
+		assert.equal(syncedRef.type, "visual");
+		assert.equal(syncedRef.visualRef, undefined);
+		assert.deepEqual(syncedRef.visual.nodes.map((node: any) => node.id), ["after-table"]);
+		assert.equal(syncInput.noteDocument.sections[0].blocks[2].body, "신규 · 값 확장 · 재사용 · 유지");
 	} finally {
 		setGlimpseOpenForTests(undefined);
 		stopStudyHardStudios();
