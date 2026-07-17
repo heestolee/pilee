@@ -15,11 +15,16 @@ import {
 	normalizeLearningCompanionState,
 	recordLearningCheckpoint,
 	recordLearningEvent,
+	updateLearningProposalStatus,
+	upsertLearningProposal,
+	type LearningArtifactRefs,
 	type LearningCheckpoint,
 	type LearningCompanionManifest,
 	type LearningCompanionPhase,
 	type LearningCompanionState,
 	type LearningEventInput,
+	type LearningProposalInput,
+	type LearningProposalStatus,
 } from "../learning-companion/state.ts";
 import { captureGlimpseHtmlPng } from "../utils/glimpse.ts";
 import { buildStudyHardStudioHtml } from "./studio-html.ts";
@@ -1127,6 +1132,20 @@ export function checkpointStudyHardLearning(runId: string, kind: LearningCheckpo
 	});
 }
 
+export function proposeStudyHardLearningChange(runId: string, input: LearningProposalInput): StudyHardBoardState {
+	return mutateStudyHardCompanion(runId, (_board, current) => {
+		if (!current) throw new Error(`Study Hard run ${runId}에 learning companion이 연결되지 않았습니다.`);
+		return upsertLearningProposal(current, input).state;
+	});
+}
+
+export function updateStudyHardLearningProposal(runId: string, proposalId: string, status: LearningProposalStatus, params: { appliedRefs?: LearningArtifactRefs; now?: number } = {}): StudyHardBoardState {
+	return mutateStudyHardCompanion(runId, (_board, current) => {
+		if (!current) throw new Error(`Study Hard run ${runId}에 learning companion이 연결되지 않았습니다.`);
+		return updateLearningProposalStatus(current, proposalId, status, params);
+	});
+}
+
 function sendJson(res: ServerResponse, status: number, value: unknown): void {
 	res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
 	res.end(JSON.stringify(value));
@@ -1364,15 +1383,27 @@ function exportNoteBlockHtml(block: StudyNoteBlock, state: StudyHardBoardState, 
 	return "";
 }
 
+function exportLearningCompanionHtml(state: StudyHardBoardState): string {
+	const companion = state.companion;
+	if (!companion) return "";
+	const events = companion.events.slice(-50).map((event) => {
+		const refs = [event.refs?.sliceId, event.refs?.commit, event.refs?.prUrl, event.refs?.reviewUrl].filter(Boolean).join(" · ");
+		return `<li><strong>${escapeExportHtml(event.kind)}</strong> · ${escapeExportHtml(event.summary)}${refs ? `<div class="muted">${escapeExportHtml(refs)}</div>` : ""}</li>`;
+	}).join("");
+	const proposals = companion.proposals.map((proposal) => `<article class="reference"><strong>${escapeExportHtml(proposal.summary)}</strong><div class="muted">${escapeExportHtml(proposal.target)} · ${escapeExportHtml(proposal.status)}</div><p>${escapeExportHtml(proposal.proposedChange)}</p></article>`).join("");
+	return `<section id="learning-companion"><h2>작업과 함께 쌓인 학습 기록</h2><aside class="callout"><strong>Companion · ${escapeExportHtml(companion.phase)}</strong><p>Frame과 코드는 작업 canonical로 유지하고, 이 섹션에는 의미 있는 변화와 학습 인사이트만 기록합니다.</p></aside><h3>작업 추적 · ${companion.events.length} events · ${companion.checkpoints.length} checkpoints</h3>${events ? `<ol>${events}</ol>` : `<p class="muted">아직 작업 checkpoint가 없습니다.</p>`}${proposals ? `<h3>작업 반영 제안</h3><div class="references">${proposals}</div>` : ""}</section>`;
+}
+
 export function buildStudyNoteExportHtml(state: StudyHardBoardState, diagramAssetList: StudyDiagramExportAsset[] = []): string {
 	const document = state.noteDocument;
 	const diagramAssets = new Map(diagramAssetList.map((asset) => [asset.blockId, asset]));
 	const sections = document.sections.map((section) => `<section id="${escapeExportHtml(section.id)}"><h2>${escapeExportHtml(section.title)}</h2>${section.blocks.map((block) => exportNoteBlockHtml(block, state, diagramAssets)).join("")}</section>`).join("");
+	const companion = exportLearningCompanionHtml(state);
 	const sourceUrl = normalizeHttpUrl(state.url);
 	return `<!doctype html>
 <html lang="ko"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${escapeExportHtml(document.title)}</title>
 <style>:root{color-scheme:light;--text:#2d2925;--muted:#756e66;--line:#d8cfc1;--panel:#fffdf8;--accent:#157a6e;--warn:#b7791f;--ok:#3f7d54;--review:#7660a9}*{box-sizing:border-box}body{margin:0;background:#f6f1e7;color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}.page{max-width:920px;margin:0 auto;padding:48px 28px 90px}.hero{padding-bottom:22px;border-bottom:1px solid var(--line);margin-bottom:32px}.hero h1{font-size:34px;line-height:1.25;margin:0 0 10px}.meta,.muted{color:var(--muted);font-size:12px;line-height:1.6}.meta a{color:var(--accent)}section{margin:0 0 42px}section>h2{font-size:23px;padding-bottom:9px;border-bottom:1px solid var(--line)}h3{font-size:17px}p,li{line-height:1.75}li{margin:4px 0}.callout{border:1px solid #bfd1d8;border-left:5px solid #4f87a4;border-radius:12px;padding:13px 15px;background:#edf4f6;margin:15px 0}.callout.warning{border-left-color:var(--warn);background:#fff4dc}.callout.success{border-left-color:var(--ok);background:#edf6ee}.callout.question{border-left-color:var(--review);background:#f2edf8}.callout strong{display:block;margin-bottom:6px}.callout p{margin:0;white-space:pre-wrap}.diagram,.codeStudy,.reference{border:1px solid #d2c7b9;border-radius:14px;background:var(--panel);padding:14px;margin:15px 0;overflow:auto}.diagram svg{display:block;max-width:100%;height:auto;margin:auto}.codeTitle{font-size:11px;color:var(--muted);font-weight:700;margin-bottom:9px}.codeStudy pre{margin:0;padding:14px;background:#f1ece3;border-radius:10px;overflow:auto;font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace}.annotations{margin:12px 0 0;padding-left:24px}.annotations li{font-size:12px}.annotations strong,.annotations span{display:block}.references{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}.reference{margin:0}.reference p{font-size:12px}.reference a{color:var(--accent);font-weight:700;font-size:12px}.visualStudy{border:1px solid #d2c7b9;border-radius:16px;background:var(--panel);padding:14px;margin:16px 0}.visualStudy figcaption{display:grid;gap:4px;margin-bottom:10px}.visualStudy figcaption span{color:var(--muted);font-size:12px}.visualFrame{display:block;width:100%;min-height:280px;border:0;background:#fff;border-radius:12px}.visualFallback,.visualSpec{margin-top:10px}.visualFallback summary,.visualSpec summary{cursor:pointer;font-size:12px;font-weight:700;color:var(--accent)}.visualFallback img{display:block;max-width:100%;height:auto;margin:10px auto 0}.visualSpec pre{max-height:320px;overflow:auto;background:#f1ece3;border-radius:10px;padding:12px;font:11px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap}hr{border:0;border-top:1px solid var(--line);margin:28px 0}@media(max-width:640px){.page{padding:28px 16px 60px}.hero h1{font-size:27px}}</style>
-</head><body><main class="page"><header class="hero"><h1>${escapeExportHtml(document.title)}</h1><div class="meta">Study Hard · revision ${state.revision} · ${escapeExportHtml(new Date(state.updatedAt).toLocaleString("ko-KR"))}${sourceUrl ? ` · <a href="${escapeExportHtml(sourceUrl)}">원본 자료</a>` : ""}</div></header>${sections}</main><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script><script>window.addEventListener('message',function(event){if(!event.data||event.data.type!=='pilee:tft-visual-ready')return;document.querySelectorAll('iframe.visualFrame').forEach(function(frame){if(frame.contentWindow===event.source){var height=Math.max(220,Math.min(12000,Number(event.data.height)||0));if(height)frame.style.height=height+'px';}});});mermaid.initialize({startOnLoad:true,theme:'base',securityLevel:'strict'});</script></body></html>`;
+</head><body><main class="page"><header class="hero"><h1>${escapeExportHtml(document.title)}</h1><div class="meta">Study Hard · revision ${state.revision} · ${escapeExportHtml(new Date(state.updatedAt).toLocaleString("ko-KR"))}${sourceUrl ? ` · <a href="${escapeExportHtml(sourceUrl)}">원본 자료</a>` : ""}</div></header>${sections}${companion}</main><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script><script>window.addEventListener('message',function(event){if(!event.data||event.data.type!=='pilee:tft-visual-ready')return;document.querySelectorAll('iframe.visualFrame').forEach(function(frame){if(frame.contentWindow===event.source){var height=Math.max(220,Math.min(12000,Number(event.data.height)||0));if(height)frame.style.height=height+'px';}});});mermaid.initialize({startOnLoad:true,theme:'base',securityLevel:'strict'});</script></body></html>`;
 }
 
 function exportDir(runId: string): string {

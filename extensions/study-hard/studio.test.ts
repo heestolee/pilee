@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { setGlimpseOpenForTests } from "../utils/glimpse.ts";
 import type { LearningCompanionManifest } from "../learning-companion/state.ts";
-import { attachStudyHardLearningCompanion, buildStudyHardStudioHtml, buildStudyNoteExportHtml, checkpointStudyHardLearning, createInitialBoardState, layoutStudyGraph, loadPersistedStudyHardState, mergeBoardState, openExistingStudyHardStudio, recordStudyHardLearningEvent, registerStudyHardBoardTool, startStudyHardStudio, stopStudyHardStudios, updateStudyHardStudio } from "./studio.ts";
+import { attachStudyHardLearningCompanion, buildStudyHardStudioHtml, buildStudyNoteExportHtml, checkpointStudyHardLearning, createInitialBoardState, layoutStudyGraph, loadPersistedStudyHardState, mergeBoardState, openExistingStudyHardStudio, proposeStudyHardLearningChange, recordStudyHardLearningEvent, registerStudyHardBoardTool, startStudyHardStudio, stopStudyHardStudios, updateStudyHardStudio } from "./studio.ts";
 
 const originalStateDir = process.env.STUDY_HARD_STATE_DIR;
 const testStateDir = mkdtempSync(join(tmpdir(), "study-hard-state-"));
@@ -278,6 +278,9 @@ test("buildStudyHardStudioHtml centers the learning note, Before/After diagram, 
 	assert.match(html, /event\.metaKey/);
 	assert.match(html, /⌥↵ 또는 ⌘↵로 전송/);
 	assert.match(html, /questionDrafts\[draftKey\]='';\s*input\.value='';\s*status\.innerHTML/);
+	assert.match(html, /function companionHtml/);
+	assert.match(html, /작업과 함께 쌓인 학습 기록/);
+	assert.match(html, /작업 반영 제안/);
 	assert.doesNotMatch(html, /esc\(q\.feedback\|\|pendingText\)\+processingStageHtml\(q\)/);
 	assert.match(html, /학습 방향 반영 완료/);
 	assert.match(html, /답변을 바탕으로 학습 방향을 정리하고 있어요/);
@@ -734,6 +737,13 @@ test("learning companion metadata, events, and checkpoints survive Study Hard re
 		dedupeKey: "slice-completed:S1:abc123",
 	}, "implementing");
 	checkpointStudyHardLearning(runId, "slice-complete", { sliceId: "S1", commit: "abc123" });
+	proposeStudyHardLearningChange(runId, {
+		id: "proposal-verify-mobile",
+		summary: "모바일 검증 보강",
+		rationale: "학습 중 coverage gap 발견",
+		target: "verification",
+		proposedChange: "모바일 manual check 추가",
+	});
 	assert.equal(handle.state.companion?.phase, "implementing");
 	assert.equal(handle.state.companion?.events.at(-1)?.refs?.commit, "abc123");
 	assert.equal(handle.state.companion?.checkpoints.at(-1)?.kind, "slice-complete");
@@ -744,6 +754,12 @@ test("learning companion metadata, events, and checkpoints survive Study Hard re
 	assert.equal(reopened.state.companion?.companionId, "learning-test");
 	assert.equal(reopened.state.companion?.events.length, 2);
 	assert.equal(reopened.state.companion?.checkpoints.length, 1);
+	assert.equal(reopened.state.companion?.proposals[0]?.status, "proposed");
+	const exported = buildStudyNoteExportHtml(reopened.state);
+	assert.match(exported, /작업과 함께 쌓인 학습 기록/);
+	assert.match(exported, /slice_completed/);
+	assert.match(exported, /모바일 검증 보강/);
+	assert.match(exported, /verification · proposed/);
 	stopStudyHardStudios();
 });
 

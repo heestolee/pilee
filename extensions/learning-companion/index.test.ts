@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -79,10 +79,48 @@ test("learning_companion records meaningful events and checkpoints for the curre
 		assert.equal(checkpoint.details.companion.checkpoints.length, 1);
 		assert.equal(checkpoint.details.companion.checkpoints[0].refs.commit, "abc123");
 
+		const proposed = await tool.execute("propose", {
+			action: "propose",
+			proposalId: "proposal-verify-mobile",
+			proposalTarget: "verification",
+			summary: "모바일 경계 검증 보강",
+			rationale: "학습 중 desktop 증거만 있다는 것을 발견함",
+			proposedChange: "모바일 viewport manual check 추가",
+			sourceEventIds: [first.details.companion.events.at(-1).id],
+		}, new AbortController().signal, () => {}, ctx);
+		assert.equal(proposed.details.workMutation, false);
+		assert.equal(proposed.details.proposal.status, "proposed");
+		assert.match(proposed.content[0].text, /아직 Frame·work context·task·코드는 변경하지 않았습니다/);
+		assert.equal(existsSync(join(piDir, "work-tasks.json")), false);
+
+		const accepted = await tool.execute("proposal-accepted", {
+			action: "proposal_status",
+			proposalId: "proposal-verify-mobile",
+			proposalStatus: "accepted",
+		}, new AbortController().signal, () => {}, ctx);
+		assert.equal(accepted.details.proposal.status, "accepted");
+		assert.equal(accepted.details.workMutation, false);
+		assert.match(accepted.content[0].text, /작업 canonical은 바뀌지 않았습니다/);
+		await assert.rejects(() => tool.execute("proposal-applied-no-ref", {
+			action: "proposal_status",
+			proposalId: "proposal-verify-mobile",
+			proposalStatus: "applied",
+		}, new AbortController().signal, () => {}, ctx), /적용 ref/);
+		const applied = await tool.execute("proposal-applied", {
+			action: "proposal_status",
+			proposalId: "proposal-verify-mobile",
+			proposalStatus: "applied",
+			taskId: "task-verify-mobile",
+			evidence: ["manual-check:mobile"],
+		}, new AbortController().signal, () => {}, ctx);
+		assert.equal(applied.details.proposal.status, "applied");
+		assert.equal(applied.details.proposal.appliedRefs.taskId, "task-verify-mobile");
+
 		const persisted = loadPersistedStudyHardState(runId);
 		assert.equal(persisted?.companion?.phase, "verifying");
 		assert.equal(persisted?.companion?.events.length, 2);
 		assert.equal(persisted?.companion?.checkpoints.length, 1);
+		assert.equal(persisted?.companion?.proposals[0]?.status, "applied");
 	} finally {
 		stopStudyHardStudios();
 		rmSync(root, { recursive: true, force: true });
