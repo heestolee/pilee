@@ -1024,7 +1024,63 @@ test("오른쪽 질문 3개는 Tutor에서 병렬 처리된 뒤 Editor가 한 �
 	}
 });
 
-test("persisted Q&A는 현재 Pi transcript에 없는 event만 backfill한다", async () => {
+test("note-block Tutor는 선택 블록만 받고 session Tutor는 전체 자료를 받는다", async () => {
+	const noteDocument = {
+		title: "Scoped Tutor Note",
+		sections: [
+			{ id: "selected-section", kind: "node", title: "선택 영역", blocks: [{ id: "selected-block", type: "paragraph", text: "선택 블록의 핵심 설명" }] },
+			{ id: "unrelated-section", kind: "reflection", title: "다른 영역", blocks: [{ id: "unrelated-block", type: "paragraph", text: "다른 질문의 오래된 설명" }] },
+		],
+	};
+	const flows = [{ id: "unrelated-flow", title: "다른 데이터 흐름", variant: "after", actors: [{ id: "a", label: "A" }, { id: "b", label: "B" }], steps: [{ id: "step", order: 1, from: "a", to: "b", action: "unrelated action" }] }];
+	let tutorCalls = 0;
+	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
+	const agentRunner = async (request: any): Promise<string> => {
+		if (request.role === "tutor") {
+			tutorCalls += 1;
+			if (tutorCalls === 1) {
+				assert.match(request.prompt, /selected-block/);
+				assert.match(request.prompt, /선택 블록의 핵심 설명/);
+				assert.doesNotMatch(request.prompt, /unrelated-block|다른 질문의 오래된 설명|unrelated-flow/);
+			} else {
+				assert.match(request.prompt, /unrelated-block/);
+				assert.match(request.prompt, /unrelated-flow/);
+			}
+			return `Tutor 답변 ${tutorCalls}`;
+		}
+		const baseRevision = Number(/## 기준 revision\n(\d+)/.exec(request.prompt)?.[1]);
+		return JSON.stringify({ baseRevision, noteDocument });
+	};
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, {
+		url: "https://example.com/scoped-tutor",
+		runId: "scoped-tutor",
+		agentRunner,
+		questionBatchWindowMs: 0,
+	});
+	try {
+		updateStudyHardStudio(handle.state.runId, { noteDocument, flows });
+		let response = await fetch(new URL("/ask", handle.url), {
+			method: "POST",
+			headers: authorizedHeaders(handle),
+			body: JSON.stringify({ scope: "note-block", noteBlockId: "selected-block", question: "이 블록만 설명해줘" }),
+		});
+		assert.equal(response.status, 202);
+		await waitForStudyState(handle, (state) => state.questions.length === 1 && state.questions[0]?.processingStatus === "applied");
+
+		response = await fetch(new URL("/ask", handle.url), {
+			method: "POST",
+			headers: authorizedHeaders(handle),
+			body: JSON.stringify({ scope: "session", question: "전체 자료를 설명해줘" }),
+		});
+		assert.equal(response.status, 202);
+		await waitForStudyState(handle, (state) => state.questions.length === 2 && state.questions.every((question: any) => question.processingStatus === "applied"));
+		assert.equal(tutorCalls, 2);
+	} finally {
+		stopStudyHardStudios();
+	}
+});
+
+test("persisted Q&A는 같은 session에서 중복하지 않고 새 session에는 summary 하나만 연결한다", async () => {
 	const runId = "transcript-backfill";
 	const firstMessages: Array<{ message: any; options: any }> = [];
 	const firstPi = {
@@ -1044,14 +1100,28 @@ test("persisted Q&A는 현재 Pi transcript에 없는 event만 backfill한다", 
 	const branch = firstMessages.map(({ message }) => ({ type: "custom_message", customType: message.customType, details: message.details }));
 	stopStudyHardStudios();
 
-	const reopenedMessages: unknown[] = [];
-	const reopenedPi = { sendMessage(message: unknown) { reopenedMessages.push(message); }, exec() { throw new Error("no browser fallback in test"); } } as any;
-	await startStudyHardStudio(reopenedPi, { hasUI: false, cwd: "/tmp/study-hard", sessionManager: { getBranch: () => branch } } as any, {
+	const sameSessionMessages: unknown[] = [];
+	const sameSessionPi = { sendMessage(message: unknown) { sameSessionMessages.push(message); }, exec() { throw new Error("no browser fallback in test"); } } as any;
+	await startStudyHardStudio(sameSessionPi, { hasUI: false, cwd: "/tmp/study-hard", sessionManager: { getBranch: () => branch } } as any, {
+		url: "https://example.com/transcript-backfill",
+		runId,
+	});
+	assert.equal(sameSessionMessages.length, 0);
+	stopStudyHardStudios();
+
+	const newSessionMessages: Array<{ message: any; options: any }> = [];
+	const newSessionPi = { sendMessage(message: any, options: any) { newSessionMessages.push({ message, options }); }, exec() { throw new Error("no browser fallback in test"); } } as any;
+	await startStudyHardStudio(newSessionPi, { hasUI: false, cwd: "/tmp/study-hard", sessionManager: { getBranch: () => [] } } as any, {
 		url: "https://example.com/transcript-backfill",
 		runId,
 	});
 	try {
-		assert.equal(reopenedMessages.length, 0);
+		assert.equal(newSessionMessages.length, 1);
+		assert.equal(newSessionMessages[0]?.message.details.eventKind, "history-summary");
+		assert.match(newSessionMessages[0]?.message.content, /기존 Q&A 요약/);
+		assert.match(newSessionMessages[0]?.message.content, /질문: 2개/);
+		assert.equal(newSessionMessages[0]?.options.triggerTurn, false);
+		assert.equal(newSessionMessages[0]?.options.deliverAs, "followUp");
 	} finally {
 		stopStudyHardStudios();
 	}

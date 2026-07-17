@@ -1190,7 +1190,7 @@ function questionContextLabel(state: StudyHardBoardState, question: StudyQuestio
 	return "전체 자료";
 }
 
-type StudyHardTranscriptEventKind = "learner-question" | "tutor-answer" | "coach-question" | "learner-answer" | "coach-feedback" | "processing-failed" | "note-merged";
+type StudyHardTranscriptEventKind = "learner-question" | "tutor-answer" | "coach-question" | "learner-answer" | "coach-feedback" | "processing-failed" | "note-merged" | "history-summary";
 
 function transcriptContentHash(value: string): string {
 	return createHash("sha256").update(value).digest("hex").slice(0, 12);
@@ -1229,6 +1229,31 @@ function publishStudyHardTranscript(
 	} catch {}
 }
 
+interface StudyHardQuestionTranscriptEvent {
+	eventKind: StudyHardTranscriptEventKind;
+	text: string;
+}
+
+function questionTranscriptEvents(question: StudyQuestionCard): StudyHardQuestionTranscriptEvent[] {
+	const events: StudyHardQuestionTranscriptEvent[] = [];
+	if ((question.origin || "learner") === "coach") {
+		events.push({ eventKind: "coach-question", text: question.question });
+		if (question.userAnswer) events.push({ eventKind: "learner-answer", text: question.userAnswer });
+		if (question.feedback) events.push({ eventKind: "coach-feedback", text: question.feedback });
+	} else {
+		events.push({ eventKind: "learner-question", text: question.question });
+		if (question.feedback) events.push({ eventKind: question.scope === "coach" ? "coach-feedback" : "tutor-answer", text: question.feedback });
+	}
+	if (question.processingStatus === "failed" && question.processingError) {
+		events.push({ eventKind: "processing-failed", text: `질문: ${question.question}\n\n원인: ${question.processingError}` });
+	}
+	return events;
+}
+
+function questionTranscriptEventKey(question: StudyQuestionCard, event: StudyHardQuestionTranscriptEvent): string {
+	return `${event.eventKind}:${question.id}:${transcriptContentHash(event.text)}`;
+}
+
 function publishQuestionTranscriptEvent(handle: StudyHardHandle, question: StudyQuestionCard, eventKind: StudyHardTranscriptEventKind, text: string): void {
 	const contextLabel = questionContextLabel(handle.state, question);
 	const labels: Record<StudyHardTranscriptEventKind, string> = {
@@ -1239,8 +1264,9 @@ function publishQuestionTranscriptEvent(handle: StudyHardHandle, question: Study
 		"coach-feedback": "🧭 Study Hard 학습 코치",
 		"processing-failed": "⚠️ Study Hard 처리 실패",
 		"note-merged": "📝 Study Hard 학습 노트 반영",
+		"history-summary": "📚 Study Hard 기존 Q&A 요약",
 	};
-	const eventKey = `${eventKind}:${question.id}:${transcriptContentHash(text)}`;
+	const eventKey = questionTranscriptEventKey(question, { eventKind, text });
 	const body = eventKind === "tutor-answer"
 		? `질문: ${question.question}\n\n답변:\n${text}`
 		: eventKind === "coach-feedback"
@@ -1258,18 +1284,27 @@ function publishQuestionTranscriptEvent(handle: StudyHardHandle, question: Study
 
 function syncStudyHardTranscript(handle: StudyHardHandle): void {
 	for (const question of handle.state.questions) {
-		if ((question.origin || "learner") === "coach") {
-			publishQuestionTranscriptEvent(handle, question, "coach-question", question.question);
-			if (question.userAnswer) publishQuestionTranscriptEvent(handle, question, "learner-answer", question.userAnswer);
-			if (question.feedback) publishQuestionTranscriptEvent(handle, question, "coach-feedback", question.feedback);
-		} else {
-			publishQuestionTranscriptEvent(handle, question, "learner-question", question.question);
-			if (question.feedback) publishQuestionTranscriptEvent(handle, question, question.scope === "coach" ? "coach-feedback" : "tutor-answer", question.feedback);
-		}
-		if (question.processingStatus === "failed" && question.processingError) {
-			publishQuestionTranscriptEvent(handle, question, "processing-failed", `질문: ${question.question}\n\n원인: ${question.processingError}`);
-		}
+		for (const event of questionTranscriptEvents(question)) publishQuestionTranscriptEvent(handle, question, event.eventKind, event.text);
 	}
+}
+
+function hydrateStudyHardTranscriptSummary(handle: StudyHardHandle): void {
+	const historicalEvents = handle.state.questions.flatMap((question) => questionTranscriptEvents(question).map((event) => ({ question, event })));
+	const missingEvents = historicalEvents.filter(({ question, event }) => !handle.transcriptEventKeys.has(questionTranscriptEventKey(question, event)));
+	if (!missingEvents.length) return;
+	const applied = handle.state.questions.filter((question) => question.processingStatus === "applied").length;
+	const failed = handle.state.questions.filter((question) => question.processingStatus === "failed").length;
+	const recentQuestions = handle.state.questions.slice(-3).map((question) => `- ${question.question}`).join("\n") || "- (질문 없음)";
+	const summaryFingerprint = handle.state.questions.map((question) => ({ id: question.id, status: question.processingStatus, feedback: question.feedback, error: question.processingError }));
+	const eventKey = `history-summary:${handle.state.runId}:${transcriptContentHash(JSON.stringify(summaryFingerprint))}`;
+	publishStudyHardTranscript(
+		handle,
+		"history-summary",
+		eventKey,
+		`📚 Study Hard 기존 Q&A 요약 · ${handle.state.title}\n\n기존 run을 다시 열었습니다. 과거 질문·답변 전문은 Study Hard 보드에 보존하고, 현재 Pi context에는 요약만 연결합니다.\n\n- 질문: ${handle.state.questions.length}개\n- 노트 반영 완료: ${applied}개\n- 처리 실패: ${failed}개\n- runId: ${handle.state.runId}\n\n최근 주제\n${recentQuestions}`,
+		{ questionCount: handle.state.questions.length, appliedCount: applied, failedCount: failed, historicalEventCount: historicalEvents.length },
+	);
+	for (const { question, event } of historicalEvents) handle.transcriptEventKeys.add(questionTranscriptEventKey(question, event));
 }
 
 function changedNoteSectionTitles(before: StudyNoteDocument, after: StudyNoteDocument): string[] {
@@ -1610,8 +1645,16 @@ function questionContextSnapshot(state: StudyHardBoardState, question: StudyQues
 	};
 }
 
+function tutorLearningContext(state: StudyHardBoardState, question: StudyQuestionCard): Record<string, unknown> {
+	const common = { sourceTitle: state.sourceTitle || state.title, sourceUrl: state.url, goals: state.goals, summary: state.summary };
+	if (question.scope === "session") return { ...common, noteDocument: state.noteDocument, flows: state.flows };
+	if (question.scope === "flow-step") return { ...common, selectedFlow: state.flows.find((flow) => flow.id === question.targetFlowId) };
+	if (question.scope === "node") return { ...common, rootNode: findRootNode(state) };
+	return common;
+}
+
 function buildTutorPrompt(state: StudyHardBoardState, question: StudyQuestionCard): string {
-	return `# Study Hard Tutor\n\n사용자의 질문에 현재 학습 상태만 근거로 답하세요. 상태를 수정하거나 도구를 호출했다고 주장하지 마세요.\n\n## 질문\n${JSON.stringify({ id: question.id, scope: question.scope, question: question.question, context: questionContextSnapshot(state, question) }, null, 2)}\n\n## 학습 맥락\n${JSON.stringify({ sourceTitle: state.sourceTitle || state.title, sourceUrl: state.url, goals: state.goals, summary: state.summary, noteDocument: state.noteDocument, flows: state.flows }, null, 2)}\n\n## 답변 규칙\n- 한국어로 질문에 직접 답합니다.\n- 사용자의 선행지식을 추정하지 말고 질문에 드러난 출발점부터 설명합니다.\n- 생소한 구조는 세부 코드보다 mental model과 실행 순서를 먼저 설명합니다.\n- 근거가 snapshot에 없으면 추측하지 말고 한계를 밝힙니다.\n- 최종 답변 Markdown만 반환하고 JSON, 상태 patch, 도구 호출은 반환하지 않습니다.`;
+	return `# Study Hard Tutor\n\n사용자의 질문에 현재 학습 상태만 근거로 답하세요. 상태를 수정하거나 도구를 호출했다고 주장하지 마세요.\n\n## 질문\n${JSON.stringify({ id: question.id, scope: question.scope, question: question.question, context: questionContextSnapshot(state, question) }, null, 2)}\n\n## 학습 맥락\n${JSON.stringify(tutorLearningContext(state, question), null, 2)}\n\n## 답변 규칙\n- 한국어로 질문에 직접 답합니다.\n- 사용자의 선행지식을 추정하지 말고 질문에 드러난 출발점부터 설명합니다.\n- 선택된 node, flow-step, note-block 질문은 해당 범위를 중심으로 답하고 다른 section 설명을 반복하지 않습니다.\n- 생소한 구조는 세부 코드보다 mental model과 실행 순서를 먼저 설명합니다.\n- 근거가 snapshot에 없으면 추측하지 말고 한계를 밝힙니다.\n- 최종 답변 Markdown만 반환하고 JSON, 상태 patch, 도구 호출은 반환하지 않습니다.`;
 }
 
 function semanticMergeFingerprint(state: StudyHardBoardState): string {
@@ -2377,7 +2420,8 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 		handle.url = `http://127.0.0.1:${port}/`;
 		handles.set(state.runId, handle);
 		latestRunId = state.runId;
-		syncStudyHardTranscript(handle);
+		if (persistedState) hydrateStudyHardTranscriptSummary(handle);
+		else syncStudyHardTranscript(handle);
 		await openStudyHardWindow(pi, ctx, handle);
 		if (!persistedState || initialPatch) saveState(handle);
 		if (persistedState) resumeInterruptedLearningAgents(handle);
