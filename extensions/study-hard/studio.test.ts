@@ -511,6 +511,30 @@ test("export routes write HTML to Downloads and pass rendered diagrams to Notion
 	}
 });
 
+test("Notion sync failure preserves sanitized Python stderr and exit code", async () => {
+	const fakeSyncScript = join(testStateDir, "fake-failing-study-hard-sync.py");
+	writeFileSync(fakeSyncScript, "import sys\nsys.stderr.write('ERROR: Notion API 400: {\\\"code\\\":\\\"validation_error\\\",\\\"message\\\":\\\"file upload rejected ntn_SUPERSECRET\\\"}\\n')\nraise SystemExit(7)\n", "utf-8");
+	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/notion-error", runId: "notion-error-detail", syncScript: fakeSyncScript });
+	const originalConsoleError = console.error;
+	const logs: string[] = [];
+	console.error = (...args: unknown[]) => { logs.push(args.map(String).join(" ")); };
+	try {
+		const response = await fetch(new URL("/export/notion", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: "{}" });
+		assert.equal(response.status, 500);
+		const result = await response.json() as any;
+		assert.match(result.error, /Notion 동기화 실패 \(exit 7\)/);
+		assert.match(result.error, /Notion API 400/);
+		assert.match(result.error, /validation_error/);
+		assert.match(result.error, /ntn_\[REDACTED\]/);
+		assert.doesNotMatch(result.error, /SUPERSECRET/);
+		assert.match(logs.join("\n"), /study-hard:notion-sync/);
+	} finally {
+		console.error = originalConsoleError;
+		stopStudyHardStudios();
+	}
+});
+
 test("visual export routes use native snapshots for HTML fallback and Notion assets", async () => {
 	const fakeOpen = (() => {
 		return (_html: string, _options: Record<string, unknown>) => {

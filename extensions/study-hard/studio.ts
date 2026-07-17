@@ -1631,6 +1631,24 @@ function buildNotionSyncPayload(state: StudyHardBoardState, diagramAssets: Study
 	};
 }
 
+function sanitizeStudyHardSyncError(value: unknown): string {
+	return String(value || "")
+		.replace(/ntn_[A-Za-z0-9]+/g, "ntn_[REDACTED]")
+		.replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [REDACTED]")
+		.trim();
+}
+
+function studyHardSyncErrorDetail(error: unknown): string {
+	const item = error && typeof error === "object" ? error as Record<string, unknown> : {};
+	const stderr = sanitizeStudyHardSyncError(item.stderr);
+	const stdout = sanitizeStudyHardSyncError(item.stdout);
+	const fallback = sanitizeStudyHardSyncError(error instanceof Error ? error.message : error);
+	const raw = stderr || stdout || fallback || "unknown sync process failure";
+	const detail = raw.length > 4_000 ? raw.slice(-4_000) : raw;
+	const code = item.code !== undefined ? ` (exit ${String(item.code)})` : "";
+	return `Notion 동기화 실패${code}: ${detail}`;
+}
+
 async function runStudyHardNotionSync(handle: StudyHardHandle, diagramAssets: StudyDiagramExportAsset[]): Promise<Record<string, unknown>> {
 	if (!existsSync(handle.syncScript)) throw new Error("Notion 동기화 스크립트를 찾지 못했습니다.");
 	if (handle.notionSyncInFlight) throw new Error("Notion 동기화가 이미 진행 중입니다.");
@@ -1659,7 +1677,9 @@ async function runStudyHardNotionSync(handle: StudyHardHandle, diagramAssets: St
 		broadcast(handle);
 		return { ...result, syncedRevision, currentRevision, staleAfterSync };
 	} catch (error) {
-		throw new Error(`Notion 동기화 실패: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`);
+		const detail = studyHardSyncErrorDetail(error);
+		console.error(`[study-hard:notion-sync] ${detail}`);
+		throw new Error(detail);
 	} finally {
 		handle.notionSyncInFlight = false;
 	}
