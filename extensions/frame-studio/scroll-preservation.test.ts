@@ -7,6 +7,7 @@ interface FakeWindow {
 	innerHeight: number;
 	scrollCalls: number[];
 	scrollTo(x: number, y: number): void;
+	addEventListener(type: string, listener: (...args: any[]) => void): void;
 }
 
 interface FakeDocument {
@@ -64,10 +65,11 @@ function createFakeBrowser(options: { top: number; viewport: number; height: num
 			fakeDocument.body.scrollTop = y;
 			this.scrollCalls.push(y);
 		},
+		addEventListener() {},
 	};
 	const fakeDocument: FakeDocument = {
 		documentElement: { scrollTop: options.top, scrollHeight: options.height, offsetHeight: options.height, clientHeight: options.viewport },
-		body: { scrollTop: options.top, scrollHeight: options.height, offsetHeight: options.height },
+		body: { scrollTop: options.top, scrollHeight: options.height, offsetHeight: options.height, classList: { contains() { return false; } } },
 		getElementById(id: string) {
 			if (!elements.has(id)) {
 				let html = "";
@@ -340,6 +342,60 @@ test("Architecture flow keeps variable-height nodes in the same lane from overla
 	for (let index = 0; index < boxes.length - 1; index++) {
 		assert.ok(boxes[index].bottom < boxes[index + 1].top, `node ${index} should end before node ${index + 1} starts`);
 	}
+});
+
+test("Architecture schema diff theme renders semantic column lifecycle colors and labels", () => {
+	const browser = createFakeBrowser({ top: 0, viewport: 600, height: 1600 });
+	const studio = loadStudioScript(browser.window, browser.document);
+	const element = { id: "arch-schema-diff-test", className: "", innerHTML: "" };
+
+	studio.renderArchitectureFlowElement(element, {
+		kind: "architecture-flow",
+		theme: "schema-diff-dark",
+		lanes: ["Before", "After"],
+		nodes: [
+			{
+				id: "before",
+				lane: "Before",
+				type: "table",
+				title: "legacy_table",
+				status: "before",
+				columns: [
+					{ name: "id", status: "same", statusLabel: "유지" },
+					{ name: "legacy_image", status: "removed", statusLabel: "삭제" },
+				],
+			},
+			{
+				id: "after",
+				lane: "After",
+				type: "table",
+				title: "normalized_table",
+				status: "after",
+				columns: [
+					{ name: "section_title", status: "new", statusLabel: "신규" },
+					{ name: "writer_type", status: "changed", statusLabel: "확장" },
+					{ name: "content", status: "reused", statusLabel: "재사용" },
+				],
+			},
+		],
+		edges: [],
+	});
+
+	assert.equal(element.className, "arch-visual schema-diff-dark");
+	assert.match(element.innerHTML, /class="arch-column same"/);
+	assert.match(element.innerHTML, /class="arch-column removed"/);
+	assert.match(element.innerHTML, /class="arch-column new"/);
+	assert.match(element.innerHTML, /class="arch-column changed"/);
+	assert.match(element.innerHTML, /class="arch-column reused"/);
+	assert.match(element.innerHTML, /class="arch-badge removed">삭제/);
+	assert.match(element.innerHTML, /class="arch-badge new">신규/);
+	assert.match(element.innerHTML, /class="arch-badge changed">확장/);
+	assert.match(element.innerHTML, /class="arch-badge reused">재사용/);
+
+	const pageHtml = buildPageHtml();
+	assert.match(pageHtml, /\.arch-column\.removed \.arch-column-name \{ text-decoration:line-through/);
+	assert.match(pageHtml, /\.arch-visual\.schema-diff-dark \.arch-column\.new/);
+	assert.match(pageHtml, /\.arch-visual\.schema-diff-dark \.arch-node\.after/);
 });
 
 test("Architecture flow auto layout switches wide lane maps to vertical with label pills", () => {

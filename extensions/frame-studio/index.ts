@@ -756,14 +756,49 @@ h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .arch-badge.source-of-truth { border-color:#bae6fd; background:#ecfeff; color:#0e7490; }
 .arch-columns { margin-top:8px; display:grid; gap:4px; }
 .arch-column { display:flex; justify-content:space-between; gap:7px; align-items:flex-start; border-top:1px solid rgba(148,163,184,.28); padding-top:4px; font-size:10px; }
+.arch-column.new, .arch-column.removed, .arch-column.changed, .arch-column.reused, .arch-column.same { border-top:0; border-left:3px solid transparent; border-radius:8px; padding:5px 7px; }
+.arch-column.new { border-left-color:#16a34a; background:#f0fdf4; }
+.arch-column.removed { border-left-color:#dc2626; background:#fef2f2; color:#991b1b; }
+.arch-column.changed { border-left-color:#d97706; background:#fffbeb; }
+.arch-column.reused { border-left-color:#2563eb; background:#eff6ff; }
+.arch-column.same { border-left-color:#94a3b8; background:#f8fafc; }
+.arch-column.removed .arch-column-name { text-decoration:line-through; text-decoration-thickness:1.5px; }
 .arch-column-name { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; overflow-wrap:anywhere; }
 .arch-column-badges { display:flex; flex-wrap:wrap; gap:3px; justify-content:flex-end; }
+.arch-badge.new { border-color:#86efac; background:#dcfce7; color:#166534; }
+.arch-badge.removed { border-color:#fca5a5; background:#fee2e2; color:#991b1b; }
+.arch-badge.changed { border-color:#fcd34d; background:#fef3c7; color:#92400e; }
+.arch-badge.reused { border-color:#93c5fd; background:#dbeafe; color:#1e40af; }
+.arch-badge.same { border-color:#cbd5e1; background:#f1f5f9; color:#475569; }
 .arch-edge-label-bg { fill:rgba(255,255,255,.96); stroke:#ddd6fe; stroke-width:1.2px; filter:drop-shadow(0 3px 8px rgba(88,28,135,.12)); }
 .arch-edge-label { font-size:10.5px; font-weight:950; fill:#334155; dominant-baseline:middle; }
 .arch-legend { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:8px; margin-top:12px; }
 .arch-legend-card { border:1px solid #e2e8f0; border-radius:14px; background:#fff; padding:9px 10px; }
 .arch-legend-card strong { display:block; color:#581c87; font-size:12px; }
 .arch-legend-card span { display:block; margin-top:3px; color:var(--muted); font-size:11px; line-height:1.4; }
+.arch-visual.schema-diff-dark { border-color:#334155; background:#111827; color:#e5e7eb; }
+.arch-visual.schema-diff-dark .arch-visual-title { color:#f8fafc; }
+.arch-visual.schema-diff-dark .arch-visual-subtitle { color:#94a3b8; }
+.arch-visual.schema-diff-dark .arch-visual-head > .badge { border-color:#475569; background:#1f2937; color:#cbd5e1; }
+.arch-visual.schema-diff-dark .arch-visual-diagram { border-color:#334155; background:#0b111b; }
+.arch-visual.schema-diff-dark .arch-lane { border-color:#475569; background:rgba(15,23,42,.76); }
+.arch-visual.schema-diff-dark .arch-lane-title { color:#cbd5e1; }
+.arch-visual.schema-diff-dark .arch-node { border-color:#475569; background:#111827; color:#e5e7eb; box-shadow:0 16px 34px rgba(0,0,0,.28); }
+.arch-visual.schema-diff-dark .arch-node.before { border-top-color:#38bdf8; }
+.arch-visual.schema-diff-dark .arch-node.after { border-top-color:#22c55e; }
+.arch-visual.schema-diff-dark .arch-node-title { color:#f8fafc; }
+.arch-visual.schema-diff-dark .arch-node-kind { border-color:#6d28d9; background:#2e1065; color:#ddd6fe; }
+.arch-visual.schema-diff-dark .arch-node-desc { color:#cbd5e1; }
+.arch-visual.schema-diff-dark .arch-node-badges .arch-badge { border-color:#475569; background:#1f2937; color:#cbd5e1; }
+.arch-visual.schema-diff-dark .arch-column { border-color:#334155; color:#e2e8f0; }
+.arch-visual.schema-diff-dark .arch-column.new { border-left-color:#22c55e; background:rgba(34,197,94,.13); }
+.arch-visual.schema-diff-dark .arch-column.removed { border-left-color:#ef4444; background:rgba(239,68,68,.14); color:#fecaca; }
+.arch-visual.schema-diff-dark .arch-column.changed { border-left-color:#f59e0b; background:rgba(245,158,11,.14); }
+.arch-visual.schema-diff-dark .arch-column.reused { border-left-color:#38bdf8; background:rgba(56,189,248,.13); }
+.arch-visual.schema-diff-dark .arch-column.same { border-left-color:#64748b; background:rgba(100,116,139,.10); }
+.arch-visual.schema-diff-dark .arch-legend-card { border-color:#334155; background:#0f172a; }
+.arch-visual.schema-diff-dark .arch-legend-card strong { color:#f8fafc; }
+.arch-visual.schema-diff-dark .arch-legend-card span { color:#94a3b8; }
 .data-visual { border:1px solid #bae6fd; background:linear-gradient(180deg,#f0fdfa 0%,#ffffff 100%); border-radius:20px; padding:16px; margin:16px 0; overflow:hidden; min-width:0; max-width:100%; }
 .data-visual-head { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start; margin-bottom:12px; }
 .data-visual-title { font-size:18px; font-weight:950; color:#0f766e; overflow-wrap:anywhere; }
@@ -1198,6 +1233,19 @@ function normalizeArchNode(node, index, lanes) {
     order: index,
   };
 }
+function archColumnStatus(column) {
+  var key = layerKey(column.status || column.change || column.changeType || column.lifecycle || column.state || '');
+  if (key.indexOf('remove') >= 0 || key.indexOf('delete') >= 0 || key.indexOf('deprecat') >= 0 || key === 'drop') return 'removed';
+  if (key.indexOf('new') >= 0 || key.indexOf('add') >= 0 || key.indexOf('create') >= 0) return 'new';
+  if (key.indexOf('change') >= 0 || key.indexOf('extend') >= 0 || key.indexOf('modify') >= 0) return 'changed';
+  if (key.indexOf('reuse') >= 0 || key.indexOf('repurpose') >= 0) return 'reused';
+  if (key.indexOf('same') >= 0 || key.indexOf('keep') >= 0 || key.indexOf('unchanged') >= 0) return 'same';
+  return '';
+}
+function archColumnStatusLabel(column, status) {
+  if (column.statusLabel) return String(column.statusLabel);
+  return ({ new:'NEW', removed:'REMOVED', changed:'CHANGED', reused:'REUSED', same:'KEEP' })[status] || '';
+}
 function columnBadges(column) {
   var badges = asTextArray(column.badges || column.constraints || column.flags || column.badge);
   if (column.pk || column.primaryKey) badges.push('PK');
@@ -1217,17 +1265,24 @@ function archBadgeClass(value) {
   if (key === 'legacy' || key === 'deprecated') return 'legacy';
   if (key === 'source-of-truth' || key === 'canonical') return 'source-of-truth';
   if (key === 'risk' || key === 'danger') return 'risk';
+  if (key === 'new' || key === 'added') return 'new';
+  if (key === 'removed' || key === 'deleted') return 'removed';
+  if (key === 'changed' || key === 'extended') return 'changed';
+  if (key === 'reused' || key === 'repurposed') return 'reused';
+  if (key === 'same' || key === 'keep') return 'same';
   return key;
 }
 function renderArchBadge(value) { return '<span class="arch-badge ' + archBadgeClass(value) + '">' + esc(value) + '</span>'; }
+function renderArchStatusBadge(status, label) { return status && label ? '<span class="arch-badge ' + status + '">' + esc(label) + '</span>' : ''; }
 function renderArchColumns(columns) {
   if (!columns || !columns.length) return '';
   return '<div class="arch-columns">' + columns.slice(0, 8).map(function(column) {
     var name = column.name || column.id || column.column || '';
-    var badges = columnBadges(column).map(renderArchBadge).join('');
+    var status = archColumnStatus(column);
+    var badges = renderArchStatusBadge(status, archColumnStatusLabel(column, status)) + columnBadges(column).map(renderArchBadge).join('');
     var refs = column.references || column.ref || column.to;
     var label = refs ? name + ' → ' + refs : name;
-    return '<div class="arch-column"><span class="arch-column-name">' + esc(label) + '</span><span class="arch-column-badges">' + badges + '</span></div>';
+    return '<div class="arch-column' + (status ? ' ' + status : '') + '"><span class="arch-column-name">' + esc(label) + '</span><span class="arch-column-badges">' + badges + '</span></div>';
   }).join('') + '</div>';
 }
 function renderArchContract(node) {
@@ -1421,7 +1476,9 @@ function renderArchitectureFlowElement(el, spec) {
   var edgeSvg = '<svg class="arch-edge-svg" width="' + canvasWidth + '" height="' + canvasHeight + '" viewBox="0 0 ' + canvasWidth + ' ' + canvasHeight + '"><defs><marker id="' + markerId + '" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker></defs>' + edges.map(function(edge, index) { return renderArchEdge(edge, layouts, index, markerId, orientation, metrics); }).join('') + '</svg>';
   var nodeHtml = nodes.map(function(node) { return renderArchNode(node, layouts[node.id]); }).join('');
   var orientationLabel = orientation === 'DOWN' ? 'Architecture flow · 세로 자동 배치' : 'Architecture flow · 가로 배치';
-  el.className = 'arch-visual';
+  var visualTheme = layerKey(spec.theme || spec.visualTheme || spec.variant || '');
+  var themeClass = visualTheme === 'schema-diff-dark' || visualTheme === 'dark-schema-diff' ? ' schema-diff-dark' : '';
+  el.className = 'arch-visual' + themeClass;
   el.innerHTML = '<div class="arch-visual-head"><div><div class="arch-visual-title">' + esc(spec.title || 'Architecture / Data Flow Map') + '</div>' + (spec.subtitle ? '<div class="arch-visual-subtitle">' + esc(spec.subtitle) + '</div>' : '<div class="arch-visual-subtitle">데이터와 로직이 UI/API/usecase/domain/repository/DB를 어떻게 지나가는지 보는 전체 지도입니다.</div>') + '</div><span class="badge">' + esc(orientationLabel) + '</span></div>'
     + '<div class="arch-visual-diagram"><div class="arch-canvas" style="width:' + canvasWidth + 'px;height:' + canvasHeight + 'px">' + laneHtml + edgeSvg + nodeHtml + '</div></div>'
     + renderArchLegend(spec)
