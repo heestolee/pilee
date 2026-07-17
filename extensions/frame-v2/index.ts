@@ -3,12 +3,14 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
+import { learningCompanionManifestPath, writeLearningCompanionManifest } from "../learning-companion/state.ts";
 import { studyHardStatePathFor } from "../study-hard/studio.ts";
 import { buildFrameIdentity, type FrameIdentity, formatFrameIdentityHint } from "../tft-commands/frame-identity.ts";
 import { buildFrameWorktreeForkArgs, type FrameWorktreeForkParams } from "../tft-commands/frame-worktree-fork.ts";
 import {
 	buildInitialFrameV2Note,
 	frameV2RunId,
+	linkFrameV2LearningCompanion,
 	parseFrameV2Args,
 	type FrameV2Invocation,
 	updateFrameV2ManifestStatus,
@@ -94,6 +96,45 @@ function getContext(identityKey?: string): FrameV2CommandContextRecord | null {
 
 function blockedResult(text: string, details: Record<string, unknown> = {}) {
 	return { content: [{ type: "text" as const, text }], details: { blocked: true, ...details } };
+}
+
+function frameCanonicalHash(frame: Record<string, unknown>): string | undefined {
+	const provenance = frame.provenance && typeof frame.provenance === "object" && !Array.isArray(frame.provenance)
+		? frame.provenance as Record<string, unknown>
+		: undefined;
+	return typeof provenance?.canonicalHash === "string" && provenance.canonicalHash.trim()
+		? provenance.canonicalHash.trim()
+		: undefined;
+}
+
+function attachFrameV2LearningCompanion(record: FrameV2CommandContextRecord, frame: Record<string, unknown>): {
+	manifestPath?: string;
+	companionId?: string;
+	warning?: string;
+	frameV2Manifest?: Record<string, unknown>;
+} {
+	try {
+		const companion = writeLearningCompanionManifest({
+			storageDir: record.identity.storageDir,
+			identityKey: record.identity.key,
+			framePath: join(record.identity.storageDir, "frame.json"),
+			runId: record.runId,
+			statePath: record.statePath,
+			canonicalHash: frameCanonicalHash(frame),
+			origin: { kind: "frame-v2", manifestPath: record.manifestPath },
+		});
+		const manifest = linkFrameV2LearningCompanion(record.manifestPath, {
+			manifestPath: companion.path,
+			companionId: companion.manifest.companionId,
+		});
+		return {
+			manifestPath: companion.path,
+			companionId: companion.manifest.companionId,
+			frameV2Manifest: manifest as unknown as Record<string, unknown>,
+		};
+	} catch (error) {
+		return { warning: error instanceof Error ? error.message : String(error) };
+	}
 }
 
 function skillPath(name: string): string {
@@ -207,10 +248,11 @@ function buildContinuationPrompt(record: FrameV2CommandContextRecord): string {
 		"",
 		"Required next actions:",
 		"1. Read the promoted `.pi/frame.json` in the current worktree. If it is missing, stop as BLOCKED.",
-		`2. Use the Study Hard source artifact only as provenance: ${record.statePath}`,
-		`3. Source Frame v2 manifest: ${record.manifestPath}`,
-		"4. Refresh work_context, select the first ready implementation slice, and implement from the canonical frame contract.",
-		"5. Do not rerun the Frame v2 interview or resume refinement unless the canonical frame has an explicit gap.",
+		`2. Reopen the attached Study Hard learning note through .pi/learning-companion.json when needed (source: ${learningCompanionManifestPath(record.identity.storageDir)}).`,
+		`3. Study Hard state remains the learning canonical: ${record.statePath}`,
+		`4. Source Frame v2 manifest: ${record.manifestPath}`,
+		"5. Refresh work_context, select the first ready implementation slice, and implement from the canonical frame contract.",
+		"6. Do not rerun the Frame v2 interview or resume refinement unless the canonical frame has an explicit gap.",
 	].join("\n");
 }
 
@@ -236,8 +278,16 @@ function registerFrameV2StateTool(pi: ExtensionAPI): void {
 			if (params.action === "ready") {
 				const readiness = validateFrameV2ReadyFrame(framePath, record.identity.key);
 				if (!readiness.ok) return blockedResult(`BLOCKED: ${readiness.error}`, { action: FRAME_V2_STATE_TOOL, framePath });
-				const manifest = updateFrameV2ManifestStatus(record.manifestPath, "ready");
-				return { content: [{ type: "text" as const, text: `✓ Frame v2 ready: ${framePath}` }], details: { action: FRAME_V2_STATE_TOOL, manifestPath: record.manifestPath, framePath, manifest } };
+				const readyManifest = updateFrameV2ManifestStatus(record.manifestPath, "ready");
+				const companion = attachFrameV2LearningCompanion(record, readiness.frame);
+				const manifest = companion.frameV2Manifest ?? readyManifest;
+				const companionLine = companion.warning
+					? `\n⚠ 학습노트 companion 연결은 건너뛰었습니다: ${companion.warning}`
+					: `\n✓ 학습노트 companion: ${companion.manifestPath}`;
+				return {
+					content: [{ type: "text" as const, text: `✓ Frame v2 ready: ${framePath}${companionLine}` }],
+					details: { action: FRAME_V2_STATE_TOOL, manifestPath: record.manifestPath, framePath, manifest, companion },
+				};
 			}
 			const manifest = JSON.parse(readFileSync(record.manifestPath, "utf8"));
 			return { content: [{ type: "text" as const, text: `Frame v2 ${manifest.status}: ${record.manifestPath}` }], details: { action: FRAME_V2_STATE_TOOL, manifestPath: record.manifestPath, framePath, frameExists: existsSync(framePath), manifest } };

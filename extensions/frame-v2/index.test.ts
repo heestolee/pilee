@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -27,7 +27,7 @@ function readyFrame(identityKey: string) {
 		success_criteria: [{ id: "SC-1", statement: "ready", evidence_locator: "test" }],
 		verify_plan: { commands: [], manual_checks: [] },
 		implementation_plan: { status: "ready", derivedFrom: { decisionIds: [] }, slices: [], firstSafeStep: "start", readiness: {}, gates: [] },
-		provenance: { notes: ["Frame v2 test"] },
+		provenance: { canonicalHash: "frame-v2-test-hash", notes: ["Frame v2 test"] },
 	};
 }
 
@@ -137,7 +137,17 @@ test("/frame-v2 registers independent command and persists command-context manif
 		writeFileSync(join(piDir, "frame.json"), `${JSON.stringify(readyFrame(manifest.identity.key), null, 2)}\n`);
 		const ready = await tools.get("frame_v2_state").execute("state-3", { action: "ready" }, new AbortController().signal, () => {}, toolCtx);
 		assert.equal(ready.details.manifest.status, "ready");
-		assert.equal(JSON.parse(readFileSync(manifestPath, "utf8")).status, "ready");
+		const readyManifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+		assert.equal(readyManifest.status, "ready");
+		const companionPath = join(piDir, "learning-companion.json");
+		assert.ok(existsSync(companionPath));
+		const companion = JSON.parse(readFileSync(companionPath, "utf8"));
+		assert.equal(companion.runId, manifest.studyHard.runId);
+		assert.equal(companion.frame.path, join(piDir, "frame.json"));
+		assert.equal(companion.frame.initialCanonicalHash, "frame-v2-test-hash");
+		assert.equal(readyManifest.learningCompanion.manifestPath, companionPath);
+		assert.equal(readyManifest.learningCompanion.companionId, companion.companionId);
+		assert.match(ready.content[0].text, /학습노트 companion/);
 
 		let forkArgs = "";
 		let continuation = "";
@@ -151,6 +161,8 @@ test("/frame-v2 registers independent command and persists command-context manif
 		assert.match(forked.content[0].text, /Frame v2 구현 세션 시작/);
 		assert.match(forkArgs, /--full-context/);
 		assert.match(continuation, /promoted `.pi\/frame\.json`/);
+		assert.match(continuation, /\.pi\/learning-companion\.json/);
+		assert.match(continuation, /Study Hard state remains the learning canonical/);
 		assert.equal(JSON.parse(readFileSync(manifestPath, "utf8")).status, "started");
 	} finally {
 		setFrameV2ForkRunnerForTests(undefined);

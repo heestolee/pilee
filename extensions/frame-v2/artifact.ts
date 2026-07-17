@@ -24,6 +24,10 @@ export interface FrameV2Manifest {
 		statePath: string;
 		sourceUrl: string;
 	};
+	learningCompanion?: {
+		manifestPath: string;
+		companionId: string;
+	};
 	framePath: string;
 	createdAt: number;
 	updatedAt: number;
@@ -115,14 +119,23 @@ function readManifest(path: string): FrameV2Manifest | undefined {
 	}
 }
 
+function writeManifest(path: string, manifest: FrameV2Manifest, now: number): FrameV2Manifest {
+	const temporaryPath = `${path}.tmp-${process.pid}-${now}`;
+	writeFileSync(temporaryPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+	renameSync(temporaryPath, path);
+	return manifest;
+}
+
 export function updateFrameV2ManifestStatus(path: string, status: FrameV2Manifest["status"], now = Date.now()): FrameV2Manifest {
 	const current = readManifest(path);
 	if (!current) throw new Error(`Frame v2 manifest를 찾을 수 없습니다: ${path}`);
-	const next = { ...current, status, updatedAt: now };
-	const temporaryPath = `${path}.tmp-${process.pid}-${now}`;
-	writeFileSync(temporaryPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
-	renameSync(temporaryPath, path);
-	return next;
+	return writeManifest(path, { ...current, status, updatedAt: now }, now);
+}
+
+export function linkFrameV2LearningCompanion(path: string, companion: NonNullable<FrameV2Manifest["learningCompanion"]>, now = Date.now()): FrameV2Manifest {
+	const current = readManifest(path);
+	if (!current) throw new Error(`Frame v2 manifest를 찾을 수 없습니다: ${path}`);
+	return writeManifest(path, { ...current, learningCompanion: companion, updatedAt: now }, now);
 }
 
 export function writeFrameV2Manifest(params: {
