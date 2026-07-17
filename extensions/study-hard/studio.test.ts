@@ -305,7 +305,8 @@ test("buildStudyHardStudioHtml gives the note the left+center width and overlays
 	assert.match(html, /activeQuestionProcessing/);
 	assert.match(html, /composerState/);
 	assert.match(html, /conversationCard/);
-	assert.match(html, /#detailDrawer #conversation > \.conversationCard/);
+	assert.match(html, /#detailDrawer #conversation \{ flex:0 0 560px; height:560px; min-height:560px; display:flex; flex-direction:column; \}/);
+	assert.match(html, /#detailDrawer #conversation > \.conversationCard \{ flex:1; min-height:0; display:flex; flex-direction:column; margin-bottom:0; \}/);
 	assert.match(html, /#detailDrawer #conversation \.thread \{ flex:1; min-height:180px; max-height:none; \}/);
 	assert.match(html, /scrollThreadToBottom/);
 	assert.match(html, /isQuestionSubmitShortcut/);

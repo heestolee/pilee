@@ -149,8 +149,8 @@ export function buildStudyHardStudioHtml(capabilityToken = "", nativeVisualCaptu
     #detailDrawer .drawerHeader { flex:0 0 auto; }
     #detailDrawer .drawerBody { flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; }
     #detailDrawer #detailContent { flex:0 0 auto; }
-    #detailDrawer #conversation { flex:1 0 360px; min-height:360px; display:flex; flex-direction:column; }
-    #detailDrawer #conversation > .conversationCard { flex:1; min-height:360px; display:flex; flex-direction:column; margin-bottom:0; }
+    #detailDrawer #conversation { flex:0 0 560px; height:560px; min-height:560px; display:flex; flex-direction:column; }
+    #detailDrawer #conversation > .conversationCard { flex:1; min-height:0; display:flex; flex-direction:column; margin-bottom:0; }
     #detailDrawer #conversation .thread { flex:1; min-height:180px; max-height:none; }
     #detailDrawer #conversation .detailSection { flex:0 0 auto; margin-bottom:0; }
     #detailDrawer .codeGrid { display:block; }
