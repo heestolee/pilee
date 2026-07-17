@@ -19,7 +19,7 @@ export interface StudyLearningAgentRequest {
 
 export type StudyLearningAgentRunner = (request: StudyLearningAgentRequest) => Promise<string>;
 
-const DEFAULT_TIMEOUT_MS = 180_000;
+export const DEFAULT_STUDY_LEARNING_AGENT_TIMEOUT_MS = 10 * 60 * 1_000;
 const MAX_STDERR_LENGTH = 8_000;
 
 export function buildStudyLearningAgentArgs(request: StudyLearningAgentRequest, promptPath: string): string[] {
@@ -123,8 +123,8 @@ export const runIsolatedStudyLearningAgent: StudyLearningAgentRunner = async (re
 			};
 			const timeout = setTimeout(() => {
 				terminate();
-				finish(new Error(`학습 agent 실행이 ${request.timeoutMs ?? DEFAULT_TIMEOUT_MS}ms를 초과했습니다.`));
-			}, request.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+				finish(new Error(`학습 agent 실행이 ${request.timeoutMs ?? DEFAULT_STUDY_LEARNING_AGENT_TIMEOUT_MS}ms를 초과했습니다.`));
+			}, request.timeoutMs ?? DEFAULT_STUDY_LEARNING_AGENT_TIMEOUT_MS);
 			request.signal?.addEventListener("abort", abort, { once: true });
 			const processLine = (line: string) => {
 				if (!line.trim()) return;

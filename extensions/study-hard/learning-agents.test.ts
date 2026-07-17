@@ -3,7 +3,11 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { buildStudyLearningAgentArgs, parseStudyLearningAgentJson, runIsolatedStudyLearningAgent, sanitizedStudyLearningAgentEnv } from "./learning-agents.ts";
+import { buildStudyLearningAgentArgs, DEFAULT_STUDY_LEARNING_AGENT_TIMEOUT_MS, parseStudyLearningAgentJson, runIsolatedStudyLearningAgent, sanitizedStudyLearningAgentEnv } from "./learning-agents.ts";
+
+test("학습 agent 기본 timeout은 Tutor·Editor·Coach 모두 10분이다", () => {
+	assert.equal(DEFAULT_STUDY_LEARNING_AGENT_TIMEOUT_MS, 600_000);
+});
 
 test("학습 agent 실행은 도구·extension·skill·session을 모두 차단한다", () => {
 	const args = buildStudyLearningAgentArgs({
