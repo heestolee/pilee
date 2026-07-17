@@ -314,6 +314,13 @@ test("buildStudyHardStudioHtml gives the note the left+center width and overlays
 	const activeQuestionProcessing = new Function(`return (${activeQuestionProcessingSource})`)() as (items: Array<{ id: string; processingStatus: string }>) => { id: string } | null;
 	assert.equal(activeQuestionProcessing([{ id: "old-failure", processingStatus: "failed" }, { id: "latest-success", processingStatus: "applied" }]), null);
 	assert.equal(activeQuestionProcessing([{ id: "old-success", processingStatus: "applied" }, { id: "latest-failure", processingStatus: "failed" }])?.id, "latest-failure");
+	const questionStateAfterSubmitBody = /function questionStateAfterSubmit\(current,result\)\{([\s\S]*?)\}\n    function activeQuestionProcessing/.exec(html)?.[1];
+	assert.ok(questionStateAfterSubmitBody);
+	const questionStateAfterSubmit = new Function(`return (function questionStateAfterSubmit(current,result){${questionStateAfterSubmitBody}})`)() as (current: any, result: any) => any;
+	const mergingState = { currentQuestionId: "Q015", questions: [{ id: "Q015", processingStatus: "merging" }] };
+	assert.equal(questionStateAfterSubmit(mergingState, { question: { id: "Q015", processingStatus: "queued" } }), mergingState);
+	assert.deepEqual(questionStateAfterSubmit({ questions: [] }, { question: { id: "Q016", processingStatus: "queued" } }), { currentQuestionId: "Q016", questions: [{ id: "Q016", processingStatus: "queued" }] });
+	assert.match(html, /\.then\(function\(result\)\{\s*if\(!answering\)\{state=questionStateAfterSubmit\(state,result\)/);
 	assert.match(html, /composerState/);
 	assert.match(html, /conversationCard/);
 	assert.match(html, /#detailDrawer #conversation \{ flex:0 0 560px; height:560px; min-height:560px; display:flex; flex-direction:column; \}/);

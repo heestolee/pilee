@@ -291,6 +291,7 @@ export function buildStudyHardStudioHtml(capabilityToken = "", nativeVisualCaptu
     }
     function bindQuestionRetries(){document.querySelectorAll('[data-question-retry]').forEach(function(button){button.addEventListener('click',function(){button.disabled=true;post('/questions/retry',{questionId:button.dataset.questionRetry}).catch(function(error){window.alert('질문을 다시 처리하지 못했습니다: '+error.message);}).finally(function(){button.disabled=false;});});});}
     function questionDraftKey(context){return questionScope==='session'?'session':context.scope+':'+[context.nodeId,context.flowId,context.flowStepId,context.noteBlockId].filter(Boolean).join(':');}
+    function questionStateAfterSubmit(current,result){var submitted=result&&result.question,questions=current.questions||[];if(!submitted)return current;for(var index=0;index<questions.length;index+=1)if(questions[index].id===submitted.id)return current;return Object.assign({},current,{currentQuestionId:submitted.id,questions:questions.concat([submitted])});}
     function activeQuestionProcessing(items){var latest=items[items.length-1],stages=new Set(['queued','running','answered','merging','failed']);return latest&&stages.has(latest.processingStatus)?latest:null;}
     function scrollThreadToBottom(thread){if(!thread)return;var apply=function(){thread.scrollTop=thread.scrollHeight;};requestAnimationFrame(apply);setTimeout(apply,0);}
     function isEnterKey(event){var key=event&&event.key||'',code=event&&event.code||'';return key==='Enter'||key==='NumpadEnter'||code==='Enter'||code==='NumpadEnter';}
@@ -309,10 +310,8 @@ export function buildStudyHardStudioHtml(capabilityToken = "", nativeVisualCaptu
       input.value='';
       status.innerHTML='<span class="processingStage queued">전송 중...</span>';
       scrollThreadToBottom(document.querySelector('#conversation .thread'));
-      post(answering?'/answer':'/ask',answering?{questionId:button.dataset.questionId,answer:text}:askBody).then(function(){
-        if(!answering){questionDraftAttachments[draftKey]=[];renderConversation();}
-        var currentStatus=document.getElementById('questionStatus');
-        if(currentStatus)currentStatus.innerHTML='<span class="processingStage queued">'+(answering?'답변 처리 중':'Tutor 대기 중')+'</span>';
+      post(answering?'/answer':'/ask',answering?{questionId:button.dataset.questionId,answer:text}:askBody).then(function(result){
+        if(!answering){state=questionStateAfterSubmit(state,result);questionDraftAttachments[draftKey]=[];renderConversation();}
         scrollThreadToBottom(document.querySelector('#conversation .thread'));
       }).catch(function(error){
         if(!questionDrafts[draftKey]){
