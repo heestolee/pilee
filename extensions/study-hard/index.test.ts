@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
+import { writeLearningCompanionManifest } from "../learning-companion/state.ts";
 import studyHard, { buildStudyHardPrompt, parseStudyHardArgs } from "./index.ts";
-import { stopStudyHardStudios } from "./studio.ts";
+import { startStudyHardStudio, stopStudyHardStudios } from "./studio.ts";
 
 test("parseStudyHardArgs extracts the first URL and keeps extra hints", () => {
 	const parsed = parseStudyHardArgs("https://reactnative.dev/architecture/xplat-implementation React Native 새 아키텍처") as any;
@@ -10,7 +14,8 @@ test("parseStudyHardArgs extracts the first URL and keeps extra hints", () => {
 	assert.match(parsed.commandLine, /\/study-hard https:\/\/reactnative\.dev\/architecture\/xplat-implementation/);
 });
 
-test("parseStudyHardArgs returns help or a URL error", () => {
+test("parseStudyHardArgs returns current, help, or a URL error without changing URL mode", () => {
+	assert.deepEqual(parseStudyHardArgs("current"), { current: true });
 	assert.deepEqual(parseStudyHardArgs("help"), { help: true });
 	const parsed = parseStudyHardArgs("react native architecture") as any;
 	assert.match(parsed.error, /URL을 찾지 못했습니다/);
@@ -110,4 +115,51 @@ test("extension registers /study-hard and sends one hidden follow-up prompt", as
 	assert.match(messages[0]?.message.content, /noteDocument/);
 	assert.ok(messages[0]?.message.details.boardRunId);
 	assert.ok(messages[0]?.message.details.boardStatePath);
+});
+
+test("/study-hard current reopens the attached run without starting a new learning prompt", async () => {
+	const root = mkdtempSync(join(tmpdir(), "study-hard-current-"));
+	const stateDir = join(root, "study-state");
+	const piDir = join(root, ".pi");
+	mkdirSync(piDir, { recursive: true });
+	writeFileSync(join(piDir, "worktree-meta.json"), JSON.stringify({ name: "current-test", branch: "feature/current-test" }));
+	const originalStateDir = process.env.STUDY_HARD_STATE_DIR;
+	process.env.STUDY_HARD_STATE_DIR = stateDir;
+	let registered: { handler: (args: string, ctx: any) => Promise<void> } | undefined;
+	const messages: any[] = [];
+	const notifications: Array<{ message: string; level: string }> = [];
+	const fakePi = {
+		registerCommand(name: string, options: any) { if (name === "study-hard") registered = options; },
+		registerTool() {},
+		on() {},
+		sendMessage(message: any) { messages.push(message); },
+		exec() { throw new Error("no browser fallback in test"); },
+	} as any;
+	const ctx = {
+		cwd: root,
+		hasUI: false,
+		sessionManager: { getSessionFile: () => join(root, "session.jsonl"), getSessionName: () => "Study current" },
+		ui: { notify(message: string, level: string) { notifications.push({ message, level }); } },
+	};
+	try {
+		const runId = "study-hard-current-run";
+		await startStudyHardStudio(fakePi, ctx, { url: "https://example.com/current", runId });
+		writeLearningCompanionManifest({
+			storageDir: piDir,
+			identityKey: "worktree:current-test",
+			framePath: join(piDir, "frame.json"),
+			runId,
+			statePath: join(stateDir, `${runId}.json`),
+			now: 100,
+		});
+		studyHard(fakePi);
+		await registered!.handler("current", ctx);
+		assert.equal(messages.length, 0, "reopen must not enqueue a new URL learning prompt");
+		assert.ok(notifications.some((entry) => /현재 작업 학습노트를 다시 열었습니다/.test(entry.message)));
+	} finally {
+		stopStudyHardStudios();
+		if (originalStateDir === undefined) delete process.env.STUDY_HARD_STATE_DIR;
+		else process.env.STUDY_HARD_STATE_DIR = originalStateDir;
+		rmSync(root, { recursive: true, force: true });
+	}
 });

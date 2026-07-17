@@ -1,7 +1,10 @@
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import { learningCompanionManifestPath, readLearningCompanionManifest, type LearningCompanionManifest } from "../learning-companion/state.ts";
+import { buildFrameIdentity } from "../tft-commands/frame-identity.ts";
 import { resolveStudyHardRuntimeConfig } from "./runtime-config.ts";
-import { registerStudyHardBoardTool, startStudyHardStudio, stopStudyHardStudios, type StudyHardBoardState } from "./studio.ts";
+import { openExistingStudyHardStudio, registerStudyHardBoardTool, startStudyHardStudio, stopStudyHardStudios, type StudyHardBoardState } from "./studio.ts";
 const CUSTOM_TYPE = "heestolee.study-hard";
 
 const HELP = `/study-hard — URL 기반 학습 모드
@@ -9,6 +12,7 @@ const HELP = `/study-hard — URL 기반 학습 모드
 Usage:
   /study-hard https://reactnative.dev/architecture/xplat-implementation
   /study-hard <article-or-video-url> [관심 주제 힌트]
+  /study-hard current     현재 Frame v2 작업에 연결된 학습노트 다시 열기
   /study-hard help
 
 Flow:
@@ -28,9 +32,10 @@ export interface StudyHardInvocation {
 	boardStatePath?: string;
 }
 
-export function parseStudyHardArgs(args: string, cwd?: string): StudyHardInvocation | { help: true } | { error: string } {
+export function parseStudyHardArgs(args: string, cwd?: string): StudyHardInvocation | { current: true } | { help: true } | { error: string } {
 	const trimmed = args.trim();
 	if (!trimmed || ["help", "--help", "-h"].includes(trimmed.toLowerCase())) return { help: true };
+	if (trimmed.toLowerCase() === "current") return { current: true };
 
 	const tokens = trimmed.split(/\s+/g);
 	const urlIndex = tokens.findIndex((token) => isHttpUrl(token));
@@ -57,6 +62,19 @@ function isHttpUrl(value: string): boolean {
 	} catch {
 		return false;
 	}
+}
+
+export function resolveCurrentLearningCompanion(ctx: ExtensionCommandContext): { path: string; manifest: LearningCompanionManifest } | undefined {
+	const identity = buildFrameIdentity(ctx, "");
+	const candidates = [
+		learningCompanionManifestPath(join(ctx.cwd ?? process.cwd(), ".pi")),
+		learningCompanionManifestPath(identity.storageDir),
+	];
+	for (const path of [...new Set(candidates)]) {
+		const manifest = readLearningCompanionManifest(path);
+		if (manifest) return { path, manifest };
+	}
+	return undefined;
 }
 
 export function buildStudyHardPrompt(invocation: StudyHardInvocation, cwd: string, board?: StudyHardBoardState): string {
@@ -233,7 +251,7 @@ export default function studyHard(pi: ExtensionAPI) {
 	pi.on("session_shutdown", () => stopStudyHardStudios());
 
 	pi.registerCommand("study-hard", {
-		description: "URL의 코드·PR·아티클·영상으로 개념 지도, 실제 근거, 노드별 대화, 적용 연습을 이어가는 적응형 학습 모드.",
+		description: "URL의 코드·PR·아티클·영상 자료를 학습하거나 현재 Frame v2 작업의 companion 학습노트를 다시 여는 적응형 학습 모드.",
 		handler: async (args: string, ctx: ExtensionCommandContext) => {
 			const parsed = parseStudyHardArgs(args, ctx.cwd);
 			if ("help" in parsed) {
@@ -242,6 +260,16 @@ export default function studyHard(pi: ExtensionAPI) {
 			}
 			if ("error" in parsed) {
 				ctx.ui.notify(`${parsed.error}\n\n${HELP}`, "warning");
+				return;
+			}
+			if ("current" in parsed) {
+				const companion = resolveCurrentLearningCompanion(ctx);
+				if (!companion) {
+					ctx.ui.notify("현재 작업에 연결된 learning-companion.json을 찾지 못했습니다. 기존 /study-hard URL 학습은 그대로 사용할 수 있습니다.", "warning");
+					return;
+				}
+				const handle = await openExistingStudyHardStudio(pi, ctx, companion.manifest.runId);
+				ctx.ui.notify(`📚 현재 작업 학습노트를 다시 열었습니다: ${handle.state.title}`, "info");
 				return;
 			}
 
