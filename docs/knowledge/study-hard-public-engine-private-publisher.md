@@ -15,8 +15,8 @@ applies_to:
   - extensions/utils/private-profiles
 source:
   - user-direction:2026-07-17-study-hard-public-migration
-reviewed_at: 2026-07-17
-reviewed_commit: e8a5212fb8212e0ebd97a9baa6b6da0791e630ff
+reviewed_at: 2026-07-18
+reviewed_commit: 0c02e271fc1f3cab5d43fef7409b78b571c49e45
 related:
   - private-overlay-package-boundary
   - context-loading-minimal-surface
@@ -103,7 +103,17 @@ Tutor prompt도 질문 surface에 맞게 좁힙니다.
 - `node` — 선택 node와 root mental model을 전달합니다.
 - `session` — 자료 전체를 묻는 질문이므로 `noteDocument`와 `flows` 전체를 허용합니다.
 
-Editor는 답변을 기존 noteDocument에 병합해야 하므로 전체 노트를 볼 수 있지만, Tutor까지 항상 전체 상태를 받으면 이전 prompt의 내용이 현재 국소 질문에 불필요하게 섞입니다.
+Editor도 질문 surface에 맞게 병합 범위를 좁힙니다.
+
+## Editor Merge Scope Rule
+
+- `note-block` — 선택한 block 전체와 section/block `id/type` index만 받고, 동일 `id/type`의 `blockReplacements`만 반환합니다. 부모 runtime이 대상 외 section/block 보존과 visual spec 유효성을 검증한 뒤 원자적으로 교체합니다.
+- `session`, `node`, `flow-step` — 여러 영역을 함께 다듬는 기존 질문은 전체 noteDocument 병합을 유지합니다.
+- 붙여넣은 `[heestolee.study-hard.transcript]`가 반복되면 agent prompt에서만 중복을 제거하고 길이를 제한합니다. 원래 질문과 Q&A state는 손실 없이 보존합니다.
+- Tutor 답변이 성공한 뒤 Editor만 실패하면 답변과 `answeredAt`을 지우지 않습니다. 재시도는 Tutor를 다시 호출하지 않고 저장된 답변으로 노트 병합만 수행합니다.
+- JSONL의 `message_end`가 빠진 경우 `turn_end`, `agent_end`, 마지막 `message_update`에서 텍스트를 복구합니다. 정말 빈 응답이면 역할과 stdout byte/event count만 진단에 남기고 prompt 원문은 노출하지 않습니다.
+
+전체 noteDocument 재생성을 작은 block 수정에도 강제하면 latency, 빈 응답, ID 보존 실패가 모두 커집니다. 반대로 모델이 임의 JSON patch를 쓰게 두면 target 밖 state를 훼손할 수 있으므로, **모델은 완전한 target block을 제안하고 부모가 검증·교체**하는 경계를 유지합니다.
 
 ## Failure Mode
 
