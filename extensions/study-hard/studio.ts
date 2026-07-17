@@ -1196,9 +1196,9 @@ function transcriptContentHash(value: string): string {
 	return createHash("sha256").update(value).digest("hex").slice(0, 12);
 }
 
-function transcriptEventKeysFromContext(ctx: ExtensionCommandContext | ExtensionContext, runId: string): Set<string> {
+function transcriptEventKeysFromContext(ctx: ExtensionCommandContext | ExtensionContext, runId: string): Set<string> | undefined {
 	const sessionManager = "sessionManager" in ctx ? ctx.sessionManager : undefined;
-	if (!sessionManager || typeof sessionManager.getBranch !== "function") return new Set();
+	if (!sessionManager || typeof sessionManager.getBranch !== "function") return undefined;
 	try {
 		return new Set(sessionManager.getBranch().flatMap((entry) => {
 			if (entry.type !== "custom_message" || entry.customType !== STUDY_HARD_TRANSCRIPT_CUSTOM_TYPE) return [];
@@ -1206,7 +1206,7 @@ function transcriptEventKeysFromContext(ctx: ExtensionCommandContext | Extension
 			return details?.runId === runId && typeof details.eventKey === "string" ? [details.eventKey] : [];
 		}));
 	} catch {
-		return new Set();
+		return undefined;
 	}
 }
 
@@ -1288,13 +1288,18 @@ function syncStudyHardTranscript(handle: StudyHardHandle): void {
 	}
 }
 
+function compactTranscriptPreview(value: string, maxLength = 180): string {
+	const normalized = value.replace(/\s+/g, " ").trim();
+	return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 1)}…` : normalized;
+}
+
 function hydrateStudyHardTranscriptSummary(handle: StudyHardHandle): void {
 	const historicalEvents = handle.state.questions.flatMap((question) => questionTranscriptEvents(question).map((event) => ({ question, event })));
 	const missingEvents = historicalEvents.filter(({ question, event }) => !handle.transcriptEventKeys.has(questionTranscriptEventKey(question, event)));
 	if (!missingEvents.length) return;
 	const applied = handle.state.questions.filter((question) => question.processingStatus === "applied").length;
 	const failed = handle.state.questions.filter((question) => question.processingStatus === "failed").length;
-	const recentQuestions = handle.state.questions.slice(-3).map((question) => `- ${question.question}`).join("\n") || "- (질문 없음)";
+	const recentQuestions = handle.state.questions.slice(-3).map((question) => `- ${question.id}: ${compactTranscriptPreview(question.question)}`).join("\n") || "- (질문 없음)";
 	const summaryFingerprint = handle.state.questions.map((question) => ({ id: question.id, status: question.processingStatus, feedback: question.feedback, error: question.processingError }));
 	const eventKey = `history-summary:${handle.state.runId}:${transcriptContentHash(JSON.stringify(summaryFingerprint))}`;
 	publishStudyHardTranscript(
@@ -1949,8 +1954,9 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 	if (requestedRunId && handles.has(requestedRunId)) {
 		const active = handles.get(requestedRunId)!;
 		if (active.state.url !== canonicalUrl) throw new Error(`Study Hard runId ${requestedRunId} already belongs to ${active.state.url}`);
-		for (const eventKey of transcriptEventKeysFromContext(ctx, active.state.runId)) active.transcriptEventKeys.add(eventKey);
-		syncStudyHardTranscript(active);
+		const contextEventKeys = transcriptEventKeysFromContext(ctx, active.state.runId);
+		if (contextEventKeys) active.transcriptEventKeys = contextEventKeys;
+		hydrateStudyHardTranscriptSummary(active);
 		if (initialPatch) mergeBoardState(active.state, initialPatch);
 		await openStudyHardWindow(pi, ctx, active);
 		return initialPatch ? updateStudyHardStudio(active.state.runId, initialPatch) : active;
@@ -1989,7 +1995,7 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 		coachOrchestrationRunning: false,
 		orchestrationAbort: new AbortController(),
 		questionBatchWindowMs: Math.max(0, params.questionBatchWindowMs ?? 400),
-		transcriptEventKeys: transcriptEventKeysFromContext(ctx, state.runId),
+		transcriptEventKeys: transcriptEventKeysFromContext(ctx, state.runId) ?? new Set(),
 	};
 
 	server.on("request", async (req, res) => {
