@@ -675,6 +675,9 @@ h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .tft-relation-card p, .tft-note-card p { margin:4px 0; color:var(--muted); font-size:12px; line-height:1.45; overflow-wrap:anywhere; }
 .tft-visual-error { border:1px solid #fecaca; background:#fef2f2; color:#991b1b; border-radius:14px; padding:12px; white-space:pre-wrap; }
 .tft-visual-healing { border:1px solid #bfdbfe; background:#eff6ff; color:#1d4ed8; border-radius:13px; padding:9px 10px; margin-top:12px; font-size:12px; font-weight:850; line-height:1.45; overflow-wrap:anywhere; }
+.tft-presentation-details { margin-top:12px; border:1px solid #cbd5e1; border-radius:14px; background:#fff; overflow:hidden; min-width:0; }
+.tft-presentation-details > summary { cursor:pointer; padding:10px 11px; color:#334155; font-size:11px; font-weight:950; }
+.tft-presentation-details-body { padding:0 11px 11px; min-width:0; overflow:auto; }
 .tft-visual-fallback { border:1px solid #fde68a; background:#fffbeb; color:#713f12; border-radius:16px; padding:12px; margin-top:10px; }
 .tft-visual-fallback-title { font-weight:950; margin-bottom:5px; }
 .tft-visual-fallback-body { color:#854d0e; font-size:12px; line-height:1.45; margin-bottom:9px; }
@@ -1222,6 +1225,59 @@ function renderVisualHealing(spec) {
   if (!notices.length) return '';
   return '<div class="tft-visual-healing">' + notices.map(function(item) { return '자동 보정됨: ' + inline(item); }).join('<br>') + '</div>';
 }
+function isVisualPresentationObject(value) { return Boolean(value && typeof value === 'object' && !Array.isArray(value)); }
+function visualPresentationScope(spec, scopeName) {
+  var presentation = isVisualPresentationObject(spec && spec.presentation) ? spec.presentation : {};
+  if (scopeName && scopeName !== 'root') return isVisualPresentationObject(presentation[scopeName]) ? presentation[scopeName] : {};
+  if (!isVisualPresentationObject(presentation.root)) return presentation;
+  var root = presentation.root;
+  var merged = {};
+  Object.keys(presentation).forEach(function(key) { if (key !== 'root') merged[key] = presentation[key]; });
+  Object.keys(root).forEach(function(key) { merged[key] = root[key]; });
+  if (isVisualPresentationObject(presentation.display) || isVisualPresentationObject(root.display)) {
+    merged.display = Object.assign({}, isVisualPresentationObject(presentation.display) ? presentation.display : {}, isVisualPresentationObject(root.display) ? root.display : {});
+  }
+  return merged;
+}
+function visualPresentationMode(scope, id, fallback) {
+  var display = isVisualPresentationObject(scope && scope.display) ? scope.display : {};
+  var raw = display[id] !== undefined ? display[id] : scope && scope[id] !== undefined ? scope[id] : fallback;
+  var value = String(raw || fallback || 'visible').trim().toLowerCase();
+  if (value === 'hidden' || value === 'none') return 'hidden';
+  if (value === 'visible' || value.indexOf('-visible') >= 0) return 'visible';
+  if (value === 'details' || value.indexOf('collapsed') >= 0 || value.indexOf('open') >= 0) return 'details';
+  return fallback === 'hidden' || fallback === 'details' ? fallback : 'visible';
+}
+function visualPresentationOrder(scope, defaults) {
+  var requested = Array.isArray(scope && scope.order) ? scope.order.map(function(id) { return String(id || '').trim(); }).filter(Boolean) : [];
+  var known = new Set(defaults);
+  var seen = new Set();
+  var ordered = [];
+  requested.concat(defaults).forEach(function(id) {
+    if (!known.has(id) || seen.has(id)) return;
+    seen.add(id);
+    ordered.push(id);
+  });
+  return ordered;
+}
+function renderPresentationRegions(spec, scopeName, defaults, regions) {
+  var scope = visualPresentationScope(spec, scopeName);
+  return visualPresentationOrder(scope, defaults).map(function(id) {
+    var region = regions[id];
+    if (!region) return '';
+    var rawHtml = region.html === undefined || region.html === null ? '' : String(region.html);
+    var visibleHtml = region.visibleHtml === undefined || region.visibleHtml === null ? rawHtml : String(region.visibleHtml);
+    var detailsHtml = region.detailsHtml === undefined || region.detailsHtml === null ? rawHtml : String(region.detailsHtml);
+    if (!rawHtml && !visibleHtml && !detailsHtml) return '';
+    var mode = visualPresentationMode(scope, id, region.mode || 'visible');
+    if (mode === 'hidden') return '';
+    if (mode !== 'details') return visibleHtml;
+    var className = region.detailsClass || 'tft-presentation-details';
+    var bodyClass = region.detailsBodyClass === false ? '' : (region.detailsBodyClass || 'tft-presentation-details-body');
+    var body = bodyClass ? '<div class="' + esc(bodyClass) + '">' + detailsHtml + '</div>' : detailsHtml;
+    return '<details class="' + esc(className) + '"' + (region.open ? ' open' : '') + '><summary>' + esc(region.title || id) + '</summary>' + body + '</details>';
+  }).join('');
+}
 function cloneSpecWithHealing(spec, message) {
   var copy = {};
   Object.keys(spec || {}).forEach(function(key) { copy[key] = spec[key]; });
@@ -1321,14 +1377,17 @@ function renderLayerLearning(layer) {
   if (!rows.length) return '';
   return '<div class="layer-learning"><span class="layer-learning-title">Learning · 짧은 보조 설명</span>' + rows.map(function(row) { return '<div class="layer-learning-row"><b>' + esc(row[0]) + ':</b> ' + inline(shortText(row[1], 118)) + '</div>'; }).join('') + '</div>';
 }
-function renderLayerCard(layer, index, top, height) {
+function renderLayerCard(layer, index, top, height, spec) {
   var cls = layerKey(layer.key) + ' ' + layerKey(layer.status);
+  var body = renderPresentationRegions(spec, 'layer', ['contract','learning','files','risks'], {
+    contract:{ html:renderLayerContract(layer), title:'Contract' },
+    learning:{ html:renderLayerLearning(layer), title:'Learning' },
+    files:{ html:renderLayerList('구현 후보 파일', layer.files), title:'구현 후보 파일' },
+    risks:{ html:renderLayerList('주의할 실수', layer.ifWrong ? layer.risk : layer.risk.slice(1)), title:'주의할 실수' }
+  });
   return '<article class="layer-card ' + esc(cls) + '" style="top:' + top + 'px;height:' + height + 'px">'
     + '<div class="layer-card-top"><div><div class="layer-card-title">' + esc(index + 1) + '. ' + inline(layer.title) + '</div><span class="layer-card-role">' + esc(layer.role) + '</span></div><div class="layer-reqs">' + renderReqs(layer.requirements) + '</div></div>'
-    + renderLayerContract(layer)
-    + renderLayerLearning(layer)
-    + renderLayerList('구현 후보 파일', layer.files)
-    + renderLayerList('주의할 실수', layer.ifWrong ? layer.risk : layer.risk.slice(1))
+    + body
     + '</article>';
 }
 function renderLayerRail(layers, tops, heights, canvasHeight) {
@@ -1371,14 +1430,17 @@ function renderBackendLayerVisualElement(el, spec) {
   var cursor = 18;
   layers.forEach(function(layer) { var h = layerCardHeight(layer); tops.push(cursor); heights.push(h); cursor += h + gap; });
   var canvasHeight = Math.max(260, cursor + 12);
-  var cards = layers.map(function(layer, index) { return renderLayerCard(layer, index, tops[index], heights[index]); }).join('');
+  var cards = layers.map(function(layer, index) { return renderLayerCard(layer, index, tops[index], heights[index], spec); }).join('');
+  var diagram = '<div class="layer-visual-diagram"><div class="layer-visual-canvas" style="height:' + canvasHeight + 'px">' + renderLayerRail(layers, tops, heights, canvasHeight) + cards + '</div></div>';
+  var body = renderPresentationRegions(spec, 'root', ['flow','diagram','glossary','notes','healing'], {
+    flow:{ html:renderFlowStrip(spec.flow || spec.story || spec.userFlow), title:'처리 흐름' },
+    diagram:{ html:diagram, title:'Layer diagram' },
+    glossary:{ html:renderLayerGlossary(spec, layers), title:'Layer glossary' },
+    notes:{ html:renderLearningNotes(spec.notes || spec.explanations), title:'학습 노트' },
+    healing:{ html:renderVisualHealing(spec), title:'자동 보정 내역' }
+  });
   el.className = 'layer-visual';
-  el.innerHTML = '<div class="layer-visual-head"><div><div class="layer-visual-title">' + esc(spec.title || 'Backend Layer Visual Map') + '</div>' + (spec.subtitle ? '<div class="layer-visual-subtitle">' + esc(spec.subtitle) + '</div>' : '<div class="layer-visual-subtitle">usecase/entity/service/repository가 어디서 어떤 책임을 갖는지 한눈에 보는 그림입니다.</div>') + '</div><span class="badge">SVG layer map</span></div>'
-    + renderFlowStrip(spec.flow || spec.story || spec.userFlow)
-    + '<div class="layer-visual-diagram"><div class="layer-visual-canvas" style="height:' + canvasHeight + 'px">' + renderLayerRail(layers, tops, heights, canvasHeight) + cards + '</div></div>'
-    + renderLayerGlossary(spec, layers)
-    + renderLearningNotes(spec.notes || spec.explanations)
-    + renderVisualHealing(spec);
+  el.innerHTML = '<div class="layer-visual-head"><div><div class="layer-visual-title">' + esc(spec.title || 'Backend Layer Visual Map') + '</div>' + (spec.subtitle ? '<div class="layer-visual-subtitle">' + esc(spec.subtitle) + '</div>' : '<div class="layer-visual-subtitle">usecase/entity/service/repository가 어디서 어떤 책임을 갖는지 한눈에 보는 그림입니다.</div>') + '</div><span class="badge">SVG layer map</span></div>' + body;
 }
 function isBoundedResponsibilityMapSpec(spec) {
   return String(spec && (spec.kind || spec.type) || '').toLowerCase() === 'bounded-responsibility-map';
@@ -1441,14 +1503,21 @@ function renderBoundedGroupDetails(group) {
     if (!requirements.length && !evidence.length) return '';
     return '<article class="brm-detail-card"><strong>' + esc(component.title) + '</strong>' + (requirements.length ? '<span>Requirement · ' + esc(requirements.join(', ')) + '</span>' : '') + (evidence.length ? '<span>Evidence · ' + esc(evidence.join(' · ')) + '</span>' : '') + '</article>';
   }).filter(Boolean);
-  if (!cards.length) return '';
-  return '<details class="brm-group-details"><summary>세부 책임·검증·Requirement · ' + cards.length + '개 component</summary><div class="brm-detail-grid">' + cards.join('') + '</div></details>';
+  return { html:cards.length ? '<div class="brm-detail-grid">' + cards.join('') + '</div>' : '', title:'세부 책임·검증·Requirement · ' + cards.length + '개 component' };
 }
-function renderBoundedGroup(group) {
+function renderBoundedGroup(group, spec) {
   var role = boundedRole(group.role), components = Array.isArray(group.components) ? group.components : [];
   var purpose = group.purpose ? '<div class="brm-group-purpose"><strong>목적</strong>' + esc(group.purpose) + '</div>' : '';
   var io = (group.input ? '<article class="brm-io"><strong>Input</strong><span>' + esc(group.input) + '</span></article>' : '') + (group.output ? '<article class="brm-io"><strong>Output</strong><span>' + esc(group.output) + '</span></article>' : '');
-  return '<section class="brm-group role-' + esc(role) + (String(group.span || '').toLowerCase() === 'full' ? ' full' : '') + '"><div class="brm-group-head"><div class="brm-group-title">' + esc(group.title) + '</div><span class="brm-role-badge role-' + esc(role) + '">' + esc(group.roleLabel || boundedRoleLabel(role)) + '</span></div>' + purpose + (io ? '<div class="brm-io-grid">' + io + '</div>' : '') + (group.boundary ? '<div class="brm-boundary"><b>반드시 지킬 경계 · </b>' + esc(group.boundary) + '</div>' : '') + '<div class="brm-component-grid">' + components.map(renderBoundedComponent).join('') + '</div>' + renderBoundedGroupDetails(group) + '</section>';
+  var details = renderBoundedGroupDetails(group);
+  var body = renderPresentationRegions(spec, 'group', ['purpose','io','boundary','components','details'], {
+    purpose:{ html:purpose, title:'목적' },
+    io:{ html:io ? '<div class="brm-io-grid">' + io + '</div>' : '', title:'Input / Output' },
+    boundary:{ html:group.boundary ? '<div class="brm-boundary"><b>반드시 지킬 경계 · </b>' + esc(group.boundary) + '</div>' : '', title:'반드시 지킬 경계' },
+    components:{ html:'<div class="brm-component-grid">' + components.map(renderBoundedComponent).join('') + '</div>', title:'Components' },
+    details:{ html:details.html, title:details.title, mode:'details', detailsClass:'brm-group-details', detailsBodyClass:false }
+  });
+  return '<section class="brm-group role-' + esc(role) + (String(group.span || '').toLowerCase() === 'full' ? ' full' : '') + '"><div class="brm-group-head"><div class="brm-group-title">' + esc(group.title) + '</div><span class="brm-role-badge role-' + esc(role) + '">' + esc(group.roleLabel || boundedRoleLabel(role)) + '</span></div>' + body + '</section>';
 }
 function renderBoundedExceptions(spec, groups) {
   var exceptions = Array.isArray(spec.exceptions) ? spec.exceptions : [];
@@ -1463,8 +1532,15 @@ function renderBoundedResponsibilityMapElement(el, spec) {
   var errors = boundedResponsibilityErrors(spec);
   if (errors.length) { renderVisualFallbackElement(el, spec, null, 'bounded-responsibility-map 검증 실패: ' + errors.join(' ')); return; }
   var groups = spec.groups;
+  var body = renderPresentationRegions(spec, 'root', ['overview','spine','groups','exceptions','healing'], {
+    overview:{ html:spec.overview ? '<div class="brm-overview">' + esc(spec.overview) + '</div>' : '', title:'개요' },
+    spine:{ html:renderBoundedSpine(spec, groups), title:'책임 연결선' },
+    groups:{ html:'<div class="brm-group-grid">' + groups.map(function(group) { return renderBoundedGroup(group, spec); }).join('') + '</div>', title:'책임 그룹' },
+    exceptions:{ html:renderBoundedExceptions(spec, groups), title:'예외·운영 branch' },
+    healing:{ html:renderVisualHealing(spec), title:'자동 보정 내역' }
+  });
   el.className = 'brm-visual';
-  el.innerHTML = '<div class="brm-head"><div><div class="brm-title">' + esc(spec.title || '책임 경계 지도') + '</div>' + (spec.subtitle ? '<div class="brm-subtitle">' + esc(spec.subtitle) + '</div>' : '') + '</div><span class="badge">책임 경계 지도</span></div>' + (spec.overview ? '<div class="brm-overview">' + esc(spec.overview) + '</div>' : '') + renderBoundedSpine(spec, groups) + '<div class="brm-group-grid">' + groups.map(renderBoundedGroup).join('') + '</div>' + renderBoundedExceptions(spec, groups);
+  el.innerHTML = '<div class="brm-head"><div><div class="brm-title">' + esc(spec.title || '책임 경계 지도') + '</div>' + (spec.subtitle ? '<div class="brm-subtitle">' + esc(spec.subtitle) + '</div>' : '') + '</div><span class="badge">책임 경계 지도</span></div>' + body;
 }
 function isIndependentFlowPanelsSpec(spec) {
   return String(spec && (spec.kind || spec.type) || '').toLowerCase() === 'independent-flow-panels';
@@ -1528,10 +1604,16 @@ function renderIndependentFlowAnnotations(panel) {
   var learningHtml = learning.length ? '<section class="ifp-annotation learning"><div class="ifp-annotation-title">Learning · 이 구조를 읽는 핵심</div><ul>' + learning.map(function(item) { return '<li>' + inline(item) + '</li>'; }).join('') + '</ul></section>' : '';
   return '<div class="ifp-annotations">' + contractHtml + learningHtml + '</div>';
 }
-function renderIndependentFlowPanel(panel, index) {
+function renderIndependentFlowPanel(panel, index, spec) {
   var stages = Array.isArray(panel.stages) ? panel.stages : [];
   var meta = (panel.purpose ? '<article class="ifp-meta-card"><strong>Purpose</strong><span>' + esc(panel.purpose) + '</span></article>' : '') + (panel.trigger ? '<article class="ifp-meta-card"><strong>Trigger</strong><span>' + esc(panel.trigger) + '</span></article>' : '');
-  return '<section class="ifp-panel"><div class="ifp-panel-head"><div class="ifp-panel-title">' + esc(panel.title) + '</div><span class="ifp-panel-badge">독립 실행 패널</span></div>' + (meta ? '<div class="ifp-panel-meta">' + meta + '</div>' : '') + '<div class="ifp-stage-list">' + stages.map(renderIndependentFlowStage).join('') + '</div>' + renderIndependentFlowExceptions(panel) + renderIndependentFlowAnnotations(panel) + '</section>';
+  var body = renderPresentationRegions(spec, 'panel', ['meta','stages','exceptions','annotations'], {
+    meta:{ html:meta ? '<div class="ifp-panel-meta">' + meta + '</div>' : '', title:'Purpose / Trigger' },
+    stages:{ html:'<div class="ifp-stage-list">' + stages.map(renderIndependentFlowStage).join('') + '</div>', title:'실행 단계' },
+    exceptions:{ html:renderIndependentFlowExceptions(panel), title:'예외·복구 경로' },
+    annotations:{ html:renderIndependentFlowAnnotations(panel), title:'Contract / Learning' }
+  });
+  return '<section class="ifp-panel"><div class="ifp-panel-head"><div class="ifp-panel-title">' + esc(panel.title) + '</div><span class="ifp-panel-badge">독립 실행 패널</span></div>' + body + '</section>';
 }
 function independentRelationTypeLabel(type) {
   if (type === 'shared-state') return '공유 상태 · 실행 호출 아님';
@@ -1558,8 +1640,15 @@ function renderIndependentFlowPanelsElement(el, spec) {
   var errors = independentFlowSpecErrors(spec);
   if (errors.length) { renderVisualFallbackElement(el, spec, null, 'independent-flow-panels 검증 실패: ' + errors.join(' ')); return; }
   var panels = spec.panels;
+  var body = renderPresentationRegions(spec, 'root', ['overview','relations','panels','commands','healing'], {
+    overview:{ html:spec.overview ? '<div class="ifp-overview">' + esc(spec.overview) + '</div>' : '', title:'개요' },
+    relations:{ html:renderIndependentFlowRelations(spec, panels), title:'패널 관계' },
+    panels:{ html:'<div class="ifp-panel-stack">' + panels.map(function(panel, index) { return renderIndependentFlowPanel(panel, index, spec); }).join('') + '</div>', title:'독립 실행 패널' },
+    commands:{ html:renderIndependentFlowCommands(spec), title:'별도 상태 변경 명령' },
+    healing:{ html:renderVisualHealing(spec), title:'자동 보정 내역' }
+  });
   el.className = 'ifp-visual';
-  el.innerHTML = '<div class="ifp-head"><div><div class="ifp-title">' + esc(spec.title || '독립 실행 흐름') + '</div>' + (spec.subtitle ? '<div class="ifp-subtitle">' + esc(spec.subtitle) + '</div>' : '') + '</div><span class="badge">독립 실행 흐름</span></div>' + (spec.overview ? '<div class="ifp-overview">' + esc(spec.overview) + '</div>' : '') + renderIndependentFlowRelations(spec, panels) + '<div class="ifp-panel-stack">' + panels.map(renderIndependentFlowPanel).join('') + '</div>' + renderIndependentFlowCommands(spec);
+  el.innerHTML = '<div class="ifp-head"><div><div class="ifp-title">' + esc(spec.title || '독립 실행 흐름') + '</div>' + (spec.subtitle ? '<div class="ifp-subtitle">' + esc(spec.subtitle) + '</div>' : '') + '</div><span class="badge">독립 실행 흐름</span></div>' + body;
 }
 function isPhasePanelVisualSpec(spec) {
   var layers = Array.isArray(spec && spec.layers) ? spec.layers : [];
@@ -1629,10 +1718,12 @@ function phaseNotesForPanel(notes, index) {
   });
 }
 function renderPhasePanelNotes(notes, panelTitle) {
-  if (!notes.length) return '';
-  return '<details class="phase-panel-details"><summary>' + esc(panelTitle) + ' 상세 설명 · ' + notes.length + '개</summary><div class="phase-panel-note-grid">' + notes.map(function(note) {
-    return '<article class="phase-panel-note"><strong>' + esc(note.title || '설명') + '</strong><ul>' + asTextArray(note.body || note.items).map(function(item) { return '<li>' + inline(item) + '</li>'; }).join('') + '</ul></article>';
-  }).join('') + '</div></details>';
+  return {
+    html:notes.length ? '<div class="phase-panel-note-grid">' + notes.map(function(note) {
+      return '<article class="phase-panel-note"><strong>' + esc(note.title || '설명') + '</strong><ul>' + asTextArray(note.body || note.items).map(function(item) { return '<li>' + inline(item) + '</li>'; }).join('') + '</ul></article>';
+    }).join('') + '</div>' : '',
+    title:panelTitle + ' 상세 설명 · ' + notes.length + '개'
+  };
 }
 function renderPhasePanelVisualElement(el, spec) {
   var layers = Array.isArray(spec.layers) ? spec.layers : [];
@@ -1642,11 +1733,23 @@ function renderPhasePanelVisualElement(el, spec) {
     var id = layerKey(layer && (layer.id || layer.key || layer.title) || ('panel-' + index));
     var title = String(layer && (layer.title || layer.label || layer.id) || ('Panel ' + (index + 1)));
     var panelNodes = nodes.filter(function(node) { return layerKey(node && (node.lane || node.group || node.layer)) === id; });
-    return '<section class="phase-panel ' + (index === 0 ? 'phase-a' : 'phase-b') + '"><div class="phase-panel-head"><div class="phase-panel-title">' + esc(title) + '</div><span class="phase-panel-count">단계 ' + panelNodes.filter(function(node) { return !isPhaseExceptionNode(node); }).length + ' · 예외 ' + panelNodes.filter(isPhaseExceptionNode).length + '</span></div><div class="phase-stage-list">' + renderPhaseStages(panelNodes) + '</div>' + renderPhaseExceptions(panelNodes) + renderPhasePanelNotes(phaseNotesForPanel(notes, index), title) + '</section>';
+    var noteRegion = renderPhasePanelNotes(phaseNotesForPanel(notes, index), title);
+    var panelBody = renderPresentationRegions(spec, 'panel', ['stages','exceptions','notes'], {
+      stages:{ html:'<div class="phase-stage-list">' + renderPhaseStages(panelNodes) + '</div>', title:'실행 단계' },
+      exceptions:{ html:renderPhaseExceptions(panelNodes), title:'예외·복구' },
+      notes:{ html:noteRegion.html, title:noteRegion.title, mode:'details', detailsClass:'phase-panel-details', detailsBodyClass:false }
+    });
+    return '<section class="phase-panel ' + (index === 0 ? 'phase-a' : 'phase-b') + '"><div class="phase-panel-head"><div class="phase-panel-title">' + esc(title) + '</div><span class="phase-panel-count">단계 ' + panelNodes.filter(function(node) { return !isPhaseExceptionNode(node); }).length + ' · 예외 ' + panelNodes.filter(isPhaseExceptionNode).length + '</span></div>' + panelBody + '</section>';
   });
   var boundary = spec.subtitle || '패널 사이에 자동 실행선이 없습니다. 다음 패널은 독립 조건으로 시작합니다.';
+  var panelStack = '<div class="phase-panel-stack">' + panels[0] + '<div class="phase-boundary">' + esc(boundary) + '</div>' + panels[1] + '</div>';
+  var body = renderPresentationRegions(spec, 'root', ['overview','panels','healing'], {
+    overview:{ html:spec.body ? '<div class="phase-visual-summary">' + esc(spec.body) + '</div>' : '', title:'개요' },
+    panels:{ html:panelStack, title:'독립 phase 패널' },
+    healing:{ html:renderVisualHealing(spec), title:'자동 보정 내역' }
+  });
   el.className = 'phase-visual';
-  el.innerHTML = '<div class="phase-visual-head"><div><div class="phase-visual-title">' + esc(spec.title || '두 구간 실행 흐름') + '</div><div class="phase-visual-subtitle">처리 순서와 실행 계층을 패널 안에서 함께 읽습니다.</div></div><span class="badge">독립 phase panel</span></div>' + (spec.body ? '<div class="phase-visual-summary">' + esc(spec.body) + '</div>' : '') + '<div class="phase-panel-stack">' + panels[0] + '<div class="phase-boundary">' + esc(boundary) + '</div>' + panels[1] + '</div>' + renderVisualHealing(spec);
+  el.innerHTML = '<div class="phase-visual-head"><div><div class="phase-visual-title">' + esc(spec.title || '두 구간 실행 흐름') + '</div><div class="phase-visual-subtitle">처리 순서와 실행 계층을 패널 안에서 함께 읽습니다.</div></div><span class="badge">독립 phase panel</span></div>' + body;
 }
 function isBackendLayerVisualSpec(spec) {
   var kind = String(spec.kind || spec.type || '').toLowerCase();
@@ -1791,20 +1894,23 @@ function renderArchLearning(node) {
   if (!rows.length) return '';
   return '<div class="arch-node-learning">' + rows.map(function(row) { return '<div><b>' + esc(row[0]) + ':</b> ' + inline(shortText(row[1], 88)) + '</div>'; }).join('') + '</div>';
 }
-function renderArchNode(node, layout) {
+function renderArchNode(node, layout, spec) {
   var badges = node.badges.slice();
   if (node.source === true) badges.push('source-of-truth');
   else if (typeof node.source === 'string') badges.push(node.source);
   if (node.status) badges.push(node.status);
   var classes = ['arch-node', node.type].concat(badges.map(archBadgeClass)).join(' ');
+  var body = renderPresentationRegions(spec, 'node', ['badges','contract','description','learning','columns'], {
+    badges:{ html:badges.length ? '<div class="arch-node-badges">' + badges.map(renderArchBadge).join('') + '</div>' : '', title:'상태' },
+    contract:{ html:renderArchContract(node), title:'Contract' },
+    description:{ html:node.description ? '<div class="arch-node-desc">' + inline(node.description) + '</div>' : '', title:'설명' },
+    learning:{ html:renderArchLearning(node), title:'Learning' },
+    columns:{ html:renderArchColumns(node.columns), title:'Columns' }
+  });
   return '<article class="' + esc(classes) + '" style="left:' + layout.x + 'px;top:' + layout.y + 'px;width:' + layout.w + 'px;min-height:' + layout.h + 'px">'
     + '<div class="arch-node-title">' + inline(node.title) + '</div>'
     + '<span class="arch-node-kind">' + esc(node.type) + '</span>'
-    + (badges.length ? '<div class="arch-node-badges">' + badges.map(renderArchBadge).join('') + '</div>' : '')
-    + renderArchContract(node)
-    + (node.description ? '<div class="arch-node-desc">' + inline(node.description) + '</div>' : '')
-    + renderArchLearning(node)
-    + renderArchColumns(node.columns)
+    + body
     + '</article>';
 }
 function archEdgeColor(edge) {
@@ -1963,7 +2069,7 @@ function renderArchitectureFlowElement(el, spec) {
   var edges = Array.isArray(spec.edges) ? spec.edges : [];
   var metrics = { orientation:orientation, canvasWidth:canvasWidth, canvasHeight:canvasHeight, laneGap:laneGap, edgeBusTop:edgeBusTop, rightGutter:rightGutter };
   var edgeSvg = '<svg class="arch-edge-svg" width="' + canvasWidth + '" height="' + canvasHeight + '" viewBox="0 0 ' + canvasWidth + ' ' + canvasHeight + '"><defs><marker id="' + markerId + '" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker></defs>' + edges.map(function(edge, index) { return renderArchEdge(edge, layouts, index, markerId, orientation, metrics); }).join('') + '</svg>';
-  var nodeHtml = nodes.map(function(node) { return renderArchNode(node, layouts[node.id]); }).join('');
+  var nodeHtml = nodes.map(function(node) { return renderArchNode(node, layouts[node.id], spec); }).join('');
   var orientationLabel = orientation === 'DOWN' ? 'Architecture flow · 세로 자동 배치' : 'Architecture flow · 가로 배치';
   var visualTheme = layerKey(spec.theme || spec.visualTheme || spec.variant || '');
   var themeClass = visualTheme === 'schema-diff-dark' || visualTheme === 'dark-schema-diff'
@@ -1971,12 +2077,15 @@ function renderArchitectureFlowElement(el, spec) {
     : visualTheme === 'schema-diff-light' || visualTheme === 'schema-diff'
       ? ' schema-diff-light'
       : '';
+  var diagram = '<div class="arch-visual-diagram"><div class="arch-canvas" style="width:' + canvasWidth + 'px;height:' + canvasHeight + 'px">' + laneHtml + edgeSvg + nodeHtml + '</div></div>';
+  var body = renderPresentationRegions(spec, 'root', ['diagram','legend','notes','healing'], {
+    diagram:{ html:diagram, title:'Architecture diagram' },
+    legend:{ html:renderArchLegend(spec), title:'범례' },
+    notes:{ html:renderLearningNotes(spec.notes || spec.explanations), title:'학습 노트' },
+    healing:{ html:renderVisualHealing(spec), title:'자동 보정 내역' }
+  });
   el.className = 'arch-visual' + themeClass;
-  el.innerHTML = '<div class="arch-visual-head"><div><div class="arch-visual-title">' + esc(spec.title || 'Architecture / Data Flow Map') + '</div>' + (spec.subtitle ? '<div class="arch-visual-subtitle">' + esc(spec.subtitle) + '</div>' : '<div class="arch-visual-subtitle">데이터와 로직이 UI/API/usecase/domain/repository/DB를 어떻게 지나가는지 보는 전체 지도입니다.</div>') + '</div><span class="badge">' + esc(orientationLabel) + '</span></div>'
-    + '<div class="arch-visual-diagram"><div class="arch-canvas" style="width:' + canvasWidth + 'px;height:' + canvasHeight + 'px">' + laneHtml + edgeSvg + nodeHtml + '</div></div>'
-    + renderArchLegend(spec)
-    + renderLearningNotes(spec.notes || spec.explanations)
-    + renderVisualHealing(spec);
+  el.innerHTML = '<div class="arch-visual-head"><div><div class="arch-visual-title">' + esc(spec.title || 'Architecture / Data Flow Map') + '</div>' + (spec.subtitle ? '<div class="arch-visual-subtitle">' + esc(spec.subtitle) + '</div>' : '<div class="arch-visual-subtitle">데이터와 로직이 UI/API/usecase/domain/repository/DB를 어떻게 지나가는지 보는 전체 지도입니다.</div>') + '</div><span class="badge">' + esc(orientationLabel) + '</span></div>' + body;
 }
 function isDataModelMigrationMapSpec(spec) {
   var kind = String(spec && (spec.kind || spec.type) || '').toLowerCase();
@@ -2056,7 +2165,7 @@ function renderDataLearningList(title, items) {
   if (!items.length) return '';
   return '<section class="data-learning-block"><strong>' + esc(title) + '</strong><ul>' + items.map(function(item) { return '<li>' + inline(item) + '</li>'; }).join('') + '</ul></section>';
 }
-function renderDataEntityCard(entity, schemaPresentation) {
+function renderDataEntityCard(entity, spec) {
   var badges = entity.badges.slice(), role = dataLearningRole(entity.learningRole);
   if (entity.sourceOfTruth) badges.push('source-of-truth');
   if (entity.status && entity.status !== 'same') badges.push(entity.status);
@@ -2065,13 +2174,19 @@ function renderDataEntityCard(entity, schemaPresentation) {
   var columns = entity.columns.length ? entity.columns.map(renderDataColumn).join('') : '<div class="data-column"><div><span class="data-column-name">columns?</span><span class="data-column-desc">Frame 단계에서 실제 DDL/ORM schema를 읽어 채워야 합니다.</span></div></div>';
   var hasLearning = Boolean(entity.purpose || entity.keyRules.length || entity.mutableState.length);
   var learning = hasLearning ? '<div class="data-learning-grid">' + (entity.purpose ? '<section class="data-learning-block purpose"><strong>왜 존재하는가</strong><p>' + inline(entity.purpose) + '</p></section>' : '') + renderDataLearningList('핵심 key · 불변식', entity.keyRules) + renderDataLearningList('변경되는 상태', entity.mutableState) + '</div>' : '';
-  var schemaMode = String(schemaPresentation || '').toLowerCase();
-  var schemaOpen = schemaMode === 'top-open' || schemaMode === 'bottom-open' || !entity.collapseColumns;
-  var schemaVisible = schemaMode === 'top-visible' || schemaMode === 'bottom-visible';
-  var schemaFirst = schemaMode === 'top-open' || schemaMode === 'top-collapsed' || schemaMode === 'top-visible';
-  var schema = hasLearning ? (schemaVisible ? '<section class="data-schema-visible"><div class="data-schema-visible-title">Schema fields · ' + entity.columns.length + '개</div><div class="data-columns">' + columns + '</div></section>' : '<details class="data-schema-details"' + (schemaOpen ? ' open' : '') + '><summary>Schema fields · ' + entity.columns.length + '개</summary><div class="data-columns">' + columns + '</div></details>') : '<div class="data-columns">' + columns + '</div>';
-  var details = schemaFirst ? schema + learning : learning + schema;
-  return '<article class="' + esc(classes) + '"><div class="data-entity-head"><div class="data-entity-title">' + inline(entity.title) + '</div><div class="data-entity-meta">' + roleBadge + badges.map(renderDataBadge).join('') + '</div></div>' + (entity.description ? '<div class="data-entity-desc">' + inline(entity.description) + '</div>' : '') + details + '</article>';
+  var presentation = isVisualPresentationObject(spec && spec.presentation) ? spec.presentation : {};
+  var legacySchemaMode = typeof presentation.schema === 'string' ? presentation.schema.toLowerCase() : '';
+  var schemaOpen = legacySchemaMode === 'top-open' || legacySchemaMode === 'bottom-open' || (!legacySchemaMode && !entity.collapseColumns);
+  var schemaVisible = legacySchemaMode === 'top-visible' || legacySchemaMode === 'bottom-visible';
+  var schemaFirst = legacySchemaMode === 'top-open' || legacySchemaMode === 'top-collapsed' || legacySchemaMode === 'top-visible';
+  var schemaTitle = 'Schema fields · ' + entity.columns.length + '개';
+  var schemaBody = '<div class="data-columns">' + columns + '</div>';
+  var body = renderPresentationRegions(spec, 'entity', ['description'].concat(schemaFirst ? ['schema','learning'] : ['learning','schema']), {
+    description:{ html:entity.description ? '<div class="data-entity-desc">' + inline(entity.description) + '</div>' : '', title:'설명' },
+    schema:{ html:schemaBody, visibleHtml:hasLearning ? '<section class="data-schema-visible"><div class="data-schema-visible-title">' + schemaTitle + '</div>' + schemaBody + '</section>' : schemaBody, title:schemaTitle, mode:hasLearning && !schemaVisible ? 'details' : 'visible', open:schemaOpen, detailsClass:'data-schema-details', detailsBodyClass:false },
+    learning:{ html:learning, title:'학습 설명' }
+  });
+  return '<article class="' + esc(classes) + '"><div class="data-entity-head"><div class="data-entity-title">' + inline(entity.title) + '</div><div class="data-entity-meta">' + roleBadge + badges.map(renderDataBadge).join('') + '</div></div>' + body + '</article>';
 }
 function renderDataModelSpine(spec) {
   var items = Array.isArray(spec.modelSpine) ? spec.modelSpine : [];
@@ -2098,12 +2213,11 @@ function dataRelationships(spec) {
 function renderDataRelationships(spec) {
   var rels = dataRelationships(spec);
   if (!rels.length) return '';
-  var body = '<div class="data-relationships">' + rels.map(function(rel, index) {
+  return '<div class="data-relationships">' + rels.map(function(rel, index) {
     var label = rel.cardinality || rel.label || rel.kind || rel.type || ('R' + (index + 1));
     var title = (rel.from || '?') + ' → ' + (rel.to || '?');
     return '<div class="data-relation-card"><strong>' + esc(label) + ' · ' + inline(title) + '</strong>' + (rel.description ? '<p>' + inline(rel.description) + '</p>' : '') + (rel.why ? '<p><b>왜:</b> ' + inline(rel.why) + '</p>' : '') + '</div>';
   }).join('') + '</div>';
-  return dataSectionAsDetails(spec, 'relationships') ? '<details class="data-secondary"><summary>Relationships / Cardinality · ' + rels.length + '개</summary>' + body + '</details>' : '<div class="data-section-title">Relationships / Cardinality</div>' + body;
 }
 function dataOperations(spec) {
   var keys = ['migrationOperations', 'operations', 'ddl', 'dml', 'backfill', 'rollback', 'verificationOperations'];
@@ -2119,23 +2233,21 @@ function dataOperations(spec) {
 function renderDataOperations(spec) {
   var ops = dataOperations(spec);
   if (!ops.length) return '';
-  var body = '<div class="data-migration-grid">' + ops.map(function(op, index) {
+  return '<div class="data-migration-grid">' + ops.map(function(op, index) {
     var type = op.type || op.kind || op.operation || ('STEP ' + (index + 1));
     var target = op.target || op.table || op.entity || op.column || '';
     var title = (target ? target + ' · ' : '') + (op.title || op.name || type);
     var badges = [type].concat(asTextArray(op.badges || op.flags || op.risks || op.safety)).slice(0, 4).map(renderDataBadge).join('');
     return '<div class="data-op-card"><strong>' + inline(title) + '</strong><div>' + badges + '</div>' + (op.description ? '<p>' + inline(op.description) + '</p>' : '') + (op.rollback || op.down ? '<p><b>Rollback:</b> ' + inline(op.rollback || op.down) + '</p>' : '') + (op.sql ? '<pre class="data-op-sql">' + esc(op.sql) + '</pre>' : '') + '</div>';
   }).join('') + '</div>';
-  return dataSectionAsDetails(spec, 'migration') ? '<details class="data-secondary"><summary>Migration Plan · DDL / DML / Backfill · ' + ops.length + '개</summary>' + body + '</details>' : '<div class="data-section-title">Migration Plan · DDL / DML / Backfill</div>' + body;
 }
 function renderDataVerification(spec) {
   var checks = spec.verificationQueries || spec.verifyQueries || spec.verification || spec.checks || [];
   if (!Array.isArray(checks) || !checks.length) return '';
-  var body = '<div class="data-verification-grid">' + checks.map(function(check, index) {
+  return '<div class="data-verification-grid">' + checks.map(function(check, index) {
     if (typeof check === 'string') return '<div class="data-verify-card"><strong>V' + (index + 1) + '</strong><p>' + inline(check) + '</p></div>';
     return '<div class="data-verify-card"><strong>' + esc(check.title || check.id || ('V' + (index + 1))) + '</strong>' + (check.description ? '<p>' + inline(check.description) + '</p>' : '') + (check.sql ? '<pre class="data-op-sql">' + esc(check.sql) + '</pre>' : '') + '</div>';
   }).join('') + '</div>';
-  return dataSectionAsDetails(spec, 'verification') ? '<details class="data-secondary"><summary>Verification Queries / Evidence · ' + checks.length + '개</summary>' + body + '</details>' : '<div class="data-section-title">Verification Queries / Evidence</div>' + body;
 }
 function renderDataFlow(spec) {
   var flow = spec.runtimeFlow || spec.flow || spec.displayFlow || spec.readFlow;
@@ -2145,19 +2257,27 @@ function renderDataFlow(spec) {
 }
 function renderDataModelMigrationMapElement(el, spec) {
   var entities = dataEntities(spec);
-  var schemaPresentation = spec && spec.presentation && typeof spec.presentation === 'object' ? spec.presentation.schema : '';
   if (!entities.length) { renderVisualFallbackElement(el, spec, null, 'data-model-migration-map은 entities 배열이 필요합니다. 원본은 fallback으로 보존했습니다.'); return; }
+  var relationships = renderDataRelationships(spec), operations = renderDataOperations(spec), verification = renderDataVerification(spec);
+  var relationshipCount = dataRelationships(spec).length, operationCount = dataOperations(spec).length;
+  var verificationItems = spec.verificationQueries || spec.verifyQueries || spec.verification || spec.checks || [];
+  var relationshipTitle = 'Relationships / Cardinality · ' + relationshipCount + '개';
+  var migrationTitle = 'Migration Plan · DDL / DML / Backfill · ' + operationCount + '개';
+  var verificationTitle = 'Verification Queries / Evidence · ' + (Array.isArray(verificationItems) ? verificationItems.length : 0) + '개';
+  var entityDiagram = '<div class="data-visual-diagram"><div class="data-entity-grid">' + entities.map(function(entity) { return renderDataEntityCard(entity, spec); }).join('') + '</div></div>';
+  var body = renderPresentationRegions(spec, 'root', ['spine','boundaries','flow','entities','relationships','migration','verification','notes','healing'], {
+    spine:{ html:renderDataModelSpine(spec), title:'저장 spine' },
+    boundaries:{ html:renderDataBoundaries(spec), title:'데이터 경계' },
+    flow:{ html:renderDataFlow(spec), title:'Runtime flow' },
+    entities:{ html:entityDiagram, title:'Data entities' },
+    relationships:{ html:relationships, visibleHtml:relationships ? '<div class="data-section-title">Relationships / Cardinality</div>' + relationships : '', title:relationshipTitle, mode:dataSectionAsDetails(spec, 'relationships') ? 'details' : 'visible', detailsClass:'data-secondary', detailsBodyClass:false },
+    migration:{ html:operations, visibleHtml:operations ? '<div class="data-section-title">Migration Plan · DDL / DML / Backfill</div>' + operations : '', title:migrationTitle, mode:dataSectionAsDetails(spec, 'migration') ? 'details' : 'visible', detailsClass:'data-secondary', detailsBodyClass:false },
+    verification:{ html:verification, visibleHtml:verification ? '<div class="data-section-title">Verification Queries / Evidence</div>' + verification : '', title:verificationTitle, mode:dataSectionAsDetails(spec, 'verification') ? 'details' : 'visible', detailsClass:'data-secondary', detailsBodyClass:false },
+    notes:{ html:renderLearningNotes(spec.notes || spec.explanations), title:'학습 노트' },
+    healing:{ html:renderVisualHealing(spec), title:'자동 보정 내역' }
+  });
   el.className = 'data-visual';
-  el.innerHTML = '<div class="data-visual-head"><div><div class="data-visual-title">' + esc(spec.title || 'Data Model / Migration Map') + '</div>' + (spec.subtitle ? '<div class="data-visual-subtitle">' + esc(spec.subtitle) + '</div>' : '<div class="data-visual-subtitle">DDL/DML, table 관계, runtime 표시 흐름을 분리해서 보는 데이터 구조 지도입니다.</div>') + '</div><span class="badge">Data Model / Migration Map</span></div>'
-    + renderDataModelSpine(spec)
-    + renderDataBoundaries(spec)
-    + renderDataFlow(spec)
-    + '<div class="data-visual-diagram"><div class="data-entity-grid">' + entities.map(function(entity) { return renderDataEntityCard(entity, schemaPresentation); }).join('') + '</div></div>'
-    + renderDataRelationships(spec)
-    + renderDataOperations(spec)
-    + renderDataVerification(spec)
-    + renderLearningNotes(spec.notes || spec.explanations)
-    + renderVisualHealing(spec);
+  el.innerHTML = '<div class="data-visual-head"><div><div class="data-visual-title">' + esc(spec.title || 'Data Model / Migration Map') + '</div>' + (spec.subtitle ? '<div class="data-visual-subtitle">' + esc(spec.subtitle) + '</div>' : '<div class="data-visual-subtitle">DDL/DML, table 관계, runtime 표시 흐름을 분리해서 보는 데이터 구조 지도입니다.</div>') + '</div><span class="badge">Data Model / Migration Map</span></div>' + body;
 }
 function renderElkTable(table, node, scale, pad) {
   var status = table.status || 'same';
@@ -2249,7 +2369,14 @@ async function renderTftVisualElement(el) {
     }).join('');
     var tableHtml = tables.map(function(t) { return renderElkTable(t, nodeById[String(t.id || t.name)], scale, pad); }).join('');
     var svg = '<svg width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '"><defs><marker id="' + markerId + '" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker></defs>' + edgeSvg + '</svg>';
-    el.innerHTML = '<div class="tft-visual-head"><div><div class="tft-visual-title">' + esc(spec.title || 'TFT visual') + '</div>' + (spec.subtitle ? '<div class="tft-visual-subtitle">' + esc(spec.subtitle) + '</div>' : '') + '</div>' + renderPill(direction === 'DOWN' ? 'top-down' : 'left-right') + '</div><div class="tft-visual-diagram"><div class="tft-elk-canvas" style="width:' + width + 'px;height:' + height + 'px">' + svg + tableHtml + '</div></div>' + renderRelationCards(relations) + renderLearningNotes(spec.notes || spec.explanations) + renderVisualHealing(spec);
+    var diagram = '<div class="tft-visual-diagram"><div class="tft-elk-canvas" style="width:' + width + 'px;height:' + height + 'px">' + svg + tableHtml + '</div></div>';
+    var body = renderPresentationRegions(spec, 'root', ['diagram','relationships','notes','healing'], {
+      diagram:{ html:diagram, title:'Table diagram' },
+      relationships:{ html:renderRelationCards(relations), title:'Relationships' },
+      notes:{ html:renderLearningNotes(spec.notes || spec.explanations), title:'학습 노트' },
+      healing:{ html:renderVisualHealing(spec), title:'자동 보정 내역' }
+    });
+    el.innerHTML = '<div class="tft-visual-head"><div><div class="tft-visual-title">' + esc(spec.title || 'TFT visual') + '</div>' + (spec.subtitle ? '<div class="tft-visual-subtitle">' + esc(spec.subtitle) + '</div>' : '') + '</div>' + renderPill(direction === 'DOWN' ? 'top-down' : 'left-right') + '</div>' + body;
   } catch (e) {
     renderVisualFallbackElement(el, spec, source, 'ELK layout에 실패했습니다. 의미를 바꾸지 않고 fallback으로 표시합니다: ' + (e && e.message ? e.message : e));
   }

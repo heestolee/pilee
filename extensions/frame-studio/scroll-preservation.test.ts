@@ -150,6 +150,14 @@ function extractArchLabelRects(html: string) {
 		.map((match) => ({ x: Number(match[1]), y: Number(match[2]), width: Number(match[3]), height: Number(match[4]) }));
 }
 
+function assertTextOrder(html: string, first: string, second: string, message: string) {
+	const firstIndex = html.indexOf(first);
+	const secondIndex = html.indexOf(second);
+	assert.ok(firstIndex >= 0, `${message}: ${first} should render`);
+	assert.ok(secondIndex >= 0, `${message}: ${second} should render`);
+	assert.ok(firstIndex < secondIndex, `${message}: ${first} should render before ${second}`);
+}
+
 test("TFT visual self-heals nodes/edges shape without requiring a fixed kind", async () => {
 	const browser = createFakeBrowser({ top: 0, viewport: 600, height: 1600 });
 	const studio = loadStudioScript(browser.window, browser.document);
@@ -448,6 +456,200 @@ test("Data Model learning fixture는 역할 색·저장 spine·학습 위계·�
 	assert.match(element.innerHTML, /<details class="data-secondary"><summary>Migration Plan · DDL \/ DML \/ Backfill · 3개/);
 	assert.match(element.innerHTML, /<details class="data-secondary"><summary>Verification Queries \/ Evidence · 3개/);
 	assert.doesNotMatch(element.innerHTML, /columns\?|data-flow-chip/);
+});
+
+test("모든 TFT visual renderer는 presentation으로 root 영역 순서·노출·접힘을 바꾼다", () => {
+	const browser = createFakeBrowser({ top: 0, viewport: 700, height: 2400 });
+	const studio = loadStudioScript(browser.window, browser.document);
+
+	const layerElement = { id: "presentation-layer-root", className: "", innerHTML: "" };
+	studio.renderBackendLayerVisualElement(layerElement, {
+		kind: "backend-layer-map",
+		flow: ["FLOW MARKER"],
+		layers: [{ title: "LAYER MARKER", responsibilities: ["layer responsibility"] }],
+		glossary: [{ term: "HIDDEN GLOSSARY", description: "must not render" }],
+		notes: [{ title: "NOTES MARKER", body: ["notes body"] }],
+		__tftHealing: ["HEALING MARKER"],
+		presentation: {
+			order: ["notes", "flow", "diagram", "glossary", "healing"],
+			display: { flow: "details", glossary: "hidden" },
+		},
+	});
+	assertTextOrder(layerElement.innerHTML, "NOTES MARKER", "FLOW MARKER", "backend layer root order");
+	assert.match(layerElement.innerHTML, /<details class="tft-presentation-details"><summary>처리 흐름<\/summary>/);
+	assert.doesNotMatch(layerElement.innerHTML, /HIDDEN GLOSSARY/);
+
+	const boundedElement = { id: "presentation-bounded-root", className: "", innerHTML: "" };
+	studio.renderBoundedResponsibilityMapElement(boundedElement, {
+		...boundedResponsibilityMaster,
+		overview: "HIDDEN BOUNDED OVERVIEW",
+		presentation: {
+			order: ["exceptions", "spine", "groups", "overview"],
+			display: { overview: "hidden", spine: "details" },
+		},
+	});
+	assertTextOrder(boundedElement.innerHTML, 'class="brm-exceptions"', 'class="brm-group role-', "bounded map root order");
+	assert.match(boundedElement.innerHTML, /<summary>책임 연결선<\/summary>/);
+	assert.doesNotMatch(boundedElement.innerHTML, /HIDDEN BOUNDED OVERVIEW/);
+
+	const independentElement = { id: "presentation-independent-root", className: "", innerHTML: "" };
+	studio.renderIndependentFlowPanelsElement(independentElement, {
+		kind: "independent-flow-panels",
+		overview: "HIDDEN INDEPENDENT OVERVIEW",
+		panels: [
+			{ id: "panel-a", title: "PANEL A", stages: [{ title: "STAGE A", steps: [{ title: "STEP A" }] }] },
+			{ id: "panel-b", title: "PANEL B", stages: [{ title: "STAGE B", steps: [{ title: "STEP B" }] }] },
+		],
+		relations: [{ from: "panel-a", to: "panel-b", label: "RELATION MARKER" }],
+		commands: [{ title: "COMMAND MARKER" }],
+		presentation: {
+			order: ["commands", "relations", "panels", "overview"],
+			display: { overview: "hidden", relations: "details" },
+		},
+	});
+	assertTextOrder(independentElement.innerHTML, "COMMAND MARKER", "RELATION MARKER", "independent flow root order");
+	assertTextOrder(independentElement.innerHTML, "RELATION MARKER", 'class="ifp-panel"', "independent flow panel placement");
+	assert.match(independentElement.innerHTML, /<summary>패널 관계<\/summary>/);
+	assert.doesNotMatch(independentElement.innerHTML, /HIDDEN INDEPENDENT OVERVIEW/);
+
+	const phaseElement = { id: "presentation-phase-root", className: "", innerHTML: "" };
+	studio.renderPhasePanelVisualElement(phaseElement, {
+		body: "HIDDEN PHASE OVERVIEW",
+		layers: [{ id: "phase-a", title: "PHASE A" }, { id: "phase-b", title: "PHASE B" }],
+		nodes: [{ lane: "phase-a", title: "PHASE STEP A" }, { lane: "phase-b", title: "PHASE STEP B" }],
+		__tftHealing: ["PHASE HEALING MARKER"],
+		presentation: {
+			order: ["healing", "panels", "overview"],
+			display: { overview: "hidden", panels: "details" },
+		},
+	});
+	assertTextOrder(phaseElement.innerHTML, "PHASE HEALING MARKER", "PHASE STEP A", "phase panel root order");
+	assert.match(phaseElement.innerHTML, /<summary>독립 phase 패널<\/summary>/);
+	assert.doesNotMatch(phaseElement.innerHTML, /HIDDEN PHASE OVERVIEW/);
+
+	const architectureElement = { id: "presentation-architecture-root", className: "", innerHTML: "" };
+	studio.renderArchitectureFlowElement(architectureElement, {
+		kind: "architecture-flow",
+		lanes: ["UI"],
+		nodes: [{ id: "arch-node", lane: "UI", type: "screen", title: "ARCH DIAGRAM MARKER" }],
+		edges: [],
+		legend: [{ title: "HIDDEN ARCH LEGEND", description: "must not render" }],
+		notes: [{ title: "ARCH NOTES MARKER", body: ["notes body"] }],
+		presentation: {
+			order: ["notes", "diagram", "legend", "healing"],
+			display: { diagram: "details", legend: "hidden" },
+		},
+	});
+	assertTextOrder(architectureElement.innerHTML, "ARCH NOTES MARKER", "ARCH DIAGRAM MARKER", "architecture root order");
+	assert.match(architectureElement.innerHTML, /<summary>Architecture diagram<\/summary>/);
+	assert.doesNotMatch(architectureElement.innerHTML, /HIDDEN ARCH LEGEND/);
+
+	const dataElement = { id: "presentation-data-root", className: "", innerHTML: "" };
+	studio.renderDataModelMigrationMapElement(dataElement, {
+		kind: "data-model-migration-map",
+		entities: [{ name: "DATA ENTITY MARKER", columns: [{ name: "id" }] }],
+		relationships: [{ from: "DATA ENTITY MARKER.id", to: "other.id", description: "HIDDEN RELATION MARKER" }],
+		migrationOperations: [{ title: "MIGRATION MARKER" }],
+		presentation: {
+			order: ["migration", "entities", "relationships"],
+			display: { entities: "details", relationships: "hidden" },
+		},
+	});
+	assertTextOrder(dataElement.innerHTML, "MIGRATION MARKER", "DATA ENTITY MARKER", "data model root order");
+	assert.match(dataElement.innerHTML, /<summary>Data entities<\/summary>/);
+	assert.doesNotMatch(dataElement.innerHTML, /HIDDEN RELATION MARKER/);
+});
+
+test("TFT visual card scope는 같은 presentation 계약으로 내부 영역을 재배치한다", () => {
+	const browser = createFakeBrowser({ top: 0, viewport: 700, height: 2400 });
+	const studio = loadStudioScript(browser.window, browser.document);
+
+	const layerElement = { id: "presentation-layer-card", className: "", innerHTML: "" };
+	studio.renderBackendLayerVisualElement(layerElement, {
+		kind: "backend-layer-map",
+		layers: [{
+			title: "Layer",
+			responsibilities: ["CONTRACT MARKER"],
+			frontendAnalogy: "LEARNING MARKER",
+			files: ["HIDDEN FILE MARKER"],
+		}],
+		presentation: {
+			layer: { order: ["learning", "contract", "files", "risks"], display: { files: "hidden" } },
+		},
+	});
+	assertTextOrder(layerElement.innerHTML, "LEARNING MARKER", "CONTRACT MARKER", "layer card scope");
+	assert.doesNotMatch(layerElement.innerHTML, /<div class="layer-card-section"><b>구현 후보 파일<\/b>/);
+
+	const boundedElement = { id: "presentation-bounded-group", className: "", innerHTML: "" };
+	studio.renderBoundedResponsibilityMapElement(boundedElement, {
+		kind: "bounded-responsibility-map",
+		groups: [
+			{ id: "a", title: "Group A", role: "source", purpose: "PURPOSE MARKER", components: [{ title: "COMPONENT MARKER" }] },
+			{ id: "b", title: "Group B", role: "core", components: [{ title: "Component B" }] },
+		],
+		presentation: {
+			group: { order: ["components", "purpose", "io", "boundary", "details"], display: { purpose: "details" } },
+		},
+	});
+	const componentIndex = boundedElement.innerHTML.indexOf("COMPONENT MARKER");
+	const groupPurposeIndex = boundedElement.innerHTML.lastIndexOf("PURPOSE MARKER");
+	assert.ok(componentIndex >= 0 && componentIndex < groupPurposeIndex, "bounded group scope should place components before its purpose region");
+	assert.match(boundedElement.innerHTML, /<summary>목적<\/summary>/);
+
+	const independentElement = { id: "presentation-independent-panel", className: "", innerHTML: "" };
+	studio.renderIndependentFlowPanelsElement(independentElement, {
+		kind: "independent-flow-panels",
+		panels: [{
+			id: "panel-a",
+			title: "Panel A",
+			purpose: "META MARKER",
+			stages: [{ title: "STAGE MARKER", steps: [{ title: "Step" }] }],
+			contract: [{ value: "ANNOTATION MARKER" }],
+		}],
+		presentation: {
+			panel: { order: ["annotations", "stages", "meta", "exceptions"], display: { stages: "details" } },
+		},
+	});
+	assertTextOrder(independentElement.innerHTML, "ANNOTATION MARKER", "STAGE MARKER", "independent panel scope");
+	assert.match(independentElement.innerHTML, /<summary>실행 단계<\/summary>/);
+
+	const architectureElement = { id: "presentation-architecture-node", className: "", innerHTML: "" };
+	studio.renderArchitectureFlowElement(architectureElement, {
+		kind: "architecture-flow",
+		lanes: ["DB"],
+		nodes: [{
+			id: "table",
+			lane: "DB",
+			type: "table",
+			title: "Table",
+			description: "NODE DESCRIPTION MARKER",
+			frontendAnalogy: "HIDDEN NODE LEARNING",
+			columns: [{ name: "NODE COLUMN MARKER" }],
+		}],
+		edges: [],
+		presentation: {
+			node: { order: ["columns", "description", "contract", "learning", "badges"], display: { learning: "hidden" } },
+		},
+	});
+	assertTextOrder(architectureElement.innerHTML, "NODE COLUMN MARKER", "NODE DESCRIPTION MARKER", "architecture node scope");
+	assert.doesNotMatch(architectureElement.innerHTML, /HIDDEN NODE LEARNING/);
+
+	const dataElement = { id: "presentation-data-entity", className: "", innerHTML: "" };
+	studio.renderDataModelMigrationMapElement(dataElement, {
+		kind: "data-model-migration-map",
+		entities: [{
+			name: "Entity",
+			description: "HIDDEN ENTITY DESCRIPTION",
+			purpose: "ENTITY LEARNING MARKER",
+			columns: [{ name: "ENTITY SCHEMA MARKER" }],
+		}],
+		presentation: {
+			entity: { order: ["schema", "learning", "description"], display: { schema: "visible", description: "hidden" } },
+		},
+	});
+	assertTextOrder(dataElement.innerHTML, "ENTITY SCHEMA MARKER", "ENTITY LEARNING MARKER", "data entity scope");
+	assert.match(dataElement.innerHTML, /<section class="data-schema-visible">/);
+	assert.doesNotMatch(dataElement.innerHTML, /HIDDEN ENTITY DESCRIPTION/);
 });
 
 test("Known visual kind with missing required shape falls back without blocking the reader", () => {
