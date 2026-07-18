@@ -109,16 +109,17 @@ Conductor is a strong default. pilee is the custom workflow I wanted after learn
           - blocks PR progress when required checks are still unverified
 ```
 
-### Frame v2 learning-note pilot
+### Frame v2 work-and-learning coordinator pilot
 
 ```text
-/frame-v2 --draft <topic>  Build the researched initial learning note first
-/frame-v2 <topic>          Build it together with the current Frame question discipline
-            ↓
-TFT Studio visuals → Study Hard refinement/revisions → HTML/Notion → frame.json → implementation
+/frame-v2 <topic>
+  ├─ Frame first
+  └─ Study Hard first
+
+Frame / Study Hard / implementation can then continue sequentially or in parallel
 ```
 
-`/frame-v2` is an independent pilot that leaves existing `/frame` and `/study-hard` behavior unchanged. It sequences Frame's structural/ERD/flow visuals with Study Hard's Q&A-driven document refinement.
+`/frame-v2` is an independent pilot that leaves existing `/frame` and `/study-hard` behavior unchanged. It asks which lane to start, then connects Frame planning, Study Hard learning, and implementation bidirectionally within the same work unit. Learning completion is not a hard implementation gate. When a Frame exists, Study Hard exposes the complete plan in a collapsed read-only section at the top; a standalone Study Hard run can also join Frame later without changing its runId.
 
 ### Subagent delegation
 
