@@ -77,6 +77,19 @@ test("Backend Layer Visual Map 렌더러가 WebView bundle에 포함된다", () 
 	assert.match(html, /DB·외부 저장소 창구/);
 });
 
+test("Bounded Responsibility Map 렌더러가 WebView bundle에 포함된다", () => {
+	const html = buildPageHtml();
+	assert.match(html, /bounded-responsibility-map/);
+	assert.match(html, /renderBoundedResponsibilityMapElement/);
+	assert.match(html, /책임 경계 지도/);
+	assert.match(html, /반드시 지킬 경계/);
+	assert.match(html, /예외·운영 branch · 정상 handoff와 분리/);
+	assert.match(html, /세부 책임·검증·Requirement/);
+	assert.match(html, /role-delivery/);
+	assert.match(html, /role-core/);
+	assert.match(html, /role-channel/);
+});
+
 test("Independent Flow Panels 렌더러가 WebView bundle에 포함된다", () => {
 	const html = buildPageHtml();
 	assert.match(html, /independent-flow-panels/);

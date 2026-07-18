@@ -718,6 +718,66 @@ h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .layer-glossary-card { border:1px solid #e2e8f0; border-radius:14px; background:#fff; padding:9px 10px; }
 .layer-glossary-card strong { display:block; font-size:12px; color:#1e3a8a; }
 .layer-glossary-card span { display:block; margin-top:3px; color:var(--muted); font-size:11px; line-height:1.4; }
+.brm-visual { border:1px solid #cbd5e1; background:#f8fafc; border-radius:22px; padding:18px; margin:16px 0; overflow:hidden; min-width:0; max-width:100%; }
+.brm-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; flex-wrap:wrap; }
+.brm-title { color:#0f172a; font-size:19px; font-weight:950; line-height:1.3; overflow-wrap:anywhere; }
+.brm-subtitle { margin-top:4px; color:#475569; font-size:12px; line-height:1.45; }
+.brm-overview { margin-top:12px; border:1px solid #dbeafe; border-left:5px solid #2563eb; border-radius:13px; background:#eff6ff; color:#1e3a8a; padding:10px 12px; font-size:11.5px; line-height:1.45; }
+.brm-spine { display:flex; align-items:stretch; gap:10px; overflow-x:auto; margin:14px 0 18px; padding:2px 2px 8px; overscroll-behavior:contain; }
+.brm-spine-node { flex:1 0 185px; border:2px solid #cbd5e1; border-top-width:6px; border-radius:15px; background:#fff; padding:10px 11px; }
+.brm-spine-node.role-source { border-color:#94a3b8; background:#f8fafc; }
+.brm-spine-node.role-delivery { border-color:#f59e0b; background:#fffbeb; }
+.brm-spine-node.role-core { border-color:#8b5cf6; background:#faf5ff; }
+.brm-spine-node.role-channel { border-color:#3b82f6; background:#eff6ff; }
+.brm-spine-role { display:block; color:#64748b; font-size:9px; font-weight:950; text-transform:uppercase; letter-spacing:.05em; }
+.brm-spine-title { display:block; margin-top:4px; color:#0f172a; font-size:12px; font-weight:950; }
+.brm-spine-purpose { display:block; margin-top:5px; color:#334155; font-size:10px; line-height:1.4; }
+.brm-spine-link { position:relative; flex:0 0 108px; display:flex; align-items:center; justify-content:center; color:#475569; text-align:center; font-size:9px; font-weight:900; line-height:1.3; }
+.brm-spine-link::after { content:'→'; position:absolute; right:-2px; top:50%; transform:translateY(-50%); color:#475569; font-size:18px; }
+.brm-group-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+.brm-group { border:2px solid #cbd5e1; border-radius:19px; background:#fff; overflow:hidden; min-width:0; }
+.brm-group.full { grid-column:1/-1; }
+.brm-group.role-source { border-color:#cbd5e1; background:#f8fafc; }
+.brm-group.role-delivery { border-color:#fcd34d; background:#fffbeb; }
+.brm-group.role-core { border-color:#c4b5fd; background:#faf5ff; }
+.brm-group.role-channel { border-color:#93c5fd; background:#eff6ff; }
+.brm-group-head { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; border-bottom:1px solid rgba(148,163,184,.3); background:rgba(255,255,255,.8); padding:12px 13px; }
+.brm-group-title { color:#0f172a; font-size:15px; font-weight:950; }
+.brm-role-badge { flex:0 0 auto; border:1px solid currentColor; border-radius:999px; background:#fff; padding:3px 7px; font-size:9px; font-weight:950; }
+.brm-role-badge.role-source { color:#64748b; }
+.brm-role-badge.role-delivery { color:#b45309; }
+.brm-role-badge.role-core { color:#6d28d9; }
+.brm-role-badge.role-channel { color:#1d4ed8; }
+.brm-group-purpose { margin:10px 12px 0; border:1px solid rgba(148,163,184,.28); border-radius:11px; background:rgba(255,255,255,.86); padding:8px 9px; color:#1f2937; font-size:10.5px; line-height:1.42; }
+.brm-group-purpose strong { display:block; margin-bottom:3px; color:#64748b; font-size:8.5px; text-transform:uppercase; letter-spacing:.05em; }
+.brm-io-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; margin:8px 12px 0; }
+.brm-io { border:1px solid rgba(148,163,184,.28); border-radius:11px; background:rgba(255,255,255,.86); padding:8px 9px; }
+.brm-io strong { display:block; color:#64748b; font-size:8.5px; text-transform:uppercase; letter-spacing:.05em; }
+.brm-io span { display:block; margin-top:3px; color:#334155; font-size:10px; line-height:1.4; }
+.brm-boundary { margin:8px 12px 0; border-left:4px solid #0f172a; border-radius:9px; background:rgba(255,255,255,.78); padding:7px 9px; color:#334155; font-size:10px; line-height:1.4; }
+.brm-boundary b { color:#0f172a; }
+.brm-component-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:8px; padding:10px 12px 12px; }
+.brm-component { border:1px solid rgba(148,163,184,.36); border-top:4px solid currentColor; border-radius:12px; background:#fff; padding:9px 10px; color:#475569; }
+.brm-component.future { border-style:dashed; opacity:.76; }
+.brm-component-title { display:block; color:#111827; font-size:11.5px; font-weight:950; line-height:1.35; }
+.brm-component-role { display:block; margin-top:3px; color:#64748b; font-size:9.5px; line-height:1.35; }
+.brm-component ul { margin:7px 0 0; padding-left:16px; }
+.brm-component li { margin:3px 0; color:#334155; font-size:10px; line-height:1.38; }
+.brm-group-details { margin:0 12px 12px; border:1px solid rgba(148,163,184,.34); border-radius:11px; background:#fff; }
+.brm-group-details summary { cursor:pointer; padding:8px 9px; color:#475569; font-size:10px; font-weight:950; }
+.brm-detail-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:7px; padding:0 9px 9px; }
+.brm-detail-card { border:1px solid #e2e8f0; border-radius:10px; background:#f8fafc; padding:7px 8px; }
+.brm-detail-card strong { display:block; color:#334155; font-size:10px; }
+.brm-detail-card span { display:block; margin-top:3px; color:#64748b; font-size:9.5px; line-height:1.35; }
+.brm-exceptions { margin-top:14px; border:1px solid #fecaca; border-radius:16px; background:#fff7f7; padding:11px; }
+.brm-exceptions-head { margin-bottom:8px; color:#991b1b; font-size:11px; font-weight:950; }
+.brm-exception-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:8px; }
+.brm-exception { border:1px solid #fecaca; border-left:5px solid #dc2626; border-radius:11px; background:#fff; padding:9px 10px; }
+.brm-exception strong { display:block; color:#7f1d1d; font-size:11px; }
+.brm-exception-from { display:flex; flex-wrap:wrap; gap:4px; margin-top:5px; }
+.brm-exception-from span { border:1px solid #fecaca; border-radius:999px; background:#fef2f2; color:#991b1b; padding:2px 6px; font-size:8.5px; font-weight:900; }
+.brm-exception p { margin:5px 0 0; color:#7f1d1d; font-size:10px; line-height:1.4; }
+@media (max-width:760px) { .brm-group-grid, .brm-io-grid { grid-template-columns:1fr; } .brm-group.full { grid-column:auto; } }
 .phase-visual { border:1px solid #cbd5e1; background:linear-gradient(180deg,#f8fafc 0%,#ffffff 100%); border-radius:20px; padding:16px; margin:16px 0; overflow:hidden; min-width:0; max-width:100%; }
 .phase-visual-head { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start; margin-bottom:12px; }
 .phase-visual-title { font-size:18px; font-weight:950; color:#0f172a; overflow-wrap:anywhere; }
@@ -1051,6 +1111,7 @@ body.tft-visual-only .stage-run,
 body.tft-visual-only .stage-run-body,
 body.tft-visual-only .timeline-body { display:block; border:0; background:transparent; padding:0; margin:0; }
 body.tft-visual-only .tft-visual,
+body.tft-visual-only .brm-visual,
 body.tft-visual-only .ifp-visual,
 body.tft-visual-only .layer-visual,
 body.tft-visual-only .phase-visual,
@@ -1316,6 +1377,92 @@ function renderBackendLayerVisualElement(el, spec) {
     + renderLayerGlossary(spec, layers)
     + renderLearningNotes(spec.notes || spec.explanations)
     + renderVisualHealing(spec);
+}
+function isBoundedResponsibilityMapSpec(spec) {
+  return String(spec && (spec.kind || spec.type) || '').toLowerCase() === 'bounded-responsibility-map';
+}
+function boundedRole(value) {
+  var role = layerKey(value);
+  return ['source','delivery','core','channel'].includes(role) ? role : '';
+}
+function boundedRoleLabel(role) {
+  if (role === 'source') return 'Source 경계';
+  if (role === 'delivery') return 'Delivery 경계';
+  if (role === 'core') return 'Partner Core';
+  if (role === 'channel') return 'Channel / API';
+  return '책임 경계';
+}
+function boundedGroupId(group, index) {
+  return layerKey(group && (group.id || group.key || group.title) || ('group-' + index));
+}
+function boundedResponsibilityErrors(spec) {
+  var errors = [], groups = Array.isArray(spec && spec.groups) ? spec.groups : [];
+  if (groups.length < 2) errors.push('groups 배열에는 두 개 이상의 책임 경계가 필요합니다.');
+  ['layers','nodes','edges'].forEach(function(field) { if (spec && spec[field] !== undefined) errors.push(field + '는 이 kind에서 사용하지 않습니다.'); });
+  var ids = new Set();
+  groups.forEach(function(group, index) {
+    var id = boundedGroupId(group, index), role = boundedRole(group && group.role);
+    if (ids.has(id)) errors.push('group id가 중복되었습니다: ' + id); else ids.add(id);
+    if (!String(group && group.title || '').trim()) errors.push('group title이 필요합니다: ' + id);
+    if (!role) errors.push('group role이 유효하지 않습니다: ' + id);
+    var components = Array.isArray(group && group.components) ? group.components : [];
+    if (!components.length) errors.push('group components가 필요합니다: ' + id);
+    components.forEach(function(component, componentIndex) { if (!String(component && component.title || '').trim()) errors.push('component title이 필요합니다: ' + id + '/' + componentIndex); });
+  });
+  (Array.isArray(spec && spec.handoffs) ? spec.handoffs : []).forEach(function(handoff) {
+    if (!ids.has(layerKey(handoff && handoff.from)) || !ids.has(layerKey(handoff && handoff.to))) errors.push('handoff가 존재하지 않는 group을 참조합니다: ' + (handoff && handoff.from) + ' → ' + (handoff && handoff.to));
+  });
+  (Array.isArray(spec && spec.exceptions) ? spec.exceptions : []).forEach(function(exception) {
+    asTextArray(exception && (exception.from || exception.groups)).forEach(function(id) { if (!ids.has(layerKey(id))) errors.push('exception이 존재하지 않는 group을 참조합니다: ' + id); });
+  });
+  return errors;
+}
+function renderBoundedSpine(spec, groups) {
+  var handoffs = Array.isArray(spec.handoffs) ? spec.handoffs : [];
+  return '<div class="brm-spine">' + groups.map(function(group, index) {
+    var id = boundedGroupId(group, index), role = boundedRole(group.role), previousId = index > 0 ? boundedGroupId(groups[index - 1], index - 1) : '';
+    var handoff = index > 0 ? handoffs.find(function(item) { return layerKey(item && item.from) === previousId && layerKey(item && item.to) === id; }) : null;
+    var link = index > 0 ? '<div class="brm-spine-link">' + esc(handoff && (handoff.label || handoff.contract) || '독립 handoff') + '</div>' : '';
+    return link + '<article class="brm-spine-node role-' + esc(role) + '"><span class="brm-spine-role">' + esc(group.roleLabel || boundedRoleLabel(role)) + '</span><strong class="brm-spine-title">' + esc(group.title) + '</strong>' + (group.purpose ? '<span class="brm-spine-purpose">' + esc(group.purpose) + '</span>' : '') + '</article>';
+  }).join('') + '</div>';
+}
+function renderBoundedComponent(component) {
+  var responsibilities = asTextArray(component.responsibilities || component.responsibility || component.contract);
+  var status = layerKey(component.status || '');
+  return '<article class="brm-component' + (status === 'future' ? ' future' : '') + '"><strong class="brm-component-title">' + esc(component.title) + '</strong>' + (component.role || component.description ? '<span class="brm-component-role">' + esc(component.role || component.description) + '</span>' : '') + (responsibilities.length ? '<ul>' + responsibilities.map(function(item) { return '<li>' + inline(item) + '</li>'; }).join('') + '</ul>' : '') + '</article>';
+}
+function renderBoundedGroupDetails(group) {
+  var components = Array.isArray(group.components) ? group.components : [];
+  var cards = components.map(function(component) {
+    var requirements = asTextArray(component.requirements || component.requirementIds);
+    var evidence = asTextArray(component.evidence || component.tests || component.verification);
+    if (!requirements.length && !evidence.length) return '';
+    return '<article class="brm-detail-card"><strong>' + esc(component.title) + '</strong>' + (requirements.length ? '<span>Requirement · ' + esc(requirements.join(', ')) + '</span>' : '') + (evidence.length ? '<span>Evidence · ' + esc(evidence.join(' · ')) + '</span>' : '') + '</article>';
+  }).filter(Boolean);
+  if (!cards.length) return '';
+  return '<details class="brm-group-details"><summary>세부 책임·검증·Requirement · ' + cards.length + '개 component</summary><div class="brm-detail-grid">' + cards.join('') + '</div></details>';
+}
+function renderBoundedGroup(group) {
+  var role = boundedRole(group.role), components = Array.isArray(group.components) ? group.components : [];
+  var purpose = group.purpose ? '<div class="brm-group-purpose"><strong>목적</strong>' + esc(group.purpose) + '</div>' : '';
+  var io = (group.input ? '<article class="brm-io"><strong>Input</strong><span>' + esc(group.input) + '</span></article>' : '') + (group.output ? '<article class="brm-io"><strong>Output</strong><span>' + esc(group.output) + '</span></article>' : '');
+  return '<section class="brm-group role-' + esc(role) + (String(group.span || '').toLowerCase() === 'full' ? ' full' : '') + '"><div class="brm-group-head"><div class="brm-group-title">' + esc(group.title) + '</div><span class="brm-role-badge role-' + esc(role) + '">' + esc(group.roleLabel || boundedRoleLabel(role)) + '</span></div>' + purpose + (io ? '<div class="brm-io-grid">' + io + '</div>' : '') + (group.boundary ? '<div class="brm-boundary"><b>반드시 지킬 경계 · </b>' + esc(group.boundary) + '</div>' : '') + '<div class="brm-component-grid">' + components.map(renderBoundedComponent).join('') + '</div>' + renderBoundedGroupDetails(group) + '</section>';
+}
+function renderBoundedExceptions(spec, groups) {
+  var exceptions = Array.isArray(spec.exceptions) ? spec.exceptions : [];
+  if (!exceptions.length) return '';
+  var titles = new Map(groups.map(function(group, index) { return [boundedGroupId(group, index), group.title]; }));
+  return '<section class="brm-exceptions"><div class="brm-exceptions-head">예외·운영 branch · 정상 handoff와 분리</div><div class="brm-exception-grid">' + exceptions.map(function(item) {
+    var from = asTextArray(item.from || item.groups);
+    return '<article class="brm-exception"><strong>' + esc(item.title || item.id || '예외') + '</strong>' + (from.length ? '<div class="brm-exception-from">' + from.map(function(id) { return '<span>' + esc(titles.get(layerKey(id)) || id) + '</span>'; }).join('') + '</div>' : '') + (item.trigger ? '<p><b>Trigger:</b> ' + esc(item.trigger) + '</p>' : '') + (item.behavior || item.description ? '<p>' + esc(item.behavior || item.description) + '</p>' : '') + (item.recovery ? '<p><b>Recovery:</b> ' + esc(item.recovery) + '</p>' : '') + '</article>';
+  }).join('') + '</div></section>';
+}
+function renderBoundedResponsibilityMapElement(el, spec) {
+  var errors = boundedResponsibilityErrors(spec);
+  if (errors.length) { renderVisualFallbackElement(el, spec, null, 'bounded-responsibility-map 검증 실패: ' + errors.join(' ')); return; }
+  var groups = spec.groups;
+  el.className = 'brm-visual';
+  el.innerHTML = '<div class="brm-head"><div><div class="brm-title">' + esc(spec.title || '책임 경계 지도') + '</div>' + (spec.subtitle ? '<div class="brm-subtitle">' + esc(spec.subtitle) + '</div>' : '') + '</div><span class="badge">책임 경계 지도</span></div>' + (spec.overview ? '<div class="brm-overview">' + esc(spec.overview) + '</div>' : '') + renderBoundedSpine(spec, groups) + '<div class="brm-group-grid">' + groups.map(renderBoundedGroup).join('') + '</div>' + renderBoundedExceptions(spec, groups);
 }
 function isIndependentFlowPanelsSpec(spec) {
   return String(spec && (spec.kind || spec.type) || '').toLowerCase() === 'independent-flow-panels';
@@ -2022,6 +2169,10 @@ async function renderTftVisualElement(el) {
   var source = decodeURIComponent(el.getAttribute('data-source') || '');
   var spec;
   try { spec = JSON.parse(source); } catch (e) { renderVisualFallbackElement(el, null, source, 'JSON parse에 실패했습니다. 원문을 보존하고 화면은 fallback으로 표시합니다.'); return; }
+  if (isBoundedResponsibilityMapSpec(spec)) {
+    renderBoundedResponsibilityMapElement(el, spec);
+    return;
+  }
   if (isIndependentFlowPanelsSpec(spec)) {
     renderIndependentFlowPanelsElement(el, spec);
     return;
@@ -2099,7 +2250,7 @@ function renderPendingTftVisuals() {
   return Promise.all(Array.prototype.slice.call(document.querySelectorAll('.tft-visual[data-source]')).map(function(el) { return renderTftVisualElement(el); }));
 }
 function isVisualOnlyEmbed() { return document.body && document.body.classList.contains('tft-visual-only'); }
-function visualEmbedRoot() { return document.querySelector('.tft-visual, .ifp-visual, .layer-visual, .phase-visual, .arch-visual, .data-visual'); }
+function visualEmbedRoot() { return document.querySelector('.tft-visual, .brm-visual, .ifp-visual, .layer-visual, .phase-visual, .arch-visual, .data-visual'); }
 function notifyVisualEmbedReady() {
   if (!isVisualOnlyEmbed()) return;
   setTimeout(function() {
@@ -2631,7 +2782,7 @@ export function buildTftVisualEmbedHtml(spec: Record<string, unknown>): string {
 		logs: [],
 	};
 	const kind = typeof normalizedSpec.kind === "string" ? normalizedSpec.kind : "";
-	const usesDedicatedLayout = ["architecture-flow", "backend-layer-map", "data-model-migration-map", "independent-flow-panels"].includes(kind);
+	const usesDedicatedLayout = ["architecture-flow", "backend-layer-map", "data-model-migration-map", "independent-flow-panels", "bounded-responsibility-map"].includes(kind);
 	return buildPageHtml({ staticState: state, inlineElk: !usesDedicatedLayout, omitElk: usesDedicatedLayout, visualOnly: true });
 }
 

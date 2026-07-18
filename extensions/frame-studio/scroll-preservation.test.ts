@@ -5,6 +5,7 @@ import { buildPageHtml } from "./index.ts";
 
 const independentFlowMaster = JSON.parse(readFileSync(new URL("./fixtures/independent-flow-panels.master.json", import.meta.url), "utf-8"));
 const dataModelLearningMaster = JSON.parse(readFileSync(new URL("./fixtures/data-model-learning.master.json", import.meta.url), "utf-8"));
+const boundedResponsibilityMaster = JSON.parse(readFileSync(new URL("./fixtures/bounded-responsibility-map.master.json", import.meta.url), "utf-8"));
 
 interface FakeWindow {
 	pageYOffset: number;
@@ -117,8 +118,8 @@ function loadStudioScript(fakeWindow: FakeWindow, fakeDocument: FakeDocument) {
 			if (count > limit) throw new Error("Timer queue did not settle");
 		}
 	}
-	const factory = new Function("window", "document", "EventSource", "fetch", "setTimeout", "requestAnimationFrame", `${script}\nreturn { render: render, selectTab: selectTab, renderTftVisualElement: renderTftVisualElement, renderArchitectureFlowElement: renderArchitectureFlowElement, renderBackendLayerVisualElement: renderBackendLayerVisualElement, renderPhasePanelVisualElement: renderPhasePanelVisualElement, renderIndependentFlowPanelsElement: renderIndependentFlowPanelsElement, renderDataModelMigrationMapElement: renderDataModelMigrationMapElement };`);
-	return { ...(factory(fakeWindow, fakeDocument, EventSource, fetch, queueTimer, queueTimer) as { render(state: any, options?: any): void; selectTab(key: string): void; renderTftVisualElement(el: any): Promise<void>; renderArchitectureFlowElement(el: any, spec: any): void; renderBackendLayerVisualElement(el: any, spec: any): void; renderPhasePanelVisualElement(el: any, spec: any): void; renderIndependentFlowPanelsElement(el: any, spec: any): void; renderDataModelMigrationMapElement(el: any, spec: any): void }), flushTimers };
+	const factory = new Function("window", "document", "EventSource", "fetch", "setTimeout", "requestAnimationFrame", `${script}\nreturn { render: render, selectTab: selectTab, renderTftVisualElement: renderTftVisualElement, renderArchitectureFlowElement: renderArchitectureFlowElement, renderBackendLayerVisualElement: renderBackendLayerVisualElement, renderPhasePanelVisualElement: renderPhasePanelVisualElement, renderIndependentFlowPanelsElement: renderIndependentFlowPanelsElement, renderBoundedResponsibilityMapElement: renderBoundedResponsibilityMapElement, renderDataModelMigrationMapElement: renderDataModelMigrationMapElement };`);
+	return { ...(factory(fakeWindow, fakeDocument, EventSource, fetch, queueTimer, queueTimer) as { render(state: any, options?: any): void; selectTab(key: string): void; renderTftVisualElement(el: any): Promise<void>; renderArchitectureFlowElement(el: any, spec: any): void; renderBackendLayerVisualElement(el: any, spec: any): void; renderPhasePanelVisualElement(el: any, spec: any): void; renderIndependentFlowPanelsElement(el: any, spec: any): void; renderBoundedResponsibilityMapElement(el: any, spec: any): void; renderDataModelMigrationMapElement(el: any, spec: any): void }), flushTimers };
 }
 
 function makeVisualElement(source: unknown) {
@@ -190,6 +191,56 @@ test("TFT visual self-heals nodes/edges shape even when kind points at another r
 	assert.match(element.innerHTML, /kind=backend-layer-map이지만 nodes\/edges shape를 architecture-flow로 해석/);
 	assert.doesNotMatch(element.innerHTML, /layers 배열이 필요/);
 	assert.doesNotMatch(element.innerHTML, /tft-visual-error/);
+});
+
+test("bounded-responsibility-map master fixture는 책임 경계·handoff·component·예외를 분리한다", async () => {
+	const browser = createFakeBrowser({ top: 0, viewport: 700, height: 2400 });
+	const studio = loadStudioScript(browser.window, browser.document);
+	const element = makeVisualElement(boundedResponsibilityMaster);
+
+	await studio.renderTftVisualElement(element);
+
+	assert.equal(element.className, "brm-visual");
+	assert.equal((element.innerHTML.match(/class="brm-spine-node/g) || []).length, 4);
+	assert.equal((element.innerHTML.match(/class="brm-group role-/g) || []).length, 4);
+	assert.match(element.innerHTML, /role-source/);
+	assert.match(element.innerHTML, /role-delivery/);
+	assert.match(element.innerHTML, /role-core/);
+	assert.match(element.innerHTML, /role-channel/);
+	assert.match(element.innerHTML, /durable event/);
+	assert.match(element.innerHTML, /claimed context/);
+	assert.match(element.innerHTML, /member-scoped inbox/);
+	assert.match(element.innerHTML, /PartnerNotificationService/);
+	assert.match(element.innerHTML, /PartnerRecipientResolver/);
+	assert.match(element.innerHTML, /PartnerNotificationRepo/);
+	assert.match(element.innerHTML, /Future Mobile Adapter/);
+	assert.match(element.innerHTML, /brm-component future/);
+	assert.match(element.innerHTML, /반드시 지킬 경계/);
+	assert.match(element.innerHTML, /세부 책임·검증·Requirement/);
+	assert.match(element.innerHTML, /BLOCKED_RECIPIENT/);
+	assert.match(element.innerHTML, /예외·운영 branch · 정상 handoff와 분리/);
+	assert.doesNotMatch(element.innerHTML, /layer-rail|phase-stage-label|1\. Source Event Boundary/);
+});
+
+test("bounded-responsibility-map은 legacy layers와 잘못된 handoff를 숨기지 않고 진단한다", async () => {
+	const browser = createFakeBrowser({ top: 0, viewport: 700, height: 1600 });
+	const studio = loadStudioScript(browser.window, browser.document);
+	const element = makeVisualElement({
+		kind: "bounded-responsibility-map",
+		groups: [
+			{ id: "source", title: "Source", role: "source", components: [{ title: "Publisher" }] },
+			{ id: "core", title: "Core", role: "core", components: [{ title: "Service" }] },
+		],
+		handoffs: [{ from: "source", to: "missing", label: "invalid" }],
+		layers: [{ id: "legacy" }],
+	});
+
+	await studio.renderTftVisualElement(element);
+
+	assert.equal(element.className, "tft-visual");
+	assert.match(element.innerHTML, /bounded-responsibility-map 검증 실패/);
+	assert.match(element.innerHTML, /layers는 이 kind에서 사용하지 않습니다/);
+	assert.match(element.innerHTML, /handoff가 존재하지 않는 group을 참조/);
 });
 
 test("independent-flow-panels master fixture는 실행 패널·annotation·command를 명시적 영역으로 분리한다", async () => {

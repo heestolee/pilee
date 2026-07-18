@@ -1,0 +1,220 @@
+{
+  "id": "partner-notification-responsibility-boundaries",
+  "kind": "bounded-responsibility-map",
+  "title": "Partner 알림 Backend 책임 지도",
+  "subtitle": "실행 번호가 아니라 책임 경계와 handoff를 따라 읽습니다.",
+  "overview": "Source는 durable event까지, Delivery는 재시도 가능한 전달까지, Partner Core는 member-scoped inbox materialize까지, Channel은 인증된 소비자 응답까지 책임집니다.",
+  "groups": [
+    {
+      "id": "source",
+      "title": "Source Event Boundary",
+      "role": "source",
+      "purpose": "업무 성공과 알림 event 기록을 같은 transaction에 묶습니다.",
+      "input": "예약·리뷰·스팟 업무 성공",
+      "output": "PENDING outbox event",
+      "boundary": "업무 row와 outbox는 함께 commit 또는 rollback",
+      "components": [
+        {
+          "id": "publishers",
+          "title": "예약·리뷰·스팟 publisher",
+          "role": "source transaction entry",
+          "responsibilities": [
+            "commit 경계 안에서 outbox 기록",
+            "고유 event key와 최소 payload 생성"
+          ],
+          "requirements": [
+            "R3"
+          ],
+          "evidence": [
+            "transaction tests"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "delivery",
+      "title": "Delivery Boundary",
+      "role": "delivery",
+      "purpose": "durable event를 최소 한 번 처리하고 모든 실패를 복구 가능한 상태로 보존합니다.",
+      "input": "PENDING outbox event",
+      "output": "claim된 event + retry state",
+      "boundary": "at-least-once consume, idempotent retry, source 업무 rollback 금지",
+      "components": [
+        {
+          "id": "worker",
+          "title": "Outbox Worker",
+          "role": "claim / backoff / retry / alert",
+          "responsibilities": [
+            "PENDING event claim",
+            "FAILED backoff와 재시도",
+            "Sentry·Slack 운영 알림"
+          ],
+          "requirements": [
+            "R4",
+            "R5"
+          ],
+          "evidence": [
+            "crash/retry tests"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "core",
+      "title": "Partner Notification Core",
+      "role": "core",
+      "span": "full",
+      "purpose": "event 의미와 실제 Partner owner를 확정하고 notification·recipient를 원자·멱등 저장합니다.",
+      "input": "claim된 outbox event + source context",
+      "output": "committed notification + recipient",
+      "boundary": "타 Partner fallback 금지, event와 recipient exactly-one, Partner local transaction atomic",
+      "components": [
+        {
+          "id": "service",
+          "title": "PartnerNotificationService",
+          "role": "알림 의미 조립",
+          "responsibilities": [
+            "event별 action·grade·resource 결정",
+            "notification persist orchestration"
+          ],
+          "requirements": [
+            "R6",
+            "R7",
+            "R14"
+          ],
+          "evidence": [
+            "policy matrix tests"
+          ]
+        },
+        {
+          "id": "resolver",
+          "title": "PartnerRecipientResolver",
+          "role": "실제 owner 판정",
+          "responsibilities": [
+            "spot → partnership → active member",
+            "missing/inactive blocked reason"
+          ],
+          "requirements": [
+            "R2",
+            "R5"
+          ],
+          "evidence": [
+            "recipient isolation tests"
+          ]
+        },
+        {
+          "id": "repo",
+          "title": "PartnerNotificationRepo",
+          "role": "멱등 저장·member scope 조회",
+          "responsibilities": [
+            "notification + recipient atomic persist",
+            "page·count·read·delete·cleanup"
+          ],
+          "requirements": [
+            "R1",
+            "R6",
+            "R8",
+            "R9",
+            "R13"
+          ],
+          "evidence": [
+            "repo/migration tests"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "channel",
+      "title": "Channel / API Boundary",
+      "role": "channel",
+      "span": "full",
+      "purpose": "같은 core record를 channel별 표현과 갱신 방식으로 소비합니다.",
+      "input": "인증된 member 요청 + committed inbox data",
+      "output": "page·badge·상태 변경·semantic navigation",
+      "boundary": "모든 요청에 Partner auth와 recipient member scope 적용",
+      "components": [
+        {
+          "id": "graphql",
+          "title": "Partner GraphQL",
+          "role": "API contract",
+          "responsibilities": [
+            "page·badge·read·readAll·delete",
+            "인증과 recipient scope"
+          ],
+          "requirements": [
+            "R9-R14"
+          ],
+          "evidence": [
+            "resolver tests"
+          ]
+        },
+        {
+          "id": "web",
+          "title": "Partner Web Bell",
+          "role": "현재 Web consumer",
+          "responsibilities": [
+            "poll·open·focus refetch",
+            "목록·badge·semantic target 이동"
+          ],
+          "requirements": [
+            "R9-R14"
+          ],
+          "evidence": [
+            "component/UI tests"
+          ]
+        },
+        {
+          "id": "mobile",
+          "title": "Future Mobile Adapter",
+          "role": "후속 channel",
+          "status": "future",
+          "responsibilities": [
+            "같은 core record를 Push/Inbox로 표현",
+            "이번 구현 범위 제외"
+          ]
+        }
+      ]
+    }
+  ],
+  "handoffs": [
+    {
+      "from": "source",
+      "to": "delivery",
+      "label": "durable event"
+    },
+    {
+      "from": "delivery",
+      "to": "core",
+      "label": "claimed context"
+    },
+    {
+      "from": "core",
+      "to": "channel",
+      "label": "member-scoped inbox"
+    }
+  ],
+  "exceptions": [
+    {
+      "id": "blocked-recipient",
+      "title": "BLOCKED_RECIPIENT",
+      "from": [
+        "delivery",
+        "core"
+      ],
+      "trigger": "active Partner owner가 없거나 연결이 잘못됨",
+      "behavior": "타 계정으로 fallback하지 않고 durable 상태와 Sentry·Slack 알림을 남깁니다.",
+      "recovery": "owner 데이터 수정 후 같은 outbox event replay"
+    },
+    {
+      "id": "technical-retry",
+      "title": "기술 실패 retry",
+      "from": [
+        "delivery",
+        "core"
+      ],
+      "trigger": "worker·Partner transaction·completion 기록 실패",
+      "behavior": "원본 event와 이미 commit된 Partner data를 보존합니다.",
+      "recovery": "backoff 뒤 같은 event를 idempotent 재처리"
+    }
+  ]
+}
