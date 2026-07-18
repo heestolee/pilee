@@ -21,8 +21,8 @@ source:
   - user-direction:2026-06-04-tft-visual-render-healing
   - user-direction:2026-07-17-schema-diff-column-lifecycle
   - user-direction:2026-07-17-tft-visual-presentation-layout
-reviewed_at: 2026-07-17
-reviewed_commit: 7a9343a513eeff4cedde57439a8bfe162aa232c6
+reviewed_at: 2026-07-18
+reviewed_commit: b72c96db7050df82f758d219ce5bcf331a0d9f87
 related:
   - frame-studio-interactive-decision-ui
   - frame-verify-contract
