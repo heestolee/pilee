@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -320,6 +320,11 @@ test("buildStudyHardStudioHtml gives the note the left+center width and overlays
 	assert.match(html, /id="historyRestoreConfirm"/);
 	assert.match(html, /id="historyRestoreCancel"/);
 	assert.match(html, /id="historyRestoreAccept"/);
+	assert.match(html, /function workContractHtml/);
+	assert.match(html, /data-work-contract-body/);
+	assert.match(html, /fetch\('\/work-contract'/);
+	assert.match(html, /workContractHtml\(\)\+'<div class="noteHeader"/);
+	assert.doesNotMatch(html, /<details[^>]+workContract[^>]+open/);
 	assert.match(html, /htmlExportButton[\s\S]*surfaceTabs/);
 	assert.match(html, /AI가 정리한 개념 카드와 직접 만든 Scratch 메모/);
 	assert.match(html, /전체 실행 흐름을 요약 비교/);
@@ -467,6 +472,57 @@ test("Study Hard window uses the shared Glimpse host adapter", async () => {
 	} finally {
 		setGlimpseOpenForTests(undefined);
 		stopStudyHardStudios();
+	}
+});
+
+test("Study Hard checks for Frame and exposes the complete plan as a lazy read-only contract", async () => {
+	const root = mkdtempSync(join(tmpdir(), "study-hard-frame-contract-"));
+	const piDir = join(root, ".pi");
+	mkdirSync(piDir, { recursive: true });
+	writeFileSync(join(piDir, "frame.json"), JSON.stringify({
+		version: 1,
+		identity: { key: "worktree:frame-contract", displayTitle: "Frame · 알림 시스템" },
+		goal: "파트너 알림 작업 기획",
+		success_criteria: [{ id: "SC-1", statement: "알림이 도착한다", evidence_locator: "UI" }],
+		implementation_plan: { status: "ready", slices: [{ id: "S1", goal: "알림 저장" }] },
+		provenance: { canonicalHash: "frame-contract-hash" },
+	}, null, 2));
+	writeFileSync(join(piDir, "frame.md"), "# Frame · 알림 시스템\n\n## 목표\n\n파트너 알림 작업 기획\n\n| ID | 성공 기준 |\n|---|---|\n| SC-1 | 알림이 도착한다 |\n");
+	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
+	const downloadDir = join(root, "Downloads");
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: root } as any, { url: "https://example.com/frame-contract", runId: "frame-contract", downloadDir });
+	try {
+		const state = await fetch(new URL("/state", handle.url)).then((response) => response.json() as Promise<any>);
+		assert.equal(state.workContract.title, "Frame · 알림 시스템");
+		assert.equal(state.workContract.hash, "frame-contract-hash");
+		assert.equal(state.noteDocument.sections.some((section: any) => section.id === "work-contract"), false, "Frame must not be copied into noteDocument");
+		const response = await fetch(new URL("/work-contract", handle.url));
+		assert.equal(response.status, 200);
+		const contractHtml = await response.text();
+		assert.match(contractHtml, /<h1>Frame · 알림 시스템<\/h1>/);
+		assert.match(contractHtml, /<table>/);
+		assert.match(contractHtml, /SC-1/);
+		const exportResponse = await fetch(new URL("/export/html", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: "{}" });
+		assert.equal(exportResponse.status, 200);
+		const exportResult = await exportResponse.json() as any;
+		const exportedHtml = readFileSync(exportResult.path, "utf8");
+		assert.match(exportedHtml, /<details class="workContract">/);
+		assert.match(exportedHtml, /작업 기획 전체 보기/);
+		assert.match(exportedHtml, /알림이 도착한다/);
+	} finally {
+		stopStudyHardStudios();
+		rmSync(root, { recursive: true, force: true });
+	}
+
+	const noFrameRoot = mkdtempSync(join(tmpdir(), "study-hard-no-frame-"));
+	const noFrameHandle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: noFrameRoot } as any, { url: "https://example.com/no-frame", runId: "no-frame-contract" });
+	try {
+		const state = await fetch(new URL("/state", noFrameHandle.url)).then((response) => response.json() as Promise<any>);
+		assert.equal(state.workContract, undefined);
+		assert.equal((await fetch(new URL("/work-contract", noFrameHandle.url))).status, 404);
+	} finally {
+		stopStudyHardStudios();
+		rmSync(noFrameRoot, { recursive: true, force: true });
 	}
 });
 

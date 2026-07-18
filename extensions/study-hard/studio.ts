@@ -284,6 +284,18 @@ export interface StudyHardBoardState {
 	updatedAt: number;
 }
 
+export interface StudyHardWorkContractSummary {
+	title: string;
+	hash?: string;
+}
+
+interface ResolvedStudyHardWorkContract extends StudyHardWorkContractSummary {
+	framePath: string;
+	markdown: string;
+}
+
+type StudyHardClientState = StudyHardBoardState & { workContract?: StudyHardWorkContractSummary };
+
 interface StudyHardHandle {
 	state: StudyHardBoardState;
 	server: Server;
@@ -570,6 +582,43 @@ function materializeVisualReferences(state: StudyHardBoardState): StudyHardBoard
 			delete block.visualRef;
 		}
 	}
+	return materialized;
+}
+
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+	return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+function resolveStudyHardWorkContract(handle: StudyHardHandle): ResolvedStudyHardWorkContract | undefined {
+	const candidates = [handle.state.companion?.frame.path, handle.cwd ? join(handle.cwd, ".pi", "frame.json") : undefined]
+		.filter((value): value is string => !!value);
+	for (const framePath of [...new Set(candidates)]) {
+		try {
+			if (!existsSync(framePath)) continue;
+			const frame = recordValue(JSON.parse(readFileSync(framePath, "utf8")));
+			if (!frame || Number(frame.version) !== 1) continue;
+			const identity = recordValue(frame.identity);
+			const provenance = recordValue(frame.provenance);
+			const title = typeof identity?.displayTitle === "string" && identity.displayTitle.trim()
+				? identity.displayTitle.trim()
+				: typeof frame.goal === "string" && frame.goal.trim() ? frame.goal.trim() : "Frame 작업 기획";
+			const hash = typeof provenance?.canonicalHash === "string" && provenance.canonicalHash.trim() ? provenance.canonicalHash.trim() : undefined;
+			const mirrorPath = join(dirname(framePath), "frame.md");
+			const markdown = existsSync(mirrorPath)
+				? readFileSync(mirrorPath, "utf8")
+				: `# ${title}\n\n\`\`\`json\n${JSON.stringify(frame, null, 2)}\n\`\`\``;
+			return { title, hash, framePath, markdown };
+		} catch {
+			continue;
+		}
+	}
+	return undefined;
+}
+
+function materializeStudyHardClientState(handle: StudyHardHandle): StudyHardClientState {
+	const materialized = materializeVisualReferences(handle.state) as StudyHardClientState;
+	const workContract = resolveStudyHardWorkContract(handle);
+	if (workContract) materialized.workContract = { title: workContract.title, hash: workContract.hash };
 	return materialized;
 }
 
@@ -1133,7 +1182,7 @@ function saveState(handle: StudyHardHandle): void {
 }
 
 function broadcast(handle: StudyHardHandle): void {
-	const payload = `data: ${JSON.stringify(materializeVisualReferences(handle.state))}\n\n`;
+	const payload = `data: ${JSON.stringify(materializeStudyHardClientState(handle))}\n\n`;
 	for (const client of [...handle.clients]) {
 		try { client.write(payload); } catch { handle.clients.delete(client); }
 	}
@@ -1447,6 +1496,99 @@ function escapeExportHtml(value: unknown): string {
 	return String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[character] || character);
 }
 
+function workContractInline(value: string): string {
+	return escapeExportHtml(value)
+		.replace(/`([^`]+)`/g, "<code>$1</code>")
+		.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+		.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+}
+
+function workContractTableCells(line: string): string[] | undefined {
+	let source = line.trim();
+	if (!source.includes("|")) return undefined;
+	if (source.startsWith("|")) source = source.slice(1);
+	if (source.endsWith("|")) source = source.slice(0, -1);
+	const cells = source.split(/(?<!\\)\|/).map((cell) => cell.replace(/\\\|/g, "|").trim());
+	return cells.length > 1 ? cells : undefined;
+}
+
+function isWorkContractTableDivider(line: string): boolean {
+	const cells = workContractTableCells(line);
+	return !!cells && cells.every((cell) => /^:?-{3,}:?$/.test(cell.replace(/\s+/g, "")));
+}
+
+export function buildStudyHardWorkContractHtml(markdown: string): string {
+	const lines = String(markdown || "").replace(/\r\n/g, "\n").split("\n");
+	const html: string[] = [];
+	let list: "ul" | "ol" | undefined;
+	let inCode = false;
+	let codeLanguage = "";
+	const closeList = () => {
+		if (!list) return;
+		html.push(`</${list}>`);
+		list = undefined;
+	};
+	for (let index = 0; index < lines.length; index += 1) {
+		const line = lines[index] || "";
+		const fence = /^\s*```\s*([^\s`]*)/.exec(line);
+		if (fence) {
+			closeList();
+			if (inCode) html.push("</code></pre>");
+			else {
+				codeLanguage = fence[1] || "text";
+				html.push(`<pre class="workContractCode"><code data-language="${escapeExportHtml(codeLanguage)}">`);
+			}
+			inCode = !inCode;
+			continue;
+		}
+		if (inCode) {
+			html.push(`${escapeExportHtml(line)}\n`);
+			continue;
+		}
+		const header = workContractTableCells(line);
+		if (header && isWorkContractTableDivider(lines[index + 1] || "")) {
+			closeList();
+			const rows: string[][] = [];
+			index += 2;
+			while (index < lines.length) {
+				const cells = workContractTableCells(lines[index] || "");
+				if (!cells || isWorkContractTableDivider(lines[index] || "")) break;
+				rows.push(cells);
+				index += 1;
+			}
+			index -= 1;
+			html.push(`<div class="workContractTable"><table><thead><tr>${header.map((cell) => `<th>${workContractInline(cell)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${header.map((_, column) => `<td>${workContractInline(row[column] || "")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`);
+			continue;
+		}
+		const heading = /^(#{1,6})\s+(.+)$/.exec(line);
+		if (heading) {
+			closeList();
+			const level = heading[1]?.length || 2;
+			html.push(`<h${level}>${workContractInline(heading[2] || "")}</h${level}>`);
+			continue;
+		}
+		const ordered = /^\s*\d+\.\s+(.+)$/.exec(line);
+		if (ordered) {
+			if (list !== "ol") { closeList(); list = "ol"; html.push("<ol>"); }
+			html.push(`<li>${workContractInline(ordered[1] || "")}</li>`);
+			continue;
+		}
+		const unordered = /^\s*[-*]\s+(.+)$/.exec(line);
+		if (unordered) {
+			if (list !== "ul") { closeList(); list = "ul"; html.push("<ul>"); }
+			html.push(`<li>${workContractInline(unordered[1] || "")}</li>`);
+			continue;
+		}
+		closeList();
+		const quote = /^\s*>\s?(.*)$/.exec(line);
+		if (quote) html.push(`<blockquote>${workContractInline(quote[1] || "")}</blockquote>`);
+		else if (line.trim()) html.push(`<p>${workContractInline(line.trim())}</p>`);
+	}
+	closeList();
+	if (inCode) html.push("</code></pre>");
+	return `<article class="workContractDocument">${html.join("")}</article>`;
+}
+
 function exportMermaidSafe(value: unknown): string {
 	return String(value ?? "").replace(/[\r\n:;]/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -1582,16 +1724,23 @@ function exportNoteSectionHtml(section: StudyNoteSection, state: StudyHardBoardS
 	return `<section id="${escapeExportHtml(section.id)}"><h2>${escapeExportHtml(section.title)}</h2>${blocks}</section>`;
 }
 
-export function buildStudyNoteExportHtml(state: StudyHardBoardState, diagramAssetList: StudyDiagramExportAsset[] = []): string {
+function exportWorkContractHtml(workContract?: Pick<ResolvedStudyHardWorkContract, "title" | "hash" | "markdown">): string {
+	if (!workContract) return "";
+	const meta = workContract.hash ? `Frame · ${workContract.hash.slice(0, 12)}` : "Frame 연결됨";
+	return `<details class="workContract"><summary>작업 기획 전체 보기 · ${escapeExportHtml(workContract.title)}<span>${escapeExportHtml(meta)}</span></summary><div class="workContractBody">${buildStudyHardWorkContractHtml(workContract.markdown)}</div></details>`;
+}
+
+export function buildStudyNoteExportHtml(state: StudyHardBoardState, diagramAssetList: StudyDiagramExportAsset[] = [], workContract?: Pick<ResolvedStudyHardWorkContract, "title" | "hash" | "markdown">): string {
 	const document = state.noteDocument;
 	const diagramAssets = new Map(diagramAssetList.map((asset) => [asset.blockId, asset]));
 	const sections = document.sections.map((section) => exportNoteSectionHtml(section, state, diagramAssets)).join("");
 	const companion = exportLearningCompanionHtml(state);
+	const workContractDetails = exportWorkContractHtml(workContract);
 	const sourceUrl = normalizeHttpUrl(state.url);
 	return `<!doctype html>
 <html lang="ko"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${escapeExportHtml(document.title)}</title>
-<style>:root{color-scheme:light;--text:#2d2925;--muted:#756e66;--line:#d8cfc1;--panel:#fffdf8;--accent:#157a6e;--warn:#b7791f;--ok:#3f7d54;--review:#7660a9}*{box-sizing:border-box}body{margin:0;background:#f6f1e7;color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}.page{max-width:920px;margin:0 auto;padding:48px 28px 90px}.hero{padding-bottom:22px;border-bottom:1px solid var(--line);margin-bottom:32px}.hero h1{font-size:34px;line-height:1.25;margin:0 0 10px}.meta,.muted{color:var(--muted);font-size:12px;line-height:1.6}.meta a{color:var(--accent)}section{margin:0 0 42px}section>h2{font-size:23px;padding-bottom:9px;border-bottom:1px solid var(--line)}h3{font-size:17px}p,li{line-height:1.75}li{margin:4px 0}.noteDepth1{margin-left:26px}.noteDepth2{margin-left:52px}.callout{border:1px solid #b9d6df;border-left:5px solid #4f87a4;border-radius:12px;padding:13px 15px;background:#edf6f8;margin:15px 0}.callout.warning{border-color:#e4c48d;border-left-color:var(--warn);background:#fff3df}.callout.success{border-color:#bbd9c0;border-left-color:var(--ok);background:#edf7ef}.callout.question{border-color:#cfc3e9;border-left-color:var(--review);background:#f3effa}.callout strong{display:flex;align-items:center;gap:7px;margin-bottom:6px}.calloutIcon{font-size:14px}.callout p{margin:0;white-space:pre-wrap}.diagram,.codeStudy,.reference{border:1px solid #d2c7b9;border-radius:14px;background:var(--panel);padding:14px;margin:15px 0;overflow:auto}.diagram svg{display:block;max-width:100%;height:auto;margin:auto}.codeTitle{font-size:11px;color:var(--muted);font-weight:700;margin-bottom:5px}.codeMeta{font-size:11px;color:var(--muted);margin:0 0 9px}.codeStudy pre{margin:0;padding:14px;background:#f1ece3;border-radius:10px;overflow:auto;font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace}.annotations{margin:12px 0 0;padding-left:24px}.annotations li{font-size:12px}.annotations strong,.annotations span{display:block}.tableWrap{margin:15px 0;overflow-x:auto;border:1px solid #d2c7b9;border-radius:12px;background:var(--panel)}.noteTable{width:100%;min-width:760px;border-collapse:collapse;font-size:12px;line-height:1.5}.noteTable th,.noteTable td{padding:10px 11px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.noteTable th{background:#eee8de;font-weight:800;white-space:nowrap}.noteTable tr:last-child td{border-bottom:0}.noteTable th:last-child,.noteTable td:last-child{border-right:0}.references{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}.reference{margin:0}.reference p{font-size:12px}.reference a{color:var(--accent);font-weight:700;font-size:12px}.visualStudy{border:1px solid #d2c7b9;border-radius:16px;background:var(--panel);padding:14px;margin:16px 0}.visualStudy figcaption{display:grid;gap:4px;margin-bottom:10px}.visualStudy figcaption span{color:var(--muted);font-size:12px}.visualFrame{display:block;width:100%;min-height:280px;border:0;background:#fff;border-radius:12px}.visualFallback,.visualSpec{margin-top:10px}.visualFallback summary,.visualSpec summary{cursor:pointer;font-size:12px;font-weight:700;color:var(--accent)}.visualFallback img{display:block;max-width:100%;height:auto;margin:10px auto 0}.visualSpec pre{max-height:320px;overflow:auto;background:#f1ece3;border-radius:10px;padding:12px;font:11px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap}hr{border:0;border-top:1px solid var(--line);margin:28px 0}@media(max-width:640px){.page{padding:28px 16px 60px}.hero h1{font-size:27px}.noteDepth1{margin-left:14px}.noteDepth2{margin-left:28px}}</style>
-</head><body><main class="page"><header class="hero"><h1>${escapeExportHtml(document.title)}</h1><div class="meta">Study Hard · revision ${state.revision} · ${escapeExportHtml(new Date(state.updatedAt).toLocaleString("ko-KR"))}${sourceUrl ? ` · <a href="${escapeExportHtml(sourceUrl)}">원본 자료</a>` : ""}</div></header>${sections}${companion}</main><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script><script>window.addEventListener('message',function(event){if(!event.data||event.data.type!=='pilee:tft-visual-ready')return;document.querySelectorAll('iframe.visualFrame').forEach(function(frame){if(frame.contentWindow===event.source){var height=Math.max(220,Math.min(12000,Number(event.data.height)||0));if(height)frame.style.height=height+'px';}});});mermaid.initialize({startOnLoad:true,theme:'base',securityLevel:'strict'});</script></body></html>`;
+<style>:root{color-scheme:light;--text:#2d2925;--muted:#756e66;--line:#d8cfc1;--panel:#fffdf8;--accent:#157a6e;--warn:#b7791f;--ok:#3f7d54;--review:#7660a9}*{box-sizing:border-box}body{margin:0;background:#f6f1e7;color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}.page{max-width:920px;margin:0 auto;padding:48px 28px 90px}.hero{padding-bottom:22px;border-bottom:1px solid var(--line);margin-bottom:32px}.hero h1{font-size:34px;line-height:1.25;margin:0 0 10px}.meta,.muted{color:var(--muted);font-size:12px;line-height:1.6}.meta a{color:var(--accent)}.workContract{margin:0 0 32px;border:1px solid #c8bbab;border-radius:14px;background:#f3eee5;overflow:hidden}.workContract summary{display:flex;justify-content:space-between;gap:12px;padding:14px 16px;cursor:pointer;font-size:13px;font-weight:800}.workContract summary span{color:var(--muted);font-size:10px}.workContractBody{padding:18px;background:var(--panel);max-height:72vh;overflow:auto}.workContractDocument h1{font-size:27px}.workContractDocument h2{margin-top:28px;font-size:21px}.workContractTable{overflow:auto;border:1px solid var(--line);border-radius:10px}.workContractTable table{width:100%;min-width:620px;border-collapse:collapse;font-size:11px}.workContractTable th,.workContractTable td{padding:9px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.workContractCode{padding:14px;border-radius:10px;background:#2f2b27;color:#f8f3e9;overflow:auto}.workContractDocument blockquote{padding:10px 14px;border-left:4px solid var(--accent);background:#edf6f3}section{margin:0 0 42px}section>h2{font-size:23px;padding-bottom:9px;border-bottom:1px solid var(--line)}h3{font-size:17px}p,li{line-height:1.75}li{margin:4px 0}.noteDepth1{margin-left:26px}.noteDepth2{margin-left:52px}.callout{border:1px solid #b9d6df;border-left:5px solid #4f87a4;border-radius:12px;padding:13px 15px;background:#edf6f8;margin:15px 0}.callout.warning{border-color:#e4c48d;border-left-color:var(--warn);background:#fff3df}.callout.success{border-color:#bbd9c0;border-left-color:var(--ok);background:#edf7ef}.callout.question{border-color:#cfc3e9;border-left-color:var(--review);background:#f3effa}.callout strong{display:flex;align-items:center;gap:7px;margin-bottom:6px}.calloutIcon{font-size:14px}.callout p{margin:0;white-space:pre-wrap}.diagram,.codeStudy,.reference{border:1px solid #d2c7b9;border-radius:14px;background:var(--panel);padding:14px;margin:15px 0;overflow:auto}.diagram svg{display:block;max-width:100%;height:auto;margin:auto}.codeTitle{font-size:11px;color:var(--muted);font-weight:700;margin-bottom:5px}.codeMeta{font-size:11px;color:var(--muted);margin:0 0 9px}.codeStudy pre{margin:0;padding:14px;background:#f1ece3;border-radius:10px;overflow:auto;font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace}.annotations{margin:12px 0 0;padding-left:24px}.annotations li{font-size:12px}.annotations strong,.annotations span{display:block}.tableWrap{margin:15px 0;overflow-x:auto;border:1px solid #d2c7b9;border-radius:12px;background:var(--panel)}.noteTable{width:100%;min-width:760px;border-collapse:collapse;font-size:12px;line-height:1.5}.noteTable th,.noteTable td{padding:10px 11px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.noteTable th{background:#eee8de;font-weight:800;white-space:nowrap}.noteTable tr:last-child td{border-bottom:0}.noteTable th:last-child,.noteTable td:last-child{border-right:0}.references{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}.reference{margin:0}.reference p{font-size:12px}.reference a{color:var(--accent);font-weight:700;font-size:12px}.visualStudy{border:1px solid #d2c7b9;border-radius:16px;background:var(--panel);padding:14px;margin:16px 0}.visualStudy figcaption{display:grid;gap:4px;margin-bottom:10px}.visualStudy figcaption span{color:var(--muted);font-size:12px}.visualFrame{display:block;width:100%;min-height:280px;border:0;background:#fff;border-radius:12px}.visualFallback,.visualSpec{margin-top:10px}.visualFallback summary,.visualSpec summary{cursor:pointer;font-size:12px;font-weight:700;color:var(--accent)}.visualFallback img{display:block;max-width:100%;height:auto;margin:10px auto 0}.visualSpec pre{max-height:320px;overflow:auto;background:#f1ece3;border-radius:10px;padding:12px;font:11px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap}hr{border:0;border-top:1px solid var(--line);margin:28px 0}@media(max-width:640px){.page{padding:28px 16px 60px}.hero h1{font-size:27px}.noteDepth1{margin-left:14px}.noteDepth2{margin-left:28px}}</style>
+</head><body><main class="page"><header class="hero"><h1>${escapeExportHtml(document.title)}</h1><div class="meta">Study Hard · revision ${state.revision} · ${escapeExportHtml(new Date(state.updatedAt).toLocaleString("ko-KR"))}${sourceUrl ? ` · <a href="${escapeExportHtml(sourceUrl)}">원본 자료</a>` : ""}</div></header>${workContractDetails}${sections}${companion}</main><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script><script>window.addEventListener('message',function(event){if(!event.data||event.data.type!=='pilee:tft-visual-ready')return;document.querySelectorAll('iframe.visualFrame').forEach(function(frame){if(frame.contentWindow===event.source){var height=Math.max(220,Math.min(12000,Number(event.data.height)||0));if(height)frame.style.height=height+'px';}});});mermaid.initialize({startOnLoad:true,theme:'base',securityLevel:'strict'});</script></body></html>`;
 }
 
 function exportDir(runId: string): string {
@@ -1600,11 +1749,11 @@ function exportDir(runId: string): string {
 	return dir;
 }
 
-function writeStudyNoteExport(state: StudyHardBoardState, downloadDir: string, diagramAssets: StudyDiagramExportAsset[] = []): { fileName: string; path: string } {
+function writeStudyNoteExport(state: StudyHardBoardState, downloadDir: string, diagramAssets: StudyDiagramExportAsset[] = [], workContract?: ResolvedStudyHardWorkContract): { fileName: string; path: string } {
 	const fileName = `${safeFileName(state.noteDocument.title)}-r${state.revision}.html`;
 	mkdirSync(downloadDir, { recursive: true });
 	const path = join(downloadDir, fileName);
-	writeFileSync(path, buildStudyNoteExportHtml(state, diagramAssets), "utf-8");
+	writeFileSync(path, buildStudyNoteExportHtml(state, diagramAssets, workContract), "utf-8");
 	return { fileName, path };
 }
 
@@ -1700,9 +1849,10 @@ function localCalendarDate(now = new Date()): string {
 	return `${value.year}-${value.month}-${value.day}`;
 }
 
-function buildNotionSyncPayload(state: StudyHardBoardState, diagramAssets: StudyDiagramExportAsset[]): Record<string, unknown> {
+function buildNotionSyncPayload(state: StudyHardBoardState, diagramAssets: StudyDiagramExportAsset[], workContract?: ResolvedStudyHardWorkContract): Record<string, unknown> {
 	return {
 		...materializeVisualReferences(state),
+		workContract: workContract ? { title: workContract.title, hash: workContract.hash, markdown: workContract.markdown } : undefined,
 		date: state.notionSync?.calendarDate || localCalendarDate(),
 		sourceUrl: state.url,
 		sessionId: state.runId,
@@ -1738,7 +1888,7 @@ async function runStudyHardNotionSync(handle: StudyHardHandle, diagramAssets: St
 		const inputPath = join(exportDir(handle.state.runId), "notion-sync.json");
 		const syncedRevision = handle.state.revision;
 		const syncedHash = buildNoteHistoryBundle(handle.state).hash;
-		const syncPayload = buildNotionSyncPayload(handle.state, diagramAssets);
+		const syncPayload = buildNotionSyncPayload(handle.state, diagramAssets, resolveStudyHardWorkContract(handle));
 		writeFileSync(inputPath, JSON.stringify(syncPayload, null, 2), "utf-8");
 		const { stdout } = await execFileAsync(process.env.STUDY_HARD_PYTHON || "python3", [handle.syncScript, "--file", inputPath], { maxBuffer: 4 * 1024 * 1024, timeout: 300_000 });
 		const result = JSON.parse(String(stdout).trim()) as Record<string, unknown>;
@@ -2067,13 +2217,23 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 					"Cache-Control": "no-cache",
 					Connection: "keep-alive",
 				});
-				res.write(`data: ${JSON.stringify(materializeVisualReferences(handle.state))}\n\n`);
+				res.write(`data: ${JSON.stringify(materializeStudyHardClientState(handle))}\n\n`);
 				clients.add(res);
 				req.on("close", () => clients.delete(res));
 				return;
 			}
 			if (pathname === "/state") {
-				sendJson(res, 200, materializeVisualReferences(handle.state));
+				sendJson(res, 200, materializeStudyHardClientState(handle));
+				return;
+			}
+			if (pathname === "/work-contract" && req.method === "GET") {
+				const workContract = resolveStudyHardWorkContract(handle);
+				if (!workContract) {
+					sendJson(res, 404, { ok: false, error: "연결된 Frame 작업 기획이 없습니다." });
+					return;
+				}
+				res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+				res.end(buildStudyHardWorkContractHtml(workContract.markdown));
 				return;
 			}
 			const noteVisualMatch = /^\/note-visual\/([^/]+)$/.exec(pathname);
@@ -2092,7 +2252,7 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 			if (pathname === "/export/html" && req.method === "POST") {
 				const body = await readJsonBody(req);
 				const diagramAssets = await prepareExportDiagramAssets(handle.state, body.diagramAssets, false);
-				const exported = writeStudyNoteExport(handle.state, handle.downloadDir, diagramAssets);
+				const exported = writeStudyNoteExport(handle.state, handle.downloadDir, diagramAssets, resolveStudyHardWorkContract(handle));
 				sendJson(res, 200, { ok: true, revision: handle.state.revision, ...exported });
 				return;
 			}
@@ -2112,7 +2272,7 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 				const id = decodeURIComponent(historyPreviewMatch[1] || "");
 				if (id === "current") {
 					res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-					res.end(buildStudyNoteExportHtml(handle.state));
+					res.end(buildStudyNoteExportHtml(handle.state, [], resolveStudyHardWorkContract(handle)));
 					return;
 				}
 				const bundle = readNoteHistoryBundle(handle.state.runId, id);
@@ -2124,7 +2284,7 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 					flows: restoreHistoryFlows(handle.state, bundle.flows),
 				};
 				res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-				res.end(buildStudyNoteExportHtml(previewState));
+				res.end(buildStudyNoteExportHtml(previewState, [], resolveStudyHardWorkContract(handle)));
 				return;
 			}
 			if (pathname === "/history/restore" && req.method === "POST") {
