@@ -1043,9 +1043,11 @@ h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .data-learning-block p { margin:0; color:#1f2937; font-size:10.5px; line-height:1.42; }
 .data-learning-block ul { margin:0; padding-left:16px; }
 .data-learning-block li { margin:3px 0; color:#334155; font-size:10.5px; line-height:1.4; }
-.data-schema-details { margin:0 12px 12px; border:1px solid #e2e8f0; border-radius:11px; background:#fff; }
-.data-schema-details summary { cursor:pointer; padding:8px 9px; color:#475569; font-size:10px; font-weight:950; }
-.data-schema-details .data-columns { padding-top:0; }
+.data-schema-details, .data-schema-visible { margin:0 12px 12px; border:1px solid #e2e8f0; border-radius:11px; background:#fff; }
+.data-schema-details summary, .data-schema-visible-title { padding:8px 9px; color:#475569; font-size:10px; font-weight:950; }
+.data-schema-details summary { cursor:pointer; }
+.data-schema-details .data-columns, .data-schema-visible .data-columns { padding-top:0; }
+.data-schema-visible-title { border-bottom:1px solid #e2e8f0; }
 .data-secondary { margin-top:12px; border:1px solid #cbd5e1; border-radius:14px; background:#fff; }
 .data-secondary > summary { cursor:pointer; padding:10px 11px; color:#334155; font-size:11px; font-weight:950; }
 .data-secondary > .data-section-title { margin:0; padding:0 11px; color:#64748b; font-size:9px; }
@@ -2065,8 +2067,9 @@ function renderDataEntityCard(entity, schemaPresentation) {
   var learning = hasLearning ? '<div class="data-learning-grid">' + (entity.purpose ? '<section class="data-learning-block purpose"><strong>왜 존재하는가</strong><p>' + inline(entity.purpose) + '</p></section>' : '') + renderDataLearningList('핵심 key · 불변식', entity.keyRules) + renderDataLearningList('변경되는 상태', entity.mutableState) + '</div>' : '';
   var schemaMode = String(schemaPresentation || '').toLowerCase();
   var schemaOpen = schemaMode === 'top-open' || schemaMode === 'bottom-open' || !entity.collapseColumns;
-  var schemaFirst = schemaMode === 'top-open' || schemaMode === 'top-collapsed';
-  var schema = hasLearning ? '<details class="data-schema-details"' + (schemaOpen ? ' open' : '') + '><summary>Schema fields · ' + entity.columns.length + '개</summary><div class="data-columns">' + columns + '</div></details>' : '<div class="data-columns">' + columns + '</div>';
+  var schemaVisible = schemaMode === 'top-visible' || schemaMode === 'bottom-visible';
+  var schemaFirst = schemaMode === 'top-open' || schemaMode === 'top-collapsed' || schemaMode === 'top-visible';
+  var schema = hasLearning ? (schemaVisible ? '<section class="data-schema-visible"><div class="data-schema-visible-title">Schema fields · ' + entity.columns.length + '개</div><div class="data-columns">' + columns + '</div></section>' : '<details class="data-schema-details"' + (schemaOpen ? ' open' : '') + '><summary>Schema fields · ' + entity.columns.length + '개</summary><div class="data-columns">' + columns + '</div></details>') : '<div class="data-columns">' + columns + '</div>';
   var details = schemaFirst ? schema + learning : learning + schema;
   return '<article class="' + esc(classes) + '"><div class="data-entity-head"><div class="data-entity-title">' + inline(entity.title) + '</div><div class="data-entity-meta">' + roleBadge + badges.map(renderDataBadge).join('') + '</div></div>' + (entity.description ? '<div class="data-entity-desc">' + inline(entity.description) + '</div>' : '') + details + '</article>';
 }

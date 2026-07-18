@@ -441,8 +441,9 @@ test("Data Model learning fixture는 역할 색·저장 spine·학습 위계·�
 	assert.match(element.innerHTML, /핵심 key · 불변식/);
 	assert.match(element.innerHTML, /변경되는 상태/);
 	assert.match(element.innerHTML, /Schema fields · 4개/);
-	assert.match(element.innerHTML, /<details class="data-schema-details" open>/);
-	assert.ok(element.innerHTML.indexOf("Schema fields") < element.innerHTML.indexOf("왜 존재하는가"), "schema fields should be open above the learning explanation");
+	assert.match(element.innerHTML, /<section class="data-schema-visible">/);
+	assert.doesNotMatch(element.innerHTML, /<details class="data-schema-details"/);
+	assert.ok(element.innerHTML.indexOf("Schema fields") < element.innerHTML.indexOf("왜 존재하는가"), "schema fields should be visible above the learning explanation");
 	assert.match(element.innerHTML, /<details class="data-secondary"><summary>Relationships \/ Cardinality · 2개/);
 	assert.match(element.innerHTML, /<details class="data-secondary"><summary>Migration Plan · DDL \/ DML \/ Backfill · 3개/);
 	assert.match(element.innerHTML, /<details class="data-secondary"><summary>Verification Queries \/ Evidence · 3개/);

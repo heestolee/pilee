@@ -127,6 +127,8 @@ test("Data Model / Migration Map 렌더러가 WebView bundle에 포함된다", (
 	assert.match(html, /핵심 key · 불변식/);
 	assert.match(html, /변경되는 상태/);
 	assert.match(html, /top-open/);
+	assert.match(html, /top-visible/);
+	assert.match(html, /data-schema-visible/);
 	assert.match(html, /schemaFirst/);
 	assert.match(html, /role-transport/);
 	assert.match(html, /role-core/);

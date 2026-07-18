@@ -216,7 +216,7 @@
     }
   ],
   "presentation": {
-    "schema": "top-open",
+    "schema": "top-visible",
     "relationships": "details",
     "migration": "details",
     "verification": "details"
