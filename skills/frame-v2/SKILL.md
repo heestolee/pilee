@@ -1,202 +1,209 @@
 ---
 name: frame-v2
-description: 기존 /frame과 /study-hard를 바꾸지 않고, 작업 이해를 먼저 학습노트로 만들고 Study Hard 방식으로 소화·다듬은 뒤 HTML/Notion 저장과 작업 시작까지 이어가는 pilot workflow. `/frame-v2`, “초안 먼저 frame”, “질문하며 학습노트”, “이해한 다음 작업 시작” 요청에 사용한다.
-argument-hint: "[--draft|--guided] <주제·티켓·URL>"
+description: Frame과 Study Hard 중 시작 방향을 선택하고, 작업 기획·학습·구현을 같은 work unit에서 순차 또는 병렬로 연결하는 pilot workflow. `/frame-v2`, “Frame 먼저 정리하고 공부”, “Study Hard부터 보고 작업으로 전환”, “작업과 학습 병행” 요청에 사용한다.
+argument-hint: "<주제·티켓·URL>"
 disable-model-invocation: false
 ---
 
 # Frame v2
 
-`/frame-v2`는 **구현 전에 작업을 이해하는 학습노트**를 만들고, 사용자가 충분히 소화할 때까지 다듬은 뒤 기존 Frame-compatible 작업 계약으로 전환하는 독립 pilot이다.
+`/frame-v2`는 Frame, Study Hard, 구현을 한 줄로 강제하는 절차가 아니라 **서로 독립적인 작업·학습 흐름을 연결하는 coordinator**다.
 
-기존 `/frame`, `/decide`, `/study-hard`의 동작과 저장 구조는 수정하지 않는다.
+명령 직후 extension이 다음 시작 방향을 물으며, 선택 결과는 runtime contract의 `entry mode`로 전달된다.
 
-## 역할 분리
+1. Frame 먼저
+2. Study Hard 먼저
+
+같은 선택을 다시 묻지 않는다.
+
+## 핵심 모델
 
 ```text
-/frame-v2
-  ├─ --draft: 조사된 최초 학습노트를 먼저 제시
-  └─ 기본/--guided: 현재 /frame 질문 규율로 함께 최초 학습노트 작성
-       ↓
-TFT Studio: 기존 Frame 시각화로 구조·ERD·flow 확인
-       ↓
-Study Hard board: 질문·답변·revision으로 소화하며 다듬기
-       ↓
-HTML / Notion export
-       ↓
-표준 frame.json 확정 → /decide 또는 구현/worktree 시작
+같은 work unit
+├─ Frame lane       작업 목표·범위·결정·성공 기준
+├─ Study Hard lane  개념·Mental Model·Before/After·코드 읽기·이해 확인
+└─ Work lane        구현·검증·리뷰
 ```
+
+세 lane은 필요한 순서로 이동하거나 병행할 수 있다.
+
+- Frame → 구현
+- Frame → Study Hard → 구현
+- Frame → 구현 + Study Hard 병행
+- Study Hard → 학습만 완료
+- Study Hard → Frame으로 작업 정리
+- Study Hard → 작업 + Frame 보완
 
 ## 절대 규칙
 
-1. `/frame`과 `/study-hard` 구현을 대체하거나 암묵적으로 바꾸지 않는다.
-2. **사용자의 이해 여부는 artifact 존재나 질문 정답으로 추정하지 않는다.** 사용자가 충분히 소화했다고 말해야 finalization으로 간다.
-3. TFT Studio는 최초 구조화·시각화 surface, Study Hard board는 이후 소화·revision surface다. 같은 내용을 두 canonical로 유지하지 않는다.
-4. refinement 전에는 Study Hard board state가 살아 있는 학습노트 원천이다. 작업 시작 전에는 표준 `frame.json`이 canonical로 승격된다.
-5. `--draft`는 최초 학습노트를 보여주기 전 계약 질문을 하지 않는다. 불확실성은 가정·열린 질문으로 표시한다.
-6. guided mode는 질문을 임의로 줄이거나 늘리지 않고 현재 `../frame/SKILL.md`의 Deep Interview, `(명백)`, Productive Resistance 규율을 그대로 따른다.
-7. 코드·문서·티켓으로 확인 가능한 사실을 사용자에게 되묻지 않는다. 다만 목표·범위·성공 기준·검증 축처럼 사용자의 계약을 바꾸는 값은 현재 Frame 규칙대로 확인한다.
-8. 작업 시작 뒤에도 Study Hard와 Frame을 하나의 canonical로 합치지 않는다. `frame.json`은 작업 canonical, Study Hard state는 학습 canonical이며 `learning-companion.json`은 두 원천을 잇는 sidecar다. sidecar 실패는 구현·검증·commit·push를 막지 않는다.
+1. **Frame v2 전용 hard gate를 만들지 않는다.** 학습 완료나 Frame v2 상태는 정보이지 작업 허가증이 아니다. 결제·보안·PII·DB·외부 연동 같은 기존 ask-first와 worktree 안전 규칙은 그대로 따른다.
+2. Frame과 Study Hard는 하나의 문서나 canonical로 합치지 않는다.
+   - `frame.json`: 작업 canonical
+   - Study Hard state: 학습 canonical
+   - `learning-companion.json`: 두 원천을 연결하는 optional sidecar
+3. Frame 내용을 Study Hard 본문에 복사하지 않는다. 학습 본문은 학습자용 서사로 다시 구성한다.
+4. Frame이 있으면 Study Hard 문서 최상단에 **전체 Frame을 읽기 전용·기본 접힘 작업 기획**으로 표시한다. Frame이 없으면 이 영역을 만들지 않는다.
+5. 학습 인사이트가 작업 변경을 뜻하면 바로 Frame·task·코드를 바꾸지 않고 proposal로 남긴다. 사용자 수락 뒤 기존 `/decide`, work context, task, verify, 구현 workflow로 적용한다.
+6. 사용자의 이해 여부는 artifact·정답·AI 판정으로 추정하지 않는다. 다만 이해 완료가 구현 시작의 필수 조건도 아니다.
+7. companion 누락·손상은 구현·검증·commit·push를 막지 않는다.
 
 ## Runtime contract
 
-Command shim이 다음 값을 prompt에 제공한다.
+Command shim이 다음 값을 제공한다.
 
-- mode: `draft | guided`
+- `entry mode`: `frame-first | study-hard-first`
+- note mode: `draft | guided` — 이전 호출 호환과 내부 작성 방식
 - frame identity와 storage dir
 - `frame-v2.json` manifest path
-- Study Hard `runId`, source URL, 예상 state path
-- ready 이후 생성되는 `learning-companion.json` sidecar
-- 초기 학습노트 skeleton
+- standard `frame.json` 예상 path
+- Study Hard `runId`, state path, source URL
+- 학습노트 skeleton
 
-상세 저장 계약은 `references/artifact-contract.md`를 읽는다.
+상세 artifact 계약은 `references/artifact-contract.md`를 따른다.
 
-## Workflow
+## 공통 시작 단계
 
-### 1. 기존 Frame 규칙과 source를 읽는다
+1. command shim의 Frame identity와 선택된 `entry mode`를 읽는다.
+2. `../frame/SKILL.md`의 source-grounded planning, Deep Interview, canonical write 규칙을 읽는다.
+3. URL/Jira/Notion/Slack/PR/코드가 있으면 실제 source를 읽는다.
+4. standard frame path에 `frame.json`이 있는지 확인한다.
+5. 선택된 lane으로 바로 진행한다. 시작 방향을 다시 확인하지 않는다.
 
-1. command shim의 Frame identity hint를 우선한다.
-2. `../frame/SKILL.md`에서 다음 현재 규칙을 읽는다.
-   - 기획 근거 대응형 Frame
-   - Backend Layer Map / Architecture Flow / Data Model Migration Map gate
-   - Deep Interview 질문 규율
-   - Canonical-first 저장 원칙
-   - Step 8/9와 `frame.json` schema
-3. URL/Jira/Notion/Slack/PRD/코드가 있으면 실제 source를 먼저 읽는다.
-4. 구현은 시작하지 않는다.
+## Frame 먼저
 
-### 2. 최초 학습노트를 만든다
+### 1. 작업 기획 정리
 
-두 모드는 **질문의 순서만 다르고 산출물 품질은 같다.**
+현재 `/frame` 규칙으로 목표·범위·결정·성공 기준·구현 지도를 정리한다.
 
-#### `--draft` — 초안 먼저
+- 이미 유효한 `frame.json`이 있으면 덮어쓰지 말고 재진입 규칙을 따른다.
+- 필요한 결정만 `/decide`로 보낸다.
+- `frame_v2_state action=ready`는 frame.json을 검증하고 Study Hard run과 연결하는 상태 기록이다. 구현 허가 gate가 아니다.
 
-- 조사 가능한 source와 코드 구조를 먼저 읽는다.
-- 완전한 최초 학습노트를 TFT Studio에 먼저 보여준다.
-- 확인하지 못한 내용은 `가정`, `열린 질문`, `근거 부족`으로 표시한다.
-- 사용자가 초안을 본 뒤 정정·질문을 시작한다.
+### 2. 다음 흐름
 
-#### guided — 질문하며 만들기
+Frame 정리 후 사용자 의도에 맞는 항목만 제시한다.
 
-- 현재 `/frame`의 질문 규율을 그대로 따른다.
-- 질문이 많았던 원래 목적은 당연한 전제를 몰래 확정하지 않는 것이다. 이를 “질문을 줄여라”로 재해석하지 않는다.
-- 한 번에 한 가지 결정만 묻는다.
-- 권장 답이 명백해도 계약을 바꾸면 `(명백: 근거)`를 보여주고 확인한다.
-- 질문 자체가 목적이 되지 않도록 source로 닫힌 사실은 AI가 채운다.
+- 바로 구현
+- Study Hard 열기
+- 구현과 Study Hard 병행
+- 여기서 멈춤
 
-최초 노트에는 필요할 때 다음을 포함한다.
+Study Hard를 선택하지 않아도 정상 흐름이다.
 
-- 문제와 목표, mental model
-- 확인된 사실 / 가정 / 열린 질문
-- Requirement Matrix와 Domain Work Map
-- 데이터 모델·ERD·PK/FK/UNIQUE/fallback
-- Backend Layer Map
-- Architecture/Data/User Action Flow
-- 성공 기준, 검증 evidence, 구현 slice 초안
-- Productive Resistance 결과
+### 3. Study Hard 연결
 
-### 3. TFT Studio에서 현재 Frame 시각화를 사용한다
+Study Hard를 열기 직전에 frame path를 다시 확인한다.
 
-1. `frame_studio action=start tab=frame`으로 identity-bound TFT Studio를 연다.
-2. 최초 학습노트 markdown을 `frame_studio action=update tab=frame`으로 렌더링한다.
-3. 구조 이해가 필요한 경우 현재 Frame 형식의 fenced `tft-visual`을 사용한다.
-   - `kind: "backend-layer-map"`
-   - `kind: "architecture-flow"`
-   - `kind: "data-model-migration-map"`
-4. 시각 자료 선택 기준은 `../frame/SKILL.md` gate를 그대로 따른다. TFT visual, Mermaid, Study Hard flow 중 주제에 가장 적합한 표현을 고르고, 단순 작업에 모든 지도를 의례적으로 그리지 않는다.
-5. Study Hard에서도 계속 볼 TFT visual은 원본 spec을 유지한 stable note block으로 넘긴다: `{"id":"...","type":"visual","title":"...","body":"...","visual":{...}}`. prose나 screenshot-only placeholder로 평탄화하지 않는다.
-6. guided mode 질문은 `frame_studio action=ask tab=frame`으로 묻는다. `unavailable/cancelled/timeout`일 때만 번호형 fallback을 쓴다.
-7. 최초 노트가 정리되면 Studio에 “Study Hard로 넘길 내용”을 한 번 보여주고 `frame_studio action=finish tab=frame`으로 닫는다.
+- 있으면 learning companion을 연결하고 문서 최상단에 전체 Frame 작업 기획을 기본 접힘으로 표시한다.
+- 없으면 Frame 없는 학습노트로 시작하고, 나중에 Frame이 생기면 같은 runId에 연결한다.
 
-### 4. Study Hard board로 전환한다
+## Study Hard 먼저
 
-최초 노트가 생긴 뒤에만 `study_hard_board action=start`를 호출한다.
+### 1. Frame 존재 확인
 
-필수 전달값:
+Study Hard board를 열기 전에 standard frame path를 확인한다.
 
-- command shim의 `runId`, `sourceUrl`, title, hints
-- `noteDocument`: TFT Studio 최초 학습노트의 구조화 버전. 보존할 TFT visual은 `type: "visual"` block과 원본 `visual` spec을 포함한다.
-- `nodes/edges`: 개념·책임의 hierarchy만 표현
-- `flows`: runtime/data/user-action sequence
-- `mermaid`: ERD처럼 관계도가 더 직관적인 경우 보조 사용
-- `goals`, `quickMap`, `summary`, `recommendedNodeId`
+- Frame 있음: 같은 run과 연결하고 전체 Frame 작업 기획 dropdown을 제공한다.
+- Frame 없음: dropdown 없이 학습을 시작한다. Frame 생성을 강제하지 않는다.
 
-전환 뒤에는 Study Hard board가 학습노트 원천이다. TFT markdown과 별도 복사본을 동시에 수동 갱신하지 않는다.
+### 2. 학습노트 작성
 
-### 5. 사용자가 소화할 때까지 다듬는다
+학습노트는 Frame 항목 순서가 아니라 다음 학습 서사를 기본으로 한다.
 
-- 사용자가 board에서 문단/노드/flow를 선택해 질문할 수 있게 한다.
-- Tutor 답변 → Editor 병합 → revision 기록 흐름을 존중한다.
-- 답변을 Q&A 로그로만 붙이지 말고 mental model, 실행 순서, 오해 방지 설명으로 기존 문단에 흡수한다.
-- 사용자의 정정은 기존 확정 사실보다 우선하되 source와 충돌하면 충돌을 드러낸다.
-- 새 질문으로 계약이 바뀌면 성공 기준·검증·구현 지도도 함께 갱신한다.
-- 사용자가 “더 봐야 할 것 없다”, “이해했다”, “작업하자”처럼 명시하기 전에는 finalization을 서두르지 않는다.
+1. 왜 이 작업이 필요한가
+2. 먼저 알아야 할 개념
+3. 핵심 Mental Model
+4. Before / After · 무엇이 왜 바뀌는가
+5. 데이터·실행 흐름
+6. 실제 코드 읽는 순서
+7. 재사용할 원칙
+8. 한계와 오해하기 쉬운 점
+9. 이해 확인
 
-### 6. Export
+Frame의 Requirement Matrix, 결정, 성공 기준, verify plan, 구현 slice는 학습 본문에 그대로 펼치지 않는다. 필요한 내용만 사례·트레이드오프·코드 읽기 설명으로 변환하고 전체 원문은 작업 기획 dropdown에서 본다.
 
-- HTML은 Study Hard board의 `HTML 내보내기`를 사용한다. TFT visual은 동작하는 self-contained renderer와 PNG fallback, 원본 spec을 함께 보존한다.
-- Notion은 runtime profile/`STUDY_HARD_SYNC_SCRIPT`가 있을 때 `Notion 저장`을 사용한다. TFT visual은 전체 container 고해상도 PNG와 설명, 원본 spec toggle로 저장한다.
-- Notion publisher가 없어도 HTML과 작업 시작은 막지 않는다.
-- export는 현재 revision snapshot 기준이며, 저장 중 바뀐 revision은 사용자에게 알린다.
+### 3. 이후 흐름
 
-### 7. 표준 Frame으로 확정한다
+사용자가 원하는 시점에 다음으로 이어갈 수 있다.
 
-사용자가 충분히 소화했다고 확인하면 현재 Study Hard state를 표준 Frame 계약으로 합성한다.
+- 계속 학습
+- 이 학습으로 Frame 만들기
+- 작업 먼저 시작
+- 작업과 학습 병행
+- 학습만 마치기
 
-1. `../frame/SKILL.md` Step 8과 §5 schema를 다시 읽는다.
-2. identity storage dir에 `frame.json.tmp → rename` 순서로 표준 `frame.json`을 쓴다.
-3. `provenance`에 `frame-v2.json`, Study Hard state path/runId, export artifact를 refs로 남긴다.
-4. `canonicalHash`를 계산하고 `frame.md` mirror를 재생성한다.
-5. 남은 decision은 `decision_queue`, 열린 검증은 `verify_plan`, 실행 단위는 `implementation_plan.slices[]`로 보존한다.
-6. `frame-v2.json.status`를 `ready`로 갱신한다.
-7. `frame_v2_state action=ready`가 Frame ref와 Study Hard runId를 `learning-companion.json`으로 연결한다. Study Hard state가 아직 없으면 sidecar만 보존하고 작업은 계속한다.
-8. canonical write 전에는 worktree fork나 구현을 시작하지 않는다.
+Study Hard에서 Frame을 만들 때는 새 학습 run을 만들지 않는다. 현재 runId, Q&A, revision을 보존하고 학습에서 확인된 사실·위험·열린 작업 결정을 Frame draft의 입력으로 사용한다. 부족한 계약만 현재 `/frame` 질문으로 채운다.
 
-### 8. 다음 행동
+## 작업과 학습 병행
 
-다음 중 현재 상황에 맞는 것만 묻는다.
+같은 Pi session에서는 Study Hard Glimpse 창을 유지한 채 메인 agent나 worker가 구현을 진행할 수 있다.
 
-1. Study Hard에서 더 다듬기
-2. HTML / Notion 저장
-3. `/decide`로 남은 판단 처리
-4. fork해서 구현 시작
-5. 현재 worktree에서 구현 시작
-6. 여기서 멈춤
+- 작업 변화는 companion event/checkpoint로 요약한다.
+- 학습 본문 변경은 Study Hard revision으로 남긴다.
+- 학습에서 찾은 작업 변경은 proposal로 남긴다.
+- proposal이 수락됐더라도 실제 decision/task/commit/evidence ref가 생기기 전에는 `applied`로 닫지 않는다.
 
-- `fork해서 구현 시작`이면 `frame_v2_worktree_fork` tool을 호출한다.
-- tool이 `BLOCKED`면 절대경로로 구현을 이어가지 말고 이유를 보고한다.
-- 현재 worktree 구현이면 `work_context refresh/set_slice` 후 첫 slice부터 시작한다.
+별도 Pi panel을 쓸 때도 Frame·코드 writer와 Study Hard writer를 구분한다. 같은 canonical을 두 panel이 동시에 덮어쓰지 않는다.
 
-### 작업 시작 뒤 Companion continuity
+## Study Hard 작업 기획 dropdown
 
-- worktree fork는 `.pi/learning-companion.json`을 retarget하되 같은 `companionId`와 Study Hard `runId`를 유지한다.
-- `/study-hard current`는 현재 sidecar의 run을 다시 열며 새 URL 학습 prompt를 시작하지 않는다.
-- `learning_companion record/checkpoint`는 slice 완료, 검증 판정, pre-PR, review round, merge처럼 의미 있는 전환에만 사용한다. 모든 tool call이나 commit 준비 과정을 기록하지 않는다.
-- 학습 중 더 나은 방향을 발견하면 `learning_companion action=propose`로 먼저 제안한다. `proposed`/`accepted` 상태는 `frame.json`, work context, task, 코드를 직접 수정하지 않는다.
-- 사용자가 수락하면 기존 `/decide`, `work_context`, task, `/verify`, 구현 workflow로 반영하고, 실제 decision/task/commit/evidence ref가 생긴 뒤에만 proposal을 `applied`로 닫는다.
-- companion이 없거나 손상됐으면 경고만 남기고 기존 작업 흐름을 계속한다.
+Study Hard 렌더러는 매번 연결된 Frame의 존재를 확인한다.
+
+```text
+▶ 작업 기획 전체 보기 · Frame revision/hash
+```
+
+규칙:
+
+- 학습노트 최상단, 기본 접힘
+- 요약이 아니라 Frame 전체 내용
+- `frame.json` 또는 해당 mirror에서 읽는 read-only 파생 view
+- 목표·범위·가정·Requirement Matrix·결정·성공 기준·검증·구현 slice·열린 작업 질문 포함
+- noteDocument에 복제하지 않음
+- Frame이 없거나 읽을 수 없으면 dropdown 자체를 표시하지 않음
+- Frame이 나중에 생기거나 갱신되면 다음 렌더에서 최신 내용 사용
+
+## Visual과 refinement
+
+- 구조 이해가 필요하면 현재 `tft-visual`, Mermaid, Study Hard flow 중 가장 적합한 형식을 고른다.
+- TFT visual을 Study Hard에서 유지할 때는 `type: "visual"` block과 원본 spec을 보존한다.
+- Tutor 답변은 Q&A 로그에만 쌓지 않고 Mental Model·실행 순서·오해 방지 설명에 흡수한다.
+- 작업상 열린 결정과 학습자가 헷갈리는 질문을 구분한다.
+
+## Export
+
+- HTML/Notion은 현재 Study Hard revision snapshot을 사용한다.
+- 작업 기획 dropdown도 Frame이 있으면 export에 포함하되 기본 접힘을 유지한다.
+- Notion publisher가 없어도 HTML, 학습, 작업을 막지 않는다.
+
+## Worktree와 구현
+
+- Frame이 있고 Frame promotion을 포함한 fork를 원할 때만 `frame_v2_worktree_fork`를 사용한다.
+- Frame이 없거나 해당 전용 fork가 필요하지 않으면 기존 worktree·구현 흐름을 사용한다. Frame v2가 별도 차단을 만들지 않는다.
+- worktree 전환 뒤 companion이 있으면 같은 companionId/runId를 유지한다.
+- 새 세션은 존재하는 canonical만 읽고 없는 artifact를 이유로 다른 정상 작업 흐름을 막지 않는다.
 
 ## Output contract
 
-채팅 완료 보고는 짧게 유지한다.
+보고에는 현재 상태만 간결히 남긴다.
 
-- 현재 단계: 최초 노트 / Study Hard refinement / ready
-- artifact: `frame-v2.json`, Study Hard state, `frame.json`, export refs
-- 남은 열린 질문/decision
-- 선택된 다음 행동
+- 선택된 시작 방향
+- Frame 존재/연결 여부
+- Study Hard run과 현재 revision
+- work/learning 진행 상태
+- 학습 proposal 또는 작업상 열린 결정
+- 사용자가 선택한 다음 행동
 
 ## Validation
 
-완료 전에 확인한다.
-
-- [ ] `--draft`가 최초 노트 전 질문을 강제하지 않았다.
-- [ ] guided mode가 현재 Frame 질문 규율을 임의로 재해석하지 않았다.
-- [ ] 필요한 ERD/flow/layer map이 TFT Studio에서 직관적으로 보였다.
-- [ ] Study Hard board에 최초 노트가 구조 손실 없이 넘어갔고, 보존 대상 TFT visual은 `visual` block 원본 spec으로 다시 렌더됐다.
-- [ ] 같은 visual fixture가 live note, HTML renderer + PNG fallback, Notion PNG + spec toggle에 모두 연결됐다.
-- [ ] 사용자가 이해 완료를 말하기 전 `frame.json` ready/구현 시작을 선언하지 않았다.
-- [ ] export와 worktree 시작이 서로 독립적으로 가능하다.
-- [ ] worktree 전환 뒤에도 같은 companionId/runId로 `/study-hard current`가 열린다.
-- [ ] 학습 제안은 사용자 수락과 기존 workflow 적용 전 작업 canonical을 바꾸지 않는다.
-- [ ] companion 누락·손상이 구현·검증·commit·push를 차단하지 않는다.
-- [ ] 기존 `/frame`, URL 기반 `/study-hard` 동작을 변경하지 않았다.
+- [ ] `/frame-v2 <주제>` 직후 `Frame 먼저 / Study Hard 먼저` 선택 UI가 열렸다.
+- [ ] 선택 결과를 command가 다시 묻지 않고 prompt와 manifest에 보존했다.
+- [ ] Study Hard 완료 여부가 구현 hard gate가 되지 않았다.
+- [ ] Study Hard 시작 전에 Frame 존재 여부를 확인했다.
+- [ ] Frame이 있으면 학습노트 최상단에 전체 기획 dropdown이 기본 접힘으로 보였다.
+- [ ] Frame이 없으면 dropdown이 나타나지 않았다.
+- [ ] 학습 본문은 Mental Model·Before/After·코드 읽기·이해 확인 중심이다.
+- [ ] Frame과 Study Hard를 서로 복사 canonical로 만들지 않았다.
+- [ ] Study Hard-first에서 Frame으로 전환해도 같은 runId·Q&A·revision을 유지했다.
+- [ ] 작업·학습 병행 중 proposal이 수락·적용 ref 없이 작업 canonical을 바꾸지 않았다.
+- [ ] 기존 ask-first, worktree 안전, visual, export, companion failure-isolation 규칙을 유지했다.

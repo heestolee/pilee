@@ -12,6 +12,7 @@ import {
 	frameV2RunId,
 	linkFrameV2LearningCompanion,
 	parseFrameV2Args,
+	type FrameV2EntryMode,
 	type FrameV2Invocation,
 	updateFrameV2ManifestStatus,
 	writeFrameV2Manifest,
@@ -28,16 +29,19 @@ const FRAME_V2_STATE_TOOL = "frame_v2_state";
 const FRAME_V2_FORK_TOOL = "frame_v2_worktree_fork";
 const FRAME_V2_CONTINUATION_TYPE = "pilee-frame-v2-worktree-fork-continuation";
 
-const HELP = `Frame v2 — 이해를 학습노트로 만들고 소화한 뒤 작업 시작
+const HELP = `Frame v2 — Frame과 Study Hard를 원하는 순서로 연결
 
 Usage:
-  /frame-v2 <주제·티켓·URL>           현재 Frame 질문 규율로 함께 최초 노트 작성
-  /frame-v2 --guided <주제·티켓·URL>  guided 모드 명시
-  /frame-v2 --draft <주제·티켓·URL>   질문 전에 조사된 최초 노트를 먼저 제시
+  /frame-v2 <주제·티켓·URL>
   /frame-v2 help
 
-Flow:
-  TFT Studio 최초 노트·시각화 → Study Hard refinement → HTML/Notion → frame.json → 구현 시작`;
+명령을 실행하면 시작 방향을 선택합니다.
+  1. Frame 먼저
+  2. Study Hard 먼저
+
+두 흐름은 이후 작업 전·병렬·후행으로 자유롭게 연결할 수 있습니다.`;
+
+const ENTRY_OPTIONS = ["Frame 먼저", "Study Hard 먼저"] as const;
 
 interface FrameV2CommandContextRecord {
 	key: string;
@@ -188,24 +192,31 @@ export function buildFrameV2Prompt(params: {
 		"",
 		"Hard routing rules:",
 		`- Use the inlined \`${SKILL_NAME}\` SKILL.md as the authoritative workflow.`,
-		"- Existing `/frame`, `/decide`, and `/study-hard` behavior is out of scope; do not edit or reinterpret those workflows during this invocation.",
-		"- Do not start implementation until the user explicitly confirms understanding and a standard frame.json is written.",
-		"- Use TFT Studio first for the initial note and current Frame tft-visual renderers; only then start the Study Hard board for refinement.",
-		"- Choose the visual form that best explains each subject: TFT visual, Mermaid, Study Hard flow, or a mixture. Do not force one renderer onto every concept.",
-		"- Any fenced tft-visual that should survive refinement must be transferred into noteDocument as a stable `{type:\"visual\", visual:{...original spec...}}` block; do not flatten it into prose or a screenshot-only placeholder.",
+		"- Frame v2 coordinates independent Frame, Study Hard, and implementation lanes; it does not replace their own canonical artifacts.",
+		`- selected entry lane: ${params.invocation.entryMode}`,
+		params.invocation.entryMode === "frame-first"
+			? "- Frame-first lane: use the standard Frame workflow to organize the work first. Afterwards offer implementation, Study Hard, or both; do not start Study Hard automatically."
+			: "- Study-Hard-first lane: build a pedagogical learning note first. Check whether a standard frame.json exists before opening the board; if it exists, expose the complete Frame as a read-only collapsed work contract, otherwise continue without it and offer Frame later.",
+		"- Study Hard may run before, alongside, or after implementation.",
+		"- Do not create a Frame v2-specific hard gate for implementation. Existing safety and ask-first rules remain in force, but learning completion is status, not authorization.",
+		"- Choose the visual form that best explains each subject: TFT visual, Mermaid, Study Hard flow, or a mixture. Existing backend-layer-map, architecture-flow, and data-model-migration-map visual kinds remain available; do not force one renderer onto every concept.",
+		"- Any fenced tft-visual that should survive learning refinement must be transferred into noteDocument as a stable `{type:\"visual\", visual:{...original spec...}}` block; do not flatten it into prose or a screenshot-only placeholder.",
 		params.invocation.mode === "draft"
-			? "- Draft-first mode: show a researched initial note before asking contract questions. Mark uncertainty instead of silently deciding it."
-			: "- Guided mode: follow the current frame Deep Interview/(명백)/Productive Resistance rules without reducing them to a shorter substitute.",
+			? "- Draft-first mode: show a researched draft for the selected lane before asking follow-up questions. Mark uncertainty instead of silently deciding it."
+			: params.invocation.entryMode === "frame-first"
+				? "- Guided mode: follow the current frame Deep Interview/(명백)/Productive Resistance rules without reducing them to a shorter substitute."
+				: "- Guided mode: follow the learning conversation one concept at a time; use Frame questions only after the user chooses to create or amend a work contract.",
 		placeholderSource
 			? "- The source URL below is an internal placeholder. Do not fetch it; investigate the original arguments, current codebase, ticket, and conversation instead."
 			: "- Fetch/read the real source URL and any linked evidence before claiming the initial note is grounded.",
-		"- After standard frame.json is ready, call frame_v2_state action=ready before offering worktree fork.",
-		"- If the user selects fork해서 구현 시작, call frame_v2_worktree_fork rather than worktree_fork.",
+		"- If a standard frame.json exists or is created, call frame_v2_state action=ready to link it with the learning run. This records state; it is not a work authorization gate.",
+		"- Use frame_v2_worktree_fork only for the Frame promotion path after frame.json exists. Other implementation paths remain available without inventing a Frame v2 gate.",
 		"",
 		formatFrameIdentityHint(params.identity),
 		"",
 		"## Frame v2 runtime contract",
 		`- mode: ${params.invocation.mode}`,
+		`- entry mode: ${params.invocation.entryMode}`,
 		`- topic: ${params.invocation.topic}`,
 		`- source URL: ${params.invocation.sourceUrl}`,
 		`- Study Hard runId: ${params.runId}`,
@@ -213,7 +224,7 @@ export function buildFrameV2Prompt(params: {
 		`- Frame v2 manifest: ${params.manifestPath}`,
 		`- standard frame path: ${join(params.identity.storageDir, "frame.json")}`,
 		"",
-		"Initial note skeleton (replace placeholders with grounded content before Study Hard transition):",
+		"Learning note skeleton (use only when the Study Hard lane starts; keep the complete Frame in its separate collapsed work-contract view):",
 		"```json",
 		JSON.stringify(initialNote, null, 2),
 		"```",
@@ -255,7 +266,7 @@ function buildContinuationPrompt(record: FrameV2CommandContextRecord): string {
 	return [
 		"# Frame v2 implementation continuation",
 		"",
-		"The source /frame-v2 session completed the understanding/refinement gate and forked this worktree.",
+		"The source /frame-v2 session linked its Frame, learning, and implementation context before forking this worktree.",
 		"",
 		"Required next actions:",
 		"1. Read the promoted `.pi/frame.json` in the current worktree. If it is missing, stop as BLOCKED.",
@@ -273,10 +284,10 @@ function registerFrameV2StateTool(pi: ExtensionAPI): void {
 		name: FRAME_V2_STATE_TOOL,
 		label: "Update Frame v2 State",
 		description: "Inspect a /frame-v2 runtime manifest or mark it ready after the standard frame.json has been written and validated.",
-		promptSnippet: "After Frame v2 refinement produces and validates standard frame.json, call frame_v2_state action=ready before offering implementation start.",
+		promptSnippet: "When a standard frame.json exists, call frame_v2_state action=ready to validate and link it to the learning run without treating learning completion as a work gate.",
 		promptGuidelines: [
-			"Use action=ready only after the user confirmed understanding and standard frame.json was atomically written.",
-			"This tool does not create frame.json; it only verifies the file exists and advances the runtime manifest.",
+			"Use action=ready after standard frame.json was atomically written; Study Hard completion is not required.",
+			"This tool does not create frame.json or authorize implementation; it validates the file and links companion state.",
 		],
 		parameters: Type.Object({
 			action: Type.Union([Type.Literal("status"), Type.Literal("ready")]),
@@ -362,15 +373,23 @@ export default function (pi: ExtensionAPI) {
 	registerFrameV2StateTool(pi);
 	registerFrameV2ForkTool(pi);
 	pi.registerCommand("frame-v2", {
-		description: "초안 먼저 또는 질문형 학습노트 → Study Hard refinement → export → 작업 시작 pilot",
+		description: "Frame과 Study Hard의 시작 순서를 선택하고 작업·학습을 연결하는 pilot",
 		handler: async (args: string, ctx: ExtensionCommandContext) => {
 			try {
 				const identity = buildFrameIdentity(ctx, args);
-				const invocation = parseFrameV2Args(args, identity.key);
-				if ("help" in invocation) {
+				const provisional = parseFrameV2Args(args, identity.key);
+				if ("help" in provisional) {
 					ctx.ui.notify(HELP, "info");
 					return;
 				}
+				const selected = await ctx.ui.select("어떤 방식으로 시작할까요?", [...ENTRY_OPTIONS]);
+				if (!selected) {
+					ctx.ui.notify("Frame v2 시작을 취소했습니다.", "info");
+					return;
+				}
+				const entryMode: FrameV2EntryMode = selected === ENTRY_OPTIONS[0] ? "frame-first" : "study-hard-first";
+				const invocation = parseFrameV2Args(args, identity.key, entryMode);
+				if ("help" in invocation) return;
 				const runId = frameV2RunId(identity.key);
 				const statePath = studyHardStatePathFor(runId);
 				const { path: manifestPath } = writeFrameV2Manifest({
@@ -395,14 +414,14 @@ export default function (pi: ExtensionAPI) {
 				};
 				rememberContext(record);
 				const prompt = buildFrameV2Prompt({ args, cwd: identity.cwd, identity, invocation, runId, statePath, manifestPath });
-				ctx.ui.notify(invocation.mode === "draft"
-					? "📝 Frame v2 초안 먼저 모드를 시작합니다. 조사된 최초 학습노트를 먼저 만듭니다."
-					: "🧭 Frame v2 guided 모드를 시작합니다. 현재 Frame 질문 규율로 학습노트를 함께 만듭니다.", "info");
+				ctx.ui.notify(entryMode === "frame-first"
+					? "🧭 Frame 먼저 시작합니다. 이후 Study Hard나 구현을 자유롭게 연결할 수 있습니다."
+					: "📚 Study Hard 먼저 시작합니다. Frame이 있으면 전체 기획을 연결하고, 없으면 학습부터 진행합니다.", "info");
 				pi.sendMessage({
 					customType: CUSTOM_TYPE,
 					content: prompt,
 					display: false,
-					details: { command: "frame-v2", args, mode: invocation.mode, identityKey: identity.key, manifestPath, runId, statePath, skillPath: skillPath(SKILL_NAME) },
+					details: { command: "frame-v2", args, mode: invocation.mode, entryMode, identityKey: identity.key, manifestPath, runId, statePath, skillPath: skillPath(SKILL_NAME) },
 				}, { deliverAs: "followUp", triggerTurn: true });
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);

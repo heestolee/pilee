@@ -5,9 +5,11 @@ import type { FrameIdentity } from "../tft-commands/frame-identity.ts";
 import type { StudyNoteDocument } from "../study-hard/studio.ts";
 
 export type FrameV2Mode = "draft" | "guided";
+export type FrameV2EntryMode = "frame-first" | "study-hard-first";
 
 export interface FrameV2Invocation {
 	mode: FrameV2Mode;
+	entryMode: FrameV2EntryMode;
 	topic: string;
 	args: string;
 	sourceUrl: string;
@@ -17,6 +19,7 @@ export interface FrameV2Manifest {
 	schemaVersion: 1;
 	status: "drafting" | "refining" | "ready" | "started";
 	mode: FrameV2Mode;
+	entryMode: FrameV2EntryMode;
 	topic: string;
 	identity: Pick<FrameIdentity, "mode" | "key" | "displayTitle" | "storageDir" | "ticket" | "sessionFile">;
 	studyHard: {
@@ -47,7 +50,7 @@ function firstHttpUrl(value: string): string | undefined {
 	return undefined;
 }
 
-export function parseFrameV2Args(args: string, identityKey: string): FrameV2Invocation | { help: true } {
+export function parseFrameV2Args(args: string, identityKey: string, entryMode: FrameV2EntryMode = "frame-first"): FrameV2Invocation | { help: true } {
 	const trimmed = args.trim();
 	if (["help", "--help", "-h"].includes(trimmed.toLowerCase())) return { help: true };
 	const tokens = trimmed.split(/\s+/g).filter(Boolean);
@@ -56,6 +59,7 @@ export function parseFrameV2Args(args: string, identityKey: string): FrameV2Invo
 	const topic = tokens.filter((token) => token !== "--draft" && token !== "--guided").join(" ").trim() || "현재 대화의 작업 주제";
 	return {
 		mode: draft && !guided ? "draft" : "guided",
+		entryMode,
 		topic,
 		args: trimmed,
 		sourceUrl: firstHttpUrl(topic) ?? `https://frame-v2.invalid/${shortHash(identityKey)}`,
@@ -68,43 +72,55 @@ export function frameV2RunId(identityKey: string): string {
 
 export function buildInitialFrameV2Note(topic: string, mode: FrameV2Mode): StudyNoteDocument {
 	const modeText = mode === "draft"
-		? "먼저 조사한 초안을 만들고, 확인되지 않은 내용은 가정·열린 질문으로 남깁니다."
-		: "현재 Frame의 질문 규율로 핵심 계약을 함께 확인하며 초안을 만듭니다.";
+		? "먼저 조사한 학습 초안을 만들고, 확인되지 않은 내용은 가정으로 표시합니다."
+		: "대화하며 선수 지식과 Mental Model을 채우고 내 말로 설명할 수 있게 다듬습니다.";
 	return {
 		title: `Frame v2 · ${topic}`,
 		sections: [
 			{
-				id: "frame-v2-overview",
+				id: "frame-v2-context",
 				kind: "overview",
-				title: "문제와 목표",
+				title: "왜 이 작업이 필요한가",
 				blocks: [
-					{ id: "frame-v2-mode", type: "callout", tone: "info", title: mode === "draft" ? "초안 먼저" : "질문하며 만들기", body: modeText },
-					{ id: "frame-v2-goal", type: "paragraph", text: "조사와 대화를 통해 목표, 범위, 성공 기준을 구체화합니다." },
+					{ id: "frame-v2-mode", type: "callout", tone: "info", title: mode === "draft" ? "학습 초안 먼저" : "대화하며 학습", body: modeText },
+					{ id: "frame-v2-context-pending", type: "paragraph", text: "문제의 배경과 이 작업이 해결하려는 사용자·시스템 결과를 설명합니다." },
 				],
+			},
+			{
+				id: "frame-v2-foundations",
+				kind: "node",
+				title: "먼저 알아야 할 개념",
+				blocks: [{ id: "frame-v2-foundations-pending", type: "paragraph", text: "이 작업을 이해하는 데 필요한 선수 지식과 용어를 실제 근거와 함께 채웁니다." }],
 			},
 			{
 				id: "frame-v2-mental-model",
 				kind: "node",
-				title: "Mental model과 확인된 사실",
-				blocks: [{ id: "frame-v2-mental-model-pending", type: "paragraph", text: "코드·문서·기획 근거를 읽고 현재 구조와 핵심 개념을 채웁니다." }],
+				title: "핵심 Mental Model",
+				blocks: [{ id: "frame-v2-mental-model-pending", type: "paragraph", text: "구조와 책임을 한 문장으로 설명할 수 있는 모델을 만듭니다." }],
 			},
 			{
-				id: "frame-v2-visuals",
+				id: "frame-v2-before-after",
 				kind: "flow",
-				title: "데이터 모델 · ERD · 실행 흐름",
-				blocks: [{ id: "frame-v2-visuals-pending", type: "paragraph", text: "구조 이해에 필요한 시각 자료만 선택해 그립니다." }],
+				title: "Before / After · 무엇이 왜 바뀌는가",
+				blocks: [{ id: "frame-v2-before-after-pending", type: "paragraph", text: "현재 문제와 제안 구조의 차이를 같은 경로로 비교합니다." }],
 			},
 			{
-				id: "frame-v2-contract",
+				id: "frame-v2-code-reading",
 				kind: "practice",
-				title: "요구사항 · 검증 · 구현 지도",
-				blocks: [{ id: "frame-v2-contract-pending", type: "paragraph", text: "Requirement Matrix, 성공 기준, 검증 증거, 구현 slice를 연결합니다." }],
+				title: "실제 코드 읽는 순서",
+				blocks: [{ id: "frame-v2-code-reading-pending", type: "paragraph", text: "개념이 실제 코드와 데이터 흐름에 연결되는 순서만 안내합니다." }],
 			},
 			{
-				id: "frame-v2-open-questions",
+				id: "frame-v2-limits",
 				kind: "reflection",
-				title: "가정과 열린 질문",
-				blocks: [{ id: "frame-v2-open-pending", type: "callout", tone: "question", title: "아직 확정하지 않은 것", body: "초안과 대화에서 확인되지 않은 내용을 여기에 보존합니다." }],
+				title: "한계와 오해하기 쉬운 점",
+				blocks: [{ id: "frame-v2-limits-pending", type: "callout", tone: "warning", title: "구분할 것", body: "학습 설명과 작업상 미정 결정을 섞지 않습니다." }],
+			},
+			{
+				id: "frame-v2-understanding",
+				kind: "reflection",
+				title: "이해 확인",
+				blocks: [{ id: "frame-v2-understanding-pending", type: "callout", tone: "question", title: "내 말로 설명하기", body: "핵심 흐름과 트레이드오프를 내 말로 설명해 봅니다." }],
 			},
 		],
 	};
@@ -154,6 +170,7 @@ export function writeFrameV2Manifest(params: {
 		schemaVersion: 1,
 		status: previous?.status ?? "drafting",
 		mode: params.invocation.mode,
+		entryMode: params.invocation.entryMode,
 		topic: params.invocation.topic,
 		identity: {
 			mode: params.identity.mode,
