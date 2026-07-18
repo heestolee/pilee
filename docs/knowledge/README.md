@@ -80,7 +80,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [Architecture friction은 TFT의 검증 축이다](./architecture-friction-tft-lens.md) | active | high | 2026-06-02 | ce5e875 | architecture, frame, decide, verify, deep-module, shallow-module |
-| [학습노트 companion은 독립 canonical을 sidecar로 연결한다](./learning-note-companion-artifact.md) | active | high | 2026-07-17 | f24686c | learning-note, companion-artifact, frame-v2, study-hard, worktree, checkpoint |
+| [학습노트 companion은 독립 canonical을 sidecar로 연결한다](./learning-note-companion-artifact.md) | active | high | 2026-07-18 | 88b560c | learning-note, companion-artifact, frame-v2, study-hard, worktree, checkpoint |
 | [Study Hard 엔진은 public이고 개인 publisher만 private다](./study-hard-public-engine-private-publisher.md) | active | high | 2026-07-18 | 0c02e27 | study-hard, public-private-boundary, notion, runtime-profile, local-state |
 | [Utils surface는 사용자 계약을 만들지 않는다](./utility-surface-stays-invisible.md) | active | high | 2026-06-02 | d8f8c4c | utils, internal, surface, abstraction, extension |
 
@@ -196,7 +196,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Frame은 마지막에 Plan을 합성한다](./frame-plan-synthesis-continuity.md) | active | high | 2026-06-02 | 7861f10 | frame, implementation-plan, tft-studio, worktree, continuity, planning |
 | [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-06-02 | 7861f10 | frame, planning, identity, home-directory, ticket, session-title |
 | [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-06-16 | 87c864f | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
-| [Frame v2는 이해를 학습노트로 만든 뒤 작업 계약으로 승격한다](./frame-v2-learning-note-pilot.md) | active | high | 2026-07-17 | f24686c | frame-v2, frame, study-hard, learning-note, tft-studio, worktree |
+| [Frame v2는 작업·학습 lane을 양방향으로 연결한다](./frame-v2-learning-note-pilot.md) | active | high | 2026-07-18 | 88b560c | frame-v2, frame, study-hard, learning-note, worktree |
 | [Interactive shell은 bash가 아닌 터미널 세션이다](./interactive-shell-overlay-tool.md) | active | high | 2026-06-29 | 680f937 | interactive-shell, shell, tui, dev-server, overlay, dispatch |
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-06-02 | 7861f10 | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 264ea17 | local-dev, server, startup, diagnosis, dev |
@@ -312,7 +312,7 @@ graph TD
   doc_frame_plan_synthesis_continuity["Frame은 마지막에 Plan을 합성한다"]
   doc_frame_planning_identity["Frame identity는 cwd보다 작업 의도를 우선한다"]
   doc_frame_studio_interactive_decision_ui["TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다"]
-  doc_frame_v2_learning_note_pilot["Frame v2는 이해를 학습노트로 만든 뒤 작업 계약으로 승격한다"]
+  doc_frame_v2_learning_note_pilot["Frame v2는 작업·학습 lane을 양방향으로 연결한다"]
   doc_interactive_shell_overlay_tool["Interactive shell은 bash가 아닌 터미널 세션이다"]
   doc_live_artifact_preview_pattern["Live artifact는 local preview first다"]
   doc_local_dev_startup_diagnosis["로컬 개발 서버 시작은 진단 가능한 절차여야 한다"]

@@ -21,8 +21,8 @@ applies_to:
   - skills/pr-ship
 source:
   - user-direction:2026-07-17-learning-note-companion
-reviewed_at: 2026-07-17
-reviewed_commit: f24686c02d8552809de904565e22ae22905b227b
+reviewed_at: 2026-07-18
+reviewed_commit: 88b560c62683ba149cbaf91ecca9487b65c973c9
 related:
   - frame-v2-learning-note-pilot
   - study-hard-public-engine-private-publisher
@@ -43,7 +43,7 @@ frame.json                    Study Hard state
          stable companionId/runId
 ```
 
-이 구조에서 기존 Frame v2의 이해→계약→구현 흐름과 Study Hard의 질문·revision·HTML·optional Notion 저장은 서로 독립적으로 계속 동작합니다.
+이 구조에서 Frame 기획, Study Hard의 질문·revision·HTML·optional Notion 저장, 구현은 서로 독립적으로 계속 동작합니다. Frame v2는 이들을 직렬로 강제하지 않고 선택한 순서와 병렬 흐름을 연결합니다.
 
 ## Sidecar Rule
 
@@ -79,6 +79,20 @@ Companion은 관찰·학습 보조 artifact이므로 연결 실패가 작업 성
 
 Event는 `dedupeKey`로 중복을 막고 전체 diff/log 대신 slice, commit, PR, review, evidence ref만 저장합니다. 학습노트 snapshot은 frame-ready, slice-complete, pre-PR, review-round, merged, post-merge 같은 checkpoint에서만 가리킵니다.
 
+## Study-first Attachment Rule
+
+Standalone Study Hard run도 사용자가 작업 기획으로 전환하려 할 때 같은 companion 구조에 합류할 수 있습니다.
+
+```text
+current Study Hard runId
+  → frame_v2_state adopt-study-hard
+  → 같은 runId/statePath를 쓰는 frame-v2 manifest
+  → Frame 작성·보완
+  → companion attach
+```
+
+Adopt는 학습 state를 복제하거나 초기화하지 않습니다. companion 연결 revision은 추가될 수 있지만 기존 Q&A와 note history는 유지합니다.
+
 ## Learning-to-Work Promotion Rule
 
 학습 중 발견한 더 나은 방향은 바로 작업 canonical을 수정하지 않고 proposal로 승격합니다.
@@ -97,7 +111,7 @@ Event는 `dedupeKey`로 중복을 막고 전체 diff/log 대신 slice, commit, P
 
 ## Surface and Export Rule
 
-`/study-hard current`는 현재 `.pi/learning-companion.json`의 `runId`를 열며 새 URL 학습 prompt를 시작하지 않습니다. Live Study Hard와 standalone HTML은 작업 timeline, checkpoint 수, proposal 상태를 조건부로 보여줍니다.
+`/study-hard current`는 현재 `.pi/learning-companion.json`의 `runId`를 열며 새 URL 학습 prompt를 시작하지 않습니다. Live Study Hard는 Frame이 있으면 학습노트 최상단에 전체 Frame을 기본 접힘 read-only view로 표시하고, Frame이 없으면 이 영역을 생략합니다. Standalone HTML도 같은 details view를 export 시점에 파생합니다.
 
 Notion 저장은 기존 Study Hard payload와 private publisher 경계를 유지합니다. Companion metadata는 optional field로 전달되며, publisher 지원 여부가 기존 noteDocument·visual PNG·원본 spec 저장을 깨뜨리면 안 됩니다.
 
