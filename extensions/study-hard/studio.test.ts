@@ -152,6 +152,23 @@ test("mergeBoardState normalizes flow and annotated note blocks with stable sema
 	}), /outside 1-1/);
 });
 
+test("mergeBoardState normalizes table note blocks without losing cell values", () => {
+	const current = createInitialBoardState({ url: "https://example.com", runId: "table-contract" });
+	const next = mergeBoardState(current, {
+		noteDocument: { title: "Table note", sections: [{ id: "events", kind: "overview", title: "이벤트", blocks: [{
+			id: "event-table",
+			type: "table",
+			columns: ["#", "이벤트", "등급"],
+			rows: [[1, "신규 예약", "A"], [2, "리뷰 작성", "B"]],
+		}] }] },
+	});
+	assert.deepEqual(next.noteDocument.sections[0]?.blocks[0]?.columns, ["#", "이벤트", "등급"]);
+	assert.deepEqual(next.noteDocument.sections[0]?.blocks[0]?.rows, [["1", "신규 예약", "A"], ["2", "리뷰 작성", "B"]]);
+	assert.throws(() => mergeBoardState(next, {
+		noteDocument: { title: "Invalid", sections: [{ id: "events", kind: "overview", title: "이벤트", blocks: [{ id: "missing", type: "table", rows: [] }] }] },
+	}), /table note block requires columns and rows/);
+});
+
 test("mergeBoardState preserves TFT visual specs as stable learning-note blocks", () => {
 	const current = createInitialBoardState({ url: "https://example.com", runId: "visual-contract" });
 	const visual = {
@@ -367,6 +384,9 @@ test("buildStudyHardStudioHtml gives the note the left+center width and overlays
 	assert.match(html, /mermaidComparePanel \.noteDiagramCanvas \{ min-height:210px; max-height:380px/);
 	assert.match(html, /function noteSectionBlocksHtml/);
 	assert.match(html, /function noteListHtml/);
+	assert.match(html, /function noteTableHtml/);
+	assert.match(html, /b\.type==='table'/);
+	assert.match(html, /\.noteTableWrap \{ overflow-x:auto/);
 	assert.match(html, /function effectiveNoteHeadingLevel/);
 	assert.match(html, /function calloutToneMeta/);
 	assert.match(html, /\.noteDepth2 \{ margin-left:52px; \}/);
@@ -447,6 +467,7 @@ test("buildStudyNoteExportHtml creates a standalone learning note with Mermaid a
 				{ id: "before", type: "heading", level: 3, text: "Before" },
 				{ id: "mental-model", type: "callout", tone: "question", title: "한 문장", body: "공통 core와 platform edge를 분리한다." },
 				{ id: "nested-list", type: "list", items: ["상위", "\t하위", "  같은 하위"] },
+				{ id: "event-table", type: "table", columns: ["#", "이벤트", "등급"], rows: [["1", "신규 예약", "A"]] },
 				{ id: "code", type: "code", code: { language: "text", code: "JS -> Native", lineNumberMode: "relative" } },
 				{ id: "diagram", type: "code", code: { language: "mermaid", code: "flowchart LR\n  JS --> Native" } },
 				{ id: "refs", type: "reference-list", references: [{ kind: "link", label: "공식 문서", url: "https://reactnative.dev/architecture/xplat-implementation" }] },
@@ -462,6 +483,9 @@ test("buildStudyNoteExportHtml creates a standalone learning note with Mermaid a
 	assert.match(html, /mermaid@11/);
 	assert.match(html, /class="noteDepth2"/);
 	assert.match(html, /<ul><li>상위<ul><li>하위<\/li><li>같은 하위<\/li><\/ul><\/li><\/ul>/);
+	assert.match(html, /<table class="noteTable">/);
+	assert.match(html, /<th>이벤트<\/th>/);
+	assert.match(html, /<td>신규 예약<\/td>/);
 	assert.match(html, /<em>Line numbering: relative, start 1<\/em>/);
 	assert.match(html, /class="callout question"/);
 	assert.match(html, /aria-label="질문">❓<\/span>/);
@@ -505,7 +529,7 @@ test("export routes write HTML to Downloads and pass rendered diagrams to Notion
 	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/export", runId, syncScript: fakeSyncScript, downloadDir });
 	try {
 		updateStudyHardStudio(runId, {
-			noteDocument: { title: "Export Note", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "lead", type: "paragraph", text: "Exported body" }, { id: "diagram", type: "code", code: { language: "mermaid", code: "flowchart LR\nA --> B" } }] }] },
+			noteDocument: { title: "Export Note", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "lead", type: "paragraph", text: "Exported body" }, { id: "event-table", type: "table", columns: ["#", "이벤트"], rows: [["1", "신규 예약"]] }, { id: "diagram", type: "code", code: { language: "mermaid", code: "flowchart LR\nA --> B" } }] }] },
 			questions: [{ id: "Q001", origin: "learner", scope: "session", question: "왜?", feedback: "이유", status: "answered" }],
 		});
 		let response = await fetch(new URL("/export/notion", handle.url), { method: "POST" });
@@ -539,6 +563,7 @@ test("export routes write HTML to Downloads and pass rendered diagrams to Notion
 		assert.equal(syncInput.qa[0].id, "Q001");
 		assert.equal(syncInput.date, state.notionSync.calendarDate);
 		assert.equal(syncInput.sourceUrl, "https://example.com/export");
+		assert.deepEqual(syncInput.noteDocument.sections[0].blocks[1], { id: "event-table", type: "table", columns: ["#", "이벤트"], rows: [["1", "신규 예약"]], ordered: false });
 		assert.equal(syncInput.diagramAssets[0].blockId, "diagram");
 		assert.equal(readFileSync(syncInput.diagramAssets[0].path, "utf-8"), "rendered-png");
 	} finally {

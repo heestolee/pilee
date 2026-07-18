@@ -45,7 +45,7 @@ export type StudyLayoutMode = "auto" | "manual";
 export type StudySurface = "map" | "flow" | "note";
 export type StudyFlowVariant = "before" | "after" | "current";
 export type StudyNoteSectionKind = "overview" | "node" | "flow" | "practice" | "reflection";
-export type StudyNoteBlockType = "heading" | "paragraph" | "callout" | "list" | "code" | "reference-list" | "flow-ref" | "visual" | "visual-ref" | "divider";
+export type StudyNoteBlockType = "heading" | "paragraph" | "callout" | "list" | "table" | "code" | "reference-list" | "flow-ref" | "visual" | "visual-ref" | "divider";
 
 const MAX_QUESTION_ATTACHMENTS = 4;
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
@@ -96,6 +96,8 @@ export interface StudyNoteBlock {
 	tone?: "info" | "warning" | "success" | "question";
 	ordered?: boolean;
 	items?: string[];
+	columns?: string[];
+	rows?: string[][];
 	code?: StudyCodeSample;
 	references?: StudyNodeReference[];
 	flowId?: string;
@@ -463,8 +465,13 @@ function normalizeNoteBlocks(value: unknown): StudyNoteBlock[] | undefined {
 			const id = String(item.id || `block-${index + 1}`);
 			if (seen.has(id)) throw new Error(`duplicate note block id: ${id}`);
 			seen.add(id);
-			const type = ["heading", "paragraph", "callout", "list", "code", "reference-list", "flow-ref", "visual", "visual-ref", "divider"].includes(String(item.type)) ? String(item.type) as StudyNoteBlockType : undefined;
+			const type = ["heading", "paragraph", "callout", "list", "table", "code", "reference-list", "flow-ref", "visual", "visual-ref", "divider"].includes(String(item.type)) ? String(item.type) as StudyNoteBlockType : undefined;
 			if (!type) throw new Error(`unknown note block type: ${item.type}`);
+			const columns = normalizeStringArray(item.columns)?.slice(0, 24);
+			const rows = Array.isArray(item.rows) ? item.rows.slice(0, 500)
+				.filter((row): row is unknown[] => Array.isArray(row))
+				.map((row) => row.slice(0, columns?.length || 24).map((cell) => String(cell ?? ""))) : undefined;
+			if (type === "table" && (!columns?.length || !rows)) throw new Error(`table note block requires columns and rows: ${id}`);
 			const visual = item.visual && typeof item.visual === "object" && !Array.isArray(item.visual) ? JSON.parse(JSON.stringify(item.visual)) as Record<string, unknown> : undefined;
 			const visualRefItem = item.visualRef && typeof item.visualRef === "object" && !Array.isArray(item.visualRef) ? item.visualRef as Record<string, unknown> : undefined;
 			const visualRef = visualRefItem && typeof visualRefItem.sourceBlockId === "string" ? { sourceBlockId: visualRefItem.sourceBlockId, laneId: typeof visualRefItem.laneId === "string" ? visualRefItem.laneId : undefined } : undefined;
@@ -480,6 +487,8 @@ function normalizeNoteBlocks(value: unknown): StudyNoteBlock[] | undefined {
 				tone: ["info", "warning", "success", "question"].includes(String(item.tone)) ? String(item.tone) as StudyNoteBlock["tone"] : undefined,
 				ordered: item.ordered === true,
 				items: normalizeStringArray(item.items),
+				columns,
+				rows,
 				code: normalizeCodeSample(item.code || (type === "code" ? item : undefined)),
 				references: normalizeReferences(item.references),
 				flowId: typeof item.flowId === "string" ? item.flowId : undefined,
@@ -1493,6 +1502,10 @@ function exportListHtml(items: string[], ordered: boolean): string {
 	return render(roots);
 }
 
+function exportTableHtml(columns: string[], rows: string[][]): string {
+	return `<div class="tableWrap"><table class="noteTable"><thead><tr>${columns.map((column) => `<th>${escapeExportHtml(column)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${columns.map((_, index) => `<td>${escapeExportHtml(row[index] || "")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+}
+
 function exportCodeHtml(sample?: StudyCodeSample): string {
 	if (!sample?.code) return "";
 	if (String(sample.language || "").toLowerCase() === "mermaid") return `<div class="diagram"><pre class="mermaid">${escapeExportHtml(sample.code)}</pre></div>`;
@@ -1524,6 +1537,7 @@ function exportNoteBlockHtml(block: StudyNoteBlock, state: StudyHardBoardState, 
 		return `<aside class="callout ${escapeExportHtml(block.tone || "info")}"><strong><span class="calloutIcon" aria-label="${meta.label}">${meta.icon}</span>${escapeExportHtml(block.title || "핵심")}</strong><p>${escapeExportHtml(block.body || block.text)}</p></aside>`;
 	}
 	if (block.type === "list") return exportListHtml(block.items || [], block.ordered === true);
+	if (block.type === "table") return exportTableHtml(block.columns || [], block.rows || []);
 	if (block.type === "code") return exportCodeHtml(block.code);
 	if (block.type === "reference-list") return `<div class="references">${(block.references || []).map(exportReferenceHtml).join("")}</div>`;
 	const resolvedVisual = resolveStudyNoteBlockVisual(state.noteDocument, block);
@@ -1576,7 +1590,7 @@ export function buildStudyNoteExportHtml(state: StudyHardBoardState, diagramAsse
 	const sourceUrl = normalizeHttpUrl(state.url);
 	return `<!doctype html>
 <html lang="ko"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${escapeExportHtml(document.title)}</title>
-<style>:root{color-scheme:light;--text:#2d2925;--muted:#756e66;--line:#d8cfc1;--panel:#fffdf8;--accent:#157a6e;--warn:#b7791f;--ok:#3f7d54;--review:#7660a9}*{box-sizing:border-box}body{margin:0;background:#f6f1e7;color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}.page{max-width:920px;margin:0 auto;padding:48px 28px 90px}.hero{padding-bottom:22px;border-bottom:1px solid var(--line);margin-bottom:32px}.hero h1{font-size:34px;line-height:1.25;margin:0 0 10px}.meta,.muted{color:var(--muted);font-size:12px;line-height:1.6}.meta a{color:var(--accent)}section{margin:0 0 42px}section>h2{font-size:23px;padding-bottom:9px;border-bottom:1px solid var(--line)}h3{font-size:17px}p,li{line-height:1.75}li{margin:4px 0}.noteDepth1{margin-left:26px}.noteDepth2{margin-left:52px}.callout{border:1px solid #b9d6df;border-left:5px solid #4f87a4;border-radius:12px;padding:13px 15px;background:#edf6f8;margin:15px 0}.callout.warning{border-color:#e4c48d;border-left-color:var(--warn);background:#fff3df}.callout.success{border-color:#bbd9c0;border-left-color:var(--ok);background:#edf7ef}.callout.question{border-color:#cfc3e9;border-left-color:var(--review);background:#f3effa}.callout strong{display:flex;align-items:center;gap:7px;margin-bottom:6px}.calloutIcon{font-size:14px}.callout p{margin:0;white-space:pre-wrap}.diagram,.codeStudy,.reference{border:1px solid #d2c7b9;border-radius:14px;background:var(--panel);padding:14px;margin:15px 0;overflow:auto}.diagram svg{display:block;max-width:100%;height:auto;margin:auto}.codeTitle{font-size:11px;color:var(--muted);font-weight:700;margin-bottom:5px}.codeMeta{font-size:11px;color:var(--muted);margin:0 0 9px}.codeStudy pre{margin:0;padding:14px;background:#f1ece3;border-radius:10px;overflow:auto;font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace}.annotations{margin:12px 0 0;padding-left:24px}.annotations li{font-size:12px}.annotations strong,.annotations span{display:block}.references{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}.reference{margin:0}.reference p{font-size:12px}.reference a{color:var(--accent);font-weight:700;font-size:12px}.visualStudy{border:1px solid #d2c7b9;border-radius:16px;background:var(--panel);padding:14px;margin:16px 0}.visualStudy figcaption{display:grid;gap:4px;margin-bottom:10px}.visualStudy figcaption span{color:var(--muted);font-size:12px}.visualFrame{display:block;width:100%;min-height:280px;border:0;background:#fff;border-radius:12px}.visualFallback,.visualSpec{margin-top:10px}.visualFallback summary,.visualSpec summary{cursor:pointer;font-size:12px;font-weight:700;color:var(--accent)}.visualFallback img{display:block;max-width:100%;height:auto;margin:10px auto 0}.visualSpec pre{max-height:320px;overflow:auto;background:#f1ece3;border-radius:10px;padding:12px;font:11px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap}hr{border:0;border-top:1px solid var(--line);margin:28px 0}@media(max-width:640px){.page{padding:28px 16px 60px}.hero h1{font-size:27px}.noteDepth1{margin-left:14px}.noteDepth2{margin-left:28px}}</style>
+<style>:root{color-scheme:light;--text:#2d2925;--muted:#756e66;--line:#d8cfc1;--panel:#fffdf8;--accent:#157a6e;--warn:#b7791f;--ok:#3f7d54;--review:#7660a9}*{box-sizing:border-box}body{margin:0;background:#f6f1e7;color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}.page{max-width:920px;margin:0 auto;padding:48px 28px 90px}.hero{padding-bottom:22px;border-bottom:1px solid var(--line);margin-bottom:32px}.hero h1{font-size:34px;line-height:1.25;margin:0 0 10px}.meta,.muted{color:var(--muted);font-size:12px;line-height:1.6}.meta a{color:var(--accent)}section{margin:0 0 42px}section>h2{font-size:23px;padding-bottom:9px;border-bottom:1px solid var(--line)}h3{font-size:17px}p,li{line-height:1.75}li{margin:4px 0}.noteDepth1{margin-left:26px}.noteDepth2{margin-left:52px}.callout{border:1px solid #b9d6df;border-left:5px solid #4f87a4;border-radius:12px;padding:13px 15px;background:#edf6f8;margin:15px 0}.callout.warning{border-color:#e4c48d;border-left-color:var(--warn);background:#fff3df}.callout.success{border-color:#bbd9c0;border-left-color:var(--ok);background:#edf7ef}.callout.question{border-color:#cfc3e9;border-left-color:var(--review);background:#f3effa}.callout strong{display:flex;align-items:center;gap:7px;margin-bottom:6px}.calloutIcon{font-size:14px}.callout p{margin:0;white-space:pre-wrap}.diagram,.codeStudy,.reference{border:1px solid #d2c7b9;border-radius:14px;background:var(--panel);padding:14px;margin:15px 0;overflow:auto}.diagram svg{display:block;max-width:100%;height:auto;margin:auto}.codeTitle{font-size:11px;color:var(--muted);font-weight:700;margin-bottom:5px}.codeMeta{font-size:11px;color:var(--muted);margin:0 0 9px}.codeStudy pre{margin:0;padding:14px;background:#f1ece3;border-radius:10px;overflow:auto;font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace}.annotations{margin:12px 0 0;padding-left:24px}.annotations li{font-size:12px}.annotations strong,.annotations span{display:block}.tableWrap{margin:15px 0;overflow-x:auto;border:1px solid #d2c7b9;border-radius:12px;background:var(--panel)}.noteTable{width:100%;min-width:760px;border-collapse:collapse;font-size:12px;line-height:1.5}.noteTable th,.noteTable td{padding:10px 11px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.noteTable th{background:#eee8de;font-weight:800;white-space:nowrap}.noteTable tr:last-child td{border-bottom:0}.noteTable th:last-child,.noteTable td:last-child{border-right:0}.references{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}.reference{margin:0}.reference p{font-size:12px}.reference a{color:var(--accent);font-weight:700;font-size:12px}.visualStudy{border:1px solid #d2c7b9;border-radius:16px;background:var(--panel);padding:14px;margin:16px 0}.visualStudy figcaption{display:grid;gap:4px;margin-bottom:10px}.visualStudy figcaption span{color:var(--muted);font-size:12px}.visualFrame{display:block;width:100%;min-height:280px;border:0;background:#fff;border-radius:12px}.visualFallback,.visualSpec{margin-top:10px}.visualFallback summary,.visualSpec summary{cursor:pointer;font-size:12px;font-weight:700;color:var(--accent)}.visualFallback img{display:block;max-width:100%;height:auto;margin:10px auto 0}.visualSpec pre{max-height:320px;overflow:auto;background:#f1ece3;border-radius:10px;padding:12px;font:11px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap}hr{border:0;border-top:1px solid var(--line);margin:28px 0}@media(max-width:640px){.page{padding:28px 16px 60px}.hero h1{font-size:27px}.noteDepth1{margin-left:14px}.noteDepth2{margin-left:28px}}</style>
 </head><body><main class="page"><header class="hero"><h1>${escapeExportHtml(document.title)}</h1><div class="meta">Study Hard · revision ${state.revision} · ${escapeExportHtml(new Date(state.updatedAt).toLocaleString("ko-KR"))}${sourceUrl ? ` · <a href="${escapeExportHtml(sourceUrl)}">원본 자료</a>` : ""}</div></header>${sections}${companion}</main><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script><script>window.addEventListener('message',function(event){if(!event.data||event.data.type!=='pilee:tft-visual-ready')return;document.querySelectorAll('iframe.visualFrame').forEach(function(frame){if(frame.contentWindow===event.source){var height=Math.max(220,Math.min(12000,Number(event.data.height)||0));if(height)frame.style.height=height+'px';}});});mermaid.initialize({startOnLoad:true,theme:'base',securityLevel:'strict'});</script></body></html>`;
 }
 
