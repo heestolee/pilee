@@ -20,8 +20,9 @@ source:
   - user-direction:2026-05-10-tft-visual-db-structure
   - user-direction:2026-06-04-tft-visual-render-healing
   - user-direction:2026-07-17-schema-diff-column-lifecycle
+  - user-direction:2026-07-17-tft-visual-presentation-layout
 reviewed_at: 2026-07-17
-reviewed_commit: e8a5212fb8212e0ebd97a9baa6b6da0791e630ff
+reviewed_commit: 7a9343a513eeff4cedde57439a8bfe162aa232c6
 related:
   - frame-studio-interactive-decision-ui
   - frame-verify-contract
@@ -58,6 +59,27 @@ TFT Studio는 `elkjs` 기반 top-down renderer를 기본으로 사용합니다. 
 `architecture-flow` kind는 lane-based renderer를 사용합니다. 각 node는 lane/row로 배치되고, SVG edge가 node 사이 데이터·로직 이동을 연결합니다. DB table node는 컬럼 목록과 constraint badge를 카드 안에 표시합니다. 복잡한 auto-layout보다 “전체 흐름을 한눈에 보는 안정적인 지도”를 우선합니다. lane이 많거나 가로 폭이 과도하면 renderer는 자동으로 세로 top-down 배치를 선택하고, 작은 그래프는 가로 배치를 유지합니다.
 
 기본 방향은 `auto`입니다. `auto`는 lane 수, 예상 canvas 폭, lane당 node 수를 보고 `DOWN` 또는 `RIGHT`를 고릅니다. 좌→우(`RIGHT`)는 lane 수가 적고 설명이 짧을 때만 명시합니다. lane이 많거나 긴 title/body가 많으면 top-down으로 전환하고, diagram 내부에서만 scroll되게 합니다.
+
+## Spec-driven Presentation Rule
+
+이미 존재하는 의미 영역의 **순서·노출·접힘**은 renderer 코드가 아니라 visual spec이 소유합니다. `presentation.order`는 root 영역 순서를, `presentation.display`는 각 영역의 `visible`·`details`·`hidden` 상태를 정합니다. 카드 내부도 `presentation.layer`, `presentation.group`, `presentation.panel`, `presentation.node`, `presentation.entity` scope에서 같은 `order`·`display` 계약을 재사용합니다.
+
+```json
+{
+  "presentation": {
+    "order": ["notes", "diagram", "legend"],
+    "display": { "legend": "details" },
+    "entity": {
+      "order": ["schema", "learning", "description"],
+      "display": { "schema": "visible", "description": "hidden" }
+    }
+  }
+}
+```
+
+order에 생략된 기존 영역은 기본 순서를 유지해 뒤에 붙고, 알 수 없는 region ID는 무시됩니다. presentation이 없으면 기존 renderer 결과를 그대로 유지하며, 기존 Data Model의 `presentation.schema`, `relationships`, `migration`, `verification` shorthand도 계속 해석합니다.
+
+이 계약 덕분에 학습 노트를 다듬는 동안 visual spec만 갱신해 Studio SSE update로 즉시 재렌더링할 수 있습니다. 새 semantic region, 새로운 interaction, header 구조, grid/span 같은 layout primitive가 필요한 경우에만 renderer 변경과 extension reload가 필요합니다. 단순 배치 변경을 renderer 확장으로 처리하면 표현 문법과 콘텐츠 수정이 다시 결합되므로 실패입니다.
 
 ## Visual Healing Rule
 
