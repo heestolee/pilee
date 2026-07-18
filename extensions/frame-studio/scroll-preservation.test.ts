@@ -458,7 +458,7 @@ test("Data Model learning fixture는 역할 색·저장 spine·학습 위계·�
 	assert.doesNotMatch(element.innerHTML, /columns\?|data-flow-chip/);
 });
 
-test("모든 TFT visual renderer는 presentation으로 root 영역 순서·노출·접힘을 바꾼다", () => {
+test("모든 TFT visual renderer는 presentation으로 root 영역 순서·노출·접힘을 바꾼다", async () => {
 	const browser = createFakeBrowser({ top: 0, viewport: 700, height: 2400 });
 	const studio = loadStudioScript(browser.window, browser.document);
 
@@ -558,6 +558,37 @@ test("모든 TFT visual renderer는 presentation으로 root 영역 순서·노�
 	assertTextOrder(dataElement.innerHTML, "MIGRATION MARKER", "DATA ENTITY MARKER", "data model root order");
 	assert.match(dataElement.innerHTML, /<summary>Data entities<\/summary>/);
 	assert.doesNotMatch(dataElement.innerHTML, /HIDDEN RELATION MARKER/);
+
+	(browser.window as any).ELK = class FakeElk {
+		async layout(graph: any) {
+			return {
+				width: 640,
+				height: 260,
+				children: graph.children.map((child: any, index: number) => ({ ...child, x: index * 300, y: 20 })),
+				edges: graph.edges.map((edge: any, index: number) => ({
+					...edge,
+					sections: [{ startPoint: { x: 260, y: 80 + index * 20 }, endPoint: { x: 300, y: 80 + index * 20 } }],
+				})),
+			};
+		}
+	};
+	const tableElement = makeVisualElement({
+		title: "Table map",
+		tables: [
+			{ id: "table-a", name: "TABLE DIAGRAM MARKER", columns: [{ name: "id" }] },
+			{ id: "table-b", name: "Target table", columns: [{ name: "id" }] },
+		],
+		relations: [{ id: "R1", from: "table-a.id", to: "table-b.id", description: "HIDDEN TABLE RELATION" }],
+		notes: [{ title: "TABLE NOTES MARKER", body: ["notes body"] }],
+		presentation: {
+			order: ["notes", "relationships", "diagram", "healing"],
+			display: { diagram: "details", relationships: "hidden" },
+		},
+	});
+	await studio.renderTftVisualElement(tableElement);
+	assertTextOrder(tableElement.innerHTML, "TABLE NOTES MARKER", "TABLE DIAGRAM MARKER", "table ELK root order");
+	assert.match(tableElement.innerHTML, /<summary>Table diagram<\/summary>/);
+	assert.doesNotMatch(tableElement.innerHTML, /HIDDEN TABLE RELATION/);
 });
 
 test("TFT visual card scope는 같은 presentation 계약으로 내부 영역을 재배치한다", () => {
