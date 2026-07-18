@@ -132,7 +132,15 @@ Frame의 Requirement Matrix, 결정, 성공 기준, verify plan, 구현 slice는
 - 작업과 학습 병행
 - 학습만 마치기
 
-Study Hard에서 Frame을 만들 때는 새 학습 run을 만들지 않는다. 현재 runId, Q&A, revision을 보존하고 학습에서 확인된 사실·위험·열린 작업 결정을 Frame draft의 입력으로 사용한다. 부족한 계약만 현재 `/frame` 질문으로 채운다.
+Study Hard에서 Frame을 만들 때는 새 학습 run을 만들지 않는다.
+
+1. `study_hard_board action=status`로 현재 runId와 revision을 읽는다.
+2. `frame_v2_state action=adopt-study-hard runId=<현재 runId>`로 같은 run을 Frame v2 manifest에 연결한다.
+3. 학습에서 확인된 사실·위험·열린 작업 결정을 Frame draft의 입력으로 사용한다.
+4. 부족한 계약만 현재 `/frame` 질문으로 채운다.
+5. frame.json 작성 뒤 `frame_v2_state action=ready`로 companion을 연결한다.
+
+Adopt 자체는 noteDocument·Q&A를 수정하지 않고 revision 숫자도 유지한다. 이후 companion 연결은 기존 revision sequence에 새 연결 revision 하나를 추가할 수 있지만, 이전 Q&A와 note history를 초기화하지 않는다.
 
 ## 작업과 학습 병행
 

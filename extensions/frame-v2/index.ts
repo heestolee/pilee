@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import { learningCompanionManifestPath, writeLearningCompanionManifest } from "../learning-companion/state.ts";
-import { attachStudyHardLearningCompanion, studyHardStatePathFor } from "../study-hard/studio.ts";
+import { attachStudyHardLearningCompanion, loadPersistedStudyHardState, studyHardStatePathFor } from "../study-hard/studio.ts";
 import { buildFrameIdentity, type FrameIdentity, formatFrameIdentityHint } from "../tft-commands/frame-identity.ts";
 import { buildFrameWorktreeForkArgs, type FrameWorktreeForkParams } from "../tft-commands/frame-worktree-fork.ts";
 import {
@@ -279,21 +279,67 @@ function buildContinuationPrompt(record: FrameV2CommandContextRecord): string {
 	].join("\n");
 }
 
+function adoptStudyHardRun(runId: string, toolCtx: ExtensionContext): FrameV2CommandContextRecord | { error: string } {
+	const state = loadPersistedStudyHardState(runId);
+	if (!state) return { error: `Study Hard run을 찾을 수 없습니다: ${runId}` };
+	const ctx = toolCtx as ExtensionCommandContext;
+	const args = state.title || state.sourceTitle || runId;
+	const identity = buildFrameIdentity(ctx, args);
+	const parsed = parseFrameV2Args(args, identity.key, "study-hard-first");
+	if ("help" in parsed) return { error: "Study Hard 제목을 Frame v2 topic으로 변환하지 못했습니다." };
+	const invocation: FrameV2Invocation = { ...parsed, sourceUrl: state.url };
+	const statePath = studyHardStatePathFor(runId);
+	const { path: manifestPath } = writeFrameV2Manifest({
+		identity,
+		invocation,
+		runId,
+		statePath,
+		sourceUrl: state.url,
+	});
+	const record: FrameV2CommandContextRecord = {
+		key: identity.key,
+		args,
+		cwd: identity.cwd,
+		ctx,
+		identity,
+		invocation,
+		runId,
+		statePath,
+		manifestPath,
+		createdAt: Date.now(),
+		sessionFile: ctx.sessionManager.getSessionFile?.(),
+	};
+	rememberContext(record);
+	return record;
+}
+
 function registerFrameV2StateTool(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: FRAME_V2_STATE_TOOL,
 		label: "Update Frame v2 State",
-		description: "Inspect a /frame-v2 runtime manifest or mark it ready after the standard frame.json has been written and validated.",
-		promptSnippet: "When a standard frame.json exists, call frame_v2_state action=ready to validate and link it to the learning run without treating learning completion as a work gate.",
+		description: "Inspect a /frame-v2 runtime manifest, adopt an existing Study Hard run, or link a validated standard frame.json.",
+		promptSnippet: "When the user wants to turn the current standalone Study Hard session into work planning, call action=adopt-study-hard with its runId. When frame.json exists, call action=ready to link both canonicals.",
 		promptGuidelines: [
+			"Call adopt-study-hard only after the user asks to create or amend a Frame from that learning run; preserve the same runId, Q&A, and revision.",
 			"Use action=ready after standard frame.json was atomically written; Study Hard completion is not required.",
-			"This tool does not create frame.json or authorize implementation; it validates the file and links companion state.",
+			"This tool does not create frame.json or authorize implementation; it records coordination state and links companion artifacts.",
 		],
 		parameters: Type.Object({
-			action: Type.Union([Type.Literal("status"), Type.Literal("ready")]),
+			action: Type.Union([Type.Literal("status"), Type.Literal("adopt-study-hard"), Type.Literal("ready")]),
 			identityKey: Type.Optional(Type.String()),
+			runId: Type.Optional(Type.String({ description: "Existing Study Hard runId for adopt-study-hard." })),
 		}),
-		async execute(_toolCallId, params: { action: "status" | "ready"; identityKey?: string }, _signal, _onUpdate, toolCtx: ExtensionContext) {
+		async execute(_toolCallId, params: { action: "status" | "adopt-study-hard" | "ready"; identityKey?: string; runId?: string }, _signal, _onUpdate, toolCtx: ExtensionContext) {
+			if (params.action === "adopt-study-hard") {
+				if (!params.runId) return blockedResult("BLOCKED: adopt-study-hard에는 Study Hard runId가 필요합니다.", { action: FRAME_V2_STATE_TOOL });
+				const adopted = adoptStudyHardRun(params.runId, toolCtx);
+				if ("error" in adopted) return blockedResult(`BLOCKED: ${adopted.error}`, { action: FRAME_V2_STATE_TOOL, runId: params.runId });
+				const state = loadPersistedStudyHardState(adopted.runId);
+				return {
+					content: [{ type: "text" as const, text: `✓ Study Hard run을 Frame v2에 연결했습니다: ${adopted.runId}\n이제 같은 학습 기록을 유지한 채 표준 Frame을 만들거나 보완할 수 있습니다.` }],
+					details: { action: FRAME_V2_STATE_TOOL, adopted: true, runId: adopted.runId, revision: state?.revision, manifestPath: adopted.manifestPath, framePath: join(adopted.identity.storageDir, "frame.json"), identityKey: adopted.identity.key },
+				};
+			}
 			const record = getContext(params.identityKey);
 			if (!record) return blockedResult("BLOCKED: 활성 /frame-v2 command context를 찾지 못했습니다.", { action: FRAME_V2_STATE_TOOL });
 			if (!sameSession(record, toolCtx)) return blockedResult("BLOCKED: 현재 tool session과 /frame-v2 command session이 달라 상태를 변경하지 않습니다.", { action: FRAME_V2_STATE_TOOL, reason: "session mismatch" });

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { loadPersistedStudyHardState, startStudyHardStudio, stopStudyHardStudios } from "../study-hard/studio.ts";
+import { loadPersistedStudyHardState, startStudyHardStudio, stopStudyHardStudios, updateStudyHardStudio } from "../study-hard/studio.ts";
 import type { FrameIdentity } from "../tft-commands/frame-identity.ts";
 import { parseFrameV2Args } from "./artifact.ts";
 import frameV2, { buildFrameV2Prompt, setFrameV2ForkRunnerForTests } from "./index.ts";
@@ -186,6 +186,62 @@ test("/frame-v2 registers independent command and persists command-context manif
 		assert.equal(JSON.parse(readFileSync(manifestPath, "utf8")).status, "started");
 	} finally {
 		setFrameV2ForkRunnerForTests(undefined);
+		stopStudyHardStudios();
+		if (originalStateDir === undefined) delete process.env.STUDY_HARD_STATE_DIR;
+		else process.env.STUDY_HARD_STATE_DIR = originalStateDir;
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("a standalone Study Hard run can join Frame v2 without losing its run, revision, or Q&A", async () => {
+	const root = mkdtempSync(join(tmpdir(), "frame-v2-adopt-study-hard-"));
+	const piDir = join(root, ".pi");
+	const originalStateDir = process.env.STUDY_HARD_STATE_DIR;
+	process.env.STUDY_HARD_STATE_DIR = join(root, "study-hard");
+	mkdirSync(piDir, { recursive: true });
+	writeFileSync(join(piDir, "worktree-meta.json"), JSON.stringify({ name: "adopt-study-hard", branch: "feature/adopt" }));
+	const tools = new Map<string, any>();
+	const fakePi = {
+		registerCommand() {},
+		registerTool(tool: any) { tools.set(tool.name, tool); },
+		sendMessage() {},
+		exec() { throw new Error("no browser fallback in test"); },
+	} as any;
+	frameV2(fakePi);
+	const sessionFile = join(root, "session.jsonl");
+	const ctx = {
+		cwd: root,
+		hasUI: false,
+		sessionManager: { getSessionFile: () => sessionFile, getSessionName: () => "Study first" },
+		ui: { notify() {} },
+	} as any;
+	const runId = "standalone-study-first";
+	try {
+		await startStudyHardStudio(fakePi, ctx, { url: "https://example.com/study-first", runId, title: "알림 시스템 이해" });
+		updateStudyHardStudio(runId, {
+			noteDocument: { title: "알림 시스템 이해", sections: [{ id: "mental-model", kind: "node", title: "Mental Model", blocks: [{ id: "lead", type: "paragraph", text: "producer와 consumer를 분리한다." }] }] },
+			questions: [{ id: "Q001", origin: "learner", scope: "session", question: "왜 분리해?", feedback: "실패 경계를 나누기 위해", status: "answered" }],
+		});
+		const before = loadPersistedStudyHardState(runId)!;
+		const adopted = await tools.get("frame_v2_state").execute("adopt-1", { action: "adopt-study-hard", runId }, new AbortController().signal, () => {}, ctx);
+		assert.equal(adopted.details.adopted, true);
+		assert.equal(adopted.details.runId, runId);
+		assert.equal(adopted.details.revision, before.revision);
+		const manifest = JSON.parse(readFileSync(adopted.details.manifestPath, "utf8"));
+		assert.equal(manifest.entryMode, "study-hard-first");
+		assert.equal(manifest.studyHard.runId, runId);
+		assert.equal(loadPersistedStudyHardState(runId)?.questions[0]?.id, "Q001");
+
+		writeFileSync(adopted.details.framePath, `${JSON.stringify(readyFrame(adopted.details.identityKey), null, 2)}\n`);
+		const ready = await tools.get("frame_v2_state").execute("adopt-ready", { action: "ready" }, new AbortController().signal, () => {}, ctx);
+		assert.equal(ready.details.manifest.status, "ready");
+		const after = loadPersistedStudyHardState(runId)!;
+		assert.equal(after.runId, runId);
+		assert.equal(after.revision, before.revision + 1, "companion link continues the existing revision sequence");
+		assert.deepEqual(after.noteDocument, before.noteDocument);
+		assert.equal(after.questions[0]?.id, "Q001");
+		assert.ok(after.companion);
+	} finally {
 		stopStudyHardStudios();
 		if (originalStateDir === undefined) delete process.env.STUDY_HARD_STATE_DIR;
 		else process.env.STUDY_HARD_STATE_DIR = originalStateDir;
