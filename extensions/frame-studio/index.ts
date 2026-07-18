@@ -2054,7 +2054,7 @@ function renderDataLearningList(title, items) {
   if (!items.length) return '';
   return '<section class="data-learning-block"><strong>' + esc(title) + '</strong><ul>' + items.map(function(item) { return '<li>' + inline(item) + '</li>'; }).join('') + '</ul></section>';
 }
-function renderDataEntityCard(entity) {
+function renderDataEntityCard(entity, schemaPresentation) {
   var badges = entity.badges.slice(), role = dataLearningRole(entity.learningRole);
   if (entity.sourceOfTruth) badges.push('source-of-truth');
   if (entity.status && entity.status !== 'same') badges.push(entity.status);
@@ -2063,8 +2063,12 @@ function renderDataEntityCard(entity) {
   var columns = entity.columns.length ? entity.columns.map(renderDataColumn).join('') : '<div class="data-column"><div><span class="data-column-name">columns?</span><span class="data-column-desc">Frame 단계에서 실제 DDL/ORM schema를 읽어 채워야 합니다.</span></div></div>';
   var hasLearning = Boolean(entity.purpose || entity.keyRules.length || entity.mutableState.length);
   var learning = hasLearning ? '<div class="data-learning-grid">' + (entity.purpose ? '<section class="data-learning-block purpose"><strong>왜 존재하는가</strong><p>' + inline(entity.purpose) + '</p></section>' : '') + renderDataLearningList('핵심 key · 불변식', entity.keyRules) + renderDataLearningList('변경되는 상태', entity.mutableState) + '</div>' : '';
-  var schema = hasLearning ? '<details class="data-schema-details"' + (entity.collapseColumns ? '' : ' open') + '><summary>Schema fields · ' + entity.columns.length + '개</summary><div class="data-columns">' + columns + '</div></details>' : '<div class="data-columns">' + columns + '</div>';
-  return '<article class="' + esc(classes) + '"><div class="data-entity-head"><div class="data-entity-title">' + inline(entity.title) + '</div><div class="data-entity-meta">' + roleBadge + badges.map(renderDataBadge).join('') + '</div></div>' + (entity.description ? '<div class="data-entity-desc">' + inline(entity.description) + '</div>' : '') + learning + schema + '</article>';
+  var schemaMode = String(schemaPresentation || '').toLowerCase();
+  var schemaOpen = schemaMode === 'top-open' || schemaMode === 'bottom-open' || !entity.collapseColumns;
+  var schemaFirst = schemaMode === 'top-open' || schemaMode === 'top-collapsed';
+  var schema = hasLearning ? '<details class="data-schema-details"' + (schemaOpen ? ' open' : '') + '><summary>Schema fields · ' + entity.columns.length + '개</summary><div class="data-columns">' + columns + '</div></details>' : '<div class="data-columns">' + columns + '</div>';
+  var details = schemaFirst ? schema + learning : learning + schema;
+  return '<article class="' + esc(classes) + '"><div class="data-entity-head"><div class="data-entity-title">' + inline(entity.title) + '</div><div class="data-entity-meta">' + roleBadge + badges.map(renderDataBadge).join('') + '</div></div>' + (entity.description ? '<div class="data-entity-desc">' + inline(entity.description) + '</div>' : '') + details + '</article>';
 }
 function renderDataModelSpine(spec) {
   var items = Array.isArray(spec.modelSpine) ? spec.modelSpine : [];
@@ -2138,13 +2142,14 @@ function renderDataFlow(spec) {
 }
 function renderDataModelMigrationMapElement(el, spec) {
   var entities = dataEntities(spec);
+  var schemaPresentation = spec && spec.presentation && typeof spec.presentation === 'object' ? spec.presentation.schema : '';
   if (!entities.length) { renderVisualFallbackElement(el, spec, null, 'data-model-migration-map은 entities 배열이 필요합니다. 원본은 fallback으로 보존했습니다.'); return; }
   el.className = 'data-visual';
   el.innerHTML = '<div class="data-visual-head"><div><div class="data-visual-title">' + esc(spec.title || 'Data Model / Migration Map') + '</div>' + (spec.subtitle ? '<div class="data-visual-subtitle">' + esc(spec.subtitle) + '</div>' : '<div class="data-visual-subtitle">DDL/DML, table 관계, runtime 표시 흐름을 분리해서 보는 데이터 구조 지도입니다.</div>') + '</div><span class="badge">Data Model / Migration Map</span></div>'
     + renderDataModelSpine(spec)
     + renderDataBoundaries(spec)
     + renderDataFlow(spec)
-    + '<div class="data-visual-diagram"><div class="data-entity-grid">' + entities.map(renderDataEntityCard).join('') + '</div></div>'
+    + '<div class="data-visual-diagram"><div class="data-entity-grid">' + entities.map(function(entity) { return renderDataEntityCard(entity, schemaPresentation); }).join('') + '</div></div>'
     + renderDataRelationships(spec)
     + renderDataOperations(spec)
     + renderDataVerification(spec)
