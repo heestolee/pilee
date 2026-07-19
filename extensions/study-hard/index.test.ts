@@ -31,10 +31,12 @@ test("buildStudyHardPrompt keeps learning loop and Notion sync contracts visible
 	assert.match(prompt, /scope: session/);
 	assert.match(prompt, /scope: node/);
 	assert.match(prompt, /scope: coach/);
-	assert.match(prompt, /격리 Tutor가 최대 3개 병렬/);
-	assert.match(prompt, /같은 Pi transcript에 기록/);
+	assert.match(prompt, /study-hard-worker --main/);
+	assert.match(prompt, /표준 #N worker widget/);
+	assert.match(prompt, /3-way merge/);
+	assert.match(prompt, /같은 P0 transcript에 기록/);
 	assert.match(prompt, /canonical 학습 대화의 UI/);
-	assert.match(prompt, /내부 Tutor\/Editor\/Coach prompt와 patch JSON은 Pi transcript에 노출하지 않습니다/);
+	assert.match(prompt, /내부 worker prompt와 patch JSON은 Pi transcript에 노출하지 않습니다/);
 	assert.match(prompt, /processingStatus/);
 	assert.match(prompt, /edges.*hierarchy 전용/);
 	assert.match(prompt, /runtime\/data flow.*flows/);
