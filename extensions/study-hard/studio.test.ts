@@ -260,13 +260,13 @@ test("mergeBoardState clears a stale flow step when switching variants", () => {
 
 test("mergeBoardState keeps question scope and target immutable across agent feedback updates", () => {
 	const current = createInitialBoardState({ url: "https://example.com", runId: "question-scope" });
-	current.questions = [{ id: "Q001", question: "전체 구조는?", origin: "learner", scope: "session", status: "open", targetNodeId: "source" }];
+	current.questions = [{ id: "Q001", question: "전체 구조는?", origin: "learner", scope: "session", status: "open", targetNodeId: "source", workerResultPath: "/safe/Q001.json" }];
 	const next = mergeBoardState(current, {
-		questions: [{ id: "Q001", question: "전체 구조는?", origin: "coach", feedback: "세 가지 흐름입니다.", status: "answered", targetNodeId: "goal" }],
+		questions: [{ id: "Q001", question: "전체 구조는?", origin: "coach", feedback: "세 가지 흐름입니다.", status: "answered", targetNodeId: "goal", workerResultPath: "/tmp/forged.json" }],
 	});
 	assert.deepEqual(
-		{ origin: next.questions[0]?.origin, scope: next.questions[0]?.scope, targetNodeId: next.questions[0]?.targetNodeId },
-		{ origin: "learner", scope: "session", targetNodeId: "source" },
+		{ origin: next.questions[0]?.origin, scope: next.questions[0]?.scope, targetNodeId: next.questions[0]?.targetNodeId, workerResultPath: next.questions[0]?.workerResultPath },
+		{ origin: "learner", scope: "session", targetNodeId: "source", workerResultPath: "/safe/Q001.json" },
 	);
 });
 
@@ -1378,6 +1378,21 @@ test("subagent completion 실패는 question을 failed로 남겨 재시도 가�
 		assert.equal(state.questions[0].workerRunId, 19);
 		const response = await fetch(new URL("/questions/retry", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ questionId: state.questions[0].id }) });
 		assert.equal(response.status, 202);
+	} finally {
+		stopStudyHardStudios();
+	}
+});
+
+test("worker result path 조작은 artifact를 읽기 전에 거부한다", async () => {
+	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/worker-path", runId: "worker-path" });
+	try {
+		await fetch(new URL("/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ scope: "session", question: "경로를 검증해줘" }) });
+		const state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		assert.throws(
+			() => applyStudyHardWorkerResult(handle.state.runId, state.questions[0].id, `${state.questions[0].workerResultPath}.forged`, 20),
+			/question 계약과 다릅니다/,
+		);
 	} finally {
 		stopStudyHardStudios();
 	}

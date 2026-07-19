@@ -956,7 +956,7 @@ export function mergeBoardState(current: StudyHardBoardState, patch: Record<stri
 				targetNoteBlockId: existing.targetNoteBlockId || question.targetNoteBlockId,
 				processingStatus: question.processingStatus || existing.processingStatus,
 				orchestrationId: question.orchestrationId || existing.orchestrationId,
-				workerResultPath: question.workerResultPath || existing.workerResultPath,
+				workerResultPath: existing.workerResultPath || question.workerResultPath,
 				workerRunId: question.workerRunId ?? existing.workerRunId,
 				workerResultHash: question.workerResultHash || existing.workerResultHash,
 				workerRebaseCount: question.workerRebaseCount ?? existing.workerRebaseCount,
@@ -2876,7 +2876,8 @@ export function markStudyHardWorkerFailed(
 	const handle = handles.get(id);
 	if (!handle) throw new Error(`Study Hard Studio run을 찾을 수 없습니다: ${id}`);
 	const question = handle.state.questions.find((item) => item.id === questionId);
-	if (!question || question.origin !== "learner" || question.scope === "coach" || question.processingStatus === "applied") throw new Error(`worker 실패를 기록할 learner question을 찾지 못했습니다: ${questionId}`);
+	const failureEligible = new Set<StudyQuestionProcessingStatus>(["queued", "running", "result-ready", "merging", "rebasing", "conflict", "failed"]);
+	if (!question || question.origin !== "learner" || question.scope === "coach" || !question.processingStatus || !failureEligible.has(question.processingStatus)) throw new Error(`worker 실패를 기록할 learner question을 찾지 못했습니다: ${questionId}`);
 	const message = workerError.trim().slice(0, 2_000) || "study-hard-worker 실행에 실패했습니다.";
 	updateQuestionCards(handle, [questionId], (item) => ({
 		...item,
@@ -2908,6 +2909,13 @@ export function applyStudyHardWorkerResult(
 	if (question.workerResultHash === hash && ["rebasing", "conflict"].includes(String(question.processingStatus))) {
 		return { handle, status: question.processingStatus as "rebasing" | "conflict", workerRunId: question.workerRunId, changedPaths: [], conflicts: [] };
 	}
+	updateQuestionCards(handle, [questionId], (item) => ({
+		...item,
+		processingStatus: "result-ready",
+		processingError: "",
+		processingErrorStage: undefined,
+		workerRunId: Number.isInteger(workerRunId) ? workerRunId : item.workerRunId,
+	}));
 	const merge = mergeStudyNoteProposal(artifact.baseNoteDocument, artifact.proposedNoteDocument, handle.state.noteDocument);
 	if (!merge.ok) {
 		const previousRebases = question.workerRebaseCount || 0;
