@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { setGlimpseOpenForTests } from "../utils/glimpse.ts";
 import type { LearningCompanionManifest } from "../learning-companion/state.ts";
-import { applyStudyHardWorkerResult, attachStudyHardLearningCompanion, buildStudyHardStudioHtml, buildStudyNoteExportHtml, checkpointStudyHardLearning, createInitialBoardState, layoutStudyGraph, loadPersistedStudyHardState, markStudyHardWorkerStarted, mergeBoardState, openExistingStudyHardStudio, proposeStudyHardLearningChange, recordStudyHardLearningEvent, registerStudyHardBoardTool, resolveStudyNoteBlockVisual, respondStudyHardQuestion, startStudyHardStudio, stopStudyHardStudios, updateStudyHardStudio } from "./studio.ts";
+import { applyStudyHardWorkerResult, attachStudyHardLearningCompanion, buildStudyHardStudioHtml, buildStudyNoteExportHtml, checkpointStudyHardLearning, createInitialBoardState, layoutStudyGraph, loadPersistedStudyHardState, markStudyHardWorkerFailed, markStudyHardWorkerStarted, mergeBoardState, openExistingStudyHardStudio, proposeStudyHardLearningChange, recordStudyHardLearningEvent, registerStudyHardBoardTool, resolveStudyNoteBlockVisual, respondStudyHardQuestion, startStudyHardStudio, stopStudyHardStudios, updateStudyHardStudio } from "./studio.ts";
 
 const originalStateDir = process.env.STUDY_HARD_STATE_DIR;
 const testStateDir = mkdtempSync(join(tmpdir(), "study-hard-state-"));
@@ -1290,7 +1290,7 @@ test("오른쪽 입력은 모든 scope를 P0의 전용 worker로 dispatch한다"
 		const dispatches = messages.filter(({ message }) => message.customType === "heestolee.study-hard.learner-request");
 		assert.equal(dispatches.length, 4);
 		assert.ok(dispatches.every(({ message, options }) => message.display === false && options.deliverAs === "followUp" && options.triggerTurn === true));
-		assert.ok(dispatches.every(({ message }) => /subagent run study-hard-worker --main/.test(message.content) && /action="worker_started"/.test(message.content) && /action="apply_worker_result"/.test(message.content)));
+		assert.ok(dispatches.every(({ message }) => /action="status"/.test(message.content) && /subagent run study-hard-worker --main/.test(message.content) && /action="worker_started"/.test(message.content) && /action="worker_failed"/.test(message.content) && /action="apply_worker_result"/.test(message.content)));
 
 		const question = state.questions[0];
 		markStudyHardWorkerStarted(handle.state.runId, state.revision, question.id);
@@ -1358,6 +1358,26 @@ test("worker dispatch 전달 실패는 같은 question을 새 orchestration으�
 		assert.match(state.questions[0].orchestrationId, /^worker-/);
 		assert.notEqual(state.questions[0].orchestrationId, firstOrchestrationId);
 		assert.equal(messages.filter(({ message }) => message.customType === "heestolee.study-hard.learner-request").length, 2);
+	} finally {
+		stopStudyHardStudios();
+	}
+});
+
+test("subagent completion 실패는 question을 failed로 남겨 재시도 가능하게 한다", async () => {
+	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/worker-failure", runId: "worker-failure" });
+	try {
+		await fetch(new URL("/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ scope: "session", question: "실패 상태를 남겨줘" }) });
+		let state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		markStudyHardWorkerStarted(handle.state.runId, state.revision, state.questions[0].id);
+		markStudyHardWorkerFailed(handle.state.runId, state.questions[0].id, "worker process failed", 19);
+		state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		assert.equal(state.questions[0].processingStatus, "failed");
+		assert.equal(state.questions[0].processingErrorStage, "worker");
+		assert.equal(state.questions[0].processingError, "worker process failed");
+		assert.equal(state.questions[0].workerRunId, 19);
+		const response = await fetch(new URL("/questions/retry", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ questionId: state.questions[0].id }) });
+		assert.equal(response.status, 202);
 	} finally {
 		stopStudyHardStudios();
 	}

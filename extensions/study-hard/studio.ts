@@ -2164,7 +2164,7 @@ function sendLearnerQuestionToWorkerDispatcher(handle: StudyHardHandle, question
 	handle.pi.sendMessage({
 		customType: "heestolee.study-hard.learner-request",
 		display: false,
-		content: `# Study Hard worker dispatch request\n\n이 메시지는 사용자가 Study Hard Glimpse 입력창으로 보낸 P0의 직접 요청입니다. 긴 학습 노트 작업을 메인에서 동기로 수행하지 말고 실제 pilee subagent를 실행하세요.\n\n- runId: ${handle.state.runId}\n- statePath: ${handle.statePath}\n- submittedRevision: ${handle.state.revision}\n- questionId: ${question.id}\n- orchestrationId: ${question.orchestrationId}\n- workerResultPath: ${question.workerResultPath}\n- scope: ${question.scope || "session"}\n- context: ${contextLabel}\n- attachments: ${JSON.stringify(attachments)}\n\n## 사용자 메시지\n${question.question}\n\n## P0 dispatch 규칙\n1. 이 요청에 직접 답하거나 noteDocument를 직접 수정하지 않습니다. 먼저 \`study_hard_board\` action=\"worker_started\"를 최신 expectedRevision과 questionId로 호출합니다.\n2. 실제 subagent 도구로 \`subagent run study-hard-worker --main -- <이 작업 전체>\`를 실행합니다. 아직 subagent help 계약을 읽지 않았다면 help를 먼저 확인합니다. 별도 \`pi -p\`, 기존 isolated Tutor/Editor, agentRunner를 사용하지 않습니다.\n3. worker task에 위 runId/statePath/questionId/orchestrationId/workerResultPath/scope/context/attachments/사용자 메시지를 빠짐없이 전달합니다. worker는 전체 노트를 유연하게 제안하되 state를 직접 수정하지 않습니다.\n4. async worker를 launch한 뒤 이 turn은 즉시 끝냅니다. 표준 subagent #N widget이 실행 상태를 보여줍니다.\n5. 완료 follow-up의 \`[STUDY_HARD_WORKER_RESULT]\` marker를 받으면 artifactPath와 completion details의 runId를 사용해 \`study_hard_board\` action=\"apply_worker_result\"를 호출합니다.\n6. apply 결과가 rebase-required이면 같은 subagent run을 한 번 continue하여 최신 state 기준 artifact로 교체합니다. 두 번째 conflict는 덮어쓰지 말고 P0에서 설명합니다.`,
+		content: `# Study Hard worker dispatch request\n\n이 메시지는 사용자가 Study Hard Glimpse 입력창으로 보낸 P0의 직접 요청입니다. 긴 학습 노트 작업을 메인에서 동기로 수행하지 말고 실제 pilee subagent를 실행하세요.\n\n- runId: ${handle.state.runId}\n- statePath: ${handle.statePath}\n- submittedRevision: ${handle.state.revision}\n- questionId: ${question.id}\n- orchestrationId: ${question.orchestrationId}\n- workerResultPath: ${question.workerResultPath}\n- scope: ${question.scope || "session"}\n- context: ${contextLabel}\n- attachments: ${JSON.stringify(attachments)}\n\n## 사용자 메시지\n${question.question}\n\n## P0 dispatch 규칙\n1. 이 요청에 직접 답하거나 noteDocument를 직접 수정하지 않습니다. 먼저 \`study_hard_board\` action=\"status\"로 최신 revision을 읽은 뒤 action=\"worker_started\"를 그 expectedRevision과 questionId로 호출합니다.\n2. 실제 subagent 도구로 \`subagent run study-hard-worker --main -- <이 작업 전체>\`를 실행합니다. 아직 subagent help 계약을 읽지 않았다면 help를 먼저 확인합니다. 별도 \`pi -p\`, 기존 isolated Tutor/Editor, agentRunner를 사용하지 않습니다.\n3. worker task에 위 runId/statePath/questionId/orchestrationId/workerResultPath/scope/context/attachments/사용자 메시지를 빠짐없이 전달합니다. worker는 전체 노트를 유연하게 제안하되 state를 직접 수정하지 않습니다.\n4. async worker를 launch한 뒤 이 turn은 즉시 끝냅니다. 표준 subagent #N widget이 실행 상태를 보여줍니다.\n5. 완료 follow-up의 \`[STUDY_HARD_WORKER_RESULT]\` marker를 받으면 artifactPath와 completion details의 runId를 사용해 \`study_hard_board\` action=\"apply_worker_result\"를 호출합니다. subagent launch/completion이 실패하면 action=\"worker_failed\"로 같은 question과 workerError를 기록합니다.\n6. apply 결과가 rebase-required이면 같은 subagent run을 한 번 continue하여 최신 state 기준 artifact로 교체합니다. 두 번째 conflict는 덮어쓰지 말고 P0에서 설명합니다.`,
 		details: { runId: handle.state.runId, statePath: handle.statePath, questionId: question.id, orchestrationId: question.orchestrationId, workerResultPath: question.workerResultPath, scope: question.scope, attachments },
 	}, { deliverAs: "followUp", triggerTurn: true });
 }
@@ -2865,6 +2865,29 @@ export function markStudyHardWorkerStarted(runId: string | undefined, expectedRe
 	return handle;
 }
 
+export function markStudyHardWorkerFailed(
+	runId: string | undefined,
+	questionId: string,
+	workerError: string,
+	workerRunId?: number,
+): StudyHardHandle {
+	const id = runId || latestRunId;
+	if (!id) throw new Error("활성 Study Hard Studio가 없습니다.");
+	const handle = handles.get(id);
+	if (!handle) throw new Error(`Study Hard Studio run을 찾을 수 없습니다: ${id}`);
+	const question = handle.state.questions.find((item) => item.id === questionId);
+	if (!question || question.origin !== "learner" || question.scope === "coach" || question.processingStatus === "applied") throw new Error(`worker 실패를 기록할 learner question을 찾지 못했습니다: ${questionId}`);
+	const message = workerError.trim().slice(0, 2_000) || "study-hard-worker 실행에 실패했습니다.";
+	updateQuestionCards(handle, [questionId], (item) => ({
+		...item,
+		processingStatus: "failed",
+		processingError: message,
+		processingErrorStage: "worker",
+		workerRunId: Number.isInteger(workerRunId) ? workerRunId : item.workerRunId,
+	}));
+	return handle;
+}
+
 export function applyStudyHardWorkerResult(
 	runId: string | undefined,
 	questionId: string,
@@ -2994,16 +3017,17 @@ export function registerStudyHardBoardTool(pi: ExtensionAPI) {
 			"Use study_hard_board after fetching /study-hard source content to keep the visual concept graph, Mermaid flow, and Q&A state in sync with the learning session.",
 			"Do not use study_hard_board as evidence that the user understood the topic; it is a visual aid only.",
 			"For heestolee.study-hard.learner-request turns, mark action=worker_started and launch the real study-hard-worker subagent with contextMode=main. Do not answer or edit the note synchronously in P0, and do not use standalone pi -p or isolated Tutor/Editor runners.",
-			"For completed study-hard-worker subagent results, call action=apply_worker_result with questionId, artifactPath as workerResultPath, and the subagent completion runId as workerRunId. If the result requests one rebase, continue that same subagent run once against the latest state; never silently overwrite a conflict.",
+			"For completed study-hard-worker subagent results, call action=apply_worker_result with questionId, artifactPath as workerResultPath, and the subagent completion runId as workerRunId. If launch/completion fails, call action=worker_failed. If apply requests one rebase, continue that same subagent run once against the latest state; never silently overwrite a conflict.",
 		],
 		parameters: Type.Object({
-			action: Type.String({ description: "start | update | respond | worker_started | apply_worker_result | open | status" }),
+			action: Type.String({ description: "start | update | respond | worker_started | worker_failed | apply_worker_result | open | status" }),
 			runId: Type.Optional(Type.String()),
 			expectedRevision: Type.Optional(Type.Integer({ minimum: 0, description: "Required for update/respond; reject stale snapshots." })),
 			questionId: Type.Optional(Type.String({ description: "Required for respond/worker actions; pending learner question id." })),
 			feedback: Type.Optional(Type.String({ description: "Required for respond; direct answer shown in the Study Hard drawer." })),
 			workerResultPath: Type.Optional(Type.String({ description: "Artifact path emitted by study-hard-worker." })),
 			workerRunId: Type.Optional(Type.Integer({ minimum: 1, description: "Standard subagent run id shown in the #N widget." })),
+			workerError: Type.Optional(Type.String({ description: "Launch/completion/artifact failure to persist on the learner question." })),
 			url: Type.Optional(Type.String()),
 			title: Type.Optional(Type.String()),
 			hints: Type.Optional(Type.String()),
@@ -3063,10 +3087,22 @@ export function registerStudyHardBoardTool(pi: ExtensionAPI) {
 				const handle = markStudyHardWorkerStarted(typeof params.runId === "string" ? params.runId : undefined, Number(params.expectedRevision), params.questionId);
 				return boardToolResult("worker-started", handle);
 			}
+			if (action === "worker_failed") {
+				if (typeof params.questionId !== "string" || !params.questionId) throw new Error("study_hard_board worker_failed에는 questionId가 필요합니다.");
+				if (typeof params.workerError !== "string" || !params.workerError.trim()) throw new Error("study_hard_board worker_failed에는 workerError가 필요합니다.");
+				const handle = markStudyHardWorkerFailed(typeof params.runId === "string" ? params.runId : undefined, params.questionId, params.workerError, Number.isInteger(params.workerRunId) ? Number(params.workerRunId) : undefined);
+				return boardToolResult("worker-failed", handle);
+			}
 			if (action === "apply_worker_result") {
 				if (typeof params.questionId !== "string" || !params.questionId) throw new Error("study_hard_board apply_worker_result에는 questionId가 필요합니다.");
 				if (typeof params.workerResultPath !== "string" || !params.workerResultPath) throw new Error("study_hard_board apply_worker_result에는 workerResultPath가 필요합니다.");
-				const result = applyStudyHardWorkerResult(typeof params.runId === "string" ? params.runId : undefined, params.questionId, params.workerResultPath, Number.isInteger(params.workerRunId) ? Number(params.workerRunId) : undefined);
+				let result: StudyHardWorkerApplyResult;
+				try {
+					result = applyStudyHardWorkerResult(typeof params.runId === "string" ? params.runId : undefined, params.questionId, params.workerResultPath, Number.isInteger(params.workerRunId) ? Number(params.workerRunId) : undefined);
+				} catch (error) {
+					try { markStudyHardWorkerFailed(typeof params.runId === "string" ? params.runId : undefined, params.questionId, error instanceof Error ? error.message : String(error), Number.isInteger(params.workerRunId) ? Number(params.workerRunId) : undefined); } catch {}
+					throw error;
+				}
 				const rebaseInstruction = result.status === "rebasing" && result.workerRunId
 					? `\n같은 subagent #${result.workerRunId}를 한 번 continue하여 statePath ${result.handle.statePath}의 최신 noteDocument를 새 base로 읽고 artifact ${params.workerResultPath}를 교체하세요.`
 					: "";
