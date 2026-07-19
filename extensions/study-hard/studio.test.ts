@@ -579,6 +579,7 @@ test("buildStudyNoteExportHtml preserves an interactive TFT visual, PNG fallback
 	writeFileSync(pngPath, Buffer.from("visual-png"));
 	const html = buildStudyNoteExportHtml(state, [{ blockId: "visual-1", fileName: "visual-1.png", mimeType: "image/png", path: pngPath, sha256: "test" }] as any);
 	assert.match(html, /class="visualFrame"/);
+	assert.doesNotMatch(html, /<details class="visualStudyDisclosure"/);
 	assert.match(html, /PNG fallback 보기/);
 	assert.match(html, /data:image\/png;base64/);
 	assert.match(html, /원본 visual spec 보기/);
@@ -591,6 +592,31 @@ test("buildStudyNoteExportHtml preserves an interactive TFT visual, PNG fallback
 	assert.match(embedHtml, /Frame에서 저장까지/);
 	assert.ok(Buffer.byteLength(embedHtml) < 400_000, "dedicated Frame visuals should not duplicate the ELK bundle");
 	for (const script of [...embedHtml.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map((match) => match[1])) new Function(script);
+});
+
+test("Study Hard renders presentation.container=details visuals as an opt-in disclosure in the board and HTML export", () => {
+	const state = createInitialBoardState({ url: "https://example.com/source", runId: "visual-details-export" });
+	const visual = {
+		kind: "data-model-migration-map",
+		title: "기존 Admin 알림 데이터 구조",
+		entities: [{ name: "admin_notification", columns: [{ name: "id", primaryKey: true }] }],
+		presentation: { container: "details", defaultOpen: false, summary: "기존 Admin 알림 레퍼런스" },
+	};
+	state.noteDocument = { title: "Visual details export", sections: [{ id: "visuals", kind: "flow", title: "시각화", blocks: [{ id: "visual-details", type: "visual", title: "Admin 알림", body: "Partner 설계 비교용", visual }] }] };
+	const collapsedHtml = buildStudyNoteExportHtml(state);
+	assert.match(collapsedHtml, /<details class="visualStudyDisclosure">/);
+	assert.match(collapsedHtml, /<span>기존 Admin 알림 레퍼런스<\/span><small>비교·확인용 · 펼쳐서 보기<\/small>/);
+	assert.match(collapsedHtml, /class="visualFrame"/);
+
+	visual.presentation.defaultOpen = true;
+	const openHtml = buildStudyNoteExportHtml(state);
+	assert.match(openHtml, /<details class="visualStudyDisclosure" open>/);
+
+	const boardHtml = buildStudyHardStudioHtml();
+	assert.match(boardHtml, /function noteVisualPresentation/);
+	assert.match(boardHtml, /noteVisualDisclosure/);
+	assert.match(boardHtml, /String\(p\.container\|\|''\)\.toLowerCase\(\)===\x27details\x27/);
+	assert.match(boardHtml, /a,button,summary/);
 });
 
 test("export routes write HTML to Downloads and pass rendered diagrams to Notion sync", async () => {
