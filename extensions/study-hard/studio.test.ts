@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { setGlimpseOpenForTests } from "../utils/glimpse.ts";
 import type { LearningCompanionManifest } from "../learning-companion/state.ts";
-import { attachStudyHardLearningCompanion, buildStudyHardStudioHtml, buildStudyNoteExportHtml, checkpointStudyHardLearning, createInitialBoardState, layoutStudyGraph, loadPersistedStudyHardState, mergeBoardState, openExistingStudyHardStudio, proposeStudyHardLearningChange, recordStudyHardLearningEvent, registerStudyHardBoardTool, resolveStudyNoteBlockVisual, respondStudyHardQuestion, startStudyHardStudio, stopStudyHardStudios, updateStudyHardStudio } from "./studio.ts";
+import { applyStudyHardWorkerResult, attachStudyHardLearningCompanion, buildStudyHardStudioHtml, buildStudyNoteExportHtml, checkpointStudyHardLearning, createInitialBoardState, layoutStudyGraph, loadPersistedStudyHardState, markStudyHardWorkerStarted, mergeBoardState, openExistingStudyHardStudio, proposeStudyHardLearningChange, recordStudyHardLearningEvent, registerStudyHardBoardTool, resolveStudyNoteBlockVisual, respondStudyHardQuestion, startStudyHardStudio, stopStudyHardStudios, updateStudyHardStudio } from "./studio.ts";
 
 const originalStateDir = process.env.STUDY_HARD_STATE_DIR;
 const testStateDir = mkdtempSync(join(tmpdir(), "study-hard-state-"));
@@ -23,6 +23,29 @@ async function waitForStudyState(handle: { url: string }, predicate: (state: any
 		await new Promise((resolve) => setTimeout(resolve, 10));
 	}
 	throw new Error(`Study Hard state condition was not met within ${timeoutMs}ms`);
+}
+
+function writeStudyHardWorkerResult(
+	state: any,
+	question: any,
+	baseNoteDocument: any,
+	proposedNoteDocument: any,
+	feedback: string,
+	summary = "worker test result",
+): string {
+	writeFileSync(question.workerResultPath, JSON.stringify({
+		schemaVersion: 1,
+		kind: "study-hard-worker-result",
+		runId: state.runId,
+		questionId: question.id,
+		orchestrationId: question.orchestrationId,
+		baseRevision: state.revision,
+		baseNoteDocument,
+		proposedNoteDocument,
+		feedback,
+		summary,
+	}));
+	return question.workerResultPath;
 }
 
 function createStudyHardBoardHarness() {
@@ -330,12 +353,12 @@ test("buildStudyHardStudioHtml gives the note the left+center width and overlays
 	assert.match(html, /전체 실행 흐름을 요약 비교/);
 	assert.match(html, /학습 코치/);
 	assert.match(html, /학습 내용이 아니라 학습 방향을 묻는 곳/);
-	assert.match(html, /현재 Pi 대화에 전송/);
+	assert.match(html, /P0의 study-hard-worker에 전송/);
 	assert.match(html, /processingStage/);
-	assert.match(html, /현재 Pi 응답 대기 중/);
-	assert.match(html, /Pi 응답 처리 실패/);
-	assert.match(html, /Pi에 다시 보내기/);
-	assert.match(html, /Pi에 보내기/);
+	assert.match(html, /study-hard-worker 배정 대기 중/);
+	assert.match(html, /충돌 감지 · 최신 노트로 재조정 중/);
+	assert.match(html, /Worker로 다시 시도/);
+	assert.match(html, /Worker에 보내기/);
 	assert.match(html, /activeQuestionProcessing/);
 	const activeQuestionProcessingSource = /function activeQuestionProcessing\(items\)\{[^}]+\}/.exec(html)?.[0];
 	assert.ok(activeQuestionProcessingSource);
@@ -358,7 +381,7 @@ test("buildStudyHardStudioHtml gives the note the left+center width and overlays
 	assert.match(html, /isQuestionSubmitShortcut/);
 	assert.match(html, /event\.altKey/);
 	assert.match(html, /event\.metaKey/);
-	assert.match(html, /⌥↵ 또는 ⌘↵로 현재 Pi 대화에 전송/);
+	assert.match(html, /⌥↵ 또는 ⌘↵로 P0의 study-hard-worker에 전송/);
 	assert.match(html, /questionDrafts\[draftKey\]='';\s*input\.value='';\s*status\.innerHTML/);
 	assert.match(html, /function companionHtml/);
 	assert.match(html, /작업과 함께 쌓인 학습 기록/);
@@ -1234,7 +1257,7 @@ test("Glimpse node thread keeps learner questions and coach answers on the same 
 	}
 });
 
-test("오른쪽 입력은 모든 scope를 격리 agent 없이 현재 Pi session으로 전달한다", async () => {
+test("오른쪽 입력은 모든 scope를 P0의 전용 worker로 dispatch한다", async () => {
 	const messages: Array<{ message: any; options: any }> = [];
 	let isolatedCalls = 0;
 	const fakePi = {
@@ -1242,127 +1265,157 @@ test("오른쪽 입력은 모든 scope를 격리 agent 없이 현재 Pi session�
 		exec() { throw new Error("no browser fallback in test"); },
 	} as any;
 	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, {
-		url: "https://example.com/current-session-input",
-		runId: "current-session-input",
-		agentRunner: async () => { isolatedCalls += 1; throw new Error("learner input must not use isolated agent"); },
+		url: "https://example.com/worker-dispatch",
+		runId: "worker-dispatch",
+		agentRunner: async () => { isolatedCalls += 1; throw new Error("learner input must not use isolated agentRunner"); },
 	});
 	try {
 		updateStudyHardStudio(handle.state.runId, {
 			flows: [{ id: "after", title: "After", variant: "after", actors: [{ id: "web", label: "Web" }, { id: "api", label: "API" }], steps: [{ id: "request", order: 1, from: "web", to: "api", action: "request" }] }],
-			noteDocument: { title: "Current Session", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "mental-model", type: "paragraph", text: "현재 설명" }] }] },
+			noteDocument: { title: "Worker Dispatch", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "mental-model", type: "paragraph", text: "현재 설명" }] }] },
 		});
-		const requests = [
+		for (const body of [
 			{ scope: "node", nodeId: "goal", question: "노드 질문" },
 			{ scope: "session", question: "전체 질문" },
 			{ scope: "flow-step", flowId: "after", flowStepId: "request", question: "흐름 질문" },
 			{ scope: "note-block", noteBlockId: "mental-model", question: "노트 질문" },
-		];
-		for (const body of requests) {
+		]) {
 			const response = await fetch(new URL("/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify(body) });
 			assert.equal(response.status, 202);
 		}
 		let state = await fetch(new URL("/state", handle.url)).then((response) => response.json() as Promise<any>);
 		assert.equal(isolatedCalls, 0);
 		assert.deepEqual(state.questions.map((question: any) => question.scope), ["node", "session", "flow-step", "note-block"]);
-		assert.ok(state.questions.every((question: any) => question.processingStatus === "queued" && /^pi-/.test(question.orchestrationId)));
-		const sessionRequests = messages.filter(({ message }) => message.customType === "heestolee.study-hard.learner-request");
-		assert.equal(sessionRequests.length, 4);
-		assert.ok(sessionRequests.every(({ message, options }) => message.display === false && options.deliverAs === "followUp" && options.triggerTurn === true));
-		assert.ok(sessionRequests.every(({ message }) => /현재 Pi 대화의 직접 요청/.test(message.content) && /action="respond"/.test(message.content) && /statePath:/.test(message.content)));
-		const transcriptQuestions = messages.filter(({ message }) => message.customType === "heestolee.study-hard.transcript" && message.details.eventKind === "learner-question");
-		assert.equal(transcriptQuestions.length, 4);
-		assert.ok(transcriptQuestions.every(({ message, options }) => message.display === true && options.triggerTurn === false));
+		assert.ok(state.questions.every((question: any) => question.processingStatus === "queued" && /^worker-/.test(question.orchestrationId) && question.workerResultPath));
+		const dispatches = messages.filter(({ message }) => message.customType === "heestolee.study-hard.learner-request");
+		assert.equal(dispatches.length, 4);
+		assert.ok(dispatches.every(({ message, options }) => message.display === false && options.deliverAs === "followUp" && options.triggerTurn === true));
+		assert.ok(dispatches.every(({ message }) => /subagent run study-hard-worker --main/.test(message.content) && /action="worker_started"/.test(message.content) && /action="apply_worker_result"/.test(message.content)));
 
-		respondStudyHardQuestion(handle.state.runId, state.revision, state.questions[0].id, "현재 Pi session 맥락으로 답했습니다.");
+		const question = state.questions[0];
+		markStudyHardWorkerStarted(handle.state.runId, state.revision, question.id);
 		state = await fetch(new URL("/state", handle.url)).then((response) => response.json() as Promise<any>);
-		assert.equal(state.questions[0].processingStatus, "applied");
-		assert.equal(state.questions[0].feedback, "현재 Pi session 맥락으로 답했습니다.");
-		assert.ok(messages.some(({ message }) => message.details?.eventKind === "pi-answer"));
+		writeStudyHardWorkerResult(state, state.questions[0], state.noteDocument, state.noteDocument, "전용 worker가 P0 맥락으로 답했습니다.");
+		const applied = applyStudyHardWorkerResult(handle.state.runId, question.id, question.workerResultPath, 11);
+		assert.equal(applied.status, "applied");
+		state = await fetch(new URL("/state", handle.url)).then((response) => response.json() as Promise<any>);
+		assert.equal(state.questions[0].workerRunId, 11);
+		assert.equal(state.questions[0].feedback, "전용 worker가 P0 맥락으로 답했습니다.");
+		assert.ok(messages.some(({ message }) => message.details?.eventKind === "worker-answer"));
 	} finally {
 		stopStudyHardStudios();
 	}
 });
 
-test("현재 Pi 요청은 이미지 경로를 받고 하나의 block을 여러 block으로 구조 변경할 수 있다", async () => {
+test("전용 worker는 이미지 경로를 받고 한 block을 여러 block으로 자유롭게 제안한다", async () => {
 	const messages: Array<{ message: any; options: any }> = [];
-	const fakePi = {
-		sendMessage(message: any, options: any) { messages.push({ message, options }); },
-		exec() { throw new Error("no browser fallback in test"); },
-	} as any;
-	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, {
-		url: "https://example.com/current-session-image",
-		runId: "current-session-image",
-		agentRunner: async () => { throw new Error("isolated agent must not run"); },
-	});
+	const fakePi = { sendMessage(message: any, options: any) { messages.push({ message, options }); }, exec() { throw new Error("no browser fallback in test"); } } as any;
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/worker-image", runId: "worker-image" });
 	try {
-		updateStudyHardStudio(handle.state.runId, {
-			noteDocument: { title: "Image Question", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "combined", type: "paragraph", text: "A와 B가 합쳐진 설명" }] }] },
-		});
-		let response = await fetch(new URL("/attachments", handle.url), {
-			method: "POST",
-			headers: authorizedHeaders(handle),
-			body: JSON.stringify({ scope: "note-block", noteBlockId: "combined", name: "clipboard.png", mimeType: "image/png", dataUrl: `data:image/png;base64,${Buffer.from("question-image").toString("base64")}` }),
-		});
-		assert.equal(response.status, 200);
+		updateStudyHardStudio(handle.state.runId, { noteDocument: { title: "Image Question", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "combined", type: "paragraph", text: "A와 B가 합쳐진 설명" }] }] } });
+		let response = await fetch(new URL("/attachments", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ scope: "note-block", noteBlockId: "combined", name: "clipboard.png", mimeType: "image/png", dataUrl: `data:image/png;base64,${Buffer.from("question-image").toString("base64")}` }) });
 		const upload = await response.json() as any;
-		response = await fetch(new URL("/ask", handle.url), {
-			method: "POST",
-			headers: authorizedHeaders(handle),
-			body: JSON.stringify({ scope: "note-block", noteBlockId: "combined", question: "이미지를 보고 A와 B를 분리해줘", attachmentIds: [upload.attachment.id] }),
-		});
+		response = await fetch(new URL("/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ scope: "note-block", noteBlockId: "combined", question: "이미지를 보고 A와 B를 분리해줘", attachmentIds: [upload.attachment.id] }) });
 		assert.equal(response.status, 202);
 		let state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
-		assert.equal(state.questions[0].processingStatus, "queued");
 		const request = messages.find(({ message }) => message.customType === "heestolee.study-hard.learner-request");
 		assert.match(request?.message.content || "", /clipboard\.png/);
 		assert.match(request?.message.content || "", new RegExp(upload.attachment.path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-		assert.throws(() => respondStudyHardQuestion(handle.state.runId, state.revision, state.questions[0].id, "잘못된 응답", { questions: [] }), /questions를 자동 갱신/);
-		const splitNote = { title: "Image Question", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [
-			{ id: "panel-a", type: "paragraph", text: "A 독립 설명" },
-			{ id: "panel-b", type: "paragraph", text: "B 독립 설명" },
-		] }] };
-		respondStudyHardQuestion(handle.state.runId, state.revision, state.questions[0].id, "현재 Pi 맥락으로 A와 B를 독립 block으로 분리했습니다.", { noteDocument: splitNote });
+		const baseNote = structuredClone(state.noteDocument);
+		const splitNote = { title: "Image Question", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "panel-a", type: "paragraph", text: "A 독립 설명" }, { id: "panel-b", type: "paragraph", text: "B 독립 설명" }] }] };
+		writeStudyHardWorkerResult(state, state.questions[0], baseNote, splitNote, "이미지를 반영해 A와 B를 독립 block으로 분리했습니다.");
+		applyStudyHardWorkerResult(handle.state.runId, state.questions[0].id, state.questions[0].workerResultPath, 12);
 		state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
 		assert.deepEqual(state.noteDocument.sections[0].blocks.map((block: any) => block.id), ["panel-a", "panel-b"]);
 		assert.equal(state.questions[0].processingStatus, "applied");
-		assert.deepEqual(messages.filter(({ message }) => message.details?.eventKind === "pi-answer").length, 1);
-		assert.deepEqual(messages.filter(({ message }) => message.details?.eventKind === "note-merged").length, 1);
+		assert.equal(messages.filter(({ message }) => message.details?.eventKind === "worker-answer").length, 1);
+		assert.equal(messages.filter(({ message }) => message.details?.eventKind === "note-merged").length, 1);
 	} finally {
 		stopStudyHardStudios();
 	}
 });
 
-test("현재 Pi 전달 실패는 재시도하고 respond는 stale revision을 거부한다", async () => {
+test("worker dispatch 전달 실패는 같은 question을 새 orchestration으로 재시도한다", async () => {
 	const messages: Array<{ message: any; options: any }> = [];
 	let failDelivery = true;
 	const fakePi = {
-		sendMessage(message: any, options: any) {
-			messages.push({ message, options });
-			if (message.customType === "heestolee.study-hard.learner-request" && failDelivery) throw new Error("current session delivery failed");
-		},
+		sendMessage(message: any, options: any) { messages.push({ message, options }); if (message.customType === "heestolee.study-hard.learner-request" && failDelivery) throw new Error("P0 dispatch failed"); },
 		exec() { throw new Error("no browser fallback in test"); },
 	} as any;
-	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, {
-		url: "https://example.com/current-session-retry",
-		runId: "current-session-retry",
-	});
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/worker-retry", runId: "worker-retry" });
 	try {
 		let response = await fetch(new URL("/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ scope: "session", question: "재시도해줘" }) });
 		assert.equal(response.status, 500);
 		let state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		const firstOrchestrationId = state.questions[0].orchestrationId;
 		assert.equal(state.questions[0].processingStatus, "failed");
 		failDelivery = false;
 		response = await fetch(new URL("/questions/retry", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ questionId: state.questions[0].id }) });
 		assert.equal(response.status, 202);
-		assert.equal((await response.json() as any).retryMode, "pi");
+		assert.equal((await response.json() as any).retryMode, "worker");
 		state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
 		assert.equal(state.questions[0].processingStatus, "queued");
-		assert.throws(() => respondStudyHardQuestion(handle.state.runId, state.revision - 1, state.questions[0].id, "오래된 응답"), /stale Study Hard revision/);
-		respondStudyHardQuestion(handle.state.runId, state.revision, state.questions[0].id, "재시도 뒤 현재 Pi가 답했습니다.");
-		state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
-		assert.equal(state.questions[0].processingStatus, "applied");
-		assert.equal(state.questions[0].feedback, "재시도 뒤 현재 Pi가 답했습니다.");
+		assert.match(state.questions[0].orchestrationId, /^worker-/);
+		assert.notEqual(state.questions[0].orchestrationId, firstOrchestrationId);
 		assert.equal(messages.filter(({ message }) => message.customType === "heestolee.study-hard.learner-request").length, 2);
+	} finally {
+		stopStudyHardStudios();
+	}
+});
+
+test("서로 다른 블록의 worker 결과를 역순 적용해도 두 변경을 보존한다", async () => {
+	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/parallel-worker", runId: "parallel-worker" });
+	try {
+		updateStudyHardStudio(handle.state.runId, { noteDocument: { title: "Parallel", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "a", type: "paragraph", text: "A0" }, { id: "b", type: "paragraph", text: "B0" }] }] } });
+		for (const question of ["A를 다듬어줘", "B를 다듬어줘"]) await fetch(new URL("/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ scope: "session", question }) });
+		let state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		const base = structuredClone(state.noteDocument);
+		const [questionA, questionB] = state.questions;
+		const proposalA = structuredClone(base); proposalA.sections[0].blocks[0].text = "A-worker";
+		const proposalB = structuredClone(base); proposalB.sections[0].blocks[1].text = "B-worker";
+		writeStudyHardWorkerResult(state, questionA, base, proposalA, "A 반영");
+		writeStudyHardWorkerResult(state, questionB, base, proposalB, "B 반영");
+		applyStudyHardWorkerResult(handle.state.runId, questionB.id, questionB.workerResultPath, 22);
+		applyStudyHardWorkerResult(handle.state.runId, questionA.id, questionA.workerResultPath, 21);
+		state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		assert.deepEqual(state.noteDocument.sections[0].blocks.map((block: any) => block.text), ["A-worker", "B-worker"]);
+		assert.deepEqual(state.questions.map((question: any) => question.processingStatus), ["applied", "applied"]);
+	} finally {
+		stopStudyHardStudios();
+	}
+});
+
+test("겹치는 worker 결과는 한 번 rebase한 뒤에만 적용하고 중복 completion은 멱등 처리한다", async () => {
+	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/conflict-worker", runId: "conflict-worker" });
+	try {
+		updateStudyHardStudio(handle.state.runId, { noteDocument: { title: "Conflict", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "a", type: "paragraph", text: "A0" }] }] } });
+		for (const question of ["A를 첫 방식으로", "A를 둘째 방식으로"]) await fetch(new URL("/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ scope: "session", question }) });
+		let state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		const base = structuredClone(state.noteDocument);
+		const [first, second] = state.questions;
+		const firstProposal = structuredClone(base); firstProposal.sections[0].blocks[0].text = "A-first";
+		const secondProposal = structuredClone(base); secondProposal.sections[0].blocks[0].text = "A-second";
+		writeStudyHardWorkerResult(state, first, base, firstProposal, "첫 변경");
+		writeStudyHardWorkerResult(state, second, base, secondProposal, "둘째 변경");
+		applyStudyHardWorkerResult(handle.state.runId, first.id, first.workerResultPath, 31);
+		const conflicted = applyStudyHardWorkerResult(handle.state.runId, second.id, second.workerResultPath, 32);
+		assert.equal(conflicted.status, "rebasing");
+		state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		assert.equal(state.noteDocument.sections[0].blocks[0].text, "A-first");
+		assert.equal(state.questions[1].processingStatus, "rebasing");
+
+		const rebasedBase = structuredClone(state.noteDocument);
+		const rebasedProposal = structuredClone(rebasedBase);
+		rebasedProposal.sections[0].blocks[0].text = "A-first + A-second";
+		writeStudyHardWorkerResult(state, state.questions[1], rebasedBase, rebasedProposal, "두 변경을 최신 노트에서 조정");
+		const applied = applyStudyHardWorkerResult(handle.state.runId, second.id, second.workerResultPath, 32);
+		assert.equal(applied.status, "applied");
+		const duplicate = applyStudyHardWorkerResult(handle.state.runId, second.id, second.workerResultPath, 32);
+		assert.equal(duplicate.status, "already-applied");
+		state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		assert.equal(state.noteDocument.sections[0].blocks[0].text, "A-first + A-second");
 	} finally {
 		stopStudyHardStudios();
 	}
@@ -1601,7 +1654,7 @@ test("study_hard_board respond action은 질문 답변과 구조 patch를 원자
 	await assert.rejects(() => harness.execute({ action: "respond", runId, expectedRevision: handle.state.revision, questionId: "Q001", feedback: "", questions: [] }), /feedback이 필요합니다/);
 });
 
-test("Studio 재시작은 중단된 learner 질문을 현재 Pi session에 다시 전달한다", async () => {
+test("Studio 재시작은 중단된 learner 질문을 P0 worker dispatcher에 다시 전달한다", async () => {
 	const runId = "resume-current-session-question";
 	const firstMessages: Array<{ message: any; options: any }> = [];
 	let handle = await startStudyHardStudio({
@@ -1632,7 +1685,8 @@ test("Studio 재시작은 중단된 learner 질문을 현재 Pi session에 다�
 		const requests = resumedMessages.filter(({ message }) => message.customType === "heestolee.study-hard.learner-request");
 		assert.equal(requests.length, 1);
 		assert.equal(requests[0].options.triggerTurn, true);
-		assert.match(requests[0].message.content, /현재 Pi 대화의 직접 요청/);
+		assert.match(requests[0].message.content, /Study Hard worker dispatch request/);
+		assert.match(requests[0].message.content, /subagent run study-hard-worker --main/);
 	} finally {
 		stopStudyHardStudios();
 	}

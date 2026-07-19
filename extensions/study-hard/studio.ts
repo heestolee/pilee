@@ -27,6 +27,7 @@ import {
 import { captureGlimpseHtmlPng, getGlimpseOpen } from "../utils/glimpse.ts";
 import { buildStudyHardStudioHtml } from "./studio-html.ts";
 import { parseStudyLearningAgentJson, runIsolatedStudyLearningAgent, type StudyLearningAgentRunner } from "./learning-agents.ts";
+import { mergeStudyNoteProposal, type StudyNoteMergeConflict } from "./note-merge.ts";
 import { resolveStudyHardRuntimeConfig } from "./runtime-config.ts";
 
 export { buildStudyHardStudioHtml };
@@ -35,7 +36,7 @@ export type StudyConceptStatus = "unknown" | "learning" | "confused" | "understo
 export type StudyQuestionStatus = "open" | "answered" | "understood" | "review";
 export type StudyQuestionOrigin = "learner" | "coach";
 export type StudyQuestionScope = "session" | "node" | "flow-step" | "note-block" | "coach";
-export type StudyQuestionProcessingStatus = "queued" | "running" | "answered" | "merging" | "applied" | "failed";
+export type StudyQuestionProcessingStatus = "queued" | "running" | "result-ready" | "merging" | "rebasing" | "applied" | "conflict" | "failed";
 export type StudyBoardViewMode = "memo" | "detail" | "hybrid";
 export type StudyConceptNodeType = "root" | "concept" | "question" | "confusion" | "decision" | "file" | "risk" | "summary" | "attachment";
 export type StudySourceKind = "code" | "article" | "video" | "mixed";
@@ -188,8 +189,12 @@ export interface StudyQuestionCard {
 	answeredAt?: number;
 	processingStatus?: StudyQuestionProcessingStatus;
 	orchestrationId?: string;
+	workerResultPath?: string;
+	workerRunId?: number;
+	workerResultHash?: string;
+	workerRebaseCount?: number;
 	processingError?: string;
-	processingErrorStage?: "tutor" | "editor" | "coach";
+	processingErrorStage?: "tutor" | "editor" | "coach" | "worker" | "merge";
 }
 
 export interface StudyAttachment {
@@ -715,10 +720,14 @@ function normalizeQuestions(value: unknown): StudyQuestionCard[] | undefined {
 			attachmentIds: Array.isArray(item.attachmentIds) ? [...new Set(item.attachmentIds.filter((id): id is string => typeof id === "string" && !!id.trim()))].slice(0, MAX_QUESTION_ATTACHMENTS) : undefined,
 			createdAt: typeof item.createdAt === "number" ? item.createdAt : undefined,
 			answeredAt: typeof item.answeredAt === "number" ? item.answeredAt : undefined,
-			processingStatus: ["queued", "running", "answered", "merging", "applied", "failed"].includes(String(item.processingStatus)) ? String(item.processingStatus) as StudyQuestionProcessingStatus : undefined,
+			processingStatus: ["queued", "running", "result-ready", "merging", "rebasing", "applied", "conflict", "failed"].includes(String(item.processingStatus)) ? String(item.processingStatus) as StudyQuestionProcessingStatus : undefined,
 			orchestrationId: typeof item.orchestrationId === "string" ? item.orchestrationId : undefined,
+			workerResultPath: typeof item.workerResultPath === "string" ? item.workerResultPath : undefined,
+			workerRunId: Number.isInteger(item.workerRunId) ? Number(item.workerRunId) : undefined,
+			workerResultHash: typeof item.workerResultHash === "string" ? item.workerResultHash : undefined,
+			workerRebaseCount: Number.isInteger(item.workerRebaseCount) ? Number(item.workerRebaseCount) : undefined,
 			processingError: typeof item.processingError === "string" ? item.processingError : undefined,
-			processingErrorStage: ["tutor", "editor", "coach"].includes(String(item.processingErrorStage)) ? String(item.processingErrorStage) as StudyQuestionCard["processingErrorStage"] : undefined,
+			processingErrorStage: ["tutor", "editor", "coach", "worker", "merge"].includes(String(item.processingErrorStage)) ? String(item.processingErrorStage) as StudyQuestionCard["processingErrorStage"] : undefined,
 		}));
 }
 
@@ -947,8 +956,12 @@ export function mergeBoardState(current: StudyHardBoardState, patch: Record<stri
 				targetNoteBlockId: existing.targetNoteBlockId || question.targetNoteBlockId,
 				processingStatus: question.processingStatus || existing.processingStatus,
 				orchestrationId: question.orchestrationId || existing.orchestrationId,
-				processingError: question.processingStatus === "failed" ? question.processingError || existing.processingError : undefined,
-				processingErrorStage: question.processingStatus === "failed" ? question.processingErrorStage || existing.processingErrorStage : undefined,
+				workerResultPath: question.workerResultPath || existing.workerResultPath,
+				workerRunId: question.workerRunId ?? existing.workerRunId,
+				workerResultHash: question.workerResultHash || existing.workerResultHash,
+				workerRebaseCount: question.workerRebaseCount ?? existing.workerRebaseCount,
+				processingError: ["failed", "rebasing", "conflict"].includes(String(question.processingStatus)) ? question.processingError || existing.processingError : undefined,
+				processingErrorStage: ["failed", "rebasing", "conflict"].includes(String(question.processingStatus)) ? question.processingErrorStage || existing.processingErrorStage : undefined,
 			};
 		});
 	}
@@ -1322,7 +1335,7 @@ function questionContextLabel(state: StudyHardBoardState, question: StudyQuestio
 	return "전체 자료";
 }
 
-type StudyHardTranscriptEventKind = "learner-question" | "pi-answer" | "tutor-answer" | "refiner-answer" | "coach-question" | "learner-answer" | "coach-feedback" | "processing-failed" | "note-merged" | "history-summary";
+type StudyHardTranscriptEventKind = "learner-question" | "pi-answer" | "worker-answer" | "tutor-answer" | "refiner-answer" | "coach-question" | "learner-answer" | "coach-feedback" | "processing-failed" | "note-merged" | "history-summary";
 
 function transcriptContentHash(value: string): string {
 	return createHash("sha256").update(value).digest("hex").slice(0, 12);
@@ -1377,13 +1390,15 @@ function questionTranscriptEvents(question: StudyQuestionCard): StudyHardQuestio
 		if (question.feedback) events.push({
 			eventKind: question.scope === "coach"
 				? "coach-feedback"
-				: question.orchestrationId?.startsWith("pi-")
-					? "pi-answer"
-					: question.scope === "note-block" ? "refiner-answer" : "tutor-answer",
+				: question.orchestrationId?.startsWith("worker-")
+					? "worker-answer"
+					: question.orchestrationId?.startsWith("pi-")
+						? "pi-answer"
+						: question.scope === "note-block" ? "refiner-answer" : "tutor-answer",
 			text: question.feedback,
 		});
 	}
-	if (question.processingStatus === "failed" && question.processingError) {
+	if (["failed", "conflict"].includes(String(question.processingStatus)) && question.processingError) {
 		events.push({ eventKind: "processing-failed", text: `질문: ${question.question}\n\n원인: ${question.processingError}` });
 	}
 	return events;
@@ -1398,6 +1413,7 @@ function publishQuestionTranscriptEvent(handle: StudyHardHandle, question: Study
 	const labels: Record<StudyHardTranscriptEventKind, string> = {
 		"learner-question": "📚 Study Hard 질문",
 		"pi-answer": "💬 Study Hard Pi 답변",
+		"worker-answer": "⚙️ Study Hard worker 답변",
 		"tutor-answer": "📖 Study Hard Tutor 답변",
 		"refiner-answer": "🛠 Study Hard 다듬기 결과",
 		"coach-question": "🧭 Study Hard 이해 확인 질문",
@@ -1408,7 +1424,7 @@ function publishQuestionTranscriptEvent(handle: StudyHardHandle, question: Study
 		"history-summary": "📚 Study Hard 기존 Q&A 요약",
 	};
 	const eventKey = questionTranscriptEventKey(question, { eventKind, text });
-	const body = eventKind === "pi-answer" || eventKind === "tutor-answer" || eventKind === "refiner-answer"
+	const body = eventKind === "pi-answer" || eventKind === "worker-answer" || eventKind === "tutor-answer" || eventKind === "refiner-answer"
 		? `질문: ${question.question}\n\n답변:\n${text}`
 		: eventKind === "coach-feedback"
 			? `질문: ${question.question}\n\n피드백:\n${text}`
@@ -2121,7 +2137,7 @@ function enqueueCoachTurn(handle: StudyHardHandle, questionId: string): void {
 }
 
 function resumeInterruptedLearningAgents(handle: StudyHardHandle): void {
-	const interrupted = new Set<StudyQuestionProcessingStatus>(["queued", "running", "answered", "merging"]);
+	const interrupted = new Set<StudyQuestionProcessingStatus>(["queued", "running", "result-ready", "merging", "rebasing"]);
 	const learnerQuestionIds = handle.state.questions.filter((question) => {
 		if (question.scope === "coach" || question.origin !== "learner") return false;
 		if (question.processingStatus) return interrupted.has(question.processingStatus);
@@ -2133,12 +2149,12 @@ function resumeInterruptedLearningAgents(handle: StudyHardHandle): void {
 	updateQuestionCards(handle, allIds, (question) => ({ ...question, processingStatus: "queued", processingError: "" }));
 	for (const questionId of learnerQuestionIds) {
 		const question = handle.state.questions.find((item) => item.id === questionId);
-		if (question) sendLearnerQuestionToCurrentSession(handle, question);
+		if (question) sendLearnerQuestionToWorkerDispatcher(handle, question);
 	}
 	for (const questionId of coachQuestionIds) enqueueCoachTurn(handle, questionId);
 }
 
-function sendLearnerQuestionToCurrentSession(handle: StudyHardHandle, question: StudyQuestionCard): void {
+function sendLearnerQuestionToWorkerDispatcher(handle: StudyHardHandle, question: StudyQuestionCard): void {
 	const contextLabel = questionContextLabel(handle.state, question);
 	const attachments = questionAttachmentRecords(handle.state, question).map((attachment) => ({
 		name: attachment.name,
@@ -2148,8 +2164,8 @@ function sendLearnerQuestionToCurrentSession(handle: StudyHardHandle, question: 
 	handle.pi.sendMessage({
 		customType: "heestolee.study-hard.learner-request",
 		display: false,
-		content: `# Study Hard current-session request\n\n이 메시지는 별도 Tutor/Editor 작업이 아니라 사용자가 Study Hard 입력창으로 보낸 현재 Pi 대화의 직접 요청입니다. 현재 session의 대화 맥락과 도구를 그대로 사용해 답하세요.\n\n- runId: ${handle.state.runId}\n- statePath: ${handle.statePath}\n- submittedRevision: ${handle.state.revision}\n- questionId: ${question.id}\n- scope: ${question.scope || "session"}\n- context: ${contextLabel}\n- attachments: ${JSON.stringify(attachments)}\n\n## 사용자 메시지\n${question.question}\n\n## 응답 규칙\n1. 일반 사용자 메시지처럼 현재 대화 맥락을 이어서 판단하고 Pi 채팅에 직접 답합니다. 격리 학습 agent를 호출하거나 Tutor/Editor 역할로 위임하지 않습니다.\n2. 설명만 필요한지, 로컬 수정인지, block 분할·삽입·이동을 포함한 구조 수정인지 먼저 판단합니다. 구조 수정이면 statePath의 최신 noteDocument와 필요한 renderer 코드를 확인합니다.\n3. 이미지 attachment가 있으면 위 path를 read로 확인한 뒤 답합니다.\n4. 보드 응답은 반드시 \`study_hard_board\` action=\"respond\"로 저장합니다. 호출 직전에 statePath를 다시 읽고 최신 revision을 expectedRevision으로 사용하세요.\n5. 수정이 없으면 feedback만 전달합니다. 수정이 있으면 noteDocument 등 필요한 최신 전체 patch를 함께 전달합니다. action=\"respond\"가 question 상태와 transcript를 원자적으로 갱신하므로 questions 배열을 직접 만들지 않습니다.\n6. feedback에는 Study Hard drawer에 남길 직접 답변을 넣고, Pi 최종 답변에도 같은 결론을 자연스럽게 설명합니다.`,
-		details: { runId: handle.state.runId, statePath: handle.statePath, questionId: question.id, scope: question.scope, attachments },
+		content: `# Study Hard worker dispatch request\n\n이 메시지는 사용자가 Study Hard Glimpse 입력창으로 보낸 P0의 직접 요청입니다. 긴 학습 노트 작업을 메인에서 동기로 수행하지 말고 실제 pilee subagent를 실행하세요.\n\n- runId: ${handle.state.runId}\n- statePath: ${handle.statePath}\n- submittedRevision: ${handle.state.revision}\n- questionId: ${question.id}\n- orchestrationId: ${question.orchestrationId}\n- workerResultPath: ${question.workerResultPath}\n- scope: ${question.scope || "session"}\n- context: ${contextLabel}\n- attachments: ${JSON.stringify(attachments)}\n\n## 사용자 메시지\n${question.question}\n\n## P0 dispatch 규칙\n1. 이 요청에 직접 답하거나 noteDocument를 직접 수정하지 않습니다. 먼저 \`study_hard_board\` action=\"worker_started\"를 최신 expectedRevision과 questionId로 호출합니다.\n2. 실제 subagent 도구로 \`subagent run study-hard-worker --main -- <이 작업 전체>\`를 실행합니다. 아직 subagent help 계약을 읽지 않았다면 help를 먼저 확인합니다. 별도 \`pi -p\`, 기존 isolated Tutor/Editor, agentRunner를 사용하지 않습니다.\n3. worker task에 위 runId/statePath/questionId/orchestrationId/workerResultPath/scope/context/attachments/사용자 메시지를 빠짐없이 전달합니다. worker는 전체 노트를 유연하게 제안하되 state를 직접 수정하지 않습니다.\n4. async worker를 launch한 뒤 이 turn은 즉시 끝냅니다. 표준 subagent #N widget이 실행 상태를 보여줍니다.\n5. 완료 follow-up의 \`[STUDY_HARD_WORKER_RESULT]\` marker를 받으면 artifactPath와 completion details의 runId를 사용해 \`study_hard_board\` action=\"apply_worker_result\"를 호출합니다.\n6. apply 결과가 rebase-required이면 같은 subagent run을 한 번 continue하여 최신 state 기준 artifact로 교체합니다. 두 번째 conflict는 덮어쓰지 말고 P0에서 설명합니다.`,
+		details: { runId: handle.state.runId, statePath: handle.statePath, questionId: question.id, orchestrationId: question.orchestrationId, workerResultPath: question.workerResultPath, scope: question.scope, attachments },
 	}, { deliverAs: "followUp", triggerTurn: true });
 }
 
@@ -2541,9 +2557,10 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 					sendJson(res, 400, { ok: false, error: "known attachmentIds are required" });
 					return;
 				}
-				const orchestrationId = `pi-${randomUUID()}`;
+				const questionId = nextQuestionId(handle.state);
+				const orchestrationId = `worker-${randomUUID()}`;
 				const question: StudyQuestionCard = {
-					id: nextQuestionId(handle.state),
+					id: questionId,
 					question: questionText,
 					origin: "learner",
 					scope,
@@ -2556,12 +2573,14 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 					createdAt: Date.now(),
 					processingStatus: "queued",
 					orchestrationId,
+					workerResultPath: `${handle.statePath}.worker-${questionId}.json`,
+					workerRebaseCount: 0,
 				};
 				handle.state = mergeBoardState(handle.state, { selectedNodeId: question.scope === "node" ? nodeId : handle.state.selectedNodeId, currentQuestionId: question.id, questions: [...handle.state.questions, question] });
 				saveState(handle);
 				broadcast(handle);
 				try {
-					sendLearnerQuestionToCurrentSession(handle, question);
+					sendLearnerQuestionToWorkerDispatcher(handle, question);
 				} catch (error) {
 					updateQuestionCards(handle, [question.id], (current) => ({ ...current, processingStatus: "failed", processingError: error instanceof Error ? error.message : String(error) }));
 					throw error;
@@ -2573,16 +2592,16 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 				const body = await readJsonBody(req);
 				const questionId = typeof body.questionId === "string" ? body.questionId : "";
 				const existing = handle.state.questions.find((question) => question.id === questionId);
-				if (!existing || existing.origin !== "learner" || existing.scope === "coach" || existing.processingStatus !== "failed") {
-					sendJson(res, 400, { ok: false, error: "failed learner question is required" });
+				if (!existing || existing.origin !== "learner" || existing.scope === "coach" || !["failed", "conflict"].includes(String(existing.processingStatus))) {
+					sendJson(res, 400, { ok: false, error: "failed or conflicted learner question is required" });
 					return;
 				}
-				const retryMode = "pi";
-				const orchestrationId = `pi-${randomUUID()}`;
-				updateQuestionCards(handle, [questionId], (question) => ({ ...question, status: "open", feedback: undefined, answeredAt: undefined, processingStatus: "queued", processingError: "", processingErrorStage: undefined, orchestrationId }));
+				const retryMode = "worker";
+				const orchestrationId = `worker-${randomUUID()}`;
+				updateQuestionCards(handle, [questionId], (question) => ({ ...question, status: "open", feedback: undefined, answeredAt: undefined, processingStatus: "queued", processingError: "", processingErrorStage: undefined, orchestrationId, workerRunId: undefined, workerRebaseCount: 0 }));
 				const retryQuestion = handle.state.questions.find((question) => question.id === questionId)!;
 				try {
-					sendLearnerQuestionToCurrentSession(handle, retryQuestion);
+					sendLearnerQuestionToWorkerDispatcher(handle, retryQuestion);
 				} catch (error) {
 					updateQuestionCards(handle, [questionId], (question) => ({ ...question, processingStatus: "failed", processingError: error instanceof Error ? error.message : String(error) }));
 					throw error;
@@ -2778,6 +2797,122 @@ export function respondStudyHardQuestion(
 	return handle;
 }
 
+interface StudyHardWorkerResultArtifact {
+	schemaVersion: 1;
+	kind: "study-hard-worker-result";
+	runId: string;
+	questionId: string;
+	orchestrationId: string;
+	baseRevision: number;
+	baseNoteDocument: StudyNoteDocument;
+	proposedNoteDocument: StudyNoteDocument;
+	feedback: string;
+	summary?: string;
+}
+
+export interface StudyHardWorkerApplyResult {
+	handle: StudyHardHandle;
+	status: "applied" | "already-applied" | "rebasing" | "conflict";
+	workerRunId?: number;
+	changedPaths: string[];
+	conflicts: StudyNoteMergeConflict[];
+}
+
+const MAX_WORKER_RESULT_BYTES = 5 * 1024 * 1024;
+
+function readStudyHardWorkerResult(handle: StudyHardHandle, question: StudyQuestionCard, workerResultPath: string): { artifact: StudyHardWorkerResultArtifact; hash: string } {
+	if (!question.workerResultPath) throw new Error(`Study Hard worker result path가 없습니다: ${question.id}`);
+	const expectedPath = resolve(question.workerResultPath);
+	const receivedPath = resolve(workerResultPath);
+	if (receivedPath !== expectedPath || dirname(receivedPath) !== dirname(resolve(handle.statePath))) throw new Error("Study Hard worker result path가 question 계약과 다릅니다.");
+	const size = statSync(receivedPath).size;
+	if (size <= 0 || size > MAX_WORKER_RESULT_BYTES) throw new Error(`Study Hard worker result 크기가 유효하지 않습니다: ${size}`);
+	const raw = readFileSync(receivedPath, "utf8");
+	const parsed = JSON.parse(raw) as Record<string, unknown>;
+	if (parsed.schemaVersion !== 1 || parsed.kind !== "study-hard-worker-result") throw new Error("Study Hard worker result schema가 유효하지 않습니다.");
+	if (parsed.runId !== handle.state.runId || parsed.questionId !== question.id || parsed.orchestrationId !== question.orchestrationId) throw new Error("Study Hard worker result identity가 현재 question과 다릅니다.");
+	if (!Number.isInteger(parsed.baseRevision)) throw new Error("Study Hard worker result baseRevision이 필요합니다.");
+	const baseNoteDocument = normalizeNoteDocument(parsed.baseNoteDocument, handle.state.title);
+	const proposedNoteDocument = normalizeNoteDocument(parsed.proposedNoteDocument, handle.state.title);
+	const feedback = typeof parsed.feedback === "string" ? parsed.feedback.trim().slice(0, MAX_STUDY_ANSWER_LENGTH) : "";
+	if (!baseNoteDocument || !proposedNoteDocument || !feedback) throw new Error("Study Hard worker result에는 base/proposed noteDocument와 feedback이 필요합니다.");
+	return {
+		artifact: {
+			schemaVersion: 1,
+			kind: "study-hard-worker-result",
+			runId: String(parsed.runId),
+			questionId: String(parsed.questionId),
+			orchestrationId: String(parsed.orchestrationId),
+			baseRevision: Number(parsed.baseRevision),
+			baseNoteDocument,
+			proposedNoteDocument,
+			feedback,
+			summary: typeof parsed.summary === "string" ? parsed.summary.trim() : undefined,
+		},
+		hash: createHash("sha256").update(raw).digest("hex"),
+	};
+}
+
+export function markStudyHardWorkerStarted(runId: string | undefined, expectedRevision: number, questionId: string): StudyHardHandle {
+	const id = runId || latestRunId;
+	if (!id) throw new Error("활성 Study Hard Studio가 없습니다.");
+	const handle = handles.get(id);
+	if (!handle) throw new Error(`Study Hard Studio run을 찾을 수 없습니다: ${id}`);
+	if (handle.state.revision !== expectedRevision) throw new Error(`stale Study Hard revision: expected ${expectedRevision}, current ${handle.state.revision}`);
+	const question = handle.state.questions.find((item) => item.id === questionId);
+	if (!question || question.origin !== "learner" || question.scope === "coach" || !["queued", "rebasing", "running"].includes(String(question.processingStatus))) throw new Error(`worker를 시작할 learner question을 찾지 못했습니다: ${questionId}`);
+	updateQuestionCards(handle, [questionId], (item) => ({ ...item, processingStatus: "running", processingError: "", processingErrorStage: undefined }));
+	return handle;
+}
+
+export function applyStudyHardWorkerResult(
+	runId: string | undefined,
+	questionId: string,
+	workerResultPath: string,
+	workerRunId?: number,
+): StudyHardWorkerApplyResult {
+	const id = runId || latestRunId;
+	if (!id) throw new Error("활성 Study Hard Studio가 없습니다.");
+	const handle = handles.get(id);
+	if (!handle) throw new Error(`Study Hard Studio run을 찾을 수 없습니다: ${id}`);
+	const question = handle.state.questions.find((item) => item.id === questionId);
+	if (!question || question.origin !== "learner" || question.scope === "coach") throw new Error(`worker result를 적용할 learner question을 찾지 못했습니다: ${questionId}`);
+	const { artifact, hash } = readStudyHardWorkerResult(handle, question, workerResultPath);
+	if (question.processingStatus === "applied") {
+		if (question.workerResultHash === hash) return { handle, status: "already-applied", workerRunId: question.workerRunId, changedPaths: [], conflicts: [] };
+		throw new Error(`이미 적용된 Study Hard question에 다른 worker result를 적용할 수 없습니다: ${questionId}`);
+	}
+	if (question.workerResultHash === hash && ["rebasing", "conflict"].includes(String(question.processingStatus))) {
+		return { handle, status: question.processingStatus as "rebasing" | "conflict", workerRunId: question.workerRunId, changedPaths: [], conflicts: [] };
+	}
+	const merge = mergeStudyNoteProposal(artifact.baseNoteDocument, artifact.proposedNoteDocument, handle.state.noteDocument);
+	if (!merge.ok) {
+		const previousRebases = question.workerRebaseCount || 0;
+		const status: "rebasing" | "conflict" = previousRebases < 1 ? "rebasing" : "conflict";
+		const message = merge.conflicts.slice(0, 4).map((conflict) => conflict.message).join(" ");
+		updateQuestionCards(handle, [questionId], (item) => ({
+			...item,
+			processingStatus: status,
+			processingError: message,
+			processingErrorStage: "merge",
+			workerRunId: Number.isInteger(workerRunId) ? workerRunId : item.workerRunId,
+			workerResultHash: hash,
+			workerRebaseCount: status === "rebasing" ? previousRebases + 1 : previousRebases,
+		}));
+		return { handle, status, workerRunId: Number.isInteger(workerRunId) ? workerRunId : question.workerRunId, changedPaths: merge.changedPaths, conflicts: merge.conflicts };
+	}
+	updateQuestionCards(handle, [questionId], (item) => ({
+		...item,
+		processingStatus: "merging",
+		processingError: "",
+		processingErrorStage: undefined,
+		workerRunId: Number.isInteger(workerRunId) ? workerRunId : item.workerRunId,
+		workerResultHash: hash,
+	}));
+	const applied = respondStudyHardQuestion(id, handle.state.revision, questionId, artifact.feedback, { noteDocument: merge.noteDocument });
+	return { handle: applied, status: "applied", workerRunId: Number.isInteger(workerRunId) ? workerRunId : question.workerRunId, changedPaths: merge.changedPaths, conflicts: [] };
+}
+
 export async function openExistingStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionCommandContext | ExtensionContext, runId?: string): Promise<StudyHardHandle> {
 	const requestedId = runId ? validateRunId(runId) : latestRunId;
 	if (requestedId && handles.has(requestedId)) {
@@ -2858,14 +2993,17 @@ export function registerStudyHardBoardTool(pi: ExtensionAPI) {
 		promptGuidelines: [
 			"Use study_hard_board after fetching /study-hard source content to keep the visual concept graph, Mermaid flow, and Q&A state in sync with the learning session.",
 			"Do not use study_hard_board as evidence that the user understood the topic; it is a visual aid only.",
-			"For heestolee.study-hard.learner-request turns, answer in the current Pi session and call action=respond with questionId, feedback, latest expectedRevision, and any structural board patch. Do not delegate to isolated Tutor/Editor agents.",
+			"For heestolee.study-hard.learner-request turns, mark action=worker_started and launch the real study-hard-worker subagent with contextMode=main. Do not answer or edit the note synchronously in P0, and do not use standalone pi -p or isolated Tutor/Editor runners.",
+			"For completed study-hard-worker subagent results, call action=apply_worker_result with questionId, artifactPath as workerResultPath, and the subagent completion runId as workerRunId. If the result requests one rebase, continue that same subagent run once against the latest state; never silently overwrite a conflict.",
 		],
 		parameters: Type.Object({
-			action: Type.String({ description: "start | update | respond | open | status" }),
+			action: Type.String({ description: "start | update | respond | worker_started | apply_worker_result | open | status" }),
 			runId: Type.Optional(Type.String()),
 			expectedRevision: Type.Optional(Type.Integer({ minimum: 0, description: "Required for update/respond; reject stale snapshots." })),
-			questionId: Type.Optional(Type.String({ description: "Required for respond; pending learner question id." })),
+			questionId: Type.Optional(Type.String({ description: "Required for respond/worker actions; pending learner question id." })),
 			feedback: Type.Optional(Type.String({ description: "Required for respond; direct answer shown in the Study Hard drawer." })),
+			workerResultPath: Type.Optional(Type.String({ description: "Artifact path emitted by study-hard-worker." })),
+			workerRunId: Type.Optional(Type.Integer({ minimum: 1, description: "Standard subagent run id shown in the #N widget." })),
 			url: Type.Optional(Type.String()),
 			title: Type.Optional(Type.String()),
 			hints: Type.Optional(Type.String()),
@@ -2918,6 +3056,35 @@ export function registerStudyHardBoardTool(pi: ExtensionAPI) {
 				const { action: _action, runId, expectedRevision, questionId, feedback, url: _url, hints: _hints, ...patch } = params as Record<string, unknown>;
 				const handle = respondStudyHardQuestion(typeof runId === "string" ? runId : undefined, Number(expectedRevision), String(questionId), String(feedback), patch);
 				return boardToolResult("responded", handle);
+			}
+			if (action === "worker_started") {
+				if (!Number.isInteger(params.expectedRevision)) throw new Error("study_hard_board worker_started에는 expectedRevision이 필요합니다.");
+				if (typeof params.questionId !== "string" || !params.questionId) throw new Error("study_hard_board worker_started에는 questionId가 필요합니다.");
+				const handle = markStudyHardWorkerStarted(typeof params.runId === "string" ? params.runId : undefined, Number(params.expectedRevision), params.questionId);
+				return boardToolResult("worker-started", handle);
+			}
+			if (action === "apply_worker_result") {
+				if (typeof params.questionId !== "string" || !params.questionId) throw new Error("study_hard_board apply_worker_result에는 questionId가 필요합니다.");
+				if (typeof params.workerResultPath !== "string" || !params.workerResultPath) throw new Error("study_hard_board apply_worker_result에는 workerResultPath가 필요합니다.");
+				const result = applyStudyHardWorkerResult(typeof params.runId === "string" ? params.runId : undefined, params.questionId, params.workerResultPath, Number.isInteger(params.workerRunId) ? Number(params.workerRunId) : undefined);
+				const rebaseInstruction = result.status === "rebasing" && result.workerRunId
+					? `\n같은 subagent #${result.workerRunId}를 한 번 continue하여 statePath ${result.handle.statePath}의 최신 noteDocument를 새 base로 읽고 artifact ${params.workerResultPath}를 교체하세요.`
+					: "";
+				return {
+					content: [{ type: "text", text: `Study Hard worker result ${result.status}: ${result.handle.state.title} (${result.handle.state.runId})${rebaseInstruction}` }],
+					details: {
+						action: "apply-worker-result",
+						status: result.status,
+						runId: result.handle.state.runId,
+						questionId: params.questionId,
+						workerRunId: result.workerRunId,
+						workerResultPath: params.workerResultPath,
+						revision: result.handle.state.revision,
+						changedPaths: result.changedPaths,
+						conflicts: result.conflicts,
+						rebaseRequired: result.status === "rebasing",
+					},
+				};
 			}
 			if (action !== "update") throw new Error(`지원하지 않는 study_hard_board action: ${action}`);
 			if (!Number.isInteger(params.expectedRevision)) throw new Error("study_hard_board update에는 expectedRevision이 필요합니다.");
