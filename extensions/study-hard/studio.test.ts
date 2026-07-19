@@ -404,6 +404,12 @@ test("buildStudyHardStudioHtml gives the note the left+center width and overlays
 	assert.match(html, /renderNoteMermaidDiagrams/);
 	assert.match(html, /function isOverviewMermaidSource/);
 	assert.match(html, /target\.classList\.toggle\('fitOverview',isOverviewMermaidSource\(source\)\)/);
+	const overviewClassifierSource = html.match(/function isOverviewMermaidSource\(source\)\{[^}]+\}/)?.[0];
+	assert.ok(overviewClassifierSource);
+	const isOverviewMermaidSource = new Function(`${overviewClassifierSource}; return isOverviewMermaidSource;`)() as (source: string) => boolean;
+	assert.equal(isOverviewMermaidSource("erDiagram\n  A ||--o{ B : relation"), true);
+	assert.equal(isOverviewMermaidSource("flowchart LR\n  A --> B"), false);
+	assert.equal(isOverviewMermaidSource("sequenceDiagram\n  A->>B: relation"), false);
 	assert.match(html, /noteDiagramCanvas\.fitOverview svg \{ width:100% !important; height:clamp\(360px,72vh,760px\) !important; max-height:760px; \}/);
 	assert.match(html, /#detailContent \.noteDiagramCanvas\.fitOverview svg \{ height:clamp\(300px,58vh,560px\) !important; max-height:560px; \}/);
 	assert.match(html, /mermaidCompare \{ display:grid; grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
