@@ -349,6 +349,7 @@ test("buildStudyHardStudioHtml gives the note the left+center width and overlays
 	assert.match(html, /resultSummary/);
 	assert.match(html, /noteImpact/);
 	assert.match(html, /thoughtMemoGrid/);
+	assert.match(html, /minmax\(min\(320px,100%\),360px\)/);
 	assert.match(html, /thoughtMemoSummary/);
 	assert.match(html, /대화 보기/);
 	assert.doesNotMatch(html, /전체 답변 보기/);

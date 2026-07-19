@@ -58,7 +58,7 @@ export function buildStudyHardStudioHtml(capabilityToken = "", nativeVisualCaptu
     .thoughtSection { max-width:1440px; margin:0 auto 18px; border:1px solid #d4cabc; border-radius:18px; background:#f4eee4; overflow:hidden; }
     .thoughtSectionHeader { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:12px 15px; border-bottom:1px solid #d8cfc1; background:#eee7dc; }
     .thoughtSectionHeader h2 { margin:0; font-size:15px; }
-    .thoughtMemoGrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(360px,100%),1fr)); gap:12px; padding:14px; }
+    .thoughtMemoGrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),360px)); justify-content:start; gap:12px; padding:14px; }
     .thoughtMemo { min-width:0; min-height:196px; display:flex; flex-direction:column; gap:10px; scroll-margin-top:74px; border:1px solid #d2c7b9; border-top:5px solid var(--warn); border-radius:15px; padding:13px; background:#fffdf8; box-shadow:0 8px 22px rgba(78,62,43,.08); }
     .thoughtMemo:hover { transform:translateY(-1px); box-shadow:0 12px 28px rgba(78,62,43,.12); }
     .thoughtMemo.focus { outline:4px solid rgba(21,122,110,.22); outline-offset:2px; }
