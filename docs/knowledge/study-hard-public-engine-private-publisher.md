@@ -15,8 +15,8 @@ applies_to:
   - extensions/utils/private-profiles
 source:
   - user-direction:2026-07-17-study-hard-public-migration
-reviewed_at: 2026-07-18
-reviewed_commit: 0c02e271fc1f3cab5d43fef7409b78b571c49e45
+reviewed_at: 2026-07-19
+reviewed_commit: 4421708
 related:
   - private-overlay-package-boundary
   - context-loading-minimal-surface
@@ -24,6 +24,7 @@ related:
   - embedded-webview-script-escape-boundary
   - frame-v2-learning-note-pilot
   - learning-note-companion-artifact
+  - study-hard-worker-flexible-generation-strict-apply
 ---
 
 ## Judgment
@@ -39,7 +40,7 @@ Public `extensions/study-hard`가 소유하는 범위:
 - `/study-hard` command와 `study_hard_board` tool
 - concept hierarchy와 runtime flow model
 - 구조화 `noteDocument`와 canonical TFT `visual` block
-- Tutor 병렬 처리, Editor merge, Coach navigation
+- P0-linked `study-hard-worker --main` 병렬 처리, 3-way note merge, Coach navigation
 - Q&A transcript integration
 - revision/history snapshot과 restore
 - standalone HTML export와 interactive visual/PNG fallback
@@ -94,26 +95,21 @@ Frame v2 작업에 연결된 state만 optional `companion` metadata를 가집니
 
 이 경계가 없으면 이전 질문이 새 사용자 prompt처럼 연속 노출되고, 현재 질문과 폐기된 시행착오가 같은 무게로 섞입니다. durable artifact 보존과 현재 LLM context hydration을 같은 것으로 취급하지 않습니다.
 
-## Tutor Scope Rule
+## Worker Scope And Apply Rule
 
-Tutor prompt도 질문 surface에 맞게 좁힙니다.
+Glimpse의 learner 질문은 P0가 실제 `study-hard-worker --main` subagent로 dispatch합니다. 선택 surface는 worker가 시작할 초점과 근거를 제공하지만 쓰기 경계로 사용하지 않습니다. worker는 사용자 의도를 닫는 데 필요한 전체 `proposedNoteDocument`를 만들 수 있습니다.
 
-- `note-block` — 선택한 block과 section label을 중심으로 답하고 Note 전체를 반복하지 않습니다.
-- `flow-step` — 선택 flow와 step만 자세히 전달합니다.
-- `node` — 선택 node와 root mental model을 전달합니다.
-- `session` — 자료 전체를 묻는 질문이므로 `noteDocument`와 `flows` 전체를 허용합니다.
+안전 경계는 생성 범위가 아니라 적용 권한입니다.
 
-Editor도 질문 surface에 맞게 병합 범위를 좁힙니다.
+- worker는 Study Hard state를 직접 수정하지 않고 question별 result artifact만 씁니다.
+- P0 transcript에는 artifact path, worker #N, 짧은 summary와 최종 feedback만 남깁니다.
+- merge coordinator가 base/proposed/current를 비교해 실제 changed path를 계산합니다.
+- disjoint 블록·필드·삽입은 완료 순서와 무관하게 보존합니다.
+- 같은 필드의 다른 변경, 삭제 대 수정, 양립 불가능한 순서 변경은 conflict로 둡니다.
+- 첫 conflict는 같은 worker run을 최신 state로 한 번 continue하고, 재충돌은 P0 판단으로 남깁니다.
+- artifact hash로 duplicate completion을 멱등 처리합니다.
 
-## Editor Merge Scope Rule
-
-- `note-block` — 선택한 block 전체와 section/block `id/type` index만 받고, 동일 `id/type`의 `blockReplacements`만 반환합니다. 부모 runtime이 대상 외 section/block 보존과 visual spec 유효성을 검증한 뒤 원자적으로 교체합니다.
-- `session`, `node`, `flow-step` — 여러 영역을 함께 다듬는 기존 질문은 전체 noteDocument 병합을 유지합니다.
-- 붙여넣은 `[heestolee.study-hard.transcript]`가 반복되면 agent prompt에서만 중복을 제거하고 길이를 제한합니다. 원래 질문과 Q&A state는 손실 없이 보존합니다.
-- Tutor 답변이 성공한 뒤 Editor만 실패하면 답변과 `answeredAt`을 지우지 않습니다. 재시도는 Tutor를 다시 호출하지 않고 저장된 답변으로 노트 병합만 수행합니다.
-- JSONL의 `message_end`가 빠진 경우 `turn_end`, `agent_end`, 마지막 `message_update`에서 텍스트를 복구합니다. 정말 빈 응답이면 역할과 stdout byte/event count만 진단에 남기고 prompt 원문은 노출하지 않습니다.
-
-전체 noteDocument 재생성을 작은 block 수정에도 강제하면 latency, 빈 응답, ID 보존 실패가 모두 커집니다. 반대로 모델이 임의 JSON patch를 쓰게 두면 target 밖 state를 훼손할 수 있으므로, **모델은 완전한 target block을 제안하고 부모가 검증·교체**하는 경계를 유지합니다.
+이 계약은 **생성은 유연하게, 적용은 엄격하게** 유지합니다. target block만 바꿀 수 있게 제한해 충돌을 피하려 하지 않고, 실제 제안 diff를 최신 state에 적용하는 순간 검증합니다.
 
 ## Failure Mode
 
@@ -121,6 +117,8 @@ Editor도 질문 surface에 맞게 병합 범위를 좁힙니다.
 - 개인 publisher까지 public에 두면 경로·Notion schema·계정 맥락이 공개 package에 새어 나옵니다.
 - public과 private에 command를 동시에 남기면 load order에 따라 어느 구현이 활성인지 불명확해집니다.
 - persisted Q&A 전문을 새 session에 재생하면 transcript 보존이 아니라 현재 context 오염이 됩니다.
-- note-block 질문에도 Note/flow 전체를 넣으면 국소 질문이 과거 설명을 반복하는 긴 답변으로 변합니다.
+- worker가 전체 proposed note를 transcript에 출력하면 병렬 질문 수만큼 P0 context가 중복됩니다.
+- worker가 state를 직접 쓰거나 last-write-wins를 사용하면 병렬 결과가 조용히 유실됩니다.
+- target block을 하드 쓰기 경계로 만들면 문맥상 필요한 주변 수정도 재시도되어 학습 상호작용이 답답해집니다.
 
-경계는 **public engine + private publisher profile**, runtime context는 **live event + compact resume summary**입니다.
+경계는 **public engine + private publisher profile**, runtime context는 **P0-linked worker event + compact artifact summary**, 적용은 **single merge coordinator**입니다.

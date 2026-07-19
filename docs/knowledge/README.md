@@ -81,7 +81,8 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 |---|---|---:|---:|---:|---|
 | [Architecture friction은 TFT의 검증 축이다](./architecture-friction-tft-lens.md) | active | high | 2026-06-02 | ce5e875 | architecture, frame, decide, verify, deep-module, shallow-module |
 | [학습노트 companion은 독립 canonical을 sidecar로 연결한다](./learning-note-companion-artifact.md) | active | high | 2026-07-18 | 88b560c | learning-note, companion-artifact, frame-v2, study-hard, worktree, checkpoint |
-| [Study Hard 엔진은 public이고 개인 publisher만 private다](./study-hard-public-engine-private-publisher.md) | active | high | 2026-07-18 | 0c02e27 | study-hard, public-private-boundary, notion, runtime-profile, local-state |
+| [Study Hard 엔진은 public이고 개인 publisher만 private다](./study-hard-public-engine-private-publisher.md) | active | high | 2026-07-19 | 4421708 | study-hard, public-private-boundary, notion, runtime-profile, local-state |
+| [Study Hard worker는 유연하게 생성하고 P0가 엄격하게 적용한다](./study-hard-worker-flexible-generation-strict-apply.md) | active | high | 2026-07-19 | 4421708 | study-hard, subagent, worker, three-way-merge, optimistic-concurrency, glimpse |
 | [Utils surface는 사용자 계약을 만들지 않는다](./utility-surface-stays-invisible.md) | active | high | 2026-06-02 | d8f8c4c | utils, internal, surface, abstraction, extension |
 
 ### database
@@ -248,6 +249,7 @@ graph TD
   doc_architecture_friction_tft_lens["Architecture friction은 TFT의 검증 축이다"]
   doc_learning_note_companion_artifact["학습노트 companion은 독립 canonical을 sidecar로 연결한다"]
   doc_study_hard_public_engine_private_publisher["Study Hard 엔진은 public이고 개인 publisher만 private다"]
+  doc_study_hard_worker_flexible_generation_strict_apply["Study Hard worker는 유연하게 생성하고 P0가 엄격하게 적용한다"]
   doc_utility_surface_stays_invisible["Utils surface는 사용자 계약을 만들지 않는다"]
   doc_database_write_human_execution_gate["DB write는 인간 실행 게이트를 가진다"]
   doc_root_cause_before_fix["수정 전에 근본 원인을 좁힌다"]
@@ -387,6 +389,11 @@ graph TD
   doc_study_hard_public_engine_private_publisher --> doc_learning_note_companion_artifact
   doc_study_hard_public_engine_private_publisher --> doc_live_artifact_preview_pattern
   doc_study_hard_public_engine_private_publisher --> doc_private_overlay_package_boundary
+  doc_study_hard_public_engine_private_publisher --> doc_study_hard_worker_flexible_generation_strict_apply
+  doc_study_hard_worker_flexible_generation_strict_apply --> doc_learning_note_companion_artifact
+  doc_study_hard_worker_flexible_generation_strict_apply --> doc_parallel_workflow_analysis_single_writer
+  doc_study_hard_worker_flexible_generation_strict_apply --> doc_study_hard_public_engine_private_publisher
+  doc_study_hard_worker_flexible_generation_strict_apply --> doc_subagent_prompt_specificity
   doc_utility_surface_stays_invisible --> doc_deterministic_fallbacks_preserve_workflow
   doc_utility_surface_stays_invisible --> doc_terminal_host_integration
   doc_database_write_human_execution_gate --> doc_ask_user_question_decision_gates
@@ -745,7 +752,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 111
-- Links: 393
+- Documents: 112
+- Links: 398
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
