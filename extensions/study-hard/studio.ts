@@ -179,6 +179,9 @@ export interface StudyQuestionCard {
 	scope?: StudyQuestionScope;
 	userAnswer?: string;
 	feedback?: string;
+	resultSummary?: string;
+	noteImpact?: string[];
+	appliedRevision?: number;
 	status?: StudyQuestionStatus;
 	targetNodeId?: string;
 	targetFlowId?: string;
@@ -712,6 +715,9 @@ function normalizeQuestions(value: unknown): StudyQuestionCard[] | undefined {
 			scope: ["session", "node", "flow-step", "note-block", "coach"].includes(String(item.scope)) ? String(item.scope) as StudyQuestionScope : typeof item.targetFlowStepId === "string" ? "flow-step" : typeof item.targetNoteBlockId === "string" ? "note-block" : typeof item.targetNodeId === "string" || typeof item.nodeId === "string" ? "node" : "session",
 			userAnswer: typeof item.userAnswer === "string" ? item.userAnswer : typeof item.answer === "string" ? item.answer : undefined,
 			feedback: typeof item.feedback === "string" ? item.feedback : undefined,
+			resultSummary: typeof item.resultSummary === "string" ? item.resultSummary : undefined,
+			noteImpact: Array.isArray(item.noteImpact) ? [...new Set(item.noteImpact.filter((value): value is string => typeof value === "string" && !!value.trim()))].slice(0, 20) : undefined,
+			appliedRevision: Number.isInteger(item.appliedRevision) ? Number(item.appliedRevision) : undefined,
 			status: normalizeQuestionStatus(item.status),
 			targetNodeId: typeof item.targetNodeId === "string" ? item.targetNodeId : typeof item.nodeId === "string" ? item.nodeId : undefined,
 			targetFlowId: typeof item.targetFlowId === "string" ? item.targetFlowId : undefined,
@@ -954,6 +960,9 @@ export function mergeBoardState(current: StudyHardBoardState, patch: Record<stri
 				targetFlowId: existing.targetFlowId || question.targetFlowId,
 				targetFlowStepId: existing.targetFlowStepId || question.targetFlowStepId,
 				targetNoteBlockId: existing.targetNoteBlockId || question.targetNoteBlockId,
+				resultSummary: question.resultSummary ?? existing.resultSummary,
+				noteImpact: question.noteImpact ?? existing.noteImpact,
+				appliedRevision: question.appliedRevision ?? existing.appliedRevision,
 				processingStatus: question.processingStatus || existing.processingStatus,
 				orchestrationId: question.orchestrationId || existing.orchestrationId,
 				workerResultPath: existing.workerResultPath || question.workerResultPath,
@@ -2783,9 +2792,14 @@ export function respondStudyHardQuestion(
 	if (!feedback) throw new Error("study_hard_board respond에는 feedback이 필요합니다.");
 	if (patch.questions !== undefined) throw new Error("study_hard_board respond는 questions를 자동 갱신하므로 직접 전달할 수 없습니다.");
 	const beforeNote = cloneBoardState(current.state).noteDocument;
+	const proposedNote = normalizeNoteDocument(patch.noteDocument, current.state.title);
+	const noteImpact = proposedNote ? changedNoteSectionTitles(beforeNote, proposedNote) : target.noteImpact;
 	const questions = current.state.questions.map((question) => question.id === questionId ? {
 		...question,
 		feedback,
+		resultSummary: question.resultSummary || compactTranscriptPreview(feedback, 500),
+		noteImpact,
+		appliedRevision: proposedNote ? expectedRevision + 1 : question.appliedRevision,
 		status: "answered" as const,
 		answeredAt: Date.now(),
 		processingStatus: "applied" as const,
@@ -2847,7 +2861,7 @@ function readStudyHardWorkerResult(handle: StudyHardHandle, question: StudyQuest
 			baseNoteDocument,
 			proposedNoteDocument,
 			feedback,
-			summary: typeof parsed.summary === "string" ? parsed.summary.trim() : undefined,
+			summary: typeof parsed.summary === "string" ? parsed.summary.trim().slice(0, 1_000) : undefined,
 		},
 		hash: createHash("sha256").update(raw).digest("hex"),
 	};
@@ -2911,6 +2925,7 @@ export function applyStudyHardWorkerResult(
 	}
 	updateQuestionCards(handle, [questionId], (item) => ({
 		...item,
+		resultSummary: artifact.summary || compactTranscriptPreview(artifact.feedback, 500),
 		processingStatus: "result-ready",
 		processingError: "",
 		processingErrorStage: undefined,
@@ -2932,8 +2947,10 @@ export function applyStudyHardWorkerResult(
 		}));
 		return { handle, status, workerRunId: Number.isInteger(workerRunId) ? workerRunId : question.workerRunId, changedPaths: merge.changedPaths, conflicts: merge.conflicts };
 	}
+	const noteImpact = changedNoteSectionTitles(handle.state.noteDocument, merge.noteDocument);
 	updateQuestionCards(handle, [questionId], (item) => ({
 		...item,
+		noteImpact,
 		processingStatus: "merging",
 		processingError: "",
 		processingErrorStage: undefined,
