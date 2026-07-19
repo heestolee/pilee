@@ -362,6 +362,7 @@ test("buildStudyHardStudioHtml gives the note the left+center width and overlays
 	assert.match(html, /data-open-thought-block/);
 	assert.match(html, /function openThoughtBlock/);
 	assert.match(html, /function openNoteBlockFromThought/);
+	assert.match(html, /surface==='map'\)\{closeDrawer\('detailDrawer'\)/);
 	assert.match(html, /data-open-thought-question/);
 	assert.match(html, /data-conversation-question/);
 	assert.match(html, /thoughtNoteFocus/);
