@@ -529,6 +529,31 @@ test("buildStudyHardStudioHtml inline browser script parses", () => {
 	}
 });
 
+test("Study Hard conversation answers render safe GFM markdown while learner messages stay plain", () => {
+	const html = buildStudyHardStudioHtml();
+	assert.match(html, /marked@15\/marked\.min\.js/);
+	assert.match(html, /function sanitizeConversationMarkdown/);
+	assert.match(html, /function renderConversationMarkdown/);
+	assert.match(html, /function renderConversationAnswer/);
+	assert.match(html, /breaks:true,gfm:true/);
+	assert.match(html, /script,iframe,object,embed,form,style,link,meta,base,img,svg/);
+	assert.match(html, /new Set\(\['p','br','strong','em','del','code','pre','blockquote','ul','ol','li','h1','h2','h3','h4','h5','h6','table','thead','tbody','tr','th','td','a','hr'\]\)/);
+	assert.match(html, /noopener noreferrer/);
+	assert.match(html, /class="bubble coach markdownBubble"/);
+	assert.match(html, /class="conversationMarkdown"/);
+	assert.match(html, /과거 처리 로그/);
+	assert.match(html, /\.conversationMarkdown table \{[^}]*overflow-x:auto/);
+	assert.match(html, /\.conversationMarkdown pre \{[^}]*overflow:auto/);
+	assert.doesNotMatch(html, /esc\(q\.feedback\)/);
+	const safeUrlBody = /function safeUrl\(v\)\{([\s\S]*?)\}function safeMarkdownHref/.exec(html)?.[1];
+	const safeMarkdownHrefBody = /function safeMarkdownHref\(value\)\{([^}]+)\}/.exec(html)?.[1];
+	assert.ok(safeUrlBody && safeMarkdownHrefBody);
+	const safeMarkdownHref = new Function(`function safeUrl(v){${safeUrlBody}}; return function safeMarkdownHref(value){${safeMarkdownHrefBody}};`)() as (value: string) => string;
+	assert.equal(safeMarkdownHref("https://example.com/docs"), "https://example.com/docs");
+	assert.equal(safeMarkdownHref("javascript:alert(1)"), "");
+	assert.equal(safeMarkdownHref("data:text/html,bad"), "");
+});
+
 test("Study Hard window uses the shared Glimpse host adapter", async () => {
 	let openCalls = 0;
 	let openedHtml = "";
