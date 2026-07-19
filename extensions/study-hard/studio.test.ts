@@ -402,6 +402,10 @@ test("buildStudyHardStudioHtml gives the note the left+center width and overlays
 	assert.match(html, /\/history\//);
 	assert.match(html, /sequenceDiagram/);
 	assert.match(html, /renderNoteMermaidDiagrams/);
+	assert.match(html, /function isOverviewMermaidSource/);
+	assert.match(html, /target\.classList\.toggle\('fitOverview',isOverviewMermaidSource\(source\)\)/);
+	assert.match(html, /noteDiagramCanvas\.fitOverview svg \{ width:100% !important; height:clamp\(360px,72vh,760px\) !important; max-height:760px; \}/);
+	assert.match(html, /#detailContent \.noteDiagramCanvas\.fitOverview svg \{ height:clamp\(300px,58vh,560px\) !important; max-height:560px; \}/);
 	assert.match(html, /mermaidCompare \{ display:grid; grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
 	assert.match(html, /mermaidComparePanel \.noteDiagramCanvas \{ min-height:210px; max-height:380px/);
 	assert.match(html, /function noteSectionBlocksHtml/);
