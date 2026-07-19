@@ -15,14 +15,16 @@ status: active
 confidence: high
 applies_to:
   - extensions/frame-studio
+  - extensions/study-hard
   - skills/tft-guidelines
 source:
   - user-direction:2026-05-10-tft-visual-db-structure
   - user-direction:2026-06-04-tft-visual-render-healing
   - user-direction:2026-07-17-schema-diff-column-lifecycle
   - user-direction:2026-07-17-tft-visual-presentation-layout
-reviewed_at: 2026-07-18
-reviewed_commit: b72c96db7050df82f758d219ce5bcf331a0d9f87
+  - user-direction:2026-07-19-study-hard-collapsible-reference-visual
+reviewed_at: 2026-07-19
+reviewed_commit: a5f004e79a3c74e1b86eb97be8ac397de4fc488e
 related:
   - frame-studio-interactive-decision-ui
   - frame-verify-contract
@@ -80,6 +82,29 @@ TFT Studio는 `elkjs` 기반 top-down renderer를 기본으로 사용합니다. 
 order에 생략된 기존 영역은 기본 순서를 유지해 뒤에 붙고, 알 수 없는 region ID는 무시됩니다. presentation이 없으면 기존 renderer 결과를 그대로 유지하며, 기존 Data Model의 `presentation.schema`, `relationships`, `migration`, `verification` shorthand도 계속 해석합니다.
 
 이 계약 덕분에 학습 노트를 다듬는 동안 visual spec만 갱신해 Studio SSE update로 즉시 재렌더링할 수 있습니다. 새 semantic region, 새로운 interaction, header 구조, grid/span 같은 layout primitive가 필요한 경우에만 renderer 변경과 extension reload가 필요합니다. 단순 배치 변경을 renderer 확장으로 처리하면 표현 문법과 콘텐츠 수정이 다시 결합되므로 실패입니다.
+
+### Consumer-level Visual Disclosure
+
+visual 내부의 `presentation.display`와 visual 전체의 접힘은 다른 책임입니다. 내부 region의 노출·접힘은 TFT renderer가 담당하지만, 학습 본문의 보조 비교자료처럼 **visual 전체가 2차 정보**인 경우에는 Study Hard consumer가 container를 접습니다.
+
+```json
+{
+  "presentation": {
+    "container": "details",
+    "defaultOpen": false,
+    "summary": "기존 구조 레퍼런스"
+  }
+}
+```
+
+- `container: "details"`가 있는 visual만 전체 `<details>`로 감쌉니다. presentation이 없거나 다른 값이면 기존 inline visual을 유지합니다.
+- `defaultOpen`은 명시적으로 `true`일 때만 처음부터 펼칩니다. 비교·확인용 자료는 기본 접힘이 원칙입니다.
+- `summary`는 접힌 상태에서도 독자가 무엇을 펼치는지 알 수 있는 구체 제목이어야 합니다.
+- 핵심 Mental Model이나 반드시 읽어야 하는 primary visual을 인지 부하를 줄인다는 이유만으로 숨기지 않습니다. 이전 구조, 참고 구현, 상세 schema처럼 **필요할 때 비교하는 supporting visual**에 사용합니다.
+- Study Hard HTML export도 같은 disclosure를 보존하며, visual spec·iframe·PNG fallback은 접힌 본문 안에서 그대로 유지합니다.
+- summary 클릭은 dropdown 토글만 수행하고 note block 선택 drawer를 함께 열지 않아야 합니다.
+
+이 container hint는 TFT visual의 의미를 바꾸지 않습니다. 같은 spec을 Frame Studio에서 렌더링하면 기존 visual이고, Study Hard note에서만 consumer-level disclosure가 적용됩니다.
 
 ## Visual Healing Rule
 
