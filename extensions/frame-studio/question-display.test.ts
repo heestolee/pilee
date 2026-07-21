@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { buildPageHtml, buildStaticTftStudioHtmlFromTranscript, splitQuestionDisplayParts } from "./index.ts";
+import { buildPageHtml, buildStaticTftStudioHtmlFromTranscript, buildTftVisualEmbedHtml, splitQuestionDisplayParts } from "./index.ts";
 
 test("짧은 질문은 제목/본문으로 분리하지 않는다", () => {
 	const parts = splitQuestionDisplayParts("배너 버튼 스크롤 target을 어떻게 반영할까요?");
@@ -133,6 +133,26 @@ test("Data Model / Migration Map 렌더러가 WebView bundle에 포함된다", (
 	assert.match(html, /role-transport/);
 	assert.match(html, /role-core/);
 	assert.match(html, /role-recipient/);
+});
+
+
+test("정적 visual export는 닫힌 상세 영역을 펼치고 data spine 전체 폭을 측정한다", () => {
+	const html = buildTftVisualEmbedHtml({
+		kind: "data-model-migration-map",
+		title: "Partner 알림 저장 구조",
+		entities: [{ name: "partner_notification", columns: [{ name: "id" }] }],
+		relationships: [{ from: "notification", to: "recipient", cardinality: "1:N" }],
+		migrationOperations: [{ type: "DDL", target: "partner_notification" }],
+		verificationQueries: [{ id: "V1", title: "orphan 0건" }],
+		presentation: { container: "details", relationships: "details", migration: "details", verification: "details" },
+	}, { staticExport: true });
+
+	assert.match(html, /\\"container\\": \\"visible\\"/);
+	assert.match(html, /\\"relationships\\": \\"visible\\"/);
+	assert.match(html, /\\"migration\\": \\"visible\\"/);
+	assert.match(html, /\\"verification\\": \\"visible\\"/);
+	assert.match(html, /\.data-model-spine/);
+	assert.match(html, /querySelectorAll\('details'\)/);
 });
 
 

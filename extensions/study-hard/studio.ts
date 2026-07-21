@@ -1852,7 +1852,7 @@ async function captureStudyVisualAssets(state: StudyHardBoardState): Promise<Stu
 	for (const block of blocks) {
 		const visual = block.visual!;
 		const title = block.title || (typeof visual.title === "string" ? visual.title : block.id);
-		const capture = await captureGlimpseHtmlPng(buildTftVisualEmbedHtml(visual), { title: `Study Hard visual · ${title}` });
+		const capture = await captureGlimpseHtmlPng(buildTftVisualEmbedHtml(visual, { staticExport: true }), { title: `Study Hard visual · ${title}` });
 		const match = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(capture.dataUrl);
 		if (!match) throw new Error(`TFT visual ${block.id} native capture가 PNG data URL을 반환하지 않았습니다.`);
 		const data = Buffer.from(match[1] || "", "base64");

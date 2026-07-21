@@ -2392,7 +2392,7 @@ function notifyVisualEmbedReady() {
     var root = visualEmbedRoot();
     if (!root) return;
     var rect = root.getBoundingClientRect();
-    var scrollWidths = Array.prototype.slice.call(root.querySelectorAll('.tft-visual-diagram, .layer-visual-diagram, .phase-panel-stack, .arch-visual-diagram, .data-visual-diagram')).map(function(node) { return Number(node.scrollWidth || 0) + 32; });
+    var scrollWidths = Array.prototype.slice.call(root.querySelectorAll('.tft-visual-diagram, .layer-visual-diagram, .phase-panel-stack, .arch-visual-diagram, .data-visual-diagram, .data-model-spine, .brm-spine')).map(function(node) { return Number(node.scrollWidth || 0) + 32; });
     var width = Math.ceil(Math.max.apply(Math, [root.scrollWidth, rect.width, 1].concat(scrollWidths)));
     var height = Math.ceil(Math.max(root.scrollHeight, rect.height, 1));
     if (window.glimpse && typeof window.glimpse.send === 'function') window.glimpse.send({ type:'tft-visual-ready', width:width, height:height });
@@ -2419,7 +2419,8 @@ async function captureTftVisualPng() {
   if (!root) throw new Error('캡처할 TFT visual을 찾지 못했습니다.');
   var clone = root.cloneNode(true);
   inlineVisualComputedStyles(root, clone);
-  var scrollSelector = '.tft-visual-diagram, .layer-visual-diagram, .phase-panel-stack, .arch-visual-diagram, .data-visual-diagram';
+  Array.prototype.slice.call(clone.querySelectorAll('details')).forEach(function(details) { details.setAttribute('open', ''); });
+  var scrollSelector = '.tft-visual-diagram, .layer-visual-diagram, .phase-panel-stack, .arch-visual-diagram, .data-visual-diagram, .data-model-spine, .brm-spine';
   var sourceScrolls = root.querySelectorAll(scrollSelector);
   var cloneScrolls = clone.querySelectorAll(scrollSelector);
   var fullWidth = Math.max(root.scrollWidth, root.getBoundingClientRect().width, 1);
@@ -2895,9 +2896,36 @@ if (STATIC_STATE) {
 </html>`;
 }
 
-export function buildTftVisualEmbedHtml(spec: Record<string, unknown>): string {
+export interface TftVisualEmbedOptions {
+	staticExport?: boolean;
+}
+
+function staticExportPresentation(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(staticExportPresentation);
+	if (!value || typeof value !== "object") return value;
+	const result: Record<string, unknown> = {};
+	for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+		if (typeof item !== "string" || key === "summary") {
+			result[key] = staticExportPresentation(item);
+			continue;
+		}
+		const mode = item.toLowerCase();
+		if (mode === "details") result[key] = "visible";
+		else if (mode.includes("collapsed")) result[key] = mode.replace("collapsed", "visible");
+		else if (mode.endsWith("-open")) result[key] = mode.replace(/-open$/, "-visible");
+		else result[key] = item;
+	}
+	return result;
+}
+
+export function buildTftVisualEmbedHtml(spec: Record<string, unknown>, options: TftVisualEmbedOptions = {}): string {
 	if (!spec || typeof spec !== "object" || Array.isArray(spec)) throw new Error("TFT visual spec must be an object.");
 	const normalizedSpec = JSON.parse(JSON.stringify(spec)) as Record<string, unknown>;
+	if (options.staticExport && normalizedSpec.presentation && typeof normalizedSpec.presentation === "object" && !Array.isArray(normalizedSpec.presentation)) {
+		const presentation = staticExportPresentation(normalizedSpec.presentation) as Record<string, unknown>;
+		presentation.defaultOpen = true;
+		normalizedSpec.presentation = presentation;
+	}
 	const title = typeof normalizedSpec.title === "string" && normalizedSpec.title.trim() ? normalizedSpec.title.trim() : "TFT visual";
 	const markdown = `\`\`\`tft-visual\n${JSON.stringify(normalizedSpec, null, 2)}\n\`\`\``;
 	const state = {
