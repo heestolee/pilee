@@ -106,6 +106,17 @@ study_hard_board status
 
 Companion 연결은 기존 revision sequence에 새 metadata revision을 추가할 수 있다. 이전 note history와 Q&A를 초기화하지 않는다.
 
+## Study Hard 작업 전환 control
+
+Study Hard 왼쪽 학습 코치 drawer에는 canonical을 섞지 않는 두 전환 control을 둔다.
+
+| control | 입력 단위 | 동작 |
+|---|---|---|
+| `Frame에 반영` | 현재 Study Hard run 전체 | Frame이 없으면 같은 run으로 생성·연결하고, 있으면 미반영 결정만 Frame 의미 구조에 승격한다. 구현은 시작하지 않는다. |
+| `작업 시작` | 현재 Study Hard run + Frame | Frame 존재·최신성·현재 worktree를 먼저 확인한다. Frame 보완이 필요하면 변경을 보여주고 다시 승인받으며, 정렬된 경우에만 클릭을 명시적 시작 의도로 사용한다. |
+
+버튼은 `heestolee.study-hard.work-transition` current-session request로 P0에 전달한다. learner question이나 study-hard-worker job을 생성하지 않으며, 사용자에게 stable question id를 요구하지 않는다. Frame과 Study Hard 비교는 Q 번호가 아니라 현재 note·decision·answer의 의미 차이로 수행한다.
+
 ## Study Hard 작업 기획 view
 
 Study Hard client state는 저장 state를 그대로 보내지 않고 Frame 존재 여부를 매번 materialize한다.

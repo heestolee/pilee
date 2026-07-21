@@ -142,6 +142,15 @@ Study Hard에서 Frame을 만들 때는 새 학습 run을 만들지 않는다.
 
 Adopt 자체는 noteDocument·Q&A를 수정하지 않고 revision 숫자도 유지한다. 이후 companion 연결은 기존 revision sequence에 새 연결 revision 하나를 추가할 수 있지만, 이전 Q&A와 note history를 초기화하지 않는다.
 
+### 학습 코치 drawer의 작업 전환
+
+Study Hard 왼쪽 학습 코치 drawer는 전체 학습 방향과 함께 작업 전환을 제공한다.
+
+- **Frame에 반영**: 현재 run 전체의 노트·결정·답변과 Frame을 비교한다. Frame이 없으면 같은 run을 보존한 채 생성·연결하고, 있으면 의미 단위로 보완한다. 코드 구현은 시작하지 않는다.
+- **작업 시작**: Frame 존재와 현재 학습 결정 반영 여부를 먼저 확인한다. Frame이 없거나 stale이면 Frame 변경을 먼저 보여주고 구현 승인을 다시 받는다. 이미 정렬된 Frame이면 버튼 클릭을 명시적 시작 의도로 사용한다.
+- 사용자는 Q050 같은 내부 질문 ID를 기억하거나 입력하지 않는다. stable question id는 history/merge용 내부 식별자일 뿐 작업 전환 API가 아니다.
+- 버튼은 학습 질문 worker가 아니라 현재 P0 session으로 전달되며 기존 worktree·ask-first·위험 작업 승인 규칙을 그대로 따른다.
+
 ## 작업과 학습 병행
 
 같은 Pi session에서는 Study Hard Glimpse 창을 유지한 채 메인 agent나 worker가 구현을 진행할 수 있다.
