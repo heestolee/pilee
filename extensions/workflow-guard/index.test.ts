@@ -333,7 +333,35 @@ test("dimension-change discussion questions stay read-only", async () => {
 
 test("Study Hard worker wrapper honors authoritative scoped artifact write", async () => {
 	const artifactPath = join(process.cwd(), "study-hard-worker-result.json");
+	const root = await mkdtemp(join(tmpdir(), "workflow-guard-study-hard-"));
+	execFileSync("git", ["init", "-b", "main", root]);
+	await mkdir(join(root, ".pi"), { recursive: true });
+	await writeFile(join(root, ".pi", "work-context.json"), JSON.stringify({
+		schemaVersion: 1,
+		identity: {
+			id: "worktree:study-hard-test",
+			type: "worktree",
+			root,
+			cwd: root,
+			displayName: "repo",
+			contextPath: join(root, ".pi", "work-context.json"),
+			tasksPath: join(root, ".pi", "work-tasks.json"),
+		},
+		updatedAt: "2026-07-21T00:00:00.000Z",
+		source: "frame",
+		mode: "full",
+		goal: "제품 slice 구현",
+		currentSlice: { id: "S1", title: "제품 코드", scope: ["src"], acceptance: ["검증 통과"], status: "in_progress" },
+		slices: [],
+		mustKeep: [],
+		mustNot: [],
+		openQuestions: [],
+		verifyFocus: [],
+		lastKnownState: {},
+		refs: {},
+	}, null, 2));
 	const { hooks, ctx } = createHarness();
+	const workerCtx = { ...ctx, cwd: root };
 	const start = await hooks.before_agent_start({
 		prompt: [
 			"[HISTORY — REFERENCE ONLY]",
@@ -345,12 +373,13 @@ test("Study Hard worker wrapper honors authoritative scoped artifact write", asy
 			"statePath는 직접 수정하지 말고 workerResultPath에는 artifact JSON을 작성하세요.",
 		].join("\n"),
 		systemPrompt: "base",
-	}, ctx);
+	}, workerCtx);
 
 	assert.match(start.systemPrompt, /intent=implement · weight=full/);
 	assert.doesNotMatch(start.systemPrompt, /audit=required/);
 	assert.doesNotMatch(start.systemPrompt, /mutation=not-requested/);
-	const writeCall = await hooks.tool_call({ toolName: "write", input: { path: artifactPath } }, ctx);
+	assert.doesNotMatch(start.systemPrompt, /Compact work context for this turn/);
+	const writeCall = await hooks.tool_call({ toolName: "write", input: { path: artifactPath } }, workerCtx);
 	assert.equal(writeCall, undefined);
 
 	const readOnly = createHarness();

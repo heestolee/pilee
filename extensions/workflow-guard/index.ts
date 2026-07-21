@@ -21,6 +21,7 @@ interface GuardState {
 	explicitExternalPublish: boolean;
 	auditRequired: boolean;
 	sqlReview: boolean;
+	detachedArtifactTask: boolean;
 	mixedRequest: boolean;
 	parallelInvestigationSuggested: boolean;
 	summary: string;
@@ -103,10 +104,10 @@ function extractAuthoritativeRequest(prompt: string): string {
 	return request || prompt;
 }
 
-function hasScopedArtifactMutationDirective(normalized: string): boolean {
+function hasWorkerResultArtifactDirective(normalized: string): boolean {
 	return hasAny(normalized, [
-		/(?:수정하지|변경하지|건드리지|write\/edit하지).{0,240}(?:workerresultpath|artifact|결과\s*파일|제안\s*파일).{0,180}(?:작성|생성|저장|쓰|write|create|save)/,
-		/(?:do\s*not\s*(?:edit|change|write)).{0,240}(?:workerresultpath|artifact|result\s*file).{0,180}(?:write|create|save)/,
+		/workerresultpath.{0,180}(?:작성|생성|저장|쓰|write|create|save)/,
+		/(?:작성|생성|저장|쓰|write|create|save).{0,180}workerresultpath/,
 	]);
 }
 
@@ -230,8 +231,9 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 	const verifyReport = explicitHeavy && hasAny(normalized, [/verify[- ]?report|검증\s*리포트|캡처\s*리포트/]);
 	const knowledge = !statusNote && hasAny(normalized, [/ember|knowledge|불씨|지식|stale|freshness/]);
 	const hotfix = !statusNote && hasAny(normalized, [/hotfix|핫픽스|간단|문구|오타|copy|카피|one[- ]?line|한\s*줄|작은|small|quick|빨리|이거\s*하나/]);
+	const detachedArtifactTask = hasWorkerResultArtifactDirective(normalized);
 	const noMutationRequested = hasAny(normalized, [/수정하지|고치지|변경하지|건드리지|커밋하지|푸시하지|하지\s*마|하지마|no\s*(edit|change|commit|push)|do\s*not\s*(edit|change|commit|push)/]);
-	const noMutation = noMutationRequested && !hasScopedArtifactMutationDirective(normalized);
+	const noMutation = noMutationRequested && !detachedArtifactTask;
 	const readOnlyShipSignal = hasAny(normalized, [/확인|상태|왜|원인|알려|조회|봐줘|보여|분석|비교|검토|여부|됐는지|되었는지|반영됐|반영되었|diff|status|check|view|analy[sz]e|review|compare/]);
 	const followUpCorrection = !statusNote && !sqlReview && !noMutation && isFollowUpCorrectionPrompt(normalized);
 	const implementationDirective = !statusNote && !sqlReview && !noMutation && (hasImplementationDirective(normalized) || followUpCorrection);
@@ -293,7 +295,7 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 		!explicitMutation ? "mutation=not-requested" : null,
 	].filter(Boolean).join(" · ");
 
-	return { prompt: authoritativePrompt, intent, weight, explicitHeavy, explicitMutation, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, explicitExternalPublish, auditRequired, sqlReview, mixedRequest, parallelInvestigationSuggested, summary, continuationCue, followUpCorrection, createdAt: new Date().toISOString(), sessionFile };
+	return { prompt: authoritativePrompt, intent, weight, explicitHeavy, explicitMutation, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, explicitExternalPublish, auditRequired, sqlReview, detachedArtifactTask, mixedRequest, parallelInvestigationSuggested, summary, continuationCue, followUpCorrection, createdAt: new Date().toISOString(), sessionFile };
 }
 
 function fastPaceBudgetSeconds(state: GuardState): number | undefined {
@@ -932,7 +934,7 @@ export default function workflowGuard(pi: ExtensionAPI) {
 		const ultraMode = pi.getThinkingLevel() === "ultra";
 		rememberGuardState(key, state);
 		const audit = state.auditRequired ? buildAuditSnapshot({ prompt: event.prompt }) : undefined;
-		const card = loadOrDeriveWorkContext(ctx.cwd, sessionFile);
+		const card = state.detachedArtifactTask ? undefined : loadOrDeriveWorkContext(ctx.cwd, sessionFile);
 		const guardPrompt = `${buildSystemPrompt(state, ultraMode)}${workContextSection(card)}${sliceCommitRhythmSection(state, card)}`;
 		return {
 			systemPrompt: `${event.systemPrompt}\n\n${guardPrompt}`,
@@ -948,7 +950,7 @@ export default function workflowGuard(pi: ExtensionAPI) {
 	pi.on("tool_call", async (event, ctx) => {
 		const state = guardBySession.get(sessionKey(ctx));
 		if (!state) return undefined;
-		const card = loadOrDeriveWorkContext(ctx.cwd, ctx.sessionManager?.getSessionFile?.());
+		const card = state.detachedArtifactTask ? undefined : loadOrDeriveWorkContext(ctx.cwd, ctx.sessionManager?.getSessionFile?.());
 
 		if (state.intent === "status_note" && event.toolName !== "workflow_guard") {
 			return { block: true, reason: statusNoteToolBlockReason(state, event.toolName) };
