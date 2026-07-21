@@ -331,6 +331,39 @@ test("dimension-change discussion questions stay read-only", async () => {
 	}
 });
 
+test("Study Hard worker wrapper honors authoritative scoped artifact write", async () => {
+	const artifactPath = join(process.cwd(), "study-hard-worker-result.json");
+	const { hooks, ctx } = createHarness();
+	const start = await hooks.before_agent_start({
+		prompt: [
+			"[HISTORY — REFERENCE ONLY]",
+			"이전 workflow guard 오분류를 조사해라. 파일은 수정하지 마.",
+			"",
+			"[REQUEST — AUTHORITATIVE]",
+			"Study Hard worker 결과를 생성하세요.",
+			`workerResultPath: ${artifactPath}`,
+			"statePath는 직접 수정하지 말고 workerResultPath에는 artifact JSON을 작성하세요.",
+		].join("\n"),
+		systemPrompt: "base",
+	}, ctx);
+
+	assert.match(start.systemPrompt, /intent=implement · weight=full/);
+	assert.doesNotMatch(start.systemPrompt, /audit=required/);
+	assert.doesNotMatch(start.systemPrompt, /mutation=not-requested/);
+	const writeCall = await hooks.tool_call({ toolName: "write", input: { path: artifactPath } }, ctx);
+	assert.equal(writeCall, undefined);
+
+	const readOnly = createHarness();
+	const readOnlyStart = await readOnly.hooks.before_agent_start({
+		prompt: "state 파일은 수정하지 말고 원인만 조사해줘",
+		systemPrompt: "base",
+	}, readOnly.ctx);
+	assert.match(readOnlyStart.systemPrompt, /intent=investigate · weight=none/);
+	assert.match(readOnlyStart.systemPrompt, /mutation=not-requested/);
+	const blockedWrite = await readOnly.hooks.tool_call({ toolName: "write", input: { path: artifactPath } }, readOnly.ctx);
+	assert.equal(blockedWrite?.block, true);
+});
+
 test("workflow guard complaint prompts enter audit path instead of unknown", async () => {
 	const prompts = [
 		"워크플로우 가드 이새끼 아직도 지랄인데?",

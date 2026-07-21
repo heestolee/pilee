@@ -95,6 +95,21 @@ function normalizeText(text: string): string {
 	return text.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+function extractAuthoritativeRequest(prompt: string): string {
+	const markers = [...prompt.matchAll(/\[REQUEST\s*[—–-]\s*AUTHORITATIVE\]/giu)];
+	const marker = markers.at(-1);
+	if (!marker || marker.index === undefined) return prompt;
+	const request = prompt.slice(marker.index + marker[0].length).trim();
+	return request || prompt;
+}
+
+function hasScopedArtifactMutationDirective(normalized: string): boolean {
+	return hasAny(normalized, [
+		/(?:수정하지|변경하지|건드리지|write\/edit하지).{0,240}(?:workerresultpath|artifact|결과\s*파일|제안\s*파일).{0,180}(?:작성|생성|저장|쓰|write|create|save)/,
+		/(?:do\s*not\s*(?:edit|change|write)).{0,240}(?:workerresultpath|artifact|result\s*file).{0,180}(?:write|create|save)/,
+	]);
+}
+
 function hasAny(text: string, patterns: RegExp[]): boolean {
 	return patterns.some((pattern) => pattern.test(text));
 }
@@ -194,8 +209,9 @@ function isFollowUpCorrectionPrompt(normalized: string): boolean {
 }
 
 function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
-	const normalized = normalizeText(prompt);
-	const statusNote = isStatusNotePrompt(prompt);
+	const authoritativePrompt = extractAuthoritativeRequest(prompt);
+	const normalized = normalizeText(authoritativePrompt);
+	const statusNote = isStatusNotePrompt(authoritativePrompt);
 	const continuationCue = !statusNote && isContinuationCue(normalized);
 	const explicitHeavy = !statusNote && hasAny(normalized, [
 		/verify[- ]?report|검증\s*리포트|캡처\s*리포트|full\s*report/,
@@ -210,15 +226,16 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 		/(개선됐다매|개선됐다며|개선했다매|개선했다며).*(왜|아직|또|이래)/,
 		/(already fixed|still missing|remaining gap|fixed vs)/,
 	]);
-	const sqlReview = !statusNote && isSqlReviewPrompt(prompt, normalized);
+	const sqlReview = !statusNote && isSqlReviewPrompt(authoritativePrompt, normalized);
 	const verifyReport = explicitHeavy && hasAny(normalized, [/verify[- ]?report|검증\s*리포트|캡처\s*리포트/]);
 	const knowledge = !statusNote && hasAny(normalized, [/ember|knowledge|불씨|지식|stale|freshness/]);
 	const hotfix = !statusNote && hasAny(normalized, [/hotfix|핫픽스|간단|문구|오타|copy|카피|one[- ]?line|한\s*줄|작은|small|quick|빨리|이거\s*하나/]);
-	const noMutation = hasAny(normalized, [/수정하지|고치지|변경하지|건드리지|커밋하지|푸시하지|하지\s*마|하지마|no\s*(edit|change|commit|push)|do\s*not\s*(edit|change|commit|push)/]);
+	const noMutationRequested = hasAny(normalized, [/수정하지|고치지|변경하지|건드리지|커밋하지|푸시하지|하지\s*마|하지마|no\s*(edit|change|commit|push)|do\s*not\s*(edit|change|commit|push)/]);
+	const noMutation = noMutationRequested && !hasScopedArtifactMutationDirective(normalized);
 	const readOnlyShipSignal = hasAny(normalized, [/확인|상태|왜|원인|알려|조회|봐줘|보여|분석|비교|검토|여부|됐는지|되었는지|반영됐|반영되었|diff|status|check|view|analy[sz]e|review|compare/]);
 	const followUpCorrection = !statusNote && !sqlReview && !noMutation && isFollowUpCorrectionPrompt(normalized);
 	const implementationDirective = !statusNote && !sqlReview && !noMutation && (hasImplementationDirective(normalized) || followUpCorrection);
-	const mixedRequest = implementationDirective && hasMixedImplementationInvestigationPrompt(prompt, normalized);
+	const mixedRequest = implementationDirective && hasMixedImplementationInvestigationPrompt(authoritativePrompt, normalized);
 	const parallelInvestigationSuggested = mixedRequest;
 	const implement = implementationDirective;
 	const shipDirective = !statusNote && !noMutation && !readOnlyShipSignal && hasShipDirective(normalized);
@@ -276,7 +293,7 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 		!explicitMutation ? "mutation=not-requested" : null,
 	].filter(Boolean).join(" · ");
 
-	return { prompt, intent, weight, explicitHeavy, explicitMutation, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, explicitExternalPublish, auditRequired, sqlReview, mixedRequest, parallelInvestigationSuggested, summary, continuationCue, followUpCorrection, createdAt: new Date().toISOString(), sessionFile };
+	return { prompt: authoritativePrompt, intent, weight, explicitHeavy, explicitMutation, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, explicitExternalPublish, auditRequired, sqlReview, mixedRequest, parallelInvestigationSuggested, summary, continuationCue, followUpCorrection, createdAt: new Date().toISOString(), sessionFile };
 }
 
 function fastPaceBudgetSeconds(state: GuardState): number | undefined {
