@@ -15,8 +15,9 @@ applies_to:
   - extensions/utils/private-profiles
 source:
   - user-direction:2026-07-17-study-hard-public-migration
-reviewed_at: 2026-07-19
-reviewed_commit: 4421708
+  - user-direction:2026-07-21-study-hard-notion-static-export
+reviewed_at: 2026-07-21
+reviewed_commit: 778f16ee03062c7b383aec477972f501372b7623
 related:
   - private-overlay-package-boundary
   - context-loading-minimal-surface
@@ -67,6 +68,16 @@ Public engine은 다음 generic 설정만 읽습니다.
 환경변수 `STUDY_HARD_SYNC_SCRIPT`, `STUDY_HARD_DOWNLOAD_DIR`가 profile보다 우선합니다. 구체적인 개인 경로와 Notion destination 규칙은 private overlay 또는 local config에 남습니다.
 
 Notion token, database ID, page naming, upload body schema를 public extension에 넣지 않습니다. Public engine은 generic visual PNG asset과 원본 spec까지만 publisher에 넘기고, private publisher가 이를 Notion image block·설명·spec toggle로 변환합니다. Publisher가 없어도 HTML export와 학습·작업 시작은 계속 가능합니다.
+
+### Publisher Readability Rule
+
+Publisher는 화면 snapshot을 그대로 업로드하는 것으로 완료하지 않습니다.
+
+- PNG는 전체 구조를 빠르게 읽는 overview로 사용합니다.
+- visual spec의 관계·migration·verification처럼 핵심 판단에 필요한 상세는 Notion native heading/table/list로 기본 노출합니다.
+- raw JSON·Mermaid처럼 보조적인 source만 toggle에 두고, toggle 제목에는 visual 종류·주제·항목 수를 넣습니다.
+- generic `원본 spec 보기`나 정적 PNG 안의 닫힌 disclosure만 남아 독자가 내용을 추측해야 하면 publish 실패입니다.
+- 실제 저장 뒤에는 page block ancestry와 업로드 image hash를 다시 읽어 visible 배치와 artifact 일치를 확인합니다.
 
 ## Migration Rule
 

@@ -23,8 +23,9 @@ source:
   - user-direction:2026-07-17-schema-diff-column-lifecycle
   - user-direction:2026-07-17-tft-visual-presentation-layout
   - user-direction:2026-07-19-study-hard-collapsible-reference-visual
-reviewed_at: 2026-07-19
-reviewed_commit: a5f004e79a3c74e1b86eb97be8ac397de4fc488e
+  - user-direction:2026-07-21-study-hard-notion-static-export
+reviewed_at: 2026-07-21
+reviewed_commit: 778f16ee03062c7b383aec477972f501372b7623
 related:
   - frame-studio-interactive-decision-ui
   - frame-verify-contract
@@ -105,6 +106,16 @@ visual 내부의 `presentation.display`와 visual 전체의 접힘은 다른 책
 - summary 클릭은 dropdown 토글만 수행하고 note block 선택 drawer를 함께 열지 않아야 합니다.
 
 이 container hint는 TFT visual의 의미를 바꾸지 않습니다. 같은 spec을 Frame Studio에서 렌더링하면 기존 visual이고, Study Hard note에서만 consumer-level disclosure가 적용됩니다.
+
+### Static Export Rule
+
+인터랙티브 surface의 접힘·가로 스크롤 상태를 정적 PNG에 그대로 굽지 않습니다. 정적 export는 별도 presentation view로 취급합니다.
+
+- live Frame/Study Hard visual은 원래 `details`·`container` 계약을 유지합니다.
+- PNG capture에서만 `details`·`collapsed`·`*-open` presentation을 visible 상태로 정규화합니다.
+- browser fallback은 live DOM이 아니라 capture clone의 `<details>`만 펼칩니다.
+- 가로 spine·diagram의 실제 `scrollWidth`를 capture bounds에 포함해 오른쪽 카드가 잘리지 않게 합니다.
+- PNG는 구조 요약이고, 관계·migration·verification처럼 읽어야 하는 핵심 상세는 publisher가 native document block으로도 노출합니다. 정적 이미지 안의 작동하지 않는 접힘 UI만으로 정보를 전달하면 실패입니다.
 
 ## Visual Healing Rule
 
