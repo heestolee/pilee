@@ -303,6 +303,7 @@ interface ResolvedStudyHardWorkContract extends StudyHardWorkContractSummary {
 }
 
 type StudyHardClientState = StudyHardBoardState & { workContract?: StudyHardWorkContractSummary };
+type StudyHardTransitionIntent = "apply-frame" | "start-work";
 
 interface StudyHardHandle {
 	state: StudyHardBoardState;
@@ -2178,6 +2179,44 @@ function sendLearnerQuestionToWorkerDispatcher(handle: StudyHardHandle, question
 	}, { deliverAs: "followUp", triggerTurn: true });
 }
 
+function sendStudyHardTransitionRequest(handle: StudyHardHandle, intent: StudyHardTransitionIntent): { frameExists: boolean; frameTitle?: string } {
+	const workContract = resolveStudyHardWorkContract(handle);
+	const framePath = workContract?.framePath || (handle.cwd ? join(handle.cwd, ".pi", "frame.json") : undefined);
+	const frameExists = Boolean(workContract);
+	const selection = intent === "apply-frame" ? "현재 학습 내용을 Frame에 반영" : "Frame을 확인하고 작업 시작";
+	handle.pi.sendMessage({
+		customType: "heestolee.study-hard.work-transition",
+		display: false,
+		content: `# Study Hard work transition request
+
+사용자가 Study Hard 왼쪽 학습 코치 drawer에서 **${selection}** 버튼을 눌렀습니다. 이 요청은 학습 질문이 아니라 현재 P0 session의 작업 전환 요청입니다.
+
+- intent: ${intent}
+- runId: ${handle.state.runId}
+- statePath: ${handle.statePath}
+- submittedRevision: ${handle.state.revision}
+- currentCwd: ${handle.cwd || "(unknown)"}
+- framePath: ${framePath || "(not-resolved)"}
+- frameExists: ${frameExists}
+- frameTitle: ${workContract?.title || "(none)"}
+- frameHash: ${workContract?.hash || "(none)"}
+
+## 공통 실행 계약
+1. study-hard-worker나 격리 Tutor/Editor로 보내지 말고 현재 P0 대화에서 직접 처리합니다.
+2. 사용자에게 내부 질문 ID를 요구하지 않습니다. 위 statePath의 현재 run 전체 노트·결정·답변과 Frame을 대조해 미반영 변경을 의미 단위로 찾습니다.
+3. Study Hard는 학습 canonical, frame.json은 작업 canonical로 유지합니다. 학습 노트를 frame.json에 그대로 복사하지 말고 goal·success criteria·decision·slice·verify plan에 필요한 변경만 승격합니다.
+4. 기존 ask-first, protected worktree, DB·외부 작업 승인 규칙을 우회하지 않습니다.
+
+## intent별 동작
+- apply-frame: Frame이 없으면 같은 run을 보존한 채 Frame 생성/연결 흐름으로 이동하고, 있으면 현재 학습 변경으로 Frame을 보완합니다. 변경 내용을 사용자에게 보여주되 코드 구현은 시작하지 않습니다.
+- start-work: 먼저 Frame 존재와 현재 Study Hard 결정 반영 여부를 확인합니다. Frame이 없거나 stale이면 Frame 생성/보완 결과를 먼저 보여주고 구현 전 승인을 한 번 받습니다. 이미 정렬된 Frame이면 이 버튼 클릭을 명시적 작업 시작 의도로 보고 현재 worktree 또는 안전한 Frame v2 fork 흐름으로 이어갑니다.
+
+지금 intent=${intent}을 실행하세요. 상태 설명만 반복하고 멈추지 마세요.`,
+		details: { intent, runId: handle.state.runId, statePath: handle.statePath, submittedRevision: handle.state.revision, cwd: handle.cwd, framePath, frameExists, frameTitle: workContract?.title, frameHash: workContract?.hash },
+	}, { deliverAs: "followUp", triggerTurn: true });
+	return { frameExists, frameTitle: workContract?.title };
+}
+
 function sendNodeAnswerToAgent(handle: StudyHardHandle, question: StudyQuestionCard): void {
 	const node = findNode(handle.state, question.targetNodeId);
 	const contextLabel = questionContextLabel(handle.state, question);
@@ -2532,6 +2571,17 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 				updateQuestionCards(handle, [questionId], (question) => ({ ...question, feedback: undefined, answeredAt: undefined, processingStatus: "queued", processingError: "", orchestrationId }));
 				enqueueCoachTurn(handle, questionId);
 				sendJson(res, 202, { ok: true, orchestrationId, questionId });
+				return;
+			}
+			if (pathname === "/transition" && req.method === "POST") {
+				const body = await readJsonBody(req);
+				const intent = body.intent === "apply-frame" || body.intent === "start-work" ? body.intent : undefined;
+				if (!intent) {
+					sendJson(res, 400, { ok: false, error: "intent must be apply-frame or start-work" });
+					return;
+				}
+				const result = sendStudyHardTransitionRequest(handle, intent);
+				sendJson(res, 202, { ok: true, intent, ...result });
 				return;
 			}
 			if (pathname === "/ask" && req.method === "POST") {

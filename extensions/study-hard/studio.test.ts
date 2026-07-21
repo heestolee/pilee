@@ -1228,6 +1228,80 @@ test("board view mode and dragged memo positions persist across AI node updates"
 	}
 });
 
+test("학습 코치 drawer는 내부 질문 ID 없이 Frame 반영과 작업 시작을 P0에 전달한다", async () => {
+	const root = mkdtempSync(join(tmpdir(), "study-hard-transition-"));
+	const messages: Array<{ message: any; options: any }> = [];
+	const fakePi = {
+		sendMessage(message: any, options: any) { messages.push({ message, options }); },
+		exec() { throw new Error("no browser fallback in test"); },
+	} as any;
+	const html = buildStudyHardStudioHtml("transition-token");
+	assert.match(html, /작업으로 이어가기/);
+	assert.match(html, /data-work-transition="apply-frame"/);
+	assert.match(html, /data-work-transition="start-work"/);
+	assert.match(html, /내부 질문 ID를 입력할 필요가 없습니다/);
+	assert.match(html, /workTransitionConfirm/);
+	assert.match(html, /function requestWorkTransition/);
+	assert.match(html, /function resolveWorkTransition/);
+	assert.match(html, /workTransitionAccept/);
+	assert.doesNotMatch(html, /window\.confirm/);
+	assert.match(html, /post\('\/transition'/);
+
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: root } as any, {
+		url: "https://example.com/work-transition",
+		runId: "work-transition-route",
+		agentRunner: async () => { throw new Error("work transition must not start a learning agent"); },
+	});
+	let response = await fetch(new URL("/transition", handle.url), {
+		method: "POST",
+		headers: authorizedHeaders(handle),
+		body: JSON.stringify({ intent: "unknown" }),
+	});
+	assert.equal(response.status, 400);
+
+	response = await fetch(new URL("/transition", handle.url), {
+		method: "POST",
+		headers: authorizedHeaders(handle),
+		body: JSON.stringify({ intent: "apply-frame" }),
+	});
+	assert.equal(response.status, 202);
+	let result = await response.json() as any;
+	assert.equal(result.frameExists, false);
+	assert.equal(messages.length, 1);
+	assert.equal(messages[0]?.message.customType, "heestolee.study-hard.work-transition");
+	assert.equal(messages[0]?.message.details.intent, "apply-frame");
+	assert.equal(messages[0]?.message.details.frameExists, false);
+	assert.match(messages[0]?.message.content, /현재 run 전체 노트·결정·답변과 Frame을 대조/);
+	assert.match(messages[0]?.message.content, /코드 구현은 시작하지 않습니다/);
+	assert.equal(messages[0]?.options.triggerTurn, true);
+	let state = await fetch(new URL("/state", handle.url)).then((item) => item.json() as Promise<any>);
+	assert.equal(state.questions.length, 0);
+
+	mkdirSync(join(root, ".pi"), { recursive: true });
+	writeFileSync(join(root, ".pi", "frame.json"), JSON.stringify({
+		version: 1,
+		identity: { displayTitle: "Transition Frame" },
+		goal: "Study Hard에서 작업으로 전환",
+		provenance: { canonicalHash: "transition-frame-hash" },
+	}));
+	response = await fetch(new URL("/transition", handle.url), {
+		method: "POST",
+		headers: authorizedHeaders(handle),
+		body: JSON.stringify({ intent: "start-work" }),
+	});
+	assert.equal(response.status, 202);
+	result = await response.json() as any;
+	assert.equal(result.frameExists, true);
+	assert.equal(result.frameTitle, "Transition Frame");
+	assert.equal(messages.length, 2);
+	assert.equal(messages[1]?.message.details.intent, "start-work");
+	assert.equal(messages[1]?.message.details.frameExists, true);
+	assert.match(messages[1]?.message.content, /버튼 클릭을 명시적 작업 시작 의도로 보고/);
+	assert.match(messages[1]?.message.content, /Frame이 없거나 stale이면/);
+	state = await fetch(new URL("/state", handle.url)).then((item) => item.json() as Promise<any>);
+	assert.equal(state.questions.length, 0);
+});
+
 test("Glimpse node thread keeps learner questions and coach answers on the same node", async () => {
 	const messages: Array<{ message: any; options: any }> = [];
 	const fakePi = {
