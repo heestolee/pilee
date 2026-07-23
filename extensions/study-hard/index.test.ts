@@ -35,7 +35,9 @@ test("buildStudyHardPrompt keeps learning loop and Notion sync contracts visible
 	assert.match(prompt, /표준 #N worker widget/);
 	assert.match(prompt, /3-way merge/);
 	assert.match(prompt, /P0 LLM turn은 launch나 정상 completion apply의 gate가 아니며/);
-	assert.match(prompt, /같은 메인 session lineage에 기록/);
+	assert.match(prompt, /durable session entry로 같은 메인 session lineage에 즉시 기록/);
+	assert.match(prompt, /nextTurn/);
+	assert.match(prompt, /정상 event 자체가 별도 P0 답변 turn을 만들지 않습니다/);
 	assert.match(prompt, /canonical 학습 대화의 UI/);
 	assert.match(prompt, /내부 worker prompt와 patch JSON은 Pi transcript에 노출하지 않습니다/);
 	assert.match(prompt, /processingStatus/);
