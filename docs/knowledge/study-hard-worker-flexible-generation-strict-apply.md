@@ -18,7 +18,7 @@ source:
   - user-direction:2026-07-19-study-hard-worker-flexible-generation-strict-apply
   - user-direction:2026-07-23-main-lineage-without-p0-turn-gate
 reviewed_at: 2026-07-24
-reviewed_commit: c66306f73f53227c863dc8ed61fc7d33aa096c38
+reviewed_commit: eff2425c0509de9ad49a2729ced48f8943779847
 related:
   - parallel-workflow-analysis-single-writer
   - study-hard-public-engine-private-publisher
@@ -50,7 +50,8 @@ Glimpse learner input
 - 기존 isolated Tutor/Editor runner로 돌아가지 않는다.
 - `--main`은 P0 context snapshot과 session reference를 worker에 제공한다.
 - launch·정상 apply를 위해 P0가 hidden request를 읽고 tool을 호출할 때까지 기다리지 않는다.
-- subagent start/completion과 Study Hard 질문·답변은 `triggerTurn: false`로 원래 session lineage에 남는다.
+- subagent start/completion과 Study Hard 질문·답변은 `appendEntry`로 origin session에 즉시 durable하게 기록한다.
+- P0 context에는 `followUp`이 아니라 `nextTurn`으로 다음 사용자 turn에만 주입한다. lineage event 자체는 별도 assistant 응답을 만들지 않는다.
 - 두 번째 merge conflict처럼 실제 판단이 필요한 예외만 P0 turn으로 올린다.
 - worker stdout에는 전체 note JSON을 넣지 않고 artifact path와 짧은 summary만 둔다.
 
@@ -107,4 +108,6 @@ queued → running → result-ready → merging → applied
 - conflict를 last-write-wins로 처리하면 사용자가 보지 못한 채 학습 설명이 유실된다.
 - custom runner를 만들면 표준 #N widget, origin session completion, `--main` context 계승이 사라져 과거 Direct Refiner 실패를 반복한다.
 - P0 hidden follow-up을 launch gate로 사용하면 P0의 긴 구현 turn 뒤에서 head-of-line blocking이 생겨 학습 응답이 작업 종료까지 밀린다.
+- streaming 중 `followUp + triggerTurn:false`도 agent follow-up queue를 소비해 start/completion/question/answer마다 불필요한 P0 assistant 응답을 만들 수 있다. `triggerTurn`은 idle 동작만 제어하므로 normal lineage delivery에는 충분하지 않다.
+- `nextTurn`만 쓰면 process/session 전환 전에 in-memory queue가 사라질 수 있으므로 `appendEntry`를 durable SSOT로 함께 둔다.
 - P0를 lineage SSOT에서 제거하면 작업과 학습의 결정 연결이 끊긴다. 따라서 lineage 귀속과 LLM turn gating을 분리해야 한다.
