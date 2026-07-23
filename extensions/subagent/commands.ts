@@ -51,6 +51,7 @@ import {
 } from "../ship-commands/index.ts";
 import { enqueueSubagentInvocation } from "./invocation-queue.js";
 import { appendDisplayTaskUpdate, getSessionFileSize } from "./persisted-session.js";
+import { registerProgrammaticSubagentLauncher } from "./programmatic.js";
 import { readSessionReplayItems, SubagentSessionReplayOverlay } from "./replay.js";
 import { invokeWithAutoRetry, MAX_SUBAGENT_AUTO_RETRIES } from "./retry.js";
 import { getLatestRun, removeRun, trimCommandRunHistory } from "./run-utils.js";
@@ -923,6 +924,9 @@ export function registerAll(pi: ExtensionAPI, store: SubagentStore): void {
 		rememberCtx(ctx);
 	});
 
+	const subagentExecute = createSubagentToolExecute(pi, store);
+	registerProgrammaticSubagentLauncher(pi, () => latestCtx, subagentExecute as any);
+
 	pi.registerTool({
 		name: "list-agents",
 		label: "List Agents",
@@ -977,7 +981,7 @@ export function registerAll(pi: ExtensionAPI, store: SubagentStore): void {
 			'CLI-style subagent delegation interface. Always start with `subagent help` to learn available commands, then execute run/continue/batch/chain/runs/status/detail/abort/remove via `{ command: "subagent ..." }`. After any async launch, stop making subagent calls and simply end your response. The subagent will message you again after completion unless the user explicitly asks for manual inspection. Do NOT poll with runs/status/detail right after launch. Tip: when a task description is long, write context to a temp file and pass the file path in the task (e.g. "read /tmp/ctx.md and follow the instructions") — the subagent can read it.',
 		parameters: SubagentParams,
 
-		execute: createSubagentToolExecute(pi, store) as any,
+		execute: subagentExecute as any,
 
 		renderCall: renderSubagentToolCall as any,
 

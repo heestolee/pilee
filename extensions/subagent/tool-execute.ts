@@ -41,6 +41,11 @@ import {
 import { clearPendingGroupCompletion, upsertPendingGroupCompletion } from "./group-pending.js";
 import { enqueueSubagentInvocation } from "./invocation-queue.js";
 import { appendDisplayTaskUpdate, getSessionFileSize } from "./persisted-session.js";
+import {
+	PROGRAMMATIC_SUBAGENT_HOOKS,
+	type ProgrammaticSubagentCompleted,
+	type ProgrammaticSubagentHooks,
+} from "./programmatic.js";
 import { clearFinishedRuns, formatCommandRunSummary, removeRun, trimCommandRunHistory } from "./run-utils.js";
 import { getFinalOutput, getLastNonEmptyLine, runSingleAgent } from "./runner.js";
 import {
@@ -597,6 +602,9 @@ export function createSubagentToolExecute(pi: ExtensionAPI, store: SubagentStore
 		_onUpdate: OnUpdateCallback | undefined,
 		ctx: SubagentToolExecuteContext,
 	): Promise<SubagentExecuteResult> => {
+		const programmaticHooks = (params as Record<PropertyKey, unknown>)[PROGRAMMATIC_SUBAGENT_HOOKS] as
+			| ProgrammaticSubagentHooks
+			| undefined;
 		const knownRunIds = Array.from(store.commandRuns.values())
 			.filter((run) => !run.removed)
 			.map((run) => run.id);
@@ -1206,12 +1214,54 @@ export function createSubagentToolExecute(pi: ExtensionAPI, store: SubagentStore
 			});
 			const startedState = continueFromRun ? "resumed" : "started";
 			pi.sendMessage(buildRunStartMessage(runState, startedState), { deliverAs: "followUp", triggerTurn: false });
+			try {
+				programmaticHooks?.onStarted({
+					requestId: programmaticHooks.requestId,
+					runId: runState.id,
+					agent: runState.agent,
+					sessionFile: runState.sessionFile,
+				});
+			} catch (error: unknown) {
+				ctx.ui?.notify?.(
+					`programmatic subagent start callback failed: ${error instanceof Error ? error.message : String(error)}`,
+					"error",
+				);
+			}
 			ctx.ui?.notify?.(
 				`${continueFromRun ? `Resumed subagent #${runState.id}` : `Started subagent #${runState.id}`}: ${resolvedAgent}`,
 				"info",
 			);
 
 			void (async () => {
+				const deliverProgrammaticCompletion = async (finalized: FinalizedRun): Promise<boolean> => {
+					if (!programmaticHooks) return false;
+					const completion: ProgrammaticSubagentCompleted = {
+						requestId: programmaticHooks.requestId,
+						runId: finalized.runState.id,
+						agent: finalized.runState.agent,
+						sessionFile: finalized.runState.sessionFile,
+						status: finalized.isError ? "error" : "done",
+						output: finalized.rawOutput,
+						error: finalized.isError ? finalized.rawOutput : undefined,
+					};
+					cleanupRunAfterFinalDelivery(finalized.runState.id);
+					try {
+						await programmaticHooks.onCompleted(completion);
+					} catch (error: unknown) {
+						const message = error instanceof Error ? error.message : String(error);
+						pi.sendMessage(
+							{
+								customType: "subagent-programmatic",
+								content: `[subagent:${finalized.runState.agent}#${finalized.runState.id}] completion callback failed\n\n${message}`,
+								display: true,
+								details: { runId: finalized.runState.id, requestId: programmaticHooks.requestId, status: "callback-error" },
+							},
+							{ deliverAs: "followUp", triggerTurn: false },
+						);
+					}
+					return true;
+				};
+
 				try {
 					const finalized = await launchRunInBackground(runState, taskForAgent);
 					if (runState.removed) return;
@@ -1220,7 +1270,10 @@ export function createSubagentToolExecute(pi: ExtensionAPI, store: SubagentStore
 					if (finalized.result?.exitCode === ESCALATION_EXIT_CODE) {
 						const escalationMsg = finalized.rawOutput.replace(/^\[ESCALATION\]\s*/, "");
 						const message = buildEscalationMessage(runState, escalationMsg, finalized.result);
-						if (isInOriginSession(ctx, originSessionFile)) {
+						if (programmaticHooks) {
+							pi.sendMessage(message, { deliverAs: "followUp", triggerTurn: false });
+							await deliverProgrammaticCompletion(finalized);
+						} else if (isInOriginSession(ctx, originSessionFile)) {
 							pi.sendMessage(message, { deliverAs: "followUp", triggerTurn: true });
 							cleanupRunAfterFinalDelivery(runState.id);
 						} else {
@@ -1231,7 +1284,10 @@ export function createSubagentToolExecute(pi: ExtensionAPI, store: SubagentStore
 					}
 
 					const completionMessage = buildRunCompletionMessage(finalized);
-					if (isInOriginSession(ctx, originSessionFile)) {
+					if (programmaticHooks) {
+						pi.sendMessage(completionMessage, { deliverAs: "followUp", triggerTurn: false });
+						await deliverProgrammaticCompletion(finalized);
+					} else if (isInOriginSession(ctx, originSessionFile)) {
 						pi.sendMessage(completionMessage, { deliverAs: "followUp", triggerTurn: true });
 						cleanupRunAfterFinalDelivery(runState.id);
 					} else {
@@ -1256,7 +1312,14 @@ export function createSubagentToolExecute(pi: ExtensionAPI, store: SubagentStore
 						isError: true,
 						rawOutput: runState.lastLine,
 					});
-					if (isInOriginSession(ctx, originSessionFile)) {
+					if (programmaticHooks) {
+						pi.sendMessage(errorMessage, { deliverAs: "followUp", triggerTurn: false });
+						await deliverProgrammaticCompletion({
+							runState,
+							isError: true,
+							rawOutput: runState.lastLine,
+						});
+					} else if (isInOriginSession(ctx, originSessionFile)) {
 						pi.sendMessage(errorMessage, { deliverAs: "followUp", triggerTurn: true });
 						cleanupRunAfterFinalDelivery(runState.id);
 					} else {
@@ -1266,7 +1329,7 @@ export function createSubagentToolExecute(pi: ExtensionAPI, store: SubagentStore
 					ctx.ui?.notify?.(`subagent tool run #${runState.id} failed: ${runState.lastLine}`, "error");
 					updateCommandRunsWidget(store);
 				} finally {
-					runState.abortController = undefined;
+					if (runState.status !== "running") runState.abortController = undefined;
 					trimCommandRunHistory(store, {
 						maxRuns: 10,
 						ctx,
