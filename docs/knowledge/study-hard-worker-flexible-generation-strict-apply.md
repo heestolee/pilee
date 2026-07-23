@@ -16,13 +16,14 @@ applies_to:
   - agents/study-hard-worker.md
 source:
   - user-direction:2026-07-19-study-hard-worker-flexible-generation-strict-apply
-reviewed_at: 2026-07-19
-reviewed_commit: 4421708
+reviewed_at: 2026-07-23
+reviewed_commit: eddf3b4996700844a3b8ace6e68352531929b8ec
 related:
   - parallel-workflow-analysis-single-writer
   - study-hard-public-engine-private-publisher
   - subagent-prompt-specificity
   - learning-note-companion-artifact
+  - workflow-guard-enforced-flow
 ---
 
 ## Judgment
@@ -48,6 +49,12 @@ Glimpse learner input
 - `--main`은 P0 context snapshot과 session reference를 worker에 제공한다.
 - worker completion은 원래 P0 session에 돌아와 후속 worker와 P0가 이전 결과를 이어받는다.
 - worker stdout에는 전체 note JSON을 넣지 않고 artifact path와 짧은 summary만 둔다.
+
+## Artifact Write Boundary
+
+`workerResultPath`에 result artifact를 생성하는 일은 worker의 정상 완료 조건입니다. 이 파일은 canonical Study Hard state나 제품 코드를 직접 바꾸지 않는 sidecar이므로, 요청 문장에 “설명”, “왜”, “제품 코드는 수정하지 마세요”가 포함됐다는 이유로 read-only mutation block을 적용하면 안 됩니다.
+
+Worker는 지정된 result path만 쓰고 canonical state는 직접 수정하지 않습니다. 현재 panel에 제품 Work Context가 있더라도 그 card의 repository 밖에 있는 worker artifact까지 제품 slice scope로 막지 않습니다. 생성 이후의 schema 검증, base/proposed/current merge, conflict와 rebase 판정은 기존 strict apply coordinator가 담당합니다. 일반 mutation을 soft-guided로 다루는 판단은 [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md)의 File Mutation Rule을 따릅니다.
 
 ## Flexible Generation Rule
 

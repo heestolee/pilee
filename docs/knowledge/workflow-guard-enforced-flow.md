@@ -20,8 +20,8 @@ applies_to:
   - extensions/frame-studio
 source:
   - user-direction:2026-05-12-conductor-like-guards
-reviewed_at: 2026-07-10
-reviewed_commit: 6ad26cd
+reviewed_at: 2026-07-23
+reviewed_commit: eddf3b4996700844a3b8ace6e68352531929b8ec
 related:
   - workflow-weight-proportionality
   - validation-baseline-failure-cache
@@ -30,6 +30,7 @@ related:
   - frame-studio-interactive-decision-ui
   - change-integration-discipline
   - ultra-proactive-delegation-mode
+  - study-hard-worker-flexible-generation-strict-apply
 title_en: Repeated workflow failures become enforced guard flows
 ---
 
@@ -37,13 +38,14 @@ title_en: Repeated workflow failures become enforced guard flows
 
 반복해서 같은 종류의 UX 실패가 발생하면 “다음부터 조심”이라는 문장만으로는 부족합니다. pilee에서는 요청 의도, 작업 무게, 이미 고친 항목과 남은 gap 구분, 선택 후 다음 행동을 turn-level guard/flow로 고정합니다.
 
-이 guard는 모든 규칙을 hard gate로 만들지 않습니다. 모호한 요청은 soft classification으로 시작하고, 비용이 큰 반복 실패만 도구 호출 차단·audit snapshot·결과 주석처럼 실제 실행 경로에 붙입니다.
+이 guard는 모든 규칙을 hard gate로 만들지 않습니다. 모호한 요청은 soft classification으로 시작하고, 분류 오차가 일상적인 파일 작업을 멈추지 않게 합니다. 도구 호출 차단은 외부 게시·worktree 생성·destructive command·큰 commit·status note처럼 오판 비용이 명확히 큰 경계에만 둡니다.
 
 ## Guard Classes
 
 | 축 | 성격 | 강제 방식 |
 |---|---|---|
-| 요청 의도 분류 | soft default + mutation guard | `before_agent_start`에서 turn intent/weight를 주입하고, answer/investigate turn의 edit/write/commit/push/worktree 생성을 막음 |
+| 요청 의도 분류 | soft default | `before_agent_start`에서 turn intent/weight를 주입하되 answer/investigate 분류만으로 일반 edit/write/file-producing bash를 막지 않음 |
+| 파일 mutation 경계 | soft general + hard high-risk | 일반 edit/write와 파일 생성 bash는 허용하고, commit/push/install/destructive cleanup/worktree/external publish처럼 side effect가 큰 동작만 explicit intent 또는 전용 승인을 요구 |
 | fixed-vs-unfixed audit | hard audit path | “이미 대응/미대응/남은 gap” 요청에는 local history snapshot을 자동 주입하고 `friction → response evidence → current state → remaining gap` 형식을 요구 |
 | 작은 hotfix 기본 경로 | hard lightweight default | light turn에서 `verify_report_live start`, subagent fan-out, deep session/context mining을 막고 scope lock → focused change → nearest validation부터 시작 |
 | fast response pace | hard prompt + result annotation | tool result 이후 none/light는 30초, standard는 60초, full은 120초 판단 예산 안에 다음 좁은 tool call·중간 결론·scope-gate 질문·최종 보고 중 하나로 전환하게 함 |
@@ -55,6 +57,25 @@ title_en: Repeated workflow failures become enforced guard flows
 | 상태 노트 오인 방지 | hard status-note path | dependency bootstrap READY, worktree cwd binding, workflow guard 같은 환경/상태 메시지는 사용자 task 지시가 아니므로 old work 재개와 tool call을 차단 |
 | 혼합 요청 분해 | hard prompt discipline | 작은 구현 지시와 독립 조사 질문이 한 턴에 섞이면 `mixed=implement+investigate`로 표기하고, main은 구현을 진행하며 조사 축은 subagent 병렬 위임을 기본 리듬으로 삼음 |
 | 검증 명령 fan-out 체크 | soft prompt + known-risk hard guard | `pnpm <script> -- <path>` wrapper가 실제로 path를 좁힌다고 가정하지 않도록 예상 fan-out 체크리스트와 direct executable 추천을 주입한다. 알려진 fan-out 위험 패턴은 bash 실행 직전 hard guard로 차단하고, 필요한 broad validation은 명시 bypass와 이유를 요구한다. |
+
+## File Mutation Rule
+
+요청 의도 분류는 실행 계획을 돕는 soft signal이지 파일 mutation 권한 판정기가 아닙니다. 자연어 continuation, 질문형 수정 요청, subagent wrapper, “제품 코드는 수정하지 말고 artifact만 작성” 같은 문장은 같은 작업 의도를 여러 방식으로 표현하므로 classifier가 항상 정확할 수 없습니다.
+
+따라서 answer/investigate/audit로 분류된 turn도 일반 `edit`, `write`, 파일 생성용 bash를 도구 수준에서 차단하지 않습니다. read-only는 기본 행동 지침으로 남기되, 실제 사용자 요청과 직접 연결된 산출물이나 수정이 확인되면 `workflow_guard adopt`로 분류를 바로잡고 진행합니다. 분류를 다시 맞추는 목적은 context·무게·후속 discipline을 정렬하는 것이지 막힌 파일 쓰기의 우회권을 얻는 것이 아닙니다.
+
+Hard block은 다음처럼 오판 비용이 명확히 큰 동작에 한정합니다.
+
+- commit·push와 package install
+- destructive cleanup·reset
+- worktree 생성
+- 외부 Issue/PR 게시 승인
+- 큰 staged diff의 단일 commit
+- 실행 요청이 아닌 status note
+
+Working Context Card의 slice scope는 해당 card가 소유한 repository 내부 mutation에만 적용합니다. 한 제품 worktree에서 별도 global artifact나 다른 repository의 pilee 파일을 다룬다고 해서 제품 slice 밖이라는 이유로 막지 않습니다. 반대로 같은 repository 안의 out-of-scope 변경과 commit gate는 계속 유지합니다.
+
+[Study Hard worker](./study-hard-worker-flexible-generation-strict-apply.md)가 지정된 `workerResultPath`에 결과 artifact를 쓰는 것은 제품 코드 mutation이 아니라 strict apply 전에 필요한 sidecar 생성입니다. 이 write는 허용하고, canonical Study Hard state 직접 수정과 최신 state 병합은 P0 coordinator에서 계속 엄격하게 통제합니다.
 
 ## Audit Rule
 
