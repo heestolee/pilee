@@ -337,6 +337,7 @@ interface StudyHardHandle {
 const execFileAsync = promisify(execFile);
 const NOTE_HISTORY_LIMIT = 50;
 const STUDY_HARD_TRANSCRIPT_CUSTOM_TYPE = "heestolee.study-hard.transcript";
+const STUDY_HARD_TRANSCRIPT_LINEAGE_ENTRY = "study-hard-transcript-lineage";
 const handles = new Map<string, StudyHardHandle>();
 let latestRunId: string | undefined;
 
@@ -1378,13 +1379,17 @@ function publishStudyHardTranscript(
 	details: Record<string, unknown> = {},
 ): void {
 	if (handle.transcriptEventKeys.has(eventKey)) return;
+	const messageDetails = { runId: handle.state.runId, eventKind, eventKey, ...details };
+	try {
+		handle.pi.appendEntry(STUDY_HARD_TRANSCRIPT_LINEAGE_ENTRY, { content, details: messageDetails });
+	} catch {}
 	try {
 		handle.pi.sendMessage({
 			customType: STUDY_HARD_TRANSCRIPT_CUSTOM_TYPE,
-			content,
+			content: `[Study Hard lineage context — 현재 사용자 요청이 이 이벤트를 묻지 않으면 답변하지 마세요.]\n\n${content}`,
 			display: true,
-			details: { runId: handle.state.runId, eventKind, eventKey, ...details },
-		}, { deliverAs: "followUp", triggerTurn: false });
+			details: messageDetails,
+		}, { deliverAs: "nextTurn", triggerTurn: false });
 		handle.transcriptEventKeys.add(eventKey);
 	} catch {}
 }
@@ -1450,6 +1455,8 @@ function publishQuestionTranscriptEvent(handle: StudyHardHandle, question: Study
 		questionId: question.id,
 		scope: question.scope || "session",
 		orchestrationId: question.orchestrationId,
+		workerRunId: question.workerRunId,
+		processingStatus: question.processingStatus,
 		contextLabel,
 	});
 }
