@@ -126,7 +126,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [Diff는 실제 integration target을 기준으로 계산한다](./diff-base-follows-integration-target.md) | active | high | 2026-07-23 | c354125 | diff-overlay, pull-request, stacked-pr, merge-base, review |
+| [Diff는 실제 integration target을 기준으로 계산한다](./diff-base-follows-integration-target.md) | active | high | 2026-07-23 | d3bb569 | diff-overlay, pull-request, stacked-pr, merge-base, review |
 | [Diff review draft는 PR 코멘트 전 단계다](./diff-review-draft-handoff.md) | active | high | 2026-06-02 | c6cd06f | diff-overlay, review-draft, pr-comments, code-review, handoff |
 
 ### runtime

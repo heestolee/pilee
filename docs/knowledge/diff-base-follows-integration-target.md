@@ -14,7 +14,7 @@ applies_to:
 source:
   - user-feedback:2026-07-23-diff-pr-base
 reviewed_at: 2026-07-23
-reviewed_commit: c354125cd83086cdf805ce63d371cb60c409d341
+reviewed_commit: d3bb569a98498430e69a0a8eeb2613ac1acdbd74
 related:
   - diff-review-draft-handoff
   - change-integration-discipline
