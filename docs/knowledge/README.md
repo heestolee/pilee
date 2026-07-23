@@ -126,6 +126,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
+| [Diff는 실제 integration target을 기준으로 계산한다](./diff-base-follows-integration-target.md) | active | high | 2026-07-23 | c354125 | diff-overlay, pull-request, stacked-pr, merge-base, review |
 | [Diff review draft는 PR 코멘트 전 단계다](./diff-review-draft-handoff.md) | active | high | 2026-06-02 | c6cd06f | diff-overlay, review-draft, pr-comments, code-review, handoff |
 
 ### runtime
@@ -268,6 +269,7 @@ graph TD
   doc_readme_philosophy_user_gate["README 철학 변경은 사용자 판단 게이트를 지난다"]
   doc_retro_private_reflection_boundary["Retro는 private reflection이다"]
   doc_reviewed_commit_freshness["reviewed_commit은 날짜 freshness의 빈틈을 막는다"]
+  doc_diff_base_follows_integration_target["Diff는 실제 integration target을 기준으로 계산한다"]
   doc_diff_review_draft_handoff["Diff review draft는 PR 코멘트 전 단계다"]
   doc_codex_fast_mode_runtime["Codex fast mode는 출력 verbosity와 priority tier만 줄인다"]
   doc_deterministic_fallbacks_preserve_workflow["Deterministic fallback은 workflow를 보존한다"]
@@ -450,6 +452,9 @@ graph TD
   doc_retro_private_reflection_boundary --> doc_private_journal_public_doctrine
   doc_reviewed_commit_freshness --> doc_deterministic_vs_ai_actions
   doc_reviewed_commit_freshness --> doc_freshness_diagnosis_report
+  doc_diff_base_follows_integration_target --> doc_change_integration_discipline
+  doc_diff_base_follows_integration_target --> doc_diff_review_draft_handoff
+  doc_diff_base_follows_integration_target --> doc_worktree_execution_boundary
   doc_diff_review_draft_handoff --> doc_change_integration_discipline
   doc_diff_review_draft_handoff --> doc_tool_output_noise_management
   doc_codex_fast_mode_runtime --> doc_editor_affordance_not_context
@@ -752,7 +757,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 112
-- Links: 398
+- Documents: 113
+- Links: 401
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

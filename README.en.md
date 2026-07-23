@@ -212,7 +212,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | extension | `extensions/context-loader` | [Context Loading Minimal Surface](./docs/knowledge/context-loading-minimal-surface.md) |
 | extension | `extensions/continue-clean` | [Clean Handoff Session Continuation](./docs/knowledge/clean-handoff-session-continuation.md) |
 | extension | `extensions/custom-style` | [Codex fast mode only reduces output verbosity and priority tier](./docs/knowledge/codex-fast-mode-runtime.md)<br>[Editor Affordance Not Context](./docs/knowledge/editor-affordance-not-context.md)<br>[Korean First User Facing Output](./docs/knowledge/korean-first-user-facing-output.md)<br>[Terminal Host Integration](./docs/knowledge/terminal-host-integration.md)<br>[Theme Information Hierarchy](./docs/knowledge/theme-information-hierarchy.md) |
-| extension | `extensions/diff-overlay` | [Diff Review Draft Handoff](./docs/knowledge/diff-review-draft-handoff.md)<br>[Theme Information Hierarchy](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI Rendering Sanitization](./docs/knowledge/tui-rendering-sanitization.md) |
+| extension | `extensions/diff-overlay` | [Diff Base Follows Integration Target](./docs/knowledge/diff-base-follows-integration-target.md)<br>[Diff Review Draft Handoff](./docs/knowledge/diff-review-draft-handoff.md)<br>[Theme Information Hierarchy](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI Rendering Sanitization](./docs/knowledge/tui-rendering-sanitization.md) |
 | extension | `extensions/dynamic-agents-md` | [Context Loading Minimal Surface](./docs/knowledge/context-loading-minimal-surface.md)<br>[Skills As Portable Procedures](./docs/knowledge/skills-as-portable-procedures.md) |
 | extension | `extensions/edit-tool-override` | [Read Edit Tool Output Override](./docs/knowledge/read-edit-tool-output-override.md) |
 | extension | `extensions/ember` | [Ember Friendly Knowledge Entrypoint](./docs/knowledge/ember-friendly-knowledge-entrypoint.md)<br>[Ember Ship Release Train](./docs/knowledge/ember-ship-release-train.md) |
@@ -353,7 +353,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **spinner** | Streaming animation |
 | **working-text** | Current work status text |
 | **queued-messages** | Queue visualization and idle watchdog |
-| **diff-overlay** | `/diff` TUI with commit mode, file tree, and syntax highlight |
+| **diff-overlay** | `/diff [--base <branch>]` TUI with automatic PR-base resolution, commit mode, file tree, and syntax highlight |
 | **timestamp** | `/timestamp` conversation timeline |
 | **archive-to-html** | Verify/Web Search HTML archive and `/archive` Artifact Browser (`/show-report` alias) using the shared companion WebView |
 | **shortcut-atlas** | `/shortcuts` atlas for terminal/Pi/pilee custom shortcuts and conflict checks |

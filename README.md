@@ -237,7 +237,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | extension | `extensions/context-loader` | [자동 로드 컨텍스트는 최소 surface만 가진다](./docs/knowledge/context-loading-minimal-surface.md) |
 | extension | `extensions/continue-clean` | [Clean handoff는 compact와 새 세션 사이의 전환 계약이다](./docs/knowledge/clean-handoff-session-continuation.md) |
 | extension | `extensions/custom-style` | [Codex fast mode는 출력 verbosity와 priority tier만 줄인다](./docs/knowledge/codex-fast-mode-runtime.md)<br>[Editor affordance는 숨은 컨텍스트가 아니다](./docs/knowledge/editor-affordance-not-context.md)<br>[User-facing 출력은 한국어를 기본으로 한다](./docs/knowledge/korean-first-user-facing-output.md)<br>[터미널 연동은 host adapter로 다룬다](./docs/knowledge/terminal-host-integration.md)<br>[색상은 정보 위계다](./docs/knowledge/theme-information-hierarchy.md) |
-| extension | `extensions/diff-overlay` | [Diff review draft는 PR 코멘트 전 단계다](./docs/knowledge/diff-review-draft-handoff.md)<br>[색상은 정보 위계다](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다](./docs/knowledge/tui-rendering-sanitization.md) |
+| extension | `extensions/diff-overlay` | [Diff는 실제 integration target을 기준으로 계산한다](./docs/knowledge/diff-base-follows-integration-target.md)<br>[Diff review draft는 PR 코멘트 전 단계다](./docs/knowledge/diff-review-draft-handoff.md)<br>[색상은 정보 위계다](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI 렌더링 경계에서는 문자열을 신뢰하지 않는다](./docs/knowledge/tui-rendering-sanitization.md) |
 | extension | `extensions/dynamic-agents-md` | [자동 로드 컨텍스트는 최소 surface만 가진다](./docs/knowledge/context-loading-minimal-surface.md)<br>[Skill은 재사용 가능한 절차다](./docs/knowledge/skills-as-portable-procedures.md) |
 | extension | `extensions/edit-tool-override` | [Read/Edit tool override는 필요한 증거만 펼친다](./docs/knowledge/read-edit-tool-output-override.md) |
 | extension | `extensions/ember` | [Ember는 knowledge의 친근한 입구다](./docs/knowledge/ember-friendly-knowledge-entrypoint.md)<br>[Ember Ship은 knowledge 정합성을 release train으로 닫는다](./docs/knowledge/ember-ship-release-train.md) |
@@ -378,7 +378,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | **spinner** | 스트리밍 중 애니메이션 |
 | **working-text** | 작업 상태 텍스트 |
 | **queued-messages** | 메시지 큐 시각화 + idle watchdog |
-| **diff-overlay** | `/diff` TUI — 커밋 모드, 파일 트리, 구문 하이라이팅 |
+| **diff-overlay** | `/diff [--base <branch>]` TUI — 실제 PR base 자동 인식, 커밋 모드, 파일 트리, 구문 하이라이팅 |
 | **timestamp** | `/timestamp` TUI — 대화 타임라인 |
 | **archive-to-html** | Verify/Web Search HTML 아카이브 + `/archive` Artifact Browser(`/show-report` alias) + companion WebView 재사용 |
 | **shortcut-atlas** | `/shortcuts` — 터미널/Pi/pilee custom 단축키 atlas와 충돌 검사 |
