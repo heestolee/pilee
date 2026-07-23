@@ -105,6 +105,9 @@ function extractAuthoritativeRequest(prompt: string): string {
 }
 
 function hasWorkerResultArtifactDirective(normalized: string): boolean {
+	const studyHardWorkerEnvelope = /study[\s-]*hard[\s-]*worker/.test(normalized)
+		&& ["statepath", "questionid", "orchestrationid", "workerresultpath"].every((field) => normalized.includes(field));
+	if (studyHardWorkerEnvelope) return true;
 	return hasAny(normalized, [
 		/workerresultpath.{0,180}(?:작성|생성|저장|쓰|write|create|save)/,
 		/(?:작성|생성|저장|쓰|write|create|save).{0,180}workerresultpath/,
@@ -239,7 +242,7 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 	const implementationDirective = !statusNote && !sqlReview && !noMutation && (hasImplementationDirective(normalized) || followUpCorrection);
 	const mixedRequest = implementationDirective && hasMixedImplementationInvestigationPrompt(authoritativePrompt, normalized);
 	const parallelInvestigationSuggested = mixedRequest;
-	const implement = implementationDirective;
+	const implement = implementationDirective || detachedArtifactTask;
 	const shipDirective = !statusNote && !noMutation && !readOnlyShipSignal && hasShipDirective(normalized);
 	const explicitPrAction = shipDirective && hasAny(normalized, [/create-pr|create\s+pr|open\s+pr|pull\s+request|\bpr\b\s*(?:생성|만들|올려|열어|작성|요청|리뷰\s*요청)/]);
 	const explicitIssueAction = hasAny(normalized, [/(?:github\s*)?(?:issue|이슈)\s*(?:생성|만들|올려|열어|작성|create|open)/, /(?:create|open)\s+(?:an?\s+)?issue/]);
@@ -278,7 +281,7 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 	else if (intent === "implement" || intent === "ship" || intent === "knowledge") weight = "standard";
 	else if (intent === "investigate" || intent === "audit" || intent === "answer") weight = "none";
 
-	const explicitMutation = !statusNote && !noMutation && (implementationDirective || shipDirective || explicitCommitPushOnly || hasAny(normalized, [/작업해|진행해|만들어|적용해|개선해|보강해|커밋\s*(?:해|해줘|해주세요|하자)|푸시\s*(?:해|해줘|해주세요|하자)/]));
+	const explicitMutation = !statusNote && !noMutation && (detachedArtifactTask || implementationDirective || shipDirective || explicitCommitPushOnly || hasAny(normalized, [/작업해|진행해|만들어|적용해|개선해|보강해|커밋\s*(?:해|해줘|해주세요|하자)|푸시\s*(?:해|해줘|해주세요|하자)/]));
 	const explicitSingleCommit = hasAny(normalized, [/단일\s*커밋|한\s*커밋|one\s*commit|single\s*commit|squash/]);
 
 	const summary = [

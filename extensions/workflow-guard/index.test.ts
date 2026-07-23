@@ -393,6 +393,30 @@ test("Study Hard worker wrapper honors authoritative scoped artifact write", asy
 	assert.equal(blockedWrite?.block, true);
 });
 
+test("Study Hard worker envelope permits artifact writes when directive fields are far apart", async () => {
+	const artifactPath = join(process.cwd(), "study-hard-worker-result.json");
+	const { hooks, ctx } = createHarness();
+	const prompt = [
+		"Study Hard worker Q003 artifact 생성을 재시도해 주세요.",
+		"이 문장은 실제 실패 재현처럼 출력 경로보다 앞에 긴 복구 설명을 둡니다. ".repeat(8),
+		"statePath=/tmp/study-hard-state.json",
+		"questionId=Q003",
+		"orchestrationId=worker-test-123",
+		`workerResultPath=${artifactPath}`,
+		"scope=session; context=전체 자료; 제품 코드는 수정하지 마세요.",
+	].join(" ");
+	assert.ok(prompt.indexOf("workerResultPath") - prompt.indexOf("생성") > 180);
+
+	const start = await hooks.before_agent_start({ prompt, systemPrompt: "base" }, ctx);
+
+	assert.match(start.systemPrompt, /intent=implement · weight=full/);
+	assert.doesNotMatch(start.systemPrompt, /mutation=not-requested/);
+	assert.doesNotMatch(start.systemPrompt, /Compact work context for this turn/);
+	assert.equal(start.message.details.state.detachedArtifactTask, true);
+	const writeCall = await hooks.tool_call({ toolName: "write", input: { path: artifactPath } }, ctx);
+	assert.equal(writeCall, undefined);
+});
+
 test("workflow guard complaint prompts enter audit path instead of unknown", async () => {
 	const prompts = [
 		"워크플로우 가드 이새끼 아직도 지랄인데?",
