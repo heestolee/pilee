@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { setGlimpseOpenForTests } from "../utils/glimpse.ts";
 import type { LearningCompanionManifest } from "../learning-companion/state.ts";
+import { PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT, type ProgrammaticSubagentLaunchRequest } from "../subagent/programmatic.ts";
 import { applyStudyHardWorkerResult, attachStudyHardLearningCompanion, buildStudyHardStudioHtml, buildStudyNoteExportHtml, checkpointStudyHardLearning, createInitialBoardState, layoutStudyGraph, loadPersistedStudyHardState, markStudyHardWorkerFailed, markStudyHardWorkerStarted, mergeBoardState, openExistingStudyHardStudio, proposeStudyHardLearningChange, recordStudyHardLearningEvent, registerStudyHardBoardTool, resolveStudyNoteBlockVisual, respondStudyHardQuestion, startStudyHardStudio, stopStudyHardStudios, updateStudyHardStudio } from "./studio.ts";
 
 const originalStateDir = process.env.STUDY_HARD_STATE_DIR;
@@ -1428,7 +1429,7 @@ test("Glimpse node thread keeps learner questions and coach answers on the same 
 	}
 });
 
-test("오른쪽 입력은 모든 scope를 P0의 전용 worker로 dispatch한다", async () => {
+test("event bus가 없는 legacy runtime은 P0 fallback dispatch를 유지한다", async () => {
 	const messages: Array<{ message: any; options: any }> = [];
 	let isolatedCalls = 0;
 	const fakePi = {
@@ -1473,6 +1474,102 @@ test("오른쪽 입력은 모든 scope를 P0의 전용 worker로 dispatch한다"
 		assert.equal(state.questions[0].workerRunId, 11);
 		assert.equal(state.questions[0].feedback, "전용 worker가 P0 맥락으로 답했습니다.");
 		assert.ok(messages.some(({ message }) => message.details?.eventKind === "worker-answer"));
+	} finally {
+		stopStudyHardStudios();
+	}
+});
+
+test("learner 질문은 P0 LLM turn 없이 즉시 dispatch·적용되고 첫 충돌은 같은 run으로 rebase한다", async () => {
+	const messages: Array<{ message: any; options: any }> = [];
+	const requests: ProgrammaticSubagentLaunchRequest[] = [];
+	let nextRunId = 40;
+	const fakePi = {
+		sendMessage(message: any, options: any) { messages.push({ message, options }); },
+		events: {
+			emit(name: string, payload: unknown) {
+				assert.equal(name, PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT);
+				const request = payload as ProgrammaticSubagentLaunchRequest;
+				requests.push(request);
+				request.claim();
+				const runId = request.continueRunId ?? ++nextRunId;
+				request.onStarted({ requestId: request.requestId, runId, agent: request.agent, sessionFile: `/tmp/subagent-${runId}.jsonl` });
+			},
+		},
+		exec() { throw new Error("no browser fallback in test"); },
+	} as any;
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, {
+		url: "https://example.com/programmatic-worker",
+		runId: "programmatic-worker",
+	});
+	try {
+		updateStudyHardStudio(handle.state.runId, {
+			noteDocument: { title: "Programmatic", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "a", type: "paragraph", text: "A0" }] }] },
+		});
+		for (const question of ["A를 첫 방식으로", "A를 둘째 방식으로"]) {
+			const response = await fetch(new URL("/ask", handle.url), {
+				method: "POST",
+				headers: authorizedHeaders(handle),
+				body: JSON.stringify({ scope: "session", question }),
+			});
+			assert.equal(response.status, 202);
+		}
+
+		let state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		assert.equal(requests.length, 2);
+		assert.deepEqual(state.questions.map((question: any) => question.processingStatus), ["running", "running"]);
+		assert.deepEqual(state.questions.map((question: any) => question.workerRunId), [41, 42]);
+		assert.ok(requests.every((request) => request.contextMode === "main" && request.agent === "study-hard-worker"));
+		assert.match(requests[0]?.task || "", /statePath:/);
+		assert.match(requests[0]?.task || "", /workerResultPath:/);
+		assert.equal(messages.some(({ message }) => message.customType === "heestolee.study-hard.learner-request"), false);
+		assert.equal(messages.some(({ options }) => options?.triggerTurn === true), false);
+
+		const base = structuredClone(state.noteDocument);
+		const [first, second] = state.questions;
+		const firstProposal = structuredClone(base); firstProposal.sections[0].blocks[0].text = "A-first";
+		const secondProposal = structuredClone(base); secondProposal.sections[0].blocks[0].text = "A-second";
+		writeStudyHardWorkerResult(state, first, base, firstProposal, "첫 변경");
+		writeStudyHardWorkerResult(state, second, base, secondProposal, "둘째 변경");
+		await requests[0]!.onCompleted({
+			requestId: requests[0]!.requestId,
+			runId: 41,
+			agent: "study-hard-worker",
+			status: "done",
+			output: `[STUDY_HARD_WORKER_RESULT]\nartifactPath: ${first.workerResultPath}\nrunId: ${state.runId}\nquestionId: ${first.id}`,
+		});
+		await requests[1]!.onCompleted({
+			requestId: requests[1]!.requestId,
+			runId: 42,
+			agent: "study-hard-worker",
+			status: "done",
+			output: `[STUDY_HARD_WORKER_RESULT]\nartifactPath: ${second.workerResultPath}\nrunId: ${state.runId}\nquestionId: ${second.id}`,
+		});
+
+		state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		assert.equal(requests.length, 3);
+		assert.equal(requests[2]?.continueRunId, 42);
+		assert.match(requests[2]?.task || "", /# Study Hard worker rebase/);
+		assert.equal(state.questions[0].processingStatus, "applied");
+		assert.equal(state.questions[1].processingStatus, "running");
+		assert.equal(state.questions[1].workerRebaseCount, 1);
+
+		const rebasedBase = structuredClone(state.noteDocument);
+		const rebasedProposal = structuredClone(rebasedBase);
+		rebasedProposal.sections[0].blocks[0].text = "A-first + A-second";
+		writeStudyHardWorkerResult(state, state.questions[1], rebasedBase, rebasedProposal, "두 변경을 최신 노트에서 조정");
+		await requests[2]!.onCompleted({
+			requestId: requests[2]!.requestId,
+			runId: 42,
+			agent: "study-hard-worker",
+			status: "done",
+			output: `[STUDY_HARD_WORKER_RESULT]\nartifactPath: ${state.questions[1].workerResultPath}\nrunId: ${state.runId}\nquestionId: ${state.questions[1].id}`,
+		});
+
+		state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		assert.equal(state.noteDocument.sections[0].blocks[0].text, "A-first + A-second");
+		assert.deepEqual(state.questions.map((question: any) => question.processingStatus), ["applied", "applied"]);
+		assert.ok(messages.some(({ message }) => message.details?.eventKind === "worker-answer"));
+		assert.ok(messages.filter(({ message }) => message.details?.eventKind === "worker-answer").every(({ options }) => options.triggerTurn === false));
 	} finally {
 		stopStudyHardStudios();
 	}
@@ -1863,7 +1960,7 @@ test("study_hard_board respond action은 질문 답변과 구조 patch를 원자
 	await assert.rejects(() => harness.execute({ action: "respond", runId, expectedRevision: handle.state.revision, questionId: "Q001", feedback: "", questions: [] }), /feedback이 필요합니다/);
 });
 
-test("Studio 재시작은 중단된 learner 질문을 P0 worker dispatcher에 다시 전달한다", async () => {
+test("Studio 재시작은 중단된 learner 질문을 worker dispatcher에 다시 전달한다", async () => {
 	const runId = "resume-current-session-question";
 	const firstMessages: Array<{ message: any; options: any }> = [];
 	let handle = await startStudyHardStudio({

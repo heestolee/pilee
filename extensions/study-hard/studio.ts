@@ -24,6 +24,11 @@ import {
 	type LearningProposalInput,
 	type LearningProposalStatus,
 } from "../learning-companion/state.ts";
+import {
+	PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT,
+	type ProgrammaticSubagentCompleted,
+	type ProgrammaticSubagentLaunchRequest,
+} from "../subagent/programmatic.ts";
 import { captureGlimpseHtmlPng, getGlimpseOpen } from "../utils/glimpse.ts";
 import { buildStudyHardStudioHtml } from "./studio-html.ts";
 import { parseStudyLearningAgentJson, runIsolatedStudyLearningAgent, type StudyLearningAgentRunner } from "./learning-agents.ts";
@@ -2164,7 +2169,7 @@ function resumeInterruptedLearningAgents(handle: StudyHardHandle): void {
 	for (const questionId of coachQuestionIds) enqueueCoachTurn(handle, questionId);
 }
 
-function sendLearnerQuestionToWorkerDispatcher(handle: StudyHardHandle, question: StudyQuestionCard): void {
+function sendLegacyLearnerQuestionToP0(handle: StudyHardHandle, question: StudyQuestionCard): void {
 	const contextLabel = questionContextLabel(handle.state, question);
 	const attachments = questionAttachmentRecords(handle.state, question).map((attachment) => ({
 		name: attachment.name,
@@ -2177,6 +2182,184 @@ function sendLearnerQuestionToWorkerDispatcher(handle: StudyHardHandle, question
 		content: `# Study Hard worker dispatch request\n\n이 메시지는 사용자가 Study Hard Glimpse 입력창으로 보낸 P0의 직접 요청입니다. 긴 학습 노트 작업을 메인에서 동기로 수행하지 말고 실제 pilee subagent를 실행하세요.\n\n- runId: ${handle.state.runId}\n- statePath: ${handle.statePath}\n- submittedRevision: ${handle.state.revision}\n- questionId: ${question.id}\n- orchestrationId: ${question.orchestrationId}\n- workerResultPath: ${question.workerResultPath}\n- scope: ${question.scope || "session"}\n- context: ${contextLabel}\n- attachments: ${JSON.stringify(attachments)}\n\n## 사용자 메시지\n${question.question}\n\n## P0 dispatch 규칙\n1. 이 요청에 직접 답하거나 noteDocument를 직접 수정하지 않습니다. 먼저 \`study_hard_board\` action=\"status\"로 최신 revision을 읽은 뒤 action=\"worker_started\"를 그 expectedRevision과 questionId로 호출합니다.\n2. 실제 subagent 도구로 \`subagent run study-hard-worker --main -- <이 작업 전체>\`를 실행합니다. 아직 subagent help 계약을 읽지 않았다면 help를 먼저 확인합니다. 별도 \`pi -p\`, 기존 isolated Tutor/Editor, agentRunner를 사용하지 않습니다.\n3. worker task에 위 runId/statePath/questionId/orchestrationId/workerResultPath/scope/context/attachments/사용자 메시지를 빠짐없이 전달합니다. worker는 전체 노트를 유연하게 제안하되 state를 직접 수정하지 않습니다.\n4. async worker를 launch한 뒤 이 turn은 즉시 끝냅니다. 표준 subagent #N widget이 실행 상태를 보여줍니다.\n5. 완료 follow-up의 \`[STUDY_HARD_WORKER_RESULT]\` marker를 받으면 artifactPath와 completion details의 runId를 사용해 \`study_hard_board\` action=\"apply_worker_result\"를 호출합니다. subagent launch/completion이 실패하면 action=\"worker_failed\"로 같은 question과 workerError를 기록합니다.\n6. apply 결과가 rebase-required이면 같은 subagent run을 한 번 continue하여 최신 state 기준 artifact로 교체합니다. 두 번째 conflict는 덮어쓰지 말고 P0에서 설명합니다.`,
 		details: { runId: handle.state.runId, statePath: handle.statePath, questionId: question.id, orchestrationId: question.orchestrationId, workerResultPath: question.workerResultPath, scope: question.scope, attachments },
 	}, { deliverAs: "followUp", triggerTurn: true });
+}
+
+interface StudyHardWorkerDispatchOptions {
+	continueRunId?: number;
+	conflicts?: StudyNoteMergeConflict[];
+}
+
+function isCurrentWorkerQuestion(handle: StudyHardHandle, questionId: string, orchestrationId: string | undefined): boolean {
+	const current = handle.state.questions.find((question) => question.id === questionId);
+	return !!current && current.orchestrationId === orchestrationId;
+}
+
+function markCurrentWorkerQuestionFailed(
+	handle: StudyHardHandle,
+	questionId: string,
+	orchestrationId: string | undefined,
+	error: string,
+	workerRunId?: number,
+): void {
+	if (!isCurrentWorkerQuestion(handle, questionId, orchestrationId)) return;
+	const message = error.trim().slice(0, 2_000) || "study-hard-worker 실행에 실패했습니다.";
+	updateQuestionCards(handle, [questionId], (question) => ({
+		...question,
+		processingStatus: "failed",
+		processingError: message,
+		processingErrorStage: "worker",
+		workerRunId: Number.isInteger(workerRunId) ? workerRunId : question.workerRunId,
+	}));
+}
+
+function buildStudyHardWorkerTask(
+	handle: StudyHardHandle,
+	question: StudyQuestionCard,
+	options: StudyHardWorkerDispatchOptions,
+): string {
+	const contextLabel = questionContextLabel(handle.state, question);
+	const attachments = questionAttachmentRecords(handle.state, question).map((attachment) => ({
+		name: attachment.name,
+		mimeType: attachment.mimeType,
+		path: attachment.path,
+	}));
+	const conflictSummary = options.conflicts?.length
+		? options.conflicts.slice(0, 6).map((conflict) => `- ${conflict.message}`).join("\n")
+		: "- 없음";
+	return `# Study Hard worker ${options.continueRunId ? "rebase" : "request"}
+
+표준 subagent dispatcher가 메인 session context를 이 task에 함께 제공합니다. Study Hard state를 직접 수정하지 말고 지정된 artifact만 생성하세요.
+
+- runId: ${handle.state.runId}
+- statePath: ${handle.statePath}
+- submittedRevision: ${handle.state.revision}
+- questionId: ${question.id}
+- orchestrationId: ${question.orchestrationId}
+- workerResultPath: ${question.workerResultPath}
+- scope: ${question.scope || "session"}
+- context: ${contextLabel}
+- attachments: ${JSON.stringify(attachments)}
+
+## 사용자 메시지
+${question.question}
+
+## 이전 merge conflict
+${conflictSummary}
+
+## 완료 계약
+1. statePath의 최신 question identity와 noteDocument를 읽습니다.
+2. 기존 Study Hard state나 제품 코드는 수정하지 않습니다.
+3. workerResultPath에 study-hard-worker-result JSON 하나만 씁니다.
+4. rebase 요청이면 최신 noteDocument를 새 base로 삼고 이미 반영된 변경을 보존합니다.
+5. 성공 시 stdout에는 [STUDY_HARD_WORKER_RESULT], artifactPath, runId, questionId, summary만 출력합니다.`;
+}
+
+function validateWorkerCompletionOutput(question: StudyQuestionCard, completion: ProgrammaticSubagentCompleted): string | undefined {
+	if (completion.status === "error") return completion.error || completion.output || "study-hard-worker가 실패했습니다.";
+	if (!completion.output.includes("[STUDY_HARD_WORKER_RESULT]")) return "study-hard-worker 완료 marker가 없습니다.";
+	const artifactPath = completion.output.match(/^artifactPath:\s*(.+)$/m)?.[1]?.trim();
+	if (!artifactPath || resolve(artifactPath) !== resolve(question.workerResultPath || "")) {
+		return "study-hard-worker artifactPath가 question 계약과 다릅니다.";
+	}
+	return undefined;
+}
+
+function requestP0ConflictReview(handle: StudyHardHandle, question: StudyQuestionCard, conflicts: StudyNoteMergeConflict[]): void {
+	handle.pi.sendMessage({
+		customType: "heestolee.study-hard.worker-conflict",
+		display: false,
+		content: `# Study Hard worker merge conflict\n\n자동 rebase 한 번 뒤에도 충돌이 남았습니다. Glimpse에는 conflict 상태가 이미 반영됐습니다. 현재 제품 작업을 중단하지 말고 다음 P0 turn에서 충돌만 검토하세요.\n\n- runId: ${handle.state.runId}\n- questionId: ${question.id}\n- workerRunId: ${question.workerRunId ?? "(unknown)"}\n- conflicts:\n${conflicts.slice(0, 6).map((conflict) => `  - ${conflict.message}`).join("\n")}`,
+		details: { runId: handle.state.runId, questionId: question.id, workerRunId: question.workerRunId, conflicts },
+	}, { deliverAs: "followUp", triggerTurn: true });
+}
+
+function handleStudyHardWorkerCompletion(
+	handle: StudyHardHandle,
+	questionId: string,
+	orchestrationId: string | undefined,
+	completion: ProgrammaticSubagentCompleted,
+): void {
+	const question = handle.state.questions.find((item) => item.id === questionId);
+	if (!question || question.orchestrationId !== orchestrationId) return;
+	const completionError = validateWorkerCompletionOutput(question, completion);
+	if (completionError) {
+		markCurrentWorkerQuestionFailed(handle, questionId, orchestrationId, completionError, completion.runId);
+		return;
+	}
+	try {
+		const applied = applyStudyHardWorkerResult(handle.state.runId, questionId, question.workerResultPath!, completion.runId);
+		if (applied.status === "rebasing") {
+			const current = handle.state.questions.find((item) => item.id === questionId);
+			if (!current) return;
+			try {
+				sendLearnerQuestionToWorkerDispatcher(handle, current, {
+					continueRunId: completion.runId,
+					conflicts: applied.conflicts,
+				});
+			} catch (error: unknown) {
+				markCurrentWorkerQuestionFailed(
+					handle,
+					questionId,
+					orchestrationId,
+					error instanceof Error ? error.message : String(error),
+					completion.runId,
+				);
+			}
+			return;
+		}
+		if (applied.status === "conflict") {
+			const current = handle.state.questions.find((item) => item.id === questionId);
+			if (current) requestP0ConflictReview(handle, current, applied.conflicts);
+		}
+	} catch (error: unknown) {
+		markCurrentWorkerQuestionFailed(
+			handle,
+			questionId,
+			orchestrationId,
+			error instanceof Error ? error.message : String(error),
+			completion.runId,
+		);
+	}
+}
+
+function sendLearnerQuestionToWorkerDispatcher(
+	handle: StudyHardHandle,
+	question: StudyQuestionCard,
+	options: StudyHardWorkerDispatchOptions = {},
+): void {
+	if (!handle.pi.events || typeof handle.pi.events.emit !== "function") {
+		sendLegacyLearnerQuestionToP0(handle, question);
+		return;
+	}
+
+	let claimed = false;
+	const request: ProgrammaticSubagentLaunchRequest = {
+		kind: "programmatic-subagent-launch",
+		requestId: `${question.orchestrationId || question.id}${options.continueRunId ? `:rebase:${question.workerRebaseCount || 1}` : ""}`,
+		agent: "study-hard-worker",
+		task: buildStudyHardWorkerTask(handle, question, options),
+		contextMode: "main",
+		continueRunId: options.continueRunId,
+		claim: () => { claimed = true; },
+		onStarted: ({ runId }) => {
+			if (!isCurrentWorkerQuestion(handle, question.id, question.orchestrationId)) return;
+			updateQuestionCards(handle, [question.id], (current) => ({
+				...current,
+				processingStatus: "running",
+				processingError: "",
+				processingErrorStage: undefined,
+				workerRunId: runId,
+			}));
+		},
+		onCompleted: (completion) => {
+			handleStudyHardWorkerCompletion(handle, question.id, question.orchestrationId, completion);
+		},
+		onRejected: (error) => {
+			markCurrentWorkerQuestionFailed(handle, question.id, question.orchestrationId, error, options.continueRunId);
+		},
+	};
+	handle.pi.events.emit(PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT, request);
+	if (!claimed) throw new Error("표준 subagent dispatcher가 Study Hard launch request를 claim하지 않았습니다.");
 }
 
 function sendStudyHardTransitionRequest(handle: StudyHardHandle, intent: StudyHardTransitionIntent): { frameExists: boolean; frameTitle?: string } {
@@ -2917,7 +3100,12 @@ function readStudyHardWorkerResult(handle: StudyHardHandle, question: StudyQuest
 	};
 }
 
-export function markStudyHardWorkerStarted(runId: string | undefined, expectedRevision: number, questionId: string): StudyHardHandle {
+export function markStudyHardWorkerStarted(
+	runId: string | undefined,
+	expectedRevision: number,
+	questionId: string,
+	workerRunId?: number,
+): StudyHardHandle {
 	const id = runId || latestRunId;
 	if (!id) throw new Error("활성 Study Hard Studio가 없습니다.");
 	const handle = handles.get(id);
@@ -2925,7 +3113,13 @@ export function markStudyHardWorkerStarted(runId: string | undefined, expectedRe
 	if (handle.state.revision !== expectedRevision) throw new Error(`stale Study Hard revision: expected ${expectedRevision}, current ${handle.state.revision}`);
 	const question = handle.state.questions.find((item) => item.id === questionId);
 	if (!question || question.origin !== "learner" || question.scope === "coach" || !["queued", "rebasing", "running"].includes(String(question.processingStatus))) throw new Error(`worker를 시작할 learner question을 찾지 못했습니다: ${questionId}`);
-	updateQuestionCards(handle, [questionId], (item) => ({ ...item, processingStatus: "running", processingError: "", processingErrorStage: undefined }));
+	updateQuestionCards(handle, [questionId], (item) => ({
+		...item,
+		processingStatus: "running",
+		processingError: "",
+		processingErrorStage: undefined,
+		workerRunId: Number.isInteger(workerRunId) ? workerRunId : item.workerRunId,
+	}));
 	return handle;
 }
 
@@ -3091,8 +3285,8 @@ export function registerStudyHardBoardTool(pi: ExtensionAPI) {
 		promptGuidelines: [
 			"Use study_hard_board after fetching /study-hard source content to keep the visual concept graph, Mermaid flow, and Q&A state in sync with the learning session.",
 			"Do not use study_hard_board as evidence that the user understood the topic; it is a visual aid only.",
-			"For heestolee.study-hard.learner-request turns, mark action=worker_started and launch the real study-hard-worker subagent with contextMode=main. Do not answer or edit the note synchronously in P0, and do not use standalone pi -p or isolated Tutor/Editor runners.",
-			"For completed study-hard-worker subagent results, call action=apply_worker_result with questionId, artifactPath as workerResultPath, and the subagent completion runId as workerRunId. If launch/completion fails, call action=worker_failed. If apply requests one rebase, continue that same subagent run once against the latest state; never silently overwrite a conflict.",
+			"Study Hard learner questions are dispatched directly through the standard study-hard-worker subagent and applied by the extension coordinator; do not duplicate that work in P0.",
+			"Use study_hard_board worker_started, worker_failed, and apply_worker_result only for explicit recovery or manual inspection. Never silently overwrite a merge conflict.",
 		],
 		parameters: Type.Object({
 			action: Type.String({ description: "start | update | respond | worker_started | worker_failed | apply_worker_result | open | status" }),
