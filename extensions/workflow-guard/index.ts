@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
@@ -107,7 +107,9 @@ function extractAuthoritativeRequest(prompt: string): string {
 function hasWorkerResultArtifactDirective(normalized: string): boolean {
 	const studyHardWorkerEnvelope = /study[\s-]*hard[\s-]*worker/.test(normalized)
 		&& ["statepath", "questionid", "orchestrationid", "workerresultpath"].every((field) => normalized.includes(field));
-	if (studyHardWorkerEnvelope) return true;
+	const studyHardArtifactDirective = /(?:study[\s-]*hard|학습\s*노트|learner\s+request)/.test(normalized)
+		&& /(?:worker\s*)?artifact(?:\s*파일)?(?:로|을|를|만)?\s*(?:실제로\s*)?(?:작성|생성|저장|쓰|write|create|save)(?:하|해|한|할|하세요|해\s*주세요|해줘|$)/.test(normalized);
+	if (studyHardWorkerEnvelope || studyHardArtifactDirective) return true;
 	return hasAny(normalized, [
 		/workerresultpath.{0,180}(?:작성|생성|저장|쓰|write|create|save)/,
 		/(?:작성|생성|저장|쓰|write|create|save).{0,180}workerresultpath/,
@@ -412,7 +414,8 @@ function buildSystemPrompt(state: GuardState, ultraMode = false): string {
 	}
 	if (state.intent === "answer" || state.intent === "investigate") {
 		lines.push(
-			"- HARD PATH: this turn is read-only by default. Do not edit/write files, create worktrees, install dependencies, commit, or push unless the user explicitly turns the request into implementation.",
+			"- READ-ONLY DEFAULT: answer/investigation turns should normally remain read-only, but this is guidance rather than a generic edit/write/bash block.",
+			"- If the user directly requested an artifact or fix and the classifier missed it, use workflow_guard adopt and proceed; do not ask twice merely because the turn started as answer/investigate.",
 			"- Investigation scope lock: first inspect only the scope explicitly named in the user's latest request. Do not chase adjacent work status, diffs, commits, worktrees, or recovery/implementation state unless that directly answers the named question.",
 			"- Scope expansion gate: when the next check would substantially widen scope (for example crash/log → worktree progress, symptom check → fix, dev/preview → production, or source evidence → unrelated session history), stop and ask the user before continuing.",
 			"- No-result handoff: if the current scope does not answer the question, report exactly what you checked and what you could not find, then offer 1–3 concrete next search directions and ask which one to inspect.",
@@ -463,13 +466,12 @@ function buildSystemPrompt(state: GuardState, ultraMode = false): string {
 	return lines.join("\n");
 }
 
-function mutationBlockReason(state: GuardState, toolName: string): string | undefined {
+function highRiskMutationBlockReason(state: GuardState, toolName: string): string | undefined {
 	if (state.explicitMutation && state.intent !== "status_note") return undefined;
-	if (state.intent !== "answer" && state.intent !== "investigate" && state.intent !== "audit" && state.intent !== "status_note") return undefined;
 	return [
-		`workflow_guard blocked ${toolName}: current request was classified as ${state.intent} (${state.summary}).`,
-		state.intent === "status_note" ? "This prompt is a status note, not a user task directive." : "This path is read-only by default.",
-		"Ask the user to confirm implementation, or explain why this mutation is required before retrying.",
+		`workflow_guard blocked ${toolName}: this high-risk action was not explicitly requested (${state.summary}).`,
+		"Ordinary edit/write/file-producing bash calls are soft-guided and are not blocked by intent classification.",
+		"Ask the user before commit, push, package installation, destructive cleanup, or worktree creation.",
 	].join("\n");
 }
 
@@ -477,12 +479,18 @@ function isTempPath(path: string): boolean {
 	return path.startsWith("/tmp/") || path.startsWith("/private/tmp/") || path.includes("/var/folders/");
 }
 
-function isMutatingBash(command: string): boolean {
+function pathBelongsToWorkContext(card: WorkContextCard, path: string): boolean {
+	const root = resolve(card.identity.root || card.identity.cwd);
+	const absolute = isAbsolute(path) ? resolve(path) : resolve(root, path);
+	const rel = relative(root, absolute);
+	return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+function isHighRiskBashMutation(command: string): boolean {
 	const compact = command.replace(/\s+/g, " ").trim();
 	return /(^|[;&|]\s*)git\s+(commit|push|worktree\s+add|reset\s+--hard|clean\s+-)/.test(compact)
 		|| /(^|[;&|]\s*)(npm|pnpm|yarn)\s+(install|add|remove|update)\b/.test(compact)
-		|| /(^|[;&|]\s*)rm\s+-rf\b/.test(compact)
-		|| />\s*[^\s]+/.test(compact) && /(^|[;&|]\s*)(cat|echo|printf)\b/.test(compact);
+		|| /(^|[;&|]\s*)rm\s+-rf\b/.test(compact);
 }
 
 function isGitCommitCommand(command: string): boolean {
@@ -974,16 +982,15 @@ export default function workflowGuard(pi: ExtensionAPI) {
 		}
 
 		if ((event.toolName === "edit" || event.toolName === "write") && !isTempPath(String(event.input?.path ?? ""))) {
-			const reason = mutationBlockReason(state, event.toolName);
-			if (reason) return { block: true, reason };
-			if (state.explicitMutation && card && (state.weight === "standard" || state.weight === "full")) {
-				const result = gateWorkContext(card, { action: "mutate", paths: [String(event.input?.path ?? "")], requireSlice: true });
+			const mutationPath = String(event.input?.path ?? "");
+			if (state.explicitMutation && card && pathBelongsToWorkContext(card, mutationPath) && (state.weight === "standard" || state.weight === "full")) {
+				const result = gateWorkContext(card, { action: "mutate", paths: [mutationPath], requireSlice: true });
 				if (result.level === "block") return { block: true, reason: formatWorkContextBlock(result, event.toolName) };
 			}
 		}
 
 		if ((event.toolName === "worktree_create" || event.toolName === "worktree_fork") && !state.explicitMutation) {
-			const reason = mutationBlockReason(state, event.toolName);
+			const reason = highRiskMutationBlockReason(state, event.toolName);
 			if (reason) return { block: true, reason };
 		}
 
@@ -1008,8 +1015,8 @@ export default function workflowGuard(pi: ExtensionAPI) {
 			if (state.weight === "light" && !state.explicitHeavy && !state.auditRequired && isDeepContextMiningCommand(command)) {
 				return { block: true, reason: heavyToolBlockReason(state, "deep context mining") };
 			}
-			if (isMutatingBash(command)) {
-				const reason = mutationBlockReason(state, "bash mutation");
+			if (isHighRiskBashMutation(command)) {
+				const reason = highRiskMutationBlockReason(state, "bash mutation");
 				if (reason) return { block: true, reason };
 			}
 			if (isGitCommitCommand(command) && !state.explicitSingleCommit && !isExplicitCommitBypass(command)) {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import workflowGuard from "./index.ts";
@@ -220,7 +220,7 @@ test("evidence collection plus explicit improvement is implementation, not read-
 
 	assert.match(start.systemPrompt, /intent=implement · weight=standard/);
 	assert.doesNotMatch(start.systemPrompt, /intent=investigate/);
-	assert.doesNotMatch(start.systemPrompt, /HARD PATH: this turn is read-only/);
+	assert.doesNotMatch(start.systemPrompt, /READ-ONLY DEFAULT/);
 
 	const writeCall = await hooks.tool_call({ toolName: "write", input: { path: join(process.cwd(), "tmp-workflow-guard-smoke.txt") } }, ctx);
 	assert.equal(writeCall, undefined);
@@ -293,7 +293,7 @@ test("follow-up correction prompts request mutation even when phrased as checkin
 	assert.match(start.systemPrompt, /intent=implement · weight=standard/);
 	assert.match(start.systemPrompt, /followup=correction/);
 	assert.match(start.systemPrompt, /FOLLOW-UP CORRECTION PATH/);
-	assert.doesNotMatch(start.systemPrompt, /HARD PATH: this turn is read-only/);
+	assert.doesNotMatch(start.systemPrompt, /READ-ONLY DEFAULT/);
 
 	const editCall = await hooks.tool_call({ toolName: "edit", input: { path: join(process.cwd(), "follow-up-correction.ts") } }, ctx);
 	assert.equal(editCall, undefined);
@@ -310,24 +310,31 @@ test("mixed implementation plus side question stays implementation and nudges su
 	assert.match(start.systemPrompt, /MIXED REQUEST PATH/);
 	assert.match(start.systemPrompt, /Main agent owns the clear implementation path first/);
 	assert.match(start.systemPrompt, /Delegate the independent investigation\/answer question to a subagent/);
-	assert.doesNotMatch(start.systemPrompt, /HARD PATH: this turn is read-only/);
+	assert.doesNotMatch(start.systemPrompt, /READ-ONLY DEFAULT/);
 
 	const editCall = await hooks.tool_call({ toolName: "edit", input: { path: join(process.cwd(), "mixed-request-width.ts") } }, ctx);
 	assert.equal(editCall, undefined);
 });
 
-test("dimension-change discussion questions stay read-only", async () => {
+test("answer and investigation turns use soft read-only guidance", async () => {
 	for (const prompt of ["왜 width를 줄이는 게 좋아?", "width를 100으로 줄이면 어때?"]) {
 		const { hooks, ctx } = createHarness();
 		const start = await hooks.before_agent_start({ prompt, systemPrompt: "base" }, ctx);
 
 		assert.match(start.systemPrompt, /intent=(?:investigate|answer) · weight=none/);
 		assert.match(start.systemPrompt, /mutation=not-requested/);
-		assert.match(start.systemPrompt, /HARD PATH: this turn is read-only/);
+		assert.match(start.systemPrompt, /READ-ONLY DEFAULT/);
 		assert.doesNotMatch(start.systemPrompt, /mixed=implement\+investigate/);
 
-		const editBlock = await hooks.tool_call({ toolName: "edit", input: { path: join(process.cwd(), "dimension-question.ts") } }, ctx);
-		assert.equal(editBlock?.block, true);
+		const editCall = await hooks.tool_call({ toolName: "edit", input: { path: join(process.cwd(), "dimension-question.ts") } }, ctx);
+		assert.equal(editCall, undefined);
+		const writeCall = await hooks.tool_call({ toolName: "write", input: { path: join(process.cwd(), "dimension-question.md") } }, ctx);
+		assert.equal(writeCall, undefined);
+		const readOnlyBash = await hooks.tool_call({
+			toolName: "bash",
+			input: { command: "printf 'checking logs\n'; find ~/.pi/agent/logs -type f 2>/dev/null | tail -20" },
+		}, ctx);
+		assert.equal(readOnlyBash, undefined);
 	}
 });
 
@@ -389,8 +396,8 @@ test("Study Hard worker wrapper honors authoritative scoped artifact write", asy
 	}, readOnly.ctx);
 	assert.match(readOnlyStart.systemPrompt, /intent=investigate · weight=none/);
 	assert.match(readOnlyStart.systemPrompt, /mutation=not-requested/);
-	const blockedWrite = await readOnly.hooks.tool_call({ toolName: "write", input: { path: artifactPath } }, readOnly.ctx);
-	assert.equal(blockedWrite?.block, true);
+	const softWrite = await readOnly.hooks.tool_call({ toolName: "write", input: { path: artifactPath } }, readOnly.ctx);
+	assert.equal(softWrite, undefined);
 });
 
 test("Study Hard worker envelope permits artifact writes when directive fields are far apart", async () => {
@@ -417,6 +424,80 @@ test("Study Hard worker envelope permits artifact writes when directive fields a
 	assert.equal(writeCall, undefined);
 });
 
+test("Study Hard natural-language artifact request bypasses product work context", async () => {
+	const artifactPath = join(tmpdir(), "frame-v2-test.json.worker-Q001.json");
+	const { hooks, ctx } = createHarness();
+	const prompt = [
+		"Study Hard run frame-v2-test의 learner question Q001을 처리하세요.",
+		`결과 artifact는 ${artifactPath} 입니다.`,
+		"현재 구현 맥락을 사용해 답변과 노트 patch를 worker protocol에 맞춰 artifact로 작성하세요.",
+		"canonical Study Hard state와 제품 코드는 수정하지 마세요.",
+	].join(" ");
+
+	const start = await hooks.before_agent_start({ prompt, systemPrompt: "base" }, ctx);
+
+	assert.match(start.systemPrompt, /intent=implement · weight=full/);
+	assert.doesNotMatch(start.systemPrompt, /mutation=not-requested/);
+	assert.equal(start.message.details.state.detachedArtifactTask, true);
+	assert.doesNotMatch(start.systemPrompt, /Compact work context for this turn/);
+	const writeCall = await hooks.tool_call({ toolName: "write", input: { path: artifactPath } }, ctx);
+	assert.equal(writeCall, undefined);
+});
+
+test("Work Context only gates mutations inside its own repository", async () => {
+	const root = await mkdtemp(join(homedir(), ".workflow-guard-owned-root-"));
+	const externalRoot = await mkdtemp(join(homedir(), ".workflow-guard-external-root-"));
+	try {
+		execFileSync("git", ["init", "-b", "main", root]);
+		await mkdir(join(root, ".pi"), { recursive: true });
+		await writeFile(join(root, ".pi", "work-context.json"), JSON.stringify({
+		schemaVersion: 1,
+		identity: {
+			id: "worktree:owned-root",
+			type: "worktree",
+			root,
+			cwd: root,
+			displayName: "owned-root",
+			contextPath: join(root, ".pi", "work-context.json"),
+			tasksPath: join(root, ".pi", "work-tasks.json"),
+		},
+		updatedAt: "2026-07-23T00:00:00.000Z",
+		source: "frame",
+		mode: "standard",
+		goal: "현재 제품 slice",
+		currentSlice: { id: "S1", title: "제품 코드", scope: ["src"], acceptance: ["검증"], status: "in_progress" },
+		slices: [],
+		mustKeep: [],
+		mustNot: [],
+		openQuestions: [],
+		verifyFocus: [],
+		lastKnownState: {},
+		refs: {},
+	}, null, 2));
+		const { hooks, ctx } = createHarness();
+		const worktreeCtx = { ...ctx, cwd: root };
+		await hooks.before_agent_start({ prompt: "현재 제품 작업을 수정해줘", systemPrompt: "base" }, worktreeCtx);
+
+		const sameRepoOutsideSlice = await hooks.tool_call({
+			toolName: "edit",
+			input: { path: join(root, "docs", "outside-slice.md") },
+		}, worktreeCtx);
+		assert.equal(sameRepoOutsideSlice?.block, true);
+		assert.match(sameRepoOutsideSlice.reason, /Working Context Card gate failed/);
+
+		const externalArtifact = await hooks.tool_call({
+			toolName: "write",
+			input: { path: join(externalRoot, "study-hard-worker-result.json") },
+		}, worktreeCtx);
+		assert.equal(externalArtifact, undefined);
+	} finally {
+		await Promise.all([
+			rm(root, { recursive: true, force: true }),
+			rm(externalRoot, { recursive: true, force: true }),
+		]);
+	}
+});
+
 test("workflow guard complaint prompts enter audit path instead of unknown", async () => {
 	const prompts = [
 		"워크플로우 가드 이새끼 아직도 지랄인데?",
@@ -432,17 +513,17 @@ test("workflow guard complaint prompts enter audit path instead of unknown", asy
 		assert.match(start.systemPrompt, /HARD AUDIT PATH/);
 		assert.match(start.systemPrompt, /mutation=not-requested/);
 
-		const writeBlock = await hooks.tool_call({ toolName: "write", input: { path: join(process.cwd(), "workflow-guard-complaint.txt") } }, ctx);
-		assert.equal(writeBlock?.block, true);
+		const softWrite = await hooks.tool_call({ toolName: "write", input: { path: join(process.cwd(), "workflow-guard-complaint.txt") } }, ctx);
+		assert.equal(softWrite, undefined);
 	}
 });
 
-test("adopt action replaces stale read-only guard state", async () => {
+test("adopt action replaces stale classification while file mutation remains soft", async () => {
 	const { hooks, tools, ctx } = createHarness();
 	await hooks.before_agent_start({ prompt: "현재 위치만 확인해봐", systemPrompt: "base" }, ctx);
 
-	const blockedEdit = await hooks.tool_call({ toolName: "edit", input: { path: join(process.cwd(), "blocked-before-adopt.ts") } }, ctx);
-	assert.equal(blockedEdit?.block, true);
+	const softEdit = await hooks.tool_call({ toolName: "edit", input: { path: join(process.cwd(), "allowed-before-adopt.ts") } }, ctx);
+	assert.equal(softEdit, undefined);
 
 	const adoptResult = await tools.workflow_guard.execute(
 		"tool-call-id",
@@ -463,7 +544,7 @@ test("push status questions stay read-only instead of commit-push terminal path"
 
 	assert.match(start.systemPrompt, /intent=investigate/);
 	assert.match(start.systemPrompt, /mutation=not-requested/);
-	assert.match(start.systemPrompt, /HARD PATH/);
+	assert.match(start.systemPrompt, /READ-ONLY DEFAULT/);
 	assert.doesNotMatch(start.systemPrompt, /HARD LIGHT PUSH TERMINAL PATH/);
 
 	const commitBlock = await hooks.tool_call({ toolName: "bash", input: { command: "git commit -m 'fix: should-block'" } }, ctx);
@@ -484,13 +565,13 @@ test("commit and apply noun contexts stay read-only", async () => {
 		assert.match(start.systemPrompt, /intent=investigate/);
 		assert.match(start.systemPrompt, /weight=none/);
 		assert.match(start.systemPrompt, /mutation=not-requested/);
-		assert.match(start.systemPrompt, /HARD PATH: this turn is read-only/);
+		assert.match(start.systemPrompt, /READ-ONLY DEFAULT/);
 		assert.doesNotMatch(start.systemPrompt, /intent=ship/);
 		assert.doesNotMatch(start.systemPrompt, /intent=implement/);
 		assert.doesNotMatch(start.systemPrompt, /Commit-complete stop-line/);
 
-		const writeBlock = await hooks.tool_call({ toolName: "write", input: { path: join(process.cwd(), "workflow-guard-should-block.txt") } }, ctx);
-		assert.equal(writeBlock?.block, true);
+		const softWrite = await hooks.tool_call({ toolName: "write", input: { path: join(process.cwd(), "workflow-guard-soft-write.txt") } }, ctx);
+		assert.equal(softWrite, undefined);
 	}
 });
 
