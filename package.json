@@ -1,6 +1,6 @@
 {
   "name": "pilee",
-  "version": "0.1.255",
+  "version": "0.1.256",
   "description": "Personal pi coding agent config 🔥",
   "private": true,
   "type": "module",
@@ -54,6 +54,7 @@
     "test:tool-group-renderer": "node scripts/run-typescript-test.mjs extensions/tool-group-renderer/mcp-renderer.test.ts",
     "test:to-production": "node scripts/run-typescript-test.mjs extensions/to-production/index.test.ts",
     "test:update-branch": "node scripts/run-typescript-test.mjs extensions/update-branch/index.test.ts",
+    "test:diff-overlay": "node scripts/run-typescript-test.mjs extensions/diff-overlay/index.test.ts",
     "test:pilee-update": "node scripts/run-typescript-test.mjs extensions/pilee-update/index.test.ts",
     "test:bash-tool-override": "node scripts/run-typescript-test.mjs extensions/bash-tool-override/fanout-guard.test.ts",
     "test:subagent": "node scripts/run-typescript-test.mjs extensions/subagent/stale-ctx.test.ts",

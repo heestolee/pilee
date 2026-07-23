@@ -161,6 +161,7 @@ interface DiffState {
 	branch: string;
 	mergeBase: string | null;
 	baseBranch: string | null;
+	baseSource: string | null;
 	error: string | null;
 }
 
@@ -182,6 +183,11 @@ const ARROW_SCROLL_STEP = 10;
 const PAGE_SCROLL_STEP = 100;
 const COMMIT_HISTORY_LIMIT = 200;
 const GIT_LOG_PRETTY = "%H%x1f%h%x1f%an%x1f%ar%x1f%s%x1e";
+const DIFF_HELP = [
+	"사용법: /diff [--base <branch>]",
+	"",
+	"  --base <branch>  열린 PR의 base 자동 추론보다 우선할 비교 기준",
+].join("\n");
 
 const FILE_STATUS_ORDER: Record<DiffFileStatus, number> = {
 	modified: 0,
@@ -193,6 +199,47 @@ const FILE_STATUS_ORDER: Record<DiffFileStatus, number> = {
 };
 
 // ─── Pure helpers (formatting, math) ───────────────────────────────────────
+
+export interface ParsedDiffArgs {
+	help: boolean;
+	baseBranch: string | null;
+}
+
+export function parseDiffArgs(raw: string): ParsedDiffArgs | { error: string } {
+	const tokens = raw.trim().split(/\s+/).filter(Boolean);
+	let help = false;
+	let baseBranch: string | null = null;
+
+	for (let index = 0; index < tokens.length; index++) {
+		const token = tokens[index]!;
+		if (token === "help" || token === "--help" || token === "-h") {
+			help = true;
+			continue;
+		}
+
+		let value: string | null = null;
+		if (token === "--base") {
+			value = tokens[index + 1] ?? null;
+			index += 1;
+		} else if (token.startsWith("--base=")) {
+			value = token.slice("--base=".length);
+		} else {
+			return { error: `지원하지 않는 인자입니다: ${token}` };
+		}
+
+		if (!value || value.startsWith("-")) return { error: "--base 뒤에 유효한 branch를 입력하세요." };
+		if (baseBranch) return { error: "--base는 한 번만 사용할 수 있습니다." };
+		baseBranch = value;
+	}
+
+	return { help, baseBranch };
+}
+
+export function formatDiffComparison(branch: string, baseBranch: string | null, baseSource: string | null): string {
+	const head = branch || "HEAD";
+	if (!baseBranch) return head;
+	return `${baseBranch}...${head}${baseSource ? ` · ${baseSource}` : ""}`;
+}
 
 function clamp(n: number, min: number, max: number): number {
 	if (n < min) return min;
@@ -884,30 +931,104 @@ async function currentBranch(pi: ExtensionAPI, cwd: string): Promise<string> {
 	return r.code === 0 ? (r.stdout ?? "").trim() || "HEAD" : "HEAD";
 }
 
-interface MergeBaseInfo {
+export interface MergeBaseInfo {
 	commit: string;
 	baseBranch: string;
+	baseSource: string;
 }
 
-async function findMergeBase(pi: ExtensionAPI, cwd: string, branch: string): Promise<MergeBaseInfo | null> {
-	const defaults = ["main", "master", "develop"];
-	if (defaults.includes(branch) || branch === "HEAD") return null;
+interface PullRequestBase {
+	number: number;
+	baseRefName: string;
+}
+
+async function mergeBaseWithRefs(
+	pi: ExtensionAPI,
+	cwd: string,
+	baseBranch: string,
+	baseRefs: string[],
+	baseSource: string,
+): Promise<MergeBaseInfo | null> {
+	for (const baseRef of [...new Set(baseRefs)]) {
+		const result = await pi.exec("git", ["merge-base", "HEAD", baseRef], { cwd });
+		if (result.code === 0 && result.stdout?.trim()) {
+			return { commit: result.stdout.trim(), baseBranch: baseBranch.replace(/^origin\//, ""), baseSource };
+		}
+	}
+	return null;
+}
+
+async function findPullRequestBase(pi: ExtensionAPI, cwd: string, branch: string): Promise<PullRequestBase | null> {
+	const result = await pi.exec("gh", ["pr", "view", branch, "--json", "number,baseRefName"], { cwd });
+	if (result.code !== 0 || !result.stdout?.trim()) return null;
+	try {
+		const parsed = JSON.parse(result.stdout) as Partial<PullRequestBase>;
+		if (typeof parsed.number !== "number" || typeof parsed.baseRefName !== "string" || !parsed.baseRefName.trim()) return null;
+		return { number: parsed.number, baseRefName: parsed.baseRefName.trim() };
+	} catch {
+		return null;
+	}
+}
+
+function inferredBaseBranches(branch: string): string[] {
+	if (branch.startsWith("hotfix/") || branch.startsWith("hotfeature/")) return ["production"];
+	return [];
+}
+
+export async function findMergeBase(
+	pi: ExtensionAPI,
+	cwd: string,
+	branch: string,
+	explicitBaseBranch: string | null = null,
+): Promise<MergeBaseInfo | null> {
+	const defaults = ["main", "master", "develop", "development", "production"];
+
+	if (explicitBaseBranch) {
+		const explicitRefs = explicitBaseBranch.startsWith("origin/")
+			? [explicitBaseBranch]
+			: [`origin/${explicitBaseBranch}`, explicitBaseBranch];
+		const explicitMergeBase = await mergeBaseWithRefs(pi, cwd, explicitBaseBranch, explicitRefs, "--base");
+		if (explicitMergeBase) return explicitMergeBase;
+		throw new Error(`지정한 base branch를 찾을 수 없습니다: ${explicitBaseBranch}`);
+	}
+
+	if (branch === "HEAD") return null;
+
+	const pullRequest = await findPullRequestBase(pi, cwd, branch);
+	if (pullRequest) {
+		const pullRequestMergeBase = await mergeBaseWithRefs(
+			pi,
+			cwd,
+			pullRequest.baseRefName,
+			[`origin/${pullRequest.baseRefName}`],
+			`PR #${pullRequest.number}`,
+		);
+		if (pullRequestMergeBase) return pullRequestMergeBase;
+		throw new Error(
+			`PR #${pullRequest.number}의 base branch를 로컬에서 찾을 수 없습니다: origin/${pullRequest.baseRefName}`,
+		);
+	}
+
+	if (defaults.includes(branch)) return null;
+
+	for (const baseBranch of inferredBaseBranches(branch)) {
+		const inferredMergeBase = await mergeBaseWithRefs(pi, cwd, baseBranch, [`origin/${baseBranch}`], "hotfix/hotfeature");
+		if (inferredMergeBase) return inferredMergeBase;
+	}
 
 	const symRef = await pi.exec("git", ["symbolic-ref", "refs/remotes/origin/HEAD", "--short"], { cwd });
 	if (symRef.code === 0 && symRef.stdout?.trim()) {
 		const defaultBranch = symRef.stdout.trim().replace(/^origin\//, "");
 		if (defaultBranch !== branch) {
-			const r = await pi.exec("git", ["merge-base", branch, `origin/${defaultBranch}`], { cwd });
-			if (r.code === 0 && r.stdout?.trim()) {
-				return { commit: r.stdout.trim(), baseBranch: defaultBranch };
-			}
+			const defaultMergeBase = await mergeBaseWithRefs(pi, cwd, defaultBranch, [`origin/${defaultBranch}`], "origin/HEAD");
+			if (defaultMergeBase) return defaultMergeBase;
 		}
 	}
 
-	for (const base of defaults) {
-		if (base === branch) continue;
-		const r = await pi.exec("git", ["merge-base", branch, `origin/${base}`], { cwd });
-		if (r.code === 0 && r.stdout?.trim()) return { commit: r.stdout.trim(), baseBranch: base };
+	for (const baseBranch of defaults) {
+		if (baseBranch === branch) continue;
+		const fallbackMergeBase = await mergeBaseWithRefs(pi, cwd, baseBranch, [`origin/${baseBranch}`], "fallback");
+		if (fallbackMergeBase) return fallbackMergeBase;
 	}
 	return null;
 }
@@ -2420,8 +2541,7 @@ class DiffOverlay {
 		const header: string[] = [];
 		header.push(...new DynamicBorder((s: string) => t.fg("accent", s)).render(w));
 
-		const branch = st.branch ? t.fg("muted", st.branch) : t.fg("dim", "(detached)");
-		const baseInfo = st.baseBranch ? ` ${t.fg("dim", "vs")} ${t.fg("muted", st.baseBranch)}` : "";
+		const comparison = t.fg("muted", formatDiffComparison(st.branch, st.baseBranch, st.baseSource));
 		const scopeFileCount = st.filesByScope[st.scope].length;
 		const fileCnt = t.fg(
 			"muted",
@@ -2432,7 +2552,7 @@ class DiffOverlay {
 		const commitCnt = t.fg("muted", `${st.commits.length} commit${st.commits.length !== 1 ? "s" : ""}`);
 		const mode = st.viewMode === "diff" ? t.fg("accent", "diff") : t.fg("accent", "commit");
 		header.push(
-			`  ${t.fg("accent", t.bold("DIFF"))} ${t.fg("dim", "|")} ${branch}${baseInfo} ${t.fg("dim", "·")} ${fileCnt} ${t.fg("dim", "·")} ${commitCnt} ${t.fg("dim", "·")} mode:${mode}`,
+			`  ${t.fg("accent", t.bold("DIFF"))} ${t.fg("dim", "|")} ${comparison} ${t.fg("dim", "·")} ${fileCnt} ${t.fg("dim", "·")} ${commitCnt} ${t.fg("dim", "·")} mode:${mode}`,
 		);
 		header.push(
 			`  ${t.fg("muted", "scope:")}${t.fg("muted", scopeLabel(st.scope))} ${t.fg("muted", "· filter:")}${t.fg(st.searchMode ? "accent" : "muted", st.searchQuery || "-")} ${t.fg("muted", "· wrap:")}${t.fg(st.wrapLines ? "success" : "muted", st.wrapLines ? "on" : "off")} ${t.fg("muted", "· full:")}${t.fg(st.showFullFile ? "success" : "muted", st.showFullFile ? "on" : "off")} ${t.fg("muted", "· changed-only:")}${t.fg(st.changedOnly ? "success" : "muted", st.changedOnly ? "on" : "off")} ${t.fg("muted", "· reviews:")}${t.fg(st.reviewDrafts.length > 0 ? "accent" : "muted", String(st.reviewDrafts.length))}`,
@@ -2556,7 +2676,19 @@ class DiffOverlay {
 // ─── Extension entry point ────────────────────────────────────────────────
 
 export default function diffOverlayExtension(pi: ExtensionAPI) {
-	const handler = async (_args: string, ctx: ExtensionCommandContext) => {
+	const handler = async (args: string, ctx: ExtensionCommandContext) => {
+		const parsedArgs = parseDiffArgs(args);
+		if ("error" in parsedArgs) {
+			if (ctx.hasUI) ctx.ui.notify(parsedArgs.error, "error");
+			else console.error(parsedArgs.error);
+			return;
+		}
+		if (parsedArgs.help) {
+			if (ctx.hasUI) ctx.ui.notify(DIFF_HELP, "info");
+			else console.log(DIFF_HELP);
+			return;
+		}
+
 		const root = await gitRoot(pi, ctx.cwd);
 		if (!root) {
 			if (ctx.hasUI) ctx.ui.notify("Not a git repository", "error");
@@ -2565,7 +2697,15 @@ export default function diffOverlayExtension(pi: ExtensionAPI) {
 		}
 
 		const branch = await currentBranch(pi, root);
-		const mergeBaseInfo = await findMergeBase(pi, root, branch);
+		let mergeBaseInfo: MergeBaseInfo | null;
+		try {
+			mergeBaseInfo = await findMergeBase(pi, root, branch, parsedArgs.baseBranch);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			if (ctx.hasUI) ctx.ui.notify(message, "error");
+			else console.error(message);
+			return;
+		}
 		const mergeBase = mergeBaseInfo?.commit ?? null;
 		const overlayData = await loadOverlayData(pi, root, mergeBase);
 		const commits = [...overlayData.commits];
@@ -2633,6 +2773,7 @@ export default function diffOverlayExtension(pi: ExtensionAPI) {
 			branch,
 			mergeBase,
 			baseBranch: mergeBaseInfo?.baseBranch ?? null,
+			baseSource: mergeBaseInfo?.baseSource ?? null,
 			error: null,
 		};
 
@@ -2649,6 +2790,7 @@ export default function diffOverlayExtension(pi: ExtensionAPI) {
 		}
 
 		if (!ctx.hasUI) {
+			console.log(`기준: ${formatDiffComparison(branch, mergeBaseInfo?.baseBranch ?? null, mergeBaseInfo?.baseSource ?? null)}`);
 			if (files.length === 0) {
 				console.log("No changes.");
 				return;
@@ -2686,7 +2828,7 @@ export default function diffOverlayExtension(pi: ExtensionAPI) {
 	};
 
 	pi.registerCommand("diff", {
-		description: "Git diff viewer — diff mode + commit mode (per-commit foldable file diffs)",
+		description: "Git diff viewer — PR base 자동 인식, --base <branch> override, commit mode",
 		handler,
 	});
 }
