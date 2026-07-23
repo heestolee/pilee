@@ -17,8 +17,8 @@ applies_to:
 source:
   - user-direction:2026-07-19-study-hard-worker-flexible-generation-strict-apply
   - user-direction:2026-07-23-main-lineage-without-p0-turn-gate
-reviewed_at: 2026-07-23
-reviewed_commit: 96942f9e203c2ceae81f60d1ef1ecde95d6129bc
+reviewed_at: 2026-07-24
+reviewed_commit: c66306f73f53227c863dc8ed61fc7d33aa096c38
 related:
   - parallel-workflow-analysis-single-writer
   - study-hard-public-engine-private-publisher
