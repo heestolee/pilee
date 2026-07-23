@@ -51,7 +51,7 @@ import {
 } from "../ship-commands/index.ts";
 import { enqueueSubagentInvocation } from "./invocation-queue.js";
 import { appendDisplayTaskUpdate, getSessionFileSize } from "./persisted-session.js";
-import { registerProgrammaticSubagentLauncher } from "./programmatic.js";
+import { registerProgrammaticSubagentLauncher, restoreProgrammaticSubagentLineageEntry } from "./programmatic.js";
 import { readSessionReplayItems, SubagentSessionReplayOverlay } from "./replay.js";
 import { invokeWithAutoRetry, MAX_SUBAGENT_AUTO_RETRIES } from "./retry.js";
 import { getLatestRun, removeRun, trimCommandRunHistory } from "./run-utils.js";
@@ -554,8 +554,13 @@ function restoreRunsFromSession(store: SubagentStore, ctx: any, pi?: ExtensionAP
 			}
 		}
 
-		for (const entry of entries) {
-			if (entry.type !== "custom_message") continue;
+		const runLogEntries = entries.flatMap((entry: any) => {
+			if (entry.type === "custom_message") return [entry];
+			const restored = restoreProgrammaticSubagentLineageEntry(entry);
+			return restored ? [restored] : [];
+		});
+
+		for (const entry of runLogEntries) {
 			const cm = entry as any;
 			if (cm.customType !== "subagent-command" && cm.customType !== "subagent-tool") continue;
 			sawSubagentMarkers = true;

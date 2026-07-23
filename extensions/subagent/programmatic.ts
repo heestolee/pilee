@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 export const PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT = "pilee:subagent:programmatic-launch";
+export const PROGRAMMATIC_SUBAGENT_LINEAGE_ENTRY = "subagent-programmatic-lineage";
 export const PROGRAMMATIC_SUBAGENT_HOOKS = Symbol("pilee.subagent.programmatic-hooks");
 
 export interface ProgrammaticSubagentStarted {
@@ -33,6 +34,32 @@ export interface ProgrammaticSubagentHooks {
 	requestId: string;
 	onStarted: ProgrammaticSubagentLaunchRequest["onStarted"];
 	onCompleted: ProgrammaticSubagentLaunchRequest["onCompleted"];
+}
+
+export interface ProgrammaticSubagentLineageMessage {
+	customType: string;
+	content: string;
+	display: boolean;
+	details?: Record<string, unknown>;
+}
+
+export function queueProgrammaticSubagentLineage(
+	pi: Pick<ExtensionAPI, "appendEntry" | "sendMessage">,
+	message: ProgrammaticSubagentLineageMessage,
+): void {
+	pi.appendEntry(PROGRAMMATIC_SUBAGENT_LINEAGE_ENTRY, { message });
+	pi.sendMessage({
+		...message,
+		content: `[Subagent lineage context — do not answer this event unless the current user explicitly asks.]\n\n${message.content}`,
+	}, { deliverAs: "nextTurn", triggerTurn: false });
+}
+
+export function restoreProgrammaticSubagentLineageEntry(entry: unknown): Record<string, unknown> | undefined {
+	if (!entry || typeof entry !== "object") return undefined;
+	const candidate = entry as { type?: unknown; customType?: unknown; timestamp?: unknown; data?: { message?: unknown } };
+	if (candidate.type !== "custom" || candidate.customType !== PROGRAMMATIC_SUBAGENT_LINEAGE_ENTRY) return undefined;
+	if (!candidate.data?.message || typeof candidate.data.message !== "object") return undefined;
+	return { type: "custom_message", timestamp: candidate.timestamp, ...(candidate.data.message as Record<string, unknown>) };
 }
 
 interface ProgrammaticExecuteResult {

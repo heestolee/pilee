@@ -43,6 +43,7 @@ import { enqueueSubagentInvocation } from "./invocation-queue.js";
 import { appendDisplayTaskUpdate, getSessionFileSize } from "./persisted-session.js";
 import {
 	PROGRAMMATIC_SUBAGENT_HOOKS,
+	queueProgrammaticSubagentLineage,
 	type ProgrammaticSubagentCompleted,
 	type ProgrammaticSubagentHooks,
 } from "./programmatic.js";
@@ -1213,7 +1214,9 @@ export function createSubagentToolExecute(pi: ExtensionAPI, store: SubagentStore
 				existingRunState: continueFromRun,
 			});
 			const startedState = continueFromRun ? "resumed" : "started";
-			pi.sendMessage(buildRunStartMessage(runState, startedState), { deliverAs: "followUp", triggerTurn: false });
+			const startMessage = buildRunStartMessage(runState, startedState);
+			if (programmaticHooks) queueProgrammaticSubagentLineage(pi, startMessage);
+			else pi.sendMessage(startMessage, { deliverAs: "followUp", triggerTurn: false });
 			try {
 				programmaticHooks?.onStarted({
 					requestId: programmaticHooks.requestId,
@@ -1249,15 +1252,12 @@ export function createSubagentToolExecute(pi: ExtensionAPI, store: SubagentStore
 						await programmaticHooks.onCompleted(completion);
 					} catch (error: unknown) {
 						const message = error instanceof Error ? error.message : String(error);
-						pi.sendMessage(
-							{
-								customType: "subagent-programmatic",
-								content: `[subagent:${finalized.runState.agent}#${finalized.runState.id}] completion callback failed\n\n${message}`,
-								display: true,
-								details: { runId: finalized.runState.id, requestId: programmaticHooks.requestId, status: "callback-error" },
-							},
-							{ deliverAs: "followUp", triggerTurn: false },
-						);
+						queueProgrammaticSubagentLineage(pi, {
+							customType: "subagent-programmatic",
+							content: `[subagent:${finalized.runState.agent}#${finalized.runState.id}] completion callback failed\n\n${message}`,
+							display: true,
+							details: { runId: finalized.runState.id, requestId: programmaticHooks.requestId, status: "callback-error" },
+						});
 					}
 					return true;
 				};
@@ -1271,7 +1271,7 @@ export function createSubagentToolExecute(pi: ExtensionAPI, store: SubagentStore
 						const escalationMsg = finalized.rawOutput.replace(/^\[ESCALATION\]\s*/, "");
 						const message = buildEscalationMessage(runState, escalationMsg, finalized.result);
 						if (programmaticHooks) {
-							pi.sendMessage(message, { deliverAs: "followUp", triggerTurn: false });
+							queueProgrammaticSubagentLineage(pi, message);
 							await deliverProgrammaticCompletion(finalized);
 						} else if (isInOriginSession(ctx, originSessionFile)) {
 							pi.sendMessage(message, { deliverAs: "followUp", triggerTurn: true });
@@ -1285,7 +1285,7 @@ export function createSubagentToolExecute(pi: ExtensionAPI, store: SubagentStore
 
 					const completionMessage = buildRunCompletionMessage(finalized);
 					if (programmaticHooks) {
-						pi.sendMessage(completionMessage, { deliverAs: "followUp", triggerTurn: false });
+						queueProgrammaticSubagentLineage(pi, completionMessage);
 						await deliverProgrammaticCompletion(finalized);
 					} else if (isInOriginSession(ctx, originSessionFile)) {
 						pi.sendMessage(completionMessage, { deliverAs: "followUp", triggerTurn: true });
@@ -1313,7 +1313,7 @@ export function createSubagentToolExecute(pi: ExtensionAPI, store: SubagentStore
 						rawOutput: runState.lastLine,
 					});
 					if (programmaticHooks) {
-						pi.sendMessage(errorMessage, { deliverAs: "followUp", triggerTurn: false });
+						queueProgrammaticSubagentLineage(pi, errorMessage);
 						await deliverProgrammaticCompletion({
 							runState,
 							isError: true,

@@ -3,7 +3,10 @@ import { test } from "node:test";
 import {
 	PROGRAMMATIC_SUBAGENT_HOOKS,
 	PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT,
+	PROGRAMMATIC_SUBAGENT_LINEAGE_ENTRY,
+	queueProgrammaticSubagentLineage,
 	registerProgrammaticSubagentLauncher,
+	restoreProgrammaticSubagentLineageEntry,
 	type ProgrammaticSubagentHooks,
 	type ProgrammaticSubagentLaunchRequest,
 } from "./programmatic.ts";
@@ -58,6 +61,35 @@ test("programmatic launcher는 기존 execute에 main-context run을 전달하�
 
 	assert.equal(command, "subagent run study-hard-worker --main -- 질문 artifact를 생성해");
 	assert.deepEqual(events, ["claimed", "started:17", "completed:17:done"]);
+});
+
+test("programmatic lineage는 durable entry와 nextTurn을 함께 사용한다", () => {
+	const entries: Array<{ customType: string; data: unknown }> = [];
+	const messages: Array<{ message: unknown; options: unknown }> = [];
+	const pi = {
+		appendEntry(customType: string, data: unknown) { entries.push({ customType, data }); },
+		sendMessage(message: unknown, options: unknown) { messages.push({ message, options }); },
+	} as any;
+	const message = {
+		customType: "subagent-tool",
+		content: "[subagent:study-hard-worker#17] completed",
+		display: true,
+		details: { runId: 17, status: "done" },
+	};
+
+	queueProgrammaticSubagentLineage(pi, message);
+
+	assert.deepEqual(entries, [{ customType: PROGRAMMATIC_SUBAGENT_LINEAGE_ENTRY, data: { message } }]);
+	assert.equal((messages[0]?.message as any).customType, message.customType);
+	assert.equal((messages[0]?.message as any).details.runId, 17);
+	assert.match((messages[0]?.message as any).content, /Subagent lineage context — do not answer/);
+	assert.match((messages[0]?.message as any).content, /study-hard-worker#17/);
+	assert.deepEqual(messages[0]?.options, { deliverAs: "nextTurn", triggerTurn: false });
+	assert.deepEqual(
+		restoreProgrammaticSubagentLineageEntry({ type: "custom", customType: entries[0]!.customType, timestamp: "2026-07-24T00:00:00.000Z", data: entries[0]!.data }),
+		{ type: "custom_message", timestamp: "2026-07-24T00:00:00.000Z", ...message },
+	);
+	assert.equal(restoreProgrammaticSubagentLineageEntry({ type: "custom", customType: "other", data: { message } }), undefined);
 });
 
 test("programmatic launcher는 같은 run continuation과 활성 context 부재를 명시한다", async () => {
