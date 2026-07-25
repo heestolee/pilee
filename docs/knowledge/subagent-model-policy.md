@@ -24,8 +24,8 @@ source:
   - pilee-history:2026-05-04#33
   - pilee-history:2026-05-04#34
   - pilee-history:2026-05-05#42
-reviewed_at: 2026-06-02
-reviewed_commit: 83617e9544615d818e6a7a17fa807f029a7db835
+reviewed_at: 2026-07-25
+reviewed_commit: 3c859097475e102743d430a2bce6daff7632b451
 related:
   - pilee-knowledge-system
   - worktree-session-continuity
@@ -33,15 +33,15 @@ related:
 
 ## Overview
 
-pilee subagent는 Codex-first 실행 흐름을 기본으로 하되, 검증 판정처럼 false PASS 비용이 큰 역할에는 Claude Opus를 쓰는 hybrid 모델 정책으로 운영합니다. 기본 방향은 worker/planner/reviewer/challenger/browser처럼 구현·리뷰·도전·실행 책임이 큰 agent에는 강한 Codex 모델을 쓰고, verifier처럼 증거 판정 책임이 큰 agent에는 Claude Opus를 쓰며, finder/searcher처럼 탐색·수집 중심 agent에는 더 가벼운 모델을 써 비용과 부하를 낮추는 것입니다.
+pilee subagent는 Codex-first 실행 흐름을 기본으로 하되, 검증 판정처럼 false PASS 비용이 큰 역할에는 Claude Opus를 쓰는 hybrid 모델 정책으로 운영합니다. 기본 방향은 worker/planner/reviewer/challenger/browser처럼 구현·리뷰·도전·실행 책임이 큰 agent에는 강한 Codex 모델을 쓰고, verifier처럼 증거 판정 책임이 큰 agent에는 Claude Opus 5를 max effort로 쓰며, finder/searcher처럼 탐색·수집 중심 agent에는 더 가벼운 모델을 써 비용과 부하를 낮추는 것입니다.
 
 ## Model Split
 
 모든 agent를 같은 최고 모델로 통일하면 기준선은 단순해지지만, 탐색형 agent까지 같은 비용 구조를 갖게 됩니다. 현재 정책은 역할별 위험도와 출력 품질 요구를 나눕니다.
 
 - 구현·리뷰·도전·브라우저 실행 역할은 강한 Codex 모델을 유지합니다.
-- verifier는 “증거 없는 PASS”의 비용이 크므로 Claude Opus를 사용합니다. 구현보다 claim inventory, 재현, evidence 판정, skipped check/remaining risk 기록이 핵심 역할입니다.
-- verifier의 primary Opus 호출이 실패하면 `openai-codex/gpt-5.5`로 한 번 fallback합니다. fallback은 검증 workflow를 끊지 않기 위한 안전장치이며, 실제 PASS 기준은 동일하게 evidence-first입니다.
+- verifier는 “증거 없는 PASS”의 비용이 크므로 Claude Opus 5를 `max` effort로 사용합니다. 구현보다 claim inventory, 재현, evidence 판정, skipped check/remaining risk 기록이 핵심 역할입니다.
+- verifier의 primary Opus 호출이 실패하면 `openai-codex/gpt-5.6-sol`로 한 번 fallback합니다. fallback은 검증 workflow를 끊지 않기 위한 안전장치이며, 실제 PASS 기준은 동일하게 evidence-first입니다.
 - 단순 탐색·검색 역할은 가벼운 모델을 우선 사용합니다.
 - 모델 선택은 “얼마나 똑똑한가”보다 “이 agent가 실패했을 때 되돌리기 비용이 큰가”를 기준으로 조정합니다.
 
