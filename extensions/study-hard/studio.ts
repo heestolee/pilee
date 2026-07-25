@@ -337,7 +337,12 @@ interface StudyHardHandle {
 const execFileAsync = promisify(execFile);
 const NOTE_HISTORY_LIMIT = 50;
 const STUDY_HARD_TRANSCRIPT_CUSTOM_TYPE = "heestolee.study-hard.transcript";
-const STUDY_HARD_TRANSCRIPT_LINEAGE_ENTRY = "study-hard-transcript-lineage";
+export const STUDY_HARD_TRANSCRIPT_LINEAGE_ENTRY = "study-hard-transcript-lineage";
+export interface StudyHardTranscriptLineageEntryData {
+	content: string;
+	details: Record<string, unknown>;
+	display?: boolean;
+}
 const handles = new Map<string, StudyHardHandle>();
 let latestRunId: string | undefined;
 
@@ -1362,8 +1367,14 @@ function transcriptEventKeysFromContext(ctx: ExtensionCommandContext | Extension
 	if (!sessionManager || typeof sessionManager.getBranch !== "function") return undefined;
 	try {
 		return new Set(sessionManager.getBranch().flatMap((entry) => {
-			if (entry.type !== "custom_message" || entry.customType !== STUDY_HARD_TRANSCRIPT_CUSTOM_TYPE) return [];
-			const details = entry.details as Record<string, unknown> | undefined;
+			let details: Record<string, unknown> | undefined;
+			if (entry.type === "custom_message" && entry.customType === STUDY_HARD_TRANSCRIPT_CUSTOM_TYPE) {
+				details = entry.details as Record<string, unknown> | undefined;
+			} else if (entry.type === "custom" && entry.customType === STUDY_HARD_TRANSCRIPT_LINEAGE_ENTRY) {
+				details = (entry.data as StudyHardTranscriptLineageEntryData | undefined)?.details;
+			} else {
+				return [];
+			}
 			return details?.runId === runId && typeof details.eventKey === "string" ? [details.eventKey] : [];
 		}));
 	} catch {
@@ -1380,18 +1391,21 @@ function publishStudyHardTranscript(
 ): void {
 	if (handle.transcriptEventKeys.has(eventKey)) return;
 	const messageDetails = { runId: handle.state.runId, eventKind, eventKey, ...details };
+	let published = false;
 	try {
-		handle.pi.appendEntry(STUDY_HARD_TRANSCRIPT_LINEAGE_ENTRY, { content, details: messageDetails });
+		handle.pi.appendEntry<StudyHardTranscriptLineageEntryData>(STUDY_HARD_TRANSCRIPT_LINEAGE_ENTRY, { content, details: messageDetails, display: true });
+		published = true;
 	} catch {}
 	try {
 		handle.pi.sendMessage({
 			customType: STUDY_HARD_TRANSCRIPT_CUSTOM_TYPE,
 			content: `[Study Hard lineage context — 현재 사용자 요청이 이 이벤트를 묻지 않으면 답변하지 마세요.]\n\n${content}`,
-			display: true,
+			display: false,
 			details: messageDetails,
-		}, { deliverAs: "steer", triggerTurn: false });
-		handle.transcriptEventKeys.add(eventKey);
+		}, { deliverAs: "nextTurn", triggerTurn: false });
+		published = true;
 	} catch {}
+	if (published) handle.transcriptEventKeys.add(eventKey);
 }
 
 interface StudyHardQuestionTranscriptEvent {

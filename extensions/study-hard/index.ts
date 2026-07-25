@@ -1,10 +1,11 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import { Box, Text } from "@mariozechner/pi-tui";
 import { learningCompanionManifestPath, readLearningCompanionManifest, type LearningCompanionManifest } from "../learning-companion/state.ts";
 import { buildFrameIdentity } from "../tft-commands/frame-identity.ts";
 import { resolveStudyHardRuntimeConfig } from "./runtime-config.ts";
-import { openExistingStudyHardStudio, registerStudyHardBoardTool, startStudyHardStudio, stopStudyHardStudios, type StudyHardBoardState } from "./studio.ts";
+import { openExistingStudyHardStudio, registerStudyHardBoardTool, startStudyHardStudio, stopStudyHardStudios, STUDY_HARD_TRANSCRIPT_LINEAGE_ENTRY, type StudyHardBoardState, type StudyHardTranscriptLineageEntryData } from "./studio.ts";
 const CUSTOM_TYPE = "heestolee.study-hard";
 
 const HELP = `/study-hard — URL 기반 학습 모드
@@ -144,7 +145,7 @@ Study Hard board state path: ${boardStatePath}
    - Studio 오른쪽 Drawer의 learner 질문은 extension coordinator가 표준 \`study-hard-worker --main\` subagent dispatcher로 즉시 보냅니다. P0 LLM turn은 launch나 정상 completion apply의 gate가 아니며, 여러 질문은 표준 #N worker widget에 각각 보이고 비동기로 병렬 실행합니다.
    - 전용 worker는 선택 블록을 쓰기 경계로 제한하지 않습니다. 사용자 의도를 닫는 데 필요한 주변 블록·섹션·표·callout·Mermaid·visual·순서를 유연하게 제안하되 state를 직접 수정하지 않고 result artifact만 만듭니다.
    - extension coordinator가 base/proposed/current noteDocument의 3-way merge를 엄격하게 처리합니다. disjoint 변경은 보존하고 같은 필드·삭제 대 수정·양립 불가능한 순서 변경은 silent overwrite하지 않습니다. 첫 conflict는 같은 worker run을 최신 state로 한 번 continue하고 두 번째 conflict만 P0 판단으로 남깁니다.
-   - worker 전체 noteDocument JSON은 Pi transcript에 노출하지 않고 artifact에 둡니다. 질문·worker #N 완료 요약·최종 답변·노트 반영·충돌은 durable session entry로 같은 메인 session lineage에 즉시 기록합니다. visible transcript는 \`steer + triggerTurn:false\`로 전달해, 실행 중인 P0 turn에서는 tool 실행 뒤 다음 LLM 호출 전에 보이고 idle이면 새 assistant turn 없이 즉시 보입니다. 완료 transcript를 다음 사용자 turn으로 미루지 않습니다. Glimpse는 별도 대화가 아니라 이 canonical 학습 대화의 UI입니다.
+   - worker 전체 noteDocument JSON은 Pi transcript에 노출하지 않고 artifact에 둡니다. 질문·worker #N 완료 요약·최종 답변·노트 반영·충돌은 durable session entry로 같은 메인 session lineage에 즉시 기록하고 entry renderer로 바로 보여줍니다. 모델 context용 복사본만 \`display:false + nextTurn\`으로 전달해 추가 assistant turn이나 다음 질문 시점의 지연 노출을 만들지 않습니다. 실행 중인 P0는 tool result를 근거로 카드 뒤에 마지막 완료 답변을 이어갑니다. Glimpse는 별도 대화가 아니라 이 canonical 학습 대화의 UI입니다.
    - 내부 worker prompt와 patch JSON은 Pi transcript에 노출하지 않습니다.
    - learner 질문에는 같은 question의 feedback으로 답하고 \`processingStatus: queued|running|result-ready|merging|rebasing|applied|conflict|failed\`를 보존합니다.
    - coach 질문에는 userAnswer를 받은 뒤 feedback과 status를 갱신합니다.
@@ -249,6 +250,13 @@ python3 "${invocation.syncScript}" --file .context/study-hard/<session-id>.json
 }
 
 export default function studyHard(pi: ExtensionAPI) {
+	pi.registerEntryRenderer<StudyHardTranscriptLineageEntryData>(STUDY_HARD_TRANSCRIPT_LINEAGE_ENTRY, (entry, _options, theme) => {
+		const data = entry.data;
+		if (data?.display !== true || typeof data.content !== "string") return undefined;
+		const box = new Box(1, 1, (text) => theme.bg("customMessageBg", text));
+		box.addChild(new Text(theme.fg("customMessageText", data.content), 0, 0));
+		return box;
+	});
 	registerStudyHardBoardTool(pi);
 	pi.on("session_shutdown", () => stopStudyHardStudios());
 

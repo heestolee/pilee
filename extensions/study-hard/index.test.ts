@@ -36,9 +36,10 @@ test("buildStudyHardPrompt keeps learning loop and Notion sync contracts visible
 	assert.match(prompt, /3-way merge/);
 	assert.match(prompt, /P0 LLM turn은 launch나 정상 completion apply의 gate가 아니며/);
 	assert.match(prompt, /durable session entry로 같은 메인 session lineage에 즉시 기록/);
-	assert.match(prompt, /steer \+ triggerTurn:false/);
-	assert.match(prompt, /tool 실행 뒤 다음 LLM 호출 전에 보이고/);
-	assert.match(prompt, /완료 transcript를 다음 사용자 turn으로 미루지 않습니다/);
+	assert.match(prompt, /entry renderer로 바로 보여줍니다/);
+	assert.match(prompt, /display:false \+ nextTurn/);
+	assert.match(prompt, /추가 assistant turn이나 다음 질문 시점의 지연 노출을 만들지 않습니다/);
+	assert.match(prompt, /카드 뒤에 마지막 완료 답변을 이어갑니다/);
 	assert.match(prompt, /canonical 학습 대화의 UI/);
 	assert.match(prompt, /내부 worker prompt와 patch JSON은 Pi transcript에 노출하지 않습니다/);
 	assert.match(prompt, /processingStatus/);
@@ -68,12 +69,18 @@ test("extension registers /study-hard and sends one hidden follow-up prompt", as
 	const messages: Array<{ message: any; options: any }> = [];
 	const tools: string[] = [];
 	const events: string[] = [];
+	let entryRendererType: string | undefined;
+	let entryRenderer: ((entry: any, options: any, theme: any) => any) | undefined;
 	const fakePi = {
 		registerCommand(name: string, options: { description: string; handler: (args: string, ctx: any) => Promise<void> }) {
 			registered = { name, ...options };
 		},
 		registerTool(tool: { name: string }) {
 			tools.push(tool.name);
+		},
+		registerEntryRenderer(type: string, renderer: (entry: any, options: any, theme: any) => any) {
+			entryRendererType = type;
+			entryRenderer = renderer;
 		},
 		on(event: string, _handler: unknown) {
 			events.push(event);
@@ -92,6 +99,12 @@ test("extension registers /study-hard and sends one hidden follow-up prompt", as
 	assert.match(registered?.description ?? "", /적응형 학습 모드/);
 	assert.deepEqual(tools, ["study_hard_board"]);
 	assert.deepEqual(events, ["session_shutdown"]);
+	assert.equal(entryRendererType, "study-hard-transcript-lineage");
+	const theme = { bg: (_name: string, text: string) => text, fg: (_name: string, text: string) => text };
+	assert.equal(entryRenderer?.({ data: { content: "과거 durable entry", details: {} } }, { expanded: false }, theme), undefined);
+	const visibleEntry = entryRenderer?.({ data: { content: "즉시 보이는 완료 카드", details: {}, display: true } }, { expanded: false }, theme);
+	assert.ok(visibleEntry);
+	assert.match(visibleEntry.render(80).join("\n"), /즉시 보이는 완료 카드/);
 
 	try {
 		await registered!.handler("https://reactnative.dev/architecture/xplat-implementation", {
@@ -137,6 +150,7 @@ test("/study-hard current reopens the attached run without starting a new learni
 	const fakePi = {
 		registerCommand(name: string, options: any) { if (name === "study-hard") registered = options; },
 		registerTool() {},
+		registerEntryRenderer() {},
 		on() {},
 		sendMessage(message: any) { messages.push(message); },
 		exec() { throw new Error("no browser fallback in test"); },

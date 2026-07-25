@@ -1420,9 +1420,9 @@ test("Glimpse node thread keeps learner questions and coach answers on the same 
 		const transcriptMessages = messages.filter(({ message }) => message.customType === "heestolee.study-hard.transcript");
 		assert.equal(transcriptMessages.length, 6);
 		assert.deepEqual(transcriptMessages.map(({ message }) => message.details.eventKind), ["learner-question", "coach-question", "learner-answer", "learner-question", "learner-question", "learner-question"]);
-		assert.ok(transcriptMessages.every(({ message, options }) => message.display === true && options.deliverAs === "steer" && options.triggerTurn === false));
+		assert.ok(transcriptMessages.every(({ message, options }) => message.display === false && options.deliverAs === "nextTurn" && options.triggerTurn === false));
 		assert.equal(lineageEntries.length, 6);
-		assert.ok(lineageEntries.every(({ customType, data }) => customType === "study-hard-transcript-lineage" && data.details?.eventKey));
+		assert.ok(lineageEntries.every(({ customType, data }) => customType === "study-hard-transcript-lineage" && data.display === true && data.details?.eventKey));
 		assert.match(transcriptMessages[0]?.message.content, /Study Hard lineage context/);
 		assert.match(transcriptMessages[0]?.message.content, /이 노드가 전체 흐름에서 무슨 역할이야/);
 		const nodeAnswerMessage = messages.find(({ message }) => message.customType === "heestolee.study-hard.node-answer");
@@ -1482,8 +1482,8 @@ test("event bus가 없는 legacy runtime은 P0 fallback dispatch를 유지한다
 		assert.equal(state.questions[0].feedback, "전용 worker가 P0 맥락으로 답했습니다.");
 		const workerAnswer = messages.find(({ message }) => message.details?.eventKind === "worker-answer");
 		assert.ok(workerAnswer);
-		assert.equal(workerAnswer?.message.display, true);
-		assert.equal(workerAnswer?.options.deliverAs, "steer");
+		assert.equal(workerAnswer?.message.display, false);
+		assert.equal(workerAnswer?.options.deliverAs, "nextTurn");
 		assert.equal(workerAnswer?.options.triggerTurn, false);
 	} finally {
 		stopStudyHardStudios();
@@ -1582,7 +1582,7 @@ test("learner 질문은 P0 LLM turn 없이 즉시 dispatch·적용되고 첫 충
 		const completionTranscripts = messages.filter(({ message }) => ["worker-answer", "note-merged"].includes(message.details?.eventKind));
 		assert.ok(completionTranscripts.some(({ message }) => message.details?.eventKind === "worker-answer"));
 		assert.ok(completionTranscripts.some(({ message }) => message.details?.eventKind === "note-merged"));
-		assert.ok(completionTranscripts.every(({ message, options }) => message.display === true && options.deliverAs === "steer" && options.triggerTurn === false));
+		assert.ok(completionTranscripts.every(({ message, options }) => message.display === false && options.deliverAs === "nextTurn" && options.triggerTurn === false));
 	} finally {
 		stopStudyHardStudios();
 	}
@@ -1615,7 +1615,7 @@ test("전용 worker는 이미지 경로를 받고 한 block을 여러 block으�
 		assert.equal(messages.filter(({ message }) => message.details?.eventKind === "worker-answer").length, 1);
 		assert.equal(messages.filter(({ message }) => message.details?.eventKind === "note-merged").length, 1);
 		const completionTranscripts = messages.filter(({ message }) => ["worker-answer", "note-merged"].includes(message.details?.eventKind));
-		assert.ok(completionTranscripts.every(({ message, options }) => message.display === true && options.deliverAs === "steer" && options.triggerTurn === false));
+		assert.ok(completionTranscripts.every(({ message, options }) => message.display === false && options.deliverAs === "nextTurn" && options.triggerTurn === false));
 	} finally {
 		stopStudyHardStudios();
 	}
@@ -1745,8 +1745,10 @@ test("겹치는 worker 결과는 한 번 rebase한 뒤에만 적용하고 중복
 test("persisted Q&A는 같은 session에서 중복하지 않고 새 session에는 summary 하나만 연결한다", async () => {
 	const runId = "transcript-backfill";
 	const firstMessages: Array<{ message: any; options: any }> = [];
+	const firstEntries: Array<{ customType: string; data: any }> = [];
 	const firstPi = {
 		sendMessage(message: any, options: any) { firstMessages.push({ message, options }); },
+		appendEntry(customType: string, data: any) { firstEntries.push({ customType, data }); },
 		exec() { throw new Error("no browser fallback in test"); },
 	} as any;
 	const questions = [
@@ -1759,7 +1761,9 @@ test("persisted Q&A는 같은 session에서 중복하지 않고 새 session에�
 		initialPatch: { questions },
 	});
 	assert.deepEqual(firstMessages.map(({ message }) => message.details.eventKind), ["learner-question", "tutor-answer", "coach-question", "learner-answer", "coach-feedback"]);
-	const branch = firstMessages.map(({ message }) => ({ type: "custom_message", customType: message.customType, details: message.details }));
+	assert.ok(firstMessages.every(({ message, options }) => message.display === false && options.deliverAs === "nextTurn" && options.triggerTurn === false));
+	assert.ok(firstEntries.every(({ data }) => data.display === true));
+	const branch = firstEntries.map(({ customType, data }) => ({ type: "custom", customType, data }));
 	const initialMessageCount = firstMessages.length;
 	await startStudyHardStudio(firstPi, { hasUI: false, cwd: "/tmp/study-hard", sessionManager: { getBranch: () => branch } } as any, {
 		url: "https://example.com/transcript-backfill",
@@ -1796,8 +1800,9 @@ test("persisted Q&A는 같은 session에서 중복하지 않고 새 session에�
 		assert.match(newSessionMessages[0]?.message.content, /기존 Q&A 요약/);
 		assert.match(newSessionMessages[0]?.message.content, /질문: 2개/);
 		assert.doesNotMatch(newSessionMessages[0]?.message.content, /끝문장/);
+		assert.equal(newSessionMessages[0]?.message.display, false);
 		assert.equal(newSessionMessages[0]?.options.triggerTurn, false);
-		assert.equal(newSessionMessages[0]?.options.deliverAs, "steer");
+		assert.equal(newSessionMessages[0]?.options.deliverAs, "nextTurn");
 	} finally {
 		stopStudyHardStudios();
 	}
@@ -1876,7 +1881,7 @@ test("학습 코치는 목표·추천 경로·복습 질문만 갱신하고 학�
 		assert.equal(state.coachRole, "rubber-duck");
 		assert.equal(JSON.stringify(state.noteDocument), originalNote);
 		assert.deepEqual(messages.map(({ message }) => message.details.eventKind), ["learner-question", "coach-feedback", "coach-question", "learner-answer", "coach-feedback"]);
-		assert.ok(messages.every(({ message, options }) => message.display === true && options.triggerTurn === false));
+		assert.ok(messages.every(({ message, options }) => message.display === false && options.deliverAs === "nextTurn" && options.triggerTurn === false));
 		assert.match(messages[0]?.message.content, /코드보다 전체 구조/);
 		assert.match(messages.at(-1)?.message.content, /책임 경계/);
 	} finally {
