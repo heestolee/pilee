@@ -1420,7 +1420,7 @@ test("Glimpse node thread keeps learner questions and coach answers on the same 
 		const transcriptMessages = messages.filter(({ message }) => message.customType === "heestolee.study-hard.transcript");
 		assert.equal(transcriptMessages.length, 6);
 		assert.deepEqual(transcriptMessages.map(({ message }) => message.details.eventKind), ["learner-question", "coach-question", "learner-answer", "learner-question", "learner-question", "learner-question"]);
-		assert.ok(transcriptMessages.every(({ message, options }) => message.display === true && options.deliverAs === "nextTurn" && options.triggerTurn === false));
+		assert.ok(transcriptMessages.every(({ message, options }) => message.display === true && options.deliverAs === "steer" && options.triggerTurn === false));
 		assert.equal(lineageEntries.length, 6);
 		assert.ok(lineageEntries.every(({ customType, data }) => customType === "study-hard-transcript-lineage" && data.details?.eventKey));
 		assert.match(transcriptMessages[0]?.message.content, /Study Hard lineage context/);
@@ -1480,7 +1480,11 @@ test("event bus가 없는 legacy runtime은 P0 fallback dispatch를 유지한다
 		state = await fetch(new URL("/state", handle.url)).then((response) => response.json() as Promise<any>);
 		assert.equal(state.questions[0].workerRunId, 11);
 		assert.equal(state.questions[0].feedback, "전용 worker가 P0 맥락으로 답했습니다.");
-		assert.ok(messages.some(({ message }) => message.details?.eventKind === "worker-answer"));
+		const workerAnswer = messages.find(({ message }) => message.details?.eventKind === "worker-answer");
+		assert.ok(workerAnswer);
+		assert.equal(workerAnswer?.message.display, true);
+		assert.equal(workerAnswer?.options.deliverAs, "steer");
+		assert.equal(workerAnswer?.options.triggerTurn, false);
 	} finally {
 		stopStudyHardStudios();
 	}
@@ -1575,8 +1579,10 @@ test("learner 질문은 P0 LLM turn 없이 즉시 dispatch·적용되고 첫 충
 		state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
 		assert.equal(state.noteDocument.sections[0].blocks[0].text, "A-first + A-second");
 		assert.deepEqual(state.questions.map((question: any) => question.processingStatus), ["applied", "applied"]);
-		assert.ok(messages.some(({ message }) => message.details?.eventKind === "worker-answer"));
-		assert.ok(messages.filter(({ message }) => message.details?.eventKind === "worker-answer").every(({ options }) => options.triggerTurn === false));
+		const completionTranscripts = messages.filter(({ message }) => ["worker-answer", "note-merged"].includes(message.details?.eventKind));
+		assert.ok(completionTranscripts.some(({ message }) => message.details?.eventKind === "worker-answer"));
+		assert.ok(completionTranscripts.some(({ message }) => message.details?.eventKind === "note-merged"));
+		assert.ok(completionTranscripts.every(({ message, options }) => message.display === true && options.deliverAs === "steer" && options.triggerTurn === false));
 	} finally {
 		stopStudyHardStudios();
 	}
@@ -1608,6 +1614,8 @@ test("전용 worker는 이미지 경로를 받고 한 block을 여러 block으�
 		assert.equal(state.questions[0].appliedRevision, state.revision);
 		assert.equal(messages.filter(({ message }) => message.details?.eventKind === "worker-answer").length, 1);
 		assert.equal(messages.filter(({ message }) => message.details?.eventKind === "note-merged").length, 1);
+		const completionTranscripts = messages.filter(({ message }) => ["worker-answer", "note-merged"].includes(message.details?.eventKind));
+		assert.ok(completionTranscripts.every(({ message, options }) => message.display === true && options.deliverAs === "steer" && options.triggerTurn === false));
 	} finally {
 		stopStudyHardStudios();
 	}
@@ -1789,7 +1797,7 @@ test("persisted Q&A는 같은 session에서 중복하지 않고 새 session에�
 		assert.match(newSessionMessages[0]?.message.content, /질문: 2개/);
 		assert.doesNotMatch(newSessionMessages[0]?.message.content, /끝문장/);
 		assert.equal(newSessionMessages[0]?.options.triggerTurn, false);
-		assert.equal(newSessionMessages[0]?.options.deliverAs, "nextTurn");
+		assert.equal(newSessionMessages[0]?.options.deliverAs, "steer");
 	} finally {
 		stopStudyHardStudios();
 	}

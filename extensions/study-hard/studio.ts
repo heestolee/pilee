@@ -1389,7 +1389,7 @@ function publishStudyHardTranscript(
 			content: `[Study Hard lineage context — 현재 사용자 요청이 이 이벤트를 묻지 않으면 답변하지 마세요.]\n\n${content}`,
 			display: true,
 			details: messageDetails,
-		}, { deliverAs: "nextTurn", triggerTurn: false });
+		}, { deliverAs: "steer", triggerTurn: false });
 		handle.transcriptEventKeys.add(eventKey);
 	} catch {}
 }
