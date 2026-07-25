@@ -19,7 +19,7 @@ source:
   - user-direction:2026-07-23-main-lineage-without-p0-turn-gate
   - user-direction:2026-07-25-completion-transcript-before-final-response
 reviewed_at: 2026-07-25
-reviewed_commit: 33d8ac2a560e741a8640b25d72a3692bdfa69eb7
+reviewed_commit: e9277a03c1b50e6c85491165d617dd4b557698b1
 related:
   - parallel-workflow-analysis-single-writer
   - study-hard-public-engine-private-publisher
@@ -32,7 +32,7 @@ related:
 
 Study Hard Glimpse 입력은 메인 session lineage의 다른 입구다. 질문·답변·결정은 P0 context에 귀속하지만, P0 LLM turn이 worker launch나 정상 completion apply의 gate가 되어서는 안 된다. extension coordinator가 표준 `study-hard-worker --main` subagent dispatcher를 즉시 호출하고 callback으로 결과를 받는다.
 
-lineage의 영구 기록과 사용자에게 보이는 시점을 분리한다. `appendEntry`가 durable SSOT를 맡고, visible transcript는 `steer + triggerTurn:false`로 전달한다. 실행 중인 P0 turn이 있으면 tool 실행 뒤 다음 LLM 호출 전에 완료 카드가 보여 마지막 완료 답변보다 앞선다. P0가 idle이면 카드는 즉시 보이되 새 assistant turn을 만들지 않는다. 이미 끝난 카드를 다음 사용자 질문까지 보류하지 않는다.
+lineage의 영구 기록, 사용자에게 보이는 카드, 모델 context 전달을 분리한다. `appendEntry`가 durable SSOT와 즉시 표시할 custom entry를 만들고, entry renderer가 현재 완료 흐름 안에서 카드를 보여준다. 모델용 복사본만 `display:false + nextTurn`으로 전달한다. 따라서 여러 완료 카드가 있어도 assistant 응답을 카드 사이에서 반복하지 않고, 다음 사용자 질문 시점에 과거 카드가 뒤늦게 나타나지도 않는다.
 
 worker의 생성 범위를 선택 블록에 하드 제한하지 않는다. 선택 블록은 작업의 초점이며, 사용자 의도를 닫는 데 필요하면 주변 블록·다른 섹션·표·callout·Mermaid·visual·순서까지 함께 제안할 수 있다. 자유로운 생성과 안전한 동시 적용은 같은 문제가 아니다. worker는 전체 `proposedNoteDocument`를 result artifact에 만들지만 state를 직접 쓰지 않는다. extension coordinator가 `base / proposed / current`를 비교하고 충돌 없는 변경만 적용한다.
 
@@ -54,8 +54,9 @@ Glimpse learner input
 - `--main`은 P0 context snapshot과 session reference를 worker에 제공한다.
 - launch·정상 apply를 위해 P0가 hidden request를 읽고 tool을 호출할 때까지 기다리지 않는다.
 - subagent start/completion과 Study Hard 질문·답변은 `appendEntry`로 origin session에 즉시 durable하게 기록한다.
-- P0 context와 화면에는 `steer + triggerTurn:false`로 전달한다. streaming 중이면 tool 실행 뒤 다음 LLM 호출 전에, idle이면 새 assistant turn 없이 즉시 보인다.
-- 완료 transcript를 다음 사용자 turn으로 미루지 않는다. 그래야 worker 답변·노트 반영 카드가 P0의 마지막 완료 답변보다 먼저 붙고 다음의 무관한 질문을 가리지 않는다.
+- 새 durable entry에는 명시적 display flag를 넣고 entry renderer로 즉시 보여준다. 과거 entry에는 이 flag가 없으므로 업데이트 뒤 오래된 카드가 중복 노출되지 않는다.
+- 모델 context용 custom message는 `display:false + nextTurn`으로 전달한다. 화면에는 나타나지 않지만 다음 사용자 turn의 모델이 lineage를 이어받는다.
+- 실행 중인 P0는 현재 tool result를 근거로 visible 카드 뒤에 마지막 완료 답변을 이어간다. 여러 카드 각각이 별도 P0 assistant turn을 만들지 않는다.
 - 두 번째 merge conflict처럼 실제 판단이 필요한 예외만 P0 turn으로 올린다.
 - worker stdout에는 전체 note JSON을 넣지 않고 artifact path와 짧은 summary만 둔다.
 
@@ -113,6 +114,7 @@ queued → running → result-ready → merging → applied
 - custom runner를 만들면 표준 #N widget, origin session completion, `--main` context 계승이 사라져 과거 Direct Refiner 실패를 반복한다.
 - P0 hidden follow-up을 launch gate로 사용하면 P0의 긴 구현 turn 뒤에서 head-of-line blocking이 생겨 학습 응답이 작업 종료까지 밀린다.
 - `followUp + triggerTurn:false`는 현재 P0가 완전히 끝난 뒤 전달되므로 완료 카드가 마지막 답변 뒤에 붙거나 별도 follow-up queue를 소비할 수 있다.
-- `nextTurn`은 이미 끝난 완료 카드를 다음의 무관한 사용자 질문 시점에 노출해 대화 경계를 흐린다. process/session 전환 전 in-memory queue가 사라질 위험도 있다.
-- `steer`만 durable 저장으로 오해하면 안 된다. `appendEntry`를 lineage SSOT로 유지하고 `steer`는 현재 완료 흐름의 표시·context 전달만 담당한다.
-- P0를 lineage SSOT에서 제거하면 작업과 학습의 결정 연결이 끊긴다. 따라서 lineage 귀속과 LLM turn gating을 분리해야 한다.
+- visible `nextTurn`은 이미 끝난 완료 카드를 다음의 무관한 사용자 질문 시점에 노출해 대화 경계를 흐린다.
+- 완료 카드마다 `steer`를 보내면 Pi가 steering message를 하나씩 소비해 `카드 → assistant 응답 → 카드 → assistant 응답`처럼 완료 답변이 반복될 수 있다.
+- custom entry만 쓰면 모델 context가 끊기고, context message만 쓰면 표시 시점이나 assistant turn을 제어하기 어렵다. durable visible entry와 hidden `nextTurn` context 복사본을 함께 두되 역할을 섞지 않는다.
+- P0를 lineage SSOT에서 제거하면 작업과 학습의 결정 연결이 끊긴다. 따라서 lineage 귀속, 화면 표시, LLM turn gating을 분리해야 한다.
