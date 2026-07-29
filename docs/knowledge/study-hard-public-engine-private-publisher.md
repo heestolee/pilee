@@ -16,8 +16,8 @@ applies_to:
 source:
   - user-direction:2026-07-17-study-hard-public-migration
   - user-direction:2026-07-21-study-hard-notion-static-export
-reviewed_at: 2026-07-21
-reviewed_commit: 778f16ee03062c7b383aec477972f501372b7623
+reviewed_at: 2026-07-29
+reviewed_commit: 3eb7e85f9ddbf4662261845b7cd812a7eeace313
 related:
   - private-overlay-package-boundary
   - context-loading-minimal-surface
@@ -68,6 +68,29 @@ Public engine은 다음 generic 설정만 읽습니다.
 환경변수 `STUDY_HARD_SYNC_SCRIPT`, `STUDY_HARD_DOWNLOAD_DIR`가 profile보다 우선합니다. 구체적인 개인 경로와 Notion destination 규칙은 private overlay 또는 local config에 남습니다.
 
 Notion token, database ID, page naming, upload body schema를 public extension에 넣지 않습니다. Public engine은 generic visual PNG asset과 원본 spec까지만 publisher에 넘기고, private publisher가 이를 Notion image block·설명·spec toggle로 변환합니다. Publisher가 없어도 HTML export와 학습·작업 시작은 계속 가능합니다.
+
+### Section Sync And Conflict Rule
+
+Notion publisher는 페이지 전체를 managed document 하나로 취급하지 않습니다. `noteDocument.sections[].id`를 stable sync unit으로 사용하고, `sectionHashes`, `sectionSourceHashes`, `sectionBlockIds`, `sectionModes`를 local Study Hard state에 보존합니다.
+
+- 변경되지 않은 section과 비관리 block은 API write 대상에서 제외합니다.
+- 변경된 section은 기존 page 안의 managed container children만 교체하고 read-back semantic hash로 검증합니다.
+- page ID, title property, 사용자가 만든 비관리 block은 유지합니다.
+- Notion 수동 편집과 Study Hard 변경이 겹치면 publisher가 단순 실패하거나 자동 덮어쓰지 않습니다.
+- Studio가 section별 현재 Notion/Study Hard preview를 보여주고 `Notion 유지` 또는 `Study Hard 적용`을 받아 `conflictResolution`으로 재실행합니다.
+- `Notion 유지`는 현재 Notion hash와 당시 Study Hard source hash를 함께 저장해 같은 source로 매번 다시 묻지 않습니다. Study Hard source가 달라지면 다시 판단합니다.
+
+이 계약은 merge conflict와 같습니다. 충돌 검출은 publisher가 담당하지만 최종 선택은 사용자에게 돌려줍니다.
+
+### Image Block Rule
+
+대화에 첨부된 로컬 이미지와 원문에서 가져온 HTTPS 이미지는 첨부 목록에만 남기지 않고 stable `image` note block으로 승격할 수 있습니다.
+
+- 로컬 이미지는 `attachmentId` 또는 `path`로 연결하고 publisher가 Notion File Upload API로 올립니다.
+- 원문 이미지는 `https url`을 Notion external image block으로 만듭니다.
+- `alt`는 이미지 정체성, `caption`은 학습자가 무엇을 확인해야 하는지를 설명합니다.
+- Studio, standalone HTML, Notion이 같은 image block 의미를 렌더링합니다.
+- 이미지가 학습 설명에 실제로 필요할 때만 본문 block으로 올리고, 단순 참고 첨부는 attachments에 남길 수 있습니다.
 
 ### Publisher Readability Rule
 
@@ -127,6 +150,9 @@ Glimpse의 learner 질문은 P0가 실제 `study-hard-worker --main` subagent로
 - 엔진까지 private에 두면 Frame v2 같은 public workflow가 generic 학습 기능을 재사용하지 못하고 bridge 또는 복제 코드가 생깁니다.
 - 개인 publisher까지 public에 두면 경로·Notion schema·계정 맥락이 공개 package에 새어 나옵니다.
 - public과 private에 command를 동시에 남기면 load order에 따라 어느 구현이 활성인지 불명확해집니다.
+- 페이지 전체 shadow swap은 section 단위 부분 동기화 계약을 깨고 page identity·수동 정리·비관리 block을 불필요하게 교체합니다.
+- conflict를 오류 문자열로만 반환하면 사용자는 어떤 section이 충돌했는지, 어느 쪽을 보존할지 결정할 수 없습니다.
+- 이미지를 attachments에만 남기면 학습노트의 설명 순서와 Notion 본문에서 그림의 의미가 사라집니다.
 - persisted Q&A 전문을 새 session에 재생하면 transcript 보존이 아니라 현재 context 오염이 됩니다.
 - worker가 전체 proposed note를 transcript에 출력하면 병렬 질문 수만큼 P0 context가 중복됩니다.
 - worker가 state를 직접 쓰거나 last-write-wins를 사용하면 병렬 결과가 조용히 유실됩니다.
