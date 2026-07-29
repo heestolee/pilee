@@ -121,6 +121,7 @@ Study Hard board state path: ${boardStatePath}
    - 최종 outline은 핵심 질문 → 한 문장 mental model → Before 문제 → After 해결 → 설계 원칙 → 코드 읽기 → 한계·오해 → 이해 확인 순서입니다.
    - code block은 복사 가능한 원문, language, lineNumberMode(source|relative), startLine, revision/path/symbol reference, annotations를 가집니다.
    - annotation은 line/endLine, behavior|reason|risk|change, 설명을 연결합니다. revision과 실제 line 근거가 없으면 source line이라고 주장하지 말고 relative를 사용합니다.
+   - 사용자가 준 첨부 이미지나 원문에서 설명에 필요한 이미지는 \`image\` block으로 승격합니다. 로컬 첨부는 \`attachmentId\`, 원문 이미지는 \`https url\`을 연결하고 alt/caption으로 왜 필요한지 설명합니다. 첨부 목록에만 숨겨두지 않습니다.
    - Studio와 Notion이 같은 noteDocument를 소비합니다. raw JSON이나 Mermaid source를 최종 학습 노트로 대체하지 않습니다.
 5. 모든 표면은 자료 유형에 맞는 실제 근거를 담아야 합니다.
    - 코드/PR: 파일 경로, revision, symbol, 실제 line과 excerpt를 references/code block에 연결합니다.
@@ -180,7 +181,7 @@ Study Hard board state path: ${boardStatePath}
 - 복습/후속 질문
 - hierarchy nodes/edges: id, label, summary, detail, type, status, parentId, references, blocks
 - runtime flows: id, variant, actors, ordered steps, payload, sideEffect, result/risk, code
-- noteDocument: stable section/block id, fixed learning outline, code line annotations
+- noteDocument: stable section/block id, fixed learning outline, code line annotations, attachmentId/url 기반 image blocks
 - selected_node_id
 - node-scoped questions: targetNodeId 포함
 - attachments: id, nodeId, name, mimeType, path/url
@@ -214,7 +215,7 @@ Study Hard board state path: ${boardStatePath}
   "nodes": [{"id":"concept","label":"개념","summary":"설명","type":"concept","status":"understood","parentId":"root","references":[{"kind":"code","label":"구현","path":"src/file.ts","symbol":"run","revision":"commit-sha","startLine":12}],"blocks":[{"id":"code-reading","type":"code","code":{"language":"typescript","code":"const value = run();","lineNumberMode":"source","startLine":12,"annotations":[{"line":12,"kind":"reason","text":"이 줄의 이유"}]}}],"positionLocked":true,"x":0,"y":0}],
   "edges": [{"source":"root","target":"concept","label":"hierarchy only"}],
   "flows": [{"id":"after","title":"After","variant":"after","actors":[{"id":"web","label":"WebView"},{"id":"native","label":"Native"}],"steps":[{"id":"request","order":1,"from":"web","to":"native","action":"request","payload":"{ eventId }","sideEffect":"none"}]}],
-  "noteDocument": {"title":"최종 학습 노트","sections":[{"id":"overview","kind":"overview","title":"핵심 질문과 Mental Model","blocks":[{"id":"mental-model","type":"callout","tone":"success","title":"한 문장 Mental Model","body":"..."}]}]},
+  "noteDocument": {"title":"최종 학습 노트","sections":[{"id":"overview","kind":"overview","title":"핵심 질문과 Mental Model","blocks":[{"id":"mental-model","type":"callout","tone":"success","title":"한 문장 Mental Model","body":"..."},{"id":"source-image","type":"image","image":{"attachmentId":"img-1","alt":"구조도","caption":"이 그림에서 확인할 경계"}}]}]},
   "selectedNodeId": "concept",
   "attachments": [{"id":"img-1","nodeId":"concept","name":"screenshot.png","mimeType":"image/png","path":"/local/path/screenshot.png"}],
   "boardStatePath": "${boardStatePath}",
@@ -230,7 +231,7 @@ Study Hard board state path: ${boardStatePath}
       "targetNodeId": "concept"
     }
   ],
-  "notionSync": {"pageId":"optional","sessionBlockId":"optional","sectionHashes":{"#learning-note":"last-synced-hash"}},
+  "notionSync": {"pageId":"optional","sectionHashes":{"overview":"last-notion-hash"},"sectionSourceHashes":{"overview":"last-study-hard-hash"},"sectionBlockIds":{"overview":"notion-block-id"},"sectionModes":{"overview":"study-hard|notion"}},
   "followups": ["복습 질문"]
 }
 \`\`\`
@@ -243,8 +244,9 @@ python3 "${invocation.syncScript}" --file .context/study-hard/<session-id>.json
 
 4. sync script가 missing이면 파일만 만들고 BLOCKED로 보고합니다. 토큰/DB 값을 pilee public repo에 새로 쓰거나 추정하지 않습니다.
 5. 수정 요청이 들어오면 같은 JSON의 해당 questions/nodes/flows/noteDocument/attachments를 stable id로 갱신한 뒤 같은 script를 다시 실행합니다.
-6. script 결과의 pageId/sessionId/sectionHashes를 JSON의 notionSync에 보존합니다. 다음 sync는 동일 hash를 no-op으로 처리하고, Notion 수동 편집 hash와 충돌하면 자동 덮어쓰기하지 않습니다.
-7. script는 날짜 페이지 전체나 비관리 block을 삭제하지 않습니다. 변경 section은 새 shadow를 먼저 완성·검증한 뒤 이전 관리 section만 교체합니다.
+6. script 결과의 pageId/sessionId/sectionHashes/sectionSourceHashes/sectionBlockIds/sectionModes를 notionSync에 보존합니다. 다음 sync는 동일 hash를 no-op으로 처리합니다.
+7. Notion 수동 편집과 Study Hard 변경이 같은 section에서 겹치면 실패로 끝내지 않습니다. Studio에서 Notion 유지/Study Hard 적용을 section별로 물어보고 conflictResolution으로 재동기화합니다. 선택 전에는 덮어쓰지 않습니다.
+8. script는 페이지와 비관리 block을 삭제하지 않습니다. 변경된 관리 section의 children만 교체하고 read-back hash로 검증합니다.
 
 이제 URL 내용을 가져와 자료 유형을 분류하고, 근거가 연결된 전체 학습 지도와 설명부터 시작하세요. 질문은 사용자가 지도를 이해할 맥락을 얻은 뒤에만 제안하세요.`;
 }

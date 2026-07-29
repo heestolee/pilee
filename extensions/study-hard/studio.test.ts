@@ -211,6 +211,27 @@ test("mergeBoardState preserves TFT visual specs as stable learning-note blocks"
 	}), /visual note block requires a visual spec/);
 });
 
+test("image note blocks preserve attachment and remote sources for board and export", () => {
+	const current = createInitialBoardState({ url: "https://example.com", runId: "image-contract" });
+	const next = mergeBoardState(current, {
+		noteDocument: { title: "Image note", sections: [{ id: "images", kind: "overview", title: "이미지", blocks: [
+			{ id: "attachment-image", type: "image", image: { attachmentId: "img-1", alt: "첨부 구조도", caption: "경계 확인" } },
+			{ id: "remote-image", type: "image", image: { url: "https://example.com/diagram.png", alt: "원문 구조도", caption: "원문 이미지" } },
+		] }] },
+	});
+	assert.deepEqual(next.noteDocument.sections[0]?.blocks[0]?.image, { attachmentId: "img-1", url: undefined, path: undefined, mimeType: undefined, alt: "첨부 구조도", caption: "경계 확인" });
+	assert.equal(next.noteDocument.sections[0]?.blocks[1]?.image?.url, "https://example.com/diagram.png");
+	const exportHtml = buildStudyNoteExportHtml(next);
+	assert.match(exportHtml, /https:\/\/example\.com\/diagram\.png/);
+	assert.match(exportHtml, /원문 이미지/);
+	const boardHtml = buildStudyHardStudioHtml();
+	assert.match(boardHtml, /function noteImageHtml/);
+	assert.match(boardHtml, /attachmentId/);
+	assert.throws(() => mergeBoardState(next, {
+		noteDocument: { title: "Invalid", sections: [{ id: "images", kind: "overview", title: "이미지", blocks: [{ id: "missing", type: "image", image: {} }] }] },
+	}), /image note block requires attachmentId, url, or path/);
+});
+
 test("visual-ref derives one lane from the canonical visual spec without copying it", () => {
 	const current = createInitialBoardState({ url: "https://example.com", runId: "visual-ref-contract" });
 	const visual = {
@@ -796,6 +817,39 @@ test("export routes write HTML to Downloads and pass rendered diagrams to Notion
 		assert.deepEqual(syncInput.noteDocument.sections[0].blocks[1], { id: "event-table", type: "table", columns: ["#", "이벤트"], rows: [["1", "신규 예약"]], ordered: false });
 		assert.equal(syncInput.diagramAssets[0].blockId, "diagram");
 		assert.equal(readFileSync(syncInput.diagramAssets[0].path, "utf-8"), "rendered-png");
+	} finally {
+		stopStudyHardStudios();
+	}
+});
+
+test("Notion conflict stays unsaved until section choices are submitted", async () => {
+	const fakeSyncScript = join(testStateDir, "fake-conflict-study-hard-sync.py");
+	writeFileSync(fakeSyncScript, `import json,sys\np=json.load(open(sys.argv[2]))\nr=p.get('conflictResolution') or {}\nif not r:\n print(json.dumps({'status':'conflict','pageId':'page-1','pageUrl':'https://notion.so/page1','conflicts':[{'sectionId':'overview','title':'Overview','currentPreview':'Notion edit','desiredPreview':'Study Hard edit'}]}))\nelse:\n print(json.dumps({'status':'synced','pageId':'page-1','pageUrl':'https://notion.so/page1','sessionId':'session-1','sectionHashes':{'overview':'current-hash'},'sectionSourceHashes':{'overview':'source-hash'},'sectionBlockIds':{'overview':'block-1'},'sectionHeadingIds':{'overview':'heading-1'},'sectionModes':r}))\n`, "utf-8");
+	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/notion-conflict", runId: "notion-conflict", syncScript: fakeSyncScript });
+	try {
+		updateStudyHardStudio(handle.state.runId, { noteDocument: { title: "Conflict Note", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "lead", type: "paragraph", text: "Study Hard edit" }] }] } });
+		let response = await fetch(new URL("/export/notion", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: "{}" });
+		assert.equal(response.status, 200);
+		let result = await response.json() as any;
+		assert.equal(result.status, "conflict");
+		assert.equal(result.conflicts[0].sectionId, "overview");
+		let state = await fetch(new URL("/state", handle.url)).then((item) => item.json() as Promise<any>);
+		assert.equal(state.notionSync, undefined);
+
+		response = await fetch(new URL("/export/notion", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ conflictResolution: { overview: "notion", ignored: "invalid" } }) });
+		assert.equal(response.status, 200);
+		result = await response.json() as any;
+		assert.equal(result.status, "synced");
+		state = await fetch(new URL("/state", handle.url)).then((item) => item.json() as Promise<any>);
+		assert.equal(state.notionSync.sectionModes.overview, "notion");
+		assert.equal(state.notionSync.sectionBlockIds.overview, "block-1");
+		const syncInput = JSON.parse(readFileSync(join(testStateDir, "notion-conflict-exports", "notion-sync.json"), "utf-8"));
+		assert.deepEqual(syncInput.conflictResolution, { overview: "notion" });
+		const html = buildStudyHardStudioHtml();
+		assert.match(html, /Notion 변경 충돌 해소/);
+		assert.match(html, /requestNotionConflict/);
+		assert.match(html, /모두 Study Hard 적용/);
 	} finally {
 		stopStudyHardStudios();
 	}

@@ -51,7 +51,7 @@ export type StudyLayoutMode = "auto" | "manual";
 export type StudySurface = "map" | "flow" | "note";
 export type StudyFlowVariant = "before" | "after" | "current";
 export type StudyNoteSectionKind = "overview" | "node" | "flow" | "practice" | "reflection";
-export type StudyNoteBlockType = "heading" | "paragraph" | "callout" | "list" | "table" | "code" | "reference-list" | "flow-ref" | "visual" | "visual-ref" | "divider";
+export type StudyNoteBlockType = "heading" | "paragraph" | "callout" | "list" | "table" | "code" | "reference-list" | "flow-ref" | "image" | "visual" | "visual-ref" | "divider";
 
 const MAX_QUESTION_ATTACHMENTS = 4;
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
@@ -92,6 +92,15 @@ export interface StudyNoteVisualRef {
 	laneId?: string;
 }
 
+export interface StudyNoteImage {
+	attachmentId?: string;
+	url?: string;
+	path?: string;
+	mimeType?: string;
+	alt?: string;
+	caption?: string;
+}
+
 export interface StudyNoteBlock {
 	id: string;
 	type: StudyNoteBlockType;
@@ -107,6 +116,7 @@ export interface StudyNoteBlock {
 	code?: StudyCodeSample;
 	references?: StudyNodeReference[];
 	flowId?: string;
+	image?: StudyNoteImage;
 	visual?: Record<string, unknown>;
 	visualRef?: StudyNoteVisualRef;
 }
@@ -226,6 +236,10 @@ export interface StudyNotionSyncState {
 	pageUrl?: string;
 	sessionId?: string;
 	sectionHashes?: Record<string, string>;
+	sectionSourceHashes?: Record<string, string>;
+	sectionBlockIds?: Record<string, string>;
+	sectionHeadingIds?: Record<string, string>;
+	sectionModes?: Record<string, string>;
 	lastSyncedRevision?: number;
 	lastSyncedHash?: string;
 	lastSyncedAt?: number;
@@ -497,16 +511,26 @@ function normalizeNoteBlocks(value: unknown): StudyNoteBlock[] | undefined {
 			const id = String(item.id || `block-${index + 1}`);
 			if (seen.has(id)) throw new Error(`duplicate note block id: ${id}`);
 			seen.add(id);
-			const type = ["heading", "paragraph", "callout", "list", "table", "code", "reference-list", "flow-ref", "visual", "visual-ref", "divider"].includes(String(item.type)) ? String(item.type) as StudyNoteBlockType : undefined;
+			const type = ["heading", "paragraph", "callout", "list", "table", "code", "reference-list", "flow-ref", "image", "visual", "visual-ref", "divider"].includes(String(item.type)) ? String(item.type) as StudyNoteBlockType : undefined;
 			if (!type) throw new Error(`unknown note block type: ${item.type}`);
 			const columns = normalizeStringArray(item.columns)?.slice(0, 24);
 			const rows = Array.isArray(item.rows) ? item.rows.slice(0, 500)
 				.filter((row): row is unknown[] => Array.isArray(row))
 				.map((row) => row.slice(0, columns?.length || 24).map((cell) => String(cell ?? ""))) : undefined;
 			if (type === "table" && (!columns?.length || !rows)) throw new Error(`table note block requires columns and rows: ${id}`);
+			const imageItem = item.image && typeof item.image === "object" && !Array.isArray(item.image) ? item.image as Record<string, unknown> : undefined;
+			const image = imageItem ? {
+				attachmentId: typeof imageItem.attachmentId === "string" ? imageItem.attachmentId : undefined,
+				url: normalizeHttpUrl(imageItem.url) || (typeof imageItem.url === "string" && imageItem.url.startsWith("/attachments/") ? imageItem.url : undefined),
+				path: typeof imageItem.path === "string" ? imageItem.path : undefined,
+				mimeType: typeof imageItem.mimeType === "string" ? imageItem.mimeType : undefined,
+				alt: typeof imageItem.alt === "string" ? imageItem.alt : undefined,
+				caption: typeof imageItem.caption === "string" ? imageItem.caption : undefined,
+			} : undefined;
 			const visual = item.visual && typeof item.visual === "object" && !Array.isArray(item.visual) ? JSON.parse(JSON.stringify(item.visual)) as Record<string, unknown> : undefined;
 			const visualRefItem = item.visualRef && typeof item.visualRef === "object" && !Array.isArray(item.visualRef) ? item.visualRef as Record<string, unknown> : undefined;
 			const visualRef = visualRefItem && typeof visualRefItem.sourceBlockId === "string" ? { sourceBlockId: visualRefItem.sourceBlockId, laneId: typeof visualRefItem.laneId === "string" ? visualRefItem.laneId : undefined } : undefined;
+			if (type === "image" && (!image || (!image.attachmentId && !image.url && !image.path))) throw new Error(`image note block requires attachmentId, url, or path: ${id}`);
 			if (type === "visual" && !visual) throw new Error(`visual note block requires a visual spec: ${id}`);
 			if (type === "visual-ref" && !visualRef) throw new Error(`visual-ref note block requires sourceBlockId: ${id}`);
 			return {
@@ -524,6 +548,7 @@ function normalizeNoteBlocks(value: unknown): StudyNoteBlock[] | undefined {
 				code: normalizeCodeSample(item.code || (type === "code" ? item : undefined)),
 				references: normalizeReferences(item.references),
 				flowId: typeof item.flowId === "string" ? item.flowId : undefined,
+				image,
 				visual,
 				visualRef,
 			};
@@ -774,18 +799,24 @@ function normalizeAttachments(value: unknown): StudyAttachment[] | undefined {
 		}));
 }
 
+function normalizeStringRecord(value: unknown): Record<string, string> | undefined {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+	return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
+}
+
 function normalizeNotionSync(value: unknown): StudyNotionSyncState | undefined {
 	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
 	const item = value as Record<string, unknown>;
-	const sectionHashes = item.sectionHashes && typeof item.sectionHashes === "object" && !Array.isArray(item.sectionHashes)
-		? Object.fromEntries(Object.entries(item.sectionHashes as Record<string, unknown>).filter((entry): entry is [string, string] => typeof entry[1] === "string"))
-		: undefined;
 	return {
 		pageId: typeof item.pageId === "string" ? item.pageId : undefined,
 		calendarDate: typeof item.calendarDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(item.calendarDate) ? item.calendarDate : undefined,
 		pageUrl: normalizeHttpUrl(item.pageUrl),
 		sessionId: typeof item.sessionId === "string" ? item.sessionId : undefined,
-		sectionHashes,
+		sectionHashes: normalizeStringRecord(item.sectionHashes),
+		sectionSourceHashes: normalizeStringRecord(item.sectionSourceHashes),
+		sectionBlockIds: normalizeStringRecord(item.sectionBlockIds),
+		sectionHeadingIds: normalizeStringRecord(item.sectionHeadingIds),
+		sectionModes: normalizeStringRecord(item.sectionModes),
 		lastSyncedRevision: Number.isInteger(item.lastSyncedRevision) ? Number(item.lastSyncedRevision) : undefined,
 		lastSyncedHash: typeof item.lastSyncedHash === "string" ? item.lastSyncedHash : undefined,
 		lastSyncedAt: typeof item.lastSyncedAt === "number" ? item.lastSyncedAt : undefined,
@@ -1720,6 +1751,21 @@ function exportDiagramDataUrl(asset?: StudyDiagramExportAsset): string | undefin
 	return `data:${asset.mimeType};base64,${readFileSync(asset.path).toString("base64")}`;
 }
 
+function exportStudyNoteImage(block: StudyNoteBlock, state: StudyHardBoardState): string {
+	const image = block.image;
+	if (!image) return "";
+	const attachment = image.attachmentId ? state.attachments.find((item) => item.id === image.attachmentId) : undefined;
+	const registeredPath = image.path ? state.attachments.find((item) => item.path === image.path)?.path : undefined;
+	const path = attachment?.path || registeredPath;
+	const mimeType = image.mimeType || attachment?.mimeType || "image/png";
+	const remoteUrl = normalizeHttpUrl(image.url) || normalizeHttpUrl(attachment?.url);
+	const source = path && existsSync(path) ? `data:${mimeType};base64,${readFileSync(path).toString("base64")}` : remoteUrl;
+	if (!source) return "";
+	const alt = image.alt || attachment?.name || block.title || "학습 이미지";
+	const caption = image.caption || block.body || attachment?.note;
+	return `<figure class="noteImage"><img src="${escapeExportHtml(source)}" alt="${escapeExportHtml(alt)}" />${caption ? `<figcaption>${escapeExportHtml(caption)}</figcaption>` : ""}</figure>`;
+}
+
 function visualContainerPresentation(visual: Record<string, unknown>): { details: boolean; defaultOpen: boolean; summary?: string } {
 	const presentation = visual.presentation && typeof visual.presentation === "object" && !Array.isArray(visual.presentation)
 		? visual.presentation as Record<string, unknown>
@@ -1746,6 +1792,7 @@ function exportNoteBlockHtml(block: StudyNoteBlock, state: StudyHardBoardState, 
 	if (block.type === "table") return exportTableHtml(block.columns || [], block.rows || []);
 	if (block.type === "code") return exportCodeHtml(block.code);
 	if (block.type === "reference-list") return `<div class="references">${(block.references || []).map(exportReferenceHtml).join("")}</div>`;
+	if (block.type === "image") return exportStudyNoteImage(block, state);
 	const resolvedVisual = resolveStudyNoteBlockVisual(state.noteDocument, block);
 	if (resolvedVisual) {
 		const visualTitle = block.title || (typeof resolvedVisual.title === "string" ? resolvedVisual.title : "TFT visual");
@@ -1916,7 +1963,7 @@ function localCalendarDate(now = new Date()): string {
 	return `${value.year}-${value.month}-${value.day}`;
 }
 
-function buildNotionSyncPayload(state: StudyHardBoardState, diagramAssets: StudyDiagramExportAsset[], workContract?: ResolvedStudyHardWorkContract): Record<string, unknown> {
+function buildNotionSyncPayload(state: StudyHardBoardState, diagramAssets: StudyDiagramExportAsset[], workContract?: ResolvedStudyHardWorkContract, conflictResolution?: Record<string, "notion" | "study-hard">): Record<string, unknown> {
 	return {
 		...materializeVisualReferences(state),
 		workContract: workContract ? { title: workContract.title, hash: workContract.hash, markdown: workContract.markdown } : undefined,
@@ -1926,6 +1973,7 @@ function buildNotionSyncPayload(state: StudyHardBoardState, diagramAssets: Study
 		qa: state.questions,
 		diagramAssets,
 		notionSync: state.notionSync || {},
+		conflictResolution,
 	};
 }
 
@@ -1947,7 +1995,7 @@ function studyHardSyncErrorDetail(error: unknown): string {
 	return `Notion 동기화 실패${code}: ${detail}`;
 }
 
-async function runStudyHardNotionSync(handle: StudyHardHandle, diagramAssets: StudyDiagramExportAsset[]): Promise<Record<string, unknown>> {
+async function runStudyHardNotionSync(handle: StudyHardHandle, diagramAssets: StudyDiagramExportAsset[], conflictResolution?: Record<string, "notion" | "study-hard">): Promise<Record<string, unknown>> {
 	if (!existsSync(handle.syncScript)) throw new Error("Notion 동기화 스크립트를 찾지 못했습니다.");
 	if (handle.notionSyncInFlight) throw new Error("Notion 동기화가 이미 진행 중입니다.");
 	handle.notionSyncInFlight = true;
@@ -1955,12 +2003,13 @@ async function runStudyHardNotionSync(handle: StudyHardHandle, diagramAssets: St
 		const inputPath = join(exportDir(handle.state.runId), "notion-sync.json");
 		const syncedRevision = handle.state.revision;
 		const syncedHash = buildNoteHistoryBundle(handle.state).hash;
-		const syncPayload = buildNotionSyncPayload(handle.state, diagramAssets, resolveStudyHardWorkContract(handle));
+		const syncPayload = buildNotionSyncPayload(handle.state, diagramAssets, resolveStudyHardWorkContract(handle), conflictResolution);
 		writeFileSync(inputPath, JSON.stringify(syncPayload, null, 2), "utf-8");
 		const { stdout } = await execFileAsync(process.env.STUDY_HARD_PYTHON || "python3", [handle.syncScript, "--file", inputPath], { maxBuffer: 4 * 1024 * 1024, timeout: 300_000 });
 		const result = JSON.parse(String(stdout).trim()) as Record<string, unknown>;
 		const currentRevision = handle.state.revision;
 		const staleAfterSync = buildNoteHistoryBundle(handle.state).hash !== syncedHash;
+		if (result.status === "conflict") return { ...result, syncedRevision, currentRevision, staleAfterSync };
 		handle.state = mergeBoardState(handle.state, {
 			notionSync: {
 				pageId: result.pageId,
@@ -1968,6 +2017,10 @@ async function runStudyHardNotionSync(handle: StudyHardHandle, diagramAssets: St
 				pageUrl: result.pageUrl,
 				sessionId: result.sessionId,
 				sectionHashes: result.sectionHashes,
+				sectionSourceHashes: result.sectionSourceHashes,
+				sectionBlockIds: result.sectionBlockIds,
+				sectionHeadingIds: result.sectionHeadingIds,
+				sectionModes: result.sectionModes,
 				lastSyncedRevision: syncedRevision,
 				lastSyncedHash: syncedHash,
 				lastSyncedAt: Date.now(),
@@ -2542,7 +2595,9 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 			if (pathname === "/export/notion" && req.method === "POST") {
 				const body = await readJsonBody(req);
 				const diagramAssets = await prepareExportDiagramAssets(handle.state, body.diagramAssets);
-				const result = await runStudyHardNotionSync(handle, diagramAssets);
+				const rawResolution = body.conflictResolution && typeof body.conflictResolution === "object" && !Array.isArray(body.conflictResolution) ? body.conflictResolution as Record<string, unknown> : {};
+				const conflictResolution = Object.fromEntries(Object.entries(rawResolution).filter((entry): entry is [string, "notion" | "study-hard"] => entry[1] === "notion" || entry[1] === "study-hard"));
+				const result = await runStudyHardNotionSync(handle, diagramAssets, conflictResolution);
 				sendJson(res, 200, { ok: true, ...result });
 				return;
 			}
