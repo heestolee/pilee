@@ -297,7 +297,7 @@ export function buildStudyHardStudioHtml(capabilityToken = "", nativeVisualCaptu
     .workTransitionStatus { min-height:17px; margin-top:8px; color:var(--muted); font-size:10px; line-height:1.5; }
     .scopeSwitch { display:flex; gap:5px; margin-bottom:8px; }
     .scopeSwitch button { flex:1; font-size:10px; }
-    .notionConflictDialog { width:min(94vw,1500px); height:min(90vh,1000px); min-width:min(680px,calc(100vw - 24px)); min-height:420px; max-width:calc(100vw - 24px); max-height:calc(100vh - 24px); overflow:auto; resize:both; }
+    .notionConflictDialog { width:94vw; height:min(90vh,1000px); min-width:min(680px,calc(100vw - 24px)); min-height:420px; max-width:calc(100vw - 24px); max-height:calc(100vh - 24px); overflow:auto; resize:both; }
     .notionConflictIntro { color:var(--muted); font-size:11px; line-height:1.55; }
     .notionConflictBulk { display:flex; gap:7px; margin:12px 0; }
     .notionConflictList { display:flex; flex-direction:column; gap:9px; }

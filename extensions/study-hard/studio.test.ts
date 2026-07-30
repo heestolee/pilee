@@ -857,7 +857,8 @@ test("Notion conflict stays unsaved until section choices are submitted", async 
 		assert.match(html, /requestNotionConflict/);
 		assert.match(html, /모두 Study Hard 적용/);
 		assert.match(html, /모두 직접 정리/);
-		assert.match(html, /width:min\(94vw,1500px\)/);
+		assert.match(html, /notionConflictDialog \{ width:94vw/);
+		assert.doesNotMatch(html, /1500px/);
 		assert.match(html, /resize:both/);
 		assert.match(html, /function mergePreviewHtml/);
 		assert.match(html, /function blockDiffHtml/);
