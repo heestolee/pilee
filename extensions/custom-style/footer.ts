@@ -219,16 +219,18 @@ function buildLine2Right(theme: Theme, repoStatus: RepoStatusSnapshot): string {
 		.join(separator);
 }
 
-function renderAlignedLine(theme: Theme, width: number, left: string, right: string): string {
-	const innerWidth = Math.max(1, width - 2);
+export function renderAlignedLine(theme: Theme, width: number, left: string, right: string): string {
+	const safeWidth = Math.max(0, width);
+	const innerWidth = Math.max(0, safeWidth - 2);
 	const ellipsis = theme.fg("dim", "...");
-	if (!right) return ` ${truncateToWidth(left, innerWidth, ellipsis)} `;
+	const fit = (line: string) => truncateToWidth(line, safeWidth, "");
+	if (!right) return fit(` ${truncateToWidth(left, innerWidth, ellipsis)} `);
 	const rightWidth = visibleWidth(right);
-	if (rightWidth >= innerWidth) return ` ${truncateToWidth(right, innerWidth, ellipsis)} `;
-	const maxLeftWidth = Math.max(1, innerWidth - rightWidth - 1);
-	const renderedLeft = truncateToWidth(left, maxLeftWidth, ellipsis);
-	const paddingWidth = Math.max(1, innerWidth - visibleWidth(renderedLeft) - rightWidth);
-	return ` ${renderedLeft}${" ".repeat(paddingWidth)}${right} `;
+	if (rightWidth >= innerWidth) return fit(` ${truncateToWidth(right, innerWidth, ellipsis)} `);
+	const maxLeftWidth = Math.max(0, innerWidth - rightWidth - 1);
+	const renderedLeft = maxLeftWidth > 0 ? truncateToWidth(left, maxLeftWidth, ellipsis) : "";
+	const paddingWidth = Math.max(0, innerWidth - visibleWidth(renderedLeft) - rightWidth);
+	return fit(` ${renderedLeft}${" ".repeat(paddingWidth)}${right} `);
 }
 
 export function installFooter(pi: ExtensionAPI, ctx: ExtensionContext, config: CustomStyleConfig) {
