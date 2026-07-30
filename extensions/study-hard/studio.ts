@@ -32,6 +32,7 @@ import {
 import { captureGlimpseHtmlPng, getGlimpseOpen } from "../utils/glimpse.ts";
 import { buildStudyHardStudioHtml } from "./studio-html.ts";
 import { parseStudyLearningAgentJson, runIsolatedStudyLearningAgent, type StudyLearningAgentRunner } from "./learning-agents.ts";
+import { diffStudyNoteBlocks, type StudyNoteBlockDiffRow } from "./block-diff.ts";
 import { mergeStudyNoteProposal, type StudyNoteMergeConflict } from "./note-merge.ts";
 import { resolveStudyHardRuntimeConfig } from "./runtime-config.ts";
 
@@ -2050,6 +2051,15 @@ async function runStudyHardNotionSync(handle: StudyHardHandle, diagramAssets: St
 		writeFileSync(inputPath, JSON.stringify(syncPayload, null, 2), "utf-8");
 		const { stdout } = await execFileAsync(process.env.STUDY_HARD_PYTHON || "python3", [handle.syncScript, "--file", inputPath], { maxBuffer: 4 * 1024 * 1024, timeout: 300_000 });
 		const result = JSON.parse(String(stdout).trim()) as Record<string, unknown>;
+		if (Array.isArray(result.conflicts)) {
+			result.conflicts = result.conflicts.map((raw) => {
+				if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+				const conflict = raw as Record<string, unknown>;
+				const current = normalizeNoteBlocks(conflict.currentNoteBlocks) || [];
+				const desired = normalizeNoteBlocks(conflict.desiredNoteBlocks) || [];
+				return { ...conflict, blockDiff: diffStudyNoteBlocks(current, desired) };
+			});
+		}
 		const currentRevision = handle.state.revision;
 		const staleAfterSync = buildNoteHistoryBundle(handle.state).hash !== syncedHash;
 		if (result.status === "conflict") return { ...result, syncedRevision, currentRevision, staleAfterSync };
@@ -3289,6 +3299,7 @@ interface StudyHardNoteConflictSection {
 	desiredNoteBlocks: StudyNoteBlock[];
 	currentPreview: string;
 	desiredPreview: string;
+	blockDiff: StudyNoteBlockDiffRow[];
 }
 
 function noteSectionPreview(section: StudyNoteSection | undefined): string {
@@ -3312,6 +3323,7 @@ function buildStudyHardNoteConflictReview(artifact: StudyHardWorkerResultArtifac
 			desiredNoteBlocks: structuredClone(proposedSection?.blocks || []),
 			currentPreview: noteSectionPreview(currentSection),
 			desiredPreview: noteSectionPreview(proposedSection),
+			blockDiff: diffStudyNoteBlocks(currentSection?.blocks || [], proposedSection?.blocks || []),
 		};
 	});
 	if (merge.conflicts.some((conflict) => conflict.path === "noteDocument.title")) sections.unshift({
@@ -3321,6 +3333,10 @@ function buildStudyHardNoteConflictReview(artifact: StudyHardWorkerResultArtifac
 		desiredNoteBlocks: [{ id: "proposed-title", type: "paragraph", text: artifact.proposedNoteDocument.title }],
 		currentPreview: current.title,
 		desiredPreview: artifact.proposedNoteDocument.title,
+		blockDiff: diffStudyNoteBlocks(
+			[{ id: "current-title", type: "paragraph", text: current.title }],
+			[{ id: "proposed-title", type: "paragraph", text: artifact.proposedNoteDocument.title }],
+		),
 	});
 	return { sections, conflicts: merge.conflicts };
 }
