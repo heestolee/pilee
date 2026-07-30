@@ -17,7 +17,7 @@ source:
   - user-direction:2026-07-17-study-hard-public-migration
   - user-direction:2026-07-21-study-hard-notion-static-export
 reviewed_at: 2026-07-29
-reviewed_commit: 3eb7e85f9ddbf4662261845b7cd812a7eeace313
+reviewed_commit: 8339533ebe26bef3dee75279c5853fa737eb3738
 related:
   - private-overlay-package-boundary
   - context-loading-minimal-surface
@@ -80,6 +80,8 @@ Notion publisher는 페이지 전체를 managed document 하나로 취급하지 
 - Notion만 바뀌었으면 publisher가 native paragraph/callout/list/table/code/image를 Study Hard의 같은 structured block type으로 역변환해 canonical note에 import합니다. Markdown 한 덩어리로 평탄화하지 않습니다.
 - managed heading과 container 사이에 사용자가 직접 넣은 top-level block도 인접 section의 Notion 변경으로 귀속하되, publisher가 임의 삭제하지 않습니다.
 - 양쪽이 바뀌었으면 Studio가 section별 `현재 Notion` / `변경될 Study Hard` / `직접 정리`를 보여주고 `conflictResolution`으로 재실행합니다.
+- 비교 화면은 글자 수로 자른 단일 preview 문자열이 아니라 full structured blocks를 block별로 렌더합니다. paragraph 줄바꿈, list/table/code 경계, image thumbnail·caption을 보존하고 긴 쪽은 pane 내부에서 스크롤합니다.
+- Notion에만 추가된 block이 있으면 개수와 image 포함 여부를 경고하고, `변경될 Study Hard 적용` 시 제거된다는 결과를 선택 전에 명시합니다. Notion-only 변경은 modal을 띄우지 않고 자동 import하되 완료 상태에 가져온 section·image 수를 표시합니다.
 - `직접 정리`는 Markdown editor가 아니라 기존 block type·id·순서를 유지하는 block editor입니다. paragraph text, callout title/body, list item, table cell, code, image caption처럼 block 내부 텍스트만 편집해 structured blocks로 양쪽 canonical에 저장합니다.
 - 매 저장 시 같은 revision의 standalone HTML을 생성해 page 하단 managed file block으로 교체하고 file block identity/hash를 sync state에 보존합니다.
 
