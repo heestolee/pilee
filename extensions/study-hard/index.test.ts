@@ -54,7 +54,8 @@ test("buildStudyHardPrompt keeps learning loop and Notion sync contracts visible
 	assert.match(prompt, /Notion 저장 계약/);
 	assert.match(prompt, /sectionHashes/);
 	assert.match(prompt, /변경된 관리 section의 children만 교체/);
-	assert.match(prompt, /Notion 유지\/Study Hard 적용/);
+	assert.match(prompt, /현재 Notion.*변경될 Study Hard.*직접 정리/);
+	assert.match(prompt, /Markdown으로 평탄화하지 않고 기존 structured block 형태를 유지/);
 	assert.match(prompt, /image.*block으로 승격/);
 	assert.match(prompt, /study_hard_board/);
 	assert.match(prompt, /계층 지도/);

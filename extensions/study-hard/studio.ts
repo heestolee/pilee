@@ -240,6 +240,11 @@ export interface StudyNotionSyncState {
 	sectionBlockIds?: Record<string, string>;
 	sectionHeadingIds?: Record<string, string>;
 	sectionModes?: Record<string, string>;
+	htmlDividerId?: string;
+	htmlHeadingId?: string;
+	htmlBlockId?: string;
+	htmlHash?: string;
+	htmlFileName?: string;
 	lastSyncedRevision?: number;
 	lastSyncedHash?: string;
 	lastSyncedAt?: number;
@@ -249,6 +254,13 @@ interface StudyDiagramExportAsset {
 	blockId: string;
 	fileName: string;
 	mimeType: "image/png";
+	path: string;
+	sha256: string;
+}
+
+interface StudyFileExportAsset {
+	fileName: string;
+	mimeType: string;
 	path: string;
 	sha256: string;
 }
@@ -817,6 +829,11 @@ function normalizeNotionSync(value: unknown): StudyNotionSyncState | undefined {
 		sectionBlockIds: normalizeStringRecord(item.sectionBlockIds),
 		sectionHeadingIds: normalizeStringRecord(item.sectionHeadingIds),
 		sectionModes: normalizeStringRecord(item.sectionModes),
+		htmlDividerId: typeof item.htmlDividerId === "string" ? item.htmlDividerId : undefined,
+		htmlHeadingId: typeof item.htmlHeadingId === "string" ? item.htmlHeadingId : undefined,
+		htmlBlockId: typeof item.htmlBlockId === "string" ? item.htmlBlockId : undefined,
+		htmlHash: typeof item.htmlHash === "string" ? item.htmlHash : undefined,
+		htmlFileName: typeof item.htmlFileName === "string" ? item.htmlFileName : undefined,
 		lastSyncedRevision: Number.isInteger(item.lastSyncedRevision) ? Number(item.lastSyncedRevision) : undefined,
 		lastSyncedHash: typeof item.lastSyncedHash === "string" ? item.lastSyncedHash : undefined,
 		lastSyncedAt: typeof item.lastSyncedAt === "number" ? item.lastSyncedAt : undefined,
@@ -1963,7 +1980,7 @@ function localCalendarDate(now = new Date()): string {
 	return `${value.year}-${value.month}-${value.day}`;
 }
 
-function buildNotionSyncPayload(state: StudyHardBoardState, diagramAssets: StudyDiagramExportAsset[], workContract?: ResolvedStudyHardWorkContract, conflictResolution?: Record<string, "notion" | "study-hard">): Record<string, unknown> {
+function buildNotionSyncPayload(state: StudyHardBoardState, diagramAssets: StudyDiagramExportAsset[], htmlAsset: StudyFileExportAsset, workContract?: ResolvedStudyHardWorkContract, conflictResolution?: Record<string, unknown>): Record<string, unknown> {
 	return {
 		...materializeVisualReferences(state),
 		workContract: workContract ? { title: workContract.title, hash: workContract.hash, markdown: workContract.markdown } : undefined,
@@ -1972,6 +1989,7 @@ function buildNotionSyncPayload(state: StudyHardBoardState, diagramAssets: Study
 		sessionId: state.runId,
 		qa: state.questions,
 		diagramAssets,
+		htmlAsset,
 		notionSync: state.notionSync || {},
 		conflictResolution,
 	};
@@ -1982,6 +2000,27 @@ function sanitizeStudyHardSyncError(value: unknown): string {
 		.replace(/ntn_[A-Za-z0-9]+/g, "ntn_[REDACTED]")
 		.replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [REDACTED]")
 		.trim();
+}
+
+function applyNotionImports(state: StudyHardBoardState, result: Record<string, unknown>): { noteDocument?: StudyNoteDocument; attachments?: StudyAttachment[] } {
+	const importedSections = Array.isArray(result.importedSections) ? result.importedSections : [];
+	const importedAttachments = normalizeAttachments(result.importedAttachments) || [];
+	if (!importedSections.length && !importedAttachments.length) return {};
+	const document = structuredClone(state.noteDocument);
+	for (const raw of importedSections) {
+		if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+		const item = raw as Record<string, unknown>;
+		const sectionId = typeof item.sectionId === "string" ? item.sectionId : "";
+		if (!sectionId || sectionId.startsWith("#")) continue;
+		const blocks = normalizeNoteBlocks(item.blocks);
+		if (!blocks) continue;
+		const existing = document.sections.find((section) => section.id === sectionId);
+		if (existing) existing.blocks = blocks;
+		else document.sections.push({ id: sectionId, kind: "overview", title: typeof item.title === "string" ? item.title : sectionId, blocks });
+	}
+	const attachmentsById = new Map(state.attachments.map((attachment) => [attachment.id, attachment]));
+	for (const attachment of importedAttachments) attachmentsById.set(attachment.id, attachment);
+	return { noteDocument: document, attachments: [...attachmentsById.values()] };
 }
 
 function studyHardSyncErrorDetail(error: unknown): string {
@@ -1995,7 +2034,7 @@ function studyHardSyncErrorDetail(error: unknown): string {
 	return `Notion 동기화 실패${code}: ${detail}`;
 }
 
-async function runStudyHardNotionSync(handle: StudyHardHandle, diagramAssets: StudyDiagramExportAsset[], conflictResolution?: Record<string, "notion" | "study-hard">): Promise<Record<string, unknown>> {
+async function runStudyHardNotionSync(handle: StudyHardHandle, diagramAssets: StudyDiagramExportAsset[], conflictResolution?: Record<string, unknown>): Promise<Record<string, unknown>> {
 	if (!existsSync(handle.syncScript)) throw new Error("Notion 동기화 스크립트를 찾지 못했습니다.");
 	if (handle.notionSyncInFlight) throw new Error("Notion 동기화가 이미 진행 중입니다.");
 	handle.notionSyncInFlight = true;
@@ -2003,14 +2042,23 @@ async function runStudyHardNotionSync(handle: StudyHardHandle, diagramAssets: St
 		const inputPath = join(exportDir(handle.state.runId), "notion-sync.json");
 		const syncedRevision = handle.state.revision;
 		const syncedHash = buildNoteHistoryBundle(handle.state).hash;
-		const syncPayload = buildNotionSyncPayload(handle.state, diagramAssets, resolveStudyHardWorkContract(handle), conflictResolution);
+		const htmlPath = join(exportDir(handle.state.runId), `study-hard-${safeFileName(handle.state.runId)}-revision-${syncedRevision}.html`);
+		const htmlContent = buildStudyNoteExportHtml(handle.state, diagramAssets, resolveStudyHardWorkContract(handle));
+		writeFileSync(htmlPath, htmlContent, "utf-8");
+		const htmlAsset: StudyFileExportAsset = { fileName: basename(htmlPath), mimeType: "text/html", path: htmlPath, sha256: createHash("sha256").update(htmlContent).digest("hex") };
+		const syncPayload = buildNotionSyncPayload(handle.state, diagramAssets, htmlAsset, resolveStudyHardWorkContract(handle), conflictResolution);
 		writeFileSync(inputPath, JSON.stringify(syncPayload, null, 2), "utf-8");
 		const { stdout } = await execFileAsync(process.env.STUDY_HARD_PYTHON || "python3", [handle.syncScript, "--file", inputPath], { maxBuffer: 4 * 1024 * 1024, timeout: 300_000 });
 		const result = JSON.parse(String(stdout).trim()) as Record<string, unknown>;
 		const currentRevision = handle.state.revision;
 		const staleAfterSync = buildNoteHistoryBundle(handle.state).hash !== syncedHash;
 		if (result.status === "conflict") return { ...result, syncedRevision, currentRevision, staleAfterSync };
+		const importedPatch = staleAfterSync ? {} : applyNotionImports(handle.state, result);
+		const importedCanonicalChange = Boolean(importedPatch.noteDocument || importedPatch.attachments);
+		const savedRevision = handle.state.revision + 1;
+		const recordedSyncedRevision = !staleAfterSync && importedCanonicalChange ? savedRevision : syncedRevision;
 		handle.state = mergeBoardState(handle.state, {
+			...importedPatch,
 			notionSync: {
 				pageId: result.pageId,
 				calendarDate: typeof result.calendarDate === "string" ? result.calendarDate : String(syncPayload.date || ""),
@@ -2021,14 +2069,39 @@ async function runStudyHardNotionSync(handle: StudyHardHandle, diagramAssets: St
 				sectionBlockIds: result.sectionBlockIds,
 				sectionHeadingIds: result.sectionHeadingIds,
 				sectionModes: result.sectionModes,
-				lastSyncedRevision: syncedRevision,
+				htmlDividerId: result.htmlDividerId,
+				htmlHeadingId: result.htmlHeadingId,
+				htmlBlockId: result.htmlBlockId,
+				htmlHash: result.htmlHash,
+				htmlFileName: result.htmlFileName,
+				lastSyncedRevision: recordedSyncedRevision,
 				lastSyncedHash: syncedHash,
 				lastSyncedAt: Date.now(),
 			},
 		});
+		let finalResult = result;
+		if (importedCanonicalChange) {
+			const importedHtmlContent = buildStudyNoteExportHtml(handle.state, diagramAssets, resolveStudyHardWorkContract(handle));
+			writeFileSync(htmlPath, importedHtmlContent, "utf-8");
+			const importedHtmlAsset: StudyFileExportAsset = { fileName: basename(htmlPath), mimeType: "text/html", path: htmlPath, sha256: createHash("sha256").update(importedHtmlContent).digest("hex") };
+			const refreshPayload = buildNotionSyncPayload(handle.state, diagramAssets, importedHtmlAsset, resolveStudyHardWorkContract(handle));
+			writeFileSync(inputPath, JSON.stringify(refreshPayload, null, 2), "utf-8");
+			const refresh = await execFileAsync(process.env.STUDY_HARD_PYTHON || "python3", [handle.syncScript, "--file", inputPath], { maxBuffer: 4 * 1024 * 1024, timeout: 300_000 });
+			const refreshed = JSON.parse(String(refresh.stdout).trim()) as Record<string, unknown>;
+			if (refreshed.status === "conflict") throw new Error("Notion import 후 HTML 첨부 갱신 중 예상하지 못한 section 충돌이 발생했습니다.");
+			finalResult = { ...result, ...refreshed, importedSections: result.importedSections, importedAttachments: result.importedAttachments };
+			handle.state.notionSync = {
+				...handle.state.notionSync,
+				htmlDividerId: refreshed.htmlDividerId,
+				htmlHeadingId: refreshed.htmlHeadingId,
+				htmlBlockId: refreshed.htmlBlockId,
+				htmlHash: refreshed.htmlHash,
+				htmlFileName: refreshed.htmlFileName,
+			};
+		}
 		saveState(handle);
 		broadcast(handle);
-		return { ...result, syncedRevision, currentRevision, staleAfterSync };
+		return { ...finalResult, syncedRevision: recordedSyncedRevision, sourceRevision: syncedRevision, stateRevision: savedRevision, currentRevision, staleAfterSync };
 	} catch (error) {
 		const detail = studyHardSyncErrorDetail(error);
 		console.error(`[study-hard:notion-sync] ${detail}`);
@@ -2596,7 +2669,20 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 				const body = await readJsonBody(req);
 				const diagramAssets = await prepareExportDiagramAssets(handle.state, body.diagramAssets);
 				const rawResolution = body.conflictResolution && typeof body.conflictResolution === "object" && !Array.isArray(body.conflictResolution) ? body.conflictResolution as Record<string, unknown> : {};
-				const conflictResolution = Object.fromEntries(Object.entries(rawResolution).filter((entry): entry is [string, "notion" | "study-hard"] => entry[1] === "notion" || entry[1] === "study-hard"));
+				const conflictResolution: Record<string, unknown> = {};
+				for (const [sectionId, raw] of Object.entries(rawResolution)) {
+					if (raw === "notion" || raw === "study-hard") {
+						conflictResolution[sectionId] = raw;
+						continue;
+					}
+					if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+					const item = raw as Record<string, unknown>;
+					if (item.choice === "notion" || item.choice === "study-hard") conflictResolution[sectionId] = { choice: item.choice };
+					else if (item.choice === "manual") {
+						const blocks = normalizeNoteBlocks(item.blocks);
+						if (blocks) conflictResolution[sectionId] = { choice: "manual", blocks };
+					}
+				}
 				const result = await runStudyHardNotionSync(handle, diagramAssets, conflictResolution);
 				sendJson(res, 200, { ok: true, ...result });
 				return;
@@ -2906,6 +2992,26 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 				sendJson(res, 202, { ok: true, orchestrationId, question });
 				return;
 			}
+			if (pathname === "/questions/conflict-preview" && req.method === "POST") {
+				const body = await readJsonBody(req);
+				const questionId = typeof body.questionId === "string" ? body.questionId : "";
+				const question = handle.state.questions.find((item) => item.id === questionId);
+				if (!question || question.processingStatus !== "conflict") {
+					sendJson(res, 400, { ok: false, error: "conflicted learner question is required" });
+					return;
+				}
+				const { artifact } = readStudyHardWorkerResult(handle, question, question.workerResultPath || "");
+				const review = buildStudyHardNoteConflictReview(artifact, handle.state.noteDocument);
+				sendJson(res, 200, { ok: true, questionId, sections: review.sections, conflicts: review.conflicts });
+				return;
+			}
+			if (pathname === "/questions/resolve-conflict" && req.method === "POST") {
+				const body = await readJsonBody(req);
+				const questionId = typeof body.questionId === "string" ? body.questionId : "";
+				const applied = resolveStudyHardNoteConflict(handle, questionId, body.resolution);
+				sendJson(res, 200, { ok: true, questionId, revision: applied.state.revision });
+				return;
+			}
 			if (pathname === "/questions/retry" && req.method === "POST") {
 				const body = await readJsonBody(req);
 				const questionId = typeof body.questionId === "string" ? body.questionId : "";
@@ -3174,6 +3280,90 @@ function readStudyHardWorkerResult(handle: StudyHardHandle, question: StudyQuest
 		},
 		hash: createHash("sha256").update(raw).digest("hex"),
 	};
+}
+
+interface StudyHardNoteConflictSection {
+	sectionId: string;
+	title: string;
+	currentNoteBlocks: StudyNoteBlock[];
+	desiredNoteBlocks: StudyNoteBlock[];
+	currentPreview: string;
+	desiredPreview: string;
+}
+
+function noteSectionPreview(section: StudyNoteSection | undefined): string {
+	if (!section) return "이 섹션은 존재하지 않습니다.";
+	return section.blocks.slice(0, 4).map((block) => block.type === "paragraph" || block.type === "heading" ? block.text : block.type === "callout" ? `${block.title || ""} ${block.body || ""}` : block.type === "list" ? (block.items || []).join(" · ") : block.type).filter(Boolean).join("\n").slice(0, 500);
+}
+
+function buildStudyHardNoteConflictReview(artifact: StudyHardWorkerResultArtifact, current: StudyNoteDocument): { sections: StudyHardNoteConflictSection[]; conflicts: StudyNoteMergeConflict[] } {
+	const merge = mergeStudyNoteProposal(artifact.baseNoteDocument, artifact.proposedNoteDocument, current);
+	if (merge.ok) return { sections: [], conflicts: [] };
+	const allIds = new Set([...current.sections.map((section) => section.id), ...artifact.proposedNoteDocument.sections.map((section) => section.id)]);
+	let ids = [...allIds].filter((id) => merge.conflicts.some((conflict) => conflict.path.includes(`noteDocument.sections.${id}`)));
+	if (!ids.length && merge.conflicts.some((conflict) => conflict.path.startsWith("noteDocument.sections"))) ids = [...allIds];
+	const sections: StudyHardNoteConflictSection[] = ids.map((sectionId) => {
+		const currentSection = current.sections.find((section) => section.id === sectionId);
+		const proposedSection = artifact.proposedNoteDocument.sections.find((section) => section.id === sectionId);
+		return {
+			sectionId,
+			title: currentSection?.title || proposedSection?.title || sectionId,
+			currentNoteBlocks: structuredClone(currentSection?.blocks || []),
+			desiredNoteBlocks: structuredClone(proposedSection?.blocks || []),
+			currentPreview: noteSectionPreview(currentSection),
+			desiredPreview: noteSectionPreview(proposedSection),
+		};
+	});
+	if (merge.conflicts.some((conflict) => conflict.path === "noteDocument.title")) sections.unshift({
+		sectionId: "#title",
+		title: "학습 노트 제목",
+		currentNoteBlocks: [{ id: "current-title", type: "paragraph", text: current.title }],
+		desiredNoteBlocks: [{ id: "proposed-title", type: "paragraph", text: artifact.proposedNoteDocument.title }],
+		currentPreview: current.title,
+		desiredPreview: artifact.proposedNoteDocument.title,
+	});
+	return { sections, conflicts: merge.conflicts };
+}
+
+function resolveStudyHardNoteConflict(handle: StudyHardHandle, questionId: string, rawResolution: unknown): StudyHardHandle {
+	const question = handle.state.questions.find((item) => item.id === questionId);
+	if (!question || question.processingStatus !== "conflict") throw new Error("직접 해소할 Study Hard 노트 충돌이 없습니다.");
+	const { artifact } = readStudyHardWorkerResult(handle, question, question.workerResultPath || "");
+	const merge = mergeStudyNoteProposal(artifact.baseNoteDocument, artifact.proposedNoteDocument, handle.state.noteDocument);
+	if (merge.ok) return respondStudyHardQuestion(handle.state.runId, handle.state.revision, questionId, artifact.feedback, { noteDocument: merge.noteDocument });
+	const review = buildStudyHardNoteConflictReview(artifact, handle.state.noteDocument);
+	const resolution = rawResolution && typeof rawResolution === "object" && !Array.isArray(rawResolution) ? rawResolution as Record<string, unknown> : {};
+	const noteDocument = structuredClone(merge.noteDocument);
+	for (const section of review.sections) {
+		const raw = resolution[section.sectionId];
+		const item = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+		const choice = typeof raw === "string" ? raw : String(item.choice || "");
+		if (section.sectionId === "#title") {
+			if (choice === "current") noteDocument.title = handle.state.noteDocument.title;
+			else if (choice === "proposed") noteDocument.title = artifact.proposedNoteDocument.title;
+			else if (choice === "manual") {
+				const blocks = normalizeNoteBlocks(item.blocks);
+				const title = blocks?.find((block) => block.type === "paragraph" || block.type === "heading")?.text?.trim();
+				if (!title) throw new Error("직접 정리한 학습 노트 제목이 필요합니다.");
+				noteDocument.title = title;
+			} else throw new Error("학습 노트 제목 충돌 선택이 필요합니다.");
+			continue;
+		}
+		let replacement: StudyNoteSection | undefined;
+		if (choice === "current") replacement = structuredClone(handle.state.noteDocument.sections.find((entry) => entry.id === section.sectionId));
+		else if (choice === "proposed") replacement = structuredClone(artifact.proposedNoteDocument.sections.find((entry) => entry.id === section.sectionId));
+		else if (choice === "manual") {
+			const blocks = normalizeNoteBlocks(item.blocks);
+			if (!blocks) throw new Error(`직접 정리 block이 유효하지 않습니다: ${section.title}`);
+			const basis = handle.state.noteDocument.sections.find((entry) => entry.id === section.sectionId) || artifact.proposedNoteDocument.sections.find((entry) => entry.id === section.sectionId);
+			replacement = { id: section.sectionId, kind: basis?.kind || "overview", title: basis?.title || section.title, blocks };
+		} else throw new Error(`충돌 선택이 필요합니다: ${section.title}`);
+		const index = noteDocument.sections.findIndex((entry) => entry.id === section.sectionId);
+		if (!replacement && index >= 0) noteDocument.sections.splice(index, 1);
+		else if (replacement && index >= 0) noteDocument.sections[index] = replacement;
+		else if (replacement) noteDocument.sections.push(replacement);
+	}
+	return respondStudyHardQuestion(handle.state.runId, handle.state.revision, questionId, artifact.feedback, { noteDocument });
 }
 
 export function markStudyHardWorkerStarted(

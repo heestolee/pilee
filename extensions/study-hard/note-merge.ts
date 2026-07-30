@@ -8,7 +8,7 @@ export interface StudyNoteMergeConflict {
 
 export type StudyNoteMergeResult =
 	| { ok: true; noteDocument: StudyNoteDocument; changedPaths: string[] }
-	| { ok: false; conflicts: StudyNoteMergeConflict[]; changedPaths: string[] };
+	| { ok: false; noteDocument: StudyNoteDocument; conflicts: StudyNoteMergeConflict[]; changedPaths: string[] };
 
 type JsonRecord = Record<string, unknown>;
 type MergeContext = {
@@ -213,6 +213,7 @@ export function mergeStudyNoteProposal(base: StudyNoteDocument, proposed: StudyN
 	const title = mergeValue(base.title, proposed.title, current.title, "noteDocument.title", context) as string;
 	const sections = mergeEntityArrays(base.sections, proposed.sections, current.sections, "noteDocument.sections", context, mergeSection);
 	const changedPaths = [...context.changedPaths].sort();
-	if (context.conflicts.length) return { ok: false, conflicts: context.conflicts, changedPaths };
-	return { ok: true, noteDocument: { title, sections }, changedPaths };
+	const noteDocument = { title, sections };
+	if (context.conflicts.length) return { ok: false, noteDocument, conflicts: context.conflicts, changedPaths };
+	return { ok: true, noteDocument, changedPaths };
 }

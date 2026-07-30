@@ -244,9 +244,9 @@ python3 "${invocation.syncScript}" --file .context/study-hard/<session-id>.json
 
 4. sync script가 missing이면 파일만 만들고 BLOCKED로 보고합니다. 토큰/DB 값을 pilee public repo에 새로 쓰거나 추정하지 않습니다.
 5. 수정 요청이 들어오면 같은 JSON의 해당 questions/nodes/flows/noteDocument/attachments를 stable id로 갱신한 뒤 같은 script를 다시 실행합니다.
-6. script 결과의 pageId/sessionId/sectionHashes/sectionSourceHashes/sectionBlockIds/sectionModes를 notionSync에 보존합니다. 다음 sync는 동일 hash를 no-op으로 처리합니다.
-7. Notion 수동 편집과 Study Hard 변경이 같은 section에서 겹치면 실패로 끝내지 않습니다. Studio에서 Notion 유지/Study Hard 적용을 section별로 물어보고 conflictResolution으로 재동기화합니다. 선택 전에는 덮어쓰지 않습니다.
-8. script는 페이지와 비관리 block을 삭제하지 않습니다. 변경된 관리 section의 children만 교체하고 read-back hash로 검증합니다.
+6. script 결과의 pageId/sessionId/sectionHashes/sectionSourceHashes/sectionBlockIds/sectionModes와 HTML file block identity/hash를 notionSync에 보존합니다. 다음 sync는 동일 hash를 no-op으로 처리합니다.
+7. Notion 수동 편집과 Study Hard 변경이 같은 section에서 겹치면 실패로 끝내지 않습니다. Studio에서 \`현재 Notion\` / \`변경될 Study Hard\` / \`직접 정리\`를 section별로 물어보고 conflictResolution으로 재동기화합니다. 직접 정리는 Markdown으로 평탄화하지 않고 기존 structured block 형태를 유지한 채 텍스트만 편집합니다.
+8. Notion만 바뀐 section은 native block type을 유지해 Study Hard canonical로 import합니다. script는 페이지와 비관리 block을 삭제하지 않고 변경된 관리 section의 children만 교체하며, 최신 standalone HTML을 page 하단 file block으로 함께 저장하고 read-back hash로 검증합니다.
 
 이제 URL 내용을 가져와 자료 유형을 분류하고, 근거가 연결된 전체 학습 지도와 설명부터 시작하세요. 질문은 사용자가 지도를 이해할 맥락을 얻은 뒤에만 제안하세요.`;
 }
