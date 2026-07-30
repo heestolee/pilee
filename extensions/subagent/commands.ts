@@ -930,7 +930,14 @@ export function registerAll(pi: ExtensionAPI, store: SubagentStore): void {
 	});
 
 	const subagentExecute = createSubagentToolExecute(pi, store);
-	registerProgrammaticSubagentLauncher(pi, () => latestCtx, subagentExecute as any);
+	const disposeProgrammaticSubagentLauncher = registerProgrammaticSubagentLauncher(
+		pi,
+		() => latestCtx,
+		subagentExecute as any,
+	);
+	pi.on("session_shutdown", () => {
+		disposeProgrammaticSubagentLauncher();
+	});
 
 	pi.registerTool({
 		name: "list-agents",

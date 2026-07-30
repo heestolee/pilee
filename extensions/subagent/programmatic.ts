@@ -97,8 +97,8 @@ export function registerProgrammaticSubagentLauncher(
 	pi: ExtensionAPI,
 	getCurrentContext: () => ExtensionContext | null,
 	execute: ProgrammaticSubagentExecute,
-): void {
-	pi.events.on(PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT, (payload) => {
+): () => void {
+	return pi.events.on(PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT, (payload) => {
 		const request = payload as ProgrammaticSubagentLaunchRequest;
 		if (!request || request.kind !== "programmatic-subagent-launch") return;
 		request.claim();

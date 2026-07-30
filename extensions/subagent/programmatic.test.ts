@@ -19,13 +19,22 @@ function createEventHarness() {
 				const current = listeners.get(name) ?? [];
 				current.push(listener);
 				listeners.set(name, current);
+				return () => {
+					listeners.set(
+						name,
+						(listeners.get(name) ?? []).filter((candidate) => candidate !== listener),
+					);
+				};
 			},
 			emit(name: string, payload: unknown) {
 				for (const listener of listeners.get(name) ?? []) listener(payload);
 			},
 		},
 	} as any;
-	return { pi };
+	return {
+		pi,
+		listenerCount: (name: string) => listeners.get(name)?.length ?? 0,
+	};
 }
 
 test("programmatic launcher는 기존 execute에 main-context run을 전달하고 callback으로 완료한다", async () => {
@@ -61,6 +70,43 @@ test("programmatic launcher는 기존 execute에 main-context run을 전달하�
 
 	assert.equal(command, "subagent run study-hard-worker --main -- 질문 artifact를 생성해");
 	assert.deepEqual(events, ["claimed", "started:17", "completed:17:done"]);
+});
+
+test("programmatic launcher disposer는 reload 전 listener를 해제해 재등록 후 한 번만 실행한다", async () => {
+	const { pi, listenerCount } = createEventHarness();
+	let executeCount = 0;
+	const execute = async () => {
+		executeCount += 1;
+		return { details: { launches: [{ runId: 18 }] } };
+	};
+	const register = () =>
+		registerProgrammaticSubagentLauncher(pi, () => ({ cwd: "/tmp/main-session" }) as any, execute);
+
+	const disposePrevious = register();
+	assert.equal(listenerCount(PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT), 1);
+	disposePrevious();
+	assert.equal(listenerCount(PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT), 0);
+	register();
+
+	let claimCount = 0;
+	pi.events.emit(PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT, {
+		kind: "programmatic-subagent-launch",
+		requestId: "study-hard:Q074",
+		agent: "study-hard-worker",
+		task: "질문 artifact를 생성해",
+		contextMode: "main",
+		claim: () => {
+			claimCount += 1;
+		},
+		onStarted: () => {},
+		onCompleted: () => {},
+		onRejected: () => {},
+	} satisfies ProgrammaticSubagentLaunchRequest);
+	await new Promise((resolve) => setImmediate(resolve));
+
+	assert.equal(listenerCount(PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT), 1);
+	assert.equal(claimCount, 1);
+	assert.equal(executeCount, 1);
 });
 
 test("programmatic lineage는 durable entry와 nextTurn을 함께 사용한다", () => {
