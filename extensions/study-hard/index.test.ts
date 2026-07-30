@@ -31,7 +31,7 @@ test("buildStudyHardPrompt keeps learning loop and Notion sync contracts visible
 	assert.match(prompt, /scope: session/);
 	assert.match(prompt, /scope: node/);
 	assert.match(prompt, /scope: coach/);
-	assert.match(prompt, /study-hard-worker --main/);
+	assert.match(prompt, /study-hard-worker --isolated/);
 	assert.match(prompt, /표준 #N worker widget/);
 	assert.match(prompt, /3-way merge/);
 	assert.match(prompt, /P0 LLM turn은 launch나 정상 completion apply의 gate가 아니며/);

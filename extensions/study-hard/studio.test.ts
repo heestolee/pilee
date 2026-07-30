@@ -1569,7 +1569,7 @@ test("event bus가 없는 legacy runtime은 P0 fallback dispatch를 유지한다
 		const dispatches = messages.filter(({ message }) => message.customType === "heestolee.study-hard.learner-request");
 		assert.equal(dispatches.length, 4);
 		assert.ok(dispatches.every(({ message, options }) => message.display === false && options.deliverAs === "followUp" && options.triggerTurn === true));
-		assert.ok(dispatches.every(({ message }) => /action="status"/.test(message.content) && /subagent run study-hard-worker --main/.test(message.content) && /action="worker_started"/.test(message.content) && /action="worker_failed"/.test(message.content) && /action="apply_worker_result"/.test(message.content)));
+		assert.ok(dispatches.every(({ message }) => /action="status"/.test(message.content) && /subagent run study-hard-worker --isolated/.test(message.content) && /action="worker_started"/.test(message.content) && /action="worker_failed"/.test(message.content) && /action="apply_worker_result"/.test(message.content)));
 
 		const question = state.questions[0];
 		markStudyHardWorkerStarted(handle.state.runId, state.revision, question.id);
@@ -1629,7 +1629,7 @@ test("learner 질문은 P0 LLM turn 없이 즉시 dispatch·적용되고 첫 충
 		assert.equal(requests.length, 2);
 		assert.deepEqual(state.questions.map((question: any) => question.processingStatus), ["running", "running"]);
 		assert.deepEqual(state.questions.map((question: any) => question.workerRunId), [41, 42]);
-		assert.ok(requests.every((request) => request.contextMode === "main" && request.agent === "study-hard-worker"));
+		assert.ok(requests.every((request) => request.contextMode === "isolated" && request.agent === "study-hard-worker"));
 		assert.match(requests[0]?.task || "", /statePath:/);
 		assert.match(requests[0]?.task || "", /workerResultPath:/);
 		assert.equal(messages.some(({ message }) => message.customType === "heestolee.study-hard.learner-request"), false);
@@ -2151,7 +2151,7 @@ test("Studio 재시작은 중단된 learner 질문을 worker dispatcher에 다�
 		assert.equal(requests.length, 1);
 		assert.equal(requests[0].options.triggerTurn, true);
 		assert.match(requests[0].message.content, /Study Hard worker dispatch request/);
-		assert.match(requests[0].message.content, /subagent run study-hard-worker --main/);
+		assert.match(requests[0].message.content, /subagent run study-hard-worker --isolated/);
 	} finally {
 		stopStudyHardStudios();
 	}
