@@ -17,7 +17,7 @@ source:
   - user-direction:2026-07-17-study-hard-public-migration
   - user-direction:2026-07-21-study-hard-notion-static-export
 reviewed_at: 2026-07-29
-reviewed_commit: 707616fc0e88fb1310b4fbd6d5fd2f1ea3de0db3
+reviewed_commit: 70defd9da14ba4917f511dfa74653cf6978c01fc
 related:
   - private-overlay-package-boundary
   - context-loading-minimal-surface
@@ -81,7 +81,7 @@ Notion publisher는 페이지 전체를 managed document 하나로 취급하지 
 - managed heading과 container 사이에 사용자가 직접 넣은 top-level block도 인접 section의 Notion 변경으로 귀속하되, publisher가 임의 삭제하지 않습니다.
 - 양쪽이 바뀌었으면 Studio가 section별 `현재 Notion` / `변경될 Study Hard` / `직접 정리`를 보여주고 `conflictResolution`으로 재실행합니다.
 - 비교 화면은 글자 수로 자른 단일 preview 문자열이 아니라 full structured blocks를 block별로 렌더합니다. paragraph 줄바꿈, list/table/code 경계, image thumbnail·caption을 보존하고 긴 쪽은 pane 내부에서 스크롤합니다.
-- modal은 넓은 화면에서 viewport 비례로 확대되고 max width/height 안에서 사용자가 직접 resize할 수 있어야 합니다. 좁은 화면에서만 diff를 1열로 바꿉니다.
+- modal 너비는 고정 pixel 상한 없이 viewport 비율로 확대하고 화면 경계만 넘지 않게 하며, 높이는 viewport 경계 안에서 사용자가 직접 resize할 수 있어야 합니다. 좁은 화면에서만 diff를 1열로 바꿉니다.
 - 저장 transaction은 계속 section 단위지만 판단 표면은 block diff입니다. semantic content LCS로 동일 block을 접고, exact anchor 사이의 같은 type block을 changed로 짝지으며 나머지를 removed/added로 표시합니다. `− 현재`는 붉은색, `+ 변경`은 초록색을 사용합니다.
 - 직접 정리의 자동 초안은 unchanged 1회, current-only 보존, desired-only 추가, changed는 current 기본값으로 구성합니다. 사용자는 changed row마다 current/desired source를 고르고 block 내부 필드를 수정하거나 block을 삭제·재배열할 수 있습니다.
 - Notion에만 추가된 block이 있으면 개수와 image 포함 여부를 경고하고, `변경될 Study Hard 적용` 시 제거된다는 결과를 선택 전에 명시합니다. Notion-only 변경은 modal을 띄우지 않고 자동 import하되 완료 상태에 가져온 section·image 수를 표시합니다.
