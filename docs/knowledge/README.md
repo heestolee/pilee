@@ -69,7 +69,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Worker는 readiness ownership을 가진다](./ai-worker-readiness-orchestrator.md) | active | high | 2026-06-02 | ce5e875 | worker, subagent, orchestrator, readiness, bootstrap, diagnosis |
 | [Self-healing은 actionable item만 수정한다](./self-healing-actionable-loop.md) | active | high | 2026-06-02 | e123af1 | self-healing, actionable, worker, fix-class, subagent, 자동수정 |
 | [Stress Interview는 다축 검토다](./stress-interview-multi-axis-review.md) | active | high | 2026-06-02 | e123af1 | stress-interview, review, verifier, reviewer, challenger, subagent |
-| [Hybrid subagent 모델 운용 정책](./subagent-model-policy.md) | active | high | 2026-07-25 | 3c85909 | subagent, codex, claude, model-policy, worker, finder |
+| [Hybrid subagent 모델 운용 정책](./subagent-model-policy.md) | active | high | 2026-07-30 | c45a4a4 | subagent, codex, claude, model-policy, worker, finder |
 | [Subagent 위임은 구체 프롬프트를 요구한다](./subagent-prompt-specificity.md) | active | high | 2026-06-02 | 83617e9 | subagent, prompt, delegation, worker, context, 위임 |
 | [Subagent는 slash command가 아니라 skill prompt를 위임받는다](./subagent-skill-delegation.md) | active | high | 2026-06-02 | 83617e9 | subagent, skill, slash-command, delegation, ship, ci-ship |
 | [Supervisor는 outcome guardrail이다](./supervisor-outcome-guardrail.md) | active | high | 2026-06-02 | 63f2a62 | supervisor, outcome, guardrail, steering, agent |
@@ -81,8 +81,8 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 |---|---|---:|---:|---:|---|
 | [Architecture friction은 TFT의 검증 축이다](./architecture-friction-tft-lens.md) | active | high | 2026-06-02 | ce5e875 | architecture, frame, decide, verify, deep-module, shallow-module |
 | [학습노트 companion은 독립 canonical을 sidecar로 연결한다](./learning-note-companion-artifact.md) | active | high | 2026-07-18 | 88b560c | learning-note, companion-artifact, frame-v2, study-hard, worktree, checkpoint |
-| [Study Hard 엔진은 public이고 개인 publisher만 private다](./study-hard-public-engine-private-publisher.md) | active | high | 2026-07-29 | 70defd9 | study-hard, public-private-boundary, notion, runtime-profile, local-state |
-| [Study Hard worker는 유연하게 생성하고 extension coordinator가 엄격하게 적용한다](./study-hard-worker-flexible-generation-strict-apply.md) | active | high | 2026-07-29 | 3eb7e85 | study-hard, subagent, worker, three-way-merge, optimistic-concurrency, glimpse |
+| [Study Hard 엔진은 public이고 개인 publisher만 private다](./study-hard-public-engine-private-publisher.md) | active | high | 2026-07-30 | 040b596 | study-hard, public-private-boundary, notion, runtime-profile, local-state |
+| [Study Hard worker는 유연하게 생성하고 extension coordinator가 엄격하게 적용한다](./study-hard-worker-flexible-generation-strict-apply.md) | active | high | 2026-07-30 | 040b596 | study-hard, subagent, worker, three-way-merge, optimistic-concurrency, glimpse |
 | [Utils surface는 사용자 계약을 만들지 않는다](./utility-surface-stays-invisible.md) | active | high | 2026-06-02 | d8f8c4c | utils, internal, surface, abstraction, extension |
 
 ### database

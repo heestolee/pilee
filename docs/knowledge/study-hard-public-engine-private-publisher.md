@@ -16,8 +16,8 @@ applies_to:
 source:
   - user-direction:2026-07-17-study-hard-public-migration
   - user-direction:2026-07-21-study-hard-notion-static-export
-reviewed_at: 2026-07-29
-reviewed_commit: 70defd9da14ba4917f511dfa74653cf6978c01fc
+reviewed_at: 2026-07-30
+reviewed_commit: 040b596fec2e9e9c83929fa5b99ce0d38310a4ad
 related:
   - private-overlay-package-boundary
   - context-loading-minimal-surface
@@ -41,7 +41,7 @@ Public `extensions/study-hard`가 소유하는 범위:
 - `/study-hard` command와 `study_hard_board` tool
 - concept hierarchy와 runtime flow model
 - 구조화 `noteDocument`와 canonical TFT `visual` block
-- P0-linked `study-hard-worker --main` 병렬 처리, 3-way note merge, Coach navigation
+- P0-lineage에 연결된 `study-hard-worker --isolated` 병렬 처리, 3-way note merge, Coach navigation
 - Q&A transcript integration
 - revision/history snapshot과 restore
 - standalone HTML export와 interactive visual/PNG fallback
@@ -139,7 +139,7 @@ Frame v2 작업에 연결된 state만 optional `companion` metadata를 가집니
 
 ## Worker Scope And Apply Rule
 
-Glimpse의 learner 질문은 P0가 실제 `study-hard-worker --main` subagent로 dispatch합니다. 선택 surface는 worker가 시작할 초점과 근거를 제공하지만 쓰기 경계로 사용하지 않습니다. worker는 사용자 의도를 닫는 데 필요한 전체 `proposedNoteDocument`를 만들 수 있습니다.
+Glimpse의 learner 질문은 extension coordinator가 실제 `study-hard-worker --isolated` subagent로 dispatch합니다. P0 전체 transcript 대신 명시적 task와 최신 board state를 전달하고, 완료 lineage만 P0 session에 연결합니다. 선택 surface는 worker가 시작할 초점과 근거를 제공하지만 쓰기 경계로 사용하지 않습니다. worker는 사용자 의도를 닫는 데 필요한 전체 `proposedNoteDocument`를 만들 수 있습니다.
 
 안전 경계는 생성 범위가 아니라 적용 권한입니다.
 

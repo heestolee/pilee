@@ -24,8 +24,8 @@ source:
   - pilee-history:2026-05-04#33
   - pilee-history:2026-05-04#34
   - pilee-history:2026-05-05#42
-reviewed_at: 2026-07-25
-reviewed_commit: 3c859097475e102743d430a2bce6daff7632b451
+reviewed_at: 2026-07-30
+reviewed_commit: c45a4a4ebba6962cf6ab73de656c9b00a0f3e48e
 related:
   - pilee-knowledge-system
   - worktree-session-continuity
@@ -41,7 +41,9 @@ pilee subagent는 Codex-first 실행 흐름을 기본으로 하되, 검증 판�
 
 - 구현·리뷰·도전·브라우저 실행 역할은 강한 Codex 모델을 유지합니다.
 - verifier는 “증거 없는 PASS”의 비용이 크므로 Claude Opus 5를 `max` effort로 사용합니다. 구현보다 claim inventory, 재현, evidence 판정, skipped check/remaining risk 기록이 핵심 역할입니다.
-- verifier의 primary Opus 호출이 실패하면 `openai-codex/gpt-5.6-sol`로 한 번 fallback합니다. fallback은 검증 workflow를 끊지 않기 위한 안전장치이며, 실제 PASS 기준은 동일하게 evidence-first입니다.
+- verifier의 primary Opus 호출이 실패하면 `openai-codex/gpt-5.6-sol`로 fallback합니다. fallback은 검증 workflow를 끊지 않기 위한 안전장치이며, 실제 PASS 기준은 동일하게 evidence-first입니다.
+- agent는 기존 단일 `modelFallback`과 순서형 `modelFallbacks` chain을 모두 지원합니다. Study Hard worker처럼 사용자 상호작용을 비동기로 닫아야 하는 역할은 `Sol → Terra → Spark` 순서로 provider 장애를 흡수합니다.
+- fallback model마다 같은 persisted session을 이어 쓰되 새 offset부터 terminal event를 읽어 이전 모델의 실패 marker가 다음 모델을 즉시 종료시키지 않게 합니다.
 - 단순 탐색·검색 역할은 가벼운 모델을 우선 사용합니다.
 - 모델 선택은 “얼마나 똑똑한가”보다 “이 agent가 실패했을 때 되돌리기 비용이 큰가”를 기준으로 조정합니다.
 

@@ -18,8 +18,8 @@ source:
   - user-direction:2026-07-19-study-hard-worker-flexible-generation-strict-apply
   - user-direction:2026-07-23-main-lineage-without-p0-turn-gate
   - user-direction:2026-07-25-completion-transcript-before-final-response
-reviewed_at: 2026-07-29
-reviewed_commit: 3eb7e85f9ddbf4662261845b7cd812a7eeace313
+reviewed_at: 2026-07-30
+reviewed_commit: 040b596fec2e9e9c83929fa5b99ce0d38310a4ad
 related:
   - parallel-workflow-analysis-single-writer
   - study-hard-public-engine-private-publisher
@@ -30,7 +30,7 @@ related:
 
 ## Judgment
 
-Study Hard Glimpse 입력은 메인 session lineage의 다른 입구다. 질문·답변·결정은 P0 context에 귀속하지만, P0 LLM turn이 worker launch나 정상 completion apply의 gate가 되어서는 안 된다. extension coordinator가 표준 `study-hard-worker --main` subagent dispatcher를 즉시 호출하고 callback으로 결과를 받는다.
+Study Hard Glimpse 입력은 메인 session lineage의 다른 입구다. 질문·답변·결정은 P0 lineage에 귀속하지만, P0 전체 transcript를 worker 입력으로 복제하거나 P0 LLM turn을 launch·정상 completion apply의 gate로 삼아서는 안 된다. extension coordinator가 명시적 task와 최신 board state를 가진 표준 `study-hard-worker --isolated` subagent dispatcher를 즉시 호출하고 callback으로 결과를 받는다.
 
 lineage의 영구 기록, 사용자에게 보이는 카드, 모델 context 전달을 분리한다. `appendEntry`가 durable SSOT와 즉시 표시할 custom entry를 만들고, entry renderer가 현재 완료 흐름 안에서 카드를 보여준다. 모델용 복사본만 `display:false + nextTurn`으로 전달한다. 따라서 여러 완료 카드가 있어도 assistant 응답을 카드 사이에서 반복하지 않고, 다음 사용자 질문 시점에 과거 카드가 뒤늦게 나타나지도 않는다.
 
@@ -42,7 +42,7 @@ worker의 생성 범위를 선택 블록에 하드 제한하지 않는다. 선�
 Glimpse learner input
 ├─ learner question을 메인 session transcript에 기록
 └─ extension event bus로 표준 subagent dispatcher 즉시 호출
-   → subagent run study-hard-worker --main
+   → subagent run study-hard-worker --isolated
    → 표준 #N widget
    → completion callback
    → artifact 검증 + strict 3-way apply
@@ -51,7 +51,8 @@ Glimpse learner input
 
 - 별도 `pi -p --no-session` runner를 만들지 않는다.
 - 기존 isolated Tutor/Editor runner로 돌아가지 않는다.
-- `--main`은 P0 context snapshot과 session reference를 worker에 제공한다.
+- `--isolated`는 P0의 긴 transcript를 복제하지 않는다. worker가 필요한 학습 맥락은 dispatcher task와 `statePath`의 최신 board state로 전달한다.
+- worker model은 Sol을 primary로 사용하고 실패 시 Terra, 그다음 Spark 순서로 fallback한다. provider 오류가 persisted session fallback으로 감지돼도 실제 `errorMessage`를 retry 판정에 보존한다.
 - launch·정상 apply를 위해 P0가 hidden request를 읽고 tool을 호출할 때까지 기다리지 않는다.
 - subagent start/completion과 Study Hard 질문·답변은 `appendEntry`로 origin session에 즉시 durable하게 기록한다.
 - 새 durable entry에는 명시적 display flag를 넣고 entry renderer로 즉시 보여준다. 과거 entry에는 이 flag가 없으므로 업데이트 뒤 오래된 카드가 중복 노출되지 않는다.
@@ -111,7 +112,7 @@ queued → running → result-ready → merging → applied
 - 선택 블록을 하드 쓰기 경계로 만들면 자연스러운 문서 재구성마다 scope-expanded 재시도가 발생해 worker가 답답해진다.
 - 전체 proposed note를 P0 transcript에 넣으면 병렬 작업 수만큼 context가 중복된다.
 - conflict를 last-write-wins로 처리하면 사용자가 보지 못한 채 학습 설명이 유실된다.
-- custom runner를 만들면 표준 #N widget, origin session completion, `--main` context 계승이 사라져 과거 Direct Refiner 실패를 반복한다.
+- custom runner를 만들면 표준 #N widget과 origin session completion이 사라져 과거 Direct Refiner 실패를 반복한다. 격리는 표준 dispatcher의 `--isolated` mode로 유지한다.
 - P0 hidden follow-up을 launch gate로 사용하면 P0의 긴 구현 turn 뒤에서 head-of-line blocking이 생겨 학습 응답이 작업 종료까지 밀린다.
 - `followUp + triggerTurn:false`는 현재 P0가 완전히 끝난 뒤 전달되므로 완료 카드가 마지막 답변 뒤에 붙거나 별도 follow-up queue를 소비할 수 있다.
 - visible `nextTurn`은 이미 끝난 완료 카드를 다음의 무관한 사용자 질문 시점에 노출해 대화 경계를 흐린다.
