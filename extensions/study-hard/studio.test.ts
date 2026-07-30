@@ -828,7 +828,7 @@ test("export routes write HTML to Downloads and pass rendered diagrams to Notion
 
 test("Notion conflict stays unsaved until section choices are submitted", async () => {
 	const fakeSyncScript = join(testStateDir, "fake-conflict-study-hard-sync.py");
-	writeFileSync(fakeSyncScript, `import json,sys\np=json.load(open(sys.argv[2]))\nr=p.get('conflictResolution') or {}\nif not r:\n print(json.dumps({'status':'conflict','pageId':'page-1','pageUrl':'https://notion.so/page1','conflicts':[{'sectionId':'overview','title':'Overview','currentPreview':'Notion edit','desiredPreview':'Study Hard edit','currentNoteBlocks':[{'id':'notion-p','type':'paragraph','text':'Notion edit'}],'desiredNoteBlocks':[{'id':'lead','type':'paragraph','text':'Study Hard edit'}]}]}))\nelse:\n modes={k:(v if isinstance(v,str) else v.get('choice')) for k,v in r.items()}\n print(json.dumps({'status':'synced','pageId':'page-1','pageUrl':'https://notion.so/page1','sessionId':'session-1','sectionHashes':{'overview':'current-hash'},'sectionSourceHashes':{'overview':'source-hash'},'sectionBlockIds':{'overview':'block-1'},'sectionHeadingIds':{'overview':'heading-1'},'sectionModes':modes}))\n`, "utf-8");
+	writeFileSync(fakeSyncScript, `import json,sys\np=json.load(open(sys.argv[2]))\nr=p.get('conflictResolution') or {}\nif not r:\n print(json.dumps({'status':'conflict','pageId':'page-1','pageUrl':'https://notion.so/page1','conflicts':[{'sectionId':'overview','title':'Overview','currentPreview':'Notion edit','desiredPreview':'Study Hard edit','currentNoteBlocks':[{'id':'notion-p','type':'paragraph','text':'Notion edit\\n두 번째 줄'},{'id':'notion-image-1','type':'image','image':{'url':'https://example.com/notion-image.png','alt':'Notion 추가 이미지','caption':'직접 추가한 구조도'}}],'desiredNoteBlocks':[{'id':'lead','type':'paragraph','text':'Study Hard edit'}],'unmanagedBlockIds':['1']}]}))\nelse:\n modes={k:(v if isinstance(v,str) else v.get('choice')) for k,v in r.items()}\n print(json.dumps({'status':'synced','pageId':'page-1','pageUrl':'https://notion.so/page1','sessionId':'session-1','sectionHashes':{'overview':'current-hash'},'sectionSourceHashes':{'overview':'source-hash'},'sectionBlockIds':{'overview':'block-1'},'sectionHeadingIds':{'overview':'heading-1'},'sectionModes':modes}))\n`, "utf-8");
 	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
 	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/notion-conflict", runId: "notion-conflict", syncScript: fakeSyncScript });
 	try {
@@ -856,8 +856,13 @@ test("Notion conflict stays unsaved until section choices are submitted", async 
 		assert.match(html, /requestNotionConflict/);
 		assert.match(html, /모두 Study Hard 적용/);
 		assert.match(html, /모두 직접 정리/);
+		assert.match(html, /function mergePreviewHtml/);
+		assert.match(html, /notionConflictPreviewBody/);
+		assert.match(html, /현재 Notion에만 추가된 block/);
+		assert.match(html, /이미지 .*개 포함/);
 		assert.match(html, /function mergeBlockEditorHtml/);
 		assert.match(html, /data-manual-base="left"/);
+		assert.match(html, /Notion에서 .* 가져옴/);
 	} finally {
 		stopStudyHardStudios();
 	}
