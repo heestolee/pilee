@@ -18,6 +18,7 @@ export interface PersistedSessionSnapshot {
 	latestActivityAt?: number;
 	finalOutput: string;
 	terminalStopReason?: string;
+	terminalErrorMessage?: string;
 	completionMarker?: CompletionMarker;
 	isTerminal: boolean;
 }
@@ -135,6 +136,7 @@ export function readPersistedSessionSnapshot(
 	const messages: Message[] = [];
 	let latestActivityAt: number | undefined;
 	let terminalStopReason: string | undefined;
+	let terminalErrorMessage: string | undefined;
 	let completionMarker: CompletionMarker | undefined;
 
 	for (const line of raw.split(/\r?\n/)) {
@@ -170,7 +172,11 @@ export function readPersistedSessionSnapshot(
 
 		if (role === "assistant") {
 			const stopReason = typeof (message as any).stopReason === "string" ? (message as any).stopReason : undefined;
-			if (stopReason && stopReason !== "toolUse") terminalStopReason = stopReason;
+			if (stopReason && stopReason !== "toolUse") {
+				terminalStopReason = stopReason;
+				const errorMessage = typeof (message as any).errorMessage === "string" ? (message as any).errorMessage.trim() : "";
+				if (errorMessage) terminalErrorMessage = errorMessage;
+			}
 		}
 	}
 
@@ -180,6 +186,7 @@ export function readPersistedSessionSnapshot(
 		latestActivityAt,
 		finalOutput,
 		terminalStopReason,
+		terminalErrorMessage,
 		completionMarker,
 		isTerminal: !!completionMarker || !!terminalStopReason,
 	};

@@ -660,7 +660,7 @@ export function createSubagentToolExecute(pi: ExtensionAPI, store: SubagentStore
 
 			const lines = agents.map((agent) => {
 				const model = agent.model ?? "(inherit current model)";
-				const modelFallback = agent.modelFallback ? ` · fallback: ${agent.modelFallback}` : "";
+				const modelFallback = agent.modelFallbacks?.length ? ` · fallback: ${agent.modelFallbacks.join(" → ")}` : "";
 				const thinking = agent.thinking ?? "(inherit current thinking)";
 				const tools = agent.tools && agent.tools.length > 0 ? agent.tools.join(",") : "default";
 				const description = agent.description ? ` · ${agent.description}` : "";

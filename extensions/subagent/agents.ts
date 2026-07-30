@@ -13,6 +13,7 @@ import {
 	normalizeThinkingLevel,
 	normalizeTools,
 } from "../utils/agent-utils.js";
+import { parseModelFallbacks } from "./model-fallback.js";
 
 export const THINKING_LEVELS = AGENT_THINKING_LEVELS;
 
@@ -23,7 +24,10 @@ export interface AgentConfig {
 	description: string;
 	tools?: string[];
 	model?: string;
+	/** 첫 번째 fallback model. 기존 단일 fallback 설정과의 호환용입니다. */
 	modelFallback?: string;
+	/** 순서대로 시도할 fallback model chain입니다. */
+	modelFallbacks?: string[];
 	thinking?: AgentThinkingLevel;
 	systemPrompt: string;
 	source: "user" | "project";
@@ -149,7 +153,12 @@ function loadAgentsFromDir(dir: string, source: "user" | "project", options: Loa
 
 		const tools = normalizeTools(frontmatter.tools, format);
 		const model = normalizeModel(frontmatter.model, format);
-		const modelFallback = normalizeModel(frontmatter.modelFallback || frontmatter.fallbackModel, format);
+		const modelFallbacks = parseModelFallbacks(
+			frontmatter.modelFallbacks,
+			frontmatter.modelFallback || frontmatter.fallbackModel,
+			(candidate) => normalizeModel(candidate, format),
+		);
+		const modelFallback = modelFallbacks?.[0];
 		const thinking = normalizeThinkingLevel(frontmatter.thinking);
 		const runtime: AgentRuntime = frontmatter.runtime === "claude" ? "claude" : "pi";
 
@@ -159,6 +168,7 @@ function loadAgentsFromDir(dir: string, source: "user" | "project", options: Loa
 			tools,
 			model,
 			modelFallback,
+			modelFallbacks,
 			thinking,
 			systemPrompt: attachCommonSubagentRule(body, runtime),
 			source,

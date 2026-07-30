@@ -24,12 +24,13 @@ import {
 } from "./claude-stream-parser.js";
 import { resolveClaudeRuntimeMode } from "./config.js";
 import { formatToolCallPlain } from "./format.js";
+import { resolveModelFallbackChain } from "./model-fallback.js";
 import {
 	extractActivityPreviewFromTextDelta,
 	extractThoughtText,
 	formatPiToolExecutionPreview,
 } from "./live-preview.js";
-import { appendCompletionMarker, readPersistedSessionSnapshot } from "./persisted-session.js";
+import { appendCompletionMarker, getSessionFileSize, readPersistedSessionSnapshot } from "./persisted-session.js";
 import { writePromptToTempFile } from "./session.js";
 import type { AgentAliasMatch, DisplayItem, OnUpdateCallback, SingleResult, SubagentDetails } from "./types.js";
 
@@ -243,7 +244,7 @@ export async function runSingleAgent(
 		);
 	}
 
-	const primaryResult = await runPiAgent(
+	let result = await runPiAgent(
 		defaultCwd,
 		agent,
 		agentName,
@@ -256,45 +257,41 @@ export async function runSingleAgent(
 		persistedSessionBaseOffset,
 	);
 
-	if (!shouldFallbackToModel(agent, primaryResult, signal)) return primaryResult;
-
-	const fallbackModel = agent.modelFallback as string;
-	const fallbackAgent = { ...agent, model: fallbackModel };
-	const fallbackResult = await runPiAgent(
-		defaultCwd,
-		fallbackAgent,
-		agentName,
-		task,
-		step,
-		signal,
-		onUpdate,
-		makeDetails,
-		sessionFile,
-		persistedSessionBaseOffset,
-	);
-	appendModelFallbackDiagnostic(fallbackResult, agent.model, fallbackModel, primaryResult);
-	return fallbackResult;
-}
-
-function shouldFallbackToModel(agent: AgentConfig, result: SingleResult, signal: AbortSignal | undefined): boolean {
-	if (signal?.aborted) return false;
-	if (result.exitCode === 0) return false;
-	if (!agent.model || !agent.modelFallback) return false;
-	return agent.modelFallback !== agent.model;
+	let previousModel = agent.model;
+	for (const fallbackModel of resolveModelFallbackChain(agent)) {
+		if (signal?.aborted || result.exitCode === 0) break;
+		const previousResult = result;
+		const fallbackSessionBaseOffset = getSessionFileSize(sessionFile);
+		result = await runPiAgent(
+			defaultCwd,
+			{ ...agent, model: fallbackModel },
+			agentName,
+			task,
+			step,
+			signal,
+			onUpdate,
+			makeDetails,
+			sessionFile,
+			fallbackSessionBaseOffset,
+		);
+		appendModelFallbackDiagnostic(result, previousModel, fallbackModel, previousResult);
+		previousModel = fallbackModel;
+	}
+	return result;
 }
 
 function appendModelFallbackDiagnostic(
 	result: SingleResult,
-	primaryModel: string | undefined,
+	previousModel: string | undefined,
 	fallbackModel: string,
-	primaryResult: SingleResult,
+	previousResult: SingleResult,
 ): void {
-	const primaryStderr = primaryResult.stderr.trim();
+	const previousFailure = previousResult.errorMessage || previousResult.stderr.trim() || getFinalOutput(previousResult.messages).trim();
 	appendStderrDiagnostic(
 		result,
-		`Primary model ${primaryModel ?? "(inherit current model)"} failed with exit ${primaryResult.exitCode}; retried with fallback model ${fallbackModel}.`,
+		`Model ${previousModel ?? "(inherit current model)"} failed with exit ${previousResult.exitCode}; retried with fallback model ${fallbackModel}.`,
 	);
-	if (primaryStderr) appendStderrDiagnostic(result, `Primary stderr: ${primaryStderr}`);
+	if (previousFailure) appendStderrDiagnostic(result, `Previous model error: ${previousFailure}`);
 }
 
 async function runClaudeAgent(
@@ -661,6 +658,9 @@ async function runPiAgent(
 				const snapshot = readPersistedSessionSnapshot(sessionFile, { startOffset: persistedSessionBaseOffset });
 				if (snapshot.terminalStopReason && !currentResult.stopReason) {
 					currentResult.stopReason = snapshot.terminalStopReason;
+				}
+				if (snapshot.terminalErrorMessage && !currentResult.errorMessage) {
+					currentResult.errorMessage = snapshot.terminalErrorMessage;
 				}
 				if (snapshot.messages.length > currentResult.messages.length) {
 					currentResult.messages = snapshot.messages;
