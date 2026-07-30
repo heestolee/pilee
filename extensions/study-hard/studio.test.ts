@@ -838,6 +838,7 @@ test("Notion conflict stays unsaved until section choices are submitted", async 
 		let result = await response.json() as any;
 		assert.equal(result.status, "conflict");
 		assert.equal(result.conflicts[0].sectionId, "overview");
+		assert.deepEqual(result.conflicts[0].blockDiff.map((row: any) => row.status), ["changed", "removed"]);
 		let state = await fetch(new URL("/state", handle.url)).then((item) => item.json() as Promise<any>);
 		assert.equal(state.notionSync, undefined);
 
@@ -856,7 +857,17 @@ test("Notion conflict stays unsaved until section choices are submitted", async 
 		assert.match(html, /requestNotionConflict/);
 		assert.match(html, /모두 Study Hard 적용/);
 		assert.match(html, /모두 직접 정리/);
+		assert.match(html, /width:min\(94vw,1500px\)/);
+		assert.match(html, /resize:both/);
 		assert.match(html, /function mergePreviewHtml/);
+		assert.match(html, /function blockDiffHtml/);
+		assert.match(html, /blockDiffSide removed/);
+		assert.match(html, /blockDiffSide added/);
+		assert.match(html, /자동 병합 초안/);
+		assert.match(html, /현재 block 사용/);
+		assert.match(html, /변경 block 사용/);
+		assert.match(html, /notionConflictBlockChoices/);
+		assert.match(html, /data-block-action="delete"/);
 		assert.match(html, /notionConflictPreviewBody/);
 		assert.match(html, /현재 Notion에만 추가된 block/);
 		assert.match(html, /이미지 .*개 포함/);
@@ -1854,6 +1865,7 @@ test("worker 재조정 뒤 남은 노트 충돌은 기존·변경·직접 정리
 		assert.equal(preview.sections[0].sectionId, "overview");
 		assert.equal(preview.sections[0].currentNoteBlocks[0].text, "A-current");
 		assert.equal(preview.sections[0].desiredNoteBlocks[0].text, "A-worker");
+		assert.deepEqual(preview.sections[0].blockDiff.map((row: any) => row.status), ["changed"]);
 		response = await fetch(new URL("/questions/resolve-conflict", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ questionId: question.id, resolution: { overview: { choice: "manual", blocks: [{ id: "a", type: "paragraph", text: "A-direct" }] } } }) });
 		assert.equal(response.status, 200);
 		state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
