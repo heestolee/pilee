@@ -91,7 +91,7 @@ merge coordinator는 worker가 주장한 write set을 그대로 믿지 않는다
 - 서로 양립할 수 없는 순서 변경 → conflict
 - 독립 삽입·분할 → stable id와 order constraint로 함께 보존
 
-첫 conflict는 completion callback에서 같은 subagent run을 최신 note 기준으로 한 번 `continue`하여 rebase한다. 다시 충돌하면 Glimpse를 즉시 `conflict`로 갱신하고 silent overwrite하지 않으며, 이 예외만 P0 판단을 요구한다. completion 재전달은 artifact hash로 멱등 처리한다.
+첫 conflict는 completion callback에서 같은 subagent run을 최신 note 기준으로 한 번 `continue`하여 rebase한다. 다시 충돌하면 Glimpse를 즉시 `conflict`로 갱신하고 silent overwrite하지 않습니다. 사용자는 같은 block merge editor에서 section별 `기존 Study Hard` / `변경될 Study Hard` / `직접 정리`를 선택합니다. 직접 정리는 Markdown으로 평탄화하지 않고 기존 block type·id·순서를 유지한 채 내부 텍스트만 수정하며, 충돌 없는 3-way merge 결과는 함께 보존됩니다. completion 재전달은 artifact hash로 멱등 처리합니다.
 
 ## State Rule
 

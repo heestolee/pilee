@@ -77,10 +77,13 @@ Notion publisher는 페이지 전체를 managed document 하나로 취급하지 
 - 변경된 section은 기존 page 안의 managed container children만 교체하고 read-back semantic hash로 검증합니다.
 - page ID, title property, 사용자가 만든 비관리 block은 유지합니다.
 - Notion 수동 편집과 Study Hard 변경이 겹치면 publisher가 단순 실패하거나 자동 덮어쓰지 않습니다.
-- Studio가 section별 현재 Notion/Study Hard preview를 보여주고 `Notion 유지` 또는 `Study Hard 적용`을 받아 `conflictResolution`으로 재실행합니다.
-- `Notion 유지`는 현재 Notion hash와 당시 Study Hard source hash를 함께 저장해 같은 source로 매번 다시 묻지 않습니다. Study Hard source가 달라지면 다시 판단합니다.
+- Notion만 바뀌었으면 publisher가 native paragraph/callout/list/table/code/image를 Study Hard의 같은 structured block type으로 역변환해 canonical note에 import합니다. Markdown 한 덩어리로 평탄화하지 않습니다.
+- managed heading과 container 사이에 사용자가 직접 넣은 top-level block도 인접 section의 Notion 변경으로 귀속하되, publisher가 임의 삭제하지 않습니다.
+- 양쪽이 바뀌었으면 Studio가 section별 `현재 Notion` / `변경될 Study Hard` / `직접 정리`를 보여주고 `conflictResolution`으로 재실행합니다.
+- `직접 정리`는 Markdown editor가 아니라 기존 block type·id·순서를 유지하는 block editor입니다. paragraph text, callout title/body, list item, table cell, code, image caption처럼 block 내부 텍스트만 편집해 structured blocks로 양쪽 canonical에 저장합니다.
+- 매 저장 시 같은 revision의 standalone HTML을 생성해 page 하단 managed file block으로 교체하고 file block identity/hash를 sync state에 보존합니다.
 
-이 계약은 merge conflict와 같습니다. 충돌 검출은 publisher가 담당하지만 최종 선택은 사용자에게 돌려줍니다.
+이 계약은 merge conflict와 같습니다. 충돌 검출은 publisher가 담당하지만 최종 선택은 사용자에게 돌려주고, 자동 import도 block 구조를 보존해야 합니다.
 
 ### Image Block Rule
 
