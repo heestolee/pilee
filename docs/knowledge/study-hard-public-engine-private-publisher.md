@@ -83,6 +83,7 @@ Notion publisher는 페이지 전체를 managed document 하나로 취급하지 
 - 비교 화면은 글자 수로 자른 단일 preview 문자열이 아니라 full structured blocks를 block별로 렌더합니다. paragraph 줄바꿈, list/table/code 경계, image thumbnail·caption을 보존하고 긴 쪽은 pane 내부에서 스크롤합니다.
 - modal 너비는 고정 pixel 상한 없이 viewport 비율로 확대하고 화면 경계만 넘지 않게 하며, 높이는 viewport 경계 안에서 사용자가 직접 resize할 수 있어야 합니다. 좁은 화면에서만 diff를 1열로 바꿉니다.
 - 저장 transaction은 계속 section 단위지만 판단 표면은 block diff입니다. semantic content LCS로 동일 block을 접고, exact anchor 사이의 같은 type block을 changed로 짝지으며 나머지를 removed/added로 표시합니다. `− 현재`는 붉은색, `+ 변경`은 초록색을 사용합니다.
+- semantic key는 normalized block 객체 전체가 아니라 block type별 의미 필드만 projection합니다. 예를 들어 callout은 tone/title/body, table은 columns/rows, paragraph는 text만 비교합니다. Notion round-trip에서 생기는 무관한 `level`, `tone`, `ordered:false`, 빈 문자열·빈 배열·undefined 차이는 변경으로 취급하지 않습니다.
 - 직접 정리의 자동 초안은 unchanged 1회, current-only 보존, desired-only 추가, changed는 current 기본값으로 구성합니다. 사용자는 changed row마다 current/desired source를 고르고 block 내부 필드를 수정하거나 block을 삭제·재배열할 수 있습니다.
 - Notion에만 추가된 block이 있으면 개수와 image 포함 여부를 경고하고, `변경될 Study Hard 적용` 시 제거된다는 결과를 선택 전에 명시합니다. Notion-only 변경은 modal을 띄우지 않고 자동 import하되 완료 상태에 가져온 section·image 수를 표시합니다.
 - `직접 정리`는 Markdown editor가 아니라 기존 block type·id·순서를 유지하는 block editor입니다. paragraph text, callout title/body, list item, table cell, code, image caption처럼 block 내부 텍스트만 편집해 structured blocks로 양쪽 canonical에 저장합니다.
