@@ -33,6 +33,26 @@ test("block diff는 block id가 달라도 의미가 같으면 unchanged로 본�
 	assert.equal(rows[0].status, "unchanged");
 });
 
+test("block diff는 type과 무관한 round-trip 기본 필드를 semantic 변경으로 보지 않는다", () => {
+	const current = [
+		{ id: "notion-callout", type: "callout", tone: "question", title: "핵심 질문", body: "같은 내용" },
+		{ id: "notion-table", type: "table", columns: ["개념"], rows: [["Fabric"]] },
+	] as StudyNoteBlock[];
+	const desired = [
+		{ id: "study-callout", type: "callout", tone: "question", title: "핵심 질문", body: "같은 내용", level: 2, text: "", ordered: false, items: [], columns: [], rows: [], references: [], flowId: "" },
+		{ id: "study-table", type: "table", columns: ["개념"], rows: [["Fabric"]], level: 2, text: "", title: "", body: "", tone: "info", ordered: false, items: [], references: [], flowId: "" },
+	] as StudyNoteBlock[];
+	assert.deepEqual(diffStudyNoteBlocks(current, desired).map((row) => row.status), ["unchanged", "unchanged"]);
+});
+
+test("block diff는 type별 의미 필드가 달라지면 changed로 본다", () => {
+	const rows = diffStudyNoteBlocks(
+		[callout("left", "기존 설명"), { id: "table-left", type: "table", columns: ["개념"], rows: [["Fabric"]] }],
+		[callout("right", "변경 설명"), { id: "table-right", type: "table", columns: ["개념"], rows: [["Bridgeless"]] }],
+	);
+	assert.deepEqual(rows.map((row) => row.status), ["changed", "changed"]);
+});
+
 test("block diff는 같은 type block 여러 개를 순서대로 changed로 짝짓는다", () => {
 	const rows = diffStudyNoteBlocks(
 		[callout("left-1", "A"), callout("left-2", "B")],

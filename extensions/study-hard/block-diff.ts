@@ -8,13 +8,48 @@ export interface StudyNoteBlockDiffRow {
 	right?: StudyNoteBlock;
 }
 
+function normalizedText(value: unknown): string {
+	return typeof value === "string" ? value.replace(/\r\n/g, "\n").trim() : "";
+}
+
+function normalizedStrings(value: unknown): string[] {
+	return Array.isArray(value) ? value.map(normalizedText) : [];
+}
+
 function comparableBlock(block: StudyNoteBlock): unknown {
-	const { id: _id, ...value } = structuredClone(block);
-	if (value.type === "image" && value.image) {
-		delete value.image.path;
-		if (value.image.attachmentId) delete value.image.url;
+	switch (block.type) {
+		case "heading":
+			return { type: block.type, level: block.level || 2, text: normalizedText(block.text) };
+		case "paragraph":
+			return { type: block.type, text: normalizedText(block.text) };
+		case "callout":
+			return { type: block.type, tone: block.tone || "info", title: normalizedText(block.title), body: normalizedText(block.body) };
+		case "list":
+			return { type: block.type, ordered: block.ordered === true, items: normalizedStrings(block.items) };
+		case "table":
+			return { type: block.type, columns: normalizedStrings(block.columns), rows: (block.rows || []).map((row) => normalizedStrings(row)) };
+		case "code":
+			return {
+				type: block.type,
+				language: block.code?.language || "",
+				code: block.code?.code.replace(/\r\n/g, "\n") || "",
+				lineNumberMode: block.code?.lineNumberMode || "relative",
+				startLine: block.code?.startLine || 1,
+				annotations: (block.code?.annotations || []).map((item) => ({ line: item.line, endLine: item.endLine, kind: item.kind, text: normalizedText(item.text) })),
+			};
+		case "reference-list":
+			return { type: block.type, references: (block.references || []).map((item) => ({ kind: item.kind, label: normalizedText(item.label), path: item.path, url: item.url, symbol: item.symbol, location: item.location, excerpt: item.excerpt, note: item.note, revision: item.revision, startLine: item.startLine })) };
+		case "flow-ref":
+			return { type: block.type, flowId: block.flowId || "" };
+		case "image":
+			return { type: block.type, alt: normalizedText(block.image?.alt), caption: normalizedText(block.image?.caption) };
+		case "visual":
+			return { type: block.type, title: normalizedText(block.title), body: normalizedText(block.body), visual: block.visual || {} };
+		case "visual-ref":
+			return { type: block.type, title: normalizedText(block.title), body: normalizedText(block.body), visualRef: block.visualRef || {} };
+		case "divider":
+			return { type: block.type };
 	}
-	return value;
 }
 
 function semanticKey(block: StudyNoteBlock): string {
