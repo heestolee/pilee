@@ -13,7 +13,7 @@ const HELP = `/study-hard — URL 기반 학습 모드
 Usage:
   /study-hard https://reactnative.dev/architecture/xplat-implementation
   /study-hard <article-or-video-url> [관심 주제 힌트]
-  /study-hard current     현재 Frame v2 작업에 연결된 학습노트 다시 열기
+  /study-hard current     현재 작업·대화에 연결된 학습노트 또는 최근 저장 학습노트 다시 열기
   /study-hard help
 
 Flow:
@@ -75,6 +75,34 @@ export function resolveCurrentLearningCompanion(ctx: ExtensionCommandContext): {
 		const manifest = readLearningCompanionManifest(path);
 		if (manifest) return { path, manifest };
 	}
+	return undefined;
+}
+
+function studyHardRunIdFromDetails(value: unknown): string | undefined {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+	const details = value as Record<string, unknown>;
+	for (const key of ["runId", "boardRunId"] as const) {
+		const runId = details[key];
+		if (typeof runId === "string" && runId.trim()) return runId.trim();
+	}
+	return undefined;
+}
+
+export function resolveCurrentSessionStudyHardRunId(ctx: ExtensionCommandContext): string | undefined {
+	try {
+		const branch = ctx.sessionManager.getBranch();
+		for (const rawEntry of [...branch].reverse()) {
+			const entry = rawEntry as { type?: string; customType?: string; details?: unknown; data?: StudyHardTranscriptLineageEntryData };
+			if (entry.type === "custom" && entry.customType === STUDY_HARD_TRANSCRIPT_LINEAGE_ENTRY) {
+				const runId = studyHardRunIdFromDetails(entry.data?.details);
+				if (runId) return runId;
+			}
+			if (entry.type === "custom_message" && entry.customType?.startsWith("heestolee.study-hard")) {
+				const runId = studyHardRunIdFromDetails(entry.details);
+				if (runId) return runId;
+			}
+		}
+	} catch {}
 	return undefined;
 }
 
@@ -263,7 +291,7 @@ export default function studyHard(pi: ExtensionAPI) {
 	pi.on("session_shutdown", () => stopStudyHardStudios());
 
 	pi.registerCommand("study-hard", {
-		description: "URL의 코드·PR·아티클·영상 자료를 학습하거나 현재 Frame v2 작업의 companion 학습노트를 다시 여는 적응형 학습 모드.",
+		description: "URL의 코드·PR·아티클·영상 자료를 학습하거나 현재 작업·대화·최근 저장 학습노트를 다시 여는 적응형 학습 모드.",
 		handler: async (args: string, ctx: ExtensionCommandContext) => {
 			const parsed = parseStudyHardArgs(args, ctx.cwd);
 			if ("help" in parsed) {
@@ -276,12 +304,27 @@ export default function studyHard(pi: ExtensionAPI) {
 			}
 			if ("current" in parsed) {
 				const companion = resolveCurrentLearningCompanion(ctx);
-				if (!companion) {
-					ctx.ui.notify("현재 작업에 연결된 learning-companion.json을 찾지 못했습니다. 기존 /study-hard URL 학습은 그대로 사용할 수 있습니다.", "warning");
-					return;
+				const sessionRunId = resolveCurrentSessionStudyHardRunId(ctx);
+				const candidates = [
+					companion ? { runId: companion.manifest.runId, label: "현재 작업" } : undefined,
+					sessionRunId ? { runId: sessionRunId, label: "현재 대화" } : undefined,
+				].filter((candidate): candidate is { runId: string; label: string } => Boolean(candidate));
+				const attempted = new Set<string>();
+				for (const candidate of candidates) {
+					if (attempted.has(candidate.runId)) continue;
+					attempted.add(candidate.runId);
+					try {
+						const handle = await openExistingStudyHardStudio(pi, ctx, candidate.runId);
+						ctx.ui.notify(`📚 ${candidate.label} 학습노트를 다시 열었습니다: ${handle.state.title}`, "info");
+						return;
+					} catch {}
 				}
-				const handle = await openExistingStudyHardStudio(pi, ctx, companion.manifest.runId);
-				ctx.ui.notify(`📚 현재 작업 학습노트를 다시 열었습니다: ${handle.state.title}`, "info");
+				try {
+					const handle = await openExistingStudyHardStudio(pi, ctx);
+					ctx.ui.notify(`📚 최근 Study Hard 학습노트를 다시 열었습니다: ${handle.state.title}`, "info");
+				} catch {
+					ctx.ui.notify("현재 작업·대화 또는 저장된 Study Hard 학습노트를 찾지 못했습니다. /study-hard <URL>로 새 학습을 시작하세요.", "warning");
+				}
 				return;
 			}
 

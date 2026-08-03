@@ -139,6 +139,93 @@ test("extension registers /study-hard and sends one hidden follow-up prompt", as
 	assert.ok(messages[0]?.message.details.boardStatePath);
 });
 
+test("/study-hard current reopens a standalone run from the current session after reload", async () => {
+	const root = mkdtempSync(join(tmpdir(), "study-hard-current-standalone-"));
+	const stateDir = join(root, "study-state");
+	const originalStateDir = process.env.STUDY_HARD_STATE_DIR;
+	process.env.STUDY_HARD_STATE_DIR = stateDir;
+	let registered: { handler: (args: string, ctx: any) => Promise<void> } | undefined;
+	const notifications: Array<{ message: string; level: string }> = [];
+	const messages: any[] = [];
+	const runId = "study-hard-current-standalone-run";
+	const fakePi = {
+		registerCommand(name: string, options: any) { if (name === "study-hard") registered = options; },
+		registerTool() {},
+		registerEntryRenderer() {},
+		on() {},
+		sendMessage(message: any) { messages.push(message); },
+		exec() { throw new Error("no browser fallback in test"); },
+	} as any;
+	const ctx = {
+		cwd: root,
+		hasUI: false,
+		sessionManager: {
+			getSessionFile: () => join(root, "session.jsonl"),
+			getSessionName: () => "Standalone Study Hard",
+			getBranch: () => [{
+				type: "custom_message",
+				customType: "heestolee.study-hard",
+				details: { boardRunId: runId },
+			}],
+		},
+		ui: { notify(message: string, level: string) { notifications.push({ message, level }); } },
+	};
+	try {
+		await startStudyHardStudio(fakePi, ctx, { url: "https://example.com/standalone", runId });
+		stopStudyHardStudios();
+		studyHard(fakePi);
+		await registered!.handler("current", ctx);
+		assert.equal(messages.length, 0, "reopen must not enqueue a new URL learning prompt");
+		assert.equal(notifications.some((entry) => entry.level === "warning"), false);
+		assert.ok(notifications.some((entry) => /현재 대화 학습노트를 다시 열었습니다/.test(entry.message)));
+	} finally {
+		stopStudyHardStudios();
+		if (originalStateDir === undefined) delete process.env.STUDY_HARD_STATE_DIR;
+		else process.env.STUDY_HARD_STATE_DIR = originalStateDir;
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("/study-hard current falls back to the most recently persisted standalone run", async () => {
+	const root = mkdtempSync(join(tmpdir(), "study-hard-current-persisted-"));
+	const stateDir = join(root, "study-state");
+	const originalStateDir = process.env.STUDY_HARD_STATE_DIR;
+	process.env.STUDY_HARD_STATE_DIR = stateDir;
+	let registered: { handler: (args: string, ctx: any) => Promise<void> } | undefined;
+	const notifications: Array<{ message: string; level: string }> = [];
+	const fakePi = {
+		registerCommand(name: string, options: any) { if (name === "study-hard") registered = options; },
+		registerTool() {},
+		registerEntryRenderer() {},
+		on() {},
+		sendMessage() {},
+		exec() { throw new Error("no browser fallback in test"); },
+	} as any;
+	const ctx = {
+		cwd: root,
+		hasUI: false,
+		sessionManager: {
+			getSessionFile: () => join(root, "session.jsonl"),
+			getSessionName: () => "Persisted Study Hard",
+			getBranch: () => [],
+		},
+		ui: { notify(message: string, level: string) { notifications.push({ message, level }); } },
+	};
+	try {
+		await startStudyHardStudio(fakePi, ctx, { url: "https://example.com/persisted", runId: "study-hard-current-persisted-run" });
+		stopStudyHardStudios();
+		studyHard(fakePi);
+		await registered!.handler("current", ctx);
+		assert.equal(notifications.some((entry) => entry.level === "warning"), false);
+		assert.ok(notifications.some((entry) => /최근 Study Hard 학습노트를 다시 열었습니다/.test(entry.message)));
+	} finally {
+		stopStudyHardStudios();
+		if (originalStateDir === undefined) delete process.env.STUDY_HARD_STATE_DIR;
+		else process.env.STUDY_HARD_STATE_DIR = originalStateDir;
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
 test("/study-hard current reopens the attached run without starting a new learning prompt", async () => {
 	const root = mkdtempSync(join(tmpdir(), "study-hard-current-"));
 	const stateDir = join(root, "study-state");
