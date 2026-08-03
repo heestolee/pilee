@@ -17,7 +17,7 @@ source:
   - user-direction:2026-07-17-study-hard-public-migration
   - user-direction:2026-07-21-study-hard-notion-static-export
 reviewed_at: 2026-07-30
-reviewed_commit: 040b596fec2e9e9c83929fa5b99ce0d38310a4ad
+reviewed_commit: ac5b326
 related:
   - private-overlay-package-boundary
   - context-loading-minimal-surface
@@ -145,12 +145,15 @@ Glimpse의 learner 질문은 extension coordinator가 실제 `study-hard-worker 
 안전 경계는 생성 범위가 아니라 적용 권한입니다.
 
 - worker는 Study Hard state를 직접 수정하지 않고 question별 result artifact만 씁니다.
-- P0 transcript에는 artifact path, worker #N, 짧은 summary와 최종 feedback만 남깁니다.
+- P0 transcript에는 artifact path, worker #N, 짧은 summary와 최종 feedback만 남깁니다. Raw start/completion lifecycle은 durable entry로 보존하되 미래 P0 LLM turn에 다시 주입하지 않습니다.
+- 같은 question orchestration은 `requestId` single-flight로 정확히 한 worker만 실행합니다. extension reload 시 이전 launcher listener를 즉시 교체하고, atomic claim으로 겹친 listener도 한 실행만 소유합니다.
 - merge coordinator가 base/proposed/current를 비교해 실제 changed path를 계산합니다.
 - disjoint 블록·필드·삽입은 완료 순서와 무관하게 보존합니다.
 - 같은 필드의 다른 변경, 삭제 대 수정, 양립 불가능한 순서 변경은 conflict로 둡니다.
 - 첫 conflict는 같은 worker run을 최신 state로 한 번 continue하고, 재충돌은 P0 판단으로 남깁니다.
-- artifact hash로 duplicate completion을 멱등 처리합니다.
+- 최초 accepted result 뒤의 late success/failure는 멱등 no-op입니다. `answered/applied`는 `failed`로 역행하지 않으며, persisted `answered + failed` 모순도 load 시 `applied`로 복구합니다.
+- 재시도는 terminal failure에서만 새 orchestration으로 실행합니다. 실행 중이거나 이미 답변된 질문에는 retry를 노출하지 않습니다.
+- note image block의 `attachmentId`는 worker context의 실제 attachment path와 Studio의 capability-protected HTTP source 양쪽으로 해석합니다.
 
 이 계약은 **생성은 유연하게, 적용은 엄격하게** 유지합니다. target block만 바꿀 수 있게 제한해 충돌을 피하려 하지 않고, 실제 제안 diff를 최신 state에 적용하는 순간 검증합니다.
 
