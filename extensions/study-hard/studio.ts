@@ -784,7 +784,10 @@ function normalizeQuestions(value: unknown): StudyQuestionCard[] | undefined {
 			workerRebaseCount: Number.isInteger(item.workerRebaseCount) ? Number(item.workerRebaseCount) : undefined,
 			processingError: typeof item.processingError === "string" ? item.processingError : undefined,
 			processingErrorStage: ["tutor", "editor", "coach", "worker", "merge"].includes(String(item.processingErrorStage)) ? String(item.processingErrorStage) as StudyQuestionCard["processingErrorStage"] : undefined,
-		}));
+		}))
+		.map((question) => question.origin === "learner" && question.scope !== "coach" && question.status === "answered" && question.feedback?.trim() && question.processingStatus === "failed"
+			? { ...question, processingStatus: "applied" as const, processingError: undefined, processingErrorStage: undefined }
+			: question);
 }
 
 function normalizeStringArray(value: unknown): string[] | undefined {
@@ -2166,6 +2169,11 @@ function updateQuestionCards(
 function questionAttachmentRecords(state: StudyHardBoardState, question: StudyQuestionCard): StudyAttachment[] {
 	const explicitIds = new Set(question.attachmentIds || []);
 	if (explicitIds.size) return state.attachments.filter((attachment) => explicitIds.has(attachment.id));
+	if (question.targetNoteBlockId) {
+		const block = state.noteDocument.sections.flatMap((section) => section.blocks).find((item) => item.id === question.targetNoteBlockId);
+		const attachmentId = block?.type === "image" ? block.image?.attachmentId : undefined;
+		if (attachmentId) return state.attachments.filter((attachment) => attachment.id === attachmentId);
+	}
 	if (question.targetNodeId) return state.attachments.filter((attachment) => attachment.nodeId === question.targetNodeId);
 	return [];
 }
@@ -2351,6 +2359,10 @@ function isCurrentWorkerQuestion(handle: StudyHardHandle, questionId: string, or
 	return !!current && current.orchestrationId === orchestrationId;
 }
 
+function hasAcceptedWorkerAnswer(question: StudyQuestionCard | undefined): boolean {
+	return !!question && (question.processingStatus === "applied" || (question.status === "answered" && !!question.feedback?.trim()));
+}
+
 function markCurrentWorkerQuestionFailed(
 	handle: StudyHardHandle,
 	questionId: string,
@@ -2359,6 +2371,8 @@ function markCurrentWorkerQuestionFailed(
 	workerRunId?: number,
 ): void {
 	if (!isCurrentWorkerQuestion(handle, questionId, orchestrationId)) return;
+	const current = handle.state.questions.find((question) => question.id === questionId);
+	if (hasAcceptedWorkerAnswer(current)) return;
 	const message = error.trim().slice(0, 2_000) || "study-hard-worker 실행에 실패했습니다.";
 	updateQuestionCards(handle, [questionId], (question) => ({
 		...question,
@@ -2437,7 +2451,7 @@ function handleStudyHardWorkerCompletion(
 	completion: ProgrammaticSubagentCompleted,
 ): void {
 	const question = handle.state.questions.find((item) => item.id === questionId);
-	if (!question || question.orchestrationId !== orchestrationId) return;
+	if (!question || question.orchestrationId !== orchestrationId || hasAcceptedWorkerAnswer(question)) return;
 	const completionError = validateWorkerCompletionOutput(question, completion);
 	if (completionError) {
 		markCurrentWorkerQuestionFailed(handle, questionId, orchestrationId, completionError, completion.runId);
@@ -2485,6 +2499,8 @@ function sendLearnerQuestionToWorkerDispatcher(
 	options: StudyHardWorkerDispatchOptions = {},
 ): void {
 	if (!handle.pi.events || typeof handle.pi.events.emit !== "function") {
+		// Legacy runtime에는 programmatic dispatcher가 없으므로 기존 P0 dispatch를 유지한다.
+		// 표준 runtime은 아래 event bus 경로를 사용하며 worker lifecycle을 P0 context에 넣지 않는다.
 		sendLegacyLearnerQuestionToP0(handle, question);
 		return;
 	}
@@ -2497,7 +2513,11 @@ function sendLearnerQuestionToWorkerDispatcher(
 		task: buildStudyHardWorkerTask(handle, question, options),
 		contextMode: "isolated",
 		continueRunId: options.continueRunId,
-		claim: () => { claimed = true; },
+		claim: () => {
+			if (claimed) return false;
+			claimed = true;
+			return true;
+		},
 		onStarted: ({ runId }) => {
 			if (!isCurrentWorkerQuestion(handle, question.id, question.orchestrationId)) return;
 			updateQuestionCards(handle, [question.id], (current) => ({
@@ -3140,6 +3160,18 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 				sendJson(res, 200, { ok: true, attachmentId });
 				return;
 			}
+			if (pathname.startsWith("/attachment-files/") && req.method === "GET") {
+				const attachmentId = decodeURIComponent(pathname.replace("/attachment-files/", ""));
+				const attachment = handle.state.attachments.find((item) => item.id === attachmentId);
+				if (!attachment?.path || !existsSync(attachment.path)) {
+					res.writeHead(404);
+					res.end("not found");
+					return;
+				}
+				res.writeHead(200, { "Content-Type": attachment.mimeType || "application/octet-stream" });
+				res.end(readFileSync(attachment.path));
+				return;
+			}
 			if (pathname.startsWith("/attachments/") && req.method === "GET") {
 				const fileName = decodeURIComponent(pathname.replace("/attachments/", ""));
 				const root = resolve(attachmentDir(handle.state.runId));
@@ -3394,6 +3426,7 @@ export function markStudyHardWorkerStarted(
 	if (!handle) throw new Error(`Study Hard Studio run을 찾을 수 없습니다: ${id}`);
 	if (handle.state.revision !== expectedRevision) throw new Error(`stale Study Hard revision: expected ${expectedRevision}, current ${handle.state.revision}`);
 	const question = handle.state.questions.find((item) => item.id === questionId);
+	if (hasAcceptedWorkerAnswer(question)) return handle;
 	if (!question || question.origin !== "learner" || question.scope === "coach" || !["queued", "rebasing", "running"].includes(String(question.processingStatus))) throw new Error(`worker를 시작할 learner question을 찾지 못했습니다: ${questionId}`);
 	updateQuestionCards(handle, [questionId], (item) => ({
 		...item,
@@ -3416,6 +3449,7 @@ export function markStudyHardWorkerFailed(
 	const handle = handles.get(id);
 	if (!handle) throw new Error(`Study Hard Studio run을 찾을 수 없습니다: ${id}`);
 	const question = handle.state.questions.find((item) => item.id === questionId);
+	if (hasAcceptedWorkerAnswer(question)) return handle;
 	const failureEligible = new Set<StudyQuestionProcessingStatus>(["queued", "running", "result-ready", "merging", "rebasing", "conflict", "failed"]);
 	if (!question || question.origin !== "learner" || question.scope === "coach" || !question.processingStatus || !failureEligible.has(question.processingStatus)) throw new Error(`worker 실패를 기록할 learner question을 찾지 못했습니다: ${questionId}`);
 	const message = workerError.trim().slice(0, 2_000) || "study-hard-worker 실행에 실패했습니다.";
@@ -3441,11 +3475,11 @@ export function applyStudyHardWorkerResult(
 	if (!handle) throw new Error(`Study Hard Studio run을 찾을 수 없습니다: ${id}`);
 	const question = handle.state.questions.find((item) => item.id === questionId);
 	if (!question || question.origin !== "learner" || question.scope === "coach") throw new Error(`worker result를 적용할 learner question을 찾지 못했습니다: ${questionId}`);
+	const expectedPath = resolve(question.workerResultPath || "");
+	const receivedPath = resolve(workerResultPath);
+	if (!question.workerResultPath || receivedPath !== expectedPath || dirname(receivedPath) !== dirname(resolve(handle.statePath))) throw new Error("Study Hard worker result path가 question 계약과 다릅니다.");
+	if (hasAcceptedWorkerAnswer(question)) return { handle, status: "already-applied", workerRunId: question.workerRunId, changedPaths: [], conflicts: [] };
 	const { artifact, hash } = readStudyHardWorkerResult(handle, question, workerResultPath);
-	if (question.processingStatus === "applied") {
-		if (question.workerResultHash === hash) return { handle, status: "already-applied", workerRunId: question.workerRunId, changedPaths: [], conflicts: [] };
-		throw new Error(`이미 적용된 Study Hard question에 다른 worker result를 적용할 수 없습니다: ${questionId}`);
-	}
 	if (question.workerResultHash === hash && ["rebasing", "conflict"].includes(String(question.processingStatus))) {
 		return { handle, status: question.processingStatus as "rebasing" | "conflict", workerRunId: question.workerRunId, changedPaths: [], conflicts: [] };
 	}

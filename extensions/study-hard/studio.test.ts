@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -1688,6 +1688,42 @@ test("learner 질문은 P0 LLM turn 없이 즉시 dispatch·적용되고 첫 충
 	}
 });
 
+test("note image block 질문은 명시 첨부가 없어도 block attachment를 worker에 전달한다", async () => {
+	const requests: ProgrammaticSubagentLaunchRequest[] = [];
+	const fakePi = {
+		sendMessage() {},
+		events: {
+			emit(_name: string, payload: unknown) {
+				const request = payload as ProgrammaticSubagentLaunchRequest;
+				requests.push(request);
+				request.claim();
+			},
+		},
+		exec() { throw new Error("no browser fallback in test"); },
+	} as any;
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/implicit-image", runId: "implicit-image" });
+	try {
+		const imagePath = join(tmpdir(), `study-hard-implicit-${Date.now()}.png`);
+		writeFileSync(imagePath, "image");
+		updateStudyHardStudio(handle.state.runId, {
+			attachments: [{ id: "image-attachment", name: "fabric.png", mimeType: "image/png", path: imagePath }],
+			noteDocument: { title: "Image", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "fabric-image", type: "image", image: { attachmentId: "image-attachment", alt: "Fabric" } }] }] },
+		});
+		const response = await fetch(new URL("/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ scope: "note-block", noteBlockId: "fabric-image", question: "왜 표시가 안돼?" }) });
+		assert.equal(response.status, 202);
+		assert.equal(requests.length, 1);
+		assert.match(requests[0]?.task || "", /fabric\.png/);
+		assert.match(requests[0]?.task || "", new RegExp(imagePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+		const imageResponse = await fetch(new URL("/attachment-files/image-attachment", handle.url), { headers: { "X-Study-Hard-Capability": handle.capabilityToken } });
+		assert.equal(imageResponse.status, 200);
+		assert.equal(await imageResponse.text(), "image");
+		assert.match(buildStudyHardStudioHtml(), /\/attachment-files\//);
+		unlinkSync(imagePath);
+	} finally {
+		stopStudyHardStudios();
+	}
+});
+
 test("전용 worker는 이미지 경로를 받고 한 block을 여러 block으로 자유롭게 제안한다", async () => {
 	const messages: Array<{ message: any; options: any }> = [];
 	const fakePi = { sendMessage(message: any, options: any) { messages.push({ message, options }); }, exec() { throw new Error("no browser fallback in test"); } } as any;
@@ -1744,6 +1780,50 @@ test("worker dispatch 전달 실패는 같은 question을 새 orchestration으�
 		assert.match(state.questions[0].orchestrationId, /^worker-/);
 		assert.notEqual(state.questions[0].orchestrationId, firstOrchestrationId);
 		assert.equal(messages.filter(({ message }) => message.customType === "heestolee.study-hard.learner-request").length, 2);
+	} finally {
+		stopStudyHardStudios();
+	}
+});
+
+test("적용된 worker 질문은 늦은 실패와 다른 결과에도 answered 상태를 유지한다", async () => {
+	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/monotonic-worker", runId: "monotonic-worker" });
+	try {
+		await fetch(new URL("/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ scope: "session", question: "한 번만 답해줘" }) });
+		let state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		const question = state.questions[0];
+		writeStudyHardWorkerResult(state, question, state.noteDocument, state.noteDocument, "첫 결과");
+		assert.equal(applyStudyHardWorkerResult(handle.state.runId, question.id, question.workerResultPath, 51).status, "applied");
+
+		markStudyHardWorkerFailed(handle.state.runId, question.id, "늦은 실패", 52);
+		state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		assert.equal(state.questions[0].status, "answered");
+		assert.equal(state.questions[0].processingStatus, "applied");
+		assert.equal(state.questions[0].processingError, undefined);
+
+		writeStudyHardWorkerResult(state, state.questions[0], state.noteDocument, state.noteDocument, "늦은 다른 결과");
+		assert.equal(applyStudyHardWorkerResult(handle.state.runId, question.id, question.workerResultPath, 53).status, "already-applied");
+		state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		assert.equal(state.questions[0].feedback, "첫 결과");
+		assert.equal(state.questions[0].processingStatus, "applied");
+	} finally {
+		stopStudyHardStudios();
+	}
+});
+
+test("persisted answered와 failed 모순은 applied 상태로 복구한다", async () => {
+	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, {
+		url: "https://example.com/repair-answered",
+		runId: "repair-answered",
+		initialPatch: {
+			questions: [{ id: "Q005", origin: "learner", scope: "session", question: "왜?", feedback: "이미 답함", status: "answered", processingStatus: "failed", processingError: "늦은 중복 결과" }],
+		},
+	});
+	try {
+		const state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		assert.equal(state.questions[0].processingStatus, "applied");
+		assert.equal(state.questions[0].processingError, undefined);
 	} finally {
 		stopStudyHardStudios();
 	}
