@@ -140,8 +140,11 @@ export function registerProgrammaticSubagentLauncher(
 				request.onStarted(event);
 			},
 			async onCompleted(event) {
-				release();
-				await request.onCompleted(event);
+				try {
+					await request.onCompleted(event);
+				} finally {
+					release();
+				}
 			},
 		};
 
