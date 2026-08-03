@@ -57,7 +57,10 @@ test("programmatic launcher는 기존 execute에 main-context run을 전달하�
 		agent: "study-hard-worker",
 		task: "질문 artifact를 생성해",
 		contextMode: "main",
-		claim: () => events.push("claimed"),
+		claim: () => {
+			events.push("claimed");
+			return true;
+		},
 		onStarted: ({ runId }) => events.push(`started:${runId}`),
 		onCompleted: ({ runId, status }) => {
 			events.push(`completed:${runId}:${status}`);
@@ -97,6 +100,7 @@ test("programmatic launcher disposer는 reload 전 listener를 해제해 재등�
 		contextMode: "main",
 		claim: () => {
 			claimCount += 1;
+			return claimCount === 1;
 		},
 		onStarted: () => {},
 		onCompleted: () => {},
@@ -109,12 +113,70 @@ test("programmatic launcher disposer는 reload 전 listener를 해제해 재등�
 	assert.equal(executeCount, 1);
 });
 
-test("programmatic lineage는 durable entry와 nextTurn을 함께 사용한다", () => {
+test("programmatic launcher 재등록은 이전 listener를 session shutdown 없이 교체한다", async () => {
+	const { pi, listenerCount } = createEventHarness();
+	let oldExecuteCount = 0;
+	let newExecuteCount = 0;
+	registerProgrammaticSubagentLauncher(pi, () => ({ cwd: "/tmp/main-session" }) as any, async () => {
+		oldExecuteCount += 1;
+		return { details: { launches: [{ runId: 21 }] } };
+	});
+	registerProgrammaticSubagentLauncher(pi, () => ({ cwd: "/tmp/main-session" }) as any, async () => {
+		newExecuteCount += 1;
+		return { details: { launches: [{ runId: 22 }] } };
+	});
+	let claimed = false;
+	pi.events.emit(PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT, {
+		kind: "programmatic-subagent-launch",
+		requestId: "reload-safe-request",
+		agent: "study-hard-worker",
+		task: "한 번만 실행해",
+		contextMode: "isolated",
+		claim: () => {
+			if (claimed) return false;
+			claimed = true;
+			return true;
+		},
+		onStarted: () => {},
+		onCompleted: () => {},
+		onRejected: () => {},
+	} satisfies ProgrammaticSubagentLaunchRequest);
+	await new Promise((resolve) => setImmediate(resolve));
+
+	assert.equal(listenerCount(PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT), 1);
+	assert.equal(oldExecuteCount, 0);
+	assert.equal(newExecuteCount, 1);
+});
+
+test("programmatic launcher는 실행 중인 같은 requestId를 다시 launch하지 않는다", async () => {
+	const { pi } = createEventHarness();
+	let executeCount = 0;
+	registerProgrammaticSubagentLauncher(pi, () => ({ cwd: "/tmp/main-session" }) as any, async () => {
+		executeCount += 1;
+		return { details: { launches: [{ runId: 23 }] } };
+	});
+	const makeRequest = (): ProgrammaticSubagentLaunchRequest => ({
+		kind: "programmatic-subagent-launch",
+		requestId: "same-orchestration",
+		agent: "study-hard-worker",
+		task: "중복 실행하지 마",
+		contextMode: "isolated",
+		claim: () => true,
+		onStarted: () => {},
+		onCompleted: () => {},
+		onRejected: () => {},
+	});
+	pi.events.emit(PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT, makeRequest());
+	pi.events.emit(PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT, makeRequest());
+	await new Promise((resolve) => setImmediate(resolve));
+
+	assert.equal(executeCount, 1);
+});
+
+test("programmatic lineage는 durable entry만 남기고 LLM context에 주입하지 않는다", () => {
 	const entries: Array<{ customType: string; data: unknown }> = [];
-	const messages: Array<{ message: unknown; options: unknown }> = [];
 	const pi = {
 		appendEntry(customType: string, data: unknown) { entries.push({ customType, data }); },
-		sendMessage(message: unknown, options: unknown) { messages.push({ message, options }); },
 	} as any;
 	const message = {
 		customType: "subagent-tool",
@@ -126,11 +188,6 @@ test("programmatic lineage는 durable entry와 nextTurn을 함께 사용한다",
 	queueProgrammaticSubagentLineage(pi, message);
 
 	assert.deepEqual(entries, [{ customType: PROGRAMMATIC_SUBAGENT_LINEAGE_ENTRY, data: { message } }]);
-	assert.equal((messages[0]?.message as any).customType, message.customType);
-	assert.equal((messages[0]?.message as any).details.runId, 17);
-	assert.match((messages[0]?.message as any).content, /Subagent lineage context — do not answer/);
-	assert.match((messages[0]?.message as any).content, /study-hard-worker#17/);
-	assert.deepEqual(messages[0]?.options, { deliverAs: "nextTurn", triggerTurn: false });
 	assert.deepEqual(
 		restoreProgrammaticSubagentLineageEntry({ type: "custom", customType: entries[0]!.customType, timestamp: "2026-07-24T00:00:00.000Z", data: entries[0]!.data }),
 		{ type: "custom_message", timestamp: "2026-07-24T00:00:00.000Z", ...message },
@@ -155,7 +212,7 @@ test("programmatic launcher는 같은 run continuation과 활성 context 부재�
 		task: "최신 state로 다시 제안해",
 		contextMode: "main",
 		continueRunId,
-		claim: () => {},
+		claim: () => true,
 		onStarted: () => {},
 		onCompleted: () => {},
 		onRejected: (error) => rejected.push(error),

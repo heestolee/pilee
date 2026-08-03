@@ -24,7 +24,7 @@ export interface ProgrammaticSubagentLaunchRequest {
 	task: string;
 	contextMode: "main" | "isolated";
 	continueRunId?: number;
-	claim: () => void;
+	claim: () => boolean;
 	onStarted: (event: ProgrammaticSubagentStarted) => void;
 	onCompleted: (event: ProgrammaticSubagentCompleted) => void | Promise<void>;
 	onRejected: (error: string) => void;
@@ -44,14 +44,13 @@ export interface ProgrammaticSubagentLineageMessage {
 }
 
 export function queueProgrammaticSubagentLineage(
-	pi: Pick<ExtensionAPI, "appendEntry" | "sendMessage">,
+	pi: Pick<ExtensionAPI, "appendEntry">,
 	message: ProgrammaticSubagentLineageMessage,
 ): void {
+	// Worker lifecycle is durable UI/history state, not a new P0 instruction.
+	// Applying it through sendMessage() leaks it into a future LLM context where it
+	// can be mistaken for a steering request during an unrelated implementation turn.
 	pi.appendEntry(PROGRAMMATIC_SUBAGENT_LINEAGE_ENTRY, { message });
-	pi.sendMessage({
-		...message,
-		content: `[Subagent lineage context — do not answer this event unless the current user explicitly asks.]\n\n${message.content}`,
-	}, { deliverAs: "nextTurn", triggerTurn: false });
 }
 
 export function restoreProgrammaticSubagentLineageEntry(entry: unknown): Record<string, unknown> | undefined {
@@ -93,18 +92,42 @@ function resultError(result: ProgrammaticExecuteResult): string {
 	return text || "표준 subagent dispatcher가 launch를 거부했습니다.";
 }
 
+interface ProgrammaticLauncherRegistry {
+	owners: WeakMap<object, () => void>;
+	activeRequestIds: WeakMap<object, Set<string>>;
+}
+
+const PROGRAMMATIC_LAUNCHER_REGISTRY = Symbol.for("pilee.subagent.programmatic-launcher-registry");
+
+function programmaticLauncherRegistry(): ProgrammaticLauncherRegistry {
+	const root = globalThis as typeof globalThis & { [PROGRAMMATIC_LAUNCHER_REGISTRY]?: ProgrammaticLauncherRegistry };
+	return root[PROGRAMMATIC_LAUNCHER_REGISTRY] ??= {
+		owners: new WeakMap<object, () => void>(),
+		activeRequestIds: new WeakMap<object, Set<string>>(),
+	};
+}
+
 export function registerProgrammaticSubagentLauncher(
 	pi: ExtensionAPI,
 	getCurrentContext: () => ExtensionContext | null,
 	execute: ProgrammaticSubagentExecute,
 ): () => void {
-	return pi.events.on(PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT, (payload) => {
+	const registry = programmaticLauncherRegistry();
+	registry.owners.get(pi as object)?.();
+	const activeRequestIds = registry.activeRequestIds.get(pi as object) ?? new Set<string>();
+	registry.activeRequestIds.set(pi as object, activeRequestIds);
+
+	const disposeListener = pi.events.on(PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT, (payload) => {
 		const request = payload as ProgrammaticSubagentLaunchRequest;
 		if (!request || request.kind !== "programmatic-subagent-launch") return;
-		request.claim();
+		if (!request.claim()) return;
+		if (activeRequestIds.has(request.requestId)) return;
+		activeRequestIds.add(request.requestId);
+		const release = () => activeRequestIds.delete(request.requestId);
 
 		const ctx = getCurrentContext();
 		if (!ctx) {
+			release();
 			request.onRejected("활성 메인 session context가 없어 subagent를 시작할 수 없습니다.");
 			return;
 		}
@@ -116,7 +139,10 @@ export function registerProgrammaticSubagentLauncher(
 				started = true;
 				request.onStarted(event);
 			},
-			onCompleted: request.onCompleted,
+			async onCompleted(event) {
+				release();
+				await request.onCompleted(event);
+			},
 		};
 
 		void execute(
@@ -131,11 +157,25 @@ export function registerProgrammaticSubagentLauncher(
 		)
 			.then((result) => {
 				if (!started && (result.isError || !result.details?.launches?.some((launch) => Number.isInteger(launch.runId)))) {
+					release();
 					request.onRejected(resultError(result));
 				}
 			})
 			.catch((error: unknown) => {
-				if (!started) request.onRejected(error instanceof Error ? error.message : String(error));
+				if (!started) {
+					release();
+					request.onRejected(error instanceof Error ? error.message : String(error));
+				}
 			});
 	});
+
+	let disposed = false;
+	const dispose = () => {
+		if (disposed) return;
+		disposed = true;
+		disposeListener();
+		if (registry.owners.get(pi as object) === dispose) registry.owners.delete(pi as object);
+	};
+	registry.owners.set(pi as object, dispose);
+	return dispose;
 }
