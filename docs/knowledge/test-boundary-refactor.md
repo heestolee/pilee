@@ -14,12 +14,16 @@ confidence: high
 applies_to:
   - extensions/test-refine
   - skills/test-boundary-refactor
+  - skills/self-healing
+  - skills/stress-interview
 source:
   - conversation:2026-06-16-test-refine-design
-reviewed_at: 2026-06-16
-reviewed_commit: bc2032898ada07556b38449e0b336a16890a95c0
+reviewed_at: 2026-08-03
+reviewed_commit: 9bc5850de17b
 related:
   - skills-as-portable-procedures
+  - self-healing-actionable-loop
+  - stress-interview-multi-axis-review
   - request-traceability-surgical-changes
   - workflow-weight-proportionality
 ---
@@ -54,6 +58,12 @@ related:
 5. 외부 API/DB/OAuth/router/webview/third-party boundary만 mock으로 남깁니다.
 6. 가까운 테스트만 실행하고, wrapper가 broad suite로 fan-out되면 baseline과 분리합니다.
 
+## Preventive Gate Rule
+
+명시적 `/test-refine`뿐 아니라 자동 수정 루프가 테스트를 생성·확장하는 순간에도 이 경계를 적용합니다. 특히 self-healing worker가 신규 spec, 한 사이클 3개 이상의 test case, 제품 코드보다 큰 test diff, 반복 mock 순서 assertion을 만들면 사후 요청을 기다리지 않고 main agent가 즉시 경계를 재분류합니다. 테스트를 줄일지 말지를 사용자에게 매번 심사시키지 않습니다.
+
+정량 기준은 삭제 명령이 아니라 audit trigger입니다. 결제·권한·데이터 무결성처럼 서로 다른 contract가 실제로 여러 개면 큰 테스트 diff도 허용할 수 있지만, 각 테스트가 다른 contract를 닫는다는 근거가 있어야 합니다.
+
 ## Failure Mode
 
-이 규칙을 전역 지침으로만 두면 모든 테스트 작업에 기계적으로 적용되어 필요한 integration test까지 줄일 수 있습니다. 그래서 `/test-refine`처럼 명시적으로 호출되는 command와 자연어 트리거용 skill로 좁혀 적용합니다.
+이 규칙을 모든 테스트 작업에 기계적으로 적용하면 필요한 integration test까지 줄일 수 있습니다. 반대로 명시적 `/test-refine`에만 적용하면 자동 worker가 과잉 테스트를 만든 뒤 사용자에게 다이어트 비용을 넘깁니다. 따라서 일반 테스트 작성에는 책임 경계로 적용하고, self-healing처럼 자동 fan-out이 있는 흐름에는 Test Change Gate로 예방 적용합니다.

@@ -67,8 +67,8 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [Worker는 readiness ownership을 가진다](./ai-worker-readiness-orchestrator.md) | active | high | 2026-06-02 | ce5e875 | worker, subagent, orchestrator, readiness, bootstrap, diagnosis |
-| [Self-healing은 actionable item만 수정한다](./self-healing-actionable-loop.md) | active | high | 2026-06-02 | e123af1 | self-healing, actionable, worker, fix-class, subagent, 자동수정 |
-| [Stress Interview는 다축 검토다](./stress-interview-multi-axis-review.md) | active | high | 2026-06-02 | e123af1 | stress-interview, review, verifier, reviewer, challenger, subagent |
+| [Self-healing은 actionable item만 수정한다](./self-healing-actionable-loop.md) | active | high | 2026-08-03 | 9bc5850 | self-healing, actionable, worker, fix-class, subagent, 자동수정 |
+| [Stress Interview는 다축 검토다](./stress-interview-multi-axis-review.md) | active | high | 2026-08-03 | 9bc5850 | stress-interview, review, verifier, reviewer, challenger, subagent |
 | [Hybrid subagent 모델 운용 정책](./subagent-model-policy.md) | active | high | 2026-07-30 | c45a4a4 | subagent, codex, claude, model-policy, worker, finder |
 | [Subagent 위임은 구체 프롬프트를 요구한다](./subagent-prompt-specificity.md) | active | high | 2026-06-02 | 83617e9 | subagent, prompt, delegation, worker, context, 위임 |
 | [Subagent는 slash command가 아니라 skill prompt를 위임받는다](./subagent-skill-delegation.md) | active | high | 2026-06-02 | 83617e9 | subagent, skill, slash-command, delegation, ship, ci-ship |
@@ -219,7 +219,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Skill은 재사용 가능한 절차다](./skills-as-portable-procedures.md) | active | high | 2026-06-02 | e123af1 | skill, skill-creator, procedure, porting, workflow, 스킬 |
 | [Slice 완료는 commit 후보를 만든다](./slice-auto-commit-rhythm.md) | active | high | 2026-06-03 | 3b4357d | frame, slice, auto-commit, work-context, git |
 | [정확한 기획 근거가 있으면 Frame은 추적 매트릭스를 만든다](./source-grounded-frame-planning.md) | active | high | 2026-06-02 | 63f2a62 | frame, tft-studio, planning, requirements, traceability, work-map |
-| [테스트는 책임 경계에 맞춰 다듬는다](./test-boundary-refactor.md) | active | high | 2026-06-16 | bc20328 | testing, mock, refactor, boundary, unit-test, contract-test |
+| [테스트는 책임 경계에 맞춰 다듬는다](./test-boundary-refactor.md) | active | high | 2026-08-03 | 9bc5850 | testing, mock, refactor, boundary, unit-test, contract-test |
 | [Command shim은 reviewable workflow source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-06-02 | 83617e9 | command-shim, skill, tft, frame, slash-command, routing |
 | [TFT Preference Regression Gate는 사용자 선호 역전을 막는다](./tft-preference-regression-gate.md) | active | high | 2026-06-02 | 83617e9 | tft, frame, decide, verify, ask-user-question, regression |
 | [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-07-21 | 778f16e | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
@@ -359,10 +359,12 @@ graph TD
   doc_ai_worker_readiness_orchestrator --> doc_worktree_dependency_bootstrap_worker
   doc_self_healing_actionable_loop --> doc_stress_interview_multi_axis_review
   doc_self_healing_actionable_loop --> doc_subagent_model_policy
+  doc_self_healing_actionable_loop --> doc_test_boundary_refactor
   doc_self_healing_actionable_loop --> doc_verification_invalidation_on_change
   doc_stress_interview_multi_axis_review --> doc_evidence_first_verification_gate
   doc_stress_interview_multi_axis_review --> doc_self_healing_actionable_loop
   doc_stress_interview_multi_axis_review --> doc_subagent_model_policy
+  doc_stress_interview_multi_axis_review --> doc_test_boundary_refactor
   doc_subagent_model_policy --> doc_pilee_knowledge_system
   doc_subagent_model_policy --> doc_worktree_session_continuity
   doc_subagent_prompt_specificity --> doc_self_healing_actionable_loop
@@ -701,7 +703,9 @@ graph TD
   doc_source_grounded_frame_planning --> doc_tft_preference_regression_gate
   doc_source_grounded_frame_planning --> doc_work_context_card_task_board
   doc_test_boundary_refactor --> doc_request_traceability_surgical_changes
+  doc_test_boundary_refactor --> doc_self_healing_actionable_loop
   doc_test_boundary_refactor --> doc_skills_as_portable_procedures
+  doc_test_boundary_refactor --> doc_stress_interview_multi_axis_review
   doc_test_boundary_refactor --> doc_workflow_weight_proportionality
   doc_tft_command_shim_skill_routing --> doc_frame_verify_contract
   doc_tft_command_shim_skill_routing --> doc_queued_command_prefill_boundary
@@ -760,6 +764,6 @@ graph TD
 ## Review Metadata Summary
 
 - Documents: 113
-- Links: 403
+- Links: 407
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

@@ -19,11 +19,12 @@ source:
   - pilee-history:2026-05-01#7
   - pilee-history:2026-05-05#42
   - user-direction:2026-05-07-local-resolver
-reviewed_at: 2026-06-02
-reviewed_commit: e123af14832390aa7959c2a5b597b1b64eaebb91
+reviewed_at: 2026-08-03
+reviewed_commit: 9bc5850de17b
 related:
   - subagent-model-policy
   - self-healing-actionable-loop
+  - test-boundary-refactor
   - evidence-first-verification-gate
 ---
 
@@ -39,6 +40,10 @@ Verifier는 성공 기준과 검증 증거를 봅니다. Reviewer는 코드 품�
 
 Subagent fan-out은 같은 지시를 세 번 보내는 것이 아닙니다. 각 agent prompt에는 검토 축, 대상 diff, 기대 출력 형식, fix_class 기준이 들어가야 합니다. 결과를 합칠 때도 `AUTO_FIX`, `ASK`, `INFO`처럼 후속 행동으로 분류해야 self-healing이나 PR review에 연결됩니다.
 
+## Test Recommendation Rule
+
+테스트 권고는 `기존 증거 → 빠진 contract → 가장 작은 적절한 테스트 레벨` 순서로 표현합니다. Finding마다 신규 테스트를 하나씩 대응시키지 않으며, 같은 policy의 create/update/delete 변형은 대표 contract나 table-driven test로 통합합니다. 실제 integration 실패 가능성은 mock unit test 수로 덮지 않고 검증 GAP으로 남깁니다.
+
 ## Failure Mode
 
-결과를 그대로 나열하거나 “대체로 문제없음”으로 합치면 fan-out의 의미가 사라집니다. 충돌하는 지적은 어느 축의 관점인지 표시하고, 실제 수정/질문/정보로 분류해야 합니다.
+결과를 그대로 나열하거나 “대체로 문제없음”으로 합치면 fan-out의 의미가 사라집니다. 충돌하는 지적은 어느 축의 관점인지 표시하고, 실제 수정/질문/정보로 분류해야 합니다. 각 agent가 같은 결함에 별도 테스트를 권고하고 main agent가 합치지 않으면 다축 검토가 테스트 fan-out으로 변질됩니다.
