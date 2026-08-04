@@ -8,6 +8,7 @@ argument-hint: "이 변경사항 검토해줘 | 방금 수정한 코드 스트�
 이 스킬을 실행하기 전에 다음을 모두 읽었는지 확인하세요:
 - `skills/tft-guidelines/SKILL.md` — 언제 묻고 언제 안 묻을지
 - `skills/ask-user-question-rules/SKILL.md` — 어떻게 물을지
+- 테스트 변경이나 테스트 추가 권고가 포함되면 `skills/test-boundary-refactor/SKILL.md`
 </PREREQUISITE>
 
 # stress-interview
@@ -41,9 +42,20 @@ subagent batch --main \
 7. 에이전트 결과를 **있는 그대로 요약**하고, 근거 없이 임의 판정하지 않는다.
 
 ## 권장 subagent 프롬프트
-- `verifier`: "$ARGUMENTS 를 검증해줘. 가능하면 테스트/타입체크/빌드/재현 가능한 증거를 수집해줘. 실행한 명령과 결과를 PASS/FAIL로 정리해줘."
-- `reviewer`: "$ARGUMENTS 를 코드 리뷰해줘. correctness, regression, maintainability 위주로 봐줘. 각 이슈에 severity와 fix_class(AUTO_FIX/ASK/INFO)를 붙여줘."
-- `challenger`: "$ARGUMENTS 에 대해 숨은 가정, 실패 시나리오, 취약한 결정 포인트를 최대 5개로 압박 검토해줘. 각 리스크에 severity와 fix_class(AUTO_FIX/ASK/INFO)를 붙여줘."
+- `verifier`: "$ARGUMENTS 를 검증해줘. 가능하면 기존 테스트/타입체크/빌드/재현 가능한 증거를 우선 수집해줘. 테스트 gap은 빠진 사용자·시스템 contract로 표현하고, finding마다 신규 테스트를 1:1로 제안하지 마. 실행한 명령과 결과를 PASS/FAIL로 정리해줘."
+- `reviewer`: "$ARGUMENTS 를 코드 리뷰해줘. correctness, regression, maintainability 위주로 봐줘. 테스트를 권고할 때는 기존 coverage, 빠진 contract, 가장 작은 적절한 테스트 레벨을 함께 적고 구현 세부 mock assertion은 피해야 해. 각 이슈에 severity와 fix_class(AUTO_FIX/ASK/INFO)를 붙여줘."
+- `challenger`: "$ARGUMENTS 에 대해 숨은 가정, 실패 시나리오, 취약한 결정 포인트를 최대 5개로 압박 검토해줘. 테스트 추가는 독립 contract가 빠졌을 때만 제안하고 실제 integration GAP을 mock 테스트 수로 덮지 마. 각 리스크에 severity와 fix_class(AUTO_FIX/ASK/INFO)를 붙여줘."
+
+## 테스트 권고 규율
+
+stress-interview는 결함을 찾는 단계이지 finding마다 spec을 생성하는 단계가 아니다.
+
+- 테스트 권고는 `기존 증거 → 빠진 contract → 가장 작은 적절한 레벨` 순서로 쓴다.
+- 같은 policy를 여러 method가 공유하면 대표 contract 1개 또는 table-driven test를 우선한다.
+- private helper, 정확한 호출 횟수, `invocationCallOrder` 같은 구현 세부는 그 자체가 correctness contract일 때만 권고한다.
+- 신규 spec 파일은 기존 spec·순수 로직 테스트·작은 contract test로 닫히지 않는 이유가 있을 때만 제안한다.
+- 실제 DB 동시성, 네트워크 retry, runtime race는 mock unit test 여러 개로 PASS 처리하지 말고 integration/환경 GAP으로 분리한다.
+- 이전 commit/history에서 noise로 삭제한 테스트 유형을 다시 제안하려면 달라진 contract를 명시한다.
 
 ## 종합 응답 형식
 최종 응답은 아래 순서로 간단히 정리한다.
