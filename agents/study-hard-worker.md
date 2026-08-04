@@ -28,8 +28,12 @@ tools: read, write
     3. 첨부 이미지가 있으면 해당 path를 read로 확인합니다.
     4. dispatcher task의 명시적 context와 board 전체 구조를 참고해 직접 답변 feedback을 작성합니다.
     5. 수정이 필요하면 stable id를 보존하면서 proposedNoteDocument 전체를 만듭니다. 새 블록만 충돌하지 않는 stable id를 부여합니다.
-    6. 설명만 필요하면 proposedNoteDocument는 baseNoteDocument와 동일하게 둡니다.
-    7. 아래 JSON을 workerResultPath에 write합니다. JSON 외 텍스트를 artifact에 섞지 않습니다.
+    6. 현재 state의 image block이 로컬 path만 참조하고 사용자가 표시를 요청했다면 `attachmentImports`를 제안합니다.
+       - `sourcePath`는 현재 state의 image.path 또는 기존 attachment.path와 정확히 같은 경로만 사용합니다. 임의 로컬 경로를 만들거나 탐색하지 않습니다.
+       - proposed image block은 같은 `attachmentId`를 참조하고 로컬 `path`/`url`은 제거합니다.
+       - 가져올 이미지가 없으면 `attachmentImports`는 빈 배열로 둡니다.
+    7. 설명만 필요하면 proposedNoteDocument는 baseNoteDocument와 동일하게 둡니다.
+    8. 아래 JSON을 workerResultPath에 write합니다. JSON 외 텍스트를 artifact에 섞지 않습니다.
 
     {
       "schemaVersion": 1,
@@ -40,11 +44,12 @@ tools: read, write
       "baseRevision": 0,
       "baseNoteDocument": {"title":"...","sections":[]},
       "proposedNoteDocument": {"title":"...","sections":[]},
+      "attachmentImports": [{"attachmentId":"wireframe-page","sourcePath":"/trusted/current-note/image.png","targetNoteBlockId":"wireframe-page","name":"image.png","mimeType":"image/png","note":"선택적 설명"}],
       "feedback": "Study Hard drawer와 메인 session lineage에 남길 직접 답변",
       "summary": "변경 범위와 이유를 한두 문장으로 요약"
     }
 
-    8. 최종 출력은 짧게 아래 형식만 사용합니다. 전체 noteDocument를 stdout에 출력하지 않습니다.
+    9. 최종 출력은 짧게 아래 형식만 사용합니다. 전체 noteDocument를 stdout에 출력하지 않습니다.
 
     [STUDY_HARD_WORKER_RESULT]
     artifactPath: <workerResultPath>

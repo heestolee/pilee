@@ -56,6 +56,8 @@ export type StudyNoteBlockType = "heading" | "paragraph" | "callout" | "list" | 
 
 const MAX_QUESTION_ATTACHMENTS = 4;
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const MAX_WORKER_ATTACHMENT_IMPORTS = 12;
+const WORKER_ATTACHMENT_ID_PATTERN = /^[a-zA-Z0-9가-힣][a-zA-Z0-9가-힣._-]{0,95}$/;
 
 export interface StudyNodeReference {
 	id?: string;
@@ -2130,6 +2132,60 @@ function attachmentDir(runId: string): string {
 	return dir;
 }
 
+interface StoredStudyAttachmentInput {
+	id?: string;
+	scope?: Exclude<StudyQuestionScope, "coach">;
+	nodeId?: string;
+	targetFlowId?: string;
+	targetFlowStepId?: string;
+	targetNoteBlockId?: string;
+	name: string;
+	mimeType?: string;
+	note?: string;
+	createdAt?: number;
+}
+
+function storeStudyAttachment(runId: string, input: StoredStudyAttachmentInput, data: Buffer): { attachment: StudyAttachment; created: boolean } {
+	if (!data.length || data.length > MAX_ATTACHMENT_BYTES) throw new Error(data.length ? "attachment exceeds 10MB" : "attachment is empty");
+	const id = input.id || `${Date.now()}-${randomUUID().slice(0, 8)}`;
+	const name = safeFileName(input.name || "attachment");
+	const fileName = `${safeFileName(id)}-${name}${name.includes(".") ? "" : extensionFromMime(input.mimeType)}`;
+	const filePath = join(attachmentDir(runId), fileName);
+	let created = false;
+	if (existsSync(filePath)) {
+		const existingHash = createHash("sha256").update(readFileSync(filePath)).digest("hex");
+		const incomingHash = createHash("sha256").update(data).digest("hex");
+		if (existingHash !== incomingHash) throw new Error(`attachment id가 다른 파일과 충돌합니다: ${id}`);
+	} else {
+		const temporaryPath = `${filePath}.tmp-${randomUUID().slice(0, 8)}`;
+		try {
+			writeFileSync(temporaryPath, data, { flag: "wx" });
+			renameSync(temporaryPath, filePath);
+			created = true;
+		} catch (error) {
+			try { unlinkSync(temporaryPath); } catch {}
+			throw error;
+		}
+	}
+	return {
+		attachment: {
+			id,
+			scope: input.scope,
+			nodeId: input.nodeId,
+			targetFlowId: input.targetFlowId,
+			targetFlowStepId: input.targetFlowStepId,
+			targetNoteBlockId: input.targetNoteBlockId,
+			name,
+			mimeType: input.mimeType,
+			path: filePath,
+			url: `/attachments/${encodeURIComponent(fileName)}`,
+			note: input.note,
+			createdAt: input.createdAt || Date.now(),
+		},
+		created,
+	};
+}
+
 function decodeDataUrl(dataUrl: string): { mimeType?: string; data: Buffer } {
 	const match = /^data:([^;,]+)?;base64,(.*)$/s.exec(dataUrl);
 	if (!match) return { data: Buffer.from(dataUrl, "base64") };
@@ -2421,8 +2477,9 @@ ${conflictSummary}
 1. statePath의 최신 question identity와 noteDocument를 읽습니다.
 2. 기존 Study Hard state나 제품 코드는 수정하지 않습니다.
 3. workerResultPath에 study-hard-worker-result JSON 하나만 씁니다.
-4. rebase 요청이면 최신 noteDocument를 새 base로 삼고 이미 반영된 변경을 보존합니다.
-5. 성공 시 stdout에는 [STUDY_HARD_WORKER_RESULT], artifactPath, runId, questionId, summary만 출력합니다.`;
+4. 현재 noteDocument가 이미 참조하는 로컬 image path를 표시용 asset으로 가져와야 하면 attachmentImports를 제안하고, proposed image block은 같은 attachmentId를 참조합니다. 임의 경로를 추가하지 않습니다.
+5. rebase 요청이면 최신 noteDocument를 새 base로 삼고 이미 반영된 변경을 보존합니다.
+6. 성공 시 stdout에는 [STUDY_HARD_WORKER_RESULT], artifactPath, runId, questionId, summary만 출력합니다.`;
 }
 
 function validateWorkerCompletionOutput(question: StudyQuestionCard, completion: ProgrammaticSubagentCompleted): string | undefined {
@@ -3108,12 +3165,7 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 					return;
 				}
 				const mimeType = typeof body.mimeType === "string" ? body.mimeType : decoded.mimeType;
-				const id = `${Date.now()}-${randomUUID().slice(0, 8)}`;
-				const fileName = `${id}-${name}${name.includes(".") ? "" : extensionFromMime(mimeType)}`;
-				const filePath = join(attachmentDir(handle.state.runId), fileName);
-				writeFileSync(filePath, decoded.data);
-				const attachment: StudyAttachment = {
-					id,
+				const { attachment } = storeStudyAttachment(handle.state.runId, {
 					scope,
 					nodeId,
 					targetFlowId: typeof body.flowId === "string" ? body.flowId : undefined,
@@ -3121,11 +3173,8 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 					targetNoteBlockId: typeof body.noteBlockId === "string" ? body.noteBlockId : undefined,
 					name,
 					mimeType,
-					path: filePath,
-					url: `/attachments/${encodeURIComponent(fileName)}`,
 					note: typeof body.note === "string" ? body.note : undefined,
-					createdAt: Date.now(),
-				};
+				}, decoded.data);
 				handle.state = mergeBoardState(handle.state, {
 					selectedNodeId: scope === "node" && nodeId ? nodeId : handle.state.selectedNodeId,
 					attachments: [...handle.state.attachments, attachment],
@@ -3268,6 +3317,15 @@ export function respondStudyHardQuestion(
 	return handle;
 }
 
+interface StudyHardWorkerAttachmentImport {
+	attachmentId: string;
+	sourcePath: string;
+	targetNoteBlockId: string;
+	name: string;
+	mimeType: "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+	note?: string;
+}
+
 interface StudyHardWorkerResultArtifact {
 	schemaVersion: 1;
 	kind: "study-hard-worker-result";
@@ -3277,6 +3335,7 @@ interface StudyHardWorkerResultArtifact {
 	baseRevision: number;
 	baseNoteDocument: StudyNoteDocument;
 	proposedNoteDocument: StudyNoteDocument;
+	attachmentImports: StudyHardWorkerAttachmentImport[];
 	feedback: string;
 	summary?: string;
 }
@@ -3290,6 +3349,46 @@ export interface StudyHardWorkerApplyResult {
 }
 
 const MAX_WORKER_RESULT_BYTES = 5 * 1024 * 1024;
+
+function workerImageMimeType(sourcePath: string, requestedMimeType: unknown): StudyHardWorkerAttachmentImport["mimeType"] {
+	const extension = sourcePath.toLowerCase().match(/\.[a-z0-9]+$/)?.[0];
+	const inferred = extension === ".png" ? "image/png"
+		: [".jpg", ".jpeg"].includes(extension || "") ? "image/jpeg"
+			: extension === ".gif" ? "image/gif"
+				: extension === ".webp" ? "image/webp"
+					: undefined;
+	if (!inferred) throw new Error(`worker attachment는 지원하는 이미지 파일이어야 합니다: ${sourcePath}`);
+	if (requestedMimeType !== undefined && requestedMimeType !== inferred) throw new Error(`worker attachment MIME과 확장자가 다릅니다: ${sourcePath}`);
+	return inferred;
+}
+
+function normalizeWorkerAttachmentImports(value: unknown): StudyHardWorkerAttachmentImport[] {
+	if (value === undefined) return [];
+	if (!Array.isArray(value) || value.length > MAX_WORKER_ATTACHMENT_IMPORTS) throw new Error(`Study Hard worker attachmentImports는 최대 ${MAX_WORKER_ATTACHMENT_IMPORTS}개 배열이어야 합니다.`);
+	const attachmentIds = new Set<string>();
+	const targetBlockIds = new Set<string>();
+	return value.map((raw, index) => {
+		if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error(`worker attachmentImports[${index}]가 유효하지 않습니다.`);
+		const item = raw as Record<string, unknown>;
+		const attachmentId = typeof item.attachmentId === "string" ? item.attachmentId.trim() : "";
+		const sourcePath = typeof item.sourcePath === "string" ? resolve(item.sourcePath) : "";
+		const targetNoteBlockId = typeof item.targetNoteBlockId === "string" ? item.targetNoteBlockId.trim() : "";
+		if (!WORKER_ATTACHMENT_ID_PATTERN.test(attachmentId)) throw new Error(`worker attachmentId가 유효하지 않습니다: ${attachmentId || index}`);
+		if (!sourcePath || !targetNoteBlockId) throw new Error(`worker attachment import에는 sourcePath와 targetNoteBlockId가 필요합니다: ${attachmentId}`);
+		if (attachmentIds.has(attachmentId) || targetBlockIds.has(targetNoteBlockId)) throw new Error(`worker attachment import id 또는 target block이 중복됩니다: ${attachmentId}`);
+		attachmentIds.add(attachmentId);
+		targetBlockIds.add(targetNoteBlockId);
+		const mimeType = workerImageMimeType(sourcePath, item.mimeType);
+		return {
+			attachmentId,
+			sourcePath,
+			targetNoteBlockId,
+			name: safeFileName(typeof item.name === "string" && item.name.trim() ? item.name : basename(sourcePath)),
+			mimeType,
+			note: typeof item.note === "string" ? item.note.trim().slice(0, 1_000) : undefined,
+		};
+	});
+}
 
 function readStudyHardWorkerResult(handle: StudyHardHandle, question: StudyQuestionCard, workerResultPath: string): { artifact: StudyHardWorkerResultArtifact; hash: string } {
 	if (!question.workerResultPath) throw new Error(`Study Hard worker result path가 없습니다: ${question.id}`);
@@ -3305,6 +3404,7 @@ function readStudyHardWorkerResult(handle: StudyHardHandle, question: StudyQuest
 	if (!Number.isInteger(parsed.baseRevision)) throw new Error("Study Hard worker result baseRevision이 필요합니다.");
 	const baseNoteDocument = normalizeNoteDocument(parsed.baseNoteDocument, handle.state.title);
 	const proposedNoteDocument = normalizeNoteDocument(parsed.proposedNoteDocument, handle.state.title);
+	const attachmentImports = normalizeWorkerAttachmentImports(parsed.attachmentImports);
 	const feedback = typeof parsed.feedback === "string" ? parsed.feedback.trim().slice(0, MAX_STUDY_ANSWER_LENGTH) : "";
 	if (!baseNoteDocument || !proposedNoteDocument || !feedback) throw new Error("Study Hard worker result에는 base/proposed noteDocument와 feedback이 필요합니다.");
 	return {
@@ -3317,11 +3417,96 @@ function readStudyHardWorkerResult(handle: StudyHardHandle, question: StudyQuest
 			baseRevision: Number(parsed.baseRevision),
 			baseNoteDocument,
 			proposedNoteDocument,
+			attachmentImports,
 			feedback,
 			summary: typeof parsed.summary === "string" ? parsed.summary.trim().slice(0, 1_000) : undefined,
 		},
 		hash: createHash("sha256").update(raw).digest("hex"),
 	};
+}
+
+interface MaterializedWorkerAttachments {
+	noteDocument: StudyNoteDocument;
+	attachments: StudyAttachment[];
+	attachmentIds: string[];
+	createdPaths: string[];
+}
+
+function trustedWorkerAttachmentSourcePaths(state: StudyHardBoardState): Set<string> {
+	const paths = new Set<string>();
+	for (const attachment of state.attachments) if (attachment.path) paths.add(resolve(attachment.path));
+	for (const block of state.noteDocument.sections.flatMap((section) => section.blocks)) {
+		if (block.type === "image" && block.image?.path) paths.add(resolve(block.image.path));
+	}
+	return paths;
+}
+
+function materializeWorkerAttachments(
+	handle: StudyHardHandle,
+	artifact: StudyHardWorkerResultArtifact,
+	noteDocument: StudyNoteDocument,
+): MaterializedWorkerAttachments {
+	if (!artifact.attachmentImports.length) return { noteDocument, attachments: handle.state.attachments, attachmentIds: [], createdPaths: [] };
+	const trustedPaths = trustedWorkerAttachmentSourcePaths(handle.state);
+	const nextDocument = structuredClone(noteDocument);
+	const nextAttachments = [...handle.state.attachments];
+	const existingById = new Map(nextAttachments.map((attachment) => [attachment.id, attachment]));
+	const createdPaths: string[] = [];
+	try {
+		for (const item of artifact.attachmentImports) {
+		if (!trustedPaths.has(item.sourcePath)) throw new Error(`worker attachment sourcePath가 현재 Study Hard state의 신뢰 경로가 아닙니다: ${item.sourcePath}`);
+		if (!existsSync(item.sourcePath)) throw new Error(`worker attachment 원본 파일이 없습니다: ${item.sourcePath}`);
+		const sourceStat = statSync(item.sourcePath);
+		if (!sourceStat.isFile() || sourceStat.size <= 0 || sourceStat.size > MAX_ATTACHMENT_BYTES) throw new Error(`worker attachment 원본 파일 크기가 유효하지 않습니다: ${item.sourcePath}`);
+		const targetBlock = nextDocument.sections.flatMap((section) => section.blocks).find((block) => block.id === item.targetNoteBlockId);
+		if (!targetBlock || targetBlock.type !== "image" || !targetBlock.image) throw new Error(`worker attachment target은 image block이어야 합니다: ${item.targetNoteBlockId}`);
+		if (targetBlock.image.attachmentId !== item.attachmentId) throw new Error(`worker attachmentId와 image block 연결이 다릅니다: ${item.targetNoteBlockId}`);
+		const data = readFileSync(item.sourcePath);
+		let attachment = existingById.get(item.attachmentId);
+		if (attachment) {
+			if (attachment.targetNoteBlockId && attachment.targetNoteBlockId !== item.targetNoteBlockId) throw new Error(`기존 worker attachment의 target block이 다릅니다: ${item.attachmentId}`);
+			if (attachment.mimeType && attachment.mimeType !== item.mimeType) throw new Error(`기존 worker attachment의 MIME이 다릅니다: ${item.attachmentId}`);
+			if (!attachment.path || !existsSync(attachment.path)) throw new Error(`기존 worker attachment 파일이 없습니다: ${item.attachmentId}`);
+			const existingHash = createHash("sha256").update(readFileSync(attachment.path)).digest("hex");
+			const sourceHash = createHash("sha256").update(data).digest("hex");
+			if (existingHash !== sourceHash) throw new Error(`worker attachmentId가 다른 파일에 이미 사용 중입니다: ${item.attachmentId}`);
+		} else {
+			const stored = storeStudyAttachment(handle.state.runId, {
+				id: item.attachmentId,
+				scope: "note-block",
+				targetNoteBlockId: item.targetNoteBlockId,
+				name: item.name,
+				mimeType: item.mimeType,
+				note: item.note,
+			}, data);
+			attachment = stored.attachment;
+			existingById.set(attachment.id, attachment);
+			nextAttachments.push(attachment);
+			if (stored.created && attachment.path) createdPaths.push(attachment.path);
+		}
+			const { path: _path, url: _url, ...image } = targetBlock.image;
+			targetBlock.image = { ...image, attachmentId: item.attachmentId, mimeType: item.mimeType };
+		}
+	} catch (error) {
+		for (const path of createdPaths) {
+			try { unlinkSync(path); } catch {}
+		}
+		throw error;
+	}
+	return {
+		noteDocument: nextDocument,
+		attachments: nextAttachments,
+		attachmentIds: artifact.attachmentImports.map((item) => item.attachmentId),
+		createdPaths,
+	};
+}
+
+function cleanupUncommittedWorkerAttachments(handle: StudyHardHandle, materialized: MaterializedWorkerAttachments): void {
+	const committedPaths = new Set(handle.state.attachments.map((attachment) => attachment.path).filter((path): path is string => !!path).map((path) => resolve(path)));
+	for (const path of materialized.createdPaths) {
+		if (committedPaths.has(resolve(path))) continue;
+		try { unlinkSync(path); } catch {}
+	}
 }
 
 interface StudyHardNoteConflictSection {
@@ -3411,7 +3596,20 @@ function resolveStudyHardNoteConflict(handle: StudyHardHandle, questionId: strin
 		else if (replacement && index >= 0) noteDocument.sections[index] = replacement;
 		else if (replacement) noteDocument.sections.push(replacement);
 	}
-	return respondStudyHardQuestion(handle.state.runId, handle.state.revision, questionId, artifact.feedback, { noteDocument });
+	const acceptedImportIds = new Set(noteDocument.sections.flatMap((section) => section.blocks)
+		.filter((block) => block.type === "image" && block.image?.attachmentId)
+		.map((block) => block.image!.attachmentId!));
+	const conflictArtifact = { ...artifact, attachmentImports: artifact.attachmentImports.filter((item) => acceptedImportIds.has(item.attachmentId)) };
+	const materialized = materializeWorkerAttachments(handle, conflictArtifact, noteDocument);
+	try {
+		return respondStudyHardQuestion(handle.state.runId, handle.state.revision, questionId, artifact.feedback, {
+			noteDocument: materialized.noteDocument,
+			attachments: materialized.attachments,
+		});
+	} catch (error) {
+		cleanupUncommittedWorkerAttachments(handle, materialized);
+		throw error;
+	}
 }
 
 export function markStudyHardWorkerStarted(
@@ -3517,8 +3715,24 @@ export function applyStudyHardWorkerResult(
 		workerRunId: Number.isInteger(workerRunId) ? workerRunId : item.workerRunId,
 		workerResultHash: hash,
 	}));
-	const applied = respondStudyHardQuestion(id, handle.state.revision, questionId, artifact.feedback, { noteDocument: merge.noteDocument });
-	return { handle: applied, status: "applied", workerRunId: Number.isInteger(workerRunId) ? workerRunId : question.workerRunId, changedPaths: merge.changedPaths, conflicts: [] };
+	const materialized = materializeWorkerAttachments(handle, artifact, merge.noteDocument);
+	let applied: StudyHardHandle;
+	try {
+		applied = respondStudyHardQuestion(id, handle.state.revision, questionId, artifact.feedback, {
+			noteDocument: materialized.noteDocument,
+			attachments: materialized.attachments,
+		});
+	} catch (error) {
+		cleanupUncommittedWorkerAttachments(handle, materialized);
+		throw error;
+	}
+	return {
+		handle: applied,
+		status: "applied",
+		workerRunId: Number.isInteger(workerRunId) ? workerRunId : question.workerRunId,
+		changedPaths: [...merge.changedPaths, ...materialized.attachmentIds.map((attachmentId) => `attachments.${attachmentId}`)],
+		conflicts: [],
+	};
 }
 
 export async function openExistingStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionCommandContext | ExtensionContext, runId?: string): Promise<StudyHardHandle> {
