@@ -56,6 +56,8 @@ export type StudyNoteBlockType = "heading" | "paragraph" | "callout" | "list" | 
 
 const MAX_QUESTION_ATTACHMENTS = 4;
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const MAX_ATTACHMENT_BASENAME_BYTES = 240;
+const MAX_ATTACHMENT_ID_LABEL_BYTES = 48;
 const MAX_WORKER_ATTACHMENT_IMPORTS = 12;
 const WORKER_ATTACHMENT_ID_PATTERN = /^[a-zA-Z0-9가-힣][a-zA-Z0-9가-힣._-]{0,95}$/;
 
@@ -2145,11 +2147,49 @@ interface StoredStudyAttachmentInput {
 	createdAt?: number;
 }
 
+function truncateUtf8Bytes(value: string, maxBytes: number): string {
+	if (Buffer.byteLength(value, "utf8") <= maxBytes) return value;
+	let result = "";
+	let byteLength = 0;
+	for (const character of value) {
+		const characterBytes = Buffer.byteLength(character, "utf8");
+		if (byteLength + characterBytes > maxBytes) break;
+		result += character;
+		byteLength += characterBytes;
+	}
+	return result;
+}
+
+function attachmentStorageKey(id: string): string {
+	const readableId = truncateUtf8Bytes(safeFileName(id), MAX_ATTACHMENT_ID_LABEL_BYTES);
+	const idDigest = createHash("sha256").update(id).digest("hex");
+	return `${readableId}--${idDigest}`;
+}
+
+function boundedAttachmentName(name: string, maxBytes: number): string {
+	if (Buffer.byteLength(name, "utf8") <= maxBytes) return name;
+	const dotIndex = name.lastIndexOf(".");
+	const extensionCandidate = dotIndex > 0 ? name.slice(dotIndex) : "";
+	const extension = Buffer.byteLength(extensionCandidate, "utf8") <= 16 ? extensionCandidate : "";
+	const stem = extension ? name.slice(0, -extension.length) : name;
+	const stemBudget = maxBytes - Buffer.byteLength(extension, "utf8");
+	const boundedStem = truncateUtf8Bytes(stem, stemBudget).replace(/[._-]+$/g, "") || truncateUtf8Bytes("attachment", stemBudget);
+	return `${boundedStem}${extension}`;
+}
+
+function attachmentFileName(id: string, name: string, mimeType?: string): string {
+	const safeName = safeFileName(name || "attachment");
+	const completeName = `${safeName}${safeName.includes(".") ? "" : extensionFromMime(mimeType)}`;
+	const prefix = `${attachmentStorageKey(id)}--`;
+	const nameBudget = MAX_ATTACHMENT_BASENAME_BYTES - Buffer.byteLength(prefix, "utf8");
+	return `${prefix}${boundedAttachmentName(completeName, nameBudget)}`;
+}
+
 function storeStudyAttachment(runId: string, input: StoredStudyAttachmentInput, data: Buffer): { attachment: StudyAttachment; created: boolean } {
 	if (!data.length || data.length > MAX_ATTACHMENT_BYTES) throw new Error(data.length ? "attachment exceeds 10MB" : "attachment is empty");
 	const id = input.id || `${Date.now()}-${randomUUID().slice(0, 8)}`;
 	const name = safeFileName(input.name || "attachment");
-	const fileName = `${safeFileName(id)}-${name}${name.includes(".") ? "" : extensionFromMime(input.mimeType)}`;
+	const fileName = attachmentFileName(id, name, input.mimeType);
 	const filePath = join(attachmentDir(runId), fileName);
 	let created = false;
 	if (existsSync(filePath)) {
@@ -3358,6 +3398,172 @@ function detectedWorkerImageMimeType(data: Buffer): StudyHardWorkerAttachmentImp
 	return undefined;
 }
 
+function hasValidPngStructure(data: Buffer): boolean {
+	let offset = 8;
+	let sawHeader = false;
+	let sawImageData = false;
+	while (offset + 12 <= data.length) {
+		const length = data.readUInt32BE(offset);
+		const type = data.subarray(offset + 4, offset + 8).toString("ascii");
+		const dataOffset = offset + 8;
+		const chunkEnd = dataOffset + length + 4;
+		if (chunkEnd > data.length) return false;
+		if (!sawHeader) {
+			if (type !== "IHDR" || length !== 13) return false;
+			if (data.readUInt32BE(dataOffset) === 0 || data.readUInt32BE(dataOffset + 4) === 0) return false;
+			sawHeader = true;
+		} else if (type === "IHDR") return false;
+		if (type === "IDAT" && length > 0) sawImageData = true;
+		if (type === "IEND") return length === 0 && sawHeader && sawImageData && chunkEnd === data.length;
+		offset = chunkEnd;
+	}
+	return false;
+}
+
+const JPEG_FRAME_MARKERS = new Set([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]);
+
+function hasValidJpegStructure(data: Buffer): boolean {
+	if (data.length < 14 || data[0] !== 0xff || data[1] !== 0xd8 || data[data.length - 2] !== 0xff || data[data.length - 1] !== 0xd9) return false;
+	let offset = 2;
+	let sawFrame = false;
+	while (offset < data.length - 2) {
+		if (data[offset] !== 0xff) return false;
+		while (offset < data.length - 2 && data[offset] === 0xff) offset += 1;
+		const marker = data[offset++];
+		if (marker === undefined || marker === 0x00 || marker === 0xff) return false;
+		if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) continue;
+		if (offset + 2 > data.length - 2) return false;
+		const segmentLength = data.readUInt16BE(offset);
+		if (segmentLength < 2) return false;
+		const segmentData = offset + 2;
+		const segmentEnd = offset + segmentLength;
+		if (segmentEnd > data.length - 2) return false;
+		if (JPEG_FRAME_MARKERS.has(marker)) {
+			if (segmentLength < 7 || data.readUInt16BE(segmentData + 1) === 0 || data.readUInt16BE(segmentData + 3) === 0) return false;
+			sawFrame = true;
+		}
+		if (marker === 0xda) return sawFrame && segmentEnd < data.length - 2;
+		offset = segmentEnd;
+	}
+	return false;
+}
+
+function skipGifSubBlocks(data: Buffer, start: number): { offset: number; hasData: boolean } | undefined {
+	let offset = start;
+	let hasData = false;
+	while (offset < data.length) {
+		const length = data[offset++];
+		if (length === 0) return { offset, hasData };
+		if (length === undefined || offset + length > data.length) return undefined;
+		hasData = true;
+		offset += length;
+	}
+	return undefined;
+}
+
+function hasValidGifStructure(data: Buffer): boolean {
+	if (data.length < 14 || !["GIF87a", "GIF89a"].includes(data.subarray(0, 6).toString("ascii"))) return false;
+	if (data.readUInt16LE(6) === 0 || data.readUInt16LE(8) === 0) return false;
+	let offset = 13;
+	const globalTableFlags = data[10];
+	if ((globalTableFlags & 0x80) !== 0) offset += 3 * (2 ** ((globalTableFlags & 0x07) + 1));
+	if (offset > data.length) return false;
+	let sawImage = false;
+	while (offset < data.length) {
+		const marker = data[offset++];
+		if (marker === 0x3b) return sawImage && offset === data.length;
+		if (marker === 0x21) {
+			if (offset >= data.length) return false;
+			offset += 1;
+			const blocks = skipGifSubBlocks(data, offset);
+			if (!blocks) return false;
+			offset = blocks.offset;
+			continue;
+		}
+		if (marker !== 0x2c || offset + 9 > data.length) return false;
+		if (data.readUInt16LE(offset + 4) === 0 || data.readUInt16LE(offset + 6) === 0) return false;
+		const localTableFlags = data[offset + 8];
+		offset += 9;
+		if ((localTableFlags & 0x80) !== 0) offset += 3 * (2 ** ((localTableFlags & 0x07) + 1));
+		if (offset >= data.length) return false;
+		const minimumCodeSize = data[offset++];
+		if (minimumCodeSize < 2 || minimumCodeSize > 12) return false;
+		const blocks = skipGifSubBlocks(data, offset);
+		if (!blocks?.hasData) return false;
+		offset = blocks.offset;
+		sawImage = true;
+	}
+	return false;
+}
+
+function readUInt24LE(data: Buffer, offset: number): number {
+	return data[offset] | (data[offset + 1] << 8) | (data[offset + 2] << 16);
+}
+
+function hasValidVp8Frame(data: Buffer, type: string, start: number, end: number): boolean {
+	if (type === "VP8 ") {
+		return start + 10 < end
+			&& data[start + 3] === 0x9d && data[start + 4] === 0x01 && data[start + 5] === 0x2a
+			&& (data.readUInt16LE(start + 6) & 0x3fff) > 0
+			&& (data.readUInt16LE(start + 8) & 0x3fff) > 0;
+	}
+	if (type === "VP8L") {
+		return start + 5 < end && data[start] === 0x2f && (data[start + 4] >> 5) === 0;
+	}
+	return false;
+}
+
+function hasValidAnimatedWebpFrame(data: Buffer, start: number, end: number): boolean {
+	if (start + 16 > end) return false;
+	let offset = start + 16;
+	let sawFrame = false;
+	while (offset + 8 <= end) {
+		const type = data.subarray(offset, offset + 4).toString("ascii");
+		const length = data.readUInt32LE(offset + 4);
+		const frameStart = offset + 8;
+		const frameEnd = frameStart + length;
+		const chunkEnd = frameEnd + (length & 1);
+		if (chunkEnd > end) return false;
+		if (["VP8 ", "VP8L"].includes(type)) {
+			if (!hasValidVp8Frame(data, type, frameStart, frameEnd)) return false;
+			sawFrame = true;
+		}
+		offset = chunkEnd;
+	}
+	return sawFrame && offset === end;
+}
+
+function hasValidWebpStructure(data: Buffer): boolean {
+	if (data.length < 20 || data.subarray(0, 4).toString("ascii") !== "RIFF" || data.subarray(8, 12).toString("ascii") !== "WEBP") return false;
+	if (data.readUInt32LE(4) + 8 !== data.length) return false;
+	let offset = 12;
+	let sawFrame = false;
+	while (offset + 8 <= data.length) {
+		const type = data.subarray(offset, offset + 4).toString("ascii");
+		const length = data.readUInt32LE(offset + 4);
+		const payloadStart = offset + 8;
+		const payloadEnd = payloadStart + length;
+		const chunkEnd = payloadEnd + (length & 1);
+		if (chunkEnd > data.length) return false;
+		if (["VP8 ", "VP8L"].includes(type)) {
+			if (!hasValidVp8Frame(data, type, payloadStart, payloadEnd)) return false;
+			sawFrame = true;
+		} else if (type === "ANMF") {
+			if (!hasValidAnimatedWebpFrame(data, payloadStart, payloadEnd)) return false;
+			sawFrame = true;
+		}
+		offset = chunkEnd;
+	}
+	return sawFrame && offset === data.length;
+}
+
+function hasValidWorkerImageStructure(data: Buffer, mimeType: StudyHardWorkerAttachmentImport["mimeType"]): boolean {
+	if (mimeType === "image/png") return hasValidPngStructure(data);
+	if (mimeType === "image/jpeg") return hasValidJpegStructure(data);
+	if (mimeType === "image/gif") return hasValidGifStructure(data);
+	return hasValidWebpStructure(data);
+}
+
 function workerImageMimeType(sourcePath: string, requestedMimeType: unknown): StudyHardWorkerAttachmentImport["mimeType"] {
 	const extension = sourcePath.toLowerCase().match(/\.[a-z0-9]+$/)?.[0];
 	const inferred = extension === ".png" ? "image/png"
@@ -3458,12 +3664,31 @@ function assertWorkerNoteLocalImagePathsAreTrusted(state: StudyHardBoardState, n
 	}
 }
 
+function assertWorkerNoteAttachmentIdsAreResolvable(
+	state: StudyHardBoardState,
+	artifact: StudyHardWorkerResultArtifact,
+	noteDocument: StudyNoteDocument,
+): void {
+	const existingAttachmentIds = new Set(state.attachments.map((attachment) => attachment.id));
+	const currentBlockAttachmentIds = new Map(state.noteDocument.sections.flatMap((section) => section.blocks)
+		.filter((block) => block.type === "image" && block.image?.attachmentId)
+		.map((block) => [block.id, block.image!.attachmentId!]));
+	const importedBlockAttachmentIds = new Map(artifact.attachmentImports.map((item) => [item.targetNoteBlockId, item.attachmentId]));
+	for (const block of noteDocument.sections.flatMap((section) => section.blocks)) {
+		const attachmentId = block.type === "image" ? block.image?.attachmentId : undefined;
+		if (!attachmentId) continue;
+		if (existingAttachmentIds.has(attachmentId) || currentBlockAttachmentIds.get(block.id) === attachmentId || importedBlockAttachmentIds.get(block.id) === attachmentId) continue;
+		throw new Error(`worker note image attachmentId에는 같은 block의 attachment import가 필요합니다: ${block.id} -> ${attachmentId}`);
+	}
+}
+
 function materializeWorkerAttachments(
 	handle: StudyHardHandle,
 	artifact: StudyHardWorkerResultArtifact,
 	noteDocument: StudyNoteDocument,
 ): MaterializedWorkerAttachments {
 	assertWorkerNoteLocalImagePathsAreTrusted(handle.state, noteDocument);
+	assertWorkerNoteAttachmentIdsAreResolvable(handle.state, artifact, noteDocument);
 	if (!artifact.attachmentImports.length) return { noteDocument, attachments: handle.state.attachments, attachmentIds: [], createdPaths: [] };
 	const trustedPaths = trustedWorkerAttachmentSourcePaths(handle.state);
 	const nextDocument = structuredClone(noteDocument);
@@ -3482,6 +3707,7 @@ function materializeWorkerAttachments(
 		const data = readFileSync(item.sourcePath);
 		const detectedMimeType = detectedWorkerImageMimeType(data);
 		if (detectedMimeType !== item.mimeType) throw new Error(`worker attachment 파일 내용과 MIME이 다릅니다: ${item.sourcePath}`);
+		if (!hasValidWorkerImageStructure(data, item.mimeType)) throw new Error(`worker attachment 이미지 구조가 유효하지 않습니다: ${item.sourcePath}`);
 		let attachment = existingById.get(item.attachmentId);
 		if (attachment) {
 			if (attachment.targetNoteBlockId && attachment.targetNoteBlockId !== item.targetNoteBlockId) throw new Error(`기존 worker attachment의 target block이 다릅니다: ${item.attachmentId}`);

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { after, test } from "node:test";
 import { setGlimpseOpenForTests } from "../utils/glimpse.ts";
 import type { LearningCompanionManifest } from "../learning-companion/state.ts";
@@ -16,8 +16,8 @@ function authorizedHeaders(handle: { capabilityToken: string }): Record<string, 
 	return { "Content-Type": "application/json", "X-Study-Hard-Capability": handle.capabilityToken };
 }
 
-function testPngData(label: string): Buffer {
-	return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from(label)]);
+function testPngData(_label: string): Buffer {
+	return Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
 }
 
 async function waitForStudyState(handle: { url: string }, predicate: (state: any) => boolean, timeoutMs = 2_000): Promise<any> {
@@ -1811,6 +1811,151 @@ test("worker attachment import는 신뢰된 note image를 asset으로 복사하�
 	}
 });
 
+test("worker note의 새 attachmentId는 같은 block import manifest 없이는 거부한다", async () => {
+	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/worker-dangling-attachment", runId: "worker-dangling-attachment" });
+	try {
+		updateStudyHardStudio(handle.state.runId, {
+			noteDocument: { title: "Dangling attachment", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "lead", type: "paragraph", text: "기존 설명" }] }] },
+		});
+		await fetch(new URL("/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ scope: "session", question: "이미지를 추가해" }) });
+		const state = await fetch(new URL("/state", handle.url)).then((response) => response.json() as Promise<any>);
+		const proposed = structuredClone(state.noteDocument);
+		proposed.sections[0].blocks.push({ id: "new-image", type: "image", image: { attachmentId: "missing-import" } });
+		writeStudyHardWorkerResult(state, state.questions[0], state.noteDocument, proposed, "이미지를 추가했습니다.");
+
+		assert.throws(
+			() => applyStudyHardWorkerResult(handle.state.runId, state.questions[0].id, state.questions[0].workerResultPath, 62),
+			/같은 block의 attachment import가 필요합니다/,
+		);
+		assert.equal(handle.state.noteDocument.sections[0].blocks.some((block) => block.id === "new-image"), false);
+		assert.equal(handle.state.attachments.length, 0);
+	} finally {
+		stopStudyHardStudios();
+	}
+});
+
+test("긴 공통 prefix의 worker attachmentId는 서로 다른 저장 경로를 사용한다", async () => {
+	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/worker-attachment-key", runId: "worker-attachment-key" });
+	const sourcePath = join(testStateDir, "worker-attachment-key-source.png");
+	writeFileSync(sourcePath, testPngData("shared"));
+	try {
+		updateStudyHardStudio(handle.state.runId, {
+			noteDocument: { title: "Attachment key", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [
+				{ id: "image-a", type: "image", image: { path: sourcePath } },
+				{ id: "image-b", type: "image", image: { path: sourcePath } },
+			] }] },
+		});
+		await fetch(new URL("/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ scope: "session", question: "두 이미지를 등록해" }) });
+		const state = await fetch(new URL("/state", handle.url)).then((response) => response.json() as Promise<any>);
+		const commonPrefix = "a".repeat(80);
+		const firstId = `${commonPrefix}-one`;
+		const secondId = `${commonPrefix}-two`;
+		const proposed = structuredClone(state.noteDocument);
+		proposed.sections[0].blocks[0].image = { attachmentId: firstId };
+		proposed.sections[0].blocks[1].image = { attachmentId: secondId };
+		writeStudyHardWorkerResult(state, state.questions[0], state.noteDocument, proposed, "두 이미지를 등록했습니다.", "long attachment ids", [
+			{ attachmentId: firstId, sourcePath, targetNoteBlockId: "image-a", name: "shared.png", mimeType: "image/png" },
+			{ attachmentId: secondId, sourcePath, targetNoteBlockId: "image-b", name: "shared.png", mimeType: "image/png" },
+		]);
+
+		assert.equal(applyStudyHardWorkerResult(handle.state.runId, state.questions[0].id, state.questions[0].workerResultPath, 63).status, "applied");
+		const attachments = handle.state.attachments.filter((attachment) => [firstId, secondId].includes(attachment.id));
+		assert.equal(attachments.length, 2);
+		assert.notEqual(attachments[0].path, attachments[1].path);
+		assert.ok(attachments.every((attachment) => attachment.path && existsSync(attachment.path)));
+	} finally {
+		try { unlinkSync(sourcePath); } catch {}
+		stopStudyHardStudios();
+	}
+});
+
+test("attachment id-name 경계가 같아 보여도 서로 다른 저장 파일을 만든다", async () => {
+	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/worker-attachment-boundary", runId: "worker-attachment-boundary" });
+	const firstSourcePath = join(testStateDir, "worker-attachment-boundary-first.png");
+	const secondSourcePath = join(testStateDir, "worker-attachment-boundary-second.png");
+	const firstData = testPngData("boundary-first");
+	const secondData = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZfWQAAAAASUVORK5CYII=", "base64");
+	writeFileSync(firstSourcePath, firstData);
+	writeFileSync(secondSourcePath, secondData);
+	try {
+		updateStudyHardStudio(handle.state.runId, {
+			noteDocument: { title: "Attachment boundary", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [
+				{ id: "image-a", type: "image", image: { path: firstSourcePath } },
+				{ id: "image-b", type: "image", image: { path: secondSourcePath } },
+			] }] },
+		});
+		await fetch(new URL("/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ scope: "session", question: "두 이미지를 저장해" }) });
+		const state = await fetch(new URL("/state", handle.url)).then((response) => response.json() as Promise<any>);
+		const proposed = structuredClone(state.noteDocument);
+		proposed.sections[0].blocks[0].image = { attachmentId: "a-b" };
+		proposed.sections[0].blocks[1].image = { attachmentId: "a" };
+		writeStudyHardWorkerResult(state, state.questions[0], state.noteDocument, proposed, "경계가 겹치는 두 이미지를 등록했습니다.", "attachment boundary", [
+			{ attachmentId: "a-b", sourcePath: firstSourcePath, targetNoteBlockId: "image-a", name: "c.png", mimeType: "image/png" },
+			{ attachmentId: "a", sourcePath: secondSourcePath, targetNoteBlockId: "image-b", name: "b-c.png", mimeType: "image/png" },
+		]);
+
+		assert.equal(applyStudyHardWorkerResult(handle.state.runId, state.questions[0].id, state.questions[0].workerResultPath, 64).status, "applied");
+		const firstAttachment = handle.state.attachments.find((attachment) => attachment.id === "a-b");
+		const secondAttachment = handle.state.attachments.find((attachment) => attachment.id === "a");
+		assert.ok(firstAttachment?.path);
+		assert.ok(secondAttachment?.path);
+		assert.notEqual(firstAttachment.path, secondAttachment.path);
+		assert.deepEqual(readFileSync(firstAttachment.path), firstData);
+		assert.deepEqual(readFileSync(secondAttachment.path), secondData);
+	} finally {
+		try { unlinkSync(firstSourcePath); } catch {}
+		try { unlinkSync(secondSourcePath); } catch {}
+		stopStudyHardStudios();
+	}
+});
+
+test("긴 다중바이트 attachment id와 이름도 240바이트 이하 basename으로 저장한다", async () => {
+	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/worker-attachment-multibyte", runId: "worker-attachment-multibyte" });
+	const sourcePath = join(testStateDir, "worker-attachment-multibyte.png");
+	const imageData = testPngData("multibyte");
+	const attachmentId = "첨부".repeat(30);
+	const attachmentName = `${"와이어프레임".repeat(20)}.png`;
+	writeFileSync(sourcePath, imageData);
+	try {
+		updateStudyHardStudio(handle.state.runId, {
+			noteDocument: { title: "Multibyte attachment", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "image", type: "image", image: { path: sourcePath } }] }] },
+		});
+		await fetch(new URL("/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ scope: "session", question: "긴 이름 이미지를 저장해" }) });
+		const state = await fetch(new URL("/state", handle.url)).then((response) => response.json() as Promise<any>);
+		const proposed = structuredClone(state.noteDocument);
+		proposed.sections[0].blocks[0].image = { attachmentId };
+		writeStudyHardWorkerResult(state, state.questions[0], state.noteDocument, proposed, "긴 이름 이미지를 등록했습니다.", "multibyte attachment", [{
+			attachmentId,
+			sourcePath,
+			targetNoteBlockId: "image",
+			name: attachmentName,
+			mimeType: "image/png",
+		}]);
+
+		assert.equal(applyStudyHardWorkerResult(handle.state.runId, state.questions[0].id, state.questions[0].workerResultPath, 65).status, "applied");
+		const attachment = handle.state.attachments.find((item) => item.id === attachmentId);
+		assert.ok(attachment?.path);
+		assert.ok(attachment.url);
+		const storedBasename = basename(attachment.path);
+		assert.ok(Buffer.byteLength(storedBasename, "utf8") <= 240);
+		assert.match(storedBasename, /첨부/);
+		assert.match(storedBasename, /와이어프레임/);
+		assert.ok(storedBasename.endsWith(".png"));
+		const imageResponse = await fetch(new URL(attachment.url, handle.url), { headers: { "X-Study-Hard-Capability": handle.capabilityToken } });
+		assert.equal(imageResponse.status, 200);
+		assert.deepEqual(Buffer.from(await imageResponse.arrayBuffer()), imageData);
+		assert.equal(applyStudyHardWorkerResult(handle.state.runId, state.questions[0].id, state.questions[0].workerResultPath, 65).status, "already-applied");
+		assert.equal(handle.state.attachments.find((item) => item.id === attachmentId)?.path, attachment.path);
+	} finally {
+		try { unlinkSync(sourcePath); } catch {}
+		stopStudyHardStudios();
+	}
+});
+
 test("worker attachment import는 현재 Board가 참조하지 않는 로컬 경로를 거부한다", async () => {
 	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
 	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/worker-attachment-reject", runId: "worker-attachment-reject" });
@@ -1913,6 +2058,47 @@ test("worker attachment import는 확장자와 실제 이미지 내용이 다르
 	} finally {
 		try { unlinkSync(sourcePath); } catch {}
 		stopStudyHardStudios();
+	}
+});
+
+test("worker attachment import는 네 이미지 포맷의 magic header-only 파일을 거부한다", async () => {
+	const fixtures = [
+		{ extension: "png", mimeType: "image/png", data: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) },
+		{ extension: "jpg", mimeType: "image/jpeg", data: Buffer.from([0xff, 0xd8, 0xff]) },
+		{ extension: "gif", mimeType: "image/gif", data: Buffer.from("GIF89a", "ascii") },
+		{ extension: "webp", mimeType: "image/webp", data: Buffer.from("RIFF0000WEBP", "ascii") },
+	];
+	for (const [index, fixture] of fixtures.entries()) {
+		const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
+		const runId = `worker-corrupt-image-${fixture.extension}`;
+		const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: `https://example.com/${runId}`, runId });
+		const sourcePath = join(testStateDir, `${runId}.${fixture.extension}`);
+		writeFileSync(sourcePath, fixture.data);
+		try {
+			updateStudyHardStudio(handle.state.runId, {
+				noteDocument: { title: "Corrupt image", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "corrupt-image", type: "image", image: { path: sourcePath } }] }] },
+			});
+			await fetch(new URL("/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ scope: "note-block", noteBlockId: "corrupt-image", question: "표시되게 해" }) });
+			const state = await fetch(new URL("/state", handle.url)).then((response) => response.json() as Promise<any>);
+			const proposed = structuredClone(state.noteDocument);
+			proposed.sections[0].blocks[0].image = { attachmentId: `corrupt-${fixture.extension}-asset` };
+			writeStudyHardWorkerResult(state, state.questions[0], state.noteDocument, proposed, "이미지를 등록했습니다.", "corrupt image", [{
+				attachmentId: `corrupt-${fixture.extension}-asset`,
+				sourcePath,
+				targetNoteBlockId: "corrupt-image",
+				name: `corrupt-image.${fixture.extension}`,
+				mimeType: fixture.mimeType,
+			}]);
+
+			assert.throws(
+				() => applyStudyHardWorkerResult(handle.state.runId, state.questions[0].id, state.questions[0].workerResultPath, 65 + index),
+				/이미지 구조가 유효하지 않습니다/,
+			);
+			assert.equal(handle.state.attachments.length, 0);
+		} finally {
+			try { unlinkSync(sourcePath); } catch {}
+			stopStudyHardStudios();
+		}
 	}
 });
 
