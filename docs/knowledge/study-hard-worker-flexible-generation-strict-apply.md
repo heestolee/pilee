@@ -21,7 +21,7 @@ source:
   - user-direction:2026-07-25-completion-transcript-before-final-response
   - user-direction:2026-08-04-study-hard-worker-attachment-import
 reviewed_at: 2026-08-04
-reviewed_commit: b1b81f0a475c28e3dacaaf67f992b903aff49fe0
+reviewed_commit: a787962ec4cf73f60a74614e12a7b798d61a7d21
 related:
   - parallel-workflow-analysis-single-writer
   - study-hard-public-engine-private-publisher
@@ -74,8 +74,9 @@ Worker는 지정된 result path만 쓰고 canonical state는 직접 수정하지
 노트의 image block이 로컬 `path`만 참조하면 WebView는 보안상 해당 파일을 직접 렌더링할 수 없습니다. worker가 state나 attachment 저장소를 직접 수정하는 방식으로 해결하지 않고, result artifact의 `attachmentImports` manifest로 import 의도만 제안합니다.
 
 - `sourcePath`는 최신 Board가 이미 image path 또는 attachment path로 참조 중인 정확한 파일만 허용합니다.
+- worker가 새 local `image.path`를 노트에 심어 다음 질문에서 신뢰 경로로 승격시키지 못하도록 merged note의 local path도 current state와 대조합니다.
 - worker는 proposed image block을 같은 `attachmentId`에 연결하고 임의 로컬 경로를 탐색·추가하지 않습니다.
-- coordinator는 image MIME·10MB 제한·target block·중복 ID·파일 hash를 검증합니다.
+- coordinator는 확장자와 실제 PNG/JPEG/GIF/WebP signature, 10MB 제한, target block, 중복 ID, 파일 hash를 검증합니다.
 - note merge가 성공한 뒤 run 전용 attachment 디렉터리로 복사하고 `noteDocument + attachments + question 상태`를 한 revision에 저장합니다.
 - 여러 파일 중간 import가 실패하면 그 apply에서 새로 복사한 파일을 rollback합니다.
 - 같은 artifact가 다시 전달되면 question hash와 attachment ID로 중복 등록하지 않습니다.
