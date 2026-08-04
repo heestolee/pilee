@@ -19,7 +19,7 @@ source:
   - pilee-history:2026-05-01#7
   - pilee-history:2026-05-05#42
   - user-direction:2026-05-07-local-resolver
-reviewed_at: 2026-08-03
+reviewed_at: 2026-08-04
 reviewed_commit: 9bc5850de17b
 related:
   - stress-interview-multi-axis-review

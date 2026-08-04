@@ -67,8 +67,8 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [Worker는 readiness ownership을 가진다](./ai-worker-readiness-orchestrator.md) | active | high | 2026-06-02 | ce5e875 | worker, subagent, orchestrator, readiness, bootstrap, diagnosis |
-| [Self-healing은 actionable item만 수정한다](./self-healing-actionable-loop.md) | active | high | 2026-08-03 | 9bc5850 | self-healing, actionable, worker, fix-class, subagent, 자동수정 |
-| [Stress Interview는 다축 검토다](./stress-interview-multi-axis-review.md) | active | high | 2026-08-03 | 9bc5850 | stress-interview, review, verifier, reviewer, challenger, subagent |
+| [Self-healing은 actionable item만 수정한다](./self-healing-actionable-loop.md) | active | high | 2026-08-04 | 9bc5850 | self-healing, actionable, worker, fix-class, subagent, 자동수정 |
+| [Stress Interview는 다축 검토다](./stress-interview-multi-axis-review.md) | active | high | 2026-08-04 | 9bc5850 | stress-interview, review, verifier, reviewer, challenger, subagent |
 | [Hybrid subagent 모델 운용 정책](./subagent-model-policy.md) | active | high | 2026-07-30 | c45a4a4 | subagent, codex, claude, model-policy, worker, finder |
 | [Subagent 위임은 구체 프롬프트를 요구한다](./subagent-prompt-specificity.md) | active | high | 2026-06-02 | 83617e9 | subagent, prompt, delegation, worker, context, 위임 |
 | [Subagent는 slash command가 아니라 skill prompt를 위임받는다](./subagent-skill-delegation.md) | active | high | 2026-06-02 | 83617e9 | subagent, skill, slash-command, delegation, ship, ci-ship |
@@ -219,7 +219,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Skill은 재사용 가능한 절차다](./skills-as-portable-procedures.md) | active | high | 2026-06-02 | e123af1 | skill, skill-creator, procedure, porting, workflow, 스킬 |
 | [Slice 완료는 commit 후보를 만든다](./slice-auto-commit-rhythm.md) | active | high | 2026-06-03 | 3b4357d | frame, slice, auto-commit, work-context, git |
 | [정확한 기획 근거가 있으면 Frame은 추적 매트릭스를 만든다](./source-grounded-frame-planning.md) | active | high | 2026-06-02 | 63f2a62 | frame, tft-studio, planning, requirements, traceability, work-map |
-| [테스트는 책임 경계에 맞춰 다듬는다](./test-boundary-refactor.md) | active | high | 2026-08-03 | 9bc5850 | testing, mock, refactor, boundary, unit-test, contract-test |
+| [테스트는 책임 경계에 맞춰 다듬는다](./test-boundary-refactor.md) | active | high | 2026-08-04 | 9bc5850 | testing, mock, refactor, boundary, unit-test, contract-test |
 | [Command shim은 reviewable workflow source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-06-02 | 83617e9 | command-shim, skill, tft, frame, slash-command, routing |
 | [TFT Preference Regression Gate는 사용자 선호 역전을 막는다](./tft-preference-regression-gate.md) | active | high | 2026-06-02 | 83617e9 | tft, frame, decide, verify, ask-user-question, regression |
 | [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-07-21 | 778f16e | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |

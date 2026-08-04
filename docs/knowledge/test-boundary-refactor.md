@@ -18,7 +18,7 @@ applies_to:
   - skills/stress-interview
 source:
   - conversation:2026-06-16-test-refine-design
-reviewed_at: 2026-08-03
+reviewed_at: 2026-08-04
 reviewed_commit: 9bc5850de17b
 related:
   - skills-as-portable-procedures
