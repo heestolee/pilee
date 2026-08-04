@@ -3350,6 +3350,14 @@ export interface StudyHardWorkerApplyResult {
 
 const MAX_WORKER_RESULT_BYTES = 5 * 1024 * 1024;
 
+function detectedWorkerImageMimeType(data: Buffer): StudyHardWorkerAttachmentImport["mimeType"] | undefined {
+	if (data.length >= 8 && data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
+	if (data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return "image/jpeg";
+	if (data.length >= 6 && ["GIF87a", "GIF89a"].includes(data.subarray(0, 6).toString("ascii"))) return "image/gif";
+	if (data.length >= 12 && data.subarray(0, 4).toString("ascii") === "RIFF" && data.subarray(8, 12).toString("ascii") === "WEBP") return "image/webp";
+	return undefined;
+}
+
 function workerImageMimeType(sourcePath: string, requestedMimeType: unknown): StudyHardWorkerAttachmentImport["mimeType"] {
 	const extension = sourcePath.toLowerCase().match(/\.[a-z0-9]+$/)?.[0];
 	const inferred = extension === ".png" ? "image/png"
@@ -3441,11 +3449,21 @@ function trustedWorkerAttachmentSourcePaths(state: StudyHardBoardState): Set<str
 	return paths;
 }
 
+function assertWorkerNoteLocalImagePathsAreTrusted(state: StudyHardBoardState, noteDocument: StudyNoteDocument): void {
+	const trustedPaths = trustedWorkerAttachmentSourcePaths(state);
+	for (const block of noteDocument.sections.flatMap((section) => section.blocks)) {
+		if (block.type !== "image" || !block.image?.path) continue;
+		const imagePath = resolve(block.image.path);
+		if (!trustedPaths.has(imagePath)) throw new Error(`worker note는 현재 Study Hard state에 없는 local image path를 추가할 수 없습니다: ${imagePath}`);
+	}
+}
+
 function materializeWorkerAttachments(
 	handle: StudyHardHandle,
 	artifact: StudyHardWorkerResultArtifact,
 	noteDocument: StudyNoteDocument,
 ): MaterializedWorkerAttachments {
+	assertWorkerNoteLocalImagePathsAreTrusted(handle.state, noteDocument);
 	if (!artifact.attachmentImports.length) return { noteDocument, attachments: handle.state.attachments, attachmentIds: [], createdPaths: [] };
 	const trustedPaths = trustedWorkerAttachmentSourcePaths(handle.state);
 	const nextDocument = structuredClone(noteDocument);
@@ -3462,6 +3480,8 @@ function materializeWorkerAttachments(
 		if (!targetBlock || targetBlock.type !== "image" || !targetBlock.image) throw new Error(`worker attachment target은 image block이어야 합니다: ${item.targetNoteBlockId}`);
 		if (targetBlock.image.attachmentId !== item.attachmentId) throw new Error(`worker attachmentId와 image block 연결이 다릅니다: ${item.targetNoteBlockId}`);
 		const data = readFileSync(item.sourcePath);
+		const detectedMimeType = detectedWorkerImageMimeType(data);
+		if (detectedMimeType !== item.mimeType) throw new Error(`worker attachment 파일 내용과 MIME이 다릅니다: ${item.sourcePath}`);
 		let attachment = existingById.get(item.attachmentId);
 		if (attachment) {
 			if (attachment.targetNoteBlockId && attachment.targetNoteBlockId !== item.targetNoteBlockId) throw new Error(`기존 worker attachment의 target block이 다릅니다: ${item.attachmentId}`);

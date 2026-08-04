@@ -16,6 +16,10 @@ function authorizedHeaders(handle: { capabilityToken: string }): Record<string, 
 	return { "Content-Type": "application/json", "X-Study-Hard-Capability": handle.capabilityToken };
 }
 
+function testPngData(label: string): Buffer {
+	return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from(label)]);
+}
+
 async function waitForStudyState(handle: { url: string }, predicate: (state: any) => boolean, timeoutMs = 2_000): Promise<any> {
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
@@ -1763,7 +1767,8 @@ test("worker attachment import는 신뢰된 note image를 asset으로 복사하�
 	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
 	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/worker-attachment", runId: "worker-attachment" });
 	const sourcePath = join(testStateDir, "worker-attachment-source.png");
-	writeFileSync(sourcePath, "trusted-image");
+	const imageData = testPngData("trusted-image");
+	writeFileSync(sourcePath, imageData);
 	try {
 		updateStudyHardStudio(handle.state.runId, {
 			noteDocument: { title: "Worker attachment", sections: [{ id: "consumer", kind: "overview", title: "Consumer", blocks: [{ id: "wireframe-page", type: "image", image: { path: sourcePath, alt: "페이지 wireframe" } }] }] },
@@ -1789,7 +1794,7 @@ test("worker attachment import는 신뢰된 note image를 asset으로 복사하�
 		assert.equal(state.attachments[0].id, "wireframe-page-asset");
 		assert.equal(state.attachments[0].targetNoteBlockId, "wireframe-page");
 		assert.notEqual(state.attachments[0].path, sourcePath);
-		assert.equal(readFileSync(state.attachments[0].path, "utf8"), "trusted-image");
+		assert.deepEqual(readFileSync(state.attachments[0].path), imageData);
 		assert.deepEqual(state.noteDocument.sections[0].blocks[0].image, {
 			attachmentId: "wireframe-page-asset",
 			mimeType: "image/png",
@@ -1797,7 +1802,7 @@ test("worker attachment import는 신뢰된 note image를 asset으로 복사하�
 		});
 		const imageResponse = await fetch(new URL(state.attachments[0].url, handle.url), { headers: { "X-Study-Hard-Capability": handle.capabilityToken } });
 		assert.equal(imageResponse.status, 200);
-		assert.equal(await imageResponse.text(), "trusted-image");
+		assert.deepEqual(Buffer.from(await imageResponse.arrayBuffer()), imageData);
 		assert.equal(applyStudyHardWorkerResult(handle.state.runId, question.id, question.workerResultPath, 61).status, "already-applied");
 		assert.equal(handle.state.attachments.length, 1);
 	} finally {
@@ -1811,8 +1816,8 @@ test("worker attachment import는 현재 Board가 참조하지 않는 로컬 경
 	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/worker-attachment-reject", runId: "worker-attachment-reject" });
 	const trustedPath = join(testStateDir, "worker-trusted.png");
 	const forgedPath = join(testStateDir, "worker-forged.png");
-	writeFileSync(trustedPath, "trusted");
-	writeFileSync(forgedPath, "forged");
+	writeFileSync(trustedPath, testPngData("trusted"));
+	writeFileSync(forgedPath, testPngData("forged"));
 	try {
 		updateStudyHardStudio(handle.state.runId, {
 			noteDocument: { title: "Worker attachment reject", sections: [{ id: "consumer", kind: "overview", title: "Consumer", blocks: [
@@ -1848,6 +1853,65 @@ test("worker attachment import는 현재 Board가 참조하지 않는 로컬 경
 	} finally {
 		try { unlinkSync(trustedPath); } catch {}
 		try { unlinkSync(forgedPath); } catch {}
+		stopStudyHardStudios();
+	}
+});
+
+test("worker note는 현재 state에 없던 local image path를 다음 import의 신뢰 경로로 만들 수 없다", async () => {
+	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/worker-local-path", runId: "worker-local-path" });
+	const forgedPath = join(testStateDir, "worker-new-local-path.png");
+	writeFileSync(forgedPath, testPngData("forged-local-path"));
+	try {
+		updateStudyHardStudio(handle.state.runId, {
+			noteDocument: { title: "Worker local path", sections: [{ id: "consumer", kind: "overview", title: "Consumer", blocks: [{ id: "lead", type: "paragraph", text: "기존 설명" }] }] },
+		});
+		await fetch(new URL("/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ scope: "session", question: "로컬 이미지를 추가해" }) });
+		const state = await fetch(new URL("/state", handle.url)).then((response) => response.json() as Promise<any>);
+		const proposed = structuredClone(state.noteDocument);
+		proposed.sections[0].blocks.push({ id: "forged-image", type: "image", image: { path: forgedPath } });
+		writeStudyHardWorkerResult(state, state.questions[0], state.noteDocument, proposed, "이미지를 추가했습니다.");
+
+		assert.throws(
+			() => applyStudyHardWorkerResult(handle.state.runId, state.questions[0].id, state.questions[0].workerResultPath, 63),
+			/없는 local image path/,
+		);
+		assert.equal(handle.state.noteDocument.sections[0].blocks.some((block) => block.id === "forged-image"), false);
+		assert.equal(handle.state.attachments.length, 0);
+	} finally {
+		try { unlinkSync(forgedPath); } catch {}
+		stopStudyHardStudios();
+	}
+});
+
+test("worker attachment import는 확장자와 실제 이미지 내용이 다르면 거부한다", async () => {
+	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/worker-image-signature", runId: "worker-image-signature" });
+	const sourcePath = join(testStateDir, "worker-fake-image.png");
+	writeFileSync(sourcePath, "not-a-png");
+	try {
+		updateStudyHardStudio(handle.state.runId, {
+			noteDocument: { title: "Worker image signature", sections: [{ id: "consumer", kind: "overview", title: "Consumer", blocks: [{ id: "fake-image", type: "image", image: { path: sourcePath } }] }] },
+		});
+		await fetch(new URL("/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ scope: "note-block", noteBlockId: "fake-image", question: "표시되게 해" }) });
+		const state = await fetch(new URL("/state", handle.url)).then((response) => response.json() as Promise<any>);
+		const proposed = structuredClone(state.noteDocument);
+		proposed.sections[0].blocks[0].image = { attachmentId: "fake-image-asset" };
+		writeStudyHardWorkerResult(state, state.questions[0], state.noteDocument, proposed, "이미지를 등록했습니다.", "fake image", [{
+			attachmentId: "fake-image-asset",
+			sourcePath,
+			targetNoteBlockId: "fake-image",
+			name: "fake-image.png",
+			mimeType: "image/png",
+		}]);
+
+		assert.throws(
+			() => applyStudyHardWorkerResult(handle.state.runId, state.questions[0].id, state.questions[0].workerResultPath, 64),
+			/파일 내용과 MIME이 다릅니다/,
+		);
+		assert.equal(handle.state.attachments.length, 0);
+	} finally {
+		try { unlinkSync(sourcePath); } catch {}
 		stopStudyHardStudios();
 	}
 });
