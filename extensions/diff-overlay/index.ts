@@ -8,6 +8,7 @@
  * Tab / v toggles Diff ↔ Commit mode.
  */
 
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ThemeColor } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder, getLanguageFromPath, highlightCode } from "@mariozechner/pi-coding-agent";
@@ -942,6 +943,18 @@ interface PullRequestBase {
 	baseRefName: string;
 }
 
+function readWorktreeMetadataBase(cwd: string, branch: string): string | null {
+	try {
+		const parsed = JSON.parse(readFileSync(path.join(cwd, ".pi", "worktree-meta.json"), "utf8")) as Record<string, unknown>;
+		const metadataBranch = typeof parsed.branch === "string" ? parsed.branch.trim() : "";
+		const baseBranch = typeof parsed.baseBranch === "string" ? parsed.baseBranch.trim() : "";
+		if (!metadataBranch || !baseBranch || metadataBranch !== branch || baseBranch === branch) return null;
+		return baseBranch;
+	} catch {
+		return null;
+	}
+}
+
 async function mergeBaseWithRefs(
 	pi: ExtensionAPI,
 	cwd: string,
@@ -1007,6 +1020,21 @@ export async function findMergeBase(
 		throw new Error(
 			`PR #${pullRequest.number}의 base branch를 로컬에서 찾을 수 없습니다: origin/${pullRequest.baseRefName}`,
 		);
+	}
+
+	const worktreeBaseBranch = readWorktreeMetadataBase(cwd, branch);
+	if (worktreeBaseBranch) {
+		const worktreeBaseRefs = worktreeBaseBranch.startsWith("origin/")
+			? [worktreeBaseBranch]
+			: [`origin/${worktreeBaseBranch}`, worktreeBaseBranch];
+		const worktreeMergeBase = await mergeBaseWithRefs(
+			pi,
+			cwd,
+			worktreeBaseBranch,
+			worktreeBaseRefs,
+			"worktree metadata",
+		);
+		if (worktreeMergeBase) return worktreeMergeBase;
 	}
 
 	if (defaults.includes(branch)) return null;

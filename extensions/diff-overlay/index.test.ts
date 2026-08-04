@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { findMergeBase, formatDiffComparison, parseDiffArgs } from "./index.ts";
 
@@ -14,6 +17,17 @@ function mockPi(handler: (command: string, args: string[]) => ExecResult | Promi
 		},
 	};
 	return { pi, calls };
+}
+
+async function createWorktreeRoot(metadata: unknown): Promise<string> {
+	const root = await mkdtemp(join(tmpdir(), "pilee-diff-base-"));
+	const piDir = join(root, ".pi");
+	await mkdir(piDir, { recursive: true });
+	await writeFile(
+		join(piDir, "worktree-meta.json"),
+		typeof metadata === "string" ? metadata : JSON.stringify(metadata),
+	);
+	return root;
 }
 
 test("parseDiffArgs supports PR auto mode and explicit base override", () => {
@@ -64,6 +78,117 @@ test("open pull request base wins over origin HEAD", async () => {
 	const result = await findMergeBase(pi as any, "/repo", "feature/activation");
 	assert.deepEqual(result, { commit: mergeBase, baseBranch: "feature/foundation", baseSource: "PR #4572" });
 	assert.equal(calls.some((call) => call.args[0] === "symbolic-ref"), false);
+});
+
+test("open pull request base wins over worktree metadata", async () => {
+	const root = await createWorktreeRoot({
+		branch: "feature/activation",
+		baseBranch: "feature/local-foundation",
+	});
+	const mergeBase = "f".repeat(40);
+	try {
+		const { pi, calls } = mockPi((command, args) => {
+			const joined = args.join(" ");
+			if (command === "gh" && joined === "pr view feature/activation --json number,baseRefName") {
+				return { code: 0, stdout: JSON.stringify({ number: 4572, baseRefName: "feature/pr-foundation" }) };
+			}
+			if (command === "git" && joined === "merge-base HEAD origin/feature/pr-foundation") {
+				return { code: 0, stdout: `${mergeBase}\n` };
+			}
+			throw new Error(`unexpected call: ${command} ${joined}`);
+		});
+
+		const result = await findMergeBase(pi as any, root, "feature/activation");
+		assert.deepEqual(result, { commit: mergeBase, baseBranch: "feature/pr-foundation", baseSource: "PR #4572" });
+		assert.equal(calls.some((call) => call.args.includes("feature/local-foundation")), false);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("matching worktree metadata base wins over origin HEAD when no pull request exists", async () => {
+	const root = await createWorktreeRoot({
+		branch: "feature/activation",
+		baseBranch: "feature/foundation",
+	});
+	const mergeBase = "1".repeat(40);
+	try {
+		const { pi, calls } = mockPi((command, args) => {
+			const joined = args.join(" ");
+			if (command === "gh") return { code: 1, stderr: "no pull requests found" };
+			if (command === "git" && joined === "merge-base HEAD origin/feature/foundation") return { code: 1 };
+			if (command === "git" && joined === "merge-base HEAD feature/foundation") {
+				return { code: 0, stdout: `${mergeBase}\n` };
+			}
+			throw new Error(`unexpected call: ${command} ${joined}`);
+		});
+
+		const result = await findMergeBase(pi as any, root, "feature/activation");
+		assert.deepEqual(result, {
+			commit: mergeBase,
+			baseBranch: "feature/foundation",
+			baseSource: "worktree metadata",
+		});
+		assert.equal(calls.some((call) => call.args[0] === "symbolic-ref"), false);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("stale or malformed worktree metadata falls back to origin HEAD", async () => {
+	for (const metadata of [
+		{ branch: "feature/old-name", baseBranch: "feature/foundation" },
+		"{ malformed",
+	]) {
+		const root = await createWorktreeRoot(metadata);
+		const mergeBase = "2".repeat(40);
+		try {
+			const { pi } = mockPi((command, args) => {
+				const joined = args.join(" ");
+				if (command === "gh") return { code: 1, stderr: "no pull requests found" };
+				if (command === "git" && joined === "symbolic-ref refs/remotes/origin/HEAD --short") {
+					return { code: 0, stdout: "origin/development\n" };
+				}
+				if (command === "git" && joined === "merge-base HEAD origin/development") {
+					return { code: 0, stdout: `${mergeBase}\n` };
+				}
+				throw new Error(`unexpected call: ${command} ${joined}`);
+			});
+
+			const result = await findMergeBase(pi as any, root, "feature/activation");
+			assert.deepEqual(result, { commit: mergeBase, baseBranch: "development", baseSource: "origin/HEAD" });
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	}
+});
+
+test("unresolvable worktree metadata base falls back to origin HEAD", async () => {
+	const root = await createWorktreeRoot({
+		branch: "feature/activation",
+		baseBranch: "feature/deleted-foundation",
+	});
+	const mergeBase = "3".repeat(40);
+	try {
+		const { pi } = mockPi((command, args) => {
+			const joined = args.join(" ");
+			if (command === "gh") return { code: 1, stderr: "no pull requests found" };
+			if (command === "git" && joined === "merge-base HEAD origin/feature/deleted-foundation") return { code: 1 };
+			if (command === "git" && joined === "merge-base HEAD feature/deleted-foundation") return { code: 1 };
+			if (command === "git" && joined === "symbolic-ref refs/remotes/origin/HEAD --short") {
+				return { code: 0, stdout: "origin/development\n" };
+			}
+			if (command === "git" && joined === "merge-base HEAD origin/development") {
+				return { code: 0, stdout: `${mergeBase}\n` };
+			}
+			throw new Error(`unexpected call: ${command} ${joined}`);
+		});
+
+		const result = await findMergeBase(pi as any, root, "feature/activation");
+		assert.deepEqual(result, { commit: mergeBase, baseBranch: "development", baseSource: "origin/HEAD" });
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
 });
 
 test("unresolvable pull request base never falls back to the default branch", async () => {
