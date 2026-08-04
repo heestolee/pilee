@@ -7,6 +7,7 @@ tags:
   - three-way-merge
   - optimistic-concurrency
   - glimpse
+  - attachment
 category: architecture
 status: active
 confidence: high
@@ -18,8 +19,9 @@ source:
   - user-direction:2026-07-19-study-hard-worker-flexible-generation-strict-apply
   - user-direction:2026-07-23-main-lineage-without-p0-turn-gate
   - user-direction:2026-07-25-completion-transcript-before-final-response
-reviewed_at: 2026-07-30
-reviewed_commit: 040b596fec2e9e9c83929fa5b99ce0d38310a4ad
+  - user-direction:2026-08-04-study-hard-worker-attachment-import
+reviewed_at: 2026-08-04
+reviewed_commit: b1b81f0a475c28e3dacaaf67f992b903aff49fe0
 related:
   - parallel-workflow-analysis-single-writer
   - study-hard-public-engine-private-publisher
@@ -67,6 +69,19 @@ Glimpse learner input
 
 Worker는 지정된 result path만 쓰고 canonical state는 직접 수정하지 않습니다. 현재 panel에 제품 Work Context가 있더라도 그 card의 repository 밖에 있는 worker artifact까지 제품 slice scope로 막지 않습니다. 생성 이후의 schema 검증, base/proposed/current merge, conflict와 rebase 판정은 기존 strict apply coordinator가 담당합니다. 일반 mutation을 soft-guided로 다루는 판단은 [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md)의 File Mutation Rule을 따릅니다.
 
+## Attachment Import Boundary
+
+노트의 image block이 로컬 `path`만 참조하면 WebView는 보안상 해당 파일을 직접 렌더링할 수 없습니다. worker가 state나 attachment 저장소를 직접 수정하는 방식으로 해결하지 않고, result artifact의 `attachmentImports` manifest로 import 의도만 제안합니다.
+
+- `sourcePath`는 최신 Board가 이미 image path 또는 attachment path로 참조 중인 정확한 파일만 허용합니다.
+- worker는 proposed image block을 같은 `attachmentId`에 연결하고 임의 로컬 경로를 탐색·추가하지 않습니다.
+- coordinator는 image MIME·10MB 제한·target block·중복 ID·파일 hash를 검증합니다.
+- note merge가 성공한 뒤 run 전용 attachment 디렉터리로 복사하고 `noteDocument + attachments + question 상태`를 한 revision에 저장합니다.
+- 여러 파일 중간 import가 실패하면 그 apply에서 새로 복사한 파일을 rollback합니다.
+- 같은 artifact가 다시 전달되면 question hash와 attachment ID로 중복 등록하지 않습니다.
+
+따라서 worker의 자유는 “어떤 그림이 학습 설명에 필요하다”를 제안하는 데 있고, 로컬 파일 접근·복사·공개 URL 발급은 신뢰 경계인 coordinator가 소유합니다.
+
 ## Flexible Generation Rule
 
 worker는 다음을 할 수 있다.
@@ -91,6 +106,7 @@ merge coordinator는 worker가 주장한 write set을 그대로 믿지 않는다
 - 삭제 대 최신 수정 → conflict
 - 서로 양립할 수 없는 순서 변경 → conflict
 - 독립 삽입·분할 → stable id와 order constraint로 함께 보존
+- attachment import → 최신 state의 신뢰 경로와 proposed image attachmentId가 일치할 때만 복사·연결
 
 첫 conflict는 completion callback에서 같은 subagent run을 최신 note 기준으로 한 번 `continue`하여 rebase한다. 다시 충돌하면 Glimpse를 즉시 `conflict`로 갱신하고 silent overwrite하지 않습니다. 사용자는 같은 block merge editor에서 section별 `기존 Study Hard` / `변경될 Study Hard` / `직접 정리`를 선택합니다. 직접 정리는 Markdown으로 평탄화하지 않고 기존 block type·id·순서를 유지한 채 내부 텍스트만 수정하며, 충돌 없는 3-way merge 결과는 함께 보존됩니다. completion 재전달은 artifact hash로 멱등 처리합니다.
 
@@ -119,3 +135,5 @@ queued → running → result-ready → merging → applied
 - 완료 카드마다 `steer`를 보내면 Pi가 steering message를 하나씩 소비해 `카드 → assistant 응답 → 카드 → assistant 응답`처럼 완료 답변이 반복될 수 있다.
 - custom entry만 쓰면 모델 context가 끊기고, context message만 쓰면 표시 시점이나 assistant turn을 제어하기 어렵다. durable visible entry와 hidden `nextTurn` context 복사본을 함께 두되 역할을 섞지 않는다.
 - P0를 lineage SSOT에서 제거하면 작업과 학습의 결정 연결이 끊긴다. 따라서 lineage 귀속, 화면 표시, LLM turn gating을 분리해야 한다.
+- worker가 로컬 path를 직접 URL로 넣거나 coordinator가 임의 sourcePath를 믿으면 WebView 표시 실패를 숨기거나 로컬 파일 노출 경계를 넓힐 수 있다.
+- attachment만 등록하고 image block을 `attachmentId`로 연결하지 않으면 파일은 존재해도 학습 노트에는 계속 표시되지 않는다.
