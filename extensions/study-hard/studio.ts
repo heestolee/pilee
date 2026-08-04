@@ -3127,7 +3127,7 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 					sendJson(res, 400, { ok: false, error: "conflicted learner question is required" });
 					return;
 				}
-				const { artifact } = readStudyHardWorkerResult(handle, question, question.workerResultPath || "");
+				const artifact = readPinnedStudyHardWorkerResult(handle, question);
 				const review = buildStudyHardNoteConflictReview(artifact, handle.state.noteDocument);
 				sendJson(res, 200, { ok: true, questionId, sections: review.sections, conflicts: review.conflicts });
 				return;
@@ -3646,6 +3646,12 @@ interface MaterializedWorkerAttachments {
 	createdPaths: string[];
 }
 
+function readPinnedStudyHardWorkerResult(handle: StudyHardHandle, question: StudyQuestionCard): StudyHardWorkerResultArtifact {
+	const { artifact, hash } = readStudyHardWorkerResult(handle, question, question.workerResultPath || "");
+	if (!question.workerResultHash || question.workerResultHash !== hash) throw new Error("Study Hard worker result가 충돌 확인 후 변경되었습니다. 다시 worker를 실행해 주세요.");
+	return artifact;
+}
+
 function trustedWorkerAttachmentSourcePaths(state: StudyHardBoardState): Set<string> {
 	const paths = new Set<string>();
 	for (const attachment of state.attachments) if (attachment.path) paths.add(resolve(attachment.path));
@@ -3755,6 +3761,27 @@ function cleanupUncommittedWorkerAttachments(handle: StudyHardHandle, materializ
 	}
 }
 
+function applyWorkerNoteWithAttachments(
+	handle: StudyHardHandle,
+	questionId: string,
+	artifact: StudyHardWorkerResultArtifact,
+	noteDocument: StudyNoteDocument,
+): { handle: StudyHardHandle; materialized: MaterializedWorkerAttachments } {
+	const materialized = materializeWorkerAttachments(handle, artifact, noteDocument);
+	try {
+		return {
+			handle: respondStudyHardQuestion(handle.state.runId, handle.state.revision, questionId, artifact.feedback, {
+				noteDocument: materialized.noteDocument,
+				attachments: materialized.attachments,
+			}),
+			materialized,
+		};
+	} catch (error) {
+		cleanupUncommittedWorkerAttachments(handle, materialized);
+		throw error;
+	}
+}
+
 interface StudyHardNoteConflictSection {
 	sectionId: string;
 	title: string;
@@ -3807,9 +3834,9 @@ function buildStudyHardNoteConflictReview(artifact: StudyHardWorkerResultArtifac
 function resolveStudyHardNoteConflict(handle: StudyHardHandle, questionId: string, rawResolution: unknown): StudyHardHandle {
 	const question = handle.state.questions.find((item) => item.id === questionId);
 	if (!question || question.processingStatus !== "conflict") throw new Error("직접 해소할 Study Hard 노트 충돌이 없습니다.");
-	const { artifact } = readStudyHardWorkerResult(handle, question, question.workerResultPath || "");
+	const artifact = readPinnedStudyHardWorkerResult(handle, question);
 	const merge = mergeStudyNoteProposal(artifact.baseNoteDocument, artifact.proposedNoteDocument, handle.state.noteDocument);
-	if (merge.ok) return respondStudyHardQuestion(handle.state.runId, handle.state.revision, questionId, artifact.feedback, { noteDocument: merge.noteDocument });
+	if (merge.ok) return applyWorkerNoteWithAttachments(handle, questionId, artifact, merge.noteDocument).handle;
 	const review = buildStudyHardNoteConflictReview(artifact, handle.state.noteDocument);
 	const resolution = rawResolution && typeof rawResolution === "object" && !Array.isArray(rawResolution) ? rawResolution as Record<string, unknown> : {};
 	const noteDocument = structuredClone(merge.noteDocument);
@@ -3842,20 +3869,11 @@ function resolveStudyHardNoteConflict(handle: StudyHardHandle, questionId: strin
 		else if (replacement && index >= 0) noteDocument.sections[index] = replacement;
 		else if (replacement) noteDocument.sections.push(replacement);
 	}
-	const acceptedImportIds = new Set(noteDocument.sections.flatMap((section) => section.blocks)
+	const acceptedImportPairs = new Map(noteDocument.sections.flatMap((section) => section.blocks)
 		.filter((block) => block.type === "image" && block.image?.attachmentId)
-		.map((block) => block.image!.attachmentId!));
-	const conflictArtifact = { ...artifact, attachmentImports: artifact.attachmentImports.filter((item) => acceptedImportIds.has(item.attachmentId)) };
-	const materialized = materializeWorkerAttachments(handle, conflictArtifact, noteDocument);
-	try {
-		return respondStudyHardQuestion(handle.state.runId, handle.state.revision, questionId, artifact.feedback, {
-			noteDocument: materialized.noteDocument,
-			attachments: materialized.attachments,
-		});
-	} catch (error) {
-		cleanupUncommittedWorkerAttachments(handle, materialized);
-		throw error;
-	}
+		.map((block) => [block.id, block.image!.attachmentId!]));
+	const conflictArtifact = { ...artifact, attachmentImports: artifact.attachmentImports.filter((item) => acceptedImportPairs.get(item.targetNoteBlockId) === item.attachmentId) };
+	return applyWorkerNoteWithAttachments(handle, questionId, conflictArtifact, noteDocument).handle;
 }
 
 export function markStudyHardWorkerStarted(
@@ -3924,8 +3942,9 @@ export function applyStudyHardWorkerResult(
 	if (!question.workerResultPath || receivedPath !== expectedPath || dirname(receivedPath) !== dirname(resolve(handle.statePath))) throw new Error("Study Hard worker result path가 question 계약과 다릅니다.");
 	if (hasAcceptedWorkerAnswer(question)) return { handle, status: "already-applied", workerRunId: question.workerRunId, changedPaths: [], conflicts: [] };
 	const { artifact, hash } = readStudyHardWorkerResult(handle, question, workerResultPath);
-	if (question.workerResultHash === hash && ["rebasing", "conflict"].includes(String(question.processingStatus))) {
-		return { handle, status: question.processingStatus as "rebasing" | "conflict", workerRunId: question.workerRunId, changedPaths: [], conflicts: [] };
+	if (question.processingStatus === "rebasing" || question.processingStatus === "conflict") {
+		if (!question.workerResultHash || question.workerResultHash !== hash) throw new Error("Study Hard worker result가 충돌 확인 후 변경되었습니다. 다시 worker를 실행해 주세요.");
+		return { handle, status: question.processingStatus, workerRunId: question.workerRunId, changedPaths: [], conflicts: [] };
 	}
 	updateQuestionCards(handle, [questionId], (item) => ({
 		...item,
@@ -3961,22 +3980,12 @@ export function applyStudyHardWorkerResult(
 		workerRunId: Number.isInteger(workerRunId) ? workerRunId : item.workerRunId,
 		workerResultHash: hash,
 	}));
-	const materialized = materializeWorkerAttachments(handle, artifact, merge.noteDocument);
-	let applied: StudyHardHandle;
-	try {
-		applied = respondStudyHardQuestion(id, handle.state.revision, questionId, artifact.feedback, {
-			noteDocument: materialized.noteDocument,
-			attachments: materialized.attachments,
-		});
-	} catch (error) {
-		cleanupUncommittedWorkerAttachments(handle, materialized);
-		throw error;
-	}
+	const applied = applyWorkerNoteWithAttachments(handle, questionId, artifact, merge.noteDocument);
 	return {
-		handle: applied,
+		handle: applied.handle,
 		status: "applied",
 		workerRunId: Number.isInteger(workerRunId) ? workerRunId : question.workerRunId,
-		changedPaths: [...merge.changedPaths, ...materialized.attachmentIds.map((attachmentId) => `attachments.${attachmentId}`)],
+		changedPaths: [...merge.changedPaths, ...applied.materialized.attachmentIds.map((attachmentId) => `attachments.${attachmentId}`)],
 		conflicts: [],
 	};
 }

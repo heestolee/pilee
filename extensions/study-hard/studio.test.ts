@@ -2252,6 +2252,9 @@ test("겹치는 worker 결과는 한 번 rebase한 뒤에만 적용하고 중복
 		assert.equal(state.noteDocument.sections[0].blocks[0].text, "A-first");
 		assert.equal(state.questions[1].processingStatus, "rebasing");
 
+		markStudyHardWorkerStarted(handle.state.runId, state.revision, second.id, 32);
+		state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		assert.equal(state.questions[1].processingStatus, "running");
 		const rebasedBase = structuredClone(state.noteDocument);
 		const rebasedProposal = structuredClone(rebasedBase);
 		rebasedProposal.sections[0].blocks[0].text = "A-first + A-second";
@@ -2302,6 +2305,160 @@ test("worker 재조정 뒤 남은 노트 충돌은 기존·변경·직접 정리
 		assert.match(html, /변경될 Study Hard/);
 		assert.match(html, /충돌 직접 해소/);
 	} finally {
+		stopStudyHardStudios();
+	}
+});
+
+test("충돌 확정 뒤 worker artifact가 바뀌면 직접 해소를 거부한다", async () => {
+	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/conflict-artifact-swap", runId: "conflict-artifact-swap" });
+	try {
+		updateStudyHardStudio(handle.state.runId, { noteDocument: { title: "Artifact swap", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "a", type: "paragraph", text: "A0" }] }] } });
+		await fetch(new URL("/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ scope: "session", question: "A를 바꿔줘" }) });
+		let state = await fetch(new URL("/state", handle.url)).then((response) => response.json() as Promise<any>);
+		const question = state.questions[0];
+		const base = structuredClone(state.noteDocument);
+		const proposed = structuredClone(base);
+		proposed.sections[0].blocks[0].text = "A-worker";
+		updateStudyHardStudio(handle.state.runId, {
+			noteDocument: { title: "Artifact swap", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "a", type: "paragraph", text: "A-current" }] }] },
+			questions: [{ ...question, processingStatus: "running", workerRebaseCount: 1 }],
+		});
+		state = await fetch(new URL("/state", handle.url)).then((response) => response.json() as Promise<any>);
+		writeStudyHardWorkerResult(state, state.questions[0], base, proposed, "첫 worker 변경");
+		assert.equal(applyStudyHardWorkerResult(handle.state.runId, question.id, question.workerResultPath, 71).status, "conflict");
+
+		state = await fetch(new URL("/state", handle.url)).then((response) => response.json() as Promise<any>);
+		const swapped = structuredClone(base);
+		swapped.sections[0].blocks[0].text = "A-swapped";
+		writeStudyHardWorkerResult(state, state.questions[0], base, swapped, "교체된 worker 변경");
+		const stateBeforeRejectedApply = structuredClone(handle.state);
+		assert.throws(
+			() => applyStudyHardWorkerResult(handle.state.runId, question.id, question.workerResultPath, 72),
+			/충돌 확인 후 변경되었습니다/,
+		);
+		assert.deepEqual(handle.state, stateBeforeRejectedApply);
+		const previewResponse = await fetch(new URL("/questions/conflict-preview", handle.url), {
+			method: "POST",
+			headers: authorizedHeaders(handle),
+			body: JSON.stringify({ questionId: question.id }),
+		});
+		assert.notEqual(previewResponse.status, 200);
+		assert.match(String((await previewResponse.json() as any).error), /충돌 확인 후 변경되었습니다/);
+		const resolveResponse = await fetch(new URL("/questions/resolve-conflict", handle.url), {
+			method: "POST",
+			headers: authorizedHeaders(handle),
+			body: JSON.stringify({ questionId: question.id, resolution: { overview: { choice: "proposed" } } }),
+		});
+		assert.notEqual(resolveResponse.status, 200);
+		assert.match(String((await resolveResponse.json() as any).error), /충돌 확인 후 변경되었습니다/);
+		state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		assert.equal(state.noteDocument.sections[0].blocks[0].text, "A-current");
+		assert.equal(state.questions[0].processingStatus, "conflict");
+	} finally {
+		stopStudyHardStudios();
+	}
+});
+
+test("충돌이 clean merge로 바뀌어도 attachment를 materialize한 뒤 원자 적용한다", async () => {
+	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/clean-conflict-attachment", runId: "clean-conflict-attachment" });
+	const sourcePath = join(testStateDir, "clean-conflict-attachment.png");
+	const imageData = testPngData("clean-conflict");
+	writeFileSync(sourcePath, imageData);
+	try {
+		updateStudyHardStudio(handle.state.runId, {
+			noteDocument: { title: "Clean conflict", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [
+				{ id: "wireframe", type: "image", image: { path: sourcePath } },
+				{ id: "description", type: "paragraph", text: "A0" },
+			] }] },
+		});
+		await fetch(new URL("/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ scope: "session", question: "이미지와 설명을 반영해" }) });
+		let state = await fetch(new URL("/state", handle.url)).then((response) => response.json() as Promise<any>);
+		const question = state.questions[0];
+		const base = structuredClone(state.noteDocument);
+		const proposed = structuredClone(base);
+		proposed.sections[0].blocks[0].image = { attachmentId: "clean-conflict-asset" };
+		proposed.sections[0].blocks[1].text = "A-worker";
+		const current = structuredClone(base);
+		current.sections[0].blocks[1].text = "A-current";
+		updateStudyHardStudio(handle.state.runId, { noteDocument: current, questions: [{ ...question, processingStatus: "running", workerRebaseCount: 1 }] });
+		state = await fetch(new URL("/state", handle.url)).then((response) => response.json() as Promise<any>);
+		writeStudyHardWorkerResult(state, state.questions[0], base, proposed, "clean merge worker 변경", "clean conflict import", [{
+			attachmentId: "clean-conflict-asset",
+			sourcePath,
+			targetNoteBlockId: "wireframe",
+			name: "wireframe.png",
+			mimeType: "image/png",
+		}]);
+		assert.equal(applyStudyHardWorkerResult(handle.state.runId, question.id, question.workerResultPath, 72).status, "conflict");
+
+		updateStudyHardStudio(handle.state.runId, { noteDocument: base });
+		const response = await fetch(new URL("/questions/resolve-conflict", handle.url), {
+			method: "POST",
+			headers: authorizedHeaders(handle),
+			body: JSON.stringify({ questionId: question.id, resolution: {} }),
+		});
+		assert.equal(response.status, 200);
+		state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		assert.equal(state.questions[0].processingStatus, "applied");
+		assert.equal(state.noteDocument.sections[0].blocks[0].image.attachmentId, "clean-conflict-asset");
+		assert.equal(state.noteDocument.sections[0].blocks[1].text, "A-worker");
+		assert.equal(state.attachments.length, 1);
+		assert.ok(existsSync(state.attachments[0].path));
+		assert.deepEqual(readFileSync(state.attachments[0].path), imageData);
+	} finally {
+		try { unlinkSync(sourcePath); } catch {}
+		stopStudyHardStudios();
+	}
+});
+
+test("직접 충돌 해소는 같은 attachmentId가 다른 block에만 남으면 import를 버린다", async () => {
+	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/conflict-import-target", runId: "conflict-import-target" });
+	const sourcePath = join(testStateDir, "conflict-import-target.png");
+	writeFileSync(sourcePath, testPngData("shared-target"));
+	try {
+		const attachment = { id: "shared-asset", scope: "note-block", targetNoteBlockId: "image-b", name: "shared.png", mimeType: "image/png", path: sourcePath, createdAt: Date.now() };
+		updateStudyHardStudio(handle.state.runId, {
+			attachments: [attachment],
+			noteDocument: { title: "Import target", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [
+				{ id: "image-a", type: "image", image: { path: sourcePath, alt: "A" } },
+				{ id: "image-b", type: "image", image: { attachmentId: "shared-asset", alt: "B" } },
+			] }] },
+		});
+		await fetch(new URL("/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ scope: "session", question: "A 이미지를 등록해" }) });
+		let state = await fetch(new URL("/state", handle.url)).then((response) => response.json() as Promise<any>);
+		const question = state.questions[0];
+		const base = structuredClone(state.noteDocument);
+		const proposed = structuredClone(base);
+		proposed.sections[0].blocks[0].image = { attachmentId: "shared-asset", alt: "A worker" };
+		const current = structuredClone(base);
+		current.sections[0].blocks[0].image.alt = "A current";
+		updateStudyHardStudio(handle.state.runId, { noteDocument: current, questions: [{ ...question, processingStatus: "running", workerRebaseCount: 1 }] });
+		state = await fetch(new URL("/state", handle.url)).then((response) => response.json() as Promise<any>);
+		writeStudyHardWorkerResult(state, state.questions[0], base, proposed, "A worker 변경", "shared id conflict", [{
+			attachmentId: "shared-asset",
+			sourcePath,
+			targetNoteBlockId: "image-a",
+			name: "shared.png",
+			mimeType: "image/png",
+		}]);
+		assert.equal(applyStudyHardWorkerResult(handle.state.runId, question.id, question.workerResultPath, 73).status, "conflict");
+
+		const response = await fetch(new URL("/questions/resolve-conflict", handle.url), {
+			method: "POST",
+			headers: authorizedHeaders(handle),
+			body: JSON.stringify({ questionId: question.id, resolution: { overview: { choice: "current" } } }),
+		});
+		assert.equal(response.status, 200);
+		state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		assert.equal(state.noteDocument.sections[0].blocks[0].image.attachmentId, undefined);
+		assert.equal(state.noteDocument.sections[0].blocks[1].image.attachmentId, "shared-asset");
+		assert.equal(state.attachments.length, 1);
+		assert.equal(state.questions[0].processingStatus, "applied");
+	} finally {
+		try { unlinkSync(sourcePath); } catch {}
 		stopStudyHardStudios();
 	}
 });
