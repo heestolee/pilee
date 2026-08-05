@@ -23,7 +23,7 @@ function comparableBlock(block: StudyNoteBlock): unknown {
 		case "paragraph":
 			return { type: block.type, text: normalizedText(block.text) };
 		case "callout":
-			return { type: block.type, tone: block.tone || "info", title: normalizedText(block.title), body: normalizedText(block.body) };
+			return { type: block.type, tone: block.tone || "info", title: normalizedText(block.title), body: normalizedText(block.body), presentation: block.presentation || undefined };
 		case "list":
 			return { type: block.type, ordered: block.ordered === true, items: normalizedStrings(block.items) };
 		case "table":

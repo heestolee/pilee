@@ -217,6 +217,39 @@ test("mergeBoardState preserves TFT visual specs as stable learning-note blocks"
 	}), /visual note block requires a visual spec/);
 });
 
+test("understanding blocks recover lightweight answer disclosures across legacy visual and Notion round-trip shapes", () => {
+	const current = createInitialBoardState({ url: "https://example.com", runId: "understanding-disclosure-migration" });
+	const next = mergeBoardState(current, {
+		noteDocument: { title: "SEO 학습 노트", sections: [{ id: "frame-v2-understanding", kind: "reflection", title: "이해 확인", blocks: [
+			{
+				id: "canonical-identity-question",
+				type: "visual",
+				title: "지역이 달라지면 canonical identity도 달라지는 이유",
+				body: "region은 landing content의 지역 범위를 바꾸므로 서로 다른 canonical identity입니다.",
+				visual: {
+					title: "지역은 콘텐츠 identity 축입니다",
+					presentation: { container: "details", defaultOpen: false, summary: "1. 서울과 부산은 왜 서로 다른 canonical identity인가?" },
+					lanes: [{ id: "seoul", title: "서울" }],
+					nodes: [{ id: "seoul-url", lane: "seoul", label: "region=seoul" }],
+				},
+			},
+			{ id: "understanding-prompt", type: "callout", tone: "question", title: "먼저 내 말로 답한 뒤 펼쳐서 확인하기", body: "질문을 먼저 읽어보세요." },
+			{ id: "notion-round-trip-question", type: "callout", tone: "question", title: "hreflang query가 같아야 하는 이유는 무엇인가?", body: "같은 콘텐츠 identity의 번역 관계이기 때문입니다." },
+			{ id: "notion-round-trip-summary", type: "callout", tone: "question", title: "복습 요약", body: "질문이 아닌 안내는 펼쳐 둡니다." },
+		] }] },
+	});
+	const [legacyVisual, prompt, importedQuestion, summary] = next.noteDocument.sections[0]?.blocks || [];
+	assert.equal(legacyVisual?.type, "callout");
+	assert.equal(legacyVisual?.tone, "question");
+	assert.equal(legacyVisual?.title, "1. 서울과 부산은 왜 서로 다른 canonical identity인가?");
+	assert.equal(legacyVisual?.presentation?.container, "details");
+	assert.equal(legacyVisual?.presentation?.defaultOpen, false);
+	assert.equal(legacyVisual?.visual, undefined);
+	assert.equal(prompt?.presentation, undefined);
+	assert.deepEqual(importedQuestion?.presentation, { container: "details", defaultOpen: false });
+	assert.equal(summary?.presentation, undefined);
+});
+
 test("image note blocks preserve attachment and remote sources for board and export", () => {
 	const current = createInitialBoardState({ url: "https://example.com", runId: "image-contract" });
 	const next = mergeBoardState(current, {
@@ -721,6 +754,35 @@ test("buildStudyNoteExportHtml creates a standalone learning note with Mermaid a
 	assert.match(html, /class="callout question"/);
 	assert.match(html, /aria-label="질문">❓<\/span>/);
 	assert.doesNotMatch(html, /htmlExportButton/);
+});
+
+test("Study Hard renders understanding answers as collapsed callout disclosures without architecture visuals", () => {
+	const state = createInitialBoardState({ url: "https://example.com/source", runId: "answer-disclosure-export" });
+	state.noteDocument = { title: "Understanding check", sections: [{ id: "understanding-check", kind: "reflection", title: "이해 확인", blocks: [{
+		id: "answer-disclosure",
+		type: "callout",
+		tone: "question",
+		title: "region이 달라지면 왜 canonical identity도 달라지는가? <script>alert(1)</script>?",
+		body: "landing content의 지역 범위와 결과 목록이 함께 달라지기 때문입니다. <img src=x onerror=alert(1)>",
+		presentation: { container: "details", defaultOpen: false },
+	}] }] };
+	const collapsedHtml = buildStudyNoteExportHtml(state);
+	assert.match(collapsedHtml, /<details class="answerDisclosure">/);
+	assert.match(collapsedHtml, /내 답과 비교하기 · 펼쳐서 확인/);
+	assert.match(collapsedHtml, /landing content의 지역 범위/);
+	assert.match(collapsedHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+	assert.match(collapsedHtml, /&lt;img src=x onerror=alert\(1\)&gt;/);
+	assert.doesNotMatch(collapsedHtml, /<script>alert\(1\)<\/script>/);
+	assert.doesNotMatch(collapsedHtml, /class="visualFrame"/);
+	assert.doesNotMatch(collapsedHtml, /Architecture flow/);
+
+	state.noteDocument.sections[0].blocks[0].presentation!.defaultOpen = true;
+	assert.match(buildStudyNoteExportHtml(state), /<details class="answerDisclosure" open>/);
+
+	const boardHtml = buildStudyHardStudioHtml();
+	assert.match(boardHtml, /function noteCalloutHtml/);
+	assert.match(boardHtml, /noteAnswerDisclosure/);
+	assert.match(boardHtml, /내 답과 비교하기 · 펼쳐서 확인/);
 });
 
 test("buildStudyNoteExportHtml preserves an interactive TFT visual, PNG fallback, and source spec", () => {

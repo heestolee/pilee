@@ -53,6 +53,14 @@ test("block diff는 type별 의미 필드가 달라지면 changed로 본다", ()
 	assert.deepEqual(rows.map((row) => row.status), ["changed", "changed"]);
 });
 
+test("block diff는 callout disclosure presentation 변경을 semantic 변경으로 본다", () => {
+	const plain = { id: "plain", type: "callout", tone: "question", title: "왜 분리하는가?", body: "책임이 다르기 때문입니다." } as StudyNoteBlock;
+	const collapsed = { ...plain, id: "collapsed", presentation: { container: "details", defaultOpen: false } } as StudyNoteBlock;
+	const opened = { ...collapsed, id: "opened", presentation: { container: "details", defaultOpen: true } } as StudyNoteBlock;
+	assert.equal(diffStudyNoteBlocks([plain], [collapsed])[0]?.status, "changed");
+	assert.equal(diffStudyNoteBlocks([collapsed], [opened])[0]?.status, "changed");
+});
+
 test("block diff는 같은 type block 여러 개를 순서대로 changed로 짝짓는다", () => {
 	const rows = diffStudyNoteBlocks(
 		[callout("left-1", "A"), callout("left-2", "B")],
