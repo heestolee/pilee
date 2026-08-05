@@ -20,8 +20,9 @@ source:
   - user-direction:2026-07-23-main-lineage-without-p0-turn-gate
   - user-direction:2026-07-25-completion-transcript-before-final-response
   - user-direction:2026-08-04-study-hard-worker-attachment-import
-reviewed_at: 2026-08-04
-reviewed_commit: a787962ec4cf73f60a74614e12a7b798d61a7d21
+  - user-direction:2026-08-05-understanding-answer-disclosure
+reviewed_at: 2026-08-05
+reviewed_commit: 2c4669da9cd69daf02bfeaa1f0c71d589b06d9c9
 related:
   - parallel-workflow-analysis-single-writer
   - study-hard-public-engine-private-publisher
@@ -94,6 +95,18 @@ worker는 다음을 할 수 있다.
 - 설명만 필요하면 note를 바꾸지 않고 feedback만 반환
 
 제약은 “선택 블록 밖 수정 금지”가 아니라 “사용자 요청에 필요하지 않은 취향 개선 금지”다. 생성 모델의 범위를 줄여 충돌을 피하려 하지 않고, 실제 diff를 적용 단계에서 검사한다.
+
+## Understanding Answer Disclosure Rule
+
+학습 노트의 `이해 확인`·복습 문항은 정답을 먼저 노출하는 요약 목록이 아니라, 사용자가 질문을 읽고 자기 말로 답한 뒤 비교할 수 있는 retrieval practice surface입니다.
+
+- 섹션 첫머리에 `tone: info`로 “먼저 내 말로 답한 뒤 펼쳐서 확인” 안내를 펼친 상태로 둡니다.
+- 각 문항은 기존 `callout` block에 `tone: question`과 `presentation: { container: details, defaultOpen: false }`를 사용합니다.
+- `title`은 질문, `body`는 핵심 답·이유·필요한 예시입니다. 근거가 부족하면 억지 정답 대신 근거 공백을 표시합니다.
+- 접기 UI를 얻기 위해 `visual`을 사용하지 않습니다. `visual`은 관계·구조·흐름 자체를 그림으로 봐야 이해가 닫힐 때만 사용합니다.
+- Architecture visual의 공통 glossary인 `PK/FK`, `source-of-truth`, `legacy`는 실제 데이터 구조와 관련될 때만 노출합니다. 이해 확인 답안과 무관한 고정 장식으로 붙이면 안 됩니다.
+- 과거 worker가 `reflection`의 이해 확인 문항을 `visual.presentation.container=details`로 만든 경우, Study Hard load boundary가 이를 callout disclosure로 정규화해 architecture iframe과 무관한 glossary를 제거합니다.
+- Notion처럼 disclosure UI를 지원하지 않는 downstream은 같은 `callout` 내용을 펼친 상태로 보존해 답안 유실을 막습니다. 다시 import할 때 `presentation`이 사라져도 이해 확인 섹션의 `tone: question`이며 물음표로 끝나는 실제 문항은 disclosure를 복구하고, 안내 callout은 펼친 상태로 유지합니다.
 
 ## Strict Apply Rule
 
