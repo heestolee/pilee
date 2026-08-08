@@ -22,9 +22,11 @@
 
 - **컨텍스트는 보조 장치다**: 오래된 transcript나 많은 맥락을 현재 truth로 보지 않는다. 현재 작업의 truth는 작은 claim, scope, evidence다.
 - **작게 닫는다**: 큰 작업은 claim/slice 단위로 쪼개고, 각 slice는 독립적으로 검증 가능한 결과를 가져야 한다.
-- **입력 fan-out도 작업 크기다**: 최종 출력이 몇 개뿐이어도 많은 행·파일·페이지·문서를 훑어야 하면 큰 작업으로 본다.
-- **큰 독립 탐색은 soft delegation default다**: 도구가 대용량·digest·truncated 원문을 드러내고 독립 구간으로 나눌 수 있으면, 원문을 한 번 공유 artifact로 만든 뒤 finder/searcher subagent에 구간을 나눈다. 고정 숫자 임계값이나 hard block은 두지 않는다.
-- **메인은 판정을 소유한다**: 위임 시에도 기준·분할 경계·중복 제거·표본 검산·최종 답은 메인이 맡는다. 작고 순차적이거나 공유할 수 없는 입력은 coordination 비용을 키우지 말고 메인이 직접 처리한다.
+- **큰 작업은 work graph로 판단한다**: 최종 출력 수가 아니라 입력 fan-out, 복잡도·불확실성, 실행시간, 검증 축을 함께 본다. 고정 숫자 임계값이나 hard delegation은 두지 않으며, 작거나 coordination 비용이 더 큰 작업은 메인이 직접 처리한다.
+- **역할은 산출물과 capability로 고른다**: 로컬 위치 탐색은 finder, 외부 조사·교차근거는 searcher, 계획·의존성 지도는 planner, 변환·artifact·구현은 worker, 검토·가정 공격은 reviewer/challenger, 실행 증거는 verifier, UI 조작·캡처는 browser, readiness는 bootstrapper, 전용 workflow는 해당 전용 worker를 우선한다.
+- **위임 topology를 구분한다**: 강결합 작업은 단일 owner, 독립 shard는 batch, 선행 결과가 필요한 단계는 chain으로 맡긴다. 순차 작업도 단일 subagent에 위임할 수 있으며, 순차라는 이유만으로 메인이 독박 쓰지 않는다.
+- **handoff는 source-aware하게 한다**: child가 source-native locator를 사용할 capability가 있을 때만 locator를 넘긴다. 불가능하면 stable ID와 provenance가 있는 제한·redaction된 임시 shard만 만들고, Slack/Notion/Jira 같은 외부 시스템의 raw/full 원문을 기본 artifact로 복제하지 않는다. 위임 task에는 목표·제외 범위·source scope·기대 산출물·증거·보고 형식을 포함한다.
+- **writer와 closure를 분리한다**: 병렬 분석은 read-only proposal이 기본이고 mutation은 단일 writer가 소유한다. 병렬 mutation은 scope/worktree가 분리되고 integration owner가 있을 때만 사용한다. 모든 shard의 basis·status·coverage와 실패를 확인하고, specialist의 evidence contract가 닫힌 뒤 메인이 통합·최종 사용자 응답을 맡는다. 부분 실패는 전체 PASS로 숨기지 않는다.
 - **증거 없이는 완료가 아니다**: 도구 호출 성공, 파일 생성, Studio update 성공은 사용자-facing 성공과 다르다.
 - **도구 성공은 사용자 성공이 아니다**: UI/TUI/렌더링/리포트 claim은 실제 화면·artifact·캡처로 확인해야 한다.
 - **근본원인 없이 수정하지 않는다**: 실패하면 전체 로그/출력/실제 렌더 상태를 먼저 읽고 원인을 좁힌다.
