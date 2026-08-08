@@ -325,6 +325,9 @@ function buildSystemPrompt(state: GuardState, ultraMode = false): string {
 			"- Do not assume `pnpm <script> -- <path>` narrows the script. If a wrapper script might contain fixed globs or ignore args, inspect package.json or use a direct command such as `pnpm exec eslint <file>` / `pnpm vitest run <file>`. If you still use the wrapper, mention the uncertainty and expected fan-out.",
 			"- Whole app/repo/workspace validation or wildcard package builds require a one-line reason tied to the current diff. Dependency/bootstrap recovery gets one narrow package-level attempt; after a second missing package/module signal, stop and report BLOCKED or ask before broad workspace build.",
 			"- Search/history fan-out discipline: before the first investigative search/history command (`git log -S`, `git grep`, `rg`, `find`, `gh search`, `vcc_recall`), estimate ref/path/history/output fan-out. If the user gave anchors such as a symbol, file, URL, PR, commit, or branch, start with an anchored narrow lookup; broad repo/all-history/all-branch search is a soft fallback only after anchored lookup misses, and should be preceded by a one-line reason.",
+			"- LARGE INPUT ROUTING (soft default): Judge work size by input fan-out (rows/files/pages/chunks and context cost), not only by the requested output count. This is guidance, not a fixed numeric threshold or hard tool block.",
+			"- If a tool reveals a materially large, independently partitionable source such as digest/truncated output or many rows/files/pages, default to materialize it once as a shareable artifact and partition it across finder/searcher subagents when that reduces serial scan or context cost. Main agent owns the rubric, partition boundaries, deduplication, spot-checking, and final answer; reset strategy instead of repeatedly re-fetching or recalling the same artifact.",
+			"- Keep small, narrow, sequential, or non-shareable work on the main agent. Do not fan out when coordination overhead is likely to exceed the scan cost.",
 		);
 		if (state.weight === "standard" || state.weight === "full") {
 			lines.push(
@@ -455,7 +458,7 @@ function buildSystemPrompt(state: GuardState, ultraMode = false): string {
 		);
 		if (!ultraMode) {
 			lines.push(
-				"- Worker discipline: worker/subagent orchestration is opt-in for standard work unless parallel ownership, readiness diagnosis, or explicit user request justifies it.",
+				"- Worker discipline: worker/subagent orchestration is opt-in for standard work unless parallel ownership, readiness diagnosis, or explicit user request justifies it. Materially large, independently partitionable input counts as parallel ownership under the soft large-input routing default.",
 			);
 		}
 	}

@@ -54,6 +54,7 @@ test("non-ultra thinking keeps explicit-request worker discipline", async () => 
 
 	assert.doesNotMatch(start.systemPrompt, /ULTRA PROACTIVE DELEGATION MODE/);
 	assert.match(start.systemPrompt, /worker\/subagent orchestration is opt-in/);
+	assert.match(start.systemPrompt, /Materially large, independently partitionable input counts as parallel ownership/);
 	assert.equal(start.message.details.ultraMode, false);
 });
 
@@ -244,6 +245,7 @@ test("status-only bootstrap messages do not resume prior work", async () => {
 	assert.match(start.systemPrompt, /HARD STATUS NOTE PATH/);
 	assert.match(start.systemPrompt, /not a user task directive/);
 	assert.match(start.systemPrompt, /Do not resume older implementation/);
+	assert.doesNotMatch(start.systemPrompt, /LARGE INPUT ROUTING/);
 
 	const readBlock = await hooks.tool_call({ toolName: "read", input: { path: "/repo/package.json" } }, ctx);
 	assert.equal(readBlock?.block, true);
@@ -314,6 +316,37 @@ test("mixed implementation plus side question stays implementation and nudges su
 
 	const editCall = await hooks.tool_call({ toolName: "edit", input: { path: join(process.cwd(), "mixed-request-width.ts") } }, ctx);
 	assert.equal(editCall, undefined);
+});
+
+test("large-input routing nudges post-tool partitioning without hard escalation", async () => {
+	const { hooks, ctx } = createHarness();
+	const start = await hooks.before_agent_start({
+		prompt: "여기 표에서 에러메시지가 모호해 보이는 예시 5개만 찾아봐",
+		systemPrompt: "base",
+	}, ctx);
+
+	assert.match(start.systemPrompt, /intent=investigate · weight=none/);
+	assert.match(start.systemPrompt, /LARGE INPUT ROUTING \(soft default\)/);
+	assert.match(start.systemPrompt, /Judge work size by input fan-out.*not only by the requested output count/);
+	assert.match(start.systemPrompt, /materialize it once as a shareable artifact/);
+	assert.match(start.systemPrompt, /partition it across finder\/searcher subagents/);
+	assert.match(start.systemPrompt, /Main agent owns the rubric, partition boundaries, deduplication, spot-checking, and final answer/);
+
+	const subagentCall = await hooks.tool_call({
+		toolName: "subagent",
+		input: { command: "subagent batch --main --agent finder --task chunk-a --agent finder --task chunk-b" },
+	}, ctx);
+	assert.equal(subagentCall, undefined);
+});
+
+test("large-input routing keeps small sequential lookups on the main agent", async () => {
+	const { hooks, ctx } = createHarness();
+	const start = await hooks.before_agent_start({ prompt: "AGENTS.md 첫 줄만 확인해줘", systemPrompt: "base" }, ctx);
+
+	assert.match(start.systemPrompt, /intent=investigate · weight=none/);
+	assert.match(start.systemPrompt, /Keep small, narrow, sequential, or non-shareable work on the main agent/);
+	assert.match(start.systemPrompt, /Do not fan out when coordination overhead is likely to exceed the scan cost/);
+	assert.doesNotMatch(start.systemPrompt, /ULTRA PROACTIVE DELEGATION MODE/);
 });
 
 test("answer and investigation turns use soft read-only guidance", async () => {
