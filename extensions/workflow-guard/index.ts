@@ -4,6 +4,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
+import { parseSubagentCommandVerb } from "../subagent/cli.ts";
 import { formatWorkContextCard, gateWorkContext, loadOrDeriveWorkContext, type WorkContextCard, type WorkContextGateResult } from "../utils/work-context.ts";
 
 type Intent = "answer" | "investigate" | "implement" | "hotfix" | "verify_report" | "audit" | "ship" | "knowledge" | "status_note" | "unknown";
@@ -891,13 +892,18 @@ function appendWorkflowGuardResult(event: any, text: string, extraDetails: Recor
 	};
 }
 
+const TRUSTED_TRUNCATION_TOOLS = new Set(["read", "bash", "grep", "find", "ls"]);
+
 function largeWorkSignalFromToolResult(event: any): string | undefined {
-	const details = event.details ?? {};
-	const toolName = String(event.toolName ?? "tool");
-	if (details.mcpDigest === true) return `${toolName}:digest`;
-	if (details.mcpFullContent === true) return `${toolName}:full-content`;
-	if (details.truncated === true || details.isTruncated === true) return `${toolName}:truncated`;
-	if (details.hasMore === true || details.nextCursor || details.nextPageToken) return `${toolName}:paginated`;
+	if (event.isError === true || !event.details || typeof event.details !== "object" || Array.isArray(event.details)) return undefined;
+	const details = event.details;
+	if ([details.code, details.exitCode, details.statusCode].some((value) => typeof value === "number" && value !== 0)) return undefined;
+	const toolName = String(event.toolName ?? "");
+	if (toolName === "get_mcp_content" && details.mcpFullContent === true) return `${toolName}:full-content`;
+	if (TRUSTED_TRUNCATION_TOOLS.has(toolName)
+		&& (details.truncation?.truncated === true || details.truncated === true || details.isTruncated === true)) {
+		return `${toolName}:truncated`;
+	}
 	return undefined;
 }
 
@@ -907,6 +913,7 @@ function largeWorkRoutingNote(basis: string): string {
 		"[workflow_guard] largeWorkRoutingSuggested: true",
 		`- Tool result exposed a structural fan-out signal (${basis}). This is a soft checkpoint, not a fixed threshold or hard delegation command.`,
 		"- Re-evaluate the owner by expected output and tool capability, then choose one owner, independent batch, or dependent chain instead of defaulting to the main agent.",
+		"- If this makes the current light classification stale, use workflow_guard action=adopt with the newly established scope before delegating. Do not ask the user to re-authorize the same implementation.",
 		"- Use source-native locators only when the child can access them; otherwise pass bounded, redacted shards with stable IDs/provenance. Keep mutation single-writer unless scopes/worktrees are disjoint and an integration owner exists.",
 		"- Require a concrete task brief and collect basis/status/coverage for every shard. Partial or terminal failure remains a GAP; specialist evidence closes before main integration.",
 	].join("\n");
@@ -1060,9 +1067,9 @@ export default function workflowGuard(pi: ExtensionAPI) {
 			if (event.toolName === "verify_report_live" && String(event.input?.action ?? "") === "start") {
 				return { block: true, reason: heavyToolBlockReason(state, "verify_report_live") };
 			}
-			if (event.toolName === "subagent" && !state.largeWorkObserved) {
-				const command = String(event.input?.command ?? "");
-				if (/\bsubagent\s+(run|batch|chain)\b/.test(command)) {
+			if (event.toolName === "subagent") {
+				const verb = parseSubagentCommandVerb(event.input?.command);
+				if (verb === "run" || verb === "batch" || verb === "chain") {
 					return { block: true, reason: heavyToolBlockReason(state, "subagent fan-out") };
 				}
 			}
@@ -1094,7 +1101,7 @@ export default function workflowGuard(pi: ExtensionAPI) {
 		let largeWorkRoutingCheckpoint: string | undefined;
 		if (state && state.intent !== "status_note") {
 			largeWorkRoutingBasis = largeWorkSignalFromToolResult(event);
-			if (largeWorkRoutingBasis) {
+			if (largeWorkRoutingBasis && !state.largeWorkObserved) {
 				state.largeWorkObserved = true;
 				state.largeWorkBasis = largeWorkRoutingBasis;
 				largeWorkRoutingCheckpoint = largeWorkRoutingNote(largeWorkRoutingBasis);
@@ -1169,6 +1176,8 @@ export default function workflowGuard(pi: ExtensionAPI) {
 			}
 			if (params.action === "adopt") {
 				const state = classifyPrompt(String(params.prompt ?? current?.prompt ?? ""), ctx.sessionManager?.getSessionFile?.());
+				state.largeWorkObserved = current?.largeWorkObserved ?? false;
+				state.largeWorkBasis = current?.largeWorkBasis;
 				rememberGuardState(key, state);
 				return toolText(`Adopted workflow guard: ${state.summary}`, { previous: current ?? null, state, reason: params.reason });
 			}

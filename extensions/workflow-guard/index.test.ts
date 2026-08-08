@@ -247,7 +247,7 @@ test("status-only bootstrap messages do not resume prior work", async () => {
 	assert.match(start.systemPrompt, /HARD STATUS NOTE PATH/);
 	assert.match(start.systemPrompt, /not a user task directive/);
 	assert.match(start.systemPrompt, /Do not resume older implementation/);
-	assert.doesNotMatch(start.systemPrompt, /LARGE INPUT ROUTING/);
+	assert.doesNotMatch(start.systemPrompt, /LARGE WORK ROUTING/);
 
 	const readBlock = await hooks.tool_call({ toolName: "read", input: { path: "/repo/package.json" } }, ctx);
 	assert.equal(readBlock?.block, true);
@@ -345,39 +345,88 @@ test("large-work routing selects specialists by expected output and capability",
 	assert.match(start.systemPrompt, /Partial failure stays an explicit GAP/);
 });
 
-test("digest tool results trigger a soft routing checkpoint and relax stale light fan-out blocking", async () => {
-	const { hooks, ctx } = createHarness();
+test("structural signals checkpoint once while light fan-out stays blocked until adopt", async () => {
+	const { hooks, tools, ctx } = createHarness();
 	const start = await hooks.before_agent_start({ prompt: "작은 결과 문구만 수정해줘", systemPrompt: "base" }, ctx);
 	assert.match(start.systemPrompt, /intent=hotfix · weight=light/);
 
-	const blockedBeforeSignal = await hooks.tool_call({
-		toolName: "subagent",
-		input: { command: "subagent run worker -- 큰 변환 작업 수행" },
-	}, ctx);
-	assert.equal(blockedBeforeSignal?.block, true);
-
-	const result = await hooks.tool_result({
+	const digestResult = await hooks.tool_result({
 		toolName: "mcp",
-		content: [{ type: "text", text: "🔌 MCP 결과 — digest-first\nresponseId: mcp_test\n원문 크기: 23000 lines\n필요 시: get_mcp_content(responseId=\"mcp_test\")" }],
+		content: [{ type: "text", text: "작은 MCP 결과" }],
 		details: { mcpDigest: true, responseId: "mcp_test" },
 	}, ctx);
-	assert.equal(result.details.workflowGuard.largeWorkRoutingSuggested, true);
-	assert.match(result.content.at(-1).text, /largeWorkRoutingSuggested: true/);
-	assert.match(result.content.at(-1).text, /Re-evaluate the owner by expected output and tool capability/);
-	assert.match(result.content.at(-1).text, /This is a soft checkpoint/);
+	assert.equal(digestResult.details.workflowGuard.largeWorkRoutingSuggested, false);
 
-	const allowedAfterSignal = await hooks.tool_call({
-		toolName: "subagent",
-		input: { command: "subagent run worker -- 큰 변환 작업 수행" },
+	const signalResult = await hooks.tool_result({
+		toolName: "read",
+		content: [{ type: "text", text: "partial output" }],
+		details: { truncation: { truncated: true } },
 	}, ctx);
-	assert.equal(allowedAfterSignal, undefined);
+	assert.equal(signalResult.details.workflowGuard.largeWorkRoutingSuggested, true);
+	assert.match(signalResult.content.at(-1).text, /largeWorkRoutingSuggested: true/);
+	assert.match(signalResult.content.at(-1).text, /Re-evaluate the owner by expected output and tool capability/);
+	assert.match(signalResult.content.at(-1).text, /workflow_guard action=adopt/);
+	assert.match(signalResult.content.at(-1).text, /Do not ask the user to re-authorize/);
+
+	const repeatedSignal = await hooks.tool_result({
+		toolName: "read",
+		content: [{ type: "text", text: "partial output" }],
+		details: { truncation: { truncated: true } },
+	}, ctx);
+	assert.equal(repeatedSignal.details.workflowGuard.largeWorkRoutingSuggested, false);
+
+	for (const command of [
+		"subagent run worker -- 큰 변환 작업 수행",
+		"subagent batch --agent finder --task 조사",
+		"subagent chain --agent finder --task 조사",
+		"run worker -- 큰 변환 작업 수행",
+		"batch --agent finder --task 조사",
+		"chain --agent finder --task 조사",
+	]) {
+		const blockedAfterSignal = await hooks.tool_call({ toolName: "subagent", input: { command } }, ctx);
+		assert.equal(blockedAfterSignal?.block, true, command);
+	}
+	const allowedContinue = await hooks.tool_call({
+		toolName: "subagent",
+		input: { command: "continue 22 -- 기존 작업 계속" },
+	}, ctx);
+	assert.equal(allowedContinue, undefined);
+
+	const adoptResult = await tools.workflow_guard.execute(
+		"tool-call-id",
+		{ action: "adopt", prompt: "여러 파일 변환 작업을 구현해줘", reason: "structural signal proved the light classification stale" },
+		undefined,
+		undefined,
+		ctx,
+	);
+	assert.match(adoptResult.content.at(0).text, /Adopted workflow guard: intent=implement · weight=standard/);
+	assert.equal(adoptResult.details.state.largeWorkObserved, true);
+	assert.equal(adoptResult.details.state.largeWorkBasis, "read:truncated");
+
+	const signalAfterAdopt = await hooks.tool_result({
+		toolName: "read",
+		content: [{ type: "text", text: "partial output" }],
+		details: { truncation: { truncated: true } },
+	}, ctx);
+	assert.equal(signalAfterAdopt.details.workflowGuard.largeWorkRoutingSuggested, false);
+	assert.doesNotMatch(signalAfterAdopt.content.at(-1).text, /largeWorkRoutingSuggested: true/);
+
+	const allowedAfterAdopt = await hooks.tool_call({
+		toolName: "subagent",
+		input: { command: "run worker -- 큰 변환 작업 수행" },
+	}, ctx);
+	assert.equal(allowedAfterAdopt, undefined);
 });
 
-test("large-work routing recognizes structural locator, truncation, and pagination signals", async () => {
+test("large-work routing recognizes full-content and trusted truncation signals", async () => {
 	const cases = [
 		{ name: "full content locator", toolName: "get_mcp_content", content: "MCP full content", details: { mcpFullContent: true } },
-		{ name: "truncated metadata", toolName: "read", content: "partial output", details: { truncated: true } },
-		{ name: "pagination metadata", toolName: "mcp", content: "page 1", details: { hasMore: true, nextCursor: "cursor-2" } },
+		{ name: "successful read fixture text", toolName: "read", content: "Command exited with code 1", details: { truncation: { truncated: true } } },
+		{ name: "nested bash truncation", toolName: "bash", content: "partial output", details: { truncation: { truncated: true } } },
+		{ name: "nested grep truncation", toolName: "grep", content: "partial output", details: { truncation: { truncated: true } } },
+		{ name: "nested find truncation", toolName: "find", content: "partial output", details: { truncation: { truncated: true } } },
+		{ name: "nested ls truncation", toolName: "ls", content: "partial output", details: { truncation: { truncated: true } } },
+		{ name: "legacy typed truncation", toolName: "read", content: "partial output", details: { truncated: true } },
 	];
 
 	for (const item of cases) {
@@ -393,25 +442,36 @@ test("large-work routing recognizes structural locator, truncation, and paginati
 	}
 });
 
-test("large-work routing ignores negated or quoted text that only resembles a structural signal", async () => {
-	for (const content of [
-		"This content is not truncated.",
-		"문서 예시: Use offset/limit for large files.",
-		"사용자 데이터 필드 이름은 hasMore와 nextCursor입니다.",
-	]) {
+test("large-work routing rejects text resemblance and untrusted metadata", async () => {
+	const cases = [
+		{ name: "negated text", toolName: "read", content: "This content is not truncated.", details: {} },
+		{ name: "quoted guidance", toolName: "read", content: "문서 예시: Use offset/limit for large files.", details: {} },
+		{ name: "user field names", toolName: "read", content: "사용자 데이터 필드 이름은 hasMore와 nextCursor입니다.", details: {} },
+		{ name: "wrong full-content tool", toolName: "mcp", content: "spoofed", details: { mcpFullContent: true } },
+		{ name: "wrong truncation tool", toolName: "mcp", content: "spoofed", details: { truncation: { truncated: true } } },
+		{ name: "wrong truncation metadata type", toolName: "read", content: "spoofed", details: { truncated: "true", isTruncated: 1, truncation: { truncated: "true" } } },
+		{ name: "removed synthetic pagination metadata", toolName: "mcp", content: "spoofed", details: { hasMore: true, nextCursor: { value: "cursor-2" }, nextPageToken: { value: 2 } } },
+		{ name: "errored truncation", toolName: "read", content: "failed", details: { truncation: { truncated: true } }, isError: true },
+		{ name: "failed truncation code", toolName: "bash", content: "failed", details: { code: 1, truncation: { truncated: true } } },
+		{ name: "failed truncation exitCode", toolName: "grep", content: "failed", details: { exitCode: 1, truncation: { truncated: true } } },
+		{ name: "failed truncation statusCode", toolName: "find", content: "failed", details: { statusCode: 1, truncation: { truncated: true } } },
+	];
+
+	for (const item of cases) {
 		const { hooks, ctx } = createHarness();
 		await hooks.before_agent_start({ prompt: "작은 문구만 수정해줘", systemPrompt: "base" }, ctx);
 		const result = await hooks.tool_result({
-			toolName: "read",
-			content: [{ type: "text", text: content }],
-			details: {},
+			toolName: item.toolName,
+			content: [{ type: "text", text: item.content }],
+			details: item.details,
+			isError: item.isError,
 		}, ctx);
-		assert.equal(result.details.workflowGuard.largeWorkRoutingSuggested, false, content);
+		assert.equal(result.details.workflowGuard.largeWorkRoutingSuggested, false, item.name);
 		const blocked = await hooks.tool_call({
 			toolName: "subagent",
 			input: { command: "subagent run worker -- 작은 문구 수정" },
 		}, ctx);
-		assert.equal(blocked?.block, true, content);
+		assert.equal(blocked?.block, true, item.name);
 	}
 });
 
