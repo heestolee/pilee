@@ -27,6 +27,8 @@ interface GuardState {
 	summary: string;
 	continuationCue: boolean;
 	followUpCorrection: boolean;
+	largeWorkObserved: boolean;
+	largeWorkBasis?: string;
 	createdAt: string;
 	sessionFile?: string;
 }
@@ -300,7 +302,7 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 		!explicitMutation ? "mutation=not-requested" : null,
 	].filter(Boolean).join(" · ");
 
-	return { prompt: authoritativePrompt, intent, weight, explicitHeavy, explicitMutation, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, explicitExternalPublish, auditRequired, sqlReview, detachedArtifactTask, mixedRequest, parallelInvestigationSuggested, summary, continuationCue, followUpCorrection, createdAt: new Date().toISOString(), sessionFile };
+	return { prompt: authoritativePrompt, intent, weight, explicitHeavy, explicitMutation, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, explicitExternalPublish, auditRequired, sqlReview, detachedArtifactTask, mixedRequest, parallelInvestigationSuggested, summary, continuationCue, followUpCorrection, largeWorkObserved: false, createdAt: new Date().toISOString(), sessionFile };
 }
 
 function fastPaceBudgetSeconds(state: GuardState): number | undefined {
@@ -325,9 +327,10 @@ function buildSystemPrompt(state: GuardState, ultraMode = false): string {
 			"- Do not assume `pnpm <script> -- <path>` narrows the script. If a wrapper script might contain fixed globs or ignore args, inspect package.json or use a direct command such as `pnpm exec eslint <file>` / `pnpm vitest run <file>`. If you still use the wrapper, mention the uncertainty and expected fan-out.",
 			"- Whole app/repo/workspace validation or wildcard package builds require a one-line reason tied to the current diff. Dependency/bootstrap recovery gets one narrow package-level attempt; after a second missing package/module signal, stop and report BLOCKED or ask before broad workspace build.",
 			"- Search/history fan-out discipline: before the first investigative search/history command (`git log -S`, `git grep`, `rg`, `find`, `gh search`, `vcc_recall`), estimate ref/path/history/output fan-out. If the user gave anchors such as a symbol, file, URL, PR, commit, or branch, start with an anchored narrow lookup; broad repo/all-history/all-branch search is a soft fallback only after anchored lookup misses, and should be preceded by a one-line reason.",
-			"- LARGE INPUT ROUTING (soft default): Judge work size by input fan-out (rows/files/pages/chunks and context cost), not only by the requested output count. This is guidance, not a fixed numeric threshold or hard tool block.",
-			"- If a tool reveals a materially large, independently partitionable source such as digest/truncated output or many rows/files/pages, default to materialize it once as a shareable artifact and partition it across finder/searcher subagents when that reduces serial scan or context cost. Main agent owns the rubric, partition boundaries, deduplication, spot-checking, and final answer; reset strategy instead of repeatedly re-fetching or recalling the same artifact.",
-			"- Keep small, narrow, sequential, or non-shareable work on the main agent. Do not fan out when coordination overhead is likely to exceed the scan cost.",
+			"- LARGE WORK ROUTING (soft default): Judge work size by the work graph—input fan-out, complexity, uncertainty, runtime, and verification axes—not only by requested output count. Keep small or high-coordination work on the main agent; use no fixed numeric threshold or hard delegation rule, and re-evaluate after tool results or phase changes reveal the real scope.",
+			"- Choose a specialist by expected output and required tools: finder for local lookup; searcher for external research; planner for plans/dependency maps; worker for transformation/artifacts/implementation; reviewer/challenger for review and assumption attacks; verifier for executable evidence; browser for UI interaction/capture; bootstrapper for readiness; dedicated workers for their own workflow.",
+			"- Choose topology deliberately: single owner for coherent work, batch for independent shards, chain for dependent stages. Sequential work may still be delegated to one owner. Parallel analysis is read-only by default; mutation has one writer, and parallel mutation requires disjoint scope/worktrees and an integration owner.",
+			"- Handoff and closure: use a source-native locator only when the child has the required capability; otherwise pass bounded, redacted temporary shards with stable IDs and provenance, and do not create raw/full external-system artifacts by default. The task brief includes goal, exclusions, source scope, expected output, evidence, and report schema. Collect basis, status, and coverage for every shard; specialist evidence contracts close before main integration. Partial failure stays an explicit GAP.",
 		);
 		if (state.weight === "standard" || state.weight === "full") {
 			lines.push(
@@ -458,7 +461,7 @@ function buildSystemPrompt(state: GuardState, ultraMode = false): string {
 		);
 		if (!ultraMode) {
 			lines.push(
-				"- Worker discipline: worker/subagent orchestration is opt-in for standard work unless parallel ownership, readiness diagnosis, or explicit user request justifies it. Materially large, independently partitionable input counts as parallel ownership under the soft large-input routing default.",
+				"- Worker discipline: worker/subagent orchestration is opt-in for standard work unless the work graph shows real ownership benefit, readiness diagnosis, or the user explicitly requests it. A large-work signal may justify one worker or read-only fan-out, but never authorizes overlapping parallel writers by itself.",
 			);
 		}
 	}
@@ -888,6 +891,27 @@ function appendWorkflowGuardResult(event: any, text: string, extraDetails: Recor
 	};
 }
 
+function largeWorkSignalFromToolResult(event: any): string | undefined {
+	const details = event.details ?? {};
+	const toolName = String(event.toolName ?? "tool");
+	if (details.mcpDigest === true) return `${toolName}:digest`;
+	if (details.mcpFullContent === true) return `${toolName}:full-content`;
+	if (details.truncated === true || details.isTruncated === true) return `${toolName}:truncated`;
+	if (details.hasMore === true || details.nextCursor || details.nextPageToken) return `${toolName}:paginated`;
+	return undefined;
+}
+
+function largeWorkRoutingNote(basis: string): string {
+	return [
+		"",
+		"[workflow_guard] largeWorkRoutingSuggested: true",
+		`- Tool result exposed a structural fan-out signal (${basis}). This is a soft checkpoint, not a fixed threshold or hard delegation command.`,
+		"- Re-evaluate the owner by expected output and tool capability, then choose one owner, independent batch, or dependent chain instead of defaulting to the main agent.",
+		"- Use source-native locators only when the child can access them; otherwise pass bounded, redacted shards with stable IDs/provenance. Keep mutation single-writer unless scopes/worktrees are disjoint and an integration owner exists.",
+		"- Require a concrete task brief and collect basis/status/coverage for every shard. Partial or terminal failure remains a GAP; specialist evidence closes before main integration.",
+	].join("\n");
+}
+
 function fastPaceToolResultNote(state: GuardState, event: any): string | undefined {
 	const seconds = fastPaceBudgetSeconds(state);
 	if (!seconds) return undefined;
@@ -1036,7 +1060,7 @@ export default function workflowGuard(pi: ExtensionAPI) {
 			if (event.toolName === "verify_report_live" && String(event.input?.action ?? "") === "start") {
 				return { block: true, reason: heavyToolBlockReason(state, "verify_report_live") };
 			}
-			if (event.toolName === "subagent") {
+			if (event.toolName === "subagent" && !state.largeWorkObserved) {
 				const command = String(event.input?.command ?? "");
 				if (/\bsubagent\s+(run|batch|chain)\b/.test(command)) {
 					return { block: true, reason: heavyToolBlockReason(state, "subagent fan-out") };
@@ -1063,6 +1087,17 @@ export default function workflowGuard(pi: ExtensionAPI) {
 					"- Final response must be one short Korean completion line, e.g. `완료: <sha> <message>`.",
 				].join("\n");
 				return appendWorkflowGuardResult(event, note, { terminalActionRequired: true, sourceTool: event.toolName });
+			}
+		}
+
+		let largeWorkRoutingBasis: string | undefined;
+		let largeWorkRoutingCheckpoint: string | undefined;
+		if (state && state.intent !== "status_note") {
+			largeWorkRoutingBasis = largeWorkSignalFromToolResult(event);
+			if (largeWorkRoutingBasis) {
+				state.largeWorkObserved = true;
+				state.largeWorkBasis = largeWorkRoutingBasis;
+				largeWorkRoutingCheckpoint = largeWorkRoutingNote(largeWorkRoutingBasis);
 			}
 		}
 
@@ -1094,7 +1129,7 @@ export default function workflowGuard(pi: ExtensionAPI) {
 		const continuityNote = actionContinuityNote(event.toolName, event.details);
 		const commitStopLineNote = commitCompleteStopLineNote(state, event);
 		const paceNote = state ? fastPaceToolResultNote(state, event) : undefined;
-		const note = [continuityNote, validationWrapperNudge, packageResolveNote, validationLoopNote, commitStopLineNote, paceNote].filter(Boolean).join("\n");
+		const note = [largeWorkRoutingCheckpoint, continuityNote, validationWrapperNudge, packageResolveNote, validationLoopNote, commitStopLineNote, paceNote].filter(Boolean).join("\n");
 		if (!note) return undefined;
 		return appendWorkflowGuardResult(event, note, {
 			nextActionRequired: Boolean(continuityNote),
@@ -1103,6 +1138,8 @@ export default function workflowGuard(pi: ExtensionAPI) {
 			validationLoopGate: Boolean(validationLoopNote),
 			commitCompleteStopLine: Boolean(commitStopLineNote),
 			fastPaceRequired: Boolean(paceNote),
+			largeWorkRoutingSuggested: Boolean(largeWorkRoutingCheckpoint),
+			largeWorkBasis: largeWorkRoutingBasis,
 			sourceTool: event.toolName,
 		});
 	});

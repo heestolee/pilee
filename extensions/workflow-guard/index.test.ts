@@ -54,7 +54,9 @@ test("non-ultra thinking keeps explicit-request worker discipline", async () => 
 
 	assert.doesNotMatch(start.systemPrompt, /ULTRA PROACTIVE DELEGATION MODE/);
 	assert.match(start.systemPrompt, /worker\/subagent orchestration is opt-in/);
-	assert.match(start.systemPrompt, /Materially large, independently partitionable input counts as parallel ownership/);
+	assert.match(start.systemPrompt, /work graph shows real ownership benefit/);
+	assert.match(start.systemPrompt, /may justify one worker or read-only fan-out/);
+	assert.match(start.systemPrompt, /never authorizes overlapping parallel writers/);
 	assert.equal(start.message.details.ultraMode, false);
 });
 
@@ -318,7 +320,7 @@ test("mixed implementation plus side question stays implementation and nudges su
 	assert.equal(editCall, undefined);
 });
 
-test("large-input routing nudges post-tool partitioning without hard escalation", async () => {
+test("large-work routing selects specialists by expected output and capability", async () => {
 	const { hooks, ctx } = createHarness();
 	const start = await hooks.before_agent_start({
 		prompt: "여기 표에서 에러메시지가 모호해 보이는 예시 5개만 찾아봐",
@@ -326,27 +328,111 @@ test("large-input routing nudges post-tool partitioning without hard escalation"
 	}, ctx);
 
 	assert.match(start.systemPrompt, /intent=investigate · weight=none/);
-	assert.match(start.systemPrompt, /LARGE INPUT ROUTING \(soft default\)/);
-	assert.match(start.systemPrompt, /Judge work size by input fan-out.*not only by the requested output count/);
-	assert.match(start.systemPrompt, /materialize it once as a shareable artifact/);
-	assert.match(start.systemPrompt, /partition it across finder\/searcher subagents/);
-	assert.match(start.systemPrompt, /Main agent owns the rubric, partition boundaries, deduplication, spot-checking, and final answer/);
-
-	const subagentCall = await hooks.tool_call({
-		toolName: "subagent",
-		input: { command: "subagent batch --main --agent finder --task chunk-a --agent finder --task chunk-b" },
-	}, ctx);
-	assert.equal(subagentCall, undefined);
+	assert.match(start.systemPrompt, /LARGE WORK ROUTING \(soft default\)/);
+	assert.match(start.systemPrompt, /input fan-out, complexity, uncertainty, runtime, and verification axes/);
+	assert.match(start.systemPrompt, /expected output and required tools/);
+	for (const role of ["finder", "searcher", "planner", "worker", "reviewer", "challenger", "verifier", "browser", "bootstrapper"]) {
+		assert.match(start.systemPrompt, new RegExp(`\\b${role}\\b`));
+	}
+	assert.match(start.systemPrompt, /single owner for coherent work, batch for independent shards, chain for dependent stages/);
+	assert.match(start.systemPrompt, /Sequential work may still be delegated to one owner/);
+	assert.match(start.systemPrompt, /parallel mutation requires disjoint scope\/worktrees and an integration owner/);
+	assert.match(start.systemPrompt, /source-native locator only when the child has the required capability/);
+	assert.match(start.systemPrompt, /bounded, redacted temporary shards with stable IDs and provenance/);
+	assert.match(start.systemPrompt, /do not create raw\/full external-system artifacts by default/);
+	assert.match(start.systemPrompt, /goal, exclusions, source scope, expected output, evidence, and report schema/);
+	assert.match(start.systemPrompt, /basis, status, and coverage for every shard/);
+	assert.match(start.systemPrompt, /Partial failure stays an explicit GAP/);
 });
 
-test("large-input routing keeps small sequential lookups on the main agent", async () => {
+test("digest tool results trigger a soft routing checkpoint and relax stale light fan-out blocking", async () => {
 	const { hooks, ctx } = createHarness();
-	const start = await hooks.before_agent_start({ prompt: "AGENTS.md 첫 줄만 확인해줘", systemPrompt: "base" }, ctx);
+	const start = await hooks.before_agent_start({ prompt: "작은 결과 문구만 수정해줘", systemPrompt: "base" }, ctx);
+	assert.match(start.systemPrompt, /intent=hotfix · weight=light/);
 
-	assert.match(start.systemPrompt, /intent=investigate · weight=none/);
-	assert.match(start.systemPrompt, /Keep small, narrow, sequential, or non-shareable work on the main agent/);
-	assert.match(start.systemPrompt, /Do not fan out when coordination overhead is likely to exceed the scan cost/);
-	assert.doesNotMatch(start.systemPrompt, /ULTRA PROACTIVE DELEGATION MODE/);
+	const blockedBeforeSignal = await hooks.tool_call({
+		toolName: "subagent",
+		input: { command: "subagent run worker -- 큰 변환 작업 수행" },
+	}, ctx);
+	assert.equal(blockedBeforeSignal?.block, true);
+
+	const result = await hooks.tool_result({
+		toolName: "mcp",
+		content: [{ type: "text", text: "🔌 MCP 결과 — digest-first\nresponseId: mcp_test\n원문 크기: 23000 lines\n필요 시: get_mcp_content(responseId=\"mcp_test\")" }],
+		details: { mcpDigest: true, responseId: "mcp_test" },
+	}, ctx);
+	assert.equal(result.details.workflowGuard.largeWorkRoutingSuggested, true);
+	assert.match(result.content.at(-1).text, /largeWorkRoutingSuggested: true/);
+	assert.match(result.content.at(-1).text, /Re-evaluate the owner by expected output and tool capability/);
+	assert.match(result.content.at(-1).text, /This is a soft checkpoint/);
+
+	const allowedAfterSignal = await hooks.tool_call({
+		toolName: "subagent",
+		input: { command: "subagent run worker -- 큰 변환 작업 수행" },
+	}, ctx);
+	assert.equal(allowedAfterSignal, undefined);
+});
+
+test("large-work routing recognizes structural locator, truncation, and pagination signals", async () => {
+	const cases = [
+		{ name: "full content locator", toolName: "get_mcp_content", content: "MCP full content", details: { mcpFullContent: true } },
+		{ name: "truncated metadata", toolName: "read", content: "partial output", details: { truncated: true } },
+		{ name: "pagination metadata", toolName: "mcp", content: "page 1", details: { hasMore: true, nextCursor: "cursor-2" } },
+	];
+
+	for (const item of cases) {
+		const { hooks, ctx } = createHarness();
+		await hooks.before_agent_start({ prompt: "자료를 확인해줘", systemPrompt: "base" }, ctx);
+		const result = await hooks.tool_result({
+			toolName: item.toolName,
+			content: [{ type: "text", text: item.content }],
+			details: item.details,
+		}, ctx);
+		assert.equal(result.details.workflowGuard.largeWorkRoutingSuggested, true, item.name);
+		assert.match(result.content.at(-1).text, /soft checkpoint/, item.name);
+	}
+});
+
+test("large-work routing ignores negated or quoted text that only resembles a structural signal", async () => {
+	for (const content of [
+		"This content is not truncated.",
+		"문서 예시: Use offset/limit for large files.",
+		"사용자 데이터 필드 이름은 hasMore와 nextCursor입니다.",
+	]) {
+		const { hooks, ctx } = createHarness();
+		await hooks.before_agent_start({ prompt: "작은 문구만 수정해줘", systemPrompt: "base" }, ctx);
+		const result = await hooks.tool_result({
+			toolName: "read",
+			content: [{ type: "text", text: content }],
+			details: {},
+		}, ctx);
+		assert.equal(result.details.workflowGuard.largeWorkRoutingSuggested, false, content);
+		const blocked = await hooks.tool_call({
+			toolName: "subagent",
+			input: { command: "subagent run worker -- 작은 문구 수정" },
+		}, ctx);
+		assert.equal(blocked?.block, true, content);
+	}
+});
+
+test("small sequential results stay on the main agent without routing escalation", async () => {
+	const { hooks, ctx } = createHarness();
+	const start = await hooks.before_agent_start({ prompt: "작은 문구만 수정해줘", systemPrompt: "base" }, ctx);
+	assert.match(start.systemPrompt, /intent=hotfix · weight=light/);
+	assert.match(start.systemPrompt, /Keep small or high-coordination work on the main agent/);
+
+	const result = await hooks.tool_result({
+		toolName: "read",
+		content: [{ type: "text", text: "one short line" }],
+		details: {},
+	}, ctx);
+	assert.equal(result.details.workflowGuard.largeWorkRoutingSuggested, false);
+
+	const blocked = await hooks.tool_call({
+		toolName: "subagent",
+		input: { command: "subagent run worker -- 작은 문구 수정" },
+	}, ctx);
+	assert.equal(blocked?.block, true);
 });
 
 test("answer and investigation turns use soft read-only guidance", async () => {
