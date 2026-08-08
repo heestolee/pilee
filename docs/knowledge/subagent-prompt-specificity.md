@@ -18,7 +18,7 @@ applies_to:
 source:
   - pilee-history:2026-05-05#42
 reviewed_at: 2026-08-08
-reviewed_commit: adacb00
+reviewed_commit: 3516f8a
 related:
   - subagent-model-policy
   - parallel-workflow-analysis-single-writer
@@ -66,7 +66,7 @@ main은 모든 shard의 basis·status·coverage를 확인하고 specialist의 ev
 
 ## Runtime Re-evaluation
 
-최초 prompt가 작은 작업처럼 보여도 tool result나 phase 전환에서 digest, full-content locator, truncation, pagination 같은 typed metadata가 드러나면 owner와 topology를 다시 평가합니다. 본문 문자열에 우연히 `truncated`, `hasMore`, `offset`이 등장했다는 이유만으로 routing을 바꾸지 않습니다.
+최초 prompt가 작은 작업처럼 보여도 tool result나 phase 전환에서 구조적 fan-out이 드러나면 owner와 topology를 다시 평가합니다. 현재 runtime은 `get_mcp_content`의 typed full-content metadata와 trusted built-in(`read`, `bash`, `grep`, `find`, `ls`)의 typed truncation metadata만 신호로 관찰합니다. 작은 MCP 결과의 `mcpDigest`와 producer가 없는 synthetic pagination metadata는 신호가 아니며, 본문 문자열에 우연히 `truncated`, `hasMore`, `offset`이 등장했다는 이유만으로 routing을 바꾸지 않습니다.
 
 ## Async Boundary
 
