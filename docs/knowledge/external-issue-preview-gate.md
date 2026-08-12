@@ -19,8 +19,8 @@ applies_to:
   - skills/ship
 source:
   - session-backfill:2026-05-05#skill-surface-review
-reviewed_at: 2026-07-11
-reviewed_commit: cb42256
+reviewed_at: 2026-08-12
+reviewed_commit: 97615abad79851231a3ae7eab1b6fad5e7eeca4d
 related:
   - live-artifact-preview-pattern
   - ask-user-question-decision-gates
