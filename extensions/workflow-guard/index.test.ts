@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import workflowGuard from "./index.ts";
 
-function createHarness() {
+function createHarness(options: { cwd?: string; originUrl?: string; trustedInternalPullRequestRepositories?: string[] } = {}) {
 	const hooks: Record<string, any> = {};
 	const tools: Record<string, any> = {};
 	let thinkingLevel = "high";
@@ -17,12 +17,19 @@ function createHarness() {
 		registerTool(tool: any) {
 			tools[tool.name] = tool;
 		},
-		exec: async () => ({ code: 0, stdout: "", stderr: "" }),
+		exec: async (command: string, args: string[]) => {
+			if (command === "git" && args.join(" ") === "config --get remote.origin.url" && options.originUrl) {
+				return { code: 0, stdout: `${options.originUrl}\n`, stderr: "" };
+			}
+			return { code: 0, stdout: "", stderr: "" };
+		},
 		getThinkingLevel: () => thinkingLevel,
 	} as any;
-	workflowGuard(pi);
+	workflowGuard(pi, {
+		trustedInternalPullRequestRepositories: options.trustedInternalPullRequestRepositories ?? [],
+	});
 	const ctx = {
-		cwd: process.cwd(),
+		cwd: options.cwd ?? process.cwd(),
 		model: { provider: "openai-codex", id: "gpt-5.6-sol" },
 		sessionManager: { getSessionFile: () => "/tmp/workflow-guard-test.jsonl" },
 	};
@@ -86,6 +93,95 @@ test("external Issue and PR creation requires CONTRIBUTING review plus separate 
 		},
 	}, ctx);
 	assert.equal(approved, undefined);
+});
+
+test("trusted internal PR repositories bypass only the upstream PR publish gate", async () => {
+	const root = await mkdtemp(join(tmpdir(), "workflow-guard-internal-pr-"));
+	try {
+		const { hooks, ctx } = createHarness({
+			cwd: root,
+			originUrl: "https://github.com/creatrip/product.git",
+			trustedInternalPullRequestRepositories: ["creatrip/product"],
+		});
+		const start = await hooks.before_agent_start({ prompt: "/create-pr production", systemPrompt: "base" }, ctx);
+
+		assert.match(start.message.details.state.summary, /externalPublish=internal-trusted/);
+		assert.doesNotMatch(start.systemPrompt, /EXTERNAL ISSUE\/PR PUBLISH GATE/);
+
+		const internalPr = await hooks.tool_call({
+			toolName: "bash",
+			input: { command: "gh pr create --repo creatrip/product --base production --title test --body body" },
+		}, ctx);
+		assert.equal(internalPr, undefined);
+
+		const internalPrWithGlobalRepo = await hooks.tool_call({
+			toolName: "bash",
+			input: { command: "gh -R creatrip/product pr create --base production --title test --body body" },
+		}, ctx);
+		assert.equal(internalPrWithGlobalRepo, undefined);
+
+		const internalIssue = await hooks.tool_call({
+			toolName: "bash",
+			input: { command: "gh issue create --repo creatrip/product --title test --body body" },
+		}, ctx);
+		assert.equal(internalIssue?.block, true);
+
+		const externalPr = await hooks.tool_call({
+			toolName: "bash",
+			input: { command: "gh pr create --repo upstream/project --title test --body body" },
+		}, ctx);
+		assert.equal(externalPr?.block, true);
+
+		const dynamicRepository = await hooks.tool_call({
+			toolName: "bash",
+			input: { command: "gh -R \"$TARGET_REPOSITORY\" pr create --title test --body body" },
+		}, ctx);
+		assert.equal(dynamicRepository?.block, true);
+
+		const mixedPublish = await hooks.tool_call({
+			toolName: "bash",
+			input: {
+				command: "gh pr create --repo creatrip/product --title test --body body && gh issue create --repo creatrip/product --title issue --body body",
+			},
+		}, ctx);
+		assert.equal(mixedPublish?.block, true);
+
+		const externalPrompt = createHarness({
+			cwd: root,
+			originUrl: "https://github.com/creatrip/product.git",
+			trustedInternalPullRequestRepositories: ["creatrip/product"],
+		});
+		const externalStart = await externalPrompt.hooks.before_agent_start({
+			prompt: "/create-pr --repo upstream/project",
+			systemPrompt: "base",
+		}, externalPrompt.ctx);
+		assert.match(externalStart.systemPrompt, /EXTERNAL ISSUE\/PR PUBLISH GATE/);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("project-local profiles cannot self-declare a trusted PR repository", async () => {
+	const root = await mkdtemp(join(tmpdir(), "workflow-guard-project-profile-"));
+	try {
+		await mkdir(join(root, ".pi", "profiles"), { recursive: true });
+		await writeFile(join(root, ".pi", "profiles", "workflow-guard.json"), JSON.stringify({
+			workflowGuard: {
+				trustedInternalPullRequestRepositories: ["untrusted/project"],
+			},
+		}));
+		const { hooks, ctx } = createHarness({ cwd: root, originUrl: "https://github.com/untrusted/project.git" });
+		const start = await hooks.before_agent_start({ prompt: "/create-pr", systemPrompt: "base" }, ctx);
+		assert.match(start.systemPrompt, /EXTERNAL ISSUE\/PR PUBLISH GATE/);
+
+		const blocked = await hooks.tool_call({
+			toolName: "bash",
+			input: { command: "gh pr create --repo untrusted/project --title test --body body" },
+		}, ctx);
+		assert.equal(blocked?.block, true);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
 });
 
 test("light hotfix PR path blocks deep context mining", async () => {

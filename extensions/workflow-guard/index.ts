@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import { parseSubagentCommandVerb } from "../subagent/cli.ts";
+import { loadWorkflowGuardProfiles } from "../utils/private-profiles.ts";
 import { formatWorkContextCard, gateWorkContext, loadOrDeriveWorkContext, type WorkContextCard, type WorkContextGateResult } from "../utils/work-context.ts";
 
 type Intent = "answer" | "investigate" | "implement" | "hotfix" | "verify_report" | "audit" | "ship" | "knowledge" | "status_note" | "unknown";
@@ -19,6 +20,7 @@ interface GuardState {
 	explicitSingleCommit: boolean;
 	explicitCommitPushOnly: boolean;
 	explicitPrAction: boolean;
+	explicitIssueAction: boolean;
 	explicitExternalPublish: boolean;
 	auditRequired: boolean;
 	sqlReview: boolean;
@@ -30,6 +32,7 @@ interface GuardState {
 	followUpCorrection: boolean;
 	largeWorkObserved: boolean;
 	largeWorkBasis?: string;
+	trustedInternalPullRequestRepository?: string;
 	createdAt: string;
 	sessionFile?: string;
 }
@@ -303,7 +306,7 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 		!explicitMutation ? "mutation=not-requested" : null,
 	].filter(Boolean).join(" · ");
 
-	return { prompt: authoritativePrompt, intent, weight, explicitHeavy, explicitMutation, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, explicitExternalPublish, auditRequired, sqlReview, detachedArtifactTask, mixedRequest, parallelInvestigationSuggested, summary, continuationCue, followUpCorrection, largeWorkObserved: false, createdAt: new Date().toISOString(), sessionFile };
+	return { prompt: authoritativePrompt, intent, weight, explicitHeavy, explicitMutation, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, explicitIssueAction, explicitExternalPublish, auditRequired, sqlReview, detachedArtifactTask, mixedRequest, parallelInvestigationSuggested, summary, continuationCue, followUpCorrection, largeWorkObserved: false, createdAt: new Date().toISOString(), sessionFile };
 }
 
 function fastPaceBudgetSeconds(state: GuardState): number | undefined {
@@ -351,7 +354,7 @@ function buildSystemPrompt(state: GuardState, ultraMode = false): string {
 		);
 	}
 
-	if (state.explicitExternalPublish && state.intent !== "status_note") {
+	if (state.explicitExternalPublish && !state.trustedInternalPullRequestRepository && state.intent !== "status_note") {
 		lines.push(
 			"- EXTERNAL ISSUE/PR PUBLISH GATE: do not create or submit an external Issue or PR in this turn.",
 			"- First read the target repository's CONTRIBUTING.md and every contribution guide it links that affects eligibility, scope, issue-first flow, or contributor approval.",
@@ -508,16 +511,87 @@ function isGitPushCommand(command: string): boolean {
 	return /(^|[;&|]\s*)git\s+push\b/.test(command.replace(/\s+/g, " "));
 }
 
+const GH_REPO_SELECTOR = "(?:(?:--repo|-R)(?:=|\\s+)(?:\"[^\"]+\"|'[^']+'|[^\\s;&|]+)\\s+)?";
+
 function isExternalIssueOrPrCreateCommand(command: string): boolean {
 	const compact = command.replace(/\s+/g, " ").trim();
 	const commandPrefix = "(?:[A-Z_][A-Z0-9_]*=[^\\s]+\\s+)*";
-	return new RegExp(`(^|[;&|]\\s*)${commandPrefix}gh\\s+(issue|pr)\\s+create\\b`).test(compact)
+	return new RegExp(`(^|[;&|]\\s*)${commandPrefix}gh\\s+${GH_REPO_SELECTOR}(issue|pr)\\s+create\\b`).test(compact)
 		|| new RegExp(`(^|[;&|]\\s*)${commandPrefix}gh\\s+api\\b(?=[^;&|]*(?:--method|-X)\\s+POST\\b)(?=[^;&|]*\\/(?:issues|pulls)(?:\\s|$|\\?))`).test(compact);
+}
+
+function isPullRequestCreateCommand(command: string): boolean {
+	const compact = command.replace(/\s+/g, " ").trim();
+	const commandPrefix = "(?:[A-Z_][A-Z0-9_]*=[^\\s]+\\s+)*";
+	return new RegExp(`(^|[;&|]\\s*)${commandPrefix}gh\\s+${GH_REPO_SELECTOR}pr\\s+create\\b`).test(compact)
+		|| new RegExp(`(^|[;&|]\\s*)${commandPrefix}gh\\s+api\\b(?=[^;&|]*(?:--method|-X)\\s+POST\\b)(?=[^;&|]*\\/pulls(?:\\s|$|\\?))`).test(compact);
+}
+
+function externalIssueOrPrCreateCommandCount(command: string): number {
+	const compact = command.replace(/\s+/g, " ").trim();
+	const direct = compact.match(new RegExp(`\\bgh\\s+${GH_REPO_SELECTOR}(?:issue|pr)\\s+create\\b`, "g")) ?? [];
+	const api = compact.match(/\bgh\s+api\b[^;&|]*(?:--method|-X)\s+POST\b[^;&|]*\/(?:issues|pulls)(?:[?\s"']|$)/g) ?? [];
+	return direct.length + api.length;
 }
 
 function hasExternalPublishApproval(command: string): boolean {
 	return /WORKFLOW_GUARD_CONTRIBUTING_CHECKED=1/.test(command)
 		&& /WORKFLOW_GUARD_EXTERNAL_PUBLISH_APPROVED=1/.test(command);
+}
+
+function normalizeGitHubRepository(value: string): string | undefined {
+	const trimmed = value.trim().replace(/^["']|["']$/g, "").replace(/[?#].*$/, "");
+	const path = trimmed
+		.replace(/^git@github\.com:/i, "")
+		.replace(/^ssh:\/\/git@github\.com\//i, "")
+		.replace(/^https?:\/\/github\.com\//i, "")
+		.replace(/^github\.com\//i, "")
+		.replace(/^\/+|\/+$/g, "")
+		.replace(/\.git$/i, "");
+	if (!/^[^/\s]+\/[^/\s]+$/.test(path)) return undefined;
+	return path.toLowerCase();
+}
+
+function explicitPublishRepository(command: string): { specified: boolean; repository?: string } {
+	const repoFlag = command.match(/(?:^|\s)(?:--repo|-R)(?:=|\s+)(?:"([^"]+)"|'([^']+)'|([^\s;&|]+))/);
+	if (repoFlag) {
+		return {
+			specified: true,
+			repository: normalizeGitHubRepository(repoFlag[1] ?? repoFlag[2] ?? repoFlag[3] ?? ""),
+		};
+	}
+	const apiPath = command.match(/(?:^|[\s"'])\/?repos\/([^/\s"']+)\/([^/\s"']+)\/(?:issues|pulls)(?:[?\s"']|$)/i);
+	return apiPath
+		? { specified: true, repository: normalizeGitHubRepository(`${apiPath[1]}/${apiPath[2]}`) }
+		: { specified: false };
+}
+
+async function currentGitHubRepository(pi: ExtensionAPI, cwd: string): Promise<string | undefined> {
+	try {
+		const result = await pi.exec("git", ["config", "--get", "remote.origin.url"], { cwd });
+		if (result.code !== 0) return undefined;
+		return normalizeGitHubRepository(result.stdout);
+	} catch {
+		return undefined;
+	}
+}
+
+async function publishRepository(pi: ExtensionAPI, cwd: string, command = ""): Promise<string | undefined> {
+	const explicit = explicitPublishRepository(command);
+	return explicit.specified ? explicit.repository : currentGitHubRepository(pi, cwd);
+}
+
+function isTrustedInternalPullRequestRepository(repository: string | undefined, trustedRepositories: readonly string[]): boolean {
+	if (!repository) return false;
+	const trusted = trustedRepositories
+		.map(normalizeGitHubRepository)
+		.filter((value): value is string => Boolean(value));
+	return trusted.includes(repository);
+}
+
+function markTrustedInternalPullRequest(state: GuardState, repository: string) {
+	state.trustedInternalPullRequestRepository = repository;
+	state.summary = state.summary.replace("externalPublish=approval-gated", "externalPublish=internal-trusted");
 }
 
 function externalPublishBlockReason(): string {
@@ -971,11 +1045,21 @@ function actionContinuityNote(kind: string, details: any): string | undefined {
 	return undefined;
 }
 
-export default function workflowGuard(pi: ExtensionAPI) {
+export default function workflowGuard(
+	pi: ExtensionAPI,
+	options: { trustedInternalPullRequestRepositories?: string[] } = {},
+) {
+	const trustedInternalPullRequestRepositories = options.trustedInternalPullRequestRepositories
+		?? loadWorkflowGuardProfiles().flatMap((profile) => profile.trustedInternalPullRequestRepositories ?? []);
+
 	pi.on("before_agent_start", async (event, ctx) => {
 		const key = sessionKey(ctx);
 		const sessionFile = ctx.sessionManager?.getSessionFile?.();
 		const state = classifyPrompt(event.prompt, sessionFile);
+		if (state.explicitPrAction && !state.explicitIssueAction) {
+			const repository = await publishRepository(pi, ctx.cwd, event.prompt);
+			if (isTrustedInternalPullRequestRepository(repository, trustedInternalPullRequestRepositories)) markTrustedInternalPullRequest(state, repository!);
+		}
 		const ultraMode = pi.getThinkingLevel() === "ultra";
 		rememberGuardState(key, state);
 		const audit = state.auditRequired ? buildAuditSnapshot({ prompt: event.prompt }) : undefined;
@@ -1036,7 +1120,13 @@ export default function workflowGuard(pi: ExtensionAPI) {
 		if (event.toolName === "bash") {
 			const command = String(event.input?.command ?? "");
 			if (isExternalIssueOrPrCreateCommand(command) && !hasExternalPublishApproval(command)) {
-				return { block: true, reason: externalPublishBlockReason() };
+				const repository = await publishRepository(pi, ctx.cwd, command);
+				const trustedInternalPr = state.explicitPrAction
+					&& !state.explicitIssueAction
+					&& isPullRequestCreateCommand(command)
+					&& externalIssueOrPrCreateCommandCount(command) === 1
+					&& isTrustedInternalPullRequestRepository(repository, trustedInternalPullRequestRepositories);
+				if (!trustedInternalPr) return { block: true, reason: externalPublishBlockReason() };
 			}
 			if (isTargetedValidationWrapperCommand(command) && !validationWrapperBypass(command)) {
 				notifyValidationWrapperNudge(ctx);

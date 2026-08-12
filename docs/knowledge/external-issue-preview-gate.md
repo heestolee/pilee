@@ -39,7 +39,11 @@ GitHub Issue/PR이나 Jira 같은 외부 시스템에 쓰는 내용은 로컬 �
 
 Issue/PR 생성·수정 전에는 repo, 게시 계정, 제목, 본문, base/head, 기여 규칙 준수 결과를 사용자에게 preview합니다. 최초 요청의 “만들어줘/PR까지”는 final approval이 아닙니다. Preview 이후 사용자가 별도로 명시적 승인한 뒤에만 외부 API를 호출합니다. 포맷 정리와 실제 전송은 별도 단계입니다.
 
-GitHub CLI 생성 명령은 guard가 요구하는 CONTRIBUTING 확인/최종 승인 표식을 모두 가져야 합니다. REST/MCP 경로도 같은 계약을 따릅니다. 조직별 Jira URL, project key 추론, MCP 우선순위, issue type convention은 public skill에 박지 않고 private/project overlay가 담당합니다.
+GitHub CLI 생성 명령은 guard가 요구하는 CONTRIBUTING 확인/최종 승인 표식을 모두 가져야 합니다. REST/MCP 경로도 같은 계약을 따릅니다.
+
+단, 설치된 private/global profile이 `trustedInternalPullRequestRepositories`로 명시한 조직 내부 저장소의 PR은 upstream 외부 기여가 아닙니다. 사용자가 그 PR 생성을 명시적으로 요청한 턴에는 CONTRIBUTING 재확인과 별도 최종 승인 게이트를 반복하지 않습니다. 이 예외는 PR에만 적용하며 GitHub Issue, profile에 없는 저장소, 명령의 `--repo/-R` 또는 REST 경로가 다른 저장소를 가리키는 경우에는 원래 게이트를 유지합니다. 대상 프로젝트 자신의 `.pi/profiles`는 스스로 이 권한을 선언할 수 없습니다. 구체적인 회사 저장소 이름은 public code가 아니라 private overlay profile에 둡니다.
+
+조직별 Jira URL, project key 추론, MCP 우선순위, issue type convention은 public skill에 박지 않고 private/project overlay가 담당합니다.
 
 ## Failure Mode
 

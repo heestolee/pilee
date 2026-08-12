@@ -118,6 +118,10 @@ export interface StudyHardProfile {
 	downloadDir?: string;
 }
 
+export interface WorkflowGuardProfile {
+	trustedInternalPullRequestRepositories?: string[];
+}
+
 export interface PileeRuntimeProfile {
 	worktree?: {
 		repos?: WorktreeRepoProfile[];
@@ -127,6 +131,7 @@ export interface PileeRuntimeProfile {
 	conductor?: ConductorProfile;
 	retro?: RetroProfile;
 	studyHard?: StudyHardProfile;
+	workflowGuard?: WorkflowGuardProfile;
 }
 
 function safeReadDir(dir: string): string[] {
@@ -244,6 +249,10 @@ export function loadRetroProfiles(cwd?: string): RetroProfile[] {
 
 export function loadStudyHardProfiles(cwd?: string): StudyHardProfile[] {
 	return loadPileeRuntimeProfiles(cwd).map((profile) => profile.studyHard).filter((profile): profile is StudyHardProfile => Boolean(profile));
+}
+
+export function loadWorkflowGuardProfiles(cwd?: string): WorkflowGuardProfile[] {
+	return loadPileeRuntimeProfiles(cwd).map((profile) => profile.workflowGuard).filter((profile): profile is WorkflowGuardProfile => Boolean(profile));
 }
 
 export function expandProfileTemplate(value: string, vars: Record<string, string | undefined> = {}): string {
