@@ -142,19 +142,47 @@ function isDirectory(path: string): boolean {
 	try { return statSync(path).isDirectory(); } catch { return false; }
 }
 
-function settingsPackageLocalRoots(): string[] {
+function settingsPackageSources(): { settingsDir: string; sources: string[] } {
 	const settingsPath = join(homedir(), ".pi", "agent", "settings.json");
-	if (!existsSync(settingsPath)) return [];
+	if (!existsSync(settingsPath)) return { settingsDir: dirname(settingsPath), sources: [] };
 	try {
 		const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as { packages?: Array<string | { source?: string }> };
-		const settingsDir = dirname(settingsPath);
-		return (settings.packages ?? [])
-			.map((entry) => typeof entry === "string" ? entry : entry.source ?? "")
-			.filter((source) => source.startsWith("/") || source.startsWith("./") || source.startsWith("../") || source.startsWith("~"))
-			.map((source) => expandProfileTemplate(source, { settingsDir }))
-			.map((source) => source.startsWith(".") ? resolve(settingsDir, source) : source)
-			.filter(isDirectory);
-	} catch { return []; }
+		return {
+			settingsDir: dirname(settingsPath),
+			sources: (settings.packages ?? []).map((entry) => typeof entry === "string" ? entry : entry.source ?? "").filter(Boolean),
+		};
+	} catch {
+		return { settingsDir: dirname(settingsPath), sources: [] };
+	}
+}
+
+function localPackageRoot(source: string, settingsDir: string): string | undefined {
+	if (!(source.startsWith("/") || source.startsWith("./") || source.startsWith("../") || source.startsWith("~"))) return undefined;
+	const expanded = expandProfileTemplate(source, { settingsDir });
+	return expanded.startsWith(".") ? resolve(settingsDir, expanded) : expanded;
+}
+
+function githubPackageRoot(source: string): string | undefined {
+	const normalized = source.replace(/^git:/, "").replace(/^git\+/, "").replace(/#.*$/, "");
+	const match = normalized.match(/^(?:https?:\/\/github\.com\/|ssh:\/\/git@github\.com\/|git@github\.com:)([^/]+)\/(.+?)(?:\.git)?$/i);
+	if (!match) return undefined;
+	return join(homedir(), ".pi", "agent", "git", "github.com", match[1], match[2]);
+}
+
+function activeSettingsPackageRoots(): string[] {
+	const { settingsDir, sources } = settingsPackageSources();
+	return sources
+		.map((source) => localPackageRoot(source, settingsDir) ?? githubPackageRoot(source))
+		.filter((root): root is string => Boolean(root))
+		.filter(isDirectory);
+}
+
+function settingsPackageLocalRoots(): string[] {
+	const { settingsDir, sources } = settingsPackageSources();
+	return sources
+		.map((source) => localPackageRoot(source, settingsDir))
+		.filter((root): root is string => Boolean(root))
+		.filter(isDirectory);
 }
 
 function gitPackageRoots(): string[] {
@@ -193,16 +221,10 @@ function projectProfileDirs(cwd?: string): string[] {
 	return dirs;
 }
 
-export function profileFiles(cwd?: string): string[] {
-	const dirs = [
-		join(homedir(), ".pi", "agent", "profiles"),
-		...settingsPackageLocalRoots().flatMap(profileDirsFromRoot),
-		...gitPackageRoots().flatMap(profileDirsFromRoot),
-		...projectProfileDirs(cwd),
-	].filter(isDirectory);
+function profileFilesFromDirs(dirs: string[]): string[] {
 	const seen = new Set<string>();
 	const files: string[] = [];
-	for (const dir of dirs) {
+	for (const dir of dirs.filter(isDirectory)) {
 		for (const file of safeReadDir(dir).filter((name) => name.endsWith(".json")).sort()) {
 			const path = join(dir, file);
 			try {
@@ -214,6 +236,15 @@ export function profileFiles(cwd?: string): string[] {
 		}
 	}
 	return files;
+}
+
+export function profileFiles(cwd?: string): string[] {
+	return profileFilesFromDirs([
+		join(homedir(), ".pi", "agent", "profiles"),
+		...settingsPackageLocalRoots().flatMap(profileDirsFromRoot),
+		...gitPackageRoots().flatMap(profileDirsFromRoot),
+		...projectProfileDirs(cwd),
+	]);
 }
 
 export function loadPileeRuntimeProfiles(cwd?: string): PileeRuntimeProfile[] {
@@ -251,8 +282,21 @@ export function loadStudyHardProfiles(cwd?: string): StudyHardProfile[] {
 	return loadPileeRuntimeProfiles(cwd).map((profile) => profile.studyHard).filter((profile): profile is StudyHardProfile => Boolean(profile));
 }
 
-export function loadWorkflowGuardProfiles(cwd?: string): WorkflowGuardProfile[] {
-	return loadPileeRuntimeProfiles(cwd).map((profile) => profile.workflowGuard).filter((profile): profile is WorkflowGuardProfile => Boolean(profile));
+export function loadWorkflowGuardProfiles(options: { agentDir?: string; activePackageRoots?: string[] } = {}): WorkflowGuardProfile[] {
+	const agentDir = options.agentDir ?? join(homedir(), ".pi", "agent");
+	const activePackageRoots = options.activePackageRoots ?? activeSettingsPackageRoots();
+	const files = profileFilesFromDirs([
+		join(agentDir, "profiles"),
+		...activePackageRoots.flatMap(profileDirsFromRoot),
+	]);
+	return files.flatMap((file) => {
+		try {
+			const profile = (JSON.parse(readFileSync(file, "utf8")) as PileeRuntimeProfile).workflowGuard;
+			return profile ? [profile] : [];
+		} catch {
+			return [];
+		}
+	});
 }
 
 export function expandProfileTemplate(value: string, vars: Record<string, string | undefined> = {}): string {

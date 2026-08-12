@@ -103,8 +103,12 @@ test("trusted internal PR repositories bypass only the upstream PR publish gate"
 			originUrl: "https://github.com/creatrip/product.git",
 			trustedInternalPullRequestRepositories: ["creatrip/product"],
 		});
-		const start = await hooks.before_agent_start({ prompt: "/create-pr production", systemPrompt: "base" }, ctx);
+		const start = await hooks.before_agent_start({
+			prompt: "/create-pr production\n\n런타임 dry 검증: guard 상태를 확인한다.",
+			systemPrompt: "base",
+		}, ctx);
 
+		assert.match(start.message.details.state.summary, /intent=ship/);
 		assert.match(start.message.details.state.summary, /externalPublish=internal-trusted/);
 		assert.doesNotMatch(start.systemPrompt, /EXTERNAL ISSUE\/PR PUBLISH GATE/);
 

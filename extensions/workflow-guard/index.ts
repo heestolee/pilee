@@ -251,8 +251,9 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 	const mixedRequest = implementationDirective && hasMixedImplementationInvestigationPrompt(authoritativePrompt, normalized);
 	const parallelInvestigationSuggested = mixedRequest;
 	const implement = implementationDirective || detachedArtifactTask;
-	const shipDirective = !statusNote && !noMutation && !readOnlyShipSignal && hasShipDirective(normalized);
-	const explicitPrAction = shipDirective && hasAny(normalized, [/create-pr|create\s+pr|open\s+pr|pull\s+request|\bpr\b\s*(?:생성|만들|올려|열어|작성|요청|리뷰\s*요청)/]);
+	const explicitCreatePrCommand = /(?:^|\n)\s*\/create-pr(?:\s|$)/m.test(authoritativePrompt);
+	const shipDirective = !statusNote && !noMutation && (explicitCreatePrCommand || (!readOnlyShipSignal && hasShipDirective(normalized)));
+	const explicitPrAction = shipDirective && (explicitCreatePrCommand || hasAny(normalized, [/create-pr|create\s+pr|open\s+pr|pull\s+request|\bpr\b\s*(?:생성|만들|올려|열어|작성|요청|리뷰\s*요청)/]));
 	const explicitIssueAction = hasAny(normalized, [/(?:github\s*)?(?:issue|이슈)\s*(?:생성|만들|올려|열어|작성|create|open)/, /(?:create|open)\s+(?:an?\s+)?issue/]);
 	const explicitExternalPublish = explicitPrAction || explicitIssueAction;
 	const ship = shipDirective;
