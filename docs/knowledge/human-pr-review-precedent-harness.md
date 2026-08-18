@@ -17,7 +17,7 @@ source:
   - conversation:2026-08-11-human-meta-review-corpus
   - conversation:2026-08-18-easy-review-harness
 reviewed_at: 2026-08-18
-reviewed_commit: 0eafe7e
+reviewed_commit: 4cd075b
 related:
   - evidence-first-verification-gate
   - live-artifact-preview-pattern
@@ -44,6 +44,12 @@ PR source는 원본 diff, 파싱된 line, stable `D...` evidence id, chunk inspe
 4. 같은 패턴을 LLM이 다시 만들지 않게 하는 meta perspective
 
 메타 관점은 기존 skill/guide가 적용 가능한지, 타입·API·도메인 구조로 잘못 만들기 어렵게 할 수 있는지, lint·test·CI로 정확히 잡을 수 있는지, 현재 PR과 follow-up 중 어디에서 닫을지를 다룹니다. 반복 근거나 정확한 대체 행동이 없으면 `scope: none`이 올바른 결과입니다.
+
+## Document-First Render Rule
+
+Review Studio의 기본 표면은 카드 대시보드가 아니라 Easy Review처럼 순서대로 읽히는 리뷰 문서입니다. `Overview → 먼저 볼 점 → 파일별 접이식 diff → 해당 코드 바로 아래 inline review → 검증 범위` 순서를 유지합니다. 코드·리뷰 초안·설명은 기본으로 읽히게 두고, 메타 관점·인간 precedent·문구 편집은 접습니다. 결정 버튼은 리뷰 본문을 지배하지 않는 작은 inline action으로 둡니다.
+
+서로 멀리 떨어진 evidence를 하나의 `min..max` 코드 블록으로 합치지 않습니다. evidence별 주변 문맥을 분리하고 사이 범위는 fold 또는 omitted marker로 표현합니다. 전체 파일 coverage는 file section과 minimap으로 보존하되, finding이 없는 파일은 기본 접힘 상태로 둡니다.
 
 ## Corpus Boundary
 
