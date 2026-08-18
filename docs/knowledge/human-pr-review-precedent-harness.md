@@ -12,12 +12,14 @@ status: active
 confidence: high
 applies_to:
   - extensions/pr-review
+  - extensions/worktree
+  - extensions/diff-overlay
   - skills/human-pr-review
 source:
   - conversation:2026-08-11-human-meta-review-corpus
   - conversation:2026-08-18-easy-review-harness
 reviewed_at: 2026-08-18
-reviewed_commit: 4cd075b
+reviewed_commit: 71d4a46
 related:
   - evidence-first-verification-gate
   - live-artifact-preview-pattern
@@ -50,6 +52,18 @@ PR source는 원본 diff, 파싱된 line, stable `D...` evidence id, chunk inspe
 Review Studio의 기본 표면은 카드 대시보드가 아니라 Easy Review처럼 순서대로 읽히는 리뷰 문서입니다. `Overview → 먼저 볼 점 → 파일별 접이식 diff → 해당 코드 바로 아래 inline review → 검증 범위` 순서를 유지합니다. 코드·리뷰 초안·설명은 기본으로 읽히게 두고, 메타 관점·인간 precedent·문구 편집은 접습니다. 결정 버튼은 리뷰 본문을 지배하지 않는 작은 inline action으로 둡니다.
 
 서로 멀리 떨어진 evidence를 하나의 `min..max` 코드 블록으로 합치지 않습니다. evidence별 주변 문맥을 분리하고 사이 범위는 fold 또는 omitted marker로 표현합니다. 전체 파일 coverage는 file section과 minimap으로 보존하되, finding이 없는 파일은 기본 접힘 상태로 둡니다.
+
+## Checkout Execution Boundary
+
+`/pr-review <URL>`은 홈 cwd에서 diff만 수집하고 끝나지 않습니다. GitHub PR head SHA에서 전용 `review/pr-<number>-<head>` worktree를 만들고, `.pi/pr-review.json`에 base/head/run/session provenance를 저장한 뒤 그 cwd의 Pi session으로 전환합니다. Review Studio 오른쪽 질문은 이 checkout session으로 들어가므로 agent가 실제 source·callsite·schema·test를 조사할 수 있습니다.
+
+Review worktree는 read-only 실행 경계입니다. dependency bootstrap을 자동 실행하지 않고 사용자가 수정 요청을 별도로 주기 전에는 repository를 변경하지 않습니다. `/diff`는 explicit `--base`가 없을 때 `.pi/pr-review.json`을 먼저 읽고 captured head와 현재 HEAD가 같을 때만 base SHA와의 merge-base를 사용합니다. Head가 drift하면 기존 finding을 유효한 것처럼 보여주지 않고 stale 오류를 냅니다.
+
+## Guided Review Conversation
+
+오른쪽 대화 패널은 선택한 card/file/evidence를 질문 context로 저장합니다. 질문은 같은 Pi session transcript에 전달되고, 답변 전 agent가 checkout source를 직접 조사해야 합니다. 답변은 `쉬운 설명 → 코드에서 확인된 사실 → 아직 모르는 정책/가정 → 리뷰 판단` 순서와 source evidence를 갖고 `questions.jsonl` append-only snapshot으로 보존됩니다.
+
+Generic `/wt fork`와 달리 PR review session의 current truth는 immutable run과 checkout metadata입니다. 대형 원 transcript를 복제하면 Review TUI를 과부하시키므로 compact review handoff와 source `/archive` reference를 사용합니다. 이것은 일반 worktree context 기본값을 바꾸는 것이 아니라, source-native canonical이 이미 있는 review 전용 예외입니다.
 
 ## Corpus Boundary
 

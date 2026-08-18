@@ -199,7 +199,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-06-02 | 7861f10 | frame, planning, identity, home-directory, ticket, session-title |
 | [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-06-16 | 87c864f | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
 | [Frame v2는 작업·학습 lane을 양방향으로 연결한다](./frame-v2-learning-note-pilot.md) | active | high | 2026-07-18 | 88b560c | frame-v2, frame, study-hard, learning-note, worktree |
-| [인간 PR 리뷰는 독립 판단 뒤에 precedent를 붙인다](./human-pr-review-precedent-harness.md) | active | high | 2026-08-18 | 4cd075b | pr-review, human-review, precedent, evidence, glimpse, meta-review |
+| [인간 PR 리뷰는 독립 판단 뒤에 precedent를 붙인다](./human-pr-review-precedent-harness.md) | active | high | 2026-08-18 | 71d4a46 | pr-review, human-review, precedent, evidence, glimpse, meta-review |
 | [Interactive shell은 bash가 아닌 터미널 세션이다](./interactive-shell-overlay-tool.md) | active | high | 2026-06-29 | 680f937 | interactive-shell, shell, tui, dev-server, overlay, dispatch |
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-06-02 | 7861f10 | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 264ea17 | local-dev, server, startup, diagnosis, dev |
@@ -234,7 +234,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Worktree 생성은 현재 패널 대화가 source다](./worktree-creation-parent-gate.md) | active | high | 2026-06-02 | 61ccbc9 | worktree, fork-panel, current-panel, hotfix, context, profile-driven |
 | [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-06-02 | 63f2a62 | worktree, dependencies, bootstrap, profile-driven, worker, subagent |
 | [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-06-02 | 63f2a62 | worktree, workspace, repo, branch, execution-boundary, cwd-binding |
-| [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-06-02 | 63f2a62 | worktree, session, revive, fork-panel, panel-inbox, handoff |
+| [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-08-18 | 71d4a46 | worktree, session, revive, fork-panel, panel-inbox, handoff |
 
 ## Knowledge Map
 
