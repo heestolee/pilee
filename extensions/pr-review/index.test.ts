@@ -25,6 +25,7 @@ function fixture() {
 	const pi = {
 		registerCommand(name: string, value: any) { commands.set(name, value); },
 		registerTool(value: any) { tools.set(value.name, value); },
+		on() {},
 		async exec(command: string, args: string[]) {
 			execCalls.push({ command, args });
 			if (args[1] === "view") {

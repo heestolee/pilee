@@ -8,6 +8,7 @@ import { Type } from "typebox";
 import { expandProfileTemplate, loadPrReviewProfiles, type PrReviewCorpusProfile } from "../utils/private-profiles.ts";
 import { searchPrReviewCorpus } from "./corpus.ts";
 import { captureUnifiedDiff, renderInspectionChunk, type ReviewSourceBundle } from "./evidence.ts";
+import { closePrReviewStudios, openPrReviewStudio } from "./studio.ts";
 import {
 	createPrReviewRun,
 	loadInspection,
@@ -65,6 +66,7 @@ interface RegisterOptions {
 	stateRoot?: string;
 	now?: () => number;
 	corpora?: PrReviewCorpusProfile[];
+	openStudio?: boolean;
 }
 
 export function parseGitHubPrUrl(value: string): ParsedPrUrl {
@@ -201,13 +203,13 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 	pi.registerTool({
 		name: "pr_review_run",
 		label: "PR Review Run",
-		description: "Inspect an immutable PR diff run, search configured human-review precedents after blind findings, and submit evidence-anchored review cards. Actions: status, inspect, search, submit.",
+		description: "Inspect an immutable PR diff run, search configured human-review precedents after blind findings, submit evidence-anchored review cards, and reopen Review Studio. Actions: status, inspect, search, submit, open.",
 		promptSnippet: "Inspect /pr-review source chunks and submit exact-evidence review cards",
 		promptGuidelines: [
 			"Use pr_review_run only after /pr-review starts a run; inspect every chunk before submit and never invent code outside D evidence anchors.",
 		],
 		parameters: Type.Object({
-			action: StringEnum(["status", "inspect", "search", "submit"] as const),
+			action: StringEnum(["status", "inspect", "search", "submit", "open"] as const),
 			runId: Type.Optional(Type.String()),
 			chunkId: Type.Optional(Type.String()),
 			query: Type.Optional(Type.String()),
@@ -215,7 +217,7 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 10 })),
 			cards: Type.Optional(Type.Array(Type.Any())),
 		}),
-		async execute(_toolCallId, params, signal, onUpdate) {
+		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			if (signal?.aborted) throw new Error("PR review run cancelled");
 			const runId = params.runId ?? latestRunId;
 			if (!runId) throw new Error("active PR review run이 없습니다. /pr-review <URL>로 시작하세요.");
@@ -227,6 +229,10 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 				.map((corpus) => ({ ...corpus, corpusDir: expandProfileTemplate(corpus.corpusDir) }));
 			if (params.action === "status") {
 				return { content: [{ type: "text", text: statusText(state, source, corpora) }], details: { state, stats: source.stats, inspection: loadInspection(state), corpora } };
+			}
+			if (params.action === "open") {
+				const studio = await openPrReviewStudio(pi, ctx, state);
+				return { content: [{ type: "text", text: `PR Review Studio ${studio.mode}: ${studio.url}` }], details: { runId, ...studio } };
 			}
 			if (params.action === "inspect") {
 				if (!params.chunkId) throw new Error("inspect에는 chunkId가 필요합니다.");
@@ -264,6 +270,8 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 		},
 	});
 
+	pi.on("session_shutdown", () => closePrReviewStudios());
+
 	pi.registerCommand("pr-review", {
 		description: "GitHub PR을 코드·리뷰 초안·설명·LLM 재발 방지 메타 관점 카드로 읽기 전용 검토",
 		handler: async (args: string, ctx: ExtensionCommandContext) => {
@@ -277,8 +285,10 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 				ctx.ui.setStatus("pr-review", `PR #${parsed.number} 캡처 중`);
 				const state = await captureGitHubPrRun(pi, ctx.cwd ?? process.cwd(), parsed, stateRoot, now());
 				latestRunId = state.runId;
+				let studioMode = "disabled";
+				if (options.openStudio !== false && ctx.hasUI) studioMode = (await openPrReviewStudio(pi, ctx, state)).mode;
 				ctx.ui.setStatus("pr-review", undefined);
-				ctx.ui.notify(`🔎 PR Review 시작 · ${state.target.owner}/${state.target.repo}#${state.target.number}`, "info");
+				ctx.ui.notify(`🔎 PR Review 시작 · ${state.target.owner}/${state.target.repo}#${state.target.number} · Studio ${studioMode}`, "info");
 				pi.sendMessage(
 					{
 						customType: SHIM_CUSTOM_TYPE,
