@@ -100,6 +100,37 @@ test("/pr-review captures one PR from any cwd and sends the inlined workflow", a
 	}
 });
 
+test("/pr-review hands a UI invocation to a head-pinned review workspace session", async () => {
+	const stateRoot = mkdtempSync(join(tmpdir(), "pilee-pr-review-workspace-command-"));
+	try {
+		const { pi, commands, messages } = fixture();
+		const requests: any[] = [];
+		registerPrReview(pi, {
+			stateRoot,
+			now: () => 1500,
+			reviewWorkspaceRunner: async (_pi, _ctx, request) => {
+				requests.push(request);
+				return { status: "switched", name: "review-pr-42-head1234", branch: "review/pr-42-head1234", path: "/tmp/review-pr-42", sessionFile: "/tmp/review.jsonl", contextMode: "full-transcript", framePromotion: { status: "missing-source" } };
+			},
+		});
+		await commands.get("pr-review").handler("https://github.com/acme/repo/pull/42", {
+			cwd: "/tmp",
+			hasUI: true,
+			ui: { notify() {}, setStatus() {} },
+		});
+		assert.equal(requests.length, 1);
+		assert.equal(requests[0].repo, "repo");
+		assert.equal(requests[0].number, 42);
+		assert.equal(requests[0].baseSha, "base1234");
+		assert.equal(requests[0].headSha, "head1234567890");
+		assert.match(requests[0].afterSwitchFollowUp.content, /pr_review_run.*open/);
+		assert.match(requests[0].afterSwitchFollowUp.content, /\.pi\/pr-review\.json/);
+		assert.equal(messages.length, 0);
+	} finally {
+		rmSync(stateRoot, { recursive: true, force: true });
+	}
+});
+
 test("pr_review_run requires full inspection before evidence-anchored submit", async () => {
 	const stateRoot = mkdtempSync(join(tmpdir(), "pilee-pr-review-tool-"));
 	try {

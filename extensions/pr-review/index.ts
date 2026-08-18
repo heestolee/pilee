@@ -6,6 +6,7 @@ import { StringEnum } from "@mariozechner/pi-ai";
 import { DEFAULT_MAX_BYTES, truncateHead, type ExtensionAPI, type ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import { expandProfileTemplate, loadPrReviewProfiles, type PrReviewCorpusProfile } from "../utils/private-profiles.ts";
+import { runPrReviewWorktreeFromCommandContext } from "../worktree/pr-review.ts";
 import { searchPrReviewCorpus } from "./corpus.ts";
 import { captureUnifiedDiff, renderInspectionChunk, type ReviewSourceBundle } from "./evidence.ts";
 import { closePrReviewStudios, openPrReviewStudio } from "./studio.ts";
@@ -67,6 +68,8 @@ interface RegisterOptions {
 	now?: () => number;
 	corpora?: PrReviewCorpusProfile[];
 	openStudio?: boolean;
+	switchToReviewWorkspace?: boolean;
+	reviewWorkspaceRunner?: typeof runPrReviewWorktreeFromCommandContext;
 }
 
 export function parseGitHubPrUrl(value: string): ParsedPrUrl {
@@ -285,6 +288,45 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 				ctx.ui.setStatus("pr-review", `PR #${parsed.number} 캡처 중`);
 				const state = await captureGitHubPrRun(pi, ctx.cwd ?? process.cwd(), parsed, stateRoot, now());
 				latestRunId = state.runId;
+				if (options.switchToReviewWorkspace !== false && ctx.hasUI) {
+					if (!state.target.baseSha || !state.target.headSha || !state.target.baseRefName) throw new Error("PR worktree에는 base/head SHA와 base branch가 필요합니다.");
+					ctx.ui.setStatus("pr-review", "PR review worktree 준비 중");
+					const workspacePrompt = [
+						"# PR review workspace ready",
+						"",
+						"이 세션은 해당 PR head에 checkout된 read-only review workspace다.",
+						"1. `.pi/pr-review.json`과 `git rev-parse HEAD`를 대조한다.",
+						`2. \`pr_review_run\` action=\"open\", runId=\"${state.runId}\"로 Guided Review Studio를 연다.`,
+						"3. run이 ready면 기존 ReviewCard를 유지하고 사용자 질문을 기다린다. 아직 reviewing이면 아래 human-pr-review workflow를 끝낸다.",
+						"4. 사용자가 Glimpse에서 질문하면 이 worktree의 실제 source·callsite·test를 조사해 답한다. 사용자 요청 없이는 repository를 수정하지 않는다.",
+						"5. `/diff`는 `.pi/pr-review.json`의 base/head를 사용해야 한다.",
+						"",
+						buildPrReviewPrompt(state),
+					].join("\n");
+					const switched = await (options.reviewWorkspaceRunner ?? runPrReviewWorktreeFromCommandContext)(pi, ctx, {
+						repo: state.target.repo,
+						runId: state.runId,
+						runDir: state.runDir,
+						prUrl: state.target.url,
+						repository: `${state.target.owner}/${state.target.repo}`,
+						number: state.target.number,
+						title: state.target.title,
+						baseRefName: state.target.baseRefName,
+						baseSha: state.target.baseSha,
+						headRefName: state.target.headRefName,
+						headSha: state.target.headSha,
+						afterSwitchFollowUp: {
+							customType: "pilee-pr-review-workspace-ready",
+							content: workspacePrompt,
+							display: true,
+							details: { runId: state.runId, runDir: state.runDir, target: state.target },
+						},
+					});
+					ctx.ui.setStatus("pr-review", undefined);
+					if (switched.status !== "switched") throw new Error(switched.reason);
+					return;
+				}
+
 				let studioMode = "disabled";
 				if (options.openStudio !== false && ctx.hasUI) studioMode = (await openPrReviewStudio(pi, ctx, state)).mode;
 				ctx.ui.setStatus("pr-review", undefined);
