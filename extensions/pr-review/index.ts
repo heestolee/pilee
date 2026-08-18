@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { DEFAULT_MAX_BYTES, truncateHead, type ExtensionAPI, type ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
+import { expandProfileTemplate, loadPrReviewProfiles, type PrReviewCorpusProfile } from "../utils/private-profiles.ts";
+import { searchPrReviewCorpus } from "./corpus.ts";
 import { captureUnifiedDiff, renderInspectionChunk, type ReviewSourceBundle } from "./evidence.ts";
 import {
 	createPrReviewRun,
@@ -62,6 +64,7 @@ interface GhPrMetadata {
 interface RegisterOptions {
 	stateRoot?: string;
 	now?: () => number;
+	corpora?: PrReviewCorpusProfile[];
 }
 
 export function parseGitHubPrUrl(value: string): ParsedPrUrl {
@@ -144,7 +147,7 @@ export function buildPrReviewPrompt(state: PrReviewRunState): string {
 		"Execution rules:",
 		"- Follow the inlined human-pr-review skill as the authoritative workflow.",
 		"- Start with pr_review_run action=status, then inspect every pending chunk.",
-		"- Do not use historical review corpus before producing blind findings.",
+		"- Do not use historical review corpus before producing blind findings. After blind findings exist, use pr_review_run action=search per candidate when a corpus is configured.",
 		"- Do not modify the target repository or post GitHub comments.",
 		"- Submit final cards through pr_review_run action=submit. Empty cards are valid.",
 		"- After submit, read the generated review.md and report its path and coverage to the user.",
@@ -166,7 +169,15 @@ function runFromId(stateRoot: string, runId: string): PrReviewRunState {
 	return loadPrReviewRun(join(stateRoot, "runs", runId));
 }
 
-function statusText(state: PrReviewRunState, source: ReviewSourceBundle): string {
+function configuredCorpora(cwd: string, repository: string): PrReviewCorpusProfile[] {
+	const normalized = repository.toLowerCase();
+	return loadPrReviewProfiles(cwd)
+		.flatMap((profile) => profile.corpora ?? [])
+		.filter((corpus) => !corpus.repositories?.length || corpus.repositories.map((value) => value.toLowerCase()).includes(normalized))
+		.map((corpus) => ({ ...corpus, corpusDir: expandProfileTemplate(corpus.corpusDir) }));
+}
+
+function statusText(state: PrReviewRunState, source: ReviewSourceBundle, corpora: PrReviewCorpusProfile[] = []): string {
 	const inspection = loadInspection(state);
 	const pending = source.chunks.filter((chunk) => !inspection.inspectedChunkIds.includes(chunk.id));
 	return [
@@ -176,6 +187,7 @@ function statusText(state: PrReviewRunState, source: ReviewSourceBundle): string
 		`source: ${source.stats.files} files, +${source.stats.additions}/-${source.stats.deletions}, ${source.stats.chunks} chunks`,
 		`inspection: ${inspection.inspectedChunkIds.length}/${source.chunks.length}`,
 		`pending chunks: ${pending.map((chunk) => chunk.id).join(", ") || "none"}`,
+		`human review corpus: ${corpora.map((corpus) => corpus.id).join(", ") || "not configured"}`,
 		"files:",
 		...source.files.map((file) => `- ${file.id} ${file.status} +${file.additions}/-${file.deletions} ${file.path}`),
 	].join("\n");
@@ -189,15 +201,18 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 	pi.registerTool({
 		name: "pr_review_run",
 		label: "PR Review Run",
-		description: "Inspect an immutable PR diff run and submit evidence-anchored review cards. Actions: status, inspect, submit.",
+		description: "Inspect an immutable PR diff run, search configured human-review precedents after blind findings, and submit evidence-anchored review cards. Actions: status, inspect, search, submit.",
 		promptSnippet: "Inspect /pr-review source chunks and submit exact-evidence review cards",
 		promptGuidelines: [
 			"Use pr_review_run only after /pr-review starts a run; inspect every chunk before submit and never invent code outside D evidence anchors.",
 		],
 		parameters: Type.Object({
-			action: StringEnum(["status", "inspect", "submit"] as const),
+			action: StringEnum(["status", "inspect", "search", "submit"] as const),
 			runId: Type.Optional(Type.String()),
 			chunkId: Type.Optional(Type.String()),
+			query: Type.Optional(Type.String()),
+			paths: Type.Optional(Type.Array(Type.String())),
+			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 10 })),
 			cards: Type.Optional(Type.Array(Type.Any())),
 		}),
 		async execute(_toolCallId, params, signal, onUpdate) {
@@ -206,8 +221,12 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 			if (!runId) throw new Error("active PR review run이 없습니다. /pr-review <URL>로 시작하세요.");
 			const state = runFromId(stateRoot, runId);
 			const source = readJson<ReviewSourceBundle>(state.sourcePath);
+			const repository = `${state.target.owner}/${state.target.repo}`;
+			const corpora = (options.corpora ?? configuredCorpora(state.runDir, repository))
+				.filter((corpus) => !corpus.repositories?.length || corpus.repositories.map((value) => value.toLowerCase()).includes(repository.toLowerCase()))
+				.map((corpus) => ({ ...corpus, corpusDir: expandProfileTemplate(corpus.corpusDir) }));
 			if (params.action === "status") {
-				return { content: [{ type: "text", text: statusText(state, source) }], details: { state, stats: source.stats, inspection: loadInspection(state) } };
+				return { content: [{ type: "text", text: statusText(state, source, corpora) }], details: { state, stats: source.stats, inspection: loadInspection(state), corpora } };
 			}
 			if (params.action === "inspect") {
 				if (!params.chunkId) throw new Error("inspect에는 chunkId가 필요합니다.");
@@ -218,6 +237,21 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 				return { content: [{ type: "text", text }], details: { runId, chunkId: params.chunkId, inspection: loadInspection(state) } };
 			}
 			const inspection = loadInspection(state);
+			if (params.action === "search") {
+				const pending = source.chunks.filter((chunk) => !inspection.inspectedChunkIds.includes(chunk.id));
+				if (pending.length) throw new Error(`human review corpus는 blind source inspection 뒤에만 검색할 수 있습니다: ${pending.map((chunk) => chunk.id).join(", ")}`);
+				if (!params.query?.trim()) throw new Error("search에는 blind finding에서 만든 query가 필요합니다.");
+				const corpus = corpora[0];
+				if (!corpus) {
+					return { content: [{ type: "text", text: `Human review corpus not configured for ${repository}. Continue with blind review.` }], details: { runId, repository, configured: false } };
+				}
+				const result = searchPrReviewCorpus(
+					{ id: corpus.id, corpusDir: corpus.corpusDir, repositories: corpus.repositories },
+					{ repository, query: params.query, paths: params.paths, limit: params.limit },
+				);
+				return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }], details: { runId, configured: true, result } };
+			}
+
 			const pending = source.chunks.filter((chunk) => !inspection.inspectedChunkIds.includes(chunk.id));
 			if (pending.length) throw new Error(`submit 전에 모든 chunk를 inspect해야 합니다: ${pending.map((chunk) => chunk.id).join(", ")}`);
 			onUpdate?.({ content: [{ type: "text", text: "ReviewCard 근거를 검증하고 artifact를 만드는 중..." }] });

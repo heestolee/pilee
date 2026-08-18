@@ -122,6 +122,16 @@ export interface WorkflowGuardProfile {
 	trustedInternalPullRequestRepositories?: string[];
 }
 
+export interface PrReviewCorpusProfile {
+	id: string;
+	repositories?: string[];
+	corpusDir: string;
+}
+
+export interface PrReviewProfile {
+	corpora?: PrReviewCorpusProfile[];
+}
+
 export interface PileeRuntimeProfile {
 	worktree?: {
 		repos?: WorktreeRepoProfile[];
@@ -132,6 +142,7 @@ export interface PileeRuntimeProfile {
 	retro?: RetroProfile;
 	studyHard?: StudyHardProfile;
 	workflowGuard?: WorkflowGuardProfile;
+	prReview?: PrReviewProfile;
 }
 
 function safeReadDir(dir: string): string[] {
@@ -280,6 +291,10 @@ export function loadRetroProfiles(cwd?: string): RetroProfile[] {
 
 export function loadStudyHardProfiles(cwd?: string): StudyHardProfile[] {
 	return loadPileeRuntimeProfiles(cwd).map((profile) => profile.studyHard).filter((profile): profile is StudyHardProfile => Boolean(profile));
+}
+
+export function loadPrReviewProfiles(cwd?: string): PrReviewProfile[] {
+	return loadPileeRuntimeProfiles(cwd).map((profile) => profile.prReview).filter((profile): profile is PrReviewProfile => Boolean(profile));
 }
 
 export function loadWorkflowGuardProfiles(options: { agentDir?: string; activePackageRoots?: string[] } = {}): WorkflowGuardProfile[] {

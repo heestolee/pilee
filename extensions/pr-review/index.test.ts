@@ -116,8 +116,14 @@ test("pr_review_run requires full inspection before evidence-anchored submit", a
 			() => tool.execute("call-2", { action: "submit", runId, cards: [] }, undefined, undefined, {}),
 			/submit 전에 모든 chunk/,
 		);
+		await assert.rejects(
+			() => tool.execute("call-search-before", { action: "search", runId, query: "상태 allowlist" }, undefined, undefined, {}),
+			/blind source inspection 뒤에만/,
+		);
 		const inspection = await tool.execute("call-3", { action: "inspect", runId, chunkId: "C001" }, undefined, undefined, {});
 		assert.match(inspection.content[0].text, /D000001/);
+		const noCorpus = await tool.execute("call-search-after", { action: "search", runId, query: "상태 allowlist" }, undefined, undefined, {});
+		assert.match(noCorpus.content[0].text, /not configured/);
 		const source = JSON.parse(readFileSync(join(stateRoot, "runs", runId, "source.json"), "utf8"));
 		const evidenceId = source.lines.find((line: any) => line.kind === "deletion").id;
 		const submitted = await tool.execute("call-4", {
