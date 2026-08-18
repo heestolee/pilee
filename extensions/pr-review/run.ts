@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import type { ReviewDiffLine, ReviewSourceBundle } from "./evidence.ts";
 import { validateEvidenceIds } from "./evidence.ts";
@@ -261,6 +261,7 @@ export function renderReviewMarkdown(state: PrReviewRunState, bundle: ReviewSour
 	}
 	for (const card of cards) {
 		const location = [card.code.path, card.code.startLine ? `${card.code.startLine}${card.code.endLine && card.code.endLine !== card.code.startLine ? `-${card.code.endLine}` : ""}` : ""].filter(Boolean).join(":");
+		const finalDraft = card.editedReviewDraft ?? card.reviewDraft;
 		output.push(
 			`## ${card.id} · ${card.title}`,
 			"",
@@ -274,7 +275,7 @@ export function renderReviewMarkdown(state: PrReviewRunState, bundle: ReviewSour
 			"",
 			"### 리뷰 초안",
 			"",
-			`> ${card.reviewDraft.replace(/\n/g, "\n> ")}`,
+			`> ${finalDraft.replace(/\n/g, "\n> ")}`,
 			"",
 			"### 설명",
 			"",
@@ -288,6 +289,7 @@ export function renderReviewMarkdown(state: PrReviewRunState, bundle: ReviewSour
 		if (card.meta.structuralPrevention) output.push(`- **구조적 방지:** ${card.meta.structuralPrevention}`);
 		if (card.meta.machinePrevention) output.push(`- **기계적 방지:** ${card.meta.machinePrevention}`);
 		output.push(`- **범위:** ${card.meta.scope}`);
+		if (card.decision) output.push("", `- **인간 결정:** ${card.decision}`);
 		if (card.precedents?.length) {
 			output.push("", "<details>", "<summary>참고한 인간 리뷰</summary>", "");
 			for (const precedent of card.precedents) {
@@ -325,9 +327,11 @@ export function saveHumanDecision(
 	card.decision = decision;
 	if (editedReviewDraft?.trim()) card.editedReviewDraft = editedReviewDraft.trim();
 	writeJsonAtomic(state.cardsPath, cards);
+	const bundle = readJson<ReviewSourceBundle>(state.sourcePath);
+	atomicWrite(state.reportPath, renderReviewMarkdown(state, bundle, cards));
 	const decisionPath = join(state.runDir, "decisions.jsonl");
 	const row = JSON.stringify({ runId: state.runId, cardId, decision, editedReviewDraft: card.editedReviewDraft, createdAt: Date.now() });
-	writeFileSync(decisionPath, `${existsSync(decisionPath) ? readFileSync(decisionPath, "utf8") : ""}${row}\n`, "utf8");
+	appendFileSync(decisionPath, `${row}\n`, "utf8");
 	return cards;
 }
 
