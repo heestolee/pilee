@@ -60,15 +60,43 @@ function createReadyRun(root: string) {
 
 test("Review Studio HTML uses the Easy Review document hierarchy with inline human decisions", () => {
 	const html = buildPrReviewStudioHtml("Review");
-	for (const marker of ["report-header", "overview report-section", "attention report-section", "review-layout", "review-section", "inline-fold", "inline-code-note", "minimap"]) {
+	for (const marker of ["report-header", "overview report-section", "attention report-section", "review-layout", "review-section", "inline-fold", "inline-code-note", "review-companion", "conversation-thread", "companion-contents"]) {
 		assert.match(html, new RegExp(marker));
 	}
-	for (const label of ["먼저 볼 점", "파일별 diff", "리뷰 채택", "메타 포함", "리뷰 문구 수정", "후속", "폐기"]) {
+	for (const label of ["먼저 볼 점", "파일별 diff", "리뷰 채택", "메타 포함", "리뷰 문구 수정", "후속", "폐기", "이해하면서 질문하기", "더 쉽게", "사실/추측", "질문 보내기"]) {
 		assert.match(html, new RegExp(label));
 	}
 	const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
 	assert.ok(script);
 	assert.doesNotThrow(() => new Function(script));
+});
+
+test("Review Studio routes selected card questions to the connected Pi session", async () => {
+	const root = mkdtempSync(join(tmpdir(), "pilee-pr-review-studio-question-"));
+	try {
+		const state = createReadyRun(root);
+		const questions: any[] = [];
+		const handle = await startPrReviewStudioServer(state, { onQuestion(question) { questions.push(question); } });
+		const url = new URL(handle.url);
+		const token = url.searchParams.get("token");
+		const response = await fetch(`${url.origin}/ask?token=${encodeURIComponent(token ?? "")}`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ question: "이 리뷰가 과한 것 아닌가?", scope: "card", cardId: "R-01" }),
+		});
+		assert.equal(response.status, 202);
+		assert.equal(questions.length, 1);
+		assert.equal(questions[0].cardId, "R-01");
+		assert.deepEqual(questions[0].evidenceIds.length, 1);
+		const stateResponse = await fetch(`${url.origin}/state?token=${encodeURIComponent(token ?? "")}`);
+		const payload = await stateResponse.json() as any;
+		assert.equal(payload.questions[0].question, "이 리뷰가 과한 것 아닌가?");
+		assert.equal(payload.questions[0].status, "queued");
+		handle.server.close();
+	} finally {
+		closePrReviewStudios();
+		rmSync(root, { recursive: true, force: true });
+	}
 });
 
 test("Review Studio serves cards and persists human decisions without rewriting original draft", async () => {

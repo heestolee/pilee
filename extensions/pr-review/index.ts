@@ -7,6 +7,12 @@ import { DEFAULT_MAX_BYTES, truncateHead, type ExtensionAPI, type ExtensionComma
 import { Type } from "typebox";
 import { expandProfileTemplate, loadPrReviewProfiles, type PrReviewCorpusProfile } from "../utils/private-profiles.ts";
 import { runPrReviewWorktreeFromCommandContext } from "../worktree/pr-review.ts";
+import {
+	answerPrReviewQuestion,
+	failPrReviewQuestion,
+	loadPrReviewQuestions,
+	type PrReviewQuestionEvidence,
+} from "./chat.ts";
 import { searchPrReviewCorpus } from "./corpus.ts";
 import { captureUnifiedDiff, renderInspectionChunk, type ReviewSourceBundle } from "./evidence.ts";
 import { closePrReviewStudios, openPrReviewStudio } from "./studio.ts";
@@ -270,6 +276,52 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 				details: { runId, cardCount: cards.length, reportPath: state.reportPath, cardsPath: state.cardsPath, coverage: { inspectedChunks: inspection.inspectedChunkIds.length, totalChunks: source.chunks.length } },
 				terminate: true,
 			};
+		},
+	});
+
+	pi.registerTool({
+		name: "pr_review_chat",
+		label: "PR Review Chat",
+		description: "Complete or inspect a contextual question submitted from the Guided PR Review Studio. Answer only after inspecting the checked-out PR workspace.",
+		promptSnippet: "Answer Guided PR Review questions from the checked-out PR workspace",
+		promptGuidelines: [
+			"Use pr_review_chat action=answer as the final step for a Glimpse PR review question, with source evidence and uncertainty separated. Never mutate the reviewed repository unless the user separately requests a fix.",
+		],
+		parameters: Type.Object({
+			action: StringEnum(["status", "answer", "fail"] as const),
+			runId: Type.String(),
+			questionId: Type.Optional(Type.String()),
+			answer: Type.Optional(Type.String()),
+			uncertainty: Type.Optional(Type.String()),
+			error: Type.Optional(Type.String()),
+			evidence: Type.Optional(Type.Array(Type.Object({
+				label: Type.String(),
+				path: Type.Optional(Type.String()),
+				line: Type.Optional(Type.Integer({ minimum: 1 })),
+				url: Type.Optional(Type.String()),
+				note: Type.Optional(Type.String()),
+			}))),
+		}),
+		async execute(_toolCallId, params) {
+			const state = runFromId(stateRoot, params.runId);
+			if (params.action === "status") {
+				const questions = loadPrReviewQuestions(state.runDir);
+				return { content: [{ type: "text", text: JSON.stringify(questions, null, 2) }], details: { runId: state.runId, questions } };
+			}
+			if (!params.questionId) throw new Error(`${params.action}에는 questionId가 필요합니다.`);
+			if (params.action === "fail") {
+				const question = failPrReviewQuestion(state.runDir, params.questionId, params.error ?? "질문 조사에 실패했습니다.");
+				return { content: [{ type: "text", text: `PR review question failed: ${question.id}` }], details: { runId: state.runId, question }, terminate: true };
+			}
+			if (!params.answer?.trim()) throw new Error("answer에는 실제 조사 결과가 필요합니다.");
+			const question = answerPrReviewQuestion(
+				state.runDir,
+				params.questionId,
+				params.answer,
+				(params.evidence ?? []) as PrReviewQuestionEvidence[],
+				params.uncertainty,
+			);
+			return { content: [{ type: "text", text: question.answer ?? "" }], details: { runId: state.runId, question }, terminate: true };
 		},
 	});
 

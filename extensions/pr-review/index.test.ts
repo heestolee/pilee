@@ -73,6 +73,7 @@ test("/pr-review captures one PR from any cwd and sends the inlined workflow", a
 		registerPrReview(pi, { stateRoot, now: () => 1000 });
 		assert.ok(commands.has("pr-review"));
 		assert.ok(tools.has("pr_review_run"));
+		assert.ok(tools.has("pr_review_chat"));
 		const notifications: Array<{ message: string; level: string }> = [];
 		const statuses: Array<[string, string | undefined]> = [];
 		await commands.get("pr-review").handler("https://github.com/acme/repo/pull/42/changes", {
