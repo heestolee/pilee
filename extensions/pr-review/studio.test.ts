@@ -58,9 +58,12 @@ function createReadyRun(root: string) {
 	return state;
 }
 
-test("Review Studio HTML contains the four required sections and parseable browser script", () => {
+test("Review Studio HTML uses the Easy Review document hierarchy with inline human decisions", () => {
 	const html = buildPrReviewStudioHtml("Review");
-	for (const label of ["코드", "리뷰 초안", "설명", "메타적 관점", "리뷰만 채택", "메타까지 채택", "후속 분리", "폐기"]) {
+	for (const marker of ["report-header", "overview report-section", "attention report-section", "review-layout", "review-section", "inline-fold", "inline-code-note", "minimap"]) {
+		assert.match(html, new RegExp(marker));
+	}
+	for (const label of ["먼저 볼 점", "파일별 diff", "리뷰 채택", "메타 포함", "리뷰 문구 수정", "후속", "폐기"]) {
 		assert.match(html, new RegExp(label));
 	}
 	const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
@@ -81,6 +84,8 @@ test("Review Studio serves cards and persists human decisions without rewriting 
 		const stateResponse = await fetch(`${url.origin}/state?token=${encodeURIComponent(token ?? "")}`);
 		const payload = await stateResponse.json() as any;
 		assert.equal(payload.cards.length, 1);
+		assert.equal(payload.source.files.length, 1);
+		assert.ok(payload.source.files[0].lines.some((line: any) => line.id === "D000001"));
 		assert.equal(payload.cards[0].reviewDraft, "새 상태가 자동 노출되지 않도록 허용 상태를 명시해주세요.");
 
 		const decisionResponse = await fetch(`${url.origin}/decision?token=${encodeURIComponent(token ?? "")}`, {

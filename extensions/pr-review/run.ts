@@ -195,19 +195,33 @@ export function codeExcerptForEvidence(bundle: ReviewSourceBundle, evidenceIds: 
 	if (!fileId || evidenceLines.some((line) => line.fileId !== fileId)) throw new Error("one review card must anchor to one file");
 	const file = bundle.files.find((candidate) => candidate.id === fileId);
 	if (!file) throw new Error(`unknown evidence file: ${fileId}`);
-	const evidenceIndices = evidenceLines.map((line) => line.index);
-	const startIndex = Math.max(0, Math.min(...evidenceIndices) - 2);
-	const endIndex = Math.min(bundle.lines.length - 1, Math.max(...evidenceIndices) + 2);
-	const selected = bundle.lines
-		.slice(startIndex, endIndex + 1)
-		.filter((line) => line.fileId === fileId && sourceCodeLine(line) !== undefined);
+	const evidenceIndices = [...new Set(evidenceLines.map((line) => line.index))].sort((left, right) => left - right);
+	const ranges: Array<{ start: number; end: number }> = [];
+	for (const index of evidenceIndices) {
+		const start = Math.max(0, index - 2);
+		const end = Math.min(bundle.lines.length - 1, index + 2);
+		const previous = ranges.at(-1);
+		if (previous && start <= previous.end + 1) previous.end = Math.max(previous.end, end);
+		else ranges.push({ start, end });
+	}
+	const parts: string[] = [];
+	for (const [rangeIndex, range] of ranges.entries()) {
+		if (rangeIndex > 0) {
+			const omitted = Math.max(0, range.start - ranges[rangeIndex - 1]!.end - 1);
+			parts.push(`... ${omitted} diff lines omitted ...`);
+		}
+		parts.push(...bundle.lines
+			.slice(range.start, range.end + 1)
+			.filter((line) => line.fileId === fileId && sourceCodeLine(line) !== undefined)
+			.map((line) => sourceCodeLine(line)!));
+	}
 	const lineNumbers = evidenceLines.flatMap((line) => [line.newLine, line.oldLine]).filter((value): value is number => typeof value === "number");
 	return {
 		path: file.path,
 		language: languageForPath(file.path),
 		startLine: lineNumbers.length ? Math.min(...lineNumbers) : undefined,
 		endLine: lineNumbers.length ? Math.max(...lineNumbers) : undefined,
-		text: selected.map((line) => sourceCodeLine(line)).join("\n"),
+		text: parts.join("\n"),
 	};
 }
 

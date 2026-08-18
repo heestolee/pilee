@@ -152,3 +152,15 @@ test("code excerpts are derived from exact source instead of caller supplied tex
 	assert.equal(excerpt.path, "src/example.ts");
 	assert.match(excerpt.text, /\+  const allowed/);
 });
+
+test("distant evidence is rendered as separate focused excerpts instead of one huge range", () => {
+	const body = Array.from({ length: 80 }, (_, index) => `+export const value${index} = ${index};`).join("\n");
+	const diff = `diff --git a/src/large.ts b/src/large.ts\nnew file mode 100644\n--- /dev/null\n+++ b/src/large.ts\n@@ -0,0 +1,80 @@\n${body}\n`;
+	const bundle = captureUnifiedDiff(diff);
+	const additions = bundle.lines.filter((line) => line.kind === "addition");
+	const excerpt = codeExcerptForEvidence(bundle, [additions[2]!.id, additions[75]!.id]);
+	assert.match(excerpt.text, /diff lines omitted/);
+	assert.match(excerpt.text, /value2/);
+	assert.match(excerpt.text, /value75/);
+	assert.doesNotMatch(excerpt.text, /value40/);
+});
