@@ -229,6 +229,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | extension | `extensions/notify` | [Terminal Host Integration](./docs/knowledge/terminal-host-integration.md) |
 | extension | `extensions/pilee-update` | [Pilee Update Current Session Reload](./docs/knowledge/pilee-update-current-session-reload.md) |
 | extension | `extensions/pr-comments` | [Diff Review Draft Handoff](./docs/knowledge/diff-review-draft-handoff.md)<br>[Ship PR Ship Review Boundary](./docs/knowledge/ship-pr-ship-review-boundary.md) |
+| extension | `extensions/pr-review` | [Human PR Review Precedent Harness](./docs/knowledge/human-pr-review-precedent-harness.md) |
 | extension | `extensions/pr-review-re-request` | [Ship PR Ship Review Boundary](./docs/knowledge/ship-pr-ship-review-boundary.md) |
 | extension | `extensions/preflight` | [Private Overlay Package Boundary](./docs/knowledge/private-overlay-package-boundary.md)<br>[Root Cause Before Fix](./docs/knowledge/root-cause-before-fix.md)<br>[Repeated validation failures are separated by a baseline cache](./docs/knowledge/validation-baseline-failure-cache.md)<br>[Repeated workflow failures become enforced guard flows](./docs/knowledge/workflow-guard-enforced-flow.md) |
 | extension | `extensions/prompt-suggest-lite` | [Editor Affordance Not Context](./docs/knowledge/editor-affordance-not-context.md) |
@@ -271,6 +272,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | skill | `skills/frame` | [Architecture Friction TFT Lens](./docs/knowledge/architecture-friction-tft-lens.md)<br>[Ask User Question Decision Gates](./docs/knowledge/ask-user-question-decision-gates.md)<br>[Ask User Question Option Design](./docs/knowledge/ask-user-question-option-design.md)<br>[Atomic Evidence Workflow](./docs/knowledge/atomic-evidence-workflow.md)<br>[Backend Layer Map Frame Gate](./docs/knowledge/backend-layer-map-frame-gate.md)<br>[Decide Tradeoff Challenge](./docs/knowledge/decide-tradeoff-challenge.md)<br>[Frame Plan Synthesis Continuity](./docs/knowledge/frame-plan-synthesis-continuity.md)<br>[Frame Planning Identity](./docs/knowledge/frame-planning-identity.md)<br>[Frame Studio Interactive Decision UI](./docs/knowledge/frame-studio-interactive-decision-ui.md)<br>[Frame Verify Contract](./docs/knowledge/frame-verify-contract.md)<br>[Policy Axis Frame Gate](./docs/knowledge/policy-axis-frame-gate.md)<br>[Slice Auto Commit Rhythm](./docs/knowledge/slice-auto-commit-rhythm.md)<br>[Source Grounded Frame Planning](./docs/knowledge/source-grounded-frame-planning.md)<br>[TFT Command Shim Skill Routing](./docs/knowledge/tft-command-shim-skill-routing.md)<br>[TFT Preference Regression Gate](./docs/knowledge/tft-preference-regression-gate.md)<br>[Working Context Card compresses large context into the current slice](./docs/knowledge/work-context-card-task-board.md)<br>[Workflow weight must match change risk](./docs/knowledge/workflow-weight-proportionality.md) |
 | skill | `skills/frame-v2` | [Frame V2 Learning Note Pilot](./docs/knowledge/frame-v2-learning-note-pilot.md)<br>[Learning Note Companion Artifact](./docs/knowledge/learning-note-companion-artifact.md) |
 | skill | `skills/git-workflow-and-versioning` | [Change Integration Discipline](./docs/knowledge/change-integration-discipline.md)<br>[Long-running sessions are controlled by phases and stop-lines](./docs/knowledge/long-running-session-control.md)<br>[Request Traceability Surgical Changes](./docs/knowledge/request-traceability-surgical-changes.md)<br>[Slice Auto Commit Rhythm](./docs/knowledge/slice-auto-commit-rhythm.md)<br>[Repeated validation failures are separated by a baseline cache](./docs/knowledge/validation-baseline-failure-cache.md) |
+| skill | `skills/human-pr-review` | [Human PR Review Precedent Harness](./docs/knowledge/human-pr-review-precedent-harness.md) |
 | skill | `skills/incremental-implementation` | [Atomic Evidence Workflow](./docs/knowledge/atomic-evidence-workflow.md)<br>[Change Integration Discipline](./docs/knowledge/change-integration-discipline.md)<br>[Long-running sessions are controlled by phases and stop-lines](./docs/knowledge/long-running-session-control.md)<br>[Request Traceability Surgical Changes](./docs/knowledge/request-traceability-surgical-changes.md)<br>[Slice Auto Commit Rhythm](./docs/knowledge/slice-auto-commit-rhythm.md)<br>[Workflow weight must match change risk](./docs/knowledge/workflow-weight-proportionality.md) |
 | skill | `skills/interactive-shell` | [Interactive Shell Overlay Tool](./docs/knowledge/interactive-shell-overlay-tool.md) |
 | skill | `skills/jira-issue-management` | [External Issue Preview Gate](./docs/knowledge/external-issue-preview-gate.md)<br>[Private Overlay Package Boundary](./docs/knowledge/private-overlay-package-boundary.md) |
@@ -304,7 +306,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 ## Extensions
 
 <!-- PILEE_README_EXTENSIONS_START -->
-60 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
+61 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
 
 > Generated from `extensions/*` plus inventory metadata in `scripts/knowledge.mjs`; refresh with `node scripts/knowledge.mjs --graph`.
 
@@ -391,6 +393,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | Name | Role |
 |---|---|
 | **learning-companion** | TODO: inventory role needed |
+| **pr-review** | TODO: inventory role needed |
 | **work-context** | TODO: inventory role needed |
 <!-- PILEE_README_EXTENSIONS_END -->
 
@@ -399,7 +402,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 ## Skills
 
 <!-- PILEE_README_SKILLS_START -->
-29 global workflow skills. Project-specific skills belong in project/private overlays.
+30 global workflow skills. Project-specific skills belong in project/private overlays.
 
 > Generated from `skills/*/SKILL.md` plus inventory metadata in `scripts/knowledge.mjs`; refresh with `node scripts/knowledge.mjs --graph`.
 
@@ -446,6 +449,12 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **verify-report** | Capture/evidence-based verification reports |
 | **verify-report-preflight** | Readiness, workflow weight, and blocker check before Verify Report |
 | **start-local-dev** | Local dev server startup diagnosis |
+
+### Unclassified
+
+| Skill | Role |
+|---|---|
+| **human-pr-review** | TODO: inventory role needed |
 <!-- PILEE_README_SKILLS_END -->
 
 ---

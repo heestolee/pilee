@@ -254,6 +254,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | extension | `extensions/notify` | [터미널 연동은 host adapter로 다룬다](./docs/knowledge/terminal-host-integration.md) |
 | extension | `extensions/pilee-update` | [pilee update는 현재 세션 reload까지 닫아야 한다](./docs/knowledge/pilee-update-current-session-reload.md) |
 | extension | `extensions/pr-comments` | [Diff review draft는 PR 코멘트 전 단계다](./docs/knowledge/diff-review-draft-handoff.md)<br>[Ship과 PR-Ship은 서로 다른 통합 단계다](./docs/knowledge/ship-pr-ship-review-boundary.md) |
+| extension | `extensions/pr-review` | [인간 PR 리뷰는 독립 판단 뒤에 precedent를 붙인다](./docs/knowledge/human-pr-review-precedent-harness.md) |
 | extension | `extensions/pr-review-re-request` | [Ship과 PR-Ship은 서로 다른 통합 단계다](./docs/knowledge/ship-pr-ship-review-boundary.md) |
 | extension | `extensions/preflight` | [Private overlay package는 회사·개인 실행 맥락을 담는다](./docs/knowledge/private-overlay-package-boundary.md)<br>[수정 전에 근본 원인을 좁힌다](./docs/knowledge/root-cause-before-fix.md)<br>[반복 검증 실패는 baseline cache로 분리한다](./docs/knowledge/validation-baseline-failure-cache.md)<br>[반복 워크플로 실패는 guard/flow로 고정한다](./docs/knowledge/workflow-guard-enforced-flow.md) |
 | extension | `extensions/prompt-suggest-lite` | [Editor affordance는 숨은 컨텍스트가 아니다](./docs/knowledge/editor-affordance-not-context.md) |
@@ -296,6 +297,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | skill | `skills/frame` | [Architecture friction은 TFT의 검증 축이다](./docs/knowledge/architecture-friction-tft-lens.md)<br>[AskUserQuestion은 의사결정 게이트다](./docs/knowledge/ask-user-question-decision-gates.md)<br>[AskUserQuestion 옵션은 행동 분기를 표현한다](./docs/knowledge/ask-user-question-option-design.md)<br>[Atomic evidence workflow는 작은 claim을 증거로 닫는다](./docs/knowledge/atomic-evidence-workflow.md)<br>[백엔드 레이어 맵은 Frame의 초기 이해 게이트다](./docs/knowledge/backend-layer-map-frame-gate.md)<br>[Decide는 선택을 한 번 공격한다](./docs/knowledge/decide-tradeoff-challenge.md)<br>[Frame은 마지막에 Plan을 합성한다](./docs/knowledge/frame-plan-synthesis-continuity.md)<br>[Frame identity는 cwd보다 작업 의도를 우선한다](./docs/knowledge/frame-planning-identity.md)<br>[TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./docs/knowledge/frame-studio-interactive-decision-ui.md)<br>[Frame과 Verify는 구조화 계약이다](./docs/knowledge/frame-verify-contract.md)<br>[정책축 스캔은 Frame의 초기 게이트다](./docs/knowledge/policy-axis-frame-gate.md)<br>[Slice 완료는 commit 후보를 만든다](./docs/knowledge/slice-auto-commit-rhythm.md)<br>[정확한 기획 근거가 있으면 Frame은 추적 매트릭스를 만든다](./docs/knowledge/source-grounded-frame-planning.md)<br>[Command shim은 reviewable workflow source of truth를 지킨다](./docs/knowledge/tft-command-shim-skill-routing.md)<br>[TFT Preference Regression Gate는 사용자 선호 역전을 막는다](./docs/knowledge/tft-preference-regression-gate.md)<br>[Working Context Card는 큰 맥락을 현재 slice로 압축한다](./docs/knowledge/work-context-card-task-board.md)<br>[작업 절차의 무게는 변경 리스크에 비례해야 한다](./docs/knowledge/workflow-weight-proportionality.md) |
 | skill | `skills/frame-v2` | [Frame v2는 작업·학습 lane을 양방향으로 연결한다](./docs/knowledge/frame-v2-learning-note-pilot.md)<br>[학습노트 companion은 독립 canonical을 sidecar로 연결한다](./docs/knowledge/learning-note-companion-artifact.md) |
 | skill | `skills/git-workflow-and-versioning` | [변경 통합은 작은 단위와 검증을 요구한다](./docs/knowledge/change-integration-discipline.md)<br>[장시간 세션은 phase와 stop-line으로 제어한다](./docs/knowledge/long-running-session-control.md)<br>[변경된 줄은 요청으로 추적 가능해야 한다](./docs/knowledge/request-traceability-surgical-changes.md)<br>[Slice 완료는 commit 후보를 만든다](./docs/knowledge/slice-auto-commit-rhythm.md)<br>[반복 검증 실패는 baseline cache로 분리한다](./docs/knowledge/validation-baseline-failure-cache.md) |
+| skill | `skills/human-pr-review` | [인간 PR 리뷰는 독립 판단 뒤에 precedent를 붙인다](./docs/knowledge/human-pr-review-precedent-harness.md) |
 | skill | `skills/incremental-implementation` | [Atomic evidence workflow는 작은 claim을 증거로 닫는다](./docs/knowledge/atomic-evidence-workflow.md)<br>[변경 통합은 작은 단위와 검증을 요구한다](./docs/knowledge/change-integration-discipline.md)<br>[장시간 세션은 phase와 stop-line으로 제어한다](./docs/knowledge/long-running-session-control.md)<br>[변경된 줄은 요청으로 추적 가능해야 한다](./docs/knowledge/request-traceability-surgical-changes.md)<br>[Slice 완료는 commit 후보를 만든다](./docs/knowledge/slice-auto-commit-rhythm.md)<br>[작업 절차의 무게는 변경 리스크에 비례해야 한다](./docs/knowledge/workflow-weight-proportionality.md) |
 | skill | `skills/interactive-shell` | [Interactive shell은 bash가 아닌 터미널 세션이다](./docs/knowledge/interactive-shell-overlay-tool.md) |
 | skill | `skills/jira-issue-management` | [외부 Issue와 PR은 기여 규칙 확인과 최종 승인 뒤에 게시한다](./docs/knowledge/external-issue-preview-gate.md)<br>[Private overlay package는 회사·개인 실행 맥락을 담는다](./docs/knowledge/private-overlay-package-boundary.md) |
@@ -329,7 +331,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 ## Extensions
 
 <!-- PILEE_README_EXTENSIONS_START -->
-60개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
+61개. 도구를 등록하지 않는 익스텐션(spinner, session-title 등)은 토큰 영향 0.
 
 > `extensions/*`와 `scripts/knowledge.mjs`의 inventory metadata에서 생성됩니다. 변경 후 `node scripts/knowledge.mjs --graph`로 갱신합니다.
 
@@ -416,6 +418,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | 이름 | 설명 |
 |---|---|
 | **learning-companion** | TODO: inventory 설명 필요 |
+| **pr-review** | TODO: inventory 설명 필요 |
 | **work-context** | TODO: inventory 설명 필요 |
 <!-- PILEE_README_EXTENSIONS_END -->
 
@@ -424,7 +427,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 ## Skills
 
 <!-- PILEE_README_SKILLS_START -->
-29개. 글로벌 워크플로 스킬만 pilee에 포함. 프로젝트 고유 스킬(create-pr 등)은 해당 레포/private overlay에 위치.
+30개. 글로벌 워크플로 스킬만 pilee에 포함. 프로젝트 고유 스킬(create-pr 등)은 해당 레포/private overlay에 위치.
 
 > `skills/*/SKILL.md`와 `scripts/knowledge.mjs`의 inventory metadata에서 생성됩니다. 변경 후 `node scripts/knowledge.mjs --graph`로 갱신합니다.
 
@@ -471,6 +474,12 @@ Ctrl+W                       → 전체 워크트리 오버레이
 | **verify-report** | 캡처/네트워크/콘솔/코드 diff 기반 검증 리포트 |
 | **verify-report-preflight** | 검증 리포트 전 readiness·작업 무게·차단 조건 점검 |
 | **start-local-dev** | 로컬 dev 서버 구동과 진단 |
+
+### 미분류
+
+| 스킬 | 역할 |
+|---|---|
+| **human-pr-review** | TODO: inventory 설명 필요 |
 <!-- PILEE_README_SKILLS_END -->
 
 ---

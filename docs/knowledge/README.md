@@ -199,6 +199,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-06-02 | 7861f10 | frame, planning, identity, home-directory, ticket, session-title |
 | [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-06-16 | 87c864f | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
 | [Frame v2는 작업·학습 lane을 양방향으로 연결한다](./frame-v2-learning-note-pilot.md) | active | high | 2026-07-18 | 88b560c | frame-v2, frame, study-hard, learning-note, worktree |
+| [인간 PR 리뷰는 독립 판단 뒤에 precedent를 붙인다](./human-pr-review-precedent-harness.md) | active | high | 2026-08-18 | 0eafe7e | pr-review, human-review, precedent, evidence, glimpse, meta-review |
 | [Interactive shell은 bash가 아닌 터미널 세션이다](./interactive-shell-overlay-tool.md) | active | high | 2026-06-29 | 680f937 | interactive-shell, shell, tui, dev-server, overlay, dispatch |
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-06-02 | 7861f10 | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 264ea17 | local-dev, server, startup, diagnosis, dev |
@@ -317,6 +318,7 @@ graph TD
   doc_frame_planning_identity["Frame identity는 cwd보다 작업 의도를 우선한다"]
   doc_frame_studio_interactive_decision_ui["TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다"]
   doc_frame_v2_learning_note_pilot["Frame v2는 작업·학습 lane을 양방향으로 연결한다"]
+  doc_human_pr_review_precedent_harness["인간 PR 리뷰는 독립 판단 뒤에 precedent를 붙인다"]
   doc_interactive_shell_overlay_tool["Interactive shell은 bash가 아닌 터미널 세션이다"]
   doc_live_artifact_preview_pattern["Live artifact는 local preview first다"]
   doc_local_dev_startup_diagnosis["로컬 개발 서버 시작은 진단 가능한 절차여야 한다"]
@@ -631,6 +633,11 @@ graph TD
   doc_frame_v2_learning_note_pilot --> doc_study_hard_public_engine_private_publisher
   doc_frame_v2_learning_note_pilot --> doc_tft_visual_structure_renderer
   doc_frame_v2_learning_note_pilot --> doc_worktree_session_continuity
+  doc_human_pr_review_precedent_harness --> doc_evidence_first_verification_gate
+  doc_human_pr_review_precedent_harness --> doc_live_artifact_preview_pattern
+  doc_human_pr_review_precedent_harness --> doc_private_overlay_package_boundary
+  doc_human_pr_review_precedent_harness --> doc_skills_as_portable_procedures
+  doc_human_pr_review_precedent_harness --> doc_stress_interview_multi_axis_review
   doc_interactive_shell_overlay_tool --> doc_bash_tool_title_output_override
   doc_interactive_shell_overlay_tool --> doc_terminal_host_integration
   doc_interactive_shell_overlay_tool --> doc_tool_output_noise_management
@@ -766,7 +773,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 113
-- Links: 410
+- Documents: 114
+- Links: 415
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
