@@ -37,6 +37,11 @@ test("worktree tools provide deferred requestSessionSwitch instead of Ghostty ke
 	assert.doesNotMatch(source, /setEditorText\([^)]*\/wt switch/);
 });
 
+test("read-only PR review workspaces skip automatic dependency bootstrap", () => {
+	assert.match(source, /existsSync\(join\(repoRoot, "\.pi", "pr-review\.json"\)\)/);
+	assert.match(source, /return \{ repoRoot, state: "not-implementation" \}/);
+});
+
 test("worktree creation tools clean up their own worktree and branch when activation fails", () => {
 	assert.match(source, /function cleanupCreatedWorktree/);
 	assert.match(source, /\["worktree", "remove", "--force", worktreePath\]/);

@@ -23,7 +23,7 @@ function sessionDirFor(path: string): string {
 	return join(homedir(), ".pi", "agent", "sessions", `--${path.slice(1).replace(/\//g, "-")}--`);
 }
 
-test("PR review command context creates a head-pinned worktree and switches a full-context session", async () => {
+test("PR review command context creates a head-pinned worktree and switches a compact provenance session", async () => {
 	const root = mkdtempSync(join(tmpdir(), "pilee-pr-review-worktree-"));
 	const origin = join(root, "origin.git");
 	const repo = join(root, "repo");
@@ -102,7 +102,10 @@ test("PR review command context creates a head-pinned worktree and switches a fu
 		assert.equal(metadata?.headSha, headSha);
 		assert.equal(metadata?.runId, "acme-repo-pr-42-head-1");
 		assert.ok(switched?.sessionPath);
-		assert.match(readFileSync(switched!.sessionPath, "utf8"), /PR #42를 리뷰해줘/);
+		const targetSession = readFileSync(switched!.sessionPath, "utf8");
+		assert.doesNotMatch(targetSession, /PR #42를 리뷰해줘/);
+		assert.ok(targetSession.includes(`Source conversation: ${sourceSession}`));
+		assert.match(targetSession, /compact-review-handoff/);
 		assert.ok(messages.some(({ message }) => message.customType === "worktree-cwd-binding"));
 		assert.ok(messages.some(({ message }) => message.customType === "pr-review-workspace-ready"));
 	} finally {

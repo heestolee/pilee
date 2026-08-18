@@ -113,10 +113,13 @@ function appendSessionEntry(session: SessionManager, entry: Record<string, unkno
 
 function createReviewSession(ctx: ExtensionCommandContext, worktreePath: string, metadata: PrReviewWorkspaceMetadata): string {
 	const source = sourceSessionFile(ctx);
-	if (!source || !existsSync(source)) throw new Error("source Pi session file is required for full-context PR review");
-	const session = SessionManager.forkFrom(source, worktreePath);
-	const sessionFile = session.getSessionFile();
-	if (!sessionFile) throw new Error("forked PR review session file is missing");
+	if (!source || !existsSync(source)) throw new Error("source Pi session file is required for PR review provenance");
+	const sessionDir = sessionDirForWorktree(worktreePath);
+	mkdirSync(sessionDir, { recursive: true });
+	const sessionId = `pr-review-${metadata.number}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+	const sessionFile = join(sessionDir, `${new Date().toISOString().replace(/[:.]/g, "-")}_${sessionId}.jsonl`);
+	writeFileSync(sessionFile, `${JSON.stringify({ type: "session", version: 3, id: sessionId, timestamp: new Date().toISOString(), cwd: worktreePath })}\n`, "utf8");
+	const session = SessionManager.open(sessionFile);
 	let parentId = session.getLeafId();
 	const now = new Date().toISOString();
 	const infoId = `pr_review_info_${Date.now().toString(36)}`;
@@ -143,9 +146,12 @@ function createReviewSession(ctx: ExtensionCommandContext, worktreePath: string,
 			`- Head: ${metadata.headSha}`,
 			`- Run: ${metadata.runId}`,
 			`- Metadata: ${prReviewWorkspacePath(worktreePath)}`,
+			`- Source conversation: ${source}`,
+			`- Reopen source: /archive ${source}`,
+			"- PR run과 checkout source가 현재 truth다. 원 대화는 필요한 판단을 찾을 때만 선택적으로 연다.",
 			"- 이 worktree는 read-only review workspace다. 사용자가 별도 수정을 요청하기 전에는 repository를 변경하지 않는다.",
 		].join("\n"),
-		details: { metadataPath: prReviewWorkspacePath(worktreePath), sourceSessionFile: source, fullTranscriptCopied: true },
+		details: { metadataPath: prReviewWorkspacePath(worktreePath), sourceSessionFile: source, fullTranscriptCopied: false, contextMode: "compact-review-handoff" },
 	});
 	return sessionFile;
 }
@@ -208,7 +214,7 @@ export async function runPrReviewWorktreeFromCommandContext(
 		return { status: "blocked", reason: "현재 context에는 switchSession/requestSessionSwitch API가 없어 review worktree를 만들지 않았습니다." };
 	}
 	const source = sourceSessionFile(ctx);
-	if (!source || !existsSync(source)) return { status: "blocked", reason: "full-context source Pi session이 없어 review worktree를 만들지 않았습니다." };
+	if (!source || !existsSync(source)) return { status: "blocked", reason: "source Pi session provenance가 없어 review worktree를 만들지 않았습니다." };
 	const repoRoot = await resolveRepoRoot(pi, ctx, request.repo);
 	if (!repoRoot) return { status: "blocked", reason: `등록된 repository를 찾지 못했습니다: ${request.repo}` };
 	const panelBlock = childPanelBlocked(repoRoot, request.repo, ctx);

@@ -1525,6 +1525,7 @@ async function ensureDependencyBootstrapWorker(
 
 	const repoRoot = options.repoRoot ?? await findRepoRoot(pi, ctx.cwd);
 	if (!repoRoot) return { state: "not-company-repo" };
+	if (!options.force && existsSync(join(repoRoot, ".pi", "pr-review.json"))) return { repoRoot, state: "not-implementation" };
 
 	const repoProfile = await detectProfiledRepo(pi, repoRoot);
 	if (!repoProfile?.bootstrap?.enabled) return { repoRoot, state: "not-company-repo" };
