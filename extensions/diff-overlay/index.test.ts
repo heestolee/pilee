@@ -30,6 +30,31 @@ async function createWorktreeRoot(metadata: unknown): Promise<string> {
 	return root;
 }
 
+async function createPrReviewRoot(overrides: Record<string, unknown> = {}): Promise<string> {
+	const root = await mkdtemp(join(tmpdir(), "pilee-diff-pr-review-"));
+	const piDir = join(root, ".pi");
+	await mkdir(piDir, { recursive: true });
+	await writeFile(join(piDir, "pr-review.json"), JSON.stringify({
+		schemaVersion: 1,
+		runId: "acme-repo-pr-42-head-1",
+		runDir: "/tmp/pr-review/acme-repo-pr-42-head-1",
+		prUrl: "https://github.com/acme/repo/pull/42",
+		repository: "acme/repo",
+		number: 42,
+		title: "Review target",
+		baseRefName: "main",
+		baseSha: "a".repeat(40),
+		headRefName: "feature/review",
+		headSha: "b".repeat(40),
+		branch: "review/pr-42-bbbbbbbb",
+		worktreeName: "review-pr-42-bbbbbbbb",
+		worktreePath: root,
+		createdAt: 1000,
+		...overrides,
+	}));
+	return root;
+}
+
 test("parseDiffArgs supports PR auto mode and explicit base override", () => {
 	assert.deepEqual(parseDiffArgs(""), { help: false, baseBranch: null });
 	assert.deepEqual(parseDiffArgs("--base feature/foundation"), { help: false, baseBranch: "feature/foundation" });
@@ -60,6 +85,38 @@ test("explicit --base overrides pull request lookup", async () => {
 	const result = await findMergeBase(pi as any, "/repo", "feature/activation", "release");
 	assert.deepEqual(result, { commit: mergeBase, baseBranch: "release", baseSource: "--base" });
 	assert.equal(calls.some((call) => call.command === "gh"), false);
+});
+
+test("PR review workspace metadata pins /diff to the captured base and head", async () => {
+	const root = await createPrReviewRoot();
+	const mergeBase = "c".repeat(40);
+	try {
+		const { pi, calls } = mockPi((command, args) => {
+			const joined = args.join(" ");
+			if (command === "git" && joined === "rev-parse HEAD") return { code: 0, stdout: `${"b".repeat(40)}\n` };
+			if (command === "git" && joined === `merge-base HEAD ${"a".repeat(40)}`) return { code: 0, stdout: `${mergeBase}\n` };
+			throw new Error(`unexpected call: ${command} ${joined}`);
+		});
+		const result = await findMergeBase(pi as any, root, "review/pr-42-bbbbbbbb");
+		assert.deepEqual(result, { commit: mergeBase, baseBranch: "main", baseSource: "PR #42 review workspace" });
+		assert.equal(calls.some((call) => call.command === "gh"), false);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("PR review workspace refuses /diff when HEAD drifted", async () => {
+	const root = await createPrReviewRoot();
+	try {
+		const { pi, calls } = mockPi((command, args) => {
+			if (command === "git" && args.join(" ") === "rev-parse HEAD") return { code: 0, stdout: `${"d".repeat(40)}\n` };
+			throw new Error(`unexpected call: ${command} ${args.join(" ")}`);
+		});
+		await assert.rejects(() => findMergeBase(pi as any, root, "review/pr-42-bbbbbbbb"), /review workspace가 stale합니다/);
+		assert.equal(calls.some((call) => call.args[0] === "merge-base"), false);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
 });
 
 test("open pull request base wins over origin HEAD", async () => {

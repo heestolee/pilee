@@ -13,6 +13,7 @@ import path from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ThemeColor } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder, getLanguageFromPath, highlightCode } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@mariozechner/pi-tui";
+import { readPrReviewWorkspaceMetadata } from "../pr-review/workspace.ts";
 
 // ─── Domain types ──────────────────────────────────────────────────────────
 
@@ -988,6 +989,28 @@ function inferredBaseBranches(branch: string): string[] {
 	return [];
 }
 
+async function findPrReviewWorkspaceBase(pi: ExtensionAPI, cwd: string, branch: string): Promise<MergeBaseInfo | null> {
+	const metadata = readPrReviewWorkspaceMetadata(cwd);
+	if (!metadata) return null;
+	const head = await pi.exec("git", ["rev-parse", "HEAD"], { cwd });
+	const observedHead = head.code === 0 ? head.stdout?.trim() ?? "" : "";
+	if (!observedHead || observedHead !== metadata.headSha) {
+		throw new Error(`PR #${metadata.number} review workspace가 stale합니다: expected head ${metadata.headSha}, observed ${observedHead || "unknown"}`);
+	}
+	if (branch !== "HEAD" && branch !== metadata.branch) {
+		throw new Error(`PR #${metadata.number} review workspace branch가 바뀌었습니다: expected ${metadata.branch}, observed ${branch}`);
+	}
+	const mergeBase = await mergeBaseWithRefs(
+		pi,
+		cwd,
+		metadata.baseRefName,
+		[metadata.baseSha],
+		`PR #${metadata.number} review workspace`,
+	);
+	if (mergeBase) return mergeBase;
+	throw new Error(`PR #${metadata.number}의 base SHA를 로컬에서 찾을 수 없습니다: ${metadata.baseSha}`);
+}
+
 export async function findMergeBase(
 	pi: ExtensionAPI,
 	cwd: string,
@@ -1004,6 +1027,9 @@ export async function findMergeBase(
 		if (explicitMergeBase) return explicitMergeBase;
 		throw new Error(`지정한 base branch를 찾을 수 없습니다: ${explicitBaseBranch}`);
 	}
+
+	const reviewWorkspaceBase = await findPrReviewWorkspaceBase(pi, cwd, branch);
+	if (reviewWorkspaceBase) return reviewWorkspaceBase;
 
 	if (branch === "HEAD") return null;
 
