@@ -35,6 +35,10 @@ const requiredSkillSnippets = [
   '리뷰 severity와 자동 리뷰어 신뢰도는 기존 결정을 뒤집는 승인으로 취급하지 않는다.',
   '기존 결정 보존: <보존한 결정과 근거>',
   '의도적 결정 변경: <없음 | 변경한 결정, 새 근거, 사용자 승인>',
+  '`compatible`',
+  '`stale/reintroduction`',
+  '`conflict`',
+  '`superseding evidence`',
 ];
 
 const requiredCommandSnippets = [
@@ -58,6 +62,26 @@ const missing = [
   ...requiredCommandSnippets.filter((snippet) => !command.includes(snippet)).map((snippet) => `command: ${snippet}`),
   ...requiredWriteToolSnippets.filter((snippet) => !writeTool.includes(snippet)).map((snippet) => `write-tool: ${snippet}`),
 ];
+
+const orderedDecisionSections = [
+  '### 1. Context Reconstruction',
+  '### 1.1 Decision Preservation Gate — 기존 결정 회귀 방지',
+  '### 2. Comment Triage',
+  '### 5. Implement',
+  '#### Decision Regression Audit',
+  '### 7. Commit + Push',
+];
+const sectionPositions = orderedDecisionSections.map((heading) => skill.indexOf(heading));
+if (
+  sectionPositions.some((position) => position === -1) ||
+  sectionPositions.some((position, index) => index > 0 && position <= sectionPositions[index - 1])
+) {
+  missing.push(`skill: decision preservation section order (${orderedDecisionSections.join(' → ')})`);
+}
+if ((skill.match(/`pre-response HEAD`/g) ?? []).length < 2) {
+  missing.push('skill: pre-response HEAD must be captured and audited');
+}
+
 if (missing.length) {
   console.error('pr-ship reviewer boundary is missing required snippets:');
   for (const snippet of missing) console.error(`- ${snippet}`);
