@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
+import shipCommands, {
 	buildParallelAnalysisRequest,
 	isCiShipExcludedByDefaultCheck,
 	parseParallelAnalysisCommand,
@@ -60,6 +60,42 @@ test("parallel analysis parser accepts only safe steering workflow commands", ()
 	});
 	assert.equal(parseParallelAnalysisCommand("/ship"), null);
 	assert.equal(parseParallelAnalysisCommand("/frame"), null);
+});
+
+test("pr-ship extension blocks raw review writes only while its invocation is active", () => {
+	const handlers = new Map<string, (event: any) => any>();
+	const tools: string[] = [];
+	shipCommands({
+		registerTool(tool: any) {
+			tools.push(tool.name);
+		},
+		registerCommand() {},
+		on(name: string, handler: (event: any) => any) {
+			handlers.set(name, handler);
+		},
+	} as any);
+
+	assert.ok(tools.includes("pr_ship_review_write"));
+	const beforeAgentStart = handlers.get("before_agent_start");
+	const toolCall = handlers.get("tool_call");
+	const agentSettled = handlers.get("agent_settled");
+	assert.ok(beforeAgentStart && toolCall && agentSettled);
+
+	beforeAgentStart({ prompt: "You are executing `/pr-ship https://github.com/acme/product/pull/7`." });
+	assert.deepEqual(toolCall({
+		toolName: "bash",
+		input: { command: "gh api repos/acme/product/pulls/7/requested_reviewers --method POST -f reviewers[]=HumanReviewer" },
+	}), {
+		block: true,
+		reason: "Blocked raw GitHub review write during /pr-ship. Use pr_ship_review_write; it re-checks the exact allowlisted reviewer login and rejects humans/unknown actors.",
+	});
+	assert.equal(toolCall({ toolName: "bash", input: { command: "gh api repos/acme/product/pulls/7" } }), undefined);
+
+	agentSettled({});
+	assert.equal(toolCall({
+		toolName: "bash",
+		input: { command: "gh api repos/acme/product/pulls/7/requested_reviewers --method POST -f reviewers[]=HumanReviewer" },
+	}), undefined);
 });
 
 test("parallel analysis request captures command-time basis", () => {
