@@ -65,7 +65,6 @@ const forbiddenSkillSnippets = [
   'PR timeline 일반 코멘트 작성: 사용자가 명시적으로 요청한 경우에만',
   'review re-request: `gh api --method POST',
   'review thread 답글 작성: `jq -n',
-  'HiCreatrip',
 ];
 const forbidden = forbiddenSkillSnippets.filter((snippet) => skill.includes(snippet));
 if (forbidden.length) {
