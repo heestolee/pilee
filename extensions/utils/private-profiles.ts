@@ -132,6 +132,15 @@ export interface PrReviewProfile {
 	corpora?: PrReviewCorpusProfile[];
 }
 
+export interface PrShipExternalWritePolicyProfile {
+	repositories?: string[];
+	allowedReviewerLogins?: string[];
+}
+
+export interface PrShipProfile {
+	externalWritePolicies?: PrShipExternalWritePolicyProfile[];
+}
+
 export interface PileeRuntimeProfile {
 	worktree?: {
 		repos?: WorktreeRepoProfile[];
@@ -143,6 +152,7 @@ export interface PileeRuntimeProfile {
 	studyHard?: StudyHardProfile;
 	workflowGuard?: WorkflowGuardProfile;
 	prReview?: PrReviewProfile;
+	prShip?: PrShipProfile;
 }
 
 function safeReadDir(dir: string): string[] {
@@ -295,6 +305,23 @@ export function loadStudyHardProfiles(cwd?: string): StudyHardProfile[] {
 
 export function loadPrReviewProfiles(cwd?: string): PrReviewProfile[] {
 	return loadPileeRuntimeProfiles(cwd).map((profile) => profile.prReview).filter((profile): profile is PrReviewProfile => Boolean(profile));
+}
+
+export function loadPrShipProfiles(options: { agentDir?: string; activePackageRoots?: string[] } = {}): PrShipProfile[] {
+	const agentDir = options.agentDir ?? join(homedir(), ".pi", "agent");
+	const activePackageRoots = options.activePackageRoots ?? activeSettingsPackageRoots();
+	const files = profileFilesFromDirs([
+		join(agentDir, "profiles"),
+		...activePackageRoots.flatMap(profileDirsFromRoot),
+	]);
+	return files.flatMap((file) => {
+		try {
+			const profile = (JSON.parse(readFileSync(file, "utf8")) as PileeRuntimeProfile).prShip;
+			return profile ? [profile] : [];
+		} catch {
+			return [];
+		}
+	});
 }
 
 export function loadWorkflowGuardProfiles(options: { agentDir?: string; activePackageRoots?: string[] } = {}): WorkflowGuardProfile[] {
