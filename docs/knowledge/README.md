@@ -216,7 +216,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [세션 분류는 원본 위의 sidecar다](./session-classification-sidecar.md) | active | high | 2026-06-02 | 91c739f | archive, show-report, session-classification, sidecar, session, ai-suggestion |
 | [Session export는 원본을 보존하는 adapter를 거친다](./session-export-source-preservation.md) | active | high | 2026-06-02 | e123af1 | session-export, source-preservation, jsonl, conductor, normalize, show-report |
 | [세션 식별자는 파일명이 아니라 사람이 본 이름이다](./session-identity-over-filenames.md) | active | high | 2026-06-02 | e123af1 | session, title, identity, session_info, worktree, revive |
-| [Ship과 PR-Ship은 서로 다른 통합 단계다](./ship-pr-ship-review-boundary.md) | active | high | 2026-08-21 | fa84364 | ship, pr-ship, pr-review, github, commit, push |
+| [Ship과 PR-Ship은 서로 다른 통합 단계다](./ship-pr-ship-review-boundary.md) | active | high | 2026-08-21 | 44f9c17 | ship, pr-ship, pr-review, github, commit, push |
 | [Skill은 재사용 가능한 절차다](./skills-as-portable-procedures.md) | active | high | 2026-06-02 | e123af1 | skill, skill-creator, procedure, porting, workflow, 스킬 |
 | [Slice 완료는 commit 후보를 만든다](./slice-auto-commit-rhythm.md) | active | high | 2026-06-03 | 3b4357d | frame, slice, auto-commit, work-context, git |
 | [정확한 기획 근거가 있으면 Frame은 추적 매트릭스를 만든다](./source-grounded-frame-planning.md) | active | high | 2026-06-02 | 63f2a62 | frame, tft-studio, planning, requirements, traceability, work-map |

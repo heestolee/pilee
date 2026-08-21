@@ -21,8 +21,9 @@ source:
   - external-reference:my-pi-skills-ship
   - backlog:22
   - user-direction:2026-08-21-pr-ship-automated-reviewer-only
+  - user-direction:2026-08-21-pr-ship-decision-preservation
 reviewed_at: 2026-08-21
-reviewed_commit: fa84364
+reviewed_commit: 44f9c17
 related:
   - change-integration-discipline
   - diff-review-draft-handoff
@@ -48,6 +49,12 @@ PR 리뷰 대응의 외부 상태 변경은 allowlisted 자동 리뷰에만 허�
 ## Root-Cause Rule
 
 `pr-ship`은 표면 답변을 만들지 않습니다. 리뷰 문구에 맞춰 한 줄만 바꾸기 전에, 부모/현재 대화의 작업 맥락, PR diff, commit history, 관련 파일, 기존 답글을 확인합니다. 실제 수정할 게 없으면 fake commit을 만들지 않고, 근거를 해당 review conversation에 남깁니다.
+
+## Decision Preservation Boundary
+
+review comment는 새 입력이지만, 기존 사용자 선택·frame decision·의도적 revert/refactor/code-refine·이미 수용한 review response를 자동으로 덮어쓰는 권한은 아닙니다. `pr-ship`은 대응 시작 전 `pre-response HEAD`와 근거가 있는 protected decision ledger를 만들고, 각 리뷰를 기존 결정과 호환되는 수정, stale/reintroduction, conflict, superseding evidence로 분류합니다.
+
+보존 가능한 해법이 있으면 가장 작은 호환 수정을 선택합니다. 리뷰 severity가 높아도 모든 유효한 해법이 보호 결정을 바꿔야 한다면 사용자 재결정 전에는 write workflow를 진행하지 않습니다. 반대로 더 최신의 명시적 사용자 선택이나 검증된 새 사실이 기존 전제를 깨뜨리면 결정을 영구 고정하지 않고 supersession 근거를 갱신합니다. commit 전에는 review-response 범위의 `pre-response HEAD` 대비 diff로 제거·원복·다이어트한 코드나 이전 review response가 되살아나지 않았는지 확인하고, 최종 보고에 보존한 결정과 의도적 변경을 분리해 남깁니다.
 
 ## Extension/Skill Split
 
