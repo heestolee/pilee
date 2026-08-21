@@ -2,13 +2,25 @@ import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { loadPrShipProfiles } from "../utils/private-profiles.ts";
 import {
 	fetchCurrentPullRequestInfo,
 	fetchUnresolvedPullRequestReviewComments,
 	formatUnresolvedReviewCommentsForEditor,
 	parseGitHubPullUrl,
 	type PullRequestInfo,
+	type PullRequestReviewCommentsSummary,
 } from "../utils/github-pr-review-comments.ts";
+import {
+	classifyPrShipReviewAuthor,
+	formatPrShipExternalWritePolicy,
+	resolvePrShipExternalWritePolicy,
+	type ResolvedPrShipExternalWritePolicy,
+} from "./pr-ship-policy.ts";
+import {
+	isDirectPrShipReviewWriteCommand,
+	registerPrShipReviewWriteTool,
+} from "./pr-ship-write-tool.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = resolve(__dirname, "../..");
@@ -49,6 +61,14 @@ interface CommentTarget {
 	url: string;
 }
 
+interface ReviewTarget {
+	owner: string;
+	repo: string;
+	number: number;
+	reviewId: number;
+	url: string;
+}
+
 interface ReviewCommentDetail {
 	id: number | null;
 	body: string;
@@ -60,6 +80,14 @@ interface ReviewCommentDetail {
 	author: string | null;
 	commitId: string | null;
 	inReplyToId: number | null;
+}
+
+interface PullRequestReviewDetail {
+	id: number | null;
+	body: string;
+	htmlUrl: string | null;
+	author: string | null;
+	state: string | null;
 }
 
 interface PrShipOptions {
@@ -149,6 +177,18 @@ function parseCommentUrl(args: string): CommentTarget | null {
 	};
 }
 
+export function parsePullRequestReviewUrl(args: string): ReviewTarget | null {
+	const match = args.match(/https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)#pullrequestreview-(\d+)/u);
+	if (!match) return null;
+	return {
+		owner: match[1],
+		repo: match[2],
+		number: Number(match[3]),
+		reviewId: Number(match[4]),
+		url: match[0],
+	};
+}
+
 function parsePrShipOptions(args: string): PrShipOptions {
 	const tokens = args.trim().split(/\s+/u).filter(Boolean);
 	const pushOnlyFlags = new Set(["--push-only", "--no-comment", "--draft-only", "--manual-comment"]);
@@ -171,20 +211,21 @@ function parsePrShipOptions(args: string): PrShipOptions {
 function formatPrShipMode(options: PrShipOptions): string {
 	if (!options.pushOnly) {
 		return [
-			"## pr-ship mode",
+			"## pr-ship requested mode",
 			"",
-			"- mode: full-response",
-			"- expected finish: code/docs fix if needed → verification → commit → push → thread reply → review re-request.",
+			"- requested mode: full-response",
+			"- effective mode is determined by the authoritative actor policy below.",
+			"- allowlisted actor: fix/verify/commit/push → guarded thread reply → same-login re-request.",
+			"- protected human/unknown actor: local read-only analysis and report only.",
 		].join("\n");
 	}
 	return [
-		"## pr-ship mode",
+		"## pr-ship requested mode",
 		"",
-		"- mode: push-only / manual-comment",
+		"- requested mode: push-only / manual-comment",
 		`- flags: ${options.matchedFlags.join(", ")}`,
-		"- expected finish: code/docs fix if needed → verification → commit → push → draft reply in the session.",
-		"- do not post GitHub review comments, do not call requested_reviewers/re-request, and do not resolve/unresolve threads.",
-		"- include a polished manual-posting comment draft in the final response so the user can edit/post it manually.",
+		"- effective mode is still actor-gated; protected human/unknown reviews remain local-analysis-only with no draft.",
+		"- for an allowlisted actor: fix/verify/commit/push, then include a manual-posting draft without GitHub comment/re-request.",
 	].join("\n");
 }
 
@@ -278,6 +319,23 @@ async function fetchReviewCommentDetail(pi: ExtensionAPI, cwd: string, target: C
 	}
 }
 
+async function fetchPullRequestReviewDetail(pi: ExtensionAPI, cwd: string, target: ReviewTarget): Promise<PullRequestReviewDetail | null> {
+	const result = await pi.exec("gh", ["api", `repos/${target.owner}/${target.repo}/pulls/${target.number}/reviews/${target.reviewId}`], { cwd });
+	if (result.code !== 0) return null;
+	try {
+		const parsed = JSON.parse(result.stdout ?? "") as Record<string, unknown>;
+		return {
+			id: readNumber(parsed.id),
+			body: typeof parsed.body === "string" ? parsed.body : "",
+			htmlUrl: readString(parsed.html_url),
+			author: readAuthor(parsed.user),
+			state: readString(parsed.state),
+		};
+	} catch {
+		return null;
+	}
+}
+
 async function resolvePullRequestFromArgs(pi: ExtensionAPI, ctx: ShipContext, args: string): Promise<PullRequestInfo | null> {
 	const trimmed = args.trim();
 	const commentTarget = parseCommentUrl(trimmed);
@@ -288,6 +346,17 @@ async function resolvePullRequestFromArgs(pi: ExtensionAPI, ctx: ShipContext, ar
 			url: `https://github.com/${commentTarget.owner}/${commentTarget.repo}/pull/${commentTarget.number}`,
 			owner: commentTarget.owner,
 			repo: commentTarget.repo,
+		};
+	}
+
+	const reviewTarget = parsePullRequestReviewUrl(trimmed);
+	if (reviewTarget) {
+		return {
+			number: reviewTarget.number,
+			title: null,
+			url: `https://github.com/${reviewTarget.owner}/${reviewTarget.repo}/pull/${reviewTarget.number}`,
+			owner: reviewTarget.owner,
+			repo: reviewTarget.repo,
 		};
 	}
 
@@ -339,13 +408,18 @@ function formatSessionRefs(ctx: ShipContext): string {
 	].join("\n");
 }
 
-function formatCommentDetail(target: CommentTarget, detail: ReviewCommentDetail | null): string {
+function formatCommentDetail(
+	target: CommentTarget,
+	detail: ReviewCommentDetail | null,
+	policy: ResolvedPrShipExternalWritePolicy,
+): string {
 	if (!detail) {
 		return [
 			"## Specific review comment",
 			"",
 			`- URL: ${target.url}`,
 			`- comment id: ${target.commentId}`,
+			"- actor route: local-analysis-only (author lookup failed; fail closed)",
 			"- detail fetch: failed; fetch it again with `gh api repos/<owner>/<repo>/pulls/comments/<comment_id>` before responding.",
 		].join("\n");
 	}
@@ -355,6 +429,7 @@ function formatCommentDetail(target: CommentTarget, detail: ReviewCommentDetail 
 		`- URL: ${detail.htmlUrl ?? target.url}`,
 		`- comment id: ${detail.id ?? target.commentId}`,
 		`- author: ${detail.author ?? "unknown"}`,
+		`- actor route: ${classifyPrShipReviewAuthor(detail.author, policy)}`,
 		`- file: ${detail.path ?? "unknown"}${detail.line ?? detail.originalLine ? `:${detail.line ?? detail.originalLine}` : ""}`,
 		`- commit: ${detail.commitId ?? "unknown"}`,
 	];
@@ -364,10 +439,62 @@ function formatCommentDetail(target: CommentTarget, detail: ReviewCommentDetail 
 	return lines.join("\n");
 }
 
+function formatPullRequestReviewDetail(
+	target: ReviewTarget,
+	detail: PullRequestReviewDetail | null,
+	policy: ResolvedPrShipExternalWritePolicy,
+): string {
+	if (!detail) {
+		return [
+			"## Specific pull request review",
+			"",
+			`- URL: ${target.url}`,
+			`- review id: ${target.reviewId}`,
+			"- actor route: local-analysis-only (author lookup failed; fail closed)",
+		].join("\n");
+	}
+	return [
+		"## Specific pull request review",
+		"",
+		`- URL: ${detail.htmlUrl ?? target.url}`,
+		`- review id: ${detail.id ?? target.reviewId}`,
+		`- author: ${detail.author ?? "unknown"}`,
+		`- state: ${detail.state ?? "unknown"}`,
+		`- actor route: ${classifyPrShipReviewAuthor(detail.author, policy)}`,
+		"",
+		"### Body",
+		fence(detail.body || "(empty)", "markdown"),
+	].join("\n");
+}
+
+function formatPrShipThreadRouting(
+	summary: PullRequestReviewCommentsSummary,
+	policy: ResolvedPrShipExternalWritePolicy,
+): string {
+	const lines = [
+		"## Unresolved review thread actor routing",
+		"",
+		"Only each thread's root comment author determines whether that thread may enter the write workflow.",
+		"",
+	];
+	if (summary.threads.length === 0) {
+		lines.push("(no unresolved review threads)");
+		return lines.join("\n");
+	}
+	for (const [index, thread] of summary.threads.entries()) {
+		const root = thread.comments[0];
+		lines.push(
+			`- ${index + 1}. ${root?.url ?? thread.id} — author=${root?.author ?? "unknown"} — route=${classifyPrShipReviewAuthor(root?.author ?? null, policy)}`,
+		);
+	}
+	return lines.join("\n");
+}
+
 async function buildPrShipCollectedContext(pi: ExtensionAPI, ctx: ShipContext, args: string): Promise<string> {
 	const options = parsePrShipOptions(args);
 	const lookupArgs = options.remainingArgs || args;
 	const commentTarget = parseCommentUrl(lookupArgs.trim());
+	const reviewTarget = parsePullRequestReviewUrl(lookupArgs.trim());
 	const pullRequest = await resolvePullRequestFromArgs(pi, ctx, lookupArgs);
 	const sections: string[] = [formatSessionRefs(ctx), formatPrShipMode(options)];
 
@@ -376,27 +503,35 @@ async function buildPrShipCollectedContext(pi: ExtensionAPI, ctx: ShipContext, a
 			[
 				"## PR context",
 				"",
-				"PR을 자동 식별하지 못했습니다. `gh pr view` 또는 사용자가 준 PR/comment URL로 다시 확인하세요.",
+				"PR을 자동 식별하지 못했습니다. 모든 actor는 fail-closed local-analysis-only입니다.",
 			].join("\n"),
 		);
+		sections.push(formatPrShipExternalWritePolicy(resolvePrShipExternalWritePolicy(null, loadPrShipProfiles())));
 		return sections.join("\n\n---\n\n");
 	}
 
+	const repository = `${pullRequest.owner}/${pullRequest.repo}`;
+	const policy = resolvePrShipExternalWritePolicy(repository, loadPrShipProfiles());
 	sections.push([
 		"## PR context",
 		"",
 		`- PR: #${pullRequest.number}`,
 		`- URL: ${pullRequest.url}`,
-		`- repo: ${pullRequest.owner}/${pullRequest.repo}`,
+		`- repo: ${repository}`,
 		pullRequest.title ? `- title: ${pullRequest.title}` : "- title: (not fetched)",
 	].join("\n"));
+	sections.push(formatPrShipExternalWritePolicy(policy));
 
 	if (commentTarget) {
-		sections.push(formatCommentDetail(commentTarget, await fetchReviewCommentDetail(pi, ctx.cwd, commentTarget)));
+		sections.push(formatCommentDetail(commentTarget, await fetchReviewCommentDetail(pi, ctx.cwd, commentTarget), policy));
+	}
+	if (reviewTarget) {
+		sections.push(formatPullRequestReviewDetail(reviewTarget, await fetchPullRequestReviewDetail(pi, ctx.cwd, reviewTarget), policy));
 	}
 
 	const summary = await fetchUnresolvedPullRequestReviewComments(pi, ctx.cwd, pullRequest);
 	if (summary) {
+		sections.push(formatPrShipThreadRouting(summary, policy));
 		const formatted = formatUnresolvedReviewCommentsForEditor(summary);
 		sections.push([
 			"## Unresolved review comments snapshot",
@@ -407,7 +542,7 @@ async function buildPrShipCollectedContext(pi: ExtensionAPI, ctx: ShipContext, a
 		sections.push([
 			"## Unresolved review comments snapshot",
 			"",
-			"조회 실패. `gh api graphql`로 reviewThreads를 다시 확인하세요.",
+			"조회 실패. actor identity도 확정할 수 없으므로 fail-closed local-analysis-only로 유지하세요.",
 		].join("\n"));
 	}
 
@@ -807,6 +942,30 @@ function sendPrompt(pi: ExtensionAPI, ctx: ShipContext, command: ShipCommandName
 }
 
 export default function shipCommands(pi: ExtensionAPI) {
+	let prShipWriteGuardActive = false;
+	registerPrShipReviewWriteTool(pi);
+
+	pi.on("before_agent_start", (event) => {
+		if (/executing `\/pr-ship(?:\s|`)|# pr-ship —/u.test(event.prompt)) {
+			prShipWriteGuardActive = true;
+		}
+	});
+	pi.on("tool_call", (event) => {
+		if (!prShipWriteGuardActive || event.toolName !== "bash") return;
+		const input = event.input as { command?: unknown };
+		if (typeof input.command !== "string" || !isDirectPrShipReviewWriteCommand(input.command)) return;
+		return {
+			block: true,
+			reason: "Blocked raw GitHub review write during /pr-ship. Use pr_ship_review_write; it re-checks the exact allowlisted reviewer login and rejects humans/unknown actors.",
+		};
+	});
+	pi.on("agent_settled", () => {
+		prShipWriteGuardActive = false;
+	});
+	pi.on("session_shutdown", () => {
+		prShipWriteGuardActive = false;
+	});
+
 	pi.registerCommand("ship", {
 		description: "pilee /ship — PR 전 변경사항을 의도 단위 커밋·검증·push",
 		handler: async (args, ctx) => {
@@ -820,7 +979,7 @@ export default function shipCommands(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("pr-ship", {
-		description: "pilee /pr-ship — PR 리뷰 코멘트를 근본 대응하고 커밋·push·스레드 답글/re-request까지 진행 (--push-only 지원)",
+		description: "pilee /pr-ship — allowlisted 자동 리뷰만 대응·답글/re-request, 인간 리뷰는 로컬 분석 전용 (--push-only 지원)",
 		handler: async (args, ctx) => {
 			try {
 				if (!ctx.isIdle()) {
@@ -828,6 +987,7 @@ export default function shipCommands(pi: ExtensionAPI) {
 					return;
 				}
 				const collectedContext = await buildPrShipCollectedContext(pi, ctx, args);
+				prShipWriteGuardActive = true;
 				sendPrompt(pi, ctx, "pr-ship", args, buildShipPrompt("pr-ship", args, ctx.cwd, collectedContext));
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);

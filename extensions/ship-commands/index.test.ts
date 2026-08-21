@@ -4,6 +4,7 @@ import {
 	buildParallelAnalysisRequest,
 	isCiShipExcludedByDefaultCheck,
 	parseParallelAnalysisCommand,
+	parsePullRequestReviewUrl,
 } from "./index.ts";
 
 test("ci-ship excludes intentional FIXME policy gates from default auto-fix targets", () => {
@@ -28,6 +29,20 @@ test("ci-ship keeps real PR checks actionable by default", () => {
 		startedAt: null,
 		completedAt: null,
 	}), false);
+});
+
+test("pr-ship parses a pull request review URL without confusing it with the PR", () => {
+	assert.deepEqual(
+		parsePullRequestReviewUrl("https://github.com/acme/product/pull/7#pullrequestreview-99"),
+		{
+			owner: "acme",
+			repo: "product",
+			number: 7,
+			reviewId: 99,
+			url: "https://github.com/acme/product/pull/7#pullrequestreview-99",
+		},
+	);
+	assert.equal(parsePullRequestReviewUrl("https://github.com/acme/product/pull/7"), null);
 });
 
 test("parallel analysis parser accepts only safe steering workflow commands", () => {
