@@ -21,9 +21,9 @@ source:
   - external-reference:my-pi-skills-ship
   - backlog:22
   - user-direction:2026-08-21-pr-ship-automated-reviewer-only
-  - user-direction:2026-08-21-pr-ship-decision-preservation
-reviewed_at: 2026-08-21
-reviewed_commit: 44f9c17
+  - user-direction:2026-08-22-pr-ship-decision-preservation
+reviewed_at: 2026-08-22
+reviewed_commit: e9f0549
 related:
   - change-integration-discipline
   - diff-review-draft-handoff
