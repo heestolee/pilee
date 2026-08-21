@@ -6,55 +6,72 @@ import { fileURLToPath } from 'node:url';
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, '..');
 const skillPath = path.join(repoRoot, 'skills/pr-ship/SKILL.md');
-const text = fs.readFileSync(skillPath, 'utf8');
+const commandPath = path.join(repoRoot, 'extensions/ship-commands/index.ts');
+const writeToolPath = path.join(repoRoot, 'extensions/ship-commands/pr-ship-write-tool.ts');
+const skill = fs.readFileSync(skillPath, 'utf8');
+const command = fs.readFileSync(commandPath, 'utf8');
+const writeTool = fs.readFileSync(writeToolPath, 'utf8');
 
-const requiredSnippets = [
-  '답글 payload는 파일 경로 literal이 GitHub에 올라가지 않도록 안전하게 전송한다.',
-  'gh api ... -f body=@/tmp/reply.md',
-  'jq -n --arg body "$body"',
-  '--input -',
-  '게시/수정 직후 응답의 `.body`를 확인한다.',
-  '성공으로 보고하지 말고 즉시 `PATCH repos/<owner>/<repo>/pulls/comments/<reply_id>`',
-  '최종 보고의 답글 URL은 body 검증이 끝난 뒤에만 적는다.',
+const requiredSkillSnippets = [
+  'Reviewer Actor Gate — 최우선 철칙',
+  '인간이 자동 리뷰 결과를 전달한 review는 인간 review다.',
+  '`local-analysis-only`',
+  '제품 파일 수정, 테스트 수정, commit, push, comment/reply',
+  '특정 review/comment URL의 actor가 local-only면 다른 unresolved 자동 리뷰 thread를 대신 처리하지 않는다.',
+  '외부 review write의 유일한 경로는 `pr_ship_review_write` tool이다.',
+  'raw `gh api`/`gh pr review`/`gh pr edit --add-reviewer`/GraphQL mutation으로 우회하지 않는다.',
+  'same exact login 하나만',
+  '인간 reviewer의 review state가 `CHANGES_REQUESTED`여도 re-request하지 않는다.',
+  '인간/미확인 review/comment | local analysis report만 제공. 답글·초안 없음',
+  '`pr_timeline_comment` | `/pr-ship`에서는 항상 금지.',
+  'Actor routing: <author → external-write-eligible | local-analysis-only>',
+  '인간 리뷰에 하지 않은 것: edit/commit/push/comment/re-request/resolve 전부 수행하지 않음',
   '반드시 `리뷰 대응 평가`를 함께 포함한다.',
-  '그 리뷰가 대응할 만했는가, 대응이 과하지 않았는가',
-  '판정: <대응이 필요한 리뷰였는지 + 전체 대응이 과하지 않았는지 한 문장>',
-  '| 리뷰 | 대응 필요성 | 평가 |',
   '### 과하지 않았나?',
   '### 아쉬운 점',
   '### 남은 후속 후보',
-  '실행 중 실수도 숨기지 않는다.',
-  'Comment Placement Gate',
-  '게시 전 반드시 comment surface를 아래 중 하나로 분류한다.',
-  '`review_thread_reply`',
-  '`draft_only`',
-  '`pr_timeline_comment`',
-  'comment URL/thread가 없으면 기본값은 `draft_only`다.',
-  'PR timeline 일반 코멘트를 달지 않는다.',
-  '잘못된 surface를 고치려고 delete/repost/PATCH하지 않는다.',
-  'PR timeline 일반 코멘트 작성: 사용자가 명시적으로 요청한 경우에만',
 ];
 
-const missing = requiredSnippets.filter((snippet) => !text.includes(snippet));
+const requiredCommandSnippets = [
+  'formatPrShipExternalWritePolicy',
+  'parsePullRequestReviewUrl',
+  'registerPrShipReviewWriteTool(pi)',
+  'isDirectPrShipReviewWriteCommand',
+  'Blocked raw GitHub review write during /pr-ship.',
+];
+
+const requiredWriteToolSnippets = [
+  'name: "pr_ship_review_write"',
+  'requireAllowedAuthor(repository.fullName, snapshot.author, loadProfiles())',
+  'requireAllowedAuthor(repository.fullName, reviewer, loadProfiles())',
+  'Protected human/unknown reviews are local-analysis-only.',
+  'Posted review reply body did not match the requested body',
+];
+
+const missing = [
+  ...requiredSkillSnippets.filter((snippet) => !skill.includes(snippet)).map((snippet) => `skill: ${snippet}`),
+  ...requiredCommandSnippets.filter((snippet) => !command.includes(snippet)).map((snippet) => `command: ${snippet}`),
+  ...requiredWriteToolSnippets.filter((snippet) => !writeTool.includes(snippet)).map((snippet) => `write-tool: ${snippet}`),
+];
 if (missing.length) {
-  console.error('pr-ship reply guidance is missing required snippets:');
-  for (const snippet of missing) {
-    console.error(`- ${snippet}`);
-  }
+  console.error('pr-ship reviewer boundary is missing required snippets:');
+  for (const snippet of missing) console.error(`- ${snippet}`);
   process.exit(1);
 }
 
-const forbiddenGuidance = [
-  '- 답글 작성: `gh api repos/<owner>/<repo>/pulls/<pr>/comments/<comment_id>/replies --method POST -f body=...`',
+const forbiddenSkillSnippets = [
+  '기본 모드에서는 push와 thread 답글이 끝나면 승인되지 않은 리뷰어/팀에게 review를 재요청한다.',
+  'user reviewer와 team reviewer를 target으로 삼는다.',
+  'PR timeline 일반 코멘트 작성: 사용자가 명시적으로 요청한 경우에만',
+  'review re-request: `gh api --method POST',
+  'review thread 답글 작성: `jq -n',
+  'HiCreatrip',
 ];
-
-const presentForbidden = forbiddenGuidance.filter((snippet) => text.includes(snippet));
-if (presentForbidden.length) {
-  console.error('pr-ship reply guidance still contains unsafe GitHub API guidance:');
-  for (const snippet of presentForbidden) {
-    console.error(`- ${snippet}`);
-  }
+const forbidden = forbiddenSkillSnippets.filter((snippet) => skill.includes(snippet));
+if (forbidden.length) {
+  console.error('pr-ship guidance contains forbidden human/generic write guidance or private actor data:');
+  for (const snippet of forbidden) console.error(`- ${snippet}`);
   process.exit(1);
 }
 
-console.log('pr-ship reply guidance check passed');
+console.log('pr-ship reviewer boundary check passed');
