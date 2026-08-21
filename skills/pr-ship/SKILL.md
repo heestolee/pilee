@@ -47,6 +47,7 @@ actor와 무관하게 하면 안 되는 것:
 - review thread `resolve` / `unresolve`
 - merge, auto-merge, merge queue
 - reviewer가 이미 바꾼 상태 되돌리기
+- 사용자 선택, frame/decision, 의도적 revert/refactor/code-refine, 이미 수용한 review response를 근거 없이 되돌리거나 되살리기
 - force push, amend, history rewrite
 - 잘못된 위치의 코멘트를 delete/repost/PATCH로 옮기기
 
@@ -83,12 +84,36 @@ actor gate를 먼저 적용한 뒤 mode를 정한다.
 - 현재 session file과, 있으면 parent session file (`PI_FORK_PARENT` 또는 command shim이 준 경로)
 - `.context/work/**/context.md`, `.pi/worktree-meta.json`, frame/verify/archive transcript
 - `git status --short --branch`
+- 대응 시작 시점의 `pre-response HEAD`
 - `git log --oneline --decorate origin/<base>..HEAD` 또는 PR commit list
 - PR body, changed files, 기존 agent 답글, unresolved review comments
+- 명시적인 사용자/TUI 선택, frame decisions, work context의 must-keep/must-not, 의도적 revert/refactor/code-refine commit과 그 근거
 - 각 thread의 root comment author와 command shim의 actor route
 - 특정 review/comment URL이 주어졌다면 해당 target의 실제 author, body, state/diff hunk, path/line, reply chain
 
 actor 조회 실패는 local-only다. 부모 대화 전문을 읽을 수 없더라도 분석은 계속할 수 있지만, PR diff/commit/local context로 재구성하고 “부모 session 확인 불가”를 최종 보고에 남긴다.
+
+### 1.1 Decision Preservation Gate — 기존 결정 회귀 방지
+
+리뷰 코멘트는 새 입력이지만, 이미 확정된 사용자 선택이나 검증된 대응보다 자동으로 우선하지 않는다. 수정 전에 아래 절차로 **protected decision ledger**를 만든다.
+
+1. `pre-response HEAD`를 기록한다.
+2. 현재/부모 대화, frame/decision/work context, 최근 의도적 revert·refactor·code-refine commit, 같은 PR의 기존 답글·대응 commit에서 명시적인 결정만 수집한다.
+3. 각 항목에 `결정`, `근거 locator`, `보호할 동작·타입·구조`, `허용되는 확장 범위`를 적는다.
+4. 오래된 transcript의 추정, status note, 현재 코드와 충돌하는 요약은 결정으로 승격하지 않는다.
+
+각 allowlisted 리뷰를 다음 중 하나로 분류한다.
+
+| 결정 관계 | 의미 | 대응 |
+|---|---|---|
+| `compatible` | 기존 결정을 보존한 채 수정 가능 | 가장 작은 호환 수정 진행 |
+| `stale/reintroduction` | 리뷰가 의도적으로 제거·원복·다이어트한 상태를 다시 요구 | 코드 변경 없이 현재 근거로 답글 |
+| `conflict` | 유효한 수정이 기존 결정을 뒤집거나 이미 해결한 대응을 원복 | 편집 전에 충돌과 tradeoff를 사용자에게 질문 |
+| `superseding evidence` | 새로 검증된 사실이 기존 결정의 전제를 깨뜨림 | 보존 가능한 대안을 먼저 찾고, 없으면 새 근거와 함께 재결정 요청 |
+
+리뷰 severity와 자동 리뷰어 신뢰도는 기존 결정을 뒤집는 승인으로 취급하지 않는다. 보존 가능한 대안이 있으면 그 대안을 사용한다. 모든 유효한 해법이 보호 결정을 바꿔야 한다면 사용자 확인 전에는 edit/commit/push/reply를 진행하지 않는다. 반대로 더 최신의 명시적 사용자 선택이나 검증된 사실이 있으면 오래된 결정을 무조건 고정하지 않고 ledger의 supersession 근거를 갱신한다.
+
+부모 session이나 decision artifact를 읽을 수 없으면 현재 tree, 최근 commit, 기존 review reply에서 복원한 범위만 보호하고 그 coverage gap을 최종 보고에 남긴다. 보호 결정을 추측해서 만들지 않는다.
 
 ### 2. Comment Triage
 
@@ -105,6 +130,7 @@ actor 조회 실패는 local-only다. 부모 대화 전문을 읽을 수 없더�
 | 테스트/검증 부족 | 구현은 맞지만 증거 부족 | 테스트/검증 추가 또는 evidence 코멘트 |
 | 설명 필요 | 코드 변경보다 설계 근거 필요 | 근거를 확인해 스레드 답글 |
 | 부정확/이미 해결 | 리뷰가 stale이거나 잘못된 지적 | 파일/커밋/검증 근거로 코멘트 |
+| 기존 결정과 충돌 | 수정 시 protected decision 또는 기존 대응을 되돌림 | Decision Preservation Gate로 보내 사용자 재결정 전 정지 |
 | 사용자 판단 필요 | product/UX/security/PII/비즈니스 정책 결정 | 선택지와 tradeoff를 짧게 묻고 멈춤 |
 
 Severity badge가 있어도 맹목적으로 따르지 않는다. `Must_Fix`/`Should_Fix`도 실제 코드와 요구사항을 읽고 판단한다.
@@ -134,12 +160,15 @@ Severity badge가 있어도 맹목적으로 따르지 않는다. `Must_Fix`/`Sho
 - 보안/결제/PII/DB write/외부 side effect가 있다.
 - 리뷰어 의견을 반박해야 하는데 조직적/정책적 판단이 필요하다.
 - 여러 thread를 하나의 큰 리팩터로 묶어야 한다.
+- 리뷰 대응이 protected decision, 사용자 선택, 의도적 revert/refactor/code-refine, 기존 review response를 되돌려야 한다.
 
 ### 5. Implement
 
 이 단계에는 action queue의 allowlisted 자동 리뷰만 들어올 수 있다. local analysis queue만 있으면 이 단계와 이후 write 단계를 전부 건너뛴다.
 
 - allowlisted review와 직접 연결된 관련 파일만 읽고 최소 변경으로 수정한다.
+- 편집 전에 protected decision ledger에서 이번 변경이 보존해야 할 항목을 짧게 고정한다. subagent/worker를 쓰면 같은 목록을 task brief에 전달한다.
+- 제거한 코드·타입 ceremony·helper·optional/nullable·fixture assertion·구조를 리뷰 문구만 근거로 되살리지 않는다. 필요하면 `conflict` 또는 `superseding evidence`로 다시 분류한다.
 - 인간 리뷰에서만 발견된 항목은 같은 PR에 있더라도 수정 근거로 사용하지 않는다. 사용자에게 local finding으로만 보고한다.
 - 가능하면 allowlisted 리뷰 코멘트/thread 단위로 커밋을 쪼갠다. 답글만 봐도 어떤 작업인지 알 수 있도록 commit message가 해결 내용을 드러내야 한다.
 - 같은 원인의 여러 **allowlisted** thread만 하나의 coherent commit으로 묶을 수 있다.
@@ -153,6 +182,17 @@ Severity badge가 있어도 맹목적으로 따르지 않는다. `Must_Fix`/`Sho
 - typecheck/lint/test/build 중 관련 명령
 - UI/viewport/event라면 캡처 또는 명확한 local evidence
 - API/BE라면 테스트, 쿼리 결과, schema/typecheck, 또는 요청/응답 evidence
+
+#### Decision Regression Audit
+
+commit/push 전에 review-response 범위의 `pre-response HEAD` 대비 diff를 읽고 다음을 확인한다.
+
+- protected decision ledger의 각 항목이 그대로 보존됐는가?
+- 이미 제거·원복·다이어트한 코드나 테스트가 다시 들어오지 않았는가?
+- 같은 PR의 이전 review response를 새 대응이 무효화하지 않았는가?
+- 의도적인 결정 변경이 있다면 새 근거와 사용자 승인이 기록됐는가?
+
+하나라도 닫히지 않으면 commit으로 넘기지 않는다. 검증 결과는 최종 보고의 `기존 결정 보존`과 `의도적 결정 변경`에 요약한다.
 
 실패하면 전체 에러를 읽고 근본 원인을 분류한다.
 
@@ -276,6 +316,8 @@ allowlisted 자동 리뷰에 대한 `full-response`에서만, push와 허용된 
 - PR/comment: <url>
 - Actor routing: <author → external-write-eligible | local-analysis-only>
 - 대응: <allowlisted 수정/근거 코멘트/근거 초안 | 인간 local analysis>
+- 기존 결정 보존: <보존한 결정과 근거>
+- 의도적 결정 변경: <없음 | 변경한 결정, 새 근거, 사용자 승인>
 - 커밋: <allowlisted 변경 commit link | 없음 (local-only)>
 - Push: <branch | 없음 (local-only)>
 - 모드: <full-response | push-only | local-analysis-only>
@@ -320,6 +362,9 @@ allowlisted 자동 리뷰에 대한 `full-response`에서만, push와 허용된 
 - allowlist 밖 인간/미확인 리뷰를 보고 코드 수정, test 수정, commit 또는 push
 - 인간 review/comment에 답글·초안·review re-request
 - 인간이 전달한 AI finding을 본문 내용만 보고 자동 리뷰어 review로 승격
+- stale review를 따라 의도적으로 제거·원복·다이어트한 코드나 테스트를 되살림
+- 리뷰 severity만 근거로 사용자 선택, frame decision, 기존 review response를 되돌림
+- protected decision ledger나 `pre-response HEAD` diff audit 없이 수정·commit·push
 - specific human review URL을 받은 뒤 PR의 다른 자동 리뷰 thread를 대신 처리
 - raw `gh api`, `gh pr review`, `gh pr edit --add-reviewer`, GraphQL mutation으로 guarded tool 우회
 - team reviewer 또는 “승인되지 않은 모든 reviewer”를 일괄 re-request
@@ -335,3 +380,4 @@ allowlisted 자동 리뷰에 대한 `full-response`에서만, push와 허용된 
 - 사용자가 요청하지 않은 thread resolve/unresolve
 - `--push-only`인데 GitHub comment/re-request 실행
 - reviewer가 처리한 상태를 되돌림
+- 기존 결정을 바꾸고도 최종 보고의 `의도적 결정 변경`에 새 근거와 사용자 승인을 남기지 않음

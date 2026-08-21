@@ -30,6 +30,11 @@ const requiredSkillSnippets = [
   '### 과하지 않았나?',
   '### 아쉬운 점',
   '### 남은 후속 후보',
+  'Decision Preservation Gate — 기존 결정 회귀 방지',
+  'pre-response HEAD',
+  '리뷰 severity와 자동 리뷰어 신뢰도는 기존 결정을 뒤집는 승인으로 취급하지 않는다.',
+  '기존 결정 보존: <보존한 결정과 근거>',
+  '의도적 결정 변경: <없음 | 변경한 결정, 새 근거, 사용자 승인>',
 ];
 
 const requiredCommandSnippets = [
@@ -65,6 +70,8 @@ const forbiddenSkillSnippets = [
   'PR timeline 일반 코멘트 작성: 사용자가 명시적으로 요청한 경우에만',
   'review re-request: `gh api --method POST',
   'review thread 답글 작성: `jq -n',
+  '리뷰 요청이 있으면 기존 결정을 우선 덮어쓴다.',
+  '자동 리뷰어의 severity가 높으면 사용자 결정을 되돌릴 수 있다.',
 ];
 const forbidden = forbiddenSkillSnippets.filter((snippet) => skill.includes(snippet));
 if (forbidden.length) {
