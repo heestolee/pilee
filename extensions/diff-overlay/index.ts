@@ -92,6 +92,12 @@ interface DiffFile {
 	previousPath?: string | null;
 }
 
+export interface DiffTotals {
+	additions: number;
+	deletions: number;
+	binaryFiles: number;
+}
+
 interface CommitFile {
 	path: string;
 	status: DiffFileStatus;
@@ -122,6 +128,7 @@ interface DiffState {
 	// Diff mode
 	files: DiffFile[];
 	filesByScope: Record<OverlayDiffScope, DiffFile[]>;
+	totalsByScope: Record<OverlayDiffScope, DiffTotals>;
 	scope: OverlayDiffScope;
 	searchQuery: string;
 	searchMode: boolean;
@@ -1092,6 +1099,94 @@ async function repositoryHasHead(pi: ExtensionAPI, cwd: string): Promise<boolean
 	return r.code === 0;
 }
 
+function emptyDiffTotals(): DiffTotals {
+	return { additions: 0, deletions: 0, binaryFiles: 0 };
+}
+
+function addDiffTotals(left: DiffTotals, right: DiffTotals): DiffTotals {
+	return {
+		additions: left.additions + right.additions,
+		deletions: left.deletions + right.deletions,
+		binaryFiles: left.binaryFiles + right.binaryFiles,
+	};
+}
+
+export function parseNumstatTotals(stdout: string): DiffTotals {
+	const totals = emptyDiffTotals();
+	for (const line of stdout.split(/\r?\n/)) {
+		if (!line) continue;
+		const [additionsRaw, deletionsRaw] = line.split("\t", 3);
+		if (!additionsRaw || !deletionsRaw) continue;
+		if (additionsRaw === "-" || deletionsRaw === "-") {
+			totals.binaryFiles += 1;
+			continue;
+		}
+		const additions = Number.parseInt(additionsRaw, 10);
+		const deletions = Number.parseInt(deletionsRaw, 10);
+		if (!Number.isInteger(additions) || !Number.isInteger(deletions)) continue;
+		totals.additions += additions;
+		totals.deletions += deletions;
+	}
+	return totals;
+}
+
+async function gitNumstatTotals(
+	pi: ExtensionAPI,
+	cwd: string,
+	args: string[],
+	acceptedCodes: readonly number[] = [0],
+): Promise<DiffTotals> {
+	const result = await pi.exec("git", args, { cwd });
+	if (!acceptedCodes.includes(result.code) || !result.stdout) return emptyDiffTotals();
+	return parseNumstatTotals(result.stdout);
+}
+
+async function untrackedDiffTotals(pi: ExtensionAPI, cwd: string, paths: string[]): Promise<DiffTotals> {
+	let totals = emptyDiffTotals();
+	for (const filePath of new Set(paths)) {
+		const fileTotals = await gitNumstatTotals(
+			pi,
+			cwd,
+			["diff", "--no-ext-diff", "--numstat", "--no-index", "--", "/dev/null", filePath],
+			[0, 1],
+		);
+		totals = addDiffTotals(totals, fileTotals);
+	}
+	return totals;
+}
+
+export async function loadDiffTotalsByScope(
+	pi: ExtensionAPI,
+	cwd: string,
+	mergeBase: string | null,
+	untrackedPaths: string[],
+): Promise<{ branch: DiffTotals; working: DiffTotals; "last-commit": DiffTotals }> {
+	const hasHead = await repositoryHasHead(pi, cwd);
+	const workingTracked = hasHead
+		? gitNumstatTotals(pi, cwd, ["diff", "--no-ext-diff", "--numstat", "HEAD"])
+		: Promise.resolve(emptyDiffTotals());
+	const branchTracked = mergeBase
+		? gitNumstatTotals(pi, cwd, ["diff", "--no-ext-diff", "--numstat", mergeBase])
+		: workingTracked;
+	const lastCommit = hasHead
+		? gitNumstatTotals(pi, cwd, ["show", "--no-ext-diff", "--numstat", "--format=", "HEAD"])
+		: Promise.resolve(emptyDiffTotals());
+	const untracked = untrackedDiffTotals(pi, cwd, untrackedPaths);
+
+	const [branchTotals, workingTotals, lastCommitTotals, untrackedTotals] = await Promise.all([
+		branchTracked,
+		workingTracked,
+		lastCommit,
+		untracked,
+	]);
+
+	return {
+		branch: addDiffTotals(branchTotals, untrackedTotals),
+		working: addDiffTotals(workingTotals, untrackedTotals),
+		"last-commit": lastCommitTotals,
+	};
+}
+
 async function committedFiles(pi: ExtensionAPI, cwd: string, mergeBase: string | null): Promise<DiffFile[]> {
 	if (!mergeBase) return [];
 	const r = await pi.exec("git", ["diff", "--name-status", "-z", `${mergeBase}..HEAD`], { cwd });
@@ -1111,11 +1206,6 @@ async function lastCommitFiles(pi: ExtensionAPI, cwd: string): Promise<DiffFile[
 	const r = await pi.exec("git", ["show", "--name-status", "--format=", "-z", "HEAD"], { cwd });
 	if (r.code !== 0 || !r.stdout) return [];
 	return parseNameStatusZ(r.stdout).map((entry) => ({ ...entry, commitState: "committed" as CommitState }));
-}
-
-async function changedFiles(pi: ExtensionAPI, cwd: string, mergeBase: string | null): Promise<DiffFile[]> {
-	const [committed, working] = await Promise.all([committedFiles(pi, cwd, mergeBase), workingTreeFiles(pi, cwd)]);
-	return mergeDiffEntries(committed, working) as DiffFile[];
 }
 
 async function branchCommits(pi: ExtensionAPI, cwd: string, mergeBase: string | null): Promise<BranchCommitEntry[]> {
@@ -1146,17 +1236,25 @@ async function branchCommits(pi: ExtensionAPI, cwd: string, mergeBase: string | 
 
 interface OverlayData {
 	filesByScope: Record<OverlayDiffScope, DiffFile[]>;
+	totalsByScope: Record<OverlayDiffScope, DiffTotals>;
 	commits: BranchCommitEntry[];
 	uncommittedFiles: DiffFile[];
 }
 
 async function loadOverlayData(pi: ExtensionAPI, cwd: string, mergeBase: string | null): Promise<OverlayData> {
-	const [branchFiles, workingFiles, lastCommitScopeFiles, commits] = await Promise.all([
-		changedFiles(pi, cwd, mergeBase),
+	const [committed, workingFiles, lastCommitScopeFiles, commits] = await Promise.all([
+		committedFiles(pi, cwd, mergeBase),
 		workingTreeFiles(pi, cwd),
 		lastCommitFiles(pi, cwd),
 		branchCommits(pi, cwd, mergeBase),
 	]);
+	const branchFiles = mergeDiffEntries(committed, workingFiles) as DiffFile[];
+	const totalsByScope = await loadDiffTotalsByScope(
+		pi,
+		cwd,
+		mergeBase,
+		workingFiles.filter((file) => file.status === "untracked").map((file) => file.path),
+	);
 
 	return {
 		filesByScope: {
@@ -1164,6 +1262,7 @@ async function loadOverlayData(pi: ExtensionAPI, cwd: string, mergeBase: string 
 			working: workingFiles,
 			"last-commit": lastCommitScopeFiles,
 		},
+		totalsByScope,
 		commits,
 		uncommittedFiles: [...workingFiles],
 	};
@@ -2075,6 +2174,7 @@ class DiffOverlay {
 	private async refreshFiles(tui: Tui): Promise<void> {
 		const data = await loadOverlayData(this.pi, this.cwd, this.st.mergeBase);
 		this.st.filesByScope = data.filesByScope;
+		this.st.totalsByScope = data.totalsByScope;
 		this.st.commits = data.commits;
 		this.st.diffCache.clear();
 		this.st.highlightedDiffCache.clear();
@@ -2603,10 +2703,17 @@ class DiffOverlay {
 				? `${st.files.length}/${scopeFileCount} file${scopeFileCount !== 1 ? "s" : ""}`
 				: `${scopeFileCount} file${scopeFileCount !== 1 ? "s" : ""}`,
 		);
+		const scopeTotals = st.totalsByScope[st.scope];
+		const additions = t.fg("success", `+${scopeTotals.additions.toLocaleString("en-US")}`);
+		const deletions = t.fg("error", `−${scopeTotals.deletions.toLocaleString("en-US")}`);
+		const binaryFiles = scopeTotals.binaryFiles > 0
+			? ` ${t.fg("dim", "·")} ${t.fg("warning", `${scopeTotals.binaryFiles} bin`)}`
+			: "";
+		const diffTotal = `${additions} ${deletions}${binaryFiles}`;
 		const commitCnt = t.fg("muted", `${st.commits.length} commit${st.commits.length !== 1 ? "s" : ""}`);
 		const mode = st.viewMode === "diff" ? t.fg("accent", "diff") : t.fg("accent", "commit");
 		header.push(
-			`  ${t.fg("accent", t.bold("DIFF"))} ${t.fg("dim", "|")} ${comparison} ${t.fg("dim", "·")} ${fileCnt} ${t.fg("dim", "·")} ${commitCnt} ${t.fg("dim", "·")} mode:${mode}`,
+			`  ${t.fg("accent", t.bold("DIFF"))} ${t.fg("dim", "|")} ${comparison} ${t.fg("dim", "·")} ${fileCnt} ${t.fg("dim", "·")} ${diffTotal} ${t.fg("dim", "·")} ${commitCnt} ${t.fg("dim", "·")} mode:${mode}`,
 		);
 		header.push(
 			`  ${t.fg("muted", "scope:")}${t.fg("muted", scopeLabel(st.scope))} ${t.fg("muted", "· filter:")}${t.fg(st.searchMode ? "accent" : "muted", st.searchQuery || "-")} ${t.fg("muted", "· wrap:")}${t.fg(st.wrapLines ? "success" : "muted", st.wrapLines ? "on" : "off")} ${t.fg("muted", "· full:")}${t.fg(st.showFullFile ? "success" : "muted", st.showFullFile ? "on" : "off")} ${t.fg("muted", "· changed-only:")}${t.fg(st.changedOnly ? "success" : "muted", st.changedOnly ? "on" : "off")} ${t.fg("muted", "· reviews:")}${t.fg(st.reviewDrafts.length > 0 ? "accent" : "muted", String(st.reviewDrafts.length))}`,
@@ -2785,6 +2892,7 @@ export default function diffOverlayExtension(pi: ExtensionAPI) {
 		const st: DiffState = {
 			files,
 			filesByScope: overlayData.filesByScope,
+			totalsByScope: overlayData.totalsByScope,
 			scope: initialScope,
 			searchQuery: "",
 			searchMode: false,

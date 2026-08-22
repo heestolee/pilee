@@ -3,7 +3,13 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { findMergeBase, formatDiffComparison, parseDiffArgs } from "./index.ts";
+import {
+	findMergeBase,
+	formatDiffComparison,
+	loadDiffTotalsByScope,
+	parseDiffArgs,
+	parseNumstatTotals,
+} from "./index.ts";
 
 type ExecResult = { code: number; stdout?: string; stderr?: string };
 type ExecCall = { command: string; args: string[]; cwd?: string };
@@ -71,6 +77,67 @@ test("formatDiffComparison exposes base, head, and resolution source", () => {
 		"feature/foundation...feature/activation · PR #4572",
 	);
 	assert.equal(formatDiffComparison("development", null, null), "development");
+});
+
+test("parseNumstatTotals sums text lines and tracks binary files", () => {
+	assert.deepEqual(
+		parseNumstatTotals([
+			"12\t3\tsrc/a.ts",
+			"-\t-\tpublic/image.png",
+			"0\t0\told.ts => new.ts",
+			"invalid",
+			"4\tx\tbroken.txt",
+		].join("\n")),
+		{ additions: 12, deletions: 3, binaryFiles: 1 },
+	);
+});
+
+test("diff totals include untracked files in branch and working scopes", async () => {
+	const { pi } = mockPi((command, args) => {
+		const joined = args.join(" ");
+		if (command === "git" && joined === "rev-parse --verify HEAD") return { code: 0 };
+		if (command === "git" && joined === "diff --no-ext-diff --numstat base123") {
+			return { code: 0, stdout: "10\t2\ttracked.ts\n-\t-\timage.png\n" };
+		}
+		if (command === "git" && joined === "diff --no-ext-diff --numstat HEAD") {
+			return { code: 0, stdout: "3\t1\tworking.ts\n" };
+		}
+		if (command === "git" && joined === "show --no-ext-diff --numstat --format= HEAD") {
+			return { code: 0, stdout: "7\t4\tcommitted.ts\n" };
+		}
+		if (command === "git" && joined === "diff --no-ext-diff --numstat --no-index -- /dev/null new.txt") {
+			return { code: 1, stdout: "5\t0\t/dev/null => new.txt\n" };
+		}
+		if (command === "git" && joined === "diff --no-ext-diff --numstat --no-index -- /dev/null new.bin") {
+			return { code: 1, stdout: "-\t-\t/dev/null => new.bin\n" };
+		}
+		throw new Error(`unexpected call: ${command} ${joined}`);
+	});
+
+	assert.deepEqual(await loadDiffTotalsByScope(pi as any, "/repo", "base123", ["new.txt", "new.bin", "new.txt"]), {
+		branch: { additions: 15, deletions: 2, binaryFiles: 2 },
+		working: { additions: 8, deletions: 1, binaryFiles: 1 },
+		"last-commit": { additions: 7, deletions: 4, binaryFiles: 0 },
+	});
+});
+
+test("branch totals reuse working totals when no merge base exists", async () => {
+	const { pi, calls } = mockPi((command, args) => {
+		const joined = args.join(" ");
+		if (command === "git" && joined === "rev-parse --verify HEAD") return { code: 0 };
+		if (command === "git" && joined === "diff --no-ext-diff --numstat HEAD") {
+			return { code: 0, stdout: "2\t1\tworking.ts\n" };
+		}
+		if (command === "git" && joined === "show --no-ext-diff --numstat --format= HEAD") {
+			return { code: 0, stdout: "1\t1\tcommitted.ts\n" };
+		}
+		throw new Error(`unexpected call: ${command} ${joined}`);
+	});
+
+	const totals = await loadDiffTotalsByScope(pi as any, "/repo", null, []);
+	assert.deepEqual(totals.branch, { additions: 2, deletions: 1, binaryFiles: 0 });
+	assert.deepEqual(totals.working, totals.branch);
+	assert.equal(calls.filter((call) => call.args.join(" ") === "diff --no-ext-diff --numstat HEAD").length, 1);
 });
 
 test("explicit --base overrides pull request lookup", async () => {
