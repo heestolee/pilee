@@ -98,11 +98,17 @@ export interface DiffTotals {
 	binaryFiles: number;
 }
 
+export interface NumstatFileEntry extends DiffTotals {
+	path: string;
+	previousPath?: string | null;
+}
+
 interface CommitFile {
 	path: string;
 	status: DiffFileStatus;
 	rawStatus: string;
 	previousPath?: string | null;
+	diffTotals: DiffTotals;
 }
 
 interface ReviewDraft {
@@ -1146,6 +1152,37 @@ export function parseNumstatTotals(stdout: string): DiffTotals {
 	return totals;
 }
 
+export function parseNumstatEntriesZ(stdout: string): NumstatFileEntry[] {
+	const tokens = stdout.split("\0");
+	const entries: NumstatFileEntry[] = [];
+	for (let index = 0; index < tokens.length; index++) {
+		const record = tokens[index] ?? "";
+		if (!record) continue;
+		const firstTab = record.indexOf("\t");
+		const secondTab = firstTab >= 0 ? record.indexOf("\t", firstTab + 1) : -1;
+		if (firstTab < 0 || secondTab < 0) continue;
+		const additionsRaw = record.slice(0, firstTab).trim();
+		const deletionsRaw = record.slice(firstTab + 1, secondTab).trim();
+		let filePath = record.slice(secondTab + 1);
+		let previousPath: string | null = null;
+		if (!filePath) {
+			previousPath = tokens[index + 1] ?? null;
+			filePath = tokens[index + 2] ?? "";
+			index += 2;
+		}
+		if (!filePath) continue;
+		if (additionsRaw === "-" || deletionsRaw === "-") {
+			entries.push({ path: filePath, previousPath, additions: 0, deletions: 0, binaryFiles: 1 });
+			continue;
+		}
+		const additions = Number.parseInt(additionsRaw, 10);
+		const deletions = Number.parseInt(deletionsRaw, 10);
+		if (!Number.isInteger(additions) || !Number.isInteger(deletions)) continue;
+		entries.push({ path: filePath, previousPath, additions, deletions, binaryFiles: 0 });
+	}
+	return entries;
+}
+
 async function gitNumstatTotals(
 	pi: ExtensionAPI,
 	cwd: string,
@@ -1169,6 +1206,32 @@ async function untrackedDiffTotals(pi: ExtensionAPI, cwd: string, paths: string[
 		totals = addDiffTotals(totals, fileTotals);
 	}
 	return totals;
+}
+
+async function gitNumstatEntriesZ(
+	pi: ExtensionAPI,
+	cwd: string,
+	args: string[],
+	acceptedCodes: readonly number[] = [0],
+): Promise<NumstatFileEntry[]> {
+	const result = await pi.exec("git", args, { cwd });
+	if (!acceptedCodes.includes(result.code) || !result.stdout) return [];
+	return parseNumstatEntriesZ(result.stdout);
+}
+
+function attachCommitDiffTotals(
+	files: Array<Omit<CommitFile, "diffTotals">>,
+	entries: NumstatFileEntry[],
+): CommitFile[] {
+	const totalsByPath = new Map(entries.map((entry) => [entry.path, entry]));
+	return files.map((file) => ({
+		...file,
+		diffTotals: totalsByPath.get(file.path) ?? emptyDiffTotals(),
+	}));
+}
+
+function sumCommitDiffTotals(files: CommitFile[]): DiffTotals {
+	return files.reduce((totals, file) => addDiffTotals(totals, file.diffTotals), emptyDiffTotals());
 }
 
 export async function loadDiffTotalsByScope(
@@ -1285,9 +1348,32 @@ async function loadOverlayData(pi: ExtensionAPI, cwd: string, mergeBase: string 
 }
 
 async function commitFilesForHash(pi: ExtensionAPI, cwd: string, commitHash: string): Promise<CommitFile[]> {
-	const r = await pi.exec("git", ["show", "--name-status", "--format=", "-z", commitHash], { cwd });
-	if (r.code !== 0 || !r.stdout) return [];
-	return parseNameStatusZ(r.stdout);
+	const [nameStatus, numstatEntries] = await Promise.all([
+		pi.exec("git", ["show", "--name-status", "--format=", "-z", commitHash], { cwd }),
+		gitNumstatEntriesZ(pi, cwd, ["show", "--no-ext-diff", "--numstat", "-z", "--format=", commitHash]),
+	]);
+	if (nameStatus.code !== 0 || !nameStatus.stdout) return [];
+	return attachCommitDiffTotals(parseNameStatusZ(nameStatus.stdout), numstatEntries);
+}
+
+async function workingTreeCommitFiles(pi: ExtensionAPI, cwd: string): Promise<CommitFile[]> {
+	const files = await workingTreeFiles(pi, cwd);
+	const hasHead = await repositoryHasHead(pi, cwd);
+	const entries = hasHead
+		? await gitNumstatEntriesZ(pi, cwd, ["diff", "--no-ext-diff", "--numstat", "-z", "HEAD"])
+		: [];
+	for (const file of files) {
+		if (file.status !== "untracked") continue;
+		const untracked = await gitNumstatEntriesZ(
+			pi,
+			cwd,
+			["diff", "--no-ext-diff", "--numstat", "-z", "--no-index", "--", "/dev/null", file.path],
+			[0, 1],
+		);
+		const totals = untracked[0] ?? { additions: 0, deletions: 0, binaryFiles: 0, path: file.path };
+		entries.push({ ...totals, path: file.path, previousPath: null });
+	}
+	return attachCommitDiffTotals(files, entries);
 }
 
 export function buildAddedFileDiff(content: string): string {
@@ -1808,11 +1894,13 @@ function renderCommitFiles(t: Theme, st: DiffState, w: number, h: number): strin
 		const fold = expanded.has(file.path) ? t.fg("accent", "▾") : t.fg("dim", "▸");
 		const ic = t.fg(statusColor(file.status), icon(file.status));
 		const prefix = `${cursor} ${fold} ${ic} `;
-		const nameW = Math.max(4, w - visibleWidth(prefix));
+		const diffTotal = renderDiffTotals(t, file.diffTotals);
+		const suffix = `${t.fg("dim", " · ")}${diffTotal}`;
+		const nameW = Math.max(4, w - visibleWidth(prefix) - visibleWidth(suffix));
 
 		const fileName = truncatePlainToWidth(fileDisplayPath(file), nameW);
 		const label = selected ? (active ? t.fg("accent", fileName) : t.fg("muted", fileName)) : t.fg("text", fileName);
-		rows.push(truncateToWidth(`${prefix}${label}`, w, ""));
+		rows.push(truncateToWidth(`${prefix}${label}${suffix}`, w, ""));
 
 		if (!expanded.has(file.path)) continue;
 
@@ -2159,21 +2247,10 @@ class DiffOverlay {
 		this.st.commitFilesLoading.add(commit.hash);
 		tui.requestRender();
 		try {
-			if (commit.hash === UNCOMMITTED_HASH) {
-				const wtFiles = await workingTreeFiles(this.pi, this.cwd);
-				this.st.commitFilesCache.set(
-					UNCOMMITTED_HASH,
-					wtFiles.map((f) => ({
-						path: f.path,
-						status: f.status,
-						rawStatus: f.rawStatus,
-						previousPath: f.previousPath ?? null,
-					})),
-				);
-			} else {
-				const files = await commitFilesForHash(this.pi, this.cwd, commit.hash);
-				this.st.commitFilesCache.set(commit.hash, files);
-			}
+			const files = commit.hash === UNCOMMITTED_HASH
+				? await workingTreeCommitFiles(this.pi, this.cwd)
+				: await commitFilesForHash(this.pi, this.cwd, commit.hash);
+			this.st.commitFilesCache.set(commit.hash, files);
 		} finally {
 			this.st.commitFilesLoading.delete(commit.hash);
 		}
@@ -2228,15 +2305,7 @@ class DiffOverlay {
 				relativeDate: "now",
 				subject: `Uncommitted Changes (${data.uncommittedFiles.length} file${data.uncommittedFiles.length !== 1 ? "s" : ""})`,
 			});
-			this.st.commitFilesCache.set(
-				UNCOMMITTED_HASH,
-				data.uncommittedFiles.map((f) => ({
-					path: f.path,
-					status: f.status,
-					rawStatus: f.rawStatus,
-					previousPath: f.previousPath ?? null,
-				})),
-			);
+
 		}
 		if (this.st.files.length === 0) {
 			this.st.selectedIndex = 0;
@@ -2838,10 +2907,13 @@ class DiffOverlay {
 				: st.commitFilesLoading.has(selectedCommit.hash)
 					? "loading files…"
 					: "files: -";
+			const diffInfo = commitFiles
+				? renderDiffTotals(t, sumCommitDiffTotals(commitFiles))
+				: t.fg("dim", "loading…");
 			if (selectedCommit.hash === UNCOMMITTED_HASH) {
-				commitLabel = `${t.fg("warning", "●●●")} ${t.fg("warning", selectedCommit.subject)} ${t.fg("dim", `· ${filesInfo}`)}`;
+				commitLabel = `${t.fg("warning", "●●●")} ${t.fg("warning", selectedCommit.subject)} ${t.fg("dim", "·")} ${diffInfo} ${t.fg("dim", `· ${filesInfo}`)}`;
 			} else {
-				commitLabel = `${t.fg("muted", selectedCommit.shortHash)} ${t.fg("text", selectedCommit.subject)} ${t.fg("dim", `· ${filesInfo}`)}`;
+				commitLabel = `${t.fg("muted", selectedCommit.shortHash)} ${t.fg("text", selectedCommit.subject)} ${t.fg("dim", "·")} ${diffInfo} ${t.fg("dim", `· ${filesInfo}`)}`;
 			}
 		}
 
@@ -2976,18 +3048,6 @@ export default function diffOverlayExtension(pi: ExtensionAPI) {
 			baseSource: mergeBaseInfo?.baseSource ?? null,
 			error: null,
 		};
-
-		if (overlayData.uncommittedFiles.length > 0) {
-			st.commitFilesCache.set(
-				UNCOMMITTED_HASH,
-				overlayData.uncommittedFiles.map((f) => ({
-					path: f.path,
-					status: f.status,
-					rawStatus: f.rawStatus,
-					previousPath: f.previousPath ?? null,
-				})),
-			);
-		}
 
 		if (!ctx.hasUI) {
 			console.log(`기준: ${formatDiffComparison(branch, mergeBaseInfo?.baseBranch ?? null, mergeBaseInfo?.baseSource ?? null)}`);

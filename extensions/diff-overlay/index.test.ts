@@ -12,6 +12,7 @@ import {
 	loadDiffTotalsByScope,
 	parseDiffArgs,
 	parseFileDiffTotals,
+	parseNumstatEntriesZ,
 	parseNumstatTotals,
 } from "./index.ts";
 
@@ -139,6 +140,22 @@ test("parseNumstatTotals sums text lines and tracks binary files", () => {
 		].join("\n")),
 		{ additions: 12, deletions: 3, binaryFiles: 1 },
 	);
+});
+
+test("zero-terminated numstat keeps per-file totals and rename destination", () => {
+	const stdout = [
+		"2\t1\tsrc/file.ts",
+		"-\t-\tpublic/image.png",
+		"0\t0\t",
+		"src/old.ts",
+		"src/new.ts",
+		"",
+	].join("\0");
+	assert.deepEqual(parseNumstatEntriesZ(stdout), [
+		{ path: "src/file.ts", previousPath: null, additions: 2, deletions: 1, binaryFiles: 0 },
+		{ path: "public/image.png", previousPath: null, additions: 0, deletions: 0, binaryFiles: 1 },
+		{ path: "src/new.ts", previousPath: "src/old.ts", additions: 0, deletions: 0, binaryFiles: 0 },
+	]);
 });
 
 test("diff totals include untracked files in branch and working scopes", async () => {
