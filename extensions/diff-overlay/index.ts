@@ -432,6 +432,10 @@ function cycleOverlayDiffScope(scope: OverlayDiffScope): OverlayDiffScope {
 	return "branch";
 }
 
+export function isStashShortcut(data: string): boolean {
+	return matchesKey(data, Key.shift("s"));
+}
+
 // ─── Search / filter ───────────────────────────────────────────────────────
 
 function normalizeOverlaySearchQuery(query: string): string {
@@ -2615,7 +2619,7 @@ class DiffOverlay {
 			return;
 		}
 
-		if (matchesKey(data, "S")) {
+		if (isStashShortcut(data)) {
 			void this.stashChanges(tui).then(() => tui.requestRender());
 			return;
 		}

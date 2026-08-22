@@ -6,6 +6,7 @@ import test from "node:test";
 import {
 	findMergeBase,
 	formatDiffComparison,
+	isStashShortcut,
 	loadDiffTotalsByScope,
 	parseDiffArgs,
 	parseNumstatTotals,
@@ -77,6 +78,11 @@ test("formatDiffComparison exposes base, head, and resolution source", () => {
 		"feature/foundation...feature/activation · PR #4572",
 	);
 	assert.equal(formatDiffComparison("development", null, null), "development");
+});
+
+test("stash shortcut only matches Shift+S and leaves lowercase s for scope switching", () => {
+	assert.equal(isStashShortcut("s"), false);
+	assert.equal(isStashShortcut("S"), true);
 });
 
 test("parseNumstatTotals sums text lines and tracks binary files", () => {
