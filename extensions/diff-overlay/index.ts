@@ -707,6 +707,18 @@ function parseDiffLines(rawDiff: string): ParsedDiffLine[] {
 	});
 }
 
+export function parseFileDiffTotals(rawDiff: string): DiffTotals {
+	const totals: DiffTotals = { additions: 0, deletions: 0, binaryFiles: 0 };
+	if (/^Binary files .* differ$/m.test(rawDiff) || /^GIT binary patch$/m.test(rawDiff)) {
+		totals.binaryFiles = 1;
+	}
+	for (const line of parseDiffLines(rawDiff)) {
+		if (line.category === "added") totals.additions += 1;
+		else if (line.category === "removed") totals.deletions += 1;
+	}
+	return totals;
+}
+
 function extractCodeBlock(parsed: ParsedDiffLine[]): { code: string; indices: number[] } {
 	const codeLines: string[] = [];
 	const indices: number[] = [];
@@ -1278,10 +1290,23 @@ async function commitFilesForHash(pi: ExtensionAPI, cwd: string, commitHash: str
 	return parseNameStatusZ(r.stdout);
 }
 
-async function asAddedFileDiff(pi: ExtensionAPI, cwd: string, filePath: string): Promise<string> {
-	const r = await pi.exec("cat", [filePath], { cwd });
-	if (r.code !== 0) return "(cannot read file)";
-	return (r.stdout ?? "").split("\n").map((line) => `+ ${line}`).join("\n");
+export function buildAddedFileDiff(content: string): string {
+	if (content.length === 0) return "";
+	const withoutFinalNewline = content.endsWith("\n") ? content.slice(0, -1) : content;
+	return withoutFinalNewline.split(/\r?\n/).map((line) => `+ ${line}`).join("\n");
+}
+
+export async function asAddedFileDiff(pi: ExtensionAPI, cwd: string, filePath: string): Promise<string> {
+	const diff = await pi.exec(
+		"git",
+		["diff", "--no-ext-diff", "--no-index", "--no-color", "--", "/dev/null", filePath],
+		{ cwd },
+	);
+	if ((diff.code === 0 || diff.code === 1) && (diff.stdout ?? "").trim()) return (diff.stdout ?? "").trim();
+
+	const fallback = await pi.exec("cat", [filePath], { cwd });
+	if (fallback.code !== 0) return "(cannot read file)";
+	return buildAddedFileDiff(fallback.stdout ?? "");
 }
 
 async function workingTreeFileDiff(
@@ -1387,6 +1412,15 @@ function commitStateColor(state: CommitState): ThemeColor {
 	if (state === "both") return "accent";
 	if (state === "committed") return "success";
 	return "warning";
+}
+
+function renderDiffTotals(t: Theme, totals: DiffTotals): string {
+	const additions = t.fg("success", `+${totals.additions.toLocaleString("en-US")}`);
+	const deletions = t.fg("error", `−${totals.deletions.toLocaleString("en-US")}`);
+	const binaryFiles = totals.binaryFiles > 0
+		? ` ${t.fg("dim", "·")} ${t.fg("warning", `${totals.binaryFiles} bin`)}`
+		: "";
+	return `${additions} ${deletions}${binaryFiles}`;
 }
 
 function colorDiffLine(t: Theme, line: string): string {
@@ -2707,13 +2741,7 @@ class DiffOverlay {
 				? `${st.files.length}/${scopeFileCount} file${scopeFileCount !== 1 ? "s" : ""}`
 				: `${scopeFileCount} file${scopeFileCount !== 1 ? "s" : ""}`,
 		);
-		const scopeTotals = st.totalsByScope[st.scope];
-		const additions = t.fg("success", `+${scopeTotals.additions.toLocaleString("en-US")}`);
-		const deletions = t.fg("error", `−${scopeTotals.deletions.toLocaleString("en-US")}`);
-		const binaryFiles = scopeTotals.binaryFiles > 0
-			? ` ${t.fg("dim", "·")} ${t.fg("warning", `${scopeTotals.binaryFiles} bin`)}`
-			: "";
-		const diffTotal = `${additions} ${deletions}${binaryFiles}`;
+		const diffTotal = renderDiffTotals(t, st.totalsByScope[st.scope]);
 		const commitCnt = t.fg("muted", `${st.commits.length} commit${st.commits.length !== 1 ? "s" : ""}`);
 		const mode = st.viewMode === "diff" ? t.fg("accent", "diff") : t.fg("accent", "commit");
 		header.push(
@@ -2791,8 +2819,14 @@ class DiffOverlay {
 		const selectedFileReviewCount = selectedFile
 			? st.reviewDrafts.filter((draft) => draft.filePath === selectedFile.path).length
 			: 0;
+		const selectedFileRawDiff = selectedFile
+			? st.diffCache.get(scopedDiffKey(st.scope, selectedFile.path))
+			: undefined;
+		const selectedFileDiffTotal = selectedFileRawDiff === undefined
+			? t.fg("dim", "loading…")
+			: renderDiffTotals(t, parseFileDiffTotals(selectedFileRawDiff));
 		const fileLabel = selectedFile
-			? `${t.fg(statusColor(selectedFile.status), icon(selectedFile.status))} ${t.fg(commitStateColor(selectedFile.commitState), `[${commitStateBadge(selectedFile.commitState)}]`)} ${t.fg(selectedFileReviewCount > 0 ? "accent" : "dim", selectedFileReviewCount > 0 ? `${selectedFileReviewCount} review${selectedFileReviewCount !== 1 ? "s" : ""}` : "no reviews")} ${t.fg("muted", fileDisplayPath(selectedFile))}`
+			? `${t.fg(statusColor(selectedFile.status), icon(selectedFile.status))} ${t.fg(commitStateColor(selectedFile.commitState), `[${commitStateBadge(selectedFile.commitState)}]`)} ${t.fg(selectedFileReviewCount > 0 ? "accent" : "dim", selectedFileReviewCount > 0 ? `${selectedFileReviewCount} review${selectedFileReviewCount !== 1 ? "s" : ""}` : "no reviews")} ${t.fg("dim", "·")} ${selectedFileDiffTotal} ${t.fg("dim", "·")} ${t.fg("muted", fileDisplayPath(selectedFile))}`
 			: t.fg("muted", "(no file)");
 
 		const selectedCommit = st.commits[st.commitSelectedIndex];

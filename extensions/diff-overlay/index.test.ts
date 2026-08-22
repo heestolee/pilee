@@ -4,11 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
+	asAddedFileDiff,
+	buildAddedFileDiff,
 	findMergeBase,
 	formatDiffComparison,
 	isStashShortcut,
 	loadDiffTotalsByScope,
 	parseDiffArgs,
+	parseFileDiffTotals,
 	parseNumstatTotals,
 } from "./index.ts";
 
@@ -83,6 +86,46 @@ test("formatDiffComparison exposes base, head, and resolution source", () => {
 test("stash shortcut only matches Shift+S and leaves lowercase s for scope switching", () => {
 	assert.equal(isStashShortcut("s"), false);
 	assert.equal(isStashShortcut("S"), true);
+});
+
+test("file diff totals count hunk additions and deletions without metadata", () => {
+	const rawDiff = [
+		"diff --git a/file.ts b/file.ts",
+		"index 1111111..2222222 100644",
+		"--- a/file.ts",
+		"+++ b/file.ts",
+		"@@ -1,2 +1,3 @@",
+		"-old",
+		"+new",
+		"+extra",
+		" context",
+	].join("\n");
+	assert.deepEqual(parseFileDiffTotals(rawDiff), { additions: 2, deletions: 1, binaryFiles: 0 });
+	assert.deepEqual(parseFileDiffTotals("Binary files a/image.png and b/image.png differ"), {
+		additions: 0,
+		deletions: 0,
+		binaryFiles: 1,
+	});
+});
+
+test("added file diff does not invent a trailing blank addition", () => {
+	const rawDiff = buildAddedFileDiff("one\ntwo\n");
+	assert.equal(rawDiff, "+ one\n+ two");
+	assert.deepEqual(parseFileDiffTotals(rawDiff), { additions: 2, deletions: 0, binaryFiles: 0 });
+	assert.equal(buildAddedFileDiff(""), "");
+});
+
+test("untracked binary files use git diff metadata instead of cat output", async () => {
+	const { pi, calls } = mockPi((command, args) => {
+		if (command === "git" && args.join(" ") === "diff --no-ext-diff --no-index --no-color -- /dev/null image.png") {
+			return { code: 1, stdout: "Binary files /dev/null and image.png differ\n" };
+		}
+		throw new Error(`unexpected call: ${command} ${args.join(" ")}`);
+	});
+	const rawDiff = await asAddedFileDiff(pi as any, "/repo", "image.png");
+	assert.equal(rawDiff, "Binary files /dev/null and image.png differ");
+	assert.deepEqual(parseFileDiffTotals(rawDiff), { additions: 0, deletions: 0, binaryFiles: 1 });
+	assert.equal(calls.some((call) => call.command === "cat"), false);
 });
 
 test("parseNumstatTotals sums text lines and tracks binary files", () => {
