@@ -6,9 +6,18 @@ import { Type, type Static } from "typebox";
 import { buildCommitReadinessDiagnostic, formatCommitReadinessDiagnostic, pathsFromGitStatus } from "../utils/commit-readiness.ts";
 import { withRepoStatusPaused } from "../utils/repo-status-coordination.ts";
 
-interface CommitPlanEntry {
+export interface CommitRecord {
+	background: string;
+	decision: string;
+	verification: string[];
+	links?: string[];
+}
+
+export interface CommitPlanEntry {
 	message: string;
 	paths: string[];
+	record?: CommitRecord;
+	recordOmissionReason?: string;
 }
 
 interface PushPlan {
@@ -85,6 +94,37 @@ function lines(text: string | undefined): string[] {
 		.split(/\r?\n/u)
 		.map((line) => line.trim())
 		.filter(Boolean);
+}
+
+function commitSubject(message: string): string {
+	return message.trim().split(/\r?\n/u)[0]?.trim() ?? "";
+}
+
+function hasCommitBody(message: string): boolean {
+	return /\r?\n\s*\r?\n\S/u.test(message.trim());
+}
+
+function isStableHttpLink(value: string): boolean {
+	if (/[\s\u0000-\u001f\u007f]/u.test(value)) return false;
+	try {
+		const url = new URL(value);
+		return url.protocol === "https:" || url.protocol === "http:";
+	} catch {
+		return false;
+	}
+}
+
+export function buildCommitMessage(entry: CommitPlanEntry): string {
+	if (!entry.record) return entry.message.trim();
+	const verification = entry.record.verification.map((item) => `- ${item.trim()}`).join("\n");
+	const links = (entry.record.links ?? []).map((item) => `- ${item.trim()}`).join("\n");
+	return [
+		commitSubject(entry.message),
+		`배경:\n${entry.record.background.trim()}`,
+		`판단:\n${entry.record.decision.trim()}`,
+		`검증:\n${verification}`,
+		links ? `관련 링크:\n${links}` : "",
+	].filter(Boolean).join("\n\n");
 }
 
 export function extractGitIndexLockPath(stderr: string | undefined, stdout = ""): string | undefined {
@@ -440,7 +480,7 @@ export function evaluateLogicalAtomGate(
 		if (clusters.size >= 2) warnReasons.push(`${clusters.size} clusters`);
 
 		const summary = [
-			`commits[${index}] "${entry.message}"`,
+			`commits[${index}] "${commitSubject(entry.message)}"`,
 			`primary=${primaryPaths.length}, companion=${companionPaths.length}, clusters=${clusters.size}, layers=${layers.size}, totalPrimaryLines=${totalChangedLines}, maxPrimaryLines=${maxChangedLines}`,
 			"primary paths:",
 			...formatPathList(primaryPaths.map((path) => statSummary(path, stats))),
@@ -479,6 +519,51 @@ export function assertLogicalAtomGate(
 ): void {
 	const report = buildLogicalAtomGateReport(plan, diffStatsByCommit);
 	if (report) throw new Error(report);
+}
+
+export interface CommitRecordGateResult {
+	warnings: string[];
+	blocks: string[];
+}
+
+export function evaluateCommitRecordGate(
+	plan: { commits: CommitPlanEntry[] },
+	mode: AutoCommitMode,
+): CommitRecordGateResult {
+	if (mode === "quick") return { warnings: [], blocks: [] };
+	const warnings: string[] = [];
+	const blocks: string[] = [];
+	for (const [index, entry] of plan.commits.entries()) {
+		if (entry.record || hasCommitBody(entry.message)) continue;
+		const subject = commitSubject(entry.message);
+		const omissionReason = entry.recordOmissionReason?.trim();
+		if (omissionReason) {
+			warnings.push(`commits[${index}] "${subject}" durable record 생략: ${omissionReason}`);
+			continue;
+		}
+		blocks.push([
+			`commits[${index}] "${subject}" has no durable commit record`,
+			"비자명한 commit은 record.background, record.decision, record.verification[]와 가능한 record.links[]를 제공하거나 같은 내용을 담은 기존 multiline message를 사용하세요.",
+			"정말 단순한 generated/mechanical 변경이면 recordOmissionReason을 명시하고, tiny hotfix/copy는 action=quick을 사용하세요.",
+		].join("\n"));
+	}
+	return { warnings, blocks };
+}
+
+export function assertCommitRecordGate(
+	plan: { commits: CommitPlanEntry[] },
+	mode: AutoCommitMode,
+): string[] {
+	const result = evaluateCommitRecordGate(plan, mode);
+	if (result.blocks.length > 0) {
+		throw new Error([
+			"auto-commit durable record gate blocked this plan",
+			"커밋 본문은 diff에 남지 않는 배경, 판단, 실제 검증, 관련 provenance를 보존해야 합니다.",
+			"",
+			...result.blocks,
+		].join("\n"));
+	}
+	return result.warnings;
 }
 
 async function assertNoUnplannedChanges(pi: ExecHost, cwd: string, plan: AutoCommitPlan): Promise<void> {
@@ -578,8 +663,34 @@ function assertPlan(plan: AutoCommitPlan): void {
 		if (typeof entry.message !== "string" || entry.message.trim().length === 0) {
 			throw new Error(`commits[${index}].message is required`);
 		}
-		if ((plan.rejectScopeParentheses ?? true) && /^[a-z]+\([^)]*\):/iu.test(entry.message.trim())) {
-			throw new Error(`commits[${index}].message must not use scope parentheses: ${entry.message}`);
+		if ((plan.rejectScopeParentheses ?? true) && /^[a-z]+\([^)]*\):/iu.test(commitSubject(entry.message))) {
+			throw new Error(`commits[${index}].message must not use scope parentheses: ${commitSubject(entry.message)}`);
+		}
+		if (entry.record !== undefined) {
+			if (!entry.record || typeof entry.record !== "object" || Array.isArray(entry.record)) {
+				throw new Error(`commits[${index}].record must be an object`);
+			}
+			if (hasCommitBody(entry.message)) {
+				throw new Error(`commits[${index}] must use either multiline message or record, not both`);
+			}
+			if (typeof entry.record.background !== "string" || entry.record.background.trim().length === 0) {
+				throw new Error(`commits[${index}].record.background is required`);
+			}
+			if (typeof entry.record.decision !== "string" || entry.record.decision.trim().length === 0) {
+				throw new Error(`commits[${index}].record.decision is required`);
+			}
+			if (!Array.isArray(entry.record.verification) || entry.record.verification.length === 0 || entry.record.verification.some((item) => typeof item !== "string" || item.trim().length === 0)) {
+				throw new Error(`commits[${index}].record.verification requires at least one non-empty item`);
+			}
+			if (entry.record.links !== undefined && (!Array.isArray(entry.record.links) || entry.record.links.some((item) => typeof item !== "string" || !isStableHttpLink(item.trim())))) {
+				throw new Error(`commits[${index}].record.links must contain only stable http(s) permalinks`);
+			}
+		}
+		if (entry.recordOmissionReason !== undefined && (typeof entry.recordOmissionReason !== "string" || entry.recordOmissionReason.trim().length === 0)) {
+			throw new Error(`commits[${index}].recordOmissionReason must be a non-empty string`);
+		}
+		if (entry.recordOmissionReason && (entry.record || hasCommitBody(entry.message))) {
+			throw new Error(`commits[${index}] must not combine recordOmissionReason with a durable body`);
 		}
 		if (!Array.isArray(entry.paths) || entry.paths.length === 0) {
 			throw new Error(`commits[${index}].paths requires at least one path`);
@@ -681,20 +792,22 @@ async function commitEntry(
 	await git(pi, cwd, ["reset"], "git reset");
 	await git(pi, cwd, ["add", "--", ...entry.paths], `git add -- ${entry.paths.join(" ")}`);
 	const diff = await gitCode(pi, cwd, ["diff", "--cached", "--quiet"]);
+	const message = buildCommitMessage(entry);
 	if (diff.code === 0) {
-		throw new Error(`No staged changes for commit: ${entry.message}`);
+		throw new Error(`No staged changes for commit: ${commitSubject(message)}`);
 	}
 
 	const args = ["commit"];
 	if (commitNoVerify) args.push("--no-verify");
-	args.push("-m", entry.message);
-	await git(pi, cwd, args, `git commit -m ${entry.message}`);
+	args.push("-m", message);
+	await git(pi, cwd, args, `git commit -m ${commitSubject(message)}`);
 	const hash = (await git(pi, cwd, ["rev-parse", "--short=12", "HEAD"])).trim();
-	return { message: entry.message, hash, paths: [...entry.paths] };
+	return { message, hash, paths: [...entry.paths] };
 }
 
 async function applyPlan(pi: ExecHost, cwd: string, mode: AutoCommitMode, plan: AutoCommitPlan): Promise<AutoCommitResult> {
 	await assertExpectedHead(pi, cwd, plan.expectedHead);
+	const recordWarnings = assertCommitRecordGate(plan, mode);
 	return await withRepoStatusPaused(cwd, async () => {
 		if (mode === "split-head") {
 			const currentStatus = await statusLines(pi, cwd);
@@ -706,7 +819,8 @@ async function applyPlan(pi: ExecHost, cwd: string, mode: AutoCommitMode, plan: 
 		}
 
 		await assertNoUnplannedChanges(pi, cwd, plan);
-		const warnings = await assertLogicalAtomGateForWorkingTree(pi, cwd, plan);
+		const logicalAtomWarnings = await assertLogicalAtomGateForWorkingTree(pi, cwd, plan);
+		const warnings = [...logicalAtomWarnings, ...recordWarnings];
 
 		const commits: AutoCommitResult["commits"] = [];
 		try {
@@ -748,7 +862,7 @@ function formatPush(push: PushExecution): string {
 }
 
 export function formatResult(result: AutoCommitResult): string {
-	const rows = result.commits.map((commit, index) => `${index + 1}. ${commit.hash} ${commit.message}`).join("\n");
+	const rows = result.commits.map((commit, index) => `${index + 1}. ${commit.hash} ${commitSubject(commit.message)}`).join("\n");
 	const needsPushFollowUp = result.completion === "committed_not_pushed";
 	const next = needsPushFollowUp
 		? result.push.status === "failed"
@@ -824,10 +938,12 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "auto_commit",
 		label: "Auto Commit",
-		description: "Apply an explicit JSON commit plan, run a quick explicit-path hotfix commit, optionally split HEAD, and report push-aware completion.",
-		promptSnippet: "Create focused git commits from an explicit JSON plan or quick explicit-path hotfix input.",
+		description: "Apply an explicit JSON commit plan, enforce logical-atom and durable-record gates, run a quick explicit-path hotfix commit, optionally split HEAD, and report push-aware completion.",
+		promptSnippet: "Create focused git commits with durable rationale from an explicit JSON plan or quick explicit-path hotfix input.",
 		promptGuidelines: [
-			"Use auto_commit with an explicit JSON commit plan whose file groups and messages are reviewable, or action=quick with explicit message+paths for tiny hotfix/copy changes.",
+			"Use auto_commit with an explicit JSON commit plan whose file groups and messages are reviewable, or action=quick with explicit message+paths only for tiny hotfix/copy changes.",
+			"For nontrivial auto_commit apply/split-head entries, provide commits[].record with background, decision, actual verification, and stable issue/PR/review links when available; a full multiline message is accepted, while truly mechanical/generated entries need recordOmissionReason.",
+			"auto_commit records must preserve durable rationale and provenance, not raw agent reasoning or unverified claims; omit unavailable links rather than inventing them.",
 			"auto_commit enforces a diff-aware logical atom gate: 3+ primary files, large diffs, layer mix, and surface fan-out are evaluated before commit; small same-cluster fan-out may pass with warnings.",
 			"For action=quick, default pushPolicy=push-if-tracking commits and pushes to the safe upstream feature branch when available.",
 			"Treat status=committed_not_pushed as incomplete when the user expected push; do not report done until push is resolved.",

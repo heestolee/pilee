@@ -5,8 +5,11 @@ import { join } from "node:path";
 import { spawn } from "node:child_process";
 import test from "node:test";
 import autoCommit, {
+	assertCommitRecordGate,
 	assertLogicalAtomGate,
+	buildCommitMessage,
 	buildLogicalAtomGateReport,
+	evaluateCommitRecordGate,
 	evaluateLogicalAtomGate,
 	extractGitIndexLockPath,
 	extractLsofPids,
@@ -83,6 +86,43 @@ test("logical atom gate allows primary path with companion files", () => {
 			],
 		}],
 	}));
+});
+
+test("buildCommitMessage renders background, decision, verification, and stable links", () => {
+	const message = buildCommitMessage({
+		message: "fix: webhook 재시도 차단",
+		paths: ["src/webhook.ts"],
+		record: {
+			background: "동일 webhook이 재시도되어 알림이 중복 발송됐다.",
+			decision: "이미 처리된 mismatch는 200으로 응답하고 Sentry에 남긴다.",
+			verification: ["관련 회귀 테스트 통과", "중복 알림 경로가 호출되지 않음을 확인"],
+			links: ["https://github.com/example/repo/issues/123"],
+		},
+	});
+
+	assert.equal(message, [
+		"fix: webhook 재시도 차단",
+		"배경:\n동일 webhook이 재시도되어 알림이 중복 발송됐다.",
+		"판단:\n이미 처리된 mismatch는 200으로 응답하고 Sentry에 남긴다.",
+		"검증:\n- 관련 회귀 테스트 통과\n- 중복 알림 경로가 호출되지 않음을 확인",
+		"관련 링크:\n- https://github.com/example/repo/issues/123",
+	].join("\n\n"));
+});
+
+test("durable record gate blocks one-line apply plans and preserves explicit trivial exceptions", () => {
+	const missing = evaluateCommitRecordGate({ commits: [{ message: "fix: 상태 전이 수정", paths: ["src/state.ts"] }] }, "apply");
+	assert.equal(missing.blocks.length, 1);
+	assert.match(missing.blocks[0] ?? "", /has no durable commit record/);
+	assert.throws(() => assertCommitRecordGate({ commits: [{ message: "fix: 상태 전이 수정", paths: ["src/state.ts"] }] }, "apply"), /durable record gate blocked/);
+
+	const omitted = assertCommitRecordGate({
+		commits: [{ message: "chore: generated schema 동기화", paths: ["schema.generated.ts"], recordOmissionReason: "deterministic generated artifact sync" }],
+	}, "apply");
+	assert.match(omitted.join("\n"), /durable record 생략/);
+	assert.doesNotThrow(() => assertCommitRecordGate({
+		commits: [{ message: "fix: 기존 본문 유지\n\n배경과 판단, 검증을 이미 설명한 본문입니다.", paths: ["src/state.ts"] }],
+	}, "apply"));
+	assert.doesNotThrow(() => assertCommitRecordGate({ commits: [{ message: "fix: 문구 수정", paths: ["copy.ts"] }] }, "quick"));
 });
 
 test("formatResult makes unpushed commits explicit", () => {
@@ -164,6 +204,135 @@ test("action=status reports commit readiness and ship caveats", async () => {
 	assert.match(text, /split recommendation: RECOMMENDED/);
 	assert.match(text, /migration\/DB schema execution may still be pending/);
 	assert.match(text, /pending UI capture\/verify-report is a ship evidence caveat/);
+});
+
+test("action=split-head rejects missing records before moving HEAD or creating backup", async () => {
+	const root = await mkdtemp(join(tmpdir(), "auto-commit-split-record-"));
+	const repo = join(root, "repo");
+	const planPath = join(root, "plan.json");
+	await git(root, "init", "-b", "main", repo);
+	await git(repo, "config", "user.email", "test@example.com");
+	await git(repo, "config", "user.name", "Test User");
+	await writeFile(join(repo, "feature.ts"), "export const value = 1;\n");
+	await git(repo, "add", "feature.ts");
+	await git(repo, "commit", "-m", "chore: init");
+	await writeFile(join(repo, "feature.ts"), "export const value = 2;\n");
+	await git(repo, "add", "feature.ts");
+	await git(repo, "commit", "-m", "feat: bundled change");
+	const headBefore = (await git(repo, "rev-parse", "HEAD")).trim();
+
+	const tools: Record<string, any> = {};
+	autoCommit({
+		exec: async (command: string, args: string[], options: { cwd?: string } = {}) => exec(command, args, options.cwd ?? repo),
+		registerCommand: () => undefined,
+		registerTool: (tool: any) => { tools[tool.name] = tool; },
+	} as any);
+	await writeFile(planPath, JSON.stringify({
+		resetTo: "HEAD~1",
+		backupBranch: "backup/split-record-test",
+		commits: [{ message: "refactor: bundled change 분리", paths: ["feature.ts"] }],
+		pushPolicy: "commit-only",
+	}));
+
+	await assert.rejects(() => tools.auto_commit.execute("call-split-record-missing", {
+		action: "split-head",
+		planPath,
+	}, new AbortController().signal, () => undefined, { cwd: repo }), /durable record gate blocked/);
+	assert.equal((await git(repo, "rev-parse", "HEAD")).trim(), headBefore);
+	assert.equal((await git(repo, "status", "--porcelain")).trim(), "");
+	assert.notEqual((await exec("git", ["rev-parse", "--verify", "backup/split-record-test"], repo)).code, 0);
+});
+
+test("action=apply blocks missing records and commits a structured durable body", async () => {
+	const root = await mkdtemp(join(tmpdir(), "auto-commit-record-"));
+	const repo = join(root, "repo");
+	const planPath = join(root, "plan.json");
+	await git(root, "init", "-b", "main", repo);
+	await git(repo, "config", "user.email", "test@example.com");
+	await git(repo, "config", "user.name", "Test User");
+	await writeFile(join(repo, "feature.ts"), "export const value = 1;\n");
+	await git(repo, "add", "feature.ts");
+	await git(repo, "commit", "-m", "chore: init");
+	await writeFile(join(repo, "feature.ts"), "export const value = 2;\n");
+
+	const tools: Record<string, any> = {};
+	autoCommit({
+		exec: async (command: string, args: string[], options: { cwd?: string } = {}) => exec(command, args, options.cwd ?? repo),
+		registerCommand: () => undefined,
+		registerTool: (tool: any) => { tools[tool.name] = tool; },
+	} as any);
+
+	await writeFile(planPath, JSON.stringify({
+		commits: [{ message: "fix: 값 갱신 경로 수정", paths: ["feature.ts"] }],
+		pushPolicy: "commit-only",
+	}));
+	await assert.rejects(() => tools.auto_commit.execute("call-record-missing", {
+		action: "apply",
+		planPath,
+	}, new AbortController().signal, () => undefined, { cwd: repo }), /durable record gate blocked/);
+	assert.equal((await git(repo, "rev-list", "--count", "HEAD")).trim(), "1");
+
+	await writeFile(planPath, JSON.stringify({
+		commits: [{
+			message: "fix: 값 갱신 경로 수정",
+			paths: ["feature.ts"],
+			record: {
+				background: "기존 값이 갱신되지 않아 후속 계산이 오래된 상태를 사용했다.",
+				decision: "값을 소비하기 전에 source-of-truth를 먼저 갱신하도록 순서를 고쳤다.",
+				verification: ["feature 단위 테스트 통과"],
+				links: ["PR #42"],
+			},
+		}],
+		pushPolicy: "commit-only",
+	}));
+	await assert.rejects(() => tools.auto_commit.execute("call-record-unstable-link", {
+		action: "apply",
+		planPath,
+	}, new AbortController().signal, () => undefined, { cwd: repo }), /stable http\(s\) permalinks/);
+
+	await writeFile(planPath, JSON.stringify({
+		commits: [{
+			message: "fix: 값 갱신 경로 수정",
+			paths: ["feature.ts"],
+			record: {
+				background: "기존 값이 갱신되지 않아 후속 계산이 오래된 상태를 사용했다.",
+				decision: "값을 소비하기 전에 source-of-truth를 먼저 갱신하도록 순서를 고쳤다.",
+				verification: ["feature 단위 테스트 통과"],
+				links: ["https://example.com/path\nInjected-Line"],
+			},
+		}],
+		pushPolicy: "commit-only",
+	}));
+	await assert.rejects(() => tools.auto_commit.execute("call-record-newline-link", {
+		action: "apply",
+		planPath,
+	}, new AbortController().signal, () => undefined, { cwd: repo }), /stable http\(s\) permalinks/);
+	assert.equal((await git(repo, "rev-list", "--count", "HEAD")).trim(), "1");
+
+	await writeFile(planPath, JSON.stringify({
+		commits: [{
+			message: "fix: 값 갱신 경로 수정",
+			paths: ["feature.ts"],
+			record: {
+				background: "기존 값이 갱신되지 않아 후속 계산이 오래된 상태를 사용했다.",
+				decision: "값을 소비하기 전에 source-of-truth를 먼저 갱신하도록 순서를 고쳤다.",
+				verification: ["feature 단위 테스트 통과"],
+				links: ["https://github.com/example/repo/pull/42"],
+			},
+		}],
+		pushPolicy: "commit-only",
+	}));
+	const result = await tools.auto_commit.execute("call-record-ok", {
+		action: "apply",
+		planPath,
+	}, new AbortController().signal, () => undefined, { cwd: repo });
+
+	assert.equal(result.details.completion, "committed_not_pushed");
+	const body = (await git(repo, "log", "-1", "--format=%B")).trim();
+	assert.match(body, /^fix: 값 갱신 경로 수정\n\n배경:/u);
+	assert.match(body, /판단:\n값을 소비하기 전에/u);
+	assert.match(body, /검증:\n- feature 단위 테스트 통과/u);
+	assert.match(body, /관련 링크:\n- https:\/\/github\.com\/example\/repo\/pull\/42/u);
 });
 
 test("action=quick blocks layer-mixed logical atom plans before commit", async () => {
