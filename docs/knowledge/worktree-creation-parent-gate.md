@@ -23,7 +23,7 @@ source:
   - user-direction:2026-05-17-full-worktree-fork-default
   - user-direction:2026-08-25-workspace-activation-redesign
 reviewed_at: 2026-08-26
-reviewed_commit: 871ec54
+reviewed_commit: abd515b
 related:
   - worktree-execution-boundary
   - worktree-session-continuity
@@ -50,4 +50,4 @@ Fork child panel(`P1`, `P2`, …)도 profile gate가 허용하면 protected/prof
 
 ## Failure Mode
 
-잘못 생성된 worktree는 이름과 브랜치가 남아 이후 대시보드와 세션 선택을 오염시킵니다. development 기반 hotfix, context 없는 full fork, source session을 추적할 수 없는 handoff, READY가 오지 않은 target session은 작업 자체보다 복구 비용이 큽니다. 실패를 알면 이번 실행이 만든 terminal/session/worktree/branch를 정리하고 source panel은 그대로 둡니다. full transcript가 과도하게 큰 예외 상황에서는 사용자가 명시적으로 `--minimal-context`를 선택해야 하며, meta/source reference와 persisted context message가 반드시 남아야 합니다.
+잘못 생성된 worktree는 이름과 브랜치가 남아 이후 대시보드와 세션 선택을 오염시킵니다. development 기반 hotfix, context 없는 full fork, source session을 추적할 수 없는 handoff, READY가 오지 않은 target session은 작업 자체보다 복구 비용이 큽니다. 실패를 알면 source panel은 그대로 두고, cancellation claim과 target terminal close가 모두 확인된 경우에만 이번 실행이 만든 session/worktree/branch를 정리합니다. Child가 continuation을 소유했거나 close가 확인되지 않으면 recovery artifact를 보존합니다. full transcript가 과도하게 큰 예외 상황에서는 사용자가 명시적으로 `--minimal-context`를 선택해야 하며, meta/source reference와 persisted context message가 반드시 남아야 합니다.

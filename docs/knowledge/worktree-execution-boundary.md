@@ -23,7 +23,7 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-11-worktree-cwd-binding
 reviewed_at: 2026-08-26
-reviewed_commit: 871ec54
+reviewed_commit: abd515b
 related:
   - worktree-session-continuity
   - session-identity-over-filenames
@@ -52,4 +52,4 @@ Capture media는 workspace별로 group화될 수 있고, label은 worktree metad
 
 ## Failure Mode
 
-실행 경계 없이 cwd만 바꿔 작업하면 세션 맥락, 브랜치, 검증 산출물이 서로 섞입니다. 새 panel open이나 READY가 실패했는데 current-panel `switchSession`으로 몰래 대체하면 사용자가 보존하려던 source conversation을 빼앗습니다. 반대로 current-panel switch가 명시됐는데 sibling panel을 만들면 사용자가 고른 위치를 어깁니다. 두 경우 모두 `BLOCKED`로 멈추고 이번 실행이 만든 terminal/session/worktree를 정리해야 합니다.
+실행 경계 없이 cwd만 바꿔 작업하면 세션 맥락, 브랜치, 검증 산출물이 서로 섞입니다. 새 panel open이나 READY가 실패했는데 current-panel `switchSession`으로 몰래 대체하면 사용자가 보존하려던 source conversation을 빼앗습니다. 반대로 current-panel switch가 명시됐는데 sibling panel을 만들면 사용자가 고른 위치를 어깁니다. 두 경우 모두 `BLOCKED`로 멈춥니다. 다만 target terminal close가 확인되지 않았거나 child가 continuation을 이미 소유했다면 살아 있는 실행 경계를 삭제하지 말고 descriptor·panel record·session·worktree를 recovery artifact로 보존해야 합니다.
