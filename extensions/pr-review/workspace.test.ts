@@ -41,6 +41,30 @@ test("PR review workspace metadata round-trips under .pi", () => {
 	}
 });
 
+test("PR review workspace preserves full-context new-panel activation provenance", () => {
+	const cwd = mkdtempSync(join(tmpdir(), "pilee-pr-review-workspace-activation-"));
+	try {
+		const value: PrReviewWorkspaceMetadata = {
+			...metadata(cwd),
+			sourceSessionFile: "/tmp/source.jsonl",
+			targetSessionFile: "/tmp/target.jsonl",
+			contextMode: "full-transcript",
+			activationContractId: "pr-review-42-abcdef12",
+			activation: {
+				target: "new-panel",
+				placement: "right",
+				panelLabel: "P1",
+				forkId: "fork-42",
+				readyAt: "2026-08-25T00:00:00.000Z",
+			},
+		};
+		writePrReviewWorkspaceMetadata(cwd, value);
+		assert.deepEqual(readPrReviewWorkspaceMetadata(cwd), value);
+	} finally {
+		rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
 test("PR review worktree identity is deterministic and head-pinned", () => {
 	assert.deepEqual(prReviewWorktreeIdentity(4919, "9530FE4449F15F9464F0387BAB7A28B69304A6BC"), {
 		name: "review-pr-4919-9530fe44",

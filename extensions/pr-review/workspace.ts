@@ -21,6 +21,16 @@ export interface PrReviewWorkspaceMetadata {
 	worktreeName: string;
 	worktreePath: string;
 	sourceSessionFile?: string;
+	targetSessionFile?: string;
+	contextMode?: "full-transcript";
+	activationContractId?: string;
+	activation?: {
+		target: "new-panel";
+		placement: "right" | "left" | "up" | "down" | "tab";
+		panelLabel: string;
+		forkId: string;
+		readyAt: string;
+	};
 	createdAt: number;
 }
 
@@ -39,6 +49,16 @@ export function validatePrReviewWorkspaceMetadata(value: unknown): PrReviewWorks
 	if (!Number.isFinite(metadata.createdAt)) throw new Error("invalid PR review workspace createdAt");
 	if (metadata.headRefName !== undefined && typeof metadata.headRefName !== "string") throw new Error("invalid PR review workspace headRefName");
 	if (metadata.sourceSessionFile !== undefined && typeof metadata.sourceSessionFile !== "string") throw new Error("invalid PR review workspace sourceSessionFile");
+	if (metadata.targetSessionFile !== undefined && typeof metadata.targetSessionFile !== "string") throw new Error("invalid PR review workspace targetSessionFile");
+	if (metadata.contextMode !== undefined && metadata.contextMode !== "full-transcript") throw new Error("invalid PR review workspace contextMode");
+	if (metadata.activationContractId !== undefined && typeof metadata.activationContractId !== "string") throw new Error("invalid PR review workspace activationContractId");
+	if (metadata.activation !== undefined) {
+		if (!metadata.activation || typeof metadata.activation !== "object" || Array.isArray(metadata.activation)) throw new Error("invalid PR review workspace activation");
+		const activation = metadata.activation as Record<string, unknown>;
+		if (activation.target !== "new-panel") throw new Error("invalid PR review workspace activation target");
+		if (!["right", "left", "up", "down", "tab"].includes(String(activation.placement))) throw new Error("invalid PR review workspace activation placement");
+		for (const key of ["panelLabel", "forkId", "readyAt"] as const) assertString(activation[key], `activation.${key}`);
+	}
 	return metadata as unknown as PrReviewWorkspaceMetadata;
 }
 
