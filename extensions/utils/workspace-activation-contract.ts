@@ -8,6 +8,7 @@ export const WORKSPACE_ACTIONS = [
 ] as const;
 
 export const WORKSPACE_AUTHORIZATION_ENTRY_TYPE = "workspace-authorization-state";
+export const WORKSPACE_ACTIVATION_READY_ENTRY_TYPE = "workspace-activation-ready";
 export const WORKSPACE_AUTHORIZATION_ENTRY_VERSION = 1;
 export const WORKSPACE_AUTHORIZATION_TTL_MS = 15 * 60 * 1000;
 

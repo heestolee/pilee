@@ -20,6 +20,15 @@ import { makeSubagentSessionFile } from "../subagent/session.ts";
 import type { SingleResult, SubagentDetails } from "../subagent/types.ts";
 import { resolveForkPanelIdentity } from "../utils/fork-panel-identity.ts";
 import { registerWorktreeDashboardShortcut } from "./shortcut.ts";
+import {
+	bootstrapDomainProfiles,
+	getBootstrapDomains,
+	getPostCreateBootstrapRequest,
+	pendingPostCreateActivationId,
+	POST_CREATE_BOOTSTRAP_ENTRY_TYPE,
+	type BootstrapSessionEntry,
+	type PostCreateBootstrapRequest,
+} from "./bootstrap-domains.ts";
 import { promotePlanningWorkArtifactsToWorktree, type WorkArtifactPromotionResult } from "./frame-artifacts.ts";
 import {
 	activateWorkspaceInNewPanel,
@@ -1399,31 +1408,39 @@ function formatDependencyBootstrapVisibleNotification(repoName: string, domains:
 	return `[dependency-bootstrap] BLOCKED — ${repoName}: ${domainLabel} 준비 실패. /wt bootstrap status로 상세 확인`;
 }
 
-function bootstrapDomainProfiles(profile: WorktreeRepoProfile): WorktreeBootstrapDomainProfile[] {
-	return profile.bootstrap?.domains ?? [];
+function bootstrapSessionEntries(ctx: ExtensionContext | ExtensionCommandContext): BootstrapSessionEntry[] {
+	return ctx.sessionManager.getBranch?.() ?? ctx.sessionManager.getEntries?.() ?? [];
 }
 
-function orderedBootstrapDomains(profile: WorktreeRepoProfile, domains: Iterable<string>): BootstrapDomain[] {
-	const requested = new Set(domains);
-	return bootstrapDomainProfiles(profile).map((domain) => domain.name).filter((name) => requested.has(name));
+interface ResolvedPostCreateBootstrapRequest extends PostCreateBootstrapRequest {
+	repoRoot: string;
 }
 
-function getBootstrapDomains(profile: WorktreeRepoProfile, prompt: string, meta: WorktreeMeta | null, changedPaths: string[] = []): BootstrapDomain[] {
-	const bootstrap = profile.bootstrap;
-	const domainProfiles = bootstrapDomainProfiles(profile);
-	if (!bootstrap?.enabled || domainProfiles.length === 0) return [];
-	const text = `${prompt}\n${meta?.branch ?? ""}\n${meta?.ticket ?? ""}\n${meta?.note ?? ""}`.toLowerCase();
-	const matched = new Set<string>();
-	for (const rule of bootstrap.domainPromptRules ?? []) {
-		if (regexTest(rule.regex, text)) matched.add(rule.domain);
-	}
-	for (const rule of bootstrap.changedPathRules ?? []) {
-		if (changedPaths.some((path) => regexTest(rule.regex, path))) matched.add(rule.domain);
-	}
-	const hasRoot = domainProfiles.some((domain) => domain.name === "root");
-	if (matched.size > 0 && hasRoot) matched.add("root");
-	const selected = matched.size > 0 ? matched : new Set(bootstrap.defaultDomains ?? domainProfiles.map((domain) => domain.name));
-	return orderedBootstrapDomains(profile, selected);
+async function resolvePostCreateBootstrapRequest(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext | ExtensionCommandContext,
+): Promise<ResolvedPostCreateBootstrapRequest | null> {
+	const entries = bootstrapSessionEntries(ctx);
+	if (!pendingPostCreateActivationId(entries)) return null;
+	const repoRoot = await findRepoRoot(pi, ctx.cwd);
+	if (!repoRoot || existsSync(join(repoRoot, ".pi", "pr-review.json"))) return null;
+	const profile = await detectProfiledRepo(pi, repoRoot);
+	if (!profile?.bootstrap?.enabled) return null;
+	const request = getPostCreateBootstrapRequest(profile, entries);
+	return request ? { ...request, repoRoot } : null;
+}
+
+function markPostCreateBootstrapConsumed(
+	ctx: ExtensionContext | ExtensionCommandContext,
+	request: ResolvedPostCreateBootstrapRequest,
+	state: DependencyBootstrapResult["state"],
+): void {
+	ctx.sessionManager.appendCustomEntry?.(POST_CREATE_BOOTSTRAP_ENTRY_TYPE, {
+		activationId: request.activationId,
+		domains: request.domains,
+		state,
+		consumedAt: new Date().toISOString(),
+	});
 }
 
 function parseGitPorcelainPath(line: string): string | null {
@@ -3672,7 +3689,13 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("before_agent_start", async (event, ctx) => {
-		const result = await ensureDependencyBootstrapWorker(pi, ctx, event.prompt ?? "");
+		const postCreate = await resolvePostCreateBootstrapRequest(pi, ctx);
+		const result = await ensureDependencyBootstrapWorker(pi, ctx, event.prompt ?? "", postCreate
+			? { domains: postCreate.domains, reason: "post-create-ready", repoRoot: postCreate.repoRoot }
+			: {});
+		if (postCreate && result.state !== "not-company-repo" && result.state !== "not-implementation") {
+			markPostCreateBootstrapConsumed(ctx, postCreate, result.state);
+		}
 		if (!result.systemNote) return undefined;
 		const shouldDisplayBootstrapNote = result.state === "failed-to-start";
 		return {

@@ -24,6 +24,7 @@ import {
 	updateConsumedWorkspaceAuthorizationEvent,
 	workspaceAuthorizationProofForConsumer,
 	workspaceAuthorizationStateEntry,
+	WORKSPACE_ACTIVATION_READY_ENTRY_TYPE,
 	WORKSPACE_AUTHORIZATION_ENTRY_TYPE,
 	type NewPanelPlacement,
 	type WorkspaceActivationContract,
@@ -327,7 +328,7 @@ export async function receiveWorkspacePanelActivation(
 	const ready = readyResult.descriptor;
 	if (readyResult.changed) {
 		try {
-			ctx.sessionManager.appendCustomEntry?.("workspace-activation-ready", {
+			ctx.sessionManager.appendCustomEntry?.(WORKSPACE_ACTIVATION_READY_ENTRY_TYPE, {
 				activationId: ready.id,
 				workspaceAction: ready.contract.workspaceAction,
 				activationTarget: ready.contract.activationTarget,

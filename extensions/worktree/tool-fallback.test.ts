@@ -56,10 +56,12 @@ test("worktree_create and worktree_fork tools activate a sibling panel while swi
 	assert.match(switchTool, /activationTarget: "current-panel"/);
 });
 
-test("target Pi receiver is registered before workflow continuation can start", () => {
+test("target READY gates create-specific bootstrap before workflow continuation", () => {
 	assert.match(source, /registerWorkspacePanelActivationReceiver\(pi\)/);
+	assert.match(source, /resolvePostCreateBootstrapRequest\(pi, ctx\)/);
+	assert.match(source, /domains: postCreate\.domains, reason: "post-create-ready"/);
+	assert.match(source, /markPostCreateBootstrapConsumed\(ctx, postCreate, result\.state\)/);
 	assert.match(source, /새 panel.*READY\/continuation/);
-	assert.doesNotMatch(source, /startPostCreateBootstrap/);
 	assert.match(source, /A branch-only or general implementation request is not worktree authorization/);
 	assert.match(source, /A branch-only request is not authorization/);
 });
