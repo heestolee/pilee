@@ -45,7 +45,7 @@ Output:
   exact diff code + review draft + explanation + LLM recurrence-prevention meta perspective
 
 Safety:
-  read-only · no checkout · no code changes · no GitHub review posting`;
+  read-only exact checkout · source panel 보존 · no code changes · no GitHub review posting`;
 
 export interface ParsedPrUrl {
 	url: string;
@@ -355,7 +355,7 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 						"",
 						buildPrReviewPrompt(state),
 					].join("\n");
-					const switched = await (options.reviewWorkspaceRunner ?? runPrReviewWorktreeFromCommandContext)(pi, ctx, {
+					const activated = await (options.reviewWorkspaceRunner ?? runPrReviewWorktreeFromCommandContext)(pi, ctx, {
 						repo: state.target.repo,
 						runId: state.runId,
 						runDir: state.runDir,
@@ -375,7 +375,7 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 						},
 					});
 					ctx.ui.setStatus("pr-review", undefined);
-					if (switched.status !== "switched") throw new Error(switched.reason);
+					if (activated.status !== "activated") throw new Error(activated.reason);
 					return;
 				}
 

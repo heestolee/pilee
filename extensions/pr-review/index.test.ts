@@ -111,7 +111,7 @@ test("/pr-review hands a UI invocation to a head-pinned review workspace session
 			now: () => 1500,
 			reviewWorkspaceRunner: async (_pi, _ctx, request) => {
 				requests.push(request);
-				return { status: "switched", name: "review-pr-42-head1234", branch: "review/pr-42-head1234", path: "/tmp/review-pr-42", sessionFile: "/tmp/review.jsonl", contextMode: "full-transcript", framePromotion: { status: "missing-source" } };
+				return { status: "activated", name: "review-pr-42-head1234", branch: "review/pr-42-head1234", path: "/tmp/review-pr-42", sessionFile: "/tmp/review.jsonl", reused: false, activation: { status: "activated", panelLabel: "P1", placement: "right" } };
 			},
 		});
 		await commands.get("pr-review").handler("https://github.com/acme/repo/pull/42", {
