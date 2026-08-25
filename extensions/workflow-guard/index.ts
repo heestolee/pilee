@@ -529,6 +529,10 @@ function isHighRiskBashMutation(command: string): boolean {
 		|| /(^|[;&|]\s*)rm\s+-rf\b/.test(compact);
 }
 
+function isGitWorktreeAddCommand(command: string): boolean {
+	return /(^|[;&|]\s*)git\s+(?:-[A-Za-z]\s+\S+\s+|--git-dir(?:=|\s+)\S+\s+|--work-tree(?:=|\s+)\S+\s+)*worktree\s+add\b/.test(command.replace(/\s+/g, " "));
+}
+
 function isGitCommitCommand(command: string): boolean {
 	return /(^|[;&|]\s*)git\s+commit\b/.test(command.replace(/\s+/g, " "));
 }
@@ -1151,6 +1155,9 @@ export default function workflowGuard(
 
 		if (event.toolName === "bash") {
 			const command = String(event.input?.command ?? "");
+			if (isGitWorktreeAddCommand(command) && !isWorkspaceActionAuthorized(state.workspaceAuthorization, "create-worktree")) {
+				return { block: true, reason: workspaceAuthorizationBlockReason(state, "git worktree add", "create-worktree") };
+			}
 			if (isExternalIssueOrPrCreateCommand(command) && !hasExternalPublishApproval(command)) {
 				const repository = await publishRepository(pi, ctx.cwd, command);
 				const trustedInternalPr = state.explicitPrAction
