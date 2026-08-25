@@ -181,6 +181,7 @@ test("panel open failure and READY timeout stay BLOCKED without current-panel fa
 
 		let closedTerminal = "";
 		let removedFork = "";
+		const cleanupOrder: string[] = [];
 		const timeoutRoot = join(f.root, "timeout");
 		const timeout = await activateWorkspaceInNewPanel({} as any, ctx, {
 			contract: contract("panel-ready-timeout"),
@@ -192,14 +193,15 @@ test("panel open failure and READY timeout stay BLOCKED without current-panel fa
 			timeoutMs: 0,
 		}, {
 			openPanel: async () => ({ status: "opened", terminalId: "term-timeout", forkId: "fork-timeout", panelLabel: "P2" }),
-			closePanel: async (_pi, terminalId) => { closedTerminal = terminalId; return { closed: true }; },
-			removePanelRecord: (forkId) => { removedFork = forkId; },
+			closePanel: async (_pi, terminalId) => { cleanupOrder.push("close"); closedTerminal = terminalId; return { closed: true }; },
+			removePanelRecord: (forkId) => { cleanupOrder.push("remove"); removedFork = forkId; },
 			sleep: async () => {},
 		});
 		assert.equal(timeout.status, "blocked");
 		assert.match(timeout.reason, /READY handshake timeout/);
 		assert.equal(closedTerminal, "term-timeout");
 		assert.equal(removedFork, "fork-timeout");
+		assert.deepEqual(cleanupOrder, ["remove", "close"], "cleanup tombstone must exist before terminal shutdown");
 		assert.equal(switchCalled, false);
 		assert.equal(existsSync(join(timeoutRoot, "panel-ready-timeout.json")), false);
 	} finally {

@@ -302,6 +302,29 @@ function consumeRepanelMarker(forkId: string): boolean {
 	return suppress;
 }
 
+function activationCleanupMarkerPath(forkId: string): string {
+	return join(HANDOFF_DIR, `${forkId}-activation-cleanup.json`);
+}
+
+function writeActivationCleanupMarker(forkId: string): void {
+	try {
+		mkdirSync(HANDOFF_DIR, { recursive: true });
+		writeFileSync(activationCleanupMarkerPath(forkId), JSON.stringify({ forkId, createdAt: Date.now() }, null, 2));
+	} catch {}
+}
+
+function consumeActivationCleanupMarker(forkId: string): boolean {
+	const path = activationCleanupMarkerPath(forkId);
+	if (!existsSync(path)) return false;
+	let suppress = true;
+	try {
+		const marker = JSON.parse(readFileSync(path, "utf8"));
+		suppress = Date.now() - Number(marker?.createdAt ?? 0) < HANDOFF_TTL_MS;
+	} catch {}
+	try { unlinkSync(path); } catch {}
+	return suppress;
+}
+
 function sanitizeRowText(value: string | undefined | null): string {
 	return (value ?? "")
 		.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, "")
@@ -1010,6 +1033,7 @@ export async function closeExactSessionPanel(
 }
 
 export function removeExactSessionPanelRecord(forkId: string): void {
+	writeActivationCleanupMarker(forkId);
 	const recent = loadRecent();
 	if (recent[forkId]) {
 		delete recent[forkId];
@@ -1293,7 +1317,7 @@ export default function (pi: ExtensionAPI) {
 		pi.on("session_shutdown", async (_e, ctx) => {
 			if (alreadyFinalized) return;
 			alreadyFinalized = true;
-			if (consumeRepanelMarker(forkId)) return;
+			if (consumeRepanelMarker(forkId) || consumeActivationCleanupMarker(forkId)) return;
 			latestEntries = ctx.sessionManager.getEntries();
 			const lastMsg = extractLastAssistant(latestEntries);
 			const summary = await generateSummary(latestEntries, ctx);
@@ -1306,7 +1330,7 @@ export default function (pi: ExtensionAPI) {
 			process.on(sig, () => {
 				if (!alreadyFinalized) {
 					alreadyFinalized = true;
-					if (consumeRepanelMarker(forkId)) {
+					if (consumeRepanelMarker(forkId) || consumeActivationCleanupMarker(forkId)) {
 						process.exit(0);
 					}
 					writeAuto(true);

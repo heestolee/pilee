@@ -321,8 +321,8 @@ export async function activateWorkspaceInNewPanel(
 		};
 	}
 
-	const closed = await closePanel(pi, opened.terminalId);
 	removePanelRecord(opened.forkId);
+	const closed = await closePanel(pi, opened.terminalId);
 	rmSync(prepared.path, { force: true });
 	const reason = final?.status === "failed"
 		? final.error ?? "target activation failed"
