@@ -376,6 +376,36 @@ test("worktree cwd binding messages are status notes", async () => {
 	assert.match(editBlock.reason, /Status\/readiness\/context-binding notes/);
 });
 
+test("branch-only and negative worktree intents cannot authorize worktree creation", async () => {
+	for (const prompt of [
+		"현재 workspace에서 새 브랜치 만들어서 작업해",
+		"worktree 만들지 말고 현재 workspace에서 branch만 만들어",
+	]) {
+		const { hooks, ctx } = createHarness();
+		const start = await hooks.before_agent_start({ prompt, systemPrompt: "base" }, ctx);
+		assert.match(start.message.details.state.summary, /workspaceAllow=branch-in-place/);
+		const blocked = await hooks.tool_call({ toolName: "worktree_create", input: { repo: "repo" } }, ctx);
+		assert.equal(blocked?.block, true, prompt);
+		assert.match(blocked.reason, /branch\/in-place 요청은 새 worktree 생성 권한이 아닙니다|명시적으로 거부됐습니다/);
+	}
+});
+
+test("explicit worktree and switch intents authorize only their matching tools", async () => {
+	const create = createHarness();
+	const createStart = await create.hooks.before_agent_start({ prompt: "현재 대화를 fork해서 새 worktree 만들어줘", systemPrompt: "base" }, create.ctx);
+	assert.match(createStart.message.details.state.summary, /workspaceAllow=create-worktree/);
+	assert.equal(await create.hooks.tool_call({ toolName: "worktree_fork", input: { repo: "repo" } }, create.ctx), undefined);
+	const wrongSwitch = await create.hooks.tool_call({ toolName: "worktree_switch", input: { repo: "repo", name: "target" } }, create.ctx);
+	assert.equal(wrongSwitch?.block, true);
+
+	const useExisting = createHarness();
+	const switchStart = await useExisting.hooks.before_agent_start({ prompt: "/wt switch repo/target", systemPrompt: "base" }, useExisting.ctx);
+	assert.match(switchStart.message.details.state.summary, /workspaceAllow=use-existing-worktree/);
+	assert.equal(await useExisting.hooks.tool_call({ toolName: "worktree_switch", input: { repo: "repo", name: "target" } }, useExisting.ctx), undefined);
+	const wrongCreate = await useExisting.hooks.tool_call({ toolName: "worktree_create", input: { repo: "repo" } }, useExisting.ctx);
+	assert.equal(wrongCreate?.block, true);
+});
+
 test("short continuation cues continue latest non-status intent", async () => {
 	const { hooks, ctx } = createHarness();
 	const start = await hooks.before_agent_start({ prompt: "계속해", systemPrompt: "base\n\n[Current Conversation Contract]\n- Latest user intent: pi-vcc와 workflow-guard E2E를 확인한다." }, ctx);

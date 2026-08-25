@@ -6,6 +6,13 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import { parseSubagentCommandVerb } from "../subagent/cli.ts";
 import { loadWorkflowGuardProfiles } from "../utils/private-profiles.ts";
+import {
+	deriveWorkspaceAuthorization,
+	isWorkspaceActionAuthorized,
+	type WorkspaceAction,
+	type WorkspaceAuthorizationProvenance,
+	workspaceAuthorizationReason,
+} from "../utils/workspace-activation-contract.ts";
 import { formatWorkContextCard, gateWorkContext, loadOrDeriveWorkContext, type WorkContextCard, type WorkContextGateResult } from "../utils/work-context.ts";
 
 type Intent = "answer" | "investigate" | "implement" | "hotfix" | "verify_report" | "audit" | "ship" | "knowledge" | "status_note" | "unknown";
@@ -33,6 +40,7 @@ interface GuardState {
 	largeWorkObserved: boolean;
 	largeWorkBasis?: string;
 	trustedInternalPullRequestRepository?: string;
+	workspaceAuthorization: WorkspaceAuthorizationProvenance;
 	createdAt: string;
 	sessionFile?: string;
 }
@@ -292,6 +300,7 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 
 	const explicitMutation = !statusNote && !noMutation && (detachedArtifactTask || implementationDirective || shipDirective || explicitCommitPushOnly || hasAny(normalized, [/작업해|진행해|만들어|적용해|개선해|보강해|커밋\s*(?:해|해줘|해주세요|하자)|푸시\s*(?:해|해줘|해주세요|하자)/]));
 	const explicitSingleCommit = hasAny(normalized, [/단일\s*커밋|한\s*커밋|one\s*commit|single\s*commit|squash/]);
+	const workspaceAuthorization = deriveWorkspaceAuthorization(authoritativePrompt, [], "workflow-guard:user-turn");
 
 	const summary = [
 		`intent=${intent}`,
@@ -304,10 +313,12 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 		auditRequired ? "audit=required" : null,
 		sqlReview ? "sqlReview=detected" : null,
 		explicitHeavy && !sqlReview ? "heavy=explicit" : null,
+		workspaceAuthorization.allowedActions.length ? `workspaceAllow=${workspaceAuthorization.allowedActions.join(",")}` : null,
+		workspaceAuthorization.deniedActions.length ? `workspaceDeny=${workspaceAuthorization.deniedActions.join(",")}` : null,
 		!explicitMutation ? "mutation=not-requested" : null,
 	].filter(Boolean).join(" · ");
 
-	return { prompt: authoritativePrompt, intent, weight, explicitHeavy, explicitMutation, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, explicitIssueAction, explicitExternalPublish, auditRequired, sqlReview, detachedArtifactTask, mixedRequest, parallelInvestigationSuggested, summary, continuationCue, followUpCorrection, largeWorkObserved: false, createdAt: new Date().toISOString(), sessionFile };
+	return { prompt: authoritativePrompt, intent, weight, explicitHeavy, explicitMutation, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, explicitIssueAction, explicitExternalPublish, auditRequired, sqlReview, detachedArtifactTask, mixedRequest, parallelInvestigationSuggested, summary, continuationCue, followUpCorrection, largeWorkObserved: false, workspaceAuthorization, createdAt: new Date().toISOString(), sessionFile };
 }
 
 function fastPaceBudgetSeconds(state: GuardState): number | undefined {
@@ -483,6 +494,20 @@ function highRiskMutationBlockReason(state: GuardState, toolName: string): strin
 		`workflow_guard blocked ${toolName}: this high-risk action was not explicitly requested (${state.summary}).`,
 		"Ordinary edit/write/file-producing bash calls are soft-guided and are not blocked by intent classification.",
 		"Ask the user before commit, push, package installation, destructive cleanup, or worktree creation.",
+	].join("\n");
+}
+
+function workspaceActionForTool(toolName: string): WorkspaceAction | undefined {
+	if (toolName === "worktree_create" || toolName === "worktree_fork") return "create-worktree";
+	if (toolName === "worktree_switch") return "use-existing-worktree";
+	return undefined;
+}
+
+function workspaceAuthorizationBlockReason(state: GuardState, toolName: string, action: WorkspaceAction): string {
+	return [
+		`workflow_guard blocked ${toolName}: ${workspaceAuthorizationReason(state.workspaceAuthorization, action)}`,
+		"새 branch 요청은 현재 workspace의 in-place branch 동작으로 유지하고, 명시하지 않은 worktree topology로 확대하지 않습니다.",
+		`authorization events: ${state.workspaceAuthorization.events.map((event) => `${event.source}:${event.sourceId}:${event.action}:${event.decision}`).join(", ") || "none"}`,
 	].join("\n");
 }
 
@@ -1108,9 +1133,15 @@ export default function workflowGuard(
 			}
 		}
 
-		if ((event.toolName === "worktree_create" || event.toolName === "worktree_fork") && !state.explicitMutation) {
-			const reason = highRiskMutationBlockReason(state, event.toolName);
-			if (reason) return { block: true, reason };
+		const workspaceAction = workspaceActionForTool(event.toolName);
+		if (workspaceAction) {
+			if (workspaceAction === "create-worktree" && !state.explicitMutation) {
+				const reason = highRiskMutationBlockReason(state, event.toolName);
+				if (reason) return { block: true, reason };
+			}
+			if (!isWorkspaceActionAuthorized(state.workspaceAuthorization, workspaceAction)) {
+				return { block: true, reason: workspaceAuthorizationBlockReason(state, event.toolName, workspaceAction) };
+			}
 		}
 
 		if (event.toolName === "read" && state.weight === "light" && !state.explicitHeavy && !state.auditRequired) {
