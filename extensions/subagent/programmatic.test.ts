@@ -195,6 +195,16 @@ test("programmatic lineage는 durable entry만 남기고 LLM context에 주입�
 	assert.equal(restoreProgrammaticSubagentLineageEntry({ type: "custom", customType: "other", data: { message } }), undefined);
 });
 
+test("programmatic lineage는 background completion 시 stale runtime entry만 건너뛴다", () => {
+	const message = { customType: "subagent-tool", content: "completed", display: true };
+	assert.doesNotThrow(() => queueProgrammaticSubagentLineage({
+		appendEntry() { throw new Error("This extension ctx is stale after session replacement or reload."); },
+	} as any, message));
+	assert.throws(() => queueProgrammaticSubagentLineage({
+		appendEntry() { throw new Error("disk write failed"); },
+	} as any, message), /disk write failed/);
+});
+
 test("programmatic launcher는 같은 run continuation과 활성 context 부재를 명시한다", async () => {
 	const { pi } = createEventHarness();
 	const commands: string[] = [];

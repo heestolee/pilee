@@ -50,7 +50,15 @@ export function queueProgrammaticSubagentLineage(
 	// Worker lifecycle is durable UI/history state, not a new P0 instruction.
 	// Applying it through sendMessage() leaks it into a future LLM context where it
 	// can be mistaken for a steering request during an unrelated implementation turn.
-	pi.appendEntry(PROGRAMMATIC_SUBAGENT_LINEAGE_ENTRY, { message });
+	try {
+		pi.appendEntry(PROGRAMMATIC_SUBAGENT_LINEAGE_ENTRY, { message });
+	} catch (error) {
+		// A background programmatic worker can finish after print-mode shutdown,
+		// reload, or session replacement. The old runtime can no longer own a durable
+		// lineage row, but its completion callback must still run for the coordinator.
+		if (error instanceof Error && /extension ctx is stale after session replacement or reload/i.test(error.message)) return;
+		throw error;
+	}
 }
 
 export function restoreProgrammaticSubagentLineageEntry(entry: unknown): Record<string, unknown> | undefined {

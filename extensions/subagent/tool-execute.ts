@@ -68,7 +68,7 @@ import type {
 	SubagentDetails,
 	SubagentLaunchSummary,
 } from "./types.js";
-import { updateCommandRunsWidget, type WidgetRenderCtx } from "./widget.js";
+import { runIgnoringStaleExtensionContextError, updateCommandRunsWidget, type WidgetRenderCtx } from "./widget.js";
 
 type SessionToolCall = {
 	name: string;
@@ -1225,15 +1225,15 @@ export function createSubagentToolExecute(pi: ExtensionAPI, store: SubagentStore
 					sessionFile: runState.sessionFile,
 				});
 			} catch (error: unknown) {
-				ctx.ui?.notify?.(
+				runIgnoringStaleExtensionContextError(() => ctx.ui?.notify?.(
 					`programmatic subagent start callback failed: ${error instanceof Error ? error.message : String(error)}`,
 					"error",
-				);
+				));
 			}
-			ctx.ui?.notify?.(
+			runIgnoringStaleExtensionContextError(() => ctx.ui?.notify?.(
 				`${continueFromRun ? `Resumed subagent #${runState.id}` : `Started subagent #${runState.id}`}: ${resolvedAgent}`,
 				"info",
-			);
+			));
 
 			void (async () => {
 				const deliverProgrammaticCompletion = async (finalized: FinalizedRun): Promise<boolean> => {
@@ -1295,12 +1295,12 @@ export function createSubagentToolExecute(pi: ExtensionAPI, store: SubagentStore
 						if (entry) entry.pendingCompletion = makePendingCompletion(completionMessage, true);
 					}
 
-					ctx.ui?.notify?.(
+					runIgnoringStaleExtensionContextError(() => ctx.ui?.notify?.(
 						finalized.isError
 							? `subagent tool run #${runState.id} (${resolvedAgent}) failed`
 							: `subagent tool run #${runState.id} (${resolvedAgent}) completed`,
 						finalized.isError ? "error" : "info",
-					);
+					));
 				} catch (error: unknown) {
 					if (runState.removed) return;
 					runState.status = "error";
@@ -1326,7 +1326,9 @@ export function createSubagentToolExecute(pi: ExtensionAPI, store: SubagentStore
 						const entry = store.globalLiveRuns.get(runState.id);
 						if (entry) entry.pendingCompletion = makePendingCompletion(errorMessage, true);
 					}
-					ctx.ui?.notify?.(`subagent tool run #${runState.id} failed: ${runState.lastLine}`, "error");
+					runIgnoringStaleExtensionContextError(() =>
+						ctx.ui?.notify?.(`subagent tool run #${runState.id} failed: ${runState.lastLine}`, "error"),
+					);
 					updateCommandRunsWidget(store);
 				} finally {
 					if (runState.status !== "running") runState.abortController = undefined;
