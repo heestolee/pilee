@@ -88,41 +88,79 @@ test("logical atom gate allows primary path with companion files", () => {
 	}));
 });
 
-test("buildCommitMessage renders background, decision, verification, and stable links", () => {
+test("buildCommitMessage renders only selected causal paragraphs without forced headings", () => {
 	const message = buildCommitMessage({
 		message: "fix: webhook 재시도 차단",
 		paths: ["src/webhook.ts"],
 		record: {
-			background: "동일 webhook이 재시도되어 알림이 중복 발송됐다.",
-			decision: "이미 처리된 mismatch는 200으로 응답하고 Sentry에 남긴다.",
-			verification: ["관련 회귀 테스트 통과", "중복 알림 경로가 호출되지 않음을 확인"],
-			links: ["https://github.com/example/repo/issues/123"],
+			changeTrigger: "결제 운영 이슈 #123에서 반복 알림 원인을 추적했다.",
+			situationImpact: "동일 webhook이 재시도되어 수동 대응 알림이 중복 발송됐다.",
+			cause: "snapshot mismatch를 이미 처리했지만 컨트롤러가 500을 반환해 PG가 다시 전송했다.",
+			solution: "해당 mismatch만 200으로 종료하고 관찰 가능성은 Sentry 기록으로 유지한다.",
+			rationale: "다른 webhook 오류의 재시도 계약은 바꾸지 않도록 오류 코드 단위로 분기했다.",
+			invariants: ["정상 webhook과 미처리 오류는 기존 응답 정책을 유지한다."],
+			references: ["https://github.com/example/repo/issues/123"],
 		},
 	});
 
 	assert.equal(message, [
 		"fix: webhook 재시도 차단",
-		"배경:\n동일 webhook이 재시도되어 알림이 중복 발송됐다.",
-		"판단:\n이미 처리된 mismatch는 200으로 응답하고 Sentry에 남긴다.",
-		"검증:\n- 관련 회귀 테스트 통과\n- 중복 알림 경로가 호출되지 않음을 확인",
-		"관련 링크:\n- https://github.com/example/repo/issues/123",
+		"결제 운영 이슈 #123에서 반복 알림 원인을 추적했다.",
+		"동일 webhook이 재시도되어 수동 대응 알림이 중복 발송됐다.",
+		"snapshot mismatch를 이미 처리했지만 컨트롤러가 500을 반환해 PG가 다시 전송했다.",
+		"해당 mismatch만 200으로 종료하고 관찰 가능성은 Sentry 기록으로 유지한다.",
+		"다른 webhook 오류의 재시도 계약은 바꾸지 않도록 오류 코드 단위로 분기했다.",
+		"정상 webhook과 미처리 오류는 기존 응답 정책을 유지한다.",
+		"Refs: https://github.com/example/repo/issues/123",
 	].join("\n\n"));
+	assert.doesNotMatch(message, /배경:|판단:|검증:/u);
 });
 
-test("durable record gate blocks one-line apply plans and preserves explicit trivial exceptions", () => {
+test("durable record gate requires causal judgment without forcing every lens", () => {
 	const missing = evaluateCommitRecordGate({ commits: [{ message: "fix: 상태 전이 수정", paths: ["src/state.ts"] }] }, "apply");
 	assert.equal(missing.blocks.length, 1);
 	assert.match(missing.blocks[0] ?? "", /has no durable commit record/);
 	assert.throws(() => assertCommitRecordGate({ commits: [{ message: "fix: 상태 전이 수정", paths: ["src/state.ts"] }] }, "apply"), /durable record gate blocked/);
+
+	const shallow = evaluateCommitRecordGate({
+		commits: [{
+			message: "fix: 상태 전이 수정",
+			paths: ["src/state.ts"],
+			record: {
+				solution: "상태값을 갱신한다.",
+				evidence: ["targeted tests passed", "lint passed"],
+				references: ["https://github.com/example/repo/pull/42"],
+			},
+		}],
+	}, "apply");
+	assert.equal(shallow.blocks.length, 1);
+	assert.match(shallow.blocks[0] ?? "", /solution, evidence, references는 보조 정보/u);
+	assert.doesNotThrow(() => assertCommitRecordGate({
+		commits: [{ message: "refactor: 상태 전이 분리", paths: ["src/state.ts"], record: { rationale: "서로 다른 전이의 실패 경계를 독립적으로 유지하기 위해 분리했다." } }],
+	}, "apply"));
 
 	const omitted = assertCommitRecordGate({
 		commits: [{ message: "chore: generated schema 동기화", paths: ["schema.generated.ts"], recordOmissionReason: "deterministic generated artifact sync" }],
 	}, "apply");
 	assert.match(omitted.join("\n"), /durable record 생략/);
 	assert.doesNotThrow(() => assertCommitRecordGate({
-		commits: [{ message: "fix: 기존 본문 유지\n\n배경과 판단, 검증을 이미 설명한 본문입니다.", paths: ["src/state.ts"] }],
+		commits: [{ message: "fix: 기존 본문 유지\n\n문제가 생긴 이유와 선택한 해결 경계를 자연어로 설명한 본문입니다.", paths: ["src/state.ts"] }],
 	}, "apply"));
 	assert.doesNotThrow(() => assertCommitRecordGate({ commits: [{ message: "fix: 문구 수정", paths: ["copy.ts"] }] }, "quick"));
+});
+
+test("tool guidance keeps record lenses selective and routine verification out of commit bodies", () => {
+	let tool: any;
+	autoCommit({
+		exec: async () => ({ code: 0, stdout: "", stderr: "" }),
+		registerCommand: () => undefined,
+		registerTool: (registered: any) => { tool = registered; },
+	} as any);
+	const guidance = tool.promptGuidelines.join("\n");
+	assert.match(guidance, /optional lenses/u);
+	assert.match(guidance, /do not fill every field/u);
+	assert.match(guidance, /evidence is optional/u);
+	assert.match(guidance, /Do not list routine test\/lint\/typecheck\/build success/u);
 });
 
 test("formatResult makes unpushed commits explicit", () => {
@@ -243,7 +281,7 @@ test("action=split-head rejects missing records before moving HEAD or creating b
 	assert.notEqual((await exec("git", ["rev-parse", "--verify", "backup/split-record-test"], repo)).code, 0);
 });
 
-test("action=apply blocks missing records and commits a structured durable body", async () => {
+test("action=apply blocks shallow records and commits a natural durable body", async () => {
 	const root = await mkdtemp(join(tmpdir(), "auto-commit-record-"));
 	const repo = join(root, "repo");
 	const planPath = join(root, "plan.json");
@@ -277,10 +315,25 @@ test("action=apply blocks missing records and commits a structured durable body"
 			message: "fix: 값 갱신 경로 수정",
 			paths: ["feature.ts"],
 			record: {
-				background: "기존 값이 갱신되지 않아 후속 계산이 오래된 상태를 사용했다.",
-				decision: "값을 소비하기 전에 source-of-truth를 먼저 갱신하도록 순서를 고쳤다.",
-				verification: ["feature 단위 테스트 통과"],
-				links: ["PR #42"],
+				solution: "값을 먼저 갱신한다.",
+				evidence: ["targeted tests passed", "lint passed"],
+			},
+		}],
+		pushPolicy: "commit-only",
+	}));
+	await assert.rejects(() => tools.auto_commit.execute("call-record-shallow", {
+		action: "apply",
+		planPath,
+	}, new AbortController().signal, () => undefined, { cwd: repo }), /requires at least one causal\/judgment field/);
+
+	await writeFile(planPath, JSON.stringify({
+		commits: [{
+			message: "fix: 값 갱신 경로 수정",
+			paths: ["feature.ts"],
+			record: {
+				cause: "기존 값이 갱신되지 않아 후속 계산이 오래된 상태를 사용했다.",
+				solution: "값을 소비하기 전에 source-of-truth를 먼저 갱신하도록 순서를 고쳤다.",
+				references: ["PR #42"],
 			},
 		}],
 		pushPolicy: "commit-only",
@@ -295,10 +348,9 @@ test("action=apply blocks missing records and commits a structured durable body"
 			message: "fix: 값 갱신 경로 수정",
 			paths: ["feature.ts"],
 			record: {
-				background: "기존 값이 갱신되지 않아 후속 계산이 오래된 상태를 사용했다.",
-				decision: "값을 소비하기 전에 source-of-truth를 먼저 갱신하도록 순서를 고쳤다.",
-				verification: ["feature 단위 테스트 통과"],
-				links: ["https://example.com/path\nInjected-Line"],
+				cause: "기존 값이 갱신되지 않아 후속 계산이 오래된 상태를 사용했다.",
+				solution: "값을 소비하기 전에 source-of-truth를 먼저 갱신하도록 순서를 고쳤다.",
+				references: ["https://example.com/path\nInjected-Line"],
 			},
 		}],
 		pushPolicy: "commit-only",
@@ -314,10 +366,13 @@ test("action=apply blocks missing records and commits a structured durable body"
 			message: "fix: 값 갱신 경로 수정",
 			paths: ["feature.ts"],
 			record: {
-				background: "기존 값이 갱신되지 않아 후속 계산이 오래된 상태를 사용했다.",
-				decision: "값을 소비하기 전에 source-of-truth를 먼저 갱신하도록 순서를 고쳤다.",
-				verification: ["feature 단위 테스트 통과"],
-				links: ["https://github.com/example/repo/pull/42"],
+				changeTrigger: "리뷰 코멘트에서 stale value 소비 가능성이 지적됐다.",
+				situationImpact: "후속 계산이 오래된 값으로 실행돼 저장 결과와 응답이 어긋날 수 있었다.",
+				cause: "source-of-truth 갱신이 consumer 호출보다 뒤에 있었다.",
+				solution: "값을 소비하기 전에 source-of-truth를 먼저 갱신하도록 순서를 고쳤다.",
+				rationale: "다른 계산 순서는 유지하고 stale read를 만드는 경계만 이동했다.",
+				invariants: ["기존 저장 원자성과 consumer 호출 횟수는 바꾸지 않는다."],
+				references: ["https://github.com/example/repo/pull/42"],
 			},
 		}],
 		pushPolicy: "commit-only",
@@ -329,10 +384,11 @@ test("action=apply blocks missing records and commits a structured durable body"
 
 	assert.equal(result.details.completion, "committed_not_pushed");
 	const body = (await git(repo, "log", "-1", "--format=%B")).trim();
-	assert.match(body, /^fix: 값 갱신 경로 수정\n\n배경:/u);
-	assert.match(body, /판단:\n값을 소비하기 전에/u);
-	assert.match(body, /검증:\n- feature 단위 테스트 통과/u);
-	assert.match(body, /관련 링크:\n- https:\/\/github\.com\/example\/repo\/pull\/42/u);
+	assert.match(body, /^fix: 값 갱신 경로 수정\n\n리뷰 코멘트에서 stale value 소비 가능성이 지적됐다\./u);
+	assert.match(body, /source-of-truth 갱신이 consumer 호출보다 뒤에 있었다\./u);
+	assert.match(body, /기존 저장 원자성과 consumer 호출 횟수는 바꾸지 않는다\./u);
+	assert.match(body, /Refs: https:\/\/github\.com\/example\/repo\/pull\/42/u);
+	assert.doesNotMatch(body, /배경:|판단:|검증:|tests passed|lint passed/u);
 });
 
 test("action=quick blocks layer-mixed logical atom plans before commit", async () => {

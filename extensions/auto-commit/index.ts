@@ -7,10 +7,15 @@ import { buildCommitReadinessDiagnostic, formatCommitReadinessDiagnostic, pathsF
 import { withRepoStatusPaused } from "../utils/repo-status-coordination.ts";
 
 export interface CommitRecord {
-	background: string;
-	decision: string;
-	verification: string[];
-	links?: string[];
+	changeTrigger?: string;
+	situationImpact?: string;
+	cause?: string;
+	solution?: string;
+	rationale?: string;
+	tradeoffs?: string[];
+	invariants?: string[];
+	evidence?: string[];
+	references?: string[];
 }
 
 export interface CommitPlanEntry {
@@ -114,17 +119,40 @@ function isStableHttpLink(value: string): boolean {
 	}
 }
 
+const RECORD_TEXT_FIELDS = ["changeTrigger", "situationImpact", "cause", "solution", "rationale"] as const;
+const RECORD_LIST_FIELDS = ["tradeoffs", "invariants", "evidence"] as const;
+const DURABLE_TEXT_FIELDS = ["changeTrigger", "situationImpact", "cause", "rationale"] as const;
+const DURABLE_LIST_FIELDS = ["tradeoffs", "invariants"] as const;
+
+function recordText(record: CommitRecord, field: (typeof RECORD_TEXT_FIELDS)[number]): string {
+	const value = record[field];
+	return typeof value === "string" ? value.trim() : "";
+}
+
+function recordItems(record: CommitRecord, field: (typeof RECORD_LIST_FIELDS)[number]): string[] {
+	const value = record[field];
+	return Array.isArray(value) ? value.map((item) => typeof item === "string" ? item.trim() : "").filter(Boolean) : [];
+}
+
+function hasDurableRecordContent(record: CommitRecord | undefined): boolean {
+	if (!record) return false;
+	return DURABLE_TEXT_FIELDS.some((field) => Boolean(recordText(record, field)))
+		|| DURABLE_LIST_FIELDS.some((field) => recordItems(record, field).length > 0);
+}
+
 export function buildCommitMessage(entry: CommitPlanEntry): string {
 	if (!entry.record) return entry.message.trim();
-	const verification = entry.record.verification.map((item) => `- ${item.trim()}`).join("\n");
-	const links = (entry.record.links ?? []).map((item) => `- ${item.trim()}`).join("\n");
-	return [
-		commitSubject(entry.message),
-		`배경:\n${entry.record.background.trim()}`,
-		`판단:\n${entry.record.decision.trim()}`,
-		`검증:\n${verification}`,
-		links ? `관련 링크:\n${links}` : "",
-	].filter(Boolean).join("\n\n");
+	const paragraphs = [
+		...RECORD_TEXT_FIELDS.map((field) => recordText(entry.record!, field)),
+		...RECORD_LIST_FIELDS.flatMap((field) => recordItems(entry.record!, field)),
+	].filter(Boolean);
+	const references = (entry.record.references ?? []).map((item) => item.trim()).filter(Boolean);
+	const referenceBlock = references.length === 1
+		? `Refs: ${references[0]}`
+		: references.length > 1
+			? `Refs:\n${references.map((item) => `- ${item}`).join("\n")}`
+			: "";
+	return [commitSubject(entry.message), ...paragraphs, referenceBlock].filter(Boolean).join("\n\n");
 }
 
 export function extractGitIndexLockPath(stderr: string | undefined, stdout = ""): string | undefined {
@@ -534,7 +562,7 @@ export function evaluateCommitRecordGate(
 	const warnings: string[] = [];
 	const blocks: string[] = [];
 	for (const [index, entry] of plan.commits.entries()) {
-		if (entry.record || hasCommitBody(entry.message)) continue;
+		if (hasDurableRecordContent(entry.record) || hasCommitBody(entry.message)) continue;
 		const subject = commitSubject(entry.message);
 		const omissionReason = entry.recordOmissionReason?.trim();
 		if (omissionReason) {
@@ -543,8 +571,8 @@ export function evaluateCommitRecordGate(
 		}
 		blocks.push([
 			`commits[${index}] "${subject}" has no durable commit record`,
-			"비자명한 commit은 record.background, record.decision, record.verification[]와 가능한 record.links[]를 제공하거나 같은 내용을 담은 기존 multiline message를 사용하세요.",
-			"정말 단순한 generated/mechanical 변경이면 recordOmissionReason을 명시하고, tiny hotfix/copy는 action=quick을 사용하세요.",
+			"비자명한 commit은 situationImpact, cause, rationale, tradeoffs, invariants, changeTrigger 중 diff에서 사라지는 인과관계·판단만 골라 record에 제공하거나 같은 내용을 담은 multiline message를 사용하세요.",
+			"solution, evidence, references는 보조 정보이며 이것만으로 durable record가 되지 않습니다. 정말 단순한 generated/mechanical 변경이면 recordOmissionReason을 명시하고, tiny hotfix/copy는 action=quick을 사용하세요.",
 		].join("\n"));
 	}
 	return { warnings, blocks };
@@ -558,7 +586,7 @@ export function assertCommitRecordGate(
 	if (result.blocks.length > 0) {
 		throw new Error([
 			"auto-commit durable record gate blocked this plan",
-			"커밋 본문은 diff에 남지 않는 배경, 판단, 실제 검증, 관련 provenance를 보존해야 합니다.",
+			"커밋 본문은 항목을 채우는 보고서가 아니라 diff에서 사라지는 인과관계, 선택 이유, 트레이드오프와 provenance를 자연스럽게 보존해야 합니다.",
 			"",
 			...result.blocks,
 		].join("\n"));
@@ -673,17 +701,23 @@ function assertPlan(plan: AutoCommitPlan): void {
 			if (hasCommitBody(entry.message)) {
 				throw new Error(`commits[${index}] must use either multiline message or record, not both`);
 			}
-			if (typeof entry.record.background !== "string" || entry.record.background.trim().length === 0) {
-				throw new Error(`commits[${index}].record.background is required`);
+			for (const field of RECORD_TEXT_FIELDS) {
+				const value = entry.record[field];
+				if (value !== undefined && (typeof value !== "string" || value.trim().length === 0)) {
+					throw new Error(`commits[${index}].record.${field} must be a non-empty string when provided`);
+				}
 			}
-			if (typeof entry.record.decision !== "string" || entry.record.decision.trim().length === 0) {
-				throw new Error(`commits[${index}].record.decision is required`);
+			for (const field of RECORD_LIST_FIELDS) {
+				const value = entry.record[field];
+				if (value !== undefined && (!Array.isArray(value) || value.length === 0 || value.some((item) => typeof item !== "string" || item.trim().length === 0))) {
+					throw new Error(`commits[${index}].record.${field} must contain non-empty strings when provided`);
+				}
 			}
-			if (!Array.isArray(entry.record.verification) || entry.record.verification.length === 0 || entry.record.verification.some((item) => typeof item !== "string" || item.trim().length === 0)) {
-				throw new Error(`commits[${index}].record.verification requires at least one non-empty item`);
+			if (entry.record.references !== undefined && (!Array.isArray(entry.record.references) || entry.record.references.length === 0 || entry.record.references.some((item) => typeof item !== "string" || !isStableHttpLink(item.trim())))) {
+				throw new Error(`commits[${index}].record.references must contain only stable http(s) permalinks`);
 			}
-			if (entry.record.links !== undefined && (!Array.isArray(entry.record.links) || entry.record.links.some((item) => typeof item !== "string" || !isStableHttpLink(item.trim())))) {
-				throw new Error(`commits[${index}].record.links must contain only stable http(s) permalinks`);
+			if (!hasDurableRecordContent(entry.record)) {
+				throw new Error(`commits[${index}].record requires at least one causal/judgment field: changeTrigger, situationImpact, cause, rationale, tradeoffs, or invariants`);
 			}
 		}
 		if (entry.recordOmissionReason !== undefined && (typeof entry.recordOmissionReason !== "string" || entry.recordOmissionReason.trim().length === 0)) {
@@ -942,7 +976,8 @@ export default function (pi: ExtensionAPI) {
 		promptSnippet: "Create focused git commits with durable rationale from an explicit JSON plan or quick explicit-path hotfix input.",
 		promptGuidelines: [
 			"Use auto_commit with an explicit JSON commit plan whose file groups and messages are reviewable, or action=quick with explicit message+paths only for tiny hotfix/copy changes.",
-			"For nontrivial auto_commit apply/split-head entries, provide commits[].record with background, decision, actual verification, and stable issue/PR/review links when available; a full multiline message is accepted, while truly mechanical/generated entries need recordOmissionReason.",
+			"For nontrivial auto_commit apply/split-head entries, use commits[].record as optional lenses: situationImpact, cause, solution, rationale, tradeoffs, invariants, changeTrigger, evidence, and references. Populate only the complete-sentence facts that explain causal context or judgment lost from the diff; do not fill every field. A natural multiline message is also accepted, while truly mechanical/generated entries need recordOmissionReason.",
+			"auto_commit record.evidence is optional and only for non-obvious decision evidence such as before-fail/after-pass behavior, preserved schema/invariants, or a measurement that justifies the choice. Do not list routine test/lint/typecheck/build success, test counts, browser dimensions, or capture review; those belong in CI, PR test plans, or verify reports.",
 			"auto_commit records must preserve durable rationale and provenance, not raw agent reasoning or unverified claims; omit unavailable links rather than inventing them.",
 			"auto_commit enforces a diff-aware logical atom gate: 3+ primary files, large diffs, layer mix, and surface fan-out are evaluated before commit; small same-cluster fan-out may pass with warnings.",
 			"For action=quick, default pushPolicy=push-if-tracking commits and pushes to the safe upstream feature branch when available.",
