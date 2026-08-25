@@ -25,18 +25,19 @@ source:
   - pilee-history:2026-05-05#41
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-11-subagent-skill-delegation
-reviewed_at: 2026-06-02
-reviewed_commit: fad9c363005bba6afcb9fecd6a1d5475b32c4ea9
+reviewed_at: 2026-08-26
+reviewed_commit: 871ec54
 related:
   - worktree-execution-boundary
   - session-identity-over-filenames
   - subagent-prompt-specificity
   - subagent-skill-delegation
+  - workspace-action-panel-activation-contract
 ---
 
 ## Judgment
 
-Pi 대화에 slash command 문자열을 queue했다고 해서 그 command가 실제로 실행된다고 가정하면 안 됩니다. 세션 전환이나 worktree 생성처럼 실행 경계가 중요한 작업은 “메시지 주입”·입력창 prefill·터미널 keyboard injection이 아니라, command context의 `switchSession` 또는 tool context의 deferred `requestSessionSwitch` 같은 실제 session switch API로만 수행합니다. deferred API는 즉시 터미널에 입력하지 않고 현재 agent turn이 idle이 된 뒤 runtime의 `switchSession`을 요청합니다.
+Pi 대화에 slash command 문자열을 queue했다고 해서 그 command가 실제로 실행된다고 가정하면 안 됩니다. 실행 경계가 중요한 작업은 목적에 맞는 실제 activation API로 수행합니다. current-panel 이동인 `/wt switch`는 `switchSession` 또는 deferred `requestSessionSwitch`를 사용하고, new/fork/create 흐름은 fork-panel host adapter로 exact cwd/session을 새 panel에서 연 뒤 target READY ack를 기다립니다. 둘을 서로의 fallback으로 사용하지 않습니다.
 
 ## Boundary Rule
 
@@ -48,9 +49,9 @@ Subagent에 slash command 문자열을 그대로 넘기는 것도 command 실행
 
 ## Worktree Tool Rule
 
-`worktree_create`, `worktree_switch`, `worktree_fork` 같은 일반 도구는 slash command를 몰래 실행하지 않습니다. 현재 패널을 실제 worktree session으로 전환할 수 있는 `switchSession` 또는 `requestSessionSwitch` API가 있을 때만 진행합니다. pilee worktree extension은 `ExtensionRunner.createContext()`에 비열거 `requestSessionSwitch`를 추가하고, 이 함수는 `waitForIdle()` 이후 runtime `switchSession` handler를 호출합니다. API가 없는 tool context에서는 worktree 생성·전환을 시작하지 않고 `BLOCKED`를 반환하며, 전환 명령을 에디터에 채우거나 “이 경로에서 계속 작업” 같은 우회를 제안하지 않습니다. 특히 Ghostty에 `cd ... && pi --session ...`을 `input text`로 주입하는 current-panel relaunch fallback은 포커스된 다른 Pi 패널을 user message로 오염시킬 수 있으므로 사용하지 않습니다. 이미 생성 후 전환이 실패한 드문 경우에도 현재 세션에서 작업을 이어가지 않고 실패를 명시합니다.
+`worktree_create`, `worktree_switch`, `worktree_fork` 같은 일반 도구는 slash command를 몰래 실행하지 않습니다. `worktree_create`와 `worktree_fork`는 매 실행 placement를 묻고 source panel을 유지한 채 exact target session을 새 Ghostty panel/tab에서 엽니다. target process는 session file과 cwd를 확인해 READY를 먼저 기록하고, 그 뒤에만 continuation을 follow-up으로 시작합니다. `worktree_switch`만 `switchSession` 또는 deferred `requestSessionSwitch`로 current panel을 이동합니다. 새 panel open/READY가 실패하면 이번 실행의 terminal/fork record/session/worktree/branch를 정리하고 BLOCKED로 끝내며, current-panel relaunch·slash prefill·절대경로 작업으로 우회하지 않습니다.
 
-`/frame`처럼 command shim에서 시작해 agent가 Step 9 결정을 처리하는 흐름은 예외적으로 command context bridge를 둡니다. `/frame` command handler가 자신의 `ExtensionCommandContext`를 frame identity에 묶어 저장하고, Step 9의 `fork해서 시작`은 `frame_worktree_fork` tool을 통해 그 저장된 command context의 실제 `/wt fork` 경로를 호출합니다. 이렇게 해야 LLM tool context가 직접 session switch를 못 하더라도 사용자는 `/wt switch` fallback 없이 forked worktree session으로 바로 이동합니다. bridge context가 없거나 session이 맞지 않으면 worktree를 만들지 않고 `BLOCKED`로 멈춥니다.
+`/frame`처럼 command shim에서 시작해 agent가 Step 9 결정을 처리하는 흐름은 command context bridge를 둡니다. `/frame` command handler가 자신의 `ExtensionCommandContext`를 frame identity에 묶어 저장하고, Step 9의 `fork해서 시작`은 `frame_worktree_fork` tool을 통해 그 context의 실제 `/wt fork` 경로를 호출합니다. placement 선택과 READY handshake는 이 command path에서 실행되고, 새 panel continuation이 승격된 frame/task의 첫 ready slice를 시작합니다. bridge context가 없거나 session이 맞지 않으면 worktree를 만들지 않고 BLOCKED로 멈춥니다.
 
 ## Failure Mode
 
