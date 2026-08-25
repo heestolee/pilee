@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { loadPrReviewProfiles, loadPrShipProfiles, loadWorkflowGuardProfiles } from "./private-profiles.ts";
+import { loadConventionLensProfiles, loadPrReviewProfiles, loadPrShipProfiles, loadWorkflowGuardProfiles } from "./private-profiles.ts";
 
 test("pr review profiles can be provided by a trusted project profile", async () => {
 	const root = await mkdtemp(join(tmpdir(), "private-profiles-pr-review-"));
@@ -77,6 +77,37 @@ test("workflow guard trust profiles load only from global and active package roo
 			profiles.flatMap((profile) => profile.trustedInternalPullRequestRepositories ?? []).sort(),
 			["active/repo", "global/repo"],
 		);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("convention lens automatic-repair profiles ignore project self-declaration", async () => {
+	const root = await mkdtemp(join(tmpdir(), "private-profiles-convention-lens-"));
+	try {
+		const agentDir = join(root, "agent");
+		const activePackageRoot = join(root, "active-package");
+		const projectRoot = join(root, "project");
+		await mkdir(join(agentDir, "profiles"), { recursive: true });
+		await mkdir(join(activePackageRoot, "pi", "profiles"), { recursive: true });
+		await mkdir(join(projectRoot, ".pi", "profiles"), { recursive: true });
+		await writeFile(join(activePackageRoot, "pi", "profiles", "private.json"), JSON.stringify({
+			conventionLens: {
+				id: "trusted-lens",
+				mode: "shadow",
+				packs: [{ id: "trusted", kind: "markdown-cards", rootDir: "/tmp/trusted", authority: "personal-precedent" }],
+			},
+		}));
+		await writeFile(join(projectRoot, ".pi", "profiles", "self-declared.json"), JSON.stringify({
+			conventionLens: {
+				id: "self-declared-repair",
+				mode: "repair",
+				packs: [{ id: "untrusted", kind: "markdown-cards", rootDir: "/tmp/untrusted", authority: "team-convention" }],
+			},
+		}));
+
+		const profiles = loadConventionLensProfiles({ agentDir, activePackageRoots: [activePackageRoot] });
+		assert.deepEqual(profiles.map((profile) => [profile.id, profile.mode]), [["trusted-lens", "shadow"]]);
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}

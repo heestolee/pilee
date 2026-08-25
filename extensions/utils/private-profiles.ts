@@ -132,6 +132,43 @@ export interface PrReviewProfile {
 	corpora?: PrReviewCorpusProfile[];
 }
 
+export type ConventionLensMode = "off" | "shadow" | "review" | "repair";
+export type ConventionLensAuthority = "team-convention" | "generic-guideline" | "personal-precedent" | "private-case";
+export type ConventionLensNodeStatus = "draft" | "candidate" | "reviewed" | "deprecated";
+
+export interface ConventionLensPackProfile {
+	id: string;
+	kind: "markdown-cards" | "sectioned-markdown";
+	rootDir?: string;
+	sourcePath?: string;
+	overridesPath?: string;
+	authority: ConventionLensAuthority;
+	defaultStatus?: ConventionLensNodeStatus;
+	excludeFiles?: string[];
+}
+
+export interface ConventionLensConsumerProfile {
+	id: string;
+	role: "focused" | "orchestrator" | "debug";
+	seedIds?: string[];
+	feedbackTarget?: string;
+}
+
+export interface ConventionLensProfile {
+	id: string;
+	enabled?: boolean;
+	match?: WorktreeRepoMatchProfile;
+	mode?: ConventionLensMode;
+	packs: ConventionLensPackProfile[];
+	consumers?: ConventionLensConsumerProfile[];
+	maxCycles?: number;
+	candidateThreshold?: number;
+	maxSelectedNodes?: number;
+	stateDir?: string;
+	skipGeneratedOnly?: boolean;
+	generatedPathPatterns?: string[];
+}
+
 export interface PrShipExternalWritePolicyProfile {
 	repositories?: string[];
 	allowedReviewerLogins?: string[];
@@ -153,6 +190,7 @@ export interface PileeRuntimeProfile {
 	workflowGuard?: WorkflowGuardProfile;
 	prReview?: PrReviewProfile;
 	prShip?: PrShipProfile;
+	conventionLens?: ConventionLensProfile | ConventionLensProfile[];
 }
 
 function safeReadDir(dir: string): string[] {
@@ -305,6 +343,24 @@ export function loadStudyHardProfiles(cwd?: string): StudyHardProfile[] {
 
 export function loadPrReviewProfiles(cwd?: string): PrReviewProfile[] {
 	return loadPileeRuntimeProfiles(cwd).map((profile) => profile.prReview).filter((profile): profile is PrReviewProfile => Boolean(profile));
+}
+
+export function loadConventionLensProfiles(options: { agentDir?: string; activePackageRoots?: string[] } = {}): ConventionLensProfile[] {
+	const agentDir = options.agentDir ?? join(homedir(), ".pi", "agent");
+	const activePackageRoots = options.activePackageRoots ?? activeSettingsPackageRoots();
+	const files = profileFilesFromDirs([
+		join(agentDir, "profiles"),
+		...activePackageRoots.flatMap(profileDirsFromRoot),
+	]);
+	return files.flatMap((file) => {
+		try {
+			const value = (JSON.parse(readFileSync(file, "utf8")) as PileeRuntimeProfile).conventionLens;
+			if (!value) return [];
+			return Array.isArray(value) ? value : [value];
+		} catch {
+			return [];
+		}
+	});
 }
 
 export function loadPrShipProfiles(options: { agentDir?: string; activePackageRoots?: string[] } = {}): PrShipProfile[] {
