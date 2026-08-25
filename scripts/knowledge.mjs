@@ -1023,6 +1023,7 @@ const README_EXTENSION_GROUPS = [
 		{ name: "study-hard", ko: "`/study-hard` — concept map·flow·Q&A·revision·HTML/Notion export를 제공하는 범용 학습 board", en: "`/study-hard` learning board with concept maps, flows, Q&A, revisions, and HTML/Notion export" },
 		{ name: "user-facing-language", ko: "사용자에게 보이는 진행/요약/답변은 짧은 한국어를 기본으로 하는 system prompt guard", en: "System prompt guard that keeps user-visible progress, summaries, and answers short and Korean-first" },
 		{ name: "codex-fast-mode", ko: "`/codex-fast` — openai-codex gpt-5.4/5.5 요청에 low verbosity와 선택적 priority tier 적용", en: "`/codex-fast` applies low verbosity and optional priority tier for openai-codex gpt-5.4/gpt-5.5" },
+		{ name: "convention-lens", ko: "`agent_settled`에서 diff 관련 convention만 projection해 shadow·review·safe repair를 수행", en: "Projects diff-relevant conventions at `agent_settled` for shadow, review, and safe repair modes" },
 		{ name: "workflow-guard", ko: "요청 의도·작업 무게·audit·선택 후 실행 흐름을 turn 단위로 강제하는 guard", en: "Turn-level guard for request intent, workflow weight, audits, and post-choice continuation" },
 	] },
 	{ ko: "세션 관리", en: "Session management", items: [

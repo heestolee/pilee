@@ -80,6 +80,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [Architecture friction은 TFT의 검증 축이다](./architecture-friction-tft-lens.md) | active | high | 2026-06-02 | ce5e875 | architecture, frame, decide, verify, deep-module, shallow-module |
+| [Convention Lens는 작업 종료 시 관련 판단만 투영한다](./convention-lens-event-driven-projection.md) | experimental | high | 2026-08-25 | 7b4c7b7 | convention-lens, agent-settled, stop-hook, graph, evidence, reviewer |
 | [학습노트 companion은 독립 canonical을 sidecar로 연결한다](./learning-note-companion-artifact.md) | active | high | 2026-07-18 | 88b560c | learning-note, companion-artifact, frame-v2, study-hard, worktree, checkpoint |
 | [Study Hard 엔진은 public이고 개인 publisher만 private다](./study-hard-public-engine-private-publisher.md) | active | high | 2026-07-30 | ac5b326 | study-hard, public-private-boundary, notion, runtime-profile, local-state |
 | [Study Hard worker는 유연하게 생성하고 extension coordinator가 엄격하게 적용한다](./study-hard-worker-flexible-generation-strict-apply.md) | active | high | 2026-08-05 | 2c4669d | study-hard, subagent, worker, three-way-merge, optimistic-concurrency, glimpse |
@@ -249,6 +250,7 @@ graph TD
   doc_supervisor_outcome_guardrail["Supervisor는 outcome guardrail이다"]
   doc_ultra_proactive_delegation_mode["Ultra는 Max reasoning과 proactive delegation을 결합한 로컬 mode다"]
   doc_architecture_friction_tft_lens["Architecture friction은 TFT의 검증 축이다"]
+  doc_convention_lens_event_driven_projection["Convention Lens는 작업 종료 시 관련 판단만 투영한다"]
   doc_learning_note_companion_artifact["학습노트 companion은 독립 canonical을 sidecar로 연결한다"]
   doc_study_hard_public_engine_private_publisher["Study Hard 엔진은 public이고 개인 publisher만 private다"]
   doc_study_hard_worker_flexible_generation_strict_apply["Study Hard worker는 유연하게 생성하고 extension coordinator가 엄격하게 적용한다"]
@@ -387,6 +389,11 @@ graph TD
   doc_architecture_friction_tft_lens --> doc_decide_tradeoff_challenge
   doc_architecture_friction_tft_lens --> doc_evidence_first_verification_gate
   doc_architecture_friction_tft_lens --> doc_frame_verify_contract
+  doc_convention_lens_event_driven_projection --> doc_atomic_evidence_workflow
+  doc_convention_lens_event_driven_projection --> doc_human_pr_review_precedent_harness
+  doc_convention_lens_event_driven_projection --> doc_private_overlay_package_boundary
+  doc_convention_lens_event_driven_projection --> doc_self_healing_actionable_loop
+  doc_convention_lens_event_driven_projection --> doc_stress_interview_multi_axis_review
   doc_learning_note_companion_artifact --> doc_evidence_first_verification_gate
   doc_learning_note_companion_artifact --> doc_frame_v2_learning_note_pilot
   doc_learning_note_companion_artifact --> doc_slice_auto_commit_rhythm
@@ -773,7 +780,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 114
-- Links: 415
+- Documents: 115
+- Links: 420
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
