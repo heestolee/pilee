@@ -733,8 +733,12 @@ function isHighRiskBashMutation(command: string): boolean {
 		|| /(^|[;&|]\s*)rm\s+-rf\b/.test(compact);
 }
 
+function gitWorktreeAddCommandCount(command: string): number {
+	return semanticGitCommands(command).filter((args) => args[0] === "worktree" && args[1] === "add").length;
+}
+
 function isGitWorktreeAddCommand(command: string): boolean {
-	return semanticGitCommands(command).some((args) => args[0] === "worktree" && args[1] === "add");
+	return gitWorktreeAddCommandCount(command) > 0;
 }
 
 function isGitCommitCommand(command: string): boolean {
@@ -1373,7 +1377,11 @@ export default function workflowGuard(
 
 		if (event.toolName === "bash") {
 			const command = String(event.input?.command ?? "");
-			const directWorktreeAdd = isGitWorktreeAddCommand(command);
+			const directWorktreeAddCount = gitWorktreeAddCommandCount(command);
+			const directWorktreeAdd = directWorktreeAddCount > 0;
+			if (directWorktreeAddCount > 1) {
+				return { block: true, reason: "workflow_guard blocked git worktree add: one authorization event permits exactly one workspace action." };
+			}
 			if (directWorktreeAdd) {
 				if (!isWorkspaceActionAuthorized(state.workspaceAuthorization, "create-worktree")) {
 					return { block: true, reason: workspaceAuthorizationBlockReason(state, "git worktree add", "create-worktree") };

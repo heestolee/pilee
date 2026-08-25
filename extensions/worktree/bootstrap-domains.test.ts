@@ -48,6 +48,19 @@ test("post-create domains cannot be selected before target READY", () => {
 	}]), null);
 });
 
+test("a newer non-create READY prevents reuse of an older create activation", () => {
+	const entries = [
+		readyEntry("old-create"),
+		{
+			type: "custom",
+			customType: WORKSPACE_ACTIVATION_READY_ENTRY_TYPE,
+			data: { activationId: "reuse-existing", workspaceAction: "use-existing-worktree" },
+		},
+	];
+	assert.equal(pendingPostCreateActivationId(entries), null);
+	assert.equal(getPostCreateBootstrapRequest(profile, entries), null);
+});
+
 test("post-create bootstrap request is consumed once per activation", () => {
 	const entries = [
 		readyEntry("activation-once"),

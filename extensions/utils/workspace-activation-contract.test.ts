@@ -122,6 +122,22 @@ test("a consumed session event can rebuild only its matching consumer proof", ()
 	assert.equal(workspaceAuthorizationProofForConsumer(consumed.authorization, "create-worktree", "worktree_fork:call-2", now + 2), null);
 });
 
+test("consumed proof cannot be restored after its authorization TTL expires", () => {
+	const now = Date.parse("2026-08-25T00:00:00.000Z");
+	const initial = explicitWorkspaceAuthorization({
+		id: "auth-expiring",
+		source: "tui",
+		sourceId: "choice-expiring",
+		action: "create-worktree",
+		decision: "allow",
+		createdAt: new Date(now).toISOString(),
+		expiresAt: new Date(now + 10).toISOString(),
+	}, now);
+	const consumed = consumeWorkspaceAuthorization(initial, "create-worktree", "worktree_fork:call-expiring", now + 1);
+	assert.ok(workspaceAuthorizationProofForConsumer(consumed.authorization, "create-worktree", "worktree_fork:call-expiring", now + 2));
+	assert.equal(workspaceAuthorizationProofForConsumer(consumed.authorization, "create-worktree", "worktree_fork:call-expiring", now + 11), null);
+});
+
 test("new explicit deny supersedes an older unconsumed allow in durable state", () => {
 	const now = Date.parse("2026-08-25T00:00:00.000Z");
 	const allow = explicitWorkspaceAuthorization({

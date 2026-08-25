@@ -262,7 +262,8 @@ export function workspaceAuthorizationProofForConsumer(
 		candidate.action === action
 		&& candidate.decision === "allow"
 		&& candidate.consumedBy === consumerId
-		&& Boolean(candidate.consumedAt),
+		&& Boolean(candidate.consumedAt)
+		&& !eventExpired(candidate, now),
 	);
 	if (!event?.id) return null;
 	return reduceWorkspaceAuthorization([event], now, { eventId: event.id, action, consumerId });

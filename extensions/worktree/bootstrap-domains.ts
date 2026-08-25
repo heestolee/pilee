@@ -61,7 +61,7 @@ export function pendingPostCreateActivationId(entries: BootstrapSessionEntry[]):
 		const entry = entries[index];
 		if (entry?.type !== "custom" || entry.customType !== WORKSPACE_ACTIVATION_READY_ENTRY_TYPE) continue;
 		const data = entry.data as { activationId?: unknown; workspaceAction?: unknown } | undefined;
-		if (data?.workspaceAction !== "create-worktree" || typeof data.activationId !== "string" || !data.activationId) continue;
+		if (data?.workspaceAction !== "create-worktree" || typeof data.activationId !== "string" || !data.activationId) return null;
 		const consumed = entries.slice(index + 1).some((candidate) => {
 			if (candidate.type !== "custom" || candidate.customType !== POST_CREATE_BOOTSTRAP_ENTRY_TYPE) return false;
 			return (candidate.data as { activationId?: unknown } | undefined)?.activationId === data.activationId;

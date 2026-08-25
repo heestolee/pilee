@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -121,6 +121,32 @@ test("target receiver rejects a session mismatch without dispatching continuatio
 		assert.equal(received?.status, "failed");
 		assert.match(received?.error ?? "", /exact session mismatch/);
 		assert.equal(sent, false);
+	} finally {
+		rmSync(f.root, { recursive: true, force: true });
+	}
+});
+
+test("receiver recovers a stale descriptor lock before claiming READY", async () => {
+	const f = fixture();
+	try {
+		const prepared = prepareWorkspacePanelActivation({
+			contract: contract("stale-lock-recovery"),
+			cwd: f.root,
+			sessionFile: f.targetSession,
+			sourceSessionFile: f.sourceSession,
+			title: "Stale lock",
+			activationRoot: join(f.root, "activations"),
+		});
+		const lockPath = `${prepared.path}.lock`;
+		mkdirSync(lockPath);
+		const stale = new Date(Date.now() - 10_000);
+		utimesSync(lockPath, stale, stale);
+		const received = await receiveWorkspacePanelActivation({} as any, {
+			cwd: f.root,
+			sessionManager: { getSessionFile: () => f.targetSession, getCwd: () => f.root, appendCustomEntry() {} },
+		} as any, { [WORKSPACE_ACTIVATION_ENV]: prepared.path });
+		assert.equal(received?.status, "ready");
+		assert.equal(existsSync(lockPath), false);
 	} finally {
 		rmSync(f.root, { recursive: true, force: true });
 	}

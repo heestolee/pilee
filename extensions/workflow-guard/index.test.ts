@@ -448,6 +448,23 @@ test("explicit worktree and switch intents authorize one matching action only", 
 	assert.equal(listOnly, undefined, "listing worktrees must not require or consume switch authorization");
 });
 
+test("one authorization cannot execute multiple worktree additions in one bash tool", async () => {
+	const harness = createHarness();
+	await harness.hooks.before_agent_start({ prompt: "새 worktree 만들어줘", systemPrompt: "base" }, harness.ctx);
+	const multiple = await harness.hooks.tool_call({
+		toolName: "bash",
+		toolCallId: "multi-add",
+		input: { command: "git worktree add /tmp/one feature/one && env git worktree add /tmp/two feature/two" },
+	}, harness.ctx);
+	assert.equal(multiple?.block, true);
+	assert.match(multiple.reason, /exactly one workspace action/);
+	assert.equal(await harness.hooks.tool_call({
+		toolName: "bash",
+		toolCallId: "single-after-block",
+		input: { command: "git worktree add /tmp/one feature/one" },
+	}, harness.ctx), undefined, "blocked multi-action command must not consume the authorization");
+});
+
 test("TUI worktree approval survives a neutral next turn and is consumed by the matching frame tool", async () => {
 	const harness = createHarness();
 	await harness.hooks.before_agent_start({ prompt: "/frame 새 기능", systemPrompt: "base" }, harness.ctx);
