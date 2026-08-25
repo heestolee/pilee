@@ -23,7 +23,7 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-11-worktree-cwd-binding
 reviewed_at: 2026-08-26
-reviewed_commit: abd515b
+reviewed_commit: 773af03
 related:
   - worktree-session-continuity
   - session-identity-over-filenames

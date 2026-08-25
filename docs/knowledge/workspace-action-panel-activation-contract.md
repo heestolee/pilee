@@ -25,7 +25,7 @@ applies_to:
 source:
   - user-direction:2026-08-25-workspace-activation-redesign
 reviewed_at: 2026-08-26
-reviewed_commit: 3e35621c2109cb0cb1e86d3d3f5d939f401e4ca9
+reviewed_commit: 773af03
 related:
   - worktree-execution-boundary
   - worktree-session-continuity
