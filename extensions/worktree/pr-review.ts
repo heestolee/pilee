@@ -338,6 +338,16 @@ export async function runPrReviewWorktreeFromCommandContext(
 		title: `PR #${request.number} review · ${request.title}`,
 	});
 	if (activation.status !== "activated") {
+		if (!activation.safeToDeleteTarget) {
+			return {
+				status: activation.status,
+				reason: `PR review new-panel activation failed: ${activation.reason}. worktree/session/metadata를 recovery artifact로 보존했습니다.${activation.descriptorPath ? ` descriptor: ${activation.descriptorPath}` : ""}`,
+				name: identity.name,
+				branch: identity.branch,
+				path: worktreePath,
+				activation,
+			};
+		}
 		cleanupReviewSession(sessionFile);
 		if (created) await cleanupCreatedReviewWorktree(pi, repoRoot, worktreePath, identity.branch);
 		else if (previousMetadata) writePrReviewWorkspaceMetadata(worktreePath, previousMetadata);

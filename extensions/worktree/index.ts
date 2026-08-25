@@ -930,6 +930,18 @@ function cleanupCreatedSessionFile(sessionFile: string | undefined): { removed: 
 	}
 }
 
+function preservedActivationTargetSummary(
+	activation: Exclude<WorkspacePanelActivationResult, { status: "activated" }>,
+	worktreePath: string,
+	sessionFile: string,
+): string {
+	return [
+		`worktree preserved: ${worktreePath}`,
+		`session preserved: ${sessionFile}`,
+		activation.descriptorPath ? `activation descriptor: ${activation.descriptorPath}` : null,
+	].filter(Boolean).join(" · ");
+}
+
 function currentPanelSwitchContract(source: "command" | "tool", sourceId: string): WorkspaceActivationContract {
 	return createWorkspaceActivationContract({
 		id: worktreeActivationId("switch"),
@@ -2098,6 +2110,10 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 		title: `${name} (${branchName})`,
 	});
 	if (activation.status !== "activated") {
+		if (!activation.safeToDeleteTarget) {
+			ctx.ui.notify(`BLOCKED: /wt new panel activation 실패 — ${activation.reason}. ${preservedActivationTargetSummary(activation, worktreePath, session.sessionFile)}`, "error");
+			return;
+		}
 		const sessionCleanup = cleanupCreatedSessionFile(session.sessionFile);
 		const cleanup = await cleanupCreatedWorktree(pi, repoRoot, worktreePath, branchName);
 		ctx.ui.notify(`BLOCKED: /wt new panel activation 실패 — ${activation.reason}. ${cleanupSummary(cleanup)}. session: ${sessionCleanup.removed ? "removed" : sessionCleanup.error}`, "error");
@@ -2910,6 +2926,11 @@ async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandC
 		title: `${name} (${branchName})`,
 	});
 	if (activation.status !== "activated") {
+		if (!activation.safeToDeleteTarget) {
+			const reason = `${activation.reason}. ${preservedActivationTargetSummary(activation, worktreePath, session.sessionFile)}`;
+			ctx.ui.notify(`BLOCKED: /wt fork panel activation 실패 — ${reason}`, "error");
+			return { status: activation.status, reason, name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion, activation };
+		}
 		const sessionCleanup = cleanupCreatedSessionFile(session.sessionFile);
 		const cleanup = await cleanupCreatedWorktree(pi, repoRoot, worktreePath, branchName);
 		const reason = `${activation.reason}. ${cleanupSummary(cleanup)}. session: ${sessionCleanup.removed ? "removed" : sessionCleanup.error}`;
@@ -3797,6 +3818,12 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
+			if (!activation.safeToDeleteTarget) {
+				return {
+					content: [{ type: "text", text: `BLOCKED: worktree_create panel activation 실패 — ${activation.reason}. ${preservedActivationTargetSummary(activation, worktreePath, session.sessionFile)}` }],
+					details: { name, branch: branchName, path: worktreePath, blocked: true, activatedInNewPanel: false, activationTarget: "new-panel", contract, activation, targetPreserved: true, framePromotion },
+				};
+			}
 			const sessionCleanup = cleanupCreatedSessionFile(session.sessionFile);
 			const cleanup = await cleanupCreatedWorktree(pi, repoRoot, worktreePath, branchName);
 			return {
@@ -4048,6 +4075,12 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
+			if (!activation.safeToDeleteTarget) {
+				return {
+					content: [{ type: "text", text: `BLOCKED: worktree_fork panel activation 실패 — ${activation.reason}. ${preservedActivationTargetSummary(activation, worktreePath, session.sessionFile)}` }],
+					details: { name, branch: branchName, path: worktreePath, contextLength, contextMode, blocked: true, activatedInNewPanel: false, activationTarget: "new-panel", contract, activation, targetPreserved: true, framePromotion },
+				};
+			}
 			const sessionCleanup = cleanupCreatedSessionFile(session.sessionFile);
 			const cleanup = await cleanupCreatedWorktree(pi, repoRoot, worktreePath, branchName);
 			return {

@@ -67,14 +67,18 @@ test("read-only PR review workspaces skip automatic dependency bootstrap", () =>
 	assert.match(source, /return \{ repoRoot, state: "not-implementation" \}/);
 });
 
-test("creation failure cleans worktree, branch, and target session without current-panel fallback", () => {
+test("creation failure cleans only a confirmed-closed target and preserves child-owned artifacts", () => {
 	assert.match(source, /function cleanupCreatedWorktree/);
 	assert.match(source, /function cleanupCreatedSessionFile/);
+	assert.match(source, /function preservedActivationTargetSummary/);
 	assert.match(source, /\["worktree", "remove", "--force", worktreePath\]/);
 	assert.match(source, /\["branch", "-D", branchName\]/);
 	for (const block of [commandNew, commandFork, createTool, forkTool]) {
+		assert.match(block, /if \(!activation\.safeToDeleteTarget\)/);
+		assert.match(block, /preservedActivationTargetSummary/);
 		assert.match(block, /cleanupCreatedSessionFile/);
 		assert.match(block, /cleanupCreatedWorktree/);
+		assert.ok(block.indexOf("safeToDeleteTarget") < block.lastIndexOf("cleanupCreatedSessionFile"));
 		assert.doesNotMatch(block, /switchSessionToWorktree/);
 	}
 });

@@ -176,7 +176,7 @@ test("PR review activation failure removes its new session/worktree and never fa
 			activate: async (_pi, _ctx, input) => {
 				targetPath = input.cwd;
 				targetSessionDir = dirnameForSession(input.sessionFile);
-				return { status: "failed", reason: "READY timeout", contract: input.contract, placement: "right" };
+				return { status: "failed", reason: "READY timeout", contract: input.contract, placement: "right", safeToDeleteTarget: true };
 			},
 		});
 		assert.equal(result.status, "failed");
@@ -185,6 +185,50 @@ test("PR review activation failure removes its new session/worktree and never fa
 		assert.equal(existsSync(targetPath), false);
 		assert.equal(run("git", ["show-ref", "--verify", "--quiet", `refs/heads/review/pr-42-${f.headSha.slice(0, 8)}`], f.repo).code, 1);
 		assert.equal(existsSync(targetSessionDir), false);
+	} finally {
+		if (targetSessionDir) rmSync(targetSessionDir, { recursive: true, force: true });
+		rmSync(f.root, { recursive: true, force: true });
+	}
+});
+
+test("PR review preserves its session and worktree when panel termination is not confirmed", async () => {
+	const f = setupRepository();
+	let targetSessionDir = "";
+	try {
+		let targetPath = "";
+		let targetSessionFile = "";
+		const order: string[] = [];
+		const pi = {
+			exec(command: string, args: string[], options?: { cwd?: string }) { return Promise.resolve(run(command, args, options?.cwd ?? f.repo)); },
+		} as any;
+		const ctx = {
+			cwd: f.repo,
+			hasUI: true,
+			sessionManager: { getSessionFile: () => f.sourceSession, getSessionName: () => "source review", getCwd: () => f.repo },
+			ui: { notify() {} },
+		} as any;
+		const result = await runPrReviewWorktreeFromCommandContext(pi, ctx, request(f.baseSha, f.headSha), {
+			buildContract: contractBuilder(order) as any,
+			activate: async (_pi, _ctx, input) => {
+				targetPath = input.cwd;
+				targetSessionFile = input.sessionFile;
+				targetSessionDir = dirnameForSession(input.sessionFile);
+				return {
+					status: "blocked",
+					reason: "terminal close not confirmed",
+					contract: input.contract,
+					placement: "right",
+					descriptorPath: "/tmp/workspace-activation.json",
+					safeToDeleteTarget: false,
+				};
+			},
+		});
+		assert.equal(result.status, "blocked");
+		assert.match(result.reason, /recovery artifact로 보존/);
+		assert.equal(existsSync(targetPath), true);
+		assert.equal(existsSync(targetSessionFile), true);
+		assert.equal(git(targetPath, ["rev-parse", "HEAD"]), f.headSha);
+		assert.equal(readPrReviewWorkspaceMetadata(targetPath)?.targetSessionFile, targetSessionFile);
 	} finally {
 		if (targetSessionDir) rmSync(targetSessionDir, { recursive: true, force: true });
 		rmSync(f.root, { recursive: true, force: true });

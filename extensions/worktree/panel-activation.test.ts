@@ -73,7 +73,9 @@ test("target receiver writes READY before dispatching continuation", async () =>
 		const entries: any[] = [];
 		const pi = {
 			sendMessage(message: any, options: any) {
-				assert.equal(readWorkspacePanelActivation(prepared.path)?.status, "ready", "READY must be durable before continuation dispatch");
+				const descriptor = readWorkspacePanelActivation(prepared.path);
+				assert.equal(descriptor?.status, "continuing", "continuation must be claimed before dispatch");
+				assert.ok(descriptor?.readyAt, "READY must be durable before continuation dispatch");
 				messages.push({ message, options });
 			},
 		} as any;
@@ -162,7 +164,7 @@ test("new panel activation waits for exact-session continuation and never switch
 	}
 });
 
-test("panel open failure and READY timeout stay BLOCKED without current-panel fallback", async () => {
+test("panel open failure is safe to delete, but an unconfirmed terminal close preserves every recovery artifact", async () => {
 	const f = fixture();
 	try {
 		let switchCalled = false;
@@ -178,10 +180,10 @@ test("panel open failure and READY timeout stay BLOCKED without current-panel fa
 			openPanel: async () => ({ status: "failed", reason: "host refused split" }),
 		});
 		assert.equal(openFailure.status, "failed");
+		if (openFailure.status !== "activated") assert.equal(openFailure.safeToDeleteTarget, true);
 
 		let closedTerminal = "";
-		let removedFork = "";
-		const cleanupOrder: string[] = [];
+		let recordRemoved = false;
 		const timeoutRoot = join(f.root, "timeout");
 		const timeout = await activateWorkspaceInNewPanel({} as any, ctx, {
 			contract: contract("panel-ready-timeout"),
@@ -193,17 +195,157 @@ test("panel open failure and READY timeout stay BLOCKED without current-panel fa
 			timeoutMs: 0,
 		}, {
 			openPanel: async () => ({ status: "opened", terminalId: "term-timeout", forkId: "fork-timeout", panelLabel: "P2" }),
-			closePanel: async (_pi, terminalId) => { cleanupOrder.push("close"); closedTerminal = terminalId; return { closed: true }; },
-			removePanelRecord: (forkId) => { cleanupOrder.push("remove"); removedFork = forkId; },
+			closePanel: async (_pi, terminalId) => { closedTerminal = terminalId; return { closed: false, reason: "terminal still alive" }; },
+			removePanelRecord: () => { recordRemoved = true; },
 			sleep: async () => {},
 		});
 		assert.equal(timeout.status, "blocked");
-		assert.match(timeout.reason, /READY handshake timeout/);
+		assert.match(timeout.reason, /terminal close가 확인되지 않아/);
 		assert.equal(closedTerminal, "term-timeout");
-		assert.equal(removedFork, "fork-timeout");
-		assert.deepEqual(cleanupOrder, ["remove", "close"], "cleanup tombstone must exist before terminal shutdown");
+		assert.equal(recordRemoved, false);
+		if (timeout.status !== "activated") {
+			assert.equal(timeout.safeToDeleteTarget, false);
+			assert.equal(timeout.cleanup?.terminalClosed, false);
+			assert.equal(timeout.cleanup?.recordRemoved, false);
+			assert.equal(timeout.descriptorPath, join(timeoutRoot, "panel-ready-timeout.json"));
+		}
 		assert.equal(switchCalled, false);
-		assert.equal(existsSync(join(timeoutRoot, "panel-ready-timeout.json")), false);
+		const preserved = readWorkspacePanelActivation(join(timeoutRoot, "panel-ready-timeout.json"));
+		assert.equal(preserved?.status, "cancelling");
+		assert.equal(preserved?.cleanup?.descriptorPreserved, true);
+	} finally {
+		rmSync(f.root, { recursive: true, force: true });
+	}
+});
+
+test("timeout cancellation claim wins before a receiver and prevents continuation dispatch", async () => {
+	const f = fixture();
+	try {
+		const activationRoot = join(f.root, "timeout-wins");
+		let activationEnv: Record<string, string | undefined> = {};
+		let sent = 0;
+		let receiverStatus = "";
+		const pi = { sendMessage() { sent += 1; } } as any;
+		const result = await activateWorkspaceInNewPanel(pi, {} as any, {
+			contract: contract("timeout-wins", { workflow: "test", customType: "must-not-run", content: "do not run" }),
+			cwd: f.root,
+			sessionFile: f.targetSession,
+			sourceSessionFile: f.sourceSession,
+			title: "Timeout wins",
+			activationRoot,
+			timeoutMs: 0,
+		}, {
+			openPanel: async (_hostPi, request) => {
+				activationEnv = request.env ?? {};
+				return { status: "opened", terminalId: "term-timeout-wins", forkId: "fork-timeout-wins", panelLabel: "P1" };
+			},
+			closePanel: async () => {
+				const received = await receiveWorkspacePanelActivation(pi, {
+					cwd: f.root,
+					sessionManager: { getSessionFile: () => f.targetSession, getCwd: () => f.root },
+				} as any, activationEnv);
+				receiverStatus = received?.status ?? "";
+				return { closed: true };
+			},
+			removePanelRecord: () => {},
+			sleep: async () => {},
+		});
+		assert.equal(result.status, "blocked");
+		assert.equal(receiverStatus, "cancelling");
+		assert.equal(sent, 0);
+		if (result.status !== "activated") assert.equal(result.safeToDeleteTarget, true);
+		assert.equal(readWorkspacePanelActivation(join(activationRoot, "timeout-wins.json"))?.status, "cancelled");
+	} finally {
+		rmSync(f.root, { recursive: true, force: true });
+	}
+});
+
+test("receiver continuation claim wins before timeout and parent preserves child-owned target", async () => {
+	const f = fixture();
+	try {
+		let releaseDispatch!: () => void;
+		let signalDispatchStarted!: () => void;
+		const dispatchReleased = new Promise<void>((resolve) => { releaseDispatch = resolve; });
+		const dispatchStarted = new Promise<void>((resolve) => { signalDispatchStarted = resolve; });
+		let receiverPromise: Promise<unknown> | undefined;
+		let closeCalled = false;
+		let removeCalled = false;
+		const pi = {
+			sendMessage() {
+				signalDispatchStarted();
+				return dispatchReleased;
+			},
+		} as any;
+		const result = await activateWorkspaceInNewPanel(pi, {} as any, {
+			contract: contract("receiver-wins", { workflow: "test", customType: "run-once", content: "run" }),
+			cwd: f.root,
+			sessionFile: f.targetSession,
+			sourceSessionFile: f.sourceSession,
+			title: "Receiver wins",
+			activationRoot: join(f.root, "receiver-wins"),
+			timeoutMs: 0,
+		}, {
+			openPanel: async (_hostPi, request) => {
+				receiverPromise = receiveWorkspacePanelActivation(pi, {
+					cwd: f.root,
+					sessionManager: { getSessionFile: () => f.targetSession, getCwd: () => f.root, appendCustomEntry() {} },
+				} as any, request.env);
+				await dispatchStarted;
+				return { status: "opened", terminalId: "term-receiver-wins", forkId: "fork-receiver-wins", panelLabel: "P1" };
+			},
+			closePanel: async () => { closeCalled = true; return { closed: true }; },
+			removePanelRecord: () => { removeCalled = true; },
+			sleep: async () => {},
+		});
+		assert.equal(result.status, "blocked");
+		if (result.status !== "activated") {
+			assert.equal(result.safeToDeleteTarget, false);
+			assert.match(result.reason, /continuing/);
+		}
+		assert.equal(closeCalled, false);
+		assert.equal(removeCalled, false);
+		releaseDispatch();
+		await receiverPromise;
+	} finally {
+		rmSync(f.root, { recursive: true, force: true });
+	}
+});
+
+test("duplicate receivers cannot dispatch the same continuation twice", async () => {
+	const f = fixture();
+	try {
+		const prepared = prepareWorkspacePanelActivation({
+			contract: contract("duplicate-receiver", { workflow: "test", customType: "run-once", content: "run" }),
+			cwd: f.root,
+			sessionFile: f.targetSession,
+			sourceSessionFile: f.sourceSession,
+			title: "Duplicate receiver",
+			activationRoot: join(f.root, "activations"),
+		});
+		let releaseDispatch!: () => void;
+		let signalDispatchStarted!: () => void;
+		const dispatchReleased = new Promise<void>((resolve) => { releaseDispatch = resolve; });
+		const dispatchStarted = new Promise<void>((resolve) => { signalDispatchStarted = resolve; });
+		let dispatchCount = 0;
+		const pi = {
+			sendMessage() {
+				dispatchCount += 1;
+				signalDispatchStarted();
+				return dispatchReleased;
+			},
+		} as any;
+		const ctx = {
+			cwd: f.root,
+			sessionManager: { getSessionFile: () => f.targetSession, getCwd: () => f.root, appendCustomEntry() {} },
+		} as any;
+		const first = receiveWorkspacePanelActivation(pi, ctx, { [WORKSPACE_ACTIVATION_ENV]: prepared.path });
+		await dispatchStarted;
+		const second = await receiveWorkspacePanelActivation(pi, ctx, { [WORKSPACE_ACTIVATION_ENV]: prepared.path });
+		assert.equal(second?.status, "continuing");
+		assert.equal(dispatchCount, 1);
+		releaseDispatch();
+		assert.equal((await first)?.status, "continued");
+		assert.equal(dispatchCount, 1);
 	} finally {
 		rmSync(f.root, { recursive: true, force: true });
 	}

@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
 	getAgentDir,
@@ -30,8 +31,34 @@ const WORKSPACE_ACTIVATION_VERSION = 1;
 const DEFAULT_ACTIVATION_ROOT = join(getAgentDir(), "workspace-activations");
 const DEFAULT_READY_TIMEOUT_MS = 20_000;
 const POLL_INTERVAL_MS = 80;
+const LOCK_RETRY_MS = 10;
+const LOCK_TIMEOUT_MS = 1_000;
+const STALE_LOCK_MS = 5_000;
 
-export type WorkspacePanelActivationStatus = "prepared" | "panel-opened" | "ready" | "continued" | "failed";
+export type WorkspacePanelActivationStatus =
+	| "prepared"
+	| "panel-opened"
+	| "ready"
+	| "continuing"
+	| "continued"
+	| "cancelling"
+	| "cancelled"
+	| "failed";
+
+interface WorkspacePanelActivationClaim {
+	kind: "continuation" | "cancellation";
+	ownerId: string;
+	pid: number;
+	claimedAt: string;
+}
+
+interface WorkspacePanelActivationCleanup {
+	terminalClosed: boolean;
+	recordRemoved: boolean;
+	descriptorPreserved: boolean;
+	attemptedAt: string;
+	reason?: string;
+}
 
 export interface WorkspacePanelActivationDescriptor {
 	version: typeof WORKSPACE_ACTIVATION_VERSION;
@@ -56,8 +83,14 @@ export interface WorkspacePanelActivationDescriptor {
 	};
 	createdAt: string;
 	readyAt?: string;
+	continuingAt?: string;
 	continuedAt?: string;
+	cancellingAt?: string;
+	cancelledAt?: string;
 	failedAt?: string;
+	continuationClaim?: WorkspacePanelActivationClaim;
+	cancellationClaim?: WorkspacePanelActivationClaim;
+	cleanup?: WorkspacePanelActivationCleanup;
 	error?: string;
 }
 
@@ -80,7 +113,9 @@ export type WorkspacePanelActivationResult =
 		terminalId?: string;
 		forkId?: string;
 		panelLabel?: string;
-		cleanup?: { terminalClosed: boolean; recordRemoved: boolean; reason?: string };
+		descriptorPath?: string;
+		safeToDeleteTarget: boolean;
+		cleanup?: WorkspacePanelActivationCleanup;
 	};
 
 interface ActivateWorkspacePanelInput {
@@ -115,7 +150,7 @@ function activationFilePath(id: string, root = DEFAULT_ACTIVATION_ROOT): string 
 
 function writeDescriptor(path: string, descriptor: WorkspacePanelActivationDescriptor): void {
 	mkdirSync(dirname(path), { recursive: true });
-	const temporary = `${path}.${process.pid}.tmp`;
+	const temporary = `${path}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`;
 	writeFileSync(temporary, `${JSON.stringify(descriptor, null, 2)}\n`, "utf8");
 	renameSync(temporary, path);
 }
@@ -131,16 +166,73 @@ export function readWorkspacePanelActivation(path: string): WorkspacePanelActiva
 	}
 }
 
-function patchDescriptor(
+function errorCode(error: unknown): string | undefined {
+	return typeof error === "object" && error !== null && "code" in error
+		? String((error as { code?: unknown }).code)
+		: undefined;
+}
+
+async function acquireDescriptorLock(path: string): Promise<() => void> {
+	const lockPath = `${path}.lock`;
+	const deadline = Date.now() + LOCK_TIMEOUT_MS;
+	while (true) {
+		try {
+			mkdirSync(lockPath);
+			writeFileSync(join(lockPath, "owner.json"), `${JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() })}\n`, "utf8");
+			return () => rmSync(lockPath, { recursive: true, force: true });
+		} catch (error) {
+			if (errorCode(error) !== "EEXIST") throw error;
+			try {
+				if (Date.now() - statSync(lockPath).mtimeMs > STALE_LOCK_MS) {
+					rmSync(lockPath, { recursive: true, force: true });
+					continue;
+				}
+			} catch (statError) {
+				if (errorCode(statError) === "ENOENT") continue;
+				throw statError;
+			}
+			if (Date.now() >= deadline) throw new Error(`workspace activation lock timeout: ${lockPath}`);
+			await new Promise<void>((resolve) => setTimeout(resolve, LOCK_RETRY_MS));
+		}
+	}
+}
+
+interface DescriptorMutationResult {
+	descriptor: WorkspacePanelActivationDescriptor;
+	changed: boolean;
+}
+
+async function mutateDescriptor(
 	path: string,
-	patch: Partial<WorkspacePanelActivationDescriptor>,
-	status?: WorkspacePanelActivationStatus,
-): WorkspacePanelActivationDescriptor {
-	const current = readWorkspacePanelActivation(path);
-	if (!current) throw new Error(`workspace activation descriptor를 읽지 못했습니다: ${path}`);
-	const next = { ...current, ...patch, status: status ?? current.status };
-	writeDescriptor(path, next);
-	return next;
+	mutate: (current: WorkspacePanelActivationDescriptor) => WorkspacePanelActivationDescriptor | null,
+): Promise<DescriptorMutationResult> {
+	const release = await acquireDescriptorLock(path);
+	try {
+		const current = readWorkspacePanelActivation(path);
+		if (!current) throw new Error(`workspace activation descriptor를 읽지 못했습니다: ${path}`);
+		const next = mutate(current);
+		if (!next) return { descriptor: current, changed: false };
+		writeDescriptor(path, next);
+		return { descriptor: next, changed: true };
+	} finally {
+		release();
+	}
+}
+
+async function transitionDescriptor(input: {
+	path: string;
+	from: WorkspacePanelActivationStatus[];
+	to: WorkspacePanelActivationStatus;
+	patch?: Partial<WorkspacePanelActivationDescriptor>;
+	ownerId?: string;
+	ownerKind?: WorkspacePanelActivationClaim["kind"];
+}): Promise<DescriptorMutationResult> {
+	return mutateDescriptor(input.path, (current) => {
+		if (!input.from.includes(current.status)) return null;
+		if (input.ownerId && input.ownerKind === "continuation" && current.continuationClaim?.ownerId !== input.ownerId) return null;
+		if (input.ownerId && input.ownerKind === "cancellation" && current.cancellationClaim?.ownerId !== input.ownerId) return null;
+		return { ...current, ...input.patch, status: input.to };
+	});
 }
 
 export function prepareWorkspacePanelActivation(
@@ -169,11 +261,17 @@ export function prepareWorkspacePanelActivation(
 	return { path, descriptor };
 }
 
-function receiverFailure(path: string, error: string): WorkspacePanelActivationDescriptor | null {
+async function receiverFailure(path: string, error: string): Promise<WorkspacePanelActivationDescriptor | null> {
 	try {
-		return patchDescriptor(path, { error, failedAt: new Date().toISOString() }, "failed");
+		const failed = await transitionDescriptor({
+			path,
+			from: ["prepared", "panel-opened"],
+			to: "failed",
+			patch: { error, failedAt: new Date().toISOString() },
+		});
+		return failed.descriptor;
 	} catch {
-		return null;
+		return readWorkspacePanelActivation(path);
 	}
 }
 
@@ -185,7 +283,7 @@ export async function receiveWorkspacePanelActivation(
 	const path = env[WORKSPACE_ACTIVATION_ENV]?.trim();
 	if (!path) return null;
 	const descriptor = readWorkspacePanelActivation(path);
-	if (!descriptor || descriptor.status === "failed" || descriptor.status === "continued") return descriptor;
+	if (!descriptor || ["failed", "continuing", "continued", "cancelling", "cancelled"].includes(descriptor.status)) return descriptor;
 
 	let observedSessionFile = "";
 	let observedCwd = "";
@@ -203,42 +301,94 @@ export async function receiveWorkspacePanelActivation(
 	}
 
 	const readyAt = new Date().toISOString();
-	const ready = patchDescriptor(path, {
-		observed: { cwd: safeRealpath(observedCwd), sessionFile: safeRealpath(observedSessionFile), pid: process.pid },
-		readyAt,
-		error: undefined,
-	}, "ready");
+	let readyResult: DescriptorMutationResult;
 	try {
-		ctx.sessionManager.appendCustomEntry?.("workspace-activation-ready", {
-			activationId: ready.id,
-			workspaceAction: ready.contract.workspaceAction,
-			activationTarget: ready.contract.activationTarget,
-			placement: ready.contract.placement,
-			sourceSessionFile: ready.expected.sourceSessionFile,
-			readyAt,
+		readyResult = await transitionDescriptor({
+			path,
+			from: ["prepared", "panel-opened"],
+			to: "ready",
+			patch: {
+				observed: { cwd: safeRealpath(observedCwd), sessionFile: safeRealpath(observedSessionFile), pid: process.pid },
+				readyAt,
+				error: undefined,
+			},
 		});
-	} catch {
-		// READY ack is already durable in the descriptor; session provenance is best-effort.
+	} catch (error) {
+		return receiverFailure(path, `READY claim failed: ${error instanceof Error ? error.message : String(error)}`);
 	}
+	const ready = readyResult.descriptor;
+	if (readyResult.changed) {
+		try {
+			ctx.sessionManager.appendCustomEntry?.("workspace-activation-ready", {
+				activationId: ready.id,
+				workspaceAction: ready.contract.workspaceAction,
+				activationTarget: ready.contract.activationTarget,
+				placement: ready.contract.placement,
+				sourceSessionFile: ready.expected.sourceSessionFile,
+				readyAt,
+			});
+		} catch {
+			// READY ack is already durable in the descriptor; session provenance is best-effort.
+		}
+	}
+	if (ready.status !== "ready" || !ready.contract.continuation) return ready;
 
-	if (!ready.contract.continuation) return ready;
+	const ownerId = `continuation-${process.pid}-${randomUUID()}`;
+	const continuingAt = new Date().toISOString();
+	let continuingResult: DescriptorMutationResult;
 	try {
-		const continuation = ready.contract.continuation;
+		continuingResult = await transitionDescriptor({
+			path,
+			from: ["ready"],
+			to: "continuing",
+			patch: {
+				continuingAt,
+				continuationClaim: { kind: "continuation", ownerId, pid: process.pid, claimedAt: continuingAt },
+			},
+		});
+	} catch (error) {
+		return receiverFailure(path, `continuation claim failed: ${error instanceof Error ? error.message : String(error)}`);
+	}
+	if (!continuingResult.changed) return continuingResult.descriptor;
+
+	try {
+		const continuation = continuingResult.descriptor.contract.continuation!;
 		await Promise.resolve(pi.sendMessage({
 			customType: continuation.customType,
 			content: continuation.content,
 			display: continuation.display ?? false,
 			details: {
 				...continuation.details,
-				workspaceActivationId: ready.id,
-				workspaceAction: ready.contract.workspaceAction,
-				activationTarget: ready.contract.activationTarget,
-				placement: ready.contract.placement,
+				workspaceActivationId: continuingResult.descriptor.id,
+				workspaceAction: continuingResult.descriptor.contract.workspaceAction,
+				activationTarget: continuingResult.descriptor.contract.activationTarget,
+				placement: continuingResult.descriptor.contract.placement,
 			},
 		}, { deliverAs: "followUp", triggerTurn: true }));
-		return patchDescriptor(path, { continuedAt: new Date().toISOString() }, "continued");
+		const continued = await transitionDescriptor({
+			path,
+			from: ["continuing"],
+			to: "continued",
+			ownerId,
+			ownerKind: "continuation",
+			patch: { continuedAt: new Date().toISOString() },
+		});
+		return continued.descriptor;
 	} catch (error) {
-		return receiverFailure(path, `continuation dispatch failed: ${error instanceof Error ? error.message : String(error)}`);
+		const message = `continuation dispatch failed: ${error instanceof Error ? error.message : String(error)}`;
+		try {
+			const failed = await transitionDescriptor({
+				path,
+				from: ["continuing"],
+				to: "failed",
+				ownerId,
+				ownerKind: "continuation",
+				patch: { error: message, failedAt: new Date().toISOString() },
+			});
+			return failed.descriptor;
+		} catch {
+			return readWorkspacePanelActivation(path);
+		}
 	}
 }
 
@@ -246,6 +396,16 @@ export function registerWorkspacePanelActivationReceiver(pi: ExtensionAPI): void
 	pi.on("session_start", async (_event, ctx) => {
 		await receiveWorkspacePanelActivation(pi, ctx);
 	});
+}
+
+function reachedExpectedStatus(
+	descriptor: WorkspacePanelActivationDescriptor | null,
+	expectedStatus: "ready" | "continued",
+): descriptor is WorkspacePanelActivationDescriptor {
+	return Boolean(descriptor && (
+		descriptor.status === expectedStatus
+		|| (expectedStatus === "ready" && descriptor.status === "continued")
+	));
 }
 
 async function waitForWorkspacePanelActivation(
@@ -257,11 +417,29 @@ async function waitForWorkspacePanelActivation(
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() <= deadline) {
 		const current = readWorkspacePanelActivation(path);
-		if (!current || current.status === "failed") return current;
-		if (current.status === expectedStatus || (expectedStatus === "ready" && current.status === "continued")) return current;
+		if (!current || ["failed", "cancelled"].includes(current.status)) return current;
+		if (reachedExpectedStatus(current, expectedStatus)) return current;
 		await sleep(POLL_INTERVAL_MS);
 	}
 	return readWorkspacePanelActivation(path);
+}
+
+function activatedResult(
+	input: ActivateWorkspacePanelInput,
+	placement: NewPanelPlacement,
+	opened: Extract<ExactSessionPanelOpenResult, { status: "opened" }>,
+	final: WorkspacePanelActivationDescriptor,
+): WorkspacePanelActivationResult {
+	return {
+		status: "activated",
+		contract: input.contract,
+		placement,
+		terminalId: opened.terminalId,
+		forkId: opened.forkId,
+		panelLabel: opened.panelLabel,
+		readyAt: final.readyAt ?? new Date().toISOString(),
+		continuationDispatched: final.status === "continued",
+	};
 }
 
 export async function activateWorkspaceInNewPanel(
@@ -291,42 +469,155 @@ export async function activateWorkspaceInNewPanel(
 	});
 	if (opened.status !== "opened") {
 		rmSync(prepared.path, { force: true });
-		return { status: opened.status, reason: opened.reason, contract: input.contract, placement };
+		rmSync(`${prepared.path}.lock`, { recursive: true, force: true });
+		return {
+			status: opened.status,
+			reason: opened.reason,
+			contract: input.contract,
+			placement,
+			safeToDeleteTarget: true,
+		};
 	}
 
-	const afterOpen = readWorkspacePanelActivation(prepared.path);
-	if (afterOpen) {
-		patchDescriptor(prepared.path, {
+	try {
+		await mutateDescriptor(prepared.path, (current) => ({
+			...current,
+			status: current.status === "prepared" ? "panel-opened" : current.status,
 			panel: { placement, terminalId: opened.terminalId, forkId: opened.forkId, panelLabel: opened.panelLabel },
-		}, afterOpen.status === "prepared" ? "panel-opened" : undefined);
-	}
-	const expectedStatus = input.contract.continuation ? "continued" : "ready";
-	const final = await waitForWorkspacePanelActivation(
-		prepared.path,
-		expectedStatus,
-		input.timeoutMs ?? DEFAULT_READY_TIMEOUT_MS,
-		sleep,
-	);
-	if (final && (final.status === expectedStatus || (expectedStatus === "ready" && final.status === "continued"))) {
-		rmSync(prepared.path, { force: true });
+		}));
+	} catch (error) {
 		return {
-			status: "activated",
+			status: "blocked",
+			reason: `panel activation descriptor update failed: ${error instanceof Error ? error.message : String(error)}`,
 			contract: input.contract,
 			placement,
 			terminalId: opened.terminalId,
 			forkId: opened.forkId,
 			panelLabel: opened.panelLabel,
-			readyAt: final.readyAt ?? new Date().toISOString(),
-			continuationDispatched: final.status === "continued",
+			descriptorPath: prepared.path,
+			safeToDeleteTarget: false,
 		};
 	}
 
-	removePanelRecord(opened.forkId);
-	const closed = await closePanel(pi, opened.terminalId);
-	rmSync(prepared.path, { force: true });
+	const expectedStatus = input.contract.continuation ? "continued" : "ready";
+	const timeoutMs = input.timeoutMs ?? DEFAULT_READY_TIMEOUT_MS;
+	const final = await waitForWorkspacePanelActivation(prepared.path, expectedStatus, timeoutMs, sleep);
+	if (reachedExpectedStatus(final, expectedStatus)) {
+		rmSync(prepared.path, { force: true });
+		return activatedResult(input, placement, opened, final);
+	}
+
+	const cancellationOwnerId = `cancellation-${process.pid}-${randomUUID()}`;
+	const cancellingAt = new Date().toISOString();
+	let cancellation: DescriptorMutationResult;
+	try {
+		cancellation = await transitionDescriptor({
+			path: prepared.path,
+			from: ["prepared", "panel-opened", "ready", "failed"],
+			to: "cancelling",
+			patch: {
+				cancellingAt,
+				cancellationClaim: { kind: "cancellation", ownerId: cancellationOwnerId, pid: process.pid, claimedAt: cancellingAt },
+			},
+		});
+	} catch (error) {
+		return {
+			status: final?.status === "failed" ? "failed" : "blocked",
+			reason: `target cancellation claim failed; artifacts preserved: ${error instanceof Error ? error.message : String(error)}`,
+			contract: input.contract,
+			placement,
+			terminalId: opened.terminalId,
+			forkId: opened.forkId,
+			panelLabel: opened.panelLabel,
+			descriptorPath: prepared.path,
+			safeToDeleteTarget: false,
+		};
+	}
+
+	if (!cancellation.changed) {
+		const current = cancellation.descriptor;
+		if (reachedExpectedStatus(current, expectedStatus)) {
+			rmSync(prepared.path, { force: true });
+			return activatedResult(input, placement, opened, current);
+		}
+		return {
+			status: current.status === "failed" ? "failed" : "blocked",
+			reason: `target activation is ${current.status}; parent cancellation을 claim하지 못해 child-owned artifacts를 보존합니다.`,
+			contract: input.contract,
+			placement,
+			terminalId: opened.terminalId,
+			forkId: opened.forkId,
+			panelLabel: opened.panelLabel,
+			descriptorPath: prepared.path,
+			safeToDeleteTarget: false,
+		};
+	}
+
 	const reason = final?.status === "failed"
 		? final.error ?? "target activation failed"
-		: `target READY handshake timeout (${input.timeoutMs ?? DEFAULT_READY_TIMEOUT_MS}ms)`;
+		: `target READY handshake timeout (${timeoutMs}ms)`;
+	const closed = await closePanel(pi, opened.terminalId);
+	if (!closed.closed) {
+		const cleanup: WorkspacePanelActivationCleanup = {
+			terminalClosed: false,
+			recordRemoved: false,
+			descriptorPreserved: true,
+			attemptedAt: new Date().toISOString(),
+			reason: closed.reason,
+		};
+		try {
+			await transitionDescriptor({
+				path: prepared.path,
+				from: ["cancelling"],
+				to: "cancelling",
+				ownerId: cancellationOwnerId,
+				ownerKind: "cancellation",
+				patch: { cleanup, error: reason },
+			});
+		} catch {
+			// Preserve the original descriptor and panel record even when recording cleanup fails.
+		}
+		return {
+			status: final?.status === "failed" ? "failed" : "blocked",
+			reason: `${reason}; terminal close가 확인되지 않아 target artifacts를 보존합니다.`,
+			contract: input.contract,
+			placement,
+			terminalId: opened.terminalId,
+			forkId: opened.forkId,
+			panelLabel: opened.panelLabel,
+			descriptorPath: prepared.path,
+			safeToDeleteTarget: false,
+			cleanup,
+		};
+	}
+
+	let recordRemoved = false;
+	let recordRemovalReason: string | undefined;
+	try {
+		removePanelRecord(opened.forkId);
+		recordRemoved = true;
+	} catch (error) {
+		recordRemovalReason = error instanceof Error ? error.message : String(error);
+	}
+	const cleanup: WorkspacePanelActivationCleanup = {
+		terminalClosed: true,
+		recordRemoved,
+		descriptorPreserved: true,
+		attemptedAt: new Date().toISOString(),
+		reason: recordRemovalReason,
+	};
+	try {
+		await transitionDescriptor({
+			path: prepared.path,
+			from: ["cancelling"],
+			to: "cancelled",
+			ownerId: cancellationOwnerId,
+			ownerKind: "cancellation",
+			patch: { cancelledAt: new Date().toISOString(), cleanup, error: reason },
+		});
+	} catch {
+		// Terminal close is the deletion safety boundary; keep the descriptor for recovery if finalization fails.
+	}
 	return {
 		status: final?.status === "failed" ? "failed" : "blocked",
 		reason,
@@ -335,7 +626,9 @@ export async function activateWorkspaceInNewPanel(
 		terminalId: opened.terminalId,
 		forkId: opened.forkId,
 		panelLabel: opened.panelLabel,
-		cleanup: { terminalClosed: closed.closed, recordRemoved: true, reason: closed.reason },
+		descriptorPath: prepared.path,
+		safeToDeleteTarget: true,
+		cleanup,
 	};
 }
 
