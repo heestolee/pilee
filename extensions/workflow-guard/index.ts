@@ -737,10 +737,6 @@ function gitWorktreeAddCommandCount(command: string): number {
 	return semanticGitCommands(command).filter((args) => args[0] === "worktree" && args[1] === "add").length;
 }
 
-function isGitWorktreeAddCommand(command: string): boolean {
-	return gitWorktreeAddCommandCount(command) > 0;
-}
-
 function isGitCommitCommand(command: string): boolean {
 	return semanticGitCommands(command).some((args) => args[0] === "commit");
 }
