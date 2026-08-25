@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+	buildOpenSessionScript,
 	buildRepanelScript,
+	chooseNewPanelPlacement,
 	parsePanelTargetRequest,
 	parseSplitPlacementArgs,
 	splitPlacementFromDirections,
@@ -23,6 +25,35 @@ test("parseSplitPlacementArgs accepts repanel anchor-path syntax only", () => {
 	assert.deepEqual(parseSplitPlacementArgs("right down"), { anchorPath: ["right"], splitDirection: "down" });
 	assert.deepEqual(parseSplitPlacementArgs("down"), { anchorPath: [], splitDirection: "down" });
 	assert.equal(parseSplitPlacementArgs("right later"), null);
+});
+
+test("chooseNewPanelPlacement asks every run and excludes current-panel fallback", async () => {
+	const seen: string[][] = [];
+	const ctx = {
+		hasUI: true,
+		ui: {
+			async select(_title: string, choices: string[]) {
+				seen.push(choices);
+				return "새 탭";
+			},
+		},
+	} as any;
+	assert.equal(await chooseNewPanelPlacement(ctx), "tab");
+	assert.deepEqual(seen[0]?.slice(0, 2), ["오른쪽 분할 패널", "새 탭"]);
+	assert.equal(seen[0]?.some((choice) => choice.includes("현재 패널")), false);
+	assert.equal(await chooseNewPanelPlacement({ ...ctx, hasUI: false }), null);
+});
+
+test("buildOpenSessionScript launches the exact cwd and session and returns terminal id", () => {
+	for (const target of ["tab" as const, splitPlacementFromDirections(["right"])]) {
+		const script = buildOpenSessionScript(target, "/tmp/work dir", "/tmp/exact session.jsonl", {
+			PI_WORKSPACE_ACTIVATION_FILE: "/tmp/activation.json",
+		});
+		assert.match(script, /cd '\/tmp\/work dir'/);
+		assert.match(script, /--session '\/tmp\/exact session\.jsonl'/);
+		assert.match(script, /PI_WORKSPACE_ACTIVATION_FILE='\/tmp\/activation\.json'/);
+		assert.match(script, /return id of newTerm/);
+	}
 });
 
 test("buildRepanelScript resolves anchor before closing current terminal", () => {

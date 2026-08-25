@@ -8,16 +8,17 @@ import type { AutocompleteItem } from "@mariozechner/pi-tui";
 import { completeSimple } from "@mariozechner/pi-ai";
 import { expandProfileTemplate, loadArtifactBrowserProfiles } from "../utils/private-profiles.ts";
 import { resolveForkPanelIdentity, type ForkPanelIdentity } from "../utils/fork-panel-identity.ts";
+import type { NewPanelPlacement } from "../utils/workspace-activation-contract.ts";
 
 const SPLIT_DIRS = ["right", "left", "down", "up"] as const;
-type SplitDirection = (typeof SPLIT_DIRS)[number];
+export type SplitDirection = (typeof SPLIT_DIRS)[number];
 export interface SplitPlacement {
 	anchorPath: SplitDirection[];
 	splitDirection: SplitDirection;
 }
 const VALID_DIRS = [...SPLIT_DIRS, "tab"] as const;
 type Direction = (typeof VALID_DIRS)[number];
-type PanelOpenTarget = "tab" | SplitPlacement;
+export type PanelOpenTarget = "tab" | SplitPlacement;
 type OpenMode = "here" | PanelOpenTarget;
 type ReviveHereMismatchAction = "fast" | "worktree-here" | Direction;
 
@@ -792,6 +793,27 @@ function modeLabel(mode: OpenMode): string {
 	return `${placementLabel(mode)} 패널`;
 }
 
+const NEW_PANEL_PLACEMENT_OPTIONS: Array<{ placement: NewPanelPlacement; label: string }> = [
+	{ placement: "right", label: "오른쪽 분할 패널" },
+	{ placement: "tab", label: "새 탭" },
+	{ placement: "left", label: "왼쪽 분할 패널" },
+	{ placement: "down", label: "아래 분할 패널" },
+	{ placement: "up", label: "위 분할 패널" },
+];
+
+export async function chooseNewPanelPlacement(
+	ctx: ExtensionContext | ExtensionCommandContext,
+	title = "새 작업 panel을 어디에 열까요?",
+): Promise<NewPanelPlacement | null> {
+	if (!ctx.hasUI) return null;
+	const selected = await ctx.ui.select(title, NEW_PANEL_PLACEMENT_OPTIONS.map((option) => option.label));
+	return NEW_PANEL_PLACEMENT_OPTIONS.find((option) => option.label === selected)?.placement ?? null;
+}
+
+function panelTargetFromPlacement(placement: NewPanelPlacement): PanelOpenTarget {
+	return placement === "tab" ? "tab" : splitPlacementFromDirections([placement]);
+}
+
 function buildEnvPrefix(env: Record<string, string | undefined>): string {
 	const entries = Object.entries(env).filter(([, value]) => !!value);
 	return entries.length > 0 ? `${entries.map(([key, value]) => `${key}=${shellQuote(value!)}`).join(" ")} ` : "";
@@ -888,26 +910,112 @@ function buildAnchorNavigationScript(placement: SplitPlacement, startTermVar: st
 	return lines.map((line) => `  ${line}`).join("\n");
 }
 
-function buildOpenSessionScript(mode: PanelOpenTarget, cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}): string {
+export function buildOpenSessionScript(mode: PanelOpenTarget, cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}): string {
 	const cmd = buildSessionLaunchCommand(cwd, sessionFile, env);
 	if (mode === "tab") {
-		return `tell application "System Events"
-  tell process "Ghostty"
-    keystroke "t" using command down
-    delay 1.0
-    keystroke "${cmd}"
-    key code 36
-  end tell
+		return `tell application "Ghostty"
+  activate
+  set newTerm to make new tab in front window
+  input text "${cmd}" to newTerm
+  send key "enter" to newTerm
+  return id of newTerm
 end tell`;
 	}
 
 	return `tell application "Ghostty"
+  activate
   set currentTerm to focused terminal of selected tab of front window
 ${buildAnchorNavigationScript(mode, "currentTerm", "anchorTerm")}
   set newTerm to split anchorTerm direction ${mode.splitDirection}
   input text "${cmd}" to newTerm
   send key "enter" to newTerm
+  return id of newTerm
 end tell`;
+}
+
+export interface ExactSessionPanelOpenRequest {
+	activationId: string;
+	placement: NewPanelPlacement;
+	cwd: string;
+	sessionFile: string;
+	sourceSessionFile: string;
+	title: string;
+	env?: Record<string, string | undefined>;
+	host?: { platform?: NodeJS.Platform; termProgram?: string };
+}
+
+export type ExactSessionPanelOpenResult =
+	| { status: "opened"; terminalId: string; forkId: string; panelLabel: string }
+	| { status: "blocked" | "failed"; reason: string };
+
+export async function openExactSessionInNewPanel(
+	pi: ExtensionAPI,
+	request: ExactSessionPanelOpenRequest,
+): Promise<ExactSessionPanelOpenResult> {
+	const platform = request.host?.platform ?? process.platform;
+	const termProgram = request.host?.termProgram ?? process.env.TERM_PROGRAM;
+	if (platform !== "darwin" || termProgram !== "ghostty") {
+		return { status: "blocked", reason: "새 panel activation은 macOS Ghostty에서만 지원합니다." };
+	}
+	if (!existsSync(request.sessionFile)) return { status: "blocked", reason: `target session file이 없습니다: ${request.sessionFile}` };
+	if (!isDirectory(request.cwd)) return { status: "blocked", reason: `target cwd가 없습니다: ${request.cwd}` };
+	if (!request.sourceSessionFile || !existsSync(request.sourceSessionFile)) {
+		return { status: "blocked", reason: "source session provenance가 없어 새 panel을 열지 않습니다." };
+	}
+
+	const panelLabel = allocatePanelLabel(request.sourceSessionFile);
+	const forkId = `wa_${request.activationId.replace(/[^A-Za-z0-9._-]/g, "-")}_${randomUUID().slice(0, 8)}`;
+	const script = buildOpenSessionScript(panelTargetFromPlacement(request.placement), request.cwd, request.sessionFile, {
+		...request.env,
+		PI_FORK_ID: forkId,
+		PI_FORK_PANEL_LABEL: panelLabel,
+		PI_FORK_PARENT: request.sourceSessionFile,
+	});
+	const result = await pi.exec("osascript", ["-e", script]);
+	if (result.code !== 0) {
+		return { status: "failed", reason: result.stderr?.trim() || result.stdout?.trim() || "Ghostty panel open failed" };
+	}
+	const terminalId = result.stdout?.trim();
+	if (!terminalId) return { status: "failed", reason: "Ghostty가 새 terminal id를 반환하지 않았습니다." };
+
+	const entries = readSessionPreviewEntries(request.sessionFile);
+	recordFork({
+		forkId,
+		label: sanitizeRowText(request.title).slice(0, 80) || `${request.placement} panel`,
+		panelLabel,
+		parentSessionFile: request.sourceSessionFile,
+		sessionFile: request.sessionFile,
+		sessionId: extractSessionId(entries) || undefined,
+		cwd: request.cwd,
+		createdAt: Date.now(),
+		source: "fork",
+		title: sanitizeRowText(request.title),
+	});
+	return { status: "opened", terminalId, forkId, panelLabel };
+}
+
+export async function closeExactSessionPanel(
+	pi: ExtensionAPI,
+	terminalId: string,
+	host: { platform?: NodeJS.Platform; termProgram?: string } = {},
+): Promise<{ closed: boolean; reason?: string }> {
+	const platform = host.platform ?? process.platform;
+	const termProgram = host.termProgram ?? process.env.TERM_PROGRAM;
+	if (platform !== "darwin" || termProgram !== "ghostty") return { closed: false, reason: "Ghostty host unavailable" };
+	const script = `tell application "Ghostty"\n  close first terminal whose id is "${esc(terminalId)}"\nend tell`;
+	const result = await pi.exec("osascript", ["-e", script]);
+	return result.code === 0
+		? { closed: true }
+		: { closed: false, reason: result.stderr?.trim() || result.stdout?.trim() || "Ghostty terminal close failed" };
+}
+
+export function removeExactSessionPanelRecord(forkId: string): void {
+	const recent = loadRecent();
+	if (recent[forkId]) {
+		delete recent[forkId];
+		saveRecent(recent);
+	}
+	try { unlinkSync(join(HANDOFF_DIR, `${forkId}.json`)); } catch {}
 }
 
 export function buildRepanelScript(placement: SplitPlacement, cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}, oldTerminalId?: string): string {
