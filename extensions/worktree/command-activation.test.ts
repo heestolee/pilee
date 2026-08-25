@@ -36,7 +36,8 @@ test("/wt fork keeps full transcript lineage and refuses an empty fallback sessi
 });
 
 test("/wt switch remains the explicit current-panel activation path", () => {
-	assert.match(source, /currentPanelSwitchContract\("command", "\/wt switch"\)/);
+	assert.match(source, /currentPanelSwitchContract\(ctx, "command", "\/wt switch"\)/);
+	assert.match(source, /resolveWorkspaceActivationAuthorization/);
 	assert.match(source, /switchSessionToWorktree\(ctx, resolved\.sessionFile/);
 });
 

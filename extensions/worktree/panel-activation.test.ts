@@ -12,8 +12,11 @@ import {
 	WORKSPACE_ACTIVATION_ENV,
 } from "./panel-activation.ts";
 import {
+	consumeWorkspaceAuthorization,
 	createWorkspaceActivationContract,
 	explicitWorkspaceAuthorization,
+	workspaceAuthorizationStateEntry,
+	WORKSPACE_AUTHORIZATION_ENTRY_TYPE,
 	type WorkspaceContinuation,
 } from "../utils/workspace-activation-contract.ts";
 
@@ -351,10 +354,18 @@ test("duplicate receivers cannot dispatch the same continuation twice", async ()
 	}
 });
 
-test("new panel contract records the placement TUI as authorization provenance", async () => {
+test("new panel command contract records exact command and placement provenance", async () => {
+	const entries: any[] = [];
 	const built = await buildNewPanelActivationContract({
 		id: "placement-contract",
-		ctx: { hasUI: true, ui: { select: async () => "새 탭" } } as any,
+		ctx: {
+			hasUI: true,
+			ui: { select: async () => "새 탭" },
+			sessionManager: {
+				getBranch: () => entries,
+				appendCustomEntry: (customType: string, data: unknown) => entries.push({ type: "custom", customType, data }),
+			},
+		} as any,
 		workspaceAction: "create-worktree",
 		contextMode: "clean",
 		authorizationSource: "command",
@@ -363,4 +374,52 @@ test("new panel contract records the placement TUI as authorization provenance",
 	assert.equal(built?.activationTarget, "new-panel");
 	assert.equal(built?.placement, "tab");
 	assert.equal(built?.authorization.events[0]?.sourceId, "/wt new");
+	assert.equal(built?.authorization.events[0]?.placement, "tab");
+	assert.equal(built?.authorization.events[0]?.consumedBy, "command:/wt new:placement-contract");
+	assert.equal(entries.at(-1)?.customType, WORKSPACE_AUTHORIZATION_ENTRY_TYPE);
+});
+
+test("new panel tool contract reuses the exact workflow-guard consumed event", async () => {
+	const event = {
+		id: "guard-auth-1",
+		source: "tui" as const,
+		sourceId: "frame_studio:answer-1",
+		action: "create-worktree" as const,
+		decision: "allow" as const,
+		activationTarget: "new-panel" as const,
+		createdAt: "2026-08-25T00:00:00.000Z",
+		expiresAt: "2099-08-25T00:15:00.000Z",
+	};
+	const consumed = consumeWorkspaceAuthorization(
+		explicitWorkspaceAuthorization(event),
+		"create-worktree",
+		"frame_worktree_fork:call-1",
+	);
+	const entries: any[] = [{
+		type: "custom",
+		customType: WORKSPACE_AUTHORIZATION_ENTRY_TYPE,
+		data: workspaceAuthorizationStateEntry(consumed.authorization),
+	}];
+	const built = await buildNewPanelActivationContract({
+		id: "tool-contract",
+		ctx: {
+			hasUI: true,
+			ui: { select: async () => "오른쪽 분할 패널" },
+			sessionManager: {
+				getBranch: () => entries,
+				appendCustomEntry: (customType: string, data: unknown) => entries.push({ type: "custom", customType, data }),
+			},
+		} as any,
+		workspaceAction: "create-worktree",
+		contextMode: "full",
+		authorizationSource: "tui",
+		authorizationSourceId: "must-not-replace-actual-source",
+		authorizationConsumerId: "frame_worktree_fork:call-1",
+	});
+	assert.equal(built?.authorization.events[0]?.id, "guard-auth-1");
+	assert.equal(built?.authorization.events[0]?.source, "tui");
+	assert.equal(built?.authorization.events[0]?.sourceId, "frame_studio:answer-1");
+	assert.equal(built?.authorization.events[0]?.consumedBy, "frame_worktree_fork:call-1");
+	assert.equal(built?.authorization.events[0]?.placement, "right");
+	assert.equal(entries.at(-1)?.data.events[0].placement, "right");
 });

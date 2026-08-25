@@ -45,6 +45,7 @@ test("/frame Step 9 routes fork selection to command-context bridge, not worktre
 	assert.match(source, /name: FRAME_FORK_TOOL_NAME/);
 	assert.match(source, /rememberFrameCommandContext\(ctx, args, cwd, frameIdentity\)/);
 	assert.match(source, /runWorktreeForkFromCommandContext/);
+	assert.match(source, /authorizationConsumerId: workspaceAuthorizationConsumerId\(FRAME_FORK_TOOL_NAME, toolCallId\)/);
 	assert.match(source, /afterSwitchFollowUp/);
 	assert.match(source, /result\.status !== "activated" && result\.status !== "switched"/);
 	assert.match(frameSkill, /`frame_worktree_fork` tool/);

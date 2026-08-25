@@ -16,11 +16,19 @@ import {
 	type ExactSessionPanelOpenResult,
 } from "../fork-panel/index.ts";
 import {
+	appendWorkspaceAuthorizationEvent,
+	consumeWorkspaceAuthorization,
 	createWorkspaceActivationContract,
-	explicitWorkspaceAuthorization,
+	createWorkspaceAuthorizationEvent,
+	restoreWorkspaceAuthorization,
+	updateConsumedWorkspaceAuthorizationEvent,
+	workspaceAuthorizationProofForConsumer,
+	workspaceAuthorizationStateEntry,
+	WORKSPACE_AUTHORIZATION_ENTRY_TYPE,
 	type NewPanelPlacement,
 	type WorkspaceActivationContract,
 	type WorkspaceAction,
+	type WorkspaceAuthorizationProvenance,
 	type WorkspaceAuthorizationSource,
 	type WorkspaceContextMode,
 	type WorkspaceContinuation,
@@ -632,6 +640,65 @@ export async function activateWorkspaceInNewPanel(
 	};
 }
 
+function activeAuthorizationEntries(ctx: ExtensionContext | ExtensionCommandContext) {
+	return ctx.sessionManager.getBranch?.() ?? ctx.sessionManager.getEntries?.() ?? [];
+}
+
+function persistActivationAuthorization(
+	ctx: ExtensionContext | ExtensionCommandContext,
+	authorization: WorkspaceAuthorizationProvenance,
+): void {
+	if (typeof ctx.sessionManager.appendCustomEntry !== "function") {
+		throw new Error("workspace authorization을 저장할 session custom-entry API가 없습니다.");
+	}
+	ctx.sessionManager.appendCustomEntry(
+		WORKSPACE_AUTHORIZATION_ENTRY_TYPE,
+		workspaceAuthorizationStateEntry(authorization),
+	);
+}
+
+export function resolveWorkspaceActivationAuthorization(input: {
+	id: string;
+	ctx: ExtensionContext | ExtensionCommandContext;
+	workspaceAction: WorkspaceAction;
+	activationTarget: "current-panel" | "new-panel";
+	authorizationSource: WorkspaceAuthorizationSource;
+	authorizationSourceId: string;
+	authorizationConsumerId?: string;
+	placement?: NewPanelPlacement;
+}): WorkspaceAuthorizationProvenance {
+	const restored = restoreWorkspaceAuthorization(activeAuthorizationEntries(input.ctx));
+	if (input.authorizationConsumerId) {
+		const updated = updateConsumedWorkspaceAuthorizationEvent(
+			restored,
+			input.workspaceAction,
+			input.authorizationConsumerId,
+			{ activationTarget: input.activationTarget, placement: input.placement },
+		);
+		const proof = workspaceAuthorizationProofForConsumer(updated, input.workspaceAction, input.authorizationConsumerId);
+		if (!proof) throw new Error(`matching workspace authorization proof가 없습니다: ${input.authorizationConsumerId}`);
+		persistActivationAuthorization(input.ctx, updated);
+		return workspaceAuthorizationProofForConsumer(updated, input.workspaceAction, input.authorizationConsumerId)!;
+	}
+	if (input.authorizationSource !== "command") {
+		throw new Error(`${input.authorizationSource} activation은 workflow-guard가 소비한 durable authorization proof가 필요합니다.`);
+	}
+	const event = createWorkspaceAuthorizationEvent({
+		source: input.authorizationSource,
+		sourceId: input.authorizationSourceId,
+		action: input.workspaceAction,
+		decision: "allow",
+		activationTarget: input.activationTarget,
+		placement: input.placement,
+	});
+	const appended = appendWorkspaceAuthorizationEvent(restored, event);
+	const consumerId = `command:${input.authorizationSourceId}:${input.id}`;
+	const consumed = consumeWorkspaceAuthorization(appended, input.workspaceAction, consumerId);
+	if (!consumed.proof) throw new Error(`command workspace authorization을 소비하지 못했습니다: ${input.authorizationSourceId}`);
+	persistActivationAuthorization(input.ctx, consumed.authorization);
+	return consumed.proof;
+}
+
 export async function buildNewPanelActivationContract(input: {
 	id: string;
 	ctx: ExtensionContext | ExtensionCommandContext;
@@ -639,11 +706,13 @@ export async function buildNewPanelActivationContract(input: {
 	contextMode: WorkspaceContextMode;
 	authorizationSource: WorkspaceAuthorizationSource;
 	authorizationSourceId: string;
+	authorizationConsumerId?: string;
 	continuation?: WorkspaceContinuation;
 	placementTitle?: string;
 }): Promise<WorkspaceActivationContract | null> {
 	const placement = await chooseNewPanelPlacement(input.ctx, input.placementTitle);
 	if (!placement) return null;
+	const authorization = resolveWorkspaceActivationAuthorization({ ...input, activationTarget: "new-panel", placement });
 	return createWorkspaceActivationContract({
 		id: input.id,
 		workspaceAction: input.workspaceAction,
@@ -651,13 +720,6 @@ export async function buildNewPanelActivationContract(input: {
 		placement,
 		contextMode: input.contextMode,
 		continuation: input.continuation,
-		authorization: explicitWorkspaceAuthorization({
-			source: input.authorizationSource,
-			sourceId: input.authorizationSourceId,
-			action: input.workspaceAction,
-			decision: "allow",
-			activationTarget: "new-panel",
-			placement,
-		}),
+		authorization,
 	});
 }

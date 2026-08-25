@@ -44,11 +44,13 @@ test("/wt new and /wt fork choose a new panel before creation and never switch t
 test("worktree_create and worktree_fork tools activate a sibling panel while switch stays current-panel", () => {
 	for (const block of [createTool, forkTool]) {
 		assert.match(block, /buildNewPanelActivationContract/);
+		assert.match(block, /authorizationConsumerId: workspaceAuthorizationConsumerId/);
 		assert.match(block, /activateWorkspaceInNewPanel/);
 		assert.match(block, /activationTarget: "new-panel"/);
 		assert.doesNotMatch(block, /trySwitchSessionToWorktree/);
 	}
-	assert.match(switchTool, /currentPanelSwitchContract\("tool", "worktree_switch"\)/);
+	assert.match(switchTool, /currentPanelSwitchContract\(/);
+	assert.match(switchTool, /workspaceAuthorizationConsumerId\("worktree_switch", toolCallId\)/);
 	assert.match(switchTool, /planWorktreeActivation/);
 	assert.match(switchTool, /trySwitchSessionToWorktree/);
 	assert.match(switchTool, /activationTarget: "current-panel"/);

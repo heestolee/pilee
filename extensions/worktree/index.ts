@@ -25,11 +25,12 @@ import {
 	activateWorkspaceInNewPanel,
 	buildNewPanelActivationContract,
 	registerWorkspacePanelActivationReceiver,
+	resolveWorkspaceActivationAuthorization,
 	type WorkspacePanelActivationResult,
 } from "./panel-activation.ts";
 import {
 	createWorkspaceActivationContract,
-	explicitWorkspaceAuthorization,
+	workspaceAuthorizationConsumerId,
 	type WorkspaceActivationContract,
 	type WorkspaceContinuation,
 } from "../utils/workspace-activation-contract.ts";
@@ -244,6 +245,7 @@ interface SwitchSessionToWorktreeOptions {
 
 export interface WorktreeForkCommandOptions {
 	afterSwitchFollowUp?: WorktreeAfterSwitchFollowUp;
+	authorizationConsumerId?: string;
 }
 
 export type WorktreeForkCommandResult =
@@ -942,18 +944,26 @@ function preservedActivationTargetSummary(
 	].filter(Boolean).join(" · ");
 }
 
-function currentPanelSwitchContract(source: "command" | "tool", sourceId: string): WorkspaceActivationContract {
+function currentPanelSwitchContract(
+	ctx: ExtensionContext | ExtensionCommandContext,
+	source: "command" | "tool",
+	sourceId: string,
+	authorizationConsumerId?: string,
+): WorkspaceActivationContract {
+	const id = worktreeActivationId("switch");
 	return createWorkspaceActivationContract({
-		id: worktreeActivationId("switch"),
+		id,
 		workspaceAction: "use-existing-worktree",
 		activationTarget: "current-panel",
 		contextMode: "full",
-		authorization: explicitWorkspaceAuthorization({
-			source,
-			sourceId,
-			action: "use-existing-worktree",
-			decision: "allow",
+		authorization: resolveWorkspaceActivationAuthorization({
+			id,
+			ctx,
+			workspaceAction: "use-existing-worktree",
 			activationTarget: "current-panel",
+			authorizationSource: source,
+			authorizationSourceId: sourceId,
+			authorizationConsumerId,
 		}),
 	});
 }
@@ -2465,7 +2475,7 @@ async function resolveSessionFileForWorktree(
 }
 
 async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string, ctx: ExtensionCommandContext, options: { hydrateConductor?: boolean; notifyConductorHydration?: boolean; activationContract?: WorkspaceActivationContract } = {}): Promise<{ switched: boolean; sessionFile?: string; reason?: string; contract: WorkspaceActivationContract }> {
-	const contract = options.activationContract ?? currentPanelSwitchContract("command", "/wt switch");
+	const contract = options.activationContract ?? currentPanelSwitchContract(ctx, "command", "/wt switch");
 	const resolved = await resolveSessionFileForWorktree(pi, wtName, wtPath, ctx, options);
 	if (!resolved.sessionFile) return { switched: false, reason: resolved.reason, contract };
 
@@ -2865,6 +2875,7 @@ async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandC
 		contextMode: useFullContext ? "full" : "clean",
 		authorizationSource: options.afterSwitchFollowUp ? "tui" : "command",
 		authorizationSourceId: options.afterSwitchFollowUp?.customType ?? "/wt fork",
+		authorizationConsumerId: options.authorizationConsumerId,
 		continuation,
 		placementTitle: `${name} fork를 어디에 열까요?`,
 	});
@@ -3698,7 +3709,7 @@ export default function (pi: ExtensionAPI) {
 			note: Type.Optional(Type.String({ description: "Short description of the work" })),
 			hotfix: Type.Optional(Type.Boolean({ description: "Branch from production instead of development" })),
 		}),
-		async execute(_toolCallId, params, signal, onUpdate, ctx) {
+		async execute(toolCallId, params, signal, onUpdate, ctx) {
 			const repoName = params.repo;
 			const reg = loadRegistry();
 
@@ -3747,6 +3758,7 @@ export default function (pi: ExtensionAPI) {
 				contextMode: "clean",
 				authorizationSource: "tool",
 				authorizationSourceId: "worktree_create",
+				authorizationConsumerId: workspaceAuthorizationConsumerId("worktree_create", toolCallId),
 				continuation: defaultWorktreeContinuation("create-tool", { name, branch: branchName, ticket: params.ticket, note: params.note }),
 				placementTitle: `${name} worktree를 어디에 열까요?`,
 			});
@@ -3843,7 +3855,7 @@ export default function (pi: ExtensionAPI) {
 			name: Type.Optional(Type.String({ description: "Worktree name to switch to. Omit to list available worktrees." })),
 			repo: Type.Optional(Type.String({ description: `Registered repo name (configured examples: ${configuredRepoLabel}). Auto-detected if only one repo registered.` })),
 		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+		async execute(toolCallId, params, _signal, _onUpdate, ctx) {
 			const reg = loadRegistry();
 
 			let repoRoot: string | null = null;
@@ -3876,7 +3888,12 @@ export default function (pi: ExtensionAPI) {
 			const target = worktrees.find(w => w.name === params.name);
 			if (!target) throw new Error(`Worktree "${params.name}" not found. Available: ${worktrees.map(w => w.name).join(", ") || "(none)"}`);
 
-			const contract = currentPanelSwitchContract("tool", "worktree_switch");
+			const contract = currentPanelSwitchContract(
+				ctx,
+				"tool",
+				"worktree_switch",
+				workspaceAuthorizationConsumerId("worktree_switch", toolCallId),
+			);
 			const activationPlan = await planWorktreeActivation(pi, ctx);
 			if (activationPlan.mode === "blocked") {
 				return {
@@ -3933,7 +3950,7 @@ export default function (pi: ExtensionAPI) {
 			fullContext: Type.Optional(Type.Boolean({ description: "Compatibility flag. Default true; set false only with minimalContext-style summary handoff." })),
 			minimalContext: Type.Optional(Type.Boolean({ description: "Use summary/source-reference handoff instead of copying the full transcript. Default false." })),
 		}),
-		async execute(_toolCallId, params, signal, onUpdate, ctx) {
+		async execute(toolCallId, params, signal, onUpdate, ctx) {
 			const repoName = params.repo;
 			const reg = loadRegistry();
 
@@ -3982,6 +3999,7 @@ export default function (pi: ExtensionAPI) {
 				contextMode: useFullContext ? "full" : "clean",
 				authorizationSource: "tool",
 				authorizationSourceId: "worktree_fork",
+				authorizationConsumerId: workspaceAuthorizationConsumerId("worktree_fork", toolCallId),
 				continuation: defaultWorktreeContinuation("fork-tool", { name, branch: branchName, ticket: params.ticket, note: params.note }),
 				placementTitle: `${name} fork를 어디에 열까요?`,
 			});

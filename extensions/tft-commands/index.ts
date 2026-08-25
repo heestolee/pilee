@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
+import { workspaceAuthorizationConsumerId } from "../utils/workspace-activation-contract.ts";
 import { runWorktreeForkFromCommandContext } from "../worktree/index.ts";
 import { buildFrameIdentity, type FrameIdentity, formatFrameIdentityHint, resolveEffectiveCwd } from "./frame-identity.ts";
 import { buildFrameForkContinuationPrompt, buildFrameWorktreeForkArgs, type FrameWorktreeForkParams } from "./frame-worktree-fork.ts";
@@ -158,7 +159,7 @@ function registerFrameWorktreeForkTool(pi: ExtensionAPI): void {
 			hotfix: Type.Optional(Type.Boolean({ description: "Fork from production/hotfix base." })),
 			minimalContext: Type.Optional(Type.Boolean({ description: "Use minimal handoff instead of the default full transcript." })),
 		}),
-		async execute(_toolCallId, params: FrameWorktreeForkParams, _signal, _onUpdate, toolCtx: ExtensionContext) {
+		async execute(toolCallId, params: FrameWorktreeForkParams, _signal, _onUpdate, toolCtx: ExtensionContext) {
 			const record = getFrameCommandContext(params.identityKey);
 			if (!record) {
 				return blockedResult("BLOCKED: 이 /frame 실행의 command context를 찾지 못해 실제 worktree session fork를 시작할 수 없습니다. worktree를 만들지 않았고, 현재 세션에서 절대경로로 이어가지 않습니다.", {
@@ -181,6 +182,7 @@ function registerFrameWorktreeForkTool(pi: ExtensionAPI): void {
 
 			const args = buildFrameWorktreeForkArgs(params, record.frameIdentity);
 			const result = await runWorktreeForkFromCommandContext(pi, args, record.ctx, {
+				authorizationConsumerId: workspaceAuthorizationConsumerId(FRAME_FORK_TOOL_NAME, toolCallId),
 				afterSwitchFollowUp: {
 					customType: FRAME_FORK_CONTINUATION_TYPE,
 					content: buildFrameForkContinuationPrompt(record.frameIdentity),
