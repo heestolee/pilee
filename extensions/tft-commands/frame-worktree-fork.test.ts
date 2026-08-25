@@ -34,7 +34,8 @@ test("frame_worktree_fork supports explicit name, hotfix, and minimal context", 
 
 test("frame fork continuation prompt starts implementation in forked session without switch fallback", () => {
 	const prompt = buildFrameForkContinuationPrompt(identity);
-	assert.match(prompt, /forked worktree session으로 전환됐다/);
+	assert.match(prompt, /source panel은 보존된 채/);
+	assert.match(prompt, /새 작업 panel에서 forked worktree exact session이 활성화됐다/);
 	assert.match(prompt, /\.pi\/frame\.json/);
 	assert.match(prompt, /frame의 첫 구현 slice부터 바로 이어서 작업한다/);
 	assert.doesNotMatch(prompt, /\/wt switch/);
@@ -45,6 +46,7 @@ test("/frame Step 9 routes fork selection to command-context bridge, not worktre
 	assert.match(source, /rememberFrameCommandContext\(ctx, args, cwd, frameIdentity\)/);
 	assert.match(source, /runWorktreeForkFromCommandContext/);
 	assert.match(source, /afterSwitchFollowUp/);
+	assert.match(source, /result\.status !== "activated" && result\.status !== "switched"/);
 	assert.match(frameSkill, /`frame_worktree_fork` tool/);
 	assert.match(frameSkill, /`worktree_fork` tool을 호출하지 말고/);
 });

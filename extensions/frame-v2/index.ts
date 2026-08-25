@@ -370,7 +370,7 @@ function registerFrameV2ForkTool(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: FRAME_V2_FORK_TOOL,
 		label: "Start Frame v2 Worktree Fork",
-		description: "Fork a completed /frame-v2 through the original command context, promote frame.json, switch sessions, and start implementation.",
+		description: "Fork a completed /frame-v2 through the original command context, promote frame.json, activate its exact session in a new panel, and start implementation.",
 		promptSnippet: "After Frame v2 is ready and the user selects fork해서 구현 시작, call frame_v2_worktree_fork instead of worktree_fork.",
 		promptGuidelines: [
 			"Call only after frame_v2_state action=ready and explicit user selection.",
@@ -405,7 +405,7 @@ function registerFrameV2ForkTool(pi: ExtensionAPI): void {
 					details: { frameV2IdentityKey: record.key, manifestPath: record.manifestPath, statePath: record.statePath },
 				},
 			});
-			if (result.status !== "switched") return blockedResult(`BLOCKED: Frame v2 worktree session 전환이 완료되지 않았습니다. 사유: ${result.reason}`, { action: FRAME_V2_FORK_TOOL, result });
+			if (result.status !== "activated" && result.status !== "switched") return blockedResult(`BLOCKED: Frame v2 worktree session의 새 panel activation이 완료되지 않았습니다. 사유: ${result.reason}`, { action: FRAME_V2_FORK_TOOL, result });
 			updateFrameV2ManifestStatus(record.manifestPath, "started");
 			return {
 				content: [{ type: "text" as const, text: `✓ Frame v2 구현 세션 시작: ${result.name} (${result.branch})` }],

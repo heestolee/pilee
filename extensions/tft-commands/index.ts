@@ -142,11 +142,11 @@ function registerFrameWorktreeForkTool(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: FRAME_FORK_TOOL_NAME,
 		label: "Start Frame Worktree Fork",
-		description: "Continue a completed /frame by running the real /wt fork command-context path, switching into the forked worktree session, and starting implementation there.",
-		promptSnippet: "After /frame Step 9 selects fork해서 시작, call frame_worktree_fork instead of worktree_fork so the original /frame command context performs the real worktree fork/session switch.",
+		description: "Continue a completed /frame through the real /wt fork command-context path, activate the exact forked session in a new panel, and start implementation there.",
+		promptSnippet: "After /frame Step 9 selects fork해서 시작, call frame_worktree_fork so the original /frame command context opens the exact forked session in a new panel while preserving the source panel.",
 		promptGuidelines: [
 			"Use only after a /frame invocation has reached Step 9 and the user selected fork해서 시작.",
-			"Do not call worktree_fork for /frame completion; this tool reuses the original /frame command context so session switching happens for real.",
+			"Do not call worktree_fork for /frame completion; this tool reuses the original /frame command context so exact-session new-panel activation happens for real.",
 			"If this tool returns BLOCKED, stop and report that no forked session was started. Do not continue by absolute path or ask for a switch command.",
 		],
 		parameters: Type.Object({
@@ -189,7 +189,7 @@ function registerFrameWorktreeForkTool(pi: ExtensionAPI): void {
 				},
 			});
 
-			if (result.status !== "switched") {
+			if (result.status !== "activated" && result.status !== "switched") {
 				return blockedResult(`BLOCKED: /frame fork를 command context로 실행했지만 worktree session 전환이 완료되지 않았습니다. 사유: ${result.reason}. 현재 세션에서 이어서 작업하지 않습니다.`, {
 					action: FRAME_FORK_TOOL_NAME,
 					identityKey: record.key,
@@ -198,7 +198,7 @@ function registerFrameWorktreeForkTool(pi: ExtensionAPI): void {
 			}
 
 			return {
-				content: [{ type: "text", text: `✓ /frame fork가 command context에서 완료됐습니다. ${result.name} (${result.branch}) worktree session으로 전환했고, 새 세션에서 구현 follow-up을 시작했습니다.` }],
+				content: [{ type: "text", text: `✓ /frame fork가 command context에서 완료됐습니다. ${result.name} (${result.branch}) exact session을 새 작업 panel에서 활성화했고, source panel을 보존한 채 구현 follow-up을 시작했습니다.` }],
 				details: { action: FRAME_FORK_TOOL_NAME, identityKey: record.key, result, autoStarted: true },
 			};
 		},
