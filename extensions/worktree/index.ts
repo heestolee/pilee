@@ -21,6 +21,18 @@ import type { SingleResult, SubagentDetails } from "../subagent/types.ts";
 import { resolveForkPanelIdentity } from "../utils/fork-panel-identity.ts";
 import { registerWorktreeDashboardShortcut } from "./shortcut.ts";
 import { promotePlanningWorkArtifactsToWorktree, type WorkArtifactPromotionResult } from "./frame-artifacts.ts";
+import {
+	activateWorkspaceInNewPanel,
+	buildNewPanelActivationContract,
+	registerWorkspacePanelActivationReceiver,
+	type WorkspacePanelActivationResult,
+} from "./panel-activation.ts";
+import {
+	createWorkspaceActivationContract,
+	explicitWorkspaceAuthorization,
+	type WorkspaceActivationContract,
+	type WorkspaceContinuation,
+} from "../utils/workspace-activation-contract.ts";
 
 // ─── Repo registry ─────────────────────────────────────────────────────────
 
@@ -227,6 +239,7 @@ export interface WorktreeAfterSwitchFollowUp {
 
 interface SwitchSessionToWorktreeOptions {
 	afterSwitchFollowUp?: WorktreeAfterSwitchFollowUp;
+	activationContract?: WorkspaceActivationContract;
 }
 
 export interface WorktreeForkCommandOptions {
@@ -234,8 +247,9 @@ export interface WorktreeForkCommandOptions {
 }
 
 export type WorktreeForkCommandResult =
+	| { status: "activated"; name: string; branch: string; path: string; sessionFile: string; contextMode: WorktreeContextMode; framePromotion: FramePromotionResult; activation: WorkspacePanelActivationResult }
 	| { status: "switched"; name: string; branch: string; path: string; sessionFile: string; contextMode: WorktreeContextMode; framePromotion: FramePromotionResult }
-	| { status: "blocked" | "failed"; reason: string; name?: string; branch?: string; path?: string; sessionFile?: string; contextMode?: WorktreeContextMode; framePromotion?: FramePromotionResult };
+	| { status: "blocked" | "failed"; reason: string; name?: string; branch?: string; path?: string; sessionFile?: string; contextMode?: WorktreeContextMode; framePromotion?: FramePromotionResult; activation?: WorkspacePanelActivationResult };
 
 interface WorktreeMeta {
 	name: string;
@@ -264,6 +278,14 @@ interface WorktreeMeta {
 		summary?: string;
 		canonicalHash?: string;
 		sourcePlanningFrame?: string;
+	};
+	activation?: {
+		contract: WorkspaceActivationContract;
+		status: "activated";
+		sessionFile: string;
+		panelLabel: string;
+		forkId: string;
+		readyAt: string;
 	};
 }
 
@@ -582,7 +604,7 @@ function sessionDirForWorktree(worktreePath: string): string {
 	return join(homedir(), ".pi", "agent", "sessions", pathEncoded);
 }
 
-function createEmptySessionFile(worktreePath: string): string {
+function createEmptySessionFile(worktreePath: string, parentSession?: string): string {
 	const sessionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 	const sessionDir = sessionDirForWorktree(worktreePath);
 	mkdirSync(sessionDir, { recursive: true });
@@ -590,6 +612,7 @@ function createEmptySessionFile(worktreePath: string): string {
 	writeFileSync(sessionFile, JSON.stringify({
 		type: "session", version: 3, id: sessionId,
 		timestamp: new Date().toISOString(), cwd: worktreePath,
+		parentSession,
 	}) + "\n");
 	return sessionFile;
 }
@@ -740,7 +763,7 @@ function createWorktreeSession(ctx: ExtensionContext, worktreePath: string, opti
 	}
 
 	if (!session || !sessionFile) {
-		sessionFile = createEmptySessionFile(worktreePath);
+		sessionFile = createEmptySessionFile(worktreePath, source.file);
 		session = SessionManager.open(sessionFile);
 	}
 
@@ -822,7 +845,105 @@ function recordWorktreeContextMeta(worktreePath: string, mode: WorktreeContextMo
 
 function warnIfFullContextFallback(ctx: ExtensionContext, requestedFullContext: boolean, session: WorktreeSessionResult) {
 	if (!requestedFullContext || session.carriedContext || !session.forkError) return;
-	ctx.ui.notify(`Full transcript copy failed; fallback context was used: ${session.forkError.slice(0, 180)}`, "warning");
+	ctx.ui.notify(`Full transcript copy failed: ${session.forkError.slice(0, 180)}`, "warning");
+}
+
+function fullContextFailure(requestedFullContext: boolean, session: WorktreeSessionResult): string | null {
+	if (!requestedFullContext || session.carriedContext) return null;
+	return `full transcript/session lineage를 만들지 못했습니다: ${session.forkError ?? "unknown fork error"}`;
+}
+
+function worktreeActivationId(prefix: string): string {
+	return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function workspaceContinuationFromFollowUp(
+	followUp: WorktreeAfterSwitchFollowUp | undefined,
+	fallback: WorkspaceContinuation,
+): WorkspaceContinuation {
+	if (!followUp) return fallback;
+	return {
+		workflow: fallback.workflow,
+		customType: followUp.customType,
+		content: followUp.content,
+		display: followUp.display,
+		details: followUp.details,
+	};
+}
+
+function defaultWorktreeContinuation(
+	kind: "new" | "fork" | "create-tool" | "fork-tool",
+	input: { name?: string; branch?: string; ticket?: string; note?: string },
+): WorkspaceContinuation {
+	const fullContext = kind === "fork" || kind === "fork-tool";
+	return {
+		workflow: kind,
+		customType: `pilee-worktree-${kind}-continuation`,
+		display: false,
+		content: [
+			`# Worktree ${kind} continuation`,
+			"",
+			"새 작업 panel에서 exact worktree session READY가 확인됐다.",
+			fullContext
+				? "이 session은 source conversation 전문과 parentSession lineage를 계승했다. transition 명령 자체가 아니라 계승된 최신 non-status 사용자 의도를 이어서 수행한다."
+				: "이 session은 clean context다. 아래 ticket/note로 명시된 목표만 시작하고, 목표가 없으면 작업을 추측하지 말고 READY 상태만 짧게 알린다.",
+			input.name ? `- worktree: ${input.name}` : undefined,
+			input.branch ? `- branch: ${input.branch}` : undefined,
+			input.ticket ? `- ticket: ${input.ticket}` : undefined,
+			input.note ? `- note: ${input.note}` : undefined,
+			"- current panel로 전환하거나 /wt switch를 요구하지 않는다.",
+		].filter((line): line is string => Boolean(line)).join("\n"),
+		details: { kind, ...input },
+	};
+}
+
+function recordActivatedWorktree(
+	worktreePath: string,
+	contract: WorkspaceActivationContract,
+	sessionFile: string,
+	activation: Extract<WorkspacePanelActivationResult, { status: "activated" }>,
+): void {
+	const meta = readMeta(worktreePath);
+	if (!meta) return;
+	writeMeta(worktreePath, {
+		...meta,
+		activation: {
+			contract,
+			status: "activated",
+			sessionFile,
+			panelLabel: activation.panelLabel,
+			forkId: activation.forkId,
+			readyAt: activation.readyAt,
+		},
+	});
+}
+
+function cleanupCreatedSessionFile(sessionFile: string | undefined): { removed: boolean; error?: string } {
+	if (!sessionFile) return { removed: true };
+	try {
+		rmSync(sessionFile, { force: true });
+		const dir = dirname(sessionFile);
+		if (existsSync(dir) && readdirSync(dir).length === 0) rmSync(dir, { recursive: true, force: true });
+		return { removed: true };
+	} catch (error) {
+		return { removed: false, error: error instanceof Error ? error.message : String(error) };
+	}
+}
+
+function currentPanelSwitchContract(source: "command" | "tool", sourceId: string): WorkspaceActivationContract {
+	return createWorkspaceActivationContract({
+		id: worktreeActivationId("switch"),
+		workspaceAction: "use-existing-worktree",
+		activationTarget: "current-panel",
+		contextMode: "full",
+		authorization: explicitWorkspaceAuthorization({
+			source,
+			sourceId,
+			action: "use-existing-worktree",
+			decision: "allow",
+			activationTarget: "current-panel",
+		}),
+	});
 }
 
 function readContextFileOption(ctx: ExtensionContext, path?: string): string | null {
@@ -1021,7 +1142,7 @@ function buildWorktreeSessionSwitchOptions(
 					customType: "worktree-cwd-binding",
 					content: worktreeCwdBindingMessage(wtName, wtPath, branch, contextLabel),
 					display: true,
-					details: { name: wtName, path: wtPath, branch, contextLabel },
+					details: { name: wtName, path: wtPath, branch, contextLabel, activationContract: options.activationContract },
 				},
 				{ triggerTurn: false },
 			);
@@ -1070,17 +1191,18 @@ async function trySwitchSessionToWorktree(
 	wtPath: string,
 	contextLabel = "",
 	activationPlan?: WorktreeActivationPlan,
+	activationContract?: WorkspaceActivationContract,
 ): Promise<{ switched: boolean; reason?: string; mode?: "switch" | "request-switch" }> {
 	const plan = activationPlan ?? await planWorktreeActivation(pi, ctx);
 	if (plan.mode === "blocked") return { switched: false, reason: plan.reason };
 
 	try {
 		if (plan.mode === "request-switch") {
-			await requestSessionSwitchToWorktree(ctx, sessionFile, wtName, wtPath, contextLabel);
+			await requestSessionSwitchToWorktree(ctx, sessionFile, wtName, wtPath, contextLabel, { activationContract });
 			return { switched: true, mode: "request-switch" };
 		}
 
-		await switchSessionToWorktree(ctx, sessionFile, wtName, wtPath, contextLabel);
+		await switchSessionToWorktree(ctx, sessionFile, wtName, wtPath, contextLabel, { activationContract });
 		return { switched: true, mode: "switch" };
 	} catch (error) {
 		const reason = error instanceof Error ? error.message : String(error);
@@ -2384,17 +2506,18 @@ async function resolveSessionFileForWorktree(
 	return { sessionFile, framePromotion };
 }
 
-async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string, ctx: ExtensionCommandContext, options: { hydrateConductor?: boolean; notifyConductorHydration?: boolean } = {}): Promise<{ switched: boolean; sessionFile?: string; reason?: string }> {
+async function switchToWorktree(pi: ExtensionAPI, wtName: string, wtPath: string, ctx: ExtensionCommandContext, options: { hydrateConductor?: boolean; notifyConductorHydration?: boolean; activationContract?: WorkspaceActivationContract } = {}): Promise<{ switched: boolean; sessionFile?: string; reason?: string; contract: WorkspaceActivationContract }> {
+	const contract = options.activationContract ?? currentPanelSwitchContract("command", "/wt switch");
 	const resolved = await resolveSessionFileForWorktree(pi, wtName, wtPath, ctx, options);
-	if (!resolved.sessionFile) return { switched: false, reason: resolved.reason };
+	if (!resolved.sessionFile) return { switched: false, reason: resolved.reason, contract };
 
 	try {
-		await switchSessionToWorktree(ctx, resolved.sessionFile, wtName, wtPath, framePromotionContextLabel(resolved.framePromotion));
-		return { switched: true, sessionFile: resolved.sessionFile };
+		await switchSessionToWorktree(ctx, resolved.sessionFile, wtName, wtPath, framePromotionContextLabel(resolved.framePromotion), { activationContract: contract });
+		return { switched: true, sessionFile: resolved.sessionFile, contract };
 	} catch (error) {
 		const reason = error instanceof Error ? error.message : String(error);
 		notifySwitchFallback(ctx, reason, wtPath);
-		return { switched: false, sessionFile: resolved.sessionFile, reason };
+		return { switched: false, sessionFile: resolved.sessionFile, reason, contract };
 	}
 }
 
@@ -3561,6 +3684,7 @@ async function handleWt(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCon
 
 export default function (pi: ExtensionAPI) {
 	installRequestSessionSwitchPatch();
+	registerWorkspacePanelActivationReceiver(pi);
 	const configuredRepoLabel = profiledRepoLabel();
 	pi.registerCommand("wt", {
 		description: "Git worktree management — create/list/switch/remove parallel workspaces",
