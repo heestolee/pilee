@@ -376,7 +376,16 @@ test("worktree cwd binding messages are status notes", async () => {
 	assert.match(editBlock.reason, /Status\/readiness\/context-binding notes/);
 });
 
-test("branch-only and negative worktree intents cannot authorize worktree creation", async () => {
+test("branch-only and negative worktree intents cannot authorize semantic git worktree creation variants", async () => {
+	const commands = [
+		"git -C /repo worktree add /tmp/target feature/target",
+		"GIT_OPTIONAL_LOCKS=0 git -C /repo worktree add /tmp/target feature/target",
+		"env git -C /repo worktree add /tmp/target feature/target",
+		"command git -C /repo worktree add /tmp/target feature/target",
+		"/usr/bin/git -C /repo worktree add /tmp/target feature/target",
+		"bash -lc 'GIT_OPTIONAL_LOCKS=0 /usr/bin/git -C /repo worktree add /tmp/target feature/target'",
+		"echo preparing && env git --git-dir=/repo/.git --work-tree=/repo worktree add /tmp/target feature/target",
+	];
 	for (const prompt of [
 		"현재 workspace에서 새 브랜치 만들어서 작업해",
 		"worktree 만들지 말고 현재 workspace에서 branch만 만들어",
@@ -387,9 +396,13 @@ test("branch-only and negative worktree intents cannot authorize worktree creati
 		const blocked = await hooks.tool_call({ toolName: "worktree_create", input: { repo: "repo" } }, ctx);
 		assert.equal(blocked?.block, true, prompt);
 		assert.match(blocked.reason, /branch\/in-place 요청은 새 worktree 생성 권한이 아닙니다|명시적으로 거부됐습니다/);
-		const manual = await hooks.tool_call({ toolName: "bash", input: { command: "git -C /repo worktree add /tmp/target feature/target" } }, ctx);
-		assert.equal(manual?.block, true, prompt);
-		assert.match(manual.reason, /branch\/in-place 요청은 새 worktree 생성 권한이 아닙니다|명시적으로 거부됐습니다/);
+		for (const command of commands) {
+			const manual = await hooks.tool_call({ toolName: "bash", input: { command } }, ctx);
+			assert.equal(manual?.block, true, `${prompt}: ${command}`);
+			assert.match(manual.reason, /branch\/in-place 요청은 새 worktree 생성 권한이 아닙니다|명시적으로 거부됐습니다/);
+		}
+		assert.equal(await hooks.tool_call({ toolName: "bash", input: { command: "git -C /repo status --short" } }, ctx), undefined);
+		assert.equal(await hooks.tool_call({ toolName: "bash", input: { command: "env /usr/bin/git -C /repo branch --show-current" } }, ctx), undefined);
 	}
 });
 
@@ -398,7 +411,15 @@ test("explicit worktree and switch intents authorize only their matching tools",
 	const createStart = await create.hooks.before_agent_start({ prompt: "현재 대화를 fork해서 새 worktree 만들어줘", systemPrompt: "base" }, create.ctx);
 	assert.match(createStart.message.details.state.summary, /workspaceAllow=create-worktree/);
 	assert.equal(await create.hooks.tool_call({ toolName: "worktree_fork", input: { repo: "repo" } }, create.ctx), undefined);
-	assert.equal(await create.hooks.tool_call({ toolName: "bash", input: { command: "git -C /repo worktree add /tmp/target feature/target" } }, create.ctx), undefined);
+	for (const command of [
+		"git -C /repo worktree add /tmp/target feature/target",
+		"GIT_OPTIONAL_LOCKS=0 git -C /repo worktree add /tmp/target feature/target",
+		"env git -C /repo worktree add /tmp/target feature/target",
+		"command git -C /repo worktree add /tmp/target feature/target",
+		"/usr/bin/git -C /repo worktree add /tmp/target feature/target",
+	]) {
+		assert.equal(await create.hooks.tool_call({ toolName: "bash", input: { command } }, create.ctx), undefined, command);
+	}
 	const wrongSwitch = await create.hooks.tool_call({ toolName: "worktree_switch", input: { repo: "repo", name: "target" } }, create.ctx);
 	assert.equal(wrongSwitch?.block, true);
 

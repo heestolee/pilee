@@ -522,23 +522,150 @@ function pathBelongsToWorkContext(card: WorkContextCard, path: string): boolean 
 	return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 }
 
+function tokenizeShellCommands(command: string): string[][] {
+	const commands: string[][] = [];
+	let tokens: string[] = [];
+	let token = "";
+	let quote: "'" | '"' | null = null;
+	let escaped = false;
+	const flushToken = () => {
+		if (token) tokens.push(token);
+		token = "";
+	};
+	const flushCommand = () => {
+		flushToken();
+		if (tokens.length) commands.push(tokens);
+		tokens = [];
+	};
+	for (const char of command) {
+		if (escaped) {
+			token += char;
+			escaped = false;
+			continue;
+		}
+		if (char === "\\" && quote !== "'") {
+			escaped = true;
+			continue;
+		}
+		if (quote) {
+			if (char === quote) quote = null;
+			else token += char;
+			continue;
+		}
+		if (char === "'" || char === '"') {
+			quote = char;
+			continue;
+		}
+		if (/\s/.test(char)) {
+			if (char === "\n") flushCommand();
+			else flushToken();
+			continue;
+		}
+		if (char === ";" || char === "|" || char === "&") {
+			flushCommand();
+			continue;
+		}
+		token += char;
+	}
+	if (escaped) token += "\\";
+	flushCommand();
+	return commands;
+}
+
+function executableName(token: string | undefined): string {
+	return (token ?? "").split("/").pop() ?? "";
+}
+
+function unwrapShellPrefixes(tokens: string[]): string[] {
+	let index = 0;
+	const skipAssignments = () => {
+		while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[index] ?? "")) index += 1;
+	};
+	skipAssignments();
+	while (index < tokens.length) {
+		const executable = executableName(tokens[index]);
+		if (executable === "env") {
+			index += 1;
+			while ((tokens[index] ?? "").startsWith("-")) {
+				const option = tokens[index++]!;
+				if (option === "-u" || option === "--unset" || option === "-C" || option === "--chdir") index += 1;
+			}
+			skipAssignments();
+			continue;
+		}
+		if (executable === "command") {
+			index += 1;
+			while ((tokens[index] ?? "").startsWith("-")) index += 1;
+			skipAssignments();
+			continue;
+		}
+		break;
+	}
+	return tokens.slice(index);
+}
+
+function shellCommandTokens(command: string, depth = 0): string[][] {
+	if (depth > 2) return [];
+	const direct = tokenizeShellCommands(command);
+	const nested: string[][] = [];
+	for (const rawTokens of direct) {
+		const tokens = unwrapShellPrefixes(rawTokens);
+		const executable = executableName(tokens[0]);
+		if (["bash", "sh", "zsh", "dash"].includes(executable)) {
+			const shellCommandIndex = tokens.findIndex((value, index) => index > 0 && /^-[A-Za-z]*c[A-Za-z]*$/.test(value));
+			const nestedCommand = shellCommandIndex >= 0 ? tokens[shellCommandIndex + 1] : undefined;
+			if (nestedCommand) nested.push(...shellCommandTokens(nestedCommand, depth + 1));
+		}
+	}
+	for (const match of command.matchAll(/\$\(([^()]*)\)/g)) {
+		nested.push(...shellCommandTokens(match[1] ?? "", depth + 1));
+	}
+	return [...direct, ...nested];
+}
+
+function gitArguments(tokens: string[]): string[] | null {
+	const unwrapped = unwrapShellPrefixes(tokens);
+	if (executableName(unwrapped[0]) !== "git") return null;
+	let index = 1;
+	const optionsWithValue = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--exec-path"]);
+	while ((unwrapped[index] ?? "").startsWith("-")) {
+		const option = unwrapped[index++]!;
+		const name = option.split("=", 1)[0]!;
+		if (optionsWithValue.has(name) && !option.includes("=")) index += 1;
+	}
+	return unwrapped.slice(index);
+}
+
+function semanticGitCommands(command: string): string[][] {
+	return shellCommandTokens(command)
+		.map(gitArguments)
+		.filter((args): args is string[] => Boolean(args?.length));
+}
+
 function isHighRiskBashMutation(command: string): boolean {
+	const riskyGit = semanticGitCommands(command).some((args) =>
+		args[0] === "commit"
+		|| args[0] === "push"
+		|| (args[0] === "worktree" && args[1] === "add")
+		|| (args[0] === "reset" && args.includes("--hard"))
+		|| (args[0] === "clean" && args.slice(1).some((arg) => arg.startsWith("-"))),
+	);
 	const compact = command.replace(/\s+/g, " ").trim();
-	return /(^|[;&|]\s*)git\s+(commit|push|worktree\s+add|reset\s+--hard|clean\s+-)/.test(compact)
+	return riskyGit
 		|| /(^|[;&|]\s*)(npm|pnpm|yarn)\s+(install|add|remove|update)\b/.test(compact)
 		|| /(^|[;&|]\s*)rm\s+-rf\b/.test(compact);
 }
 
 function isGitWorktreeAddCommand(command: string): boolean {
-	return /(^|[;&|]\s*)git\s+(?:-[A-Za-z]\s+\S+\s+|--git-dir(?:=|\s+)\S+\s+|--work-tree(?:=|\s+)\S+\s+)*worktree\s+add\b/.test(command.replace(/\s+/g, " "));
+	return semanticGitCommands(command).some((args) => args[0] === "worktree" && args[1] === "add");
 }
 
 function isGitCommitCommand(command: string): boolean {
-	return /(^|[;&|]\s*)git\s+commit\b/.test(command.replace(/\s+/g, " "));
+	return semanticGitCommands(command).some((args) => args[0] === "commit");
 }
 
 function isGitPushCommand(command: string): boolean {
-	return /(^|[;&|]\s*)git\s+push\b/.test(command.replace(/\s+/g, " "));
+	return semanticGitCommands(command).some((args) => args[0] === "push");
 }
 
 const GH_REPO_SELECTOR = "(?:(?:--repo|-R)(?:=|\\s+)(?:\"[^\"]+\"|'[^']+'|[^\\s;&|]+)\\s+)?";
