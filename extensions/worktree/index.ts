@@ -1900,51 +1900,6 @@ function parseRequestedBootstrapDomains(tokens: string[], profile: WorktreeRepoP
 	return [...requested];
 }
 
-function getPostCreateBootstrapDomains(profile: WorktreeRepoProfile): BootstrapDomain[] {
-	const bootstrap = profile.bootstrap;
-	if (!bootstrap?.enabled) return [];
-	const domainProfiles = bootstrapDomainProfiles(profile);
-	const requested = bootstrap.onCreateDomains ?? bootstrap.defaultDomains ?? domainProfiles.map((domain) => domain.name);
-	return orderedBootstrapDomains(profile, requested);
-}
-
-async function startPostCreateBootstrap(
-	pi: ExtensionAPI,
-	ctx: ExtensionContext | ExtensionCommandContext,
-	worktreePath: string,
-	reason: string,
-): Promise<DependencyBootstrapResult | null> {
-	const repoProfile = await detectProfiledRepo(pi, worktreePath);
-	if (!repoProfile?.bootstrap?.enabled) return null;
-	const domains = getPostCreateBootstrapDomains(repoProfile);
-	if (domains.length === 0) return null;
-	return ensureDependencyBootstrapWorker(pi, ctx, `${reason} post-create runtime readiness`, {
-		force: true,
-		domains,
-		reason,
-		mode: "auto",
-		repoRoot: worktreePath,
-	});
-}
-
-function formatPostCreateBootstrapSummary(result: DependencyBootstrapResult | null): string {
-	if (!result) return "";
-	const domainLabel = result.domains?.join(", ") || result.missing?.join(", ") || "profile domains";
-	if (result.state === "ready") return ` Bootstrap: already ready (${domainLabel}).`;
-	if (result.state === "running") return ` Bootstrap: already running (${domainLabel}). Log: ${result.logPath}.`;
-	if (result.state === "started") {
-		const via = result.kind === "subagent-orchestrator" ? ` via ${result.agentName}` : "";
-		return ` Bootstrap: started${via} (${domainLabel}). Log: ${result.logPath}.`;
-	}
-	if (result.state === "failed-to-start") return ` Bootstrap: failed to start. ${result.systemNote ?? ""}`;
-	return "";
-}
-
-function notifyPostCreateBootstrap(ctx: ExtensionCommandContext, result: DependencyBootstrapResult | null) {
-	const summary = formatPostCreateBootstrapSummary(result).trim();
-	if (summary) ctx.ui.notify(summary, result?.state === "failed-to-start" ? "warning" : "info");
-}
-
 async function handleBootstrap(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
 	const tokens = tokenize(args);
 	const sub = tokens.find((token) => !token.startsWith("--")) ?? "run";
@@ -3635,8 +3590,8 @@ async function handleWt(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCon
 		const t = ctx.ui.theme;
 		ctx.ui.notify([
 			t.fg("accent", "Usage:"),
-			`  ${t.fg("warning", "/wt new")} ${t.fg("borderAccent", "[name] [--repo <name>] [--hotfix|--hotfeature|--from <branch>] [--ticket PROJ-123] [--carry-context|--minimal-context]")}`,
-			`  ${t.fg("warning", "/wt fork")} ${t.fg("borderAccent", "[name] [--context-file <path>] [--repo <name>] [--hotfix|--from <branch>] [--minimal-context] — 기본은 full transcript")}`,
+			`  ${t.fg("warning", "/wt new")} ${t.fg("borderAccent", "[name] [--repo <name>] [--hotfix|--hotfeature|--from <branch>] [--ticket PROJ-123] [--carry-context|--minimal-context] — 새 panel placement 선택")}`,
+			`  ${t.fg("warning", "/wt fork")} ${t.fg("borderAccent", "[name] [--context-file <path>] [--repo <name>] [--hotfix|--from <branch>] [--minimal-context] — full transcript + 새 panel")}`,
 			`  ${t.fg("warning", "/wt switch")} ${t.fg("borderAccent", "<name> | <repo>/<name>  — 워크트리 선택 후 세션 선택")}`,
 			`  ${t.fg("warning", "/wt resume")} ${t.fg("borderAccent", "<conductor-workspace>  — Conductor 워크스페이스 전체 세션 복원")}`,
 			`  ${t.fg("warning", "/wt bootstrap")} ${t.fg("borderAccent", "[status|--backend|--frontend|--all|--executor]  — profile 기반 의존성 AI orchestrator/worker 준비")}`,
@@ -3709,7 +3664,7 @@ export default function (pi: ExtensionAPI) {
 		promptSnippet: `Create a fresh git worktree for code changes in configured protected repos (${configuredRepoLabel}). Required before editing files there only when context carry is not needed.`,
 		promptGuidelines: [
 			"Before any worktree creation, classify: investigation vs implementation, context-carry needed vs fresh, development vs production/hotfix base.",
-			"Use worktree_create only for a fresh implementation session with no valuable investigation/planning context. If context exists, use worktree_fork instead.",
+			"Use worktree_create only when the user explicitly authorized a new worktree and wants a fresh implementation session with no valuable investigation/planning context. A branch-only or general implementation request is not worktree authorization. If context exists, use worktree_fork instead.",
 			`worktree_create may run from P0/P1/P2; treat the current panel conversation as the source unless the user explicitly asks to use the parent panel.`,
 			"If the request mentions hotfix/production/핫픽스, pass hotfix: true. Do not create a development-based hotfix branch.",
 			`Use worktree_create before editing files in configured protected repos (${configuredRepoLabel}) when a new worktree is actually needed. Do not manually run git worktree add.`,
@@ -3934,7 +3889,7 @@ export default function (pi: ExtensionAPI) {
 		promptSnippet: "Create a worktree by forking the current session transcript. Use minimalContext only when the user explicitly wants a lightweight handoff.",
 		promptGuidelines: [
 			"Before any worktree creation, classify: investigation vs implementation, context-carry needed vs fresh, development vs production/hotfix base.",
-			"Use worktree_fork instead of worktree_create when valuable context exists; the default is full transcript continuity so the new worktree can continue the actual investigation thread.",
+			"Use worktree_fork only when the user explicitly authorized worktree/fork topology and valuable context exists; the default is full transcript continuity so the new worktree can continue the actual investigation thread. A branch-only request is not authorization.",
 			"Use minimalContext: true only when the user explicitly asks for a lightweight/summary-only handoff or when copying the transcript would be clearly harmful.",
 			`worktree_fork may run from P0/P1/P2; treat the current panel conversation as the source unless the user explicitly asks to use the parent panel.`,
 			"If the request mentions hotfix/production/핫픽스, pass hotfix: true. Do not create a development-based hotfix branch.",

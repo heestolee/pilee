@@ -57,6 +57,9 @@ test("worktree_create and worktree_fork tools activate a sibling panel while swi
 test("target Pi receiver is registered before workflow continuation can start", () => {
 	assert.match(source, /registerWorkspacePanelActivationReceiver\(pi\)/);
 	assert.match(source, /새 panel.*READY\/continuation/);
+	assert.doesNotMatch(source, /startPostCreateBootstrap/);
+	assert.match(source, /A branch-only or general implementation request is not worktree authorization/);
+	assert.match(source, /A branch-only request is not authorization/);
 });
 
 test("read-only PR review workspaces skip automatic dependency bootstrap", () => {
