@@ -54,36 +54,30 @@ Bad:
 
 ### Commit Messages
 
-첫 줄은 결과 중심의 짧은 문장으로 의도를 설명합니다. 비자명한 변경의 본문은 선택 사항이 아니라, diff에 남지 않는 판단을 보존하는 작은 engineering decision log입니다.
+첫 줄은 결과 중심의 짧은 문장으로 의도를 설명합니다. 비자명한 변경의 본문은 diff에서 사라지는 인과관계와 판단을 보존하는 작은 engineering decision log입니다. 고정 양식을 채우지 말고 다음 렌즈 중 해당 commit을 이해하는 데 필요한 것만 고릅니다.
 
-비자명한 commit은 다음을 남깁니다.
-
-1. **배경** — 어떤 문제·제약·사용자 영향 때문에 필요했는가
-2. **판단** — 무엇을 선택했고, 어떤 불변조건·트레이드오프를 보존했는가
-3. **검증** — 실제로 수행해 통과한 테스트·lint·build·관찰만 기록
-4. **관련 링크** — 존재할 때 issue/PR/review comment의 stable permalink
+- **상황과 영향** — 무엇이 잘못됐고 사용자·운영·구조에 어떤 문제가 생겼는가
+- **발생 원인** — 기존 코드나 구조가 왜 그 문제를 만들었는가
+- **선택한 해결과 이유** — 무엇을 바꿨고 왜 다른 방법이 아니라 이 방법인가
+- **트레이드오프와 불변조건** — 무엇을 얻고 어떤 비용을 감수했으며, 무엇은 달라지면 안 되는가
+- **변경 계기와 provenance** — 관련 issue·PR·review·challenger와 stable permalink
+- **비자명한 근거** — 수정 전 실패→수정 후 통과, schema 무변경, 선택을 뒷받침하는 수치처럼 판단 이해에 필요한 경우만
 
 ```text
-fix: webhook 재시도 중복 알림 차단
+fix: payple webhook snapshot mismatch 재시도 차단
 
-배경:
-이미 수동 대응 알림을 보낸 mismatch가 500 응답 때문에 재전송됐다.
+snapshot mismatch는 이미 수동 대응 알림을 보냈지만 컨트롤러가 500을 반환해 Payple이 같은 webhook을 재전송했고, Slack 알림도 반복됐다.
 
-판단:
-해당 오류만 200으로 종료하고 관찰 가능성은 Sentry 기록으로 유지한다.
+해당 오류만 200으로 종료해 PG 재전송을 막고 Sentry 기록은 유지한다. 다른 webhook 오류의 재시도 계약은 바꾸지 않도록 오류 코드 단위로 분기했다.
 
-검증:
-- webhook 회귀 테스트 통과
-- mismatch 경로에서 중복 알림이 발생하지 않음을 확인
-
-관련 링크:
-- https://github.com/example/repo/issues/123
+Refs: https://github.com/example/repo/issues/123
 ```
 
+- test/lint/typecheck/build 통과, 테스트 개수, 브라우저 치수, 캡처 확인처럼 CI·PR test plan·verify report에서 다시 확인할 수 있는 루틴 결과는 본문에 나열하지 않습니다.
 - raw agent reasoning, 실행 과정 전체, 검증하지 않은 주장, diff에서 그대로 읽히는 파일 목록은 본문에 복사하지 않습니다.
 - 관련 링크가 없으면 만들지 말고 생략합니다. 숫자나 이동 가능한 line reference보다 stable permalink를 우선합니다.
 - 단일 copy·generated sync·명백한 mechanical 변경은 제목-only여도 됩니다. `auto_commit apply/split-head` plan에서는 `recordOmissionReason`으로 이유를 남기고, tiny hotfix는 `action=quick`을 사용합니다.
-- `auto_commit`의 비자명한 plan entry는 `record.background`, `record.decision`, `record.verification[]`, 선택적 `record.links[]`를 사용합니다. 동등한 내용을 이미 담은 multiline `message`도 허용합니다.
+- `auto_commit`의 비자명한 plan entry는 `situationImpact`, `cause`, `solution`, `rationale`, `tradeoffs`, `invariants`, `changeTrigger`, `evidence`, `references` 중 필요한 complete-sentence field만 사용합니다. 모든 field를 채우지 않으며, `solution`·`evidence`·`references`만으로는 durable record가 되지 않습니다.
 
 ### Type Prefixes
 
@@ -245,7 +239,7 @@ For every commit:
 
 - [ ] Commit does one logical thing
 - [ ] Message is imperative, descriptive, and follows type conventions
-- [ ] Nontrivial commit body records background, decision, actual verification, and available stable links
+- [ ] Nontrivial commit body preserves only the causal context, judgment, tradeoffs, invariants, or provenance lost from the diff
 - [ ] Tests pass before committing
 - [ ] No secrets in the diff
 - [ ] No formatting changes mixed with behavior changes
