@@ -20,7 +20,7 @@ applies_to:
 source:
   - user-direction:2026-08-25-convention-lens-trigger-first
 reviewed_at: 2026-08-25
-reviewed_commit: 7b4c7b7
+reviewed_commit: c077eab9b6155c98888816be3aac69754fe3df7a
 related:
   - human-pr-review-precedent-harness
   - atomic-evidence-workflow
