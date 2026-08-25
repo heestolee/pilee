@@ -7,11 +7,19 @@ import { Type } from "typebox";
 import { parseSubagentCommandVerb } from "../subagent/cli.ts";
 import { loadWorkflowGuardProfiles } from "../utils/private-profiles.ts";
 import {
+	appendWorkspaceAuthorizationEvent,
+	consumeWorkspaceAuthorization,
+	createWorkspaceAuthorizationEvent,
 	deriveWorkspaceAuthorization,
 	isWorkspaceActionAuthorized,
+	restoreWorkspaceAuthorization,
 	type WorkspaceAction,
+	type WorkspaceAuthorizationEvent,
 	type WorkspaceAuthorizationProvenance,
+	workspaceAuthorizationConsumerId,
 	workspaceAuthorizationReason,
+	workspaceAuthorizationStateEntry,
+	WORKSPACE_AUTHORIZATION_ENTRY_TYPE,
 } from "../utils/workspace-activation-contract.ts";
 import { formatWorkContextCard, gateWorkContext, loadOrDeriveWorkContext, type WorkContextCard, type WorkContextGateResult } from "../utils/work-context.ts";
 
@@ -89,6 +97,44 @@ const workflowGuardToolSchema = Type.Object({
 
 function sessionKey(ctx: { cwd: string; sessionManager?: { getSessionFile?: () => string | undefined } }): string {
 	return ctx.sessionManager?.getSessionFile?.() || ctx.cwd;
+}
+
+function activeSessionEntries(ctx: {
+	sessionManager?: {
+		getBranch?: () => Array<{ type?: string; customType?: string; data?: unknown }>;
+		getEntries?: () => Array<{ type?: string; customType?: string; data?: unknown }>;
+	};
+}): Array<{ type?: string; customType?: string; data?: unknown }> {
+	return ctx.sessionManager?.getBranch?.() ?? ctx.sessionManager?.getEntries?.() ?? [];
+}
+
+function persistWorkspaceAuthorization(pi: ExtensionAPI, authorization: WorkspaceAuthorizationProvenance): void {
+	pi.appendEntry(WORKSPACE_AUTHORIZATION_ENTRY_TYPE, workspaceAuthorizationStateEntry(authorization));
+}
+
+function workspaceAuthorizationChanged(
+	before: WorkspaceAuthorizationProvenance,
+	after: WorkspaceAuthorizationProvenance,
+): boolean {
+	return JSON.stringify(before.events) !== JSON.stringify(after.events);
+}
+
+function decisionToolWorkspaceAuthorization(event: any): WorkspaceAuthorizationEvent | null {
+	let selectedText = "";
+	if (event.toolName === "tui_ask" && event.details?.status === "submitted") {
+		selectedText = [...(event.details.selectedOptions ?? []), event.details.text ?? ""].filter(Boolean).join(" ");
+	} else if (event.toolName === "frame_studio" && event.details?.answer?.status === "answered") {
+		selectedText = [...(event.details.answer.selectedOptions ?? []), event.details.answer.text ?? ""].filter(Boolean).join(" ");
+	}
+	if (!/(?:worktree|워크트리|fork해서\s*시작|별도\s*작업공간)/i.test(selectedText)) return null;
+	return createWorkspaceAuthorizationEvent({
+		source: "tui",
+		sourceId: `${event.toolName}:${event.toolCallId ?? "selection"}`,
+		action: "create-worktree",
+		decision: "allow",
+		activationTarget: "new-panel",
+		text: selectedText,
+	});
 }
 
 function rememberGuardState(key: string, state: GuardState) {
@@ -228,7 +274,12 @@ function isFollowUpCorrectionPrompt(normalized: string): boolean {
 	]);
 }
 
-function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
+function classifyPrompt(
+	prompt: string,
+	sessionFile?: string,
+	priorWorkspaceAuthorization: WorkspaceAuthorizationEvent[] = [],
+	workspaceAuthorizationSourceId = "workflow-guard:user-turn",
+): GuardState {
 	const authoritativePrompt = extractAuthoritativeRequest(prompt);
 	const normalized = normalizeText(authoritativePrompt);
 	const statusNote = isStatusNotePrompt(authoritativePrompt);
@@ -300,7 +351,11 @@ function classifyPrompt(prompt: string, sessionFile?: string): GuardState {
 
 	const explicitMutation = !statusNote && !noMutation && (detachedArtifactTask || implementationDirective || shipDirective || explicitCommitPushOnly || hasAny(normalized, [/작업해|진행해|만들어|적용해|개선해|보강해|커밋\s*(?:해|해줘|해주세요|하자)|푸시\s*(?:해|해줘|해주세요|하자)/]));
 	const explicitSingleCommit = hasAny(normalized, [/단일\s*커밋|한\s*커밋|one\s*commit|single\s*commit|squash/]);
-	const workspaceAuthorization = deriveWorkspaceAuthorization(authoritativePrompt, [], "workflow-guard:user-turn");
+	const workspaceAuthorization = deriveWorkspaceAuthorization(
+		authoritativePrompt,
+		priorWorkspaceAuthorization,
+		workspaceAuthorizationSourceId,
+	);
 
 	const summary = [
 		`intent=${intent}`,
@@ -497,9 +552,9 @@ function highRiskMutationBlockReason(state: GuardState, toolName: string): strin
 	].join("\n");
 }
 
-function workspaceActionForTool(toolName: string): WorkspaceAction | undefined {
-	if (toolName === "worktree_create" || toolName === "worktree_fork") return "create-worktree";
-	if (toolName === "worktree_switch") return "use-existing-worktree";
+function workspaceActionForTool(toolName: string, input?: Record<string, unknown>): WorkspaceAction | undefined {
+	if (toolName === "worktree_create" || toolName === "worktree_fork" || toolName === "frame_worktree_fork") return "create-worktree";
+	if (toolName === "worktree_switch" && typeof input?.name === "string" && input.name.trim()) return "use-existing-worktree";
 	return undefined;
 }
 
@@ -509,6 +564,28 @@ function workspaceAuthorizationBlockReason(state: GuardState, toolName: string, 
 		"새 branch 요청은 현재 workspace의 in-place branch 동작으로 유지하고, 명시하지 않은 worktree topology로 확대하지 않습니다.",
 		`authorization events: ${state.workspaceAuthorization.events.map((event) => `${event.source}:${event.sourceId}:${event.action}:${event.decision}`).join(", ") || "none"}`,
 	].join("\n");
+}
+
+function consumeGuardWorkspaceAuthorization(
+	pi: ExtensionAPI,
+	state: GuardState,
+	action: WorkspaceAction,
+	toolName: string,
+	toolCallId?: string,
+): { consumed: boolean; reason?: string } {
+	const consumerId = workspaceAuthorizationConsumerId(toolName, toolCallId);
+	const consumption = consumeWorkspaceAuthorization(state.workspaceAuthorization, action, consumerId);
+	if (!consumption.proof) return { consumed: false, reason: workspaceAuthorizationReason(consumption.authorization, action) };
+	try {
+		persistWorkspaceAuthorization(pi, consumption.authorization);
+		state.workspaceAuthorization = consumption.authorization;
+		return { consumed: true };
+	} catch (error) {
+		return {
+			consumed: false,
+			reason: `workspace authorization consumption을 session에 저장하지 못했습니다: ${error instanceof Error ? error.message : String(error)}`,
+		};
+	}
 }
 
 function isTempPath(path: string): boolean {
@@ -1212,7 +1289,17 @@ export default function workflowGuard(
 	pi.on("before_agent_start", async (event, ctx) => {
 		const key = sessionKey(ctx);
 		const sessionFile = ctx.sessionManager?.getSessionFile?.();
-		const state = classifyPrompt(event.prompt, sessionFile);
+		const restoredAuthorization = restoreWorkspaceAuthorization(activeSessionEntries(ctx));
+		const leafId = ctx.sessionManager?.getLeafId?.();
+		const state = classifyPrompt(
+			event.prompt,
+			sessionFile,
+			restoredAuthorization.events,
+			`workflow-guard:user-turn:${leafId ?? "current"}`,
+		);
+		if (workspaceAuthorizationChanged(restoredAuthorization, state.workspaceAuthorization)) {
+			persistWorkspaceAuthorization(pi, state.workspaceAuthorization);
+		}
 		if (state.explicitPrAction && !state.explicitIssueAction) {
 			const repository = await publishRepository(pi, ctx.cwd, event.prompt);
 			if (isTrustedInternalPullRequestRepository(repository, trustedInternalPullRequestRepositories)) markTrustedInternalPullRequest(state, repository!);
@@ -1264,14 +1351,18 @@ export default function workflowGuard(
 			}
 		}
 
-		const workspaceAction = workspaceActionForTool(event.toolName);
+		const workspaceAction = workspaceActionForTool(event.toolName, event.input);
 		if (workspaceAction) {
-			if (workspaceAction === "create-worktree" && !state.explicitMutation) {
+			if (workspaceAction === "create-worktree" && !state.explicitMutation && !isWorkspaceActionAuthorized(state.workspaceAuthorization, workspaceAction)) {
 				const reason = highRiskMutationBlockReason(state, event.toolName);
 				if (reason) return { block: true, reason };
 			}
 			if (!isWorkspaceActionAuthorized(state.workspaceAuthorization, workspaceAction)) {
 				return { block: true, reason: workspaceAuthorizationBlockReason(state, event.toolName, workspaceAction) };
+			}
+			const consumption = consumeGuardWorkspaceAuthorization(pi, state, workspaceAction, event.toolName, event.toolCallId);
+			if (!consumption.consumed) {
+				return { block: true, reason: `workflow_guard blocked ${event.toolName}: ${consumption.reason}` };
 			}
 		}
 
@@ -1282,8 +1373,15 @@ export default function workflowGuard(
 
 		if (event.toolName === "bash") {
 			const command = String(event.input?.command ?? "");
-			if (isGitWorktreeAddCommand(command) && !isWorkspaceActionAuthorized(state.workspaceAuthorization, "create-worktree")) {
-				return { block: true, reason: workspaceAuthorizationBlockReason(state, "git worktree add", "create-worktree") };
+			const directWorktreeAdd = isGitWorktreeAddCommand(command);
+			if (directWorktreeAdd) {
+				if (!isWorkspaceActionAuthorized(state.workspaceAuthorization, "create-worktree")) {
+					return { block: true, reason: workspaceAuthorizationBlockReason(state, "git worktree add", "create-worktree") };
+				}
+				const consumption = consumeGuardWorkspaceAuthorization(pi, state, "create-worktree", "bash", event.toolCallId);
+				if (!consumption.consumed) {
+					return { block: true, reason: `workflow_guard blocked git worktree add: ${consumption.reason}` };
+				}
 			}
 			if (isExternalIssueOrPrCreateCommand(command) && !hasExternalPublishApproval(command)) {
 				const repository = await publishRepository(pi, ctx.cwd, command);
@@ -1305,7 +1403,7 @@ export default function workflowGuard(
 			if (state.weight === "light" && !state.explicitHeavy && !state.auditRequired && isDeepContextMiningCommand(command)) {
 				return { block: true, reason: heavyToolBlockReason(state, "deep context mining") };
 			}
-			if (isHighRiskBashMutation(command)) {
+			if (isHighRiskBashMutation(command) && !directWorktreeAdd) {
 				const reason = highRiskMutationBlockReason(state, "bash mutation");
 				if (reason) return { block: true, reason };
 			}
@@ -1336,6 +1434,12 @@ export default function workflowGuard(
 	pi.on("tool_result", async (event, ctx) => {
 		const state = ctx ? guardBySession.get(sessionKey(ctx)) : undefined;
 		if (ctx && state) {
+			const decisionAuthorization = decisionToolWorkspaceAuthorization(event);
+			if (decisionAuthorization) {
+				const nextAuthorization = appendWorkspaceAuthorizationEvent(state.workspaceAuthorization, decisionAuthorization);
+				persistWorkspaceAuthorization(pi, nextAuthorization);
+				state.workspaceAuthorization = nextAuthorization;
+			}
 			const command = toolResultCommand(event);
 			const pushed = event.toolName === "bash"
 				? isGitPushCommand(command) && toolResultSucceeded(event)
@@ -1427,11 +1531,21 @@ export default function workflowGuard(
 				return toolText(current ? `Current workflow guard: ${current.summary}` : "No workflow guard state recorded for this session yet.", { state: current ?? null });
 			}
 			if (params.action === "classify") {
-				const state = classifyPrompt(String(params.prompt ?? current?.prompt ?? ""), ctx.sessionManager?.getSessionFile?.());
+				const state = classifyPrompt(
+					String(params.prompt ?? current?.prompt ?? ""),
+					ctx.sessionManager?.getSessionFile?.(),
+					current?.workspaceAuthorization.events ?? restoreWorkspaceAuthorization(activeSessionEntries(ctx)).events,
+					"workflow-guard:classify",
+				);
 				return toolText(`Classification: ${state.summary}`, { state });
 			}
 			if (params.action === "adopt") {
-				const state = classifyPrompt(String(params.prompt ?? current?.prompt ?? ""), ctx.sessionManager?.getSessionFile?.());
+				const state = classifyPrompt(
+					String(params.prompt ?? current?.prompt ?? ""),
+					ctx.sessionManager?.getSessionFile?.(),
+					current?.workspaceAuthorization.events ?? restoreWorkspaceAuthorization(activeSessionEntries(ctx)).events,
+					"workflow-guard:adopt",
+				);
 				state.largeWorkObserved = current?.largeWorkObserved ?? false;
 				state.largeWorkBasis = current?.largeWorkBasis;
 				rememberGuardState(key, state);

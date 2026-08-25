@@ -9,6 +9,7 @@ import workflowGuard from "./index.ts";
 function createHarness(options: { cwd?: string; originUrl?: string; trustedInternalPullRequestRepositories?: string[] } = {}) {
 	const hooks: Record<string, any> = {};
 	const tools: Record<string, any> = {};
+	const entries: Array<{ type: string; customType?: string; data?: unknown }> = [];
 	let thinkingLevel = "high";
 	const pi = {
 		on(name: string, fn: any) {
@@ -24,6 +25,9 @@ function createHarness(options: { cwd?: string; originUrl?: string; trustedInter
 			return { code: 0, stdout: "", stderr: "" };
 		},
 		getThinkingLevel: () => thinkingLevel,
+		appendEntry(customType: string, data: unknown) {
+			entries.push({ type: "custom", customType, data });
+		},
 	} as any;
 	workflowGuard(pi, {
 		trustedInternalPullRequestRepositories: options.trustedInternalPullRequestRepositories ?? [],
@@ -31,9 +35,14 @@ function createHarness(options: { cwd?: string; originUrl?: string; trustedInter
 	const ctx = {
 		cwd: options.cwd ?? process.cwd(),
 		model: { provider: "openai-codex", id: "gpt-5.6-sol" },
-		sessionManager: { getSessionFile: () => "/tmp/workflow-guard-test.jsonl" },
+		sessionManager: {
+			getSessionFile: () => "/tmp/workflow-guard-test.jsonl",
+			getLeafId: () => "leaf-1",
+			getEntries: () => entries,
+			getBranch: () => entries,
+		},
 	};
-	return { hooks, tools, ctx, setThinkingLevel: (level: string) => { thinkingLevel = level; } };
+	return { hooks, tools, ctx, entries, setThinkingLevel: (level: string) => { thinkingLevel = level; } };
 }
 
 test("native ultra enables proactive delegation without bypassing safety gates", async () => {
@@ -406,29 +415,98 @@ test("branch-only and negative worktree intents cannot authorize semantic git wo
 	}
 });
 
-test("explicit worktree and switch intents authorize only their matching tools", async () => {
+test("explicit worktree and switch intents authorize one matching action only", async () => {
 	const create = createHarness();
 	const createStart = await create.hooks.before_agent_start({ prompt: "현재 대화를 fork해서 새 worktree 만들어줘", systemPrompt: "base" }, create.ctx);
 	assert.match(createStart.message.details.state.summary, /workspaceAllow=create-worktree/);
-	assert.equal(await create.hooks.tool_call({ toolName: "worktree_fork", input: { repo: "repo" } }, create.ctx), undefined);
-	for (const command of [
+	assert.equal(await create.hooks.tool_call({ toolName: "worktree_fork", toolCallId: "fork-1", input: { repo: "repo" } }, create.ctx), undefined);
+	const reusedCreate = await create.hooks.tool_call({ toolName: "worktree_create", toolCallId: "create-2", input: { repo: "repo" } }, create.ctx);
+	assert.equal(reusedCreate?.block, true);
+	assert.match(reusedCreate.reason, /이미 사용했습니다/);
+
+	for (const [index, command] of [
 		"git -C /repo worktree add /tmp/target feature/target",
 		"GIT_OPTIONAL_LOCKS=0 git -C /repo worktree add /tmp/target feature/target",
 		"env git -C /repo worktree add /tmp/target feature/target",
 		"command git -C /repo worktree add /tmp/target feature/target",
 		"/usr/bin/git -C /repo worktree add /tmp/target feature/target",
-	]) {
-		assert.equal(await create.hooks.tool_call({ toolName: "bash", input: { command } }, create.ctx), undefined, command);
+	].entries()) {
+		const direct = createHarness();
+		await direct.hooks.before_agent_start({ prompt: "새 worktree 만들어줘", systemPrompt: "base" }, direct.ctx);
+		assert.equal(await direct.hooks.tool_call({ toolName: "bash", toolCallId: `bash-${index}`, input: { command } }, direct.ctx), undefined, command);
+		const reused = await direct.hooks.tool_call({ toolName: "bash", toolCallId: `bash-reuse-${index}`, input: { command } }, direct.ctx);
+		assert.equal(reused?.block, true, command);
 	}
-	const wrongSwitch = await create.hooks.tool_call({ toolName: "worktree_switch", input: { repo: "repo", name: "target" } }, create.ctx);
-	assert.equal(wrongSwitch?.block, true);
 
 	const useExisting = createHarness();
 	const switchStart = await useExisting.hooks.before_agent_start({ prompt: "/wt switch repo/target", systemPrompt: "base" }, useExisting.ctx);
 	assert.match(switchStart.message.details.state.summary, /workspaceAllow=use-existing-worktree/);
-	assert.equal(await useExisting.hooks.tool_call({ toolName: "worktree_switch", input: { repo: "repo", name: "target" } }, useExisting.ctx), undefined);
-	const wrongCreate = await useExisting.hooks.tool_call({ toolName: "worktree_create", input: { repo: "repo" } }, useExisting.ctx);
-	assert.equal(wrongCreate?.block, true);
+	assert.equal(await useExisting.hooks.tool_call({ toolName: "worktree_switch", toolCallId: "switch-1", input: { repo: "repo", name: "target" } }, useExisting.ctx), undefined);
+	const reusedSwitch = await useExisting.hooks.tool_call({ toolName: "worktree_switch", toolCallId: "switch-2", input: { repo: "repo", name: "target" } }, useExisting.ctx);
+	assert.equal(reusedSwitch?.block, true);
+	const listOnly = await useExisting.hooks.tool_call({ toolName: "worktree_switch", toolCallId: "switch-list", input: { repo: "repo" } }, useExisting.ctx);
+	assert.equal(listOnly, undefined, "listing worktrees must not require or consume switch authorization");
+});
+
+test("TUI worktree approval survives a neutral next turn and is consumed by the matching frame tool", async () => {
+	const harness = createHarness();
+	await harness.hooks.before_agent_start({ prompt: "/frame 새 기능", systemPrompt: "base" }, harness.ctx);
+	await harness.hooks.tool_result({
+		toolName: "frame_studio",
+		toolCallId: "frame-answer-1",
+		content: [{ type: "text", text: "fork해서 시작 선택" }],
+		details: { answer: { status: "answered", selectedOptions: ["fork해서 시작"] } },
+	}, harness.ctx);
+
+	const continued = await harness.hooks.before_agent_start({ prompt: "계속해", systemPrompt: "base" }, harness.ctx);
+	assert.match(continued.message.details.state.summary, /workspaceAllow=create-worktree/);
+	assert.equal(await harness.hooks.tool_call({
+		toolName: "frame_worktree_fork",
+		toolCallId: "frame-fork-1",
+		input: { identityKey: "frame-1" },
+	}, harness.ctx), undefined);
+	const reused = await harness.hooks.tool_call({
+		toolName: "frame_worktree_fork",
+		toolCallId: "frame-fork-2",
+		input: { identityKey: "frame-1" },
+	}, harness.ctx);
+	assert.equal(reused?.block, true);
+	const latestState = harness.entries.at(-1)?.data as any;
+	const consumed = latestState.events.find((event: any) => event.sourceId === "frame_studio:frame-answer-1");
+	assert.equal(consumed.consumedBy, "frame_worktree_fork:frame-fork-1");
+});
+
+test("a later explicit worktree denial overrides an unconsumed TUI approval", async () => {
+	const harness = createHarness();
+	await harness.hooks.before_agent_start({ prompt: "/frame 새 기능", systemPrompt: "base" }, harness.ctx);
+	await harness.hooks.tool_result({
+		toolName: "tui_ask",
+		toolCallId: "choice-1",
+		content: [{ type: "text", text: "별도 작업공간에서 구현" }],
+		details: { status: "submitted", selectedOptions: ["별도 작업공간에서 구현"] },
+	}, harness.ctx);
+	const denied = await harness.hooks.before_agent_start({ prompt: "아니, worktree 만들지 마", systemPrompt: "base" }, harness.ctx);
+	assert.match(denied.message.details.state.summary, /workspaceDeny=create-worktree/);
+	const blocked = await harness.hooks.tool_call({ toolName: "worktree_fork", toolCallId: "fork-denied", input: { repo: "repo" } }, harness.ctx);
+	assert.equal(blocked?.block, true);
+	assert.match(blocked.reason, /명시적으로 거부/);
+});
+
+test("unconsumed authorization custom entry restores after session runtime replacement", async () => {
+	const source = createHarness();
+	await source.hooks.before_agent_start({ prompt: "/frame 새 기능", systemPrompt: "base" }, source.ctx);
+	await source.hooks.tool_result({
+		toolName: "tui_ask",
+		toolCallId: "restore-choice",
+		content: [{ type: "text", text: "별도 작업공간에서 구현" }],
+		details: { status: "submitted", selectedOptions: ["별도 작업공간에서 구현"] },
+	}, source.ctx);
+
+	const restored = createHarness();
+	restored.entries.push(...source.entries.map((entry) => structuredClone(entry)));
+	const continued = await restored.hooks.before_agent_start({ prompt: "계속해", systemPrompt: "base" }, restored.ctx);
+	assert.match(continued.message.details.state.summary, /workspaceAllow=create-worktree/);
+	assert.equal(await restored.hooks.tool_call({ toolName: "worktree_create", toolCallId: "restored-create", input: { repo: "repo" } }, restored.ctx), undefined);
 });
 
 test("short continuation cues continue latest non-status intent", async () => {

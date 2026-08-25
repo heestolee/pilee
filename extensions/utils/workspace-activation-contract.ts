@@ -1,9 +1,15 @@
+import { randomUUID } from "node:crypto";
+
 export const WORKSPACE_ACTIONS = [
 	"none",
 	"branch-in-place",
 	"create-worktree",
 	"use-existing-worktree",
 ] as const;
+
+export const WORKSPACE_AUTHORIZATION_ENTRY_TYPE = "workspace-authorization-state";
+export const WORKSPACE_AUTHORIZATION_ENTRY_VERSION = 1;
+export const WORKSPACE_AUTHORIZATION_TTL_MS = 15 * 60 * 1000;
 
 export type WorkspaceAction = (typeof WORKSPACE_ACTIONS)[number];
 export type WorkspaceActivationTarget = "current-panel" | "new-panel";
@@ -13,6 +19,7 @@ export type WorkspaceAuthorizationSource = "command" | "tool" | "tui" | "user-tu
 export type WorkspaceAuthorizationDecision = "allow" | "deny";
 
 export interface WorkspaceAuthorizationEvent {
+	id?: string;
 	source: WorkspaceAuthorizationSource;
 	sourceId: string;
 	action: WorkspaceAction;
@@ -21,12 +28,34 @@ export interface WorkspaceAuthorizationEvent {
 	placement?: NewPanelPlacement;
 	text?: string;
 	createdAt?: string;
+	expiresAt?: string;
+	consumedAt?: string;
+	consumedBy?: string;
+}
+
+export interface WorkspaceAuthorizationProof {
+	eventId: string;
+	action: WorkspaceAction;
+	consumerId: string;
 }
 
 export interface WorkspaceAuthorizationProvenance {
 	events: WorkspaceAuthorizationEvent[];
 	allowedActions: WorkspaceAction[];
 	deniedActions: WorkspaceAction[];
+	proof?: WorkspaceAuthorizationProof;
+}
+
+export interface WorkspaceAuthorizationStateEntry {
+	version: typeof WORKSPACE_AUTHORIZATION_ENTRY_VERSION;
+	events: WorkspaceAuthorizationEvent[];
+	updatedAt: string;
+}
+
+export interface WorkspaceAuthorizationConsumptionResult {
+	authorization: WorkspaceAuthorizationProvenance;
+	proof?: WorkspaceAuthorizationProvenance;
+	event?: WorkspaceAuthorizationEvent;
 }
 
 export interface WorkspaceContinuation {
@@ -70,6 +99,23 @@ function collectMatches(text: string, pattern: RegExp, event: Omit<WorkspaceAuth
 
 function rangesOverlap(left: Pick<IndexedAuthorizationEvent, "index" | "end">, right: Pick<IndexedAuthorizationEvent, "index" | "end">): boolean {
 	return left.index < right.end && right.index < left.end;
+}
+
+function normalizedAuthorizationEvent(event: WorkspaceAuthorizationEvent, now = Date.now()): WorkspaceAuthorizationEvent {
+	const createdAt = event.createdAt ?? new Date(now).toISOString();
+	return {
+		...event,
+		id: event.id ?? randomUUID(),
+		createdAt,
+		expiresAt: event.expiresAt ?? (event.decision === "allow" ? new Date(Date.parse(createdAt) + WORKSPACE_AUTHORIZATION_TTL_MS).toISOString() : undefined),
+	};
+}
+
+export function createWorkspaceAuthorizationEvent(
+	event: WorkspaceAuthorizationEvent,
+	now = Date.now(),
+): WorkspaceAuthorizationEvent {
+	return normalizedAuthorizationEvent(event, now);
 }
 
 function userTurnEvents(text: string, sourceId: string): WorkspaceAuthorizationEvent[] {
@@ -135,31 +181,155 @@ function userTurnEvents(text: string, sourceId: string): WorkspaceAuthorizationE
 		.map(({ index: _index, end: _end, ...event }) => event);
 }
 
-export function reduceWorkspaceAuthorization(events: WorkspaceAuthorizationEvent[]): WorkspaceAuthorizationProvenance {
-	const latest = new Map<WorkspaceAction, WorkspaceAuthorizationDecision>();
-	for (const event of events) latest.set(event.action, event.decision);
-	const allowedActions = WORKSPACE_ACTIONS.filter((action) => latest.get(action) === "allow");
-	const deniedActions = WORKSPACE_ACTIONS.filter((action) => latest.get(action) === "deny");
-	return { events: [...events], allowedActions, deniedActions };
+function eventExpired(event: WorkspaceAuthorizationEvent, now: number): boolean {
+	return Boolean(event.expiresAt && Date.parse(event.expiresAt) <= now);
+}
+
+export function reduceWorkspaceAuthorization(
+	events: WorkspaceAuthorizationEvent[],
+	now = Date.now(),
+	proof?: WorkspaceAuthorizationProof,
+): WorkspaceAuthorizationProvenance {
+	const normalizedEvents = events.map((event) => normalizedAuthorizationEvent(event, now));
+	const latest = new Map<WorkspaceAction, WorkspaceAuthorizationEvent>();
+	for (const event of normalizedEvents) latest.set(event.action, event);
+	const allowedActions = WORKSPACE_ACTIONS.filter((action) => {
+		const event = latest.get(action);
+		return event?.decision === "allow" && !event.consumedAt && !eventExpired(event, now);
+	});
+	const deniedActions = WORKSPACE_ACTIONS.filter((action) => latest.get(action)?.decision === "deny");
+	return { events: normalizedEvents, allowedActions, deniedActions, proof };
 }
 
 export function deriveWorkspaceAuthorization(
 	text: string,
 	priorEvents: WorkspaceAuthorizationEvent[] = [],
 	sourceId = "current-user-turn",
+	now = Date.now(),
 ): WorkspaceAuthorizationProvenance {
-	return reduceWorkspaceAuthorization([...priorEvents, ...userTurnEvents(text, sourceId)]);
+	const currentEvents = userTurnEvents(text, sourceId);
+	if (currentEvents.length === 0) return reduceWorkspaceAuthorization(priorEvents, now);
+	const retainedEvents = priorEvents.filter((event) => !(event.source === "user-turn" && event.sourceId === sourceId));
+	return reduceWorkspaceAuthorization([...retainedEvents, ...currentEvents], now);
 }
 
-export function explicitWorkspaceAuthorization(event: WorkspaceAuthorizationEvent): WorkspaceAuthorizationProvenance {
-	return reduceWorkspaceAuthorization([event]);
+export function explicitWorkspaceAuthorization(event: WorkspaceAuthorizationEvent, now = Date.now()): WorkspaceAuthorizationProvenance {
+	return reduceWorkspaceAuthorization([event], now);
+}
+
+export function appendWorkspaceAuthorizationEvent(
+	authorization: WorkspaceAuthorizationProvenance,
+	event: WorkspaceAuthorizationEvent,
+	now = Date.now(),
+): WorkspaceAuthorizationProvenance {
+	return reduceWorkspaceAuthorization([...authorization.events, event], now);
+}
+
+export function consumeWorkspaceAuthorization(
+	authorization: WorkspaceAuthorizationProvenance,
+	action: WorkspaceAction,
+	consumerId: string,
+	now = Date.now(),
+): WorkspaceAuthorizationConsumptionResult {
+	const current = reduceWorkspaceAuthorization(authorization.events, now);
+	const events = current.events.map((event) => ({ ...event }));
+	for (let index = events.length - 1; index >= 0; index -= 1) {
+		const event = events[index]!;
+		if (event.action !== action) continue;
+		if (event.decision === "deny" || event.consumedAt || eventExpired(event, now)) break;
+		const consumedAt = new Date(now).toISOString();
+		const consumed = { ...event, consumedAt, consumedBy: consumerId };
+		events[index] = consumed;
+		const proof: WorkspaceAuthorizationProof = { eventId: consumed.id!, action, consumerId };
+		return {
+			authorization: reduceWorkspaceAuthorization(events, now),
+			proof: reduceWorkspaceAuthorization([consumed], now, proof),
+			event: consumed,
+		};
+	}
+	return { authorization: current };
+}
+
+export function workspaceAuthorizationProofForConsumer(
+	authorization: WorkspaceAuthorizationProvenance,
+	action: WorkspaceAction,
+	consumerId: string,
+	now = Date.now(),
+): WorkspaceAuthorizationProvenance | null {
+	const events = reduceWorkspaceAuthorization(authorization.events, now).events;
+	const event = [...events].reverse().find((candidate) =>
+		candidate.action === action
+		&& candidate.decision === "allow"
+		&& candidate.consumedBy === consumerId
+		&& Boolean(candidate.consumedAt),
+	);
+	if (!event?.id) return null;
+	return reduceWorkspaceAuthorization([event], now, { eventId: event.id, action, consumerId });
+}
+
+export function updateConsumedWorkspaceAuthorizationEvent(
+	authorization: WorkspaceAuthorizationProvenance,
+	action: WorkspaceAction,
+	consumerId: string,
+	patch: Pick<WorkspaceAuthorizationEvent, "activationTarget" | "placement">,
+	now = Date.now(),
+): WorkspaceAuthorizationProvenance {
+	const events = reduceWorkspaceAuthorization(authorization.events, now).events.map((event) =>
+		event.action === action && event.consumedBy === consumerId
+			? { ...event, ...patch }
+			: event,
+	);
+	return reduceWorkspaceAuthorization(events, now);
+}
+
+export function createExplicitWorkspaceAuthorizationProof(
+	event: WorkspaceAuthorizationEvent,
+	consumerId: string,
+	now = Date.now(),
+): WorkspaceAuthorizationConsumptionResult {
+	return consumeWorkspaceAuthorization(explicitWorkspaceAuthorization(event, now), event.action, consumerId, now);
+}
+
+export function workspaceAuthorizationConsumerId(toolName: string, toolCallId?: string): string {
+	return `${toolName}:${toolCallId?.trim() || "unknown"}`;
+}
+
+export function workspaceAuthorizationStateEntry(
+	authorization: WorkspaceAuthorizationProvenance,
+	now = Date.now(),
+): WorkspaceAuthorizationStateEntry {
+	return {
+		version: WORKSPACE_AUTHORIZATION_ENTRY_VERSION,
+		events: authorization.events,
+		updatedAt: new Date(now).toISOString(),
+	};
+}
+
+export function restoreWorkspaceAuthorization(
+	entries: Array<{ type?: string; customType?: string; data?: unknown }>,
+	now = Date.now(),
+): WorkspaceAuthorizationProvenance {
+	const entry = [...entries].reverse().find((candidate) =>
+		candidate.type === "custom" && candidate.customType === WORKSPACE_AUTHORIZATION_ENTRY_TYPE,
+	);
+	const data = entry?.data as Partial<WorkspaceAuthorizationStateEntry> | undefined;
+	if (data?.version !== WORKSPACE_AUTHORIZATION_ENTRY_VERSION || !Array.isArray(data.events)) {
+		return reduceWorkspaceAuthorization([], now);
+	}
+	return reduceWorkspaceAuthorization(data.events, now);
 }
 
 export function isWorkspaceActionAuthorized(
 	authorization: WorkspaceAuthorizationProvenance,
 	action: WorkspaceAction,
 ): boolean {
-	return authorization.allowedActions.includes(action) && !authorization.deniedActions.includes(action);
+	return (
+		authorization.allowedActions.includes(action)
+		&& !authorization.deniedActions.includes(action)
+	) || (
+		authorization.proof?.action === action
+		&& authorization.events.some((event) => event.id === authorization.proof?.eventId && event.consumedBy === authorization.proof?.consumerId)
+	);
 }
 
 export function workspaceAuthorizationReason(
@@ -167,6 +337,8 @@ export function workspaceAuthorizationReason(
 	action: WorkspaceAction,
 ): string {
 	if (authorization.deniedActions.includes(action)) return `${action} 동작이 최신 사용자/TUI authorization에서 명시적으로 거부됐습니다.`;
+	const latest = [...authorization.events].reverse().find((event) => event.action === action);
+	if (latest?.consumedAt) return `${action} authorization은 ${latest.consumedBy ?? "이전 consumer"}가 이미 사용했습니다.`;
 	if (authorization.allowedActions.includes("branch-in-place") && action === "create-worktree") {
 		return "branch/in-place 요청은 새 worktree 생성 권한이 아닙니다.";
 	}

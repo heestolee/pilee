@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+	appendWorkspaceAuthorizationEvent,
+	consumeWorkspaceAuthorization,
 	createWorkspaceActivationContract,
 	deriveWorkspaceAuthorization,
 	explicitWorkspaceAuthorization,
 	isWorkspaceActionAuthorized,
+	restoreWorkspaceAuthorization,
+	workspaceAuthorizationProofForConsumer,
+	workspaceAuthorizationStateEntry,
+	WORKSPACE_AUTHORIZATION_ENTRY_TYPE,
 	type WorkspaceAuthorizationEvent,
 } from "./workspace-activation-contract.ts";
 
@@ -41,7 +47,10 @@ test("structured TUI authorization survives a later neutral continuation cue", (
 	};
 	const authorization = deriveWorkspaceAuthorization("계속해", [selection]);
 	assert.equal(isWorkspaceActionAuthorized(authorization, "create-worktree"), true);
-	assert.equal(authorization.events[0], selection);
+	assert.equal(authorization.events[0]?.source, selection.source);
+	assert.equal(authorization.events[0]?.sourceId, selection.sourceId);
+	assert.ok(authorization.events[0]?.id);
+	assert.ok(authorization.events[0]?.expiresAt);
 });
 
 test("a later explicit denial overrides prior TUI authorization", () => {
@@ -56,6 +65,83 @@ test("a later explicit denial overrides prior TUI authorization", () => {
 	const authorization = deriveWorkspaceAuthorization("아니, worktree는 만들지 말고 브랜치만 만들어", [selection]);
 	assert.equal(isWorkspaceActionAuthorized(authorization, "create-worktree"), false);
 	assert.equal(authorization.deniedActions.includes("create-worktree"), true);
+});
+
+test("workspace authorization is one-use and a consumed proof preserves the exact event", () => {
+	const now = Date.parse("2026-08-25T00:00:00.000Z");
+	const authorization = explicitWorkspaceAuthorization({
+		id: "auth-1",
+		source: "tui",
+		sourceId: "frame-studio:answer-1",
+		action: "create-worktree",
+		decision: "allow",
+		activationTarget: "new-panel",
+		createdAt: new Date(now).toISOString(),
+	}, now);
+	const consumed = consumeWorkspaceAuthorization(authorization, "create-worktree", "frame_worktree_fork:call-1", now + 1);
+	assert.equal(isWorkspaceActionAuthorized(consumed.authorization, "create-worktree"), false);
+	assert.equal(isWorkspaceActionAuthorized(consumed.proof!, "create-worktree"), true);
+	assert.equal(consumed.event?.source, "tui");
+	assert.equal(consumed.event?.sourceId, "frame-studio:answer-1");
+	assert.equal(consumed.event?.consumedBy, "frame_worktree_fork:call-1");
+	assert.equal(consumeWorkspaceAuthorization(consumed.authorization, "create-worktree", "worktree_fork:call-2", now + 2).proof, undefined);
+});
+
+test("session custom entry restores an unconsumed approval across compaction or session reload", () => {
+	const now = Date.parse("2026-08-25T00:00:00.000Z");
+	const authorization = explicitWorkspaceAuthorization({
+		id: "auth-restore",
+		source: "tui",
+		sourceId: "worktree-placement-choice",
+		action: "create-worktree",
+		decision: "allow",
+		activationTarget: "new-panel",
+		placement: "right",
+		createdAt: new Date(now).toISOString(),
+	}, now);
+	const restored = restoreWorkspaceAuthorization([
+		{ type: "compaction", data: { summary: "tail retained" } },
+		{ type: "custom", customType: WORKSPACE_AUTHORIZATION_ENTRY_TYPE, data: workspaceAuthorizationStateEntry(authorization, now) },
+	], now + 1);
+	assert.equal(isWorkspaceActionAuthorized(restored, "create-worktree"), true);
+	assert.equal(restored.events[0]?.id, "auth-restore");
+});
+
+test("a consumed session event can rebuild only its matching consumer proof", () => {
+	const now = Date.parse("2026-08-25T00:00:00.000Z");
+	const initial = explicitWorkspaceAuthorization({
+		id: "auth-consumer",
+		source: "user-turn",
+		sourceId: "turn-1",
+		action: "create-worktree",
+		decision: "allow",
+		createdAt: new Date(now).toISOString(),
+	}, now);
+	const consumed = consumeWorkspaceAuthorization(initial, "create-worktree", "worktree_fork:call-1", now + 1);
+	assert.equal(isWorkspaceActionAuthorized(workspaceAuthorizationProofForConsumer(consumed.authorization, "create-worktree", "worktree_fork:call-1", now + 2)!, "create-worktree"), true);
+	assert.equal(workspaceAuthorizationProofForConsumer(consumed.authorization, "create-worktree", "worktree_fork:call-2", now + 2), null);
+});
+
+test("new explicit deny supersedes an older unconsumed allow in durable state", () => {
+	const now = Date.parse("2026-08-25T00:00:00.000Z");
+	const allow = explicitWorkspaceAuthorization({
+		id: "allow",
+		source: "tui",
+		sourceId: "choice",
+		action: "create-worktree",
+		decision: "allow",
+		createdAt: new Date(now).toISOString(),
+	}, now);
+	const denied = appendWorkspaceAuthorizationEvent(allow, {
+		id: "deny",
+		source: "user-turn",
+		sourceId: "turn-2",
+		action: "create-worktree",
+		decision: "deny",
+		createdAt: new Date(now + 1).toISOString(),
+	}, now + 1);
+	assert.equal(isWorkspaceActionAuthorized(denied, "create-worktree"), false);
+	assert.equal(denied.deniedActions.includes("create-worktree"), true);
 });
 
 test("activation contract requires authorization and placement consistency", () => {
