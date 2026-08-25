@@ -4,7 +4,12 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "index.ts"), "utf8");
+const worktreeDir = dirname(fileURLToPath(import.meta.url));
+const packageRoot = join(worktreeDir, "..", "..");
+const source = readFileSync(join(worktreeDir, "index.ts"), "utf8");
+const prReviewSource = readFileSync(join(worktreeDir, "pr-review.ts"), "utf8");
+const gitWorkflowSkill = readFileSync(join(packageRoot, "skills", "git-workflow-and-versioning", "SKILL.md"), "utf8");
+const parentGateKnowledge = readFileSync(join(packageRoot, "docs", "knowledge", "worktree-creation-parent-gate.md"), "utf8");
 
 function between(start: string, end: string): string {
 	const startIndex = source.indexOf(start);
@@ -43,4 +48,14 @@ test("/wt switch remains the explicit current-panel activation path", () => {
 
 test("target READY receiver is registered for new-panel continuation", () => {
 	assert.match(source, /registerWorkspacePanelActivationReceiver\(pi\)/);
+});
+
+test("explicit authorization uses the current P0/P1/P2 panel as source without a P0-only hard block", () => {
+	assert.doesNotMatch(prReviewSource, /childPanelBlocked|부모 P0 세션에서 생성해야|requireParentPanel/);
+	assert.match(gitWorkflowSkill, /explicit worktree authorization may create or fork.*`P0`, `P1`, or `P2`/);
+	assert.match(gitWorkflowSkill, /current panel conversation is the source session/);
+	assert.doesNotMatch(gitWorkflowSkill, /child panels.*must not create|parent \(`P0`\) runs `\/wt fork`/i);
+	assert.match(parentGateKnowledge, /Fork child panel\(`P1`, `P2`, …\).*source가 될 수 있습니다/);
+	assert.match(parentGateKnowledge, /handoff.*필수 의식 절차가 아닙니다/);
+	assert.doesNotMatch(parentGateKnowledge, /P1.*must not create|P2.*must not create/i);
 });

@@ -190,9 +190,9 @@ For repos that a runtime profile marks as protected, do not jump from “this mi
 2. **Context carry** — if this session already contains investigation, code paths, decisions, or a plan, use `/wt fork` / `worktree_fork`, not `/wt new` / `worktree_create`. These fork flows carry the full transcript by default so the new worktree continues the actual source conversation. Use the lightweight handoff only when the user explicitly asks for `--minimal-context` / `minimalContext: true` or when copying the transcript would be clearly harmful.
 3. **Base branch** — hotfix/production work must be created with `--hotfix` / `hotfix: true`; do not create a development-based hotfix branch.
 
-Fork-panel rule: child panels (`P1`, `P2`, …) must not create protected/profiled worktrees. Hand off findings to the parent panel (`/handoff`), then the parent (`P0`) runs `/wt fork` so the parent conversation becomes the source session. This keeps worktree history, base branch, and session continuity clean.
+Fork-panel rule: explicit worktree authorization may create or fork a protected/profiled worktree from `P0`, `P1`, or `P2`. The current panel conversation is the source session, remains visible, and the exact target session opens in the user-selected placement. Use the parent panel only when the user explicitly wants `P0` as the source; `/handoff` is collaboration, not a worktree-creation prerequisite. Panel number never bypasses the stage, context-carry, hotfix/base, or explicit-authorization gates.
 
-If a wrong worktree is created, remove it before continuing and create the correct parent-owned fork.
+If a wrong worktree is created, remove it before continuing and recreate it from the explicitly selected source panel.
 
 ### Generic git worktrees
 

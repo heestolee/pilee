@@ -8,7 +8,6 @@ import {
 	loadWorktreeRepoProfiles,
 	type WorktreeRepoProfile,
 } from "../utils/private-profiles.ts";
-import { resolveForkPanelIdentity } from "../utils/fork-panel-identity.ts";
 import type { WorkspaceContinuation } from "../utils/workspace-activation-contract.ts";
 import {
 	prReviewWorkspacePath,
@@ -110,14 +109,6 @@ function reviewRootDir(repoRoot: string, repoName: string): string {
 
 function sourceSessionFile(ctx: ExtensionCommandContext): string | null {
 	try { return ctx.sessionManager.getSessionFile() ?? null; } catch { return null; }
-}
-
-function childPanelBlocked(repoRoot: string, repoName: string, ctx: ExtensionCommandContext): string | null {
-	const profile = matchingProfile(repoRoot, repoName);
-	if (!profile?.gate?.requireParentPanel) return null;
-	const panel = resolveForkPanelIdentity({ sessionFile: sourceSessionFile(ctx) }).panelLabel;
-	if (!/^P\d+$/i.test(panel) || panel.toUpperCase() === "P0") return null;
-	return `${profile.displayName ?? profile.name} PR review worktree는 부모 P0 세션에서 생성해야 합니다. 현재 패널: ${panel}`;
 }
 
 function sessionDirForWorktree(worktreePath: string): string {
@@ -240,8 +231,6 @@ export async function runPrReviewWorktreeFromCommandContext(
 	if (!source || !existsSync(source)) return { status: "blocked", reason: "source Pi session provenance가 없어 review worktree를 만들지 않았습니다." };
 	const repoRoot = await resolveRepoRoot(pi, ctx, request.repo);
 	if (!repoRoot) return { status: "blocked", reason: `등록된 repository를 찾지 못했습니다: ${request.repo}` };
-	const panelBlock = childPanelBlocked(repoRoot, request.repo, ctx);
-	if (panelBlock) return { status: "blocked", reason: panelBlock };
 
 	const identity = prReviewWorktreeIdentity(request.number, request.headSha);
 	const rootDir = reviewRootDir(repoRoot, request.repo);
