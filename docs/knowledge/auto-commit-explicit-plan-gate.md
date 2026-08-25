@@ -13,8 +13,8 @@ applies_to:
   - extensions/auto-commit
   - extensions/work-context
 source: public
-reviewed_at: 2026-06-03
-reviewed_commit: 3b4357d06da64753ff19056c70e98e0d962ef176
+reviewed_at: 2026-08-25
+reviewed_commit: 258c80c99ca9c6c33c7286047d09220291d88c73
 related:
   - change-integration-discipline
   - request-traceability-surgical-changes
@@ -37,6 +37,9 @@ title_en: Auto-commit executes only explicit plans
 - `quick`은 plan file을 생략하지만 message와 paths를 tool input에 반드시 명시해야 하며, dirty tree 전체를 자동 stage하지 않는다.
 - `split-head`는 clean worktree에서만 동작하고, reset 전에 backup branch를 둘 수 있어야 한다.
 - commit message는 reviewable해야 하며, scope parentheses 같은 프로젝트별 convention 강제는 기본적으로 거부할 수 있다.
+- `apply`와 `split-head`의 비자명한 entry는 `record.background`, `record.decision`, `record.verification[]`, 선택적 `record.links[]`로 durable commit body를 만든다. 같은 내용을 이미 담은 multiline `message`도 허용한다.
+- `record`는 raw chain-of-thought나 실행 로그가 아니라 diff에서 사라지는 문제 맥락, 선택 이유·불변조건·트레이드오프, 실제 검증 결과, stable provenance만 보존한다. 확인하지 않은 검증이나 존재하지 않는 링크를 만들지 않는다.
+- 단순 generated/mechanical entry는 `recordOmissionReason`을 명시해 제목-only를 유지할 수 있다. `quick`은 이 예외를 자주 쓰는 tiny hotfix/copy 전용 경로이며 비자명한 변경을 우회하는 수단이 아니다.
 - `test`, `spec`, `__tests__`, `tests`, `__generated__`, `generated`, `gen`, `schema.gql`, `schema.graphql`, package metadata는 companion path로 분류한다. companion은 source/test/generated/schema/package metadata 보조 관계가 닫히는 logical atom에만 붙일 수 있다.
 - push는 plan의 `push`, `pushPolicy`, 또는 quick path 기본값(`push-if-tracking`)으로만 수행한다. 결과는 `committed_and_pushed` / `committed_not_pushed`로 분리해 보고한다.
 - `status`는 현재 branch/head와 안전한 push target/ahead/behind뿐 아니라 dirty diff의 commit readiness, ship readiness caveat, split recommendation을 진단한다.
@@ -49,6 +52,8 @@ title_en: Auto-commit executes only explicit plans
 - auto-commit 도구가 dirty tree 전체를 자동 stage하려 하면 중단한다.
 - `quick`이 explicit paths 없이 동작하거나, unplanned dirty file을 조용히 함께 커밋하려 하면 중단한다.
 - plan 없이 “알아서 커밋”하는 흐름이 생기면 [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md)를 다시 적용한다.
+- 비자명한 `apply`/`split-head` entry가 제목 한 줄뿐인데 실행되거나, background/decision/verification을 검증하지 않은 관용구로 채우면 중단한다.
+- 관련 issue/PR/review가 있는데 이동 가능한 line number나 설명 없는 숫자만 남기고 stable permalink를 생략하면 provenance 품질을 다시 확인한다.
 - 한 commit entry가 큰 diff, layer-mixed 변경, 과도한 cluster/surface fan-out인데 `auto_commit`이 그대로 실행되면 중단한다. primary path 3~5개라도 작은 동일 cluster 변경이면 warning을 출력하고 허용할 수 있다.
 - currentSlice scope 밖 파일을 기본 commit plan에 섞으면 중단하고 [Slice 완료는 commit 후보를 만든다](./slice-auto-commit-rhythm.md)의 leftover 원칙을 적용한다.
 - auto-commit 결과가 `committed_not_pushed`인데 사용자가 push 보류를 말하지 않았다면 완료 보고 전에 push 실패/스킵을 해결한다.
