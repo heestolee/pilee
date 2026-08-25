@@ -2048,121 +2048,108 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 	notifyWorktreeCreationPanelNotice(repoRoot, ctx);
 	const hotfixGuard = getHotfixBaseGuardMessage(parsed, "/wt new");
 	if (hotfixGuard) { ctx.ui.notify(hotfixGuard, "error"); return; }
-
-	// Auto-register if not in registry
-	const { name: registeredName, isNew: justRegistered } = autoRegister(repoRoot);
-	if (justRegistered) ctx.ui.notify(`Registered repo "${registeredName}" → ${repoRoot}`, "info");
+	const sourceSessionFile = getSessionFileFromContext(ctx);
+	if (!sourceSessionFile || !existsSync(sourceSessionFile)) {
+		ctx.ui.notify("BLOCKED: source Pi session provenance가 없어 /wt new panel activation을 시작하지 않습니다.", "error");
+		return;
+	}
 
 	const config = loadConfig(repoRoot);
-
-	// Determine base branch
-	let baseBranch: string;
-	if (parsed.from) baseBranch = parsed.from;
-	else if (parsed.hotfix || parsed.hotfeature) baseBranch = config.productionBranch;
-	else baseBranch = config.baseBranch;
-
-	// Determine branch prefix
-	let prefix: string;
-	if (parsed.hotfix) prefix = "hotfix";
-	else if (parsed.hotfeature) prefix = "hotfeature";
-	else prefix = config.branchPrefix;
-
-	// Determine name
+	const baseBranch = parsed.from
+		? parsed.from
+		: parsed.hotfix || parsed.hotfeature
+			? config.productionBranch
+			: config.baseBranch;
+	const prefix = parsed.hotfix ? "hotfix" : parsed.hotfeature ? "hotfeature" : config.branchPrefix;
 	mkdirSync(config.rootDir, { recursive: true });
-	const existing = new Set(listExistingWorktrees(config.rootDir).map((w) => w.name));
+	const existing = new Set(listExistingWorktrees(config.rootDir).map((worktree) => worktree.name));
 	const name = parsed.name ?? pickName(config.namingScheme, existing);
-
 	if (existing.has(name)) {
 		ctx.ui.notify(`Worktree "${name}" already exists at ${config.rootDir}`, "error");
 		return;
 	}
-
 	const worktreePath = join(config.rootDir, name);
-
-	// Determine branch name
 	const branchName = parsed.branch
 		? parsed.branch
 		: parsed.ticket
 			? `${prefix}/${parsed.ticket}/${name}`
 			: `${prefix}/${name}`;
-
 	const contextContent = readContextFileOption(ctx, parsed.contextFile);
 	if (parsed.contextFile && contextContent === null) return;
+	const useFullContext = parsed.fullContext || (parsed.carryContext && !parsed.minimalContext);
+	const useMinimalContext = parsed.minimalContext;
+	const contract = await buildNewPanelActivationContract({
+		id: worktreeActivationId("wt-new"),
+		ctx,
+		workspaceAction: "create-worktree",
+		contextMode: useFullContext ? "full" : "clean",
+		authorizationSource: "command",
+		authorizationSourceId: "/wt new",
+		continuation: defaultWorktreeContinuation("new", { name, branch: branchName, ticket: parsed.ticket, note: parsed.note }),
+		placementTitle: `${name} worktree를 어디에 열까요?`,
+	});
+	if (!contract) {
+		ctx.ui.notify("BLOCKED: 새 panel 위치를 선택하지 않아 /wt new가 worktree를 만들지 않았습니다.", "warning");
+		return;
+	}
 
+	const { name: registeredName, isNew: justRegistered } = autoRegister(repoRoot);
+	if (justRegistered) ctx.ui.notify(`Registered repo "${registeredName}" → ${repoRoot}`, "info");
 	ctx.ui.notify(`Creating worktree "${name}" from origin/${baseBranch}…`, "info");
-
-	// Step 1: fetch
 	const fetchR = await pi.exec("git", ["fetch", "origin", baseBranch], { cwd: repoRoot });
 	if (fetchR.code !== 0) {
 		ctx.ui.notify(`git fetch failed: ${fetchR.stderr?.trim().slice(0, 200) ?? "unknown error"}`, "error");
 		return;
 	}
-
-	// Step 2: worktree add
 	const addR = await pi.exec("git", ["worktree", "add", worktreePath, "-b", branchName, `origin/${baseBranch}`], { cwd: repoRoot });
 	if (addR.code !== 0) {
 		ctx.ui.notify(`git worktree add failed: ${addR.stderr?.trim().slice(0, 200)}`, "error");
 		return;
 	}
 
-	// Step 3: write metadata
-	writeMeta(worktreePath, {
-		name,
-		branch: branchName,
-		baseBranch,
-		createdAt: Date.now(),
-		ticket: parsed.ticket,
-		note: parsed.note,
-	});
+	writeMeta(worktreePath, { name, branch: branchName, baseBranch, createdAt: Date.now(), ticket: parsed.ticket, note: parsed.note });
 	const framePromotion = promotePlanningFrameToWorktree(worktreePath, readMeta(worktreePath) ?? {
-		name,
-		branch: branchName,
-		baseBranch,
-		createdAt: Date.now(),
-		ticket: parsed.ticket,
-		note: parsed.note,
+		name, branch: branchName, baseBranch, createdAt: Date.now(), ticket: parsed.ticket, note: parsed.note,
 	});
 	notifyFramePromotion(ctx, name, framePromotion);
-
-	ctx.ui.notify(`✓ ${name} created (${branchName})`, "info");
-
-	// Step 4: setup script
 	if (config.setupScript) {
 		ctx.ui.notify(`Running setup: ${config.setupScript}…`, "info");
 		const setupR = await pi.exec("bash", ["-lc", config.setupScript], { cwd: worktreePath });
-		if (setupR.code !== 0) {
-			ctx.ui.notify(`Setup script failed (code ${setupR.code}). Worktree created but setup skipped.`, "warning");
-		} else {
-			ctx.ui.notify(`✓ Setup complete`, "info");
-		}
+		if (setupR.code !== 0) ctx.ui.notify(`Setup script failed (code ${setupR.code}). setup을 보류하고 panel activation은 계속합니다.`, "warning");
 	}
 
-	const bootstrapResult = await startPostCreateBootstrap(pi, ctx, worktreePath, "/wt new");
-	notifyPostCreateBootstrap(ctx, bootstrapResult);
-
-	// Step 5: switch to new session with worktree cwd
-	const useFullContext = parsed.fullContext || (parsed.carryContext && !parsed.minimalContext);
-	const useMinimalContext = parsed.minimalContext;
-	const minimalContext = useMinimalContext
-		? buildMinimalContextPack(ctx, "/wt new --minimal-context")
-		: null;
+	const minimalContext = useMinimalContext ? buildMinimalContextPack(ctx, "/wt new --minimal-context") : null;
 	const session = createWorktreeSession(ctx, worktreePath, {
 		fullContext: useFullContext,
 		contextContent: joinContextParts(contextContent, minimalContext),
 		fallbackContextOnFullFailure: useFullContext ? buildMinimalContextPack(ctx, "/wt new --carry-context fallback") : null,
 		sessionName: `${name} (${branchName})`,
 	});
+	const contextFailure = fullContextFailure(useFullContext, session);
+	if (contextFailure) {
+		const sessionCleanup = cleanupCreatedSessionFile(session.sessionFile);
+		const cleanup = await cleanupCreatedWorktree(pi, repoRoot, worktreePath, branchName);
+		ctx.ui.notify(`BLOCKED: /wt new ${contextFailure}. ${cleanupSummary(cleanup)}. session: ${sessionCleanup.removed ? "removed" : sessionCleanup.error}`, "error");
+		return;
+	}
 	const contextMode = selectContextMode(session, useFullContext, useMinimalContext);
 	recordWorktreeContextMeta(worktreePath, contextMode, session);
 	warnIfFullContextFallback(ctx, useFullContext, session);
-	const contextLabel = `${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}`;
-
-	try {
-		await switchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, contextLabel);
-	} catch (error) {
-		const reason = error instanceof Error ? error.message : String(error);
-		notifySwitchFallback(ctx, reason, worktreePath);
+	const activation = await activateWorkspaceInNewPanel(pi, ctx, {
+		contract,
+		cwd: worktreePath,
+		sessionFile: session.sessionFile,
+		sourceSessionFile,
+		title: `${name} (${branchName})`,
+	});
+	if (activation.status !== "activated") {
+		const sessionCleanup = cleanupCreatedSessionFile(session.sessionFile);
+		const cleanup = await cleanupCreatedWorktree(pi, repoRoot, worktreePath, branchName);
+		ctx.ui.notify(`BLOCKED: /wt new panel activation 실패 — ${activation.reason}. ${cleanupSummary(cleanup)}. session: ${sessionCleanup.removed ? "removed" : sessionCleanup.error}`, "error");
+		return;
 	}
+	recordActivatedWorktree(worktreePath, contract, session.sessionFile, activation);
+	ctx.ui.notify(`✓ ${name} created (${branchName}) → ${activation.panelLabel} ${contract.placement}${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}`, "info");
 }
 
 async function listOneRepo(pi: ExtensionAPI, repoRoot: string, _ctx: ExtensionCommandContext): Promise<{ repo: string; lines: string[] }> {
@@ -2864,53 +2851,67 @@ async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandC
 	notifyWorktreeCreationPanelNotice(repoRoot, ctx);
 	const hotfixGuard = getHotfixBaseGuardMessage(parsed, "/wt fork");
 	if (hotfixGuard) { ctx.ui.notify(hotfixGuard, "error"); return { status: "blocked", reason: hotfixGuard }; }
-
-	const { isNew: justRegistered } = autoRegister(repoRoot);
-	if (justRegistered) ctx.ui.notify(`Registered repo "${basename(repoRoot)}"`, "info");
+	const sourceSessionFile = getSessionFileFromContext(ctx);
+	if (!sourceSessionFile || !existsSync(sourceSessionFile)) {
+		const reason = "source Pi session provenance가 없어 /wt fork를 시작하지 않습니다.";
+		ctx.ui.notify(`BLOCKED: ${reason}`, "error");
+		return { status: "blocked", reason };
+	}
 
 	const config = loadConfig(repoRoot);
-
-	let baseBranch: string;
-	if (parsed.from) baseBranch = parsed.from;
-	else if (parsed.hotfix || parsed.hotfeature) baseBranch = config.productionBranch;
-	else baseBranch = config.baseBranch;
-
-	let prefix: string;
-	if (parsed.hotfix) prefix = "hotfix";
-	else if (parsed.hotfeature) prefix = "hotfeature";
-	else prefix = config.branchPrefix;
-
+	const baseBranch = parsed.from
+		? parsed.from
+		: parsed.hotfix || parsed.hotfeature
+			? config.productionBranch
+			: config.baseBranch;
+	const prefix = parsed.hotfix ? "hotfix" : parsed.hotfeature ? "hotfeature" : config.branchPrefix;
 	mkdirSync(config.rootDir, { recursive: true });
-	const existing = new Set(listExistingWorktrees(config.rootDir).map((w) => w.name));
+	const existing = new Set(listExistingWorktrees(config.rootDir).map((worktree) => worktree.name));
 	const name = parsed.name ?? pickName(config.namingScheme, existing);
-
 	if (existing.has(name)) {
 		const reason = `Worktree "${name}" already exists at ${config.rootDir}`;
 		ctx.ui.notify(reason, "error");
 		return { status: "blocked", reason, name };
 	}
-
 	const worktreePath = join(config.rootDir, name);
 	const branchName = parsed.branch
 		? parsed.branch
 		: parsed.ticket
 			? `${prefix}/${parsed.ticket}/${name}`
 			: `${prefix}/${name}`;
-
 	const contextContent = readContextFileOption(ctx, parsed.contextFile);
 	if (parsed.contextFile && contextContent === null) return { status: "blocked", reason: `context file not found: ${parsed.contextFile}`, name, branch: branchName, path: worktreePath };
-
 	const useFullContext = parsed.fullContext || !parsed.minimalContext;
 	const useMinimalContext = !useFullContext;
-	ctx.ui.notify(`Forking "${name}" from origin/${baseBranch} with ${useFullContext ? "full transcript" : "minimal handoff"}…`, "info");
+	const continuation = workspaceContinuationFromFollowUp(
+		options.afterSwitchFollowUp,
+		defaultWorktreeContinuation("fork", { name, branch: branchName, ticket: parsed.ticket, note: parsed.note }),
+	);
+	const contract = await buildNewPanelActivationContract({
+		id: worktreeActivationId("wt-fork"),
+		ctx,
+		workspaceAction: "create-worktree",
+		contextMode: useFullContext ? "full" : "clean",
+		authorizationSource: options.afterSwitchFollowUp ? "tui" : "command",
+		authorizationSourceId: options.afterSwitchFollowUp?.customType ?? "/wt fork",
+		continuation,
+		placementTitle: `${name} fork를 어디에 열까요?`,
+	});
+	if (!contract) {
+		const reason = "새 panel 위치를 선택하지 않아 /wt fork가 worktree를 만들지 않았습니다.";
+		ctx.ui.notify(`BLOCKED: ${reason}`, "warning");
+		return { status: "blocked", reason, name, branch: branchName, path: worktreePath };
+	}
 
+	const { isNew: justRegistered } = autoRegister(repoRoot);
+	if (justRegistered) ctx.ui.notify(`Registered repo "${basename(repoRoot)}"`, "info");
+	ctx.ui.notify(`Forking "${name}" from origin/${baseBranch} with ${useFullContext ? "full transcript" : "minimal handoff"}…`, "info");
 	const fetchR = await pi.exec("git", ["fetch", "origin", baseBranch], { cwd: repoRoot });
 	if (fetchR.code !== 0) {
 		const reason = `git fetch failed: ${fetchR.stderr?.trim().slice(0, 200) ?? "unknown error"}`;
 		ctx.ui.notify(reason, "error");
 		return { status: "failed", reason, name, branch: branchName, path: worktreePath };
 	}
-
 	const addR = await pi.exec("git", ["worktree", "add", worktreePath, "-b", branchName, `origin/${baseBranch}`], { cwd: repoRoot });
 	if (addR.code !== 0) {
 		const reason = `git worktree add failed: ${addR.stderr?.trim().slice(0, 200)}`;
@@ -2918,63 +2919,51 @@ async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandC
 		return { status: "failed", reason, name, branch: branchName, path: worktreePath };
 	}
 
-	writeMeta(worktreePath, {
-		name,
-		branch: branchName,
-		baseBranch,
-		createdAt: Date.now(),
-		ticket: parsed.ticket,
-		note: parsed.note,
-	});
+	writeMeta(worktreePath, { name, branch: branchName, baseBranch, createdAt: Date.now(), ticket: parsed.ticket, note: parsed.note });
 	const framePromotion = promotePlanningFrameToWorktree(worktreePath, readMeta(worktreePath) ?? {
-		name,
-		branch: branchName,
-		baseBranch,
-		createdAt: Date.now(),
-		ticket: parsed.ticket,
-		note: parsed.note,
+		name, branch: branchName, baseBranch, createdAt: Date.now(), ticket: parsed.ticket, note: parsed.note,
 	});
 	notifyFramePromotion(ctx, name, framePromotion);
-
-	ctx.ui.notify(`✓ ${name} forked (${branchName})`, "info");
-
 	if (config.setupScript) {
 		ctx.ui.notify(`Running setup: ${config.setupScript}…`, "info");
 		const setupR = await pi.exec("bash", ["-lc", config.setupScript], { cwd: worktreePath });
-		if (setupR.code !== 0) {
-			ctx.ui.notify(`Setup script failed (code ${setupR.code}). Worktree created but setup skipped.`, "warning");
-		} else {
-			ctx.ui.notify(`✓ Setup complete`, "info");
-		}
+		if (setupR.code !== 0) ctx.ui.notify(`Setup script failed (code ${setupR.code}). setup을 보류하고 panel activation은 계속합니다.`, "warning");
 	}
-
-	const bootstrapResult = await startPostCreateBootstrap(pi, ctx, worktreePath, "/wt fork");
-	notifyPostCreateBootstrap(ctx, bootstrapResult);
 
 	const session = createWorktreeSession(ctx, worktreePath, {
 		fullContext: useFullContext,
-		contextContent: joinContextParts(
-			contextContent,
-			useMinimalContext ? buildMinimalContextPack(ctx, "/wt fork --minimal-context") : null,
-		),
+		contextContent: joinContextParts(contextContent, useMinimalContext ? buildMinimalContextPack(ctx, "/wt fork --minimal-context") : null),
 		fallbackContextOnFullFailure: useFullContext ? buildMinimalContextPack(ctx, "/wt fork fallback") : null,
 		sessionName: `${name} (${branchName})`,
 	});
+	const contextFailure = fullContextFailure(useFullContext, session);
+	if (contextFailure) {
+		const sessionCleanup = cleanupCreatedSessionFile(session.sessionFile);
+		const cleanup = await cleanupCreatedWorktree(pi, repoRoot, worktreePath, branchName);
+		const reason = `${contextFailure}. ${cleanupSummary(cleanup)}. session: ${sessionCleanup.removed ? "removed" : sessionCleanup.error}`;
+		ctx.ui.notify(`BLOCKED: /wt fork ${reason}`, "error");
+		return { status: "failed", reason, name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, framePromotion };
+	}
 	const contextMode = selectContextMode(session, useFullContext, useMinimalContext);
 	recordWorktreeContextMeta(worktreePath, contextMode, session);
 	warnIfFullContextFallback(ctx, useFullContext, session);
-	const contextLabel = `${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}`;
-
-	try {
-		await switchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, contextLabel, {
-			afterSwitchFollowUp: options.afterSwitchFollowUp,
-		});
-		return { status: "switched", name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion };
-	} catch (error) {
-		const reason = error instanceof Error ? error.message : String(error);
-		notifySwitchFallback(ctx, reason, worktreePath);
-		return { status: "failed", reason, name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion };
+	const activation = await activateWorkspaceInNewPanel(pi, ctx, {
+		contract,
+		cwd: worktreePath,
+		sessionFile: session.sessionFile,
+		sourceSessionFile,
+		title: `${name} (${branchName})`,
+	});
+	if (activation.status !== "activated") {
+		const sessionCleanup = cleanupCreatedSessionFile(session.sessionFile);
+		const cleanup = await cleanupCreatedWorktree(pi, repoRoot, worktreePath, branchName);
+		const reason = `${activation.reason}. ${cleanupSummary(cleanup)}. session: ${sessionCleanup.removed ? "removed" : sessionCleanup.error}`;
+		ctx.ui.notify(`BLOCKED: /wt fork panel activation 실패 — ${reason}`, "error");
+		return { status: activation.status, reason, name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion, activation };
 	}
+	recordActivatedWorktree(worktreePath, contract, session.sessionFile, activation);
+	ctx.ui.notify(`✓ ${name} forked (${branchName}) → ${activation.panelLabel} ${contract.placement}${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}`, "info");
+	return { status: "activated", name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion, activation };
 }
 
 export async function runWorktreeForkFromCommandContext(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext, options: WorktreeForkCommandOptions = {}): Promise<WorktreeForkCommandResult> {
