@@ -935,12 +935,16 @@ function buildAnchorNavigationScript(placement: SplitPlacement, startTermVar: st
 
 export function buildOpenSessionScript(mode: PanelOpenTarget, cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}): string {
 	const cmd = buildSessionLaunchCommand(cwd, sessionFile, env);
+	const launchConfiguration = `  set launchConfig to new surface configuration
+  set initial working directory of launchConfig to "${esc(cwd)}"
+  set initial input of launchConfig to "${cmd}\\n"`;
 	if (mode === "tab") {
 		return `tell application "Ghostty"
   activate
-  set newTerm to make new tab in front window
-  input text "${cmd}" to newTerm
-  send key "enter" to newTerm
+${launchConfiguration}
+  set newTab to new tab in front window with configuration launchConfig
+  select tab newTab
+  set newTerm to focused terminal of newTab
   return id of newTerm
 end tell`;
 	}
@@ -949,9 +953,8 @@ end tell`;
   activate
   set currentTerm to focused terminal of selected tab of front window
 ${buildAnchorNavigationScript(mode, "currentTerm", "anchorTerm")}
-  set newTerm to split anchorTerm direction ${mode.splitDirection}
-  input text "${cmd}" to newTerm
-  send key "enter" to newTerm
+${launchConfiguration}
+  set newTerm to split anchorTerm direction ${mode.splitDirection} with configuration launchConfig
   return id of newTerm
 end tell`;
 }

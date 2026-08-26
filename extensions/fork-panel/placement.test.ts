@@ -54,6 +54,19 @@ test("buildOpenSessionScript launches the exact cwd and session and returns term
 		assert.match(script, /PI_WORKSPACE_ACTIVATION_FILE='\/tmp\/activation\.json'/);
 		assert.match(script, /return id of newTerm/);
 	}
+
+	const tabScript = buildOpenSessionScript("tab", "/tmp/work dir", "/tmp/exact session.jsonl");
+	assert.match(tabScript, /set launchConfig to new surface configuration/);
+	assert.match(tabScript, /set initial working directory of launchConfig to "\/tmp\/work dir"/);
+	assert.match(tabScript, /set initial input of launchConfig to ".*\\n"/);
+	assert.match(tabScript, /set newTab to new tab in front window with configuration launchConfig/);
+	assert.match(tabScript, /select tab newTab/);
+	assert.match(tabScript, /set newTerm to focused terminal of newTab/);
+	assert.doesNotMatch(tabScript, /make new tab|input text|send key/);
+
+	const splitScript = buildOpenSessionScript(splitPlacementFromDirections(["right"]), "/tmp/work dir", "/tmp/exact session.jsonl");
+	assert.match(splitScript, /split anchorTerm direction right with configuration launchConfig/);
+	assert.doesNotMatch(splitScript, /input text|send key/);
 });
 
 test("buildRepanelScript resolves anchor before closing current terminal", () => {
