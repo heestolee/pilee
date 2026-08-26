@@ -18,7 +18,7 @@ applies_to:
 source:
   - user-direction:2026-05-11-frame-plan-synthesis
 reviewed_at: 2026-08-26
-reviewed_commit: 7bab5e6bc52b2bc5c634653403faef2b904be028
+reviewed_commit: 272c85be373f745c6e80cb0b33296ebd568ecf58
 related:
   - frame-verify-contract
   - frame-planning-identity
