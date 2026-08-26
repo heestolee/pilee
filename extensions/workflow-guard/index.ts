@@ -638,7 +638,7 @@ function tokenizeShellCommands(command: string): string[][] {
 			else flushToken();
 			continue;
 		}
-		if (char === ";" || char === "|" || char === "&" || char === "(" || char === ")" || char === "{" || char === "}") {
+		if (char === ";" || char === "|" || char === "&" || char === "(" || char === ")") {
 			flushCommand();
 			continue;
 		}
@@ -655,7 +655,7 @@ function executableName(token: string | undefined): string {
 
 function unwrapShellPrefixes(tokens: string[]): string[] {
 	let index = 0;
-	const controlPrefixes = new Set(["!", "if", "then", "elif", "else", "while", "until", "do", "time", "builtin", "noglob"]);
+	const controlPrefixes = new Set(["!", "{", "}", "if", "then", "elif", "else", "while", "until", "do", "time", "builtin", "noglob"]);
 	const sudoOptionsWithValue = new Set(["-u", "--user", "-g", "--group", "-h", "--host", "-p", "--prompt", "-C", "--chdir", "-R", "--chroot", "-r", "--role", "-t", "--type", "-T", "--command-timeout"]);
 	const skipAssignments = () => {
 		while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[index] ?? "")) index += 1;

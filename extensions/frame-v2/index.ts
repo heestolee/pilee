@@ -65,7 +65,10 @@ type FrameV2ForkRunner = (
 	pi: ExtensionAPI,
 	args: string,
 	ctx: ExtensionCommandContext,
-	options: { afterSwitchFollowUp: { customType: string; content: string; display: boolean; details: Record<string, unknown> } },
+	options: {
+		authorizationConsumerId?: string;
+		afterSwitchFollowUp: { customType: string; content: string; display: boolean; details: Record<string, unknown> };
+	},
 ) => Promise<any>;
 
 let frameV2ForkRunnerOverride: FrameV2ForkRunner | undefined;

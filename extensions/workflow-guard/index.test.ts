@@ -399,6 +399,10 @@ test("branch-only and negative worktree intents cannot authorize semantic git wo
 		"if true; then git -C /repo worktree add /tmp/target feature/target; fi",
 		"eval 'git -C /repo worktree add /tmp/target feature/target'",
 		"sh -c '(git -C /repo worktree add /tmp/target feature/target)'",
+		"{ git -C /repo worktree add /tmp/target feature/target; }",
+		"FOO=${BAR}/tmp git -C /repo worktree add /tmp/target feature/target",
+		"FOO=prefix${BAR}suffix git -C /repo worktree add /tmp/target feature/target",
+		"FOO=${BAR:-value}/tmp git -C /repo worktree add /tmp/target feature/target",
 	];
 	for (const prompt of [
 		"현재 workspace에서 새 브랜치 만들어서 작업해",
@@ -460,6 +464,8 @@ test("grouped and wrapped direct worktree commands consume exactly one authoriza
 		"if true; then git -C /repo worktree add /tmp/target feature/target; fi",
 		"eval 'git -C /repo worktree add /tmp/target feature/target'",
 		"sh -c '(git -C /repo worktree add /tmp/target feature/target)'",
+		"{ git -C /repo worktree add /tmp/target feature/target; }",
+		"FOO=${BAR:-value}/tmp git -C /repo worktree add /tmp/target feature/target",
 	];
 	for (const [index, command] of commands.entries()) {
 		const harness = createHarness();
