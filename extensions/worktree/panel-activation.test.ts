@@ -193,23 +193,45 @@ test("new panel activation waits for exact-session continuation and never switch
 	}
 });
 
-test("panel open failure is safe to delete, but an unconfirmed terminal close preserves every recovery artifact", async () => {
+test("preflight block is safe, while host-open failure and unconfirmed close preserve recovery artifacts", async () => {
 	const f = fixture();
 	try {
 		let switchCalled = false;
 		const ctx = { switchSession() { switchCalled = true; } } as any;
-		const openFailure = await activateWorkspaceInNewPanel({} as any, ctx, {
-			contract: contract("panel-open-failure"),
+		const preflightRoot = join(f.root, "preflight-block");
+		const preflightBlock = await activateWorkspaceInNewPanel({} as any, ctx, {
+			contract: contract("panel-preflight-block"),
 			cwd: f.root,
 			sessionFile: f.targetSession,
 			sourceSessionFile: f.sourceSession,
-			title: "Open failure",
-			activationRoot: join(f.root, "open-failure"),
+			title: "Preflight block",
+			activationRoot: preflightRoot,
 		}, {
-			openPanel: async () => ({ status: "failed", reason: "host refused split" }),
+			openPanel: async () => ({ status: "blocked", reason: "unsupported host" }),
 		});
-		assert.equal(openFailure.status, "failed");
-		if (openFailure.status !== "activated") assert.equal(openFailure.safeToDeleteTarget, true);
+		assert.equal(preflightBlock.status, "blocked");
+		if (preflightBlock.status !== "activated") assert.equal(preflightBlock.safeToDeleteTarget, true);
+		assert.equal(existsSync(join(preflightRoot, "panel-preflight-block.json")), false);
+
+		const hostFailureRoot = join(f.root, "host-open-failure");
+		const hostFailure = await activateWorkspaceInNewPanel({} as any, ctx, {
+			contract: contract("panel-host-open-failure"),
+			cwd: f.root,
+			sessionFile: f.targetSession,
+			sourceSessionFile: f.sourceSession,
+			title: "Host open failure",
+			activationRoot: hostFailureRoot,
+		}, {
+			openPanel: async () => ({ status: "failed", reason: "surface may exist", safeToDeleteTarget: false }),
+		});
+		assert.equal(hostFailure.status, "failed");
+		if (hostFailure.status !== "activated") {
+			assert.equal(hostFailure.safeToDeleteTarget, false);
+			assert.equal(hostFailure.descriptorPath, join(hostFailureRoot, "panel-host-open-failure.json"));
+		}
+		const failedDescriptor = readWorkspacePanelActivation(join(hostFailureRoot, "panel-host-open-failure.json"));
+		assert.equal(failedDescriptor?.status, "failed");
+		assert.match(failedDescriptor?.error ?? "", /surface may exist/);
 
 		let closedTerminal = "";
 		let recordRemoved = false;

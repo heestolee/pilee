@@ -476,15 +476,45 @@ export async function activateWorkspaceInNewPanel(
 		title: input.title,
 		env: { [WORKSPACE_ACTIVATION_ENV]: prepared.path },
 	});
-	if (opened.status !== "opened") {
+	if (opened.status === "blocked") {
 		rmSync(prepared.path, { force: true });
 		rmSync(`${prepared.path}.lock`, { recursive: true, force: true });
 		return {
-			status: opened.status,
+			status: "blocked",
 			reason: opened.reason,
 			contract: input.contract,
 			placement,
 			safeToDeleteTarget: true,
+		};
+	}
+	if (opened.status === "failed") {
+		const failedAt = new Date().toISOString();
+		try {
+			await mutateDescriptor(prepared.path, (current) => current.status === "prepared"
+				? {
+					...current,
+					status: "failed",
+					failedAt,
+					error: opened.reason,
+					panel: opened.terminalId && opened.forkId && opened.panelLabel
+						? { placement, terminalId: opened.terminalId, forkId: opened.forkId, panelLabel: opened.panelLabel }
+						: current.panel,
+				}
+				: current);
+		} catch {
+			// A host command may have created a live surface before reporting failure.
+			// Preserve every recovery artifact even when the descriptor cannot be annotated.
+		}
+		return {
+			status: "failed",
+			reason: opened.reason,
+			contract: input.contract,
+			placement,
+			terminalId: opened.terminalId,
+			forkId: opened.forkId,
+			panelLabel: opened.panelLabel,
+			descriptorPath: prepared.path,
+			safeToDeleteTarget: false,
 		};
 	}
 

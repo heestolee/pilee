@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import {
 	buildOpenSessionScript,
 	buildRepanelScript,
 	chooseNewPanelPlacement,
+	openExactSessionInNewPanel,
 	parsePanelTargetRequest,
 	parseSplitPlacementArgs,
 	splitPlacementFromDirections,
@@ -67,6 +71,31 @@ test("buildOpenSessionScript launches the exact cwd and session and returns term
 	const splitScript = buildOpenSessionScript(splitPlacementFromDirections(["right"]), "/tmp/work dir", "/tmp/exact session.jsonl");
 	assert.match(splitScript, /split anchorTerm direction right with configuration launchConfig/);
 	assert.doesNotMatch(splitScript, /input text|send key/);
+});
+
+test("host script failure is unsafe because Ghostty may have already created a surface", async () => {
+	const root = mkdtempSync(join(tmpdir(), "pilee-panel-open-failure-"));
+	try {
+		const sourceSessionFile = join(root, "source.jsonl");
+		const sessionFile = join(root, "target.jsonl");
+		writeFileSync(sourceSessionFile, "{}\n");
+		writeFileSync(sessionFile, "{}\n");
+		const result = await openExactSessionInNewPanel({
+			exec: async () => ({ code: 1, stdout: "", stderr: "surface created before id lookup failed" }),
+		} as any, {
+			activationId: "partial-host-open",
+			placement: "tab",
+			cwd: root,
+			sessionFile,
+			sourceSessionFile,
+			title: "Partial host open",
+			host: { platform: "darwin", termProgram: "ghostty" },
+		});
+		assert.equal(result.status, "failed");
+		if (result.status === "failed") assert.equal(result.safeToDeleteTarget, false);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
 });
 
 test("buildRepanelScript resolves anchor before closing current terminal", () => {

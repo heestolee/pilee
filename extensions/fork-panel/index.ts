@@ -972,7 +972,8 @@ export interface ExactSessionPanelOpenRequest {
 
 export type ExactSessionPanelOpenResult =
 	| { status: "opened"; terminalId: string; forkId: string; panelLabel: string }
-	| { status: "blocked" | "failed"; reason: string };
+	| { status: "blocked"; reason: string }
+	| { status: "failed"; reason: string; safeToDeleteTarget: false; terminalId?: string; forkId?: string; panelLabel?: string };
 
 export async function openExactSessionInNewPanel(
 	pi: ExtensionAPI,
@@ -999,24 +1000,41 @@ export async function openExactSessionInNewPanel(
 	});
 	const result = await pi.exec("osascript", ["-e", script]);
 	if (result.code !== 0) {
-		return { status: "failed", reason: result.stderr?.trim() || result.stdout?.trim() || "Ghostty panel open failed" };
+		return {
+			status: "failed",
+			reason: result.stderr?.trim() || result.stdout?.trim() || "Ghostty panel open failed",
+			safeToDeleteTarget: false,
+		};
 	}
 	const terminalId = result.stdout?.trim();
-	if (!terminalId) return { status: "failed", reason: "Ghostty가 새 terminal id를 반환하지 않았습니다." };
+	if (!terminalId) {
+		return { status: "failed", reason: "Ghostty가 새 terminal id를 반환하지 않았습니다.", safeToDeleteTarget: false };
+	}
 
 	const entries = readSessionPreviewEntries(request.sessionFile);
-	recordFork({
-		forkId,
-		label: sanitizeRowText(request.title).slice(0, 80) || `${request.placement} panel`,
-		panelLabel,
-		parentSessionFile: request.sourceSessionFile,
-		sessionFile: request.sessionFile,
-		sessionId: extractSessionId(entries) || undefined,
-		cwd: request.cwd,
-		createdAt: Date.now(),
-		source: "fork",
-		title: sanitizeRowText(request.title),
-	});
+	try {
+		recordFork({
+			forkId,
+			label: sanitizeRowText(request.title).slice(0, 80) || `${request.placement} panel`,
+			panelLabel,
+			parentSessionFile: request.sourceSessionFile,
+			sessionFile: request.sessionFile,
+			sessionId: extractSessionId(entries) || undefined,
+			cwd: request.cwd,
+			createdAt: Date.now(),
+			source: "fork",
+			title: sanitizeRowText(request.title),
+		});
+	} catch (error) {
+		return {
+			status: "failed",
+			reason: `새 panel record 저장 실패: ${error instanceof Error ? error.message : String(error)}`,
+			safeToDeleteTarget: false,
+			terminalId,
+			forkId,
+			panelLabel,
+		};
+	}
 	return { status: "opened", terminalId, forkId, panelLabel };
 }
 
