@@ -63,6 +63,12 @@ Descriptor 전이는 `prepared → panel-opened → ready → continuing → con
 
 명시적 worktree authorization은 P0/P1/P2 어느 panel에서든 현재 보이는 conversation을 source로 사용할 수 있습니다. Source panel은 그대로 남고 target은 선택한 placement에 열립니다. 부모 P0를 source로 쓰고 싶을 때만 사용자가 P0에서 실행하며, `/handoff`는 필수 생성 절차가 아닙니다. Panel 번호는 stage·context-carry·hotfix/base·authorization gate를 우회하지 않습니다.
 
+## Host Adapter Boundary
+
+Ghostty에서 새 tab/split을 연 직후 별도 `input text`나 key event를 보내면 surface model 준비와 경쟁할 수 있습니다. 새 surface는 `surface configuration`의 initial working directory와 initial input에 launch command를 넣어 생성하고, 생성 이후 입력 자동화에 의존하지 않습니다.
+
+Host adapter runtime E2E는 사용자가 작업 중인 terminal·tab·window를 fixture로 사용하지 않습니다. 명시적으로 승인된 disposable host 공간을 격리할 수 있을 때만 실제 panel 생성·focus·입력 테스트를 수행합니다. 격리할 수 없으면 mock state machine, 생성 script assertion, AppleScript compile까지만 자동 검증하고 실제 host success path는 coverage gap으로 남깁니다. Cleanup은 run이 생성한 exact terminal/session/worktree ID만 대상으로 하며 baseline 이후 생긴 모든 surface를 일괄 삭제하지 않습니다.
+
 ## Context and Continuation
 
 `/wt fork`와 목적형 workflow의 fork는 full transcript와 `parentSession` lineage를 기본으로 보존합니다. `/wt new`의 기본은 clean session이지만 source session provenance는 header/metadata에 남겨 복구 가능성을 유지합니다. Full context를 요청했는데 `SessionManager.forkFrom`이 실패하면 빈 session이나 minimal fallback에서 작업을 시작하지 않고 BLOCKED 처리합니다.
