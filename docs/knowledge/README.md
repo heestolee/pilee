@@ -196,11 +196,11 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [최종 검증은 메인 세션을 막지 않고 병렬화한다](./final-verification-parallelization.md) | active | high | 2026-06-02 | c6cd06f | verification, ship, final-check, subagent, background, parallel |
 | [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-06-02 | c6cd06f | fork-panel, handoff, inbox, inject, parent, panel |
 | [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-06-02 | 63f2a62 | fork-panel, revive, repanel, ghostty, spatial, panel |
-| [Frame은 마지막에 Plan을 합성한다](./frame-plan-synthesis-continuity.md) | active | high | 2026-08-26 | 5307b41 | frame, implementation-plan, tft-studio, worktree, continuity, planning |
+| [Frame은 마지막에 Plan을 합성한다](./frame-plan-synthesis-continuity.md) | active | high | 2026-08-26 | 7bab5e6 | frame, implementation-plan, tft-studio, worktree, continuity, planning |
 | [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-06-02 | 7861f10 | frame, planning, identity, home-directory, ticket, session-title |
 | [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-06-16 | 87c864f | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
 | [Frame v2는 작업·학습 lane을 양방향으로 연결한다](./frame-v2-learning-note-pilot.md) | active | high | 2026-07-18 | 88b560c | frame-v2, frame, study-hard, learning-note, worktree |
-| [인간 PR 리뷰는 독립 판단 뒤에 precedent를 붙인다](./human-pr-review-precedent-harness.md) | active | high | 2026-08-26 | 5307b41 | pr-review, human-review, precedent, evidence, glimpse, meta-review |
+| [인간 PR 리뷰는 독립 판단 뒤에 precedent를 붙인다](./human-pr-review-precedent-harness.md) | active | high | 2026-08-26 | 7bab5e6 | pr-review, human-review, precedent, evidence, glimpse, meta-review |
 | [Interactive shell은 bash가 아닌 터미널 세션이다](./interactive-shell-overlay-tool.md) | active | high | 2026-06-29 | 680f937 | interactive-shell, shell, tui, dev-server, overlay, dispatch |
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-06-02 | 7861f10 | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 264ea17 | local-dev, server, startup, diagnosis, dev |
@@ -209,7 +209,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [pilee 변경은 final-check gate로 닫는다](./pilee-final-check-gate.md) | active | high | 2026-06-03 | 333e303 | pilee, final-check, verification, skill, workflow, 마무리 |
 | [pilee update는 현재 세션 reload까지 닫아야 한다](./pilee-update-current-session-reload.md) | active | high | 2026-06-03 | 333e303 | pilee, reload, update, runtime-e2e, command |
 | [Private overlay package는 회사·개인 실행 맥락을 담는다](./private-overlay-package-boundary.md) | active | high | 2026-06-02 | fad9c36 | privacy, package, overlay, skill, company-context |
-| [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-08-26 | 5307b41 | queued-messages, slash-command, prefill, worktree, session, boundary |
+| [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-08-26 | 7bab5e6 | queued-messages, slash-command, prefill, worktree, session, boundary |
 | [Read/Edit tool override는 필요한 증거만 펼친다](./read-edit-tool-output-override.md) | active | high | 2026-06-02 | 41c70e0 | read, edit, tool, override, diff, preview |
 | [Repo status polling은 index.lock을 만들지 않도록 조율한다](./repo-status-index-lock-coordination.md) | active | high | 2026-06-23 | 458a2c4 | repo-status, git, index-lock, polling, auto-commit, workflow |
 | [변경된 줄은 요청으로 추적 가능해야 한다](./request-traceability-surgical-changes.md) | active | high | 2026-06-02 | 41c70e0 | request-traceability, surgical-change, karpathy, diff, scope, review |
@@ -232,11 +232,11 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Working Context Card는 큰 맥락을 현재 slice로 압축한다](./work-context-card-task-board.md) | active | high | 2026-06-02 | 61ccbc9 | work-context, tasks, workflow, context, guard |
 | [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-07-23 | eddf3b4 | workflow, guard, intent, audit, hotfix, continuation |
 | [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-06-02 | 61ccbc9 | workflow, frame, tft, hotfix, scope, incremental |
-| [작업공간 동작과 panel activation은 별도 계약이다](./workspace-action-panel-activation-contract.md) | active | high | 2026-08-26 | 5307b41 | workspace, worktree, branch, activation, panel, authorization |
-| [Worktree 생성은 현재 패널 대화가 source다](./worktree-creation-parent-gate.md) | active | high | 2026-08-26 | 5307b41 | worktree, fork-panel, current-panel, hotfix, context, profile-driven |
-| [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-08-26 | 5307b41 | worktree, dependencies, bootstrap, profile-driven, worker, subagent |
-| [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-08-26 | 5307b41 | worktree, workspace, repo, branch, execution-boundary, cwd-binding |
-| [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-08-26 | 5307b41 | worktree, session, revive, fork-panel, panel-inbox, handoff |
+| [작업공간 동작과 panel activation은 별도 계약이다](./workspace-action-panel-activation-contract.md) | active | high | 2026-08-26 | 7bab5e6 | workspace, worktree, branch, activation, panel, authorization |
+| [Worktree 생성은 현재 패널 대화가 source다](./worktree-creation-parent-gate.md) | active | high | 2026-08-26 | 7bab5e6 | worktree, fork-panel, current-panel, hotfix, context, profile-driven |
+| [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-08-26 | 7bab5e6 | worktree, dependencies, bootstrap, profile-driven, worker, subagent |
+| [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-08-26 | 7bab5e6 | worktree, workspace, repo, branch, execution-boundary, cwd-binding |
+| [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-08-26 | 7bab5e6 | worktree, session, revive, fork-panel, panel-inbox, handoff |
 
 ## Knowledge Map
 

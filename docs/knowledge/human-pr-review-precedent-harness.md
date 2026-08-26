@@ -20,7 +20,7 @@ source:
   - conversation:2026-08-18-easy-review-harness
   - user-direction:2026-08-25-workspace-activation-redesign
 reviewed_at: 2026-08-26
-reviewed_commit: 5307b4167c74dfe256ae00fcb2a2a03e65fe42a3
+reviewed_commit: 7bab5e6bc52b2bc5c634653403faef2b904be028
 related:
   - evidence-first-verification-gate
   - live-artifact-preview-pattern
