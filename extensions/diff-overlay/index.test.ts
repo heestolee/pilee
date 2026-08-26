@@ -7,8 +7,9 @@ import {
 	asAddedFileDiff,
 	buildAddedFileDiff,
 	buildCommitMessageLines,
-	buildCommitRowsMeta,
 	commitPanelViewport,
+	countCommitFileRows,
+	DiffOverlay,
 	findMergeBase,
 	formatDiffComparison,
 	isCommitMessageToggleShortcut,
@@ -114,7 +115,7 @@ test("commit message lines preserve paragraphs and bullets while wrapping to pan
 	assert.deepEqual(buildCommitMessageLines("", 34), []);
 });
 
-test("commit row metadata offsets files below the message section", () => {
+test("commit file row count keeps only rows rendered below the message section", () => {
 	const files = [{
 		path: "src/a.ts",
 		status: "modified",
@@ -122,10 +123,8 @@ test("commit row metadata offsets files below the message section", () => {
 		previousPath: null,
 		diffTotals: { additions: 2, deletions: 1, binaryFiles: 0 },
 	}] as any;
-	const meta = buildCommitRowsMeta(files, "abc123", new Set(), new Map(), 7);
-	assert.deepEqual(meta.fileStarts, [7]);
-	assert.deepEqual(meta.fileEnds, [7]);
-	assert.equal(meta.totalRows, 8);
+	assert.equal(countCommitFileRows(files, "abc123", new Set(), new Map()), 1);
+	assert.equal(countCommitFileRows(files, "abc123", new Set(["src/a.ts"]), new Map()), 2);
 });
 
 test("commit message loader reads the complete percent-B body", async () => {
@@ -194,6 +193,41 @@ test("commit details render the full message before files on one scroll surface"
 test("commit panel reserves an indicator row without hiding the final content row", () => {
 	assert.deepEqual(commitPanelViewport(7, 4), { contentHeight: 3, maxOffset: 4, showIndicator: true });
 	assert.deepEqual(commitPanelViewport(3, 4), { contentHeight: 4, maxOffset: 0, showIndicator: false });
+});
+
+test("zero-file commits keep a long commit message scrollable", () => {
+	const commit = { hash: "empty123", shortHash: "empty12", author: "author", relativeDate: "now", subject: "docs: empty commit" };
+	const state = {
+		showHelp: false,
+		searchMode: false,
+		reviewInput: { active: false },
+		viewMode: "commit",
+		focus: "right",
+		commits: [commit],
+		commitSelectedIndex: 0,
+		commitFilesCache: new Map([[commit.hash, []]]),
+		commitFilesLoading: new Set(),
+		commitMessageCache: new Map([[commit.hash, Array.from({ length: 24 }, (_, index) => `message line ${index + 1}`).join("\n")]]),
+		commitMessageLoading: new Set(),
+		commitMessageExpanded: true,
+		commitExpandedByHash: new Map(),
+		commitFileDiffCache: new Map(),
+		commitFileSelectedIndex: 0,
+		commitFileScrollOffset: 0,
+		commitFileManualScroll: true,
+		wrapLines: true,
+		showFullFile: false,
+	} as any;
+	let renderRequests = 0;
+	const overlay = new DiffOverlay({} as any, "/repo", state, () => {});
+	const tui = { requestRender: () => { renderRequests += 1; }, terminal: { rows: 12 } };
+
+	overlay.handleInput("\u001b[B", tui);
+	assert.equal(state.commitFileScrollOffset > 0, true);
+	state.commitFileScrollOffset = 0;
+	overlay.handleInput("G", tui);
+	assert.equal(state.commitFileScrollOffset > 0, true);
+	assert.equal(renderRequests >= 2, true);
 });
 
 test("file diff totals count hunk additions and deletions without metadata", () => {

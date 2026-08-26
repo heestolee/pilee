@@ -844,12 +844,6 @@ function buildReviewTransferPrompt(drafts: ReviewDraft[]): string {
 	return lines.join("\n").trim();
 }
 
-interface CommitRowsMeta {
-	totalRows: number;
-	fileStarts: number[];
-	fileEnds: number[];
-}
-
 export function commitPanelViewport(totalRows: number, height: number): { contentHeight: number; maxOffset: number; showIndicator: boolean } {
 	const maxHeight = Math.max(1, height);
 	const showIndicator = totalRows > maxHeight;
@@ -883,35 +877,26 @@ function commitPanelPrefixRowCount(st: DiffState, commit: BranchCommitEntry, wid
 	return messageRows + 2;
 }
 
-export function buildCommitRowsMeta(
+export function countCommitFileRows(
 	files: CommitFile[],
 	commitHash: string,
 	expanded: Set<string>,
 	diffCache: Map<string, string>,
-	prefixRows = 0,
-): CommitRowsMeta {
-	let row = prefixRows;
-	const fileStarts: number[] = [];
-	const fileEnds: number[] = [];
-
-	for (let i = 0; i < files.length; i++) {
-		const file = files[i];
-		fileStarts[i] = row;
-		row += 1;
-		if (expanded.has(file.path)) {
-			const raw = diffCache.get(commitDiffKey(commitHash, file.path));
-			if (raw === undefined) {
-				row += 1;
-			} else {
-				const parsed = parseDiffLines(raw);
-				const visibleDiffLines = parsed.filter((line) => !shouldHideCommitParsedLine(line));
-				row += Math.max(1, visibleDiffLines.length);
-			}
+): number {
+	let rows = 0;
+	for (const file of files) {
+		rows += 1;
+		if (!expanded.has(file.path)) continue;
+		const raw = diffCache.get(commitDiffKey(commitHash, file.path));
+		if (raw === undefined) {
+			rows += 1;
+			continue;
 		}
-		fileEnds[i] = row - 1;
+		const parsed = parseDiffLines(raw);
+		const visibleDiffLines = parsed.filter((line) => !shouldHideCommitParsedLine(line));
+		rows += Math.max(1, visibleDiffLines.length);
 	}
-
-	return { totalRows: row, fileStarts, fileEnds };
+	return rows;
 }
 
 // ─── Tree state helpers ────────────────────────────────────────────────────
@@ -2020,7 +2005,7 @@ export function renderCommitFiles(t: Theme, st: DiffState, w: number, h: number)
 
 // ─── Overlay controller ────────────────────────────────────────────────────
 
-class DiffOverlay {
+export class DiffOverlay {
 	private st: DiffState;
 	private pi: ExtensionAPI;
 	private cwd: string;
@@ -2544,7 +2529,7 @@ class DiffOverlay {
 			} else if (matchesKey(data, "g")) {
 				st.selectedIndex = 0;
 				this.syncSelectedFile(tui);
-			} else if (matchesKey(data, "G")) {
+			} else if (matchesKey(data, Key.shift("g"))) {
 				st.selectedIndex = Math.max(0, n - 1);
 				this.syncSelectedFile(tui);
 			} else if (matchesKey(data, Key.enter)) {
@@ -2597,7 +2582,7 @@ class DiffOverlay {
 			st.diffScrollOffset = Math.min(st.diffScrollOffset + PAGE_SCROLL_STEP, Math.max(0, diffLen - 3));
 		} else if (matchesKey(data, "g")) {
 			st.diffScrollOffset = 0;
-		} else if (matchesKey(data, "G")) {
+		} else if (matchesKey(data, Key.shift("g"))) {
 			st.diffScrollOffset = Math.max(0, diffLen - 3);
 		} else if (matchesKey(data, Key.left)) {
 			saveDiffScroll(st);
@@ -2671,7 +2656,7 @@ class DiffOverlay {
 				this.selectCommit(st.commitSelectedIndex + 10, tui);
 			} else if (matchesKey(data, "g")) {
 				this.selectCommit(0, tui);
-			} else if (matchesKey(data, "G")) {
+			} else if (matchesKey(data, Key.shift("g"))) {
 				this.selectCommit(Math.max(0, st.commits.length - 1), tui);
 			} else if (matchesKey(data, Key.enter)) {
 				st.focus = "right";
@@ -2701,6 +2686,51 @@ class DiffOverlay {
 
 		void this.ensureCommitFiles(tui);
 		const files = st.commitFilesCache.get(commit.hash);
+		const expanded = this.expandedSet(commit.hash);
+		const contentH = overlayContentHeight(tui.terminal?.rows ?? 40);
+		const prefixRows = commitPanelPrefixRowCount(st, commit, Math.max(1, this.lastRightWidth));
+		const fileRows = files && files.length > 0
+			? countCommitFileRows(files, commit.hash, expanded, st.commitFileDiffCache)
+			: 1;
+		const maxOffset = commitPanelViewport(prefixRows + fileRows, contentH).maxOffset;
+		st.commitFileScrollOffset = clamp(st.commitFileScrollOffset, 0, maxOffset);
+
+		if (matchesKey(data, Key.up)) {
+			st.commitFileScrollOffset = Math.max(0, st.commitFileScrollOffset - ARROW_SCROLL_STEP);
+			st.commitFileManualScroll = true;
+			tui.requestRender();
+			return;
+		}
+		if (matchesKey(data, Key.down)) {
+			st.commitFileScrollOffset = Math.min(maxOffset, st.commitFileScrollOffset + ARROW_SCROLL_STEP);
+			st.commitFileManualScroll = true;
+			tui.requestRender();
+			return;
+		}
+		if (matchesKey(data, Key.pageUp) || matchesKey(data, Key.ctrl("u")) || matchesKey(data, "u")) {
+			st.commitFileScrollOffset = Math.max(0, st.commitFileScrollOffset - PAGE_SCROLL_STEP);
+			st.commitFileManualScroll = true;
+			tui.requestRender();
+			return;
+		}
+		if (matchesKey(data, Key.pageDown) || matchesKey(data, Key.ctrl("d")) || matchesKey(data, "i")) {
+			st.commitFileScrollOffset = Math.min(maxOffset, st.commitFileScrollOffset + PAGE_SCROLL_STEP);
+			st.commitFileManualScroll = true;
+			tui.requestRender();
+			return;
+		}
+		if (matchesKey(data, "g")) {
+			st.commitFileScrollOffset = 0;
+			st.commitFileManualScroll = true;
+			tui.requestRender();
+			return;
+		}
+		if (matchesKey(data, Key.shift("g"))) {
+			st.commitFileScrollOffset = maxOffset;
+			st.commitFileManualScroll = true;
+			tui.requestRender();
+			return;
+		}
 		if (!files || files.length === 0) {
 			tui.requestRender();
 			return;
@@ -2709,39 +2739,12 @@ class DiffOverlay {
 		const maxIndex = files.length - 1;
 		st.commitFileSelectedIndex = clamp(st.commitFileSelectedIndex, 0, maxIndex);
 		const selectedIndex = st.commitFileSelectedIndex;
-		const selectedFile = files[selectedIndex];
-		const expanded = this.expandedSet(commit.hash);
-		const contentH = overlayContentHeight(tui.terminal?.rows ?? 40);
-		const prefixRows = commitPanelPrefixRowCount(st, commit, Math.max(1, this.lastRightWidth));
-		const rowsMeta = buildCommitRowsMeta(files, commit.hash, expanded, st.commitFileDiffCache, prefixRows);
-		const viewport = commitPanelViewport(rowsMeta.totalRows, contentH);
-		const maxOffset = viewport.maxOffset;
-		st.commitFileScrollOffset = clamp(st.commitFileScrollOffset, 0, maxOffset);
-
-		if (matchesKey(data, Key.up)) {
-			st.commitFileScrollOffset = Math.max(0, st.commitFileScrollOffset - ARROW_SCROLL_STEP);
-			st.commitFileManualScroll = true;
-		} else if (matchesKey(data, Key.down)) {
-			st.commitFileScrollOffset = Math.min(maxOffset, st.commitFileScrollOffset + ARROW_SCROLL_STEP);
-			st.commitFileManualScroll = true;
-		} else if (matchesKey(data, "k")) {
+		if (matchesKey(data, "k")) {
 			st.commitFileSelectedIndex = clamp(selectedIndex - 1, 0, maxIndex);
 			st.commitFileManualScroll = false;
 		} else if (matchesKey(data, "j")) {
 			st.commitFileSelectedIndex = clamp(selectedIndex + 1, 0, maxIndex);
 			st.commitFileManualScroll = false;
-		} else if (matchesKey(data, Key.pageUp) || matchesKey(data, Key.ctrl("u")) || matchesKey(data, "u")) {
-			st.commitFileScrollOffset = Math.max(0, st.commitFileScrollOffset - PAGE_SCROLL_STEP);
-			st.commitFileManualScroll = true;
-		} else if (matchesKey(data, Key.pageDown) || matchesKey(data, Key.ctrl("d")) || matchesKey(data, "i")) {
-			st.commitFileScrollOffset = Math.min(maxOffset, st.commitFileScrollOffset + PAGE_SCROLL_STEP);
-			st.commitFileManualScroll = true;
-		} else if (matchesKey(data, "g")) {
-			st.commitFileScrollOffset = 0;
-			st.commitFileManualScroll = true;
-		} else if (matchesKey(data, "G")) {
-			st.commitFileScrollOffset = maxOffset;
-			st.commitFileManualScroll = true;
 		} else if (matchesKey(data, Key.enter)) {
 			const file = files[st.commitFileSelectedIndex];
 			if (file) {
