@@ -21,8 +21,8 @@ source:
   - pilee-history:2026-05-05#39
   - pilee-history:2026-05-05#51
   - pilee-history:2026-05-05#53
-reviewed_at: 2026-06-02
-reviewed_commit: d8f8c4c56f23dcfda08b089b6d8ff5be4885e37c
+reviewed_at: 2026-08-26
+reviewed_commit: 6d31812a2dd1ffcb96bcbdefc61f1d355d875c3d
 related:
   - mcp-stderr-isolation
   - theme-information-hierarchy
@@ -42,3 +42,7 @@ Panel label이나 model metadata처럼 짧아 보이는 값도 렌더링 경계�
 ## Detail Rule
 
 긴 노트나 전문은 row에 억지로 넣지 않습니다. detail view에 scroll state를 두고 PgUp/PgDn, j/k 같은 이동을 제공합니다. 한 줄 목록과 긴 본문 화면은 다른 UI 계약입니다.
+
+commit history처럼 탐색 목록과 전문이 함께 필요한 화면은 왼쪽 목록을 한 줄로 유지하고, 선택한 commit의 전체 메시지를 오른쪽 detail 상단에 둡니다. 메시지와 changed files/diff는 nested scroll로 분리하지 않고 하나의 vertical surface로 이어 붙여 문맥을 잃지 않게 합니다. 전문은 기본 펼침으로 두되 명시적 toggle로 파일 공간을 회수할 수 있어야 하며, uncommitted row에는 존재하지 않는 commit message 영역을 만들지 않습니다.
+
+Git의 `%B`처럼 외부에서 읽은 multiline text도 newline·문단·bullet만 보존하고 ANSI/control sequence는 render boundary에서 제거합니다. scroll indicator는 content row를 덮지 않도록 별도 줄을 예약해 마지막 본문·파일까지 접근 가능해야 합니다.
