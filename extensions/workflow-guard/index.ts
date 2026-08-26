@@ -126,7 +126,7 @@ function decisionToolWorkspaceAuthorization(event: any): WorkspaceAuthorizationE
 	} else if (event.toolName === "frame_studio" && event.details?.answer?.status === "answered") {
 		selectedText = [...(event.details.answer.selectedOptions ?? []), event.details.answer.text ?? ""].filter(Boolean).join(" ");
 	}
-	if (!/(?:worktree|워크트리|fork해서\s*시작|별도\s*작업공간)/i.test(selectedText)) return null;
+	if (!/(?:worktree|워크트리|fork해서(?:\s*구현)?\s*시작|별도\s*작업공간)/i.test(selectedText)) return null;
 	return createWorkspaceAuthorizationEvent({
 		source: "tui",
 		sourceId: `${event.toolName}:${event.toolCallId ?? "selection"}`,
@@ -553,7 +553,7 @@ function highRiskMutationBlockReason(state: GuardState, toolName: string): strin
 }
 
 function workspaceActionForTool(toolName: string, input?: Record<string, unknown>): WorkspaceAction | undefined {
-	if (toolName === "worktree_create" || toolName === "worktree_fork" || toolName === "frame_worktree_fork") return "create-worktree";
+	if (toolName === "worktree_create" || toolName === "worktree_fork" || toolName === "frame_worktree_fork" || toolName === "frame_v2_worktree_fork") return "create-worktree";
 	if (toolName === "worktree_switch" && typeof input?.name === "string" && input.name.trim()) return "use-existing-worktree";
 	return undefined;
 }
@@ -638,7 +638,7 @@ function tokenizeShellCommands(command: string): string[][] {
 			else flushToken();
 			continue;
 		}
-		if (char === ";" || char === "|" || char === "&") {
+		if (char === ";" || char === "|" || char === "&" || char === "(" || char === ")" || char === "{" || char === "}") {
 			flushCommand();
 			continue;
 		}
@@ -655,12 +655,19 @@ function executableName(token: string | undefined): string {
 
 function unwrapShellPrefixes(tokens: string[]): string[] {
 	let index = 0;
+	const controlPrefixes = new Set(["!", "if", "then", "elif", "else", "while", "until", "do", "time", "builtin", "noglob"]);
+	const sudoOptionsWithValue = new Set(["-u", "--user", "-g", "--group", "-h", "--host", "-p", "--prompt", "-C", "--chdir", "-R", "--chroot", "-r", "--role", "-t", "--type", "-T", "--command-timeout"]);
 	const skipAssignments = () => {
 		while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[index] ?? "")) index += 1;
 	};
 	skipAssignments();
 	while (index < tokens.length) {
 		const executable = executableName(tokens[index]);
+		if (controlPrefixes.has(executable)) {
+			index += 1;
+			skipAssignments();
+			continue;
+		}
 		if (executable === "env") {
 			index += 1;
 			while ((tokens[index] ?? "").startsWith("-")) {
@@ -673,6 +680,18 @@ function unwrapShellPrefixes(tokens: string[]): string[] {
 		if (executable === "command") {
 			index += 1;
 			while ((tokens[index] ?? "").startsWith("-")) index += 1;
+			skipAssignments();
+			continue;
+		}
+		if (executable === "sudo") {
+			index += 1;
+			while (index < tokens.length) {
+				const option = tokens[index] ?? "";
+				if (option === "--") { index += 1; break; }
+				if (!option.startsWith("-") || option === "-") break;
+				index += 1;
+				if (sudoOptionsWithValue.has(option)) index += 1;
+			}
 			skipAssignments();
 			continue;
 		}
@@ -691,6 +710,9 @@ function shellCommandTokens(command: string, depth = 0): string[][] {
 		if (["bash", "sh", "zsh", "dash"].includes(executable)) {
 			const shellCommandIndex = tokens.findIndex((value, index) => index > 0 && /^-[A-Za-z]*c[A-Za-z]*$/.test(value));
 			const nestedCommand = shellCommandIndex >= 0 ? tokens[shellCommandIndex + 1] : undefined;
+			if (nestedCommand) nested.push(...shellCommandTokens(nestedCommand, depth + 1));
+		} else if (executable === "eval") {
+			const nestedCommand = tokens.slice(1).join(" ").trim();
 			if (nestedCommand) nested.push(...shellCommandTokens(nestedCommand, depth + 1));
 		}
 	}

@@ -394,6 +394,11 @@ test("branch-only and negative worktree intents cannot authorize semantic git wo
 		"/usr/bin/git -C /repo worktree add /tmp/target feature/target",
 		"bash -lc 'GIT_OPTIONAL_LOCKS=0 /usr/bin/git -C /repo worktree add /tmp/target feature/target'",
 		"echo preparing && env git --git-dir=/repo/.git --work-tree=/repo worktree add /tmp/target feature/target",
+		"(git -C /repo worktree add /tmp/target feature/target)",
+		"sudo git -C /repo worktree add /tmp/target feature/target",
+		"if true; then git -C /repo worktree add /tmp/target feature/target; fi",
+		"eval 'git -C /repo worktree add /tmp/target feature/target'",
+		"sh -c '(git -C /repo worktree add /tmp/target feature/target)'",
 	];
 	for (const prompt of [
 		"현재 workspace에서 새 브랜치 만들어서 작업해",
@@ -448,6 +453,32 @@ test("explicit worktree and switch intents authorize one matching action only", 
 	assert.equal(listOnly, undefined, "listing worktrees must not require or consume switch authorization");
 });
 
+test("grouped and wrapped direct worktree commands consume exactly one authorization", async () => {
+	const commands = [
+		"(git -C /repo worktree add /tmp/target feature/target)",
+		"sudo git -C /repo worktree add /tmp/target feature/target",
+		"if true; then git -C /repo worktree add /tmp/target feature/target; fi",
+		"eval 'git -C /repo worktree add /tmp/target feature/target'",
+		"sh -c '(git -C /repo worktree add /tmp/target feature/target)'",
+	];
+	for (const [index, command] of commands.entries()) {
+		const harness = createHarness();
+		await harness.hooks.before_agent_start({ prompt: "새 worktree 만들어줘", systemPrompt: "base" }, harness.ctx);
+		assert.equal(await harness.hooks.tool_call({
+			toolName: "bash",
+			toolCallId: `wrapped-${index}`,
+			input: { command },
+		}, harness.ctx), undefined, command);
+		const reused = await harness.hooks.tool_call({
+			toolName: "bash",
+			toolCallId: `wrapped-reuse-${index}`,
+			input: { command },
+		}, harness.ctx);
+		assert.equal(reused?.block, true, command);
+		assert.match(reused.reason, /이미 사용했습니다/);
+	}
+});
+
 test("one authorization cannot execute multiple worktree additions in one bash tool", async () => {
 	const harness = createHarness();
 	await harness.hooks.before_agent_start({ prompt: "새 worktree 만들어줘", systemPrompt: "base" }, harness.ctx);
@@ -491,6 +522,27 @@ test("TUI worktree approval survives a neutral next turn and is consumed by the 
 	const latestState = harness.entries.at(-1)?.data as any;
 	const consumed = latestState.events.find((event: any) => event.sourceId === "frame_studio:frame-answer-1");
 	assert.equal(consumed.consumedBy, "frame_worktree_fork:frame-fork-1");
+});
+
+test("Frame v2 fork consumes the durable worktree authorization with its exact tool call", async () => {
+	const harness = createHarness();
+	await harness.hooks.before_agent_start({ prompt: "/frame-v2 새 기능", systemPrompt: "base" }, harness.ctx);
+	await harness.hooks.tool_result({
+		toolName: "frame_studio",
+		toolCallId: "frame-v2-answer-1",
+		content: [{ type: "text", text: "fork해서 구현 시작 선택" }],
+		details: { answer: { status: "answered", selectedOptions: ["fork해서 구현 시작"] } },
+	}, harness.ctx);
+
+	await harness.hooks.before_agent_start({ prompt: "계속해", systemPrompt: "base" }, harness.ctx);
+	assert.equal(await harness.hooks.tool_call({
+		toolName: "frame_v2_worktree_fork",
+		toolCallId: "frame-v2-fork-1",
+		input: { identityKey: "frame-v2-1" },
+	}, harness.ctx), undefined);
+	const latestState = harness.entries.at(-1)?.data as any;
+	const consumed = latestState.events.find((event: any) => event.sourceId === "frame_studio:frame-v2-answer-1");
+	assert.equal(consumed.consumedBy, "frame_v2_worktree_fork:frame-v2-fork-1");
 });
 
 test("a later explicit worktree denial overrides an unconsumed TUI approval", async () => {

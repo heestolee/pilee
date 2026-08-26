@@ -171,15 +171,18 @@ test("/frame-v2 registers independent command and persists command-context manif
 
 		let forkArgs = "";
 		let continuation = "";
+		let authorizationConsumerId = "";
 		setFrameV2ForkRunnerForTests(async (_pi, args, _ctx, options) => {
 			forkArgs = args;
 			continuation = options.afterSwitchFollowUp.content;
+			authorizationConsumerId = options.authorizationConsumerId ?? "";
 			return { status: "activated", name: "frame-v2-impl", branch: "feature/frame-v2-impl", path: "/tmp/frame-v2-impl", sessionFile: "/tmp/frame-v2-impl.jsonl", contextMode: "full", activation: { status: "activated", panelLabel: "P1", placement: "right", continuationDispatched: true } };
 		});
 		const forked = await tools.get("frame_v2_worktree_fork").execute("fork-ready", {}, new AbortController().signal, () => {}, toolCtx);
 		assert.equal(forked.details.autoStarted, true);
 		assert.match(forked.content[0].text, /Frame v2 구현 세션 시작/);
 		assert.match(forkArgs, /--full-context/);
+		assert.equal(authorizationConsumerId, "frame_v2_worktree_fork:fork-ready");
 		assert.match(continuation, /promoted `.pi\/frame\.json`/);
 		assert.match(continuation, /\.pi\/learning-companion\.json/);
 		assert.match(continuation, /Study Hard state remains the learning canonical/);

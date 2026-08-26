@@ -258,13 +258,13 @@ export function workspaceAuthorizationProofForConsumer(
 	now = Date.now(),
 ): WorkspaceAuthorizationProvenance | null {
 	const events = reduceWorkspaceAuthorization(authorization.events, now).events;
-	const event = [...events].reverse().find((candidate) =>
-		candidate.action === action
-		&& candidate.decision === "allow"
-		&& candidate.consumedBy === consumerId
-		&& Boolean(candidate.consumedAt)
-		&& !eventExpired(candidate, now),
-	);
+	const event = [...events].reverse().find((candidate) => candidate.action === action);
+	if (
+		event?.decision !== "allow"
+		|| event.consumedBy !== consumerId
+		|| !event.consumedAt
+		|| eventExpired(event, now)
+	) return null;
 	if (!event?.id) return null;
 	return reduceWorkspaceAuthorization([event], now, { eventId: event.id, action, consumerId });
 }

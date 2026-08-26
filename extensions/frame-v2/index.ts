@@ -7,6 +7,7 @@ import { learningCompanionManifestPath, writeLearningCompanionManifest } from ".
 import { attachStudyHardLearningCompanion, loadPersistedStudyHardState, studyHardStatePathFor } from "../study-hard/studio.ts";
 import { buildFrameIdentity, type FrameIdentity, formatFrameIdentityHint } from "../tft-commands/frame-identity.ts";
 import { buildFrameWorktreeForkArgs, type FrameWorktreeForkParams } from "../tft-commands/frame-worktree-fork.ts";
+import { workspaceAuthorizationConsumerId } from "../utils/workspace-activation-contract.ts";
 import {
 	buildInitialFrameV2Note,
 	frameV2RunId,
@@ -385,7 +386,7 @@ function registerFrameV2ForkTool(pi: ExtensionAPI): void {
 			hotfix: Type.Optional(Type.Boolean()),
 			minimalContext: Type.Optional(Type.Boolean()),
 		}),
-		async execute(_toolCallId, params: FrameWorktreeForkParams, _signal, _onUpdate, toolCtx: ExtensionContext) {
+		async execute(toolCallId, params: FrameWorktreeForkParams, _signal, _onUpdate, toolCtx: ExtensionContext) {
 			const record = getContext(params.identityKey);
 			if (!record) return blockedResult("BLOCKED: 이 /frame-v2 실행의 command context를 찾지 못해 worktree를 만들지 않습니다.", { action: FRAME_V2_FORK_TOOL });
 			if (!sameSession(record, toolCtx)) return blockedResult("BLOCKED: 현재 tool session과 /frame-v2 command session이 달라 fork 연속성을 보장할 수 없습니다.", { action: FRAME_V2_FORK_TOOL, reason: "session mismatch" });
@@ -398,6 +399,7 @@ function registerFrameV2ForkTool(pi: ExtensionAPI): void {
 			const args = buildFrameWorktreeForkArgs(params, record.identity);
 			const runWorktreeForkFromCommandContext = await resolveFrameV2ForkRunner();
 			const result = await runWorktreeForkFromCommandContext(pi, args, record.ctx, {
+				authorizationConsumerId: workspaceAuthorizationConsumerId(FRAME_V2_FORK_TOOL, toolCallId),
 				afterSwitchFollowUp: {
 					customType: FRAME_V2_CONTINUATION_TYPE,
 					content: buildContinuationPrompt(record),
