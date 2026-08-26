@@ -41,7 +41,7 @@ source:
   - user-direction:2026-08-18-pr-review-checkout-session
   - user-direction:2026-08-25-workspace-activation-redesign
 reviewed_at: 2026-08-26
-reviewed_commit: 871ec54
+reviewed_commit: 5307b4167c74dfe256ae00fcb2a2a03e65fe42a3
 related:
   - subagent-model-policy
   - pilee-knowledge-system

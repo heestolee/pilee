@@ -26,7 +26,7 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-11-subagent-skill-delegation
 reviewed_at: 2026-08-26
-reviewed_commit: 871ec54
+reviewed_commit: 5307b4167c74dfe256ae00fcb2a2a03e65fe42a3
 related:
   - worktree-execution-boundary
   - session-identity-over-filenames

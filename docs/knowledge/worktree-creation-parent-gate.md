@@ -23,7 +23,7 @@ source:
   - user-direction:2026-05-17-full-worktree-fork-default
   - user-direction:2026-08-25-workspace-activation-redesign
 reviewed_at: 2026-08-26
-reviewed_commit: 773af03
+reviewed_commit: 5307b4167c74dfe256ae00fcb2a2a03e65fe42a3
 related:
   - worktree-execution-boundary
   - worktree-session-continuity
