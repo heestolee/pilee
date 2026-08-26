@@ -163,6 +163,9 @@ interface DiffState {
 	commitScrollOffset: number;
 	commitFilesCache: Map<string, CommitFile[]>;
 	commitFilesLoading: Set<string>;
+	commitMessageCache: Map<string, string>;
+	commitMessageLoading: Set<string>;
+	commitMessageExpanded: boolean;
 	commitFileDiffCache: Map<string, string>;
 	commitFileDiffLoading: Set<string>;
 	commitExpandedByHash: Map<string, Set<string>>;
@@ -440,6 +443,30 @@ function cycleOverlayDiffScope(scope: OverlayDiffScope): OverlayDiffScope {
 
 export function isStashShortcut(data: string): boolean {
 	return matchesKey(data, Key.shift("s"));
+}
+
+export function isCommitMessageToggleShortcut(data: string): boolean {
+	return matchesKey(data, "m");
+}
+
+export function buildCommitMessageLines(message: string, width: number): string[] {
+	const normalized = message
+		.replace(/\r\n?/g, "\n")
+		.replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)/gu, "")
+		.replace(/\u001b\[[0-?]*[ -/]*[@-~]/gu, "")
+		.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/gu, "")
+		.trim();
+	if (!normalized) return [];
+	const contentWidth = Math.max(1, width - 2);
+	const rows: string[] = [];
+	for (const line of normalized.split("\n")) {
+		if (!line.trim()) {
+			rows.push("");
+			continue;
+		}
+		for (const wrapped of wrapTextWithAnsi(expandTabs(line), contentWidth)) rows.push(`  ${wrapped}`);
+	}
+	return rows;
 }
 
 // ─── Search / filter ───────────────────────────────────────────────────────
@@ -823,6 +850,13 @@ interface CommitRowsMeta {
 	fileEnds: number[];
 }
 
+export function commitPanelViewport(totalRows: number, height: number): { contentHeight: number; maxOffset: number; showIndicator: boolean } {
+	const maxHeight = Math.max(1, height);
+	const showIndicator = totalRows > maxHeight;
+	const contentHeight = showIndicator ? Math.max(1, maxHeight - 1) : maxHeight;
+	return { contentHeight, maxOffset: Math.max(0, totalRows - contentHeight), showIndicator };
+}
+
 function overlayContentHeight(totalHeight: number): number {
 	const bodyHeight = Math.max(3, totalHeight - 6);
 	return Math.max(1, bodyHeight - 2);
@@ -842,13 +876,21 @@ function shouldHideDiffMetaLine(line: ParsedDiffLine | undefined): boolean {
 	return !line.originalLine.startsWith("\\");
 }
 
-function buildCommitRowsMeta(
+function commitPanelPrefixRowCount(st: DiffState, commit: BranchCommitEntry, width: number): number {
+	if (commit.hash === UNCOMMITTED_HASH || !st.commitMessageExpanded) return 1;
+	const cached = st.commitMessageCache.get(commit.hash);
+	const messageRows = cached === undefined ? 1 : Math.max(1, buildCommitMessageLines(cached, width).length);
+	return messageRows + 2;
+}
+
+export function buildCommitRowsMeta(
 	files: CommitFile[],
 	commitHash: string,
 	expanded: Set<string>,
 	diffCache: Map<string, string>,
+	prefixRows = 0,
 ): CommitRowsMeta {
-	let row = 0;
+	let row = prefixRows;
 	const fileStarts: number[] = [];
 	const fileEnds: number[] = [];
 
@@ -1345,6 +1387,13 @@ async function loadOverlayData(pi: ExtensionAPI, cwd: string, mergeBase: string 
 		commits,
 		uncommittedFiles: [...workingFiles],
 	};
+}
+
+export async function loadCommitMessageForHash(pi: ExtensionAPI, cwd: string, commitHash: string): Promise<string> {
+	if (commitHash === UNCOMMITTED_HASH) return "";
+	const result = await pi.exec("git", ["show", "--no-patch", "--no-color", "--format=%B", commitHash], { cwd });
+	if (result.code !== 0) return "";
+	return (result.stdout ?? "").replace(/\s+$/u, "");
 }
 
 async function commitFilesForHash(pi: ExtensionAPI, cwd: string, commitHash: string): Promise<CommitFile[]> {
@@ -1862,93 +1911,110 @@ function renderDiff(t: Theme, st: DiffState, w: number, h: number): string[] {
 	return lines;
 }
 
-function renderCommitFiles(t: Theme, st: DiffState, w: number, h: number): string[] {
+function commitMessageRows(t: Theme, st: DiffState, commit: BranchCommitEntry, w: number): string[] {
+	if (commit.hash === UNCOMMITTED_HASH || !st.commitMessageExpanded) return [];
+	const cached = st.commitMessageCache.get(commit.hash);
+	if (cached === undefined) {
+		return [t.fg("muted", st.commitMessageLoading.has(commit.hash) ? "  Loading commit message…" : "  Commit message not loaded")];
+	}
+	const rows = buildCommitMessageLines(cached, w);
+	if (rows.length === 0) return [t.fg("muted", "  (commit message unavailable)")];
+	const firstContent = rows.findIndex((line) => line.trim().length > 0);
+	return rows.map((line, index) => {
+		if (!line) return "";
+		if (index === firstContent) return t.fg("text", t.bold(line));
+		if (line.trimStart().startsWith("Refs:")) return t.fg("accent", line);
+		return t.fg("text", line);
+	});
+}
+
+function commitPanelPrefixRows(t: Theme, st: DiffState, commit: BranchCommitEntry, files: CommitFile[] | undefined, w: number): string[] {
+	const rows = commitMessageRows(t, st, commit, w);
+	if (rows.length > 0) rows.push("");
+	const totals = files ? renderDiffTotals(t, sumCommitDiffTotals(files)) : t.fg("dim", "loading…");
+	const fileCount = files ? `${files.length} file${files.length !== 1 ? "s" : ""}` : "files: -";
+	const heading = `${t.fg("accent", t.bold("CHANGED FILES"))} ${t.fg("dim", "·")} ${totals} ${t.fg("dim", `· ${fileCount}`)}`;
+	rows.push(truncateToWidth(` ${heading}`, w, t.fg("dim", "...")));
+	return rows;
+}
+
+export function renderCommitFiles(t: Theme, st: DiffState, w: number, h: number): string[] {
 	const selectedCommit = st.commits[st.commitSelectedIndex];
 	if (!selectedCommit) return [t.fg("muted", "  (no commit selected)")];
 
 	const commitHash = selectedCommit.hash;
 	const files = st.commitFilesCache.get(commitHash);
-	if (!files) {
-		return [
-			t.fg(
-				"muted",
-				st.commitFilesLoading.has(commitHash) ? "  Loading changed files…" : "  (press Enter to load files)",
-			),
-		];
-	}
-	if (files.length === 0) return [t.fg("muted", "  (no changed files)")];
-
-	st.commitFileSelectedIndex = clamp(st.commitFileSelectedIndex, 0, Math.max(0, files.length - 1));
 	const expanded = st.commitExpandedByHash.get(commitHash) ?? new Set<string>();
 	const active = st.focus === "right";
-
-	const rows: string[] = [];
+	const rows = commitPanelPrefixRows(t, st, selectedCommit, files, w);
 	const fileLineStart: number[] = [];
 
-	for (let i = 0; i < files.length; i++) {
-		const file = files[i];
-		const selected = i === st.commitFileSelectedIndex;
-		fileLineStart[i] = rows.length;
+	if (!files) {
+		rows.push(t.fg("muted", st.commitFilesLoading.has(commitHash) ? "  Loading changed files…" : "  (press Enter to load files)"));
+	} else if (files.length === 0) {
+		rows.push(t.fg("muted", "  (no changed files)"));
+	} else {
+		st.commitFileSelectedIndex = clamp(st.commitFileSelectedIndex, 0, files.length - 1);
+		for (let i = 0; i < files.length; i++) {
+			const file = files[i];
+			const selected = i === st.commitFileSelectedIndex;
+			fileLineStart[i] = rows.length;
 
-		const cursor = selected ? (active ? t.fg("accent", "▶") : t.fg("muted", "▸")) : " ";
-		const fold = expanded.has(file.path) ? t.fg("accent", "▾") : t.fg("dim", "▸");
-		const ic = t.fg(statusColor(file.status), icon(file.status));
-		const prefix = `${cursor} ${fold} ${ic} `;
-		const diffTotal = renderDiffTotals(t, file.diffTotals);
-		const suffix = `${t.fg("dim", " · ")}${diffTotal}`;
-		const nameW = Math.max(4, w - visibleWidth(prefix) - visibleWidth(suffix));
+			const cursor = selected ? (active ? t.fg("accent", "▶") : t.fg("muted", "▸")) : " ";
+			const fold = expanded.has(file.path) ? t.fg("accent", "▾") : t.fg("dim", "▸");
+			const ic = t.fg(statusColor(file.status), icon(file.status));
+			const prefix = `${cursor} ${fold} ${ic} `;
+			const diffTotal = renderDiffTotals(t, file.diffTotals);
+			const suffix = `${t.fg("dim", " · ")}${diffTotal}`;
+			const nameW = Math.max(4, w - visibleWidth(prefix) - visibleWidth(suffix));
 
-		const fileName = truncatePlainToWidth(fileDisplayPath(file), nameW);
-		const label = selected ? (active ? t.fg("accent", fileName) : t.fg("muted", fileName)) : t.fg("text", fileName);
-		rows.push(truncateToWidth(`${prefix}${label}${suffix}`, w, ""));
+			const fileName = truncatePlainToWidth(fileDisplayPath(file), nameW);
+			const label = selected ? (active ? t.fg("accent", fileName) : t.fg("muted", fileName)) : t.fg("text", fileName);
+			rows.push(truncateToWidth(`${prefix}${label}${suffix}`, w, ""));
 
-		if (!expanded.has(file.path)) continue;
+			if (!expanded.has(file.path)) continue;
 
-		const diffKey = commitDiffKey(commitHash, file.path);
-		const raw = st.commitFileDiffCache.get(diffKey);
-		if (raw === undefined) {
-			const loading = st.commitFileDiffLoading.has(diffKey) ? "    Loading diff…" : "    (no diff loaded)";
-			rows.push(t.fg("muted", truncatePlainToWidth(loading, w)));
-			continue;
-		}
+			const diffKey = commitDiffKey(commitHash, file.path);
+			const raw = st.commitFileDiffCache.get(diffKey);
+			if (raw === undefined) {
+				const loading = st.commitFileDiffLoading.has(diffKey) ? "    Loading diff…" : "    (no diff loaded)";
+				rows.push(t.fg("muted", truncatePlainToWidth(loading, w)));
+				continue;
+			}
 
-		const renderedDiffLines = buildCommitRenderedDiffLines(t, raw, w, st.wrapLines);
-		if (renderedDiffLines.length === 0) {
-			rows.push(t.fg("muted", "    (empty diff)"));
-			continue;
-		}
+			const renderedDiffLines = buildCommitRenderedDiffLines(t, raw, w, st.wrapLines);
+			if (renderedDiffLines.length === 0) {
+				rows.push(t.fg("muted", "    (empty diff)"));
+				continue;
+			}
 
-		const fileDrafts = st.reviewDrafts.filter((d) => d.filePath === file.path);
-		const withComments = injectReviewComments(renderedDiffLines, fileDrafts, t, w);
-
-		for (const line of withComments) {
-			if (line.category === "added") rows.push(t.bg("toolSuccessBg", line.text));
-			else if (line.category === "removed") rows.push(t.bg("toolErrorBg", line.text));
-			else rows.push(line.text);
+			const fileDrafts = st.reviewDrafts.filter((d) => d.filePath === file.path);
+			const withComments = injectReviewComments(renderedDiffLines, fileDrafts, t, w);
+			for (const line of withComments) {
+				if (line.category === "added") rows.push(t.bg("toolSuccessBg", line.text));
+				else if (line.category === "removed") rows.push(t.bg("toolErrorBg", line.text));
+				else rows.push(line.text);
+			}
 		}
 	}
 
 	const max = Math.max(1, h);
+	const viewport = commitPanelViewport(rows.length, max);
 	const selectedLine = fileLineStart[st.commitFileSelectedIndex] ?? 0;
-	if (!st.commitFileManualScroll) {
+	if (active && files && files.length > 0 && !st.commitFileManualScroll) {
 		if (selectedLine < st.commitFileScrollOffset) st.commitFileScrollOffset = selectedLine;
-		if (selectedLine >= st.commitFileScrollOffset + max) st.commitFileScrollOffset = selectedLine - max + 1;
+		if (selectedLine >= st.commitFileScrollOffset + viewport.contentHeight) {
+			st.commitFileScrollOffset = selectedLine - viewport.contentHeight + 1;
+		}
 	}
 
-	const maxOffset = Math.max(0, rows.length - max);
-	if (st.commitFileScrollOffset < 0) st.commitFileScrollOffset = 0;
-	if (st.commitFileScrollOffset > maxOffset) st.commitFileScrollOffset = maxOffset;
-
+	st.commitFileScrollOffset = clamp(st.commitFileScrollOffset, 0, viewport.maxOffset);
 	const start = st.commitFileScrollOffset;
-	const end = Math.min(rows.length, start + max);
+	const end = Math.min(rows.length, start + viewport.contentHeight);
 	const visible = rows.slice(start, end);
-
+	while (visible.length < viewport.contentHeight) visible.push("");
+	if (viewport.showIndicator) visible.push(t.fg("dim", ` ${start + 1}–${end}/${rows.length}`));
 	while (visible.length < max) visible.push("");
-	if (rows.length > max) {
-		const info = t.fg("dim", ` ${start + 1}–${end}/${rows.length}`);
-		visible[max - 1] = info;
-	}
-
 	return visible;
 }
 
@@ -2257,6 +2323,20 @@ class DiffOverlay {
 		tui.requestRender();
 	}
 
+	private async ensureCommitMessage(tui: Tui): Promise<void> {
+		const commit = this.selectedCommit();
+		if (!commit || commit.hash === UNCOMMITTED_HASH || !this.st.commitMessageExpanded) return;
+		if (this.st.commitMessageCache.has(commit.hash) || this.st.commitMessageLoading.has(commit.hash)) return;
+		this.st.commitMessageLoading.add(commit.hash);
+		tui.requestRender();
+		try {
+			this.st.commitMessageCache.set(commit.hash, await loadCommitMessageForHash(this.pi, this.cwd, commit.hash));
+		} finally {
+			this.st.commitMessageLoading.delete(commit.hash);
+		}
+		tui.requestRender();
+	}
+
 	private async ensureCommitFileDiff(commitHash: string, file: CommitFile, tui: Tui): Promise<void> {
 		const key = commitDiffKey(commitHash, file.path);
 		if (this.st.commitFileDiffCache.has(key) || this.st.commitFileDiffLoading.has(key)) return;
@@ -2294,6 +2374,8 @@ class DiffOverlay {
 		this.st.diffCache.clear();
 		this.st.highlightedDiffCache.clear();
 		this.st.commitFilesCache.clear();
+		this.st.commitMessageCache.clear();
+		this.st.commitMessageLoading.clear();
 		this.st.commitFileDiffCache.clear();
 		this.st.commitExpandedByHash.clear();
 		this.applyScopeAndFilter(tui);
@@ -2325,6 +2407,10 @@ class DiffOverlay {
 		this.st.error = null;
 		await this.refreshFiles(tui);
 		if (this.st.viewMode === "diff") void this.ensureDiff(tui);
+		else {
+			void this.ensureCommitFiles(tui);
+			void this.ensureCommitMessage(tui);
+		}
 	}
 
 	private selectCommit(nextIndex: number, tui: Tui): void {
@@ -2334,6 +2420,7 @@ class DiffOverlay {
 		this.st.commitSelectedIndex = clamped;
 		this.resetCommitFilesPanel();
 		void this.ensureCommitFiles(tui);
+		void this.ensureCommitMessage(tui);
 	}
 
 	private syncSelectedFile(tui: Tui): void {
@@ -2530,6 +2617,18 @@ class DiffOverlay {
 	private handleCommitModeInput(data: string, tui: Tui): void {
 		const st = this.st;
 
+		if (isCommitMessageToggleShortcut(data)) {
+			const commit = this.selectedCommit();
+			if (commit && commit.hash !== UNCOMMITTED_HASH) {
+				st.commitMessageExpanded = !st.commitMessageExpanded;
+				st.commitFileScrollOffset = 0;
+				st.commitFileManualScroll = true;
+				if (st.commitMessageExpanded) void this.ensureCommitMessage(tui);
+			}
+			tui.requestRender();
+			return;
+		}
+
 		if (matchesKey(data, "w")) {
 			st.wrapLines = !st.wrapLines;
 			tui.requestRender();
@@ -2577,7 +2676,9 @@ class DiffOverlay {
 			} else if (matchesKey(data, Key.enter)) {
 				st.focus = "right";
 				this.resetCommitFilesPanel();
+				st.commitFileManualScroll = true;
 				void this.ensureCommitFiles(tui);
+				void this.ensureCommitMessage(tui);
 			}
 
 			tui.requestRender();
@@ -2586,6 +2687,8 @@ class DiffOverlay {
 
 		if (matchesKey(data, Key.escape) || matchesKey(data, Key.left)) {
 			st.focus = "left";
+			st.commitFileScrollOffset = 0;
+			st.commitFileManualScroll = false;
 			tui.requestRender();
 			return;
 		}
@@ -2608,48 +2711,19 @@ class DiffOverlay {
 		const selectedIndex = st.commitFileSelectedIndex;
 		const selectedFile = files[selectedIndex];
 		const expanded = this.expandedSet(commit.hash);
-		const selectedExpanded = Boolean(selectedFile && expanded.has(selectedFile.path));
-
 		const contentH = overlayContentHeight(tui.terminal?.rows ?? 40);
-		const rowsMeta = buildCommitRowsMeta(files, commit.hash, expanded, st.commitFileDiffCache);
-		const maxOffset = Math.max(0, rowsMeta.totalRows - contentH);
+		const prefixRows = commitPanelPrefixRowCount(st, commit, Math.max(1, this.lastRightWidth));
+		const rowsMeta = buildCommitRowsMeta(files, commit.hash, expanded, st.commitFileDiffCache, prefixRows);
+		const viewport = commitPanelViewport(rowsMeta.totalRows, contentH);
+		const maxOffset = viewport.maxOffset;
 		st.commitFileScrollOffset = clamp(st.commitFileScrollOffset, 0, maxOffset);
-		const viewportStart = st.commitFileScrollOffset;
-		const viewportEnd = viewportStart + contentH - 1;
-
-		const prevIndex = selectedIndex - 1;
-		const nextIndex = selectedIndex + 1;
-		const prevStart = prevIndex >= 0 ? (rowsMeta.fileStarts[prevIndex] ?? 0) : -1;
-		const nextStart =
-			nextIndex <= maxIndex ? (rowsMeta.fileStarts[nextIndex] ?? rowsMeta.totalRows) : rowsMeta.totalRows;
-		const selectedStart = rowsMeta.fileStarts[selectedIndex] ?? 0;
-		const selectedEnd = rowsMeta.fileEnds[selectedIndex] ?? selectedStart;
-
-		const shouldArrowUpScroll =
-			selectedExpanded &&
-			st.commitFileScrollOffset > 0 &&
-			((prevIndex >= 0 && prevStart < viewportStart) || (prevIndex < 0 && selectedStart < viewportStart));
-		const shouldArrowDownScroll =
-			selectedExpanded &&
-			st.commitFileScrollOffset < maxOffset &&
-			((nextIndex <= maxIndex && nextStart > viewportEnd) || (nextIndex > maxIndex && selectedEnd > viewportEnd));
 
 		if (matchesKey(data, Key.up)) {
-			if (shouldArrowUpScroll) {
-				st.commitFileScrollOffset = Math.max(0, st.commitFileScrollOffset - ARROW_SCROLL_STEP);
-				st.commitFileManualScroll = true;
-			} else {
-				st.commitFileSelectedIndex = clamp(selectedIndex - 1, 0, maxIndex);
-				st.commitFileManualScroll = false;
-			}
+			st.commitFileScrollOffset = Math.max(0, st.commitFileScrollOffset - ARROW_SCROLL_STEP);
+			st.commitFileManualScroll = true;
 		} else if (matchesKey(data, Key.down)) {
-			if (shouldArrowDownScroll) {
-				st.commitFileScrollOffset = Math.min(maxOffset, st.commitFileScrollOffset + ARROW_SCROLL_STEP);
-				st.commitFileManualScroll = true;
-			} else {
-				st.commitFileSelectedIndex = clamp(selectedIndex + 1, 0, maxIndex);
-				st.commitFileManualScroll = false;
-			}
+			st.commitFileScrollOffset = Math.min(maxOffset, st.commitFileScrollOffset + ARROW_SCROLL_STEP);
+			st.commitFileManualScroll = true;
 		} else if (matchesKey(data, "k")) {
 			st.commitFileSelectedIndex = clamp(selectedIndex - 1, 0, maxIndex);
 			st.commitFileManualScroll = false;
@@ -2663,11 +2737,11 @@ class DiffOverlay {
 			st.commitFileScrollOffset = Math.min(maxOffset, st.commitFileScrollOffset + PAGE_SCROLL_STEP);
 			st.commitFileManualScroll = true;
 		} else if (matchesKey(data, "g")) {
-			st.commitFileSelectedIndex = 0;
-			st.commitFileManualScroll = false;
+			st.commitFileScrollOffset = 0;
+			st.commitFileManualScroll = true;
 		} else if (matchesKey(data, "G")) {
-			st.commitFileSelectedIndex = maxIndex;
-			st.commitFileManualScroll = false;
+			st.commitFileScrollOffset = maxOffset;
+			st.commitFileManualScroll = true;
 		} else if (matchesKey(data, Key.enter)) {
 			const file = files[st.commitFileSelectedIndex];
 			if (file) {
@@ -2735,6 +2809,7 @@ class DiffOverlay {
 			} else {
 				this.resetCommitFilesPanel();
 				void this.ensureCommitFiles(tui);
+				void this.ensureCommitMessage(tui);
 			}
 			tui.requestRender();
 			return;
@@ -2778,14 +2853,16 @@ class DiffOverlay {
 		lines.push("");
 		lines.push(`  ${t.fg("accent", "── commit 모드: 왼쪽 (커밋 선택) ──")}`);
 		lines.push(`  ${t.fg("warning", "↑/↓")}    ${t.fg("muted", "커밋 선택")}`);
-		lines.push(`  ${t.fg("warning", "Enter")}  ${t.fg("muted", "오른쪽 파일 패널로 이동")}`);
+		lines.push(`  ${t.fg("warning", "m")}      ${t.fg("muted", "선택 커밋 메시지 접기/펼치기")}`);
+		lines.push(`  ${t.fg("warning", "Enter")}  ${t.fg("muted", "오른쪽 상세 패널로 이동")}`);
 		lines.push("");
 		lines.push(`  ${t.fg("accent", "── commit 모드: 오른쪽 (파일/diff) ──")}`);
 		lines.push(`  ${t.fg("warning", "↑/↓")}    ${t.fg("muted", "10줄 스크롤")}`);
 		lines.push(`  ${t.fg("warning", "j/k")}    ${t.fg("muted", "파일 선택")}`);
 		lines.push(`  ${t.fg("warning", "u/i")}    ${t.fg("muted", "100줄 스크롤")}`);
 		lines.push(`  ${t.fg("warning", "Enter")}  ${t.fg("muted", "diff 펼치기/접기")}`);
-		lines.push(`  ${t.fg("warning", "g/G")}    ${t.fg("muted", "맨 위/맨 아래")}`);
+		lines.push(`  ${t.fg("warning", "m")}      ${t.fg("muted", "커밋 메시지 접기/펼치기")}`);
+		lines.push(`  ${t.fg("warning", "g/G")}    ${t.fg("muted", "상세 surface 맨 위/맨 아래")}`);
 		lines.push(`  ${t.fg("warning", "←/Esc")}  ${t.fg("muted", "커밋 패널로 복귀")}`);
 		lines.push("");
 		lines.push(`  ${t.fg("dim", "아무 키나 누르면 닫힘")}`);
@@ -2869,8 +2946,8 @@ class DiffOverlay {
 							? "  ↑/↓ Select File  ·  / Search  ·  s Scope  ·  w Wrap  ·  a Full  ·  c Changed-only  ·  r Review draft  ·  Enter → Diff  ·  Tab/v Commit  ·  o Open  ·  f Finder  ·  S Stash  ·  q/Esc Close"
 							: "  ↑/↓ 10lines  ·  j/k 1line  ·  u/i 100lines  ·  g/G Top/Bottom  ·  / Search  ·  s Scope  ·  w Wrap  ·  a Full  ·  c Changed-only  ·  r Review  ·  , Help  ·  q Close"
 				: st.focus === "left"
-					? "  ↑/↓ Select Commit  ·  Enter → Changed Files  ·  Tab/v Toggle Diff  ·  S Stash  ·  q/Esc Close"
-					: "  ↑/↓ 10lines  ·  j/k Select  ·  u/i 100lines  ·  Enter Fold/Unfold  ·  r Review  ·  w Wrap  ·  a Full  ·  , Help  ·  ←/Esc → Commits  ·  q Close";
+					? "  ↑/↓ Select Commit  ·  m Message  ·  Enter → Details  ·  Tab/v Toggle Diff  ·  S Stash  ·  q/Esc Close"
+					: "  ↑/↓ 10lines  ·  j/k Select File  ·  u/i 100lines  ·  g/G Top/Bottom  ·  m Message  ·  Enter Fold/Unfold  ·  r Review  ·  ←/Esc → Commits  ·  q Close";
 		footer.push(t.fg("dim", hint));
 		footer.push(...new DynamicBorder((s: string) => t.fg("accent", s)).render(w));
 
@@ -2880,7 +2957,12 @@ class DiffOverlay {
 		this.lastRightWidth = rightW;
 
 		const leftTitleLabel = st.viewMode === "diff" ? ` FILES · ${scopeFilesLabel(st.scope)}` : " COMMITS";
-		const rightTitleLabel = st.viewMode === "diff" ? " DIFF" : " CHANGED FILES";
+		const selectedCommitForTitle = st.commits[st.commitSelectedIndex];
+		const rightTitleLabel = st.viewMode === "diff"
+			? " DIFF"
+			: selectedCommitForTitle?.hash === UNCOMMITTED_HASH
+				? " CHANGED FILES"
+				: " COMMIT";
 		const leftTitle = st.focus === "left" ? t.fg("accent", t.bold(leftTitleLabel)) : t.fg("dim", leftTitleLabel);
 		const rightTitle = st.focus === "right" ? t.fg("accent", t.bold(rightTitleLabel)) : t.fg("dim", rightTitleLabel);
 
@@ -2913,7 +2995,9 @@ class DiffOverlay {
 			if (selectedCommit.hash === UNCOMMITTED_HASH) {
 				commitLabel = `${t.fg("warning", "●●●")} ${t.fg("warning", selectedCommit.subject)} ${t.fg("dim", "·")} ${diffInfo} ${t.fg("dim", `· ${filesInfo}`)}`;
 			} else {
-				commitLabel = `${t.fg("muted", selectedCommit.shortHash)} ${t.fg("text", selectedCommit.subject)} ${t.fg("dim", "·")} ${diffInfo} ${t.fg("dim", `· ${filesInfo}`)}`;
+				const authorDate = [selectedCommit.author, selectedCommit.relativeDate].filter(Boolean).join(" · ");
+				const messageState = st.commitMessageExpanded ? "message:on" : "message:off";
+				commitLabel = `${t.fg("muted", selectedCommit.shortHash)} ${authorDate ? t.fg("dim", `${authorDate} · `) : ""}${diffInfo} ${t.fg("dim", `· ${filesInfo} · ${messageState}`)}`;
 			}
 		}
 
@@ -3033,6 +3117,9 @@ export default function diffOverlayExtension(pi: ExtensionAPI) {
 			commitScrollOffset: 0,
 			commitFilesCache: new Map(),
 			commitFilesLoading: new Set(),
+			commitMessageCache: new Map(),
+			commitMessageLoading: new Set(),
+			commitMessageExpanded: true,
 			commitFileDiffCache: new Map(),
 			commitFileDiffLoading: new Set(),
 			commitExpandedByHash: new Map(),

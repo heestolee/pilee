@@ -6,14 +6,20 @@ import test from "node:test";
 import {
 	asAddedFileDiff,
 	buildAddedFileDiff,
+	buildCommitMessageLines,
+	buildCommitRowsMeta,
+	commitPanelViewport,
 	findMergeBase,
 	formatDiffComparison,
+	isCommitMessageToggleShortcut,
 	isStashShortcut,
+	loadCommitMessageForHash,
 	loadDiffTotalsByScope,
 	parseDiffArgs,
 	parseFileDiffTotals,
 	parseNumstatEntriesZ,
 	parseNumstatTotals,
+	renderCommitFiles,
 } from "./index.ts";
 
 type ExecResult = { code: number; stdout?: string; stderr?: string };
@@ -84,9 +90,110 @@ test("formatDiffComparison exposes base, head, and resolution source", () => {
 	assert.equal(formatDiffComparison("development", null, null), "development");
 });
 
-test("stash shortcut only matches Shift+S and leaves lowercase s for scope switching", () => {
+test("stash and commit-message shortcuts keep separate keys", () => {
 	assert.equal(isStashShortcut("s"), false);
 	assert.equal(isStashShortcut("S"), true);
+	assert.equal(isCommitMessageToggleShortcut("m"), true);
+	assert.equal(isCommitMessageToggleShortcut("M"), false);
+});
+
+test("commit message lines preserve paragraphs and bullets while wrapping to pane width", () => {
+	const lines = buildCommitMessageLines([
+		"fix: keep the full commit message visible",
+		"",
+		"The controller returned 500 after handling the mismatch, so the provider retried the webhook.",
+		"- preserve retries for \u001b[31mother errors\u001b[0m",
+		"- keep Sentry visibility\u0000",
+	].join("\n"), 34);
+
+	assert.equal(lines.includes(""), true);
+	assert.equal(lines.some((line) => line.includes("preserve retries")), true);
+	assert.equal(lines.some((line) => line.includes("keep Sentry")), true);
+	assert.equal(lines.every((line) => line.length <= 34), true);
+	assert.equal(lines.some((line) => /[\u0000\u001b]/u.test(line)), false);
+	assert.deepEqual(buildCommitMessageLines("", 34), []);
+});
+
+test("commit row metadata offsets files below the message section", () => {
+	const files = [{
+		path: "src/a.ts",
+		status: "modified",
+		rawStatus: "M",
+		previousPath: null,
+		diffTotals: { additions: 2, deletions: 1, binaryFiles: 0 },
+	}] as any;
+	const meta = buildCommitRowsMeta(files, "abc123", new Set(), new Map(), 7);
+	assert.deepEqual(meta.fileStarts, [7]);
+	assert.deepEqual(meta.fileEnds, [7]);
+	assert.equal(meta.totalRows, 8);
+});
+
+test("commit message loader reads the complete percent-B body", async () => {
+	const { pi, calls } = mockPi((command, args) => {
+		if (command === "git" && args.join(" ") === "show --no-patch --no-color --format=%B abc123") {
+			return { code: 0, stdout: "fix: full subject\n\nCause paragraph.\n\nRefs: https://example.com/review\n" };
+		}
+		throw new Error(`unexpected call: ${command} ${args.join(" ")}`);
+	});
+	assert.equal(
+		await loadCommitMessageForHash(pi as any, "/repo", "abc123"),
+		"fix: full subject\n\nCause paragraph.\n\nRefs: https://example.com/review",
+	);
+	assert.equal(calls[0]?.cwd, "/repo");
+});
+
+test("commit details render the full message before files on one scroll surface", () => {
+	const commit = { hash: "abc123", shortHash: "abc123", author: "author", relativeDate: "1h", subject: "fix: full subject" };
+	const file = {
+		path: "src/a.ts",
+		status: "modified",
+		rawStatus: "M",
+		previousPath: null,
+		diffTotals: { additions: 2, deletions: 1, binaryFiles: 0 },
+	};
+	const state = {
+		commits: [commit],
+		commitSelectedIndex: 0,
+		commitFilesCache: new Map([[commit.hash, [file]]]),
+		commitFilesLoading: new Set(),
+		commitMessageCache: new Map([[commit.hash, "fix: full subject\n\nCause paragraph.\nDecision paragraph."]]),
+		commitMessageLoading: new Set(),
+		commitMessageExpanded: true,
+		commitExpandedByHash: new Map(),
+		commitFileDiffCache: new Map(),
+		commitFileDiffLoading: new Set(),
+		commitFileSelectedIndex: 0,
+		commitFileScrollOffset: 0,
+		commitFileManualScroll: true,
+		focus: "left",
+		reviewDrafts: [],
+		wrapLines: true,
+	} as any;
+	const theme = {
+		fg: (_color: string, text: string) => text,
+		bg: (_color: string, text: string) => text,
+		bold: (text: string) => text,
+	} as any;
+
+	const top = renderCommitFiles(theme, state, 80, 4).join("\n");
+	assert.match(top, /fix: full subject/u);
+	assert.doesNotMatch(top, /CHANGED FILES/u);
+
+	state.commitFileScrollOffset = commitPanelViewport(7, 4).maxOffset;
+	const bottom = renderCommitFiles(theme, state, 80, 4).join("\n");
+	assert.match(bottom, /CHANGED FILES/u);
+	assert.match(bottom, /src\/a\.ts/u);
+
+	state.commitMessageExpanded = false;
+	state.commitFileScrollOffset = 0;
+	const collapsed = renderCommitFiles(theme, state, 80, 4).join("\n");
+	assert.match(collapsed, /^ CHANGED FILES/u);
+	assert.doesNotMatch(collapsed, /fix: full subject/u);
+});
+
+test("commit panel reserves an indicator row without hiding the final content row", () => {
+	assert.deepEqual(commitPanelViewport(7, 4), { contentHeight: 3, maxOffset: 4, showIndicator: true });
+	assert.deepEqual(commitPanelViewport(3, 4), { contentHeight: 4, maxOffset: 0, showIndicator: false });
 });
 
 test("file diff totals count hunk additions and deletions without metadata", () => {
