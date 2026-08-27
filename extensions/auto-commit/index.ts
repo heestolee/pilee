@@ -140,19 +140,34 @@ function hasDurableRecordContent(record: CommitRecord | undefined): boolean {
 		|| DURABLE_LIST_FIELDS.some((field) => recordItems(record, field).length > 0);
 }
 
+function paragraphSection(label: string, content: string): string {
+	return content ? `${label}\n${content}` : "";
+}
+
+function bulletSection(label: string, items: string[]): string {
+	const bullets = items.flatMap((item) => lines(item));
+	return bullets.length > 0 ? `${label}\n${bullets.map((item) => `- ${item}`).join("\n")}` : "";
+}
+
 export function buildCommitMessage(entry: CommitPlanEntry): string {
 	if (!entry.record) return entry.message.trim();
-	const paragraphs = [
-		...RECORD_TEXT_FIELDS.map((field) => recordText(entry.record!, field)),
-		...RECORD_LIST_FIELDS.flatMap((field) => recordItems(entry.record!, field)),
+	const record = entry.record;
+	const sections = [
+		paragraphSection("문제", recordText(record, "situationImpact")),
+		paragraphSection("원인", recordText(record, "cause")),
+		bulletSection("선택", [recordText(record, "solution"), recordText(record, "rationale")]),
+		bulletSection("트레이드오프", recordItems(record, "tradeoffs")),
+		bulletSection("보존한 경계", recordItems(record, "invariants")),
+		bulletSection("비자명한 근거", recordItems(record, "evidence")),
+		paragraphSection("변경 계기", recordText(record, "changeTrigger")),
 	].filter(Boolean);
-	const references = (entry.record.references ?? []).map((item) => item.trim()).filter(Boolean);
+	const references = (record.references ?? []).map((item) => item.trim()).filter(Boolean);
 	const referenceBlock = references.length === 1
 		? `Refs: ${references[0]}`
 		: references.length > 1
 			? `Refs:\n${references.map((item) => `- ${item}`).join("\n")}`
 			: "";
-	return [commitSubject(entry.message), ...paragraphs, referenceBlock].filter(Boolean).join("\n\n");
+	return [commitSubject(entry.message), ...sections, referenceBlock].filter(Boolean).join("\n\n");
 }
 
 export function extractGitIndexLockPath(stderr: string | undefined, stdout = ""): string | undefined {
@@ -977,6 +992,7 @@ export default function (pi: ExtensionAPI) {
 		promptGuidelines: [
 			"Use auto_commit with an explicit JSON commit plan whose file groups and messages are reviewable, or action=quick with explicit message+paths only for tiny hotfix/copy changes.",
 			"For nontrivial auto_commit apply/split-head entries, use commits[].record as optional lenses: situationImpact, cause, solution, rationale, tradeoffs, invariants, changeTrigger, evidence, and references. Populate only the complete-sentence facts that explain causal context or judgment lost from the diff; do not fill every field. A natural multiline message is also accepted, while truly mechanical/generated entries need recordOmissionReason.",
+			"Rendered records use selective semantic sections: causal context becomes short paragraphs, while parallel decisions, tradeoffs, invariants, and non-obvious evidence become bullets. Empty or irrelevant sections are omitted instead of forcing a checklist.",
 			"auto_commit record.evidence is optional and only for non-obvious decision evidence such as before-fail/after-pass behavior, preserved schema/invariants, or a measurement that justifies the choice. Do not list routine test/lint/typecheck/build success, test counts, browser dimensions, or capture review; those belong in CI, PR test plans, or verify reports.",
 			"auto_commit records must preserve durable rationale and provenance, not raw agent reasoning or unverified claims; omit unavailable links rather than inventing them.",
 			"auto_commit enforces a diff-aware logical atom gate: 3+ primary files, large diffs, layer mix, and surface fan-out are evaluated before commit; small same-cluster fan-out may pass with warnings.",

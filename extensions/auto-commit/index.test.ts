@@ -88,7 +88,7 @@ test("logical atom gate allows primary path with companion files", () => {
 	}));
 });
 
-test("buildCommitMessage renders only selected causal paragraphs without forced headings", () => {
+test("buildCommitMessage renders only selected semantic sections with scannable bullets", () => {
 	const message = buildCommitMessage({
 		message: "fix: webhook 재시도 차단",
 		paths: ["src/webhook.ts"],
@@ -105,15 +105,32 @@ test("buildCommitMessage renders only selected causal paragraphs without forced 
 
 	assert.equal(message, [
 		"fix: webhook 재시도 차단",
-		"결제 운영 이슈 #123에서 반복 알림 원인을 추적했다.",
-		"동일 webhook이 재시도되어 수동 대응 알림이 중복 발송됐다.",
-		"snapshot mismatch를 이미 처리했지만 컨트롤러가 500을 반환해 PG가 다시 전송했다.",
-		"해당 mismatch만 200으로 종료하고 관찰 가능성은 Sentry 기록으로 유지한다.",
-		"다른 webhook 오류의 재시도 계약은 바꾸지 않도록 오류 코드 단위로 분기했다.",
-		"정상 webhook과 미처리 오류는 기존 응답 정책을 유지한다.",
+		"문제\n동일 webhook이 재시도되어 수동 대응 알림이 중복 발송됐다.",
+		"원인\nsnapshot mismatch를 이미 처리했지만 컨트롤러가 500을 반환해 PG가 다시 전송했다.",
+		"선택\n- 해당 mismatch만 200으로 종료하고 관찰 가능성은 Sentry 기록으로 유지한다.\n- 다른 webhook 오류의 재시도 계약은 바꾸지 않도록 오류 코드 단위로 분기했다.",
+		"보존한 경계\n- 정상 webhook과 미처리 오류는 기존 응답 정책을 유지한다.",
+		"변경 계기\n결제 운영 이슈 #123에서 반복 알림 원인을 추적했다.",
 		"Refs: https://github.com/example/repo/issues/123",
 	].join("\n\n"));
-	assert.doesNotMatch(message, /배경:|판단:|검증:/u);
+	assert.doesNotMatch(message, /트레이드오프|비자명한 근거|배경:|판단:|검증:/u);
+});
+
+test("buildCommitMessage omits irrelevant sections and keeps parallel tradeoffs as bullets", () => {
+	const message = buildCommitMessage({
+		message: "refactor: cache 갱신 경계 분리",
+		paths: ["src/cache.ts"],
+		record: {
+			cause: "읽기와 갱신 책임이 한 함수에 섞여 stale cache 경계를 추적하기 어려웠다.",
+			tradeoffs: ["호출 단계는 하나 늘지만 cache ownership이 명확해진다.", "공개 API는 추가하지 않는다."],
+		},
+	});
+
+	assert.equal(message, [
+		"refactor: cache 갱신 경계 분리",
+		"원인\n읽기와 갱신 책임이 한 함수에 섞여 stale cache 경계를 추적하기 어려웠다.",
+		"트레이드오프\n- 호출 단계는 하나 늘지만 cache ownership이 명확해진다.\n- 공개 API는 추가하지 않는다.",
+	].join("\n\n"));
+	assert.doesNotMatch(message, /문제|선택|보존한 경계|변경 계기|비자명한 근거/u);
 });
 
 test("durable record gate requires causal judgment without forcing every lens", () => {
@@ -159,6 +176,9 @@ test("tool guidance keeps record lenses selective and routine verification out o
 	const guidance = tool.promptGuidelines.join("\n");
 	assert.match(guidance, /optional lenses/u);
 	assert.match(guidance, /do not fill every field/u);
+	assert.match(guidance, /selective semantic sections/u);
+	assert.match(guidance, /causal context.*short paragraphs/u);
+	assert.match(guidance, /parallel decisions.*bullets/u);
 	assert.match(guidance, /evidence is optional/u);
 	assert.match(guidance, /Do not list routine test\/lint\/typecheck\/build success/u);
 });
@@ -384,9 +404,11 @@ test("action=apply blocks shallow records and commits a natural durable body", a
 
 	assert.equal(result.details.completion, "committed_not_pushed");
 	const body = (await git(repo, "log", "-1", "--format=%B")).trim();
-	assert.match(body, /^fix: 값 갱신 경로 수정\n\n리뷰 코멘트에서 stale value 소비 가능성이 지적됐다\./u);
-	assert.match(body, /source-of-truth 갱신이 consumer 호출보다 뒤에 있었다\./u);
-	assert.match(body, /기존 저장 원자성과 consumer 호출 횟수는 바꾸지 않는다\./u);
+	assert.match(body, /^fix: 값 갱신 경로 수정\n\n문제\n후속 계산이 오래된 값으로 실행돼 저장 결과와 응답이 어긋날 수 있었다\./u);
+	assert.match(body, /원인\nsource-of-truth 갱신이 consumer 호출보다 뒤에 있었다\./u);
+	assert.match(body, /선택\n- 값을 소비하기 전에 source-of-truth를 먼저 갱신하도록 순서를 고쳤다\.\n- 다른 계산 순서는 유지하고 stale read를 만드는 경계만 이동했다\./u);
+	assert.match(body, /보존한 경계\n- 기존 저장 원자성과 consumer 호출 횟수는 바꾸지 않는다\./u);
+	assert.match(body, /변경 계기\n리뷰 코멘트에서 stale value 소비 가능성이 지적됐다\./u);
 	assert.match(body, /Refs: https:\/\/github\.com\/example\/repo\/pull\/42/u);
 	assert.doesNotMatch(body, /배경:|판단:|검증:|tests passed|lint passed/u);
 });
