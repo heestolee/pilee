@@ -66,9 +66,18 @@ Bad:
 ```text
 fix: payple webhook snapshot mismatch 재시도 차단
 
-snapshot mismatch는 이미 수동 대응 알림을 보냈지만 컨트롤러가 500을 반환해 Payple이 같은 webhook을 재전송했고, Slack 알림도 반복됐다.
+문제
+snapshot mismatch는 이미 수동 대응 알림을 보냈지만 500 응답 때문에 같은 webhook과 Slack 알림이 반복됐다.
 
-해당 오류만 200으로 종료해 PG 재전송을 막고 Sentry 기록은 유지한다. 다른 webhook 오류의 재시도 계약은 바꾸지 않도록 오류 코드 단위로 분기했다.
+원인
+처리 완료된 mismatch도 다른 webhook 오류와 같은 실패 응답 경로를 사용했다.
+
+선택
+- 해당 오류만 200으로 종료해 PG 재전송을 막는다.
+- Sentry 기록은 유지해 운영 관찰 가능성을 보존한다.
+
+보존한 경계
+- 다른 webhook 오류의 재시도 계약은 바꾸지 않는다.
 
 Refs: https://github.com/example/repo/issues/123
 ```
@@ -78,6 +87,7 @@ Refs: https://github.com/example/repo/issues/123
 - 관련 링크가 없으면 만들지 말고 생략합니다. 숫자나 이동 가능한 line reference보다 stable permalink를 우선합니다.
 - 단일 copy·generated sync·명백한 mechanical 변경은 제목-only여도 됩니다. `auto_commit apply/split-head` plan에서는 `recordOmissionReason`으로 이유를 남기고, tiny hotfix는 `action=quick`을 사용합니다.
 - `auto_commit`의 비자명한 plan entry는 `situationImpact`, `cause`, `solution`, `rationale`, `tradeoffs`, `invariants`, `changeTrigger`, `evidence`, `references` 중 필요한 complete-sentence field만 사용합니다. 모든 field를 채우지 않으며, `solution`·`evidence`·`references`만으로는 durable record가 되지 않습니다.
+- renderer는 존재하는 field에만 선택형 section을 붙입니다. 인과관계(`문제`, `원인`, `변경 계기`)는 짧은 문단으로, 병렬 판단·트레이드오프·불변조건·비자명한 근거는 bullet로 표시합니다. section이 있다는 이유로 내용을 만들거나 irrelevant field를 채우지 않습니다.
 
 ### Type Prefixes
 
