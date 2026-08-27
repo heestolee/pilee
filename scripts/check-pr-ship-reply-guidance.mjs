@@ -33,8 +33,15 @@ const requiredSkillSnippets = [
   'Decision Preservation Gate — 기존 결정 회귀 방지',
   'pre-response HEAD',
   '리뷰 severity와 자동 리뷰어 신뢰도는 기존 결정을 뒤집는 승인으로 취급하지 않는다.',
-  '기존 결정 보존: <보존한 결정과 근거>',
+  '기존 결정·이전 대응 회귀 점검: <PASS | CHANGED(승인됨) | GAP>',
+  '보존한 결정/대응: <내용 + commit/reply/decision locator>',
+  '되살리거나 원복한 항목: <없음 | 내용>',
   '의도적 결정 변경: <없음 | 변경한 결정, 새 근거, 사용자 승인>',
+  '확인 범위: <부모 대화, frame/decision, 기존 답글, 대응 commit | 확인하지 못한 범위>',
+  '| 리뷰 | Actor route | 기존 결정 관계 | 대응 필요성 | 평가 |',
+  '`PASS`: protected decision ledger와 Decision Regression Audit를 완료했고',
+  '`CHANGED(승인됨)`: superseding evidence와 사용자 승인에 따라',
+  '`GAP`: 부모 대화, decision artifact, 기존 답글·대응 commit 또는 diff audit 일부를 확인하지 못했다.',
   '`compatible`',
   '`stale/reintroduction`',
   '`conflict`',
@@ -80,6 +87,38 @@ if (
 }
 if ((skill.match(/`pre-response HEAD`/g) ?? []).length < 2) {
   missing.push('skill: pre-response HEAD must be captured and audited');
+}
+
+const finalReportStart = skill.indexOf('## Final Report');
+const finalReportEnd = skill.indexOf('## Red Flags', finalReportStart);
+const finalReport =
+  finalReportStart >= 0 && finalReportEnd > finalReportStart
+    ? skill.slice(finalReportStart, finalReportEnd)
+    : '';
+const orderedDecisionReportFields = [
+  '- 기존 결정·이전 대응 회귀 점검: <PASS | CHANGED(승인됨) | GAP>',
+  '  - 보존한 결정/대응:',
+  '  - 되살리거나 원복한 항목:',
+  '  - 의도적 결정 변경:',
+  '  - 확인 범위:',
+  '| 리뷰 | Actor route | 기존 결정 관계 | 대응 필요성 | 평가 |',
+  '`기존 결정·이전 대응 회귀 점검` 판정 규칙:',
+  '- `PASS`:',
+  '- `CHANGED(승인됨)`:',
+  '- `GAP`:',
+];
+const decisionReportPositions = orderedDecisionReportFields.map((field) => finalReport.indexOf(field));
+if (
+  !finalReport ||
+  decisionReportPositions.some((position) => position === -1) ||
+  decisionReportPositions.some(
+    (position, index) => index > 0 && position <= decisionReportPositions[index - 1],
+  )
+) {
+  missing.push(`skill: decision regression report order (${orderedDecisionReportFields.join(' → ')})`);
+}
+if (/^- 기존 결정 보존:/m.test(finalReport) || /^- 의도적 결정 변경:/m.test(finalReport)) {
+  missing.push('skill: obsolete top-level decision report fields must not remain');
 }
 
 if (missing.length) {

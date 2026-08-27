@@ -192,7 +192,7 @@ commit/push 전에 review-response 범위의 `pre-response HEAD` 대비 diff를 
 - 같은 PR의 이전 review response를 새 대응이 무효화하지 않았는가?
 - 의도적인 결정 변경이 있다면 새 근거와 사용자 승인이 기록됐는가?
 
-하나라도 닫히지 않으면 commit으로 넘기지 않는다. 검증 결과는 최종 보고의 `기존 결정 보존`과 `의도적 결정 변경`에 요약한다.
+하나라도 닫히지 않으면 commit으로 넘기지 않는다. 검증 결과는 최종 보고의 `기존 결정·이전 대응 회귀 점검`에 판정, 보존·재도입 여부, 의도적 변경, 확인 범위로 요약한다.
 
 실패하면 전체 에러를 읽고 근본 원인을 분류한다.
 
@@ -316,8 +316,11 @@ allowlisted 자동 리뷰에 대한 `full-response`에서만, push와 허용된 
 - PR/comment: <url>
 - Actor routing: <author → external-write-eligible | local-analysis-only>
 - 대응: <allowlisted 수정/근거 코멘트/근거 초안 | 인간 local analysis>
-- 기존 결정 보존: <보존한 결정과 근거>
-- 의도적 결정 변경: <없음 | 변경한 결정, 새 근거, 사용자 승인>
+- 기존 결정·이전 대응 회귀 점검: <PASS | CHANGED(승인됨) | GAP>
+  - 보존한 결정/대응: <내용 + commit/reply/decision locator>
+  - 되살리거나 원복한 항목: <없음 | 내용>
+  - 의도적 결정 변경: <없음 | 변경한 결정, 새 근거, 사용자 승인>
+  - 확인 범위: <부모 대화, frame/decision, 기존 답글, 대응 commit | 확인하지 못한 범위>
 - 커밋: <allowlisted 변경 commit link | 없음 (local-only)>
 - Push: <branch | 없음 (local-only)>
 - 모드: <full-response | push-only | local-analysis-only>
@@ -332,9 +335,9 @@ allowlisted 자동 리뷰에 대한 `full-response`에서만, push와 허용된 
 판정: <대응이 필요한 리뷰였는지 + 전체 대응이 과하지 않았는지 한 문장>
 <있다면> 다만 <실행상 아쉬움/남은 리스크 1~2개>는 남았습니다.
 
-| 리뷰 | Actor route | 대응 필요성 | 평가 |
-|---|---|---|---|
-| <리뷰 요약> | <external-write-eligible/local-analysis-only> | <높음/중간/낮음> | <왜 대응/분석-only가 적절했는지> |
+| 리뷰 | Actor route | 기존 결정 관계 | 대응 필요성 | 평가 |
+|---|---|---|---|---|
+| <리뷰 요약> | <external-write-eligible/local-analysis-only> | <compatible / stale/reintroduction / conflict / superseding evidence> | <높음/중간/낮음> | <왜 대응/분석-only가 적절했는지> |
 
 ### 과하지 않았나?
 - 변경량: <파일 수/diff 규모/표면 fan-out>
@@ -349,8 +352,15 @@ allowlisted 자동 리뷰에 대한 `full-response`에서만, push와 허용된 
 - <선택적 개선 후보. 지금 PR을 막지 않는 이유도 함께>
 ```
 
+`기존 결정·이전 대응 회귀 점검` 판정 규칙:
+
+- `PASS`: protected decision ledger와 Decision Regression Audit를 완료했고, 기존 결정·이전 대응의 무승인 원복이나 재도입이 없다. 보호 대상이 없더라도 확인 범위를 적는다.
+- `CHANGED(승인됨)`: superseding evidence와 사용자 승인에 따라 기존 결정을 의도적으로 변경했고, 변경 내용과 근거 locator를 남겼다.
+- `GAP`: 부모 대화, decision artifact, 기존 답글·대응 commit 또는 diff audit 일부를 확인하지 못했다. 확인하지 못한 범위를 밝히며 회귀 없음으로 단정하지 않는다.
+
 평가 작성 규칙:
 
+- 각 리뷰에 `compatible`, `stale/reintroduction`, `conflict`, `superseding evidence` 중 기존 결정 관계를 표시한다.
 - 각 리뷰를 `높음/중간/낮음` 같은 대응 필요성으로 분류한다.
 - `Should_Fix`/`Nice_To_Have` 배지를 그대로 반복하지 말고, 실제 코드·제품 요구·운영 리스크 기준으로 판단한다.
 - “과하지 않았나?”에는 파일 수, 레이어/표면 fan-out, 커밋 분리 기준, 변경이 리뷰 요구보다 넓어진 이유를 포함한다.
@@ -380,4 +390,5 @@ allowlisted 자동 리뷰에 대한 `full-response`에서만, push와 허용된 
 - 사용자가 요청하지 않은 thread resolve/unresolve
 - `--push-only`인데 GitHub comment/re-request 실행
 - reviewer가 처리한 상태를 되돌림
-- 기존 결정을 바꾸고도 최종 보고의 `의도적 결정 변경`에 새 근거와 사용자 승인을 남기지 않음
+- 기존 결정을 바꾸고도 최종 보고의 `기존 결정·이전 대응 회귀 점검`을 `CHANGED(승인됨)`으로 판정하지 않거나 새 근거와 사용자 승인을 남기지 않음
+- 확인 범위가 닫히지 않았는데 `GAP` 대신 `PASS`로 보고
