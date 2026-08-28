@@ -39,8 +39,8 @@ argument-hint: "이 변경사항 자동으로 두 번 고쳐가며 안정화해�
 5. **Cycle 1 stress-interview**
    - `subagent batch --main`으로 `verifier` + `reviewer` + `challenger`를 병렬 실행한다.
    - batch 실행 후 즉시 중단하고 자동 완료 알림을 기다린다. 바로 polling하지 않는다.
-6. Cycle 1 결과에서 수정이 필요한 actionable item만 추린다 (아래 분류 표 참조).
-7. 수정할 항목이 있으면 **`worker`에게 구체적 수정 프롬프트를 전달**한다.
+6. Cycle 1 결과에서 수정이 필요한 actionable item만 추린 뒤, 아래 `수정 전 기존 결정·이전 대응 회귀 점검`으로 worker 전달 후보를 확인한다 (아래 분류 표 참조).
+7. 회귀 점검을 통과한 수정 항목이 있으면 **`worker`에게 구체적 수정 프롬프트를 전달**한다.
 
 ```bash
 subagent run worker --main -- "read /tmp/<task>-self-healing-context.md. Cycle 1 stress-interview 결과 중 아래 actionable item만 최소 수정으로 반영해줘: <항목 목록>. 기존 spec을 우선 재사용하고 finding마다 테스트를 1:1로 추가하지 마. 신규 spec이 필요하면 닫히지 않은 contract와 기존 테스트로 대체할 수 없는 이유를 먼저 보고해. 범위 밖 리팩터링은 하지 말고, 수정 후 관련 검증 명령을 실행해 결과를 보고해줘."
@@ -51,11 +51,25 @@ subagent run worker --main -- "read /tmp/<task>-self-healing-context.md. Cycle 1
 10. **Cycle 2 stress-interview**
    - Cycle 1 수정 결과와 Test Change Gate 판정을 컨텍스트 파일 또는 프롬프트에 추가한다.
    - 다시 `subagent batch --main`으로 `verifier` + `reviewer` + `challenger`를 병렬 실행한다.
-11. Cycle 2 결과에서 남은 actionable item만 추린다.
-12. 수정할 항목이 있으면 다시 `subagent run worker --main -- ...`으로 **남은 항목만** 수정 요청한다.
+11. Cycle 2 결과에서 남은 actionable item만 추린 뒤, 같은 `수정 전 기존 결정·이전 대응 회귀 점검`을 다시 적용한다.
+12. 회귀 점검을 통과한 수정 항목이 있으면 다시 `subagent run worker --main -- ...`으로 **남은 항목만** 수정 요청한다.
 13. Cycle 2 worker 뒤에도 Test Change Gate를 다시 적용하고, 테스트 noise를 남긴 채 종료하지 않는다.
 14. 2사이클 후 종료하고, 남은 리스크와 미해결 항목을 명시한다.
 15. UI/responsive/nav/typography처럼 화면 회귀 가능성이 있는 수정이 포함되면 캡처를 직접 수행하지 말고 **`/verify-report` 권장 여부와 추천 검증 축**만 남긴다. 예: `mobile 390px + breakpoint 500px + desktop 1440px`, `collapsed/expanded nav`, `computed typography`.
+
+## 수정 전 기존 결정·이전 대응 회귀 점검
+
+각 cycle에서 `worker`를 실행하기 직전에 현재/부모 대화, frame/work context, 현재 branch의 의도적 revert·refactor·type/test 정리 commit, 같은 작업의 기존 리뷰 대응을 좁게 확인한다. 새 finding이 이미 결정했거나 의도를 가지고 대응한 내용을 되살리거나 원복하지 않는지 판단한다.
+
+이 점검은 기존 actionable triage의 판단 품질만 보강한다. cycle 수, 종료 조건, subagent 호출 순서, Test Change Gate는 바꾸지 않는다. 이 점검 때문에 TUI/AskUserQuestion을 열거나 cycle을 중단하지 않는다. 회귀 가능성이 있는 finding은 worker 수정 대상에서 제외하고 최종 `기존 결정·이전 대응 회귀 점검`과 기존 Remaining Risks/Recommendation에 남긴다.
+
+| few-shot | 기존 결정·이전 대응 | 신규 finding | 수정 전 판단 |
+|---|---|---|---|
+| 호환 보강 | public API shape를 유지하기로 결정 | 내부 입력 validation만 추가 | 기존 결정과 호환되므로 worker 전달 |
+| 의도적 제거 재도입 | 과한 nullable/type ceremony나 fixture assertion을 근거와 함께 제거 | 제거한 타입·테스트를 다시 추가 | 회귀 가능성이 있으므로 worker에서 제외하고 보고 |
+| 기존 대응 원복 | 기존 리뷰에서 공통 mutex를 근거로 별도 row lock을 추가하지 않기로 대응 | 같은 lock을 다시 추가 | 이전 대응을 원복하므로 worker에서 제외하고 보고 |
+
+판단 결과에는 worker에 전달한 호환 finding, 제외하거나 범위를 조정한 finding, 보존해야 할 동작·타입·구조와 그 근거 locator를 남긴다. 근거를 확인하지 못한 항목은 회귀 없음으로 단정하지 않고 자동 수정에서 제외한 뒤 확인 범위 GAP으로 보고한다.
 
 ## worker 프롬프트 필수 요소
 `worker`에게는 절대 빈 요청을 보내지 않는다. 반드시 아래를 포함한다.
@@ -63,6 +77,7 @@ subagent run worker --main -- "read /tmp/<task>-self-healing-context.md. Cycle 1
 - 대상 저장소/작업 디렉터리
 - 수정할 파일 또는 탐색 시작점
 - stress-interview에서 나온 actionable item 목록
+- 수정 전 회귀 점검에서 확인한 기존 결정·이전 대응과 worker 전달에서 제외한 finding
 - 수정하지 말아야 할 범위
 - 실행할 검증 명령
 - 최종 보고 형식
@@ -93,6 +108,7 @@ self-healing 이어서 해
 ## worker 지시 원칙
 - stress-interview 결과 중 **구체적이고 재현 가능하며 수정 가치가 높은 항목만** 반영한다.
 - 모호한 주장, 근거 부족 항목, 의도된 변경으로 보이는 항목은 자동 수정하지 않는다.
+- 수정 전 회귀 점검에서 제외한 finding을 worker 수정 항목으로 다시 전달하지 않는다.
 - 수정 범위를 불필요하게 넓히지 않는다.
 - 각 사이클마다 가능한 최소 수정으로 진행한다.
 - 회사/업무 레포 파일을 수정해야 하면 현재 세션이 적절한 worktree인지 확인한다. 새 worktree가 필요하면 해당 repo profile/project의 worktree 규칙을 따른다.
@@ -154,6 +170,12 @@ reviewer가 `fix_class`를 제공하지 않으면 기존 심각도(Critical/Impo
 - stress-interview 핵심 결과
 - worker가 반영한 수정
 - Test Change Gate 판정과 정리 결과
+
+## 기존 결정·이전 대응 회귀 점검
+- 확인한 기존 결정·대응: <대화/commit/기존 리뷰 대응과 locator>
+- 수정 전 제외하거나 범위를 조정한 제안: <없음 | finding과 이유>
+- 보존한 경계: <실제 수정에서 유지한 동작·타입·구조>
+- 판정: <회귀 없음 | 확인 범위 GAP>
 
 ## Test Diff
 - baseline → final test files / cases / additions / deletions
