@@ -1,4 +1,36 @@
-# ReviewCard v0 계약
+# Meta Review 설명·ReviewCard 계약
+
+Meta Review는 먼저 모든 changed line을 설명한 뒤, 실제로 작성자에게 남길 리뷰 포인트만 ReviewCard로 분리한다.
+
+## File guide와 explanation hunk
+
+모든 변경 파일은 `path`, `role`, `changeReason`, `flow`, 선택적 `impact`를 갖는다. 모든 addition/deletion `D...` evidence는 정확히 하나의 `E-...` hunk에 포함한다.
+
+```json
+{
+  "path": "src/policy.ts",
+  "role": "이 파일이 소유한 책임",
+  "changeReason": "이 작업에서 변경된 이유",
+  "flow": "entry → layer → consumer",
+  "impact": "사용자·운영·후속 consumer 영향",
+  "hunks": [{
+    "id": "E-01",
+    "title": "의미 단위 제목",
+    "evidenceIds": ["D000123", "D000124"],
+    "whatChanged": "무엇이 바뀌었는지",
+    "why": "왜 바뀌었는지",
+    "evidence": "코드·타입·schema·test·ticket 근거",
+    "responsibility": "이 레이어가 맡는 책임",
+    "concepts": ["사용된 개념"],
+    "flowImpact": "호출·데이터 흐름과 결과",
+    "uncertainty": "코드만으로 확정할 수 없는 가정"
+  }]
+}
+```
+
+같은 의도의 연속 줄은 한 hunk로 묶되 설명 없는 changed evidence를 남기지 않는다. 중립 설명을 review finding처럼 표현하지 않는다.
+
+## ReviewCard
 
 각 카드는 독립적으로 읽히고, GitHub에 남길 문장과 사용자의 판단 근거를 분리해야 한다.
 
@@ -72,7 +104,7 @@
 
 ## 인간 결정
 
-Review Studio는 원본 카드를 보존한 채 다음 결정을 별도로 기록한다.
+Study Hard의 코드 리뷰 탭은 원본 카드를 보존한 채 다음 결정을 별도로 기록한다.
 
 - `review-only`
 - `review-with-meta`

@@ -91,7 +91,7 @@ export function updatePrReviewQuestion(
 	now = Date.now(),
 ): PrReviewQuestion {
 	const current = loadPrReviewQuestions(runDir).find((question) => question.id === questionId);
-	if (!current) throw new Error(`unknown PR review question: ${questionId}`);
+	if (!current) throw new Error(`unknown Meta Review question: ${questionId}`);
 	return appendQuestion(runDir, { ...current, ...patch, updatedAt: now });
 }
 
@@ -115,7 +115,7 @@ export function answerPrReviewQuestion(
 }
 
 export function failPrReviewQuestion(runDir: string, questionId: string, error: string, now = Date.now()): PrReviewQuestion {
-	return updatePrReviewQuestion(runDir, questionId, { status: "failed", error: error.trim() || "PR review question failed" }, now);
+	return updatePrReviewQuestion(runDir, questionId, { status: "failed", error: error.trim() || "Meta Review question failed" }, now);
 }
 
 function questionContext(question: PrReviewQuestion): string {
@@ -135,10 +135,10 @@ export function dispatchPrReviewQuestionToSession(
 ): void {
 	try {
 		pi.sendMessage({
-			customType: "pilee-pr-review-question",
+			customType: "pilee-meta-review-question",
 			display: false,
 			content: [
-				"# Guided PR Review question",
+				"# Guided Meta Review question",
 				"",
 				"이 질문은 현재 Glimpse 오른쪽 대화 패널에서 사용자가 보낸 직접 요청이다. 현재 Pi session cwd는 PR head가 checkout된 review worktree여야 한다.",
 				"",
@@ -153,11 +153,11 @@ export function dispatchPrReviewQuestionToSession(
 				question.question,
 				"",
 				"## 답변 규칙",
-				"1. ReviewCard 문장을 반복하지 말고 `.pi/pr-review.json`, 실제 source, callsite, schema, test를 필요한 만큼 직접 조사한다.",
+				"1. 설명·ReviewCard 문장을 반복하지 말고 `.pi/review-context.json` 또는 legacy metadata, 실제 source, callsite, schema, test를 필요한 만큼 직접 조사한다.",
 				"2. repository를 수정하지 않는다. 읽기·검색·좁은 read-only 검증만 수행한다.",
 				"3. 쉬운 설명 → 코드에서 확인된 사실 → 아직 모르는 정책/가정 → 리뷰 판단 순서로 답한다.",
 				"4. 확인한 file/line/URL을 evidence로 남긴다. 추측은 uncertainty에 분리한다.",
-				`5. 최종 응답은 반드시 \`pr_review_chat\` action=\"answer\", runId=\"${state.runId}\", questionId=\"${question.id}\"로 저장한다. 실패하면 action=\"fail\"을 사용한다.`,
+				`5. 최종 응답은 반드시 \`meta_review_chat\` action=\"answer\", runId=\"${state.runId}\", questionId=\"${question.id}\"로 저장한다. 실패하면 action=\"fail\"을 사용한다.`,
 			].join("\n"),
 			details: { runId: state.runId, runDir: state.runDir, question },
 		}, { deliverAs: "followUp", triggerTurn: true });

@@ -75,12 +75,12 @@ test("Glimpse question dispatches into the same Pi session with review-worktree 
 		const pi = { sendMessage(message: any, options: any) { messages.push({ message, options }); } } as any;
 		dispatchPrReviewQuestionToSession(pi, runState(runDir), question);
 		assert.equal(messages.length, 1);
-		assert.equal(messages[0].message.customType, "pilee-pr-review-question");
+		assert.equal(messages[0].message.customType, "pilee-meta-review-question");
 		assert.equal(messages[0].message.display, false);
 		assert.equal(messages[0].options.deliverAs, "followUp");
 		assert.equal(messages[0].options.triggerTurn, true);
 		assert.match(messages[0].message.content, /실제 source, callsite, schema, test/);
-		assert.match(messages[0].message.content, /pr_review_chat.*answer/);
+		assert.match(messages[0].message.content, /meta_review_chat.*answer/);
 		assert.match(messages[0].message.content, /D000427/);
 		assert.equal(loadPrReviewQuestions(runDir)[0]?.status, "answering");
 	} finally {
