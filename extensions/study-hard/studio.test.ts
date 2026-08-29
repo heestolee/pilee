@@ -2832,6 +2832,30 @@ test("Study Hard 코드 리뷰 surface는 Meta Review가 연결될 때만 노출
 	assert.equal(linked.metaReview?.runId, "run-1");
 });
 
+test("코드 리뷰 설명 카드는 evidence 줄을 변경 전후 범위로 표시한다", () => {
+	const html = buildStudyHardStudioHtml();
+	const helperStart = html.indexOf("function compactMetaReviewLineRanges");
+	const helperEnd = html.indexOf("function metaReviewExplanationHtml", helperStart);
+	assert.ok(helperStart >= 0 && helperEnd > helperStart);
+	const lineRangeLabel = new Function(`${html.slice(helperStart, helperEnd)}; return metaReviewLineRangeLabel;`)() as (hunk: any, file: any) => string;
+	const file = {
+		lines: [
+			{ id: "D001", kind: "deletion", oldLine: 8 },
+			{ id: "D002", kind: "deletion", oldLine: 9 },
+			{ id: "D003", kind: "addition", newLine: 8 },
+			{ id: "D004", kind: "addition", newLine: 9 },
+			{ id: "D005", kind: "addition", newLine: 13 },
+			{ id: "D006", kind: "context", oldLine: 10, newLine: 10 },
+		],
+	};
+	assert.equal(lineRangeLabel({ evidenceIds: ["D001", "D002", "D003", "D004", "D005"] }, file), "변경 전 L8–L9 · 변경 후 L8–L9 · L13");
+	assert.equal(lineRangeLabel({ evidenceIds: ["D001", "D002"] }, file), "변경 전 L8–L9");
+	assert.equal(lineRangeLabel({ evidenceIds: ["D006"] }, file), "대상 L10");
+	assert.equal(lineRangeLabel({ evidenceIds: ["unknown"] }, file), "");
+	assert.match(html, /reviewExplanationRange/);
+	assert.match(html, /설명 범위 ·/);
+});
+
 test("코드 리뷰 질문 drawer는 전체 PR과 선택 block 대화를 분리한다", () => {
 	const html = buildStudyHardStudioHtml();
 	const matcherBody = /function metaReviewQuestionMatchesContext\(question,context\)\{([\s\S]*?)\}\n    function metaReviewQuestionDraftKey/.exec(html)?.[1];
