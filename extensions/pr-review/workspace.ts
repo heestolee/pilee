@@ -3,12 +3,14 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { dirname, join } from "node:path";
 
 export const PR_REVIEW_WORKSPACE_SCHEMA_VERSION = 1;
-export const PR_REVIEW_WORKSPACE_FILE = join(".pi", "pr-review.json");
+export const REVIEW_CONTEXT_WORKSPACE_FILE = join(".pi", "review-context.json");
+export const LEGACY_PR_REVIEW_WORKSPACE_FILE = join(".pi", "pr-review.json");
+export const PR_REVIEW_WORKSPACE_FILE = REVIEW_CONTEXT_WORKSPACE_FILE;
 
 export interface PrReviewWorkspaceMetadata {
 	schemaVersion: typeof PR_REVIEW_WORKSPACE_SCHEMA_VERSION;
-	runId: string;
-	runDir: string;
+	runId?: string;
+	runDir?: string;
 	prUrl: string;
 	repository: string;
 	number: number;
@@ -24,6 +26,8 @@ export interface PrReviewWorkspaceMetadata {
 	targetSessionFile?: string;
 	contextMode?: "full-transcript";
 	activationContractId?: string;
+	activationIntent?: "meta-review" | "diff";
+	diffAutoOpenPending?: boolean;
 	activation?: {
 		target: "new-panel";
 		placement: "right" | "left" | "up" | "down" | "tab";
@@ -42,16 +46,20 @@ export function validatePrReviewWorkspaceMetadata(value: unknown): PrReviewWorks
 	if (!value || typeof value !== "object") throw new Error("invalid PR review workspace metadata");
 	const metadata = value as Record<string, unknown>;
 	if (metadata.schemaVersion !== PR_REVIEW_WORKSPACE_SCHEMA_VERSION) throw new Error("unsupported PR review workspace schemaVersion");
-	for (const key of ["runId", "runDir", "prUrl", "repository", "title", "baseRefName", "baseSha", "headSha", "branch", "worktreeName", "worktreePath"] as const) {
+	for (const key of ["prUrl", "repository", "title", "baseRefName", "baseSha", "headSha", "branch", "worktreeName", "worktreePath"] as const) {
 		assertString(metadata[key], key);
 	}
 	if (!Number.isInteger(metadata.number) || Number(metadata.number) <= 0) throw new Error("invalid PR review workspace number");
 	if (!Number.isFinite(metadata.createdAt)) throw new Error("invalid PR review workspace createdAt");
+	if (metadata.runId !== undefined && typeof metadata.runId !== "string") throw new Error("invalid review context runId");
+	if (metadata.runDir !== undefined && typeof metadata.runDir !== "string") throw new Error("invalid review context runDir");
 	if (metadata.headRefName !== undefined && typeof metadata.headRefName !== "string") throw new Error("invalid PR review workspace headRefName");
 	if (metadata.sourceSessionFile !== undefined && typeof metadata.sourceSessionFile !== "string") throw new Error("invalid PR review workspace sourceSessionFile");
 	if (metadata.targetSessionFile !== undefined && typeof metadata.targetSessionFile !== "string") throw new Error("invalid PR review workspace targetSessionFile");
 	if (metadata.contextMode !== undefined && metadata.contextMode !== "full-transcript") throw new Error("invalid PR review workspace contextMode");
 	if (metadata.activationContractId !== undefined && typeof metadata.activationContractId !== "string") throw new Error("invalid PR review workspace activationContractId");
+	if (metadata.activationIntent !== undefined && !["meta-review", "diff"].includes(String(metadata.activationIntent))) throw new Error("invalid review context activationIntent");
+	if (metadata.diffAutoOpenPending !== undefined && typeof metadata.diffAutoOpenPending !== "boolean") throw new Error("invalid review context diffAutoOpenPending");
 	if (metadata.activation !== undefined) {
 		if (!metadata.activation || typeof metadata.activation !== "object" || Array.isArray(metadata.activation)) throw new Error("invalid PR review workspace activation");
 		const activation = metadata.activation as Record<string, unknown>;
@@ -77,8 +85,10 @@ export function writePrReviewWorkspaceMetadata(cwd: string, metadata: PrReviewWo
 }
 
 export function readPrReviewWorkspaceMetadata(cwd: string): PrReviewWorkspaceMetadata | null {
-	const path = prReviewWorkspacePath(cwd);
-	if (!existsSync(path)) return null;
+	const currentPath = prReviewWorkspacePath(cwd);
+	const legacyPath = join(cwd, LEGACY_PR_REVIEW_WORKSPACE_FILE);
+	const path = existsSync(currentPath) ? currentPath : existsSync(legacyPath) ? legacyPath : null;
+	if (!path) return null;
 	return validatePrReviewWorkspaceMetadata(JSON.parse(readFileSync(path, "utf8")));
 }
 
