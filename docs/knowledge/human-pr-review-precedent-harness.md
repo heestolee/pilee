@@ -20,8 +20,9 @@ source:
   - conversation:2026-08-11-human-meta-review-corpus
   - conversation:2026-08-18-easy-review-harness
   - user-direction:2026-08-25-workspace-activation-redesign
+  - user-direction:2026-08-29-right-question-drawer-and-pr-5052-runtime
 reviewed_at: 2026-08-29
-reviewed_commit: 6ac6637af8d79766ac283223fc0670eabec895e6
+reviewed_commit: ad2fe309220d7c8cc43c639c9809423ade5c5ae4
 related:
   - evidence-first-verification-gate
   - live-artifact-preview-pattern
@@ -44,6 +45,12 @@ Review source는 원본 diff, 파싱된 line, stable `D...` evidence id, chunk i
 Meta Review는 사용자가 코드를 능숙하게 읽는다고 가정하지 않습니다. 모든 변경 파일에 파일의 책임, 이 변경에서 수정된 이유, 호출·데이터 흐름, 사용자·후속 consumer 영향을 먼저 설명합니다. 모든 addition/deletion evidence는 정확히 하나의 `E-...` semantic explanation hunk에 배정합니다. 한 줄마다 같은 문장을 반복하지 않고 같은 의도의 연속 줄을 묶되, 변경 이유·코드/도메인 근거·레이어 책임·사용 개념·흐름 영향·불확실성을 빠뜨리지 않습니다.
 
 중립적인 학습 설명, 실제 review finding, 작성자에게 확인할 정책 질문은 시각적으로 분리합니다. generated·lock·대량 반복 데이터도 생략하지 않고 source-of-truth와 생성 이유를 파일 또는 hunk 수준에서 설명합니다. 설명 coverage와 finding 수는 별도 지표입니다.
+
+## Large Complete Snapshot Transport
+
+큰 PR의 `guides + cards` complete snapshot은 모든 evidence ID 때문에 tool argument 한도를 넘을 수 있습니다. 이때 의미 있는 semantic hunk를 파일 단위로 합치거나 설명을 삭제해 payload만 줄이면 guided diff 품질이 깨집니다. `meta_review_run status`가 제공하는 현재 run의 고정 `submission.json` 경로에 complete snapshot을 생성·검증하고 `submissionPath`로 submit합니다.
+
+artifact transport는 canonical이 아닙니다. extension은 현재 runDir의 정확한 파일만 허용하고, lexical path와 realpath를 모두 확인해 run 밖 경로와 symlink를 거부하며, 일반 파일·1 byte 이상·5MB 이하·유효한 `{ guides, cards }` JSON만 읽습니다. coverage·ReviewCard 검증이 성공한 뒤 transport 파일을 제거하고 canonical `guides.json`, `cards.json`, `review.md`만 남깁니다. 작은 snapshot의 inline submit은 계속 지원합니다.
 
 ## ReviewCard Contract
 
@@ -70,7 +77,9 @@ Review worktree는 read-only 실행 경계입니다. dependency bootstrap을 자
 
 ## Guided Review Conversation
 
-코드 리뷰 탭은 선택한 card/file/evidence를 질문 context로 저장합니다. 질문은 같은 Pi session transcript에 전달되고, 답변 전 agent가 checkout source를 직접 조사해야 합니다. 답변은 `쉬운 설명 → 코드에서 확인된 사실 → 아직 모르는 정책/가정 → 리뷰 판단` 순서와 source evidence를 갖고 `questions.jsonl` append-only snapshot으로 보존됩니다. Pi에서 `/diff`를 보며 나눈 대화도 같은 checkout/session을 사용하지만, 사용자의 명시적 갱신 요청 전에는 review artifact를 자동 수정하지 않습니다.
+코드 리뷰 탭은 학습노트와 같은 오른쪽 detail drawer를 질문 surface로 재사용합니다. 본문 하단에 별도 composer를 중복하지 않고, 코드 리뷰 진입 때 drawer를 한 번 열며 toolbar의 `질문 패널`로 다시 열 수 있습니다. 본문은 drawer 너비만큼 줄어들어 선택 context와 diff를 동시에 읽습니다.
+
+질문 scope는 `전체 PR`과 `선택 블록`으로 분리합니다. file intro, diff line, semantic explanation hunk, ReviewCard를 누르면 exact `file | line | hunk | card` selection provenance와 evidence가 저장되고, 선택 블록 대화는 같은 evidence를 공유하더라도 selection kind/id가 다른 블록과 섞지 않습니다. 질문은 같은 Pi session transcript에 전달되고, 답변 전 agent가 checkout source를 직접 조사해야 합니다. 답변은 `쉬운 설명 → 코드에서 확인된 사실 → 아직 모르는 정책/가정 → 리뷰 판단` 순서와 source evidence를 갖고 `questions.jsonl` append-only snapshot으로 보존됩니다. queued/answering 질문이 있는 동안만 live state를 polling하고 모두 끝나면 멈춥니다. Pi에서 `/diff`를 보며 나눈 대화도 같은 checkout/session을 사용하지만, 사용자의 명시적 갱신 요청 전에는 review artifact를 자동 수정하지 않습니다.
 
 Meta Review session의 review truth는 immutable run과 checkout metadata이지만, workflow가 source conversation에서 시작됐다면 전체 transcript와 `parentSession` lineage도 기본 보존합니다. Source context는 정책·의도·이전 판단을 제공하고, run/head metadata는 코드 revision truth를 제공합니다.
 
@@ -100,3 +109,5 @@ Meta Review의 코드 리뷰 탭은 GitHub write 도구가 아닙니다. `review
 - 코드 리뷰 탭이 열렸다는 사실만으로 explanation coverage, finding 품질, 사용자 채택을 증명할 수 없습니다.
 - `/diff`와 `/meta-review`가 다른 checkout/head를 보면 Pi 대화와 문서형 리뷰가 서로 다른 코드를 설명하게 됩니다.
 - background freshness check가 artifact를 자동 갱신하면 사용자가 읽던 판단 기준이 중간에 바뀝니다.
+- 큰 complete snapshot을 inline argument에 맞추려고 semantic hunk를 파일 하나로 합치면 changed evidence coverage는 통과해도 학습 가능한 설명 단위가 사라집니다.
+- 전체 PR 질문과 선택 블록 질문을 한 thread로 렌더링하거나 selection ID 없이 evidence 교집합만 비교하면 서로 다른 line/hunk/card 대화가 섞입니다.
