@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -313,6 +313,50 @@ test("meta_review_run requires full inspection and complete explanation coverage
 		assert.match(markdown, /설명 coverage: 파일 1\/1/);
 		assert.match(markdown, /### 리뷰 초안/);
 		assert.match(markdown, /### 메타적 관점/);
+	} finally {
+		rmSync(stateRoot, { recursive: true, force: true });
+	}
+});
+
+test("meta_review_run submits large snapshots through one validated run-local artifact", async () => {
+	const stateRoot = mkdtempSync(join(tmpdir(), "pilee-pr-review-artifact-submit-"));
+	try {
+		const { pi, commands, tools, messages } = fixture();
+		registerPrReview(pi, { stateRoot, now: () => 4000, openStudio: false, switchToReviewWorkspace: false });
+		await commands.get("meta-review").handler("https://github.com/acme/repo/pull/42", { cwd: "/tmp", hasUI: false, ui: { notify() {}, setStatus() {} } });
+		const runId = messages[0]?.message.details.runId as string;
+		const tool = tools.get("meta_review_run");
+		const status = await tool.execute("artifact-status", { action: "status", runId }, undefined, undefined, {});
+		const submissionPath = status.details.submissionPath as string;
+		assert.equal(submissionPath, join(stateRoot, "runs", runId, "submission.json"));
+		assert.match(status.content[0].text, /large submission artifact:/);
+		await tool.execute("artifact-inspect", { action: "inspect", runId, chunkId: "C001" }, undefined, undefined, {});
+		const source = JSON.parse(readFileSync(join(stateRoot, "runs", runId, "source.json"), "utf8"));
+		const changedEvidenceIds = source.lines.filter((line: any) => line.kind === "addition" || line.kind === "deletion").map((line: any) => line.id);
+		const artifact = {
+			guides: [{
+				path: "src/example.ts",
+				role: "상태 노출 정책을 소유하는 함수입니다.",
+				changeReason: "새 상태의 자동 노출을 막기 위해 변경됐습니다.",
+				flow: "consumer → visible policy",
+				hunks: [{ id: "E-01", title: "허용 상태 계약 명시", evidenceIds: changedEvidenceIds, whatChanged: "조건 변경", why: "자동 노출 방지", evidence: "diff", responsibility: "policy", flowImpact: "허용 상태만 통과" }],
+			}],
+			cards: [],
+		};
+		const outsidePath = join(stateRoot, "outside-submission.json");
+		writeFileSync(outsidePath, JSON.stringify(artifact));
+		await assert.rejects(() => tool.execute("artifact-outside", { action: "submit", runId, submissionPath: outsidePath }, undefined, undefined, {}), /현재 run의 submission\.json/);
+		writeFileSync(submissionPath, "{invalid");
+		await assert.rejects(() => tool.execute("artifact-invalid", { action: "submit", runId, submissionPath }, undefined, undefined, {}), /유효한 JSON/);
+		writeFileSync(submissionPath, "x".repeat(5 * 1024 * 1024 + 1));
+		await assert.rejects(() => tool.execute("artifact-oversize", { action: "submit", runId, submissionPath }, undefined, undefined, {}), /5MB 이하/);
+		writeFileSync(submissionPath, JSON.stringify(artifact));
+		const submitted = await tool.execute("artifact-submit", { action: "submit", runId, submissionPath }, undefined, undefined, {});
+		assert.equal(submitted.details.submissionTransport, "run-artifact");
+		assert.equal(submitted.details.guideCount, 1);
+		assert.equal(existsSync(submissionPath), false, "transport artifact is removed after successful canonical save");
+		const inline = await tool.execute("inline-submit", { action: "submit", runId, guides: artifact.guides, cards: artifact.cards }, undefined, undefined, {});
+		assert.equal(inline.details.submissionTransport, "inline");
 	} finally {
 		rmSync(stateRoot, { recursive: true, force: true });
 	}

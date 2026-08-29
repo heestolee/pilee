@@ -1,4 +1,4 @@
-import { readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
@@ -42,6 +42,39 @@ const PACKAGE_ROOT = resolve(__dirname, "../..");
 const SKILL_PATH = join(PACKAGE_ROOT, "skills", "meta-review", "SKILL.md");
 const SHIM_CUSTOM_TYPE = "pilee-meta-review-command";
 const DEFAULT_STATE_ROOT = join(homedir(), ".pi", "agent", "state", "pr-review");
+const META_REVIEW_SUBMISSION_BASENAME = "submission.json";
+const MAX_META_REVIEW_SUBMISSION_BYTES = 5 * 1024 * 1024;
+
+interface MetaReviewSubmissionArtifact {
+	guides: MetaReviewFileGuideInput[];
+	cards: ReviewCardInput[];
+}
+
+function metaReviewSubmissionPath(runDir: string): string {
+	return join(runDir, META_REVIEW_SUBMISSION_BASENAME);
+}
+
+function readMetaReviewSubmissionArtifact(state: PrReviewRunState, artifactPath: string): MetaReviewSubmissionArtifact {
+	const expectedPath = resolve(metaReviewSubmissionPath(state.runDir));
+	const requestedPath = resolve(artifactPath);
+	if (requestedPath !== expectedPath) throw new Error(`submissionPath는 현재 run의 ${META_REVIEW_SUBMISSION_BASENAME}만 허용합니다.`);
+	if (!existsSync(requestedPath)) throw new Error(`Meta Review submission artifact가 없습니다: ${requestedPath}`);
+	const expectedRealPath = join(realpathSync(state.runDir), META_REVIEW_SUBMISSION_BASENAME);
+	if (realpathSync(requestedPath) !== expectedRealPath) throw new Error("Meta Review submission artifact symlink는 허용하지 않습니다.");
+	const stats = statSync(requestedPath);
+	if (!stats.isFile()) throw new Error("Meta Review submission artifact는 일반 파일이어야 합니다.");
+	if (stats.size <= 0 || stats.size > MAX_META_REVIEW_SUBMISSION_BYTES) throw new Error("Meta Review submission artifact는 1 byte 이상 5MB 이하여야 합니다.");
+	let value: unknown;
+	try {
+		value = JSON.parse(readFileSync(requestedPath, "utf8"));
+	} catch (error) {
+		throw new Error(`Meta Review submission artifact는 유효한 JSON이어야 합니다: ${error instanceof Error ? error.message : String(error)}`);
+	}
+	if (!value || typeof value !== "object" || !Array.isArray((value as MetaReviewSubmissionArtifact).guides) || !Array.isArray((value as MetaReviewSubmissionArtifact).cards)) {
+		throw new Error("Meta Review submission artifact에는 guides와 cards 배열이 필요합니다.");
+	}
+	return value as MetaReviewSubmissionArtifact;
+}
 
 const HELP = `Meta Review — guided diff walkthrough and human-centered review harness
 
@@ -228,6 +261,7 @@ function statusText(state: PrReviewRunState, source: ReviewSourceBundle, corpora
 		`inspection: ${inspection.inspectedChunkIds.length}/${source.chunks.length}`,
 		`pending chunks: ${pending.map((chunk) => chunk.id).join(", ") || "none"}`,
 		`human review corpus: ${corpora.map((corpus) => corpus.id).join(", ") || "not configured"}`,
+		`large submission artifact: ${metaReviewSubmissionPath(state.runDir)}`,
 		"files:",
 		...source.files.map((file) => `- ${file.id} ${file.status} +${file.additions}/-${file.deletions} ${file.path}`),
 	].join("\n");
@@ -245,6 +279,7 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 		promptSnippet: "Inspect /meta-review source chunks and submit complete guided diff explanations plus review findings",
 		promptGuidelines: [
 			"Use meta_review_run only after /meta-review starts a run; inspect every chunk, explain every changed addition/deletion evidence, and never invent code outside D evidence anchors.",
+			"For a large complete Meta Review snapshot, write guides/cards to the exact run-local submissionPath returned by meta_review_run status and submit by path; do not collapse semantic hunks merely to fit tool arguments.",
 		],
 		parameters: Type.Object({
 			action: StringEnum(["status", "inspect", "search", "submit", "open", "refresh"] as const),
@@ -256,6 +291,7 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 			mode: Type.Optional(StringEnum(["auto", "full"] as const)),
 			guides: Type.Optional(Type.Array(Type.Any())),
 			cards: Type.Optional(Type.Array(Type.Any())),
+			submissionPath: Type.Optional(Type.String({ description: "Large complete snapshot transport. Must equal the current run's submission.json path returned by status." })),
 		}),
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			if (signal?.aborted) throw new Error("Meta Review run cancelled");
@@ -268,7 +304,7 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 				.filter((corpus) => !corpus.repositories?.length || corpus.repositories.map((value) => value.toLowerCase()).includes(repository.toLowerCase()))
 				.map((corpus) => ({ ...corpus, corpusDir: expandProfileTemplate(corpus.corpusDir) }));
 			if (params.action === "status") {
-				return { content: [{ type: "text", text: statusText(state, source, corpora) }], details: { state, stats: source.stats, inspection: loadInspection(state), corpora } };
+				return { content: [{ type: "text", text: statusText(state, source, corpora) }], details: { state, stats: source.stats, inspection: loadInspection(state), corpora, submissionPath: metaReviewSubmissionPath(state.runDir) } };
 			}
 			if (params.action === "open") {
 				const opened = await (options.openMetaReview ?? openMetaReviewInStudyHard)(pi, ctx, state, source);
@@ -333,14 +369,17 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 			const pending = source.chunks.filter((chunk) => !inspection.inspectedChunkIds.includes(chunk.id));
 			if (pending.length) throw new Error(`submit 전에 모든 chunk를 inspect해야 합니다: ${pending.map((chunk) => chunk.id).join(", ")}`);
 			onUpdate?.({ content: [{ type: "text", text: "전체 diff 설명 coverage와 ReviewCard 근거를 검증하는 중..." }] });
+			if (params.submissionPath && (params.guides !== undefined || params.cards !== undefined)) throw new Error("submissionPath와 inline guides/cards는 함께 제출할 수 없습니다.");
+			const artifact = params.submissionPath ? readMetaReviewSubmissionArtifact(state, params.submissionPath) : undefined;
 			const submission = saveMetaReviewSubmission(
 				state,
-				(params.guides ?? []) as MetaReviewFileGuideInput[],
-				(params.cards ?? []) as ReviewCardInput[],
+				(artifact?.guides ?? params.guides ?? []) as MetaReviewFileGuideInput[],
+				(artifact?.cards ?? params.cards ?? []) as ReviewCardInput[],
 			);
+			if (params.submissionPath) rmSync(resolve(params.submissionPath), { force: true });
 			return {
 				content: [{ type: "text", text: `Meta Review saved: ${submission.guides.length} files explained, ${submission.cards.length} findings\n${state.reportPath}` }],
-				details: { runId, guideCount: submission.guides.length, cardCount: submission.cards.length, reportPath: state.reportPath, guidesPath: state.guidesPath, cardsPath: state.cardsPath, coverage: { inspectedChunks: inspection.inspectedChunkIds.length, totalChunks: source.chunks.length } },
+				details: { runId, guideCount: submission.guides.length, cardCount: submission.cards.length, reportPath: state.reportPath, guidesPath: state.guidesPath, cardsPath: state.cardsPath, submissionTransport: artifact ? "run-artifact" : "inline", coverage: { inspectedChunks: inspection.inspectedChunkIds.length, totalChunks: source.chunks.length } },
 				terminate: true,
 			};
 		},

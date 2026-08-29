@@ -102,6 +102,8 @@ Corpus가 없거나 검색을 지원하지 않으면 blind review를 계속하�
 
 [카드 계약](references/review-card-contract.md)을 따른다. 초기·전체 검토에서는 모든 파일 guide를 제출합니다. incremental revision에서는 `meta_review_run refresh`가 unchanged 파일의 guide·card·인간 결정을 최신 evidence로 remap하고 해당 chunk를 auto-inspect하므로, pending chunk와 `impactedPaths`만 다시 조사해 그 파일의 guides/cards를 제출합니다. seeded unchanged 항목은 extension이 병합하며 agent가 다시 작성하지 않습니다.
 
+작은 complete snapshot은 inline으로 제출한다.
+
 ```json
 {
   "action": "submit",
@@ -111,7 +113,17 @@ Corpus가 없거나 검색을 지원하지 않으면 blind review를 계속하�
 }
 ```
 
-제출 전 모든 chunk가 inspected 상태여야 한다. 근거가 없는 카드를 만들기 위해 coverage 기준을 낮추지 않는다.
+큰 PR에서 complete snapshot이 tool argument 한도에 가까워지면 semantic hunk를 파일 단위로 합치거나 설명을 삭제하지 않는다. 먼저 `status`의 `details.submissionPath`를 확인하고, 정확히 그 run-local `submission.json`에 `{ "guides": [...], "cards": [...] }` 전체를 생성·검증한 뒤 path로 제출한다.
+
+```json
+{
+  "action": "submit",
+  "runId": "<run-id>",
+  "submissionPath": "<status.details.submissionPath>"
+}
+```
+
+artifact path는 현재 run의 고정 파일만 허용하며, 성공한 뒤 transport artifact는 제거되고 canonical `guides.json`, `cards.json`, `review.md`가 남는다. 제출 전 모든 chunk가 inspected 상태여야 한다. 근거가 없는 카드를 만들거나 payload를 줄이기 위해 coverage·semantic 설명 기준을 낮추지 않는다.
 
 ## 완료 응답
 
