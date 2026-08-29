@@ -4,22 +4,18 @@ import { readFileSync } from "node:fs";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { openCompanionUrl } from "../utils/companion-window.ts";
 import type { GlimpseWindow } from "../utils/glimpse.ts";
-import type { ReviewSourceBundle } from "./evidence.ts";
+import { buildMetaReviewClientState } from "./view-model.ts";
 import {
 	createPrReviewQuestion,
 	dispatchPrReviewQuestionToSession,
 	failPrReviewQuestion,
-	loadPrReviewQuestions,
 	type PrReviewQuestion,
 } from "./chat.ts";
 import {
-	loadInspection,
 	loadPrReviewRun,
-	readJson,
 	saveHumanDecision,
 	type HumanReviewDecision,
 	type PrReviewRunState,
-	type ReviewCard,
 } from "./run.ts";
 
 interface StudioHandle {
@@ -68,49 +64,6 @@ async function readBody(request: import("node:http").IncomingMessage, limit = 64
 	return body ? JSON.parse(body) as Record<string, unknown> : {};
 }
 
-function currentState(runDir: string) {
-	const run = loadPrReviewRun(runDir);
-	const source = readJson<ReviewSourceBundle>(run.sourcePath);
-	const inspection = loadInspection(run);
-	const cards = readJson<ReviewCard[]>(run.cardsPath);
-	return {
-		run: {
-			runId: run.runId,
-			status: run.status,
-			target: run.target,
-			reportPath: run.reportPath,
-		},
-		source: {
-			sourceSha256: source.sourceSha256,
-			stats: source.stats,
-			files: source.files.map((file) => ({
-				id: file.id,
-				path: file.path,
-				oldPath: file.oldPath,
-				status: file.status,
-				additions: file.additions,
-				deletions: file.deletions,
-				binary: file.binary,
-				lines: source.lines
-					.filter((line) => line.fileId === file.id)
-					.map((line) => ({
-						id: line.id,
-						kind: line.kind,
-						text: line.text,
-						oldLine: line.oldLine,
-						newLine: line.newLine,
-					})),
-			})),
-		},
-		inspection: {
-			inspected: inspection.inspectedChunkIds.length,
-			total: source.chunks.length,
-			pending: source.chunks.filter((chunk) => !inspection.inspectedChunkIds.includes(chunk.id)).map((chunk) => chunk.id),
-		},
-		cards,
-		questions: loadPrReviewQuestions(run.runDir),
-	};
-}
 
 export function buildPrReviewStudioHtml(title: string): string {
 	return String.raw`<!doctype html>
@@ -187,7 +140,7 @@ export async function startPrReviewStudioServer(
 				return;
 			}
 			if (request.method === "GET" && url.pathname === "/state") {
-				sendJson(response, 200, currentState(state.runDir));
+				sendJson(response, 200, buildMetaReviewClientState(state.runDir));
 				return;
 			}
 			if (request.method === "GET" && url.pathname === "/report") {
@@ -200,7 +153,7 @@ export async function startPrReviewStudioServer(
 				const body = await readBody(request);
 				const questionText = typeof body.question === "string" ? body.question.trim() : "";
 				if (!questionText) throw new Error("question is required");
-				const snapshot = currentState(state.runDir);
+				const snapshot = buildMetaReviewClientState(state.runDir);
 				const scope = ["session", "file", "card", "evidence"].includes(String(body.scope)) ? String(body.scope) as "session" | "file" | "card" | "evidence" : "session";
 				const cardId = typeof body.cardId === "string" ? body.cardId : undefined;
 				const fileId = typeof body.fileId === "string" ? body.fileId : undefined;
