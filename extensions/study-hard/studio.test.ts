@@ -2832,6 +2832,41 @@ test("Study Hard 코드 리뷰 surface는 Meta Review가 연결될 때만 노출
 	assert.equal(linked.metaReview?.runId, "run-1");
 });
 
+test("코드 리뷰 Review Attention은 파일 관계를 flowchart 또는 sequence로 렌더링한다", () => {
+	const html = buildStudyHardStudioHtml();
+	const helperStart = html.indexOf("function metaReviewBasename");
+	const helperEnd = html.indexOf("function metaReviewFirstParagraph", helperStart);
+	assert.ok(helperStart >= 0 && helperEnd > helperStart);
+	const relationshipMermaid = new Function(`${html.slice(helperStart, helperEnd)}; return metaReviewRelationshipMermaid;`)() as (document: any, source: any) => string;
+	const source = { files: [{ id: "F-policy", path: "src/policy.ts" }, { id: "F-consumer", path: "src/consumer.ts" }] };
+	const relationships = {
+		summary: "consumer가 policy를 호출합니다.",
+		diagram: "flowchart",
+		relations: [{ from: "src/consumer.ts", to: "src/policy.ts", label: "노출 여부 조회" }],
+		readingOrder: [{ path: "src/policy.ts" }, { path: "src/consumer.ts" }],
+	};
+	const flowchart = relationshipMermaid({ relationships }, source);
+	assert.match(flowchart, /^flowchart LR/m);
+	assert.match(flowchart, /F0\["01 · policy\.ts"\]/);
+	assert.match(flowchart, /F1 -->\|노출 여부 조회\| F0/);
+	const sequence = relationshipMermaid({ relationships: { ...relationships, diagram: "sequence" } }, source);
+	assert.match(sequence, /^sequenceDiagram/m);
+	assert.match(sequence, /participant F0 as 01 · policy\.ts/);
+	assert.match(sequence, /F1->>F0: 노출 여부 조회/);
+});
+
+test("코드 리뷰 surface는 Overview, Review Attention, compact 파일 목록과 접힌 문맥을 유지한다", () => {
+	const html = buildStudyHardStudioHtml();
+	for (const marker of ["reviewOverviewLead", "Review attention", "변경 파일 관계", "실제 리뷰 포인트", "reviewFileSummaryRow", "파일 역할", "호출·데이터 흐름", "사용자·후속 영향"]) assert.match(html, new RegExp(marker));
+	const fileStart = html.indexOf("function metaReviewFileHtml");
+	const fileEnd = html.indexOf("function metaReviewContextKey", fileStart);
+	assert.ok(fileStart >= 0 && fileEnd > fileStart);
+	const fileRenderer = html.slice(fileStart, fileEnd);
+	assert.match(fileRenderer, /<details class="reviewFile"/);
+	assert.doesNotMatch(fileRenderer, /<details class="reviewFile" open/);
+	assert.match(fileRenderer, /<summary>[\s\S]*metaReviewFileIntroHtml/);
+});
+
 test("코드 리뷰 설명 카드는 evidence 줄을 변경 전후 범위로 표시한다", () => {
 	const html = buildStudyHardStudioHtml();
 	const helperStart = html.indexOf("function compactMetaReviewLineRanges");
@@ -2904,7 +2939,10 @@ test("Study Hard 코드 리뷰 surface는 explanation, 결정, 질문, 명시적
 		reviewDraft: "기존 NEW 상태 호출자가 의도적으로 제외되는지 확인해주세요.",
 		explanation: "정책 변경은 기존 consumer에 영향을 줄 수 있습니다.",
 		meta: { summary: "consumer contract test로 보강할 수 있습니다.", scope: "current-pr" },
-	}]);
+	}], {
+		overview: { summary: "상태 노출 정책을 allowlist로 좁힙니다.", reviewFocus: "consumer 계약을 함께 확인합니다." },
+		relationships: { summary: "단일 정책 파일 안에서 변경이 완결됩니다.", diagram: "flowchart", relations: [], readingOrder: [{ path: "src/policy.ts", reason: "정책과 호출 결과를 함께 확인합니다." }] },
+	});
 	const messages: any[] = [];
 	const handle = await startStudyHardStudio({
 		sendMessage(message: any, options: any) { messages.push({ message, options }); },
@@ -2919,6 +2957,8 @@ test("Study Hard 코드 리뷰 surface는 explanation, 결정, 질문, 명시적
 		assert.equal(stateResponse.status, 200);
 		const state = await stateResponse.json() as any;
 		assert.equal(state.guides.length, 1);
+		assert.equal(state.document.overview.reviewFocus, "consumer 계약을 함께 확인합니다.");
+		assert.equal(state.document.relationships.readingOrder[0].path, "src/policy.ts");
 		assert.equal(state.explanationCoverage.changedLinesExplained, bundle.stats.changedRows);
 		let response = await fetch(new URL("/meta-review/decision", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ cardId: "R-01", decision: "review-only" }) });
 		assert.equal(response.status, 200);
