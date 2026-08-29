@@ -2812,6 +2812,8 @@ test("Study Hard 코드 리뷰 surface는 Meta Review가 연결될 때만 노출
 	assert.match(html, /function renderMetaReview/);
 	assert.match(html, /function metaReviewExplanationHtml/);
 	assert.match(html, /function requestMetaReviewRefresh/);
+	assert.match(html, /function scheduleMetaReviewPolling/);
+	assert.match(html, /run\.status!==['"]ready['"]/);
 	const withoutLink = mergeBoardState(createInitialBoardState({ url: "https://example.com/no-review" }), { activeSurface: "review" });
 	assert.equal(withoutLink.activeSurface, "note");
 	const linked = mergeBoardState(withoutLink, {
