@@ -397,7 +397,11 @@ export function saveMetaReviewSubmission(
 ): { guides: MetaReviewFileGuide[]; cards: ReviewCard[] } {
 	const bundle = readJson<ReviewSourceBundle>(state.sourcePath);
 	const inspection = loadInspection(state);
-	const validatedGuides = validateMetaReviewGuides(bundle, inspection.inspectedChunkIds, guideInputs);
+	const seededGuides = loadMetaReviewGuides(state);
+	const guideByPath = new Map<string, MetaReviewFileGuideInput>();
+	for (const guide of seededGuides) guideByPath.set(guide.path, guide);
+	for (const guide of guideInputs) guideByPath.set(guide.path, guide);
+	const validatedGuides = validateMetaReviewGuides(bundle, inspection.inspectedChunkIds, [...guideByPath.values()]);
 	let guides = validatedGuides;
 	let reconciliation;
 	if (state.previousRunDir) {
@@ -410,8 +414,13 @@ export function saveMetaReviewSubmission(
 			writeJsonAtomic(join(state.runDir, "reconciliation.json"), reconciliation);
 		}
 	}
-	validateReviewCardInputs(bundle, inspection.inspectedChunkIds, cardInputs);
-	const cards = cardInputs.map((input) => ({ ...input, code: codeExcerptForEvidence(bundle, input.evidenceIds) }));
+	const seededCards = existsSync(state.cardsPath) ? readJson<ReviewCard[]>(state.cardsPath) : [];
+	const cardById = new Map<string, ReviewCardInput>();
+	for (const card of seededCards) cardById.set(card.id, card);
+	for (const card of cardInputs) cardById.set(card.id, card);
+	const combinedCardInputs = [...cardById.values()];
+	validateReviewCardInputs(bundle, inspection.inspectedChunkIds, combinedCardInputs);
+	const cards = combinedCardInputs.map((input) => ({ ...input, code: codeExcerptForEvidence(bundle, input.evidenceIds) }));
 	writeJsonAtomic(state.guidesPath, guides);
 	writeJsonAtomic(state.cardsPath, cards);
 	atomicWrite(state.reportPath, renderMetaReviewMarkdown(state, bundle, guides, cards));
