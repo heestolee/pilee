@@ -278,6 +278,10 @@ test("meta_review_run requires full inspection and complete explanation coverage
 		const submitted = await tool.execute("call-4", {
 			action: "submit",
 			runId,
+			document: {
+				overview: { summary: "상태 노출 정책을 allowlist로 좁힙니다.", reviewFocus: "새 상태가 자동 노출되지 않는지 확인합니다." },
+				relationships: { summary: "한 파일 안에서 정책 계약을 완결합니다.", diagram: "flowchart", relations: [], readingOrder: [{ path: "src/example.ts", reason: "정책 변경과 근거를 함께 확인합니다." }] },
+			},
 			guides: [{
 				path: "src/example.ts",
 				role: "상태 노출 정책을 소유하는 함수입니다.",
@@ -308,9 +312,13 @@ test("meta_review_run requires full inspection and complete explanation coverage
 			}],
 		}, undefined, undefined, {});
 		assert.match(submitted.content[0].text, /1 files explained, 1 findings/);
+		assert.equal(submitted.details.relationshipCount, 0);
+		assert.equal(existsSync(submitted.details.documentPath), true);
 		assert.equal(submitted.terminate, true);
 		const markdown = readFileSync(submitted.details.reportPath, "utf8");
 		assert.match(markdown, /설명 coverage: 파일 1\/1/);
+		assert.match(markdown, /상태 노출 정책을 allowlist로 좁힙니다/);
+		assert.match(markdown, /권장 읽기 순서/);
 		assert.match(markdown, /### 리뷰 초안/);
 		assert.match(markdown, /### 메타적 관점/);
 	} finally {
@@ -334,6 +342,10 @@ test("meta_review_run submits large snapshots through one validated run-local ar
 		const source = JSON.parse(readFileSync(join(stateRoot, "runs", runId, "source.json"), "utf8"));
 		const changedEvidenceIds = source.lines.filter((line: any) => line.kind === "addition" || line.kind === "deletion").map((line: any) => line.id);
 		const artifact = {
+			document: {
+				overview: { summary: "상태 계약 변경", reviewFocus: "노출 정책을 확인합니다." },
+				relationships: { summary: "단일 정책 파일 변경입니다.", diagram: "flowchart", relations: [], readingOrder: [{ path: "src/example.ts", reason: "정책 계약을 확인합니다." }] },
+			},
 			guides: [{
 				path: "src/example.ts",
 				role: "상태 노출 정책을 소유하는 함수입니다.",
@@ -354,6 +366,7 @@ test("meta_review_run submits large snapshots through one validated run-local ar
 		const submitted = await tool.execute("artifact-submit", { action: "submit", runId, submissionPath }, undefined, undefined, {});
 		assert.equal(submitted.details.submissionTransport, "run-artifact");
 		assert.equal(submitted.details.guideCount, 1);
+		assert.equal(existsSync(submitted.details.documentPath), true);
 		assert.equal(existsSync(submissionPath), false, "transport artifact is removed after successful canonical save");
 		const inline = await tool.execute("inline-submit", { action: "submit", runId, guides: artifact.guides, cards: artifact.cards }, undefined, undefined, {});
 		assert.equal(inline.details.submissionTransport, "inline");

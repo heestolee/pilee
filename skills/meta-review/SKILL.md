@@ -102,18 +102,37 @@ Corpus가 없거나 검색을 지원하지 않으면 blind review를 계속하�
 
 [카드 계약](references/review-card-contract.md)을 따른다. 초기·전체 검토에서는 모든 파일 guide를 제출합니다. incremental revision에서는 `meta_review_run refresh`가 unchanged 파일의 guide·card·인간 결정을 최신 evidence로 remap하고 해당 chunk를 auto-inspect하므로, pending chunk와 `impactedPaths`만 다시 조사해 그 파일의 guides/cards를 제출합니다. seeded unchanged 항목은 extension이 병합하며 agent가 다시 작성하지 않습니다.
 
+모든 새 submission에는 `document`를 함께 제출합니다. `overview`는 PR 전체 목적과 검토 초점을 설명하고, `relationships`는 변경 파일 사이의 실제 계약·호출·데이터·검증 관계와 전체 파일의 권장 읽기 순서를 보존합니다. 정적인 레이어·데이터 의존성은 `flowchart`, 시간 순서가 핵심인 런타임 호출은 `sequence`를 선택합니다. 둘을 기계적으로 모두 만들지 않습니다. relation의 `from`/`to`와 reading order의 `path`는 captured diff의 파일 경로만 사용합니다. incremental revision도 현재 파일 집합 기준으로 document 전체를 다시 판단합니다.
+
 작은 complete snapshot은 inline으로 제출한다.
 
 ```json
 {
   "action": "submit",
   "runId": "<run-id>",
+  "document": {
+    "overview": {
+      "summary": "PR 전체 변경 목적",
+      "reviewFocus": "리뷰에서 먼저 확인할 계약과 위험"
+    },
+    "relationships": {
+      "summary": "변경 파일이 함께 동작하는 방식",
+      "diagram": "flowchart",
+      "relations": [
+        { "from": "src/query.ts", "to": "src/ui.tsx", "label": "조회 결과 전달", "detail": "선택 상태의 입력이 됩니다." }
+      ],
+      "readingOrder": [
+        { "path": "src/query.ts", "reason": "데이터 계약을 먼저 확인합니다." },
+        { "path": "src/ui.tsx", "reason": "소비 UI와 사용자 영향을 확인합니다." }
+      ]
+    }
+  },
   "guides": [],
   "cards": []
 }
 ```
 
-큰 PR에서 complete snapshot이 tool argument 한도에 가까워지면 semantic hunk를 파일 단위로 합치거나 설명을 삭제하지 않는다. 먼저 `status`의 `details.submissionPath`를 확인하고, 정확히 그 run-local `submission.json`에 `{ "guides": [...], "cards": [...] }` 전체를 생성·검증한 뒤 path로 제출한다.
+큰 PR에서 complete snapshot이 tool argument 한도에 가까워지면 semantic hunk를 파일 단위로 합치거나 설명을 삭제하지 않는다. 먼저 `status`의 `details.submissionPath`를 확인하고, 정확히 그 run-local `submission.json`에 `{ "document": {...}, "guides": [...], "cards": [...] }` 전체를 생성·검증한 뒤 path로 제출한다.
 
 ```json
 {
@@ -123,7 +142,7 @@ Corpus가 없거나 검색을 지원하지 않으면 blind review를 계속하�
 }
 ```
 
-artifact path는 현재 run의 고정 파일만 허용하며, 성공한 뒤 transport artifact는 제거되고 canonical `guides.json`, `cards.json`, `review.md`가 남는다. 제출 전 모든 chunk가 inspected 상태여야 한다. 근거가 없는 카드를 만들거나 payload를 줄이기 위해 coverage·semantic 설명 기준을 낮추지 않는다.
+artifact path는 현재 run의 고정 파일만 허용하며, 성공한 뒤 transport artifact는 제거되고 canonical `document.json`, `guides.json`, `cards.json`, `review.md`가 남는다. 제출 전 모든 chunk가 inspected 상태여야 한다. 근거가 없는 카드를 만들거나 payload를 줄이기 위해 coverage·semantic 설명 기준을 낮추지 않는다.
 
 ## 완료 응답
 

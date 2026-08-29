@@ -10,7 +10,7 @@ import { expandProfileTemplate, loadPrReviewProfiles, type PrReviewCorpusProfile
 import { runPrReviewWorktreeFromCommandContext } from "../worktree/pr-review.ts";
 import { readPrReviewWorkspaceMetadata, writePrReviewWorkspaceMetadata } from "./workspace.ts";
 import { startStudyHardStudio } from "../study-hard/studio.ts";
-import type { MetaReviewFileGuideInput } from "./guidance.ts";
+import type { MetaReviewDocumentInput, MetaReviewFileGuideInput } from "./guidance.ts";
 import { captureGitHubPrRun, fetchGitHubPrTarget, parseGitHubPrUrl } from "./github-source.ts";
 export { captureGitHubPrRun, fetchGitHubPrTarget, parseGitHubPrUrl } from "./github-source.ts";
 import { attachMetaReviewRevision, decideMetaReviewRefresh } from "./revision.ts";
@@ -46,6 +46,7 @@ const META_REVIEW_SUBMISSION_BASENAME = "submission.json";
 const MAX_META_REVIEW_SUBMISSION_BYTES = 5 * 1024 * 1024;
 
 interface MetaReviewSubmissionArtifact {
+	document?: MetaReviewDocumentInput;
 	guides: MetaReviewFileGuideInput[];
 	cards: ReviewCardInput[];
 }
@@ -203,6 +204,7 @@ export function buildPrReviewPrompt(state: PrReviewRunState): string {
 		"- Follow the inlined meta-review skill as the authoritative workflow.",
 		"- Start with meta_review_run action=status, then inspect every pending chunk.",
 		"- Explain every changed file and every addition/deletion evidence before final submission.",
+		"- Submit a document overview plus structured changed-file relationships and a complete reading order. Choose flowchart for static layer/data dependencies and sequence for ordered runtime calls.",
 		"- Do not use historical review corpus before producing blind findings. After blind findings exist, use meta_review_run action=search per candidate when a corpus is configured.",
 		"- Do not modify the target repository or post GitHub comments.",
 		"- Submit complete guides and final cards through meta_review_run action=submit. Empty finding cards are valid, empty guides are not.",
@@ -289,6 +291,7 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 			paths: Type.Optional(Type.Array(Type.String())),
 			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 10 })),
 			mode: Type.Optional(StringEnum(["auto", "full"] as const)),
+			document: Type.Optional(Type.Any()),
 			guides: Type.Optional(Type.Array(Type.Any())),
 			cards: Type.Optional(Type.Array(Type.Any())),
 			submissionPath: Type.Optional(Type.String({ description: "Large complete snapshot transport. Must equal the current run's submission.json path returned by status." })),
@@ -369,17 +372,18 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 			const pending = source.chunks.filter((chunk) => !inspection.inspectedChunkIds.includes(chunk.id));
 			if (pending.length) throw new Error(`submit 전에 모든 chunk를 inspect해야 합니다: ${pending.map((chunk) => chunk.id).join(", ")}`);
 			onUpdate?.({ content: [{ type: "text", text: "전체 diff 설명 coverage와 ReviewCard 근거를 검증하는 중..." }] });
-			if (params.submissionPath && (params.guides !== undefined || params.cards !== undefined)) throw new Error("submissionPath와 inline guides/cards는 함께 제출할 수 없습니다.");
+			if (params.submissionPath && (params.document !== undefined || params.guides !== undefined || params.cards !== undefined)) throw new Error("submissionPath와 inline document/guides/cards는 함께 제출할 수 없습니다.");
 			const artifact = params.submissionPath ? readMetaReviewSubmissionArtifact(state, params.submissionPath) : undefined;
 			const submission = saveMetaReviewSubmission(
 				state,
 				(artifact?.guides ?? params.guides ?? []) as MetaReviewFileGuideInput[],
 				(artifact?.cards ?? params.cards ?? []) as ReviewCardInput[],
+				(artifact?.document ?? params.document) as MetaReviewDocumentInput | undefined,
 			);
 			if (params.submissionPath) rmSync(resolve(params.submissionPath), { force: true });
 			return {
 				content: [{ type: "text", text: `Meta Review saved: ${submission.guides.length} files explained, ${submission.cards.length} findings\n${state.reportPath}` }],
-				details: { runId, guideCount: submission.guides.length, cardCount: submission.cards.length, reportPath: state.reportPath, guidesPath: state.guidesPath, cardsPath: state.cardsPath, submissionTransport: artifact ? "run-artifact" : "inline", coverage: { inspectedChunks: inspection.inspectedChunkIds.length, totalChunks: source.chunks.length } },
+				details: { runId, guideCount: submission.guides.length, cardCount: submission.cards.length, relationshipCount: submission.document?.relationships.relations.length ?? 0, reportPath: state.reportPath, guidesPath: state.guidesPath, documentPath: state.documentPath, cardsPath: state.cardsPath, submissionTransport: artifact ? "run-artifact" : "inline", coverage: { inspectedChunks: inspection.inspectedChunkIds.length, totalChunks: source.chunks.length } },
 				terminate: true,
 			};
 		},
