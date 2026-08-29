@@ -281,7 +281,7 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 					? await captureCurrentWorkRun(pi, state.target.root || ctx.cwd || process.cwd(), stateRoot, now())
 					: await captureGitHubPrRun(pi, ctx.cwd ?? process.cwd(), parsed!, stateRoot, now());
 				const capturedSource = readJson<ReviewSourceBundle>(captured.sourcePath);
-				if (captured.target.headSha === state.target.headSha && capturedSource.sourceSha256 === source.sourceSha256) {
+				if (params.mode !== "full" && captured.target.headSha === state.target.headSha && capturedSource.sourceSha256 === source.sourceSha256) {
 					rmSync(captured.runDir, { recursive: true, force: true });
 					return { content: [{ type: "text", text: "Meta Review가 이미 최신 head와 diff를 보고 있습니다." }], details: { runId: state.runId, mode: "none", reason: "same-head-and-source" }, terminate: true };
 				}
