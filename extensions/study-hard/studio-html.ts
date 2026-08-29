@@ -68,7 +68,7 @@ export function buildStudyHardStudioHtml(capabilityToken = "", nativeVisualCaptu
     .reviewMetric span { color:#716b64; font-size:10px; }
     .reviewAttention { margin-bottom:22px; border:1px solid #c9c5bd; background:#fff; }
     .reviewAttentionHeader { padding:20px 22px 0; }
-    .reviewAttentionGrid { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(280px,.75fr); gap:14px; padding:16px 22px 22px; }
+    .reviewAttentionGrid { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(280px,.75fr); align-items:start; gap:14px; padding:16px 22px 22px; }
     .reviewRelationshipCard,.reviewFindingsCard { min-width:0; border:1px solid #ddd9d1; background:#fbfaf7; }
     .reviewRelationshipHeader,.reviewFindingsHeader { padding:13px 15px; border-bottom:1px solid #e2ded7; }
     .reviewRelationshipHeader h3,.reviewFindingsHeader h3 { margin:0 0 4px; font-size:13px; }
