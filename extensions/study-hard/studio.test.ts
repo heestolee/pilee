@@ -2809,10 +2809,18 @@ test("Study Hard 코드 리뷰 surface는 Meta Review가 연결될 때만 노출
 	assert.match(html, /id="reviewSurface"/);
 	assert.match(html, /id="reviewRefreshButton"/);
 	assert.match(html, /id="reviewFullRefreshButton"/);
+	assert.match(html, /id="reviewQuestionButton"[^>]*>질문 패널</);
+	assert.match(html, /#workspace\.rightDrawerOpen #reviewSurface \.reviewBody/);
 	assert.match(html, /function renderMetaReview/);
 	assert.match(html, /function metaReviewExplanationHtml/);
+	assert.match(html, /function renderMetaReviewConversation/);
+	assert.match(html, /function selectMetaReviewContext/);
+	assert.match(html, /전체 PR/);
+	assert.match(html, /선택 블록/);
+	assert.doesNotMatch(html, /<section class="reviewQuestionPanel"/);
 	assert.match(html, /function requestMetaReviewRefresh/);
 	assert.match(html, /function scheduleMetaReviewPolling/);
+	assert.match(html, /function metaReviewQuestionNeedsPolling/);
 	assert.match(html, /run\.status!==['"]ready['"]/);
 	const withoutLink = mergeBoardState(createInitialBoardState({ url: "https://example.com/no-review" }), { activeSurface: "review" });
 	assert.equal(withoutLink.activeSurface, "note");
@@ -2822,6 +2830,21 @@ test("Study Hard 코드 리뷰 surface는 Meta Review가 연결될 때만 노출
 	});
 	assert.equal(linked.activeSurface, "review");
 	assert.equal(linked.metaReview?.runId, "run-1");
+});
+
+test("코드 리뷰 질문 drawer는 전체 PR과 선택 block 대화를 분리한다", () => {
+	const html = buildStudyHardStudioHtml();
+	const matcherBody = /function metaReviewQuestionMatchesContext\(question,context\)\{([\s\S]*?)\}\n    function metaReviewQuestionDraftKey/.exec(html)?.[1];
+	assert.ok(matcherBody);
+	const matches = new Function(`return function metaReviewQuestionMatchesContext(question,context){${matcherBody}};`)() as (question: any, context: any) => boolean;
+	assert.equal(matches({ scope: "session" }, { scope: "session" }), true);
+	assert.equal(matches({ scope: "session" }, { scope: "card", cardId: "R-01" }), false);
+	assert.equal(matches({ scope: "card", cardId: "R-01" }, { scope: "card", cardId: "R-01" }), true);
+	assert.equal(matches({ scope: "card", cardId: "R-02" }, { scope: "card", cardId: "R-01" }), false);
+	assert.equal(matches({ scope: "evidence", evidenceIds: ["D001", "D002"] }, { scope: "evidence", evidenceIds: ["D002"] }), true);
+	assert.equal(matches({ scope: "evidence", evidenceIds: ["D003"] }, { scope: "evidence", evidenceIds: ["D002"] }), false);
+	assert.equal(matches({ scope: "evidence", evidenceIds: ["D002"], selection: { kind: "hunk", id: "E-01" } }, { scope: "evidence", evidenceIds: ["D002"], selectionKind: "line", selectionId: "D002" }), false);
+	assert.equal(matches({ scope: "evidence", evidenceIds: ["D001", "D002"], selection: { kind: "hunk", id: "E-01" } }, { scope: "evidence", evidenceIds: ["D001", "D002"], selectionKind: "hunk", selectionId: "E-01" }), true);
 });
 
 test("Study Hard 코드 리뷰 surface는 explanation, 결정, 질문, 명시적 refresh 요청을 같은 run에 연결한다", async () => {
@@ -2876,9 +2899,14 @@ test("Study Hard 코드 리뷰 surface는 explanation, 결정, 질문, 명시적
 		let response = await fetch(new URL("/meta-review/decision", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ cardId: "R-01", decision: "review-only" }) });
 		assert.equal(response.status, 200);
 		assert.equal((await response.json() as any).card.decision, "review-only");
-		response = await fetch(new URL("/meta-review/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ question: "이 allowlist가 왜 필요한가?", scope: "evidence", evidenceIds: [findingEvidenceId] }) });
+		response = await fetch(new URL("/meta-review/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ question: "이 allowlist가 왜 필요한가?", scope: "evidence", evidenceIds: [findingEvidenceId], selectionKind: "line", selectionId: findingEvidenceId }) });
 		assert.equal(response.status, 202);
-		assert.ok(messages.some(({ message }) => message.customType === "pilee-meta-review-question"));
+		response = await fetch(new URL("/meta-review/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ question: "전체 PR의 데이터 흐름은 어떻게 이어지나?", scope: "session" }) });
+		assert.equal(response.status, 202);
+		const questionState = await fetch(new URL("/meta-review/state", handle.url)).then((result) => result.json() as Promise<any>);
+		assert.deepEqual(questionState.questions.map((question: any) => question.scope), ["evidence", "session"]);
+		assert.deepEqual(questionState.questions[0]?.selection, { kind: "line", id: findingEvidenceId, label: "코드 줄 · src/policy.ts:2" });
+		assert.equal(messages.filter(({ message }) => message.customType === "pilee-meta-review-question").length, 2);
 		response = await fetch(new URL("/meta-review/refresh", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ mode: "full" }) });
 		assert.equal(response.status, 202);
 		assert.ok(messages.some(({ message }) => message.customType === "pilee-meta-review-refresh-request"));
