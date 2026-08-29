@@ -6,6 +6,8 @@ import { after, test } from "node:test";
 import { setGlimpseOpenForTests } from "../utils/glimpse.ts";
 import type { LearningCompanionManifest } from "../learning-companion/state.ts";
 import { PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT, type ProgrammaticSubagentLaunchRequest } from "../subagent/programmatic.ts";
+import { captureUnifiedDiff } from "../pr-review/evidence.ts";
+import { createPrReviewRun, markChunkInspected, saveMetaReviewSubmission } from "../pr-review/run.ts";
 import { applyStudyHardWorkerResult, attachStudyHardLearningCompanion, buildStudyHardStudioHtml, buildStudyNoteExportHtml, checkpointStudyHardLearning, createInitialBoardState, layoutStudyGraph, loadPersistedStudyHardState, markStudyHardWorkerFailed, markStudyHardWorkerStarted, mergeBoardState, openExistingStudyHardStudio, proposeStudyHardLearningChange, recordStudyHardLearningEvent, registerStudyHardBoardTool, resolveStudyNoteBlockVisual, respondStudyHardQuestion, startStudyHardStudio, stopStudyHardStudios, updateStudyHardStudio } from "./studio.ts";
 
 const originalStateDir = process.env.STUDY_HARD_STATE_DIR;
@@ -2798,5 +2800,88 @@ test("Studio 재시작은 중단된 learner 질문을 worker dispatcher에 다�
 		assert.match(requests[0].message.content, /subagent run study-hard-worker --isolated/);
 	} finally {
 		stopStudyHardStudios();
+	}
+});
+
+test("Study Hard 코드 리뷰 surface는 Meta Review가 연결될 때만 노출된다", () => {
+	const html = buildStudyHardStudioHtml();
+	assert.match(html, /id="reviewSurfaceTab"[^>]*hidden>코드 리뷰/);
+	assert.match(html, /id="reviewSurface"/);
+	assert.match(html, /id="reviewRefreshButton"/);
+	assert.match(html, /id="reviewFullRefreshButton"/);
+	assert.match(html, /function renderMetaReview/);
+	assert.match(html, /function metaReviewExplanationHtml/);
+	assert.match(html, /function requestMetaReviewRefresh/);
+	const withoutLink = mergeBoardState(createInitialBoardState({ url: "https://example.com/no-review" }), { activeSurface: "review" });
+	assert.equal(withoutLink.activeSurface, "note");
+	const linked = mergeBoardState(withoutLink, {
+		metaReview: { runId: "run-1", runDir: "/tmp/run-1", source: "github-pr", linkedAt: 1000 },
+		activeSurface: "review",
+	});
+	assert.equal(linked.activeSurface, "review");
+	assert.equal(linked.metaReview?.runId, "run-1");
+});
+
+test("Study Hard 코드 리뷰 surface는 explanation, 결정, 질문, 명시적 refresh 요청을 같은 run에 연결한다", async () => {
+	const reviewRoot = mkdtempSync(join(tmpdir(), "study-hard-meta-review-"));
+	const diff = `diff --git a/src/policy.ts b/src/policy.ts\nindex 1111111..2222222 100644\n--- a/src/policy.ts\n+++ b/src/policy.ts\n@@ -1,3 +1,4 @@\n export function visible(status: string) {\n-  return status !== "HIDDEN";\n+  const allowed = new Set(["OPEN", "READY"]);\n+  return allowed.has(status);\n }\n`;
+	const bundle = captureUnifiedDiff(diff);
+	const run = createPrReviewRun(reviewRoot, {
+		url: "https://github.com/acme/repo/pull/42",
+		owner: "acme",
+		repo: "repo",
+		number: 42,
+		title: "Visibility contract",
+		baseSha: "base1234",
+		headSha: "head1234567890",
+		baseRefName: "main",
+	}, bundle, diff, 1000);
+	for (const chunk of bundle.chunks) markChunkInspected(run, chunk.id);
+	const changedEvidenceIds = bundle.lines.filter((line) => line.kind === "addition" || line.kind === "deletion").map((line) => line.id);
+	const findingEvidenceId = bundle.lines.find((line) => line.kind === "deletion")!.id;
+	saveMetaReviewSubmission(run, [{
+		path: "src/policy.ts",
+		role: "상태 노출 정책을 소유합니다.",
+		changeReason: "새 상태의 자동 노출을 막습니다.",
+		flow: "consumer → visible policy",
+		impact: "OPEN과 READY만 노출됩니다.",
+		hunks: [{ id: "E-01", title: "허용 상태 명시", evidenceIds: changedEvidenceIds, whatChanged: "부정 조건을 allowlist로 바꿨습니다.", why: "새 상태 자동 노출을 막습니다.", evidence: "삭제 조건과 새 Set을 확인했습니다.", responsibility: "visible이 정책을 소유합니다.", concepts: ["allowlist"], flowImpact: "consumer 결과가 제한됩니다." }],
+	}], [{
+		id: "R-01",
+		title: "호출자 상태도 확인한다",
+		strength: "question",
+		confidence: "medium",
+		evidenceIds: [findingEvidenceId],
+		reviewDraft: "기존 NEW 상태 호출자가 의도적으로 제외되는지 확인해주세요.",
+		explanation: "정책 변경은 기존 consumer에 영향을 줄 수 있습니다.",
+		meta: { summary: "consumer contract test로 보강할 수 있습니다.", scope: "current-pr" },
+	}]);
+	const messages: any[] = [];
+	const handle = await startStudyHardStudio({
+		sendMessage(message: any, options: any) { messages.push({ message, options }); },
+		exec() { throw new Error("no browser fallback in test"); },
+	} as any, { hasUI: false, cwd: "/tmp/review-pr-42", sessionManager: { getBranch: () => [] } } as any, {
+		url: "https://github.com/acme/repo/pull/42",
+		runId: "meta-review-route-test",
+		initialPatch: { activeSurface: "review", metaReview: { runId: run.runId, runDir: run.runDir, source: "github-pr", linkedAt: 1000 } },
+	});
+	try {
+		const stateResponse = await fetch(new URL("/meta-review/state", handle.url));
+		assert.equal(stateResponse.status, 200);
+		const state = await stateResponse.json() as any;
+		assert.equal(state.guides.length, 1);
+		assert.equal(state.explanationCoverage.changedLinesExplained, bundle.stats.changedRows);
+		let response = await fetch(new URL("/meta-review/decision", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ cardId: "R-01", decision: "review-only" }) });
+		assert.equal(response.status, 200);
+		assert.equal((await response.json() as any).card.decision, "review-only");
+		response = await fetch(new URL("/meta-review/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ question: "이 allowlist가 왜 필요한가?", scope: "evidence", evidenceIds: [findingEvidenceId] }) });
+		assert.equal(response.status, 202);
+		assert.ok(messages.some(({ message }) => message.customType === "pilee-meta-review-question"));
+		response = await fetch(new URL("/meta-review/refresh", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ mode: "full" }) });
+		assert.equal(response.status, 202);
+		assert.ok(messages.some(({ message }) => message.customType === "pilee-meta-review-refresh-request"));
+	} finally {
+		stopStudyHardStudios();
+		rmSync(reviewRoot, { recursive: true, force: true });
 	}
 });

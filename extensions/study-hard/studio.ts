@@ -9,6 +9,19 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@m
 import { Type } from "typebox";
 import { buildTftVisualEmbedHtml } from "../frame-studio/index.ts";
 import {
+	createPrReviewQuestion,
+	dispatchPrReviewQuestionToSession,
+} from "../pr-review/chat.ts";
+import {
+	loadPrReviewRun,
+	readJson,
+	saveHumanDecision,
+	type HumanReviewDecision,
+} from "../pr-review/run.ts";
+import { buildMetaReviewClientState, resolveMetaReviewDisplayRun } from "../pr-review/view-model.ts";
+import { checkMetaReviewFreshness } from "../pr-review/freshness.ts";
+import type { ReviewSourceBundle } from "../pr-review/evidence.ts";
+import {
 	createLearningCompanionState,
 	normalizeLearningCompanionState,
 	recordLearningCheckpoint,
@@ -49,11 +62,12 @@ export type StudySourceKind = "code" | "article" | "video" | "mixed";
 export type StudyLearningPhase = "map" | "explain" | "trace" | "practice" | "reflect";
 export type StudyCoachRole = "mentor" | "rubber-duck" | "peer" | "lead";
 export type StudyLayoutMode = "auto" | "manual";
-export type StudySurface = "map" | "flow" | "note";
+export type StudySurface = "map" | "flow" | "note" | "review";
 export type StudyFlowVariant = "before" | "after" | "current";
 export type StudyNoteSectionKind = "overview" | "node" | "flow" | "practice" | "reflection";
 export type StudyNoteBlockType = "heading" | "paragraph" | "callout" | "list" | "table" | "code" | "reference-list" | "flow-ref" | "image" | "visual" | "visual-ref" | "divider";
 
+const META_REVIEW_DECISIONS = new Set<HumanReviewDecision>(["review-only", "review-with-meta", "edit", "follow-up", "hold", "dismiss"]);
 const MAX_QUESTION_ATTACHMENTS = 4;
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const MAX_ATTACHMENT_BASENAME_BYTES = 240;
@@ -242,6 +256,13 @@ export interface StudyAttachment {
 	createdAt: number;
 }
 
+export interface StudyMetaReviewLink {
+	runId: string;
+	runDir: string;
+	source: "current-work" | "github-pr";
+	linkedAt: number;
+}
+
 export interface StudyNotionSyncState {
 	pageId?: string;
 	calendarDate?: string;
@@ -325,6 +346,7 @@ export interface StudyHardBoardState {
 	questions: StudyQuestionCard[];
 	attachments: StudyAttachment[];
 	notionSync?: StudyNotionSyncState;
+	metaReview?: StudyMetaReviewLink;
 	companion?: LearningCompanionState;
 	selectedNodeId?: string;
 	recommendedNodeId?: string;
@@ -869,6 +891,21 @@ function normalizeStringRecord(value: unknown): Record<string, string> | undefin
 	return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
 }
 
+function normalizeMetaReview(value: unknown): StudyMetaReviewLink | undefined {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+	const item = value as Record<string, unknown>;
+	if (typeof item.runId !== "string" || !item.runId.trim()) return undefined;
+	if (typeof item.runDir !== "string" || !item.runDir.trim()) return undefined;
+	const source = item.source === "current-work" ? "current-work" : item.source === "github-pr" ? "github-pr" : undefined;
+	if (!source) return undefined;
+	return {
+		runId: item.runId.trim(),
+		runDir: item.runDir.trim(),
+		source,
+		linkedAt: typeof item.linkedAt === "number" ? item.linkedAt : Date.now(),
+	};
+}
+
 function normalizeNotionSync(value: unknown): StudyNotionSyncState | undefined {
 	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
 	const item = value as Record<string, unknown>;
@@ -1025,7 +1062,10 @@ export function mergeBoardState(current: StudyHardBoardState, patch: Record<stri
 	if (["mentor", "rubber-duck", "peer", "lead"].includes(String(patch.coachRole))) next.coachRole = String(patch.coachRole) as StudyCoachRole;
 	if (["auto", "manual"].includes(String(patch.layoutMode))) next.layoutMode = String(patch.layoutMode) as StudyLayoutMode;
 	if (["memo", "detail", "hybrid"].includes(String(patch.viewMode))) next.viewMode = String(patch.viewMode) as StudyBoardViewMode;
-	if (["map", "flow", "note"].includes(String(patch.activeSurface))) next.activeSurface = String(patch.activeSurface) as StudySurface;
+	const metaReview = normalizeMetaReview(patch.metaReview);
+	if (metaReview) next.metaReview = metaReview;
+	else if (patch.metaReview === null) next.metaReview = undefined;
+	if (["map", "flow", "note", "review"].includes(String(patch.activeSurface)) && (patch.activeSurface !== "review" || !!next.metaReview)) next.activeSurface = String(patch.activeSurface) as StudySurface;
 	if (typeof patch.selectedFlowId === "string") next.selectedFlowId = patch.selectedFlowId;
 	if (patch.selectedFlowStepId === null) next.selectedFlowStepId = undefined;
 	else if (typeof patch.selectedFlowStepId === "string") next.selectedFlowStepId = patch.selectedFlowStepId;
@@ -1151,7 +1191,7 @@ function normalizePersistedState(value: unknown): StudyHardBoardState {
 		edges,
 		flows,
 		noteDocument,
-		activeSurface: ["map", "flow", "note"].includes(String(raw.activeSurface)) ? String(raw.activeSurface) as StudySurface : "note",
+		activeSurface: ["map", "flow", "note", "review"].includes(String(raw.activeSurface)) && (raw.activeSurface !== "review" || !!normalizeMetaReview(raw.metaReview)) ? String(raw.activeSurface) as StudySurface : "note",
 		selectedFlowId: typeof raw.selectedFlowId === "string" ? raw.selectedFlowId : flows[0]?.id,
 		selectedFlowStepId: typeof raw.selectedFlowStepId === "string" ? raw.selectedFlowStepId : undefined,
 		selectedNoteBlockId: typeof raw.selectedNoteBlockId === "string" ? raw.selectedNoteBlockId : undefined,
@@ -1159,6 +1199,7 @@ function normalizePersistedState(value: unknown): StudyHardBoardState {
 		questions: normalizeQuestions(raw.questions) || [],
 		attachments: normalizeAttachments(raw.attachments) || [],
 		notionSync: normalizeNotionSync(raw.notionSync),
+		metaReview: normalizeMetaReview(raw.metaReview),
 		companion: normalizeLearningCompanionState(raw.companion),
 		selectedNodeId: typeof raw.selectedNodeId === "string" ? raw.selectedNodeId : nodes[0]?.id,
 		recommendedNodeId: typeof raw.recommendedNodeId === "string" ? raw.recommendedNodeId : undefined,
@@ -2810,6 +2851,96 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 				sendJson(res, 200, materializeStudyHardClientState(handle));
 				return;
 			}
+			if (pathname === "/meta-review/state" && req.method === "GET") {
+				const link = handle.state.metaReview;
+				if (!link) {
+					sendJson(res, 404, { ok: false, error: "연결된 Meta Review가 없습니다." });
+					return;
+				}
+				const run = loadPrReviewRun(link.runDir);
+				if (run.runId !== link.runId) throw new Error("Study Hard Meta Review link가 다른 run을 가리킵니다.");
+				sendJson(res, 200, buildMetaReviewClientState(link.runDir));
+				return;
+			}
+			if (pathname === "/meta-review/freshness" && req.method === "GET") {
+				const link = handle.state.metaReview;
+				if (!link) {
+					sendJson(res, 404, { ok: false, error: "연결된 Meta Review가 없습니다." });
+					return;
+				}
+				const run = resolveMetaReviewDisplayRun(link.runDir);
+				const source = readJson<ReviewSourceBundle>(run.sourcePath);
+				const freshness = await checkMetaReviewFreshness(handle.pi, handle.cwd || process.cwd(), run, source);
+				sendJson(res, 200, freshness);
+				return;
+			}
+			if (pathname === "/meta-review/decision" && req.method === "POST") {
+				const link = handle.state.metaReview;
+				if (!link) throw new Error("연결된 Meta Review가 없습니다.");
+				const body = await readJsonBody(req);
+				const cardId = typeof body.cardId === "string" ? body.cardId : "";
+				const decision = typeof body.decision === "string" ? body.decision as HumanReviewDecision : undefined;
+				if (!cardId || !decision || !META_REVIEW_DECISIONS.has(decision)) throw new Error("invalid Meta Review decision payload");
+				const cards = saveHumanDecision(resolveMetaReviewDisplayRun(link.runDir), cardId, decision, typeof body.editedReviewDraft === "string" ? body.editedReviewDraft : undefined);
+				sendJson(res, 200, { ok: true, card: cards.find((card) => card.id === cardId) });
+				return;
+			}
+			if (pathname === "/meta-review/ask" && req.method === "POST") {
+				const link = handle.state.metaReview;
+				if (!link) throw new Error("연결된 Meta Review가 없습니다.");
+				const body = await readJsonBody(req);
+				const questionText = typeof body.question === "string" ? body.question.trim() : "";
+				if (!questionText) throw new Error("question is required");
+				const displayRun = resolveMetaReviewDisplayRun(link.runDir);
+				const snapshot = buildMetaReviewClientState(link.runDir);
+				const scope = ["session", "file", "card", "evidence"].includes(String(body.scope)) ? String(body.scope) as "session" | "file" | "card" | "evidence" : "session";
+				const cardId = typeof body.cardId === "string" ? body.cardId : undefined;
+				const fileId = typeof body.fileId === "string" ? body.fileId : undefined;
+				const evidenceIds = Array.isArray(body.evidenceIds) ? [...new Set(body.evidenceIds.filter((id): id is string => typeof id === "string" && !!id.trim()))] : [];
+				const card = cardId ? snapshot.cards.find((item) => item.id === cardId) : undefined;
+				const file = fileId ? snapshot.source.files.find((item) => item.id === fileId) : undefined;
+				const knownEvidence = new Set(snapshot.source.files.flatMap((item) => item.lines.map((line) => line.id)));
+				if (scope === "card" && !card) throw new Error("known cardId is required");
+				if (scope === "file" && !file) throw new Error("known fileId is required");
+				if (scope === "evidence" && (!evidenceIds.length || evidenceIds.some((id) => !knownEvidence.has(id)))) throw new Error("known evidenceIds are required");
+				const selectedFile = file ?? (card?.code.path ? snapshot.source.files.find((item) => item.path === card.code.path) : undefined);
+				const question = createPrReviewQuestion(displayRun.runDir, {
+					runId: displayRun.runId,
+					question: questionText,
+					scope,
+					cardId: card?.id,
+					fileId: selectedFile?.id,
+					filePath: selectedFile?.path,
+					evidenceIds: evidenceIds.length ? evidenceIds : card?.evidenceIds,
+				});
+				dispatchPrReviewQuestionToSession(handle.pi, displayRun, question);
+				sendJson(res, 202, { ok: true, question });
+				return;
+			}
+			if (pathname === "/meta-review/refresh" && req.method === "POST") {
+				const link = handle.state.metaReview;
+				if (!link) throw new Error("연결된 Meta Review가 없습니다.");
+				const body = await readJsonBody(req);
+				const mode = body.mode === "full" ? "full" : "auto";
+				const displayRun = resolveMetaReviewDisplayRun(link.runDir);
+				handle.pi.sendMessage({
+					customType: "pilee-meta-review-refresh-request",
+					display: true,
+					content: [
+						"# Meta Review refresh request",
+						"",
+						"사용자가 코드 리뷰 탭에서 명시적으로 갱신을 요청했습니다.",
+						`- runId: ${displayRun.runId}`,
+						`- runDir: ${displayRun.runDir}`,
+						`- mode: ${mode}`,
+						"",
+						`\`meta_review_run\` action=\"refresh\", runId=\"${displayRun.runId}\"를 호출하세요. auto는 안전한 선형 변경만 증분으로 처리하고, 계보가 불안전하면 전체 검토로 승격합니다.`,
+					].join("\n"),
+					details: { runId: displayRun.runId, runDir: displayRun.runDir, mode },
+				}, { deliverAs: "followUp", triggerTurn: true });
+				sendJson(res, 202, { ok: true, runId: displayRun.runId, mode });
+				return;
+			}
 			if (pathname === "/work-contract" && req.method === "GET") {
 				const workContract = resolveStudyHardWorkContract(handle);
 				if (!workContract) {
@@ -4146,7 +4277,8 @@ export function registerStudyHardBoardTool(pi: ExtensionAPI) {
 			edges: Type.Optional(Type.Array(Type.Any())),
 			flows: Type.Optional(Type.Array(Type.Any())),
 			noteDocument: Type.Optional(Type.Any()),
-			activeSurface: Type.Optional(Type.String({ description: "map | flow | note" })),
+			activeSurface: Type.Optional(Type.String({ description: "map | flow | note | review" })),
+			metaReview: Type.Optional(Type.Any({ description: "Linked Meta Review run: runId, runDir, source, linkedAt" })),
 			selectedFlowId: Type.Optional(Type.String()),
 			selectedFlowStepId: Type.Optional(Type.String()),
 			selectedNoteBlockId: Type.Optional(Type.String()),
@@ -4248,6 +4380,7 @@ function boardToolResult(action: string, handle: StudyHardHandle) {
 			flows: handle.state.flows.length,
 			noteSections: handle.state.noteDocument.sections.length,
 			activeSurface: handle.state.activeSurface,
+			metaReview: handle.state.metaReview,
 			questions: handle.state.questions.length,
 			attachments: handle.state.attachments.length,
 			selectedNodeId: handle.state.selectedNodeId,
