@@ -1,12 +1,19 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { StringEnum } from "@mariozechner/pi-ai";
-import { DEFAULT_MAX_BYTES, truncateHead, type ExtensionAPI, type ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import { DEFAULT_MAX_BYTES, truncateHead, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import { expandProfileTemplate, loadPrReviewProfiles, type PrReviewCorpusProfile } from "../utils/private-profiles.ts";
 import { runPrReviewWorktreeFromCommandContext } from "../worktree/pr-review.ts";
+import { readPrReviewWorkspaceMetadata, writePrReviewWorkspaceMetadata } from "./workspace.ts";
+import { startStudyHardStudio } from "../study-hard/studio.ts";
+import type { MetaReviewFileGuideInput } from "./guidance.ts";
+import { captureGitHubPrRun, fetchGitHubPrTarget, parseGitHubPrUrl } from "./github-source.ts";
+export { captureGitHubPrRun, fetchGitHubPrTarget, parseGitHubPrUrl } from "./github-source.ts";
+import { attachMetaReviewRevision, decideMetaReviewRefresh } from "./revision.ts";
 import {
 	answerPrReviewQuestion,
 	failPrReviewQuestion,
@@ -15,7 +22,7 @@ import {
 } from "./chat.ts";
 import { searchPrReviewCorpus } from "./corpus.ts";
 import { captureUnifiedDiff, renderInspectionChunk, type ReviewSourceBundle } from "./evidence.ts";
-import { closePrReviewStudios, openPrReviewStudio } from "./studio.ts";
+import { closePrReviewStudios } from "./studio.ts";
 import {
 	createPrReviewRun,
 	loadInspection,
@@ -23,7 +30,7 @@ import {
 	markChunkInspected,
 	readJson,
 	runLabel,
-	saveReviewCards,
+	saveMetaReviewSubmission,
 	type PrReviewRunState,
 	type PrReviewTarget,
 	type ReviewCardInput,
@@ -31,43 +38,21 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = resolve(__dirname, "../..");
-const SKILL_PATH = join(PACKAGE_ROOT, "skills", "human-pr-review", "SKILL.md");
-const SHIM_CUSTOM_TYPE = "pilee-pr-review-command";
+const SKILL_PATH = join(PACKAGE_ROOT, "skills", "meta-review", "SKILL.md");
+const SHIM_CUSTOM_TYPE = "pilee-meta-review-command";
 const DEFAULT_STATE_ROOT = join(homedir(), ".pi", "agent", "state", "pr-review");
 
-const HELP = `PR Review — human-centered read-only review harness
+const HELP = `Meta Review — guided diff walkthrough and human-centered review harness
 
 Usage:
-  /pr-review <GitHub PR URL>
-  /pr-review help
+  /meta-review <GitHub PR URL>
+  /meta-review help
 
 Output:
-  exact diff code + review draft + explanation + LLM recurrence-prevention meta perspective
+  모든 변경 파일·diff 설명 + exact evidence review draft + LLM 재발 방지 meta perspective
 
 Safety:
   read-only exact checkout · source panel 보존 · no code changes · no GitHub review posting`;
-
-export interface ParsedPrUrl {
-	url: string;
-	owner: string;
-	repo: string;
-	number: number;
-}
-
-interface GhPrMetadata {
-	number: number;
-	title: string;
-	url: string;
-	body?: string;
-	author?: { login?: string };
-	baseRefName?: string;
-	baseRefOid?: string;
-	headRefName?: string;
-	headRefOid?: string;
-	state?: string;
-	isDraft?: boolean;
-	mergeable?: string;
-}
 
 interface RegisterOptions {
 	stateRoot?: string;
@@ -76,79 +61,104 @@ interface RegisterOptions {
 	openStudio?: boolean;
 	switchToReviewWorkspace?: boolean;
 	reviewWorkspaceRunner?: typeof runPrReviewWorktreeFromCommandContext;
+	openMetaReview?: typeof openMetaReviewInStudyHard;
 }
 
-export function parseGitHubPrUrl(value: string): ParsedPrUrl {
-	let parsed: URL;
-	try { parsed = new URL(value.trim()); } catch { throw new Error("GitHub PR URL 형식이 아닙니다."); }
-	if (parsed.protocol !== "https:" || parsed.hostname.toLowerCase() !== "github.com") throw new Error("https://github.com PR URL만 지원합니다.");
-	const parts = parsed.pathname.split("/").filter(Boolean);
-	if (parts.length < 4 || parts[2] !== "pull" || !/^\d+$/.test(parts[3]!)) throw new Error("GitHub PR URL은 /owner/repo/pull/123 형식이어야 합니다.");
-	const owner = decodeURIComponent(parts[0]!);
-	const repo = decodeURIComponent(parts[1]!).replace(/\.git$/, "");
-	const number = Number(parts[3]);
-	return { url: `https://github.com/${owner}/${repo}/pull/${number}`, owner, repo, number };
-}
-
-async function requireExec(pi: ExtensionAPI, command: string, args: string[], cwd: string, timeout: number): Promise<string> {
-	const result = await pi.exec(command, args, { cwd, timeout });
-	if (result.code !== 0) throw new Error(`${command} ${args.join(" ")} failed\n${(result.stderr || result.stdout).trim()}`);
+async function gitText(pi: ExtensionAPI, cwd: string, args: string[], allowDiffExit = false): Promise<string> {
+	const result = await pi.exec("git", args, { cwd, timeout: 120_000 });
+	if (result.code !== 0 && !(allowDiffExit && result.code === 1)) throw new Error(`git ${args.join(" ")} failed\n${(result.stderr || result.stdout).trim()}`);
 	return result.stdout;
 }
 
-export async function captureGitHubPrRun(
+function remoteRepository(remote: string, fallback: string): { owner: string; repo: string; url: string } {
+	const match = remote.trim().match(/github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?$/);
+	if (!match) return { owner: "local", repo: fallback, url: `https://local.invalid/${encodeURIComponent(fallback)}` };
+	return { owner: match[1]!, repo: match[2]!, url: `https://github.com/${match[1]}/${match[2]}` };
+}
+
+async function currentWorkBase(pi: ExtensionAPI, root: string, branch: string): Promise<{ baseSha?: string; baseRefName?: string }> {
+	const candidates: string[] = [];
+	try {
+		const worktree = JSON.parse(readFileSync(join(root, ".pi", "worktree-meta.json"), "utf8")) as Record<string, unknown>;
+		if (worktree.branch === branch && typeof worktree.baseBranch === "string") candidates.push(worktree.baseBranch);
+	} catch {}
+	if (branch.startsWith("hotfix/") || branch.startsWith("hotfeature/")) candidates.push("production");
+	try {
+		const result = await pi.exec("gh", ["pr", "view", branch, "--json", "baseRefName"], { cwd: root, timeout: 30_000 });
+		if (result.code === 0) {
+			const parsed = JSON.parse(result.stdout) as { baseRefName?: string };
+			if (parsed.baseRefName) candidates.unshift(parsed.baseRefName);
+		}
+	} catch {}
+	try {
+		const originHead = await gitText(pi, root, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]);
+		if (originHead.trim()) candidates.push(originHead.trim().replace(/^origin\//, ""));
+	} catch {}
+	candidates.push("main", "master", "development", "develop", "production");
+	for (const candidate of [...new Set(candidates.filter((value) => value && value !== branch))]) {
+		for (const ref of [`origin/${candidate}`, candidate]) {
+			const result = await pi.exec("git", ["merge-base", "HEAD", ref], { cwd: root, timeout: 30_000 });
+			if (result.code === 0 && result.stdout.trim()) return { baseSha: result.stdout.trim(), baseRefName: candidate };
+		}
+	}
+	return {};
+}
+
+export async function captureCurrentWorkRun(
 	pi: ExtensionAPI,
 	cwd: string,
-	input: ParsedPrUrl,
 	stateRoot: string,
 	now = Date.now(),
 ): Promise<PrReviewRunState> {
-	const repoRef = `${input.owner}/${input.repo}`;
-	const fields = "number,title,url,body,author,baseRefName,baseRefOid,headRefName,headRefOid,state,isDraft,mergeable";
-	const metadataText = await requireExec(pi, "gh", ["pr", "view", String(input.number), "--repo", repoRef, "--json", fields], cwd, 30_000);
-	const diff = await requireExec(pi, "gh", ["pr", "diff", String(input.number), "--repo", repoRef, "--color", "never"], cwd, 120_000);
-	let metadata: GhPrMetadata;
-	try { metadata = JSON.parse(metadataText) as GhPrMetadata; } catch { throw new Error("gh pr view 응답을 JSON으로 읽지 못했습니다."); }
+	const root = (await gitText(pi, cwd, ["rev-parse", "--show-toplevel"])).trim();
+	const branch = (await gitText(pi, root, ["branch", "--show-current"])).trim() || "HEAD";
+	const headSha = (await gitText(pi, root, ["rev-parse", "HEAD"])).trim();
+	const base = await currentWorkBase(pi, root, branch);
+	let diff = await gitText(pi, root, ["diff", "--no-color", "--find-renames", base.baseSha ?? "HEAD"]);
+	const untracked = (await gitText(pi, root, ["ls-files", "--others", "--exclude-standard", "-z"])).split("\0").filter(Boolean);
+	for (const path of untracked) {
+		const addition = await gitText(pi, root, ["diff", "--no-index", "--no-color", "--", "/dev/null", path], true);
+		diff += `${diff && !diff.endsWith("\n") ? "\n" : ""}${addition}`;
+	}
+	if (!diff.trim()) throw new Error("현재 worktree에 Meta Review로 설명할 변경이 없습니다.");
+	let remote = "";
+	try { remote = await gitText(pi, root, ["remote", "get-url", "origin"]); } catch {}
+	const repository = remoteRepository(remote, basename(root));
+	const rootHash = createHash("sha256").update(root).digest("hex").slice(0, 12);
 	const target: PrReviewTarget = {
-		url: metadata.url || input.url,
-		owner: input.owner,
-		repo: input.repo,
-		number: metadata.number || input.number,
-		title: metadata.title,
-		author: metadata.author?.login,
-		body: metadata.body,
-		baseSha: metadata.baseRefOid,
-		headSha: metadata.headRefOid,
-		baseRefName: metadata.baseRefName,
-		headRefName: metadata.headRefName,
+		kind: "current-work",
+		url: repository.url,
+		owner: repository.owner,
+		repo: repository.repo,
+		number: 0,
+		title: `${repository.repo} · ${branch} 현재 변경`,
+		baseSha: base.baseSha,
+		headSha,
+		baseRefName: base.baseRefName,
+		headRefName: branch,
+		root,
+		rootHash,
+		branch,
 	};
-	const bundle = captureUnifiedDiff(diff, {
-		kind: "github-pr",
-		repository: repoRef,
-		state: metadata.state,
-		isDraft: metadata.isDraft,
-		mergeable: metadata.mergeable,
-		baseSha: metadata.baseRefOid,
-		headSha: metadata.headRefOid,
-	});
+	const bundle = captureUnifiedDiff(diff, { kind: "current-work", root, branch, baseSha: base.baseSha, headSha, rootHash });
 	return createPrReviewRun(stateRoot, target, bundle, diff, now);
 }
 
 function inlinedSkill(): string {
 	const content = readFileSync(SKILL_PATH, "utf8").trimEnd();
 	return [
-		"----- BEGIN INLINED PILEE SKILL: human-pr-review -----",
+		"----- BEGIN INLINED PILEE SKILL: meta-review -----",
 		`Location: ${SKILL_PATH}`,
 		`References are relative to: ${dirname(SKILL_PATH)}`,
 		"",
 		content,
-		"----- END INLINED PILEE SKILL: human-pr-review -----",
+		"----- END INLINED PILEE SKILL: meta-review -----",
 	].join("\n");
 }
 
 export function buildPrReviewPrompt(state: PrReviewRunState): string {
 	return [
-		"# pilee /pr-review command",
+		"# pilee /meta-review command",
 		"",
 		`Review target: ${state.target.url}`,
 		`Run id: ${state.runId}`,
@@ -156,11 +166,12 @@ export function buildPrReviewPrompt(state: PrReviewRunState): string {
 		`Head SHA: ${state.target.headSha ?? "unknown"}`,
 		"",
 		"Execution rules:",
-		"- Follow the inlined human-pr-review skill as the authoritative workflow.",
-		"- Start with pr_review_run action=status, then inspect every pending chunk.",
-		"- Do not use historical review corpus before producing blind findings. After blind findings exist, use pr_review_run action=search per candidate when a corpus is configured.",
+		"- Follow the inlined meta-review skill as the authoritative workflow.",
+		"- Start with meta_review_run action=status, then inspect every pending chunk.",
+		"- Explain every changed file and every addition/deletion evidence before final submission.",
+		"- Do not use historical review corpus before producing blind findings. After blind findings exist, use meta_review_run action=search per candidate when a corpus is configured.",
 		"- Do not modify the target repository or post GitHub comments.",
-		"- Submit final cards through pr_review_run action=submit. Empty cards are valid.",
+		"- Submit complete guides and final cards through meta_review_run action=submit. Empty finding cards are valid, empty guides are not.",
 		"- After submit, read the generated review.md and report its path and coverage to the user.",
 		"",
 		"## Target PR body",
@@ -169,6 +180,23 @@ export function buildPrReviewPrompt(state: PrReviewRunState): string {
 		"## Inlined skill",
 		inlinedSkill(),
 	].join("\n");
+}
+
+async function openMetaReviewInStudyHard(pi: ExtensionAPI, ctx: ExtensionCommandContext | ExtensionContext, state: PrReviewRunState, source: ReviewSourceBundle) {
+	const studyRunId = `meta-review-${state.target.repo}-${state.target.number || state.target.rootHash || "current"}-${(state.target.headSha || source.sourceSha256).slice(0, 8)}`.replace(/[^a-zA-Z0-9가-힣._-]+/g, "-").slice(0, 96);
+	const studio = await startStudyHardStudio(pi, ctx, {
+		url: state.target.url,
+		title: state.target.kind === "current-work" ? `Meta Review · ${state.target.title}` : `Meta Review · #${state.target.number} ${state.target.title}`,
+		runId: studyRunId,
+		initialPatch: {
+			sourceTitle: state.target.title,
+			sourceKind: "code",
+			learningPhase: "trace",
+			activeSurface: "review",
+			metaReview: { runId: state.runId, runDir: state.runDir, source: state.target.kind === "current-work" ? "current-work" : "github-pr", linkedAt: Date.now() },
+		},
+	});
+	return { studio, studyRunId };
 }
 
 function assertRunId(runId: string): void {
@@ -192,7 +220,7 @@ function statusText(state: PrReviewRunState, source: ReviewSourceBundle, corpora
 	const inspection = loadInspection(state);
 	const pending = source.chunks.filter((chunk) => !inspection.inspectedChunkIds.includes(chunk.id));
 	return [
-		`PR review run: ${runLabel(state)}`,
+		`Meta Review run: ${runLabel(state)}`,
 		`target: ${state.target.url}`,
 		`head: ${state.target.headSha ?? "unknown"}`,
 		`source: ${source.stats.files} files, +${source.stats.additions}/-${source.stats.deletions}, ${source.stats.chunks} chunks`,
@@ -210,26 +238,28 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 	let latestRunId: string | undefined;
 
 	pi.registerTool({
-		name: "pr_review_run",
-		label: "PR Review Run",
-		description: "Inspect an immutable PR diff run, search configured human-review precedents after blind findings, submit evidence-anchored review cards, and reopen Review Studio. Actions: status, inspect, search, submit, open.",
-		promptSnippet: "Inspect /pr-review source chunks and submit exact-evidence review cards",
+		name: "meta_review_run",
+		label: "Meta Review Run",
+		description: "Inspect an immutable diff run, submit complete evidence-anchored explanations and review cards, search human-review precedents after blind findings, refresh revisions, and open the Code Review surface. Actions: status, inspect, search, submit, open.",
+		promptSnippet: "Inspect /meta-review source chunks and submit complete guided diff explanations plus review findings",
 		promptGuidelines: [
-			"Use pr_review_run only after /pr-review starts a run; inspect every chunk before submit and never invent code outside D evidence anchors.",
+			"Use meta_review_run only after /meta-review starts a run; inspect every chunk, explain every changed addition/deletion evidence, and never invent code outside D evidence anchors.",
 		],
 		parameters: Type.Object({
-			action: StringEnum(["status", "inspect", "search", "submit", "open"] as const),
+			action: StringEnum(["status", "inspect", "search", "submit", "open", "refresh"] as const),
 			runId: Type.Optional(Type.String()),
 			chunkId: Type.Optional(Type.String()),
 			query: Type.Optional(Type.String()),
 			paths: Type.Optional(Type.Array(Type.String())),
 			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 10 })),
+			mode: Type.Optional(StringEnum(["auto", "full"] as const)),
+			guides: Type.Optional(Type.Array(Type.Any())),
 			cards: Type.Optional(Type.Array(Type.Any())),
 		}),
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
-			if (signal?.aborted) throw new Error("PR review run cancelled");
+			if (signal?.aborted) throw new Error("Meta Review run cancelled");
 			const runId = params.runId ?? latestRunId;
-			if (!runId) throw new Error("active PR review run이 없습니다. /pr-review <URL>로 시작하세요.");
+			if (!runId) throw new Error("active Meta Review run이 없습니다. /meta-review [PR URL]로 시작하세요.");
 			const state = runFromId(stateRoot, runId);
 			const source = readJson<ReviewSourceBundle>(state.sourcePath);
 			const repository = `${state.target.owner}/${state.target.repo}`;
@@ -240,8 +270,38 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 				return { content: [{ type: "text", text: statusText(state, source, corpora) }], details: { state, stats: source.stats, inspection: loadInspection(state), corpora } };
 			}
 			if (params.action === "open") {
-				const studio = await openPrReviewStudio(pi, ctx, state);
-				return { content: [{ type: "text", text: `PR Review Studio ${studio.mode}: ${studio.url}` }], details: { runId, ...studio } };
+				const opened = await (options.openMetaReview ?? openMetaReviewInStudyHard)(pi, ctx, state, source);
+				return { content: [{ type: "text", text: `Study Hard 코드 리뷰 탭 opened: ${opened.studio.url}` }], details: { runId, studyRunId: opened.studyRunId, url: opened.studio.url, surface: "review" } };
+			}
+			if (params.action === "refresh") {
+				const isCurrentWork = state.target.kind === "current-work";
+				const parsed = isCurrentWork ? undefined : parseGitHubPrUrl(state.target.url);
+				onUpdate?.({ content: [{ type: "text", text: isCurrentWork ? "현재 worktree diff를 다시 캡처하는 중..." : `PR #${parsed!.number} 최신 head와 diff를 확인하는 중...` }] });
+				const captured = isCurrentWork
+					? await captureCurrentWorkRun(pi, state.target.root || ctx.cwd || process.cwd(), stateRoot, now())
+					: await captureGitHubPrRun(pi, ctx.cwd ?? process.cwd(), parsed!, stateRoot, now());
+				const capturedSource = readJson<ReviewSourceBundle>(captured.sourcePath);
+				if (captured.target.headSha === state.target.headSha && capturedSource.sourceSha256 === source.sourceSha256) {
+					rmSync(captured.runDir, { recursive: true, force: true });
+					return { content: [{ type: "text", text: "Meta Review가 이미 최신 head와 diff를 보고 있습니다." }], details: { runId: state.runId, mode: "none", reason: "same-head-and-source" }, terminate: true };
+				}
+				let previousIsAncestor = isCurrentWork;
+				if (!isCurrentWork && state.target.headSha && captured.target.headSha) {
+					await pi.exec("git", ["fetch", "origin", `+refs/pull/${parsed!.number}/head:refs/remotes/origin/pilee-review/pr-${parsed!.number}`], { cwd: ctx.cwd, timeout: 120_000 });
+					const ancestry = await pi.exec("git", ["merge-base", "--is-ancestor", state.target.headSha, captured.target.headSha], { cwd: ctx.cwd, timeout: 30_000 });
+					previousIsAncestor = ancestry.code === 0;
+				}
+				const decision = decideMetaReviewRefresh(state.target, captured.target, { forceFull: params.mode === "full", previousIsAncestor, sourceChanged: capturedSource.sourceSha256 !== source.sourceSha256 });
+				if (decision.mode === "none") {
+					rmSync(captured.runDir, { recursive: true, force: true });
+					return { content: [{ type: "text", text: decision.reason }], details: { runId: state.runId, ...decision }, terminate: true };
+				}
+				const linked = attachMetaReviewRevision(captured, capturedSource.sourceSha256, decision.mode, state, now());
+				latestRunId = linked.run.runId;
+				return {
+					content: [{ type: "text", text: `Meta Review revision ${linked.revision.number} captured · ${decision.mode}\n${decision.reason}\nrunId: ${linked.run.runId}\n모든 pending chunk를 inspect한 뒤 guides와 cards를 submit하세요.` }],
+					details: { previousRunId: state.runId, runId: linked.run.runId, runDir: linked.run.runDir, series: linked.series, revision: linked.revision, mode: decision.mode, reason: decision.reason },
+				};
 			}
 			if (params.action === "inspect") {
 				if (!params.chunkId) throw new Error("inspect에는 chunkId가 필요합니다.");
@@ -269,23 +329,27 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 
 			const pending = source.chunks.filter((chunk) => !inspection.inspectedChunkIds.includes(chunk.id));
 			if (pending.length) throw new Error(`submit 전에 모든 chunk를 inspect해야 합니다: ${pending.map((chunk) => chunk.id).join(", ")}`);
-			onUpdate?.({ content: [{ type: "text", text: "ReviewCard 근거를 검증하고 artifact를 만드는 중..." }] });
-			const cards = saveReviewCards(state, (params.cards ?? []) as ReviewCardInput[]);
+			onUpdate?.({ content: [{ type: "text", text: "전체 diff 설명 coverage와 ReviewCard 근거를 검증하는 중..." }] });
+			const submission = saveMetaReviewSubmission(
+				state,
+				(params.guides ?? []) as MetaReviewFileGuideInput[],
+				(params.cards ?? []) as ReviewCardInput[],
+			);
 			return {
-				content: [{ type: "text", text: `PR review cards saved: ${cards.length}\n${state.reportPath}` }],
-				details: { runId, cardCount: cards.length, reportPath: state.reportPath, cardsPath: state.cardsPath, coverage: { inspectedChunks: inspection.inspectedChunkIds.length, totalChunks: source.chunks.length } },
+				content: [{ type: "text", text: `Meta Review saved: ${submission.guides.length} files explained, ${submission.cards.length} findings\n${state.reportPath}` }],
+				details: { runId, guideCount: submission.guides.length, cardCount: submission.cards.length, reportPath: state.reportPath, guidesPath: state.guidesPath, cardsPath: state.cardsPath, coverage: { inspectedChunks: inspection.inspectedChunkIds.length, totalChunks: source.chunks.length } },
 				terminate: true,
 			};
 		},
 	});
 
 	pi.registerTool({
-		name: "pr_review_chat",
-		label: "PR Review Chat",
-		description: "Complete or inspect a contextual question submitted from the Guided PR Review Studio. Answer only after inspecting the checked-out PR workspace.",
-		promptSnippet: "Answer Guided PR Review questions from the checked-out PR workspace",
+		name: "meta_review_chat",
+		label: "Meta Review Chat",
+		description: "Complete or inspect a contextual question submitted from the Code Review surface. Answer only after inspecting the exact checked-out source workspace.",
+		promptSnippet: "Answer Code Review surface questions from the exact source workspace",
 		promptGuidelines: [
-			"Use pr_review_chat action=answer as the final step for a Glimpse PR review question, with source evidence and uncertainty separated. Never mutate the reviewed repository unless the user separately requests a fix.",
+			"Use meta_review_chat action=answer as the final step for a Code Review surface question, with source evidence and uncertainty separated. Never mutate the reviewed repository unless the user separately requests a fix.",
 		],
 		parameters: Type.Object({
 			action: StringEnum(["status", "answer", "fail"] as const),
@@ -311,7 +375,7 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 			if (!params.questionId) throw new Error(`${params.action}에는 questionId가 필요합니다.`);
 			if (params.action === "fail") {
 				const question = failPrReviewQuestion(state.runDir, params.questionId, params.error ?? "질문 조사에 실패했습니다.");
-				return { content: [{ type: "text", text: `PR review question failed: ${question.id}` }], details: { runId: state.runId, question }, terminate: true };
+				return { content: [{ type: "text", text: `Meta Review question failed: ${question.id}` }], details: { runId: state.runId, question }, terminate: true };
 			}
 			if (!params.answer?.trim()) throw new Error("answer에는 실제 조사 결과가 필요합니다.");
 			const question = answerPrReviewQuestion(
@@ -327,31 +391,63 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 
 	pi.on("session_shutdown", () => closePrReviewStudios());
 
-	pi.registerCommand("pr-review", {
-		description: "GitHub PR을 코드·리뷰 초안·설명·LLM 재발 방지 메타 관점 카드로 읽기 전용 검토",
+	pi.registerCommand("meta-review", {
+		description: "현재 작업 또는 GitHub PR을 거의 모든 diff 설명·리뷰 초안·메타 관점으로 읽기 전용 검토",
 		handler: async (args: string, ctx: ExtensionCommandContext) => {
 			const trimmed = args.trim();
-			if (!trimmed || trimmed === "help" || trimmed === "--help" || trimmed === "-h") {
-				ctx.ui.notify(HELP, trimmed ? "info" : "warning");
+			if (trimmed === "help" || trimmed === "--help" || trimmed === "-h") {
+				ctx.ui.notify(HELP, "info");
 				return;
 			}
 			try {
+				if (!trimmed) {
+					ctx.ui.setStatus("meta-review", "현재 review source 캡처 중");
+					const workspace = readPrReviewWorkspaceMetadata(ctx.cwd);
+					let state: PrReviewRunState;
+					if (workspace?.runId && workspace.runDir) {
+						state = loadPrReviewRun(workspace.runDir);
+					} else if (workspace?.prUrl) {
+						const captured = await captureGitHubPrRun(pi, ctx.cwd, parseGitHubPrUrl(workspace.prUrl), stateRoot, now());
+						const capturedSource = readJson<ReviewSourceBundle>(captured.sourcePath);
+						state = attachMetaReviewRevision(captured, capturedSource.sourceSha256, "initial", undefined, now()).run;
+						writePrReviewWorkspaceMetadata(ctx.cwd, { ...workspace, runId: state.runId, runDir: state.runDir, activationIntent: "meta-review", diffAutoOpenPending: false });
+					} else {
+						const captured = await captureCurrentWorkRun(pi, ctx.cwd, stateRoot, now());
+						const capturedSource = readJson<ReviewSourceBundle>(captured.sourcePath);
+						state = attachMetaReviewRevision(captured, capturedSource.sourceSha256, "initial", undefined, now()).run;
+					}
+					if (!state.seriesId) {
+						const currentSource = readJson<ReviewSourceBundle>(state.sourcePath);
+						state = attachMetaReviewRevision(state, currentSource.sourceSha256, "initial", undefined, now()).run;
+					}
+					latestRunId = state.runId;
+					const source = readJson<ReviewSourceBundle>(state.sourcePath);
+					const opened = await (options.openMetaReview ?? openMetaReviewInStudyHard)(pi, ctx, state, source);
+					ctx.ui.setStatus("meta-review", undefined);
+					ctx.ui.notify(`🔎 Meta Review · ${state.target.title} · 코드 리뷰 탭`, "info");
+					if (state.status !== "ready") {
+						pi.sendMessage({ customType: SHIM_CUSTOM_TYPE, content: buildPrReviewPrompt(state), display: false, details: { command: "meta-review", runId: state.runId, runDir: state.runDir, studyRunId: opened.studyRunId, target: state.target, skillPath: SKILL_PATH } }, { deliverAs: "followUp", triggerTurn: true });
+					}
+					return;
+				}
 				const parsed = parseGitHubPrUrl(trimmed.split(/\s+/)[0]!);
-				ctx.ui.setStatus("pr-review", `PR #${parsed.number} 캡처 중`);
-				const state = await captureGitHubPrRun(pi, ctx.cwd ?? process.cwd(), parsed, stateRoot, now());
+				ctx.ui.setStatus("meta-review", `PR #${parsed.number} 캡처 중`);
+				const captured = await captureGitHubPrRun(pi, ctx.cwd ?? process.cwd(), parsed, stateRoot, now());
+				const capturedSource = readJson<ReviewSourceBundle>(captured.sourcePath);
+				const state = attachMetaReviewRevision(captured, capturedSource.sourceSha256, "initial", undefined, now()).run;
 				latestRunId = state.runId;
 				if (options.switchToReviewWorkspace !== false && ctx.hasUI) {
 					if (!state.target.baseSha || !state.target.headSha || !state.target.baseRefName) throw new Error("PR worktree에는 base/head SHA와 base branch가 필요합니다.");
-					ctx.ui.setStatus("pr-review", "PR review worktree 준비 중");
+					ctx.ui.setStatus("meta-review", "Meta Review worktree 준비 중");
 					const workspacePrompt = [
-						"# PR review workspace ready",
+						"# Meta Review workspace ready",
 						"",
 						"이 세션은 해당 PR head에 checkout된 read-only review workspace다.",
-						"1. `.pi/pr-review.json`과 `git rev-parse HEAD`를 대조한다.",
-						`2. \`pr_review_run\` action=\"open\", runId=\"${state.runId}\"로 Guided Review Studio를 연다.`,
-						"3. run이 ready면 기존 ReviewCard를 유지하고 사용자 질문을 기다린다. 아직 reviewing이면 아래 human-pr-review workflow를 끝낸다.",
+						"1. `.pi/review-context.json` 또는 legacy `.pi/pr-review.json`과 `git rev-parse HEAD`를 대조한다.",
+						`2. \`meta_review_run\` action=\"open\", runId=\"${state.runId}\"로 Study Hard의 코드 리뷰 surface를 연다.`,
+						"3. run이 ready면 기존 설명·ReviewCard를 유지하고 사용자 질문을 기다린다. 아직 reviewing이면 meta-review workflow를 끝낸다.",
 						"4. 사용자가 Glimpse에서 질문하면 이 worktree의 실제 source·callsite·test를 조사해 답한다. 사용자 요청 없이는 repository를 수정하지 않는다.",
-						"5. `/diff`는 `.pi/pr-review.json`의 base/head를 사용해야 한다.",
+						"5. `/diff`는 review context의 base/head를 사용해야 한다.",
 						"",
 						buildPrReviewPrompt(state),
 					].join("\n");
@@ -368,33 +464,36 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 						headRefName: state.target.headRefName,
 						headSha: state.target.headSha,
 						afterSwitchFollowUp: {
-							customType: "pilee-pr-review-workspace-ready",
+							customType: "pilee-meta-review-workspace-ready",
 							content: workspacePrompt,
 							display: true,
 							details: { runId: state.runId, runDir: state.runDir, target: state.target },
 						},
 					});
-					ctx.ui.setStatus("pr-review", undefined);
+					ctx.ui.setStatus("meta-review", undefined);
 					if (activated.status !== "activated") throw new Error(activated.reason);
 					return;
 				}
 
 				let studioMode = "disabled";
-				if (options.openStudio !== false && ctx.hasUI) studioMode = (await openPrReviewStudio(pi, ctx, state)).mode;
-				ctx.ui.setStatus("pr-review", undefined);
-				ctx.ui.notify(`🔎 PR Review 시작 · ${state.target.owner}/${state.target.repo}#${state.target.number} · Studio ${studioMode}`, "info");
+				if (options.openStudio !== false && ctx.hasUI) {
+					await (options.openMetaReview ?? openMetaReviewInStudyHard)(pi, ctx, state, readJson<ReviewSourceBundle>(state.sourcePath));
+					studioMode = "study-hard";
+				}
+				ctx.ui.setStatus("meta-review", undefined);
+				ctx.ui.notify(`🔎 Meta Review 시작 · ${state.target.owner}/${state.target.repo}#${state.target.number} · 코드 리뷰 ${studioMode}`, "info");
 				pi.sendMessage(
 					{
 						customType: SHIM_CUSTOM_TYPE,
 						content: buildPrReviewPrompt(state),
 						display: false,
-						details: { command: "pr-review", runId: state.runId, runDir: state.runDir, target: state.target, skillPath: SKILL_PATH },
+						details: { command: "meta-review", runId: state.runId, runDir: state.runDir, target: state.target, skillPath: SKILL_PATH },
 					},
 					{ deliverAs: "followUp", triggerTurn: true },
 				);
 			} catch (error) {
-				ctx.ui.setStatus("pr-review", undefined);
-				ctx.ui.notify(`pilee /pr-review failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+				ctx.ui.setStatus("meta-review", undefined);
+				ctx.ui.notify(`pilee /meta-review failed: ${error instanceof Error ? error.message : String(error)}`, "error");
 			}
 		},
 	});
