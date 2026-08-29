@@ -11,6 +11,7 @@ import { buildTftVisualEmbedHtml } from "../frame-studio/index.ts";
 import {
 	createPrReviewQuestion,
 	dispatchPrReviewQuestionToSession,
+	resolvePrReviewQuestionContext,
 } from "../pr-review/chat.ts";
 import {
 	loadPrReviewRun,
@@ -2893,25 +2894,11 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 				if (!questionText) throw new Error("question is required");
 				const displayRun = resolveMetaReviewDisplayRun(link.runDir);
 				const snapshot = buildMetaReviewClientState(link.runDir);
-				const scope = ["session", "file", "card", "evidence"].includes(String(body.scope)) ? String(body.scope) as "session" | "file" | "card" | "evidence" : "session";
-				const cardId = typeof body.cardId === "string" ? body.cardId : undefined;
-				const fileId = typeof body.fileId === "string" ? body.fileId : undefined;
-				const evidenceIds = Array.isArray(body.evidenceIds) ? [...new Set(body.evidenceIds.filter((id): id is string => typeof id === "string" && !!id.trim()))] : [];
-				const card = cardId ? snapshot.cards.find((item) => item.id === cardId) : undefined;
-				const file = fileId ? snapshot.source.files.find((item) => item.id === fileId) : undefined;
-				const knownEvidence = new Set(snapshot.source.files.flatMap((item) => item.lines.map((line) => line.id)));
-				if (scope === "card" && !card) throw new Error("known cardId is required");
-				if (scope === "file" && !file) throw new Error("known fileId is required");
-				if (scope === "evidence" && (!evidenceIds.length || evidenceIds.some((id) => !knownEvidence.has(id)))) throw new Error("known evidenceIds are required");
-				const selectedFile = file ?? (card?.code.path ? snapshot.source.files.find((item) => item.path === card.code.path) : undefined);
+				const context = resolvePrReviewQuestionContext(snapshot, body);
 				const question = createPrReviewQuestion(displayRun.runDir, {
 					runId: displayRun.runId,
 					question: questionText,
-					scope,
-					cardId: card?.id,
-					fileId: selectedFile?.id,
-					filePath: selectedFile?.path,
-					evidenceIds: evidenceIds.length ? evidenceIds : card?.evidenceIds,
+					...context,
 				});
 				dispatchPrReviewQuestionToSession(handle.pi, displayRun, question);
 				sendJson(res, 202, { ok: true, question });

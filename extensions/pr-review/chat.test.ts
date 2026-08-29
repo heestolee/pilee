@@ -9,6 +9,7 @@ import {
 	dispatchPrReviewQuestionToSession,
 	loadPrReviewQuestions,
 	prReviewQuestionsPath,
+	resolvePrReviewQuestionContext,
 } from "./chat.ts";
 import type { PrReviewRunState } from "./run.ts";
 
@@ -47,9 +48,11 @@ test("PR review questions are append-only snapshots with preserved context", () 
 			fileId: "F003",
 			filePath: "migration.js",
 			evidenceIds: ["D000427", "D000427"],
+			selection: { kind: "card", id: "R-01", label: "리뷰 포인트 · R-01" },
 		}, 1000);
 		assert.equal(question.id, "Q001");
 		assert.deepEqual(question.evidenceIds, ["D000427"]);
+		assert.deepEqual(question.selection, { kind: "card", id: "R-01", label: "리뷰 포인트 · R-01" });
 		const answered = answerPrReviewQuestion(runDir, question.id, "예약 당시 값을 보존하는 스냅샷입니다.", [{ label: "schema", path: "reserved-stays.entity.ts", line: 30 }], "삭제 정책은 작성자 확인이 필요합니다.", 2000);
 		assert.equal(answered.status, "answered");
 		assert.equal(loadPrReviewQuestions(runDir).length, 1);
@@ -70,6 +73,7 @@ test("Glimpse question dispatches into the same Pi session with review-worktree 
 			cardId: "R-01",
 			filePath: "migration.js",
 			evidenceIds: ["D000427"],
+			selection: { kind: "line", id: "D000427", label: "코드 줄 · migration.js:27" },
 		}, 1000);
 		const messages: any[] = [];
 		const pi = { sendMessage(message: any, options: any) { messages.push({ message, options }); } } as any;
@@ -82,8 +86,50 @@ test("Glimpse question dispatches into the same Pi session with review-worktree 
 		assert.match(messages[0].message.content, /실제 source, callsite, schema, test/);
 		assert.match(messages[0].message.content, /meta_review_chat.*answer/);
 		assert.match(messages[0].message.content, /D000427/);
+		assert.match(messages[0].message.content, /selectedBlock: line:D000427/);
 		assert.equal(loadPrReviewQuestions(runDir)[0]?.status, "answering");
 	} finally {
 		rmSync(runDir, { recursive: true, force: true });
 	}
+});
+
+test("question context derives and validates selected review block provenance", () => {
+	const snapshot = {
+		source: { files: [{ id: "F001", path: "src/policy.ts", lines: [{ id: "D001", oldLine: 1 }, { id: "D002", newLine: 1 }] }] },
+		guides: [{ path: "src/policy.ts", hunks: [{ id: "E-01", title: "허용 상태 명시", evidenceIds: ["D001", "D002"] }] }],
+		cards: [{ id: "R-01", title: "호출자 상태 확인", evidenceIds: ["D001"], code: { path: "src/policy.ts" } }],
+	};
+	assert.deepEqual(resolvePrReviewQuestionContext(snapshot, {
+		scope: "evidence",
+		fileId: "F001",
+		evidenceIds: ["D001", "D002"],
+		selectionKind: "hunk",
+		selectionId: "E-01",
+	}), {
+		scope: "evidence",
+		cardId: undefined,
+		fileId: "F001",
+		filePath: "src/policy.ts",
+		evidenceIds: ["D001", "D002"],
+		selection: { kind: "hunk", id: "E-01", label: "설명 블록 · 허용 상태 명시" },
+	});
+	assert.throws(() => resolvePrReviewQuestionContext(snapshot, {
+		scope: "evidence",
+		fileId: "F001",
+		evidenceIds: ["D001"],
+		selectionKind: "hunk",
+		selectionId: "E-01",
+	}), /hunk selection does not match/);
+	assert.throws(() => resolvePrReviewQuestionContext(snapshot, {
+		scope: "card",
+		cardId: "R-01",
+		fileId: "F001",
+		evidenceIds: ["D002"],
+		selectionKind: "card",
+		selectionId: "R-01",
+	}), /card context does not match/);
+	assert.throws(() => resolvePrReviewQuestionContext(snapshot, {
+		scope: "session",
+		evidenceIds: ["D001"],
+	}), /session question cannot include selected context/);
 });
