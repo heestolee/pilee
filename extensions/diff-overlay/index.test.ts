@@ -21,6 +21,7 @@ import {
 	parseNumstatEntriesZ,
 	parseNumstatTotals,
 	renderCommitFiles,
+	registerDiffOverlay,
 } from "./index.ts";
 
 type ExecResult = { code: number; stdout?: string; stderr?: string };
@@ -74,13 +75,57 @@ async function createPrReviewRoot(overrides: Record<string, unknown> = {}): Prom
 }
 
 test("parseDiffArgs supports PR auto mode and explicit base override", () => {
-	assert.deepEqual(parseDiffArgs(""), { help: false, baseBranch: null });
-	assert.deepEqual(parseDiffArgs("--base feature/foundation"), { help: false, baseBranch: "feature/foundation" });
-	assert.deepEqual(parseDiffArgs("--base=origin/production"), { help: false, baseBranch: "origin/production" });
-	assert.deepEqual(parseDiffArgs("--help"), { help: true, baseBranch: null });
+	assert.deepEqual(parseDiffArgs(""), { help: false, baseBranch: null, prUrl: null });
+	assert.deepEqual(parseDiffArgs("--base feature/foundation"), { help: false, baseBranch: "feature/foundation", prUrl: null });
+	assert.deepEqual(parseDiffArgs("--base=origin/production"), { help: false, baseBranch: "origin/production", prUrl: null });
+	assert.deepEqual(parseDiffArgs("--help"), { help: true, baseBranch: null, prUrl: null });
+	assert.deepEqual(parseDiffArgs("https://github.com/acme/repo/pull/42/changes"), { help: false, baseBranch: null, prUrl: "https://github.com/acme/repo/pull/42/changes" });
 	assert.deepEqual(parseDiffArgs("--base"), { error: "--base 뒤에 유효한 branch를 입력하세요." });
 	assert.deepEqual(parseDiffArgs("--base --help"), { error: "--base 뒤에 유효한 branch를 입력하세요." });
 	assert.deepEqual(parseDiffArgs("development"), { error: "지원하지 않는 인자입니다: development" });
+});
+
+test("/diff <PR URL> prepares an independent head-pinned review context", async () => {
+	const commands = new Map<string, any>();
+	const events = new Map<string, any>();
+	const requests: any[] = [];
+	const statuses: Array<[string, string | undefined]> = [];
+	const pi = {
+		registerCommand(name: string, value: any) { commands.set(name, value); },
+		on(name: string, handler: any) { events.set(name, handler); },
+	} as any;
+	registerDiffOverlay(pi, {
+		fetchPrTarget: async () => ({
+			target: {
+				kind: "github-pr",
+				url: "https://github.com/acme/repo/pull/42",
+				owner: "acme",
+				repo: "repo",
+				number: 42,
+				title: "Review target",
+				baseRefName: "main",
+				baseSha: "a".repeat(40),
+				headRefName: "feature/review",
+				headSha: "b".repeat(40),
+			},
+			metadata: {} as any,
+		}),
+		reviewWorkspaceRunner: async (_pi, _ctx, request) => {
+			requests.push(request);
+			return { status: "activated", name: "review-pr-42-bbbbbbbb", branch: "review/pr-42-bbbbbbbb", path: "/tmp/review", sessionFile: "/tmp/review.jsonl", reused: false, activation: { status: "activated", panelLabel: "P1", placement: "right" } } as any;
+		},
+	});
+	await commands.get("diff").handler("https://github.com/acme/repo/pull/42", {
+		cwd: "/tmp",
+		hasUI: true,
+		ui: { notify() {}, setStatus(key: string, value?: string) { statuses.push([key, value]); } },
+	});
+	assert.equal(requests.length, 1);
+	assert.equal(requests[0].intent, "diff");
+	assert.equal(requests[0].runId, undefined);
+	assert.equal(requests[0].headSha, "b".repeat(40));
+	assert.deepEqual(statuses.at(-1), ["diff", undefined]);
+	assert.ok(events.has("session_start"));
 });
 
 test("formatDiffComparison exposes base, head, and resolution source", () => {

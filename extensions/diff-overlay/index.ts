@@ -13,7 +13,9 @@ import path from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ThemeColor } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder, getLanguageFromPath, highlightCode } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@mariozechner/pi-tui";
-import { readPrReviewWorkspaceMetadata } from "../pr-review/workspace.ts";
+import { fetchGitHubPrTarget, parseGitHubPrUrl } from "../pr-review/github-source.ts";
+import { readPrReviewWorkspaceMetadata, writePrReviewWorkspaceMetadata } from "../pr-review/workspace.ts";
+import { runPrReviewWorktreeFromCommandContext } from "../worktree/pr-review.ts";
 
 // ─── Domain types ──────────────────────────────────────────────────────────
 
@@ -202,8 +204,9 @@ const PAGE_SCROLL_STEP = 100;
 const COMMIT_HISTORY_LIMIT = 200;
 const GIT_LOG_PRETTY = "%H%x1f%h%x1f%an%x1f%ar%x1f%s%x1e";
 const DIFF_HELP = [
-	"사용법: /diff [--base <branch>]",
+	"사용법: /diff [GitHub PR URL] [--base <branch>]",
 	"",
+	"  GitHub PR URL   head-pinned read-only checkout/session을 준비한 뒤 같은 /diff를 엽니다.",
 	"  --base <branch>  열린 PR의 base 자동 추론보다 우선할 비교 기준",
 ].join("\n");
 
@@ -221,17 +224,25 @@ const FILE_STATUS_ORDER: Record<DiffFileStatus, number> = {
 export interface ParsedDiffArgs {
 	help: boolean;
 	baseBranch: string | null;
+	prUrl: string | null;
 }
 
 export function parseDiffArgs(raw: string): ParsedDiffArgs | { error: string } {
 	const tokens = raw.trim().split(/\s+/).filter(Boolean);
 	let help = false;
 	let baseBranch: string | null = null;
+	let prUrl: string | null = null;
 
 	for (let index = 0; index < tokens.length; index++) {
 		const token = tokens[index]!;
 		if (token === "help" || token === "--help" || token === "-h") {
 			help = true;
+			continue;
+		}
+
+		if (/^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+(?:\/.*)?$/.test(token)) {
+			if (prUrl) return { error: "GitHub PR URL은 한 번만 입력하세요." };
+			prUrl = token;
 			continue;
 		}
 
@@ -250,7 +261,7 @@ export function parseDiffArgs(raw: string): ParsedDiffArgs | { error: string } {
 		baseBranch = value;
 	}
 
-	return { help, baseBranch };
+	return { help, baseBranch, prUrl };
 }
 
 export function formatDiffComparison(branch: string, baseBranch: string | null, baseSource: string | null): string {
@@ -3033,7 +3044,12 @@ export class DiffOverlay {
 
 // ─── Extension entry point ────────────────────────────────────────────────
 
-export default function diffOverlayExtension(pi: ExtensionAPI) {
+interface DiffOverlayExtensionOptions {
+	fetchPrTarget?: typeof fetchGitHubPrTarget;
+	reviewWorkspaceRunner?: typeof runPrReviewWorktreeFromCommandContext;
+}
+
+export function registerDiffOverlay(pi: ExtensionAPI, options: DiffOverlayExtensionOptions = {}) {
 	const handler = async (args: string, ctx: ExtensionCommandContext) => {
 		const parsedArgs = parseDiffArgs(args);
 		if ("error" in parsedArgs) {
@@ -3045,6 +3061,38 @@ export default function diffOverlayExtension(pi: ExtensionAPI) {
 			if (ctx.hasUI) ctx.ui.notify(DIFF_HELP, "info");
 			else console.log(DIFF_HELP);
 			return;
+		}
+
+		if (parsedArgs.prUrl) {
+			if (parsedArgs.baseBranch) {
+				ctx.ui.notify("외부 PR checkout에서는 PR의 실제 base SHA를 사용하므로 --base를 함께 지정하지 않습니다.", "error");
+				return;
+			}
+			try {
+				const parsed = parseGitHubPrUrl(parsedArgs.prUrl);
+				ctx.ui.setStatus("diff", `PR #${parsed.number} checkout 준비 중`);
+				const { target } = await (options.fetchPrTarget ?? fetchGitHubPrTarget)(pi, ctx.cwd, parsed);
+				if (!target.baseSha || !target.headSha || !target.baseRefName) throw new Error("외부 PR /diff에는 base/head SHA와 base branch가 필요합니다.");
+				const activated = await (options.reviewWorkspaceRunner ?? runPrReviewWorktreeFromCommandContext)(pi, ctx, {
+					intent: "diff",
+					repo: target.repo,
+					prUrl: target.url,
+					repository: `${target.owner}/${target.repo}`,
+					number: target.number,
+					title: target.title,
+					baseRefName: target.baseRefName,
+					baseSha: target.baseSha,
+					headRefName: target.headRefName,
+					headSha: target.headSha,
+				});
+				ctx.ui.setStatus("diff", undefined);
+				if (activated.status !== "activated") throw new Error(activated.reason);
+				return;
+			} catch (error) {
+				ctx.ui.setStatus("diff", undefined);
+				ctx.ui.notify(`외부 PR /diff 준비 실패: ${error instanceof Error ? error.message : String(error)}`, "error");
+				return;
+			}
 		}
 
 		const root = await gitRoot(pi, ctx.cwd);
@@ -3177,8 +3225,20 @@ export default function diffOverlayExtension(pi: ExtensionAPI) {
 		}
 	};
 
+	pi.on("session_start", (_event, ctx) => {
+		if (!ctx.hasUI) return;
+		const metadata = readPrReviewWorkspaceMetadata(ctx.cwd);
+		if (!metadata?.diffAutoOpenPending || metadata.activationIntent !== "diff") return;
+		writePrReviewWorkspaceMetadata(ctx.cwd, { ...metadata, diffAutoOpenPending: false });
+		setTimeout(() => { void handler("", ctx as ExtensionCommandContext); }, 0);
+	});
+
 	pi.registerCommand("diff", {
-		description: "Git diff viewer — PR base 자동 인식, --base <branch> override, commit mode",
+		description: "Git diff viewer — current work 또는 GitHub PR URL, PR base 자동 인식, --base override, commit mode",
 		handler,
 	});
+}
+
+export default function diffOverlayExtension(pi: ExtensionAPI) {
+	registerDiffOverlay(pi);
 }
