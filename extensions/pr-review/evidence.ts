@@ -160,6 +160,43 @@ function buildChunks(lines: ReviewDiffLine[], targetBytes: number): ReviewDiffCh
 	return chunks;
 }
 
+export function rechunkReviewSourceByFile(bundle: ReviewSourceBundle, targetBytes = DEFAULT_CHUNK_BYTES): ReviewSourceBundle {
+	const chunks: ReviewDiffChunk[] = [];
+	for (const file of bundle.files) {
+		const fileLineIds = new Set(file.lineIds);
+		const fileLines = bundle.lines.filter((line) => fileLineIds.has(line.id));
+		let selected: ReviewDiffLine[] = [];
+		let bytes = 0;
+		const push = () => {
+			if (!selected.length) return;
+			const startIndex = selected[0]!.index;
+			const endIndex = selected.at(-1)!.index;
+			chunks.push({
+				id: `C${String(chunks.length + 1).padStart(3, "0")}`,
+				startIndex,
+				endIndex,
+				start: selected[0]!.id,
+				end: selected.at(-1)!.id,
+				bytes,
+				changedRows: selected.filter((line) => line.kind === "addition" || line.kind === "deletion").length,
+				fileIds: [file.id],
+				prefixLineIds: chunkPrefixes(bundle.lines, startIndex),
+			});
+			selected = [];
+			bytes = 0;
+		};
+		for (const line of fileLines) {
+			const nextBytes = lineBytes(line);
+			if (selected.length && bytes + nextBytes > targetBytes) push();
+			selected.push(line);
+			bytes += nextBytes;
+		}
+		push();
+	}
+	if (chunks.length > MAX_CHUNKS) throw new Error(`PR diff chunk count ${chunks.length} exceeds ${MAX_CHUNKS}`);
+	return { ...bundle, chunks, stats: { ...bundle.stats, chunks: chunks.length } };
+}
+
 export function captureUnifiedDiff(
 	diff: string,
 	capture: Record<string, unknown> = {},

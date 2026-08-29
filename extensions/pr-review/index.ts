@@ -14,6 +14,7 @@ import type { MetaReviewFileGuideInput } from "./guidance.ts";
 import { captureGitHubPrRun, fetchGitHubPrTarget, parseGitHubPrUrl } from "./github-source.ts";
 export { captureGitHubPrRun, fetchGitHubPrTarget, parseGitHubPrUrl } from "./github-source.ts";
 import { attachMetaReviewRevision, decideMetaReviewRefresh } from "./revision.ts";
+import { seedIncrementalMetaReviewRevision } from "./incremental.ts";
 import {
 	answerPrReviewQuestion,
 	failPrReviewQuestion,
@@ -280,7 +281,7 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 				const captured = isCurrentWork
 					? await captureCurrentWorkRun(pi, state.target.root || ctx.cwd || process.cwd(), stateRoot, now())
 					: await captureGitHubPrRun(pi, ctx.cwd ?? process.cwd(), parsed!, stateRoot, now());
-				const capturedSource = readJson<ReviewSourceBundle>(captured.sourcePath);
+				let capturedSource = readJson<ReviewSourceBundle>(captured.sourcePath);
 				if (params.mode !== "full" && captured.target.headSha === state.target.headSha && capturedSource.sourceSha256 === source.sourceSha256) {
 					rmSync(captured.runDir, { recursive: true, force: true });
 					return { content: [{ type: "text", text: "Meta Review가 이미 최신 head와 diff를 보고 있습니다." }], details: { runId: state.runId, mode: "none", reason: "same-head-and-source" }, terminate: true };
@@ -297,10 +298,12 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 					return { content: [{ type: "text", text: decision.reason }], details: { runId: state.runId, ...decision }, terminate: true };
 				}
 				const linked = attachMetaReviewRevision(captured, capturedSource.sourceSha256, decision.mode, state, now());
+				const incrementalSeed = decision.mode === "incremental" ? seedIncrementalMetaReviewRevision(state, linked.run) : undefined;
 				latestRunId = linked.run.runId;
+				const seedSummary = incrementalSeed ? `\nunchanged files reused: ${incrementalSeed.unchangedPaths.length}\nimpacted files: ${incrementalSeed.impactedPaths.join(", ") || "none"}` : "";
 				return {
-					content: [{ type: "text", text: `Meta Review revision ${linked.revision.number} captured · ${decision.mode}\n${decision.reason}\nrunId: ${linked.run.runId}\n모든 pending chunk를 inspect한 뒤 guides와 cards를 submit하세요.` }],
-					details: { previousRunId: state.runId, runId: linked.run.runId, runDir: linked.run.runDir, series: linked.series, revision: linked.revision, mode: decision.mode, reason: decision.reason },
+					content: [{ type: "text", text: `Meta Review revision ${linked.revision.number} captured · ${decision.mode}\n${decision.reason}${seedSummary}\nrunId: ${linked.run.runId}\npending chunk만 inspect하고 impacted file guides/cards를 submit하세요.` }],
+					details: { previousRunId: state.runId, runId: linked.run.runId, runDir: linked.run.runDir, series: linked.series, revision: linked.revision, mode: decision.mode, reason: decision.reason, incrementalSeed },
 				};
 			}
 			if (params.action === "inspect") {
