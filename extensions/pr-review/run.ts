@@ -5,10 +5,12 @@ import type { ReviewDiffLine, ReviewSourceBundle } from "./evidence.ts";
 import { validateEvidenceIds } from "./evidence.ts";
 import {
 	metaReviewExplanationCoverage,
+	reconcileMetaReviewGuides,
 	validateMetaReviewGuides,
 	type MetaReviewFileGuide,
 	type MetaReviewFileGuideInput,
 } from "./guidance.ts";
+import { markMetaReviewRevisionReady, type MetaReviewRevisionMode } from "./revision.ts";
 
 export const PR_REVIEW_RUN_SCHEMA_VERSION = 1;
 
@@ -18,6 +20,7 @@ export type MetaScope = "current-pr" | "follow-up" | "both" | "none";
 export type HumanReviewDecision = "review-only" | "review-with-meta" | "edit" | "follow-up" | "hold" | "dismiss";
 
 export interface PrReviewTarget {
+	kind?: "github-pr" | "current-work";
 	url: string;
 	owner: string;
 	repo: string;
@@ -29,6 +32,9 @@ export interface PrReviewTarget {
 	headSha?: string;
 	baseRefName?: string;
 	headRefName?: string;
+	root?: string;
+	rootHash?: string;
+	branch?: string;
 }
 
 export interface ReviewPrecedent {
@@ -84,6 +90,10 @@ export interface PrReviewRunState {
 	cardsPath: string;
 	guidesPath: string;
 	reportPath: string;
+	seriesId?: string;
+	revisionNumber?: number;
+	previousRunDir?: string;
+	revisionMode?: MetaReviewRevisionMode;
 	createdAt: number;
 	updatedAt: number;
 }
@@ -276,7 +286,7 @@ function escapeCodeFence(value: string): string {
 
 export function renderReviewMarkdown(state: PrReviewRunState, bundle: ReviewSourceBundle, cards: ReviewCard[]): string {
 	const output = [
-		`# PR Review · #${state.target.number} ${state.target.title}`,
+		state.target.kind === "current-work" ? `# Review · ${state.target.title}` : `# PR Review · #${state.target.number} ${state.target.title}`,
 		"",
 		`- 대상: ${state.target.url}`,
 		`- 기준: \`${(state.target.headSha || bundle.sourceSha256).slice(0, 12)}\``,
@@ -339,7 +349,7 @@ export function renderMetaReviewMarkdown(
 ): string {
 	const coverage = metaReviewExplanationCoverage(bundle, guides);
 	const lines = [
-		`# Meta Review · #${state.target.number} ${state.target.title}`,
+		state.target.kind === "current-work" ? `# Meta Review · ${state.target.title}` : `# Meta Review · #${state.target.number} ${state.target.title}`,
 		"",
 		`- 대상: ${state.target.url}`,
 		`- 기준: \`${(state.target.headSha || bundle.sourceSha256).slice(0, 12)}\``,
@@ -387,7 +397,19 @@ export function saveMetaReviewSubmission(
 ): { guides: MetaReviewFileGuide[]; cards: ReviewCard[] } {
 	const bundle = readJson<ReviewSourceBundle>(state.sourcePath);
 	const inspection = loadInspection(state);
-	const guides = validateMetaReviewGuides(bundle, inspection.inspectedChunkIds, guideInputs);
+	const validatedGuides = validateMetaReviewGuides(bundle, inspection.inspectedChunkIds, guideInputs);
+	let guides = validatedGuides;
+	let reconciliation;
+	if (state.previousRunDir) {
+		const previous = loadPrReviewRun(state.previousRunDir);
+		const previousGuides = loadMetaReviewGuides(previous);
+		if (previousGuides.length) {
+			const previousBundle = readJson<ReviewSourceBundle>(previous.sourcePath);
+			reconciliation = reconcileMetaReviewGuides(previousBundle, previousGuides, bundle, validatedGuides);
+			guides = reconciliation.guides;
+			writeJsonAtomic(join(state.runDir, "reconciliation.json"), reconciliation);
+		}
+	}
 	validateReviewCardInputs(bundle, inspection.inspectedChunkIds, cardInputs);
 	const cards = cardInputs.map((input) => ({ ...input, code: codeExcerptForEvidence(bundle, input.evidenceIds) }));
 	writeJsonAtomic(state.guidesPath, guides);
@@ -395,6 +417,7 @@ export function saveMetaReviewSubmission(
 	atomicWrite(state.reportPath, renderMetaReviewMarkdown(state, bundle, guides, cards));
 	const next = { ...state, status: "ready" as const, updatedAt: Date.now() };
 	writeJsonAtomic(join(state.runDir, "run.json"), next);
+	markMetaReviewRevisionReady(next, reconciliation?.counts);
 	return { guides, cards };
 }
 
@@ -433,5 +456,7 @@ export function saveHumanDecision(
 }
 
 export function runLabel(state: PrReviewRunState): string {
-	return `${state.target.owner}/${state.target.repo}#${state.target.number} · ${basename(state.runDir)}`;
+	return state.target.kind === "current-work"
+		? `${state.target.repo} · ${state.target.branch || "current work"} · ${basename(state.runDir)}`
+		: `${state.target.owner}/${state.target.repo}#${state.target.number} · ${basename(state.runDir)}`;
 }
