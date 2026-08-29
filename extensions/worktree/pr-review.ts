@@ -33,8 +33,9 @@ export interface WorktreeAfterSwitchFollowUp {
 
 export interface PrReviewWorktreeRequest {
 	repo: string;
-	runId: string;
-	runDir: string;
+	intent?: "meta-review" | "diff";
+	runId?: string;
+	runDir?: string;
 	prUrl: string;
 	repository: string;
 	number: number;
@@ -135,12 +136,12 @@ function createReviewSession(ctx: ExtensionCommandContext, worktreePath: string,
 		id: infoId,
 		parentId,
 		timestamp: now,
-		name: `PR #${metadata.number} review · ${metadata.title}`,
+		name: `${metadata.activationIntent === "diff" ? "Diff" : "Meta Review"} · PR #${metadata.number} · ${metadata.title}`,
 	});
 	parentId = infoId;
 	appendSessionEntry(session, {
 		type: "custom_message",
-		customType: "pr-review-workspace-context",
+		customType: "review-workspace-context",
 		id: `pr_review_context_${Date.now().toString(36)}`,
 		parentId,
 		timestamp: now,
@@ -151,11 +152,11 @@ function createReviewSession(ctx: ExtensionCommandContext, worktreePath: string,
 			`- PR: ${metadata.prUrl}`,
 			`- Base: ${metadata.baseRefName} (${metadata.baseSha})`,
 			`- Head: ${metadata.headSha}`,
-			`- Run: ${metadata.runId}`,
+			metadata.runId ? `- Meta Review run: ${metadata.runId}` : "- Meta Review run: 아직 연결되지 않음",
 			`- Metadata: ${prReviewWorkspacePath(worktreePath)}`,
 			`- Source conversation: ${source}`,
 			`- Reopen source: /archive ${source}`,
-			"- Source conversation 전문과 parentSession lineage를 계승했다. PR run과 checkout metadata가 review truth다.",
+			"- Source conversation 전문과 parentSession lineage를 계승했다. checkout metadata가 /diff와 /meta-review가 공유하는 source truth다.",
 			"- 이 worktree는 read-only review workspace다. 사용자가 별도 수정을 요청하기 전에는 repository를 변경하지 않는다.",
 		].join("\n"),
 		details: {
@@ -206,18 +207,23 @@ async function cleanupCreatedReviewWorktree(pi: ExtensionAPI, repoRoot: string, 
 
 function reviewContinuation(request: PrReviewWorktreeRequest): WorkspaceContinuation {
 	const followUp = request.afterSwitchFollowUp;
+	const intent = request.intent ?? "meta-review";
 	return {
-		workflow: "pr-review",
-		customType: followUp?.customType ?? "pilee-pr-review-workspace-ready",
-		content: followUp?.content ?? [
-			"# PR review workspace ready",
+		workflow: intent,
+		customType: followUp?.customType ?? (intent === "diff" ? "pilee-diff-workspace-ready" : "pilee-meta-review-workspace-ready"),
+		content: followUp?.content ?? (intent === "diff" ? [
+			"# External PR diff workspace ready",
+			"",
+			"Exact checkout/session READY가 확인됐다. 이 세션의 /diff는 .pi/review-context.json의 base/head를 사용한다.",
+		].join("\n") : [
+			"# Meta Review workspace ready",
 			"",
 			"Exact checkout/session READY가 확인됐다.",
-			`pr_review_run action=\"open\", runId=\"${request.runId}\"로 Review Studio를 연다.`,
-			"/diff는 .pi/pr-review.json의 base/head를 사용한다.",
-		].join("\n"),
+			`meta_review_run action=\"open\", runId=\"${request.runId}\"로 코드 리뷰 탭을 연다.`,
+			"/diff는 .pi/review-context.json의 base/head를 사용한다.",
+		].join("\n")),
 		display: followUp?.display ?? true,
-		details: { ...followUp?.details, runId: request.runId, runDir: request.runDir, prUrl: request.prUrl },
+		details: { ...followUp?.details, intent, runId: request.runId, runDir: request.runDir, prUrl: request.prUrl },
 	};
 }
 
@@ -243,7 +249,7 @@ export async function runPrReviewWorktreeFromCommandContext(
 		workspaceAction: existedBefore ? "use-existing-worktree" : "create-worktree",
 		contextMode: "full",
 		authorizationSource: "command",
-		authorizationSourceId: "/pr-review",
+		authorizationSourceId: request.intent === "diff" ? "/diff" : "/meta-review",
 		continuation: reviewContinuation(request),
 		placementTitle: `PR #${request.number} review panel을 어디에 열까요?`,
 	});
@@ -303,6 +309,8 @@ export async function runPrReviewWorktreeFromCommandContext(
 		sourceSessionFile: source,
 		contextMode: "full-transcript",
 		activationContractId: contract.id,
+		activationIntent: request.intent ?? "meta-review",
+		diffAutoOpenPending: request.intent === "diff",
 		createdAt: Date.now(),
 	};
 	writePrReviewWorkspaceMetadata(worktreePath, metadata);
