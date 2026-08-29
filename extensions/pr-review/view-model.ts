@@ -4,6 +4,7 @@ import { loadPrReviewQuestions } from "./chat.ts";
 import { loadMetaReviewSeriesForRun } from "./revision.ts";
 import {
 	loadInspection,
+	loadMetaReviewDocument,
 	loadMetaReviewGuides,
 	loadPrReviewRun,
 	readJson,
@@ -25,6 +26,7 @@ export function buildMetaReviewClientState(linkedRunDir: string) {
 	const source = readJson<ReviewSourceBundle>(run.sourcePath);
 	const inspection = loadInspection(run);
 	const guides = loadMetaReviewGuides(run);
+	const document = loadMetaReviewDocument(run);
 	const cards = readJson<ReviewCard[]>(run.cardsPath);
 	return {
 		run: {
@@ -63,6 +65,7 @@ export function buildMetaReviewClientState(linkedRunDir: string) {
 			total: source.chunks.length,
 			pending: source.chunks.filter((chunk) => !inspection.inspectedChunkIds.includes(chunk.id)).map((chunk) => chunk.id),
 		},
+		document,
 		guides,
 		explanationCoverage: metaReviewExplanationCoverage(source, guides),
 		cards,

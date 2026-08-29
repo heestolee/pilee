@@ -6,7 +6,9 @@ import { validateEvidenceIds } from "./evidence.ts";
 import {
 	metaReviewExplanationCoverage,
 	reconcileMetaReviewGuides,
+	validateMetaReviewDocument,
 	validateMetaReviewGuides,
+	type MetaReviewDocumentInput,
 	type MetaReviewFileGuide,
 	type MetaReviewFileGuideInput,
 } from "./guidance.ts";
@@ -89,6 +91,7 @@ export interface PrReviewRunState {
 	inspectionPath: string;
 	cardsPath: string;
 	guidesPath: string;
+	documentPath: string;
 	reportPath: string;
 	seriesId?: string;
 	revisionNumber?: number;
@@ -143,6 +146,7 @@ export function createPrReviewRun(
 		inspectionPath: join(runDir, "inspection.json"),
 		cardsPath: join(runDir, "cards.json"),
 		guidesPath: join(runDir, "guides.json"),
+		documentPath: join(runDir, "document.json"),
 		reportPath: join(runDir, "review.md"),
 		createdAt: now,
 		updatedAt: now,
@@ -161,13 +165,23 @@ export function createPrReviewRun(
 }
 
 export function loadPrReviewRun(runDir: string): PrReviewRunState {
-	const stored = readJson<Omit<PrReviewRunState, "guidesPath"> & { guidesPath?: string }>(join(runDir, "run.json"));
-	return { ...stored, guidesPath: stored.guidesPath ?? join(runDir, "guides.json") };
+	type StoredRun = Omit<PrReviewRunState, "guidesPath" | "documentPath"> & { guidesPath?: string; documentPath?: string };
+	const stored = readJson<StoredRun>(join(runDir, "run.json"));
+	return {
+		...stored,
+		guidesPath: stored.guidesPath ?? join(runDir, "guides.json"),
+		documentPath: stored.documentPath ?? join(runDir, "document.json"),
+	};
 }
 
 export function loadMetaReviewGuides(state: PrReviewRunState): MetaReviewFileGuide[] {
 	if (!existsSync(state.guidesPath)) return [];
 	return readJson<MetaReviewFileGuide[]>(state.guidesPath);
+}
+
+export function loadMetaReviewDocument(state: PrReviewRunState): MetaReviewDocumentInput | undefined {
+	if (!existsSync(state.documentPath)) return undefined;
+	return readJson<MetaReviewDocumentInput>(state.documentPath);
 }
 
 export function loadInspection(state: PrReviewRunState): InspectionState {
@@ -346,6 +360,7 @@ export function renderMetaReviewMarkdown(
 	bundle: ReviewSourceBundle,
 	guides: MetaReviewFileGuide[],
 	cards: ReviewCard[],
+	document?: MetaReviewDocumentInput,
 ): string {
 	const coverage = metaReviewExplanationCoverage(bundle, guides);
 	const lines = [
@@ -356,11 +371,28 @@ export function renderMetaReviewMarkdown(
 		`- 설명 coverage: 파일 ${coverage.filesExplained}/${coverage.totalFiles} · 변경 줄 ${coverage.changedLinesExplained}/${coverage.totalChangedLines}`,
 		`- 실제 리뷰 포인트: ${cards.length}개`,
 		"",
-		"## 이 변경을 읽는 순서",
+		"## Overview",
 		"",
-		"변경 목적 → 먼저 볼 점 → 파일별 역할과 diff 설명 → 실제 리뷰 포인트 → 검토 범위",
+		document?.overview.summary ?? "변경 목적 → 먼저 볼 점 → 파일별 역할과 diff 설명 → 실제 리뷰 포인트 → 검토 범위",
 		"",
 	];
+	if (document) {
+		lines.push(
+			`- **검토 초점:** ${document.overview.reviewFocus}`,
+			"",
+			"## 변경 파일 관계",
+			"",
+			document.relationships.summary,
+			"",
+			`- **다이어그램:** ${document.relationships.diagram}`,
+			...document.relationships.relations.map((relation) => `- **${relation.from} → ${relation.to}:** ${relation.label}${relation.detail ? ` · ${relation.detail}` : ""}`),
+			"",
+			"### 권장 읽기 순서",
+			"",
+			...document.relationships.readingOrder.map((step, index) => `${index + 1}. \`${step.path}\` — ${step.reason}`),
+			"",
+		);
+	}
 	for (const guide of guides) {
 		lines.push(
 			`## ${guide.path}`,
@@ -394,7 +426,8 @@ export function saveMetaReviewSubmission(
 	state: PrReviewRunState,
 	guideInputs: MetaReviewFileGuideInput[],
 	cardInputs: ReviewCardInput[],
-): { guides: MetaReviewFileGuide[]; cards: ReviewCard[] } {
+	documentInput?: MetaReviewDocumentInput,
+): { guides: MetaReviewFileGuide[]; cards: ReviewCard[]; document?: MetaReviewDocumentInput } {
 	const bundle = readJson<ReviewSourceBundle>(state.sourcePath);
 	const inspection = loadInspection(state);
 	const seededGuides = loadMetaReviewGuides(state);
@@ -421,13 +454,20 @@ export function saveMetaReviewSubmission(
 	const combinedCardInputs = [...cardById.values()];
 	validateReviewCardInputs(bundle, inspection.inspectedChunkIds, combinedCardInputs);
 	const cards = combinedCardInputs.map((input) => ({ ...input, code: codeExcerptForEvidence(bundle, input.evidenceIds) }));
+	const seededDocument = loadMetaReviewDocument(state);
+	const document = documentInput
+		? validateMetaReviewDocument(bundle, documentInput)
+		: seededDocument
+			? validateMetaReviewDocument(bundle, seededDocument)
+			: undefined;
 	writeJsonAtomic(state.guidesPath, guides);
 	writeJsonAtomic(state.cardsPath, cards);
-	atomicWrite(state.reportPath, renderMetaReviewMarkdown(state, bundle, guides, cards));
+	if (document) writeJsonAtomic(state.documentPath, document);
+	atomicWrite(state.reportPath, renderMetaReviewMarkdown(state, bundle, guides, cards, document));
 	const next = { ...state, status: "ready" as const, updatedAt: Date.now() };
 	writeJsonAtomic(join(state.runDir, "run.json"), next);
 	markMetaReviewRevisionReady(next, reconciliation?.counts);
-	return { guides, cards };
+	return { guides, cards, document };
 }
 
 export function saveReviewCards(state: PrReviewRunState, inputs: ReviewCardInput[]): ReviewCard[] {

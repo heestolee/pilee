@@ -4,6 +4,7 @@ import { captureUnifiedDiff } from "./evidence.ts";
 import {
 	metaReviewExplanationCoverage,
 	reconcileMetaReviewGuides,
+	validateMetaReviewDocument,
 	validateMetaReviewGuides,
 	type MetaReviewFileGuide,
 	type MetaReviewFileGuideInput,
@@ -62,6 +63,39 @@ function guideInputs(diff = DIFF): { guides: MetaReviewFileGuideInput[]; bundle:
 function inspectAll(bundle: ReturnType<typeof captureUnifiedDiff>): string[] {
 	return bundle.chunks.map((chunk) => chunk.id);
 }
+
+test("Meta Review document validates file relationships and a complete reading order", () => {
+	const { bundle } = guideInputs();
+	const [policy, consumer] = bundle.files.map((file) => file.path);
+	const document = validateMetaReviewDocument(bundle, {
+		overview: { summary: "상태 노출 계약을 allowlist로 좁힙니다.", reviewFocus: "정책과 consumer가 같은 상태 계약을 사용하는지 봅니다." },
+		relationships: {
+			summary: "consumer가 policy의 허용 상태를 사용합니다.",
+			diagram: "flowchart",
+			relations: [{ from: consumer!, to: policy!, label: "노출 여부 조회", detail: "READY 상태만 통과합니다." }],
+			readingOrder: [{ path: policy!, reason: "정책 계약을 먼저 확인합니다." }, { path: consumer!, reason: "호출자가 계약을 따르는지 확인합니다." }],
+		},
+	});
+	assert.equal(document.relationships.diagram, "flowchart");
+	assert.equal(document.relationships.relations[0]?.from, consumer);
+	assert.deepEqual(document.relationships.readingOrder.map((step) => step.path), [policy, consumer]);
+});
+
+test("Meta Review document rejects unknown relationship files and incomplete reading order", () => {
+	const { bundle } = guideInputs();
+	const [policy, consumer] = bundle.files.map((file) => file.path);
+	const base = {
+		overview: { summary: "상태 계약 변경", reviewFocus: "호출 관계 확인" },
+		relationships: {
+			summary: "consumer에서 policy로 이어집니다.",
+			diagram: "sequence" as const,
+			relations: [{ from: consumer!, to: policy!, label: "visible 호출" }],
+			readingOrder: [{ path: policy!, reason: "정책부터 확인" }, { path: consumer!, reason: "호출자 확인" }],
+		},
+	};
+	assert.throws(() => validateMetaReviewDocument(bundle, { ...base, relationships: { ...base.relationships, relations: [{ from: "src/missing.ts", to: policy!, label: "호출" }] } }), /must reference changed files/);
+	assert.throws(() => validateMetaReviewDocument(bundle, { ...base, relationships: { ...base.relationships, readingOrder: [{ path: policy!, reason: "정책부터 확인" }] } }), /include every changed file/);
+});
 
 test("Meta Review guides cover every changed file and addition/deletion exactly once", () => {
 	const { bundle, guides } = guideInputs();

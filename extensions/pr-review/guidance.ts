@@ -2,6 +2,28 @@ import type { ReviewDiffLine, ReviewSourceBundle } from "./evidence.ts";
 import { validateEvidenceIds } from "./evidence.ts";
 
 export type MetaReviewReconcileStatus = "new" | "unchanged" | "review-again" | "evidence-removed";
+export type MetaReviewRelationshipDiagram = "flowchart" | "sequence";
+
+export interface MetaReviewDocumentInput {
+	overview: {
+		summary: string;
+		reviewFocus: string;
+	};
+	relationships: {
+		summary: string;
+		diagram: MetaReviewRelationshipDiagram;
+		relations: Array<{
+			from: string;
+			to: string;
+			label: string;
+			detail?: string;
+		}>;
+		readingOrder: Array<{
+			path: string;
+			reason: string;
+		}>;
+	};
+}
 
 export interface MetaReviewExplanationHunkInput {
 	id: string;
@@ -61,6 +83,64 @@ function assertText(value: unknown, label: string): asserts value is string {
 
 function changedLines(bundle: ReviewSourceBundle): ReviewDiffLine[] {
 	return bundle.lines.filter((line) => line.kind === "addition" || line.kind === "deletion");
+}
+
+export function validateMetaReviewDocument(bundle: ReviewSourceBundle, input: MetaReviewDocumentInput): MetaReviewDocumentInput {
+	if (!input || typeof input !== "object") throw new Error("document is required");
+	assertText(input.overview?.summary, "document.overview.summary");
+	assertText(input.overview?.reviewFocus, "document.overview.reviewFocus");
+	assertText(input.relationships?.summary, "document.relationships.summary");
+	if (input.relationships?.diagram !== "flowchart" && input.relationships?.diagram !== "sequence") throw new Error("document.relationships.diagram is invalid");
+	if (!Array.isArray(input.relationships?.relations)) throw new Error("document.relationships.relations must be an array");
+	if (!Array.isArray(input.relationships?.readingOrder)) throw new Error("document.relationships.readingOrder must be an array");
+	if (input.relationships.relations.length > 128) throw new Error("document.relationships.relations must contain at most 128 items");
+
+	const knownPaths = new Set(bundle.files.map((file) => file.path));
+	const seenRelations = new Set<string>();
+	const relations = input.relationships.relations.map((relation, index) => {
+		const label = `document.relationships.relations[${index}]`;
+		assertText(relation.from, `${label}.from`);
+		assertText(relation.to, `${label}.to`);
+		assertText(relation.label, `${label}.label`);
+		if (!knownPaths.has(relation.from) || !knownPaths.has(relation.to)) throw new Error(`${label} must reference changed files`);
+		if (relation.from === relation.to) throw new Error(`${label} must connect two different files`);
+		const key = `${relation.from}\n${relation.to}\n${relation.label}`;
+		if (seenRelations.has(key)) throw new Error(`duplicate file relationship: ${relation.from} -> ${relation.to}`);
+		seenRelations.add(key);
+		return {
+			from: relation.from,
+			to: relation.to,
+			label: relation.label.trim(),
+			...(typeof relation.detail === "string" && relation.detail.trim() ? { detail: relation.detail.trim() } : {}),
+		};
+	});
+	if (bundle.files.length > 1 && relations.length === 0) throw new Error("multi-file document requires at least one file relationship");
+
+	const seenReadingPaths = new Set<string>();
+	const readingOrder = input.relationships.readingOrder.map((step, index) => {
+		const label = `document.relationships.readingOrder[${index}]`;
+		assertText(step.path, `${label}.path`);
+		assertText(step.reason, `${label}.reason`);
+		if (!knownPaths.has(step.path)) throw new Error(`${label}.path is not in the captured diff: ${step.path}`);
+		if (seenReadingPaths.has(step.path)) throw new Error(`duplicate reading order path: ${step.path}`);
+		seenReadingPaths.add(step.path);
+		return { path: step.path, reason: step.reason.trim() };
+	});
+	const missingReadingPaths = bundle.files.map((file) => file.path).filter((path) => !seenReadingPaths.has(path));
+	if (missingReadingPaths.length) throw new Error(`reading order must include every changed file: ${missingReadingPaths.join(", ")}`);
+
+	return {
+		overview: {
+			summary: input.overview.summary.trim(),
+			reviewFocus: input.overview.reviewFocus.trim(),
+		},
+		relationships: {
+			summary: input.relationships.summary.trim(),
+			diagram: input.relationships.diagram,
+			relations,
+			readingOrder,
+		},
+	};
 }
 
 function hunkFingerprint(bundle: ReviewSourceBundle, path: string, evidenceIds: string[]): string {
