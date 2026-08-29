@@ -21,8 +21,9 @@ source:
   - conversation:2026-08-18-easy-review-harness
   - user-direction:2026-08-25-workspace-activation-redesign
   - user-direction:2026-08-29-right-question-drawer-and-pr-5052-runtime
-reviewed_at: 2026-08-29
-reviewed_commit: ad2fe309220d7c8cc43c639c9809423ade5c5ae4
+  - user-direction:2026-08-30-easy-review-hierarchy-and-file-relationships
+reviewed_at: 2026-08-30
+reviewed_commit: d46c0509040b30b5c2e1251c95cb0e38f63e424c
 related:
   - evidence-first-verification-gate
   - live-artifact-preview-pattern
@@ -48,9 +49,9 @@ Meta Review는 사용자가 코드를 능숙하게 읽는다고 가정하지 않
 
 ## Large Complete Snapshot Transport
 
-큰 PR의 `guides + cards` complete snapshot은 모든 evidence ID 때문에 tool argument 한도를 넘을 수 있습니다. 이때 의미 있는 semantic hunk를 파일 단위로 합치거나 설명을 삭제해 payload만 줄이면 guided diff 품질이 깨집니다. `meta_review_run status`가 제공하는 현재 run의 고정 `submission.json` 경로에 complete snapshot을 생성·검증하고 `submissionPath`로 submit합니다.
+큰 PR의 `document + guides + cards` complete snapshot은 모든 evidence ID 때문에 tool argument 한도를 넘을 수 있습니다. 이때 의미 있는 semantic hunk를 파일 단위로 합치거나 설명을 삭제해 payload만 줄이면 guided diff 품질이 깨집니다. `meta_review_run status`가 제공하는 현재 run의 고정 `submission.json` 경로에 complete snapshot을 생성·검증하고 `submissionPath`로 submit합니다.
 
-artifact transport는 canonical이 아닙니다. extension은 현재 runDir의 정확한 파일만 허용하고, lexical path와 realpath를 모두 확인해 run 밖 경로와 symlink를 거부하며, 일반 파일·1 byte 이상·5MB 이하·유효한 `{ guides, cards }` JSON만 읽습니다. coverage·ReviewCard 검증이 성공한 뒤 transport 파일을 제거하고 canonical `guides.json`, `cards.json`, `review.md`만 남깁니다. 작은 snapshot의 inline submit은 계속 지원합니다.
+artifact transport는 canonical이 아닙니다. extension은 현재 runDir의 정확한 파일만 허용하고, lexical path와 realpath를 모두 확인해 run 밖 경로와 symlink를 거부하며, 일반 파일·1 byte 이상·5MB 이하·유효한 `{ document, guides, cards }` JSON만 읽습니다. coverage·ReviewCard·파일 관계 검증이 성공한 뒤 transport 파일을 제거하고 canonical `document.json`, `guides.json`, `cards.json`, `review.md`만 남깁니다. 작은 snapshot의 inline submit은 계속 지원합니다.
 
 ## ReviewCard Contract
 
@@ -65,7 +66,11 @@ artifact transport는 canonical이 아닙니다. extension은 현재 runDir의 �
 
 ## Document-First Render Rule
 
-Study Hard shell의 `코드 리뷰` 탭은 카드 대시보드가 아니라 Easy Review처럼 순서대로 읽히는 리뷰 문서입니다. `Overview → 먼저 볼 점 → 파일별 접이식 diff → semantic explanation → 실제 inline review → 검증 범위` 순서를 유지합니다. 파일 역할·diff·학습 설명은 기본으로 읽히게 두고, 메타 관점·인간 precedent·문구 편집은 접습니다. 결정 버튼은 리뷰 본문을 지배하지 않는 작은 inline action으로 둡니다.
+Study Hard shell의 `코드 리뷰` 탭은 카드 대시보드가 아니라 Easy Review처럼 순서대로 읽히는 리뷰 문서입니다. `Overview → Review Attention → compact 파일 목록 → semantic explanation → 실제 inline review` 순서를 유지합니다. Overview는 PR 목적·검토 초점·coverage를 보존하고, Review Attention은 중립적인 파일 관계·권장 읽기 순서와 실제 finding을 시각적으로 분리합니다.
+
+파일 관계는 raw Mermaid가 아니라 captured diff 경로를 참조하는 structured `from/to/label` edge와 전체 reading order로 저장합니다. 정적인 레이어·데이터·검증 관계는 flowchart, 시간 순서가 판단의 핵심인 런타임 호출은 sequence diagram을 선택하며 둘을 기계적으로 모두 만들지 않습니다. Mermaid source는 extension이 구조 데이터에서 결정적으로 만들고 strict renderer로 표시합니다.
+
+파일 목록은 번호·전체 경로·한 줄 요약·증감 수치·토글을 가진 compact row를 유지합니다. 접힘 상태에서도 파일 역할, 변경 이유, 호출·데이터 흐름, 사용자·후속 영향을 summary 안에 남기고 실제 diff와 semantic explanation만 접습니다. explanation은 evidence의 addition/deletion line을 기준으로 `변경 전 L… · 변경 후 L…` 범위를 표시하며 떨어진 범위는 합치지 않습니다. 메타 관점·인간 precedent·문구 편집은 접고, 결정 버튼은 리뷰 본문을 지배하지 않는 작은 inline action으로 둡니다.
 
 서로 멀리 떨어진 evidence를 하나의 `min..max` 코드 블록으로 합치지 않습니다. changed line은 설명 coverage에서 숨기지 않고, 긴 unchanged context만 fold할 수 있습니다. finding이 없는 파일도 역할·변경 이유와 모든 semantic hunk 설명을 유지합니다.
 
@@ -110,4 +115,6 @@ Meta Review의 코드 리뷰 탭은 GitHub write 도구가 아닙니다. `review
 - `/diff`와 `/meta-review`가 다른 checkout/head를 보면 Pi 대화와 문서형 리뷰가 서로 다른 코드를 설명하게 됩니다.
 - background freshness check가 artifact를 자동 갱신하면 사용자가 읽던 판단 기준이 중간에 바뀝니다.
 - 큰 complete snapshot을 inline argument에 맞추려고 semantic hunk를 파일 하나로 합치면 changed evidence coverage는 통과해도 학습 가능한 설명 단위가 사라집니다.
+- 파일 관계를 raw Mermaid 문자열로만 저장하면 존재하지 않는 파일과 검증되지 않은 관계를 그릴 수 있고 reading order의 전체 파일 coverage도 확인할 수 없습니다.
+- 접힘 상태에서 파일 역할과 흐름까지 숨기면 사용자는 diff를 열기 전 어떤 파일부터 읽어야 하는지 다시 추론해야 합니다.
 - 전체 PR 질문과 선택 블록 질문을 한 thread로 렌더링하거나 selection ID 없이 evidence 교집합만 비교하면 서로 다른 line/hunk/card 대화가 섞입니다.
