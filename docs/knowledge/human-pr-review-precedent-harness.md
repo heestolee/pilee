@@ -21,7 +21,7 @@ source:
   - conversation:2026-08-18-easy-review-harness
   - user-direction:2026-08-25-workspace-activation-redesign
 reviewed_at: 2026-08-29
-reviewed_commit: 3b070fc9b1b2582e8ed8f24903103d582447087c
+reviewed_commit: 6ac6637af8d79766ac283223fc0670eabec895e6
 related:
   - evidence-first-verification-gate
   - live-artifact-preview-pattern
@@ -78,7 +78,7 @@ Meta Review session의 review truth는 immutable run과 checkout metadata이지�
 
 코드 리뷰 본문은 자동으로 바뀌지 않습니다. background check는 외부 PR의 head/base 또는 현재 worktree diff hash를 읽기 전용으로 비교해 `새 변경 있음` badge만 표시합니다. 사용자가 `갱신하기` 버튼을 누르거나 Pi에서 명시적으로 갱신을 요청할 때만 새 immutable run을 series의 다음 revision으로 추가합니다.
 
-이전 head가 최신 head의 ancestor이고 base가 유지된 안전한 선형 변경은 incremental로 처리합니다. rebase, force-push, base/merge-base 변경, ancestry 불명은 full review로 승격하며 사용자는 `전체 다시 검토`를 강제할 수 있습니다. 이전 revision의 질문·AI 원문·사람이 편집한 문구·인간 결정은 덮어쓰지 않습니다. 새 설명 hunk는 `new`, 동일 hunk는 `unchanged`, 같은 identity의 코드가 달라지면 `review-again`, 근거가 사라지면 `evidence-removed`로 reconcile합니다.
+이전 head가 최신 head의 ancestor이고 base가 유지된 안전한 선형 변경은 incremental로 처리합니다. 이전 revision과 diff가 동일한 파일은 guide·ReviewCard·사람 편집 문구·인간 결정을 최신 evidence ID로 remap하고, unchanged 파일만 포함한 file-isolated chunk는 auto-inspect합니다. agent는 pending chunk와 impacted file만 다시 읽습니다. rebase, force-push, base/merge-base 변경, ancestry 불명은 full review로 승격하며 사용자는 `전체 다시 검토`를 강제할 수 있습니다. 이전 revision의 질문·AI 원문·사람이 편집한 문구·인간 결정은 덮어쓰지 않습니다. 새 설명 hunk는 `new`, 동일 hunk는 `unchanged`, 같은 identity의 코드가 달라지면 `review-again`, 근거가 사라지면 `evidence-removed`로 reconcile합니다.
 
 ## Corpus Boundary
 

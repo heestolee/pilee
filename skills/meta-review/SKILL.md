@@ -100,7 +100,7 @@ Corpus가 없거나 검색을 지원하지 않으면 blind review를 계속하�
 
 ### 7. 설명과 ReviewCard를 함께 제출한다
 
-[카드 계약](references/review-card-contract.md)을 따른다.
+[카드 계약](references/review-card-contract.md)을 따른다. 초기·전체 검토에서는 모든 파일 guide를 제출합니다. incremental revision에서는 `meta_review_run refresh`가 unchanged 파일의 guide·card·인간 결정을 최신 evidence로 remap하고 해당 chunk를 auto-inspect하므로, pending chunk와 `impactedPaths`만 다시 조사해 그 파일의 guides/cards를 제출합니다. seeded unchanged 항목은 extension이 병합하며 agent가 다시 작성하지 않습니다.
 
 ```json
 {
