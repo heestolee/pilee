@@ -1088,6 +1088,7 @@ const README_SKILL_GROUPS = [
 		{ name: "stress-interview", ko: "3 병렬 에이전트 코드 리뷰 (verifier + reviewer + challenger)", en: "Multi-agent review across correctness, quality, and edge cases" },
 		{ name: "self-healing", ko: "stress-interview 결과를 actionable fix cycle로 연결", en: "Turns review findings into actionable fix cycles" },
 		{ name: "code-review-and-quality", ko: "코드 리뷰 품질 기준", en: "Code review quality checklist" },
+		{ name: "meta-review", ko: "현재 작업·외부 PR의 모든 diff를 설명하고 실제 리뷰 판단·revision을 Study Hard 코드 리뷰 탭에서 관리", en: "Explains current-work or external-PR diffs and manages review judgments and revisions in the Study Hard Code Review tab" },
 	] },
 	{ ko: "워크플로", en: "Workflow", items: [
 		{ name: "interactive-shell", ko: "dev server/TUI/REPL/log viewer를 `interactive_shell`로 다루는 사용 가이드", en: "Usage guide for dev servers, TUIs, REPLs, and log viewers via `interactive_shell`" },
