@@ -130,6 +130,7 @@ test("meta_review_chat worker route는 legacy runtime에서 명시적 P0 fallbac
 		assert.match(fallback.message.content, /meta-review-question-worker --isolated/);
 		assert.match(fallback.message.content, /action="worker_started"/);
 		assert.match(fallback.message.content, /details\.claimed가 true일 때만/);
+		assert.match(fallback.message.content, /details\.completionToken/);
 		assert.match(fallback.message.content, /apply_worker_result/);
 		assert.doesNotMatch(fallback.message.content, /apply_worker_result[^\n]*expectedSourceSha256=/);
 		const dispatchToken = fallback.message.details.dispatchToken;
@@ -154,6 +155,7 @@ test("meta_review_chat worker route는 legacy runtime에서 명시적 P0 fallbac
 			workerRunId: 81,
 		}, undefined, undefined, { cwd: "/tmp/review-pr-42" });
 		assert.equal(started.details.claimed, true);
+		assert.equal(typeof started.details.completionToken, "string");
 		assert.equal(started.details.question.execution.phase, "worker-running");
 		const duplicateClaim = await tools.get("meta_review_chat").execute("call-worker-started-again", {
 			action: "worker_started",
@@ -163,7 +165,9 @@ test("meta_review_chat worker route는 legacy runtime에서 명시적 P0 fallbac
 			workerRunId: 82,
 		}, undefined, undefined, { cwd: "/tmp/review-pr-42" });
 		assert.equal(duplicateClaim.details.claimed, false);
+		assert.equal(duplicateClaim.details.completionToken, undefined);
 		assert.equal(duplicateClaim.details.question.workerRunId, 81);
+		assert.equal(duplicateClaim.terminate, true);
 
 		const messageCount = messages.length;
 		const duplicateRoute = await tools.get("meta_review_chat").execute("call-route-worker-again", {

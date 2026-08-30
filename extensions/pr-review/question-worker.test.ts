@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -88,8 +88,9 @@ function reserveAndStartWorker(state: PrReviewRunState, questionId: string, work
 	assert.equal(reservation.dispatchRequired, true);
 	const claimed = claimPrReviewQuestionWorkerLaunch(state, questionId, reservation.dispatchToken, now);
 	assert.equal(claimed.claimed, true);
-	markPrReviewQuestionWorkerStarted(state, questionId, reservation.dispatchToken, workerRunId, now);
-	return reservation.dispatchToken;
+	assert.equal(typeof claimed.completionToken, "string");
+	markPrReviewQuestionWorkerStarted(state, questionId, claimed.completionToken!, workerRunId, now);
+	return claimed.completionToken!;
 }
 
 test("Meta Review 질문은 direct에서 같은 ID의 worker로 한 번 승격한다", () => {
@@ -120,8 +121,9 @@ test("worker-starting route는 시작 acknowledgement 전까지 같은 request�
 		assert.equal(retry.workerLaunchRequired, true);
 		assert.equal(retry.question.execution?.phase, "worker-starting");
 		const reservation = reservePrReviewQuestionWorkerLaunch(state, question.id, 1250);
-		assert.equal(claimPrReviewQuestionWorkerLaunch(state, question.id, reservation.dispatchToken, 1250).claimed, true);
-		markPrReviewQuestionWorkerStarted(state, question.id, reservation.dispatchToken, 70, 1300);
+		const claimed = claimPrReviewQuestionWorkerLaunch(state, question.id, reservation.dispatchToken, 1250);
+		assert.equal(claimed.claimed, true);
+		markPrReviewQuestionWorkerStarted(state, question.id, claimed.completionToken!, 70, 1300);
 		const acknowledged = routePrReviewQuestion(state, question.id, "worker", "중복 route", 1400);
 		assert.equal(acknowledged.workerLaunchRequired, false);
 		assert.equal(acknowledged.question.execution?.phase, "worker-running");
@@ -143,8 +145,62 @@ test("unclaimed fallback lease는 중복 route를 막고 만료 뒤 새 token으
 		const renewed = reservePrReviewQuestionWorkerLaunch(state, question.id, first.expiresAt);
 		assert.equal(renewed.dispatchRequired, true);
 		assert.notEqual(renewed.dispatchToken, first.dispatchToken);
-		assert.equal(claimPrReviewQuestionWorkerLaunch(state, question.id, first.dispatchToken, first.expiresAt).claimed, false);
-		assert.equal(claimPrReviewQuestionWorkerLaunch(state, question.id, renewed.dispatchToken, first.expiresAt).claimed, true);
+		const oldClaim = claimPrReviewQuestionWorkerLaunch(state, question.id, first.dispatchToken, first.expiresAt);
+		assert.equal(oldClaim.claimed, false);
+		assert.equal(oldClaim.completionToken, undefined);
+		const renewedClaim = claimPrReviewQuestionWorkerLaunch(state, question.id, renewed.dispatchToken, first.expiresAt);
+		assert.equal(renewedClaim.claimed, true);
+		assert.equal(typeof renewedClaim.completionToken, "string");
+	} finally {
+		rmSync(runDir, { recursive: true, force: true });
+	}
+});
+
+test("worker launch lease registry는 extension module reload 뒤에도 같은 reservation을 유지한다", async () => {
+	const { runDir, state, question } = fixture();
+	try {
+		routePrReviewQuestion(state, question.id, "worker", "전체 PR 경로 비교", 1100);
+		const first = reservePrReviewQuestionWorkerLaunch(state, question.id, 1150);
+		const moduleUrl = new URL("./question-worker.ts", import.meta.url);
+		moduleUrl.searchParams.set("reload", String(Date.now()));
+		const reloaded = await import(moduleUrl.href);
+		const duplicate = reloaded.reservePrReviewQuestionWorkerLaunch(state, question.id, 1200);
+		assert.equal(duplicate.dispatchRequired, false);
+		assert.equal(duplicate.dispatchToken, first.dispatchToken);
+		const claimed = reloaded.claimPrReviewQuestionWorkerLaunch(state, question.id, first.dispatchToken, 1200);
+		assert.equal(claimed.claimed, true);
+		assert.equal(typeof claimed.completionToken, "string");
+	} finally {
+		rmSync(runDir, { recursive: true, force: true });
+	}
+});
+
+test("reservation token과 false claimant는 worker apply/fail completion 권한이 없다", async () => {
+	const { runDir, state, question } = fixture();
+	try {
+		routePrReviewQuestion(state, question.id, "worker", "전체 PR 경로 비교", 1100);
+		const reservation = reservePrReviewQuestionWorkerLaunch(state, question.id, 1150);
+		const winner = claimPrReviewQuestionWorkerLaunch(state, question.id, reservation.dispatchToken, 1150);
+		assert.equal(winner.claimed, true);
+		assert.equal(typeof winner.completionToken, "string");
+		assert.equal(claimPrReviewQuestionWorkerLaunch(state, question.id, reservation.dispatchToken, 1150).completionToken, undefined);
+		markPrReviewQuestionWorkerStarted(state, question.id, winner.completionToken!, 78, 1160);
+		const artifactPath = writeArtifact(state, question.id);
+		const pi = {
+			appendEntry() {},
+			sendMessage() {},
+			async exec(command: string, args: string[]) { return freshSourceExec(command, args); },
+		} as any;
+		await assert.rejects(
+			() => applyPrReviewQuestionWorkerResult(pi, state, question.id, artifactPath, "/tmp/review-pr-42", reservation.dispatchToken, 78, 1200),
+			/completion token/,
+		);
+		assert.throws(
+			() => failPrReviewQuestionWorker(pi, state, question.id, reservation.dispatchToken, "loser failure", 79, 1200),
+			/completion token/,
+		);
+		const answered = await applyPrReviewQuestionWorkerResult(pi, state, question.id, artifactPath, "/tmp/review-pr-42", winner.completionToken!, 78, 1200);
+		assert.equal(answered.status, "answered");
 	} finally {
 		rmSync(runDir, { recursive: true, force: true });
 	}
@@ -211,7 +267,7 @@ test("실패 처리 뒤 늦은 worker completion은 terminal 질문을 되살리
 		} as any;
 		const reservation = reservePrReviewQuestionWorkerLaunch(state, question.id, 1100);
 		launchPrReviewQuestionWorker(pi, state, routed.question, "/tmp/review-pr-42", reservation.dispatchToken, 1100);
-		failPrReviewQuestionWorker(pi, state, question.id, reservation.dispatchToken, "worker process failed", 73, 1200);
+		requests[0].onRejected("worker process failed");
 		const artifactPath = writeArtifact(state, question.id, "늦은 완료 답변");
 		await requests[0].onCompleted({ requestId: requests[0].requestId, runId: 73, agent: requests[0].agent, status: "done", output: `[META_REVIEW_QUESTION_WORKER_RESULT]\nartifactPath: ${artifactPath}` });
 		const terminal = loadPrReviewQuestions(runDir)[0]!;
@@ -285,12 +341,47 @@ test("worker가 question snapshot의 pin과 terminal answer를 forge해도 coord
 		assert.equal(failed.answer, undefined);
 		assert.equal(failed.expectedSourceSha256, SOURCE_SHA);
 		assert.equal(failed.expectedHeadSha, HEAD);
-		assert.match(failed.error || "", /coordinator-owned question snapshot/);
+		assert.match(failed.error || "", /coordinator-owned questions canonical/);
 		assert.equal(entries.length, 1);
 		assert.match(entries[0].data.content, /질문 실패/);
 		assert.doesNotMatch(entries[0].data.content, /forged worker answer/);
 	} finally {
 		rmSync(runDir, { recursive: true, force: true });
+	}
+});
+
+test("worker의 다른 question forge와 JSONL truncate는 전체 canonical을 복구하고 active 질문을 실패시킨다", async () => {
+	for (const mutation of ["other-question", "truncate"] as const) {
+		const { runDir, state, question } = fixture();
+		try {
+			const other = createPrReviewQuestion(runDir, { runId: state.runId, question: "다른 질문", scope: "session" }, 1050);
+			routePrReviewQuestion(state, question.id, "worker", "전체 흐름 검증", 1100);
+			const completionToken = reserveAndStartWorker(state, question.id, mutation === "other-question" ? 79 : 80, 1150);
+			if (mutation === "other-question") {
+				appendFileSync(join(runDir, "questions.jsonl"), `${JSON.stringify({
+					type: "question-snapshot",
+					question: { ...other, id: "Q999", question: "forged other question", status: "answered", answer: "forged", updatedAt: 1170 },
+				})}\n`);
+			} else {
+				writeFileSync(join(runDir, "questions.jsonl"), "", "utf8");
+			}
+			const artifactPath = writeArtifact(state, question.id);
+			const pi = {
+				appendEntry() {},
+				sendMessage() {},
+				async exec(command: string, args: string[]) { return freshSourceExec(command, args); },
+			} as any;
+			const failed = await applyPrReviewQuestionWorkerResult(pi, state, question.id, artifactPath, "/tmp/review-pr-42", completionToken, mutation === "other-question" ? 79 : 80, 1200);
+			assert.equal(failed.status, "failed");
+			assert.match(failed.error || "", /questions canonical/);
+			const restored = loadPrReviewQuestions(runDir);
+			assert.deepEqual(restored.map((item) => item.id), ["Q001", "Q002"]);
+			assert.equal(restored[1]?.question, "다른 질문");
+			assert.equal(restored[1]?.status, "queued");
+			assert.doesNotMatch(readFileSync(join(runDir, "questions.jsonl"), "utf8"), /Q999|forged other question/);
+		} finally {
+			rmSync(runDir, { recursive: true, force: true });
+		}
 	}
 });
 

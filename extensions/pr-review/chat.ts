@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
 	createQuestionRoutingExecution,
@@ -65,30 +65,75 @@ export function prReviewQuestionsPath(runDir: string): string {
 	return join(runDir, "questions.jsonl");
 }
 
+interface PrReviewQuestionCanonicalState {
+	content: string;
+	latest: Map<string, PrReviewQuestion>;
+}
+
+interface PrReviewQuestionCanonicalRegistry {
+	states: Map<string, PrReviewQuestionCanonicalState>;
+}
+
+const PR_REVIEW_QUESTION_CANONICAL_REGISTRY = Symbol.for("pilee.meta-review.question-canonical-registry");
+
+function parseQuestionCanonical(content: string): Map<string, PrReviewQuestion> {
+	const latest = new Map<string, PrReviewQuestion>();
+	for (const line of content.split(/\r?\n/)) {
+		if (!line.trim()) continue;
+		try {
+			const event = JSON.parse(line) as QuestionEvent;
+			if (event.type === "question-snapshot" && event.question?.id) latest.set(event.question.id, structuredClone(event.question));
+		} catch {}
+	}
+	return latest;
+}
+
+function questionCanonicalRegistry(): PrReviewQuestionCanonicalRegistry {
+	const root = globalThis as typeof globalThis & { [PR_REVIEW_QUESTION_CANONICAL_REGISTRY]?: PrReviewQuestionCanonicalRegistry };
+	return root[PR_REVIEW_QUESTION_CANONICAL_REGISTRY] ??= { states: new Map() };
+}
+
+function questionCanonicalState(runDir: string): PrReviewQuestionCanonicalState {
+	const key = resolve(prReviewQuestionsPath(runDir));
+	const registry = questionCanonicalRegistry();
+	const existing = registry.states.get(key);
+	if (existing) return existing;
+	const content = existsSync(key) ? readFileSync(key, "utf8") : "";
+	const state = { content, latest: parseQuestionCanonical(content) };
+	registry.states.set(key, state);
+	return state;
+}
+
 function appendQuestion(runDir: string, question: PrReviewQuestion): PrReviewQuestion {
-	appendFileSync(prReviewQuestionsPath(runDir), `${JSON.stringify({ type: "question-snapshot", question } satisfies QuestionEvent)}\n`, "utf8");
-	return question;
+	const path = prReviewQuestionsPath(runDir);
+	const state = questionCanonicalState(runDir);
+	const snapshot = structuredClone(question);
+	const separator = state.content && !state.content.endsWith("\n") ? "\n" : "";
+	state.content = `${state.content}${separator}${JSON.stringify({ type: "question-snapshot", question: snapshot } satisfies QuestionEvent)}\n`;
+	state.latest.set(snapshot.id, snapshot);
+	writeFileSync(path, state.content, "utf8");
+	return structuredClone(snapshot);
+}
+
+export function assertPrReviewQuestionCanonicalIntegrity(runDir: string): void {
+	const path = prReviewQuestionsPath(runDir);
+	const state = questionCanonicalState(runDir);
+	const observed = existsSync(path) ? readFileSync(path, "utf8") : "";
+	if (observed !== state.content) throw new Error("Meta Review worker가 coordinator-owned questions canonical을 변경했습니다.");
 }
 
 export function appendPrReviewQuestionCoordinatorSnapshot(runDir: string, question: PrReviewQuestion): PrReviewQuestion {
 	if (!question.id || !question.runId || !question.question || !question.scope || !Number.isFinite(question.createdAt)) {
 		throw new Error("invalid coordinator-owned Meta Review question snapshot");
 	}
-	return appendQuestion(runDir, structuredClone(question));
+	return appendQuestion(runDir, question);
 }
 
 export function loadPrReviewQuestions(runDir: string): PrReviewQuestion[] {
-	const path = prReviewQuestionsPath(runDir);
-	if (!existsSync(path)) return [];
-	const latest = new Map<string, PrReviewQuestion>();
-	for (const line of readFileSync(path, "utf8").split(/\r?\n/)) {
-		if (!line.trim()) continue;
-		try {
-			const event = JSON.parse(line) as QuestionEvent;
-			if (event.type === "question-snapshot" && event.question?.id) latest.set(event.question.id, event.question);
-		} catch {}
-	}
-	return [...latest.values()].sort((left, right) => left.createdAt - right.createdAt || left.id.localeCompare(right.id));
+	const latest = questionCanonicalState(runDir).latest;
+	return [...latest.values()]
+		.map((question) => structuredClone(question))
+		.sort((left, right) => left.createdAt - right.createdAt || left.id.localeCompare(right.id));
 }
 
 function nextQuestionId(questions: PrReviewQuestion[]): string {

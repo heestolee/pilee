@@ -422,6 +422,7 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 			workerResultPath: Type.Optional(Type.String()),
 			workerRunId: Type.Optional(Type.Integer({ minimum: 1 })),
 			dispatchToken: Type.Optional(Type.String()),
+			completionToken: Type.Optional(Type.String()),
 			evidence: Type.Optional(Type.Array(Type.Object({
 				label: Type.String(),
 				path: Type.Optional(Type.String()),
@@ -451,7 +452,7 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 							pi.sendMessage({
 								customType: "pilee-meta-review-worker-request",
 								display: false,
-								content: `${buildPrReviewQuestionWorkerTask(state, routed.question, ctx.cwd)}\n\n## P0 fallback\n1. meta_review_chat action=\"worker_started\", runId=\"${state.runId}\", questionId=\"${routed.question.id}\", dispatchToken=\"${reservation.dispatchToken}\"를 먼저 호출하세요.\n2. 응답 details.claimed가 true일 때만 subagent run meta-review-question-worker --isolated로 위 task를 실행하고 즉시 turn을 끝내세요. false면 다른 turn이 이미 claim했거나 lease가 만료된 것이므로 worker를 실행하지 않습니다.\n3. launch 자체가 실패하면 meta_review_chat action=\"fail\", runId=\"${state.runId}\", questionId=\"${routed.question.id}\", dispatchToken=\"${reservation.dispatchToken}\"로 기록하세요.\n4. 완료 후 meta_review_chat action=\"apply_worker_result\", runId=\"${state.runId}\", questionId=\"${routed.question.id}\", dispatchToken=\"${reservation.dispatchToken}\", workerResultPath=\"${routed.question.workerResultPath}\"를 호출하세요. apply는 coordinator launch lease의 routing source pin만 사용합니다.`,
+								content: `${buildPrReviewQuestionWorkerTask(state, routed.question, ctx.cwd)}\n\n## P0 fallback\n1. meta_review_chat action=\"worker_started\", runId=\"${state.runId}\", questionId=\"${routed.question.id}\", dispatchToken=\"${reservation.dispatchToken}\"를 먼저 호출하세요.\n2. 응답 details.claimed가 true일 때만 details.completionToken을 보관하고 subagent run meta-review-question-worker --isolated로 위 task를 실행한 뒤 즉시 turn을 끝내세요. false면 tool이 이 turn을 종료하며 worker를 실행할 권한이 없습니다.\n3. launch 자체가 실패하면 meta_review_chat action=\"fail\", runId=\"${state.runId}\", questionId=\"${routed.question.id}\", completionToken=\"<worker_started 응답값>\"로 기록하세요.\n4. 완료 후 meta_review_chat action=\"apply_worker_result\", runId=\"${state.runId}\", questionId=\"${routed.question.id}\", completionToken=\"<worker_started 응답값>\", workerResultPath=\"${routed.question.workerResultPath}\"를 호출하세요. apply/fail은 claim 승자의 completion capability와 coordinator lease pin만 사용합니다.`,
 								details: { runId: state.runId, questionId: routed.question.id, workerResultPath: routed.question.workerResultPath, dispatchToken: reservation.dispatchToken },
 							}, { deliverAs: "followUp", triggerTurn: true });
 						}
@@ -465,22 +466,27 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 			}
 			if (params.action === "worker_started") {
 				if (!params.dispatchToken) throw new Error("worker_started에는 coordinator dispatchToken이 필요합니다.");
-				const claimed = claimPrReviewQuestionWorkerLaunch(state, params.questionId, params.dispatchToken, now());
-				const question = claimed.claimed
-					? markPrReviewQuestionWorkerStarted(state, params.questionId, params.dispatchToken, params.workerRunId, now())
+				const claimedAt = now();
+				const claimed = claimPrReviewQuestionWorkerLaunch(state, params.questionId, params.dispatchToken, claimedAt);
+				const question = claimed.claimed && claimed.completionToken
+					? markPrReviewQuestionWorkerStarted(state, params.questionId, claimed.completionToken, params.workerRunId, claimedAt)
 					: claimed.question;
-				return { content: [{ type: "text", text: claimed.claimed ? `Meta Review question worker launch claimed: ${question.id}` : `Meta Review question worker launch not claimed: ${question.id}` }], details: { runId: state.runId, question, claimed: claimed.claimed } };
+				return {
+					content: [{ type: "text", text: claimed.claimed ? `Meta Review question worker launch claimed: ${question.id}` : `Meta Review question worker launch not claimed: ${question.id}` }],
+					details: { runId: state.runId, question, claimed: claimed.claimed, ...(claimed.completionToken ? { completionToken: claimed.completionToken } : {}) },
+					terminate: !claimed.claimed,
+				};
 			}
 			if (params.action === "apply_worker_result") {
 				if (!params.workerResultPath) throw new Error("apply_worker_result에는 workerResultPath가 필요합니다.");
-				if (!params.dispatchToken) throw new Error("apply_worker_result에는 coordinator dispatchToken이 필요합니다.");
+				if (!params.completionToken) throw new Error("apply_worker_result에는 claim winner completionToken이 필요합니다.");
 				const question = await applyPrReviewQuestionWorkerResult(
 					pi,
 					state,
 					params.questionId,
 					params.workerResultPath,
 					ctx.cwd,
-					params.dispatchToken,
+					params.completionToken,
 					params.workerRunId,
 				);
 				return { content: [{ type: "text", text: question.answer ?? `Meta Review question ${question.status}: ${question.id}` }], details: { runId: state.runId, question }, terminate: true };
@@ -488,9 +494,9 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 			const current = loadPrReviewQuestions(state.runDir).find((question) => question.id === params.questionId);
 			if (!current) throw new Error(`unknown Meta Review question: ${params.questionId}`);
 			if (params.action === "fail") {
-				if (normalizeQuestionExecution(current.execution)?.mode === "worker" || params.dispatchToken) {
-					if (!params.dispatchToken) throw new Error("worker 질문 fail에는 coordinator dispatchToken이 필요합니다.");
-					const question = failPrReviewQuestionWorker(pi, state, params.questionId, params.dispatchToken, params.error ?? "질문 조사에 실패했습니다.", params.workerRunId);
+				if (normalizeQuestionExecution(current.execution)?.mode === "worker" || params.completionToken) {
+					if (!params.completionToken) throw new Error("worker 질문 fail에는 claim winner completionToken이 필요합니다.");
+					const question = failPrReviewQuestionWorker(pi, state, params.questionId, params.completionToken, params.error ?? "질문 조사에 실패했습니다.", params.workerRunId);
 					return { content: [{ type: "text", text: `Meta Review question failed: ${question.id}` }], details: { runId: state.runId, question }, terminate: true };
 				}
 				const failed = failPrReviewQuestion(state.runDir, params.questionId, params.error ?? "질문 조사에 실패했습니다.");
