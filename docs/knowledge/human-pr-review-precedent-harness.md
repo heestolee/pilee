@@ -24,8 +24,9 @@ source:
   - user-direction:2026-08-30-easy-review-hierarchy-and-file-relationships
   - user-direction:2026-08-30-overview-relationship-reading-rail-restoration
   - user-direction:2026-08-30-declaration-symbol-selection-hierarchy
+  - user-direction:2026-08-30-structure-selection-and-source-backed-change-meaning
 reviewed_at: 2026-08-30
-reviewed_commit: 4176907
+reviewed_commit: 84be92a
 related:
   - evidence-first-verification-gate
   - live-artifact-preview-pattern
@@ -77,9 +78,9 @@ Study Hard shell의 `코드 리뷰` 탭은 카드 대시보드가 아니라 Easy
 
 파일 목록은 번호·전체 경로·한 줄 요약·증감 수치·토글을 가진 compact row를 유지합니다. 접힘 상태에서도 파일 역할, 변경 이유, 호출·데이터 흐름, 사용자·후속 영향을 summary 안에 남기고 실제 diff와 semantic explanation만 접습니다. explanation은 evidence의 addition/deletion line을 기준으로 `변경 전 L… · 변경 후 L…` 범위를 표시하며 떨어진 범위는 합치지 않습니다. 메타 관점·인간 precedent·문구 편집은 접고, 결정 버튼은 리뷰 본문을 지배하지 않는 작은 inline action으로 둡니다.
 
-`E-...` explanation hunk는 변경 의도와 coverage를 설명하는 단위이지 source 선택 단위가 아닙니다. TS/TSX/JS/JSX는 capture 시점의 exact before/after source를 TypeScript AST로 파싱해 변수·함수·컴포넌트·hook·메서드·class·type·test declaration tree를 별도 저장합니다. changed code row는 가장 작은 declaration을 기본 선택하고, breadcrumb와 상위·이전 하위·더 작은 범위 control로 함수·class·파일까지 확장·축소합니다.
+`E-...` explanation hunk는 changed evidence coverage를 닫는 설명 단위이지 source 선택이나 변경 의미 boundary가 아닙니다. 구조 선택은 capture 시점의 exact before/after source에서 AST owner가 소유한 가장 작은 연속 statement 또는 `{}` range로 시작합니다. Owner가 변수·함수·메서드·class·type·test label을 결정하며, 코드 길이로 종류를 추정하지 않습니다. 기본 diff는 `/diff`처럼 평평하게 유지하고 선택 범위만 `▶/┃/┗` accent로 표시합니다. Inline toolbar에서 상위·하위 구조와 before/after source로 이동하고 선택을 해제합니다.
 
-선택 preview는 pinned source의 선언 전체를 연속된 줄 범위로 보여주고 before/after를 전환합니다. 질문 provenance는 declaration ID, side, file, 그 선언 안의 전체 changed evidence를 함께 검증합니다. Source snapshot은 file side당 512KB, 전체 4MB로 제한하고 snapshot hash는 diff freshness hash와 분리합니다. Parser 미지원·capture 실패·크기 초과 run만 semantic hunk → line fallback을 유지합니다.
+변경 의미는 구조 단위와 다대다 관계인 별도 `document.meanings[]` canonical입니다. 같은 파일·함수·인접 줄이 아니라 contract, explicit definition/deprecation, producer-consumer, call-flow, test 인과관계로 fact를 묶고 Before 계약·After 계약·전환 메커니즘·영향·source basis·confidence를 기록합니다. High confidence는 diff 이외의 source-backed basis가 필요합니다. 선택 preview와 의미 질문은 각각 declaration ID/side/file/evidence와 meaning ID/전체 evidence를 server에서 재검증합니다. Source snapshot은 file side당 512KB, 전체 4MB로 제한하고 snapshot hash는 diff freshness hash와 분리합니다.
 
 서로 멀리 떨어진 evidence를 하나의 `min..max` 코드 블록으로 합치지 않습니다. changed line은 설명 coverage에서 숨기지 않고, 긴 unchanged context만 fold할 수 있습니다. finding이 없는 파일도 역할·변경 이유와 모든 semantic hunk 설명을 유지합니다.
 
@@ -134,5 +135,7 @@ Meta Review의 코드 리뷰 탭은 GitHub write 도구가 아닙니다. `review
 - 관계도와 실제 finding을 한 2열 attention 카드에 다시 결합하면 관계도는 축소되고, 중립적인 구조 설명과 코드 문제 판정의 시각적 위계가 무너집니다.
 - 읽는 흐름 rail과 질문 drawer를 동시에 고정 노출하면 diff 본문 폭이 이중으로 줄어듭니다.
 - changed row를 모두 line이나 explanation hunk로 선택하면 새 파일 전체와 떨어진 변경 행이 하나의 범위처럼 보이고 지역 변수·상위 함수 질문을 구분하지 못합니다.
+- 모든 구조 range에 header와 box를 표시하면 선택하지 않은 범위도 선택된 것처럼 보이고 parent header가 반복됩니다. 평면 diff에서 active range만 강조합니다.
+- identifier rename·파일 인접성만으로 변경 의미를 만들면 구현체 교체를 계약 전환으로 과잉 해석합니다. Source-backed 인과관계가 없으면 confidence를 낮추거나 의미를 만들지 않습니다.
 - declaration source를 render 시 mutable checkout에서 다시 읽으면 immutable review run과 다른 코드를 질문하게 됩니다.
 - diff freshness hash에 full-source hash를 섞으면 기존 remote/current diff stale 검산과 호환되지 않습니다.

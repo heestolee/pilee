@@ -23,9 +23,10 @@ source:
   - user-direction:2026-08-30-meta-review-question-attachments
   - user-direction:2026-08-30-meta-review-section-and-semantic-unit-selection
   - user-direction:2026-08-30-meta-review-declaration-range-navigation
+  - user-direction:2026-08-30-meaning-and-structure-question-separation
   - review:2026-08-30-question-owner-race-invariants
 reviewed_at: 2026-08-30
-reviewed_commit: 4176907
+reviewed_commit: 84be92a
 related:
   - study-hard-worker-flexible-generation-strict-apply
   - human-pr-review-precedent-harness
@@ -77,11 +78,12 @@ Programmatic dispatcher가 없는 legacy runtime은 hidden P0 fallback을 한 �
 
 - `session`: 선택 context를 함께 보낼 수 없는 전체 PR 범위입니다.
 - `section`: `overview`, `relationships`처럼 server allowlist에 있는 상단 문서 section만 허용합니다. 임의 section ID나 file/card/evidence 혼합은 거부합니다.
-- `declaration`: captured before/after source의 실제 declaration ID, side, file, 전체 changed evidence가 모두 일치해야 합니다. 일부 evidence, 임의 range, 존재하지 않는 side는 거부합니다.
+- `meaning`: canonical `document.meanings[]`의 실제 meaning ID와 전체 evidence가 일치해야 합니다. 임의 의미 ID나 일부 evidence는 거부합니다.
+- `declaration`: captured before/after source의 실제 구조 ID, side, file, 전체 changed evidence가 모두 일치해야 합니다. 일부 evidence, 임의 range, 존재하지 않는 side는 거부합니다.
 - `file | card | evidence`: captured source의 실제 file, ReviewCard, line/hunk evidence와 일치해야 합니다.
-- declaration snapshot이 있으면 changed code row는 가장 작은 변수·함수·메서드·class 등의 선언을 선택합니다. 상위·하위 범위와 before/after 전환도 같은 captured tree 안에서만 이동합니다. Snapshot이 없을 때만 hunk → line fallback을 사용합니다.
+- source snapshot이 있으면 changed row는 가장 작은 statement 또는 declaration-owned block을 선택합니다. 상위·하위 범위와 before/after 전환은 같은 captured tree 안에서만 이동하고 inline toolbar는 클릭한 row 옆에 남습니다. Snapshot이 없을 때만 hunk → line fallback을 사용합니다.
 
-Direct와 worker는 동일한 `scope`, `sectionId` 또는 declaration ID/side 또는 file/card/evidence, selection kind/id를 받습니다. section을 session으로 강등하거나 declaration을 hunk/한 줄 evidence로 축소하지 않습니다.
+Direct와 worker는 동일한 `scope`, `sectionId`, meaning ID, declaration ID/side 또는 file/card/evidence와 selection kind/id를 받습니다. 의미를 구조 질문으로, 구조를 hunk/한 줄 evidence로 강등하지 않습니다.
 
 ## Transcript Boundary
 
@@ -119,7 +121,8 @@ Worker output은 답변 근거가 아니라 검증 대상입니다.
 - generic update가 question execution을 덮거나 patch 누락·역순·중복을 chronology 변경으로 해석하면 worker→direct 역전, terminal reopen, callback 대상 소실, 잘못된 active question 선택을 만들 수 있습니다.
 - worker-writable question snapshot이나 artifact를 source pin으로 다시 읽거나 active ID 하나만 검사하면 prompt injection이 다른 질문과 durable log를 forge할 수 있습니다. reservation token을 completion 권한으로 재사용하면 claim 패자도 canonical을 종료할 수 있습니다. 반대로 artifact의 source hash를 HEAD만 확인하면 working diff가 바뀐 stale 답변을 승인하고, 관찰 실패까지 stale로 고정하면 일시 장애를 source 변경이라고 오진합니다.
 - 내부 dispatch prompt를 `display:true`로 노출하면 사용자 대화가 run path와 tool 지침으로 오염됩니다.
-- 상단 문서 section을 session으로 저장하거나 declaration 선택을 hunk/line으로 저장하면 사용자가 고른 연속 source 범위와 canonical 질문 범위가 달라집니다.
+- 상단 문서 section을 session으로 저장하거나 구조 선택을 hunk/line으로 저장하면 사용자가 고른 연속 source 범위와 canonical 질문 범위가 달라집니다.
+- 변경 의미를 관련 구조 단위 하나의 질문으로 저장하면 다대다 계약 전환의 일부 evidence만 조사하게 됩니다.
 - Parent/child UI가 client에서 임의 range를 만들고 server가 declaration ID·side·전체 evidence를 재검증하지 않으면 source 일부만으로 더 넓은 범위를 주장할 수 있습니다.
 
 ## Review Trigger
