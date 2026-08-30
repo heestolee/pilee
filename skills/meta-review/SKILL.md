@@ -70,6 +70,15 @@ TS/TSX/JS/JSX source가 capture되면 UI는 parser가 만든 가장 작은 연�
 
 각 meaning은 `M-...` ID, title, beforeContract, afterContract, mechanism, impact, changed paths/evidenceIds, basis, confidence를 가집니다. 의미가 없다고 판단되면 억지로 만들지 않고 빈 배열을 제출합니다.
 
+구조·순서가 텍스트만으로 잘 보이지 않는 meaning에는 `visual`을 하나만 추가합니다. Raw Mermaid 문자열은 제출하지 않고 아래 구조화 schema만 사용합니다.
+
+- `flowchart`: 책임·데이터·소유권·계약 구조가 이동할 때 사용합니다. `before`와 `after` group을 모두 두고 node/edge를 연결합니다.
+- `sequence`: 호출 순서, 비동기 처리, 실패·재시도·CAS 충돌이 핵심일 때 actor/message 순서로 사용합니다.
+- actor가 거의 없거나 단순 값·문구 변경이면 visual을 만들지 않습니다.
+- role은 `removed | new | moved | preserved | guard | context`만 사용합니다. 제거는 빨강 점선, 신규는 초록, 책임 이동은 보라, 유지 경계는 파랑, 검증·충돌은 주황, 주변 문맥은 회색으로 렌더링됩니다.
+- visual은 title과 `readingHint`를 가지며, 텍스트 Before/After 계약·메커니즘·영향·source basis를 대체하지 않습니다.
+- flowchart는 group 2–6, node 2–12, edge 1–20; sequence는 actor 2–8, message 1–16 범위로 압축합니다. 전체 시스템 지도를 inline meaning에 넣지 않습니다.
+
 ### 4. blind review 후보를 만든다
 
 이 단계에서는 인간 리뷰 corpus를 사용하지 않는다. 설명 자체를 문제로 표현하지 말고, 실제 correctness·policy·운영 위험만 review 후보로 승격한다.
@@ -143,7 +152,27 @@ Corpus가 없거나 검색을 지원하지 않으면 blind review를 계속하�
         "basis": [
           { "kind": "producer-consumer", "path": "src/ui.tsx", "line": 42, "summary": "consumer가 policy 결과를 사용합니다." }
         ],
-        "confidence": "high"
+        "confidence": "high",
+        "visual": {
+          "kind": "flowchart",
+          "title": "암묵적 허용에서 명시적 정책으로",
+          "readingHint": "빨강 점선은 제거된 조건, 보라는 책임 이동, 초록은 새 계약입니다.",
+          "direction": "LR",
+          "legend": ["removed", "moved", "new"],
+          "groups": [
+            { "id": "before", "label": "기존", "phase": "before" },
+            { "id": "after", "label": "변경 후", "phase": "after" }
+          ],
+          "nodes": [
+            { "id": "implicit", "label": "부정 조건", "role": "removed", "groupId": "before" },
+            { "id": "policy", "label": "Policy owner", "role": "moved", "groupId": "after" },
+            { "id": "allowlist", "label": "명시적 allowlist", "role": "new", "groupId": "after" }
+          ],
+          "edges": [
+            { "from": "implicit", "to": "policy", "label": "책임 이동", "role": "moved" },
+            { "from": "policy", "to": "allowlist", "label": "정책 생산", "role": "new" }
+          ]
+        }
       }
     ],
     "relationships": {
