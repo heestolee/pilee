@@ -22,7 +22,7 @@ source:
   - user-direction:2026-08-30-question-execution-owner-routing
   - review:2026-08-30-question-owner-race-invariants
 reviewed_at: 2026-08-30
-reviewed_commit: 7442176014ece1db372d2e50b373e8cc48dce632
+reviewed_commit: 74571a1cffceaa1f731f240037b209de4787ac09
 related:
   - study-hard-worker-flexible-generation-strict-apply
   - human-pr-review-precedent-harness
@@ -64,9 +64,9 @@ routing
 
 ## Launch and Recovery Rule
 
-worker route를 state에 저장한 사실과 실제 worker launch claim은 다릅니다. coordinator는 random dispatch token, route pin, trusted question snapshot을 active launch lease에 함께 보관합니다. 표준 dispatcher와 legacy fallback 모두 token compare-and-set에 성공한 한 실행만 launch하며, claim 전 route 재호출도 같은 active lease에서 새 dispatch를 만들지 않습니다.
+worker route를 state에 저장한 사실과 실제 worker launch claim은 다릅니다. coordinator는 random reservation token, route pin, trusted question snapshot을 process-global active launch lease에 함께 보관해 extension reload 뒤에도 기존 callback ownership을 유지합니다. 표준 dispatcher와 legacy fallback 모두 token compare-and-set에 성공한 한 실행만 launch하며, claim 전 route 재호출도 같은 active lease에서 새 dispatch를 만들지 않습니다.
 
-Programmatic dispatcher가 없는 legacy runtime은 hidden P0 fallback을 한 번만 남깁니다. P0는 `worker_started(dispatchToken)` 응답의 `claimed=true`일 때만 worker를 실행하고, false면 즉시 멈춥니다. 전달되지 않은 unclaimed fallback은 lease가 만료된 뒤 새 token으로만 재예약할 수 있습니다. apply/fail도 같은 token을 요구하며 expected hash/head를 caller 입력으로 받지 않습니다.
+Programmatic dispatcher가 없는 legacy runtime은 hidden P0 fallback을 한 번만 남깁니다. P0는 `worker_started(reservationToken)` 응답의 `claimed=true`일 때만 worker를 실행하고, false면 tool이 turn을 종료합니다. claim 승자에게만 별도 completion capability를 발급하며 started/apply/fail은 이 capability를 요구합니다. 전달되지 않은 unclaimed fallback은 lease가 만료된 뒤 새 reservation token으로만 재예약할 수 있습니다.
 
 ## Transcript Boundary
 
@@ -83,7 +83,7 @@ Worker output은 답변 근거가 아니라 검증 대상입니다.
 
 - worker는 지정된 run-local result artifact만 제안하고 canonical state를 직접 바꾸지 않습니다.
 - coordinator는 result path, run/question identity, schema, source hash, checkout head를 검사합니다.
-- source hash는 mutable artifact나 worker가 쓸 수 있는 `questions.jsonl`을 trust anchor로 삼지 않고 route 시점의 coordinator launch lease에 pin합니다. question JSONL은 append-only 감사 기록이며, worker가 forged pin이나 terminal snapshot을 추가하면 apply 전에 감지해 trusted failed snapshot으로 복구합니다.
+- source hash는 mutable artifact나 worker가 쓸 수 있는 `questions.jsonl`을 trust anchor로 삼지 않고 route 시점의 coordinator launch lease에 pin합니다. Meta Review question 전체 canonical은 process-global coordinator registry가 소유합니다. worker가 다른 question/Q999 snapshot을 추가하거나 JSONL을 truncate해도 전체 파일 불일치를 감지하고 trusted canonical + active failed snapshot으로 복구합니다.
 - 적용 직전 GitHub PR은 clean checkout, remote head, remote diff를 다시 확인하고 current-work는 base 대비 tracked·untracked diff를 다시 계산합니다.
 - 관찰된 head/hash/root/diff가 pin과 다를 때만 `stale`로 끝냅니다. git·gh 인증/네트워크/JSON 오류처럼 freshness를 관찰하지 못한 경우는 source 변경으로 주장하지 않고 worker `failed`로 기록합니다.
 
@@ -94,7 +94,7 @@ Worker output은 답변 근거가 아니라 검증 대상입니다.
 - worker state 저장 뒤 launch acknowledgement를 구분하지 않으면 interrupted launch가 영구 `worker-starting`에 머뭅니다.
 - terminal status와 execution phase를 별도 snapshot으로 쓰면 늦은 callback이 `status=answered, execution=failed` 같은 모순을 만듭니다.
 - generic update가 question execution을 덮거나 patch 누락·역순·중복을 chronology 변경으로 해석하면 worker→direct 역전, terminal reopen, callback 대상 소실, 잘못된 active question 선택을 만들 수 있습니다.
-- worker-writable question snapshot이나 artifact를 source pin으로 다시 읽으면 prompt injection이 trust anchor와 terminal answer를 함께 forge할 수 있습니다. 반대로 artifact의 source hash를 HEAD만 확인하면 working diff가 바뀐 stale 답변을 승인하고, 관찰 실패까지 stale로 고정하면 일시 장애를 source 변경이라고 오진합니다.
+- worker-writable question snapshot이나 artifact를 source pin으로 다시 읽거나 active ID 하나만 검사하면 prompt injection이 다른 질문과 durable log를 forge할 수 있습니다. reservation token을 completion 권한으로 재사용하면 claim 패자도 canonical을 종료할 수 있습니다. 반대로 artifact의 source hash를 HEAD만 확인하면 working diff가 바뀐 stale 답변을 승인하고, 관찰 실패까지 stale로 고정하면 일시 장애를 source 변경이라고 오진합니다.
 - 내부 dispatch prompt를 `display:true`로 노출하면 사용자 대화가 run path와 tool 지침으로 오염됩니다.
 
 ## Review Trigger
