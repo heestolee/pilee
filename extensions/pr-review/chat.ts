@@ -70,6 +70,13 @@ function appendQuestion(runDir: string, question: PrReviewQuestion): PrReviewQue
 	return question;
 }
 
+export function appendPrReviewQuestionCoordinatorSnapshot(runDir: string, question: PrReviewQuestion): PrReviewQuestion {
+	if (!question.id || !question.runId || !question.question || !question.scope || !Number.isFinite(question.createdAt)) {
+		throw new Error("invalid coordinator-owned Meta Review question snapshot");
+	}
+	return appendQuestion(runDir, structuredClone(question));
+}
+
 export function loadPrReviewQuestions(runDir: string): PrReviewQuestion[] {
 	const path = prReviewQuestionsPath(runDir);
 	if (!existsSync(path)) return [];

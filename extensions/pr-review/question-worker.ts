@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -14,12 +15,10 @@ import {
 	type ProgrammaticSubagentLaunchRequest,
 } from "../subagent/programmatic.ts";
 import {
-	answerPrReviewQuestion,
-	failPrReviewQuestion,
+	appendPrReviewQuestionCoordinatorSnapshot,
 	isPrReviewQuestionTerminal,
 	loadPrReviewQuestions,
 	publishPrReviewQuestionTranscript,
-	stalePrReviewQuestion,
 	updatePrReviewQuestion,
 	type PrReviewQuestion,
 	type PrReviewQuestionEvidence,
@@ -28,6 +27,7 @@ import { captureUnifiedDiff } from "./evidence.ts";
 import type { PrReviewRunState } from "./run.ts";
 
 const MAX_WORKER_RESULT_BYTES = 2 * 1024 * 1024;
+const WORKER_LAUNCH_LEASE_MS = 30_000;
 
 class PrReviewSourceStaleError extends Error {
 	constructor(message: string) {
@@ -62,6 +62,28 @@ export interface PrReviewQuestionSourcePin {
 	sourceSha256: string;
 	headSha?: string;
 }
+
+interface PrReviewQuestionWorkerLease {
+	dispatchToken: string;
+	pin: PrReviewQuestionSourcePin;
+	trustedQuestion: PrReviewQuestion;
+	phase: "reserved" | "claimed" | "terminal";
+	reservedAt: number;
+	expiresAt: number;
+}
+
+export interface PrReviewQuestionWorkerReservation {
+	dispatchToken: string;
+	dispatchRequired: boolean;
+	expiresAt: number;
+}
+
+export interface PrReviewQuestionWorkerClaimResult {
+	claimed: boolean;
+	question: PrReviewQuestion;
+}
+
+const workerLaunchLeases = new Map<string, PrReviewQuestionWorkerLease>();
 
 function currentQuestion(state: PrReviewRunState, questionId: string): PrReviewQuestion {
 	const question = loadPrReviewQuestions(state.runDir).find((item) => item.id === questionId);
@@ -124,34 +146,64 @@ export function routePrReviewQuestion(
 export function markPrReviewQuestionWorkerStarted(
 	state: PrReviewRunState,
 	questionId: string,
+	dispatchToken: string,
 	workerRunId?: number,
 	now = Date.now(),
 ): PrReviewQuestion {
-	const question = currentQuestion(state, questionId);
-	if (isPrReviewQuestionTerminal(question)) return question;
+	const lease = leaseForToken(state, questionId, dispatchToken);
+	if (lease.phase === "terminal") return structuredClone(lease.trustedQuestion);
+	if (lease.phase !== "claimed") throw new Error("Meta Review worker launch claim이 먼저 필요합니다.");
+	const question = assertTrustedQuestionSnapshot(state, lease);
 	const currentExecution = normalizeQuestionExecution(question.execution);
 	if (currentExecution?.phase === "worker-running" && question.workerRunId === workerRunId) return question;
 	const execution = currentExecution?.mode === "worker"
 		? updateQuestionExecutionPhase(question.execution, "worker-running", now)
 		: updateQuestionExecutionPhase(routeQuestionExecution(question.execution, "worker", "기존 worker 실행 경로 호환", now), "worker-running", now);
-	return updatePrReviewQuestion(state.runDir, questionId, {
+	return appendLeaseQuestion(state, lease, {
+		...question,
 		status: "answering",
 		execution,
 		workerRunId: Number.isInteger(workerRunId) ? workerRunId : question.workerRunId,
 		error: undefined,
-	}, now);
+		updatedAt: now,
+	});
 }
 
 export function failPrReviewQuestionWorker(
 	pi: Pick<ExtensionAPI, "appendEntry" | "sendMessage">,
 	state: PrReviewRunState,
 	questionId: string,
+	dispatchToken: string,
 	error: string,
 	workerRunId?: number,
 	now = Date.now(),
 ): PrReviewQuestion {
-	const failed = failPrReviewQuestion(state.runDir, questionId, error.trim().slice(0, 2_000) || "Meta Review question worker failed", now, "worker", workerRunId);
-	return failed.status === "failed" ? publishPrReviewQuestionTranscript(pi, state, failed, "failed") : failed;
+	const lease = leaseForToken(state, questionId, dispatchToken);
+	if (lease.phase === "terminal") return structuredClone(lease.trustedQuestion);
+	let message = error.trim().slice(0, 2_000) || "Meta Review question worker failed";
+	try {
+		assertTrustedQuestionSnapshot(state, lease);
+	} catch (integrityError) {
+		message = `${integrityError instanceof Error ? integrityError.message : String(integrityError)} ${message}`.trim().slice(0, 2_000);
+	}
+	const question = lease.trustedQuestion;
+	const currentExecution = normalizeQuestionExecution(question.execution);
+	const workerExecution = currentExecution?.mode === "worker"
+		? question.execution
+		: routeQuestionExecution(question.execution, "worker", "기존 worker 실행 경로 호환", now);
+	const execution = updateQuestionExecutionPhase(workerExecution, "failed", now);
+	return terminalLeaseQuestion(pi, state, lease, {
+		...question,
+		status: "failed",
+		execution,
+		answer: undefined,
+		evidence: undefined,
+		uncertainty: undefined,
+		answeredAt: undefined,
+		workerRunId: Number.isInteger(workerRunId) ? workerRunId : question.workerRunId,
+		error: message,
+		updatedAt: now,
+	}, "failed");
 }
 
 function normalizeEvidence(value: unknown): PrReviewQuestionEvidence[] {
@@ -206,6 +258,94 @@ function readWorkerArtifact(state: PrReviewRunState, question: PrReviewQuestion,
 function sourcePin(question: PrReviewQuestion): PrReviewQuestionSourcePin {
 	if (!question.expectedSourceSha256) throw new Error("Meta Review worker question에 routing source pin이 없습니다.");
 	return { sourceSha256: question.expectedSourceSha256, headSha: question.expectedHeadSha };
+}
+
+function workerLeaseKey(state: PrReviewRunState, questionId: string): string {
+	return `${resolve(state.runDir)}\u0000${questionId}`;
+}
+
+function sameQuestionSnapshot(left: PrReviewQuestion, right: PrReviewQuestion): boolean {
+	return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function leaseForToken(state: PrReviewRunState, questionId: string, dispatchToken: string): PrReviewQuestionWorkerLease {
+	const lease = workerLaunchLeases.get(workerLeaseKey(state, questionId));
+	if (!lease || lease.dispatchToken !== dispatchToken) throw new Error("Meta Review worker dispatch token이 coordinator launch lease와 다릅니다.");
+	return lease;
+}
+
+function assertTrustedQuestionSnapshot(state: PrReviewRunState, lease: PrReviewQuestionWorkerLease): PrReviewQuestion {
+	const latest = currentQuestion(state, lease.trustedQuestion.id);
+	if (!sameQuestionSnapshot(latest, lease.trustedQuestion)) {
+		throw new Error("Meta Review worker가 coordinator-owned question snapshot을 변경했습니다.");
+	}
+	return latest;
+}
+
+function appendLeaseQuestion(state: PrReviewRunState, lease: PrReviewQuestionWorkerLease, question: PrReviewQuestion): PrReviewQuestion {
+	const appended = appendPrReviewQuestionCoordinatorSnapshot(state.runDir, question);
+	lease.trustedQuestion = structuredClone(appended);
+	return appended;
+}
+
+function terminalLeaseQuestion(
+	pi: Pick<ExtensionAPI, "appendEntry" | "sendMessage">,
+	state: PrReviewRunState,
+	lease: PrReviewQuestionWorkerLease,
+	question: PrReviewQuestion,
+	eventKind: "answer" | "failed" | "stale",
+): PrReviewQuestion {
+	const appended = appendLeaseQuestion(state, lease, question);
+	lease.phase = "terminal";
+	const published = publishPrReviewQuestionTranscript(pi, state, appended, eventKind);
+	lease.trustedQuestion = structuredClone(published);
+	return published;
+}
+
+export function reservePrReviewQuestionWorkerLaunch(
+	state: PrReviewRunState,
+	questionId: string,
+	now = Date.now(),
+): PrReviewQuestionWorkerReservation {
+	const key = workerLeaseKey(state, questionId);
+	const existing = workerLaunchLeases.get(key);
+	if (existing && (existing.phase !== "reserved" || now < existing.expiresAt)) {
+		assertTrustedQuestionSnapshot(state, existing);
+		return { dispatchToken: existing.dispatchToken, dispatchRequired: false, expiresAt: existing.expiresAt };
+	}
+	const question = currentQuestion(state, questionId);
+	if (isPrReviewQuestionTerminal(question)) throw new Error(`terminal Meta Review question은 worker launch를 예약할 수 없습니다: ${questionId}`);
+	if (normalizeQuestionExecution(question.execution)?.mode !== "worker") throw new Error(`worker route가 없는 Meta Review question입니다: ${questionId}`);
+	const lease: PrReviewQuestionWorkerLease = {
+		dispatchToken: randomUUID(),
+		pin: sourcePin(question),
+		trustedQuestion: structuredClone(question),
+		phase: "reserved",
+		reservedAt: now,
+		expiresAt: now + WORKER_LAUNCH_LEASE_MS,
+	};
+	workerLaunchLeases.set(key, lease);
+	return { dispatchToken: lease.dispatchToken, dispatchRequired: true, expiresAt: lease.expiresAt };
+}
+
+export function claimPrReviewQuestionWorkerLaunch(
+	state: PrReviewRunState,
+	questionId: string,
+	dispatchToken: string,
+	now = Date.now(),
+): PrReviewQuestionWorkerClaimResult {
+	const lease = workerLaunchLeases.get(workerLeaseKey(state, questionId));
+	if (!lease || lease.dispatchToken !== dispatchToken || lease.phase !== "reserved" || now >= lease.expiresAt) {
+		return { claimed: false, question: lease?.trustedQuestion ?? currentQuestion(state, questionId) };
+	}
+	assertTrustedQuestionSnapshot(state, lease);
+	lease.phase = "claimed";
+	return { claimed: true, question: structuredClone(lease.trustedQuestion) };
+}
+
+function releasePrReviewQuestionWorkerClaim(state: PrReviewRunState, questionId: string, dispatchToken: string): void {
+	const lease = leaseForToken(state, questionId, dispatchToken);
+	if (lease.phase === "claimed") lease.phase = "reserved";
 }
 
 async function execText(
@@ -275,27 +415,60 @@ export async function applyPrReviewQuestionWorkerResult(
 	questionId: string,
 	artifactPath: string,
 	cwd: string,
+	dispatchToken: string,
 	workerRunId?: number,
 	now = Date.now(),
 ): Promise<PrReviewQuestion> {
-	let question = currentQuestion(state, questionId);
-	if (isPrReviewQuestionTerminal(question)) return question;
-	const pin = sourcePin(question);
+	const lease = leaseForToken(state, questionId, dispatchToken);
+	if (lease.phase === "terminal") return structuredClone(lease.trustedQuestion);
 	try {
-		await assertObservedReviewSource(pi, state, cwd, pin);
+		assertTrustedQuestionSnapshot(state, lease);
+	} catch (error) {
+		return failPrReviewQuestionWorker(pi, state, questionId, dispatchToken, error instanceof Error ? error.message : String(error), workerRunId, now);
+	}
+	try {
+		await assertObservedReviewSource(pi, state, cwd, lease.pin);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		if (error instanceof PrReviewSourceStaleError) {
-			const stale = stalePrReviewQuestion(state.runDir, questionId, message, now, "worker", workerRunId);
-			return stale.status === "stale" ? publishPrReviewQuestionTranscript(pi, state, stale, "stale") : stale;
+		try {
+			assertTrustedQuestionSnapshot(state, lease);
+		} catch (integrityError) {
+			return failPrReviewQuestionWorker(pi, state, questionId, dispatchToken, integrityError instanceof Error ? integrityError.message : String(integrityError), workerRunId, now);
 		}
-		return failPrReviewQuestionWorker(pi, state, questionId, message, workerRunId, now);
+		if (error instanceof PrReviewSourceStaleError) {
+			const question = lease.trustedQuestion;
+			const execution = updateQuestionExecutionPhase(question.execution, "stale", now);
+			return terminalLeaseQuestion(pi, state, lease, {
+				...question,
+				status: "stale",
+				execution,
+				workerRunId: Number.isInteger(workerRunId) ? workerRunId : question.workerRunId,
+				error: message || "Meta Review review source가 변경되었습니다.",
+				updatedAt: now,
+			}, "stale");
+		}
+		return failPrReviewQuestionWorker(pi, state, questionId, dispatchToken, message, workerRunId, now);
 	}
-	question = currentQuestion(state, questionId);
-	if (isPrReviewQuestionTerminal(question)) return question;
-	const artifact = readWorkerArtifact(state, question, artifactPath, pin);
-	const answered = answerPrReviewQuestion(state.runDir, questionId, artifact.answer, artifact.evidence, artifact.uncertainty, now, "worker", workerRunId);
-	return answered.status === "answered" ? publishPrReviewQuestionTranscript(pi, state, answered, "answer") : answered;
+	try {
+		assertTrustedQuestionSnapshot(state, lease);
+		const question = lease.trustedQuestion;
+		const artifact = readWorkerArtifact(state, question, artifactPath, lease.pin);
+		const execution = updateQuestionExecutionPhase(question.execution, "answered", now);
+		return terminalLeaseQuestion(pi, state, lease, {
+			...question,
+			status: "answered",
+			execution,
+			answer: artifact.answer,
+			evidence: artifact.evidence,
+			uncertainty: artifact.uncertainty,
+			error: undefined,
+			answeredAt: now,
+			workerRunId: Number.isInteger(workerRunId) ? workerRunId : question.workerRunId,
+			updatedAt: now,
+		}, "answer");
+	} catch (error) {
+		return failPrReviewQuestionWorker(pi, state, questionId, dispatchToken, error instanceof Error ? error.message : String(error), workerRunId, now);
+	}
 }
 
 export function buildPrReviewQuestionWorkerTask(state: PrReviewRunState, question: PrReviewQuestion, cwd: string): string {
@@ -339,39 +512,51 @@ export function launchPrReviewQuestionWorker(
 	state: PrReviewRunState,
 	question: PrReviewQuestion,
 	cwd: string,
+	dispatchToken: string,
+	now = Date.now(),
 ): boolean {
 	if (!pi.events || typeof pi.events.emit !== "function") return false;
-	let claimed = false;
+	const launchClaim = claimPrReviewQuestionWorkerLaunch(state, question.id, dispatchToken, now);
+	if (!launchClaim.claimed) return false;
+	let dispatcherClaimed = false;
 	const request: ProgrammaticSubagentLaunchRequest = {
 		kind: "programmatic-subagent-launch",
-		requestId: `meta-review-question:${state.runId}:${question.id}:${question.execution?.updatedAt || question.updatedAt}`,
+		requestId: `meta-review-question:${state.runId}:${question.id}:${dispatchToken}`,
 		agent: "meta-review-question-worker",
-		task: buildPrReviewQuestionWorkerTask(state, question, cwd),
+		task: buildPrReviewQuestionWorkerTask(state, launchClaim.question, cwd),
 		contextMode: "isolated",
 		claim: () => {
-			if (claimed) return false;
-			claimed = true;
+			if (dispatcherClaimed) return false;
+			dispatcherClaimed = true;
 			return true;
 		},
-		onStarted: ({ runId }) => { markPrReviewQuestionWorkerStarted(state, question.id, runId); },
+		onStarted: ({ runId }) => { markPrReviewQuestionWorkerStarted(state, question.id, dispatchToken, runId); },
 		onCompleted: async (completion) => {
-			const latest = currentQuestion(state, question.id);
-			if (isPrReviewQuestionTerminal(latest)) return;
-			const error = completionError(latest, completion);
+			const lease = leaseForToken(state, question.id, dispatchToken);
+			if (lease.phase === "terminal") return;
+			const error = completionError(lease.trustedQuestion, completion);
 			if (error) {
-				failPrReviewQuestionWorker(pi, state, question.id, error, completion.runId);
+				failPrReviewQuestionWorker(pi, state, question.id, dispatchToken, error, completion.runId);
 				return;
 			}
 			const artifactPath = completion.output.match(/^artifactPath:\s*(.+)$/m)![1]!.trim();
 			try {
-				await applyPrReviewQuestionWorkerResult(pi, state, question.id, artifactPath, cwd, completion.runId);
+				await applyPrReviewQuestionWorkerResult(pi, state, question.id, artifactPath, cwd, dispatchToken, completion.runId);
 			} catch (applyError) {
-				failPrReviewQuestionWorker(pi, state, question.id, applyError instanceof Error ? applyError.message : String(applyError), completion.runId);
+				failPrReviewQuestionWorker(pi, state, question.id, dispatchToken, applyError instanceof Error ? applyError.message : String(applyError), completion.runId);
 			}
 		},
-		onRejected: (error) => { failPrReviewQuestionWorker(pi, state, question.id, error); },
+		onRejected: (error) => { failPrReviewQuestionWorker(pi, state, question.id, dispatchToken, error); },
 	};
-	pi.events.emit(PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT, request);
-	if (!claimed) throw new Error("표준 subagent dispatcher가 Meta Review question launch request를 claim하지 않았습니다.");
+	try {
+		pi.events.emit(PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT, request);
+	} catch (error) {
+		releasePrReviewQuestionWorkerClaim(state, question.id, dispatchToken);
+		throw error;
+	}
+	if (!dispatcherClaimed) {
+		releasePrReviewQuestionWorkerClaim(state, question.id, dispatchToken);
+		return false;
+	}
 	return true;
 }

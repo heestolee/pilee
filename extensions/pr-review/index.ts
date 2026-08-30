@@ -27,9 +27,11 @@ import { searchPrReviewCorpus } from "./corpus.ts";
 import {
 	applyPrReviewQuestionWorkerResult,
 	buildPrReviewQuestionWorkerTask,
+	claimPrReviewQuestionWorkerLaunch,
 	failPrReviewQuestionWorker,
 	launchPrReviewQuestionWorker,
 	markPrReviewQuestionWorkerStarted,
+	reservePrReviewQuestionWorkerLaunch,
 	routePrReviewQuestion,
 } from "./question-worker.ts";
 import { captureUnifiedDiff, renderInspectionChunk, type ReviewSourceBundle } from "./evidence.ts";
@@ -419,6 +421,7 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 			error: Type.Optional(Type.String()),
 			workerResultPath: Type.Optional(Type.String()),
 			workerRunId: Type.Optional(Type.Integer({ minimum: 1 })),
+			dispatchToken: Type.Optional(Type.String()),
 			evidence: Type.Optional(Type.Array(Type.Object({
 				label: Type.String(),
 				path: Type.Optional(Type.String()),
@@ -437,17 +440,21 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 			if (params.action === "route") {
 				if (params.executionMode !== "direct" && params.executionMode !== "worker") throw new Error("route executionMode은 direct 또는 worker여야 합니다.");
 				if (!params.routeReason?.trim()) throw new Error("route에는 routeReason이 필요합니다.");
-				const routed = routePrReviewQuestion(state, params.questionId, params.executionMode, params.routeReason);
+				const routedAt = now();
+				const routed = routePrReviewQuestion(state, params.questionId, params.executionMode, params.routeReason, routedAt);
 				let workerLaunched = false;
 				if (routed.mode === "worker" && routed.workerLaunchRequired) {
-					workerLaunched = launchPrReviewQuestionWorker(pi, state, routed.question, ctx.cwd);
-					if (!workerLaunched) {
-						pi.sendMessage({
-							customType: "pilee-meta-review-worker-request",
-							display: false,
-							content: `${buildPrReviewQuestionWorkerTask(state, routed.question, ctx.cwd)}\n\n## P0 fallback\n1. 중복 launch를 막기 위해 먼저 meta_review_chat action=\"worker_started\", runId=\"${state.runId}\", questionId=\"${routed.question.id}\"를 호출해 이 fallback launch를 claim하세요.\n2. 바로 subagent run meta-review-question-worker --isolated로 위 task를 실행하세요. launch 자체가 실패하면 meta_review_chat action=\"fail\"로 기록하세요.\n3. 완료 후 meta_review_chat action=\"apply_worker_result\", runId=\"${state.runId}\", questionId=\"${routed.question.id}\", workerResultPath=\"${routed.question.workerResultPath}\"를 호출하세요. apply는 질문에 저장된 routing source pin만 사용합니다.`,
-							details: { runId: state.runId, questionId: routed.question.id, workerResultPath: routed.question.workerResultPath },
-						}, { deliverAs: "followUp", triggerTurn: true });
+					const reservation = reservePrReviewQuestionWorkerLaunch(state, routed.question.id, routedAt);
+					if (reservation.dispatchRequired) {
+						workerLaunched = launchPrReviewQuestionWorker(pi, state, routed.question, ctx.cwd, reservation.dispatchToken, routedAt);
+						if (!workerLaunched) {
+							pi.sendMessage({
+								customType: "pilee-meta-review-worker-request",
+								display: false,
+								content: `${buildPrReviewQuestionWorkerTask(state, routed.question, ctx.cwd)}\n\n## P0 fallback\n1. meta_review_chat action=\"worker_started\", runId=\"${state.runId}\", questionId=\"${routed.question.id}\", dispatchToken=\"${reservation.dispatchToken}\"를 먼저 호출하세요.\n2. 응답 details.claimed가 true일 때만 subagent run meta-review-question-worker --isolated로 위 task를 실행하고 즉시 turn을 끝내세요. false면 다른 turn이 이미 claim했거나 lease가 만료된 것이므로 worker를 실행하지 않습니다.\n3. launch 자체가 실패하면 meta_review_chat action=\"fail\", runId=\"${state.runId}\", questionId=\"${routed.question.id}\", dispatchToken=\"${reservation.dispatchToken}\"로 기록하세요.\n4. 완료 후 meta_review_chat action=\"apply_worker_result\", runId=\"${state.runId}\", questionId=\"${routed.question.id}\", dispatchToken=\"${reservation.dispatchToken}\", workerResultPath=\"${routed.question.workerResultPath}\"를 호출하세요. apply는 coordinator launch lease의 routing source pin만 사용합니다.`,
+								details: { runId: state.runId, questionId: routed.question.id, workerResultPath: routed.question.workerResultPath, dispatchToken: reservation.dispatchToken },
+							}, { deliverAs: "followUp", triggerTurn: true });
+						}
 					}
 				}
 				return {
@@ -457,17 +464,23 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 				};
 			}
 			if (params.action === "worker_started") {
-				const question = markPrReviewQuestionWorkerStarted(state, params.questionId, params.workerRunId);
-				return { content: [{ type: "text", text: `Meta Review question worker started: ${question.id}` }], details: { runId: state.runId, question } };
+				if (!params.dispatchToken) throw new Error("worker_started에는 coordinator dispatchToken이 필요합니다.");
+				const claimed = claimPrReviewQuestionWorkerLaunch(state, params.questionId, params.dispatchToken, now());
+				const question = claimed.claimed
+					? markPrReviewQuestionWorkerStarted(state, params.questionId, params.dispatchToken, params.workerRunId, now())
+					: claimed.question;
+				return { content: [{ type: "text", text: claimed.claimed ? `Meta Review question worker launch claimed: ${question.id}` : `Meta Review question worker launch not claimed: ${question.id}` }], details: { runId: state.runId, question, claimed: claimed.claimed } };
 			}
 			if (params.action === "apply_worker_result") {
 				if (!params.workerResultPath) throw new Error("apply_worker_result에는 workerResultPath가 필요합니다.");
+				if (!params.dispatchToken) throw new Error("apply_worker_result에는 coordinator dispatchToken이 필요합니다.");
 				const question = await applyPrReviewQuestionWorkerResult(
 					pi,
 					state,
 					params.questionId,
 					params.workerResultPath,
 					ctx.cwd,
+					params.dispatchToken,
 					params.workerRunId,
 				);
 				return { content: [{ type: "text", text: question.answer ?? `Meta Review question ${question.status}: ${question.id}` }], details: { runId: state.runId, question }, terminate: true };
@@ -475,8 +488,9 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 			const current = loadPrReviewQuestions(state.runDir).find((question) => question.id === params.questionId);
 			if (!current) throw new Error(`unknown Meta Review question: ${params.questionId}`);
 			if (params.action === "fail") {
-				if (normalizeQuestionExecution(current.execution)?.mode === "worker") {
-					const question = failPrReviewQuestionWorker(pi, state, params.questionId, params.error ?? "질문 조사에 실패했습니다.", params.workerRunId);
+				if (normalizeQuestionExecution(current.execution)?.mode === "worker" || params.dispatchToken) {
+					if (!params.dispatchToken) throw new Error("worker 질문 fail에는 coordinator dispatchToken이 필요합니다.");
+					const question = failPrReviewQuestionWorker(pi, state, params.questionId, params.dispatchToken, params.error ?? "질문 조사에 실패했습니다.", params.workerRunId);
 					return { content: [{ type: "text", text: `Meta Review question failed: ${question.id}` }], details: { runId: state.runId, question }, terminate: true };
 				}
 				const failed = failPrReviewQuestion(state.runDir, params.questionId, params.error ?? "질문 조사에 실패했습니다.");

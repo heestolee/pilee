@@ -129,16 +129,42 @@ test("meta_review_chat worker route는 legacy runtime에서 명시적 P0 fallbac
 		assert.equal(fallback.options.triggerTurn, true);
 		assert.match(fallback.message.content, /meta-review-question-worker --isolated/);
 		assert.match(fallback.message.content, /action="worker_started"/);
+		assert.match(fallback.message.content, /details\.claimed가 true일 때만/);
 		assert.match(fallback.message.content, /apply_worker_result/);
 		assert.doesNotMatch(fallback.message.content, /apply_worker_result[^\n]*expectedSourceSha256=/);
+		const dispatchToken = fallback.message.details.dispatchToken;
+		assert.equal(typeof dispatchToken, "string");
+
+		const preAckMessageCount = messages.length;
+		const preAckDuplicate = await tools.get("meta_review_chat").execute("call-route-worker-before-ack", {
+			action: "route",
+			runId: state.runId,
+			questionId: question.id,
+			executionMode: "worker",
+			routeReason: "ack 전에 같은 fallback route 재호출",
+		}, undefined, undefined, { cwd: "/tmp/review-pr-42" });
+		assert.equal(preAckDuplicate.details.workerLaunched, false);
+		assert.equal(messages.length, preAckMessageCount);
 
 		const started = await tools.get("meta_review_chat").execute("call-worker-started", {
 			action: "worker_started",
 			runId: state.runId,
 			questionId: question.id,
+			dispatchToken,
 			workerRunId: 81,
 		}, undefined, undefined, { cwd: "/tmp/review-pr-42" });
+		assert.equal(started.details.claimed, true);
 		assert.equal(started.details.question.execution.phase, "worker-running");
+		const duplicateClaim = await tools.get("meta_review_chat").execute("call-worker-started-again", {
+			action: "worker_started",
+			runId: state.runId,
+			questionId: question.id,
+			dispatchToken,
+			workerRunId: 82,
+		}, undefined, undefined, { cwd: "/tmp/review-pr-42" });
+		assert.equal(duplicateClaim.details.claimed, false);
+		assert.equal(duplicateClaim.details.question.workerRunId, 81);
+
 		const messageCount = messages.length;
 		const duplicateRoute = await tools.get("meta_review_chat").execute("call-route-worker-again", {
 			action: "route",
