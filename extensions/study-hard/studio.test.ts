@@ -3152,6 +3152,8 @@ test("changed code row는 semantic hunk를 일급 선택 단위로 사용하고 
 	});
 	for (const marker of ["reviewSemanticUnitHeader", "reviewSemanticUnit", "reviewSemanticStart", "reviewSemanticEnd"]) assert.match(html, new RegExp(marker));
 	assert.match(html, /reviewLine\.reviewSemanticUnit\.selected/);
+	assert.match(html, /element\.dataset\.reviewLine&&selectedEvidence\.has\(element\.dataset\.reviewLine\)/);
+	assert.match(html, /metaReviewDeclarationIsWithin\(elementFile,element\.dataset\.reviewDeclaration,context\.declarationId\)/);
 });
 
 test("declaration selection은 가장 작은 선언을 고르고 Glimpse에서 상위·하위 범위와 full source를 탐색한다", () => {
@@ -3173,6 +3175,11 @@ test("declaration selection은 가장 작은 선언을 고르고 Glimpse에서 �
 	assert.equal(declarationForLine(file, { kind: "context", oldLine: 5, newLine: 5 })?.declaration.id, "A-function");
 	assert.equal(declarationForLine(file, { kind: "deletion", oldLine: 4 })?.side, "before");
 	assert.equal(declarationForLine({ declarationSource: { declarations: [{ id: "A-file", kind: "file", depth: 0, after: { startLine: 1, endLine: 10 } }] } }, { kind: "addition", newLine: 3 }), undefined);
+	const containmentStart = html.indexOf("function metaReviewDeclarationIsWithin");
+	const containmentEnd = html.indexOf("function metaReviewDeclarationRangeLabel", containmentStart);
+	const isWithin = new Function(`function metaReviewDeclarationById(file,id){return file.declarationSource.declarations.find(item=>item.id===id);}${html.slice(containmentStart, containmentEnd)}; return metaReviewDeclarationIsWithin;`)() as (file: any, candidateId: string, ancestorId: string) => boolean;
+	assert.equal(isWithin(file, "A-local", "A-function"), true);
+	assert.equal(isWithin(file, "A-function", "A-local"), false);
 	for (const marker of [
 		"reviewDeclarationUnitHeader",
 		"reviewDeclarationPreviewHost",
