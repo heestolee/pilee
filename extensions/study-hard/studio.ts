@@ -1125,13 +1125,16 @@ export function mergeBoardState(current: StudyHardBoardState, patch: Record<stri
 	const questions = normalizeQuestions(patch.questions);
 	if (questions) {
 		const currentById = new Map(current.questions.map((question) => [question.id, question]));
-		const patchedIds = new Set(questions.map((question) => question.id));
-		const mergedQuestions = questions.map((question) => {
-			const existing = currentById.get(question.id);
-			if (!existing) return question;
-			if (isQuestionExecutionOwnerProtected(existing, options)) return existing;
+		const incomingById = new Map<string, StudyQuestionCard>();
+		for (const question of questions) {
+			if (!incomingById.has(question.id)) incomingById.set(question.id, question);
+		}
+		const mergedQuestions = current.questions.flatMap((existing) => {
+			const question = incomingById.get(existing.id);
+			if (isQuestionExecutionOwnerProtected(existing, options)) return [existing];
+			if (!question) return [];
 			const nextProcessingStatus = question.processingStatus || existing.processingStatus;
-			return {
+			return [{
 				...question,
 				question: existing.question,
 				origin: existing.origin || question.origin,
@@ -1156,11 +1159,10 @@ export function mergeBoardState(current: StudyHardBoardState, patch: Record<stri
 				workerRebaseCount: question.workerRebaseCount ?? existing.workerRebaseCount,
 				processingError: ["failed", "rebasing", "conflict"].includes(String(nextProcessingStatus)) ? question.processingError || existing.processingError : undefined,
 				processingErrorStage: ["failed", "rebasing", "conflict"].includes(String(nextProcessingStatus)) ? question.processingErrorStage || existing.processingErrorStage : undefined,
-			};
+			}];
 		});
-		for (const [index, existing] of current.questions.entries()) {
-			if (patchedIds.has(existing.id) || !isQuestionExecutionOwnerProtected(existing, options)) continue;
-			mergedQuestions.splice(Math.min(index, mergedQuestions.length), 0, existing);
+		for (const question of incomingById.values()) {
+			if (!currentById.has(question.id)) mergedQuestions.push(question);
 		}
 		next.questions = mergedQuestions;
 	}

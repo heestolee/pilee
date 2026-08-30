@@ -337,47 +337,69 @@ test("mergeBoardState keeps question scope and target immutable across agent fee
 	);
 });
 
-test("generic board patch는 owner가 정해진 learner 질문의 누락·삭제·identity 변경을 무시한다", () => {
+test("generic board patch는 owner 질문의 누락·identity·canonical 순서·유일성을 보존한다", () => {
 	const current = createInitialBoardState({ url: "https://example.com", runId: "question-owner-guard" });
-	current.questions = [{
-		id: "Q001",
-		question: "전체 경로를 검증해줘",
-		origin: "learner",
-		scope: "session",
-		status: "open",
-		createdAt: 100,
-		processingStatus: "running",
-		execution: { mode: "worker", phase: "worker-running", routedAt: 100, updatedAt: 110 },
-		orchestrationId: "worker-owner",
-		workerResultPath: "/safe/Q001.json",
-		workerRunId: 17,
-	}];
-	const protectedQuestion = structuredClone(current.questions[0]);
-	const patched = mergeBoardState(current, {
-		questions: [{
+	current.questions = [
+		{
 			id: "Q001",
-			question: "질문을 바꿔치기",
+			question: "전체 경로를 검증해줘",
 			origin: "learner",
-			scope: "note-block",
-			targetNodeId: "forged-node",
-			targetNoteBlockId: "forged-block",
-			attachmentIds: ["forged-attachment"],
-			createdAt: 999,
-			status: "answered",
-			feedback: "generic patch 답변",
-			processingStatus: "applied",
-			execution: { mode: "direct", phase: "answered", routedAt: 100, updatedAt: 120, completedAt: 120 },
-			orchestrationId: "pi-forged",
-			workerResultPath: "/tmp/forged.json",
-		}],
+			scope: "session",
+			status: "open",
+			createdAt: 100,
+			processingStatus: "running",
+			execution: { mode: "worker", phase: "worker-running", routedAt: 100, updatedAt: 110 },
+			orchestrationId: "worker-owner-1",
+			workerResultPath: "/safe/Q001.json",
+			workerRunId: 17,
+		},
+		{
+			id: "Q002",
+			question: "두 번째 경로도 검증해줘",
+			origin: "learner",
+			scope: "session",
+			status: "open",
+			createdAt: 101,
+			processingStatus: "running",
+			execution: { mode: "worker", phase: "worker-running", routedAt: 101, updatedAt: 111 },
+			orchestrationId: "worker-owner-2",
+			workerResultPath: "/safe/Q002.json",
+			workerRunId: 18,
+		},
+	];
+	const protectedQuestions = structuredClone(current.questions);
+	const forgedSecond = { id: "Q002", question: "두 번째 질문 바꿔치기", origin: "learner", scope: "session", status: "answered", feedback: "forged", processingStatus: "applied" };
+	const patched = mergeBoardState(current, {
+		questions: [
+			forgedSecond,
+			{
+				id: "Q001",
+				question: "첫 질문 바꿔치기",
+				origin: "learner",
+				scope: "note-block",
+				targetNodeId: "forged-node",
+				targetNoteBlockId: "forged-block",
+				attachmentIds: ["forged-attachment"],
+				createdAt: 999,
+				status: "answered",
+				feedback: "generic patch 답변",
+				processingStatus: "applied",
+				execution: { mode: "direct", phase: "answered", routedAt: 100, updatedAt: 120, completedAt: 120 },
+				orchestrationId: "pi-forged",
+				workerResultPath: "/tmp/forged.json",
+			},
+			{ ...forgedSecond, question: "duplicate Q002" },
+			{ id: "Q003", question: "코치 질문", origin: "coach", scope: "session", status: "open" },
+		],
 	});
-	assert.deepEqual(patched.questions[0], protectedQuestion);
+	assert.deepEqual(patched.questions.map((question) => question.id), ["Q001", "Q002", "Q003"]);
+	assert.deepEqual(patched.questions.slice(0, 2), protectedQuestions);
 
 	const omitted = mergeBoardState(current, {
-		questions: [{ id: "Q002", question: "코치 질문", origin: "coach", scope: "session", status: "open" }],
+		questions: [{ id: "Q003", question: "코치 질문", origin: "coach", scope: "session", status: "open" }],
 	});
-	assert.deepEqual(omitted.questions.find((question) => question.id === "Q001"), protectedQuestion);
-	assert.equal(omitted.questions.some((question) => question.id === "Q002"), true);
+	assert.deepEqual(omitted.questions.map((question) => question.id), ["Q001", "Q002", "Q003"]);
+	assert.deepEqual(omitted.questions.slice(0, 2), protectedQuestions);
 });
 
 test("mergeBoardState는 학습 코치 scope와 비동기 처리 상태를 보존한다", () => {
