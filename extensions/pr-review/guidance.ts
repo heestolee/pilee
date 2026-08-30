@@ -6,6 +6,29 @@ export type MetaReviewRelationshipDiagram = "flowchart" | "sequence";
 
 export type MetaReviewMeaningConfidence = "high" | "medium" | "low";
 export type MetaReviewMeaningBasisKind = "explicit-contract" | "definition" | "producer-consumer" | "call-flow" | "test" | "diff";
+export type MetaReviewMeaningVisualRole = "removed" | "new" | "moved" | "preserved" | "guard" | "context";
+
+interface MetaReviewMeaningVisualBase {
+	title: string;
+	readingHint: string;
+	legend?: MetaReviewMeaningVisualRole[];
+}
+
+export interface MetaReviewMeaningFlowchartVisualInput extends MetaReviewMeaningVisualBase {
+	kind: "flowchart";
+	direction?: "LR" | "TB";
+	groups: Array<{ id: string; label: string; phase: "before" | "after" | "shared" }>;
+	nodes: Array<{ id: string; label: string; role: MetaReviewMeaningVisualRole; groupId?: string; detail?: string }>;
+	edges: Array<{ from: string; to: string; label?: string; role: MetaReviewMeaningVisualRole; style?: "solid" | "dashed" }>;
+}
+
+export interface MetaReviewMeaningSequenceVisualInput extends MetaReviewMeaningVisualBase {
+	kind: "sequence";
+	actors: Array<{ id: string; label: string; role: MetaReviewMeaningVisualRole }>;
+	messages: Array<{ from: string; to: string; label: string; role: MetaReviewMeaningVisualRole; style?: "solid" | "dashed"; note?: string }>;
+}
+
+export type MetaReviewMeaningVisualInput = MetaReviewMeaningFlowchartVisualInput | MetaReviewMeaningSequenceVisualInput;
 
 export interface MetaReviewChangeMeaningInput {
 	id: string;
@@ -24,6 +47,7 @@ export interface MetaReviewChangeMeaningInput {
 	}>;
 	confidence: MetaReviewMeaningConfidence;
 	uncertainty?: string;
+	visual?: MetaReviewMeaningVisualInput;
 }
 
 export interface MetaReviewDocumentInput {
@@ -108,6 +132,94 @@ function changedLines(bundle: ReviewSourceBundle): ReviewDiffLine[] {
 	return bundle.lines.filter((line) => line.kind === "addition" || line.kind === "deletion");
 }
 
+const MEANING_VISUAL_ROLES = new Set<MetaReviewMeaningVisualRole>(["removed", "new", "moved", "preserved", "guard", "context"]);
+
+function validateMeaningVisualRole(value: unknown, label: string): MetaReviewMeaningVisualRole {
+	if (typeof value !== "string" || !MEANING_VISUAL_ROLES.has(value as MetaReviewMeaningVisualRole)) throw new Error(`${label} is invalid`);
+	return value as MetaReviewMeaningVisualRole;
+}
+
+function validateMeaningVisualId(value: unknown, label: string): string {
+	if (typeof value !== "string" || !/^[A-Za-z][A-Za-z0-9_-]*$/.test(value)) throw new Error(`${label} is invalid`);
+	return value;
+}
+
+function validateMetaReviewMeaningVisual(value: unknown, label: string): MetaReviewMeaningVisualInput | undefined {
+	if (value === undefined) return undefined;
+	if (!value || typeof value !== "object") throw new Error(`${label} is invalid`);
+	const visual = value as MetaReviewMeaningVisualInput;
+	assertText(visual.title, `${label}.title`);
+	assertText(visual.readingHint, `${label}.readingHint`);
+	const legend = visual.legend === undefined ? undefined : (() => {
+		if (!Array.isArray(visual.legend) || !visual.legend.length || visual.legend.length > 6) throw new Error(`${label}.legend is invalid`);
+		return [...new Set(visual.legend.map((role, index) => validateMeaningVisualRole(role, `${label}.legend[${index}]`)))];
+	})();
+	if (visual.kind === "flowchart") {
+		if (visual.direction !== undefined && visual.direction !== "LR" && visual.direction !== "TB") throw new Error(`${label}.direction is invalid`);
+		if (!Array.isArray(visual.groups) || visual.groups.length < 2 || visual.groups.length > 6) throw new Error(`${label}.groups must contain 2 to 6 items`);
+		const groupIds = new Set<string>();
+		const groups = visual.groups.map((group, index) => {
+			const groupLabel = `${label}.groups[${index}]`;
+			const id = validateMeaningVisualId(group?.id, `${groupLabel}.id`);
+			if (groupIds.has(id)) throw new Error(`duplicate visual group id: ${id}`);
+			groupIds.add(id);
+			assertText(group.label, `${groupLabel}.label`);
+			if (!(["before", "after", "shared"] as string[]).includes(group.phase)) throw new Error(`${groupLabel}.phase is invalid`);
+			return { id, label: group.label.trim(), phase: group.phase };
+		});
+		if (!groups.some((group) => group.phase === "before") || !groups.some((group) => group.phase === "after")) throw new Error(`${label}.groups require before and after phases`);
+		if (!Array.isArray(visual.nodes) || visual.nodes.length < 2 || visual.nodes.length > 12) throw new Error(`${label}.nodes must contain 2 to 12 items`);
+		const nodeIds = new Set<string>();
+		const nodes = visual.nodes.map((node, index) => {
+			const nodeLabel = `${label}.nodes[${index}]`;
+			const id = validateMeaningVisualId(node?.id, `${nodeLabel}.id`);
+			if (nodeIds.has(id)) throw new Error(`duplicate visual node id: ${id}`);
+			nodeIds.add(id);
+			assertText(node.label, `${nodeLabel}.label`);
+			const role = validateMeaningVisualRole(node.role, `${nodeLabel}.role`);
+			if (node.groupId !== undefined && !groupIds.has(node.groupId)) throw new Error(`${nodeLabel}.groupId must reference a known group`);
+			return { id, label: node.label.trim(), role, ...(node.groupId ? { groupId: node.groupId } : {}), ...(typeof node.detail === "string" && node.detail.trim() ? { detail: node.detail.trim() } : {}) };
+		});
+		if (!Array.isArray(visual.edges) || visual.edges.length < 1 || visual.edges.length > 20) throw new Error(`${label}.edges must contain 1 to 20 items`);
+		const edges = visual.edges.map((edge, index) => {
+			const edgeLabel = `${label}.edges[${index}]`;
+			const from = validateMeaningVisualId(edge?.from, `${edgeLabel}.from`);
+			const to = validateMeaningVisualId(edge?.to, `${edgeLabel}.to`);
+			if (!nodeIds.has(from) || !nodeIds.has(to)) throw new Error(`${edgeLabel} must reference known nodes`);
+			if (from === to) throw new Error(`${edgeLabel} must connect different nodes`);
+			const role = validateMeaningVisualRole(edge.role, `${edgeLabel}.role`);
+			if (edge.style !== undefined && edge.style !== "solid" && edge.style !== "dashed") throw new Error(`${edgeLabel}.style is invalid`);
+			return { from, to, role, ...(typeof edge.label === "string" && edge.label.trim() ? { label: edge.label.trim() } : {}), ...(edge.style ? { style: edge.style } : {}) };
+		});
+		return { kind: "flowchart", title: visual.title.trim(), readingHint: visual.readingHint.trim(), ...(legend ? { legend } : {}), direction: visual.direction ?? "LR", groups, nodes, edges };
+	}
+	if (visual.kind === "sequence") {
+		if (!Array.isArray(visual.actors) || visual.actors.length < 2 || visual.actors.length > 8) throw new Error(`${label}.actors must contain 2 to 8 items`);
+		const actorIds = new Set<string>();
+		const actors = visual.actors.map((actor, index) => {
+			const actorLabel = `${label}.actors[${index}]`;
+			const id = validateMeaningVisualId(actor?.id, `${actorLabel}.id`);
+			if (actorIds.has(id)) throw new Error(`duplicate visual actor id: ${id}`);
+			actorIds.add(id);
+			assertText(actor.label, `${actorLabel}.label`);
+			return { id, label: actor.label.trim(), role: validateMeaningVisualRole(actor.role, `${actorLabel}.role`) };
+		});
+		if (!Array.isArray(visual.messages) || visual.messages.length < 1 || visual.messages.length > 16) throw new Error(`${label}.messages must contain 1 to 16 items`);
+		const messages = visual.messages.map((message, index) => {
+			const messageLabel = `${label}.messages[${index}]`;
+			const from = validateMeaningVisualId(message?.from, `${messageLabel}.from`);
+			const to = validateMeaningVisualId(message?.to, `${messageLabel}.to`);
+			if (!actorIds.has(from) || !actorIds.has(to)) throw new Error(`${messageLabel} must reference known actors`);
+			assertText(message.label, `${messageLabel}.label`);
+			const role = validateMeaningVisualRole(message.role, `${messageLabel}.role`);
+			if (message.style !== undefined && message.style !== "solid" && message.style !== "dashed") throw new Error(`${messageLabel}.style is invalid`);
+			return { from, to, label: message.label.trim(), role, ...(message.style ? { style: message.style } : {}), ...(typeof message.note === "string" && message.note.trim() ? { note: message.note.trim() } : {}) };
+		});
+		return { kind: "sequence", title: visual.title.trim(), readingHint: visual.readingHint.trim(), ...(legend ? { legend } : {}), actors, messages };
+	}
+	throw new Error(`${label}.kind is invalid`);
+}
+
 function validateMetaReviewMeanings(bundle: ReviewSourceBundle, value: unknown): MetaReviewChangeMeaningInput[] {
 	if (value === undefined) return [];
 	if (!Array.isArray(value)) throw new Error("document.meanings must be an array");
@@ -149,6 +261,7 @@ function validateMetaReviewMeanings(bundle: ReviewSourceBundle, value: unknown):
 		if (!(["high", "medium", "low"] as string[]).includes(meaning.confidence)) throw new Error(`${label}.confidence is invalid`);
 		if (meaning.confidence === "high" && !basis.some((item) => sourceBackedBasis.has(item.kind) && knownPaths.has(item.path))) throw new Error("high confidence meaning requires pinned source-backed basis");
 		if (meaning.confidence === "low" && !(typeof meaning.uncertainty === "string" && meaning.uncertainty.trim())) throw new Error(`${label}.uncertainty is required for low confidence`);
+		const visual = validateMetaReviewMeaningVisual(meaning.visual, `${label}.visual`);
 		return {
 			id: meaning.id,
 			title: meaning.title.trim(),
@@ -160,6 +273,7 @@ function validateMetaReviewMeanings(bundle: ReviewSourceBundle, value: unknown):
 			evidenceIds,
 			basis,
 			confidence: meaning.confidence,
+			...(visual ? { visual } : {}),
 			...(typeof meaning.uncertainty === "string" && meaning.uncertainty.trim() ? { uncertainty: meaning.uncertainty.trim() } : {}),
 		};
 	});

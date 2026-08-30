@@ -406,6 +406,12 @@ export function renderMetaReviewMarkdown(
 					`- **근거 신뢰도:** ${meaning.confidence}`,
 					...meaning.basis.map((basis) => `- **${basis.kind}:** \`${basis.path}${basis.line ? `:${basis.line}` : ""}\` · ${basis.summary}`),
 				);
+				if (meaning.visual) {
+					const visualItems = meaning.visual.kind === "flowchart"
+						? meaning.visual.nodes.map((node) => node.label)
+						: meaning.visual.messages.map((message) => message.label);
+					lines.push(`- **시각화:** ${meaning.visual.kind} · ${meaning.visual.title}`, `- **읽는 법:** ${meaning.visual.readingHint}`, `- **시각 요소:** ${visualItems.join(" → ")}`);
+				}
 				if (meaning.uncertainty) lines.push(`- **확인 필요:** ${meaning.uncertainty}`);
 				lines.push("");
 			}

@@ -120,16 +120,43 @@ test("Meta Review change meanings validate source-backed contract transitions in
 			evidenceIds,
 			basis: [{ kind: "producer-consumer", path: consumer!, summary: "consumer가 policy 결과를 사용합니다." }],
 			confidence: "high",
+			visual: {
+				kind: "flowchart",
+				title: "상태 노출 계약 전환",
+				readingHint: "빨강은 제거된 암묵 조건, 초록은 새 명시 계약입니다.",
+				direction: "LR",
+				legend: ["removed", "new", "moved"],
+				groups: [{ id: "before", label: "Before", phase: "before" }, { id: "after", label: "After", phase: "after" }],
+				nodes: [
+					{ id: "implicit", label: "부정 조건", role: "removed", groupId: "before" },
+					{ id: "owner", label: "Policy owner", role: "moved", groupId: "after" },
+					{ id: "allowlist", label: "명시적 allowlist", role: "new", groupId: "after" },
+				],
+				edges: [{ from: "implicit", to: "owner", label: "책임 이동", role: "moved" }, { from: "owner", to: "allowlist", label: "생산", role: "new" }],
+			},
 		}],
 	});
 	assert.equal(document.meanings?.[0]?.id, "M-visible-contract");
 	assert.deepEqual(document.meanings?.[0]?.paths, [policy, consumer]);
+	assert.equal(document.meanings?.[0]?.visual?.kind, "flowchart");
+	assert.deepEqual(document.meanings?.[0]?.visual?.legend, ["removed", "new", "moved"]);
 	const meaning = document.meanings![0]!;
 	assert.throws(() => validateMetaReviewDocument(bundle, { ...document, meanings: [{ ...meaning, id: "bad-id" }] }), /id must start with M-/);
 	assert.throws(() => validateMetaReviewDocument(bundle, { ...document, meanings: [{ ...meaning, evidenceIds: ["unknown"] }] }), /unknown evidence/);
 	assert.throws(() => validateMetaReviewDocument(bundle, { ...document, meanings: [{ ...meaning, confidence: "high", basis: [{ kind: "diff", path: policy!, summary: "인접한 줄이 바뀌었습니다." }] }] }), /high confidence meaning requires pinned source-backed basis/);
 	assert.throws(() => validateMetaReviewDocument(bundle, { ...document, meanings: [{ ...meaning, confidence: "high", basis: [{ kind: "definition", path: "src/unchanged.ts", summary: "현재 run에 pin되지 않은 정의입니다." }] }] }), /high confidence meaning requires pinned source-backed basis/);
 	assert.throws(() => validateMetaReviewDocument(bundle, { ...document, meanings: [{ ...meaning, basis: [{ kind: "definition", path: "https://example.com/source", summary: "URL은 repo path가 아닙니다." }] }] }), /path must be repo-relative/);
+	assert.throws(() => validateMetaReviewDocument(bundle, { ...document, meanings: [{ ...meaning, visual: { ...meaning.visual!, edges: [{ from: "missing", to: "allowlist", label: "잘못된 edge" }] } }] }), /must reference known nodes/);
+	const sequenceDocument = validateMetaReviewDocument(bundle, { ...document, meanings: [{ ...meaning, visual: {
+		kind: "sequence",
+		title: "저장 충돌 처리",
+		readingHint: "주황은 CAS 검증과 충돌 경로입니다.",
+		legend: ["context", "new", "guard"],
+		actors: [{ id: "admin", label: "관리자", role: "context" }, { id: "modal", label: "정렬 모달", role: "moved" }, { id: "server", label: "서버", role: "guard" }],
+		messages: [{ from: "admin", to: "modal", label: "순서 변경", role: "context" }, { from: "modal", to: "server", label: "expected + ordered", role: "new" }, { from: "server", to: "modal", label: "충돌이면 refetch", role: "guard", style: "dashed" }],
+	} }] });
+	assert.equal(sequenceDocument.meanings?.[0]?.visual?.kind, "sequence");
+	assert.throws(() => validateMetaReviewDocument(bundle, { ...document, meanings: [{ ...meaning, visual: { ...(sequenceDocument.meanings![0]!.visual as any), messages: [{ from: "missing", to: "server", label: "잘못된 actor", role: "guard" }] } }] }), /must reference known actors/);
 });
 
 test("Meta Review guides cover every changed file and addition/deletion exactly once", () => {
