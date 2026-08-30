@@ -2,7 +2,14 @@ import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { createQuestionRoutingExecution, type QuestionExecution } from "../questions/runtime.ts";
+import {
+	createQuestionRoutingExecution,
+	normalizeQuestionExecution,
+	routeQuestionExecution,
+	updateQuestionExecutionPhase,
+	type QuestionExecution,
+	type QuestionExecutionMode,
+} from "../questions/runtime.ts";
 import type { PrReviewRunState } from "./run.ts";
 
 export type PrReviewQuestionScope = "session" | "file" | "card" | "evidence";
@@ -205,6 +212,17 @@ export function updatePrReviewQuestion(
 	return appendQuestion(runDir, { ...current, ...patch, updatedAt: now });
 }
 
+export function isPrReviewQuestionTerminal(question: PrReviewQuestion): boolean {
+	const phase = normalizeQuestionExecution(question.execution)?.phase;
+	return ["answered", "failed", "stale"].includes(question.status) || phase === "answered" || phase === "failed" || phase === "stale";
+}
+
+function questionExecutionForMode(question: PrReviewQuestion, mode: QuestionExecutionMode, reason: string, now: number): QuestionExecution {
+	const execution = normalizeQuestionExecution(question.execution);
+	if (execution?.mode && execution.mode !== mode) throw new Error(`${execution.mode} 질문을 ${mode} 경로로 완료할 수 없습니다.`);
+	return execution?.mode ? execution : routeQuestionExecution(question.execution, mode, reason, now);
+}
+
 export function answerPrReviewQuestion(
 	runDir: string,
 	questionId: string,
@@ -212,20 +230,70 @@ export function answerPrReviewQuestion(
 	evidence: PrReviewQuestionEvidence[] = [],
 	uncertainty?: string,
 	now = Date.now(),
+	executionMode: QuestionExecutionMode = "direct",
+	workerRunId?: number,
 ): PrReviewQuestion {
 	if (!answer.trim()) throw new Error("answer is required");
-	return updatePrReviewQuestion(runDir, questionId, {
+	const current = loadPrReviewQuestions(runDir).find((question) => question.id === questionId);
+	if (!current) throw new Error(`unknown Meta Review question: ${questionId}`);
+	if (isPrReviewQuestionTerminal(current)) return current;
+	const execution = updateQuestionExecutionPhase(questionExecutionForMode(current, executionMode, `${executionMode} 답변 완료`, now), "answered", now);
+	return appendQuestion(runDir, {
+		...current,
 		status: "answered",
+		execution,
 		answer: answer.trim(),
 		evidence,
 		uncertainty: uncertainty?.trim() || undefined,
 		error: undefined,
 		answeredAt: now,
-	}, now);
+		workerRunId: Number.isInteger(workerRunId) ? workerRunId : current.workerRunId,
+		updatedAt: now,
+	});
 }
 
-export function failPrReviewQuestion(runDir: string, questionId: string, error: string, now = Date.now()): PrReviewQuestion {
-	return updatePrReviewQuestion(runDir, questionId, { status: "failed", error: error.trim() || "Meta Review question failed" }, now);
+export function failPrReviewQuestion(
+	runDir: string,
+	questionId: string,
+	error: string,
+	now = Date.now(),
+	executionMode: QuestionExecutionMode = "direct",
+	workerRunId?: number,
+): PrReviewQuestion {
+	const current = loadPrReviewQuestions(runDir).find((question) => question.id === questionId);
+	if (!current) throw new Error(`unknown Meta Review question: ${questionId}`);
+	if (isPrReviewQuestionTerminal(current)) return current;
+	const execution = updateQuestionExecutionPhase(questionExecutionForMode(current, executionMode, `${executionMode} 처리 실패`, now), "failed", now);
+	return appendQuestion(runDir, {
+		...current,
+		status: "failed",
+		execution,
+		workerRunId: Number.isInteger(workerRunId) ? workerRunId : current.workerRunId,
+		error: error.trim() || "Meta Review question failed",
+		updatedAt: now,
+	});
+}
+
+export function stalePrReviewQuestion(
+	runDir: string,
+	questionId: string,
+	error: string,
+	now = Date.now(),
+	executionMode: QuestionExecutionMode = "worker",
+	workerRunId?: number,
+): PrReviewQuestion {
+	const current = loadPrReviewQuestions(runDir).find((question) => question.id === questionId);
+	if (!current) throw new Error(`unknown Meta Review question: ${questionId}`);
+	if (isPrReviewQuestionTerminal(current)) return current;
+	const execution = updateQuestionExecutionPhase(questionExecutionForMode(current, executionMode, "review source freshness 변경", now), "stale", now);
+	return appendQuestion(runDir, {
+		...current,
+		status: "stale",
+		execution,
+		workerRunId: Number.isInteger(workerRunId) ? workerRunId : current.workerRunId,
+		error: error.trim() || "Meta Review review source가 변경되었습니다.",
+		updatedAt: now,
+	});
 }
 
 export type PrReviewTranscriptEventKind = "question" | "answer" | "failed" | "stale";

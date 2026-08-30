@@ -7,6 +7,7 @@ import {
 	answerPrReviewQuestion,
 	createPrReviewQuestion,
 	dispatchPrReviewQuestionToSession,
+	failPrReviewQuestion,
 	loadPrReviewQuestions,
 	PR_REVIEW_TRANSCRIPT_LINEAGE_ENTRY,
 	prReviewQuestionsPath,
@@ -62,6 +63,43 @@ test("PR review questions are append-only snapshots with preserved context", () 
 		assert.equal(readFileSync(prReviewQuestionsPath(runDir), "utf8").trim().split("\n").length, 2);
 	} finally {
 		rmSync(runDir, { recursive: true, force: true });
+	}
+});
+
+test("terminal Meta Review 질문은 늦은 answer와 fail이 원자 상태를 덮어쓰지 않는다", () => {
+	const answeredDir = mkdtempSync(join(tmpdir(), "pilee-pr-review-chat-terminal-answer-"));
+	const failedDir = mkdtempSync(join(tmpdir(), "pilee-pr-review-chat-terminal-fail-"));
+	try {
+		const answeredQuestion = createPrReviewQuestion(answeredDir, {
+			runId: "run-answer",
+			question: "첫 답변을 유지해줘",
+			scope: "session",
+			execution: { mode: "direct", phase: "answering", routedAt: 100, updatedAt: 100 },
+		}, 100);
+		const firstAnswer = answerPrReviewQuestion(answeredDir, answeredQuestion.id, "첫 답변", [], undefined, 200);
+		const duplicateAnswer = answerPrReviewQuestion(answeredDir, answeredQuestion.id, "늦은 다른 답변", [], undefined, 300);
+		const lateFailure = failPrReviewQuestion(answeredDir, answeredQuestion.id, "늦은 실패", 400);
+		assert.equal(firstAnswer.execution?.phase, "answered");
+		assert.equal(duplicateAnswer.answer, "첫 답변");
+		assert.equal(lateFailure.status, "answered");
+		assert.equal(loadPrReviewQuestions(answeredDir)[0]?.execution?.phase, "answered");
+		assert.equal(readFileSync(prReviewQuestionsPath(answeredDir), "utf8").trim().split("\n").length, 2);
+
+		const failedQuestion = createPrReviewQuestion(failedDir, {
+			runId: "run-fail",
+			question: "실패 뒤 답변을 막아줘",
+			scope: "session",
+			execution: { mode: "direct", phase: "answering", routedAt: 100, updatedAt: 100 },
+		}, 100);
+		const firstFailure = failPrReviewQuestion(failedDir, failedQuestion.id, "첫 실패", 200);
+		const lateAnswer = answerPrReviewQuestion(failedDir, failedQuestion.id, "늦은 답변", [], undefined, 300);
+		assert.equal(firstFailure.execution?.phase, "failed");
+		assert.equal(lateAnswer.status, "failed");
+		assert.equal(lateAnswer.answer, undefined);
+		assert.equal(readFileSync(prReviewQuestionsPath(failedDir), "utf8").trim().split("\n").length, 2);
+	} finally {
+		rmSync(answeredDir, { recursive: true, force: true });
+		rmSync(failedDir, { recursive: true, force: true });
 	}
 });
 

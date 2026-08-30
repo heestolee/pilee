@@ -6,7 +6,9 @@ import { test } from "node:test";
 import { createPrReviewQuestion, loadPrReviewQuestions } from "./chat.ts";
 import {
 	applyPrReviewQuestionWorkerResult,
+	failPrReviewQuestionWorker,
 	launchPrReviewQuestionWorker,
+	markPrReviewQuestionWorkerStarted,
 	prReviewQuestionWorkerResultPath,
 	routePrReviewQuestion,
 } from "./question-worker.ts";
@@ -73,6 +75,24 @@ test("Meta Review 질문은 direct에서 같은 ID의 worker로 한 번 승격�
 	}
 });
 
+test("worker-starting route는 시작 acknowledgement 전까지 같은 request를 재전송할 수 있다", () => {
+	const { runDir, state, question } = fixture();
+	try {
+		const first = routePrReviewQuestion(state, question.id, "worker", "전체 PR 경로 비교", 1100);
+		const retry = routePrReviewQuestion(state, question.id, "worker", "중단된 launch 재전송", 1200);
+		assert.equal(first.workerLaunchRequired, true);
+		assert.equal(retry.workerLaunchRequired, true);
+		assert.equal(retry.question.execution?.phase, "worker-starting");
+		markPrReviewQuestionWorkerStarted(state, question.id, 70, 1300);
+		const acknowledged = routePrReviewQuestion(state, question.id, "worker", "중복 route", 1400);
+		assert.equal(acknowledged.workerLaunchRequired, false);
+		assert.equal(acknowledged.question.execution?.phase, "worker-running");
+		assert.equal(acknowledged.question.workerRunId, 70);
+	} finally {
+		rmSync(runDir, { recursive: true, force: true });
+	}
+});
+
 test("programmatic Meta Review worker는 head/source가 고정된 artifact를 답변으로 적용한다", async () => {
 	const { runDir, state, question } = fixture();
 	try {
@@ -114,6 +134,33 @@ test("programmatic Meta Review worker는 head/source가 고정된 artifact를 �
 		assert.equal(entries.length, 1);
 		assert.equal(entries[0].data.display, true);
 		assert.match(entries[0].data.content, /Meta Review 답변/);
+	} finally {
+		rmSync(runDir, { recursive: true, force: true });
+	}
+});
+
+test("실패 처리 뒤 늦은 worker completion은 terminal 질문을 되살리지 않는다", async () => {
+	const { runDir, state, question } = fixture();
+	try {
+		const routed = routePrReviewQuestion(state, question.id, "worker", "전체 PR 경로 비교", 1100);
+		const requests: ProgrammaticSubagentLaunchRequest[] = [];
+		const entries: any[] = [];
+		const pi = {
+			appendEntry(customType: string, data: any) { entries.push({ customType, data }); },
+			sendMessage() {},
+			async exec() { return { code: 0, stdout: `${HEAD}\n`, stderr: "" }; },
+			events: { emit(_name: string, payload: unknown) { const request = payload as ProgrammaticSubagentLaunchRequest; requests.push(request); request.claim(); request.onStarted({ requestId: request.requestId, runId: 73, agent: request.agent }); } },
+		} as any;
+		launchPrReviewQuestionWorker(pi, state, routed.question, "/tmp/review-pr-42");
+		failPrReviewQuestionWorker(pi, state, question.id, "worker process failed", 73, 1200);
+		const artifactPath = writeArtifact(state, question.id, "늦은 완료 답변");
+		await requests[0].onCompleted({ requestId: requests[0].requestId, runId: 73, agent: requests[0].agent, status: "done", output: `[META_REVIEW_QUESTION_WORKER_RESULT]\nartifactPath: ${artifactPath}` });
+		const terminal = loadPrReviewQuestions(runDir)[0]!;
+		assert.equal(terminal.status, "failed");
+		assert.equal(terminal.execution?.phase, "failed");
+		assert.equal(terminal.answer, undefined);
+		assert.equal(entries.length, 1);
+		assert.match(entries[0].data.content, /질문 실패/);
 	} finally {
 		rmSync(runDir, { recursive: true, force: true });
 	}

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { DEFAULT_MAX_BYTES, truncateHead, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import { normalizeQuestionExecution, routeQuestionExecution, updateQuestionExecutionPhase } from "../questions/runtime.ts";
+import { normalizeQuestionExecution } from "../questions/runtime.ts";
 import { expandProfileTemplate, loadPrReviewProfiles, type PrReviewCorpusProfile } from "../utils/private-profiles.ts";
 import { runPrReviewWorktreeFromCommandContext } from "../worktree/pr-review.ts";
 import { readPrReviewWorkspaceMetadata, writePrReviewWorkspaceMetadata } from "./workspace.ts";
@@ -21,7 +21,6 @@ import {
 	failPrReviewQuestion,
 	loadPrReviewQuestions,
 	publishPrReviewQuestionTranscript,
-	updatePrReviewQuestion,
 	type PrReviewQuestionEvidence,
 } from "./chat.ts";
 import { searchPrReviewCorpus } from "./corpus.ts";
@@ -473,19 +472,12 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 					const question = failPrReviewQuestionWorker(pi, state, params.questionId, params.error ?? "질문 조사에 실패했습니다.", params.workerRunId);
 					return { content: [{ type: "text", text: `Meta Review question failed: ${question.id}` }], details: { runId: state.runId, question }, terminate: true };
 				}
-				const baseExecution = normalizeQuestionExecution(current.execution)?.mode === "direct"
-					? current.execution
-					: routeQuestionExecution(current.execution, "direct", "기존 direct 실패 경로 호환");
-				failPrReviewQuestion(state.runDir, params.questionId, params.error ?? "질문 조사에 실패했습니다.");
-				const withExecution = updatePrReviewQuestion(state.runDir, params.questionId, { execution: updateQuestionExecutionPhase(baseExecution, "failed") });
-				const question = publishPrReviewQuestionTranscript(pi, state, withExecution, "failed");
+				const failed = failPrReviewQuestion(state.runDir, params.questionId, params.error ?? "질문 조사에 실패했습니다.");
+				const question = failed.status === "failed" ? publishPrReviewQuestionTranscript(pi, state, failed, "failed") : failed;
 				return { content: [{ type: "text", text: `Meta Review question failed: ${question.id}` }], details: { runId: state.runId, question }, terminate: true };
 			}
 			if (!params.answer?.trim()) throw new Error("answer에는 실제 조사 결과가 필요합니다.");
 			if (normalizeQuestionExecution(current.execution)?.mode === "worker") throw new Error("worker 질문은 apply_worker_result로 완료해야 합니다.");
-			const baseExecution = normalizeQuestionExecution(current.execution)?.mode === "direct"
-				? current.execution
-				: routeQuestionExecution(current.execution, "direct", "기존 direct 답변 경로 호환");
 			const answered = answerPrReviewQuestion(
 				state.runDir,
 				params.questionId,
@@ -493,8 +485,7 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 				(params.evidence ?? []) as PrReviewQuestionEvidence[],
 				params.uncertainty,
 			);
-			const completed = updatePrReviewQuestion(state.runDir, params.questionId, { execution: updateQuestionExecutionPhase(baseExecution, "answered") });
-			const question = publishPrReviewQuestionTranscript(pi, state, completed, "answer");
+			const question = answered.status === "answered" ? publishPrReviewQuestionTranscript(pi, state, answered, "answer") : answered;
 			return { content: [{ type: "text", text: question.answer ?? "" }], details: { runId: state.runId, question }, terminate: true };
 		},
 	});

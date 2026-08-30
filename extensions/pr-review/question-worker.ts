@@ -15,8 +15,11 @@ import {
 } from "../subagent/programmatic.ts";
 import {
 	answerPrReviewQuestion,
+	failPrReviewQuestion,
+	isPrReviewQuestionTerminal,
 	loadPrReviewQuestions,
 	publishPrReviewQuestionTranscript,
+	stalePrReviewQuestion,
 	updatePrReviewQuestion,
 	type PrReviewQuestion,
 	type PrReviewQuestionEvidence,
@@ -68,7 +71,13 @@ export function routePrReviewQuestion(
 ): PrReviewQuestionRouteResult {
 	const question = currentQuestion(state, questionId);
 	const currentExecution = normalizeQuestionExecution(question.execution) ?? createQuestionRoutingExecution(question.createdAt);
-	if (currentExecution.mode === mode) return { question, mode, workerLaunchRequired: false };
+	if (isPrReviewQuestionTerminal(question)) return { question, mode: currentExecution.mode ?? mode, workerLaunchRequired: false };
+	if (currentExecution.mode === mode) {
+		const workerLaunchRequired = mode === "worker"
+			&& !Number.isInteger(question.workerRunId)
+			&& ["escalating", "worker-starting"].includes(currentExecution.phase);
+		return { question, mode, workerLaunchRequired };
+	}
 	const execution = routeQuestionExecution(currentExecution, mode, reason, now);
 	if (mode === "direct") {
 		return {
@@ -99,7 +108,10 @@ export function markPrReviewQuestionWorkerStarted(
 	now = Date.now(),
 ): PrReviewQuestion {
 	const question = currentQuestion(state, questionId);
-	const execution = normalizeQuestionExecution(question.execution)?.mode === "worker"
+	if (isPrReviewQuestionTerminal(question)) return question;
+	const currentExecution = normalizeQuestionExecution(question.execution);
+	if (currentExecution?.phase === "worker-running" && question.workerRunId === workerRunId) return question;
+	const execution = currentExecution?.mode === "worker"
 		? updateQuestionExecutionPhase(question.execution, "worker-running", now)
 		: updateQuestionExecutionPhase(routeQuestionExecution(question.execution, "worker", "기존 worker 실행 경로 호환", now), "worker-running", now);
 	return updatePrReviewQuestion(state.runDir, questionId, {
@@ -118,18 +130,8 @@ export function failPrReviewQuestionWorker(
 	workerRunId?: number,
 	now = Date.now(),
 ): PrReviewQuestion {
-	const question = currentQuestion(state, questionId);
-	if (question.status === "answered") return question;
-	const baseExecution = normalizeQuestionExecution(question.execution)?.mode === "worker"
-		? question.execution
-		: routeQuestionExecution(question.execution, "worker", "worker 실패 상태 복구", now);
-	const failed = updatePrReviewQuestion(state.runDir, questionId, {
-		status: "failed",
-		execution: updateQuestionExecutionPhase(baseExecution, "failed", now),
-		workerRunId: Number.isInteger(workerRunId) ? workerRunId : question.workerRunId,
-		error: error.trim().slice(0, 2_000) || "Meta Review question worker failed",
-	}, now);
-	return publishPrReviewQuestionTranscript(pi, state, failed, "failed");
+	const failed = failPrReviewQuestion(state.runDir, questionId, error.trim().slice(0, 2_000) || "Meta Review question worker failed", now, "worker", workerRunId);
+	return failed.status === "failed" ? publishPrReviewQuestionTranscript(pi, state, failed, "failed") : failed;
 }
 
 function normalizeEvidence(value: unknown): PrReviewQuestionEvidence[] {
@@ -197,29 +199,19 @@ export async function applyPrReviewQuestionWorkerResult(
 	workerRunId?: number,
 	now = Date.now(),
 ): Promise<PrReviewQuestion> {
-	const question = currentQuestion(state, questionId);
-	if (question.status === "answered") return question;
+	let question = currentQuestion(state, questionId);
+	if (isPrReviewQuestionTerminal(question)) return question;
 	try {
 		await assertObservedHead(pi, state, cwd);
 	} catch (error) {
-		const baseExecution = normalizeQuestionExecution(question.execution)?.mode === "worker"
-			? question.execution
-			: routeQuestionExecution(question.execution, "worker", "worker 결과 적용 전 head 확인", now);
-		const stale = updatePrReviewQuestion(state.runDir, questionId, {
-			status: "stale",
-			execution: updateQuestionExecutionPhase(baseExecution, "stale", now),
-			workerRunId: Number.isInteger(workerRunId) ? workerRunId : question.workerRunId,
-			error: error instanceof Error ? error.message : String(error),
-		}, now);
-		return publishPrReviewQuestionTranscript(pi, state, stale, "stale");
+		const stale = stalePrReviewQuestion(state.runDir, questionId, error instanceof Error ? error.message : String(error), now, "worker", workerRunId);
+		return stale.status === "stale" ? publishPrReviewQuestionTranscript(pi, state, stale, "stale") : stale;
 	}
+	question = currentQuestion(state, questionId);
+	if (isPrReviewQuestionTerminal(question)) return question;
 	const artifact = readWorkerArtifact(state, question, artifactPath);
-	const answered = answerPrReviewQuestion(state.runDir, questionId, artifact.answer, artifact.evidence, artifact.uncertainty, now);
-	const completed = updatePrReviewQuestion(state.runDir, questionId, {
-		execution: updateQuestionExecutionPhase(answered.execution, "answered", now),
-		workerRunId: Number.isInteger(workerRunId) ? workerRunId : answered.workerRunId,
-	}, now);
-	return publishPrReviewQuestionTranscript(pi, state, completed, "answer");
+	const answered = answerPrReviewQuestion(state.runDir, questionId, artifact.answer, artifact.evidence, artifact.uncertainty, now, "worker", workerRunId);
+	return answered.status === "answered" ? publishPrReviewQuestionTranscript(pi, state, answered, "answer") : answered;
 }
 
 export function buildPrReviewQuestionWorkerTask(state: PrReviewRunState, question: PrReviewQuestion, cwd: string): string {
@@ -280,7 +272,7 @@ export function launchPrReviewQuestionWorker(
 		onStarted: ({ runId }) => { markPrReviewQuestionWorkerStarted(state, question.id, runId); },
 		onCompleted: async (completion) => {
 			const latest = currentQuestion(state, question.id);
-			if (latest.status === "answered" || latest.status === "stale") return;
+			if (isPrReviewQuestionTerminal(latest)) return;
 			const error = completionError(latest, completion);
 			if (error) {
 				failPrReviewQuestionWorker(pi, state, question.id, error, completion.runId);
