@@ -3071,7 +3071,7 @@ test("Study Hard 코드 리뷰 surface는 Meta Review가 연결될 때만 노출
 	assert.equal(linked.metaReview?.runId, "run-1");
 });
 
-test("코드 리뷰 Review Attention은 파일 관계를 flowchart 또는 sequence로 렌더링한다", () => {
+test("코드 리뷰 변경 파일 관계는 flowchart 또는 sequence로 렌더링한다", () => {
 	const html = buildStudyHardStudioHtml();
 	const helperStart = html.indexOf("function metaReviewBasename");
 	const helperEnd = html.indexOf("function metaReviewFirstParagraph", helperStart);
@@ -3094,7 +3094,7 @@ test("코드 리뷰 Review Attention은 파일 관계를 flowchart 또는 sequen
 	assert.match(sequence, /F1->>F0: 노출 여부 조회/);
 });
 
-test("코드 리뷰 surface는 Overview, Review Attention, compact 파일 목록과 접힌 문맥을 유지한다", () => {
+test("코드 리뷰 surface는 한눈에 보기, 독립 관계·finding, compact 파일 목록과 접힌 문맥을 유지한다", () => {
 	const html = buildStudyHardStudioHtml();
 	for (const marker of ["reviewOverviewLead", "Review attention", "변경 파일 관계", "실제 리뷰 포인트", "reviewFileSummaryRow", "파일 역할", "호출·데이터 흐름", "사용자·후속 영향"]) assert.match(html, new RegExp(marker));
 	const fileStart = html.indexOf("function metaReviewFileHtml");
