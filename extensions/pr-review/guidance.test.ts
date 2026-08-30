@@ -127,7 +127,9 @@ test("Meta Review change meanings validate source-backed contract transitions in
 	const meaning = document.meanings![0]!;
 	assert.throws(() => validateMetaReviewDocument(bundle, { ...document, meanings: [{ ...meaning, id: "bad-id" }] }), /id must start with M-/);
 	assert.throws(() => validateMetaReviewDocument(bundle, { ...document, meanings: [{ ...meaning, evidenceIds: ["unknown"] }] }), /unknown evidence/);
-	assert.throws(() => validateMetaReviewDocument(bundle, { ...document, meanings: [{ ...meaning, confidence: "high", basis: [{ kind: "diff", path: policy!, summary: "인접한 줄이 바뀌었습니다." }] }] }), /high confidence meaning requires source-backed basis/);
+	assert.throws(() => validateMetaReviewDocument(bundle, { ...document, meanings: [{ ...meaning, confidence: "high", basis: [{ kind: "diff", path: policy!, summary: "인접한 줄이 바뀌었습니다." }] }] }), /high confidence meaning requires pinned source-backed basis/);
+	assert.throws(() => validateMetaReviewDocument(bundle, { ...document, meanings: [{ ...meaning, confidence: "high", basis: [{ kind: "definition", path: "src/unchanged.ts", summary: "현재 run에 pin되지 않은 정의입니다." }] }] }), /high confidence meaning requires pinned source-backed basis/);
+	assert.throws(() => validateMetaReviewDocument(bundle, { ...document, meanings: [{ ...meaning, basis: [{ kind: "definition", path: "https://example.com/source", summary: "URL은 repo path가 아닙니다." }] }] }), /path must be repo-relative/);
 });
 
 test("Meta Review guides cover every changed file and addition/deletion exactly once", () => {

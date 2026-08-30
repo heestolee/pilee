@@ -141,13 +141,13 @@ function validateMetaReviewMeanings(bundle: ReviewSourceBundle, value: unknown):
 			const basisLabel = `${label}.basis[${basisIndex}]`;
 			if (!item || !allowedBasis.has(item.kind)) throw new Error(`${basisLabel}.kind is invalid`);
 			assertText(item.path, `${basisLabel}.path`);
-			if (item.path.startsWith("/") || item.path.split("/").includes("..")) throw new Error(`${basisLabel}.path must be repo-relative`);
+			if (item.path.startsWith("/") || item.path.includes("://") || item.path.split("/").includes("..")) throw new Error(`${basisLabel}.path must be repo-relative`);
 			assertText(item.summary, `${basisLabel}.summary`);
 			if (item.line !== undefined && (!Number.isInteger(item.line) || item.line <= 0)) throw new Error(`${basisLabel}.line is invalid`);
 			return { kind: item.kind, path: item.path.trim(), ...(item.line ? { line: item.line } : {}), summary: item.summary.trim() };
 		});
 		if (!(["high", "medium", "low"] as string[]).includes(meaning.confidence)) throw new Error(`${label}.confidence is invalid`);
-		if (meaning.confidence === "high" && !basis.some((item) => sourceBackedBasis.has(item.kind))) throw new Error("high confidence meaning requires source-backed basis");
+		if (meaning.confidence === "high" && !basis.some((item) => sourceBackedBasis.has(item.kind) && knownPaths.has(item.path))) throw new Error("high confidence meaning requires pinned source-backed basis");
 		if (meaning.confidence === "low" && !(typeof meaning.uncertainty === "string" && meaning.uncertainty.trim())) throw new Error(`${label}.uncertainty is required for low confidence`);
 		return {
 			id: meaning.id,
