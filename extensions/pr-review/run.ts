@@ -392,6 +392,24 @@ export function renderMetaReviewMarkdown(
 			...document.relationships.readingOrder.map((step, index) => `${index + 1}. \`${step.path}\` — ${step.reason}`),
 			"",
 		);
+		if (document.meanings?.length) {
+			lines.push("## 변경 의미", "");
+			for (const meaning of document.meanings) {
+				lines.push(
+					`### ${meaning.id} · ${meaning.title}`,
+					"",
+					`- **Before 계약:** ${meaning.beforeContract}`,
+					`- **After 계약:** ${meaning.afterContract}`,
+					`- **전환 메커니즘:** ${meaning.mechanism}`,
+					`- **영향:** ${meaning.impact}`,
+					`- **연결 파일:** ${meaning.paths.map((path) => `\`${path}\``).join(", ")}`,
+					`- **근거 신뢰도:** ${meaning.confidence}`,
+					...meaning.basis.map((basis) => `- **${basis.kind}:** \`${basis.path}${basis.line ? `:${basis.line}` : ""}\` · ${basis.summary}`),
+				);
+				if (meaning.uncertainty) lines.push(`- **확인 필요:** ${meaning.uncertainty}`);
+				lines.push("");
+			}
+		}
 	}
 	for (const guide of guides) {
 		lines.push(

@@ -4,11 +4,34 @@ import { validateEvidenceIds } from "./evidence.ts";
 export type MetaReviewReconcileStatus = "new" | "unchanged" | "review-again" | "evidence-removed";
 export type MetaReviewRelationshipDiagram = "flowchart" | "sequence";
 
+export type MetaReviewMeaningConfidence = "high" | "medium" | "low";
+export type MetaReviewMeaningBasisKind = "explicit-contract" | "definition" | "producer-consumer" | "call-flow" | "test" | "diff";
+
+export interface MetaReviewChangeMeaningInput {
+	id: string;
+	title: string;
+	beforeContract: string;
+	afterContract: string;
+	mechanism: string;
+	impact: string;
+	paths: string[];
+	evidenceIds: string[];
+	basis: Array<{
+		kind: MetaReviewMeaningBasisKind;
+		path: string;
+		line?: number;
+		summary: string;
+	}>;
+	confidence: MetaReviewMeaningConfidence;
+	uncertainty?: string;
+}
+
 export interface MetaReviewDocumentInput {
 	overview: {
 		summary: string;
 		reviewFocus: string;
 	};
+	meanings?: MetaReviewChangeMeaningInput[];
 	relationships: {
 		summary: string;
 		diagram: MetaReviewRelationshipDiagram;
@@ -85,6 +108,63 @@ function changedLines(bundle: ReviewSourceBundle): ReviewDiffLine[] {
 	return bundle.lines.filter((line) => line.kind === "addition" || line.kind === "deletion");
 }
 
+function validateMetaReviewMeanings(bundle: ReviewSourceBundle, value: unknown): MetaReviewChangeMeaningInput[] {
+	if (value === undefined) return [];
+	if (!Array.isArray(value)) throw new Error("document.meanings must be an array");
+	if (value.length > 64) throw new Error("document.meanings must contain at most 64 items");
+	const knownPaths = new Set(bundle.files.map((file) => file.path));
+	const changedEvidence = new Set(changedLines(bundle).map((line) => line.id));
+	const seenIds = new Set<string>();
+	const allowedBasis = new Set<MetaReviewMeaningBasisKind>(["explicit-contract", "definition", "producer-consumer", "call-flow", "test", "diff"]);
+	const sourceBackedBasis = new Set<MetaReviewMeaningBasisKind>(["explicit-contract", "definition", "producer-consumer", "call-flow", "test"]);
+	return value.map((raw, index) => {
+		const meaning = raw as MetaReviewChangeMeaningInput;
+		const label = `document.meanings[${index}]`;
+		if (!meaning || typeof meaning !== "object") throw new Error(`${label} is invalid`);
+		if (!/^M-[A-Za-z0-9._-]+$/.test(meaning.id)) throw new Error(`${label}.id must start with M-`);
+		if (seenIds.has(meaning.id)) throw new Error(`duplicate change meaning id: ${meaning.id}`);
+		seenIds.add(meaning.id);
+		assertText(meaning.title, `${label}.title`);
+		assertText(meaning.beforeContract, `${label}.beforeContract`);
+		assertText(meaning.afterContract, `${label}.afterContract`);
+		assertText(meaning.mechanism, `${label}.mechanism`);
+		assertText(meaning.impact, `${label}.impact`);
+		if (!Array.isArray(meaning.paths) || !meaning.paths.length) throw new Error(`${label}.paths must not be empty`);
+		const paths = [...new Set(meaning.paths.map((path) => String(path).trim()).filter(Boolean))];
+		if (paths.some((path) => !knownPaths.has(path))) throw new Error(`${label}.paths must reference changed files`);
+		if (!Array.isArray(meaning.evidenceIds) || !meaning.evidenceIds.length) throw new Error(`${label}.evidenceIds must not be empty`);
+		const evidenceIds = [...new Set(meaning.evidenceIds.map((id) => String(id).trim()).filter(Boolean))];
+		const unknownEvidence = evidenceIds.filter((id) => !changedEvidence.has(id));
+		if (unknownEvidence.length) throw new Error(`${label} has unknown evidence: ${unknownEvidence.join(", ")}`);
+		if (!Array.isArray(meaning.basis) || !meaning.basis.length) throw new Error(`${label}.basis must not be empty`);
+		const basis = meaning.basis.map((item, basisIndex) => {
+			const basisLabel = `${label}.basis[${basisIndex}]`;
+			if (!item || !allowedBasis.has(item.kind)) throw new Error(`${basisLabel}.kind is invalid`);
+			assertText(item.path, `${basisLabel}.path`);
+			if (item.path.startsWith("/") || item.path.split("/").includes("..")) throw new Error(`${basisLabel}.path must be repo-relative`);
+			assertText(item.summary, `${basisLabel}.summary`);
+			if (item.line !== undefined && (!Number.isInteger(item.line) || item.line <= 0)) throw new Error(`${basisLabel}.line is invalid`);
+			return { kind: item.kind, path: item.path.trim(), ...(item.line ? { line: item.line } : {}), summary: item.summary.trim() };
+		});
+		if (!(["high", "medium", "low"] as string[]).includes(meaning.confidence)) throw new Error(`${label}.confidence is invalid`);
+		if (meaning.confidence === "high" && !basis.some((item) => sourceBackedBasis.has(item.kind))) throw new Error("high confidence meaning requires source-backed basis");
+		if (meaning.confidence === "low" && !(typeof meaning.uncertainty === "string" && meaning.uncertainty.trim())) throw new Error(`${label}.uncertainty is required for low confidence`);
+		return {
+			id: meaning.id,
+			title: meaning.title.trim(),
+			beforeContract: meaning.beforeContract.trim(),
+			afterContract: meaning.afterContract.trim(),
+			mechanism: meaning.mechanism.trim(),
+			impact: meaning.impact.trim(),
+			paths,
+			evidenceIds,
+			basis,
+			confidence: meaning.confidence,
+			...(typeof meaning.uncertainty === "string" && meaning.uncertainty.trim() ? { uncertainty: meaning.uncertainty.trim() } : {}),
+		};
+	});
+}
+
 export function validateMetaReviewDocument(bundle: ReviewSourceBundle, input: MetaReviewDocumentInput): MetaReviewDocumentInput {
 	if (!input || typeof input !== "object") throw new Error("document is required");
 	assertText(input.overview?.summary, "document.overview.summary");
@@ -96,6 +176,7 @@ export function validateMetaReviewDocument(bundle: ReviewSourceBundle, input: Me
 	if (input.relationships.relations.length > 128) throw new Error("document.relationships.relations must contain at most 128 items");
 
 	const knownPaths = new Set(bundle.files.map((file) => file.path));
+	const meanings = validateMetaReviewMeanings(bundle, input.meanings);
 	const seenRelations = new Set<string>();
 	const relations = input.relationships.relations.map((relation, index) => {
 		const label = `document.relationships.relations[${index}]`;
@@ -134,6 +215,7 @@ export function validateMetaReviewDocument(bundle: ReviewSourceBundle, input: Me
 			summary: input.overview.summary.trim(),
 			reviewFocus: input.overview.reviewFocus.trim(),
 		},
+		...(input.meanings !== undefined ? { meanings } : {}),
 		relationships: {
 			summary: input.relationships.summary.trim(),
 			diagram: input.relationships.diagram,

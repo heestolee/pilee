@@ -97,6 +97,39 @@ test("Meta Review document rejects unknown relationship files and incomplete rea
 	assert.throws(() => validateMetaReviewDocument(bundle, { ...base, relationships: { ...base.relationships, readingOrder: [{ path: policy!, reason: "정책부터 확인" }] } }), /include every changed file/);
 });
 
+test("Meta Review change meanings validate source-backed contract transitions independently from structural guides", () => {
+	const { bundle } = guideInputs();
+	const [policy, consumer] = bundle.files.map((file) => file.path);
+	const evidenceIds = bundle.lines.filter((line) => line.kind === "addition" || line.kind === "deletion").map((line) => line.id);
+	const document = validateMetaReviewDocument(bundle, {
+		overview: { summary: "상태 노출 계약을 좁힙니다.", reviewFocus: "producer와 consumer가 같은 계약을 사용하는지 봅니다." },
+		relationships: {
+			summary: "consumer가 policy를 사용합니다.",
+			diagram: "flowchart",
+			relations: [{ from: consumer!, to: policy!, label: "노출 여부 조회" }],
+			readingOrder: [{ path: policy!, reason: "계약 확인" }, { path: consumer!, reason: "소비 영향 확인" }],
+		},
+		meanings: [{
+			id: "M-visible-contract",
+			title: "암묵적 상태 허용을 명시적 노출 계약으로 전환",
+			beforeContract: "새 상태도 부정 조건을 통과하면 노출될 수 있었습니다.",
+			afterContract: "명시한 상태만 노출됩니다.",
+			mechanism: "policy가 allowlist를 생산하고 consumer가 그 결과를 사용합니다.",
+			impact: "향후 상태 추가가 자동 노출로 이어지지 않습니다.",
+			paths: [policy!, consumer!],
+			evidenceIds,
+			basis: [{ kind: "producer-consumer", path: consumer!, summary: "consumer가 policy 결과를 사용합니다." }],
+			confidence: "high",
+		}],
+	});
+	assert.equal(document.meanings?.[0]?.id, "M-visible-contract");
+	assert.deepEqual(document.meanings?.[0]?.paths, [policy, consumer]);
+	const meaning = document.meanings![0]!;
+	assert.throws(() => validateMetaReviewDocument(bundle, { ...document, meanings: [{ ...meaning, id: "bad-id" }] }), /id must start with M-/);
+	assert.throws(() => validateMetaReviewDocument(bundle, { ...document, meanings: [{ ...meaning, evidenceIds: ["unknown"] }] }), /unknown evidence/);
+	assert.throws(() => validateMetaReviewDocument(bundle, { ...document, meanings: [{ ...meaning, confidence: "high", basis: [{ kind: "diff", path: policy!, summary: "인접한 줄이 바뀌었습니다." }] }] }), /high confidence meaning requires source-backed basis/);
+});
+
 test("Meta Review guides cover every changed file and addition/deletion exactly once", () => {
 	const { bundle, guides } = guideInputs();
 	const validated = validateMetaReviewGuides(bundle, inspectAll(bundle), guides);
