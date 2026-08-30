@@ -53,7 +53,7 @@ PR 목적, base/head SHA, 파일·chunk 수, 아직 읽지 않은 chunk를 확�
 - entry point부터 consumer까지의 호출·데이터 흐름
 - 사용자·운영·후속 consumer 영향
 
-모든 추가·삭제 줄은 `E-...` explanation hunk 하나에 포함한다. 같은 의도의 연속 줄은 한 덩어리로 설명하되, 변경 이유·근거·책임·사용 개념·흐름과 영향·불확실성을 빠뜨리지 않는다. generated/lock/bulk 변경도 source-of-truth와 생성 이유를 파일 또는 hunk 단위로 설명한다.
+모든 추가·삭제 줄은 `E-...` explanation hunk 하나에 포함한다. hunk는 단순 줄 묶음이 아니라 사용자가 한 번에 질문·판단할 수 있는 semantic review unit이다. function·component·hook·type·test case·data contract 경계가 자연스러우면 그 단위에 맞추되, 같은 함수 안의 독립 변경을 억지로 합치거나 하나의 계약을 diff 한 줄씩 쪼개지 않는다. 같은 의도의 연속 줄은 한 덩어리로 설명하고, 변경 이유·근거·책임·사용 개념·흐름과 영향·불확실성을 빠뜨리지 않는다. generated/lock/bulk 변경도 source-of-truth와 생성 이유를 파일 또는 hunk 단위로 설명한다.
 
 ### 4. blind review 후보를 만든다
 

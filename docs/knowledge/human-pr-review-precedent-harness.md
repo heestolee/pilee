@@ -22,8 +22,9 @@ source:
   - user-direction:2026-08-25-workspace-activation-redesign
   - user-direction:2026-08-29-right-question-drawer-and-pr-5052-runtime
   - user-direction:2026-08-30-easy-review-hierarchy-and-file-relationships
+  - user-direction:2026-08-30-overview-relationship-reading-rail-restoration
 reviewed_at: 2026-08-30
-reviewed_commit: 5ad8414936162ebbf868be6f7624416a3cbb01a2
+reviewed_commit: a500af2
 related:
   - evidence-first-verification-gate
   - live-artifact-preview-pattern
@@ -67,11 +68,15 @@ artifact transport는 canonical이 아닙니다. extension은 현재 runDir의 �
 
 ## Document-First Render Rule
 
-Study Hard shell의 `코드 리뷰` 탭은 카드 대시보드가 아니라 Easy Review처럼 순서대로 읽히는 리뷰 문서입니다. `Overview → Review Attention → compact 파일 목록 → semantic explanation → 실제 inline review` 순서를 유지합니다. Overview는 PR 목적·검토 초점·coverage를 보존하고, Review Attention은 중립적인 파일 관계·권장 읽기 순서와 실제 finding을 시각적으로 분리합니다.
+Study Hard shell의 `코드 리뷰` 탭은 카드 대시보드가 아니라 Easy Review처럼 순서대로 읽히는 리뷰 문서입니다. `한눈에 보기 → 변경 파일 관계 → 먼저 볼 점 → compact 파일 목록 → semantic explanation → 실제 inline review` 순서를 유지합니다. `한눈에 보기`는 PR 목적·파일 관계 요약·검토 초점·coverage를 한 화면에서 분리해 보여주며, 관계 설명과 실제 finding을 같은 2열 카드에 다시 결합하지 않습니다.
 
-파일 관계는 raw Mermaid가 아니라 captured diff 경로를 참조하는 structured `from/to/label` edge와 전체 reading order로 저장합니다. 정적인 레이어·데이터·검증 관계는 flowchart, 시간 순서가 판단의 핵심인 런타임 호출은 sequence diagram을 선택하며 둘을 기계적으로 모두 만들지 않습니다. Mermaid source는 extension이 구조 데이터에서 결정적으로 만들고 strict renderer로 표시합니다.
+파일 관계는 raw Mermaid가 아니라 captured diff 경로를 참조하는 structured `from/to/label` edge와 전체 reading order로 저장합니다. 정적인 레이어·데이터·검증 관계는 flowchart, 시간 순서가 판단의 핵심인 런타임 호출은 sequence diagram을 선택하며 둘을 기계적으로 모두 만들지 않습니다. Mermaid source는 extension이 구조 데이터에서 결정적으로 만들고 strict renderer로 표시합니다. 관계도는 독립된 전체 폭 section에서 읽을 수 있는 최소 크기를 유지하고, 좁은 화면에서는 unreadable하게 축소하는 대신 가로 스크롤을 허용합니다. 번호·화살표·edge label의 의미와 `from → to` 관계를 텍스트 해설로 함께 제공해 그림만 보고 호출 책임을 다시 추론하게 하지 않습니다.
+
+`relationships.readingOrder`는 질문 drawer와 별개의 sticky `읽는 흐름` rail로 렌더링합니다. drawer가 열리면 본문 폭을 지키기 위해 rail을 숨기고, 좁은 화면에서는 본문 위의 일반 panel로 전환합니다. 과거 `.review-companion`처럼 질문·minimap·읽기 안내를 하나의 legacy component로 합치지 않습니다. 상단 finding은 짧은 index와 코드 위치 이동, 선택 질문 context만 제공하고 review draft·결정 action의 canonical 본문은 evidence 위치에 둡니다.
 
 파일 목록은 번호·전체 경로·한 줄 요약·증감 수치·토글을 가진 compact row를 유지합니다. 접힘 상태에서도 파일 역할, 변경 이유, 호출·데이터 흐름, 사용자·후속 영향을 summary 안에 남기고 실제 diff와 semantic explanation만 접습니다. explanation은 evidence의 addition/deletion line을 기준으로 `변경 전 L… · 변경 후 L…` 범위를 표시하며 떨어진 범위는 합치지 않습니다. 메타 관점·인간 precedent·문구 편집은 접고, 결정 버튼은 리뷰 본문을 지배하지 않는 작은 inline action으로 둡니다.
+
+`E-...` explanation hunk는 설명 저장 단위이면서 사용자가 한 번에 질문·판단할 semantic review unit입니다. changed code row를 누르면 해당 한 줄만이 아니라 같은 hunk의 code row·범위 header·설명 카드가 함께 선택되고 전체 evidence가 질문 context에 들어갑니다. hunk 밖 file/header/context 행만 정확한 line fallback을 유지합니다. hunk는 function·component·hook·type·test case·data contract 경계가 자연스러우면 그 단위에 맞추되, 같은 함수 안의 독립 변경을 합치거나 하나의 계약을 diff 한 줄씩 쪼개지 않습니다.
 
 서로 멀리 떨어진 evidence를 하나의 `min..max` 코드 블록으로 합치지 않습니다. changed line은 설명 coverage에서 숨기지 않고, 긴 unchanged context만 fold할 수 있습니다. finding이 없는 파일도 역할·변경 이유와 모든 semantic hunk 설명을 유지합니다.
 
@@ -85,7 +90,7 @@ Review worktree는 read-only 실행 경계입니다. dependency bootstrap을 자
 
 코드 리뷰 탭은 학습노트와 같은 오른쪽 detail drawer를 질문 surface로 재사용합니다. 본문 하단에 별도 composer를 중복하지 않고, 코드 리뷰 진입 때 drawer를 한 번 열며 toolbar의 `질문 패널`로 다시 열 수 있습니다. 본문은 drawer 너비만큼 줄어들어 선택 context와 diff를 동시에 읽습니다.
 
-질문 scope는 `전체 PR`과 `선택 블록`으로 분리합니다. file intro, diff line, semantic explanation hunk, ReviewCard를 누르면 exact `file | line | hunk | card` selection provenance와 evidence가 저장되고, 선택 블록 대화는 같은 evidence를 공유하더라도 selection kind/id가 다른 블록과 섞지 않습니다. 질문은 같은 Pi session transcript에 visible user event로 기록되고 내부 run/tool 지침은 hidden control envelope로 분리합니다.
+질문 scope는 `전체 PR`과 `선택 블록`으로 분리합니다. `한눈에 보기`와 `변경 파일 관계`는 allowlisted `section` provenance를, file intro·diff line·semantic explanation hunk·ReviewCard는 exact `file | line | hunk | card` provenance와 evidence를 저장합니다. 선택 블록 대화는 같은 evidence를 공유하더라도 selection kind/id가 다른 블록과 섞지 않습니다. 질문은 같은 Pi session transcript에 visible user event로 기록되고 내부 run/tool 지침은 hidden control envelope로 분리합니다.
 
 Owner Pi는 질문을 글자 수나 파일 수가 아니라 work shape로 route합니다. selection과 현재 review source만으로 닫히는 질문은 exact checkout session이 direct로 답하고, 외부 precedent·실행 검증·여러 독립 경로 비교·전체 PR 재분석이 실제로 필요하면 같은 question ID를 worker로 승격합니다. worker 결과는 route 시점 source/head pin과 적용 직전 checkout diff가 모두 일치할 때만 답변으로 publish합니다. 공통 상태 전이와 recovery 계약은 [질문 UI와 실행 owner는 분리한다](./question-ui-execution-owner-routing.md)를 따릅니다.
 
@@ -122,4 +127,7 @@ Meta Review의 코드 리뷰 탭은 GitHub write 도구가 아닙니다. `review
 - 큰 complete snapshot을 inline argument에 맞추려고 semantic hunk를 파일 하나로 합치면 changed evidence coverage는 통과해도 학습 가능한 설명 단위가 사라집니다.
 - 파일 관계를 raw Mermaid 문자열로만 저장하면 존재하지 않는 파일과 검증되지 않은 관계를 그릴 수 있고 reading order의 전체 파일 coverage도 확인할 수 없습니다.
 - 접힘 상태에서 파일 역할과 흐름까지 숨기면 사용자는 diff를 열기 전 어떤 파일부터 읽어야 하는지 다시 추론해야 합니다.
-- 전체 PR 질문과 선택 블록 질문을 한 thread로 렌더링하거나 selection ID 없이 evidence 교집합만 비교하면 서로 다른 line/hunk/card 대화가 섞입니다.
+- 전체 PR 질문과 선택 블록 질문을 한 thread로 렌더링하거나 selection ID 없이 evidence 교집합만 비교하면 서로 다른 section/line/hunk/card 대화가 섞입니다.
+- 관계도와 실제 finding을 한 2열 attention 카드에 다시 결합하면 관계도는 축소되고, 중립적인 구조 설명과 코드 문제 판정의 시각적 위계가 무너집니다.
+- 읽는 흐름 rail과 질문 drawer를 동시에 고정 노출하면 diff 본문 폭이 이중으로 줄어듭니다.
+- changed row를 모두 line selection으로만 두면 사용자가 하나의 동작·계약을 물을 때 줄마다 다시 범위를 조립해야 합니다. 반대로 함수 전체를 기계적으로 묶으면 서로 다른 판단이 한 질문 context에 섞입니다.
