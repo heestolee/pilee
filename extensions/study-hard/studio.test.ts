@@ -3095,6 +3095,35 @@ test("코드 리뷰 변경 파일 관계는 flowchart 또는 sequence로 렌더�
 	assert.match(sequence, /F1->>F0: 노출 여부 조회/);
 });
 
+test("변경 의미 visual은 역할 색상 flowchart와 sequence source를 구조화 spec에서 생성한다", () => {
+	const html = buildStudyHardStudioHtml();
+	const helperStart = html.indexOf("function metaReviewMeaningVisualRoleMeta");
+	const helperEnd = html.indexOf("function metaReviewMeaningVisualHtml", helperStart);
+	assert.ok(helperStart >= 0 && helperEnd > helperStart);
+	const visualMermaid = new Function(`function metaReviewMermaidText(value){return String(value||'').replace(/[\\r\\n\"'\\[\\]{}<>]/g,' ').replace(/\\s+/g,' ').trim();}${html.slice(helperStart, helperEnd)}; return metaReviewMeaningVisualMermaid;`)() as (visual: any) => string;
+	const flowchart = visualMermaid({
+		kind: "flowchart", direction: "LR",
+		groups: [{ id: "before", label: "기존", phase: "before" }, { id: "after", label: "신규", phase: "after" }],
+		nodes: [{ id: "manual", label: "수동 처리", role: "removed", groupId: "before" }, { id: "owner", label: "공통 책임", role: "moved", groupId: "after" }, { id: "guard", label: "검증", role: "guard", groupId: "after" }],
+		edges: [{ from: "manual", to: "owner", label: "책임 이동", role: "moved" }, { from: "owner", to: "guard", label: "검증", role: "guard", style: "dashed" }],
+	});
+	assert.match(flowchart, /^flowchart LR/m);
+	assert.match(flowchart, /subgraph G1\["BEFORE · 기존"\]/);
+	assert.match(flowchart, /class N1 role_removed/);
+	assert.match(flowchart, /classDef role_moved/);
+	assert.match(flowchart, /linkStyle 1 stroke:#b36a00,stroke-width:2px,stroke-dasharray:5 4/);
+	const sequence = visualMermaid({
+		kind: "sequence",
+		actors: [{ id: "admin", label: "관리자", role: "context" }, { id: "modal", label: "모달", role: "moved" }, { id: "server", label: "서버", role: "guard" }],
+		messages: [{ from: "admin", to: "modal", label: "정렬", role: "context" }, { from: "modal", to: "server", label: "expected + ordered", role: "new" }, { from: "server", to: "modal", label: "충돌 refetch", role: "guard", style: "dashed", note: "최신 snapshot" }],
+	});
+	assert.match(sequence, /^sequenceDiagram/m);
+	assert.match(sequence, /rect rgb\(255,242,217\)/);
+	assert.match(sequence, /A3-->>A2: 충돌 refetch/);
+	assert.match(sequence, /Note over A3,A2: 최신 snapshot/);
+	for (const marker of ["reviewMeaningDiagramViewport", "reviewMeaningLegend", "max-height:320px", "읽는 법"]) assert.match(html, new RegExp(marker));
+});
+
 test("코드 리뷰 surface는 한눈에 보기, 독립 관계·finding, compact 파일 목록과 접힌 문맥을 유지한다", () => {
 	const html = buildStudyHardStudioHtml();
 	for (const marker of ["reviewOverviewLead", "Review attention", "변경 파일 관계", "실제 리뷰 포인트", "reviewFileSummaryRow", "파일 역할", "호출·데이터 흐름", "사용자·후속 영향"]) assert.match(html, new RegExp(marker));
