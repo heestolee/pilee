@@ -23,8 +23,9 @@ source:
   - user-direction:2026-08-29-right-question-drawer-and-pr-5052-runtime
   - user-direction:2026-08-30-easy-review-hierarchy-and-file-relationships
   - user-direction:2026-08-30-overview-relationship-reading-rail-restoration
+  - user-direction:2026-08-30-declaration-symbol-selection-hierarchy
 reviewed_at: 2026-08-30
-reviewed_commit: a500af2
+reviewed_commit: 4176907
 related:
   - evidence-first-verification-gate
   - live-artifact-preview-pattern
@@ -76,7 +77,9 @@ Study Hard shell의 `코드 리뷰` 탭은 카드 대시보드가 아니라 Easy
 
 파일 목록은 번호·전체 경로·한 줄 요약·증감 수치·토글을 가진 compact row를 유지합니다. 접힘 상태에서도 파일 역할, 변경 이유, 호출·데이터 흐름, 사용자·후속 영향을 summary 안에 남기고 실제 diff와 semantic explanation만 접습니다. explanation은 evidence의 addition/deletion line을 기준으로 `변경 전 L… · 변경 후 L…` 범위를 표시하며 떨어진 범위는 합치지 않습니다. 메타 관점·인간 precedent·문구 편집은 접고, 결정 버튼은 리뷰 본문을 지배하지 않는 작은 inline action으로 둡니다.
 
-`E-...` explanation hunk는 설명 저장 단위이면서 사용자가 한 번에 질문·판단할 semantic review unit입니다. changed code row를 누르면 해당 한 줄만이 아니라 같은 hunk의 code row·범위 header·설명 카드가 함께 선택되고 전체 evidence가 질문 context에 들어갑니다. hunk 밖 file/header/context 행만 정확한 line fallback을 유지합니다. hunk는 function·component·hook·type·test case·data contract 경계가 자연스러우면 그 단위에 맞추되, 같은 함수 안의 독립 변경을 합치거나 하나의 계약을 diff 한 줄씩 쪼개지 않습니다.
+`E-...` explanation hunk는 변경 의도와 coverage를 설명하는 단위이지 source 선택 단위가 아닙니다. TS/TSX/JS/JSX는 capture 시점의 exact before/after source를 TypeScript AST로 파싱해 변수·함수·컴포넌트·hook·메서드·class·type·test declaration tree를 별도 저장합니다. changed code row는 가장 작은 declaration을 기본 선택하고, breadcrumb와 상위·이전 하위·더 작은 범위 control로 함수·class·파일까지 확장·축소합니다.
+
+선택 preview는 pinned source의 선언 전체를 연속된 줄 범위로 보여주고 before/after를 전환합니다. 질문 provenance는 declaration ID, side, file, 그 선언 안의 전체 changed evidence를 함께 검증합니다. Source snapshot은 file side당 512KB, 전체 4MB로 제한하고 snapshot hash는 diff freshness hash와 분리합니다. Parser 미지원·capture 실패·크기 초과 run만 semantic hunk → line fallback을 유지합니다.
 
 서로 멀리 떨어진 evidence를 하나의 `min..max` 코드 블록으로 합치지 않습니다. changed line은 설명 coverage에서 숨기지 않고, 긴 unchanged context만 fold할 수 있습니다. finding이 없는 파일도 역할·변경 이유와 모든 semantic hunk 설명을 유지합니다.
 
@@ -130,4 +133,6 @@ Meta Review의 코드 리뷰 탭은 GitHub write 도구가 아닙니다. `review
 - 전체 PR 질문과 선택 블록 질문을 한 thread로 렌더링하거나 selection ID 없이 evidence 교집합만 비교하면 서로 다른 section/line/hunk/card 대화가 섞입니다.
 - 관계도와 실제 finding을 한 2열 attention 카드에 다시 결합하면 관계도는 축소되고, 중립적인 구조 설명과 코드 문제 판정의 시각적 위계가 무너집니다.
 - 읽는 흐름 rail과 질문 drawer를 동시에 고정 노출하면 diff 본문 폭이 이중으로 줄어듭니다.
-- changed row를 모두 line selection으로만 두면 사용자가 하나의 동작·계약을 물을 때 줄마다 다시 범위를 조립해야 합니다. 반대로 함수 전체를 기계적으로 묶으면 서로 다른 판단이 한 질문 context에 섞입니다.
+- changed row를 모두 line이나 explanation hunk로 선택하면 새 파일 전체와 떨어진 변경 행이 하나의 범위처럼 보이고 지역 변수·상위 함수 질문을 구분하지 못합니다.
+- declaration source를 render 시 mutable checkout에서 다시 읽으면 immutable review run과 다른 코드를 질문하게 됩니다.
+- diff freshness hash에 full-source hash를 섞으면 기존 remote/current diff stale 검산과 호환되지 않습니다.
