@@ -26,8 +26,9 @@ source:
   - user-direction:2026-08-30-declaration-symbol-selection-hierarchy
   - user-direction:2026-08-30-structure-selection-and-source-backed-change-meaning
   - user-direction:2026-08-30-color-semantic-meaning-diagrams
+  - user-direction:2026-08-30-meaning-chart-zoom-overlay
 reviewed_at: 2026-08-30
-reviewed_commit: df2b593
+reviewed_commit: 3c7b116
 related:
   - evidence-first-verification-gate
   - live-artifact-preview-pattern
@@ -84,6 +85,8 @@ Study Hard shell의 `코드 리뷰` 탭은 카드 대시보드가 아니라 Easy
 변경 의미는 구조 단위와 다대다 관계인 별도 `document.meanings[]` canonical입니다. 같은 파일·함수·인접 줄이 아니라 contract, explicit definition/deprecation, producer-consumer, call-flow, test 인과관계로 fact를 묶고 Before 계약·After 계약·전환 메커니즘·영향·source basis·confidence를 기록합니다. High confidence는 diff 이외의 source-backed basis가 필요합니다. 선택 preview와 의미 질문은 각각 declaration ID/side/file/evidence와 meaning ID/전체 evidence를 server에서 재검증합니다. Source snapshot은 file side당 512KB, 전체 4MB로 제한하고 snapshot hash는 diff freshness hash와 분리합니다.
 
 책임·데이터·소유권·계약 구조가 이동하는 meaning은 구조화 `flowchart`, 호출 순서·비동기·실패·재시도·CAS 충돌이 핵심인 meaning은 구조화 `sequence` visual을 하나만 가질 수 있습니다. Raw Mermaid는 canonical에 저장하지 않고 group/node/edge 또는 actor/message reference를 검증한 뒤 renderer가 파생합니다. 역할 색상은 제거·deprecated=빨강 점선, 신규·강화=초록, 책임 이동·통합=보라, 유지 경계=파랑, 검증·충돌=주황, 주변 문맥=회색으로 고정합니다. Diagram은 inline 320px 높이 안에서 primary 설명이 되지만 텍스트 Before/After·메커니즘·영향·source basis를 대체하지 않습니다.
+
+Inline 압축 때문에 label을 읽기 어려우면 각 카드의 `확대해서 보기`가 같은 구조화 source를 별도 SVG로 다시 렌더링합니다. Overlay는 원본 벡터를 75–250% 범위로 확대·축소하고 양방향 scroll, reset, Esc·backdrop·close 종료를 제공하며 카드 질문 selection을 바꾸지 않습니다. DOM의 기존 SVG를 복제하지 않고 새 Mermaid render ID를 사용해 marker/definition ID 충돌을 피합니다. Glimpse page zoom은 전체 shell을 키우는 host 기능이고, chart overlay zoom은 한 visual만 자세히 읽는 surface 기능으로 분리합니다.
 
 서로 멀리 떨어진 evidence를 하나의 `min..max` 코드 블록으로 합치지 않습니다. changed line은 설명 coverage에서 숨기지 않고, 긴 unchanged context만 fold할 수 있습니다. finding이 없는 파일도 역할·변경 이유와 모든 semantic hunk 설명을 유지합니다.
 
@@ -142,5 +145,7 @@ Meta Review의 코드 리뷰 탭은 GitHub write 도구가 아닙니다. `review
 - identifier rename·파일 인접성만으로 변경 의미를 만들면 구현체 교체를 계약 전환으로 과잉 해석합니다. Source-backed 인과관계가 없으면 confidence를 낮추거나 의미를 만들지 않습니다.
 - Agent가 raw Mermaid를 제출하게 하면 syntax·보안·색상 문법이 canonical에 섞입니다. 구조화 visual만 저장하고 renderer가 Mermaid를 파생합니다.
 - 전체 시스템 지도를 모든 meaning 카드에 넣으면 inline diff보다 diagram이 더 커집니다. Flowchart 12 node·20 edge, sequence 8 actor·16 message 안에서 해당 전환만 압축합니다.
+- Inline chart의 CSS 높이만 무제한으로 늘리면 review 문서 흐름이 깨집니다. Inline은 compact하게 유지하고 자세히 보기는 full-screen overlay와 내부 scroll로 분리합니다.
+- 기존 SVG DOM을 그대로 clone하면 Mermaid marker·definition ID가 문서에서 중복될 수 있습니다. Overlay는 canonical source를 unique render ID로 다시 렌더링합니다.
 - declaration source를 render 시 mutable checkout에서 다시 읽으면 immutable review run과 다른 코드를 질문하게 됩니다.
 - diff freshness hash에 full-source hash를 섞으면 기존 remote/current diff stale 검산과 호환되지 않습니다.
