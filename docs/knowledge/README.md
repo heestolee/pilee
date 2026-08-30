@@ -66,7 +66,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [Worker는 readiness ownership을 가진다](./ai-worker-readiness-orchestrator.md) | active | high | 2026-06-02 | ce5e875 | worker, subagent, orchestrator, readiness, bootstrap, diagnosis |
+| [Worker는 readiness ownership을 가진다](./ai-worker-readiness-orchestrator.md) | active | high | 2026-08-30 | 5ad8414 | worker, subagent, orchestrator, readiness, bootstrap, diagnosis |
 | [Self-healing은 actionable item만 수정한다](./self-healing-actionable-loop.md) | active | high | 2026-08-04 | 9bc5850 | self-healing, actionable, worker, fix-class, subagent, 자동수정 |
 | [Stress Interview는 다축 검토다](./stress-interview-multi-axis-review.md) | active | high | 2026-08-04 | 9bc5850 | stress-interview, review, verifier, reviewer, challenger, subagent |
 | [Hybrid subagent 모델 운용 정책](./subagent-model-policy.md) | active | high | 2026-07-30 | c45a4a4 | subagent, codex, claude, model-policy, worker, finder |
@@ -82,8 +82,9 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Architecture friction은 TFT의 검증 축이다](./architecture-friction-tft-lens.md) | active | high | 2026-06-02 | ce5e875 | architecture, frame, decide, verify, deep-module, shallow-module |
 | [Convention Lens는 작업 종료 시 관련 판단만 투영한다](./convention-lens-event-driven-projection.md) | experimental | high | 2026-08-25 | c077eab | convention-lens, agent-settled, stop-hook, graph, evidence, reviewer |
 | [학습노트 companion은 독립 canonical을 sidecar로 연결한다](./learning-note-companion-artifact.md) | active | high | 2026-07-18 | 88b560c | learning-note, companion-artifact, frame-v2, study-hard, worktree, checkpoint |
+| [질문 UI와 실행 owner는 분리한다](./question-ui-execution-owner-routing.md) | active | high | 2026-08-30 | 5ad8414 | question-runtime, orchestration, direct, worker, study-hard, meta-review |
 | [Study Hard 엔진은 public이고 개인 publisher만 private다](./study-hard-public-engine-private-publisher.md) | active | high | 2026-07-30 | ac5b326 | study-hard, public-private-boundary, notion, runtime-profile, local-state |
-| [Study Hard worker는 유연하게 생성하고 extension coordinator가 엄격하게 적용한다](./study-hard-worker-flexible-generation-strict-apply.md) | active | high | 2026-08-05 | 2c4669d | study-hard, subagent, worker, three-way-merge, optimistic-concurrency, glimpse |
+| [Study Hard worker는 유연하게 생성하고 extension coordinator가 엄격하게 적용한다](./study-hard-worker-flexible-generation-strict-apply.md) | active | high | 2026-08-30 | 5ad8414 | study-hard, subagent, worker, three-way-merge, optimistic-concurrency, glimpse |
 | [Utils surface는 사용자 계약을 만들지 않는다](./utility-surface-stays-invisible.md) | active | high | 2026-06-02 | d8f8c4c | utils, internal, surface, abstraction, extension |
 
 ### database
@@ -200,7 +201,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-06-02 | 7861f10 | frame, planning, identity, home-directory, ticket, session-title |
 | [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-06-16 | 87c864f | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
 | [Frame v2는 작업·학습 lane을 양방향으로 연결한다](./frame-v2-learning-note-pilot.md) | active | high | 2026-07-18 | 88b560c | frame-v2, frame, study-hard, learning-note, worktree |
-| [Meta Review는 전체 diff 설명 뒤에 독립 판단과 precedent를 붙인다](./human-pr-review-precedent-harness.md) | active | high | 2026-08-30 | d46c050 | pr-review, human-review, precedent, evidence, glimpse, meta-review |
+| [Meta Review는 전체 diff 설명 뒤에 독립 판단과 precedent를 붙인다](./human-pr-review-precedent-harness.md) | active | high | 2026-08-30 | 5ad8414 | pr-review, human-review, precedent, evidence, glimpse, meta-review |
 | [Interactive shell은 bash가 아닌 터미널 세션이다](./interactive-shell-overlay-tool.md) | active | high | 2026-06-29 | 680f937 | interactive-shell, shell, tui, dev-server, overlay, dispatch |
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-06-02 | 7861f10 | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 264ea17 | local-dev, server, startup, diagnosis, dev |
@@ -253,6 +254,7 @@ graph TD
   doc_architecture_friction_tft_lens["Architecture friction은 TFT의 검증 축이다"]
   doc_convention_lens_event_driven_projection["Convention Lens는 작업 종료 시 관련 판단만 투영한다"]
   doc_learning_note_companion_artifact["학습노트 companion은 독립 canonical을 sidecar로 연결한다"]
+  doc_question_ui_execution_owner_routing["질문 UI와 실행 owner는 분리한다"]
   doc_study_hard_public_engine_private_publisher["Study Hard 엔진은 public이고 개인 publisher만 private다"]
   doc_study_hard_worker_flexible_generation_strict_apply["Study Hard worker는 유연하게 생성하고 extension coordinator가 엄격하게 적용한다"]
   doc_utility_surface_stays_invisible["Utils surface는 사용자 계약을 만들지 않는다"]
@@ -358,6 +360,7 @@ graph TD
   doc_worktree_dependency_bootstrap_worker["Worktree 의존성 준비는 조건부 worker가 맡는다"]
   doc_worktree_execution_boundary["Worktree는 실행 경계다"]
   doc_worktree_session_continuity["Worktree 세션 연속성과 식별성 원칙"]
+  doc_ai_worker_readiness_orchestrator --> doc_question_ui_execution_owner_routing
   doc_ai_worker_readiness_orchestrator --> doc_self_healing_actionable_loop
   doc_ai_worker_readiness_orchestrator --> doc_stress_interview_multi_axis_review
   doc_ai_worker_readiness_orchestrator --> doc_subagent_model_policy
@@ -401,6 +404,11 @@ graph TD
   doc_learning_note_companion_artifact --> doc_slice_auto_commit_rhythm
   doc_learning_note_companion_artifact --> doc_study_hard_public_engine_private_publisher
   doc_learning_note_companion_artifact --> doc_worktree_session_continuity
+  doc_question_ui_execution_owner_routing --> doc_ai_worker_readiness_orchestrator
+  doc_question_ui_execution_owner_routing --> doc_human_pr_review_precedent_harness
+  doc_question_ui_execution_owner_routing --> doc_parallel_workflow_analysis_single_writer
+  doc_question_ui_execution_owner_routing --> doc_study_hard_worker_flexible_generation_strict_apply
+  doc_question_ui_execution_owner_routing --> doc_subagent_prompt_specificity
   doc_study_hard_public_engine_private_publisher --> doc_context_loading_minimal_surface
   doc_study_hard_public_engine_private_publisher --> doc_embedded_webview_script_escape_boundary
   doc_study_hard_public_engine_private_publisher --> doc_frame_v2_learning_note_pilot
@@ -410,6 +418,7 @@ graph TD
   doc_study_hard_public_engine_private_publisher --> doc_study_hard_worker_flexible_generation_strict_apply
   doc_study_hard_worker_flexible_generation_strict_apply --> doc_learning_note_companion_artifact
   doc_study_hard_worker_flexible_generation_strict_apply --> doc_parallel_workflow_analysis_single_writer
+  doc_study_hard_worker_flexible_generation_strict_apply --> doc_question_ui_execution_owner_routing
   doc_study_hard_worker_flexible_generation_strict_apply --> doc_study_hard_public_engine_private_publisher
   doc_study_hard_worker_flexible_generation_strict_apply --> doc_subagent_prompt_specificity
   doc_study_hard_worker_flexible_generation_strict_apply --> doc_workflow_guard_enforced_flow
@@ -646,6 +655,7 @@ graph TD
   doc_human_pr_review_precedent_harness --> doc_evidence_first_verification_gate
   doc_human_pr_review_precedent_harness --> doc_live_artifact_preview_pattern
   doc_human_pr_review_precedent_harness --> doc_private_overlay_package_boundary
+  doc_human_pr_review_precedent_harness --> doc_question_ui_execution_owner_routing
   doc_human_pr_review_precedent_harness --> doc_skills_as_portable_procedures
   doc_human_pr_review_precedent_harness --> doc_stress_interview_multi_axis_review
   doc_human_pr_review_precedent_harness --> doc_workspace_action_panel_activation_contract
@@ -796,7 +806,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 116
-- Links: 434
+- Documents: 117
+- Links: 442
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

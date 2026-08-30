@@ -25,14 +25,15 @@ source:
   - pilee-history:2026-05-07#86
   - pilee-history:2026-05-07#87
   - user-direction:2026-05-07-ai-native-worker
-reviewed_at: 2026-06-02
-reviewed_commit: ce5e875d9e49a3a0b93215894e525b1933c6a145
+reviewed_at: 2026-08-30
+reviewed_commit: 5ad8414936162ebbf868be6f7624416a3cbb01a2
 related:
   - worktree-dependency-bootstrap-worker
   - subagent-prompt-specificity
   - subagent-model-policy
   - self-healing-actionable-loop
   - stress-interview-multi-axis-review
+  - question-ui-execution-owner-routing
 ---
 
 ## Judgment

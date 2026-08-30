@@ -23,7 +23,7 @@ source:
   - user-direction:2026-08-29-right-question-drawer-and-pr-5052-runtime
   - user-direction:2026-08-30-easy-review-hierarchy-and-file-relationships
 reviewed_at: 2026-08-30
-reviewed_commit: d46c0509040b30b5c2e1251c95cb0e38f63e424c
+reviewed_commit: 5ad8414936162ebbf868be6f7624416a3cbb01a2
 related:
   - evidence-first-verification-gate
   - live-artifact-preview-pattern
@@ -31,6 +31,7 @@ related:
   - stress-interview-multi-axis-review
   - skills-as-portable-procedures
   - workspace-action-panel-activation-contract
+  - question-ui-execution-owner-routing
 ---
 
 ## Judgment
@@ -84,7 +85,11 @@ Review worktree는 read-only 실행 경계입니다. dependency bootstrap을 자
 
 코드 리뷰 탭은 학습노트와 같은 오른쪽 detail drawer를 질문 surface로 재사용합니다. 본문 하단에 별도 composer를 중복하지 않고, 코드 리뷰 진입 때 drawer를 한 번 열며 toolbar의 `질문 패널`로 다시 열 수 있습니다. 본문은 drawer 너비만큼 줄어들어 선택 context와 diff를 동시에 읽습니다.
 
-질문 scope는 `전체 PR`과 `선택 블록`으로 분리합니다. file intro, diff line, semantic explanation hunk, ReviewCard를 누르면 exact `file | line | hunk | card` selection provenance와 evidence가 저장되고, 선택 블록 대화는 같은 evidence를 공유하더라도 selection kind/id가 다른 블록과 섞지 않습니다. 질문은 같은 Pi session transcript에 전달되고, 답변 전 agent가 checkout source를 직접 조사해야 합니다. 답변은 `쉬운 설명 → 코드에서 확인된 사실 → 아직 모르는 정책/가정 → 리뷰 판단` 순서와 source evidence를 갖고 `questions.jsonl` append-only snapshot으로 보존됩니다. queued/answering 질문이 있는 동안만 live state를 polling하고 모두 끝나면 멈춥니다. Pi에서 `/diff`를 보며 나눈 대화도 같은 checkout/session을 사용하지만, 사용자의 명시적 갱신 요청 전에는 review artifact를 자동 수정하지 않습니다.
+질문 scope는 `전체 PR`과 `선택 블록`으로 분리합니다. file intro, diff line, semantic explanation hunk, ReviewCard를 누르면 exact `file | line | hunk | card` selection provenance와 evidence가 저장되고, 선택 블록 대화는 같은 evidence를 공유하더라도 selection kind/id가 다른 블록과 섞지 않습니다. 질문은 같은 Pi session transcript에 visible user event로 기록되고 내부 run/tool 지침은 hidden control envelope로 분리합니다.
+
+Owner Pi는 질문을 글자 수나 파일 수가 아니라 work shape로 route합니다. selection과 현재 review source만으로 닫히는 질문은 exact checkout session이 direct로 답하고, 외부 precedent·실행 검증·여러 독립 경로 비교·전체 PR 재분석이 실제로 필요하면 같은 question ID를 worker로 승격합니다. worker 결과는 route 시점 source/head pin과 적용 직전 checkout diff가 모두 일치할 때만 답변으로 publish합니다. 공통 상태 전이와 recovery 계약은 [질문 UI와 실행 owner는 분리한다](./question-ui-execution-owner-routing.md)를 따릅니다.
+
+답변은 `쉬운 설명 → 코드에서 확인된 사실 → 아직 모르는 정책/가정 → 리뷰 판단` 순서와 source evidence를 갖고 `questions.jsonl` append-only snapshot으로 보존됩니다. terminal answer/fail/stale는 한 snapshot으로 기록하고 늦은 callback이 다시 열지 못합니다. pending execution이 있는 동안만 live state를 polling하고 모두 끝나면 멈춥니다. Pi에서 `/diff`를 보며 나눈 대화도 같은 checkout/session을 사용하지만, 사용자의 명시적 갱신 요청 전에는 review artifact를 자동 수정하지 않습니다.
 
 Meta Review session의 review truth는 immutable run과 checkout metadata이지만, workflow가 source conversation에서 시작됐다면 전체 transcript와 `parentSession` lineage도 기본 보존합니다. Source context는 정책·의도·이전 판단을 제공하고, run/head metadata는 코드 revision truth를 제공합니다.
 
