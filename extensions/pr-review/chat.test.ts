@@ -204,7 +204,7 @@ test("question context derives and validates selected review block provenance", 
 		fileId: "F001",
 		filePath: "src/policy.ts",
 		evidenceIds: ["D001", "D002"],
-		selection: { kind: "hunk", id: "E-01", label: "설명 블록 · 허용 상태 명시" },
+		selection: { kind: "hunk", id: "E-01", label: "변경 단위 · 허용 상태 명시" },
 	});
 	assert.throws(() => resolvePrReviewQuestionContext(snapshot, {
 		scope: "evidence",

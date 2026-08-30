@@ -3130,6 +3130,29 @@ test("코드 리뷰 설명 카드는 evidence 줄을 변경 전후 범위로 표
 	assert.match(html, /설명 범위 ·/);
 });
 
+test("changed code row는 semantic hunk를 일급 선택 단위로 사용하고 나머지 row는 line으로 fallback한다", () => {
+	const html = buildStudyHardStudioHtml();
+	const helperStart = html.indexOf("function metaReviewLineSelectionContext");
+	const helperEnd = html.indexOf("function metaReviewSelectionAttributes", helperStart);
+	assert.ok(helperStart >= 0 && helperEnd > helperStart);
+	const selectionContext = new Function(`${html.slice(helperStart, helperEnd)}; return metaReviewLineSelectionContext;`)() as (line: any, file: any, hunk?: any) => any;
+	const file = { id: "F001", path: "src/policy.ts" };
+	assert.deepEqual(selectionContext({ id: "D001", newLine: 8 }, file, { id: "E-01", title: "공개 상태 계약", evidenceIds: ["D001", "D002"] }), {
+		selectionKind: "hunk",
+		selectionId: "E-01",
+		selectionLabel: "변경 단위 · 공개 상태 계약",
+		evidenceIds: ["D001", "D002"],
+	});
+	assert.deepEqual(selectionContext({ id: "D003", kind: "context", oldLine: 9, newLine: 9 }, file), {
+		selectionKind: "line",
+		selectionId: "D003",
+		selectionLabel: "코드 줄 · src/policy.ts:9",
+		evidenceIds: ["D003"],
+	});
+	for (const marker of ["reviewSemanticUnitHeader", "reviewSemanticUnit", "reviewSemanticStart", "reviewSemanticEnd"]) assert.match(html, new RegExp(marker));
+	assert.match(html, /reviewLine\.reviewSemanticUnit\.selected/);
+});
+
 test("Meta Review 상단은 한눈에 보기, 파일 관계, 리뷰 포인트, 읽는 흐름을 독립 surface로 렌더링한다", () => {
 	const html = buildStudyHardStudioHtml();
 	for (const marker of [

@@ -238,7 +238,7 @@ export function resolvePrReviewQuestionContext(snapshot: QuestionContextSnapshot
 			const hunkFile = guide ? snapshot.source.files.find((item) => item.path === guide.path) : undefined;
 			if (scope !== "evidence" || !guide || !hunk || !hunkFile || !sameStringSet(evidenceIds, hunkEvidenceIds) || (fileId && fileId !== hunkFile.id)) throw new Error("hunk selection does not match question evidence");
 			selectedFile = hunkFile;
-			selection = { kind: "hunk", id: hunk.id, label: `설명 블록 · ${hunk.title}` };
+			selection = { kind: "hunk", id: hunk.id, label: `변경 단위 · ${hunk.title}` };
 		}
 	}
 	return {
