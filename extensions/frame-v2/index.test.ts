@@ -49,6 +49,9 @@ test("Frame v2 prompt follows the selected entry lane without making learning a 
 	assert.match(prompt, /Frame-first lane/);
 	assert.match(prompt, /before, alongside, or after implementation/);
 	assert.match(prompt, /Do not create a Frame v2-specific hard gate/);
+	assert.match(prompt, /begin the first ready implementation slice immediately/);
+	assert.match(prompt, /Study Hard worker lifecycle, completion, and note revisions are non-steering/);
+	assert.match(prompt, /do not return a final response/);
 	assert.doesNotMatch(prompt, /Do not start implementation until/);
 	assert.doesNotMatch(prompt, /TFT Studio first/);
 	assert.match(prompt, /backend-layer-map/);

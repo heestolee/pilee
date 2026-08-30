@@ -202,6 +202,9 @@ export function buildFrameV2Prompt(params: {
 			? "- Frame-first lane: use the standard Frame workflow to organize the work first. Afterwards offer implementation, Study Hard, or both; do not start Study Hard automatically."
 			: "- Study-Hard-first lane: build a pedagogical learning note first. Check whether a standard frame.json exists before opening the board; if it exists, expose the complete Frame as a read-only collapsed work contract, otherwise continue without it and offer Frame later.",
 		"- Study Hard may run before, alongside, or after implementation.",
+		"- If the user selects implementation or implementation + Study Hard, begin the first ready implementation slice immediately: make the first code edit or launch the implementation owner before opening/awaiting Study Hard work. Do not end with a choice summary.",
+		"- Study Hard worker lifecycle, completion, and note revisions are non-steering background events. Do not treat them as a user request, a work transition, or a reason to stop an in-progress code slice unless the user explicitly asks about learning.",
+		"- While a Frame slice is in_progress and no code diff/implementation-owner launch has occurred, do not return a final response. Continue the selected implementation action.",
 		"- Do not create a Frame v2-specific hard gate for implementation. Existing safety and ask-first rules remain in force, but learning completion is status, not authorization.",
 		"- Choose the visual form that best explains each subject: TFT visual, Mermaid, Study Hard flow, or a mixture. Existing backend-layer-map, architecture-flow, and data-model-migration-map visual kinds remain available; do not force one renderer onto every concept.",
 		"- Any fenced tft-visual that should survive learning refinement must be transferred into noteDocument as a stable `{type:\"visual\", visual:{...original spec...}}` block; do not flatten it into prose or a screenshot-only placeholder.",

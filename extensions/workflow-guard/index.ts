@@ -1291,11 +1291,14 @@ function actionContinuityNote(kind: string, details: any): string | undefined {
 		const answer = details?.answer;
 		if (answer?.status !== "answered") return undefined;
 		const choice = answer.selectedOptions?.length ? answer.selectedOptions.join(", ") : answer.text || "answered";
+		const startsImplementation = /(?:바로 구현 시작|구현과 학습 병행|작업 시작|start work)/i.test(choice);
 		return [
 			"",
 			"[workflow_guard] nextActionRequired: true",
 			`- TFT Studio selection: ${choice}`,
-			"- Continue to the selected next action now. Persist required stage output when the stage contract asks for it.",
+			startsImplementation
+				? "- This is an implementation start: make the first scoped code edit or launch the implementation owner now. Study Hard events are background-only; do not end with a status summary while the selected slice has no implementation evidence."
+				: "- Continue to the selected next action now. Persist required stage output when the stage contract asks for it.",
 		].join("\n");
 	}
 	return undefined;
