@@ -519,6 +519,7 @@ export function buildPrReviewQuestionWorkerTask(state: PrReviewRunState, questio
 - workerResultPath: ${question.workerResultPath}
 - scope: ${question.scope}
 - sectionId: ${question.sectionId || "(none)"}
+- meaningId: ${question.meaningId || "(none)"}
 - declarationId: ${question.declarationId || "(none)"}
 - declarationSide: ${question.declarationSide || "(none)"}
 - filePath: ${question.filePath || "(none)"}

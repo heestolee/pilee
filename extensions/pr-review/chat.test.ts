@@ -209,6 +209,7 @@ test("question context derives and validates selected review block provenance", 
 			},
 		}] },
 		guides: [{ path: "src/policy.ts", hunks: [{ id: "E-01", title: "허용 상태 명시", evidenceIds: ["D001", "D002"] }] }],
+		document: { meanings: [{ id: "M-visible", title: "암묵적 허용을 명시적 상태 계약으로 전환", evidenceIds: ["D001", "D002"] }] },
 		cards: [{ id: "R-01", title: "호출자 상태 확인", evidenceIds: ["D001"], code: { path: "src/policy.ts" } }],
 	};
 	assert.deepEqual(resolvePrReviewQuestionContext(snapshot, {
@@ -306,4 +307,26 @@ test("question context derives and validates selected review block provenance", 
 		selectionKind: "declaration",
 		selectionId: "A-F001-value",
 	}), /valid declarationSide is required/);
+	assert.deepEqual(resolvePrReviewQuestionContext(snapshot, {
+		scope: "meaning",
+		meaningId: "M-visible",
+		evidenceIds: ["D001", "D002"],
+		selectionKind: "meaning",
+		selectionId: "M-visible",
+	}), {
+		scope: "meaning",
+		cardId: undefined,
+		meaningId: "M-visible",
+		fileId: undefined,
+		filePath: undefined,
+		evidenceIds: ["D001", "D002"],
+		selection: { kind: "meaning", id: "M-visible", label: "변경 의미 · 암묵적 허용을 명시적 상태 계약으로 전환" },
+	});
+	assert.throws(() => resolvePrReviewQuestionContext(snapshot, {
+		scope: "meaning",
+		meaningId: "M-visible",
+		evidenceIds: ["D002"],
+		selectionKind: "meaning",
+		selectionId: "M-visible",
+	}), /meaning context does not match/);
 });
