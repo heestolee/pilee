@@ -114,6 +114,8 @@ test("Glimpse question dispatches into the same Pi session with review-worktree 
 			filePath: "migration.js",
 			evidenceIds: ["D000427"],
 			selection: { kind: "line", id: "D000427", label: "코드 줄 · migration.js:27" },
+			attachmentIds: ["review-image-1"],
+			attachments: [{ id: "review-image-1", name: "diagram.png", mimeType: "image/png", path: "/tmp/review-image-1.png", url: "/attachments/review-image-1.png" }],
 		}, 1000);
 		const messages: any[] = [];
 		const entries: any[] = [];
@@ -137,6 +139,11 @@ test("Glimpse question dispatches into the same Pi session with review-worktree 
 		assert.match(messages[0].message.content, /meta_review_chat.*answer/);
 		assert.match(messages[0].message.content, /D000427/);
 		assert.match(messages[0].message.content, /selectedBlock: line:D000427/);
+		assert.match(messages[0].message.content, /diagram\.png/);
+		assert.match(messages[0].message.content, /\/tmp\/review-image-1\.png/);
+		assert.doesNotMatch(messages[0].message.content, /data:image/);
+		assert.deepEqual(loadPrReviewQuestions(runDir)[0]?.attachmentIds, ["review-image-1"]);
+		assert.equal(loadPrReviewQuestions(runDir)[0]?.attachments?.[0]?.name, "diagram.png");
 		assert.equal(loadPrReviewQuestions(runDir)[0]?.status, "queued");
 		assert.equal(loadPrReviewQuestions(runDir)[0]?.execution?.phase, "routing");
 		assert.equal(loadPrReviewQuestions(runDir)[0]?.transcriptEventKeys?.length, 1);

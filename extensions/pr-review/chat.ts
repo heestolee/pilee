@@ -30,6 +30,14 @@ export interface PrReviewQuestionEvidence {
 	note?: string;
 }
 
+export interface PrReviewQuestionAttachment {
+	id: string;
+	name: string;
+	mimeType?: string;
+	path: string;
+	url?: string;
+}
+
 export interface PrReviewQuestion {
 	id: string;
 	runId: string;
@@ -40,6 +48,8 @@ export interface PrReviewQuestion {
 	filePath?: string;
 	evidenceIds?: string[];
 	selection?: PrReviewQuestionSelection;
+	attachmentIds?: string[];
+	attachments?: PrReviewQuestionAttachment[];
 	status: PrReviewQuestionStatus;
 	execution?: QuestionExecution;
 	transcriptEventKeys?: string[];
@@ -235,6 +245,38 @@ function normalizeSelection(scope: PrReviewQuestionScope, selection: PrReviewQue
 	return { kind: selection.kind, id: selection.id.trim(), label: selection.label.trim() };
 }
 
+function normalizeQuestionAttachments(
+	attachmentIds: string[] | undefined,
+	attachments: PrReviewQuestionAttachment[] | undefined,
+): { attachmentIds?: string[]; attachments?: PrReviewQuestionAttachment[] } {
+	const records: PrReviewQuestionAttachment[] = [];
+	const seen = new Set<string>();
+	for (const attachment of attachments ?? []) {
+		const id = attachment.id.trim();
+		const name = attachment.name.trim();
+		const path = attachment.path.trim();
+		if (!id || !name || !path) throw new Error("question attachment requires id, name, and path");
+		if (seen.has(id)) continue;
+		seen.add(id);
+		records.push({
+			id,
+			name,
+			mimeType: attachment.mimeType?.trim() || undefined,
+			path,
+			url: attachment.url?.trim() || undefined,
+		});
+		if (records.length === 4) break;
+	}
+	const ids = [...new Set((attachmentIds ?? records.map((attachment) => attachment.id)).map((id) => id.trim()).filter(Boolean))].slice(0, 4);
+	if (ids.length && (!records.length || ids.some((id) => !seen.has(id)) || records.some((attachment) => !ids.includes(attachment.id)))) {
+		throw new Error("question attachmentIds and attachment records must match");
+	}
+	return {
+		attachmentIds: ids.length ? ids : undefined,
+		attachments: records.length ? records : undefined,
+	};
+}
+
 export function createPrReviewQuestion(
 	runDir: string,
 	input: Omit<PrReviewQuestion, "id" | "status" | "createdAt" | "updatedAt">,
@@ -242,12 +284,14 @@ export function createPrReviewQuestion(
 ): PrReviewQuestion {
 	if (!input.question.trim()) throw new Error("question is required");
 	const questions = loadPrReviewQuestions(runDir);
+	const attachmentData = normalizeQuestionAttachments(input.attachmentIds, input.attachments);
 	return appendQuestion(runDir, {
 		...input,
 		id: nextQuestionId(questions),
 		question: input.question.trim(),
 		evidenceIds: input.evidenceIds?.length ? [...new Set(input.evidenceIds)] : undefined,
 		selection: normalizeSelection(input.scope, input.selection),
+		...attachmentData,
 		status: "queued",
 		execution: input.execution ?? createQuestionRoutingExecution(now),
 		createdAt: now,
@@ -413,6 +457,7 @@ function questionContext(question: PrReviewQuestion): string {
 		question.filePath ? `- filePath: ${question.filePath}` : undefined,
 		question.evidenceIds?.length ? `- evidenceIds: ${question.evidenceIds.join(", ")}` : undefined,
 		question.selection ? `- selectedBlock: ${question.selection.kind}:${question.selection.id} (${question.selection.label})` : undefined,
+		question.attachments?.length ? `- attachments: ${JSON.stringify(question.attachments)}` : undefined,
 	].filter(Boolean).join("\n");
 }
 

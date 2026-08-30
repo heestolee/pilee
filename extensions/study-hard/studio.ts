@@ -20,6 +20,7 @@ import {
 import {
 	createPrReviewQuestion,
 	dispatchPrReviewQuestionToSession,
+	loadPrReviewQuestions,
 	resolvePrReviewQuestionContext,
 } from "../pr-review/chat.ts";
 import {
@@ -2997,7 +2998,20 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 				if (!link) throw new Error("연결된 Meta Review가 없습니다.");
 				const body = await readJsonBody(req);
 				const questionText = typeof body.question === "string" ? body.question.trim() : "";
+				const attachmentIds = Array.isArray(body.attachmentIds)
+					? [...new Set(body.attachmentIds.filter((id): id is string => typeof id === "string" && !!id.trim()))].slice(0, MAX_QUESTION_ATTACHMENTS)
+					: [];
 				if (!questionText) throw new Error("question is required");
+				const attachmentsById = new Map(handle.state.attachments.map((attachment) => [attachment.id, attachment]));
+				const unknownAttachmentId = attachmentIds.find((id) => !attachmentsById.get(id)?.path);
+				if (unknownAttachmentId) {
+					sendJson(res, 400, { ok: false, error: `known readable attachmentId is required: ${unknownAttachmentId}` });
+					return;
+				}
+				const attachments = attachmentIds.map((id) => {
+					const attachment = attachmentsById.get(id)!;
+					return { id: attachment.id, name: attachment.name, mimeType: attachment.mimeType, path: attachment.path!, url: attachment.url };
+				});
 				const displayRun = resolveMetaReviewDisplayRun(link.runDir);
 				const snapshot = buildMetaReviewClientState(link.runDir);
 				const context = resolvePrReviewQuestionContext(snapshot, body);
@@ -3005,6 +3019,8 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 					runId: displayRun.runId,
 					question: questionText,
 					...context,
+					attachmentIds: attachmentIds.length ? attachmentIds : undefined,
+					attachments: attachments.length ? attachments : undefined,
 				});
 				dispatchPrReviewQuestionToSession(handle.pi, displayRun, question);
 				sendJson(res, 202, { ok: true, question });
@@ -3523,7 +3539,11 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 					sendJson(res, 404, { ok: false, error: "attachment not found" });
 					return;
 				}
-				if (handle.state.questions.some((question) => question.attachmentIds?.includes(attachmentId))) {
+				const linkedToStudyQuestion = handle.state.questions.some((question) => question.attachmentIds?.includes(attachmentId));
+				const linkedToMetaReviewQuestion = handle.state.metaReview
+					? loadPrReviewQuestions(resolveMetaReviewDisplayRun(handle.state.metaReview.runDir).runDir).some((question) => question.attachmentIds?.includes(attachmentId))
+					: false;
+				if (linkedToStudyQuestion || linkedToMetaReviewQuestion) {
 					sendJson(res, 409, { ok: false, error: "attachment is already linked to a question" });
 					return;
 				}

@@ -7,6 +7,7 @@ import { createPrReviewQuestion, loadPrReviewQuestions } from "./chat.ts";
 import { captureUnifiedDiff } from "./evidence.ts";
 import {
 	applyPrReviewQuestionWorkerResult,
+	buildPrReviewQuestionWorkerTask,
 	claimPrReviewQuestionWorkerLaunch,
 	failPrReviewQuestionWorker,
 	launchPrReviewQuestionWorker,
@@ -92,6 +93,25 @@ function reserveAndStartWorker(state: PrReviewRunState, questionId: string, work
 	markPrReviewQuestionWorkerStarted(state, questionId, claimed.completionToken!, workerRunId, now);
 	return claimed.completionToken!;
 }
+
+test("Meta Review 질문 worker task는 첨부 이미지 provenance를 유지한다", () => {
+	const { runDir, state } = fixture();
+	try {
+		const question = createPrReviewQuestion(runDir, {
+			runId: state.runId,
+			question: "첨부 이미지를 실제 코드와 비교해줘.",
+			scope: "session",
+			attachmentIds: ["review-image-1"],
+			attachments: [{ id: "review-image-1", name: "review.png", mimeType: "image/png", path: "/tmp/review.png", url: "/attachments/review.png" }],
+		}, 1001);
+		const task = buildPrReviewQuestionWorkerTask(state, question, "/tmp/review-pr-42");
+		assert.match(task, /review\.png/);
+		assert.match(task, /\/tmp\/review\.png/);
+		assert.doesNotMatch(task, /data:image/);
+	} finally {
+		rmSync(runDir, { recursive: true, force: true });
+	}
+});
 
 test("Meta Review 질문은 direct에서 같은 ID의 worker로 한 번 승격한다", () => {
 	const { runDir, state, question } = fixture();

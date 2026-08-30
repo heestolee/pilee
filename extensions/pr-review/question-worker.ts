@@ -521,6 +521,7 @@ export function buildPrReviewQuestionWorkerTask(state: PrReviewRunState, questio
 - filePath: ${question.filePath || "(none)"}
 - selection: ${JSON.stringify(question.selection || null)}
 - evidenceIds: ${JSON.stringify(question.evidenceIds || [])}
+- attachments: ${JSON.stringify(question.attachments || [])}
 
 ## 사용자 질문
 ${question.question}
