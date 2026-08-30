@@ -8,7 +8,15 @@ import { promisify } from "node:util";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import { buildTftVisualEmbedHtml } from "../frame-studio/index.ts";
-import { normalizeQuestionExecution, type QuestionExecution } from "../questions/runtime.ts";
+import {
+	createQuestionRoutingExecution,
+	inferQuestionExecution,
+	normalizeQuestionExecution,
+	routeQuestionExecution,
+	updateQuestionExecutionPhase,
+	type QuestionExecution,
+	type QuestionExecutionMode,
+} from "../questions/runtime.ts";
 import {
 	createPrReviewQuestion,
 	dispatchPrReviewQuestionToSession,
@@ -2356,6 +2364,20 @@ function updateQuestionCards(
 	});
 }
 
+function studyQuestionExecution(question: StudyQuestionCard, fallbackMode: QuestionExecutionMode = "worker"): QuestionExecution {
+	const normalized = normalizeQuestionExecution(question.execution);
+	if (normalized?.mode) return normalized;
+	if (normalized) return routeQuestionExecution(normalized, fallbackMode, "기존 질문 실행 경로 호환");
+	return inferQuestionExecution({
+		fallbackMode,
+		status: question.status,
+		processingStatus: question.processingStatus,
+		orchestrationId: question.orchestrationId,
+		workerRunId: question.workerRunId,
+		createdAt: question.createdAt,
+	});
+}
+
 function questionAttachmentRecords(state: StudyHardBoardState, question: StudyQuestionCard): StudyAttachment[] {
 	const explicitIds = new Set(question.attachmentIds || []);
 	if (explicitIds.size) return state.attachments.filter((attachment) => explicitIds.has(attachment.id));
@@ -2519,9 +2541,55 @@ function resumeInterruptedLearningAgents(handle: StudyHardHandle): void {
 	updateQuestionCards(handle, allIds, (question) => ({ ...question, processingStatus: "queued", processingError: "" }));
 	for (const questionId of learnerQuestionIds) {
 		const question = handle.state.questions.find((item) => item.id === questionId);
-		if (question) sendLearnerQuestionToWorkerDispatcher(handle, question);
+		if (!question) continue;
+		const execution = normalizeQuestionExecution(question.execution);
+		if (execution && (!execution.mode || execution.mode === "direct")) sendLearnerQuestionToRouteCoordinator(handle, question);
+		else sendLearnerQuestionToWorkerDispatcher(handle, question);
 	}
 	for (const questionId of coachQuestionIds) enqueueCoachTurn(handle, questionId);
+}
+
+function sendLearnerQuestionToRouteCoordinator(handle: StudyHardHandle, question: StudyQuestionCard): void {
+	const contextLabel = questionContextLabel(handle.state, question);
+	const attachments = questionAttachmentRecords(handle.state, question).map((attachment) => ({
+		name: attachment.name,
+		mimeType: attachment.mimeType,
+		path: attachment.path,
+	}));
+	handle.pi.sendMessage({
+		customType: "heestolee.study-hard.question-route",
+		display: false,
+		content: `# Study Hard question routing request
+
+이 메시지는 Study Hard 오른쪽 질문 drawer에서 사용자가 보낸 요청입니다. 사용자 질문은 별도 display:true transcript에 이미 기록됐습니다. 내부 실행 방식만 자연스럽게 결정하세요.
+
+- runId: ${handle.state.runId}
+- statePath: ${handle.statePath}
+- expectedRevision: ${handle.state.revision}
+- questionId: ${question.id}
+- scope: ${question.scope || "session"}
+- context: ${contextLabel}
+- attachments: ${JSON.stringify(attachments)}
+
+## 사용자 질문
+${question.question}
+
+## routing 원칙
+1. 글자 수, 파일 수, 특정 단어 같은 고정 임계값으로 판단하지 않습니다.
+2. 현재 board·선택 문맥·이미 연결된 source만으로 설명이 닫히면 direct입니다.
+3. 외부 자료 조사, 실행 검증, 여러 독립 경로 비교, 전체 노트 재구성, noteDocument 변경안이 필요하면 worker입니다.
+4. 사용자가 직접 실행 방식을 지정했다면 그 선택을 우선합니다.
+5. 애매하면 기존 Study Hard 동작과 호환되도록 worker를 선택합니다.
+
+## 실행 계약
+1. 먼저 \`study_hard_board\` action="status", runId="${handle.state.runId}"로 최신 revision을 확인합니다.
+2. \`study_hard_board\` action="route", expectedRevision=<latest>, questionId="${question.id}", executionMode="direct|worker", routeReason="짧은 한국어 판단 근거"를 호출합니다.
+3. direct이면 현재 문맥을 필요한 만큼 좁게 확인한 뒤 action="respond"로 답합니다. direct 응답에서는 noteDocument를 수정하지 않습니다.
+4. direct 조사 중 새로운 외부 조사·실행 검증·canonical 변경 축이 생기면 같은 questionId로 action="route", executionMode="worker"를 다시 호출합니다. 이것이 유일한 자동 승격 방향입니다.
+5. worker이면 extension이 기존 study-hard-worker pipeline을 시작하므로 별도 subagent를 직접 중복 실행하지 않고 이 turn을 끝냅니다.
+6. repository나 외부 시스템은 별도 사용자 요청 없이 수정하지 않습니다.`,
+		details: { runId: handle.state.runId, statePath: handle.statePath, expectedRevision: handle.state.revision, questionId: question.id, scope: question.scope, contextLabel, attachments },
+	}, { deliverAs: "followUp", triggerTurn: true });
 }
 
 function sendLegacyLearnerQuestionToP0(handle: StudyHardHandle, question: StudyQuestionCard): void {
@@ -2566,6 +2634,7 @@ function markCurrentWorkerQuestionFailed(
 	const message = error.trim().slice(0, 2_000) || "study-hard-worker 실행에 실패했습니다.";
 	updateQuestionCards(handle, [questionId], (question) => ({
 		...question,
+		execution: updateQuestionExecutionPhase(studyQuestionExecution(question, "worker"), "failed"),
 		processingStatus: "failed",
 		processingError: message,
 		processingErrorStage: "worker",
@@ -2713,6 +2782,7 @@ function sendLearnerQuestionToWorkerDispatcher(
 			if (!isCurrentWorkerQuestion(handle, question.id, question.orchestrationId)) return;
 			updateQuestionCards(handle, [question.id], (current) => ({
 				...current,
+				execution: updateQuestionExecutionPhase(studyQuestionExecution(current, "worker"), "worker-running"),
 				processingStatus: "running",
 				processingError: "",
 				processingErrorStage: undefined,
@@ -3259,7 +3329,7 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 					return;
 				}
 				const questionId = nextQuestionId(handle.state);
-				const orchestrationId = `worker-${randomUUID()}`;
+				const orchestrationId = `pi-${randomUUID()}`;
 				const question: StudyQuestionCard = {
 					id: questionId,
 					question: questionText,
@@ -3273,6 +3343,7 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 					attachmentIds: attachmentIds.length ? attachmentIds : undefined,
 					createdAt: Date.now(),
 					processingStatus: "queued",
+					execution: createQuestionRoutingExecution(),
 					orchestrationId,
 					workerResultPath: `${handle.statePath}.worker-${questionId}.json`,
 					workerRebaseCount: 0,
@@ -3281,9 +3352,14 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 				saveState(handle);
 				broadcast(handle);
 				try {
-					sendLearnerQuestionToWorkerDispatcher(handle, question);
+					sendLearnerQuestionToRouteCoordinator(handle, question);
 				} catch (error) {
-					updateQuestionCards(handle, [question.id], (current) => ({ ...current, processingStatus: "failed", processingError: error instanceof Error ? error.message : String(error) }));
+					updateQuestionCards(handle, [question.id], (current) => ({
+						...current,
+						execution: updateQuestionExecutionPhase(routeQuestionExecution(current.execution, "direct", "routing 요청 전달 실패"), "failed"),
+						processingStatus: "failed",
+						processingError: error instanceof Error ? error.message : String(error),
+					}));
 					throw error;
 				}
 				sendJson(res, 202, { ok: true, orchestrationId, question });
@@ -3317,14 +3393,27 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 					sendJson(res, 400, { ok: false, error: "failed or conflicted learner question is required" });
 					return;
 				}
-				const retryMode = "worker";
-				const orchestrationId = `worker-${randomUUID()}`;
-				updateQuestionCards(handle, [questionId], (question) => ({ ...question, status: "open", feedback: undefined, answeredAt: undefined, processingStatus: "queued", processingError: "", processingErrorStage: undefined, orchestrationId, workerRunId: undefined, workerRebaseCount: 0 }));
+				const previousExecution = normalizeQuestionExecution(existing.execution);
+				const retryMode = previousExecution?.mode === "direct" ? "routing" : "worker";
+				const orchestrationId = `${retryMode === "worker" ? "worker" : "pi"}-${randomUUID()}`;
+				const execution = retryMode === "worker"
+					? routeQuestionExecution(createQuestionRoutingExecution(), "worker", "기존 worker 질문 재시도")
+					: createQuestionRoutingExecution();
+				updateQuestionCards(handle, [questionId], (question) => ({ ...question, status: "open", feedback: undefined, answeredAt: undefined, processingStatus: "queued", execution, processingError: "", processingErrorStage: undefined, orchestrationId, workerRunId: undefined, workerRebaseCount: 0 }));
 				const retryQuestion = handle.state.questions.find((question) => question.id === questionId)!;
 				try {
-					sendLearnerQuestionToWorkerDispatcher(handle, retryQuestion);
+					if (retryMode === "worker") sendLearnerQuestionToWorkerDispatcher(handle, retryQuestion);
+					else sendLearnerQuestionToRouteCoordinator(handle, retryQuestion);
 				} catch (error) {
-					updateQuestionCards(handle, [questionId], (question) => ({ ...question, processingStatus: "failed", processingError: error instanceof Error ? error.message : String(error) }));
+					updateQuestionCards(handle, [questionId], (question) => ({
+						...question,
+						execution: updateQuestionExecutionPhase(
+							normalizeQuestionExecution(question.execution)?.mode ? question.execution : routeQuestionExecution(question.execution, retryMode === "worker" ? "worker" : "direct", "재시도 전달 실패"),
+							"failed",
+						),
+						processingStatus: "failed",
+						processingError: error instanceof Error ? error.message : String(error),
+					}));
 					throw error;
 				}
 				sendJson(res, 202, { ok: true, orchestrationId, questionId, retryMode });
@@ -3490,6 +3579,64 @@ export function updateStudyHardStudio(runId: string | undefined, patch: Record<s
 	return handle;
 }
 
+export interface StudyHardQuestionRouteResult {
+	handle: StudyHardHandle;
+	mode: QuestionExecutionMode;
+	workerLaunched: boolean;
+}
+
+export function routeStudyHardQuestion(
+	runId: string | undefined,
+	expectedRevision: number,
+	questionId: string,
+	mode: QuestionExecutionMode,
+	reason: string,
+): StudyHardQuestionRouteResult {
+	const id = runId || latestRunId;
+	if (!id) throw new Error("활성 Study Hard Studio가 없습니다.");
+	const handle = handles.get(id);
+	if (!handle) throw new Error(`Study Hard Studio run을 찾을 수 없습니다: ${id}`);
+	if (handle.state.revision !== expectedRevision) throw new Error(`stale Study Hard revision: expected ${expectedRevision}, current ${handle.state.revision}`);
+	const question = handle.state.questions.find((item) => item.id === questionId);
+	if (!question || question.origin !== "learner" || question.scope === "coach" || hasAcceptedWorkerAnswer(question)) throw new Error(`routing할 learner question을 찾지 못했습니다: ${questionId}`);
+	const currentExecution = normalizeQuestionExecution(question.execution) ?? createQuestionRoutingExecution(question.createdAt ?? Date.now());
+	if (currentExecution.mode === mode && (mode !== "worker" || ["queued", "running", "result-ready", "merging", "rebasing"].includes(String(question.processingStatus)))) {
+		return { handle, mode, workerLaunched: false };
+	}
+	const execution = routeQuestionExecution(currentExecution, mode, reason);
+	if (mode === "direct") {
+		updateQuestionCards(handle, [questionId], (item) => ({
+			...item,
+			execution,
+			processingStatus: "running",
+			processingError: "",
+			processingErrorStage: undefined,
+			orchestrationId: item.orchestrationId?.startsWith("pi-") ? item.orchestrationId : `pi-${randomUUID()}`,
+		}));
+		return { handle, mode, workerLaunched: false };
+	}
+	const orchestrationId = `worker-${randomUUID()}`;
+	updateQuestionCards(handle, [questionId], (item) => ({
+		...item,
+		execution,
+		processingStatus: "queued",
+		processingError: "",
+		processingErrorStage: undefined,
+		orchestrationId,
+		workerResultPath: item.workerResultPath || `${handle.statePath}.worker-${questionId}.json`,
+		workerRunId: undefined,
+		workerRebaseCount: item.workerRebaseCount ?? 0,
+	}));
+	const routedQuestion = handle.state.questions.find((item) => item.id === questionId)!;
+	try {
+		sendLearnerQuestionToWorkerDispatcher(handle, routedQuestion);
+	} catch (error) {
+		markCurrentWorkerQuestionFailed(handle, questionId, orchestrationId, error instanceof Error ? error.message : String(error));
+		throw error;
+	}
+	return { handle, mode, workerLaunched: true };
+}
+
 export function respondStudyHardQuestion(
 	runId: string | undefined,
 	expectedRevision: number,
@@ -3510,9 +3657,14 @@ export function respondStudyHardQuestion(
 	const beforeNote = cloneBoardState(current.state).noteDocument;
 	const proposedNote = normalizeNoteDocument(patch.noteDocument, current.state.title);
 	const noteImpact = proposedNote ? changedNoteSectionTitles(beforeNote, proposedNote) : target.noteImpact;
+	const completedExecution = updateQuestionExecutionPhase(
+		studyQuestionExecution(target, target.orchestrationId?.startsWith("worker-") ? "worker" : "direct"),
+		"answered",
+	);
 	const questions = current.state.questions.map((question) => question.id === questionId ? {
 		...question,
 		feedback,
+		execution: completedExecution,
 		resultSummary: question.resultSummary || compactTranscriptPreview(feedback, 500),
 		noteImpact,
 		appliedRevision: proposedNote ? expectedRevision + 1 : question.appliedRevision,
@@ -4062,6 +4214,7 @@ export function markStudyHardWorkerStarted(
 	if (!question || question.origin !== "learner" || question.scope === "coach" || !["queued", "rebasing", "running"].includes(String(question.processingStatus))) throw new Error(`worker를 시작할 learner question을 찾지 못했습니다: ${questionId}`);
 	updateQuestionCards(handle, [questionId], (item) => ({
 		...item,
+		execution: updateQuestionExecutionPhase(studyQuestionExecution(item, "worker"), "worker-running"),
 		processingStatus: "running",
 		processingError: "",
 		processingErrorStage: undefined,
@@ -4087,6 +4240,7 @@ export function markStudyHardWorkerFailed(
 	const message = workerError.trim().slice(0, 2_000) || "study-hard-worker 실행에 실패했습니다.";
 	updateQuestionCards(handle, [questionId], (item) => ({
 		...item,
+		execution: updateQuestionExecutionPhase(studyQuestionExecution(item, "worker"), "failed"),
 		processingStatus: "failed",
 		processingError: message,
 		processingErrorStage: "worker",
@@ -4240,14 +4394,17 @@ export function registerStudyHardBoardTool(pi: ExtensionAPI) {
 		promptGuidelines: [
 			"Use study_hard_board after fetching /study-hard source content to keep the visual concept graph, Mermaid flow, and Q&A state in sync with the learning session.",
 			"Do not use study_hard_board as evidence that the user understood the topic; it is a visual aid only.",
-			"Study Hard learner questions are dispatched directly through the standard study-hard-worker subagent and applied by the extension coordinator; do not duplicate that work in P0.",
+			"Study Hard learner questions first route semantically: answer directly when the current board/source closes the question, and use the existing study-hard-worker pipeline for external research, executable verification, independent comparisons, or noteDocument proposals.",
+			"Do not route by word count, file count, or keyword regex. If a direct check discovers a new independent work axis, route the same question to worker once; never move worker ownership back to direct.",
 			"Use study_hard_board worker_started, worker_failed, and apply_worker_result only for explicit recovery or manual inspection. Never silently overwrite a merge conflict.",
 		],
 		parameters: Type.Object({
-			action: Type.String({ description: "start | update | respond | worker_started | worker_failed | apply_worker_result | open | status" }),
+			action: Type.String({ description: "start | update | route | respond | worker_started | worker_failed | apply_worker_result | open | status" }),
 			runId: Type.Optional(Type.String()),
-			expectedRevision: Type.Optional(Type.Integer({ minimum: 0, description: "Required for update/respond; reject stale snapshots." })),
-			questionId: Type.Optional(Type.String({ description: "Required for respond/worker actions; pending learner question id." })),
+			expectedRevision: Type.Optional(Type.Integer({ minimum: 0, description: "Required for update/route/respond; reject stale snapshots." })),
+			questionId: Type.Optional(Type.String({ description: "Required for route/respond/worker actions; pending learner question id." })),
+			executionMode: Type.Optional(Type.String({ description: "direct | worker. Semantic owner choice for action=route." })),
+			routeReason: Type.Optional(Type.String({ description: "Short Korean evidence-based reason for direct/worker routing." })),
 			feedback: Type.Optional(Type.String({ description: "Required for respond; direct answer shown in the Study Hard drawer." })),
 			workerResultPath: Type.Optional(Type.String({ description: "Artifact path emitted by study-hard-worker." })),
 			workerRunId: Type.Optional(Type.Integer({ minimum: 1, description: "Standard subagent run id shown in the #N widget." })),
@@ -4298,11 +4455,23 @@ export function registerStudyHardBoardTool(pi: ExtensionAPI) {
 				if (!id || !handles.has(id)) throw new Error("활성 Study Hard Studio가 없습니다.");
 				return boardToolResult("status", handles.get(id)!);
 			}
+			if (action === "route") {
+				if (!Number.isInteger(params.expectedRevision)) throw new Error("study_hard_board route에는 expectedRevision이 필요합니다.");
+				if (typeof params.questionId !== "string" || !params.questionId) throw new Error("study_hard_board route에는 questionId가 필요합니다.");
+				if (params.executionMode !== "direct" && params.executionMode !== "worker") throw new Error("study_hard_board route executionMode은 direct 또는 worker여야 합니다.");
+				if (typeof params.routeReason !== "string" || !params.routeReason.trim()) throw new Error("study_hard_board route에는 routeReason이 필요합니다.");
+				const result = routeStudyHardQuestion(typeof params.runId === "string" ? params.runId : undefined, Number(params.expectedRevision), params.questionId, params.executionMode, params.routeReason);
+				return {
+					content: [{ type: "text", text: `Study Hard question routed ${result.mode}: ${result.handle.state.title} (${result.handle.state.runId})` }],
+					details: { action: "route", runId: result.handle.state.runId, questionId: params.questionId, executionMode: result.mode, routeReason: params.routeReason, workerLaunched: result.workerLaunched, revision: result.handle.state.revision },
+					terminate: result.mode === "worker",
+				};
+			}
 			if (action === "respond") {
 				if (!Number.isInteger(params.expectedRevision)) throw new Error("study_hard_board respond에는 expectedRevision이 필요합니다.");
 				if (typeof params.questionId !== "string" || !params.questionId) throw new Error("study_hard_board respond에는 questionId가 필요합니다.");
 				if (typeof params.feedback !== "string" || !params.feedback.trim()) throw new Error("study_hard_board respond에는 feedback이 필요합니다.");
-				const { action: _action, runId, expectedRevision, questionId, feedback, url: _url, hints: _hints, ...patch } = params as Record<string, unknown>;
+				const { action: _action, runId, expectedRevision, questionId, executionMode: _executionMode, routeReason: _routeReason, feedback, url: _url, hints: _hints, ...patch } = params as Record<string, unknown>;
 				const handle = respondStudyHardQuestion(typeof runId === "string" ? runId : undefined, Number(expectedRevision), String(questionId), String(feedback), patch);
 				return boardToolResult("responded", handle);
 			}

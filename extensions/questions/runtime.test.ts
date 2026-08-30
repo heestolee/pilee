@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+	createQuestionRoutingExecution,
 	inferQuestionExecution,
 	normalizeQuestionExecution,
 	questionExecutionNeedsPolling,
@@ -35,13 +36,22 @@ test("구버전 Study Hard와 Meta Review 질문은 기존 실행 방식으로 �
 	});
 });
 
+test("질문은 mode를 미리 정하지 않고 routing 상태에서 시작할 수 있다", () => {
+	assert.deepEqual(createQuestionRoutingExecution(90), {
+		phase: "routing",
+		routedAt: 90,
+		updatedAt: 90,
+	});
+	assert.equal(normalizeQuestionExecution({ phase: "routing", routedAt: 90, updatedAt: 90 })?.mode, undefined);
+});
+
 test("새 질문은 의미 판단 결과를 direct 또는 worker route로 기록한다", () => {
-	assert.deepEqual(routeQuestionExecution(undefined, "direct", "현재 선택 문맥으로 답할 수 있음", 100), {
+	assert.deepEqual(routeQuestionExecution(createQuestionRoutingExecution(90), "direct", "현재 선택 문맥으로 답할 수 있음", 100), {
 		mode: "direct",
 		phase: "answering",
 		reason: "현재 선택 문맥으로 답할 수 있음",
 		escalatedFrom: undefined,
-		routedAt: 100,
+		routedAt: 90,
 		updatedAt: 100,
 	});
 	assert.deepEqual(routeQuestionExecution(undefined, "worker", "외부 자료 조사가 필요함", 200), {

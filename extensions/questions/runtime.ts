@@ -11,7 +11,7 @@ export type QuestionExecutionPhase =
 	| "stale";
 
 export interface QuestionExecution {
-	mode: QuestionExecutionMode;
+	mode?: QuestionExecutionMode;
 	phase: QuestionExecutionPhase;
 	reason?: string;
 	escalatedFrom?: "direct";
@@ -57,12 +57,13 @@ function reasonText(value: unknown): string | undefined {
 export function normalizeQuestionExecution(value: unknown): QuestionExecution | undefined {
 	if (!value || typeof value !== "object") return undefined;
 	const item = value as Record<string, unknown>;
-	if (!MODES.has(item.mode as QuestionExecutionMode) || !PHASES.has(item.phase as QuestionExecutionPhase)) return undefined;
+	const phase = item.phase as QuestionExecutionPhase;
+	const mode = MODES.has(item.mode as QuestionExecutionMode) ? item.mode as QuestionExecutionMode : undefined;
+	if (!PHASES.has(phase) || (!mode && phase !== "routing")) return undefined;
 	const routedAt = timestamp(item.routedAt, 0);
 	const updatedAt = timestamp(item.updatedAt, routedAt);
-	const phase = item.phase as QuestionExecutionPhase;
 	return {
-		mode: item.mode as QuestionExecutionMode,
+		mode,
 		phase,
 		reason: reasonText(item.reason),
 		escalatedFrom: item.escalatedFrom === "direct" ? "direct" : undefined,
@@ -96,6 +97,10 @@ export function inferQuestionExecution(input: LegacyQuestionExecutionInput): Que
 	};
 }
 
+export function createQuestionRoutingExecution(now = Date.now()): QuestionExecution {
+	return { phase: "routing", routedAt: now, updatedAt: now };
+}
+
 export function routeQuestionExecution(
 	currentValue: unknown,
 	mode: QuestionExecutionMode,
@@ -122,7 +127,7 @@ export function updateQuestionExecutionPhase(
 	now = Date.now(),
 ): QuestionExecution {
 	const current = normalizeQuestionExecution(currentValue);
-	if (!current) throw new Error("질문 execution route가 먼저 필요합니다.");
+	if (!current?.mode) throw new Error("질문 execution route가 먼저 필요합니다.");
 	if (current.mode === "direct" && ["escalating", "worker-starting", "worker-running"].includes(phase)) {
 		throw new Error(`direct 질문에는 ${phase} phase를 적용할 수 없습니다.`);
 	}
