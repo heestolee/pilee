@@ -419,6 +419,8 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 			error: Type.Optional(Type.String()),
 			workerResultPath: Type.Optional(Type.String()),
 			workerRunId: Type.Optional(Type.Integer({ minimum: 1 })),
+			expectedSourceSha256: Type.Optional(Type.String()),
+			expectedHeadSha: Type.Optional(Type.String()),
 			evidence: Type.Optional(Type.Array(Type.Object({
 				label: Type.String(),
 				path: Type.Optional(Type.String()),
@@ -445,8 +447,8 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 						pi.sendMessage({
 							customType: "pilee-meta-review-worker-request",
 							display: false,
-							content: `${buildPrReviewQuestionWorkerTask(state, routed.question, ctx.cwd)}\n\n## P0 fallback\nsubagent run meta-review-question-worker --isolated로 위 task를 실행하고, 완료 후 meta_review_chat action=\"apply_worker_result\", runId=\"${state.runId}\", questionId=\"${routed.question.id}\", workerResultPath=\"${routed.question.workerResultPath}\"를 호출하세요.`,
-							details: { runId: state.runId, questionId: routed.question.id, workerResultPath: routed.question.workerResultPath },
+							content: `${buildPrReviewQuestionWorkerTask(state, routed.question, ctx.cwd)}\n\n## P0 fallback\nsubagent run meta-review-question-worker --isolated로 위 task를 실행하고, 완료 후 meta_review_chat action=\"apply_worker_result\", runId=\"${state.runId}\", questionId=\"${routed.question.id}\", workerResultPath=\"${routed.question.workerResultPath}\", expectedSourceSha256=\"${routed.question.expectedSourceSha256}\", expectedHeadSha=\"${routed.question.expectedHeadSha || ""}\"를 호출하세요.`,
+							details: { runId: state.runId, questionId: routed.question.id, workerResultPath: routed.question.workerResultPath, expectedSourceSha256: routed.question.expectedSourceSha256, expectedHeadSha: routed.question.expectedHeadSha },
 						}, { deliverAs: "followUp", triggerTurn: true });
 					}
 				}
@@ -462,7 +464,16 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 			}
 			if (params.action === "apply_worker_result") {
 				if (!params.workerResultPath) throw new Error("apply_worker_result에는 workerResultPath가 필요합니다.");
-				const question = await applyPrReviewQuestionWorkerResult(pi, state, params.questionId, params.workerResultPath, ctx.cwd, params.workerRunId);
+				if (!params.expectedSourceSha256) throw new Error("apply_worker_result에는 routing 시점 expectedSourceSha256이 필요합니다.");
+				const question = await applyPrReviewQuestionWorkerResult(
+					pi,
+					state,
+					params.questionId,
+					params.workerResultPath,
+					ctx.cwd,
+					{ sourceSha256: params.expectedSourceSha256, headSha: params.expectedHeadSha || undefined },
+					params.workerRunId,
+				);
 				return { content: [{ type: "text", text: question.answer ?? `Meta Review question ${question.status}: ${question.id}` }], details: { runId: state.runId, question }, terminate: true };
 			}
 			const current = loadPrReviewQuestions(state.runDir).find((question) => question.id === params.questionId);

@@ -45,6 +45,8 @@ export interface PrReviewQuestion {
 	transcriptEventKeys?: string[];
 	workerResultPath?: string;
 	workerRunId?: number;
+	expectedSourceSha256?: string;
+	expectedHeadSha?: string;
 	answer?: string;
 	evidence?: PrReviewQuestionEvidence[];
 	uncertainty?: string;
