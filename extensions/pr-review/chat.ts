@@ -12,9 +12,9 @@ import {
 } from "../questions/runtime.ts";
 import type { PrReviewRunState } from "./run.ts";
 
-export type PrReviewQuestionScope = "session" | "file" | "card" | "evidence";
+export type PrReviewQuestionScope = "session" | "section" | "file" | "card" | "evidence";
 export type PrReviewQuestionStatus = "queued" | "answering" | "answered" | "failed" | "stale";
-export type PrReviewQuestionSelectionKind = "file" | "line" | "hunk" | "card";
+export type PrReviewQuestionSelectionKind = "section" | "file" | "line" | "hunk" | "card";
 
 export interface PrReviewQuestionSelection {
 	kind: PrReviewQuestionSelectionKind;
@@ -44,6 +44,7 @@ export interface PrReviewQuestion {
 	question: string;
 	scope: PrReviewQuestionScope;
 	cardId?: string;
+	sectionId?: string;
 	fileId?: string;
 	filePath?: string;
 	evidenceIds?: string[];
@@ -173,16 +174,23 @@ function sameStringSet(left: string[], right: string[]): boolean {
 	return left.length === right.length && left.every((value) => right.includes(value));
 }
 
+const PR_REVIEW_SECTION_LABELS: Record<string, string> = {
+	overview: "한눈에 보기",
+	relationships: "변경 파일 관계",
+};
+
 export function resolvePrReviewQuestionContext(snapshot: QuestionContextSnapshot, input: Record<string, unknown>): {
 	scope: PrReviewQuestionScope;
 	cardId?: string;
+	sectionId?: string;
 	fileId?: string;
 	filePath?: string;
 	evidenceIds?: string[];
 	selection?: PrReviewQuestionSelection;
 } {
-	const scope = ["session", "file", "card", "evidence"].includes(String(input.scope)) ? String(input.scope) as PrReviewQuestionScope : "session";
+	const scope = ["session", "section", "file", "card", "evidence"].includes(String(input.scope)) ? String(input.scope) as PrReviewQuestionScope : "session";
 	const cardId = typeof input.cardId === "string" ? input.cardId : undefined;
+	const sectionId = typeof input.sectionId === "string" ? input.sectionId.trim() : undefined;
 	const fileId = typeof input.fileId === "string" ? input.fileId : undefined;
 	const evidenceIds = uniqueStrings(input.evidenceIds);
 	const selectionKind = typeof input.selectionKind === "string" ? input.selectionKind as PrReviewQuestionSelectionKind : undefined;
@@ -192,7 +200,9 @@ export function resolvePrReviewQuestionContext(snapshot: QuestionContextSnapshot
 	const cardFile = card?.code?.path ? snapshot.source.files.find((item) => item.path === card.code?.path) : undefined;
 	const cardEvidenceIds = uniqueStrings(card?.evidenceIds);
 	const knownEvidence = new Set(snapshot.source.files.flatMap((item) => item.lines.map((line) => line.id)));
-	if (scope === "session" && (cardId || fileId || evidenceIds.length || selectionKind || selectionId)) throw new Error("session question cannot include selected context");
+	if (scope === "session" && (cardId || sectionId || fileId || evidenceIds.length || selectionKind || selectionId)) throw new Error("session question cannot include selected context");
+	if (scope === "section" && (!sectionId || !PR_REVIEW_SECTION_LABELS[sectionId] || cardId || fileId || evidenceIds.length)) throw new Error("known sectionId is required without file, card, or evidence context");
+	if (scope !== "section" && sectionId) throw new Error("sectionId requires section question scope");
 	if (scope === "file" && (!file || cardId || evidenceIds.length)) throw new Error("known fileId without card or evidence is required");
 	if (scope === "card") {
 		if (!card) throw new Error("known cardId is required");
@@ -204,8 +214,11 @@ export function resolvePrReviewQuestionContext(snapshot: QuestionContextSnapshot
 	const resolvedEvidenceIds = scope === "card" ? cardEvidenceIds : scope === "evidence" ? evidenceIds : undefined;
 	let selection: PrReviewQuestionSelection | undefined;
 	if (selectionKind || selectionId) {
-		if (!selectionKind || !["file", "line", "hunk", "card"].includes(selectionKind) || !selectionId) throw new Error("valid selectionKind and selectionId are required together");
-		if (selectionKind === "file") {
+		if (!selectionKind || !["section", "file", "line", "hunk", "card"].includes(selectionKind) || !selectionId) throw new Error("valid selectionKind and selectionId are required together");
+		if (selectionKind === "section") {
+			if (scope !== "section" || !sectionId || selectionId !== sectionId || !PR_REVIEW_SECTION_LABELS[sectionId]) throw new Error("section selection does not match question scope");
+			selection = { kind: "section", id: sectionId, label: PR_REVIEW_SECTION_LABELS[sectionId] };
+		} else if (selectionKind === "file") {
 			if (scope !== "file" || !file || selectionId !== file.id) throw new Error("file selection does not match question scope");
 			selection = { kind: "file", id: file.id, label: `파일 · ${file.path}` };
 		} else if (selectionKind === "card") {
@@ -231,6 +244,7 @@ export function resolvePrReviewQuestionContext(snapshot: QuestionContextSnapshot
 	return {
 		scope,
 		cardId: card?.id,
+		...(sectionId ? { sectionId } : {}),
 		fileId: selectedFile?.id,
 		filePath: selectedFile?.path,
 		evidenceIds: resolvedEvidenceIds?.length ? [...new Set(resolvedEvidenceIds)] : undefined,
@@ -240,7 +254,7 @@ export function resolvePrReviewQuestionContext(snapshot: QuestionContextSnapshot
 
 function normalizeSelection(scope: PrReviewQuestionScope, selection: PrReviewQuestionSelection | undefined): PrReviewQuestionSelection | undefined {
 	if (!selection) return undefined;
-	const expectedScope = selection.kind === "file" ? "file" : selection.kind === "card" ? "card" : "evidence";
+	const expectedScope = selection.kind === "section" ? "section" : selection.kind === "file" ? "file" : selection.kind === "card" ? "card" : "evidence";
 	if (scope !== expectedScope || !selection.id.trim() || !selection.label.trim()) throw new Error("selection does not match question scope");
 	return { kind: selection.kind, id: selection.id.trim(), label: selection.label.trim() };
 }
@@ -453,6 +467,7 @@ function questionContext(question: PrReviewQuestion): string {
 	return [
 		`- scope: ${question.scope}`,
 		question.cardId ? `- cardId: ${question.cardId}` : undefined,
+		question.sectionId ? `- sectionId: ${question.sectionId}` : undefined,
 		question.fileId ? `- fileId: ${question.fileId}` : undefined,
 		question.filePath ? `- filePath: ${question.filePath}` : undefined,
 		question.evidenceIds?.length ? `- evidenceIds: ${question.evidenceIds.join(", ")}` : undefined,

@@ -225,4 +225,30 @@ test("question context derives and validates selected review block provenance", 
 		scope: "session",
 		evidenceIds: ["D001"],
 	}), /session question cannot include selected context/);
+	assert.deepEqual(resolvePrReviewQuestionContext(snapshot, {
+		scope: "section",
+		sectionId: "relationships",
+		selectionKind: "section",
+		selectionId: "relationships",
+	}), {
+		scope: "section",
+		cardId: undefined,
+		sectionId: "relationships",
+		fileId: undefined,
+		filePath: undefined,
+		evidenceIds: undefined,
+		selection: { kind: "section", id: "relationships", label: "변경 파일 관계" },
+	});
+	assert.throws(() => resolvePrReviewQuestionContext(snapshot, {
+		scope: "section",
+		sectionId: "unknown-section",
+		selectionKind: "section",
+		selectionId: "unknown-section",
+	}), /known sectionId is required/);
+	assert.throws(() => resolvePrReviewQuestionContext(snapshot, {
+		scope: "section",
+		sectionId: "overview",
+		selectionKind: "section",
+		selectionId: "relationships",
+	}), /section selection does not match/);
 });
