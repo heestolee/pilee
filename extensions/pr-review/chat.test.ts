@@ -95,10 +95,12 @@ test("Glimpse question dispatches into the same Pi session with review-worktree 
 		assert.equal(messages[0].options.deliverAs, "followUp");
 		assert.equal(messages[0].options.triggerTurn, true);
 		assert.match(messages[0].message.content, /실제 source, callsite, schema, test/);
+		assert.match(messages[0].message.content, /meta_review_chat.*route/);
 		assert.match(messages[0].message.content, /meta_review_chat.*answer/);
 		assert.match(messages[0].message.content, /D000427/);
 		assert.match(messages[0].message.content, /selectedBlock: line:D000427/);
-		assert.equal(loadPrReviewQuestions(runDir)[0]?.status, "answering");
+		assert.equal(loadPrReviewQuestions(runDir)[0]?.status, "queued");
+		assert.equal(loadPrReviewQuestions(runDir)[0]?.execution?.phase, "routing");
 		assert.equal(loadPrReviewQuestions(runDir)[0]?.transcriptEventKeys?.length, 1);
 	} finally {
 		rmSync(runDir, { recursive: true, force: true });

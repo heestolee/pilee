@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { DEFAULT_MAX_BYTES, truncateHead, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
+import { normalizeQuestionExecution, routeQuestionExecution, updateQuestionExecutionPhase } from "../questions/runtime.ts";
 import { expandProfileTemplate, loadPrReviewProfiles, type PrReviewCorpusProfile } from "../utils/private-profiles.ts";
 import { runPrReviewWorktreeFromCommandContext } from "../worktree/pr-review.ts";
 import { readPrReviewWorkspaceMetadata, writePrReviewWorkspaceMetadata } from "./workspace.ts";
@@ -20,9 +21,18 @@ import {
 	failPrReviewQuestion,
 	loadPrReviewQuestions,
 	publishPrReviewQuestionTranscript,
+	updatePrReviewQuestion,
 	type PrReviewQuestionEvidence,
 } from "./chat.ts";
 import { searchPrReviewCorpus } from "./corpus.ts";
+import {
+	applyPrReviewQuestionWorkerResult,
+	buildPrReviewQuestionWorkerTask,
+	failPrReviewQuestionWorker,
+	launchPrReviewQuestionWorker,
+	markPrReviewQuestionWorkerStarted,
+	routePrReviewQuestion,
+} from "./question-worker.ts";
 import { captureUnifiedDiff, renderInspectionChunk, type ReviewSourceBundle } from "./evidence.ts";
 import { closePrReviewStudios } from "./studio.ts";
 import {
@@ -393,18 +403,23 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 	pi.registerTool({
 		name: "meta_review_chat",
 		label: "Meta Review Chat",
-		description: "Complete or inspect a contextual question submitted from the Code Review surface. Answer only after inspecting the exact checked-out source workspace.",
-		promptSnippet: "Answer Code Review surface questions from the exact source workspace",
+		description: "Route, complete, or inspect a contextual question submitted from the Code Review surface. Answer only after inspecting the exact checked-out source workspace.",
+		promptSnippet: "Route and answer Code Review surface questions from the exact source workspace",
 		promptGuidelines: [
-			"Use meta_review_chat action=answer as the final step for a Code Review surface question, with source evidence and uncertainty separated. Never mutate the reviewed repository unless the user separately requests a fix.",
+			"Route by work shape, not word/file counts: direct when current review context closes the question, worker for external research, executable verification, independent comparisons, or whole-PR re-analysis.",
+			"Use meta_review_chat action=answer as the final step for a direct Code Review surface question, with source evidence and uncertainty separated. Never mutate the reviewed repository unless the user separately requests a fix.",
 		],
 		parameters: Type.Object({
-			action: StringEnum(["status", "answer", "fail"] as const),
+			action: StringEnum(["status", "route", "answer", "fail", "worker_started", "apply_worker_result"] as const),
 			runId: Type.String(),
 			questionId: Type.Optional(Type.String()),
+			executionMode: Type.Optional(StringEnum(["direct", "worker"] as const)),
+			routeReason: Type.Optional(Type.String()),
 			answer: Type.Optional(Type.String()),
 			uncertainty: Type.Optional(Type.String()),
 			error: Type.Optional(Type.String()),
+			workerResultPath: Type.Optional(Type.String()),
+			workerRunId: Type.Optional(Type.Integer({ minimum: 1 })),
 			evidence: Type.Optional(Type.Array(Type.Object({
 				label: Type.String(),
 				path: Type.Optional(Type.String()),
@@ -413,19 +428,64 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 				note: Type.Optional(Type.String()),
 			}))),
 		}),
-		async execute(_toolCallId, params) {
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const state = runFromId(stateRoot, params.runId);
 			if (params.action === "status") {
 				const questions = loadPrReviewQuestions(state.runDir);
 				return { content: [{ type: "text", text: JSON.stringify(questions, null, 2) }], details: { runId: state.runId, questions } };
 			}
 			if (!params.questionId) throw new Error(`${params.action}에는 questionId가 필요합니다.`);
+			if (params.action === "route") {
+				if (params.executionMode !== "direct" && params.executionMode !== "worker") throw new Error("route executionMode은 direct 또는 worker여야 합니다.");
+				if (!params.routeReason?.trim()) throw new Error("route에는 routeReason이 필요합니다.");
+				const routed = routePrReviewQuestion(state, params.questionId, params.executionMode, params.routeReason);
+				let workerLaunched = false;
+				if (routed.mode === "worker" && routed.workerLaunchRequired) {
+					workerLaunched = launchPrReviewQuestionWorker(pi, state, routed.question, ctx.cwd);
+					if (!workerLaunched) {
+						pi.sendMessage({
+							customType: "pilee-meta-review-worker-request",
+							display: false,
+							content: `${buildPrReviewQuestionWorkerTask(state, routed.question, ctx.cwd)}\n\n## P0 fallback\nsubagent run meta-review-question-worker --isolated로 위 task를 실행하고, 완료 후 meta_review_chat action=\"apply_worker_result\", runId=\"${state.runId}\", questionId=\"${routed.question.id}\", workerResultPath=\"${routed.question.workerResultPath}\"를 호출하세요.`,
+							details: { runId: state.runId, questionId: routed.question.id, workerResultPath: routed.question.workerResultPath },
+						}, { deliverAs: "followUp", triggerTurn: true });
+					}
+				}
+				return {
+					content: [{ type: "text", text: `Meta Review question routed ${routed.mode}: ${routed.question.id}` }],
+					details: { runId: state.runId, question: routed.question, executionMode: routed.mode, routeReason: params.routeReason, workerLaunched },
+					terminate: routed.mode === "worker",
+				};
+			}
+			if (params.action === "worker_started") {
+				const question = markPrReviewQuestionWorkerStarted(state, params.questionId, params.workerRunId);
+				return { content: [{ type: "text", text: `Meta Review question worker started: ${question.id}` }], details: { runId: state.runId, question } };
+			}
+			if (params.action === "apply_worker_result") {
+				if (!params.workerResultPath) throw new Error("apply_worker_result에는 workerResultPath가 필요합니다.");
+				const question = await applyPrReviewQuestionWorkerResult(pi, state, params.questionId, params.workerResultPath, ctx.cwd, params.workerRunId);
+				return { content: [{ type: "text", text: question.answer ?? `Meta Review question ${question.status}: ${question.id}` }], details: { runId: state.runId, question }, terminate: true };
+			}
+			const current = loadPrReviewQuestions(state.runDir).find((question) => question.id === params.questionId);
+			if (!current) throw new Error(`unknown Meta Review question: ${params.questionId}`);
 			if (params.action === "fail") {
-				const failed = failPrReviewQuestion(state.runDir, params.questionId, params.error ?? "질문 조사에 실패했습니다.");
-				const question = publishPrReviewQuestionTranscript(pi, state, failed, "failed");
+				if (normalizeQuestionExecution(current.execution)?.mode === "worker") {
+					const question = failPrReviewQuestionWorker(pi, state, params.questionId, params.error ?? "질문 조사에 실패했습니다.", params.workerRunId);
+					return { content: [{ type: "text", text: `Meta Review question failed: ${question.id}` }], details: { runId: state.runId, question }, terminate: true };
+				}
+				const baseExecution = normalizeQuestionExecution(current.execution)?.mode === "direct"
+					? current.execution
+					: routeQuestionExecution(current.execution, "direct", "기존 direct 실패 경로 호환");
+				failPrReviewQuestion(state.runDir, params.questionId, params.error ?? "질문 조사에 실패했습니다.");
+				const withExecution = updatePrReviewQuestion(state.runDir, params.questionId, { execution: updateQuestionExecutionPhase(baseExecution, "failed") });
+				const question = publishPrReviewQuestionTranscript(pi, state, withExecution, "failed");
 				return { content: [{ type: "text", text: `Meta Review question failed: ${question.id}` }], details: { runId: state.runId, question }, terminate: true };
 			}
 			if (!params.answer?.trim()) throw new Error("answer에는 실제 조사 결과가 필요합니다.");
+			if (normalizeQuestionExecution(current.execution)?.mode === "worker") throw new Error("worker 질문은 apply_worker_result로 완료해야 합니다.");
+			const baseExecution = normalizeQuestionExecution(current.execution)?.mode === "direct"
+				? current.execution
+				: routeQuestionExecution(current.execution, "direct", "기존 direct 답변 경로 호환");
 			const answered = answerPrReviewQuestion(
 				state.runDir,
 				params.questionId,
@@ -433,7 +493,8 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 				(params.evidence ?? []) as PrReviewQuestionEvidence[],
 				params.uncertainty,
 			);
-			const question = publishPrReviewQuestionTranscript(pi, state, answered, "answer");
+			const completed = updatePrReviewQuestion(state.runDir, params.questionId, { execution: updateQuestionExecutionPhase(baseExecution, "answered") });
+			const question = publishPrReviewQuestionTranscript(pi, state, completed, "answer");
 			return { content: [{ type: "text", text: question.answer ?? "" }], details: { runId: state.runId, question }, terminate: true };
 		},
 	});

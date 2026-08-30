@@ -2,11 +2,11 @@ import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import type { QuestionExecution } from "../questions/runtime.ts";
+import { createQuestionRoutingExecution, type QuestionExecution } from "../questions/runtime.ts";
 import type { PrReviewRunState } from "./run.ts";
 
 export type PrReviewQuestionScope = "session" | "file" | "card" | "evidence";
-export type PrReviewQuestionStatus = "queued" | "answering" | "answered" | "failed";
+export type PrReviewQuestionStatus = "queued" | "answering" | "answered" | "failed" | "stale";
 export type PrReviewQuestionSelectionKind = "file" | "line" | "hunk" | "card";
 
 export interface PrReviewQuestionSelection {
@@ -36,6 +36,8 @@ export interface PrReviewQuestion {
 	status: PrReviewQuestionStatus;
 	execution?: QuestionExecution;
 	transcriptEventKeys?: string[];
+	workerResultPath?: string;
+	workerRunId?: number;
 	answer?: string;
 	evidence?: PrReviewQuestionEvidence[];
 	uncertainty?: string;
@@ -186,6 +188,7 @@ export function createPrReviewQuestion(
 		evidenceIds: input.evidenceIds?.length ? [...new Set(input.evidenceIds)] : undefined,
 		selection: normalizeSelection(input.scope, input.selection),
 		status: "queued",
+		execution: input.execution ?? createQuestionRoutingExecution(now),
 		createdAt: now,
 		updatedAt: now,
 	});
@@ -225,7 +228,7 @@ export function failPrReviewQuestion(runDir: string, questionId: string, error: 
 	return updatePrReviewQuestion(runDir, questionId, { status: "failed", error: error.trim() || "Meta Review question failed" }, now);
 }
 
-export type PrReviewTranscriptEventKind = "question" | "answer" | "failed";
+export type PrReviewTranscriptEventKind = "question" | "answer" | "failed" | "stale";
 
 export const PR_REVIEW_TRANSCRIPT_LINEAGE_ENTRY = "meta-review-transcript-lineage";
 const PR_REVIEW_TRANSCRIPT_CUSTOM_TYPE = "pilee-meta-review-transcript";
@@ -233,7 +236,10 @@ const PR_REVIEW_TRANSCRIPT_CUSTOM_TYPE = "pilee-meta-review-transcript";
 function transcriptEventText(question: PrReviewQuestion, eventKind: PrReviewTranscriptEventKind): string {
 	const contextLabel = question.selection?.label ?? (question.scope === "session" ? "전체 PR" : question.filePath ?? question.cardId ?? question.scope);
 	if (eventKind === "question") return `🔎 Meta Review 질문 · ${contextLabel}\n\n${question.question}`;
-	if (eventKind === "failed") return `⚠️ Meta Review 질문 실패 · ${contextLabel}\n\n질문: ${question.question}\n\n원인: ${question.error || "질문 조사에 실패했습니다."}`;
+	if (eventKind === "failed" || eventKind === "stale") {
+		const label = eventKind === "stale" ? "기준 변경" : "질문 실패";
+		return `⚠️ Meta Review ${label} · ${contextLabel}\n\n질문: ${question.question}\n\n원인: ${question.error || "질문 조사에 실패했습니다."}`;
+	}
 	return [
 		`✅ Meta Review 답변 · ${contextLabel}`,
 		"",
@@ -299,7 +305,7 @@ export function dispatchPrReviewQuestionToSession(
 			customType: "pilee-meta-review-question",
 			display: false,
 			content: [
-				"# Guided Meta Review question",
+				"# Guided Meta Review question routing request",
 				"",
 				"이 질문은 현재 Glimpse 오른쪽 대화 패널에서 사용자가 보낸 직접 요청이다. 현재 Pi session cwd는 PR head가 checkout된 review worktree여야 한다.",
 				"",
@@ -313,16 +319,22 @@ export function dispatchPrReviewQuestionToSession(
 				"## 사용자 질문",
 				question.question,
 				"",
-				"## 답변 규칙",
-				"1. 설명·ReviewCard 문장을 반복하지 말고 `.pi/review-context.json` 또는 legacy metadata, 실제 source, callsite, schema, test를 필요한 만큼 직접 조사한다.",
-				"2. repository를 수정하지 않는다. 읽기·검색·좁은 read-only 검증만 수행한다.",
-				"3. 쉬운 설명 → 코드에서 확인된 사실 → 아직 모르는 정책/가정 → 리뷰 판단 순서로 답한다.",
-				"4. 확인한 file/line/URL을 evidence로 남긴다. 추측은 uncertainty에 분리한다.",
-				`5. 최종 응답은 반드시 \`meta_review_chat\` action=\"answer\", runId=\"${state.runId}\", questionId=\"${question.id}\"로 저장한다. 실패하면 action=\"fail\"을 사용한다.`,
+				"## routing 원칙",
+				"1. 글자 수, 파일 수, 특정 단어 같은 고정 임계값으로 판단하지 않는다.",
+				"2. 현재 selection과 review source만으로 답이 닫히면 direct다.",
+				"3. 외부 precedent, 실행 검증, 여러 독립 경로 비교, 전체 PR 재분석이 필요하면 worker다.",
+				"4. 애매하면 기존 Meta Review 동작과 호환되도록 direct로 시작하고, 새 독립 조사 축이 실제로 발견될 때만 worker로 승격한다.",
+				"",
+				"## 실행 규칙",
+				`1. 먼저 \`meta_review_chat\` action=\"status\", runId=\"${state.runId}\"로 최신 질문 상태를 확인한다.`,
+				`2. \`meta_review_chat\` action=\"route\", runId=\"${state.runId}\", questionId=\"${question.id}\", executionMode=\"direct|worker\", routeReason=\"짧은 한국어 판단 근거\"를 호출한다.`,
+				"3. direct이면 실제 source, callsite, schema, test를 필요한 만큼 좁게 조사하고 repository를 수정하지 않는다.",
+				`4. direct 조사 중 새 독립 작업 축이 발견되면 같은 questionId로 action=\"route\", executionMode=\"worker\"를 한 번 호출한다.`,
+				`5. direct 최종 응답은 \`meta_review_chat\` action=\"answer\", runId=\"${state.runId}\", questionId=\"${question.id}\"로 저장한다. 실패하면 action=\"fail\"을 사용한다.`,
+				"6. worker이면 extension이 head-pinned 전용 worker를 시작하므로 별도 subagent를 중복 실행하지 않고 turn을 끝낸다.",
 			].join("\n"),
 			details: { runId: state.runId, runDir: state.runDir, question: visibleQuestion },
 		}, { deliverAs: "followUp", triggerTurn: true });
-		updatePrReviewQuestion(state.runDir, question.id, { status: "answering", error: undefined });
 	} catch (error) {
 		failPrReviewQuestion(state.runDir, question.id, error instanceof Error ? error.message : String(error));
 		throw error;

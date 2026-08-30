@@ -80,6 +80,14 @@ test("meta_review_chat answer는 완료된 Q&A를 owner Pi session에 visible tr
 			question: "이 변경이 호출자에게 어떤 영향을 주나?",
 			scope: "session",
 		}, 1100);
+		const routed = await tools.get("meta_review_chat").execute("call-route", {
+			action: "route",
+			runId: state.runId,
+			questionId: question.id,
+			executionMode: "direct",
+			routeReason: "현재 review source만으로 답할 수 있습니다.",
+		}, undefined, undefined, { cwd: "/tmp" });
+		assert.equal(routed.details.question.execution.mode, "direct");
 		const result = await tools.get("meta_review_chat").execute("call-answer", {
 			action: "answer",
 			runId: state.runId,
@@ -88,10 +96,39 @@ test("meta_review_chat answer는 완료된 Q&A를 owner Pi session에 visible tr
 			evidence: [{ label: "정책 구현", path: "src/example.ts", line: 2 }],
 		}, undefined, undefined, { cwd: "/tmp" });
 		assert.equal(result.details.question.status, "answered");
+		assert.equal(result.details.question.execution.phase, "answered");
 		assert.equal(entries.length, 1);
 		assert.equal(entries[0].data.display, true);
 		assert.match(entries[0].data.content, /Meta Review 답변/);
 		assert.match(entries[0].data.content, /허용 상태 이외의 호출 결과/);
+	} finally {
+		rmSync(stateRoot, { recursive: true, force: true });
+	}
+});
+
+test("meta_review_chat worker route는 legacy runtime에서 명시적 P0 fallback을 남긴다", async () => {
+	const stateRoot = mkdtempSync(join(tmpdir(), "pilee-meta-review-chat-worker-fallback-"));
+	try {
+		const { pi, tools, messages } = fixture();
+		registerPrReview(pi, { stateRoot, now: () => 1000 });
+		const state = await captureGitHubPrRun(pi, "/tmp", parseGitHubPrUrl("https://github.com/acme/repo/pull/42"), stateRoot, 1000);
+		const question = createPrReviewQuestion(state.runDir, { runId: state.runId, question: "전체 PR 호출 경로를 다시 검산해줘.", scope: "session" }, 1100);
+		const result = await tools.get("meta_review_chat").execute("call-route-worker", {
+			action: "route",
+			runId: state.runId,
+			questionId: question.id,
+			executionMode: "worker",
+			routeReason: "전체 PR의 독립 경로 비교가 필요합니다.",
+		}, undefined, undefined, { cwd: "/tmp/review-pr-42" });
+		assert.equal(result.terminate, true);
+		assert.equal(result.details.executionMode, "worker");
+		assert.equal(result.details.workerLaunched, false);
+		const fallback = messages.find(({ message }) => message.customType === "pilee-meta-review-worker-request");
+		assert.ok(fallback);
+		assert.equal(fallback.message.display, false);
+		assert.equal(fallback.options.triggerTurn, true);
+		assert.match(fallback.message.content, /meta-review-question-worker --isolated/);
+		assert.match(fallback.message.content, /apply_worker_result/);
 	} finally {
 		rmSync(stateRoot, { recursive: true, force: true });
 	}
