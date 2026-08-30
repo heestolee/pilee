@@ -15,14 +15,16 @@ applies_to:
   - extensions/learning-companion
   - extensions/frame-v2
   - extensions/study-hard
+  - extensions/pr-review
   - extensions/worktree
   - skills/frame-v2
   - skills/ship
   - skills/pr-ship
 source:
   - user-direction:2026-07-17-learning-note-companion
-reviewed_at: 2026-07-18
-reviewed_commit: 88b560c62683ba149cbaf91ecca9487b65c973c9
+  - user-direction:2026-08-30-study-hard-meta-review-shared-shell
+reviewed_at: 2026-08-30
+reviewed_commit: 5d2d11a996e096090f0485917b729ca63ed54051
 related:
   - frame-v2-learning-note-pilot
   - study-hard-public-engine-private-publisher
@@ -114,6 +116,19 @@ Adopt는 학습 state를 복제하거나 초기화하지 않습니다. companion
 `/study-hard current`는 현재 `.pi/learning-companion.json`의 `runId`를 열며 새 URL 학습 prompt를 시작하지 않습니다. Live Study Hard는 Frame이 있으면 학습노트 최상단에 전체 Frame을 기본 접힘 read-only view로 표시하고, Frame이 없으면 이 영역을 생략합니다. Standalone HTML도 같은 details view를 export 시점에 파생합니다.
 
 Notion 저장은 기존 Study Hard payload와 private publisher 경계를 유지합니다. Companion metadata는 optional field로 전달되며, publisher 지원 여부가 기존 noteDocument·visual PNG·원본 spec 저장을 깨뜨리면 안 됩니다.
+
+## Shared Shell Ownership Rule
+
+학습노트와 코드 리뷰처럼 같은 Study Hard state를 소비하는 surface는 각 extension이 별도 Glimpse 창을 직접 열지 않습니다. Study Hard extension 하나가 window·server·run 선택을 소유하고, Meta Review는 shared `pi.events` broker에 review link와 surface 전환을 요청합니다. Broker owner identity는 extension별 `ExtensionAPI` 객체가 아니라 shared event bus이며, request claim으로 한 owner만 open을 수행합니다.
+
+기존 창 재사용은 canonical source URL만 같다는 이유로 persisted state를 임의 선택하지 않습니다. 마지막 `study_hard_board start/open`으로 current가 된 **실제 열린 Glimpse handle**만 재사용하고, dormant·닫힌 run은 학습노트 canonical을 가로채지 않습니다. 열린 matching handle이 없거나 broker가 없는 legacy runtime에서는 deterministic Meta Review run을 여는 기존 fallback을 유지합니다.
+
+이 계약의 회귀 테스트는 서로 다른 ExtensionAPI wrapper가 같은 event bus를 공유하는 조건에서 다음을 함께 확인합니다.
+
+- Glimpse open 횟수가 늘지 않고 기존 window를 `show`합니다.
+- 기존 `noteDocument`와 run identity를 보존한 채 `metaReview`와 `activeSurface=review`만 연결합니다.
+- 같은 URL의 dormant run은 선택하지 않습니다.
+- generated browser `render()`와 `setSurface()`를 실제 DOM에서 실행했을 때 코드 리뷰 탭과 review surface가 활성화됩니다.
 
 ## Workflow Boundary
 
