@@ -3124,6 +3124,25 @@ test("변경 의미 visual은 역할 색상 flowchart와 sequence source를 구�
 	for (const marker of ["reviewMeaningDiagramViewport", "reviewMeaningLegend", "data-review-visual-kind", "max-height:320px", "읽는 법"]) assert.match(html, new RegExp(marker));
 });
 
+test("변경 의미 visual은 차트 전용 확대 overlay와 zoom controls를 제공한다", () => {
+	const html = buildStudyHardStudioHtml();
+	for (const marker of [
+		"data-review-visual-expand",
+		"reviewMeaningVisualOverlay",
+		"reviewMeaningVisualOverlayCanvas",
+		"reviewMeaningVisualZoomIn",
+		"reviewMeaningVisualZoomOut",
+		"reviewMeaningVisualZoomReset",
+		"openMetaReviewMeaningVisual",
+		"closeMetaReviewMeaningVisual",
+		"setMetaReviewMeaningVisualZoom",
+		"확대해서 보기",
+	]) assert.match(html, new RegExp(marker));
+	assert.match(html, /event\.key!==['"]Escape['"]/);
+	assert.match(html, /event\.target===event\.currentTarget/);
+	assert.match(html, /event\.stopPropagation\(\)/);
+});
+
 test("코드 리뷰 surface는 한눈에 보기, 독립 관계·finding, compact 파일 목록과 접힌 문맥을 유지한다", () => {
 	const html = buildStudyHardStudioHtml();
 	for (const marker of ["reviewOverviewLead", "Review attention", "변경 파일 관계", "실제 리뷰 포인트", "reviewFileSummaryRow", "파일 역할", "호출·데이터 흐름", "사용자·후속 영향"]) assert.match(html, new RegExp(marker));
