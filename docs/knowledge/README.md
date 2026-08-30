@@ -82,7 +82,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Architecture friction은 TFT의 검증 축이다](./architecture-friction-tft-lens.md) | active | high | 2026-06-02 | ce5e875 | architecture, frame, decide, verify, deep-module, shallow-module |
 | [Convention Lens는 작업 종료 시 관련 판단만 투영한다](./convention-lens-event-driven-projection.md) | experimental | high | 2026-08-25 | c077eab | convention-lens, agent-settled, stop-hook, graph, evidence, reviewer |
 | [학습노트 companion은 독립 canonical을 sidecar로 연결한다](./learning-note-companion-artifact.md) | active | high | 2026-07-18 | 88b560c | learning-note, companion-artifact, frame-v2, study-hard, worktree, checkpoint |
-| [질문 UI와 실행 owner는 분리한다](./question-ui-execution-owner-routing.md) | active | high | 2026-08-30 | 74571a1 | question-runtime, orchestration, direct, worker, study-hard, meta-review |
+| [질문 UI와 실행 owner는 분리한다](./question-ui-execution-owner-routing.md) | active | high | 2026-08-30 | e780fb5 | question-runtime, orchestration, direct, worker, study-hard, meta-review |
 | [Study Hard 엔진은 public이고 개인 publisher만 private다](./study-hard-public-engine-private-publisher.md) | active | high | 2026-07-30 | ac5b326 | study-hard, public-private-boundary, notion, runtime-profile, local-state |
 | [Study Hard worker는 유연하게 생성하고 extension coordinator가 엄격하게 적용한다](./study-hard-worker-flexible-generation-strict-apply.md) | active | high | 2026-08-30 | 5ad8414 | study-hard, subagent, worker, three-way-merge, optimistic-concurrency, glimpse |
 | [Utils surface는 사용자 계약을 만들지 않는다](./utility-surface-stays-invisible.md) | active | high | 2026-06-02 | d8f8c4c | utils, internal, surface, abstraction, extension |

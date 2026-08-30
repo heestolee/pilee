@@ -22,7 +22,7 @@ source:
   - user-direction:2026-08-30-question-execution-owner-routing
   - review:2026-08-30-question-owner-race-invariants
 reviewed_at: 2026-08-30
-reviewed_commit: 74571a1cffceaa1f731f240037b209de4787ac09
+reviewed_commit: e780fb554239041fe2e512789ec07d4cf2e984eb
 related:
   - study-hard-worker-flexible-generation-strict-apply
   - human-pr-review-precedent-harness
@@ -66,7 +66,7 @@ routing
 
 worker route를 state에 저장한 사실과 실제 worker launch claim은 다릅니다. coordinator는 random reservation token, route pin, trusted question snapshot을 process-global active launch lease에 함께 보관해 extension reload 뒤에도 기존 callback ownership을 유지합니다. 표준 dispatcher와 legacy fallback 모두 token compare-and-set에 성공한 한 실행만 launch하며, claim 전 route 재호출도 같은 active lease에서 새 dispatch를 만들지 않습니다.
 
-Programmatic dispatcher가 없는 legacy runtime은 hidden P0 fallback을 한 번만 남깁니다. P0는 `worker_started(reservationToken)` 응답의 `claimed=true`일 때만 worker를 실행하고, false면 tool이 turn을 종료합니다. claim 승자에게만 별도 completion capability를 발급하며 started/apply/fail은 이 capability를 요구합니다. 전달되지 않은 unclaimed fallback은 lease가 만료된 뒤 새 reservation token으로만 재예약할 수 있습니다.
+Programmatic dispatcher가 없는 legacy runtime은 hidden P0 fallback을 한 번만 남깁니다. P0는 `worker_started(reservationToken)` 응답의 `claimed=true`일 때만 worker를 실행하고, false면 tool이 turn을 종료합니다. claim 승자에게만 별도 completion capability를 발급하고 provider-visible tool `content`로 전달하며, started/apply/fail은 이 capability를 요구합니다. renderer 전용 `details`만으로 capability를 전달했다고 간주하지 않습니다. 전달되지 않은 unclaimed fallback은 lease가 만료된 뒤 새 reservation token으로만 재예약할 수 있습니다.
 
 ## Transcript Boundary
 
