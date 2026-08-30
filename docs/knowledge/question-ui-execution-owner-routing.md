@@ -20,9 +20,10 @@ applies_to:
   - agents/meta-review-question-worker.md
 source:
   - user-direction:2026-08-30-question-execution-owner-routing
+  - user-direction:2026-08-30-meta-review-question-attachments
   - review:2026-08-30-question-owner-race-invariants
 reviewed_at: 2026-08-30
-reviewed_commit: e780fb554239041fe2e512789ec07d4cf2e984eb
+reviewed_commit: ac57e3674b7d9b5725bcfe411e79787d4e747621
 related:
   - study-hard-worker-flexible-generation-strict-apply
   - human-pr-review-precedent-harness
@@ -76,6 +77,14 @@ Programmatic dispatcher가 없는 legacy runtime은 hidden P0 fallback을 한 �
 - run path, tool action, worker result path, dispatch 규칙: `display:false` control message로만 전달합니다.
 - event key를 question state에 보존해 reload·retry·중복 completion에서 같은 visible 대화를 다시 만들지 않습니다.
 - visible lineage는 사용자가 “아까 질문 drawer에서 무슨 대화를 했나”라고 물을 때 현재 session이 답할 수 있는 기록입니다. 영구 canonical은 Study Hard state 또는 Meta Review `questions.jsonl`입니다.
+
+## Attachment Boundary
+
+Study Hard와 Meta Review 질문 composer는 이미지 붙여넣기 계약도 공유합니다. 입력창의 이미지 `⌘V`, preview, 전송 전 제거, 질문당 최대 4장 제한을 동일하게 유지합니다. 질문이 server에 수락된 뒤에는 문구와 첨부 draft를 함께 비우고, 전송 실패 시에는 둘 다 보존해 재시도할 수 있어야 합니다.
+
+이미지 byte와 data URL은 Study Hard의 run-local attachment store에만 둡니다. Meta Review `questions.jsonl`에는 attachment ID와 검증된 `{ name, mimeType, path, url }` provenance만 고정하며 visible transcript, routing control message, worker task에 raw image를 복제하지 않습니다. 질문에 연결되기 전 draft attachment는 제거할 수 있지만, 질문 canonical에 연결된 파일은 답변·재시도·worker 승격이 끝날 때까지 제거하지 않습니다.
+
+Direct owner와 worker는 같은 pinned provenance를 받습니다. 이미지가 있다는 사실만으로 worker를 선택하지 않고, 현재 review source와 첨부만으로 답이 닫히는지는 기존 work-shape routing 기준으로 판단합니다. 따라서 첨부 없는 기존 질문 payload와 direct→worker one-way ownership 계약은 달라지지 않습니다.
 
 ## Worker Trust Boundary
 
