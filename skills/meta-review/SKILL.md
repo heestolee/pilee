@@ -55,7 +55,20 @@ PR 목적, base/head SHA, 파일·chunk 수, 아직 읽지 않은 chunk를 확�
 
 모든 추가·삭제 줄은 `E-...` explanation hunk 하나에 포함한다. hunk는 같은 의도의 변경을 설명하고 coverage를 닫는 단위이며, 사용자가 선택하는 source declaration과는 별도 계약이다. 같은 의도의 연속 줄은 한 덩어리로 설명하고, 변경 이유·근거·책임·사용 개념·흐름과 영향·불확실성을 빠뜨리지 않는다. generated/lock/bulk 변경도 source-of-truth와 생성 이유를 파일 또는 hunk 단위로 설명한다.
 
-TS/TSX/JS/JSX source가 capture되면 UI는 parser가 만든 변수·함수·컴포넌트·hook·메서드·class·type·test declaration hierarchy를 사용합니다. changed row는 가장 작은 선언을 기본 선택하고 사용자는 Glimpse에서 상위·하위 declaration과 before/after source로 범위를 이동합니다. Parser 미지원·source capture 실패·크기 제한 초과 시에만 semantic hunk → line fallback을 사용합니다.
+TS/TSX/JS/JSX source가 capture되면 UI는 parser가 만든 가장 작은 연속 statement 또는 declaration-owned `{}` 범위를 구조 선택 단위로 사용합니다. AST owner가 `변수 | 함수 | 메서드 | class | type | test` label을 결정하고, 코드 길이로 종류를 추정하지 않습니다. 사용자는 선택 위치의 inline toolbar에서 상위·하위 구조와 before/after source로 이동합니다. 기본 diff는 `/diff`처럼 평평하게 유지하고 선택한 범위만 accent로 표시합니다. Parser 미지원·source capture 실패·크기 제한 초과 시에만 semantic hunk → line fallback을 사용합니다.
+
+### 3.5 변경 의미를 구조 선택과 별도로 만든다
+
+변경 의미는 identifier 교체나 인접한 diff가 아니라 여러 코드 delta가 함께 만드는 **계약·책임·흐름의 Before → After 전환**입니다. 구조 선택과 변경 의미는 다대다 관계이며 서로의 boundary를 대신하지 않습니다.
+
+1. 각 구조 단위에서 제거·추가된 symbol, type, payload, 호출, side effect를 fact로 추출합니다.
+2. symbol 정의, explicit contract/JSDoc/deprecation, producer-consumer, call-flow, test 근거를 head-pinned source에서 확인합니다.
+3. 같은 계약 결과·trigger·producer/consumer·인과 chain을 만드는 fact만 하나의 의미로 연결합니다. 같은 파일·함수·인접 줄이라는 이유만으로 묶지 않습니다.
+4. 독립된 결과가 섞이면 분리하고, rename·이동만 확인되면 그 이상을 단정하지 않습니다.
+5. 제목은 구현체 이름보다 가장 안정적인 계약 전환으로 씁니다. `A를 B로 변경`보다 `분산된 책임을 공통 lifecycle로 이동`, `암묵적 상태를 명시적 계약으로 전환` 같은 수준을 선택합니다.
+6. `high` confidence는 `explicit-contract | definition | producer-consumer | call-flow | test` basis가 하나 이상 있어야 합니다. diff·이름·인접성뿐이면 medium/low로 낮추고 uncertainty를 기록합니다.
+
+각 meaning은 `M-...` ID, title, beforeContract, afterContract, mechanism, impact, changed paths/evidenceIds, basis, confidence를 가집니다. 의미가 없다고 판단되면 억지로 만들지 않고 빈 배열을 제출합니다.
 
 ### 4. blind review 후보를 만든다
 
@@ -104,7 +117,7 @@ Corpus가 없거나 검색을 지원하지 않으면 blind review를 계속하�
 
 [카드 계약](references/review-card-contract.md)을 따른다. 초기·전체 검토에서는 모든 파일 guide를 제출합니다. incremental revision에서는 `meta_review_run refresh`가 unchanged 파일의 guide·card·인간 결정을 최신 evidence로 remap하고 해당 chunk를 auto-inspect하므로, pending chunk와 `impactedPaths`만 다시 조사해 그 파일의 guides/cards를 제출합니다. seeded unchanged 항목은 extension이 병합하며 agent가 다시 작성하지 않습니다.
 
-모든 새 submission에는 `document`를 함께 제출합니다. `overview`는 PR 전체 목적과 검토 초점을 설명하고, `relationships`는 변경 파일 사이의 실제 계약·호출·데이터·검증 관계와 전체 파일의 권장 읽기 순서를 보존합니다. 정적인 레이어·데이터 의존성은 `flowchart`, 시간 순서가 핵심인 런타임 호출은 `sequence`를 선택합니다. 둘을 기계적으로 모두 만들지 않습니다. relation의 `from`/`to`와 reading order의 `path`는 captured diff의 파일 경로만 사용합니다. incremental revision도 현재 파일 집합 기준으로 document 전체를 다시 판단합니다.
+모든 새 submission에는 `document`를 함께 제출합니다. `overview`는 PR 전체 목적과 검토 초점을 설명하고, `meanings`는 구조 선택과 별개인 source-backed 계약·책임·흐름 전환을 보존하며, `relationships`는 변경 파일 사이의 실제 계약·호출·데이터·검증 관계와 전체 파일의 권장 읽기 순서를 보존합니다. 정적인 레이어·데이터 의존성은 `flowchart`, 시간 순서가 핵심인 런타임 호출은 `sequence`를 선택합니다. 둘을 기계적으로 모두 만들지 않습니다. relation의 `from`/`to`와 reading order의 `path`는 captured diff의 파일 경로만 사용합니다. incremental revision도 현재 파일 집합 기준으로 document 전체를 다시 판단합니다.
 
 작은 complete snapshot은 inline으로 제출한다.
 
@@ -117,6 +130,22 @@ Corpus가 없거나 검색을 지원하지 않으면 blind review를 계속하�
       "summary": "PR 전체 변경 목적",
       "reviewFocus": "리뷰에서 먼저 확인할 계약과 위험"
     },
+    "meanings": [
+      {
+        "id": "M-explicit-contract",
+        "title": "암묵적 상태 허용을 명시적 계약으로 전환",
+        "beforeContract": "새 상태가 부정 조건을 통과하면 자동으로 허용될 수 있었습니다.",
+        "afterContract": "명시한 상태만 허용됩니다.",
+        "mechanism": "producer가 allowlist를 소유하고 consumer가 그 결과를 사용합니다.",
+        "impact": "향후 상태 추가가 자동 허용으로 이어지지 않습니다.",
+        "paths": ["src/query.ts", "src/ui.tsx"],
+        "evidenceIds": ["D000001", "D000002"],
+        "basis": [
+          { "kind": "producer-consumer", "path": "src/ui.tsx", "line": 42, "summary": "consumer가 policy 결과를 사용합니다." }
+        ],
+        "confidence": "high"
+      }
+    ],
     "relationships": {
       "summary": "변경 파일이 함께 동작하는 방식",
       "diagram": "flowchart",
