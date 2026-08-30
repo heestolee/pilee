@@ -19,6 +19,7 @@ import {
 	answerPrReviewQuestion,
 	failPrReviewQuestion,
 	loadPrReviewQuestions,
+	publishPrReviewQuestionTranscript,
 	type PrReviewQuestionEvidence,
 } from "./chat.ts";
 import { searchPrReviewCorpus } from "./corpus.ts";
@@ -420,17 +421,19 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 			}
 			if (!params.questionId) throw new Error(`${params.action}에는 questionId가 필요합니다.`);
 			if (params.action === "fail") {
-				const question = failPrReviewQuestion(state.runDir, params.questionId, params.error ?? "질문 조사에 실패했습니다.");
+				const failed = failPrReviewQuestion(state.runDir, params.questionId, params.error ?? "질문 조사에 실패했습니다.");
+				const question = publishPrReviewQuestionTranscript(pi, state, failed, "failed");
 				return { content: [{ type: "text", text: `Meta Review question failed: ${question.id}` }], details: { runId: state.runId, question }, terminate: true };
 			}
 			if (!params.answer?.trim()) throw new Error("answer에는 실제 조사 결과가 필요합니다.");
-			const question = answerPrReviewQuestion(
+			const answered = answerPrReviewQuestion(
 				state.runDir,
 				params.questionId,
 				params.answer,
 				(params.evidence ?? []) as PrReviewQuestionEvidence[],
 				params.uncertainty,
 			);
+			const question = publishPrReviewQuestionTranscript(pi, state, answered, "answer");
 			return { content: [{ type: "text", text: question.answer ?? "" }], details: { runId: state.runId, question }, terminate: true };
 		},
 	});

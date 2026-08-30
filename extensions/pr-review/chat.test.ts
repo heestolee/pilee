@@ -8,7 +8,9 @@ import {
 	createPrReviewQuestion,
 	dispatchPrReviewQuestionToSession,
 	loadPrReviewQuestions,
+	PR_REVIEW_TRANSCRIPT_LINEAGE_ENTRY,
 	prReviewQuestionsPath,
+	publishPrReviewQuestionTranscript,
 	resolvePrReviewQuestionContext,
 } from "./chat.ts";
 import type { PrReviewRunState } from "./run.ts";
@@ -76,8 +78,17 @@ test("Glimpse question dispatches into the same Pi session with review-worktree 
 			selection: { kind: "line", id: "D000427", label: "코드 줄 · migration.js:27" },
 		}, 1000);
 		const messages: any[] = [];
-		const pi = { sendMessage(message: any, options: any) { messages.push({ message, options }); } } as any;
+		const entries: any[] = [];
+		const pi = {
+			appendEntry(customType: string, data: any) { entries.push({ customType, data }); },
+			sendMessage(message: any, options: any) { messages.push({ message, options }); },
+		} as any;
 		dispatchPrReviewQuestionToSession(pi, runState(runDir), question);
+		assert.equal(entries.length, 1);
+		assert.equal(entries[0].customType, PR_REVIEW_TRANSCRIPT_LINEAGE_ENTRY);
+		assert.equal(entries[0].data.display, true);
+		assert.match(entries[0].data.content, /Meta Review 질문/);
+		assert.match(entries[0].data.content, /이 리뷰가 과한 것 아닌가/);
 		assert.equal(messages.length, 1);
 		assert.equal(messages[0].message.customType, "pilee-meta-review-question");
 		assert.equal(messages[0].message.display, false);
@@ -88,6 +99,41 @@ test("Glimpse question dispatches into the same Pi session with review-worktree 
 		assert.match(messages[0].message.content, /D000427/);
 		assert.match(messages[0].message.content, /selectedBlock: line:D000427/);
 		assert.equal(loadPrReviewQuestions(runDir)[0]?.status, "answering");
+		assert.equal(loadPrReviewQuestions(runDir)[0]?.transcriptEventKeys?.length, 1);
+	} finally {
+		rmSync(runDir, { recursive: true, force: true });
+	}
+});
+
+test("Meta Review transcript fallback은 사용자 Q&A만 display true로 한 번 기록한다", () => {
+	const runDir = mkdtempSync(join(tmpdir(), "pilee-pr-review-chat-transcript-"));
+	try {
+		const state = runState(runDir);
+		const created = createPrReviewQuestion(runDir, {
+			runId: state.runId,
+			question: "이 선택 블록의 책임은 무엇인가?",
+			scope: "file",
+			fileId: "F001",
+			filePath: "src/policy.ts",
+			selection: { kind: "file", id: "F001", label: "파일 · src/policy.ts" },
+		}, 1000);
+		const messages: any[] = [];
+		const pi = {
+			appendEntry() { throw new Error("lineage unavailable"); },
+			sendMessage(message: any, options: any) { messages.push({ message, options }); },
+		} as any;
+		const withQuestionTranscript = publishPrReviewQuestionTranscript(pi, state, created, "question");
+		publishPrReviewQuestionTranscript(pi, state, withQuestionTranscript, "question");
+		const answered = answerPrReviewQuestion(runDir, created.id, "정책 파일의 공개 상태 allowlist를 소유합니다.", [], undefined, 2000);
+		const withAnswerTranscript = publishPrReviewQuestionTranscript(pi, state, answered, "answer");
+		publishPrReviewQuestionTranscript(pi, state, withAnswerTranscript, "answer");
+		assert.equal(messages.length, 2);
+		assert.ok(messages.every(({ message, options }) => message.display === true && options.deliverAs === "nextTurn" && options.triggerTurn === false));
+		assert.match(messages[0].message.content, /Meta Review 질문/);
+		assert.match(messages[1].message.content, /Meta Review 답변/);
+		assert.match(messages[1].message.content, /정책 파일의 공개 상태 allowlist/);
+		assert.doesNotMatch(messages.map(({ message }) => message.content).join("\n"), /runDir|workerResultPath|답변 규칙/);
+		assert.equal(loadPrReviewQuestions(runDir)[0]?.transcriptEventKeys?.length, 2);
 	} finally {
 		rmSync(runDir, { recursive: true, force: true });
 	}

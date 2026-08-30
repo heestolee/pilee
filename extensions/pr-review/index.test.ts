@@ -3,7 +3,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { captureCurrentWorkRun, parseGitHubPrUrl, registerPrReview } from "./index.ts";
+import { createPrReviewQuestion } from "./chat.ts";
+import { captureCurrentWorkRun, captureGitHubPrRun, parseGitHubPrUrl, registerPrReview } from "./index.ts";
 
 const DIFF = `diff --git a/src/example.ts b/src/example.ts
 index 1111111..2222222 100644
@@ -21,6 +22,7 @@ function fixture() {
 	const commands = new Map<string, any>();
 	const tools = new Map<string, any>();
 	const messages: Array<{ message: any; options: any }> = [];
+	const entries: Array<{ customType: string; data: any }> = [];
 	const execCalls: Array<{ command: string; args: string[] }> = [];
 	const pi = {
 		registerCommand(name: string, value: any) { commands.set(name, value); },
@@ -51,8 +53,9 @@ function fixture() {
 			return { code: 0, stdout: DIFF, stderr: "" };
 		},
 		sendMessage(message: any, options: any) { messages.push({ message, options }); },
+		appendEntry(customType: string, data: any) { entries.push({ customType, data }); },
 	} as any;
-	return { pi, commands, tools, messages, execCalls };
+	return { pi, commands, tools, messages, entries, execCalls };
 }
 
 test("parseGitHubPrUrl accepts canonical and changes URLs", () => {
@@ -64,6 +67,34 @@ test("parseGitHubPrUrl accepts canonical and changes URLs", () => {
 	});
 	assert.throws(() => parseGitHubPrUrl("https://example.com/a/b/pull/1"), /github.com/);
 	assert.throws(() => parseGitHubPrUrl("https://github.com/a/b/issues/1"), /owner\/repo\/pull/);
+});
+
+test("meta_review_chat answer는 완료된 Q&A를 owner Pi session에 visible transcript로 남긴다", async () => {
+	const stateRoot = mkdtempSync(join(tmpdir(), "pilee-meta-review-chat-visible-"));
+	try {
+		const { pi, tools, entries } = fixture();
+		registerPrReview(pi, { stateRoot, now: () => 1000 });
+		const state = await captureGitHubPrRun(pi, "/tmp", parseGitHubPrUrl("https://github.com/acme/repo/pull/42"), stateRoot, 1000);
+		const question = createPrReviewQuestion(state.runDir, {
+			runId: state.runId,
+			question: "이 변경이 호출자에게 어떤 영향을 주나?",
+			scope: "session",
+		}, 1100);
+		const result = await tools.get("meta_review_chat").execute("call-answer", {
+			action: "answer",
+			runId: state.runId,
+			questionId: question.id,
+			answer: "허용 상태 이외의 호출 결과가 숨겨집니다.",
+			evidence: [{ label: "정책 구현", path: "src/example.ts", line: 2 }],
+		}, undefined, undefined, { cwd: "/tmp" });
+		assert.equal(result.details.question.status, "answered");
+		assert.equal(entries.length, 1);
+		assert.equal(entries[0].data.display, true);
+		assert.match(entries[0].data.content, /Meta Review 답변/);
+		assert.match(entries[0].data.content, /허용 상태 이외의 호출 결과/);
+	} finally {
+		rmSync(stateRoot, { recursive: true, force: true });
+	}
 });
 
 test("captureCurrentWorkRun captures branch plus working changes without requiring Frame", async () => {

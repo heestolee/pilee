@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -34,6 +35,7 @@ export interface PrReviewQuestion {
 	selection?: PrReviewQuestionSelection;
 	status: PrReviewQuestionStatus;
 	execution?: QuestionExecution;
+	transcriptEventKeys?: string[];
 	answer?: string;
 	evidence?: PrReviewQuestionEvidence[];
 	uncertainty?: string;
@@ -223,6 +225,58 @@ export function failPrReviewQuestion(runDir: string, questionId: string, error: 
 	return updatePrReviewQuestion(runDir, questionId, { status: "failed", error: error.trim() || "Meta Review question failed" }, now);
 }
 
+export type PrReviewTranscriptEventKind = "question" | "answer" | "failed";
+
+export const PR_REVIEW_TRANSCRIPT_LINEAGE_ENTRY = "meta-review-transcript-lineage";
+const PR_REVIEW_TRANSCRIPT_CUSTOM_TYPE = "pilee-meta-review-transcript";
+
+function transcriptEventText(question: PrReviewQuestion, eventKind: PrReviewTranscriptEventKind): string {
+	const contextLabel = question.selection?.label ?? (question.scope === "session" ? "전체 PR" : question.filePath ?? question.cardId ?? question.scope);
+	if (eventKind === "question") return `🔎 Meta Review 질문 · ${contextLabel}\n\n${question.question}`;
+	if (eventKind === "failed") return `⚠️ Meta Review 질문 실패 · ${contextLabel}\n\n질문: ${question.question}\n\n원인: ${question.error || "질문 조사에 실패했습니다."}`;
+	return [
+		`✅ Meta Review 답변 · ${contextLabel}`,
+		"",
+		`질문: ${question.question}`,
+		"",
+		"답변:",
+		question.answer || "",
+		question.uncertainty ? `\n미확인:\n${question.uncertainty}` : undefined,
+	].filter((value): value is string => typeof value === "string").join("\n");
+}
+
+function transcriptEventKey(question: PrReviewQuestion, eventKind: PrReviewTranscriptEventKind): string {
+	return `${eventKind}:${question.id}:${createHash("sha256").update(transcriptEventText(question, eventKind)).digest("hex").slice(0, 12)}`;
+}
+
+export function publishPrReviewQuestionTranscript(
+	pi: Pick<ExtensionAPI, "appendEntry" | "sendMessage">,
+	state: PrReviewRunState,
+	question: PrReviewQuestion,
+	eventKind: PrReviewTranscriptEventKind,
+): PrReviewQuestion {
+	const current = loadPrReviewQuestions(state.runDir).find((item) => item.id === question.id) ?? question;
+	const eventKey = transcriptEventKey(current, eventKind);
+	if (current.transcriptEventKeys?.includes(eventKey)) return current;
+	const content = transcriptEventText(current, eventKind);
+	const details = { runId: state.runId, questionId: current.id, eventKind, eventKey, scope: current.scope, selection: current.selection };
+	let published = false;
+	try {
+		pi.appendEntry(PR_REVIEW_TRANSCRIPT_LINEAGE_ENTRY, { content, details, display: true });
+		published = true;
+	} catch {}
+	if (!published) {
+		try {
+			pi.sendMessage({ customType: PR_REVIEW_TRANSCRIPT_CUSTOM_TYPE, content, display: true, details }, { deliverAs: "nextTurn", triggerTurn: false });
+			published = true;
+		} catch {}
+	}
+	if (!published) return current;
+	return updatePrReviewQuestion(state.runDir, current.id, {
+		transcriptEventKeys: [...new Set([...(current.transcriptEventKeys ?? []), eventKey])],
+	});
+}
+
 function questionContext(question: PrReviewQuestion): string {
 	return [
 		`- scope: ${question.scope}`,
@@ -240,6 +294,7 @@ export function dispatchPrReviewQuestionToSession(
 	question: PrReviewQuestion,
 ): void {
 	try {
+		const visibleQuestion = publishPrReviewQuestionTranscript(pi, state, question, "question");
 		pi.sendMessage({
 			customType: "pilee-meta-review-question",
 			display: false,
@@ -265,7 +320,7 @@ export function dispatchPrReviewQuestionToSession(
 				"4. 확인한 file/line/URL을 evidence로 남긴다. 추측은 uncertainty에 분리한다.",
 				`5. 최종 응답은 반드시 \`meta_review_chat\` action=\"answer\", runId=\"${state.runId}\", questionId=\"${question.id}\"로 저장한다. 실패하면 action=\"fail\"을 사용한다.`,
 			].join("\n"),
-			details: { runId: state.runId, runDir: state.runDir, question },
+			details: { runId: state.runId, runDir: state.runDir, question: visibleQuestion },
 		}, { deliverAs: "followUp", triggerTurn: true });
 		updatePrReviewQuestion(state.runDir, question.id, { status: "answering", error: undefined });
 	} catch (error) {
