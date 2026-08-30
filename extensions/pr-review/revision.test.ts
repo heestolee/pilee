@@ -62,6 +62,7 @@ test("Meta Review series appends immutable run revisions and preserves readiness
 test("Meta Review refresh chooses incremental only for safe linear changes", () => {
 	const previous = target("head1111");
 	assert.deepEqual(decideMetaReviewRefresh(previous, target("head1111"), { previousIsAncestor: true }), { mode: "none", reason: "head SHA와 diff가 동일합니다." });
+	assert.deepEqual(decideMetaReviewRefresh(previous, target("head1111"), { forceFull: true, previousIsAncestor: true }), { mode: "full", reason: "사용자가 전체 다시 검토를 요청했습니다." });
 	assert.equal(decideMetaReviewRefresh({ ...previous, kind: "current-work" }, { ...target("head1111"), kind: "current-work" }, { previousIsAncestor: true, sourceChanged: true }).mode, "incremental");
 	assert.equal(decideMetaReviewRefresh(previous, target("head2222"), { previousIsAncestor: true }).mode, "incremental");
 	assert.equal(decideMetaReviewRefresh(previous, target("head2222"), { previousIsAncestor: false }).mode, "full");

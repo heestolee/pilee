@@ -146,8 +146,8 @@ export function decideMetaReviewRefresh(
 	current: PrReviewTarget,
 	options: { forceFull?: boolean; previousIsAncestor?: boolean; sourceChanged?: boolean } = {},
 ): MetaReviewRefreshDecision {
-	if (previous.headSha && current.headSha && previous.headSha === current.headSha && options.sourceChanged !== true) return { mode: "none", reason: "head SHA와 diff가 동일합니다." };
 	if (options.forceFull) return { mode: "full", reason: "사용자가 전체 다시 검토를 요청했습니다." };
+	if (previous.headSha && current.headSha && previous.headSha === current.headSha && options.sourceChanged !== true) return { mode: "none", reason: "head SHA와 diff가 동일합니다." };
 	if (previous.kind !== current.kind) return { mode: "full", reason: "source 종류가 바뀌었습니다." };
 	if (previous.baseRefName !== current.baseRefName || previous.baseSha !== current.baseSha) return { mode: "full", reason: "base 또는 merge-base가 바뀌었습니다." };
 	if (previous.kind === "github-pr" && options.previousIsAncestor !== true) return { mode: "full", reason: "rebase·force-push 가능성으로 head 계보를 안전하게 연결할 수 없습니다." };
