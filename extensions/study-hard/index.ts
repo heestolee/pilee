@@ -287,8 +287,11 @@ export default function studyHard(pi: ExtensionAPI) {
 		box.addChild(new Text(theme.fg("customMessageText", data.content), 0, 0));
 		return box;
 	});
-	registerStudyHardBoardTool(pi);
-	pi.on("session_shutdown", () => stopStudyHardStudios());
+	const disposeMetaReviewOpenBroker = registerStudyHardBoardTool(pi);
+	pi.on("session_shutdown", () => {
+		disposeMetaReviewOpenBroker();
+		stopStudyHardStudios();
+	});
 
 	pi.registerCommand("study-hard", {
 		description: "URL의 코드·PR·아티클·영상 자료를 학습하거나 현재 작업·대화·최근 저장 학습노트를 다시 여는 적응형 학습 모드.",

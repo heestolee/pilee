@@ -3,6 +3,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { parseHTML } from "linkedom";
+import { setGlimpseOpenForTests } from "../utils/glimpse.ts";
+import { registerStudyHardMetaReviewOpenBroker, requestStudyHardMetaReviewOpen } from "../study-hard/meta-review-broker.ts";
+import { registerStudyHardBoardTool, stopStudyHardStudios } from "../study-hard/studio.ts";
 import { createPrReviewQuestion } from "./chat.ts";
 import { captureUnifiedDiff } from "./evidence.ts";
 import { captureCurrentWorkRun, captureGitHubPrRun, parseGitHubPrUrl, registerPrReview } from "./index.ts";
@@ -30,13 +34,29 @@ index 1111111..2222222 100644
  }
 `;
 
-function fixture() {
+function createTestEventBus() {
+	const listeners = new Map<string, Set<(payload: unknown) => void>>();
+	return {
+		on(name: string, listener: (payload: unknown) => void) {
+			const group = listeners.get(name) ?? new Set();
+			group.add(listener);
+			listeners.set(name, group);
+			return () => group.delete(listener);
+		},
+		emit(name: string, payload: unknown) {
+			for (const listener of listeners.get(name) ?? []) listener(payload);
+		},
+	};
+}
+
+function fixture(events = createTestEventBus()) {
 	const commands = new Map<string, any>();
 	const tools = new Map<string, any>();
 	const messages: Array<{ message: any; options: any }> = [];
 	const entries: Array<{ customType: string; data: any }> = [];
 	const execCalls: Array<{ command: string; args: string[] }> = [];
 	const pi = {
+		events,
 		registerCommand(name: string, value: any) { commands.set(name, value); },
 		registerTool(value: any) { tools.set(value.name, value); },
 		on() {},
@@ -86,6 +106,144 @@ test("parseGitHubPrUrl accepts canonical and changes URLs", () => {
 	});
 	assert.throws(() => parseGitHubPrUrl("https://example.com/a/b/pull/1"), /github.com/);
 	assert.throws(() => parseGitHubPrUrl("https://github.com/a/b/issues/1"), /owner\/repo\/pull/);
+});
+
+test("Study Hard Meta Review broker는 shared event bus당 owner 하나만 유지한다", async () => {
+	const events = createTestEventBus();
+	const firstPi = { events } as any;
+	const secondPi = { events } as any;
+	let firstOpenCalls = 0;
+	let secondOpenCalls = 0;
+	const input = { ctx: { hasUI: false } as any, url: "https://example.com/review", title: "Review", fallbackRunId: "fallback", patch: {} };
+	const disposeFirst = registerStudyHardMetaReviewOpenBroker(firstPi, async () => {
+		firstOpenCalls += 1;
+		return { runId: "first", url: "http://127.0.0.1:1", statePath: "/tmp/first", revision: 1 };
+	});
+	const disposeSecond = registerStudyHardMetaReviewOpenBroker(secondPi, async () => {
+		secondOpenCalls += 1;
+		return { runId: "second", url: "http://127.0.0.1:2", statePath: "/tmp/second", revision: 2 };
+	});
+	try {
+		const completion = requestStudyHardMetaReviewOpen(firstPi, input);
+		assert.ok(completion);
+		assert.equal((await completion).runId, "second");
+		assert.equal(firstOpenCalls, 0);
+		assert.equal(secondOpenCalls, 1);
+		assert.equal(requestStudyHardMetaReviewOpen({} as any, input), undefined);
+	} finally {
+		disposeFirst();
+		disposeSecond();
+	}
+});
+
+test("meta_review_run open은 기존 학습노트 창에 코드리뷰 탭을 연결한다", async () => {
+	const stateRoot = mkdtempSync(join(tmpdir(), "pilee-meta-review-shared-study-hard-"));
+	const studyStateRoot = mkdtempSync(join(tmpdir(), "pilee-study-hard-shared-window-"));
+	const previousStudyStateDir = process.env.STUDY_HARD_STATE_DIR;
+	process.env.STUDY_HARD_STATE_DIR = studyStateRoot;
+	let glimpseOpenCalls = 0;
+	let glimpseShowCalls = 0;
+	setGlimpseOpenForTests((() => {
+		glimpseOpenCalls += 1;
+		return {
+			on() {},
+			show() { glimpseShowCalls += 1; },
+			close() {},
+		};
+	}) as any);
+	const events = createTestEventBus();
+	const studyHard = fixture(events);
+	const metaReview = fixture(events);
+	const disposeBroker = registerStudyHardBoardTool(studyHard.pi);
+	registerPrReview(metaReview.pi, { stateRoot, now: () => 1000 });
+	const ctx = { hasUI: true, cwd: "/tmp/review-pr-42", sessionManager: { getBranch: () => [] } } as any;
+
+	try {
+		const board = await studyHard.tools.get("study_hard_board").execute("study-start", {
+			action: "start",
+			runId: "existing-learning-note",
+			url: "https://github.com/acme/repo/pull/42",
+			title: "기존 PR 학습노트",
+			noteDocument: {
+				title: "기존 PR 학습노트",
+				sections: [{
+					id: "overview",
+					kind: "overview",
+					title: "기존 학습 내용",
+					blocks: [{ id: "mental-model", type: "callout", title: "Mental model", body: "기존 학습노트는 보존되어야 한다." }],
+				}],
+			},
+		}, new AbortController().signal, () => {}, ctx) as any;
+		const dormant = await studyHard.tools.get("study_hard_board").execute("study-dormant", {
+			action: "start",
+			runId: "dormant-same-url-note",
+			url: "https://github.com/acme/repo/pull/42",
+			title: "열려 있지 않은 같은 URL 노트",
+		}, new AbortController().signal, () => {}, { ...ctx, hasUI: false }) as any;
+		await studyHard.tools.get("study_hard_board").execute("study-reopen", {
+			action: "open",
+			runId: "existing-learning-note",
+		}, new AbortController().signal, () => {}, ctx);
+
+		const reviewRun = await captureGitHubPrRun(metaReview.pi, ctx.cwd, parseGitHubPrUrl("https://github.com/acme/repo/pull/42"), stateRoot, 1000);
+		const opened = await metaReview.tools.get("meta_review_run").execute("meta-open", {
+			action: "open",
+			runId: reviewRun.runId,
+		}, new AbortController().signal, () => {}, ctx) as any;
+
+		assert.equal(opened.details.studyRunId, "existing-learning-note");
+		assert.equal(opened.details.url, board.details.url);
+		assert.equal(glimpseOpenCalls, 1, "두 tool은 기존 Glimpse window 외에 새 창을 만들면 안 된다");
+		assert.equal(glimpseShowCalls, 2, "명시적 reopen과 Meta Review open은 같은 window를 앞으로 가져와야 한다");
+
+		const linkedState = await fetch(new URL("/state", board.details.url)).then((response) => response.json() as Promise<any>);
+		const dormantState = await fetch(new URL("/state", dormant.details.url)).then((response) => response.json() as Promise<any>);
+		assert.equal(linkedState.noteDocument.title, "기존 PR 학습노트");
+		assert.equal(linkedState.noteDocument.sections[0].blocks[0].body, "기존 학습노트는 보존되어야 한다.");
+		assert.equal(linkedState.activeSurface, "review");
+		assert.equal(linkedState.metaReview.runId, reviewRun.runId);
+		assert.equal(dormantState.metaReview, undefined, "열려 있지 않은 같은 URL run은 선택하면 안 된다");
+
+		const html = await fetch(board.details.url).then((response) => response.text());
+		const setSurfaceStart = html.indexOf("function setSurface(");
+		const setSurfaceEnd = html.indexOf("\n    function ", setSurfaceStart);
+		const renderStart = html.indexOf("function render(){");
+		const renderEnd = html.indexOf("\n    document.getElementById('historyPreviewClose')", renderStart);
+		assert.ok(setSurfaceStart >= 0 && setSurfaceEnd > setSurfaceStart && renderStart >= 0 && renderEnd > renderStart);
+		const setSurfaceSource = html.slice(setSurfaceStart, setSurfaceEnd);
+		const renderSource = html.slice(renderStart, renderEnd);
+		const { document, window } = parseHTML(html);
+		const rendered = new Function("document", "window", "initialState", `
+			var state=initialState,metaReviewState=null,metaReviewPollTimer=null;
+			function esc(value){return String(value??'');}
+			function thoughtQuestions(){return [];}
+			function thoughtQuestionCategory(){} function thoughtCounts(){} function thoughtGroups(){} function sequenceSource(){}
+			function closeDrawer(){} function renderBreadcrumb(){} function renderMap(){} function renderFlow(){} function renderNote(){} function renderDetail(){} function renderStatus(){}
+			function loadMetaReview(){window.__metaReviewLoaded=(window.__metaReviewLoaded||0)+1;}
+			function post(){return Promise.resolve();}
+			${setSurfaceSource}
+			${renderSource}
+			render();
+			return {
+				reviewTabHidden:document.getElementById('reviewSurfaceTab').hidden,
+				reviewSurfaceActive:document.getElementById('reviewSurface').classList.contains('active'),
+				noteSurfaceActive:document.getElementById('noteSurface').classList.contains('active'),
+				metaReviewLoads:window.__metaReviewLoaded||0
+			};
+		`)(document, window, linkedState) as any;
+		assert.equal(rendered.reviewTabHidden, false);
+		assert.equal(rendered.reviewSurfaceActive, true);
+		assert.equal(rendered.noteSurfaceActive, false);
+		assert.equal(rendered.metaReviewLoads, 1);
+	} finally {
+		disposeBroker();
+		stopStudyHardStudios();
+		setGlimpseOpenForTests(undefined);
+		if (previousStudyStateDir === undefined) delete process.env.STUDY_HARD_STATE_DIR;
+		else process.env.STUDY_HARD_STATE_DIR = previousStudyStateDir;
+		rmSync(stateRoot, { recursive: true, force: true });
+		rmSync(studyStateRoot, { recursive: true, force: true });
+	}
 });
 
 test("captureGitHubPrRun은 exact base/head source의 선언 snapshot을 pin한다", async () => {

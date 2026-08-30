@@ -10,6 +10,7 @@ import { normalizeQuestionExecution } from "../questions/runtime.ts";
 import { expandProfileTemplate, loadPrReviewProfiles, type PrReviewCorpusProfile } from "../utils/private-profiles.ts";
 import { runPrReviewWorktreeFromCommandContext } from "../worktree/pr-review.ts";
 import { readPrReviewWorkspaceMetadata, writePrReviewWorkspaceMetadata } from "./workspace.ts";
+import { requestStudyHardMetaReviewOpen } from "../study-hard/meta-review-broker.ts";
 import { startStudyHardStudio } from "../study-hard/studio.ts";
 import type { MetaReviewDocumentInput, MetaReviewFileGuideInput } from "./guidance.ts";
 import { captureGitHubPrRun, fetchGitHubPrTarget, parseGitHubPrUrl } from "./github-source.ts";
@@ -254,20 +255,34 @@ export function buildPrReviewPrompt(state: PrReviewRunState): string {
 }
 
 async function openMetaReviewInStudyHard(pi: ExtensionAPI, ctx: ExtensionCommandContext | ExtensionContext, state: PrReviewRunState, source: ReviewSourceBundle) {
-	const studyRunId = `meta-review-${state.target.repo}-${state.target.number || state.target.rootHash || "current"}-${(state.target.headSha || source.sourceSha256).slice(0, 8)}`.replace(/[^a-zA-Z0-9가-힣._-]+/g, "-").slice(0, 96);
+	const fallbackRunId = `meta-review-${state.target.repo}-${state.target.number || state.target.rootHash || "current"}-${(state.target.headSha || source.sourceSha256).slice(0, 8)}`.replace(/[^a-zA-Z0-9가-힣._-]+/g, "-").slice(0, 96);
+	const title = state.target.kind === "current-work" ? `Meta Review · ${state.target.title}` : `Meta Review · #${state.target.number} ${state.target.title}`;
+	const patch = {
+		sourceTitle: state.target.title,
+		sourceKind: "code",
+		learningPhase: "trace",
+		activeSurface: "review",
+		metaReview: { runId: state.runId, runDir: state.runDir, source: state.target.kind === "current-work" ? "current-work" : "github-pr", linkedAt: Date.now() },
+	};
+	const brokeredOpen = requestStudyHardMetaReviewOpen(pi, {
+		ctx,
+		url: state.target.url,
+		title,
+		fallbackRunId,
+		patch,
+	});
+	if (brokeredOpen) {
+		const opened = await brokeredOpen;
+		return { studio: { url: opened.url }, studyRunId: opened.runId };
+	}
+
 	const studio = await startStudyHardStudio(pi, ctx, {
 		url: state.target.url,
-		title: state.target.kind === "current-work" ? `Meta Review · ${state.target.title}` : `Meta Review · #${state.target.number} ${state.target.title}`,
-		runId: studyRunId,
-		initialPatch: {
-			sourceTitle: state.target.title,
-			sourceKind: "code",
-			learningPhase: "trace",
-			activeSurface: "review",
-			metaReview: { runId: state.runId, runDir: state.runDir, source: state.target.kind === "current-work" ? "current-work" : "github-pr", linkedAt: Date.now() },
-		},
+		title,
+		runId: fallbackRunId,
+		initialPatch: patch,
 	});
-	return { studio, studyRunId };
+	return { studio, studyRunId: fallbackRunId };
 }
 
 function assertRunId(runId: string): void {

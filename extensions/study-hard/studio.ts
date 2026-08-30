@@ -59,6 +59,7 @@ import { parseStudyLearningAgentJson, runIsolatedStudyLearningAgent, type StudyL
 import { diffStudyNoteBlocks, type StudyNoteBlockDiffRow } from "./block-diff.ts";
 import { mergeStudyNoteProposal, type StudyNoteMergeConflict } from "./note-merge.ts";
 import { resolveStudyHardRuntimeConfig } from "./runtime-config.ts";
+import { registerStudyHardMetaReviewOpenBroker, type StudyHardMetaReviewOpenInput } from "./meta-review-broker.ts";
 
 export { buildStudyHardStudioHtml };
 
@@ -4388,6 +4389,31 @@ export function applyStudyHardWorkerResult(
 	};
 }
 
+export async function openMetaReviewInStudyHardStudio(
+	pi: ExtensionAPI,
+	input: StudyHardMetaReviewOpenInput,
+): Promise<StudyHardHandle> {
+	const canonicalUrl = normalizeHttpUrl(input.url);
+	if (!canonicalUrl) throw new Error("Meta Review requires an http(s) Study Hard source URL");
+
+	const current = latestRunId ? handles.get(latestRunId) : undefined;
+	const active = current?.state.url === canonicalUrl && current.window
+		? current
+		: [...handles.values()].reverse().find((handle) => handle.state.url === canonicalUrl && handle.window);
+	if (active) {
+		const updated = updateStudyHardStudio(active.state.runId, input.patch, active.state.revision);
+		await openStudyHardWindow(pi, input.ctx, updated);
+		return updated;
+	}
+
+	return startStudyHardStudio(pi, input.ctx, {
+		url: canonicalUrl,
+		title: input.title,
+		runId: input.fallbackRunId,
+		initialPatch: input.patch,
+	});
+}
+
 export async function openExistingStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionCommandContext | ExtensionContext, runId?: string): Promise<StudyHardHandle> {
 	const requestedId = runId ? validateRunId(runId) : latestRunId;
 	if (requestedId && handles.has(requestedId)) {
@@ -4439,6 +4465,7 @@ export function stopStudyHardStudios(): void {
 }
 
 async function openStudyHardWindow(pi: ExtensionAPI, ctx: ExtensionCommandContext | ExtensionContext, handle: StudyHardHandle): Promise<"glimpse" | "browser" | "none"> {
+	latestRunId = handle.state.runId;
 	if (!ctx.hasUI) return "none";
 	if (handle.window?.show) {
 		handle.window.show({ title: `Study Hard · ${handle.state.title}` });
@@ -4459,7 +4486,17 @@ async function openStudyHardWindow(pi: ExtensionAPI, ctx: ExtensionCommandContex
 	}
 }
 
-export function registerStudyHardBoardTool(pi: ExtensionAPI) {
+export function registerStudyHardBoardTool(pi: ExtensionAPI): () => void {
+	const disposeMetaReviewOpenBroker = registerStudyHardMetaReviewOpenBroker(pi, async (request) => {
+		const handle = await openMetaReviewInStudyHardStudio(pi, request);
+		return {
+			runId: handle.state.runId,
+			url: handle.url,
+			statePath: handle.statePath,
+			revision: handle.state.revision,
+		};
+	});
+
 	pi.registerTool({
 		name: "study_hard_board",
 		label: "Study Hard Board",
@@ -4597,6 +4634,7 @@ export function registerStudyHardBoardTool(pi: ExtensionAPI) {
 			return boardToolResult("updated", handle);
 		},
 	});
+	return disposeMetaReviewOpenBroker;
 }
 
 function boardToolResult(action: string, handle: StudyHardHandle) {
