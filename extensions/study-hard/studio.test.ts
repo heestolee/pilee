@@ -3130,6 +3130,31 @@ test("코드 리뷰 설명 카드는 evidence 줄을 변경 전후 범위로 표
 	assert.match(html, /설명 범위 ·/);
 });
 
+test("Meta Review 상단은 한눈에 보기, 파일 관계, 리뷰 포인트, 읽는 흐름을 독립 surface로 렌더링한다", () => {
+	const html = buildStudyHardStudioHtml();
+	for (const marker of [
+		"function metaReviewOverviewHtml",
+		"<h2>한눈에 보기</h2>",
+		"function metaReviewRelationshipHtml",
+		"reviewRelationshipSection",
+		"reviewRelationshipGuide",
+		"관계를 읽는 법",
+		"function metaReviewFindingsHtml",
+		"reviewFindingsSection",
+		"function metaReviewReadingRailHtml",
+		"reviewReadingRail",
+	]) assert.match(html, new RegExp(marker));
+	assert.match(html, /reviewRelationshipDiagram svg \{[^}]*width:max\(100%,1040px\)/);
+	assert.match(html, /#workspace\.rightDrawerOpen #reviewSurface \.reviewReadingRail \{ display:none/);
+	assert.match(html, /reviewFindingIndex reviewSelectable/);
+	assert.match(html, /data-review-select-kind="card"/);
+	const renderStart = html.indexOf("function renderMetaReview()");
+	const renderEnd = html.indexOf("function scheduleMetaReviewPolling", renderStart);
+	const renderSource = html.slice(renderStart, renderEnd);
+	assert.ok(renderStart >= 0 && renderEnd > renderStart);
+	assert.match(renderSource, /metaReviewOverviewHtml[\s\S]*metaReviewRelationshipHtml[\s\S]*metaReviewFindingsHtml[\s\S]*metaReviewReadingRailHtml/);
+});
+
 test("코드 리뷰 질문 drawer는 전체 PR과 선택 block 대화를 분리한다", () => {
 	const html = buildStudyHardStudioHtml();
 	const matcherBody = /function metaReviewQuestionMatchesContext\(question,context\)\{([\s\S]*?)\}\n    function metaReviewQuestionDraftKey/.exec(html)?.[1];
@@ -3143,6 +3168,8 @@ test("코드 리뷰 질문 drawer는 전체 PR과 선택 block 대화를 분리�
 	assert.equal(matches({ scope: "evidence", evidenceIds: ["D003"] }, { scope: "evidence", evidenceIds: ["D002"] }), false);
 	assert.equal(matches({ scope: "evidence", evidenceIds: ["D002"], selection: { kind: "hunk", id: "E-01" } }, { scope: "evidence", evidenceIds: ["D002"], selectionKind: "line", selectionId: "D002" }), false);
 	assert.equal(matches({ scope: "evidence", evidenceIds: ["D001", "D002"], selection: { kind: "hunk", id: "E-01" } }, { scope: "evidence", evidenceIds: ["D001", "D002"], selectionKind: "hunk", selectionId: "E-01" }), true);
+	assert.equal(matches({ scope: "section", sectionId: "relationships", selection: { kind: "section", id: "relationships" } }, { scope: "section", sectionId: "relationships", selectionKind: "section", selectionId: "relationships" }), true);
+	assert.equal(matches({ scope: "section", sectionId: "overview", selection: { kind: "section", id: "overview" } }, { scope: "section", sectionId: "relationships", selectionKind: "section", selectionId: "relationships" }), false);
 });
 
 test("Study Hard 질문 drawer는 direct와 worker 실행 상태를 같은 UI 문법으로 표시한다", () => {
@@ -3224,17 +3251,21 @@ test("Study Hard 코드 리뷰 surface는 explanation, 결정, 질문, 명시적
 		const uploaded = (await response.json() as any).attachment;
 		response = await fetch(new URL("/meta-review/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ question: "이 allowlist가 왜 필요한가?", scope: "evidence", evidenceIds: [findingEvidenceId], selectionKind: "line", selectionId: findingEvidenceId, attachmentIds: [uploaded.id] }) });
 		assert.equal(response.status, 202);
+		response = await fetch(new URL("/meta-review/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ question: "이 파일 관계를 어떤 순서로 읽어야 해?", scope: "section", sectionId: "relationships", selectionKind: "section", selectionId: "relationships" }) });
+		assert.equal(response.status, 202);
 		response = await fetch(new URL("/meta-review/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ question: "전체 PR의 데이터 흐름은 어떻게 이어지나?", scope: "session" }) });
 		assert.equal(response.status, 202);
 		const questionState = await fetch(new URL("/meta-review/state", handle.url)).then((result) => result.json() as Promise<any>);
-		assert.deepEqual(questionState.questions.map((question: any) => question.scope), ["evidence", "session"]);
+		assert.deepEqual(questionState.questions.map((question: any) => question.scope), ["evidence", "section", "session"]);
 		assert.deepEqual(questionState.questions[0]?.selection, { kind: "line", id: findingEvidenceId, label: "코드 줄 · src/policy.ts:2" });
+		assert.deepEqual(questionState.questions[1]?.selection, { kind: "section", id: "relationships", label: "변경 파일 관계" });
 		assert.deepEqual(questionState.questions[0]?.attachmentIds, [uploaded.id]);
 		assert.equal(questionState.questions[0]?.attachments?.[0]?.name, "review.png");
 		assert.equal(questionState.questions[0]?.attachments?.[0]?.path, uploaded.path);
 		const questionMessages = messages.filter(({ message }) => message.customType === "pilee-meta-review-question");
-		assert.equal(questionMessages.length, 2);
+		assert.equal(questionMessages.length, 3);
 		assert.match(questionMessages[0]?.message.content || "", /review\.png/);
+		assert.match(questionMessages[1]?.message.content || "", /sectionId: relationships/);
 		assert.match(questionMessages[0]?.message.content || "", new RegExp(uploaded.path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 		response = await fetch(new URL("/attachments/remove", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ attachmentId: uploaded.id }) });
 		assert.equal(response.status, 409);

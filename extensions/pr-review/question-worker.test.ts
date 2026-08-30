@@ -99,12 +99,15 @@ test("Meta Review 질문 worker task는 첨부 이미지 provenance를 유지한
 	try {
 		const question = createPrReviewQuestion(runDir, {
 			runId: state.runId,
-			question: "첨부 이미지를 실제 코드와 비교해줘.",
-			scope: "session",
+			question: "첨부 이미지를 파일 관계와 비교해줘.",
+			scope: "section",
+			sectionId: "relationships",
+			selection: { kind: "section", id: "relationships", label: "변경 파일 관계" },
 			attachmentIds: ["review-image-1"],
 			attachments: [{ id: "review-image-1", name: "review.png", mimeType: "image/png", path: "/tmp/review.png", url: "/attachments/review.png" }],
 		}, 1001);
 		const task = buildPrReviewQuestionWorkerTask(state, question, "/tmp/review-pr-42");
+		assert.match(task, /sectionId: relationships/);
 		assert.match(task, /review\.png/);
 		assert.match(task, /\/tmp\/review\.png/);
 		assert.doesNotMatch(task, /data:image/);
