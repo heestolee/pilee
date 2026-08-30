@@ -39,6 +39,60 @@ export interface ReviewDiffFile {
 	binary: boolean;
 }
 
+export type ReviewDeclarationKind =
+	| "file"
+	| "import"
+	| "variable"
+	| "function"
+	| "component"
+	| "hook"
+	| "method"
+	| "constructor"
+	| "class"
+	| "interface"
+	| "type"
+	| "enum"
+	| "namespace"
+	| "property"
+	| "accessor"
+	| "test-suite"
+	| "test";
+
+export interface ReviewDeclarationRange {
+	startLine: number;
+	endLine: number;
+}
+
+export interface ReviewDeclarationSource {
+	path: string;
+	text: string;
+	sha256: string;
+	lineCount: number;
+}
+
+export interface ReviewDeclarationUnit {
+	id: string;
+	fileId: string;
+	kind: ReviewDeclarationKind;
+	name: string;
+	symbolPath: string[];
+	parentId?: string;
+	childIds: string[];
+	depth: number;
+	before?: ReviewDeclarationRange;
+	after?: ReviewDeclarationRange;
+	evidenceIds: string[];
+}
+
+export interface ReviewFileSourceSnapshot {
+	fileId: string;
+	path: string;
+	language: "typescript" | "tsx" | "javascript" | "jsx";
+	before?: ReviewDeclarationSource;
+	after?: ReviewDeclarationSource;
+	declarations: ReviewDeclarationUnit[];
+}
+
 export interface ReviewDiffChunk {
 	id: string;
 	startIndex: number;
@@ -68,6 +122,7 @@ export interface ReviewSourceBundle {
 	lines: ReviewDiffLine[];
 	files: ReviewDiffFile[];
 	chunks: ReviewDiffChunk[];
+	fileSources?: ReviewFileSourceSnapshot[];
 }
 
 function evidenceId(index: number): string {
