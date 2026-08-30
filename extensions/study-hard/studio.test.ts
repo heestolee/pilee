@@ -3184,10 +3184,15 @@ test("declaration selection은 가장 작은 선언을 고르고 Glimpse에서 �
 		"reviewDeclarationUnitHeader",
 		"reviewDeclarationPreviewHost",
 		"reviewDeclarationSourceLine",
-		"상위 범위로",
+		"↑ 상위 범위",
 		"더 작은 범위",
 		"data-review-declaration-side",
-	]) assert.match(html, new RegExp(marker));
+		"reviewSelectionBadge",
+		"data-review-selection-clear",
+		"anchor.after(host)",
+	]) assert.match(html, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+	assert.match(html, /reviewSemanticUnitHeader,.reviewDeclarationUnitHeader \{ display:none; \}/);
+	assert.match(html, /reviewLine\.selected\.selectionStart/);
 });
 
 test("Meta Review 상단은 한눈에 보기, 파일 관계, 리뷰 포인트, 읽는 흐름을 독립 surface로 렌더링한다", () => {
@@ -3232,6 +3237,8 @@ test("코드 리뷰 질문 drawer는 전체 PR과 선택 block 대화를 분리�
 	assert.equal(matches({ scope: "section", sectionId: "overview", selection: { kind: "section", id: "overview" } }, { scope: "section", sectionId: "relationships", selectionKind: "section", selectionId: "relationships" }), false);
 	assert.equal(matches({ scope: "declaration", declarationId: "A-local", declarationSide: "after", selection: { kind: "declaration", id: "A-local" } }, { scope: "declaration", declarationId: "A-local", declarationSide: "after", selectionKind: "declaration", selectionId: "A-local" }), true);
 	assert.equal(matches({ scope: "declaration", declarationId: "A-local", declarationSide: "before", selection: { kind: "declaration", id: "A-local" } }, { scope: "declaration", declarationId: "A-local", declarationSide: "after", selectionKind: "declaration", selectionId: "A-local" }), false);
+	assert.equal(matches({ scope: "meaning", meaningId: "M-contract", selection: { kind: "meaning", id: "M-contract" } }, { scope: "meaning", meaningId: "M-contract", selectionKind: "meaning", selectionId: "M-contract" }), true);
+	assert.equal(matches({ scope: "meaning", meaningId: "M-other", selection: { kind: "meaning", id: "M-other" } }, { scope: "meaning", meaningId: "M-contract", selectionKind: "meaning", selectionId: "M-contract" }), false);
 });
 
 test("Study Hard 질문 drawer는 direct와 worker 실행 상태를 같은 UI 문법으로 표시한다", () => {
@@ -3289,6 +3296,7 @@ test("Study Hard 코드 리뷰 surface는 explanation, 결정, 질문, 명시적
 	}], {
 		overview: { summary: "상태 노출 정책을 allowlist로 좁힙니다.", reviewFocus: "consumer 계약을 함께 확인합니다." },
 		relationships: { summary: "단일 정책 파일 안에서 변경이 완결됩니다.", diagram: "flowchart", relations: [], readingOrder: [{ path: "src/policy.ts", reason: "정책과 호출 결과를 함께 확인합니다." }] },
+		meanings: [{ id: "M-visible-contract", title: "암묵적 상태 허용을 명시적 노출 계약으로 전환", beforeContract: "부정 조건을 통과하는 상태가 노출될 수 있었습니다.", afterContract: "명시한 상태만 노출됩니다.", mechanism: "policy가 allowlist를 소유합니다.", impact: "향후 상태 추가가 자동 노출되지 않습니다.", paths: ["src/policy.ts"], evidenceIds: changedEvidenceIds, basis: [{ kind: "definition", path: "src/policy.ts", line: 1, summary: "visible policy 정의가 allowlist를 소유합니다." }], confidence: "high" }],
 	});
 	const messages: any[] = [];
 	const handle = await startStudyHardStudio({
@@ -3308,6 +3316,7 @@ test("Study Hard 코드 리뷰 surface는 explanation, 결정, 질문, 명시적
 		assert.equal(state.document.relationships.readingOrder[0].path, "src/policy.ts");
 		assert.equal(state.explanationCoverage.changedLinesExplained, bundle.stats.changedRows);
 		assert.ok(state.source.files[0].declarationSource.after.text.includes("const allowed"));
+		assert.equal(state.document.meanings[0].id, "M-visible-contract");
 		let response = await fetch(new URL("/meta-review/decision", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ cardId: "R-01", decision: "review-only" }) });
 		assert.equal(response.status, 200);
 		assert.equal((await response.json() as any).card.decision, "review-only");
@@ -3318,25 +3327,30 @@ test("Study Hard 코드 리뷰 surface는 explanation, 결정, 질문, 명시적
 		assert.equal(response.status, 202);
 		response = await fetch(new URL("/meta-review/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ question: "이 파일 관계를 어떤 순서로 읽어야 해?", scope: "section", sectionId: "relationships", selectionKind: "section", selectionId: "relationships" }) });
 		assert.equal(response.status, 202);
+		response = await fetch(new URL("/meta-review/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ question: "이 계약 전환이 어떤 영향을 주나?", scope: "meaning", meaningId: "M-visible-contract", evidenceIds: changedEvidenceIds, selectionKind: "meaning", selectionId: "M-visible-contract" }) });
+		assert.equal(response.status, 202);
 		const visibleDeclaration = state.source.files[0].declarationSource.declarations.find((item: any) => item.name === "visible");
 		response = await fetch(new URL("/meta-review/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ question: "이 함수의 변경을 전체 선언 범위로 설명해줘.", scope: "declaration", fileId: "F001", declarationId: visibleDeclaration.id, declarationSide: "after", evidenceIds: visibleDeclaration.evidenceIds, selectionKind: "declaration", selectionId: visibleDeclaration.id }) });
 		assert.equal(response.status, 202);
 		response = await fetch(new URL("/meta-review/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ question: "전체 PR의 데이터 흐름은 어떻게 이어지나?", scope: "session" }) });
 		assert.equal(response.status, 202);
 		const questionState = await fetch(new URL("/meta-review/state", handle.url)).then((result) => result.json() as Promise<any>);
-		assert.deepEqual(questionState.questions.map((question: any) => question.scope), ["evidence", "section", "declaration", "session"]);
+		assert.deepEqual(questionState.questions.map((question: any) => question.scope), ["evidence", "section", "meaning", "declaration", "session"]);
 		assert.deepEqual(questionState.questions[0]?.selection, { kind: "line", id: findingEvidenceId, label: "코드 줄 · src/policy.ts:2" });
 		assert.deepEqual(questionState.questions[1]?.selection, { kind: "section", id: "relationships", label: "변경 파일 관계" });
-		assert.equal(questionState.questions[2]?.selection.kind, "declaration");
-		assert.equal(questionState.questions[2]?.declarationSide, "after");
+		assert.equal(questionState.questions[2]?.selection.kind, "meaning");
+		assert.equal(questionState.questions[2]?.meaningId, "M-visible-contract");
+		assert.equal(questionState.questions[3]?.selection.kind, "declaration");
+		assert.equal(questionState.questions[3]?.declarationSide, "after");
 		assert.deepEqual(questionState.questions[0]?.attachmentIds, [uploaded.id]);
 		assert.equal(questionState.questions[0]?.attachments?.[0]?.name, "review.png");
 		assert.equal(questionState.questions[0]?.attachments?.[0]?.path, uploaded.path);
 		const questionMessages = messages.filter(({ message }) => message.customType === "pilee-meta-review-question");
-		assert.equal(questionMessages.length, 4);
+		assert.equal(questionMessages.length, 5);
 		assert.match(questionMessages[0]?.message.content || "", /review\.png/);
 		assert.match(questionMessages[1]?.message.content || "", /sectionId: relationships/);
-		assert.match(questionMessages[2]?.message.content || "", new RegExp(`declarationId: ${visibleDeclaration.id}`));
+		assert.match(questionMessages[2]?.message.content || "", /meaningId: M-visible-contract/);
+		assert.match(questionMessages[3]?.message.content || "", new RegExp(`declarationId: ${visibleDeclaration.id}`));
 		assert.match(questionMessages[0]?.message.content || "", new RegExp(uploaded.path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 		response = await fetch(new URL("/attachments/remove", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ attachmentId: uploaded.id }) });
 		assert.equal(response.status, 409);
