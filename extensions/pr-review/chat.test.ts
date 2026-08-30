@@ -188,7 +188,26 @@ test("Meta Review transcript fallback은 사용자 Q&A만 display true로 한 �
 
 test("question context derives and validates selected review block provenance", () => {
 	const snapshot = {
-		source: { files: [{ id: "F001", path: "src/policy.ts", lines: [{ id: "D001", oldLine: 1 }, { id: "D002", newLine: 1 }] }] },
+		source: { files: [{
+			id: "F001",
+			path: "src/policy.ts",
+			lines: [{ id: "D001", oldLine: 1 }, { id: "D002", newLine: 1 }],
+			declarationSource: {
+				declarations: [{
+					id: "A-F001-value",
+					fileId: "F001",
+					kind: "variable",
+					name: "allowed",
+					symbolPath: ["src/policy.ts", "visible", "allowed"],
+					parentId: "A-F001-visible",
+					childIds: [],
+					depth: 2,
+					before: { startLine: 1, endLine: 1 },
+					after: { startLine: 1, endLine: 2 },
+					evidenceIds: ["D001", "D002"],
+				}],
+			},
+		}] },
 		guides: [{ path: "src/policy.ts", hunks: [{ id: "E-01", title: "허용 상태 명시", evidenceIds: ["D001", "D002"] }] }],
 		cards: [{ id: "R-01", title: "호출자 상태 확인", evidenceIds: ["D001"], code: { path: "src/policy.ts" } }],
 	};
@@ -251,4 +270,40 @@ test("question context derives and validates selected review block provenance", 
 		selectionKind: "section",
 		selectionId: "relationships",
 	}), /section selection does not match/);
+	assert.deepEqual(resolvePrReviewQuestionContext(snapshot, {
+		scope: "declaration",
+		fileId: "F001",
+		declarationId: "A-F001-value",
+		declarationSide: "after",
+		evidenceIds: ["D001", "D002"],
+		selectionKind: "declaration",
+		selectionId: "A-F001-value",
+	}), {
+		scope: "declaration",
+		cardId: undefined,
+		declarationId: "A-F001-value",
+		declarationSide: "after",
+		fileId: "F001",
+		filePath: "src/policy.ts",
+		evidenceIds: ["D001", "D002"],
+		selection: { kind: "declaration", id: "A-F001-value", label: "변수 · allowed · 변경 후 L1–L2" },
+	});
+	assert.throws(() => resolvePrReviewQuestionContext(snapshot, {
+		scope: "declaration",
+		fileId: "F001",
+		declarationId: "A-F001-value",
+		declarationSide: "after",
+		evidenceIds: ["D002"],
+		selectionKind: "declaration",
+		selectionId: "A-F001-value",
+	}), /declaration context does not match/);
+	assert.throws(() => resolvePrReviewQuestionContext(snapshot, {
+		scope: "declaration",
+		fileId: "F001",
+		declarationId: "A-F001-value",
+		declarationSide: "before-mutation",
+		evidenceIds: ["D001", "D002"],
+		selectionKind: "declaration",
+		selectionId: "A-F001-value",
+	}), /valid declarationSide is required/);
 });

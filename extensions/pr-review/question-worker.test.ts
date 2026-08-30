@@ -94,6 +94,29 @@ function reserveAndStartWorker(state: PrReviewRunState, questionId: string, work
 	return claimed.completionToken!;
 }
 
+test("Meta Review 질문 worker task는 declaration hierarchy provenance를 유지한다", () => {
+	const { runDir, state } = fixture();
+	try {
+		const question = createPrReviewQuestion(runDir, {
+			runId: state.runId,
+			question: "이 지역 변수가 왜 필요한지 상위 함수와 함께 설명해줘.",
+			scope: "declaration",
+			declarationId: "A-F001-localState",
+			declarationSide: "after",
+			fileId: "F001",
+			filePath: "src/web.ts",
+			evidenceIds: ["D000007"],
+			selection: { kind: "declaration", id: "A-F001-localState", label: "변수 · localState · 변경 후 L10" },
+		}, 1001);
+		const task = buildPrReviewQuestionWorkerTask(state, question, "/tmp/review-pr-42");
+		assert.match(task, /declarationId: A-F001-localState/);
+		assert.match(task, /declarationSide: after/);
+		assert.match(task, /selection: \{"kind":"declaration","id":"A-F001-localState"/);
+	} finally {
+		rmSync(runDir, { recursive: true, force: true });
+	}
+});
+
 test("Meta Review 질문 worker task는 첨부 이미지 provenance를 유지한다", () => {
 	const { runDir, state } = fixture();
 	try {

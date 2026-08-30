@@ -10,11 +10,12 @@ import {
 	type QuestionExecution,
 	type QuestionExecutionMode,
 } from "../questions/runtime.ts";
+import type { ReviewDeclarationUnit, ReviewFileSourceSnapshot } from "./evidence.ts";
 import type { PrReviewRunState } from "./run.ts";
 
-export type PrReviewQuestionScope = "session" | "section" | "file" | "card" | "evidence";
+export type PrReviewQuestionScope = "session" | "section" | "declaration" | "file" | "card" | "evidence";
 export type PrReviewQuestionStatus = "queued" | "answering" | "answered" | "failed" | "stale";
-export type PrReviewQuestionSelectionKind = "section" | "file" | "line" | "hunk" | "card";
+export type PrReviewQuestionSelectionKind = "section" | "declaration" | "file" | "line" | "hunk" | "card";
 
 export interface PrReviewQuestionSelection {
 	kind: PrReviewQuestionSelectionKind;
@@ -45,6 +46,8 @@ export interface PrReviewQuestion {
 	scope: PrReviewQuestionScope;
 	cardId?: string;
 	sectionId?: string;
+	declarationId?: string;
+	declarationSide?: "before" | "after";
 	fileId?: string;
 	filePath?: string;
 	evidenceIds?: string[];
@@ -157,6 +160,7 @@ interface QuestionContextSnapshot {
 		files: Array<{
 			id: string;
 			path: string;
+			declarationSource?: Pick<ReviewFileSourceSnapshot, "declarations">;
 			lines: Array<{ id: string; oldLine?: number; newLine?: number }>;
 		}>;
 	};
@@ -179,30 +183,70 @@ const PR_REVIEW_SECTION_LABELS: Record<string, string> = {
 	relationships: "변경 파일 관계",
 };
 
+const PR_REVIEW_DECLARATION_KIND_LABELS: Record<ReviewDeclarationUnit["kind"], string> = {
+	file: "파일",
+	import: "import",
+	variable: "변수",
+	function: "함수",
+	component: "컴포넌트",
+	hook: "훅",
+	method: "메서드",
+	constructor: "생성자",
+	class: "클래스",
+	interface: "인터페이스",
+	type: "타입",
+	enum: "enum",
+	namespace: "namespace",
+	property: "속성",
+	accessor: "접근자",
+	"test-suite": "테스트 묶음",
+	test: "테스트",
+};
+
+function declarationSelectionLabel(declaration: ReviewDeclarationUnit, side: "before" | "after"): string {
+	const range = declaration[side]!;
+	const lines = range.startLine === range.endLine ? `L${range.startLine}` : `L${range.startLine}–L${range.endLine}`;
+	return `${PR_REVIEW_DECLARATION_KIND_LABELS[declaration.kind]} · ${declaration.name} · ${side === "before" ? "변경 전" : "변경 후"} ${lines}`;
+}
+
 export function resolvePrReviewQuestionContext(snapshot: QuestionContextSnapshot, input: Record<string, unknown>): {
 	scope: PrReviewQuestionScope;
 	cardId?: string;
 	sectionId?: string;
+	declarationId?: string;
+	declarationSide?: "before" | "after";
 	fileId?: string;
 	filePath?: string;
 	evidenceIds?: string[];
 	selection?: PrReviewQuestionSelection;
 } {
-	const scope = ["session", "section", "file", "card", "evidence"].includes(String(input.scope)) ? String(input.scope) as PrReviewQuestionScope : "session";
+	const scope = ["session", "section", "declaration", "file", "card", "evidence"].includes(String(input.scope)) ? String(input.scope) as PrReviewQuestionScope : "session";
 	const cardId = typeof input.cardId === "string" ? input.cardId : undefined;
 	const sectionId = typeof input.sectionId === "string" ? input.sectionId.trim() : undefined;
+	const declarationId = typeof input.declarationId === "string" ? input.declarationId.trim() : undefined;
+	const declarationSide = input.declarationSide === "before" || input.declarationSide === "after" ? input.declarationSide : undefined;
+	const declarationSideProvided = input.declarationSide !== undefined && input.declarationSide !== null;
 	const fileId = typeof input.fileId === "string" ? input.fileId : undefined;
 	const evidenceIds = uniqueStrings(input.evidenceIds);
 	const selectionKind = typeof input.selectionKind === "string" ? input.selectionKind as PrReviewQuestionSelectionKind : undefined;
 	const selectionId = typeof input.selectionId === "string" ? input.selectionId.trim() : "";
 	const card = cardId ? snapshot.cards.find((item) => item.id === cardId) : undefined;
 	const file = fileId ? snapshot.source.files.find((item) => item.id === fileId) : undefined;
+	const declarationFile = declarationId ? snapshot.source.files.find((item) => item.declarationSource?.declarations.some((declaration) => declaration.id === declarationId)) : undefined;
+	const declaration = declarationId ? declarationFile?.declarationSource?.declarations.find((item) => item.id === declarationId) : undefined;
+	const declarationEvidenceIds = uniqueStrings(declaration?.evidenceIds);
 	const cardFile = card?.code?.path ? snapshot.source.files.find((item) => item.path === card.code?.path) : undefined;
 	const cardEvidenceIds = uniqueStrings(card?.evidenceIds);
 	const knownEvidence = new Set(snapshot.source.files.flatMap((item) => item.lines.map((line) => line.id)));
-	if (scope === "session" && (cardId || sectionId || fileId || evidenceIds.length || selectionKind || selectionId)) throw new Error("session question cannot include selected context");
-	if (scope === "section" && (!sectionId || !PR_REVIEW_SECTION_LABELS[sectionId] || cardId || fileId || evidenceIds.length)) throw new Error("known sectionId is required without file, card, or evidence context");
+	if (scope === "session" && (cardId || sectionId || declarationId || declarationSideProvided || fileId || evidenceIds.length || selectionKind || selectionId)) throw new Error("session question cannot include selected context");
+	if (scope === "section" && (!sectionId || !PR_REVIEW_SECTION_LABELS[sectionId] || cardId || declarationId || declarationSideProvided || fileId || evidenceIds.length)) throw new Error("known sectionId is required without declaration, file, card, or evidence context");
 	if (scope !== "section" && sectionId) throw new Error("sectionId requires section question scope");
+	if (scope === "declaration") {
+		if (!declarationId || !declaration || !declarationFile) throw new Error("known declarationId is required");
+		if (!declarationSide) throw new Error("valid declarationSide is required");
+		if (!declaration[declarationSide] || cardId || sectionId || (fileId && fileId !== declarationFile.id) || !sameStringSet(evidenceIds, declarationEvidenceIds)) throw new Error("declaration context does not match captured source");
+	}
+	if (scope !== "declaration" && (declarationId || declarationSideProvided)) throw new Error("declaration context requires declaration question scope");
 	if (scope === "file" && (!file || cardId || evidenceIds.length)) throw new Error("known fileId without card or evidence is required");
 	if (scope === "card") {
 		if (!card) throw new Error("known cardId is required");
@@ -210,14 +254,17 @@ export function resolvePrReviewQuestionContext(snapshot: QuestionContextSnapshot
 		if ((fileId && fileId !== cardFile.id) || (evidenceIds.length && !sameStringSet(evidenceIds, cardEvidenceIds))) throw new Error("card context does not match review card");
 	}
 	if (scope === "evidence" && (!evidenceIds.length || evidenceIds.some((id) => !knownEvidence.has(id)))) throw new Error("known evidenceIds are required");
-	let selectedFile = scope === "card" ? cardFile : file ?? (scope === "evidence" ? cardFile : undefined);
-	const resolvedEvidenceIds = scope === "card" ? cardEvidenceIds : scope === "evidence" ? evidenceIds : undefined;
+	let selectedFile = scope === "declaration" ? declarationFile : scope === "card" ? cardFile : file ?? (scope === "evidence" ? cardFile : undefined);
+	const resolvedEvidenceIds = scope === "declaration" ? declarationEvidenceIds : scope === "card" ? cardEvidenceIds : scope === "evidence" ? evidenceIds : undefined;
 	let selection: PrReviewQuestionSelection | undefined;
 	if (selectionKind || selectionId) {
-		if (!selectionKind || !["section", "file", "line", "hunk", "card"].includes(selectionKind) || !selectionId) throw new Error("valid selectionKind and selectionId are required together");
+		if (!selectionKind || !["section", "declaration", "file", "line", "hunk", "card"].includes(selectionKind) || !selectionId) throw new Error("valid selectionKind and selectionId are required together");
 		if (selectionKind === "section") {
 			if (scope !== "section" || !sectionId || selectionId !== sectionId || !PR_REVIEW_SECTION_LABELS[sectionId]) throw new Error("section selection does not match question scope");
 			selection = { kind: "section", id: sectionId, label: PR_REVIEW_SECTION_LABELS[sectionId] };
+		} else if (selectionKind === "declaration") {
+			if (scope !== "declaration" || !declaration || !declarationSide || selectionId !== declaration.id) throw new Error("declaration selection does not match question scope");
+			selection = { kind: "declaration", id: declaration.id, label: declarationSelectionLabel(declaration, declarationSide) };
 		} else if (selectionKind === "file") {
 			if (scope !== "file" || !file || selectionId !== file.id) throw new Error("file selection does not match question scope");
 			selection = { kind: "file", id: file.id, label: `파일 · ${file.path}` };
@@ -245,6 +292,8 @@ export function resolvePrReviewQuestionContext(snapshot: QuestionContextSnapshot
 		scope,
 		cardId: card?.id,
 		...(sectionId ? { sectionId } : {}),
+		...(declarationId ? { declarationId } : {}),
+		...(declarationSide ? { declarationSide } : {}),
 		fileId: selectedFile?.id,
 		filePath: selectedFile?.path,
 		evidenceIds: resolvedEvidenceIds?.length ? [...new Set(resolvedEvidenceIds)] : undefined,
@@ -254,7 +303,7 @@ export function resolvePrReviewQuestionContext(snapshot: QuestionContextSnapshot
 
 function normalizeSelection(scope: PrReviewQuestionScope, selection: PrReviewQuestionSelection | undefined): PrReviewQuestionSelection | undefined {
 	if (!selection) return undefined;
-	const expectedScope = selection.kind === "section" ? "section" : selection.kind === "file" ? "file" : selection.kind === "card" ? "card" : "evidence";
+	const expectedScope = selection.kind === "section" ? "section" : selection.kind === "declaration" ? "declaration" : selection.kind === "file" ? "file" : selection.kind === "card" ? "card" : "evidence";
 	if (scope !== expectedScope || !selection.id.trim() || !selection.label.trim()) throw new Error("selection does not match question scope");
 	return { kind: selection.kind, id: selection.id.trim(), label: selection.label.trim() };
 }
@@ -468,6 +517,8 @@ function questionContext(question: PrReviewQuestion): string {
 		`- scope: ${question.scope}`,
 		question.cardId ? `- cardId: ${question.cardId}` : undefined,
 		question.sectionId ? `- sectionId: ${question.sectionId}` : undefined,
+		question.declarationId ? `- declarationId: ${question.declarationId}` : undefined,
+		question.declarationSide ? `- declarationSide: ${question.declarationSide}` : undefined,
 		question.fileId ? `- fileId: ${question.fileId}` : undefined,
 		question.filePath ? `- filePath: ${question.filePath}` : undefined,
 		question.evidenceIds?.length ? `- evidenceIds: ${question.evidenceIds.join(", ")}` : undefined,

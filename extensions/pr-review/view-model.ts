@@ -28,6 +28,7 @@ export function buildMetaReviewClientState(linkedRunDir: string) {
 	const guides = loadMetaReviewGuides(run);
 	const document = loadMetaReviewDocument(run);
 	const cards = readJson<ReviewCard[]>(run.cardsPath);
+	const declarationSourcesByFile = new Map((source.fileSources ?? []).map((snapshot) => [snapshot.fileId, snapshot]));
 	return {
 		run: {
 			runId: run.runId,
@@ -49,6 +50,7 @@ export function buildMetaReviewClientState(linkedRunDir: string) {
 				additions: file.additions,
 				deletions: file.deletions,
 				binary: file.binary,
+				declarationSource: declarationSourcesByFile.get(file.id),
 				lines: source.lines
 					.filter((line) => line.fileId === file.id)
 					.map((line) => ({
