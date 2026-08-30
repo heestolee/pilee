@@ -36,7 +36,7 @@
     "test:verify-report-prior-correction": "node scripts/check-verify-report-prior-correction.mjs",
     "test:verify-report-contract": "node scripts/check-verify-report-prior-correction.mjs",
     "test:pr-ship": "node scripts/check-pr-ship-reply-guidance.mjs",
-    "test:meta-review": "node scripts/run-typescript-test.mjs extensions/pr-review/evidence.test.ts extensions/pr-review/guidance.test.ts extensions/pr-review/incremental.test.ts extensions/pr-review/revision.test.ts extensions/pr-review/freshness.test.ts extensions/pr-review/run.test.ts extensions/pr-review/corpus.test.ts extensions/pr-review/workspace.test.ts extensions/pr-review/chat.test.ts extensions/pr-review/studio.test.ts extensions/pr-review/index.test.ts",
+    "test:meta-review": "node scripts/run-typescript-test.mjs extensions/questions/runtime.test.ts extensions/pr-review/evidence.test.ts extensions/pr-review/guidance.test.ts extensions/pr-review/incremental.test.ts extensions/pr-review/revision.test.ts extensions/pr-review/freshness.test.ts extensions/pr-review/run.test.ts extensions/pr-review/corpus.test.ts extensions/pr-review/workspace.test.ts extensions/pr-review/chat.test.ts extensions/pr-review/question-worker.test.ts extensions/pr-review/studio.test.ts extensions/pr-review/index.test.ts",
     "test:convention-lens": "node scripts/run-typescript-test.mjs extensions/convention-lens/graph.test.ts extensions/convention-lens/review-target.test.ts extensions/convention-lens/reviewer.test.ts extensions/convention-lens/submission.test.ts extensions/convention-lens/index.test.ts extensions/utils/private-profiles.test.ts",
     "meta-review:corpus": "node --experimental-strip-types scripts/pr-review-corpus.mjs",
     "test:tui-ask": "node scripts/run-typescript-test.mjs extensions/tui-ask/index.test.ts",
@@ -64,7 +64,7 @@
     "test:bash-tool-override": "node scripts/run-typescript-test.mjs extensions/bash-tool-override/fanout-guard.test.ts",
     "test:subagent": "node scripts/run-typescript-test.mjs extensions/subagent/stale-ctx.test.ts extensions/subagent/programmatic.test.ts extensions/subagent/retry.test.ts",
     "test:test-refine": "node scripts/run-typescript-test.mjs extensions/test-refine/index.test.ts extensions/test-refine/index.e2e.test.ts",
-    "test:study-hard": "node scripts/run-typescript-test.mjs extensions/study-hard/index.test.ts extensions/study-hard/runtime-config.test.ts extensions/study-hard/learning-agents.test.ts extensions/study-hard/note-merge.test.ts extensions/study-hard/block-diff.test.ts extensions/study-hard/studio.test.ts",
+    "test:study-hard": "node scripts/run-typescript-test.mjs extensions/questions/runtime.test.ts extensions/study-hard/index.test.ts extensions/study-hard/runtime-config.test.ts extensions/study-hard/learning-agents.test.ts extensions/study-hard/note-merge.test.ts extensions/study-hard/block-diff.test.ts extensions/study-hard/studio.test.ts",
     "test:learning-companion": "node scripts/run-typescript-test.mjs extensions/learning-companion/state.test.ts extensions/learning-companion/index.test.ts",
     "test:frame-v2": "node scripts/run-typescript-test.mjs extensions/frame-v2/artifact.test.ts extensions/frame-v2/index.test.ts"
   },

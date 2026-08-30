@@ -495,12 +495,12 @@ test("buildStudyHardStudioHtml gives the note the left+center width and overlays
 	assert.match(html, /전체 실행 흐름을 요약 비교/);
 	assert.match(html, /학습 코치/);
 	assert.match(html, /학습 내용이 아니라 학습 방향을 묻는 곳/);
-	assert.match(html, /P0의 study-hard-worker에 전송/);
+	assert.match(html, /⌥↵ 또는 ⌘↵로 Pi에 질문/);
 	assert.match(html, /processingStage/);
 	assert.match(html, /study-hard-worker 배정 대기 중/);
 	assert.match(html, /충돌 감지 · 최신 노트로 재조정 중/);
 	assert.match(html, /Worker로 다시 시도/);
-	assert.match(html, /Worker에 보내기/);
+	assert.match(html, /Pi에 질문하기/);
 	assert.match(html, /activeQuestionProcessing/);
 	const activeQuestionProcessingSource = /function activeQuestionProcessing\(items\)\{[^}]+\}/.exec(html)?.[0];
 	assert.ok(activeQuestionProcessingSource);
@@ -523,7 +523,7 @@ test("buildStudyHardStudioHtml gives the note the left+center width and overlays
 	assert.match(html, /isQuestionSubmitShortcut/);
 	assert.match(html, /event\.altKey/);
 	assert.match(html, /event\.metaKey/);
-	assert.match(html, /⌥↵ 또는 ⌘↵로 P0의 study-hard-worker에 전송/);
+	assert.match(html, /⌥↵ 또는 ⌘↵로 Pi에 질문/);
 	assert.match(html, /questionDrafts\[draftKey\]='';\s*input\.value='';\s*status\.innerHTML/);
 	assert.match(html, /function companionHtml/);
 	assert.match(html, /작업과 함께 쌓인 학습 기록/);
@@ -2979,6 +2979,23 @@ test("코드 리뷰 질문 drawer는 전체 PR과 선택 block 대화를 분리�
 	assert.equal(matches({ scope: "evidence", evidenceIds: ["D003"] }, { scope: "evidence", evidenceIds: ["D002"] }), false);
 	assert.equal(matches({ scope: "evidence", evidenceIds: ["D002"], selection: { kind: "hunk", id: "E-01" } }, { scope: "evidence", evidenceIds: ["D002"], selectionKind: "line", selectionId: "D002" }), false);
 	assert.equal(matches({ scope: "evidence", evidenceIds: ["D001", "D002"], selection: { kind: "hunk", id: "E-01" } }, { scope: "evidence", evidenceIds: ["D001", "D002"], selectionKind: "hunk", selectionId: "E-01" }), true);
+});
+
+test("Study Hard 질문 drawer는 direct와 worker 실행 상태를 같은 UI 문법으로 표시한다", () => {
+	const html = buildStudyHardStudioHtml();
+	assert.match(html, /Pi에 질문하기/);
+	assert.doesNotMatch(html, />Worker에 보내기</);
+	for (const label of ["답변 경로를 확인하고 있어요.", "현재 Pi가 확인하고 있어요.", "추가 조사를 worker에게 이어서 맡기고 있어요.", "조사 worker를 준비하고 있어요."]) assert.match(html, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+	const helperStart = html.indexOf("function questionExecutionPhase");
+	const helperEnd = html.indexOf("function metaReviewQuestionHtml", helperStart);
+	assert.ok(helperStart >= 0 && helperEnd > helperStart);
+	const helpers = new Function(`${html.slice(helperStart, helperEnd)}; return {questionExecutionPhase,metaReviewQuestionStatusText,metaReviewQuestionNeedsPolling};`)() as any;
+	assert.equal(helpers.questionExecutionPhase({ execution: { phase: "routing" } }), "routing");
+	assert.equal(helpers.metaReviewQuestionStatusText({ execution: { phase: "answering" } }), "현재 Pi가 실제 source를 확인하고 있어요.");
+	assert.equal(helpers.metaReviewQuestionStatusText({ execution: { phase: "worker-running" }, workerRunId: 12 }), "worker #12가 자료를 확인하고 있어요.");
+	assert.equal(helpers.metaReviewQuestionStatusText({ execution: { phase: "stale" } }), "기준 source가 변경되어 다시 확인이 필요해요.");
+	assert.equal(helpers.metaReviewQuestionNeedsPolling({ execution: { phase: "escalating" } }), true);
+	assert.equal(helpers.metaReviewQuestionNeedsPolling({ execution: { phase: "answered" } }), false);
 });
 
 test("Study Hard 코드 리뷰 surface는 explanation, 결정, 질문, 명시적 refresh 요청을 같은 run에 연결한다", async () => {
