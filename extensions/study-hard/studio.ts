@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import { buildTftVisualEmbedHtml } from "../frame-studio/index.ts";
+import { normalizeQuestionExecution, type QuestionExecution } from "../questions/runtime.ts";
 import {
 	createPrReviewQuestion,
 	dispatchPrReviewQuestionToSession,
@@ -233,6 +234,7 @@ export interface StudyQuestionCard {
 	createdAt?: number;
 	answeredAt?: number;
 	processingStatus?: StudyQuestionProcessingStatus;
+	execution?: QuestionExecution;
 	orchestrationId?: string;
 	workerResultPath?: string;
 	workerRunId?: number;
@@ -849,6 +851,7 @@ function normalizeQuestions(value: unknown): StudyQuestionCard[] | undefined {
 			createdAt: typeof item.createdAt === "number" ? item.createdAt : undefined,
 			answeredAt: typeof item.answeredAt === "number" ? item.answeredAt : undefined,
 			processingStatus: ["queued", "running", "result-ready", "merging", "rebasing", "applied", "conflict", "failed"].includes(String(item.processingStatus)) ? String(item.processingStatus) as StudyQuestionProcessingStatus : undefined,
+			execution: normalizeQuestionExecution(item.execution),
 			orchestrationId: typeof item.orchestrationId === "string" ? item.orchestrationId : undefined,
 			workerResultPath: typeof item.workerResultPath === "string" ? item.workerResultPath : undefined,
 			workerRunId: Number.isInteger(item.workerRunId) ? Number(item.workerRunId) : undefined,
@@ -1118,6 +1121,7 @@ export function mergeBoardState(current: StudyHardBoardState, patch: Record<stri
 				noteImpact: question.noteImpact ?? existing.noteImpact,
 				appliedRevision: question.appliedRevision ?? existing.appliedRevision,
 				processingStatus: question.processingStatus || existing.processingStatus,
+				execution: question.execution ?? existing.execution,
 				orchestrationId: question.orchestrationId || existing.orchestrationId,
 				workerResultPath: existing.workerResultPath || question.workerResultPath,
 				workerRunId: question.workerRunId ?? existing.workerRunId,

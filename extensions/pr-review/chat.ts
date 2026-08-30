@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { QuestionExecution } from "../questions/runtime.ts";
 import type { PrReviewRunState } from "./run.ts";
 
 export type PrReviewQuestionScope = "session" | "file" | "card" | "evidence";
@@ -32,6 +33,7 @@ export interface PrReviewQuestion {
 	evidenceIds?: string[];
 	selection?: PrReviewQuestionSelection;
 	status: PrReviewQuestionStatus;
+	execution?: QuestionExecution;
 	answer?: string;
 	evidence?: PrReviewQuestionEvidence[];
 	uncertainty?: string;
