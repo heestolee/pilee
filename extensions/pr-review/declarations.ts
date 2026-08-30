@@ -278,12 +278,7 @@ export async function enrichReviewSourceDeclarations(bundle: ReviewSourceBundle,
 		if (!declarations.length) continue;
 		fileSources.push({ fileId: file.id, path: file.path, language, before, after, declarations });
 	}
-	if (!fileSources.length) return { ...bundle, fileSources: [] };
-	const hash = createHash("sha256").update("review-declarations-v1\n").update(bundle.sourceSha256);
-	for (const snapshot of fileSources) {
-		hash.update(`\n${snapshot.fileId}:${snapshot.before?.sha256 || ""}:${snapshot.after?.sha256 || ""}`);
-	}
-	return { ...bundle, sourceSha256: hash.digest("hex"), fileSources };
+	return { ...bundle, fileSources };
 }
 
 export function findSmallestReviewDeclaration(

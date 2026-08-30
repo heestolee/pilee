@@ -1,7 +1,7 @@
-import { existsSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { DEFAULT_MAX_BYTES, truncateHead, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@mariozechner/pi-coding-agent";
@@ -35,6 +35,7 @@ import {
 	routePrReviewQuestion,
 } from "./question-worker.ts";
 import { captureUnifiedDiff, renderInspectionChunk, type ReviewSourceBundle } from "./evidence.ts";
+import { enrichReviewSourceDeclarations } from "./declarations.ts";
 import { closePrReviewStudios } from "./studio.ts";
 import {
 	createPrReviewRun,
@@ -151,6 +152,22 @@ async function currentWorkBase(pi: ExtensionAPI, root: string, branch: string): 
 	return {};
 }
 
+function readCurrentWorkSource(root: string, path: string): string | undefined {
+	try {
+		const rootPath = realpathSync(root);
+		const candidate = resolve(rootPath, path);
+		if (candidate !== rootPath && !candidate.startsWith(`${rootPath}${sep}`)) return undefined;
+		if (!existsSync(candidate)) return undefined;
+		const stats = lstatSync(candidate);
+		if (!stats.isFile() || stats.isSymbolicLink()) return undefined;
+		const real = realpathSync(candidate);
+		if (real !== rootPath && !real.startsWith(`${rootPath}${sep}`)) return undefined;
+		return readFileSync(real, "utf8");
+	} catch {
+		return undefined;
+	}
+}
+
 export async function captureCurrentWorkRun(
 	pi: ExtensionAPI,
 	cwd: string,
@@ -187,7 +204,13 @@ export async function captureCurrentWorkRun(
 		rootHash,
 		branch,
 	};
-	const bundle = captureUnifiedDiff(diff, { kind: "current-work", root, branch, baseSha: base.baseSha, headSha, rootHash });
+	let bundle = captureUnifiedDiff(diff, { kind: "current-work", root, branch, baseSha: base.baseSha, headSha, rootHash });
+	bundle = await enrichReviewSourceDeclarations(bundle, async ({ side, path }) => {
+		if (side === "after") return readCurrentWorkSource(root, path);
+		if (!base.baseSha) return undefined;
+		const result = await pi.exec("git", ["show", `${base.baseSha}:${path}`], { cwd: root, timeout: 30_000 });
+		return result.code === 0 ? result.stdout : undefined;
+	});
 	return createPrReviewRun(stateRoot, target, bundle, diff, now);
 }
 

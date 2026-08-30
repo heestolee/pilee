@@ -97,7 +97,8 @@ test("before와 after의 같은 선언은 하나의 unit으로 짝지어 삭제�
 	const value = bundle.fileSources?.[0]?.declarations.find((item) => item.name === "value");
 	assert.ok(value?.before && value.after);
 	assert.equal(value.evidenceIds.length, 2);
-	assert.notEqual(bundle.sourceSha256, original.sourceSha256);
+	assert.equal(bundle.sourceSha256, original.sourceSha256);
+	assert.notEqual(bundle.fileSources?.[0]?.before?.sha256, bundle.fileSources?.[0]?.after?.sha256);
 });
 
 test("미지원 언어는 declaration snapshot 없이 기존 semantic hunk fallback을 유지한다", async () => {

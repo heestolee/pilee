@@ -1,11 +1,22 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { createPrReviewQuestion } from "./chat.ts";
 import { captureUnifiedDiff } from "./evidence.ts";
 import { captureCurrentWorkRun, captureGitHubPrRun, parseGitHubPrUrl, registerPrReview } from "./index.ts";
+
+const BASE_SOURCE = `export function visible(status: string) {
+  return status !== "HIDDEN";
+}
+`;
+
+const HEAD_SOURCE = `export function visible(status: string) {
+  const allowed = new Set(["OPEN", "READY"]);
+  return allowed.has(status);
+}
+`;
 
 const DIFF = `diff --git a/src/example.ts b/src/example.ts
 index 1111111..2222222 100644
@@ -31,6 +42,10 @@ function fixture() {
 		on() {},
 		async exec(command: string, args: string[]) {
 			execCalls.push({ command, args });
+			if (command === "gh" && args[0] === "api") {
+				const ref = args.find((value) => value.startsWith("ref="))?.slice(4);
+				return { code: 0, stdout: ref === "base1234" ? BASE_SOURCE : HEAD_SOURCE, stderr: "" };
+			}
 			if (command === "git" && args[0] === "rev-parse" && args[1] === "--show-toplevel") return { code: 0, stdout: "/tmp/review-pr-42\n", stderr: "" };
 			if (command === "git" && args[0] === "rev-parse" && args[1] === "HEAD") return { code: 0, stdout: "head1234567890\n", stderr: "" };
 			if (command === "git" && args[0] === "status") return { code: 0, stdout: "?? .pi/review-context.json\n", stderr: "" };
@@ -71,6 +86,21 @@ test("parseGitHubPrUrl accepts canonical and changes URLs", () => {
 	});
 	assert.throws(() => parseGitHubPrUrl("https://example.com/a/b/pull/1"), /github.com/);
 	assert.throws(() => parseGitHubPrUrl("https://github.com/a/b/issues/1"), /owner\/repo\/pull/);
+});
+
+test("captureGitHubPrRun은 exact base/head source의 선언 snapshot을 pin한다", async () => {
+	const stateRoot = mkdtempSync(join(tmpdir(), "pilee-meta-review-github-source-"));
+	try {
+		const { pi, execCalls } = fixture();
+		const state = await captureGitHubPrRun(pi, "/tmp", parseGitHubPrUrl("https://github.com/acme/repo/pull/42"), stateRoot, 950);
+		const source = JSON.parse(readFileSync(state.sourcePath, "utf8"));
+		const visible = source.fileSources[0].declarations.find((item: any) => item.name === "visible");
+		assert.ok(visible.before && visible.after);
+		assert.equal(visible.evidenceIds.length, 3);
+		assert.deepEqual(execCalls.filter((call) => call.args[0] === "api").map((call) => call.args.find((value) => value.startsWith("ref="))), ["ref=base1234", "ref=head1234567890"]);
+	} finally {
+		rmSync(stateRoot, { recursive: true, force: true });
+	}
 });
 
 test("meta_review_chat answer는 완료된 Q&A를 owner Pi session에 visible transcript로 남긴다", async () => {
@@ -183,7 +213,7 @@ test("meta_review_chat worker route는 legacy runtime에서 명시적 P0 fallbac
 			runId: state.runId,
 			questionId: question.id,
 			headSha: started.details.question.expectedHeadSha,
-			sourceSha256: captureUnifiedDiff(DIFF).sourceSha256,
+			sourceSha256: JSON.parse(readFileSync(state.sourcePath, "utf8")).sourceSha256,
 			answer: "provider-visible completion token으로 legacy apply를 완료했습니다.",
 			evidence: [{ label: "허용 상태 구현", path: "src/example.ts", line: 2 }],
 		}));
@@ -213,13 +243,17 @@ test("meta_review_chat worker route는 legacy runtime에서 명시적 P0 fallbac
 	}
 });
 
-test("captureCurrentWorkRun captures branch plus working changes without requiring Frame", async () => {
+test("captureCurrentWorkRun captures branch, working source, and base declarations without requiring Frame", async () => {
 	const stateRoot = mkdtempSync(join(tmpdir(), "pilee-meta-review-current-"));
+	const repoRoot = mkdtempSync(join(tmpdir(), "pilee-meta-review-repo-"));
+	mkdirSync(join(repoRoot, "src"), { recursive: true });
+	writeFileSync(join(repoRoot, "src", "example.ts"), HEAD_SOURCE);
 	try {
 		const pi = {
 			async exec(command: string, args: string[]) {
 				if (command === "gh") return { code: 1, stdout: "", stderr: "no PR" };
-				if (args[0] === "rev-parse" && args[1] === "--show-toplevel") return { code: 0, stdout: "/tmp/acme-repo\n", stderr: "" };
+				if (args[0] === "rev-parse" && args[1] === "--show-toplevel") return { code: 0, stdout: `${repoRoot}\n`, stderr: "" };
+				if (args[0] === "show" && args[1] === "base1234567890:src/example.ts") return { code: 0, stdout: BASE_SOURCE, stderr: "" };
 				if (args[0] === "branch") return { code: 0, stdout: "feature/current\n", stderr: "" };
 				if (args[0] === "rev-parse" && args[1] === "HEAD") return { code: 0, stdout: "head1234567890\n", stderr: "" };
 				if (args[0] === "symbolic-ref") return { code: 0, stdout: "origin/development\n", stderr: "" };
@@ -231,14 +265,19 @@ test("captureCurrentWorkRun captures branch plus working changes without requiri
 				throw new Error(`unexpected ${command} ${args.join(" ")}`);
 			},
 		} as any;
-		const state = await captureCurrentWorkRun(pi, "/tmp/acme-repo", stateRoot, 900);
+		const state = await captureCurrentWorkRun(pi, repoRoot, stateRoot, 900);
 		assert.equal(state.target.kind, "current-work");
 		assert.equal(state.target.branch, "feature/current");
 		assert.equal(state.target.baseRefName, "development");
 		assert.equal(state.target.number, 0);
 		assert.match(readFileSync(state.diffPath, "utf8"), /allowed/);
+		const source = JSON.parse(readFileSync(state.sourcePath, "utf8"));
+		const visible = source.fileSources[0].declarations.find((item: any) => item.name === "visible");
+		assert.ok(visible.before && visible.after);
+		assert.equal(visible.evidenceIds.length, 3);
 	} finally {
 		rmSync(stateRoot, { recursive: true, force: true });
+		rmSync(repoRoot, { recursive: true, force: true });
 	}
 });
 
@@ -297,7 +336,7 @@ test("/meta-review captures one PR from any cwd and sends the inlined workflow",
 				setStatus(key: string, value?: string) { statuses.push([key, value]); },
 			},
 		});
-		assert.deepEqual(execCalls.map((call) => call.args.slice(0, 4)), [
+		assert.deepEqual(execCalls.filter((call) => call.args[0] === "pr").map((call) => call.args.slice(0, 4)), [
 			["pr", "view", "42", "--repo"],
 			["pr", "diff", "42", "--repo"],
 		]);

@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { captureUnifiedDiff } from "./evidence.ts";
+import { enrichReviewSourceDeclarations } from "./declarations.ts";
 import { createPrReviewRun, type PrReviewRunState, type PrReviewTarget } from "./run.ts";
 
 export interface ParsedPrUrl {
@@ -67,6 +68,10 @@ export async function fetchGitHubPrTarget(pi: ExtensionAPI, cwd: string, input: 
 	};
 }
 
+function githubContentsEndpoint(repoRef: string, path: string): string {
+	return `repos/${repoRef}/contents/${path.split("/").map((segment) => encodeURIComponent(segment)).join("/")}`;
+}
+
 export async function captureGitHubPrRun(
 	pi: ExtensionAPI,
 	cwd: string,
@@ -77,7 +82,7 @@ export async function captureGitHubPrRun(
 	const repoRef = `${input.owner}/${input.repo}`;
 	const { target, metadata } = await fetchGitHubPrTarget(pi, cwd, input);
 	const diff = await requireExec(pi, "gh", ["pr", "diff", String(input.number), "--repo", repoRef, "--color", "never"], cwd, 120_000);
-	const bundle = captureUnifiedDiff(diff, {
+	let bundle = captureUnifiedDiff(diff, {
 		kind: "github-pr",
 		repository: repoRef,
 		state: metadata.state,
@@ -85,6 +90,20 @@ export async function captureGitHubPrRun(
 		mergeable: metadata.mergeable,
 		baseSha: metadata.baseRefOid,
 		headSha: metadata.headRefOid,
+	});
+	bundle = await enrichReviewSourceDeclarations(bundle, async ({ side, path }) => {
+		const ref = side === "before" ? metadata.baseRefOid : metadata.headRefOid;
+		if (!ref) return undefined;
+		return requireExec(pi, "gh", [
+			"api",
+			githubContentsEndpoint(repoRef, path),
+			"--method",
+			"GET",
+			"-f",
+			`ref=${ref}`,
+			"-H",
+			"Accept: application/vnd.github.raw+json",
+		], cwd, 30_000);
 	});
 	return createPrReviewRun(stateRoot, target, bundle, diff, now);
 }
