@@ -3121,7 +3121,7 @@ test("변경 의미 visual은 역할 색상 flowchart와 sequence source를 구�
 	assert.match(sequence, /rect rgb\(255,242,217\)/);
 	assert.match(sequence, /A3-->>A2: 충돌 refetch/);
 	assert.match(sequence, /Note over A3,A2: 최신 snapshot/);
-	for (const marker of ["reviewMeaningDiagramViewport", "reviewMeaningLegend", "max-height:320px", "읽는 법"]) assert.match(html, new RegExp(marker));
+	for (const marker of ["reviewMeaningDiagramViewport", "reviewMeaningLegend", "data-review-visual-kind", "max-height:320px", "읽는 법"]) assert.match(html, new RegExp(marker));
 });
 
 test("코드 리뷰 surface는 한눈에 보기, 독립 관계·finding, compact 파일 목록과 접힌 문맥을 유지한다", () => {
