@@ -128,7 +128,27 @@ test("meta_review_chat worker route는 legacy runtime에서 명시적 P0 fallbac
 		assert.equal(fallback.message.display, false);
 		assert.equal(fallback.options.triggerTurn, true);
 		assert.match(fallback.message.content, /meta-review-question-worker --isolated/);
+		assert.match(fallback.message.content, /action="worker_started"/);
 		assert.match(fallback.message.content, /apply_worker_result/);
+		assert.doesNotMatch(fallback.message.content, /apply_worker_result[^\n]*expectedSourceSha256=/);
+
+		const started = await tools.get("meta_review_chat").execute("call-worker-started", {
+			action: "worker_started",
+			runId: state.runId,
+			questionId: question.id,
+			workerRunId: 81,
+		}, undefined, undefined, { cwd: "/tmp/review-pr-42" });
+		assert.equal(started.details.question.execution.phase, "worker-running");
+		const messageCount = messages.length;
+		const duplicateRoute = await tools.get("meta_review_chat").execute("call-route-worker-again", {
+			action: "route",
+			runId: state.runId,
+			questionId: question.id,
+			executionMode: "worker",
+			routeReason: "같은 fallback route 재호출",
+		}, undefined, undefined, { cwd: "/tmp/review-pr-42" });
+		assert.equal(duplicateRoute.details.workerLaunched, false);
+		assert.equal(messages.length, messageCount);
 	} finally {
 		rmSync(stateRoot, { recursive: true, force: true });
 	}

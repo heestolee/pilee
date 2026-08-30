@@ -29,6 +29,17 @@ import type { PrReviewRunState } from "./run.ts";
 
 const MAX_WORKER_RESULT_BYTES = 2 * 1024 * 1024;
 
+class PrReviewSourceStaleError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "PrReviewSourceStaleError";
+	}
+}
+
+function throwStaleSource(message: string): never {
+	throw new PrReviewSourceStaleError(message);
+}
+
 interface MetaReviewQuestionWorkerArtifact {
 	schemaVersion: 1;
 	kind: "meta-review-question-worker-result";
@@ -224,10 +235,10 @@ async function observedSourceSha256(
 ): Promise<string> {
 	const root = (await execText(pi, "git", ["rev-parse", "--show-toplevel"], cwd)).trim();
 	const head = (await execText(pi, "git", ["rev-parse", "HEAD"], root)).trim();
-	if (pin.headSha && head !== pin.headSha) throw new Error(`stale Meta Review checkout: expected ${pin.headSha}, current ${head}`);
+	if (pin.headSha && head !== pin.headSha) throwStaleSource(`stale Meta Review checkout: expected ${pin.headSha}, current ${head}`);
 	let diff = "";
 	if (state.target.kind === "current-work") {
-		if (state.target.root && realpathSync(root) !== realpathSync(state.target.root)) throw new Error(`stale Meta Review root: expected ${state.target.root}, current ${root}`);
+		if (state.target.root && realpathSync(root) !== realpathSync(state.target.root)) throwStaleSource(`stale Meta Review root: expected ${state.target.root}, current ${root}`);
 		diff = await execText(pi, "git", ["diff", "--no-color", "--find-renames", state.target.baseSha ?? "HEAD"], root);
 		const untracked = (await execText(pi, "git", ["ls-files", "--others", "--exclude-standard", "-z"], root)).split("\0").filter(Boolean);
 		for (const path of untracked) {
@@ -236,14 +247,15 @@ async function observedSourceSha256(
 		}
 	} else {
 		const dirty = nonReviewDirtyLines(await execText(pi, "git", ["status", "--porcelain=v1", "--untracked-files=all"], root));
-		if (dirty.length) throw new Error(`stale Meta Review checkout has local changes: ${dirty.slice(0, 5).join(", ")}`);
+		if (dirty.length) throwStaleSource(`stale Meta Review checkout has local changes: ${dirty.slice(0, 5).join(", ")}`);
 		const repository = `${state.target.owner}/${state.target.repo}`;
 		const metadataText = await execText(pi, "gh", ["pr", "view", String(state.target.number), "--repo", repository, "--json", "headRefOid"], root);
 		const remoteHead = (JSON.parse(metadataText) as { headRefOid?: unknown }).headRefOid;
-		if (pin.headSha && remoteHead !== pin.headSha) throw new Error(`stale Meta Review PR head: expected ${pin.headSha}, current ${String(remoteHead || "unknown")}`);
+		if (typeof remoteHead !== "string" || !remoteHead.trim()) throw new Error("Meta Review PR head를 관찰하지 못했습니다.");
+		if (pin.headSha && remoteHead !== pin.headSha) throwStaleSource(`stale Meta Review PR head: expected ${pin.headSha}, current ${remoteHead}`);
 		diff = await execText(pi, "gh", ["pr", "diff", String(state.target.number), "--repo", repository, "--color", "never"], root);
 	}
-	if (!diff.trim()) throw new Error("stale Meta Review source: 현재 diff가 비어 있습니다.");
+	if (!diff.trim()) throwStaleSource("stale Meta Review source: 현재 diff가 비어 있습니다.");
 	return captureUnifiedDiff(diff).sourceSha256;
 }
 
@@ -254,7 +266,7 @@ async function assertObservedReviewSource(
 	pin: PrReviewQuestionSourcePin,
 ): Promise<void> {
 	const observed = await observedSourceSha256(pi, state, cwd, pin);
-	if (observed !== pin.sourceSha256) throw new Error(`stale Meta Review source: expected ${pin.sourceSha256}, current ${observed}`);
+	if (observed !== pin.sourceSha256) throwStaleSource(`stale Meta Review source: expected ${pin.sourceSha256}, current ${observed}`);
 }
 
 export async function applyPrReviewQuestionWorkerResult(
@@ -263,17 +275,21 @@ export async function applyPrReviewQuestionWorkerResult(
 	questionId: string,
 	artifactPath: string,
 	cwd: string,
-	pin: PrReviewQuestionSourcePin,
 	workerRunId?: number,
 	now = Date.now(),
 ): Promise<PrReviewQuestion> {
 	let question = currentQuestion(state, questionId);
 	if (isPrReviewQuestionTerminal(question)) return question;
+	const pin = sourcePin(question);
 	try {
 		await assertObservedReviewSource(pi, state, cwd, pin);
 	} catch (error) {
-		const stale = stalePrReviewQuestion(state.runDir, questionId, error instanceof Error ? error.message : String(error), now, "worker", workerRunId);
-		return stale.status === "stale" ? publishPrReviewQuestionTranscript(pi, state, stale, "stale") : stale;
+		const message = error instanceof Error ? error.message : String(error);
+		if (error instanceof PrReviewSourceStaleError) {
+			const stale = stalePrReviewQuestion(state.runDir, questionId, message, now, "worker", workerRunId);
+			return stale.status === "stale" ? publishPrReviewQuestionTranscript(pi, state, stale, "stale") : stale;
+		}
+		return failPrReviewQuestionWorker(pi, state, questionId, message, workerRunId, now);
 	}
 	question = currentQuestion(state, questionId);
 	if (isPrReviewQuestionTerminal(question)) return question;
@@ -325,7 +341,6 @@ export function launchPrReviewQuestionWorker(
 	cwd: string,
 ): boolean {
 	if (!pi.events || typeof pi.events.emit !== "function") return false;
-	const pin = sourcePin(question);
 	let claimed = false;
 	const request: ProgrammaticSubagentLaunchRequest = {
 		kind: "programmatic-subagent-launch",
@@ -349,7 +364,7 @@ export function launchPrReviewQuestionWorker(
 			}
 			const artifactPath = completion.output.match(/^artifactPath:\s*(.+)$/m)![1]!.trim();
 			try {
-				await applyPrReviewQuestionWorkerResult(pi, state, question.id, artifactPath, cwd, pin, completion.runId);
+				await applyPrReviewQuestionWorkerResult(pi, state, question.id, artifactPath, cwd, completion.runId);
 			} catch (applyError) {
 				failPrReviewQuestionWorker(pi, state, question.id, applyError instanceof Error ? applyError.message : String(applyError), completion.runId);
 			}

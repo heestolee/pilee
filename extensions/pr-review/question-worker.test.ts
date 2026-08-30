@@ -59,15 +59,21 @@ async function freshSourceExec(command: string, args: string[]) {
 	throw new Error(`unexpected command: ${command} ${args.join(" ")}`);
 }
 
-function writeArtifact(state: PrReviewRunState, questionId: string, answer = "호출 경로는 Web → API → DB 순서입니다."): string {
+function writeArtifact(
+	state: PrReviewRunState,
+	questionId: string,
+	answer = "호출 경로는 Web → API → DB 순서입니다.",
+	sourceSha256 = SOURCE_SHA,
+	headSha = HEAD,
+): string {
 	const path = prReviewQuestionWorkerResultPath(state, questionId);
 	writeFileSync(path, JSON.stringify({
 		schemaVersion: 1,
 		kind: "meta-review-question-worker-result",
 		runId: state.runId,
 		questionId,
-		headSha: HEAD,
-		sourceSha256: SOURCE_SHA,
+		headSha,
+		sourceSha256,
 		answer,
 		evidence: [{ label: "호출 시작점", path: "src/web.ts", line: 10 }],
 		uncertainty: "운영 빈도는 확인하지 않았습니다.",
@@ -185,12 +191,13 @@ test("실패 처리 뒤 늦은 worker completion은 terminal 질문을 되살리
 	}
 });
 
-test("worker 완료 시 checkout source diff가 바뀌면 같은 HEAD여도 stale 상태를 남긴다", async () => {
+test("checkout source와 artifact가 함께 바뀌어도 저장된 routing pin을 대체하지 못한다", async () => {
 	const { runDir, state, question } = fixture();
 	try {
 		routePrReviewQuestion(state, question.id, "worker", "전체 흐름 검증", 1100);
-		const artifactPath = writeArtifact(state, question.id);
 		const changedDiff = DIFF.replace("newCall();", "newerCall();");
+		const changedSourceSha = captureUnifiedDiff(changedDiff).sourceSha256;
+		const artifactPath = writeArtifact(state, question.id, "바뀐 source 기준 답변", changedSourceSha);
 		const entries: any[] = [];
 		const pi = {
 			appendEntry(customType: string, data: any) { entries.push({ customType, data }); },
@@ -200,12 +207,38 @@ test("worker 완료 시 checkout source diff가 바뀌면 같은 HEAD여도 stal
 				return freshSourceExec(command, args);
 			},
 		} as any;
-		const stale = await applyPrReviewQuestionWorkerResult(pi, state, question.id, artifactPath, "/tmp/review-pr-42", { sourceSha256: SOURCE_SHA, headSha: HEAD }, 74, 1200);
+		const stale = await applyPrReviewQuestionWorkerResult(pi, state, question.id, artifactPath, "/tmp/review-pr-42", 74, 1200);
 		assert.equal(stale.status, "stale");
 		assert.equal(stale.execution?.phase, "stale");
 		assert.match(stale.error || "", /stale Meta Review source/);
 		assert.equal(entries.length, 1);
 		assert.match(entries[0].data.content, /기준 변경/);
+	} finally {
+		rmSync(runDir, { recursive: true, force: true });
+	}
+});
+
+test("source freshness 관찰 실패는 source 변경이 아니라 worker 실패로 기록한다", async () => {
+	const { runDir, state, question } = fixture();
+	try {
+		routePrReviewQuestion(state, question.id, "worker", "전체 흐름 검증", 1100);
+		const artifactPath = writeArtifact(state, question.id);
+		const entries: any[] = [];
+		const pi = {
+			appendEntry(customType: string, data: any) { entries.push({ customType, data }); },
+			sendMessage() {},
+			async exec(command: string, args: string[]) {
+				if (command === "gh" && args[0] === "pr" && args[1] === "view") return { code: 1, stdout: "", stderr: "oauth token expired" };
+				return freshSourceExec(command, args);
+			},
+		} as any;
+		const failed = await applyPrReviewQuestionWorkerResult(pi, state, question.id, artifactPath, "/tmp/review-pr-42", 76, 1200);
+		assert.equal(failed.status, "failed");
+		assert.equal(failed.execution?.phase, "failed");
+		assert.match(failed.error || "", /oauth token expired/);
+		assert.equal(entries.length, 1);
+		assert.match(entries[0].data.content, /질문 실패/);
+		assert.doesNotMatch(entries[0].data.content, /기준 변경/);
 	} finally {
 		rmSync(runDir, { recursive: true, force: true });
 	}
@@ -230,7 +263,7 @@ test("current-work worker는 HEAD가 같아도 tracked diff 변경을 다시 계
 				throw new Error(`unexpected git args: ${args.join(" ")}`);
 			},
 		} as any;
-		const stale = await applyPrReviewQuestionWorkerResult(pi, state, question.id, artifactPath, runDir, { sourceSha256: SOURCE_SHA, headSha: HEAD }, 75, 1200);
+		const stale = await applyPrReviewQuestionWorkerResult(pi, state, question.id, artifactPath, runDir, 75, 1200);
 		assert.equal(stale.status, "stale");
 		assert.match(stale.error || "", /stale Meta Review source/);
 	} finally {
@@ -249,7 +282,7 @@ test("worker 완료 시 checkout head가 바뀌면 답변 대신 stale 상태를
 			sendMessage() {},
 			async exec() { return { code: 0, stdout: `${"c".repeat(40)}\n`, stderr: "" }; },
 		} as any;
-		const stale = await applyPrReviewQuestionWorkerResult(pi, state, question.id, artifactPath, "/tmp/review-pr-42", { sourceSha256: SOURCE_SHA, headSha: HEAD }, 72, 1200);
+		const stale = await applyPrReviewQuestionWorkerResult(pi, state, question.id, artifactPath, "/tmp/review-pr-42", 72, 1200);
 		assert.equal(stale.status, "stale");
 		assert.equal(stale.execution?.phase, "stale");
 		assert.match(stale.error || "", /stale Meta Review checkout/);
