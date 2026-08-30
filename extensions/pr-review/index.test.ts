@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { createPrReviewQuestion } from "./chat.ts";
+import { captureUnifiedDiff } from "./evidence.ts";
 import { captureCurrentWorkRun, captureGitHubPrRun, parseGitHubPrUrl, registerPrReview } from "./index.ts";
 
 const DIFF = `diff --git a/src/example.ts b/src/example.ts
@@ -30,6 +31,9 @@ function fixture() {
 		on() {},
 		async exec(command: string, args: string[]) {
 			execCalls.push({ command, args });
+			if (command === "git" && args[0] === "rev-parse" && args[1] === "--show-toplevel") return { code: 0, stdout: "/tmp/review-pr-42\n", stderr: "" };
+			if (command === "git" && args[0] === "rev-parse" && args[1] === "HEAD") return { code: 0, stdout: "head1234567890\n", stderr: "" };
+			if (command === "git" && args[0] === "status") return { code: 0, stdout: "?? .pi/review-context.json\n", stderr: "" };
 			if (args[1] === "view") {
 				return {
 					code: 0,
@@ -157,6 +161,8 @@ test("meta_review_chat worker route는 legacy runtime에서 명시적 P0 fallbac
 		assert.equal(started.details.claimed, true);
 		assert.equal(typeof started.details.completionToken, "string");
 		assert.equal(started.details.question.execution.phase, "worker-running");
+		const providerVisibleCompletionToken = started.content[0].text.match(/^completionToken:\s*(\S+)$/m)?.[1];
+		assert.equal(providerVisibleCompletionToken, started.details.completionToken);
 		const duplicateClaim = await tools.get("meta_review_chat").execute("call-worker-started-again", {
 			action: "worker_started",
 			runId: state.runId,
@@ -168,6 +174,29 @@ test("meta_review_chat worker route는 legacy runtime에서 명시적 P0 fallbac
 		assert.equal(duplicateClaim.details.completionToken, undefined);
 		assert.equal(duplicateClaim.details.question.workerRunId, 81);
 		assert.equal(duplicateClaim.terminate, true);
+		assert.doesNotMatch(duplicateClaim.content[0].text, /^completionToken:/m);
+
+		const workerResultPath = started.details.question.workerResultPath as string;
+		writeFileSync(workerResultPath, JSON.stringify({
+			schemaVersion: 1,
+			kind: "meta-review-question-worker-result",
+			runId: state.runId,
+			questionId: question.id,
+			headSha: started.details.question.expectedHeadSha,
+			sourceSha256: captureUnifiedDiff(DIFF).sourceSha256,
+			answer: "provider-visible completion token으로 legacy apply를 완료했습니다.",
+			evidence: [{ label: "허용 상태 구현", path: "src/example.ts", line: 2 }],
+		}));
+		const applied = await tools.get("meta_review_chat").execute("call-apply-worker-result", {
+			action: "apply_worker_result",
+			runId: state.runId,
+			questionId: question.id,
+			completionToken: providerVisibleCompletionToken,
+			workerResultPath,
+			workerRunId: 81,
+		}, undefined, undefined, { cwd: "/tmp/review-pr-42" });
+		assert.equal(applied.details.question.status, "answered");
+		assert.match(applied.content[0].text, /legacy apply를 완료/);
 
 		const messageCount = messages.length;
 		const duplicateRoute = await tools.get("meta_review_chat").execute("call-route-worker-again", {

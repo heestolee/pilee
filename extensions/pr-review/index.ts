@@ -471,8 +471,11 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 				const question = claimed.claimed && claimed.completionToken
 					? markPrReviewQuestionWorkerStarted(state, params.questionId, claimed.completionToken, params.workerRunId, claimedAt)
 					: claimed.question;
+				const text = claimed.claimed && claimed.completionToken
+					? `Meta Review question worker launch claimed: ${question.id}\ncompletionToken: ${claimed.completionToken}\n이 token은 이 claim 승자의 apply_worker_result 또는 fail에만 사용하세요.`
+					: `Meta Review question worker launch not claimed: ${question.id}\nworker를 실행하지 말고 이 turn을 종료하세요.`;
 				return {
-					content: [{ type: "text", text: claimed.claimed ? `Meta Review question worker launch claimed: ${question.id}` : `Meta Review question worker launch not claimed: ${question.id}` }],
+					content: [{ type: "text", text }],
 					details: { runId: state.runId, question, claimed: claimed.claimed, ...(claimed.completionToken ? { completionToken: claimed.completionToken } : {}) },
 					terminate: !claimed.claimed,
 				};
