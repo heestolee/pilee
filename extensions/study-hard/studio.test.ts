@@ -337,7 +337,7 @@ test("mergeBoardState keeps question scope and target immutable across agent fee
 	);
 });
 
-test("generic board patch는 owner가 정해진 learner 질문의 execution과 terminal state를 바꾸지 않는다", () => {
+test("generic board patch는 owner가 정해진 learner 질문의 누락·삭제·identity 변경을 무시한다", () => {
 	const current = createInitialBoardState({ url: "https://example.com", runId: "question-owner-guard" });
 	current.questions = [{
 		id: "Q001",
@@ -345,32 +345,39 @@ test("generic board patch는 owner가 정해진 learner 질문의 execution과 t
 		origin: "learner",
 		scope: "session",
 		status: "open",
+		createdAt: 100,
 		processingStatus: "running",
 		execution: { mode: "worker", phase: "worker-running", routedAt: 100, updatedAt: 110 },
 		orchestrationId: "worker-owner",
+		workerResultPath: "/safe/Q001.json",
 		workerRunId: 17,
 	}];
+	const protectedQuestion = structuredClone(current.questions[0]);
 	const patched = mergeBoardState(current, {
 		questions: [{
 			id: "Q001",
 			question: "질문을 바꿔치기",
 			origin: "learner",
-			scope: "session",
+			scope: "note-block",
+			targetNodeId: "forged-node",
+			targetNoteBlockId: "forged-block",
+			attachmentIds: ["forged-attachment"],
+			createdAt: 999,
 			status: "answered",
 			feedback: "generic patch 답변",
 			processingStatus: "applied",
 			execution: { mode: "direct", phase: "answered", routedAt: 100, updatedAt: 120, completedAt: 120 },
 			orchestrationId: "pi-forged",
+			workerResultPath: "/tmp/forged.json",
 		}],
 	});
-	assert.equal(patched.questions[0].question, "전체 경로를 검증해줘");
-	assert.equal(patched.questions[0].status, "open");
-	assert.equal(patched.questions[0].feedback, undefined);
-	assert.equal(patched.questions[0].processingStatus, "running");
-	assert.equal(patched.questions[0].execution?.mode, "worker");
-	assert.equal(patched.questions[0].execution?.phase, "worker-running");
-	assert.equal(patched.questions[0].orchestrationId, "worker-owner");
-	assert.equal(patched.questions[0].workerRunId, 17);
+	assert.deepEqual(patched.questions[0], protectedQuestion);
+
+	const omitted = mergeBoardState(current, {
+		questions: [{ id: "Q002", question: "코치 질문", origin: "coach", scope: "session", status: "open" }],
+	});
+	assert.deepEqual(omitted.questions.find((question) => question.id === "Q001"), protectedQuestion);
+	assert.equal(omitted.questions.some((question) => question.id === "Q002"), true);
 });
 
 test("mergeBoardState는 학습 코치 scope와 비동기 처리 상태를 보존한다", () => {
@@ -2298,6 +2305,59 @@ test("persisted answered와 failed 모순은 applied 상태로 복구한다", as
 	}
 });
 
+test("failed worker의 늦은 충돌 completion과 fallback apply는 terminal 상태를 되살리지 않는다", async () => {
+	const requests: ProgrammaticSubagentLaunchRequest[] = [];
+	const fakePi = {
+		sendMessage() {},
+		events: {
+			emit(_name: string, payload: unknown) {
+				const request = payload as ProgrammaticSubagentLaunchRequest;
+				requests.push(request);
+				request.claim();
+				request.onStarted({ requestId: request.requestId, runId: 91, agent: request.agent });
+			},
+		},
+		exec() { throw new Error("no browser fallback in test"); },
+	} as any;
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/failed-late-completion", runId: "failed-late-completion" });
+	try {
+		updateStudyHardStudio(handle.state.runId, {
+			noteDocument: { title: "Late completion", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "a", type: "paragraph", text: "A0" }] }] },
+			questions: [{ id: "Q001", origin: "learner", scope: "session", question: "A를 바꿔줘", status: "open", processingStatus: "queued", execution: { phase: "routing", routedAt: 100, updatedAt: 100 }, orchestrationId: "pi-test" }],
+		});
+		routeStudyHardQuestion(handle.state.runId, handle.state.revision, "Q001", "worker", "노트 변경이 필요합니다.");
+		let state = structuredClone(handle.state);
+		const base = structuredClone(state.noteDocument);
+		const proposed = structuredClone(base);
+		proposed.sections[0].blocks[0].text = "A-worker";
+		updateStudyHardStudio(handle.state.runId, {
+			noteDocument: { title: "Late completion", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "a", type: "paragraph", text: "A-current" }] }] },
+		});
+		state = structuredClone(handle.state);
+		writeStudyHardWorkerResult(state, state.questions[0], base, proposed, "늦은 worker 결과");
+		markStudyHardWorkerFailed(handle.state.runId, "Q001", "worker process failed", 91);
+		const failedRevision = handle.state.revision;
+		await requests[0]!.onCompleted({
+			requestId: requests[0]!.requestId,
+			runId: 91,
+			agent: requests[0]!.agent,
+			status: "done",
+			output: `[STUDY_HARD_WORKER_RESULT]\nartifactPath: ${state.questions[0].workerResultPath}`,
+		});
+		assert.equal(requests.length, 1);
+		assert.equal(handle.state.revision, failedRevision);
+		assert.equal(handle.state.questions[0].processingStatus, "failed");
+		assert.equal(handle.state.questions[0].execution?.phase, "failed");
+		assert.equal(handle.state.questions[0].workerRebaseCount, 0);
+		assert.equal(handle.state.noteDocument.sections[0].blocks[0].text, "A-current");
+		const fallbackApply = applyStudyHardWorkerResult(handle.state.runId, "Q001", state.questions[0].workerResultPath, 91);
+		assert.equal(fallbackApply.status, "terminal");
+		assert.equal(handle.state.revision, failedRevision);
+	} finally {
+		stopStudyHardStudios();
+	}
+});
+
 test("subagent completion 실패는 question을 failed로 남겨 재시도 가능하게 한다", async () => {
 	const fakePi = { sendMessage() {}, exec() { throw new Error("no browser fallback in test"); } } as any;
 	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/worker-failure", runId: "worker-failure" });
@@ -2828,6 +2888,31 @@ test("Study Hard 질문은 owner Pi가 direct로 route하고 같은 drawer에 �
 	handle = updateStudyHardStudio(runId, {});
 	assert.equal(handle.state.questions[0].execution?.phase, "answered");
 	assert.equal(handle.state.questions[0].feedback, "현재 자료의 핵심은 책임 경계를 구분하는 것입니다.");
+});
+
+test("terminal direct 질문의 중복 응답은 최초 feedback과 visible transcript를 보존한다", async () => {
+	const entries: Array<{ customType: string; data: any }> = [];
+	const fakePi = {
+		appendEntry(customType: string, data: any) { entries.push({ customType, data }); },
+		sendMessage() {},
+		exec() { throw new Error("no browser fallback in test"); },
+	} as any;
+	const handle = await startStudyHardStudio(fakePi, { hasUI: false, cwd: "/tmp/study-hard" } as any, { url: "https://example.com/direct-terminal", runId: "direct-terminal" });
+	try {
+		updateStudyHardStudio(handle.state.runId, {
+			questions: [{ id: "Q001", origin: "learner", scope: "session", question: "한 번만 답해줘", status: "open", processingStatus: "queued", execution: { phase: "routing", routedAt: 100, updatedAt: 100 }, orchestrationId: "pi-test" }],
+		});
+		routeStudyHardQuestion(handle.state.runId, handle.state.revision, "Q001", "direct", "현재 board 문맥으로 답할 수 있습니다.");
+		respondStudyHardQuestion(handle.state.runId, handle.state.revision, "Q001", "첫 답변");
+		const completedRevision = handle.state.revision;
+		respondStudyHardQuestion(handle.state.runId, completedRevision, "Q001", "덮어쓸 두 번째 답변");
+		assert.equal(handle.state.revision, completedRevision);
+		assert.equal(handle.state.questions[0].feedback, "첫 답변");
+		assert.equal(handle.state.questions[0].execution?.phase, "answered");
+		assert.equal(entries.filter(({ data }) => data.details?.eventKind === "pi-answer").length, 1);
+	} finally {
+		stopStudyHardStudios();
+	}
 });
 
 test("direct 질문은 범위가 넓어지면 같은 ID로 programmatic worker에 한 번 승격한다", async () => {

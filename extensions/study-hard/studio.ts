@@ -1069,6 +1069,13 @@ interface MergeBoardStateOptions {
 	allowQuestionExecutionTransitions?: boolean;
 }
 
+function isQuestionExecutionOwnerProtected(question: StudyQuestionCard, options: MergeBoardStateOptions): boolean {
+	return !options.allowQuestionExecutionTransitions
+		&& question.origin === "learner"
+		&& question.scope !== "coach"
+		&& (!!question.execution || /^(?:pi|worker)-/.test(question.orchestrationId || ""));
+}
+
 export function mergeBoardState(current: StudyHardBoardState, patch: Record<string, unknown>, options: MergeBoardStateOptions = {}): StudyHardBoardState {
 	const next: StudyHardBoardState = { ...current, schemaVersion: 1, revision: Number(current.revision || 0) + 1, updatedAt: Date.now() };
 	if (typeof patch.title === "string" && patch.title.trim()) next.title = patch.title.trim();
@@ -1118,14 +1125,12 @@ export function mergeBoardState(current: StudyHardBoardState, patch: Record<stri
 	const questions = normalizeQuestions(patch.questions);
 	if (questions) {
 		const currentById = new Map(current.questions.map((question) => [question.id, question]));
-		next.questions = questions.map((question) => {
+		const patchedIds = new Set(questions.map((question) => question.id));
+		const mergedQuestions = questions.map((question) => {
 			const existing = currentById.get(question.id);
 			if (!existing) return question;
-			const ownerProtected = !options.allowQuestionExecutionTransitions
-				&& existing.origin === "learner"
-				&& existing.scope !== "coach"
-				&& (!!existing.execution || /^(?:pi|worker)-/.test(existing.orchestrationId || ""));
-			const nextProcessingStatus = ownerProtected ? existing.processingStatus : question.processingStatus || existing.processingStatus;
+			if (isQuestionExecutionOwnerProtected(existing, options)) return existing;
+			const nextProcessingStatus = question.processingStatus || existing.processingStatus;
 			return {
 				...question,
 				question: existing.question,
@@ -1136,23 +1141,28 @@ export function mergeBoardState(current: StudyHardBoardState, patch: Record<stri
 				targetFlowStepId: existing.targetFlowStepId || question.targetFlowStepId,
 				targetNoteBlockId: existing.targetNoteBlockId || question.targetNoteBlockId,
 				attachmentIds: existing.attachmentIds || question.attachmentIds,
-				feedback: ownerProtected ? existing.feedback : question.feedback,
-				status: ownerProtected ? existing.status : question.status,
-				answeredAt: ownerProtected ? existing.answeredAt : question.answeredAt,
-				resultSummary: ownerProtected ? existing.resultSummary : question.resultSummary ?? existing.resultSummary,
-				noteImpact: ownerProtected ? existing.noteImpact : question.noteImpact ?? existing.noteImpact,
-				appliedRevision: ownerProtected ? existing.appliedRevision : question.appliedRevision ?? existing.appliedRevision,
+				feedback: question.feedback,
+				status: question.status,
+				answeredAt: question.answeredAt,
+				resultSummary: question.resultSummary ?? existing.resultSummary,
+				noteImpact: question.noteImpact ?? existing.noteImpact,
+				appliedRevision: question.appliedRevision ?? existing.appliedRevision,
 				processingStatus: nextProcessingStatus,
-				execution: ownerProtected ? existing.execution : question.execution ?? existing.execution,
-				orchestrationId: ownerProtected ? existing.orchestrationId : question.orchestrationId || existing.orchestrationId,
+				execution: question.execution ?? existing.execution,
+				orchestrationId: question.orchestrationId || existing.orchestrationId,
 				workerResultPath: existing.workerResultPath || question.workerResultPath,
-				workerRunId: ownerProtected ? existing.workerRunId : question.workerRunId ?? existing.workerRunId,
-				workerResultHash: ownerProtected ? existing.workerResultHash : question.workerResultHash || existing.workerResultHash,
-				workerRebaseCount: ownerProtected ? existing.workerRebaseCount : question.workerRebaseCount ?? existing.workerRebaseCount,
-				processingError: ownerProtected ? existing.processingError : ["failed", "rebasing", "conflict"].includes(String(nextProcessingStatus)) ? question.processingError || existing.processingError : undefined,
-				processingErrorStage: ownerProtected ? existing.processingErrorStage : ["failed", "rebasing", "conflict"].includes(String(nextProcessingStatus)) ? question.processingErrorStage || existing.processingErrorStage : undefined,
+				workerRunId: question.workerRunId ?? existing.workerRunId,
+				workerResultHash: question.workerResultHash || existing.workerResultHash,
+				workerRebaseCount: question.workerRebaseCount ?? existing.workerRebaseCount,
+				processingError: ["failed", "rebasing", "conflict"].includes(String(nextProcessingStatus)) ? question.processingError || existing.processingError : undefined,
+				processingErrorStage: ["failed", "rebasing", "conflict"].includes(String(nextProcessingStatus)) ? question.processingErrorStage || existing.processingErrorStage : undefined,
 			};
 		});
+		for (const [index, existing] of current.questions.entries()) {
+			if (patchedIds.has(existing.id) || !isQuestionExecutionOwnerProtected(existing, options)) continue;
+			mergedQuestions.splice(Math.min(index, mergedQuestions.length), 0, existing);
+		}
+		next.questions = mergedQuestions;
 	}
 	const attachments = normalizeAttachments(patch.attachments);
 	if (attachments) next.attachments = attachments;
@@ -2635,6 +2645,11 @@ function hasAcceptedWorkerAnswer(question: StudyQuestionCard | undefined): boole
 	return !!question && (question.processingStatus === "applied" || (question.status === "answered" && !!question.feedback?.trim()));
 }
 
+function hasTerminalQuestionExecution(question: StudyQuestionCard | undefined): boolean {
+	if (!question) return false;
+	return ["answered", "failed", "stale"].includes(studyQuestionExecution(question).phase);
+}
+
 function markCurrentWorkerQuestionFailed(
 	handle: StudyHardHandle,
 	questionId: string,
@@ -2644,7 +2659,7 @@ function markCurrentWorkerQuestionFailed(
 ): void {
 	if (!isCurrentWorkerQuestion(handle, questionId, orchestrationId)) return;
 	const current = handle.state.questions.find((question) => question.id === questionId);
-	if (hasAcceptedWorkerAnswer(current)) return;
+	if (hasAcceptedWorkerAnswer(current) || hasTerminalQuestionExecution(current)) return;
 	const message = error.trim().slice(0, 2_000) || "study-hard-worker 실행에 실패했습니다.";
 	updateQuestionCards(handle, [questionId], (question) => ({
 		...question,
@@ -2725,7 +2740,7 @@ function handleStudyHardWorkerCompletion(
 	completion: ProgrammaticSubagentCompleted,
 ): void {
 	const question = handle.state.questions.find((item) => item.id === questionId);
-	if (!question || question.orchestrationId !== orchestrationId || hasAcceptedWorkerAnswer(question)) return;
+	if (!question || question.orchestrationId !== orchestrationId || hasAcceptedWorkerAnswer(question) || hasTerminalQuestionExecution(question)) return;
 	const completionError = validateWorkerCompletionOutput(question, completion);
 	if (completionError) {
 		markCurrentWorkerQuestionFailed(handle, questionId, orchestrationId, completionError, completion.runId);
@@ -2793,7 +2808,8 @@ function sendLearnerQuestionToWorkerDispatcher(
 			return true;
 		},
 		onStarted: ({ runId }) => {
-			if (!isCurrentWorkerQuestion(handle, question.id, question.orchestrationId)) return;
+			const currentQuestion = handle.state.questions.find((item) => item.id === question.id);
+			if (!isCurrentWorkerQuestion(handle, question.id, question.orchestrationId) || hasTerminalQuestionExecution(currentQuestion)) return;
 			updateQuestionCards(handle, [question.id], (current) => ({
 				...current,
 				execution: updateQuestionExecutionPhase(studyQuestionExecution(current, "worker"), "worker-running"),
@@ -3675,6 +3691,7 @@ function respondStudyHardQuestionWithOwner(
 	if (current.state.revision !== expectedRevision) throw new Error(`stale Study Hard revision: expected ${expectedRevision}, current ${current.state.revision}`);
 	const target = current.state.questions.find((question) => question.id === questionId);
 	if (!target || target.origin !== "learner" || target.scope === "coach") throw new Error(`현재 Pi가 응답할 learner question을 찾지 못했습니다: ${questionId}`);
+	if (hasTerminalQuestionExecution(target)) return current;
 	const feedback = feedbackValue.trim().slice(0, MAX_STUDY_ANSWER_LENGTH);
 	if (!feedback) throw new Error("study_hard_board respond에는 feedback이 필요합니다.");
 	if (patch.questions !== undefined) throw new Error("study_hard_board respond는 questions를 자동 갱신하므로 직접 전달할 수 없습니다.");
@@ -3738,7 +3755,7 @@ interface StudyHardWorkerResultArtifact {
 
 export interface StudyHardWorkerApplyResult {
 	handle: StudyHardHandle;
-	status: "applied" | "already-applied" | "rebasing" | "conflict";
+	status: "applied" | "already-applied" | "terminal" | "rebasing" | "conflict";
 	workerRunId?: number;
 	changedPaths: string[];
 	conflicts: StudyNoteMergeConflict[];
@@ -4244,7 +4261,7 @@ export function markStudyHardWorkerStarted(
 	if (!handle) throw new Error(`Study Hard Studio run을 찾을 수 없습니다: ${id}`);
 	if (handle.state.revision !== expectedRevision) throw new Error(`stale Study Hard revision: expected ${expectedRevision}, current ${handle.state.revision}`);
 	const question = handle.state.questions.find((item) => item.id === questionId);
-	if (hasAcceptedWorkerAnswer(question)) return handle;
+	if (hasAcceptedWorkerAnswer(question) || hasTerminalQuestionExecution(question)) return handle;
 	if (!question || question.origin !== "learner" || question.scope === "coach" || !["queued", "rebasing", "running"].includes(String(question.processingStatus))) throw new Error(`worker를 시작할 learner question을 찾지 못했습니다: ${questionId}`);
 	updateQuestionCards(handle, [questionId], (item) => ({
 		...item,
@@ -4268,7 +4285,7 @@ export function markStudyHardWorkerFailed(
 	const handle = handles.get(id);
 	if (!handle) throw new Error(`Study Hard Studio run을 찾을 수 없습니다: ${id}`);
 	const question = handle.state.questions.find((item) => item.id === questionId);
-	if (hasAcceptedWorkerAnswer(question)) return handle;
+	if (hasAcceptedWorkerAnswer(question) || hasTerminalQuestionExecution(question)) return handle;
 	const failureEligible = new Set<StudyQuestionProcessingStatus>(["queued", "running", "result-ready", "merging", "rebasing", "conflict", "failed"]);
 	if (!question || question.origin !== "learner" || question.scope === "coach" || !question.processingStatus || !failureEligible.has(question.processingStatus)) throw new Error(`worker 실패를 기록할 learner question을 찾지 못했습니다: ${questionId}`);
 	const message = workerError.trim().slice(0, 2_000) || "study-hard-worker 실행에 실패했습니다.";
@@ -4295,10 +4312,11 @@ export function applyStudyHardWorkerResult(
 	if (!handle) throw new Error(`Study Hard Studio run을 찾을 수 없습니다: ${id}`);
 	const question = handle.state.questions.find((item) => item.id === questionId);
 	if (!question || question.origin !== "learner" || question.scope === "coach") throw new Error(`worker result를 적용할 learner question을 찾지 못했습니다: ${questionId}`);
+	if (hasAcceptedWorkerAnswer(question)) return { handle, status: "already-applied", workerRunId: question.workerRunId, changedPaths: [], conflicts: [] };
+	if (hasTerminalQuestionExecution(question)) return { handle, status: "terminal", workerRunId: question.workerRunId, changedPaths: [], conflicts: [] };
 	const expectedPath = resolve(question.workerResultPath || "");
 	const receivedPath = resolve(workerResultPath);
 	if (!question.workerResultPath || receivedPath !== expectedPath || dirname(receivedPath) !== dirname(resolve(handle.statePath))) throw new Error("Study Hard worker result path가 question 계약과 다릅니다.");
-	if (hasAcceptedWorkerAnswer(question)) return { handle, status: "already-applied", workerRunId: question.workerRunId, changedPaths: [], conflicts: [] };
 	const { artifact, hash } = readStudyHardWorkerResult(handle, question, workerResultPath);
 	if (question.processingStatus === "rebasing" || question.processingStatus === "conflict") {
 		if (!question.workerResultHash || question.workerResultHash !== hash) throw new Error("Study Hard worker result가 충돌 확인 후 변경되었습니다. 다시 worker를 실행해 주세요.");
