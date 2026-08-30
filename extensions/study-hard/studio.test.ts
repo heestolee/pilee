@@ -7,6 +7,7 @@ import { setGlimpseOpenForTests } from "../utils/glimpse.ts";
 import type { LearningCompanionManifest } from "../learning-companion/state.ts";
 import { PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT, type ProgrammaticSubagentLaunchRequest } from "../subagent/programmatic.ts";
 import { captureUnifiedDiff } from "../pr-review/evidence.ts";
+import { enrichReviewSourceDeclarations } from "../pr-review/declarations.ts";
 import { createPrReviewRun, markChunkInspected, saveMetaReviewSubmission } from "../pr-review/run.ts";
 import { applyStudyHardWorkerResult, attachStudyHardLearningCompanion, buildStudyHardStudioHtml, buildStudyNoteExportHtml, checkpointStudyHardLearning, createInitialBoardState, layoutStudyGraph, loadPersistedStudyHardState, markStudyHardWorkerFailed, markStudyHardWorkerStarted, mergeBoardState, openExistingStudyHardStudio, proposeStudyHardLearningChange, recordStudyHardLearningEvent, registerStudyHardBoardTool, resolveStudyNoteBlockVisual, respondStudyHardQuestion, routeStudyHardQuestion, startStudyHardStudio, stopStudyHardStudios, updateStudyHardStudio } from "./studio.ts";
 
@@ -3132,7 +3133,7 @@ test("코드 리뷰 설명 카드는 evidence 줄을 변경 전후 범위로 표
 
 test("changed code row는 semantic hunk를 일급 선택 단위로 사용하고 나머지 row는 line으로 fallback한다", () => {
 	const html = buildStudyHardStudioHtml();
-	const helperStart = html.indexOf("function metaReviewLineSelectionContext");
+	const helperStart = html.indexOf("function metaReviewDeclarationForLine");
 	const helperEnd = html.indexOf("function metaReviewSelectionAttributes", helperStart);
 	assert.ok(helperStart >= 0 && helperEnd > helperStart);
 	const selectionContext = new Function(`${html.slice(helperStart, helperEnd)}; return metaReviewLineSelectionContext;`)() as (line: any, file: any, hunk?: any) => any;
@@ -3151,6 +3152,35 @@ test("changed code row는 semantic hunk를 일급 선택 단위로 사용하고 
 	});
 	for (const marker of ["reviewSemanticUnitHeader", "reviewSemanticUnit", "reviewSemanticStart", "reviewSemanticEnd"]) assert.match(html, new RegExp(marker));
 	assert.match(html, /reviewLine\.reviewSemanticUnit\.selected/);
+});
+
+test("declaration selection은 가장 작은 선언을 고르고 Glimpse에서 상위·하위 범위와 full source를 탐색한다", () => {
+	const html = buildStudyHardStudioHtml();
+	const helperStart = html.indexOf("function metaReviewDeclarationForLine");
+	const helperEnd = html.indexOf("function metaReviewDeclarationContext", helperStart);
+	assert.ok(helperStart >= 0 && helperEnd > helperStart);
+	const declarationForLine = new Function(`${html.slice(helperStart, helperEnd)}; return metaReviewDeclarationForLine;`)() as (file: any, line: any) => any;
+	const file = {
+		declarationSource: {
+			declarations: [
+				{ id: "A-file", kind: "file", depth: 0, before: { startLine: 1, endLine: 10 }, after: { startLine: 1, endLine: 12 } },
+				{ id: "A-function", kind: "function", depth: 1, parentId: "A-file", before: { startLine: 2, endLine: 9 }, after: { startLine: 2, endLine: 11 } },
+				{ id: "A-local", kind: "variable", depth: 2, parentId: "A-function", before: { startLine: 4, endLine: 4 }, after: { startLine: 4, endLine: 4 } },
+			],
+		},
+	};
+	assert.equal(declarationForLine(file, { kind: "addition", newLine: 4 })?.declaration.id, "A-local");
+	assert.equal(declarationForLine(file, { kind: "context", oldLine: 5, newLine: 5 })?.declaration.id, "A-function");
+	assert.equal(declarationForLine(file, { kind: "deletion", oldLine: 4 })?.side, "before");
+	assert.equal(declarationForLine({ declarationSource: { declarations: [{ id: "A-file", kind: "file", depth: 0, after: { startLine: 1, endLine: 10 } }] } }, { kind: "addition", newLine: 3 }), undefined);
+	for (const marker of [
+		"reviewDeclarationUnitHeader",
+		"reviewDeclarationPreviewHost",
+		"reviewDeclarationSourceLine",
+		"상위 범위로",
+		"더 작은 범위",
+		"data-review-declaration-side",
+	]) assert.match(html, new RegExp(marker));
 });
 
 test("Meta Review 상단은 한눈에 보기, 파일 관계, 리뷰 포인트, 읽는 흐름을 독립 surface로 렌더링한다", () => {
@@ -3193,6 +3223,8 @@ test("코드 리뷰 질문 drawer는 전체 PR과 선택 block 대화를 분리�
 	assert.equal(matches({ scope: "evidence", evidenceIds: ["D001", "D002"], selection: { kind: "hunk", id: "E-01" } }, { scope: "evidence", evidenceIds: ["D001", "D002"], selectionKind: "hunk", selectionId: "E-01" }), true);
 	assert.equal(matches({ scope: "section", sectionId: "relationships", selection: { kind: "section", id: "relationships" } }, { scope: "section", sectionId: "relationships", selectionKind: "section", selectionId: "relationships" }), true);
 	assert.equal(matches({ scope: "section", sectionId: "overview", selection: { kind: "section", id: "overview" } }, { scope: "section", sectionId: "relationships", selectionKind: "section", selectionId: "relationships" }), false);
+	assert.equal(matches({ scope: "declaration", declarationId: "A-local", declarationSide: "after", selection: { kind: "declaration", id: "A-local" } }, { scope: "declaration", declarationId: "A-local", declarationSide: "after", selectionKind: "declaration", selectionId: "A-local" }), true);
+	assert.equal(matches({ scope: "declaration", declarationId: "A-local", declarationSide: "before", selection: { kind: "declaration", id: "A-local" } }, { scope: "declaration", declarationId: "A-local", declarationSide: "after", selectionKind: "declaration", selectionId: "A-local" }), false);
 });
 
 test("Study Hard 질문 drawer는 direct와 worker 실행 상태를 같은 UI 문법으로 표시한다", () => {
@@ -3215,7 +3247,9 @@ test("Study Hard 질문 drawer는 direct와 worker 실행 상태를 같은 UI �
 test("Study Hard 코드 리뷰 surface는 explanation, 결정, 질문, 명시적 refresh 요청을 같은 run에 연결한다", async () => {
 	const reviewRoot = mkdtempSync(join(tmpdir(), "study-hard-meta-review-"));
 	const diff = `diff --git a/src/policy.ts b/src/policy.ts\nindex 1111111..2222222 100644\n--- a/src/policy.ts\n+++ b/src/policy.ts\n@@ -1,3 +1,4 @@\n export function visible(status: string) {\n-  return status !== "HIDDEN";\n+  const allowed = new Set(["OPEN", "READY"]);\n+  return allowed.has(status);\n }\n`;
-	const bundle = captureUnifiedDiff(diff);
+	const beforeSource = `export function visible(status: string) {\n  return status !== "HIDDEN";\n}\n`;
+	const afterSource = `export function visible(status: string) {\n  const allowed = new Set(["OPEN", "READY"]);\n  return allowed.has(status);\n}\n`;
+	const bundle = await enrichReviewSourceDeclarations(captureUnifiedDiff(diff), async ({ side }) => side === "before" ? beforeSource : afterSource);
 	const run = createPrReviewRun(reviewRoot, {
 		url: "https://github.com/acme/repo/pull/42",
 		owner: "acme",
@@ -3266,6 +3300,7 @@ test("Study Hard 코드 리뷰 surface는 explanation, 결정, 질문, 명시적
 		assert.equal(state.document.overview.reviewFocus, "consumer 계약을 함께 확인합니다.");
 		assert.equal(state.document.relationships.readingOrder[0].path, "src/policy.ts");
 		assert.equal(state.explanationCoverage.changedLinesExplained, bundle.stats.changedRows);
+		assert.ok(state.source.files[0].declarationSource.after.text.includes("const allowed"));
 		let response = await fetch(new URL("/meta-review/decision", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ cardId: "R-01", decision: "review-only" }) });
 		assert.equal(response.status, 200);
 		assert.equal((await response.json() as any).card.decision, "review-only");
@@ -3276,19 +3311,25 @@ test("Study Hard 코드 리뷰 surface는 explanation, 결정, 질문, 명시적
 		assert.equal(response.status, 202);
 		response = await fetch(new URL("/meta-review/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ question: "이 파일 관계를 어떤 순서로 읽어야 해?", scope: "section", sectionId: "relationships", selectionKind: "section", selectionId: "relationships" }) });
 		assert.equal(response.status, 202);
+		const visibleDeclaration = state.source.files[0].declarationSource.declarations.find((item: any) => item.name === "visible");
+		response = await fetch(new URL("/meta-review/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ question: "이 함수의 변경을 전체 선언 범위로 설명해줘.", scope: "declaration", fileId: "F001", declarationId: visibleDeclaration.id, declarationSide: "after", evidenceIds: visibleDeclaration.evidenceIds, selectionKind: "declaration", selectionId: visibleDeclaration.id }) });
+		assert.equal(response.status, 202);
 		response = await fetch(new URL("/meta-review/ask", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ question: "전체 PR의 데이터 흐름은 어떻게 이어지나?", scope: "session" }) });
 		assert.equal(response.status, 202);
 		const questionState = await fetch(new URL("/meta-review/state", handle.url)).then((result) => result.json() as Promise<any>);
-		assert.deepEqual(questionState.questions.map((question: any) => question.scope), ["evidence", "section", "session"]);
+		assert.deepEqual(questionState.questions.map((question: any) => question.scope), ["evidence", "section", "declaration", "session"]);
 		assert.deepEqual(questionState.questions[0]?.selection, { kind: "line", id: findingEvidenceId, label: "코드 줄 · src/policy.ts:2" });
 		assert.deepEqual(questionState.questions[1]?.selection, { kind: "section", id: "relationships", label: "변경 파일 관계" });
+		assert.equal(questionState.questions[2]?.selection.kind, "declaration");
+		assert.equal(questionState.questions[2]?.declarationSide, "after");
 		assert.deepEqual(questionState.questions[0]?.attachmentIds, [uploaded.id]);
 		assert.equal(questionState.questions[0]?.attachments?.[0]?.name, "review.png");
 		assert.equal(questionState.questions[0]?.attachments?.[0]?.path, uploaded.path);
 		const questionMessages = messages.filter(({ message }) => message.customType === "pilee-meta-review-question");
-		assert.equal(questionMessages.length, 3);
+		assert.equal(questionMessages.length, 4);
 		assert.match(questionMessages[0]?.message.content || "", /review\.png/);
 		assert.match(questionMessages[1]?.message.content || "", /sectionId: relationships/);
+		assert.match(questionMessages[2]?.message.content || "", new RegExp(`declarationId: ${visibleDeclaration.id}`));
 		assert.match(questionMessages[0]?.message.content || "", new RegExp(uploaded.path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 		response = await fetch(new URL("/attachments/remove", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ attachmentId: uploaded.id }) });
 		assert.equal(response.status, 409);
