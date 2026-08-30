@@ -337,10 +337,8 @@ export function buildStudyHardStudioHtml(capabilityToken = "", nativeVisualCaptu
     .stepFacts { display:flex; gap:5px; flex-wrap:wrap; }
     .fact { border:1px solid #d6ccbf; border-radius:999px; padding:3px 6px; color:#61594f; font-size:9px; }
     .fact.risk { border-color:#d9a4aa; color:#9f3d49; }
-    .noteBody { flex:1; min-height:0; overflow:auto; padding:22px 18px 80px; transition:padding-right .2s ease; }
+    .noteBody { flex:1; min-height:0; overflow:auto; padding:22px 18px 80px; }
     .noteDocument { max-width:1120px; margin:0 auto; }
-    #workspace.rightDrawerOpen #noteSurface .noteBody { padding-right:calc(var(--drawer-width) + 18px); }
-    #workspace.rightDrawerOpen #noteSurface .noteDocument { max-width:none; margin-left:0; margin-right:0; }
     .noteHeader { margin-bottom:24px; }
     .noteHeader h2 { font-size:28px; margin:0 0 8px; }
     .workContract { margin:0 0 22px; border:1px solid #c8bbab; border-radius:16px; background:#f3eee5; overflow:hidden; }

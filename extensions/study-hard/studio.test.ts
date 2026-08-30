@@ -460,7 +460,7 @@ test("layoutStudyGraph builds non-overlapping subtree regions instead of trustin
 	assert.deepEqual({ x: laidOut.find((node) => node.id === "solution")?.x, y: laidOut.find((node) => node.id === "solution")?.y }, { x: 292, y: 204 });
 });
 
-test("buildStudyHardStudioHtml gives the note the left+center width and overlays one drawer at a time", () => {
+test("buildStudyHardStudioHtml keeps the learning note geometry stable under the question drawer overlay", () => {
 	const html = buildStudyHardStudioHtml();
 	assert.doesNotMatch(html, /reactflow@11/);
 	assert.match(html, /mermaid@11/);
@@ -668,7 +668,10 @@ test("buildStudyHardStudioHtml gives the note the left+center width and overlays
 	assert.match(html, /drawer right/);
 	assert.match(html, /--drawer-width:min\(430px,max\(360px,34vw\),calc\(100vw - 32px\)\)/);
 	assert.match(html, /\.noteDocument \{ max-width:1120px/);
-	assert.match(html, /#workspace\.rightDrawerOpen #noteSurface \.noteBody/);
+	assert.doesNotMatch(html, /#workspace\.rightDrawerOpen #noteSurface \.noteBody/);
+	assert.doesNotMatch(html, /#workspace\.rightDrawerOpen #noteSurface \.noteDocument/);
+	assert.doesNotMatch(html, /\.noteBody \{[^}]*transition:padding-right/);
+	assert.match(html, /#workspace\.rightDrawerOpen #reviewSurface \.reviewBody/);
 	assert.match(html, /id==='detailDrawer'[\s\S]*statusDrawer'[\s\S]*historyDrawer'/);
 	assert.doesNotMatch(html, /max-width:860px/);
 	assert.match(html, /\/workspace/);
