@@ -22,7 +22,7 @@ source:
   - user-direction:2026-08-30-question-execution-owner-routing
   - review:2026-08-30-question-owner-race-invariants
 reviewed_at: 2026-08-30
-reviewed_commit: 5ad8414936162ebbf868be6f7624416a3cbb01a2
+reviewed_commit: 229f50d43b50d65c6c24894ebf28c487f29ad6a9
 related:
   - study-hard-worker-flexible-generation-strict-apply
   - human-pr-review-precedent-harness
@@ -58,15 +58,15 @@ routing
 ```
 
 - `direct → worker`만 허용합니다. direct 조사 중 새 독립 작업 축이 발견됐을 때 같은 question ID로 한 번 승격합니다.
-- worker가 시작된 뒤 direct로 되돌리지 않습니다. generic state patch나 늦은 direct completion도 worker 소유권을 바꿀 수 없습니다.
-- `answered / failed / stale`는 terminal입니다. 늦은 answer, fail, worker completion은 기존 결과를 덮어쓰지 않습니다.
+- worker가 시작된 뒤 direct로 되돌리지 않습니다. generic state patch는 current canonical의 owner-protected question card를 그대로 보존하며, patch 배열에서 빠진 질문도 삭제로 해석하지 않습니다.
+- `answered / failed / stale`는 terminal입니다. 늦은 answer, fail, worker completion과 중복 direct response는 기존 결과를 덮어쓰거나 processing 상태를 되살리지 않습니다.
 - status, execution phase, answer/error는 한 append-only snapshot으로 전환합니다. 부분 snapshot을 먼저 쓰고 다음 전이에서 실패하는 구조를 만들지 않습니다.
 
 ## Launch and Recovery Rule
 
 worker route를 state에 저장한 사실과 실제 worker start acknowledgement는 다릅니다. `worker-starting` 또는 `escalating`인데 `workerRunId`가 없으면 같은 deterministic request를 재전송할 수 있어야 합니다. 표준 dispatcher는 동일 request ID를 중복 실행하지 않고, `worker_started` 이후에는 route 재호출이 새 worker를 만들지 않습니다.
 
-Programmatic dispatcher가 없는 legacy runtime은 hidden P0 fallback을 남기되 같은 question, artifact path, source pin을 유지합니다. fallback apply도 route 시점 pin을 명시적으로 전달해야 합니다.
+Programmatic dispatcher가 없는 legacy runtime은 hidden P0 fallback을 남기되 같은 question과 artifact path를 유지합니다. P0는 launch 직전에 `worker_started`로 fallback claim을 기록해 route 재호출의 중복 launch를 막습니다. fallback apply는 expected hash/head를 caller 입력으로 받지 않고 persisted question snapshot의 route pin만 파생해 사용합니다.
 
 ## Transcript Boundary
 
@@ -83,9 +83,9 @@ Worker output은 답변 근거가 아니라 검증 대상입니다.
 
 - worker는 지정된 run-local result artifact만 제안하고 canonical state를 직접 바꾸지 않습니다.
 - coordinator는 result path, run/question identity, schema, source hash, checkout head를 검사합니다.
-- source hash는 mutable artifact를 자기비교하지 않고 route 시점에 pin합니다.
+- source hash는 mutable artifact를 자기비교하지 않고 route 시점의 append-only question snapshot에 pin합니다. apply caller나 worker artifact가 새 expected pin을 제시해 이 기준을 바꿀 수 없습니다.
 - 적용 직전 GitHub PR은 clean checkout, remote head, remote diff를 다시 확인하고 current-work는 base 대비 tracked·untracked diff를 다시 계산합니다.
-- HEAD가 같아도 diff가 바뀌면 `stale`로 끝내며 답변을 visible transcript에 publish하지 않습니다.
+- 관찰된 head/hash/root/diff가 pin과 다를 때만 `stale`로 끝냅니다. git·gh 인증/네트워크/JSON 오류처럼 freshness를 관찰하지 못한 경우는 source 변경으로 주장하지 않고 worker `failed`로 기록합니다.
 
 ## Failure Modes
 
@@ -93,8 +93,8 @@ Worker output은 답변 근거가 아니라 검증 대상입니다.
 - 글자 수·파일 수로 route하면 짧지만 외부 검증이 필요한 질문과 길지만 현재 문맥으로 닫히는 질문을 반대로 분류합니다.
 - worker state 저장 뒤 launch acknowledgement를 구분하지 않으면 interrupted launch가 영구 `worker-starting`에 머뭅니다.
 - terminal status와 execution phase를 별도 snapshot으로 쓰면 늦은 callback이 `status=answered, execution=failed` 같은 모순을 만듭니다.
-- generic update가 question execution을 덮을 수 있으면 worker→direct 역전과 terminal reopen을 우회할 수 있습니다.
-- artifact의 source hash를 같은 mutable `source.json`과만 비교하거나 HEAD만 확인하면 working diff가 바뀐 stale 답변을 승인할 수 있습니다.
+- generic update가 question execution을 덮거나 patch 누락을 삭제로 해석하면 worker→direct 역전, terminal reopen, callback 대상 소실을 우회할 수 있습니다.
+- artifact의 source hash를 같은 mutable `source.json`과만 비교하거나 HEAD만 확인하면 working diff가 바뀐 stale 답변을 승인할 수 있습니다. 반대로 관찰 실패까지 stale로 고정하면 일시 장애를 source 변경이라고 오진합니다.
 - 내부 dispatch prompt를 `display:true`로 노출하면 사용자 대화가 run path와 tool 지침으로 오염됩니다.
 
 ## Review Trigger
