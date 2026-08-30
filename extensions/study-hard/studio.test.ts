@@ -337,6 +337,42 @@ test("mergeBoardState keeps question scope and target immutable across agent fee
 	);
 });
 
+test("generic board patch는 owner가 정해진 learner 질문의 execution과 terminal state를 바꾸지 않는다", () => {
+	const current = createInitialBoardState({ url: "https://example.com", runId: "question-owner-guard" });
+	current.questions = [{
+		id: "Q001",
+		question: "전체 경로를 검증해줘",
+		origin: "learner",
+		scope: "session",
+		status: "open",
+		processingStatus: "running",
+		execution: { mode: "worker", phase: "worker-running", routedAt: 100, updatedAt: 110 },
+		orchestrationId: "worker-owner",
+		workerRunId: 17,
+	}];
+	const patched = mergeBoardState(current, {
+		questions: [{
+			id: "Q001",
+			question: "질문을 바꿔치기",
+			origin: "learner",
+			scope: "session",
+			status: "answered",
+			feedback: "generic patch 답변",
+			processingStatus: "applied",
+			execution: { mode: "direct", phase: "answered", routedAt: 100, updatedAt: 120, completedAt: 120 },
+			orchestrationId: "pi-forged",
+		}],
+	});
+	assert.equal(patched.questions[0].question, "전체 경로를 검증해줘");
+	assert.equal(patched.questions[0].status, "open");
+	assert.equal(patched.questions[0].feedback, undefined);
+	assert.equal(patched.questions[0].processingStatus, "running");
+	assert.equal(patched.questions[0].execution?.mode, "worker");
+	assert.equal(patched.questions[0].execution?.phase, "worker-running");
+	assert.equal(patched.questions[0].orchestrationId, "worker-owner");
+	assert.equal(patched.questions[0].workerRunId, 17);
+});
+
 test("mergeBoardState는 학습 코치 scope와 비동기 처리 상태를 보존한다", () => {
 	const current = createInitialBoardState({ url: "https://example.com", runId: "coach-question-state" });
 	current.questions = [{ id: "Q001", question: "다음에 뭘 공부할까?", origin: "learner", scope: "coach", status: "open", processingStatus: "failed", orchestrationId: "coach-run-1", processingError: "과거 오류", processingErrorStage: "editor" }];
@@ -2370,10 +2406,11 @@ test("worker 재조정 뒤 남은 노트 충돌은 기존·변경·직접 정리
 		const proposal = structuredClone(base); proposal.sections[0].blocks[0].text = "A-worker";
 		updateStudyHardStudio(handle.state.runId, {
 			noteDocument: { title: "Conflict", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "a", type: "paragraph", text: "A-current" }] }] },
-			questions: [{ ...question, processingStatus: "running", workerRebaseCount: 1 }],
 		});
 		state = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
 		writeStudyHardWorkerResult(state, state.questions[0], base, proposal, "worker 변경");
+		assert.equal(applyStudyHardWorkerResult(handle.state.runId, question.id, question.workerResultPath, 41).status, "rebasing");
+		markStudyHardWorkerStarted(handle.state.runId, handle.state.revision, question.id, 41);
 		const conflicted = applyStudyHardWorkerResult(handle.state.runId, question.id, question.workerResultPath, 41);
 		assert.equal(conflicted.status, "conflict");
 		let response = await fetch(new URL("/questions/conflict-preview", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ questionId: question.id }) });
@@ -2410,10 +2447,11 @@ test("충돌 확정 뒤 worker artifact가 바뀌면 직접 해소를 거부한�
 		proposed.sections[0].blocks[0].text = "A-worker";
 		updateStudyHardStudio(handle.state.runId, {
 			noteDocument: { title: "Artifact swap", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "a", type: "paragraph", text: "A-current" }] }] },
-			questions: [{ ...question, processingStatus: "running", workerRebaseCount: 1 }],
 		});
 		state = await fetch(new URL("/state", handle.url)).then((response) => response.json() as Promise<any>);
 		writeStudyHardWorkerResult(state, state.questions[0], base, proposed, "첫 worker 변경");
+		assert.equal(applyStudyHardWorkerResult(handle.state.runId, question.id, question.workerResultPath, 71).status, "rebasing");
+		markStudyHardWorkerStarted(handle.state.runId, handle.state.revision, question.id, 71);
 		assert.equal(applyStudyHardWorkerResult(handle.state.runId, question.id, question.workerResultPath, 71).status, "conflict");
 
 		state = await fetch(new URL("/state", handle.url)).then((response) => response.json() as Promise<any>);
@@ -2470,7 +2508,7 @@ test("충돌이 clean merge로 바뀌어도 attachment를 materialize한 뒤 원
 		proposed.sections[0].blocks[1].text = "A-worker";
 		const current = structuredClone(base);
 		current.sections[0].blocks[1].text = "A-current";
-		updateStudyHardStudio(handle.state.runId, { noteDocument: current, questions: [{ ...question, processingStatus: "running", workerRebaseCount: 1 }] });
+		updateStudyHardStudio(handle.state.runId, { noteDocument: current });
 		state = await fetch(new URL("/state", handle.url)).then((response) => response.json() as Promise<any>);
 		writeStudyHardWorkerResult(state, state.questions[0], base, proposed, "clean merge worker 변경", "clean conflict import", [{
 			attachmentId: "clean-conflict-asset",
@@ -2479,6 +2517,8 @@ test("충돌이 clean merge로 바뀌어도 attachment를 materialize한 뒤 원
 			name: "wireframe.png",
 			mimeType: "image/png",
 		}]);
+		assert.equal(applyStudyHardWorkerResult(handle.state.runId, question.id, question.workerResultPath, 72).status, "rebasing");
+		markStudyHardWorkerStarted(handle.state.runId, handle.state.revision, question.id, 72);
 		assert.equal(applyStudyHardWorkerResult(handle.state.runId, question.id, question.workerResultPath, 72).status, "conflict");
 
 		updateStudyHardStudio(handle.state.runId, { noteDocument: base });
@@ -2523,7 +2563,7 @@ test("직접 충돌 해소는 같은 attachmentId가 다른 block에만 남으�
 		proposed.sections[0].blocks[0].image = { attachmentId: "shared-asset", alt: "A worker" };
 		const current = structuredClone(base);
 		current.sections[0].blocks[0].image.alt = "A current";
-		updateStudyHardStudio(handle.state.runId, { noteDocument: current, questions: [{ ...question, processingStatus: "running", workerRebaseCount: 1 }] });
+		updateStudyHardStudio(handle.state.runId, { noteDocument: current });
 		state = await fetch(new URL("/state", handle.url)).then((response) => response.json() as Promise<any>);
 		writeStudyHardWorkerResult(state, state.questions[0], base, proposed, "A worker 변경", "shared id conflict", [{
 			attachmentId: "shared-asset",
@@ -2532,6 +2572,8 @@ test("직접 충돌 해소는 같은 attachmentId가 다른 block에만 남으�
 			name: "shared.png",
 			mimeType: "image/png",
 		}]);
+		assert.equal(applyStudyHardWorkerResult(handle.state.runId, question.id, question.workerResultPath, 73).status, "rebasing");
+		markStudyHardWorkerStarted(handle.state.runId, handle.state.revision, question.id, 73);
 		assert.equal(applyStudyHardWorkerResult(handle.state.runId, question.id, question.workerResultPath, 73).status, "conflict");
 
 		const response = await fetch(new URL("/questions/resolve-conflict", handle.url), {
@@ -2806,12 +2848,19 @@ test("direct 질문은 범위가 넓어지면 같은 ID로 programmatic worker�
 		assert.equal(state.questions[0].execution.phase, "escalating");
 		assert.equal(state.questions[0].execution.escalatedFrom, "direct");
 		assert.match(state.questions[0].orchestrationId, /^worker-/);
+		assert.throws(
+			() => respondStudyHardQuestion(handle.state.runId, handle.state.revision, "Q001", "늦은 direct 답변"),
+			/worker 질문을 direct 응답으로 완료할 수 없습니다/,
+		);
+		const afterLateDirect = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		assert.equal(afterLateDirect.questions[0].status, "open");
+		assert.equal(afterLateDirect.questions[0].feedback, undefined);
 	} finally {
 		stopStudyHardStudios();
 	}
 });
 
-test("study_hard_board respond action은 질문 답변과 구조 patch를 원자적으로 반영한다", async () => {
+test("study_hard_board direct respond는 답변만 반영하고 학습 노트 canonical 변경을 거부한다", async () => {
 	const harness = createStudyHardBoardHarness();
 	const runId = "tool-current-session-respond";
 	await harness.execute({
@@ -2823,19 +2872,20 @@ test("study_hard_board respond action은 질문 답변과 구조 patch를 원자
 	let handle = updateStudyHardStudio(runId, {
 		questions: [{ id: "Q001", origin: "learner", scope: "note-block", question: "분리해줘", status: "open", targetNoteBlockId: "combined", processingStatus: "queued", orchestrationId: "pi-test" }],
 	});
-	const result = await harness.execute({
+	await assert.rejects(() => harness.execute({
 		action: "respond",
 		runId,
 		expectedRevision: handle.state.revision,
 		questionId: "Q001",
 		feedback: "현재 Pi가 구조를 분리했습니다.",
 		noteDocument: { title: "Tool Respond", sections: [{ id: "overview", kind: "overview", title: "Overview", blocks: [{ id: "a", type: "paragraph", text: "A" }, { id: "b", type: "paragraph", text: "B" }] }] },
-	});
+	}), /direct 질문은 학습 노트 canonical을 수정할 수 없습니다/);
+	const result = await harness.execute({ action: "respond", runId, expectedRevision: handle.state.revision, questionId: "Q001", feedback: "이 블록은 A와 B 책임을 함께 설명합니다." });
 	assert.equal(result.details.action, "responded");
 	handle = updateStudyHardStudio(runId, {});
-	assert.equal(handle.state.questions[0].feedback, "현재 Pi가 구조를 분리했습니다.");
+	assert.equal(handle.state.questions[0].feedback, "이 블록은 A와 B 책임을 함께 설명합니다.");
 	assert.equal(handle.state.questions[0].processingStatus, "applied");
-	assert.deepEqual(handle.state.noteDocument.sections[0].blocks.map((block) => block.id), ["a", "b"]);
+	assert.deepEqual(handle.state.noteDocument.sections[0].blocks.map((block) => block.id), ["combined"]);
 	await assert.rejects(() => harness.execute({ action: "respond", runId, expectedRevision: handle.state.revision, questionId: "Q001", feedback: "", questions: [] }), /feedback이 필요합니다/);
 });
 
