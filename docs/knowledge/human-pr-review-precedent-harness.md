@@ -28,8 +28,8 @@ source:
   - user-direction:2026-08-30-color-semantic-meaning-diagrams
   - user-direction:2026-08-30-meaning-chart-zoom-overlay
   - user-direction:2026-08-31-meta-review-study-hard-worker-lifecycle-parity
-reviewed_at: 2026-08-31
-reviewed_commit: 9d3e5cb
+reviewed_at: 2026-09-01
+reviewed_commit: 20ea93e
 related:
   - evidence-first-verification-gate
   - live-artifact-preview-pattern
@@ -103,15 +103,19 @@ Review worktree는 read-only 실행 경계입니다. dependency bootstrap을 자
 
 질문 scope는 `전체 PR`과 `선택 블록`으로 분리합니다. `한눈에 보기`와 `변경 파일 관계`는 allowlisted `section` provenance를, file intro·diff line·semantic explanation hunk·ReviewCard는 exact `file | line | hunk | card` provenance와 evidence를 저장합니다. 선택 블록 대화는 같은 evidence를 공유하더라도 selection kind/id가 다른 블록과 섞지 않습니다. 질문은 같은 Pi session transcript에 visible user event로 기록되고 내부 run/tool 지침은 hidden control envelope로 분리합니다.
 
-Owner Pi는 질문을 글자 수나 파일 수가 아니라 work shape로 route합니다. selection과 현재 review source만으로 닫히는 질문은 owner session이 direct로 답하고, 외부 precedent·실행 검증·여러 독립 경로 비교·전체 PR 재분석이 실제로 필요하면 같은 question ID를 Study Hard와 같은 programmatic isolated worker로 승격합니다. worker는 메인 session을 점유하지 않는 비동기 결과 생산자이며 질문·답변·실패는 owner Pi lineage와 같은 drawer thread에 돌아옵니다. GitHub PR worker는 current panel checkout이 아니라 immutable run source와 `repository + expectedHeadSha`를 읽고, current-work worker만 captured root의 live diff freshness를 요구합니다. 공통 상태 전이와 recovery 계약은 [질문 UI와 실행 owner는 분리한다](./question-ui-execution-owner-routing.md)를 따릅니다.
+Meta Review drawer는 모든 설명·검증·변경 요청을 Study Hard와 같은 `launchProgrammaticQuestionWorker`로 즉시 실행합니다. 메인 Pi에 routing follow-up을 보내지 않으며 worker는 표준 `#N` lifecycle로 질문 thread에 답변·실패·stale·재시도를 돌려줍니다. GitHub PR worker는 current panel checkout이 아니라 immutable run source와 `repository + expectedHeadSha`를 읽고, current-work worker만 captured root의 live diff freshness를 요구합니다. 공통 상태 전이와 recovery 계약은 [질문 UI와 실행 owner는 분리한다](./question-ui-execution-owner-routing.md)를 따릅니다.
 
-답변은 `쉬운 설명 → 코드에서 확인된 사실 → 아직 모르는 정책/가정 → 리뷰 판단` 순서와 source evidence를 갖고 `questions.jsonl` append-only snapshot으로 보존됩니다. terminal answer/fail/stale는 한 snapshot으로 기록하고 늦은 callback이 다시 열지 못합니다. pending execution이 있는 동안만 live state를 polling하고 모두 끝나면 멈춥니다. Pi에서 `/diff`를 보며 나눈 대화도 같은 checkout/session을 사용하지만, 사용자의 명시적 갱신 요청 전에는 review artifact를 자동 수정하지 않습니다.
+사용자가 current-work에서 명시적으로 수정을 요청하면 worker는 repository를 직접 편집하지 않고 patch artifact를 만듭니다. Coordinator가 source pin과 root를 다시 검증하고 patch·targeted validation을 적용한 뒤 새 Meta Review revision을 캡처합니다. GitHub PR immutable source에서는 변경 artifact를 거부합니다.
+
+답변은 `쉬운 설명 → 코드에서 확인된 사실 → 아직 모르는 정책/가정 → 리뷰 판단` 순서와 source evidence를 갖고 `questions.jsonl` append-only snapshot으로 보존됩니다. terminal answer/fail/stale는 한 snapshot으로 기록하고 늦은 callback이 다시 열지 못합니다. pending execution이 있는 동안만 live state를 polling하고 모두 끝나면 멈춥니다. Polling 중에는 open details, 문서·drawer·thread scroll, composer draft와 focus를 복원해 읽던 위치를 초기화하지 않습니다.
+
+Study Hard의 메모보드는 `학습 메모 | 코드 리뷰` 탭을 가진 하나의 공통 card renderer입니다. 두 canonical을 합치지 않고 adapter만 공용화하며 코드 리뷰 메모에는 worker 번호, 변경 파일, validation, refresh revision을 함께 표시합니다.
 
 Meta Review session의 review truth는 immutable run과 checkout metadata이지만, workflow가 source conversation에서 시작됐다면 전체 transcript와 `parentSession` lineage도 기본 보존합니다. Source context는 정책·의도·이전 판단을 제공하고, run/head metadata는 코드 revision truth를 제공합니다.
 
 ## Explicit Refresh and Revisions
 
-코드 리뷰 본문은 자동으로 바뀌지 않습니다. background check는 외부 PR의 head/base 또는 현재 worktree diff hash를 읽기 전용으로 비교해 `새 변경 있음` badge만 표시합니다. 사용자가 `갱신하기` 버튼을 누르거나 Pi에서 명시적으로 갱신을 요청할 때만 새 immutable run을 series의 다음 revision으로 추가합니다.
+코드 리뷰 본문은 임의 background check만으로 바뀌지 않습니다. 외부 PR의 head/base 또는 현재 worktree diff hash는 읽기 전용으로 비교해 `새 변경 있음` badge만 표시합니다. 사용자가 `갱신하기`를 누르거나 current-work change artifact가 coordinator를 통해 실제 적용됐을 때만 새 immutable run을 series의 다음 revision으로 추가합니다.
 
 이전 head가 최신 head의 ancestor이고 base가 유지된 안전한 선형 변경은 incremental로 처리합니다. 이전 revision과 diff가 동일한 파일은 guide·ReviewCard·사람 편집 문구·인간 결정을 최신 evidence ID로 remap하고, unchanged 파일만 포함한 file-isolated chunk는 auto-inspect합니다. agent는 pending chunk와 impacted file만 다시 읽습니다. rebase, force-push, base/merge-base 변경, ancestry 불명은 full review로 승격하며 사용자는 `전체 다시 검토`를 강제할 수 있습니다. 이전 revision의 질문·AI 원문·사람이 편집한 문구·인간 결정은 덮어쓰지 않습니다. 새 설명 hunk는 `new`, 동일 hunk는 `unchanged`, 같은 identity의 코드가 달라지면 `review-again`, 근거가 사라지면 `evidence-removed`로 reconcile합니다.
 

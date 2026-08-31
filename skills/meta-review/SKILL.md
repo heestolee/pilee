@@ -10,7 +10,7 @@ disable-model-invocation: true
 
 ## 핵심 경계
 
-- 읽기 전용이다. checkout, 코드 수정, commit, push, GitHub review 게시, thread resolve를 하지 않는다.
+- Meta Review 생성 workflow는 읽기 전용이다. checkout, 코드 수정, commit, push, GitHub review 게시, thread resolve를 하지 않는다. 다만 current-work 질문 drawer의 명시적 변경 요청은 공통 worker coordinator가 pinned patch artifact로 처리한다.
 - 현재 PR을 이해하기 전에 과거 사례를 먼저 보지 않는다. 인간 리뷰 corpus는 blind finding 뒤의 검증·보강 근거다.
 - 모든 설명 hunk와 리뷰 카드는 현재 source bundle의 `D...` evidence에 연결한다. agent가 코드 블록을 다시 작성하지 않는다.
 - 모든 변경 파일에 역할·변경 이유·호출/데이터 흐름을 기록하고, 모든 addition/deletion evidence를 정확히 하나의 설명 hunk에 배정한다.
@@ -203,6 +203,14 @@ Corpus가 없거나 검색을 지원하지 않으면 blind review를 계속하�
 ```
 
 artifact path는 현재 run의 고정 파일만 허용하며, 성공한 뒤 transport artifact는 제거되고 canonical `document.json`, `guides.json`, `cards.json`, `review.md`가 남는다. 제출 전 모든 chunk가 inspected 상태여야 한다. 근거가 없는 카드를 만들거나 payload를 줄이기 위해 coverage·semantic 설명 기준을 낮추지 않는다.
+
+## 질문 worker·변경 요청 경계
+
+Meta Review drawer는 메인 Pi routing turn을 만들지 않고 Study Hard와 같은 programmatic worker lifecycle을 바로 사용합니다. 질문·답변·실패는 같은 question ID/thread에 남고 실패·stale는 같은 ID로 재시도합니다.
+
+Current-work에서 사용자가 명시적으로 수정을 요청하면 worker는 source를 직접 편집하지 않고 schema v2 patch artifact를 제안합니다. Coordinator가 route pin과 현재 diff를 다시 검증해 patch와 좁은 validation을 적용하고 새 Meta Review revision을 캡처합니다. GitHub PR immutable source에서는 변경을 적용하지 않습니다.
+
+Pending execution이 있는 동안만 polling하며 open details, scroll, draft와 focus를 복원합니다. 메모보드의 `학습 메모 | 코드 리뷰` 탭은 같은 card renderer를 쓰되 canonical state는 합치지 않습니다.
 
 ## 완료 응답
 

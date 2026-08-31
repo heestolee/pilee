@@ -25,8 +25,8 @@ source:
   - pilee-history:2026-05-07#86
   - pilee-history:2026-05-07#87
   - user-direction:2026-05-07-ai-native-worker
-reviewed_at: 2026-08-30
-reviewed_commit: 5ad8414936162ebbf868be6f7624416a3cbb01a2
+reviewed_at: 2026-09-01
+reviewed_commit: 20ea93e
 related:
   - worktree-dependency-bootstrap-worker
   - subagent-prompt-specificity

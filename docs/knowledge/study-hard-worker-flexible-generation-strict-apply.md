@@ -21,8 +21,8 @@ source:
   - user-direction:2026-07-25-completion-transcript-before-final-response
   - user-direction:2026-08-04-study-hard-worker-attachment-import
   - user-direction:2026-08-05-understanding-answer-disclosure
-reviewed_at: 2026-08-30
-reviewed_commit: 5ad8414936162ebbf868be6f7624416a3cbb01a2
+reviewed_at: 2026-09-01
+reviewed_commit: 20ea93e
 related:
   - parallel-workflow-analysis-single-writer
   - study-hard-public-engine-private-publisher
