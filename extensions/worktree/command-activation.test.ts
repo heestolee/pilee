@@ -32,6 +32,14 @@ test("/wt new and /wt fork ask placement before creating and preserve the source
 	}
 });
 
+test("/wt new allows a clean target before source session provenance exists", () => {
+	assert.match(commandNew, /const sourceSessionFile = sourceSessionCandidate && existsSync\(sourceSessionCandidate\) \? sourceSessionCandidate : undefined/);
+	assert.match(commandNew, /if \(requestedFullContext && !sourceSessionFile\)/);
+	assert.doesNotMatch(commandNew, /if \(!sourceSessionFile \|\| !existsSync\(sourceSessionFile\)\)/);
+	assert.match(commandNew, /sourceSessionFile,/);
+	assert.match(commandFork, /source Pi session provenance가 없어 \/wt fork/);
+});
+
 test("/wt fork keeps full transcript lineage and refuses an empty fallback session", () => {
 	assert.match(commandFork, /fullContext: useFullContext/);
 	assert.match(commandFork, /fullContextFailure\(useFullContext, session\)/);

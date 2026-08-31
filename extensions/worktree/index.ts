@@ -2042,9 +2042,11 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 	notifyWorktreeCreationPanelNotice(repoRoot, ctx);
 	const hotfixGuard = getHotfixBaseGuardMessage(parsed, "/wt new");
 	if (hotfixGuard) { ctx.ui.notify(hotfixGuard, "error"); return; }
-	const sourceSessionFile = getSessionFileFromContext(ctx);
-	if (!sourceSessionFile || !existsSync(sourceSessionFile)) {
-		ctx.ui.notify("BLOCKED: source Pi session provenance가 없어 /wt new panel activation을 시작하지 않습니다.", "error");
+	const sourceSessionCandidate = getSessionFileFromContext(ctx);
+	const sourceSessionFile = sourceSessionCandidate && existsSync(sourceSessionCandidate) ? sourceSessionCandidate : undefined;
+	const requestedFullContext = parsed.fullContext || (parsed.carryContext && !parsed.minimalContext);
+	if (requestedFullContext && !sourceSessionFile) {
+		ctx.ui.notify("BLOCKED: source Pi session provenance가 없어 /wt new의 context 계승을 시작하지 않습니다. 기본 clean /wt new는 사용할 수 있습니다.", "error");
 		return;
 	}
 
@@ -2070,7 +2072,7 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 			: `${prefix}/${name}`;
 	const contextContent = readContextFileOption(ctx, parsed.contextFile);
 	if (parsed.contextFile && contextContent === null) return;
-	const useFullContext = parsed.fullContext || (parsed.carryContext && !parsed.minimalContext);
+	const useFullContext = requestedFullContext;
 	const useMinimalContext = parsed.minimalContext;
 	const contract = await buildNewPanelActivationContract({
 		id: worktreeActivationId("wt-new"),

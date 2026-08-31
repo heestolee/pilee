@@ -76,21 +76,23 @@ test("buildOpenSessionScript launches the exact cwd and session and returns term
 test("host script failure is unsafe because Ghostty may have already created a surface", async () => {
 	const root = mkdtempSync(join(tmpdir(), "pilee-panel-open-failure-"));
 	try {
-		const sourceSessionFile = join(root, "source.jsonl");
 		const sessionFile = join(root, "target.jsonl");
-		writeFileSync(sourceSessionFile, "{}\n");
 		writeFileSync(sessionFile, "{}\n");
+		let execCalls = 0;
 		const result = await openExactSessionInNewPanel({
-			exec: async () => ({ code: 1, stdout: "", stderr: "surface created before id lookup failed" }),
+			exec: async () => {
+				execCalls += 1;
+				return { code: 1, stdout: "", stderr: "surface created before id lookup failed" };
+			},
 		} as any, {
 			activationId: "partial-host-open",
 			placement: "tab",
 			cwd: root,
 			sessionFile,
-			sourceSessionFile,
 			title: "Partial host open",
 			host: { platform: "darwin", termProgram: "ghostty" },
 		});
+		assert.equal(execCalls, 1, "clean activation without a source session must reach the host adapter");
 		assert.equal(result.status, "failed");
 		if (result.status === "failed") assert.equal(result.safeToDeleteTarget, false);
 	} finally {

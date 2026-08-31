@@ -102,6 +102,33 @@ test("target receiver writes READY before dispatching continuation", async () =>
 	}
 });
 
+test("clean target without source session provenance can become READY in a new panel", async () => {
+	const f = fixture();
+	try {
+		const activation = contract("clean-no-source");
+		const activationRoot = join(f.root, "clean-no-source");
+		const result = await activateWorkspaceInNewPanel({} as any, {} as any, {
+			contract: activation,
+			cwd: f.root,
+			sessionFile: f.targetSession,
+			title: "Clean target",
+			activationRoot,
+		}, {
+			openPanel: async (_hostPi, request) => {
+				assert.equal(request.sourceSessionFile, undefined);
+				await receiveWorkspacePanelActivation({} as any, {
+					cwd: f.root,
+					sessionManager: { getSessionFile: () => f.targetSession, getCwd: () => f.root, appendCustomEntry() {} },
+				} as any, request.env);
+				return { status: "opened", terminalId: "term-clean", forkId: "fork-clean", panelLabel: "P1" };
+			},
+		});
+		assert.equal(result.status, "activated");
+	} finally {
+		rmSync(f.root, { recursive: true, force: true });
+	}
+});
+
 test("target receiver rejects a session mismatch without dispatching continuation", async () => {
 	const f = fixture();
 	try {

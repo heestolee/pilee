@@ -77,7 +77,7 @@ export interface WorkspacePanelActivationDescriptor {
 	expected: {
 		cwd: string;
 		sessionFile: string;
-		sourceSessionFile: string;
+		sourceSessionFile?: string;
 	};
 	panel?: {
 		placement: NewPanelPlacement;
@@ -131,7 +131,7 @@ interface ActivateWorkspacePanelInput {
 	contract: WorkspaceActivationContract;
 	cwd: string;
 	sessionFile: string;
-	sourceSessionFile: string;
+	sourceSessionFile?: string;
 	title: string;
 	timeoutMs?: number;
 	activationRoot?: string;
@@ -251,7 +251,7 @@ export function prepareWorkspacePanelActivation(
 		throw new Error("panel activation에는 new-panel contract와 placement가 필요합니다.");
 	}
 	if (!existsSync(input.sessionFile)) throw new Error(`target session file이 없습니다: ${input.sessionFile}`);
-	if (!existsSync(input.sourceSessionFile)) throw new Error(`source session file이 없습니다: ${input.sourceSessionFile}`);
+	if (input.sourceSessionFile && !existsSync(input.sourceSessionFile)) throw new Error(`source session file이 없습니다: ${input.sourceSessionFile}`);
 	const createdAt = new Date().toISOString();
 	const descriptor: WorkspacePanelActivationDescriptor = {
 		version: WORKSPACE_ACTIVATION_VERSION,
@@ -261,7 +261,7 @@ export function prepareWorkspacePanelActivation(
 		expected: {
 			cwd: safeRealpath(input.cwd),
 			sessionFile: safeRealpath(input.sessionFile),
-			sourceSessionFile: safeRealpath(input.sourceSessionFile),
+			sourceSessionFile: input.sourceSessionFile ? safeRealpath(input.sourceSessionFile) : undefined,
 		},
 		createdAt,
 	};

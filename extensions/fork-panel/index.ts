@@ -129,7 +129,7 @@ function panelNumber(label: string | undefined): number {
 	return match ? Number(match[1]) : 0;
 }
 
-function allocatePanelLabel(parentSessionFile: string): string {
+function allocatePanelLabel(parentSessionFile?: string): string {
 	const records = Object.values(loadRecent()).filter((record) => record.parentSessionFile === parentSessionFile);
 	const max = records.reduce((acc, record) => Math.max(acc, panelNumber(record.panelLabel)), 0);
 	return `P${max + 1}`;
@@ -964,7 +964,7 @@ export interface ExactSessionPanelOpenRequest {
 	placement: NewPanelPlacement;
 	cwd: string;
 	sessionFile: string;
-	sourceSessionFile: string;
+	sourceSessionFile?: string;
 	title: string;
 	env?: Record<string, string | undefined>;
 	host?: { platform?: NodeJS.Platform; termProgram?: string };
@@ -986,8 +986,8 @@ export async function openExactSessionInNewPanel(
 	}
 	if (!existsSync(request.sessionFile)) return { status: "blocked", reason: `target session file이 없습니다: ${request.sessionFile}` };
 	if (!isDirectory(request.cwd)) return { status: "blocked", reason: `target cwd가 없습니다: ${request.cwd}` };
-	if (!request.sourceSessionFile || !existsSync(request.sourceSessionFile)) {
-		return { status: "blocked", reason: "source session provenance가 없어 새 panel을 열지 않습니다." };
+	if (request.sourceSessionFile && !existsSync(request.sourceSessionFile)) {
+		return { status: "blocked", reason: `source session file이 없습니다: ${request.sourceSessionFile}` };
 	}
 
 	const panelLabel = allocatePanelLabel(request.sourceSessionFile);
