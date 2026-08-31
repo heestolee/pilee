@@ -1,5 +1,6 @@
 import { rmSync } from "node:fs";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { copyPrReviewQuestionHistory } from "./chat.ts";
 import { captureCurrentWorkRun } from "./current-work-source.ts";
 import { seedIncrementalMetaReviewRevision, type MetaReviewIncrementalSeedResult } from "./incremental.ts";
 import { attachMetaReviewRevision, decideMetaReviewRefresh, type MetaReviewRevisionEntry, type MetaReviewSeries } from "./revision.ts";
@@ -42,6 +43,7 @@ export async function refreshCurrentWorkMetaReview(
 		return { mode: "none", reason: decision.reason, previousRunId: state.runId, run: state };
 	}
 	const linked = attachMetaReviewRevision(captured, capturedSource.sourceSha256, decision.mode, state, now);
+	copyPrReviewQuestionHistory(state.runDir, linked.run.runDir, linked.run.runId);
 	const incrementalSeed = decision.mode === "incremental" ? seedIncrementalMetaReviewRevision(state, linked.run) : undefined;
 	return {
 		mode: decision.mode,

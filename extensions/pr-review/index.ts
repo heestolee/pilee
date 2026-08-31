@@ -1,7 +1,6 @@
 import { existsSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { DEFAULT_MAX_BYTES, truncateHead, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
@@ -18,6 +17,7 @@ import { attachMetaReviewRevision, decideMetaReviewRefresh } from "./revision.ts
 import { seedIncrementalMetaReviewRevision } from "./incremental.ts";
 import {
 	answerPrReviewQuestion,
+	copyPrReviewQuestionHistory,
 	failPrReviewQuestion,
 	loadPrReviewQuestions,
 	publishPrReviewQuestionTranscript,
@@ -37,6 +37,9 @@ import {
 import { renderInspectionChunk, type ReviewSourceBundle } from "./evidence.ts";
 import { captureCurrentWorkRun } from "./current-work-source.ts";
 export { captureCurrentWorkRun } from "./current-work-source.ts";
+import { refreshCurrentWorkMetaReview } from "./current-work-refresh.ts";
+import { buildPrReviewPrompt, META_REVIEW_COMMAND_CUSTOM_TYPE, META_REVIEW_SKILL_PATH } from "./prompt.ts";
+export { buildPrReviewPrompt } from "./prompt.ts";
 import { closePrReviewStudios } from "./studio.ts";
 import {
 	loadInspection,
@@ -49,10 +52,6 @@ import {
 	type ReviewCardInput,
 } from "./run.ts";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const PACKAGE_ROOT = resolve(__dirname, "../..");
-const SKILL_PATH = join(PACKAGE_ROOT, "skills", "meta-review", "SKILL.md");
-const SHIM_CUSTOM_TYPE = "pilee-meta-review-command";
 const DEFAULT_STATE_ROOT = join(homedir(), ".pi", "agent", "state", "pr-review");
 const META_REVIEW_SUBMISSION_BASENAME = "submission.json";
 const MAX_META_REVIEW_SUBMISSION_BYTES = 5 * 1024 * 1024;
@@ -109,45 +108,6 @@ interface RegisterOptions {
 	switchToReviewWorkspace?: boolean;
 	reviewWorkspaceRunner?: typeof runPrReviewWorktreeFromCommandContext;
 	openMetaReview?: typeof openMetaReviewInStudyHard;
-}
-
-function inlinedSkill(): string {
-	const content = readFileSync(SKILL_PATH, "utf8").trimEnd();
-	return [
-		"----- BEGIN INLINED PILEE SKILL: meta-review -----",
-		`Location: ${SKILL_PATH}`,
-		`References are relative to: ${dirname(SKILL_PATH)}`,
-		"",
-		content,
-		"----- END INLINED PILEE SKILL: meta-review -----",
-	].join("\n");
-}
-
-export function buildPrReviewPrompt(state: PrReviewRunState): string {
-	return [
-		"# pilee /meta-review command",
-		"",
-		`Review target: ${state.target.url}`,
-		`Run id: ${state.runId}`,
-		`Run directory: ${state.runDir}`,
-		`Head SHA: ${state.target.headSha ?? "unknown"}`,
-		"",
-		"Execution rules:",
-		"- Follow the inlined meta-review skill as the authoritative workflow.",
-		"- Start with meta_review_run action=status, then inspect every pending chunk.",
-		"- Explain every changed file and every addition/deletion evidence before final submission.",
-		"- Submit a document overview plus structured changed-file relationships and a complete reading order. Choose flowchart for static layer/data dependencies and sequence for ordered runtime calls.",
-		"- Do not use historical review corpus before producing blind findings. After blind findings exist, use meta_review_run action=search per candidate when a corpus is configured.",
-		"- Do not modify the target repository or post GitHub comments.",
-		"- Submit complete guides and final cards through meta_review_run action=submit. Empty finding cards are valid, empty guides are not.",
-		"- After submit, read the generated review.md and report its path and coverage to the user.",
-		"",
-		"## Target PR body",
-		state.target.body?.trim() || "(PR body 없음)",
-		"",
-		"## Inlined skill",
-		inlinedSkill(),
-	].join("\n");
 }
 
 async function openMetaReviewInStudyHard(pi: ExtensionAPI, ctx: ExtensionCommandContext | ExtensionContext, state: PrReviewRunState, source: ReviewSourceBundle) {
@@ -261,19 +221,31 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 			}
 			if (params.action === "refresh") {
 				const isCurrentWork = state.target.kind === "current-work";
-				const parsed = isCurrentWork ? undefined : parseGitHubPrUrl(state.target.url);
-				onUpdate?.({ content: [{ type: "text", text: isCurrentWork ? "현재 worktree diff를 다시 캡처하는 중..." : `PR #${parsed!.number} 최신 head와 diff를 확인하는 중...` }] });
-				const captured = isCurrentWork
-					? await captureCurrentWorkRun(pi, state.target.root || ctx.cwd || process.cwd(), stateRoot, now())
-					: await captureGitHubPrRun(pi, ctx.cwd ?? process.cwd(), parsed!, stateRoot, now());
-				let capturedSource = readJson<ReviewSourceBundle>(captured.sourcePath);
+				if (isCurrentWork) {
+					onUpdate?.({ content: [{ type: "text", text: "현재 worktree diff를 다시 캡처하는 중..." }] });
+					const refreshed = await refreshCurrentWorkMetaReview(pi, state, state.target.root || ctx.cwd || process.cwd(), stateRoot, params.mode ?? "auto", now());
+					if (refreshed.mode === "none") {
+						return { content: [{ type: "text", text: "Meta Review가 이미 최신 head와 diff를 보고 있습니다." }], details: { runId: state.runId, mode: "none", reason: refreshed.reason }, terminate: true };
+					}
+					latestRunId = refreshed.run.runId;
+					const seedSummary = refreshed.incrementalSeed ? `\nunchanged files reused: ${refreshed.incrementalSeed.unchangedPaths.length}\nimpacted files: ${refreshed.incrementalSeed.impactedPaths.join(", ") || "none"}` : "";
+					return {
+						content: [{ type: "text", text: `Meta Review revision ${refreshed.revision!.number} captured · ${refreshed.mode}\n${refreshed.reason}${seedSummary}\nrunId: ${refreshed.run.runId}\npending chunk만 inspect하고 impacted file guides/cards를 submit하세요.` }],
+						details: { previousRunId: state.runId, runId: refreshed.run.runId, runDir: refreshed.run.runDir, series: refreshed.series, revision: refreshed.revision, mode: refreshed.mode, reason: refreshed.reason, incrementalSeed: refreshed.incrementalSeed },
+					};
+				}
+
+				const parsed = parseGitHubPrUrl(state.target.url);
+				onUpdate?.({ content: [{ type: "text", text: `PR #${parsed.number} 최신 head와 diff를 확인하는 중...` }] });
+				const captured = await captureGitHubPrRun(pi, ctx.cwd ?? process.cwd(), parsed, stateRoot, now());
+				const capturedSource = readJson<ReviewSourceBundle>(captured.sourcePath);
 				if (params.mode !== "full" && captured.target.headSha === state.target.headSha && capturedSource.sourceSha256 === source.sourceSha256) {
 					rmSync(captured.runDir, { recursive: true, force: true });
 					return { content: [{ type: "text", text: "Meta Review가 이미 최신 head와 diff를 보고 있습니다." }], details: { runId: state.runId, mode: "none", reason: "same-head-and-source" }, terminate: true };
 				}
-				let previousIsAncestor = isCurrentWork;
-				if (!isCurrentWork && state.target.headSha && captured.target.headSha) {
-					await pi.exec("git", ["fetch", "origin", `+refs/pull/${parsed!.number}/head:refs/remotes/origin/pilee-review/pr-${parsed!.number}`], { cwd: ctx.cwd, timeout: 120_000 });
+				let previousIsAncestor = false;
+				if (state.target.headSha && captured.target.headSha) {
+					await pi.exec("git", ["fetch", "origin", `+refs/pull/${parsed.number}/head:refs/remotes/origin/pilee-review/pr-${parsed.number}`], { cwd: ctx.cwd, timeout: 120_000 });
 					const ancestry = await pi.exec("git", ["merge-base", "--is-ancestor", state.target.headSha, captured.target.headSha], { cwd: ctx.cwd, timeout: 30_000 });
 					previousIsAncestor = ancestry.code === 0;
 				}
@@ -283,6 +255,7 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 					return { content: [{ type: "text", text: decision.reason }], details: { runId: state.runId, ...decision }, terminate: true };
 				}
 				const linked = attachMetaReviewRevision(captured, capturedSource.sourceSha256, decision.mode, state, now());
+				copyPrReviewQuestionHistory(state.runDir, linked.run.runDir, linked.run.runId);
 				const incrementalSeed = decision.mode === "incremental" ? seedIncrementalMetaReviewRevision(state, linked.run) : undefined;
 				latestRunId = linked.run.runId;
 				const seedSummary = incrementalSeed ? `\nunchanged files reused: ${incrementalSeed.unchangedPaths.length}\nimpacted files: ${incrementalSeed.impactedPaths.join(", ") || "none"}` : "";
@@ -491,7 +464,7 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 					ctx.ui.setStatus("meta-review", undefined);
 					ctx.ui.notify(`🔎 Meta Review · ${state.target.title} · 코드 리뷰 탭`, "info");
 					if (state.status !== "ready") {
-						pi.sendMessage({ customType: SHIM_CUSTOM_TYPE, content: buildPrReviewPrompt(state), display: false, details: { command: "meta-review", runId: state.runId, runDir: state.runDir, studyRunId: opened.studyRunId, target: state.target, skillPath: SKILL_PATH } }, { deliverAs: "followUp", triggerTurn: true });
+						pi.sendMessage({ customType: META_REVIEW_COMMAND_CUSTOM_TYPE, content: buildPrReviewPrompt(state), display: false, details: { command: "meta-review", runId: state.runId, runDir: state.runDir, studyRunId: opened.studyRunId, target: state.target, skillPath: META_REVIEW_SKILL_PATH } }, { deliverAs: "followUp", triggerTurn: true });
 					}
 					return;
 				}
@@ -549,10 +522,10 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 				ctx.ui.notify(`🔎 Meta Review 시작 · ${state.target.owner}/${state.target.repo}#${state.target.number} · 코드 리뷰 ${studioMode}`, "info");
 				pi.sendMessage(
 					{
-						customType: SHIM_CUSTOM_TYPE,
+						customType: META_REVIEW_COMMAND_CUSTOM_TYPE,
 						content: buildPrReviewPrompt(state),
 						display: false,
-						details: { command: "meta-review", runId: state.runId, runDir: state.runDir, target: state.target, skillPath: SKILL_PATH },
+						details: { command: "meta-review", runId: state.runId, runDir: state.runDir, target: state.target, skillPath: META_REVIEW_SKILL_PATH },
 					},
 					{ deliverAs: "followUp", triggerTurn: true },
 				);

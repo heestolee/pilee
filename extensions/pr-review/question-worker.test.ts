@@ -410,7 +410,7 @@ test("current-work 변경 요청은 pinned patch를 적용하고 Meta Review rev
 		assert.equal(claim.claimed, true);
 		const artifactPath = prReviewQuestionWorkerResultPath(state, question.id);
 		writeFileSync(artifactPath, JSON.stringify({
-			schemaVersion: 2,
+			schemaVersion: "2",
 			kind: "meta-review-question-worker-result",
 			runId: state.runId,
 			questionId: question.id,
@@ -424,9 +424,10 @@ test("current-work 변경 요청은 pinned patch를 적용하고 Meta Review rev
 			validation: [{ command: "node", args: ["-e", "process.exit(0)"] }],
 		}));
 		let applied = false;
+		const messages: Array<{ message: any; options: any }> = [];
 		const pi = {
 			appendEntry() {},
-			sendMessage() {},
+			sendMessage(message: any, options: any) { messages.push({ message, options }); },
 			async exec(command: string, args: string[]) {
 				if (command === "node") return { code: 0, stdout: "ok\n", stderr: "" };
 				if (command === "gh") return { code: 1, stdout: "", stderr: "no PR" };
@@ -457,6 +458,17 @@ test("current-work 변경 요청은 pinned patch를 적용하고 Meta Review rev
 		assert.equal(answered.change?.validation[0]?.status, "passed");
 		assert.equal(answered.change?.refreshMode, "incremental");
 		assert.notEqual(answered.change?.refreshedRunId, state.runId);
+		assert.equal(messages.length, 1, "새 revision completion 요청을 owner Pi에 전달한다");
+		const refreshRequest = messages.find((item) => item.message.customType === "pilee-meta-review-command");
+		assert.ok(refreshRequest);
+		assert.equal(refreshRequest.message.details.command, "meta-review-refresh");
+		assert.equal(refreshRequest.message.details.runId, answered.change?.refreshedRunId);
+		assert.equal(refreshRequest.options.triggerTurn, true);
+		const refreshedQuestions = loadPrReviewQuestions(join(stateRoot, "runs", answered.change!.refreshedRunId!));
+		assert.deepEqual(refreshedQuestions.map((item) => item.id), [question.id], "새 revision도 기존 질문 thread를 이어받는다");
+		assert.equal(refreshedQuestions[0]?.runId, answered.change?.refreshedRunId);
+		assert.equal(refreshedQuestions[0]?.status, "answered");
+		assert.equal(refreshedQuestions[0]?.change?.status, "applied", "terminal 답변과 변경 결과까지 새 revision에 동기화한다");
 	} finally {
 		rmSync(stateRoot, { recursive: true, force: true });
 		rmSync(repoRoot, { recursive: true, force: true });

@@ -7,7 +7,7 @@ import { parseHTML } from "linkedom";
 import { setGlimpseOpenForTests } from "../utils/glimpse.ts";
 import { registerStudyHardMetaReviewOpenBroker, requestStudyHardMetaReviewOpen } from "../study-hard/meta-review-broker.ts";
 import { registerStudyHardBoardTool, stopStudyHardStudios } from "../study-hard/studio.ts";
-import { createPrReviewQuestion } from "./chat.ts";
+import { createPrReviewQuestion, loadPrReviewQuestions } from "./chat.ts";
 import { captureUnifiedDiff } from "./evidence.ts";
 import { captureCurrentWorkRun, captureGitHubPrRun, parseGitHubPrUrl, registerPrReview } from "./index.ts";
 
@@ -218,6 +218,7 @@ test("meta_review_run open은 기존 학습노트 창에 코드리뷰 탭을 연
 			function esc(value){return String(value??'');}
 			function thoughtQuestions(){return [];}
 			function thoughtQuestionCategory(){} function thoughtCounts(){} function thoughtGroups(){} function sequenceSource(){}
+			function memoBoardQuestions(){return [];} function memoBoardCategory(){} function memoBoardCounts(){return {all:0,unresolved:0,applied:0,failed:0};} function memoBoardGroups(){return [];}
 			function closeDrawer(){} function renderBreadcrumb(){} function renderMap(){} function renderFlow(){} function renderNote(){} function renderDetail(){} function renderStatus(){}
 			function loadMetaReview(){window.__metaReviewLoaded=(window.__metaReviewLoaded||0)+1;}
 			function post(){return Promise.resolve();}
@@ -573,6 +574,7 @@ test("meta_review_run refresh appends a safe linear incremental revision", async
 		await commands.get("meta-review").handler("https://github.com/acme/repo/pull/42", { cwd: "/tmp", hasUI: false, ui: { notify() {}, setStatus() {} } });
 		const runId = messages[0].message.details.runId as string;
 		const tool = tools.get("meta_review_run");
+		const question = createPrReviewQuestion(join(stateRoot, "runs", runId), { runId, question: "이 조건 변경 이유가 뭐야?", scope: "session" }, 3001);
 		await tool.execute("inspect", { action: "inspect", runId, chunkId: "C001" }, undefined, undefined, { cwd: "/tmp" });
 		const source = JSON.parse(readFileSync(join(stateRoot, "runs", runId, "source.json"), "utf8"));
 		const changedEvidenceIds = source.lines.filter((line: any) => line.kind === "addition" || line.kind === "deletion").map((line: any) => line.id);
@@ -582,6 +584,9 @@ test("meta_review_run refresh appends a safe linear incremental revision", async
 		assert.equal(refreshed.details.revision.number, 2);
 		assert.equal(refreshed.details.revision.status, "captured");
 		assert.equal(refreshed.details.previousRunId, runId);
+		const inherited = loadPrReviewQuestions(refreshed.details.runDir);
+		assert.deepEqual(inherited.map((item) => item.id), [question.id], "새 revision에서도 기존 질문 thread를 유지한다");
+		assert.equal(inherited[0]?.runId, refreshed.details.runId, "승계한 질문은 새 revision identity를 사용한다");
 	} finally {
 		rmSync(stateRoot, { recursive: true, force: true });
 	}

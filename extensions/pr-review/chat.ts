@@ -168,6 +168,23 @@ export function loadPrReviewQuestions(runDir: string): PrReviewQuestion[] {
 		.sort((left, right) => left.createdAt - right.createdAt || left.id.localeCompare(right.id));
 }
 
+export function copyPrReviewQuestionHistory(previousRunDir: string, nextRunDir: string, nextRunId: string): void {
+	const merged = new Map<string, PrReviewQuestion>();
+	for (const question of [...loadPrReviewQuestions(previousRunDir), ...loadPrReviewQuestions(nextRunDir)]) {
+		const rebased = { ...question, runId: nextRunId };
+		const existing = merged.get(rebased.id);
+		if (!existing || rebased.updatedAt >= existing.updatedAt) merged.set(rebased.id, rebased);
+	}
+	if (!merged.size) return;
+	const path = resolve(prReviewQuestionsPath(nextRunDir));
+	const content = [...merged.values()]
+		.sort((left, right) => left.createdAt - right.createdAt || left.id.localeCompare(right.id))
+		.map((question) => JSON.stringify({ type: "question-snapshot", question } satisfies QuestionEvent))
+		.join("\n") + "\n";
+	writeFileSync(path, content, "utf8");
+	questionCanonicalRegistry().states.set(path, { content, latest: parseQuestionCanonical(content) });
+}
+
 function nextQuestionId(questions: PrReviewQuestion[]): string {
 	const max = questions.reduce((value, question) => Math.max(value, Number(question.id.match(/^Q(\d+)$/)?.[1] ?? 0)), 0);
 	return `Q${String(max + 1).padStart(3, "0")}`;

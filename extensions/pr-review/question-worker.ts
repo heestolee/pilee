@@ -16,6 +16,7 @@ import {
 import {
 	appendPrReviewQuestionCoordinatorSnapshot,
 	assertPrReviewQuestionCanonicalIntegrity,
+	copyPrReviewQuestionHistory,
 	isPrReviewQuestionTerminal,
 	loadPrReviewQuestions,
 	publishPrReviewQuestionTranscript,
@@ -26,7 +27,8 @@ import {
 } from "./chat.ts";
 import { refreshCurrentWorkMetaReview } from "./current-work-refresh.ts";
 import { captureUnifiedDiff } from "./evidence.ts";
-import type { PrReviewRunState } from "./run.ts";
+import { buildPrReviewPrompt, META_REVIEW_COMMAND_CUSTOM_TYPE, META_REVIEW_SKILL_PATH } from "./prompt.ts";
+import { loadPrReviewRun, type PrReviewRunState } from "./run.ts";
 
 const MAX_WORKER_RESULT_BYTES = 2 * 1024 * 1024;
 const WORKER_LAUNCH_LEASE_MS = 30_000;
@@ -260,13 +262,14 @@ function readWorkerArtifact(state: PrReviewRunState, question: PrReviewQuestion,
 	const size = statSync(receivedPath).size;
 	if (size <= 0 || size > MAX_WORKER_RESULT_BYTES) throw new Error("Meta Review worker result는 1 byte 이상 2MB 이하여야 합니다.");
 	const raw = JSON.parse(readFileSync(receivedPath, "utf8")) as Record<string, unknown>;
-	if (![1, 2].includes(Number(raw.schemaVersion)) || raw.kind !== "meta-review-question-worker-result") throw new Error("Meta Review worker result schema가 다릅니다.");
+	const schemaVersion = Number(raw.schemaVersion);
+	if (![1, 2].includes(schemaVersion) || raw.kind !== "meta-review-question-worker-result") throw new Error("Meta Review worker result schema가 다릅니다.");
 	if (raw.runId !== state.runId || raw.questionId !== question.id) throw new Error("Meta Review worker result identity가 다릅니다.");
 	if (raw.sourceSha256 !== pin.sourceSha256) throw new Error("Meta Review worker result source가 routing snapshot과 다릅니다.");
 	if ((pin.headSha || undefined) !== (typeof raw.headSha === "string" && raw.headSha ? raw.headSha : undefined)) throw new Error("Meta Review worker result head가 routing snapshot과 다릅니다.");
 	const answer = typeof raw.answer === "string" ? raw.answer.trim() : "";
 	if (!answer || answer.length > 32_000) throw new Error("Meta Review worker answer는 1자 이상 32000자 이하여야 합니다.");
-	const intent = raw.schemaVersion === 2 && raw.intent === "change" ? "change" : "answer";
+	const intent = schemaVersion === 2 && raw.intent === "change" ? "change" : "answer";
 	const patch = typeof raw.patch === "string" ? raw.patch.trim() : undefined;
 	const changedFiles = Array.isArray(raw.changedFiles)
 		? [...new Set(raw.changedFiles.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean))]
@@ -287,7 +290,7 @@ function readWorkerArtifact(state: PrReviewRunState, question: PrReviewQuestion,
 		if (!changedFiles.length || changedFiles.some((path) => path.startsWith("/") || path.split(/[\\/]/).includes(".."))) throw new Error("변경 요청 artifact의 changedFiles가 안전한 상대 경로가 아닙니다.");
 	}
 	return {
-		schemaVersion: Number(raw.schemaVersion) as 1 | 2,
+		schemaVersion: schemaVersion as 1 | 2,
 		kind: "meta-review-question-worker-result",
 		runId: state.runId,
 		questionId: question.id,
@@ -499,7 +502,7 @@ async function applyWorkerChange(
 		await execText(pi, "git", ["apply", "--check", "--whitespace=nowarn", patchPath], root);
 		await execText(pi, "git", ["apply", "--whitespace=nowarn", patchPath], root);
 	} finally {
-		unlinkSync(patchPath);
+		if (existsSync(patchPath)) unlinkSync(patchPath);
 	}
 
 	const validation: PrReviewQuestionChange["validation"] = [];
@@ -536,6 +539,29 @@ async function applyWorkerChange(
 		refreshMode,
 		refreshError,
 	};
+}
+
+function requestMetaReviewRevisionCompletion(
+	pi: Pick<ExtensionAPI, "sendMessage">,
+	state: PrReviewRunState,
+	change: PrReviewQuestionChange,
+): void {
+	if (!change.refreshedRunId) return;
+	const refreshed = loadPrReviewRun(join(dirname(dirname(state.runDir)), "runs", change.refreshedRunId));
+	copyPrReviewQuestionHistory(state.runDir, refreshed.runDir, refreshed.runId);
+	pi.sendMessage({
+		customType: META_REVIEW_COMMAND_CUSTOM_TYPE,
+		content: buildPrReviewPrompt(refreshed),
+		display: false,
+		details: {
+			command: "meta-review-refresh",
+			previousRunId: state.runId,
+			runId: refreshed.runId,
+			runDir: refreshed.runDir,
+			target: refreshed.target,
+			skillPath: META_REVIEW_SKILL_PATH,
+		},
+	}, { deliverAs: "followUp", triggerTurn: true });
 }
 
 export async function applyPrReviewQuestionWorkerResult(
@@ -584,7 +610,7 @@ export async function applyPrReviewQuestionWorkerResult(
 		const artifact = readWorkerArtifact(state, question, artifactPath, lease.pin);
 		const change = artifact.intent === "change" ? await applyWorkerChange(pi, state, artifact, cwd, now) : undefined;
 		const execution = updateQuestionExecutionPhase(question.execution, "answered", now);
-		return terminalLeaseQuestion(pi, state, lease, {
+		let answered = terminalLeaseQuestion(pi, state, lease, {
 			...question,
 			status: "answered",
 			execution,
@@ -597,6 +623,23 @@ export async function applyPrReviewQuestionWorkerResult(
 			workerRunId: Number.isInteger(workerRunId) ? workerRunId : question.workerRunId,
 			updatedAt: now,
 		}, "answer");
+		if (change?.refreshedRunId) {
+			try {
+				requestMetaReviewRevisionCompletion(pi, state, change);
+			} catch (error) {
+				answered = appendLeaseQuestion(state, lease, {
+					...answered,
+					change: {
+						...change,
+						status: "applied-with-refresh-failure",
+						refreshError: error instanceof Error ? error.message : String(error),
+					},
+					updatedAt: now,
+				});
+				copyPrReviewQuestionHistory(state.runDir, join(dirname(dirname(state.runDir)), "runs", change.refreshedRunId), change.refreshedRunId);
+			}
+		}
+		return answered;
 	} catch (error) {
 		return failPrReviewQuestionWorker(pi, state, questionId, completionToken, error instanceof Error ? error.message : String(error), workerRunId, now);
 	}
