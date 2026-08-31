@@ -29,14 +29,17 @@ test("worktree tools do not expose switch-command or absolute-path fallback", ()
 	assert.doesNotMatch(source, /setEditorText\([^)]*\/wt switch/);
 });
 
-test("slash /wt new and /wt fork create first, then switch the current panel directly", () => {
-	for (const block of [commandNew, commandFork]) {
-		assert.match(block, /switchSessionToWorktree/);
-		assert.doesNotMatch(block, /chooseNewPanelPlacement|buildNewPanelActivationContract|activateWorkspaceInNewPanel/);
-		assert.doesNotMatch(block, /cleanupCreatedWorktree|fullContextFailure/);
-	}
+test("slash /wt new stays direct while /wt fork branches activation only after creation", () => {
+	assert.match(commandNew, /switchSessionToWorktree/);
+	assert.doesNotMatch(commandNew, /chooseNewPanelPlacement|buildNewPanelActivationContract|activateWorkspaceInNewPanel/);
+	assert.doesNotMatch(commandNew, /cleanupCreatedWorktree|fullContextFailure/);
+
+	assert.match(commandFork, /chooseCommandForkOpenTarget/);
+	assert.match(commandFork, /switchSessionToWorktree/);
+	assert.match(commandFork, /activateWorkspaceInNewPanel/);
 	assert.match(commandFork, /defaultCurrentPanelContinuation/);
 	assert.match(commandFork, /fullContext: useFullContext/);
+	assert.doesNotMatch(commandFork, /cleanupCreatedWorktree|fullContextFailure/);
 
 	assert.match(workflowFork, /buildNewPanelActivationContract/);
 	assert.match(workflowFork, /activateWorkspaceInNewPanel/);

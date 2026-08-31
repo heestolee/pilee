@@ -49,5 +49,6 @@ test("/frame Step 9 routes fork selection to command-context bridge, not worktre
 	assert.match(source, /afterSwitchFollowUp/);
 	assert.match(source, /result\.status !== "activated" && result\.status !== "switched"/);
 	assert.match(frameSkill, /`frame_worktree_fork` tool/);
-	assert.match(frameSkill, /`worktree_fork` tool을 호출하지 말고/);
+	assert.match(frameSkill, /`worktree_fork` tool이나 사용자 slash `\/wt fork`를 호출하지 말고/);
+	assert.match(frameSkill, /source panel 보존용 composed workflow runner/);
 });

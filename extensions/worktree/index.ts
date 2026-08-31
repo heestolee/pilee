@@ -30,6 +30,11 @@ import {
 	type PostCreateBootstrapRequest,
 } from "./bootstrap-domains.ts";
 import { buildCurrentPanelNewContinuation } from "./continuation.ts";
+import {
+	COMMAND_FORK_OPEN_TARGET_OPTIONS,
+	commandForkOpenTargetForLabel,
+	type CommandForkOpenTarget,
+} from "./fork-open-target.ts";
 import { promotePlanningWorkArtifactsToWorktree, type WorkArtifactPromotionResult } from "./frame-artifacts.ts";
 import {
 	activateWorkspaceInNewPanel,
@@ -2838,6 +2843,18 @@ async function showDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Pr
 	);
 }
 
+async function chooseCommandForkOpenTarget(
+	ctx: ExtensionCommandContext,
+	name: string,
+): Promise<CommandForkOpenTarget | null> {
+	if (!ctx.hasUI) return "current";
+	const selected = await ctx.ui.select(
+		`${name} fork를 어디에서 계속할까요?`,
+		COMMAND_FORK_OPEN_TARGET_OPTIONS.map((option) => option.label),
+	);
+	return commandForkOpenTargetForLabel(selected);
+}
+
 async function handleCommandFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext): Promise<WorktreeForkCommandResult> {
 	const parsed = parseNewArgs(args);
 	const repoRoot = await resolveRepoRoot(pi, ctx, parsed.repo);
@@ -2876,6 +2893,12 @@ async function handleCommandFork(pi: ExtensionAPI, args: string, ctx: ExtensionC
 	const contextContent = readContextFileOption(ctx, parsed.contextFile);
 	if (parsed.contextFile && contextContent === null) {
 		return { status: "blocked", reason: `context file not found: ${parsed.contextFile}`, name, branch: branchName, path: worktreePath };
+	}
+	const openTarget = await chooseCommandForkOpenTarget(ctx, name);
+	if (!openTarget) {
+		const reason = "fork를 계속할 위치를 선택하지 않았습니다.";
+		ctx.ui.notify(reason, "info");
+		return { status: "blocked", reason, name, branch: branchName, path: worktreePath };
 	}
 
 	const useFullContext = parsed.fullContext || !parsed.minimalContext;
@@ -2922,18 +2945,55 @@ async function handleCommandFork(pi: ExtensionAPI, args: string, ctx: ExtensionC
 	recordWorktreeContextMeta(worktreePath, contextMode, session);
 	warnIfFullContextFallback(ctx, useFullContext, session);
 	const contextLabel = `${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}`;
-	const continuation = defaultCurrentPanelContinuation("fork", { name, branch: branchName, ticket: parsed.ticket, note: parsed.note });
+	if (openTarget === "current") {
+		const continuation = defaultCurrentPanelContinuation("fork", { name, branch: branchName, ticket: parsed.ticket, note: parsed.note });
+		try {
+			await switchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, contextLabel, {
+				afterSwitchFollowUp: continuation,
+			});
+			return { status: "switched", name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion };
+		} catch (error) {
+			const reason = error instanceof Error ? error.message : String(error);
+			notifySwitchFallback(ctx, reason, worktreePath);
+			return { status: "failed", reason, name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion };
+		}
+	}
 
+	let contract: WorkspaceActivationContract;
 	try {
-		await switchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, contextLabel, {
-			afterSwitchFollowUp: continuation,
+		const built = await buildNewPanelActivationContract({
+			id: worktreeActivationId("wt-command-fork"),
+			ctx,
+			workspaceAction: "create-worktree",
+			contextMode: useFullContext ? "full" : "clean",
+			authorizationSource: "command",
+			authorizationSourceId: "/wt fork",
+			continuation: defaultWorktreeContinuation("fork", { name, branch: branchName, ticket: parsed.ticket, note: parsed.note }),
+			placement: openTarget,
 		});
-		return { status: "switched", name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion };
+		if (!built) throw new Error("new panel activation contract를 만들지 못했습니다.");
+		contract = built;
 	} catch (error) {
 		const reason = error instanceof Error ? error.message : String(error);
-		notifySwitchFallback(ctx, reason, worktreePath);
+		ctx.ui.notify(`BLOCKED: /wt fork ${openTarget} activation 준비 실패 — ${reason}. worktree/session preserved: ${worktreePath}`, "error");
 		return { status: "failed", reason, name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion };
 	}
+
+	const activation = await activateWorkspaceInNewPanel(pi, ctx, {
+		contract,
+		cwd: worktreePath,
+		sessionFile: session.sessionFile,
+		sourceSessionFile: getSessionFileFromContext(ctx) ?? undefined,
+		title: `${name} (${branchName})`,
+	});
+	if (activation.status !== "activated") {
+		const reason = `${activation.reason}. ${preservedActivationTargetSummary(activation, worktreePath, session.sessionFile)}`;
+		ctx.ui.notify(`BLOCKED: /wt fork ${openTarget} activation 실패 — ${reason}`, "error");
+		return { status: activation.status, reason, name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion, activation };
+	}
+	recordActivatedWorktree(worktreePath, contract, session.sessionFile, activation);
+	ctx.ui.notify(`✓ ${name} forked (${branchName}) → ${activation.panelLabel} ${contract.placement}${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}`, "info");
+	return { status: "activated", name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion, activation };
 }
 
 async function handleWorkflowFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext, options: WorktreeForkCommandOptions = {}): Promise<WorktreeForkCommandResult> {
@@ -3735,7 +3795,7 @@ async function handleWt(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCon
 		ctx.ui.notify([
 			t.fg("accent", "Usage:"),
 			`  ${t.fg("warning", "/wt new")} ${t.fg("borderAccent", "[name] [--repo <name>] [--hotfix|--hotfeature|--from <branch>] [--ticket PROJ-123] [--carry-context|--minimal-context] — 생성 후 현재 panel에서 계속")}`,
-			`  ${t.fg("warning", "/wt fork")} ${t.fg("borderAccent", "[name] [--context-file <path>] [--repo <name>] [--hotfix|--from <branch>] [--minimal-context] — full transcript + 현재 panel에서 자동 계속")}`,
+			`  ${t.fg("warning", "/wt fork")} ${t.fg("borderAccent", "[name] [--context-file <path>] [--repo <name>] [--hotfix|--from <branch>] [--minimal-context] — full transcript + 현재 panel/새 탭/오른쪽 panel 선택")}`,
 			`  ${t.fg("warning", "/wt switch")} ${t.fg("borderAccent", "<name> | <repo>/<name>  — 워크트리 선택 후 세션 선택")}`,
 			`  ${t.fg("warning", "/wt resume")} ${t.fg("borderAccent", "<conductor-workspace>  — Conductor 워크스페이스 전체 세션 복원")}`,
 			`  ${t.fg("warning", "/wt bootstrap")} ${t.fg("borderAccent", "[status|--backend|--frontend|--all|--executor]  — profile 기반 의존성 AI orchestrator/worker 준비")}`,

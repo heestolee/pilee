@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { buildCurrentPanelNewContinuation } from "./continuation.ts";
+import { COMMAND_FORK_OPEN_TARGET_OPTIONS, commandForkOpenTargetForLabel } from "./fork-open-target.ts";
 
 const worktreeDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = join(worktreeDir, "..", "..");
@@ -23,14 +24,28 @@ const commandNew = between("async function handleNew", "async function listOneRe
 const commandFork = between("async function handleCommandFork", "async function handleWorkflowFork");
 const workflowFork = between("async function handleWorkflowFork", "export async function runWorktreeForkFromCommandContext");
 
-test("slash /wt new and /wt fork keep the original current-panel creation path", () => {
-	for (const block of [commandNew, commandFork]) {
-		assert.match(block, /switchSessionToWorktree/);
-		assert.doesNotMatch(block, /chooseNewPanelPlacement|buildNewPanelActivationContract|activateWorkspaceInNewPanel/);
-		assert.doesNotMatch(block, /source Pi session provenance가 없어/);
-		assert.doesNotMatch(block, /cleanupCreatedWorktree|fullContextFailure/);
-		assert.ok(block.indexOf('pi.exec("git", ["worktree", "add"') < block.indexOf("switchSessionToWorktree"));
-	}
+test("slash /wt new keeps the original current-panel creation path", () => {
+	assert.match(commandNew, /switchSessionToWorktree/);
+	assert.doesNotMatch(commandNew, /chooseNewPanelPlacement|buildNewPanelActivationContract|activateWorkspaceInNewPanel/);
+	assert.doesNotMatch(commandNew, /source Pi session provenance가 없어|cleanupCreatedWorktree|fullContextFailure/);
+	assert.ok(commandNew.indexOf('pi.exec("git", ["worktree", "add"') < commandNew.indexOf("switchSessionToWorktree"));
+});
+
+test("slash /wt fork offers exactly current, tab, and right targets after shared creation", () => {
+	assert.deepEqual(COMMAND_FORK_OPEN_TARGET_OPTIONS, [
+		{ target: "current", label: "현재 패널" },
+		{ target: "tab", label: "새 탭" },
+		{ target: "right", label: "오른쪽 패널" },
+	]);
+	assert.equal(commandForkOpenTargetForLabel("현재 패널"), "current");
+	assert.equal(commandForkOpenTargetForLabel("새 탭"), "tab");
+	assert.equal(commandForkOpenTargetForLabel("오른쪽 패널"), "right");
+	assert.match(commandFork, /chooseCommandForkOpenTarget/);
+	assert.match(commandFork, /openTarget === "current"/);
+	assert.match(commandFork, /switchSessionToWorktree/);
+	assert.match(commandFork, /activateWorkspaceInNewPanel/);
+	assert.ok(commandFork.indexOf('pi.exec("git", ["worktree", "add"') < commandFork.indexOf('if (openTarget === "current")'));
+	assert.doesNotMatch(commandFork, /cleanupCreatedWorktree|fullContextFailure/);
 });
 
 test("slash /wt new and /wt fork resume work only after switching sessions", () => {
