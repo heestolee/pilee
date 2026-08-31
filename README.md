@@ -166,7 +166,7 @@ Ctrl+W                       → 전체 워크트리 오버레이
 /wt sessions                 → 호환 alias: 현재/선택 워크트리의 /wt switch 세션 선택 흐름
 ```
 
-`/wt new`와 `/wt fork`는 매 실행 right/left/up/down/tab 중 새 작업 panel 위치를 묻고, 원래 panel을 보존한 채 exact worktree cwd/session을 엽니다. target Pi가 READY를 확인한 뒤에만 continuation을 시작하며, open/READY 실패를 current-panel 전환으로 대체하지 않습니다. 에이전트 tool도 `worktree_create`/`worktree_fork`는 같은 new-panel 계약을 따르고, `worktree_switch`만 명시적인 current-panel 이동으로 남습니다. 새 branch만 요청하면 현재 workspace에서 branch만 생성·전환하고, production 기반 branch 전환은 `/to-production`의 in-place 계약을 유지합니다.
+slash `/wt new`와 `/wt fork`는 worktree/session을 만든 뒤 기존처럼 현재 panel을 exact target session/cwd로 직접 전환합니다. `/wt new`는 full transcript 대신 최신 non-transition 요청 1개만 compact continuation으로 전달하고, `/wt fork`는 full lineage에서 최신 작업을 자동 계속합니다. 새 panel READY 계약은 `worktree_create`/`worktree_fork` tool, PR review, Frame/TFT처럼 source panel 보존이 목적에 포함된 composed workflow에만 적용합니다. 새 branch만 요청하면 현재 workspace에서 branch만 생성·전환하고, production 기반 branch 전환은 `/to-production`의 in-place 계약을 유지합니다.
 
 생성 전 안전 게이트:
 - 사용자가 worktree topology를 명시적으로 허용하지 않았다면 만들지 않는다. branch 요청은 현재 workspace의 branch in-place 동작이다.

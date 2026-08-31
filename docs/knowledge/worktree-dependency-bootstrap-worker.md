@@ -19,8 +19,8 @@ applies_to:
   - worktree_fork
 source:
   - user-direction:2026-05-07-worker-dependency-bootstrap
-reviewed_at: 2026-08-26
-reviewed_commit: 272c85be373f745c6e80cb0b33296ebd568ecf58
+reviewed_at: 2026-08-31
+reviewed_commit: 090cb14078e5ca278d45a76da01d366aebcec6dc
 related:
   - worktree-execution-boundary
   - worktree-session-continuity
@@ -43,7 +43,7 @@ orchestrator/worker는 다음 조건을 만족할 때 자동 시작합니다.
 1. 현재 cwd가 runtime profile의 `worktree.repos[].bootstrap.enabled` repo와 매칭됩니다.
 2. user prompt가 조사 전용이 아니라 구현/수정/검증/마무리 흐름입니다.
 3. profile이 지정한 domain marker 또는 `readyCommand`가 준비되지 않았습니다.
-4. `/wt new`, `/wt fork`, `worktree_create`, `worktree_fork`의 target process가 exact cwd/session을 확인해 durable READY entry를 먼저 남긴 뒤에만 create-specific bootstrap을 판정합니다. READY 전 source panel이나 activation 실패로 정리할 worktree에서는 bootstrap process를 시작하지 않습니다. 첫 post-create turn은 profile의 `onCreateDomains`를 한 번 소비하고 activation별 consumed marker를 남깁니다. 이후 일반 구현 turn은 `defaultDomains`와 prompt/path rule을 사용합니다.
+4. `worktree_create`, `worktree_fork`, PR review, Frame/TFT처럼 별도 target process를 여는 composed workflow는 exact cwd/session의 durable READY 뒤에만 create-specific bootstrap을 판정합니다. Slash `/wt new|fork`는 기존 current-panel switch 경로를 사용하므로 new-panel READY gate를 거치지 않고, 전환 후 compact/full continuation의 첫 구현 turn에서 일반 `defaultDomains`와 prompt/path rule을 적용합니다. READY 전 source panel이나 activation 실패로 정리할 worktree에서는 bootstrap process를 시작하지 않습니다.
 5. `bootstrap.changedPathRules`에 걸리는 branch diff 또는 working-tree diff가 있으면, prompt가 generic하더라도 해당 path의 runtime domain을 추가합니다.
 
 구체적인 marker, command, domain 추론 regex, 변경 경로별 domain 매핑, 생성 직후 준비할 `onCreateDomains`는 public extension 코드가 아니라 overlay/profile JSON에 둡니다. `onCreateDomains`는 새 target READY 직후의 create-specific 범위이고, `defaultDomains`는 별도 create request가 없는 일반 bootstrap fallback입니다. 두 값이 같다고 가정하지 않으며 fixture에서도 서로 다르게 두어 drift를 잡습니다. public pilee는 orchestration lifecycle, changed-path collection, status/log, idempotent marker/readyCommand check, executor script 생성만 담당합니다. Profile이 없으면 자동 bootstrap은 조용히 비활성화되고, 사용자는 일반 worktree workflow만 사용합니다.

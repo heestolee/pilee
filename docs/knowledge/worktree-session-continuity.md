@@ -41,7 +41,7 @@ source:
   - user-direction:2026-08-18-pr-review-checkout-session
   - user-direction:2026-08-25-workspace-activation-redesign
 reviewed_at: 2026-08-31
-reviewed_commit: 0b551c0b7a5605bf87aa1cf8241d24e1170b9927
+reviewed_commit: 090cb14078e5ca278d45a76da01d366aebcec6dc
 related:
   - subagent-model-policy
   - pilee-knowledge-system
@@ -65,7 +65,7 @@ fork-panel에서 종료된 대화는 transcript를 주입하는 것보다 세션
 
 ## Worktree Entry Rule
 
-기존 worktree로 현재 panel에서 돌아가는 기본 진입점은 `/wt switch`입니다. 사용자가 작업공간으로 돌아간다는 것은 “워크트리만 이동”이 아니라 “그 워크트리 안에서 이어갈 세션을 고른다”는 뜻이므로, `/wt switch`는 워크트리 선택 다음에 해당 worktree session picker까지 이어져야 합니다. `/wt sessions`는 독립 UX가 아니라 호환 alias로 남겨 같은 session picker 흐름을 호출합니다. `/wt fork`는 source conversation을 보존해야 하므로 매번 placement를 물어 새 panel에서 target session을 엽니다. `/wt new`는 clean 작업 시작이므로 `현재 패널`과 새 panel placement를 함께 제공하고, `--here`는 질문 없이 현재 panel을 exact target session으로 전환합니다.
+기존 worktree로 현재 panel에서 돌아가는 기본 진입점은 `/wt switch`입니다. 사용자가 작업공간으로 돌아간다는 것은 “워크트리만 이동”이 아니라 “그 워크트리 안에서 이어갈 세션을 고른다”는 뜻이므로, `/wt switch`는 워크트리 선택 다음에 해당 worktree session picker까지 이어져야 합니다. `/wt sessions`는 독립 UX가 아니라 호환 alias로 남겨 같은 session picker 흐름을 호출합니다. 사용자가 직접 실행한 slash `/wt new`·`/wt fork`도 원래처럼 생성 직후 현재 panel을 exact target session/cwd로 직접 전환합니다. 새 panel placement는 source panel 보존이 workflow 목적에 포함된 tool·PR review·Frame/TFT 경로의 계약입니다.
 
 `/wt resume <workspace>`는 Conductor workspace 하나를 선택한 세션만 복구하지 않습니다. 해당 workspace의 Conductor 세션 전체를 Pi session으로 hydrate하고, 각 변환 세션에 source metadata를 남겨 재실행 시 중복 변환을 피합니다. hydrate가 끝나면 `/wt switch <workspace>`와 같은 세션 선택 흐름으로 이어져야 합니다. 복구된 Pi session 자체가 원본 transcript를 갖고 있으므로, workspace-level `conductor-context.md`가 특정 active Conductor session 요약을 다음 turn에 잘못 주입하지 않도록 `.loaded.md`로 보존 처리합니다.
 
@@ -73,7 +73,7 @@ fork-panel에서 종료된 대화는 transcript를 주입하는 것보다 세션
 
 ## Context Sharing Rule
 
-worktree 생성의 context sharing은 command 의미에 맞춰 나뉩니다. `/wt fork`와 `worktree_fork`는 source panel 대화의 조사·판단·파일 포인터를 그대로 이어받는 것이 사용자 기대이므로 full transcript와 `parentSession` lineage를 기본으로 복사합니다. P0/P1/P2는 위치 표시일 뿐 기본 source를 바꾸지 않습니다. Full fork가 실패하면 빈 session이나 minimal fallback에서 작업을 시작하지 않고 생성 artifact를 정리한 뒤 BLOCKED 처리합니다. 반대로 `/wt new`는 깨끗한 세션입니다. Source session이 이미 있으면 provenance를 header/meta에 남기지만, 깨끗한 Pi 세션에서 아직 source JSONL이 없으면 기본 `/wt new`는 provenance 없이 시작할 수 있습니다. `--carry-context`는 source session이 없으면 생성 전에 차단하고, `--minimal-context` / `minimalContext: true`는 source가 있을 때만 최근 user prompt, source session `/archive <path>` reference, 선택적 summary를 담은 최소 전달 pack을 붙입니다.
+worktree 생성의 context sharing은 command 의미에 맞춰 나뉩니다. Slash `/wt fork`는 source 대화의 full transcript와 `parentSession` lineage를 기본으로 복사하고, 전환 후 hidden continuation이 최신 non-status 작업을 이어갑니다. Full copy가 실패해도 성공한 worktree를 삭제하지 않고 fallback context/session과 경고로 current-panel 전환을 계속합니다. Slash `/wt new`는 clean session을 유지하되 latest non-`/wt` 요청 1개만 최대 2,000자로 compact continuation에 담아 전환 후 멈춤을 줄입니다. Task·ticket·note가 모두 없으면 불필요한 agent turn을 만들지 않습니다. `worktree_fork` tool과 Frame/TFT 같은 composed workflow는 source panel 보존·full lineage·READY가 계약이므로 실패 시 BLOCKED/cleanup 정책을 별도로 유지합니다.
 
 최소 전달 정보도 “보조 힌트”가 아니라 복구 가능한 artifact입니다. 새 session JSONL에 실제 `worktree-context` custom message로 persist되어야 하며, `.pi/worktree-meta.json`에는 `context.mode`, source session file/title/cwd, target session file, full transcript copy 여부가 남아야 합니다. UI의 cwd binding도 `전문 계승`, `최소 전달 메모 저장`, `대체 전달 메모 저장`처럼 실제 전달 상태를 말해야 합니다. handoff를 숨긴다는 뜻은 전달 사실을 감추는 것이 아니라, 사용자가 별도 handoff 절차를 수행해야만 worktree를 만들 수 있는 UX를 없앤다는 뜻입니다.
 

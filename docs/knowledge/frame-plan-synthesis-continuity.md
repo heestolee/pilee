@@ -17,8 +17,8 @@ applies_to:
   - .pi/frame.json
 source:
   - user-direction:2026-05-11-frame-plan-synthesis
-reviewed_at: 2026-08-26
-reviewed_commit: 272c85be373f745c6e80cb0b33296ebd568ecf58
+reviewed_at: 2026-08-31
+reviewed_commit: 090cb14078e5ca278d45a76da01d366aebcec6dc
 related:
   - frame-verify-contract
   - frame-planning-identity
@@ -63,4 +63,4 @@ Fork/readiness 이벤트도 같은 work unit 안에서 보입니다. 예를 들�
 
 Task board까지 함께 승격되어야 사용자는 “새 작업을 시작했다”가 아니라 “같은 작업이 worktree라는 실행 공간을 얻었다”고 느낍니다. frame만 옮기고 slice/verify task가 사라져 보이면 작업 지도 계승이 끊긴 것입니다.
 
-Frame Step 9에서 `fork해서 시작`을 고르면 사용자는 별도 전환 명령을 의식하지 않아야 합니다. 이 선택은 일반 `worktree_fork` LLM tool이 아니라 `/frame` command shim이 저장한 command context를 재사용하는 `frame_worktree_fork` bridge로 처리합니다. bridge는 실제 `/wt fork` handler를 실행하고 placement를 물은 뒤 source panel을 보존하면서 planning frame과 task board를 승격합니다. 새 작업 panel의 exact session이 READY인 뒤 “첫 ready implementation slice부터 이어서 작업” follow-up이 시작되어야 완료입니다. command context, full lineage, READY 중 하나라도 없으면 생성 전 또는 cleanup 후 BLOCKED로 멈추며, current-panel fallback이나 절대경로 작업은 plan continuity가 아닙니다.
+Frame Step 9에서 `fork해서 시작`을 고르면 사용자는 별도 전환 명령을 의식하지 않아야 합니다. 이 선택은 일반 `worktree_fork` LLM tool이나 사용자 slash `/wt fork`가 아니라 `/frame` command shim이 저장한 command context를 재사용하는 `frame_worktree_fork` bridge로 처리합니다. bridge는 source panel 보존용 composed workflow runner를 실행해 placement를 묻고 planning frame과 task board를 승격합니다. 새 작업 panel의 exact session이 READY인 뒤 “첫 ready implementation slice부터 이어서 작업” follow-up이 시작되어야 완료입니다. command context, full lineage, READY 중 하나라도 없으면 생성 전 또는 cleanup 후 BLOCKED로 멈추며, current-panel fallback이나 절대경로 작업은 plan continuity가 아닙니다.

@@ -25,8 +25,8 @@ source:
   - pilee-history:2026-05-05#41
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-11-subagent-skill-delegation
-reviewed_at: 2026-08-26
-reviewed_commit: 272c85be373f745c6e80cb0b33296ebd568ecf58
+reviewed_at: 2026-08-31
+reviewed_commit: 090cb14078e5ca278d45a76da01d366aebcec6dc
 related:
   - worktree-execution-boundary
   - session-identity-over-filenames
@@ -51,7 +51,7 @@ Subagent에 slash command 문자열을 그대로 넘기는 것도 command 실행
 
 `worktree_create`, `worktree_switch`, `worktree_fork` 같은 일반 도구는 slash command를 몰래 실행하지 않습니다. `worktree_create`와 `worktree_fork`는 매 실행 placement를 묻고 source panel을 유지한 채 exact target session을 새 Ghostty panel/tab에서 엽니다. target process는 session file과 cwd를 확인해 READY를 먼저 기록하고, 그 뒤에만 continuation을 follow-up으로 시작합니다. `worktree_switch`만 `switchSession` 또는 deferred `requestSessionSwitch`로 current panel을 이동합니다. 새 panel open/READY가 실패하면 이번 실행의 terminal/fork record/session/worktree/branch를 정리하고 BLOCKED로 끝내며, current-panel relaunch·slash prefill·절대경로 작업으로 우회하지 않습니다.
 
-`/frame`처럼 command shim에서 시작해 agent가 Step 9 결정을 처리하는 흐름은 command context bridge를 둡니다. `/frame` command handler가 자신의 `ExtensionCommandContext`를 frame identity에 묶어 저장하고, Step 9의 `fork해서 시작`은 `frame_worktree_fork` tool을 통해 그 context의 실제 `/wt fork` 경로를 호출합니다. placement 선택과 READY handshake는 이 command path에서 실행되고, 새 panel continuation이 승격된 frame/task의 첫 ready slice를 시작합니다. bridge context가 없거나 session이 맞지 않으면 worktree를 만들지 않고 BLOCKED로 멈춥니다.
+`/frame`처럼 command shim에서 시작해 agent가 Step 9 결정을 처리하는 흐름은 command context bridge를 둡니다. `/frame` command handler가 자신의 `ExtensionCommandContext`를 frame identity에 묶어 저장하고, Step 9의 `fork해서 시작`은 `frame_worktree_fork` tool을 통해 사용자 slash `/wt fork`와 분리된 composed workflow runner를 호출합니다. placement 선택과 READY handshake는 이 workflow path에서 실행되고, 새 panel continuation이 승격된 frame/task의 첫 ready slice를 시작합니다. bridge context가 없거나 session이 맞지 않으면 worktree를 만들지 않고 BLOCKED로 멈춥니다.
 
 ## Failure Mode
 

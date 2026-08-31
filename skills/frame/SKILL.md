@@ -618,7 +618,7 @@ TFT Studio finish invariant:
 답은 번호로 주세요. 예: `4`
 ```
 
-사용자의 다음 단계 선택까지 transcript에 남긴 뒤 `frame_studio action=finish`를 호출한다. `fork해서 시작`을 선택하면 `worktree_fork` tool을 호출하지 말고 `frame_worktree_fork` tool을 호출한다. 이 도구는 `/frame` command shim이 저장한 command context로 실제 `/wt fork` 경로를 실행하고 placement를 물은 뒤, source panel을 보존하면서 forked worktree exact session을 새 작업 panel에서 활성화한다. target READY가 확인된 뒤 승격된 `.pi/frame.json`·task board를 읽고 첫 ready implementation slice를 시작하는 follow-up까지 이어져야 성공이다. tool이 `BLOCKED`를 반환하면 현재 세션에서 절대경로로 이어가거나 current-panel switch로 fallback하지 말고 사용자에게 이유를 보고한다. planning frame은 worktree 생성 시 `.pi/frame.json`으로 자동 승격되어야 하며, 사용자는 승격 절차를 따로 의식하지 않는다.
+사용자의 다음 단계 선택까지 transcript에 남긴 뒤 `frame_studio action=finish`를 호출한다. `fork해서 시작`을 선택하면 `worktree_fork` tool이나 사용자 slash `/wt fork`를 호출하지 말고 `frame_worktree_fork` tool을 호출한다. 이 도구는 `/frame` command shim이 저장한 command context로 source panel 보존용 composed workflow runner를 실행하고 placement를 물은 뒤, forked worktree exact session을 새 작업 panel에서 활성화한다. target READY가 확인된 뒤 승격된 `.pi/frame.json`·task board를 읽고 첫 ready implementation slice를 시작하는 follow-up까지 이어져야 성공이다. tool이 `BLOCKED`를 반환하면 현재 세션에서 절대경로로 이어가거나 current-panel switch로 fallback하지 말고 사용자에게 이유를 보고한다. planning frame은 worktree 생성 시 `.pi/frame.json`으로 자동 승격되어야 하며, 사용자는 승격 절차를 따로 의식하지 않는다.
 
 ---
 
