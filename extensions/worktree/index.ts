@@ -265,6 +265,7 @@ export interface WorktreeForkCommandOptions {
 
 export type WorktreeForkCommandResult =
 	| { status: "activated"; name: string; branch: string; path: string; sessionFile: string; contextMode: WorktreeContextMode; framePromotion: FramePromotionResult; activation: WorkspacePanelActivationResult }
+	| { status: "pending"; reason: string; name: string; branch: string; path: string; sessionFile: string; contextMode: WorktreeContextMode; framePromotion: FramePromotionResult; activation: WorkspacePanelActivationResult }
 	| { status: "switched"; name: string; branch: string; path: string; sessionFile: string; contextMode: WorktreeContextMode; framePromotion: FramePromotionResult }
 	| { status: "blocked" | "failed"; reason: string; name?: string; branch?: string; path?: string; sessionFile?: string; contextMode?: WorktreeContextMode; framePromotion?: FramePromotionResult; activation?: WorkspacePanelActivationResult };
 
@@ -2985,7 +2986,13 @@ async function handleCommandFork(pi: ExtensionAPI, args: string, ctx: ExtensionC
 		sessionFile: session.sessionFile,
 		sourceSessionFile: getSessionFileFromContext(ctx) ?? undefined,
 		title: `${name} (${branchName})`,
+		timeoutPolicy: "preserve-pending",
 	});
+	if (activation.status === "pending") {
+		const reason = `${activation.reason} · activation descriptor: ${activation.descriptorPath}`;
+		ctx.ui.notify(`⏳ ${name} forked (${branchName}) → ${activation.panelLabel} ${contract.placement}; full session을 계속 불러오는 중이며 READY 뒤 작업을 자동 재개합니다.`, "info");
+		return { status: "pending", reason, name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion, activation };
+	}
 	if (activation.status !== "activated") {
 		const reason = `${activation.reason}. ${preservedActivationTargetSummary(activation, worktreePath, session.sessionFile)}`;
 		ctx.ui.notify(`BLOCKED: /wt fork ${openTarget} activation 실패 — ${reason}`, "error");

@@ -115,6 +115,17 @@ export type WorkspacePanelActivationResult =
 		continuationDispatched: boolean;
 	}
 	| {
+		status: "pending";
+		reason: string;
+		contract: WorkspaceActivationContract;
+		placement: NewPanelPlacement;
+		terminalId: string;
+		forkId: string;
+		panelLabel: string;
+		descriptorPath: string;
+		safeToDeleteTarget: false;
+	}
+	| {
 		status: "blocked" | "failed";
 		reason: string;
 		contract: WorkspaceActivationContract;
@@ -134,6 +145,7 @@ interface ActivateWorkspacePanelInput {
 	sourceSessionFile?: string;
 	title: string;
 	timeoutMs?: number;
+	timeoutPolicy?: "cancel" | "preserve-pending";
 	activationRoot?: string;
 }
 
@@ -544,6 +556,19 @@ export async function activateWorkspaceInNewPanel(
 	if (reachedExpectedStatus(final, expectedStatus)) {
 		rmSync(prepared.path, { force: true });
 		return activatedResult(input, placement, opened, final);
+	}
+	if (input.timeoutPolicy === "preserve-pending" && (!final || ["prepared", "panel-opened", "ready", "continuing"].includes(final.status))) {
+		return {
+			status: "pending",
+			reason: `target session이 ${timeoutMs}ms 뒤에도 계속 기동 중입니다. panel을 유지하며 READY 이후 continuation을 자동 실행합니다.`,
+			contract: input.contract,
+			placement,
+			terminalId: opened.terminalId,
+			forkId: opened.forkId,
+			panelLabel: opened.panelLabel,
+			descriptorPath: prepared.path,
+			safeToDeleteTarget: false,
+		};
 	}
 
 	const cancellationOwnerId = `cancellation-${process.pid}-${randomUUID()}`;

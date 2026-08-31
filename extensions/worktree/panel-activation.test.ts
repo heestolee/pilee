@@ -296,6 +296,53 @@ test("preflight block is safe, while host-open failure and unconfirmed close pre
 	}
 });
 
+test("slow full-session target stays open and dispatches continuation after the parent wait expires", async () => {
+	const f = fixture();
+	try {
+		const activationRoot = join(f.root, "slow-ready");
+		let activationEnv: Record<string, string | undefined> = {};
+		let closeCalled = false;
+		let removeCalled = false;
+		let sent = 0;
+		const pi = { sendMessage() { sent += 1; } } as any;
+		const result = await activateWorkspaceInNewPanel(pi, {} as any, {
+			contract: contract("slow-ready", { workflow: "fork", customType: "continue-later", content: "continue" }),
+			cwd: f.root,
+			sessionFile: f.targetSession,
+			sourceSessionFile: f.sourceSession,
+			title: "Slow full session",
+			activationRoot,
+			timeoutMs: 0,
+			timeoutPolicy: "preserve-pending",
+		}, {
+			openPanel: async (_hostPi, request) => {
+				activationEnv = request.env ?? {};
+				return { status: "opened", terminalId: "term-slow", forkId: "fork-slow", panelLabel: "P3" };
+			},
+			closePanel: async () => { closeCalled = true; return { closed: true }; },
+			removePanelRecord: () => { removeCalled = true; },
+			sleep: async () => {},
+		});
+		assert.equal(result.status, "pending");
+		if (result.status === "pending") {
+			assert.equal(result.safeToDeleteTarget, false);
+			assert.match(result.reason, /계속 기동 중/);
+		}
+		assert.equal(closeCalled, false);
+		assert.equal(removeCalled, false);
+		assert.equal(readWorkspacePanelActivation(join(activationRoot, "slow-ready.json"))?.status, "panel-opened");
+
+		const received = await receiveWorkspacePanelActivation(pi, {
+			cwd: f.root,
+			sessionManager: { getSessionFile: () => f.targetSession, getCwd: () => f.root, appendCustomEntry() {} },
+		} as any, activationEnv);
+		assert.equal(received?.status, "continued");
+		assert.equal(sent, 1);
+	} finally {
+		rmSync(f.root, { recursive: true, force: true });
+	}
+});
+
 test("timeout cancellation claim wins before a receiver and prevents continuation dispatch", async () => {
 	const f = fixture();
 	try {

@@ -44,6 +44,8 @@ test("slash /wt fork offers exactly current, tab, and right targets after shared
 	assert.match(commandFork, /openTarget === "current"/);
 	assert.match(commandFork, /switchSessionToWorktree/);
 	assert.match(commandFork, /activateWorkspaceInNewPanel/);
+	assert.match(commandFork, /timeoutPolicy: "preserve-pending"/);
+	assert.match(commandFork, /activation\.status === "pending"/);
 	assert.ok(commandFork.indexOf('pi.exec("git", ["worktree", "add"') < commandFork.indexOf('if (openTarget === "current")'));
 	assert.doesNotMatch(commandFork, /cleanupCreatedWorktree|fullContextFailure/);
 });
