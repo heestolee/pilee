@@ -25,7 +25,7 @@ applies_to:
 source:
   - user-direction:2026-08-25-workspace-activation-redesign
 reviewed_at: 2026-08-31
-reviewed_commit: 94a83c01f112ebec27e3f9bf9a7df842a7a06af9
+reviewed_commit: c995d39d230f7d16e2b40730e997ca1ca06ca343
 related:
   - worktree-execution-boundary
   - worktree-session-continuity
@@ -65,7 +65,7 @@ Descriptor 전이는 `prepared → panel-opened → ready → continuing → con
 
 ## Host Adapter Boundary
 
-Ghostty에서 새 tab/split을 연 직후 별도 `input text`나 key event를 보내면 surface model 준비와 경쟁할 수 있습니다. 새 surface는 `surface configuration`의 initial working directory와 initial input에 launch command를 넣어 생성하고, 생성 이후 입력 자동화에 의존하지 않습니다.
+Ghostty에서 새 tab/split을 연 직후 별도 `input text`나 key event를 보내면 surface model 준비와 경쟁할 수 있습니다. 새 surface는 `surface configuration`의 initial working directory와 initial input에 launch command를 넣어 생성하고, 생성 이후 입력 자동화에 의존하지 않습니다. 단, initial input에 한글 cwd/session/env가 포함된 raw command를 넣으면 host 입력 단계에서 Unicode가 깨질 수 있으므로 UTF-8 command 전체를 base64로 인코딩한 ASCII transport를 사용하고 target shell에서 복원합니다.
 
 Host adapter runtime E2E는 사용자가 작업 중인 terminal·tab·window를 fixture로 사용하지 않습니다. 명시적으로 승인된 disposable host 공간을 격리할 수 있을 때만 실제 panel 생성·focus·입력 테스트를 수행합니다. 격리할 수 없으면 mock state machine, 생성 script assertion, AppleScript compile까지만 자동 검증하고 실제 host success path는 coverage gap으로 남깁니다. Cleanup은 run이 생성한 exact terminal/session/worktree ID만 대상으로 하며 baseline 이후 생긴 모든 surface를 일괄 삭제하지 않습니다.
 
