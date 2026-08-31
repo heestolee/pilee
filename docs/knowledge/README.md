@@ -142,7 +142,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [MCP runtime은 장시간 세션에서 self-healing해야 한다](./mcp-runtime-self-healing.md) | active | high | 2026-07-02 | eda675a | mcp, runtime, self-healing, reconnect, retry |
 | [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-06-02 | fad9c36 | mcp, stderr, stdio, terminal, tui, noise |
 | [Runtime fan-out은 healthcheck 뒤의 실행 계약이다](./runtime-fanout-diagnosis.md) | active | high | 2026-06-02 | 91c739f | runtime, fanout, healthcheck, deployment, triage, root-cause |
-| [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-08-31 | c995d39 | terminal, ghostty, applescript, notify, host, integration |
+| [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-08-31 | e38c163 | terminal, ghostty, applescript, notify, host, integration |
 | [터미널 workspace 복원은 snapshot과 host adapter를 분리한다](./terminal-workspace-restore.md) | active | high | 2026-06-02 | 83617e9 | workspace, terminal, ghostty, snapshot, restore, session |
 
 ### ui
@@ -233,7 +233,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Working Context Card는 큰 맥락을 현재 slice로 압축한다](./work-context-card-task-board.md) | active | high | 2026-06-02 | 61ccbc9 | work-context, tasks, workflow, context, guard |
 | [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-07-23 | eddf3b4 | workflow, guard, intent, audit, hotfix, continuation |
 | [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-06-02 | 61ccbc9 | workflow, frame, tft, hotfix, scope, incremental |
-| [작업공간 동작과 panel activation은 별도 계약이다](./workspace-action-panel-activation-contract.md) | active | high | 2026-08-31 | c995d39 | workspace, worktree, branch, activation, panel, authorization |
+| [작업공간 동작과 panel activation은 별도 계약이다](./workspace-action-panel-activation-contract.md) | active | high | 2026-08-31 | e38c163 | workspace, worktree, branch, activation, panel, authorization |
 | [Worktree 생성은 현재 패널 대화가 source다](./worktree-creation-parent-gate.md) | active | high | 2026-08-31 | c712406 | worktree, fork-panel, current-panel, hotfix, context, profile-driven |
 | [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-08-31 | c712406 | worktree, dependencies, bootstrap, profile-driven, worker, subagent |
 | [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-08-31 | 94a83c0 | worktree, workspace, repo, branch, execution-boundary, cwd-binding |

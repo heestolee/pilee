@@ -25,7 +25,7 @@ applies_to:
 source:
   - user-direction:2026-08-25-workspace-activation-redesign
 reviewed_at: 2026-08-31
-reviewed_commit: c995d39d230f7d16e2b40730e997ca1ca06ca343
+reviewed_commit: e38c1637107f90a8e398dbfc9cb4779cb70e1ab9
 related:
   - worktree-execution-boundary
   - worktree-session-continuity
@@ -65,7 +65,7 @@ Descriptor 전이는 `prepared → panel-opened → ready → continuing → con
 
 ## Host Adapter Boundary
 
-Ghostty에서 새 tab/split을 연 직후 별도 `input text`나 key event를 보내면 surface model 준비와 경쟁할 수 있습니다. 새 surface는 `surface configuration`의 initial working directory와 initial input에 launch command를 넣어 생성하고, 생성 이후 입력 자동화에 의존하지 않습니다. 단, initial input에 한글 cwd/session/env가 포함된 raw command를 넣으면 host 입력 단계에서 Unicode가 깨질 수 있으므로 UTF-8 command 전체를 base64로 인코딩한 ASCII transport를 사용하고 target shell에서 복원합니다.
+Ghostty에서 새 tab/split을 연 직후 별도 `input text`나 key event를 보내면 surface model 준비와 경쟁할 수 있습니다. 새 surface는 `surface configuration`의 initial working directory와 `command`를 생성 시점에 설정하고, 생성 이후 입력 자동화에 의존하지 않습니다. `initial input`에 한글 raw command를 넣으면 Unicode가 깨지고 긴 inline base64 payload를 넣으면 host 길이 제한으로 닫는 quote가 잘릴 수 있습니다. 따라서 command에는 짧은 ASCII 임시 script path만 넣고, 실제 UTF-8 cwd/session/env와 Pi 실행 명령은 self-deleting script 내부에 보존합니다.
 
 Host adapter runtime E2E는 사용자가 작업 중인 terminal·tab·window를 fixture로 사용하지 않습니다. 명시적으로 승인된 disposable host 공간을 격리할 수 있을 때만 실제 panel 생성·focus·입력 테스트를 수행합니다. 격리할 수 없으면 mock state machine, 생성 script assertion, AppleScript compile까지만 자동 검증하고 실제 host success path는 coverage gap으로 남깁니다. Cleanup은 run이 생성한 exact terminal/session/worktree ID만 대상으로 하며 baseline 이후 생긴 모든 surface를 일괄 삭제하지 않습니다.
 
