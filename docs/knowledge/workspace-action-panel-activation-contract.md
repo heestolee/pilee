@@ -25,7 +25,7 @@ applies_to:
 source:
   - user-direction:2026-08-25-workspace-activation-redesign
 reviewed_at: 2026-08-31
-reviewed_commit: e316766486a2f5fb27a52a3ce5ce0e940e29bbef
+reviewed_commit: 0b551c0b7a5605bf87aa1cf8241d24e1170b9927
 related:
   - worktree-execution-boundary
   - worktree-session-continuity
@@ -55,7 +55,7 @@ Authorization은 단순 keyword 존재 여부가 아닙니다. `worktree 만들�
 
 ## Activation Rule
 
-`/wt new`, `/wt fork`, `worktree_create`, `worktree_fork`, PR review checkout, Frame fork는 source panel을 보존하고 매 실행 new-panel placement를 묻습니다. 선택한 placement에서 exact target cwd와 exact session file로 Pi를 열고, target process가 두 값을 확인한 READY ack를 durable descriptor에 먼저 기록해야 합니다. Continuation은 READY 이후에만 전달합니다.
+`/wt fork`, `worktree_create`, `worktree_fork`, PR review checkout, Frame fork는 source panel을 보존하고 매 실행 new-panel placement를 묻습니다. `/wt new`는 `현재 패널`과 새 탭/분할을 함께 보여주며 `--here`로 위치 질문 없이 기존 current-panel 전환을 선택할 수 있습니다. 새 panel을 선택하면 exact target cwd와 exact session file로 Pi를 열고 target process가 두 값을 확인한 READY ack를 durable descriptor에 먼저 기록합니다. 현재 panel을 선택하면 `switchSession`이 exact target session/cwd를 연 뒤 같은 READY entry를 target session에 남깁니다. Continuation과 create-specific bootstrap은 어느 경로든 READY 이후에만 전달·소비합니다.
 
 Descriptor 전이는 `prepared → panel-opened → ready → continuing → continued`와 `prepared|panel-opened|ready|failed → cancelling → cancelled`를 구분합니다. Parent와 child process는 bounded retry·stale recovery가 있는 exclusive lock directory 안에서 전이를 claim합니다. Receiver가 `ready→continuing`을 먼저 소유하면 parent는 timeout cleanup을 수행하지 않고, parent가 cancellation을 먼저 소유하면 receiver는 continuation을 보내지 않습니다. 같은 descriptor를 연 duplicate receiver도 continuation을 두 번 dispatch할 수 없습니다.
 
@@ -71,7 +71,7 @@ Host adapter runtime E2E는 사용자가 작업 중인 terminal·tab·window를 
 
 ## Context and Continuation
 
-`/wt fork`와 목적형 workflow의 fork는 full transcript와 `parentSession` lineage를 기본으로 보존합니다. `/wt new`의 기본은 clean session입니다. Source session이 이미 있으면 header/metadata에 provenance를 남기지만, 깨끗한 Pi 세션의 첫 action이라 아직 source JSONL이 없으면 provenance를 꾸며내거나 기본 `/wt new`를 차단하지 않습니다. Exact target cwd/session READY는 그대로 검증합니다. `--carry-context`처럼 실제 source context를 요구한 경우에만 source session이 없으면 worktree 생성 전에 BLOCKED 처리합니다. Full context를 요청했는데 `SessionManager.forkFrom`이 실패하면 빈 session이나 minimal fallback에서 작업을 시작하지 않고 BLOCKED 처리합니다.
+`/wt fork`와 목적형 workflow의 fork는 full transcript와 `parentSession` lineage를 기본으로 보존합니다. `/wt new`의 기본 context는 clean session이며 activation 위치는 current/new panel 중 사용자가 고릅니다. Source session이 이미 있으면 header/metadata에 provenance를 남기지만, 깨끗한 Pi 세션의 첫 action이라 아직 source JSONL이 없으면 provenance를 꾸며내거나 기본 `/wt new`를 차단하지 않습니다. Exact target cwd/session READY는 current/new panel 모두 검증합니다. `--carry-context`처럼 실제 source context를 요구한 경우에만 source session이 없으면 worktree 생성 전에 BLOCKED 처리합니다. Full context를 요청했는데 `SessionManager.forkFrom`이 실패하면 빈 session이나 minimal fallback에서 작업을 시작하지 않고 BLOCKED 처리합니다.
 
 Worktree directory나 session file을 만들었다고 workflow가 완료된 것은 아닙니다. PR review는 Review Studio와 `/diff`를 사용할 수 있는 target session까지, Frame fork는 승격된 frame/task를 읽고 첫 ready implementation slice를 시작하는 continuation까지 닫혀야 합니다.
 
