@@ -514,14 +514,16 @@ test("buildStudyHardStudioHtml keeps the learning note geometry stable under the
 	assert.equal(legacyQuestionText("세 가지 방식을 비교해줘 ( [heestolee.study-hard.transcript] 질문: 이전 질문 답변: 이전 답변"), "세 가지 방식을 비교해줘");
 	assert.equal(legacyQuestionText("일반 질문은 그대로 유지해줘", 180), "일반 질문은 그대로 유지해줘");
 	assert.doesNotMatch(legacyQuestionText("[heestolee.study-hard.transcript] 질문: 실제 질문 답변: 실제 답변"), /heestolee|답변:/);
-	const toggleMemoBody = /function toggleMemoQuestion\(questionId\)\{([\s\S]*?)\}\n    function reviewContextFromMemoQuestion/.exec(html)?.[1];
-	assert.ok(toggleMemoBody);
-	const toggleHarness = new Function(`var expandedThoughtQuestionIds=new Set(),renders=0; function renderMap(){renders+=1;} var document={querySelectorAll:function(){return[];}}; function setTimeout(callback){callback();} function toggleMemoQuestion(questionId){${toggleMemoBody}} return {toggle:toggleMemoQuestion,expanded:expandedThoughtQuestionIds,renders:function(){return renders;}};`)() as { toggle(id: string): void; expanded: Set<string>; renders(): number };
-	toggleHarness.toggle("Q-expand");
-	assert.equal(toggleHarness.expanded.has("Q-expand"), true);
+	const memoBoardItemKeySource = html.match(/function memoBoardItemKey\(source,questionId\)\{[^}]+\}/)?.[0];
+	const toggleMemoBody = /function toggleMemoQuestion\(source,questionId\)\{([\s\S]*?)\}\n    function reviewContextFromMemoQuestion/.exec(html)?.[1];
+	assert.ok(memoBoardItemKeySource && toggleMemoBody);
+	const toggleHarness = new Function(`${memoBoardItemKeySource}; var expandedThoughtQuestionIds=new Set(),renders=0; function renderMap(){renders+=1;} var document={querySelectorAll:function(){return[];}}; function setTimeout(callback){callback();} function toggleMemoQuestion(source,questionId){${toggleMemoBody}} return {toggle:toggleMemoQuestion,expanded:expandedThoughtQuestionIds,renders:function(){return renders;}};`)() as { toggle(source: string, id: string): void; expanded: Set<string>; renders(): number };
+	toggleHarness.toggle("study", "Q-expand");
+	assert.equal(toggleHarness.expanded.has("study:Q-expand"), true);
+	assert.equal(toggleHarness.expanded.has("review:Q-expand"), false);
 	assert.equal(toggleHarness.renders(), 1);
-	toggleHarness.toggle("Q-expand");
-	assert.equal(toggleHarness.expanded.has("Q-expand"), false);
+	toggleHarness.toggle("study", "Q-expand");
+	assert.equal(toggleHarness.expanded.has("study:Q-expand"), false);
 	assert.equal(toggleHarness.renders(), 2);
 	const thoughtCategorySource = html.match(/function thoughtQuestionCategory\(q\)\{[^}]+\}/)?.[0];
 	assert.ok(thoughtCategorySource);
@@ -3340,7 +3342,7 @@ test("공통 메모보드는 학습 메모와 코드 리뷰 질문을 같은 카
 	const helperEnd = html.indexOf("function noteBlockElement", helperStart);
 	assert.ok(helperStart >= 0 && helperEnd > helperStart);
 	const helpers = new Function(`
-		var state={questions:[]},metaReviewState={questions:[]},memoBoardSource='review',thoughtFilter='all',expandedThoughtQuestionIds=new Set(),thoughtFocusBlockId=null;
+		var state={questions:[]},metaReviewState={questions:[],run:{runId:'run-1',status:'ready'}},memoBoardSource='review',thoughtFilter='all',expandedThoughtQuestionIds=new Set(['study:Q007']),thoughtFocusBlockId=null;
 		function questionExecutionPhase(q){return q.execution&&q.execution.phase||'';}
 		function metaReviewQuestionStatusText(){return '처리 중';}
 		function compactThoughtText(value,max){var text=String(value||'');return text.length>max?text.slice(0,max-1)+'…':text;}
@@ -3349,21 +3351,68 @@ test("공통 메모보드는 학습 메모와 코드 리뷰 질문을 같은 카
 		function noteBlockLabel(){return 'block';}
 		function noteBlockExcerpt(){return '';}
 		${html.slice(helperStart, helperEnd)};
-		return {reviewMemoCategory,reviewMemoStateLabel,reviewMemoSummaryText,reviewMemoItem,memoBoardCardHtml};
+		return {reviewMemoCategory,reviewMemoStateLabel,reviewMemoSummaryText,reviewMemoItem,memoBoardCardHtml,metaReviewState,expandedThoughtQuestionIds};
 	`)() as any;
 	const question = { id: "Q007", question: "호출을 바꿔줘", status: "answered", execution: { phase: "answered" }, filePath: "src/auth.ts", answer: "변경했습니다.", workerRunId: 15, change: { status: "applied", files: ["src/auth.ts"], validation: [], refreshedRunId: "run-2", refreshMode: "incremental" } };
 	assert.equal(helpers.reviewMemoCategory(question), "applied");
-	assert.equal(helpers.reviewMemoStateLabel(question), "변경 적용 완료");
-	assert.match(helpers.reviewMemoSummaryText(question), /리뷰 incremental 갱신/);
-	const card = helpers.memoBoardCardHtml(helpers.reviewMemoItem(question));
+	assert.equal(helpers.reviewMemoStateLabel(question), "변경 적용 · 리뷰 갱신 중");
+	assert.match(helpers.reviewMemoSummaryText(question), /리뷰 incremental 갱신 중/);
+	let card = helpers.memoBoardCardHtml(helpers.reviewMemoItem(question));
 	assert.match(card, /worker #15/);
 	assert.match(card, /코드 위치 보기/);
 	assert.match(card, /run-2/);
+	assert.match(card, /aria-expanded="false"/, "Study Hard의 같은 Q007 펼침 상태는 코드 리뷰 카드에 번지지 않는다");
+	helpers.expandedThoughtQuestionIds.add("review:Q007");
+	card = helpers.memoBoardCardHtml(helpers.reviewMemoItem(question));
+	assert.match(card, /aria-expanded="true"/);
+	helpers.metaReviewState.run = { runId: "run-2", status: "ready" };
+	assert.equal(helpers.reviewMemoStateLabel(question), "변경 적용 · 리뷰 갱신 완료");
+	assert.match(helpers.reviewMemoSummaryText(question), /리뷰 incremental 갱신 완료/);
 });
 
 test("Meta Review polling은 토글·스크롤·draft focus를 캡처하고 복원한다", () => {
 	const html = buildStudyHardStudioHtml();
-	for (const marker of ["captureMetaReviewInteractionState", "restoreMetaReviewInteractionState", "openDetails", "threadScroll", "inputSelection", "state.activeSurface==='map'&&memoBoardSource==='review'"]) assert.match(html, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+	const helperStart = html.indexOf("function captureMetaReviewInteractionState");
+	const helperEnd = html.indexOf("function renderMetaReview", helperStart);
+	assert.ok(helperStart >= 0 && helperEnd > helperStart);
+	const details = [{ open: true }, { open: false }];
+	const drawerDetails = [{ open: false }, { open: true }];
+	const reviewBody = { scrollTop: 41 };
+	const drawerBody = { scrollTop: 52 };
+	const thread = { scrollTop: 63 };
+	const input = {
+		selectionStart: 2,
+		selectionEnd: 7,
+		focus() { mockDocument.activeElement = input; },
+		setSelectionRange(start: number, end: number) { input.selectionStart = start; input.selectionEnd = end; },
+	};
+	const selectors = new Map<string, any>([
+		["#metaReviewDocument .reviewLayout", {}],
+		["#reviewSurface .reviewBody", reviewBody],
+		["#detailDrawer .drawerBody", drawerBody],
+		["#conversation .thread", thread],
+	]);
+	const mockDocument: any = {
+		activeElement: input,
+		querySelector(selector: string) { return selectors.get(selector) ?? null; },
+		querySelectorAll(selector: string) { return selector === "#metaReviewDocument details" ? details : selector === "#detailDrawer details" ? drawerDetails : []; },
+		getElementById(id: string) { return id === "metaReviewQuestionInput" ? input : null; },
+	};
+	const mockWindow: any = { scrollX: 9, scrollY: 74, scrollTo(x: number, y: number) { mockWindow.scrollX = x; mockWindow.scrollY = y; } };
+	const helpers = new Function("document", "window", "requestAnimationFrame", `${html.slice(helperStart, helperEnd)};return {captureMetaReviewInteractionState,restoreMetaReviewInteractionState};`)(mockDocument, mockWindow, (callback: () => void) => callback()) as any;
+	const snapshot = helpers.captureMetaReviewInteractionState();
+	reviewBody.scrollTop = drawerBody.scrollTop = thread.scrollTop = 0;
+	details.forEach((item) => { item.open = false; });
+	drawerDetails.forEach((item) => { item.open = false; });
+	mockDocument.activeElement = null;
+	input.selectionStart = input.selectionEnd = 0;
+	mockWindow.scrollY = 0;
+	helpers.restoreMetaReviewInteractionState(snapshot);
+	assert.deepEqual(details.map((item) => item.open), [true, false]);
+	assert.deepEqual(drawerDetails.map((item) => item.open), [false, true]);
+	assert.deepEqual([reviewBody.scrollTop, drawerBody.scrollTop, thread.scrollTop, mockWindow.scrollY], [41, 52, 63, 74]);
+	assert.equal(mockDocument.activeElement, input);
+	assert.deepEqual([input.selectionStart, input.selectionEnd], [2, 7]);
 	assert.doesNotMatch(html, /같은 Pi 세션에 전달 중/);
 	assert.match(html, /공통 worker에 전달 중/);
 	assert.match(html, /Worker로 다시 시도/);
