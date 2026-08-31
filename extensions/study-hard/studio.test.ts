@@ -477,11 +477,11 @@ test("buildStudyHardStudioHtml keeps the learning note geometry stable under the
 	assert.match(html, /q\.scope==='note-block'/);
 	assert.match(html, /function thoughtGroups/);
 	assert.match(html, /title:'과거 노트 블록'/);
-	assert.match(html, /function thoughtQuestionCardHtml/);
+	assert.match(html, /function memoBoardCardHtml/);
 	assert.match(html, /function memoSummaryText/);
 	assert.match(html, /function legacyQuestionText/);
 	assert.match(html, /function memoQuestionText/);
-	assert.match(html, /question=memoQuestionText\(q\)/);
+	assert.match(html, /question:memoQuestionText\(q\)/);
 	assert.match(html, /esc\(legacyQuestionText\(q\.question\)\)/);
 	assert.match(html, /resultSummary/);
 	assert.match(html, /thoughtMemoGrid/);
@@ -489,11 +489,11 @@ test("buildStudyHardStudioHtml keeps the learning note geometry stable under the
 	assert.match(html, /thoughtMemoSummary/);
 	assert.match(html, /thoughtMemoFull conversationMarkdown/);
 	assert.match(html, /expandedThoughtQuestionIds=new Set\(\)/);
-	assert.match(html, /data-toggle-thought-question/);
+	assert.match(html, /data-toggle-memo-question/);
 	assert.match(html, /aria-expanded/);
 	assert.match(html, /답변 펼치기 ▼/);
 	assert.match(html, /답변 접기 ▲/);
-	assert.match(html, /renderConversationAnswer\(q\.feedback\)/);
+	assert.match(html, /renderConversationAnswer\(item\.full\)/);
 	assert.match(html, /\.thoughtMemo\.expanded \{ grid-column:span 2/);
 	assert.match(html, /\.thoughtMemo\.expanded \{ grid-column:span 1/);
 	assert.match(html, /event\.target\.closest\('a,button,summary,details'\)/);
@@ -514,9 +514,9 @@ test("buildStudyHardStudioHtml keeps the learning note geometry stable under the
 	assert.equal(legacyQuestionText("세 가지 방식을 비교해줘 ( [heestolee.study-hard.transcript] 질문: 이전 질문 답변: 이전 답변"), "세 가지 방식을 비교해줘");
 	assert.equal(legacyQuestionText("일반 질문은 그대로 유지해줘", 180), "일반 질문은 그대로 유지해줘");
 	assert.doesNotMatch(legacyQuestionText("[heestolee.study-hard.transcript] 질문: 실제 질문 답변: 실제 답변"), /heestolee|답변:/);
-	const toggleThoughtBody = /function toggleThoughtQuestion\(questionId\)\{([\s\S]*?)\}\n    function bindThoughtBoard/.exec(html)?.[1];
-	assert.ok(toggleThoughtBody);
-	const toggleHarness = new Function(`var expandedThoughtQuestionIds=new Set(),renders=0; function renderMap(){renders+=1;} var document={querySelectorAll:function(){return[];}}; function setTimeout(callback){callback();} function toggleThoughtQuestion(questionId){${toggleThoughtBody}} return {toggle:toggleThoughtQuestion,expanded:expandedThoughtQuestionIds,renders:function(){return renders;}};`)() as { toggle(id: string): void; expanded: Set<string>; renders(): number };
+	const toggleMemoBody = /function toggleMemoQuestion\(questionId\)\{([\s\S]*?)\}\n    function reviewContextFromMemoQuestion/.exec(html)?.[1];
+	assert.ok(toggleMemoBody);
+	const toggleHarness = new Function(`var expandedThoughtQuestionIds=new Set(),renders=0; function renderMap(){renders+=1;} var document={querySelectorAll:function(){return[];}}; function setTimeout(callback){callback();} function toggleMemoQuestion(questionId){${toggleMemoBody}} return {toggle:toggleMemoQuestion,expanded:expandedThoughtQuestionIds,renders:function(){return renders;}};`)() as { toggle(id: string): void; expanded: Set<string>; renders(): number };
 	toggleHarness.toggle("Q-expand");
 	assert.equal(toggleHarness.expanded.has("Q-expand"), true);
 	assert.equal(toggleHarness.renders(), 1);
@@ -3331,6 +3331,42 @@ test("Study Hard 질문 drawer는 direct와 worker 실행 상태를 같은 UI �
 	assert.equal(helpers.metaReviewQuestionStatusText({ execution: { phase: "stale" } }), "기준 source가 변경되어 다시 확인이 필요해요.");
 	assert.equal(helpers.metaReviewQuestionNeedsPolling({ execution: { phase: "escalating" } }), true);
 	assert.equal(helpers.metaReviewQuestionNeedsPolling({ execution: { phase: "answered" } }), false);
+});
+
+test("공통 메모보드는 학습 메모와 코드 리뷰 질문을 같은 카드 계약으로 렌더링한다", () => {
+	const html = buildStudyHardStudioHtml();
+	for (const marker of ["data-memo-source=\"study\"", "data-memo-source=\"review\"", "function memoBoardCardHtml", "코드 위치 보기", "변경 적용 완료"]) assert.match(html, new RegExp(marker));
+	const helperStart = html.indexOf("function reviewMemoQuestions");
+	const helperEnd = html.indexOf("function noteBlockElement", helperStart);
+	assert.ok(helperStart >= 0 && helperEnd > helperStart);
+	const helpers = new Function(`
+		var state={questions:[]},metaReviewState={questions:[]},memoBoardSource='review',thoughtFilter='all',expandedThoughtQuestionIds=new Set(),thoughtFocusBlockId=null;
+		function questionExecutionPhase(q){return q.execution&&q.execution.phase||'';}
+		function metaReviewQuestionStatusText(){return '처리 중';}
+		function compactThoughtText(value,max){var text=String(value||'');return text.length>max?text.slice(0,max-1)+'…':text;}
+		function esc(value){return String(value||'');}
+		function renderConversationAnswer(value){return String(value||'');}
+		function noteBlockLabel(){return 'block';}
+		function noteBlockExcerpt(){return '';}
+		${html.slice(helperStart, helperEnd)};
+		return {reviewMemoCategory,reviewMemoStateLabel,reviewMemoSummaryText,reviewMemoItem,memoBoardCardHtml};
+	`)() as any;
+	const question = { id: "Q007", question: "호출을 바꿔줘", status: "answered", execution: { phase: "answered" }, filePath: "src/auth.ts", answer: "변경했습니다.", workerRunId: 15, change: { status: "applied", files: ["src/auth.ts"], validation: [], refreshedRunId: "run-2", refreshMode: "incremental" } };
+	assert.equal(helpers.reviewMemoCategory(question), "applied");
+	assert.equal(helpers.reviewMemoStateLabel(question), "변경 적용 완료");
+	assert.match(helpers.reviewMemoSummaryText(question), /리뷰 incremental 갱신/);
+	const card = helpers.memoBoardCardHtml(helpers.reviewMemoItem(question));
+	assert.match(card, /worker #15/);
+	assert.match(card, /코드 위치 보기/);
+	assert.match(card, /run-2/);
+});
+
+test("Meta Review polling은 토글·스크롤·draft focus를 캡처하고 복원한다", () => {
+	const html = buildStudyHardStudioHtml();
+	for (const marker of ["captureMetaReviewInteractionState", "restoreMetaReviewInteractionState", "openDetails", "threadScroll", "inputSelection", "state.activeSurface==='map'&&memoBoardSource==='review'"]) assert.match(html, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+	assert.doesNotMatch(html, /같은 Pi 세션에 전달 중/);
+	assert.match(html, /공통 worker에 전달 중/);
+	assert.match(html, /Worker로 다시 시도/);
 });
 
 test("Study Hard 코드 리뷰 surface는 공통 worker 질문, 결정, 명시적 refresh 요청을 같은 run에 연결한다", async () => {
