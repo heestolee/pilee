@@ -31,21 +31,26 @@ test("parseSplitPlacementArgs accepts repanel anchor-path syntax only", () => {
 	assert.equal(parseSplitPlacementArgs("right later"), null);
 });
 
-test("chooseNewPanelPlacement asks every run and excludes current-panel fallback", async () => {
+test("chooseNewPanelPlacement exposes current-panel only for the explicit /wt new choice surface", async () => {
 	const seen: string[][] = [];
+	let selected = "새 탭";
 	const ctx = {
 		hasUI: true,
 		ui: {
 			async select(_title: string, choices: string[]) {
 				seen.push(choices);
-				return "새 탭";
+				return selected;
 			},
 		},
 	} as any;
 	assert.equal(await chooseNewPanelPlacement(ctx), "tab");
 	assert.deepEqual(seen[0]?.slice(0, 2), ["오른쪽 분할 패널", "새 탭"]);
 	assert.equal(seen[0]?.some((choice) => choice.includes("현재 패널")), false);
-	assert.equal(await chooseNewPanelPlacement({ ...ctx, hasUI: false }), null);
+
+	selected = "현재 패널";
+	assert.equal(await chooseNewPanelPlacement(ctx, "어디에서 시작할까요?", { includeCurrentPanel: true }), "here");
+	assert.equal(seen[1]?.[0], "현재 패널");
+	assert.equal(await chooseNewPanelPlacement({ ...ctx, hasUI: false }, undefined, { includeCurrentPanel: true }), null);
 });
 
 test("buildOpenSessionScript launches the exact cwd and session and returns terminal id", () => {

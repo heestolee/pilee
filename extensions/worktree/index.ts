@@ -18,6 +18,7 @@ import { discoverAgents } from "../subagent/agents.ts";
 import { getFinalOutput, runSingleAgent } from "../subagent/runner.ts";
 import { makeSubagentSessionFile } from "../subagent/session.ts";
 import type { SingleResult, SubagentDetails } from "../subagent/types.ts";
+import { chooseNewPanelPlacement } from "../fork-panel/index.ts";
 import { resolveForkPanelIdentity } from "../utils/fork-panel-identity.ts";
 import { registerWorktreeDashboardShortcut } from "./shortcut.ts";
 import {
@@ -39,6 +40,7 @@ import {
 } from "./panel-activation.ts";
 import {
 	createWorkspaceActivationContract,
+	WORKSPACE_ACTIVATION_READY_ENTRY_TYPE,
 	workspaceAuthorizationConsumerId,
 	type WorkspaceActivationContract,
 	type WorkspaceContinuation,
@@ -562,6 +564,7 @@ interface NewArgs {
 	carryContext: boolean;
 	fullContext: boolean;
 	minimalContext: boolean;
+	here: boolean;
 	from?: string;
 	ticket?: string;
 	note?: string;
@@ -589,7 +592,7 @@ function tokenize(args: string): string[] {
 
 function parseNewArgs(args: string): NewArgs {
 	const tokens = tokenize(args);
-	const result: NewArgs = { hotfix: false, hotfeature: false, carryContext: false, fullContext: false, minimalContext: false };
+	const result: NewArgs = { hotfix: false, hotfeature: false, carryContext: false, fullContext: false, minimalContext: false, here: false };
 	const positional: string[] = [];
 	for (let i = 0; i < tokens.length; i++) {
 		const t = tokens[i];
@@ -598,6 +601,7 @@ function parseNewArgs(args: string): NewArgs {
 		else if (t === "--carry-context" || t === "--context" || t === "--fork-current") result.carryContext = true;
 		else if (t === "--full-context" || t === "--full-transcript") { result.fullContext = true; result.carryContext = true; }
 		else if (t === "--minimal-context" || t === "--minimal-handoff" || t === "--summary-only" || t === "--no-full-context") { result.minimalContext = true; result.carryContext = true; }
+		else if (t === "--here" || t === "--current-panel") result.here = true;
 		else if (t === "--from" && i + 1 < tokens.length) result.from = tokens[++i];
 		else if (t === "--ticket" && i + 1 < tokens.length) result.ticket = tokens[++i];
 		else if (t === "--note" && i + 1 < tokens.length) result.note = tokens[++i];
@@ -1167,6 +1171,15 @@ function buildWorktreeSessionSwitchOptions(
 	return {
 		cwdOverride: wtPath,
 		withSession: async (newCtx: any) => {
+			const activationContract = options.activationContract;
+			if (activationContract?.activationTarget === "current-panel") {
+				newCtx.sessionManager.appendCustomEntry?.(WORKSPACE_ACTIVATION_READY_ENTRY_TYPE, {
+					activationId: activationContract.id,
+					workspaceAction: activationContract.workspaceAction,
+					activationTarget: activationContract.activationTarget,
+					readyAt: new Date().toISOString(),
+				});
+			}
 			newCtx.ui.notify(`✓ ${wtName} (${branch})${contextLabel}`, "info");
 			await newCtx.sendMessage?.(
 				{
@@ -2074,19 +2087,52 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 	if (parsed.contextFile && contextContent === null) return;
 	const useFullContext = requestedFullContext;
 	const useMinimalContext = parsed.minimalContext;
-	const contract = await buildNewPanelActivationContract({
-		id: worktreeActivationId("wt-new"),
+	const selectedLocation = parsed.here ? "here" : await chooseNewPanelPlacement(
 		ctx,
-		workspaceAction: "create-worktree",
-		contextMode: useFullContext ? "full" : "clean",
-		authorizationSource: "command",
-		authorizationSourceId: "/wt new",
-		continuation: defaultWorktreeContinuation("new", { name, branch: branchName, ticket: parsed.ticket, note: parsed.note }),
-		placementTitle: `${name} worktree를 어디에 열까요?`,
-	});
-	if (!contract) {
-		ctx.ui.notify("BLOCKED: 새 panel 위치를 선택하지 않아 /wt new가 worktree를 만들지 않았습니다.", "warning");
+		`${name} worktree를 어디에서 시작할까요?`,
+		{ includeCurrentPanel: true },
+	);
+	if (!selectedLocation) {
+		ctx.ui.notify("BLOCKED: 시작 위치를 선택하지 않아 /wt new가 worktree를 만들지 않았습니다.", "warning");
 		return;
+	}
+
+	let activationPlan: WorktreeActivationPlan | undefined;
+	let contract: WorkspaceActivationContract;
+	if (selectedLocation === "here") {
+		activationPlan = await planWorktreeActivation(pi, ctx);
+		if (activationPlan.mode === "blocked") {
+			ctx.ui.notify(`BLOCKED: /wt new는 현재 패널을 새 worktree session으로 전환할 수 없습니다. ${activationPlan.reason}`, "error");
+			return;
+		}
+		const id = worktreeActivationId("wt-new-here");
+		contract = createWorkspaceActivationContract({
+			id,
+			workspaceAction: "create-worktree",
+			activationTarget: "current-panel",
+			contextMode: useFullContext ? "full" : "clean",
+			authorization: resolveWorkspaceActivationAuthorization({
+				id,
+				ctx,
+				workspaceAction: "create-worktree",
+				activationTarget: "current-panel",
+				authorizationSource: "command",
+				authorizationSourceId: parsed.here ? "/wt new --here" : "/wt new (현재 패널)",
+			}),
+		});
+	} else {
+		const newPanelContract = await buildNewPanelActivationContract({
+			id: worktreeActivationId("wt-new"),
+			ctx,
+			workspaceAction: "create-worktree",
+			contextMode: useFullContext ? "full" : "clean",
+			authorizationSource: "command",
+			authorizationSourceId: "/wt new",
+			continuation: defaultWorktreeContinuation("new", { name, branch: branchName, ticket: parsed.ticket, note: parsed.note }),
+			placement: selectedLocation,
+		});
+		if (!newPanelContract) return;
+		contract = newPanelContract;
 	}
 
 	const { name: registeredName, isNew: justRegistered } = autoRegister(repoRoot);
@@ -2131,6 +2177,25 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 	const contextMode = selectContextMode(session, useFullContext, useMinimalContext);
 	recordWorktreeContextMeta(worktreePath, contextMode, session);
 	warnIfFullContextFallback(ctx, useFullContext, session);
+	if (contract.activationTarget === "current-panel") {
+		const switchResult = await trySwitchSessionToWorktree(
+			pi,
+			ctx,
+			session.sessionFile,
+			name,
+			worktreePath,
+			`${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}`,
+			activationPlan,
+			contract,
+		);
+		if (!switchResult.switched) {
+			const sessionCleanup = cleanupCreatedSessionFile(session.sessionFile);
+			const cleanup = await cleanupCreatedWorktree(pi, repoRoot, worktreePath, branchName);
+			ctx.ui.notify(`BLOCKED: /wt new current-panel 전환 실패 — ${switchResult.reason ?? "unknown"}. ${cleanupSummary(cleanup)}. session: ${sessionCleanup.removed ? "removed" : sessionCleanup.error}`, "error");
+		}
+		return;
+	}
+
 	const activation = await activateWorkspaceInNewPanel(pi, ctx, {
 		contract,
 		cwd: worktreePath,
@@ -3641,7 +3706,7 @@ async function handleWt(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCon
 		const t = ctx.ui.theme;
 		ctx.ui.notify([
 			t.fg("accent", "Usage:"),
-			`  ${t.fg("warning", "/wt new")} ${t.fg("borderAccent", "[name] [--repo <name>] [--hotfix|--hotfeature|--from <branch>] [--ticket PROJ-123] [--carry-context|--minimal-context] — 새 panel placement 선택")}`,
+			`  ${t.fg("warning", "/wt new")} ${t.fg("borderAccent", "[name] [--repo <name>] [--hotfix|--hotfeature|--from <branch>] [--ticket PROJ-123] [--carry-context|--minimal-context] [--here] — 현재 패널 또는 새 panel 선택")}`,
 			`  ${t.fg("warning", "/wt fork")} ${t.fg("borderAccent", "[name] [--context-file <path>] [--repo <name>] [--hotfix|--from <branch>] [--minimal-context] — full transcript + 새 panel")}`,
 			`  ${t.fg("warning", "/wt switch")} ${t.fg("borderAccent", "<name> | <repo>/<name>  — 워크트리 선택 후 세션 선택")}`,
 			`  ${t.fg("warning", "/wt resume")} ${t.fg("borderAccent", "<conductor-workspace>  — Conductor 워크스페이스 전체 세션 복원")}`,

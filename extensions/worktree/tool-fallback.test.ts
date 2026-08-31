@@ -28,14 +28,18 @@ test("worktree tools do not expose switch-command or absolute-path fallback", ()
 	assert.doesNotMatch(source, /setEditorText\([^)]*\/wt switch/);
 });
 
-test("/wt new and /wt fork choose a new panel before creation and never switch the current panel", () => {
-	for (const block of [commandNew, commandFork]) {
-		assert.match(block, /buildNewPanelActivationContract/);
-		assert.match(block, /activateWorkspaceInNewPanel/);
-		assert.ok(block.indexOf("buildNewPanelActivationContract") < block.indexOf('pi.exec("git", ["fetch"'));
-		assert.doesNotMatch(block, /switchSessionToWorktree/);
-		assert.doesNotMatch(block, /trySwitchSessionToWorktree/);
-	}
+test("/wt new selects current or new panel before creation while /wt fork stays new-panel only", () => {
+	assert.match(commandNew, /chooseNewPanelPlacement/);
+	assert.match(commandNew, /includeCurrentPanel: true/);
+	assert.match(commandNew, /trySwitchSessionToWorktree/);
+	assert.match(commandNew, /activateWorkspaceInNewPanel/);
+	assert.ok(commandNew.indexOf("chooseNewPanelPlacement") < commandNew.indexOf('pi.exec("git", ["fetch"'));
+
+	assert.match(commandFork, /buildNewPanelActivationContract/);
+	assert.match(commandFork, /activateWorkspaceInNewPanel/);
+	assert.ok(commandFork.indexOf("buildNewPanelActivationContract") < commandFork.indexOf('pi.exec("git", ["fetch"'));
+	assert.doesNotMatch(commandFork, /switchSessionToWorktree/);
+	assert.doesNotMatch(commandFork, /trySwitchSessionToWorktree/);
 	assert.match(commandFork, /sourceSessionFile/);
 	assert.match(commandFork, /fullContext: useFullContext/);
 	assert.match(commandFork, /workspaceContinuationFromFollowUp/);
@@ -83,8 +87,9 @@ test("creation failure cleans only a confirmed-closed target and preserves child
 		assert.match(block, /cleanupCreatedSessionFile/);
 		assert.match(block, /cleanupCreatedWorktree/);
 		assert.ok(block.indexOf("safeToDeleteTarget") < block.lastIndexOf("cleanupCreatedSessionFile"));
-		assert.doesNotMatch(block, /switchSessionToWorktree/);
 	}
+	for (const block of [commandFork, createTool, forkTool]) assert.doesNotMatch(block, /switchSessionToWorktree/);
+	assert.match(commandNew, /trySwitchSessionToWorktree/);
 });
 
 test("clean and full sessions preserve source lineage without mutating the source file", () => {
