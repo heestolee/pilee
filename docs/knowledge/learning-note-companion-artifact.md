@@ -24,7 +24,7 @@ source:
   - user-direction:2026-07-17-learning-note-companion
   - user-direction:2026-08-30-study-hard-meta-review-shared-shell
 reviewed_at: 2026-08-31
-reviewed_commit: 9cbc99c3a7169ce00afb150b296f8ca734997be3
+reviewed_commit: dc5e8c160034576f1b256050b431366fbaa3e1b1
 related:
   - frame-v2-learning-note-pilot
   - study-hard-public-engine-private-publisher
@@ -144,6 +144,8 @@ Meta Review 질문은 Pi transcript 알림만으로 완료하지 않습니다. `
 - 질문이 없으면 실행 phase도 없으며 `답변 경로 확인 중` 같은 유령 상태를 표시하지 않습니다.
 
 질문의 source scope와 evidence anchor는 답변 근거이자 필터 경계입니다. “thread 유지”는 대화를 삭제하지 않고 같은 drawer에서 다시 찾을 수 있다는 뜻이지, 범위가 다른 모든 화면에 같은 질문을 노출한다는 뜻이 아닙니다. Pi transcript는 durable notification이고, 질문·답변을 읽고 이어가는 사용자-facing owner는 같은 Study Hard drawer입니다.
+
+여러 Pi process가 같은 Meta Review run을 열 수 있으므로 process-global cache를 disk canonical보다 영구 우선하지 않습니다. 평상시에는 cached canonical을 유지해 worker-side append·truncate 변조를 감지하고, 사용자가 Study Hard를 명시적으로 reopen하는 trust boundary에서만 `questions.jsonl`을 다시 materialize합니다. Reopen한 session에는 현재 branch에 없는 질문·terminal 답변 event만 `display:true`로 replay하고, 같은 event key는 다시 표시하지 않습니다. 이를 통해 다른 owner session에서 완료된 Q&A를 drawer와 현재 Pi transcript 양쪽에 복구하면서 worker integrity gate를 보존합니다.
 
 ## Workflow Boundary
 
