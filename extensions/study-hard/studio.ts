@@ -21,7 +21,11 @@ import {
 	createPrReviewQuestion,
 	dispatchPrReviewQuestionToSession,
 	loadPrReviewQuestions,
+	PR_REVIEW_TRANSCRIPT_LINEAGE_ENTRY,
+	reloadPrReviewQuestionCanonical,
+	replayPrReviewQuestionTranscript,
 	resolvePrReviewQuestionContext,
+	type PrReviewTranscriptEventKind,
 } from "../pr-review/chat.ts";
 import {
 	loadPrReviewRun,
@@ -1562,6 +1566,49 @@ function transcriptEventKeysFromContext(ctx: ExtensionCommandContext | Extension
 		}));
 	} catch {
 		return undefined;
+	}
+}
+
+function metaReviewTranscriptEventKeysFromContext(ctx: ExtensionCommandContext | ExtensionContext, runId: string): Set<string> | undefined {
+	const sessionManager = "sessionManager" in ctx ? ctx.sessionManager : undefined;
+	if (!sessionManager || typeof sessionManager.getBranch !== "function") return undefined;
+	try {
+		return new Set(sessionManager.getBranch().flatMap((entry) => {
+			let details: Record<string, unknown> | undefined;
+			if (entry.type === "custom_message" && entry.customType === "pilee-meta-review-transcript") {
+				details = entry.details as Record<string, unknown> | undefined;
+			} else if (entry.type === "custom" && entry.customType === PR_REVIEW_TRANSCRIPT_LINEAGE_ENTRY) {
+				details = (entry.data as { details?: Record<string, unknown> } | undefined)?.details;
+			} else {
+				return [];
+			}
+			return details?.runId === runId && typeof details.eventKey === "string" ? [details.eventKey] : [];
+		}));
+	} catch {
+		return undefined;
+	}
+}
+
+function replayLinkedMetaReviewTranscript(
+	pi: ExtensionAPI,
+	ctx: ExtensionCommandContext | ExtensionContext,
+	link: StudyMetaReviewLink | undefined,
+): void {
+	if (!link) return;
+	const run = resolveMetaReviewDisplayRun(link.runDir);
+	const questions = reloadPrReviewQuestionCanonical(run.runDir);
+	const currentSessionEventKeys = metaReviewTranscriptEventKeysFromContext(ctx, run.runId);
+	if (!currentSessionEventKeys) return;
+	for (const question of questions) {
+		replayPrReviewQuestionTranscript(pi, run, question, "question", currentSessionEventKeys);
+		const terminalKind: PrReviewTranscriptEventKind | undefined = question.status === "answered"
+			? "answer"
+			: question.status === "failed"
+				? "failed"
+				: question.status === "stale"
+					? "stale"
+					: undefined;
+		if (terminalKind) replayPrReviewQuestionTranscript(pi, run, question, terminalKind, currentSessionEventKeys);
 	}
 }
 
@@ -4402,6 +4449,7 @@ export async function openMetaReviewInStudyHardStudio(
 		: [...handles.values()].reverse().find((handle) => handle.state.url === canonicalUrl && handle.window);
 	if (active) {
 		const updated = updateStudyHardStudio(active.state.runId, input.patch, active.state.revision);
+		replayLinkedMetaReviewTranscript(pi, input.ctx, updated.state.metaReview);
 		await openStudyHardWindow(pi, input.ctx, updated);
 		return updated;
 	}
@@ -4418,11 +4466,13 @@ export async function openExistingStudyHardStudio(pi: ExtensionAPI, ctx: Extensi
 	const requestedId = runId ? validateRunId(runId) : latestRunId;
 	if (requestedId && handles.has(requestedId)) {
 		const active = handles.get(requestedId)!;
+		replayLinkedMetaReviewTranscript(pi, ctx, active.state.metaReview);
 		await openStudyHardWindow(pi, ctx, active);
 		return active;
 	}
 	const persisted = requestedId ? loadPersistedStudyHardState(requestedId) : findLatestPersistedState();
 	if (!persisted) throw new Error(requestedId ? `Study Hard Studio run을 찾을 수 없습니다: ${requestedId}` : "저장된 Study Hard Studio가 없습니다.");
+	replayLinkedMetaReviewTranscript(pi, ctx, persisted.metaReview);
 	return startStudyHardStudio(pi, ctx, { runId: persisted.runId, url: persisted.url, title: persisted.title, hints: persisted.hints });
 }
 

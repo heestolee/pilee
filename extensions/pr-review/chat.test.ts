@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { appendFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -10,8 +10,10 @@ import {
 	failPrReviewQuestion,
 	loadPrReviewQuestions,
 	PR_REVIEW_TRANSCRIPT_LINEAGE_ENTRY,
+	reloadPrReviewQuestionCanonical,
 	prReviewQuestionsPath,
 	publishPrReviewQuestionTranscript,
+	replayPrReviewQuestionTranscript,
 	resolvePrReviewQuestionContext,
 } from "./chat.ts";
 import type { PrReviewRunState } from "./run.ts";
@@ -61,6 +63,42 @@ test("PR review questions are append-only snapshots with preserved context", () 
 		assert.equal(loadPrReviewQuestions(runDir).length, 1);
 		assert.equal(loadPrReviewQuestions(runDir)[0]?.answer, "예약 당시 값을 보존하는 스냅샷입니다.");
 		assert.equal(readFileSync(prReviewQuestionsPath(runDir), "utf8").trim().split("\n").length, 2);
+	} finally {
+		rmSync(runDir, { recursive: true, force: true });
+	}
+});
+
+test("명시적 reopen은 다른 Pi coordinator의 질문 snapshot을 reload하고 이후 snapshot도 보존한다", () => {
+	const runDir = mkdtempSync(join(tmpdir(), "pilee-pr-review-chat-cross-process-"));
+	try {
+		createPrReviewQuestion(runDir, {
+			runId: "run-cross-process",
+			question: "첫 process 질문",
+			scope: "session",
+		}, 1000);
+		const externalQuestion = {
+			runId: "run-cross-process",
+			id: "Q002",
+			question: "다른 process 질문",
+			scope: "session" as const,
+			status: "answered" as const,
+			createdAt: 2000,
+			updatedAt: 2100,
+			answeredAt: 2100,
+			answer: "다른 process 답변",
+		};
+		appendFileSync(prReviewQuestionsPath(runDir), `${JSON.stringify({ type: "question-snapshot", question: externalQuestion })}\n`, "utf8");
+		assert.deepEqual(loadPrReviewQuestions(runDir).map((question) => question.id), ["Q001"], "평상시 load는 worker integrity를 위해 process cache를 유지한다");
+		assert.deepEqual(reloadPrReviewQuestionCanonical(runDir).map((question) => question.id), ["Q001", "Q002"], "명시적 reopen에서 disk canonical을 다시 읽는다");
+
+		const third = createPrReviewQuestion(runDir, {
+			runId: "run-cross-process",
+			question: "원래 process의 다음 질문",
+			scope: "session",
+		}, 3000);
+		assert.equal(third.id, "Q003");
+		assert.deepEqual(loadPrReviewQuestions(runDir).map((question) => question.id), ["Q001", "Q002", "Q003"]);
+		assert.match(readFileSync(prReviewQuestionsPath(runDir), "utf8"), /다른 process 답변/);
 	} finally {
 		rmSync(runDir, { recursive: true, force: true });
 	}
@@ -181,6 +219,38 @@ test("Meta Review transcript fallback은 사용자 Q&A만 display true로 한 �
 		assert.match(messages[1].message.content, /정책 파일의 공개 상태 allowlist/);
 		assert.doesNotMatch(messages.map(({ message }) => message.content).join("\n"), /runDir|workerResultPath|답변 규칙/);
 		assert.equal(loadPrReviewQuestions(runDir)[0]?.transcriptEventKeys?.length, 2);
+	} finally {
+		rmSync(runDir, { recursive: true, force: true });
+	}
+});
+
+test("새 Pi session reopen은 기존 canonical transcript key와 무관하게 누락된 Q&A를 한 번 replay한다", () => {
+	const runDir = mkdtempSync(join(tmpdir(), "pilee-pr-review-chat-replay-"));
+	try {
+		const state = runState(runDir);
+		const created = createPrReviewQuestion(runDir, {
+			runId: state.runId,
+			question: "이전 session 질문",
+			scope: "session",
+		}, 1000);
+		const answered = answerPrReviewQuestion(runDir, created.id, "이전 session 답변", [], undefined, 2000);
+		const originalPi = { appendEntry() {}, sendMessage() {} } as any;
+		const publishedQuestion = publishPrReviewQuestionTranscript(originalPi, state, answered, "question");
+		const publishedAnswer = publishPrReviewQuestionTranscript(originalPi, state, publishedQuestion, "answer");
+		assert.equal(publishedAnswer.transcriptEventKeys?.length, 2);
+
+		const entries: any[] = [];
+		const reopenedPi = { appendEntry(customType: string, data: any) { entries.push({ customType, data }); }, sendMessage() {} } as any;
+		const currentSessionEventKeys = new Set<string>();
+		replayPrReviewQuestionTranscript(reopenedPi, state, publishedAnswer, "question", currentSessionEventKeys);
+		replayPrReviewQuestionTranscript(reopenedPi, state, publishedAnswer, "answer", currentSessionEventKeys);
+		replayPrReviewQuestionTranscript(reopenedPi, state, publishedAnswer, "question", currentSessionEventKeys);
+		replayPrReviewQuestionTranscript(reopenedPi, state, publishedAnswer, "answer", currentSessionEventKeys);
+		assert.equal(entries.length, 2);
+		assert.deepEqual(entries.map((entry) => entry.customType), [PR_REVIEW_TRANSCRIPT_LINEAGE_ENTRY, PR_REVIEW_TRANSCRIPT_LINEAGE_ENTRY]);
+		assert.ok(entries.every((entry) => entry.data.display === true));
+		assert.match(entries[0].data.content, /이전 session 질문/);
+		assert.match(entries[1].data.content, /이전 session 답변/);
 	} finally {
 		rmSync(runDir, { recursive: true, force: true });
 	}

@@ -119,6 +119,13 @@ function questionCanonicalState(runDir: string): PrReviewQuestionCanonicalState 
 	return state;
 }
 
+export function reloadPrReviewQuestionCanonical(runDir: string): PrReviewQuestion[] {
+	const key = resolve(prReviewQuestionsPath(runDir));
+	const content = existsSync(key) ? readFileSync(key, "utf8") : "";
+	questionCanonicalRegistry().states.set(key, { content, latest: parseQuestionCanonical(content) });
+	return loadPrReviewQuestions(runDir);
+}
+
 function appendQuestion(runDir: string, question: PrReviewQuestion): PrReviewQuestion {
 	const path = prReviewQuestionsPath(runDir);
 	const state = questionCanonicalState(runDir);
@@ -497,6 +504,33 @@ function transcriptEventText(question: PrReviewQuestion, eventKind: PrReviewTran
 
 function transcriptEventKey(question: PrReviewQuestion, eventKind: PrReviewTranscriptEventKind): string {
 	return `${eventKind}:${question.id}:${createHash("sha256").update(transcriptEventText(question, eventKind)).digest("hex").slice(0, 12)}`;
+}
+
+export function replayPrReviewQuestionTranscript(
+	pi: Pick<ExtensionAPI, "appendEntry" | "sendMessage">,
+	state: PrReviewRunState,
+	question: PrReviewQuestion,
+	eventKind: PrReviewTranscriptEventKind,
+	currentSessionEventKeys: Set<string>,
+): string | undefined {
+	const eventKey = transcriptEventKey(question, eventKind);
+	if (currentSessionEventKeys.has(eventKey)) return eventKey;
+	const content = transcriptEventText(question, eventKind);
+	const details = { runId: state.runId, questionId: question.id, eventKind, eventKey, scope: question.scope, selection: question.selection };
+	let published = false;
+	try {
+		pi.appendEntry(PR_REVIEW_TRANSCRIPT_LINEAGE_ENTRY, { content, details, display: true });
+		published = true;
+	} catch {}
+	if (!published) {
+		try {
+			pi.sendMessage({ customType: PR_REVIEW_TRANSCRIPT_CUSTOM_TYPE, content, display: true, details }, { deliverAs: "nextTurn", triggerTurn: false });
+			published = true;
+		} catch {}
+	}
+	if (!published) return undefined;
+	currentSessionEventKeys.add(eventKey);
+	return eventKey;
 }
 
 export function publishPrReviewQuestionTranscript(
