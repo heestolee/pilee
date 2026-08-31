@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, readSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, copyFileSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, readSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
@@ -26,6 +26,8 @@ const HANDOFF_DIR = join(homedir(), ".pi", "agent", "fork-panel");
 const INBOX_DIR = join(HANDOFF_DIR, "inbox");
 const SESSIONS_ROOT = join(homedir(), ".pi", "agent", "sessions");
 const SESSION_PREVIEW_BYTES = 192 * 1024;
+const SESSION_LAUNCH_ROOT = "/tmp/pilee-panel-launch";
+const SESSION_LAUNCH_TTL_MS = 24 * 60 * 60 * 1000;
 
 let forkInProgress = false;
 const FORK_COOLDOWN_MS = 2000;
@@ -852,10 +854,34 @@ function currentPiCommand(): string {
 	return "pi";
 }
 
-function buildSessionLaunchCommand(cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}): string {
+function pruneSessionLaunchScripts(root: string): void {
+	try {
+		const cutoff = Date.now() - SESSION_LAUNCH_TTL_MS;
+		for (const name of readdirSync(root)) {
+			if (!name.startsWith("launch-") || !name.endsWith(".sh")) continue;
+			const path = join(root, name);
+			try { if (statSync(path).mtimeMs < cutoff) unlinkSync(path); } catch {}
+		}
+	} catch {}
+}
+
+function prepareSessionLaunchScript(
+	cwd: string,
+	sessionFile: string,
+	env: Record<string, string | undefined> = {},
+	root = SESSION_LAUNCH_ROOT,
+): { command: string; scriptPath: string } {
+	mkdirSync(root, { recursive: true, mode: 0o700 });
+	pruneSessionLaunchScripts(root);
+	const scriptPath = join(root, `launch-${Date.now()}-${randomUUID().slice(0, 8)}.sh`);
 	const command = `cd ${shellQuote(cwd)} && ${buildEnvPrefix(env)}${currentPiCommand()} --session ${shellQuote(sessionFile)}`;
-	const payload = Buffer.from(command, "utf8").toString("base64");
-	return esc(`eval "$(/usr/bin/printf %s ${shellQuote(payload)} | /usr/bin/base64 -D)"`);
+	writeFileSync(scriptPath, `#!/bin/bash\nrm -f -- ${shellQuote(scriptPath)}\nexec /bin/bash -lc ${shellQuote(command)}\n`, { encoding: "utf8", mode: 0o700 });
+	chmodSync(scriptPath, 0o700);
+	return { command: esc(scriptPath), scriptPath };
+}
+
+function buildSessionLaunchCommand(cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}): string {
+	return prepareSessionLaunchScript(cwd, sessionFile, env).command;
 }
 
 function resolveReviveCwd(target: ForkRecord, fallbackCwd: string): { cwd: string; fallback: boolean; reason?: string } {
@@ -934,11 +960,10 @@ function buildAnchorNavigationScript(placement: SplitPlacement, startTermVar: st
 	return lines.map((line) => `  ${line}`).join("\n");
 }
 
-export function buildOpenSessionScript(mode: PanelOpenTarget, cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}): string {
-	const cmd = buildSessionLaunchCommand(cwd, sessionFile, env);
+function buildOpenSessionAppleScript(mode: PanelOpenTarget, cwd: string, command: string): string {
 	const launchConfiguration = `  set launchConfig to new surface configuration
   set initial working directory of launchConfig to "${esc(cwd)}"
-  set initial input of launchConfig to "${cmd}\\n"`;
+  set command of launchConfig to "${command}"`;
 	if (mode === "tab") {
 		return `tell application "Ghostty"
   activate
@@ -958,6 +983,21 @@ ${launchConfiguration}
   set newTerm to split anchorTerm direction ${mode.splitDirection} with configuration launchConfig
   return id of newTerm
 end tell`;
+}
+
+export function buildOpenSessionPlan(
+	mode: PanelOpenTarget,
+	cwd: string,
+	sessionFile: string,
+	env: Record<string, string | undefined> = {},
+	launchRoot = SESSION_LAUNCH_ROOT,
+): { script: string; launchScriptPath: string } {
+	const launch = prepareSessionLaunchScript(cwd, sessionFile, env, launchRoot);
+	return { script: buildOpenSessionAppleScript(mode, cwd, launch.command), launchScriptPath: launch.scriptPath };
+}
+
+export function buildOpenSessionScript(mode: PanelOpenTarget, cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}): string {
+	return buildOpenSessionPlan(mode, cwd, sessionFile, env).script;
 }
 
 export interface ExactSessionPanelOpenRequest {
@@ -993,14 +1033,15 @@ export async function openExactSessionInNewPanel(
 
 	const panelLabel = allocatePanelLabel(request.sourceSessionFile);
 	const forkId = `wa_${request.activationId.replace(/[^A-Za-z0-9._-]/g, "-")}_${randomUUID().slice(0, 8)}`;
-	const script = buildOpenSessionScript(panelTargetFromPlacement(request.placement), request.cwd, request.sessionFile, {
+	const launch = buildOpenSessionPlan(panelTargetFromPlacement(request.placement), request.cwd, request.sessionFile, {
 		...request.env,
 		PI_FORK_ID: forkId,
 		PI_FORK_PANEL_LABEL: panelLabel,
 		PI_FORK_PARENT: request.sourceSessionFile,
 	});
-	const result = await pi.exec("osascript", ["-e", script]);
+	const result = await pi.exec("osascript", ["-e", launch.script]);
 	if (result.code !== 0) {
+		try { unlinkSync(launch.launchScriptPath); } catch {}
 		return {
 			status: "failed",
 			reason: result.stderr?.trim() || result.stdout?.trim() || "Ghostty panel open failed",
@@ -1009,6 +1050,7 @@ export async function openExactSessionInNewPanel(
 	}
 	const terminalId = result.stdout?.trim();
 	if (!terminalId) {
+		try { unlinkSync(launch.launchScriptPath); } catch {}
 		return { status: "failed", reason: "Ghostty가 새 terminal id를 반환하지 않았습니다.", safeToDeleteTarget: false };
 	}
 
@@ -1064,8 +1106,8 @@ export function removeExactSessionPanelRecord(forkId: string): void {
 	try { unlinkSync(join(HANDOFF_DIR, `${forkId}.json`)); } catch {}
 }
 
-export function buildRepanelScript(placement: SplitPlacement, cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}, oldTerminalId?: string): string {
-	const cmd = buildSessionLaunchCommand(cwd, sessionFile, env);
+export function buildRepanelScript(placement: SplitPlacement, cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}, oldTerminalId?: string, launchRoot = SESSION_LAUNCH_ROOT): string {
+	const cmd = prepareSessionLaunchScript(cwd, sessionFile, env, launchRoot).command;
 	const oldTermSelector = oldTerminalId
 		? `set oldTerm to first terminal whose id is "${esc(oldTerminalId)}"`
 		: "set oldTerm to focused terminal of selected tab of front window";
