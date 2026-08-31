@@ -24,7 +24,7 @@ source:
   - user-direction:2026-07-17-learning-note-companion
   - user-direction:2026-08-30-study-hard-meta-review-shared-shell
 reviewed_at: 2026-08-31
-reviewed_commit: 59d090bb8b6de0901ba47190d511e65217fee977
+reviewed_commit: 9cbc99c3a7169ce00afb150b296f8ca734997be3
 related:
   - frame-v2-learning-note-pilot
   - study-hard-public-engine-private-publisher
@@ -132,16 +132,18 @@ Notion 저장은 기존 Study Hard payload와 private publisher 경계를 유지
 
 ## Review Conversation Ownership Rule
 
-Meta Review 질문은 Pi transcript 알림만으로 완료하지 않습니다. `questions.jsonl`의 질문·답변이 canonical이고, Study Hard 코드 리뷰 drawer는 현재 질문 ID를 pin해 selection·polling·render 변화 뒤에도 같은 thread를 유지합니다.
+Meta Review 질문은 Pi transcript 알림만으로 완료하지 않습니다. `questions.jsonl`의 질문·답변이 canonical이고, Study Hard 코드 리뷰 drawer는 범위별 필터와 전체 대화 복구 경로를 함께 제공합니다.
 
-- 새 질문 응답 ID를 즉시 현재 thread로 pin합니다.
-- reload처럼 client pin이 없으면 canonical의 최신 질문을 다시 엽니다.
-- 현재 selection의 exact-context 질문과 pinned thread를 함께 보여 줍니다.
-- `모든 대화`에서 selection scope와 무관하게 canonical Q&A 전체를 다시 찾을 수 있습니다.
+- `전체 PR`은 `session` 질문만 표시합니다.
+- `선택 블록`은 현재 selection과 정확히 연결된 질문만 표시합니다.
+- `모든 대화`는 selection scope와 무관하게 canonical Q&A 전체를 표시합니다.
+- 최초 reload에 기존 질문이 있으면 `모든 대화`를 열어 과거 Q&A를 다시 찾을 수 있게 합니다.
+- polling과 answer re-render는 사용자가 고른 탭을 바꾸지 않습니다.
+- 다른 selection을 명시적으로 선택하면 이전 질문을 강제로 끼워 넣지 않습니다. 원래 selection 또는 `모든 대화`로 돌아가면 다시 볼 수 있습니다.
 - `모든 대화` composer의 새 질문은 전체 PR `session` scope로 전달합니다.
 - 질문이 없으면 실행 phase도 없으며 `답변 경로 확인 중` 같은 유령 상태를 표시하지 않습니다.
 
-질문의 source scope와 evidence anchor는 답변 근거로 보존하지만, context가 바뀌었다는 이유로 이미 열린 대화를 숨기는 필터로 사용하지 않습니다. Pi transcript는 durable notification이고, 질문·답변을 읽고 이어가는 사용자-facing owner는 같은 Study Hard drawer입니다.
+질문의 source scope와 evidence anchor는 답변 근거이자 필터 경계입니다. “thread 유지”는 대화를 삭제하지 않고 같은 drawer에서 다시 찾을 수 있다는 뜻이지, 범위가 다른 모든 화면에 같은 질문을 노출한다는 뜻이 아닙니다. Pi transcript는 durable notification이고, 질문·답변을 읽고 이어가는 사용자-facing owner는 같은 Study Hard drawer입니다.
 
 ## Workflow Boundary
 
