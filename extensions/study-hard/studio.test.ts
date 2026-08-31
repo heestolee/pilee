@@ -3271,11 +3271,13 @@ test("Meta Review 상단은 한눈에 보기, 파일 관계, 리뷰 포인트, �
 	assert.match(renderSource, /metaReviewOverviewHtml[\s\S]*metaReviewRelationshipHtml[\s\S]*metaReviewFindingsHtml[\s\S]*metaReviewReadingRailHtml/);
 });
 
-test("코드 리뷰 질문 drawer는 전체 PR과 선택 block 대화를 분리한다", () => {
+test("코드 리뷰 질문 drawer는 context를 바꿔도 현재 thread를 유지하고 모든 대화를 다시 연다", () => {
 	const html = buildStudyHardStudioHtml();
-	const matcherBody = /function metaReviewQuestionMatchesContext\(question,context\)\{([\s\S]*?)\}\n    function metaReviewQuestionDraftKey/.exec(html)?.[1];
-	assert.ok(matcherBody);
-	const matches = new Function(`return function metaReviewQuestionMatchesContext(question,context){${matcherBody}};`)() as (question: any, context: any) => boolean;
+	const helperStart = html.indexOf("function metaReviewQuestionMatchesContext");
+	const helperEnd = html.indexOf("function metaReviewEnsurePinnedQuestion", helperStart);
+	assert.ok(helperStart >= 0 && helperEnd > helperStart);
+	const helpers = new Function(`${html.slice(helperStart, helperEnd)}; return {metaReviewQuestionMatchesContext,metaReviewLatestQuestionId,metaReviewConversationQuestions};`)() as any;
+	const matches = helpers.metaReviewQuestionMatchesContext as (question: any, context: any) => boolean;
 	assert.equal(matches({ scope: "session" }, { scope: "session" }), true);
 	assert.equal(matches({ scope: "session" }, { scope: "card", cardId: "R-01" }), false);
 	assert.equal(matches({ scope: "card", cardId: "R-01" }, { scope: "card", cardId: "R-01" }), true);
@@ -3290,6 +3292,37 @@ test("코드 리뷰 질문 drawer는 전체 PR과 선택 block 대화를 분리�
 	assert.equal(matches({ scope: "declaration", declarationId: "A-local", declarationSide: "before", selection: { kind: "declaration", id: "A-local" } }, { scope: "declaration", declarationId: "A-local", declarationSide: "after", selectionKind: "declaration", selectionId: "A-local" }), false);
 	assert.equal(matches({ scope: "meaning", meaningId: "M-contract", selection: { kind: "meaning", id: "M-contract" } }, { scope: "meaning", meaningId: "M-contract", selectionKind: "meaning", selectionId: "M-contract" }), true);
 	assert.equal(matches({ scope: "meaning", meaningId: "M-other", selection: { kind: "meaning", id: "M-other" } }, { scope: "meaning", meaningId: "M-contract", selectionKind: "meaning", selectionId: "M-contract" }), false);
+
+	const questions = [
+		{ id: "Q001", status: "answered", scope: "evidence", evidenceIds: ["D002"], selection: { kind: "hunk", id: "E-01" } },
+		{ id: "Q002", status: "answered", scope: "session" },
+	];
+	assert.equal(helpers.metaReviewLatestQuestionId(questions), "Q002");
+	assert.deepEqual(helpers.metaReviewConversationQuestions(questions, { scope: "file", fileId: "F034" }, "selection", "Q001").map((question: any) => question.id), ["Q001"], "exact context가 달라도 pinned Q001은 유지한다");
+	assert.deepEqual(helpers.metaReviewConversationQuestions(questions, { scope: "session" }, "all", "Q001").map((question: any) => question.id), ["Q001", "Q002"], "모든 대화에서 canonical 질문 전체를 다시 연다");
+
+	const pinHelperStart = html.indexOf("function metaReviewLatestQuestionId");
+	const pinHelperEnd = html.indexOf("function metaReviewQuestionDraftKey", pinHelperStart);
+	assert.ok(pinHelperStart >= 0 && pinHelperEnd > pinHelperStart);
+	const runPinLifecycle = new Function("questions", "initialPinned", "remembered", `
+		var metaReviewState={questions:questions.slice()},metaReviewPinnedQuestionId=initialPinned;
+		${html.slice(pinHelperStart, pinHelperEnd)}
+		metaReviewEnsurePinnedQuestion();
+		if(remembered)metaReviewRememberQuestion(remembered);
+		return {pinned:metaReviewPinnedQuestionId,ids:metaReviewState.questions.map(function(question){return question.id;})};
+	`) as (questions: any[], initialPinned: string | null, remembered?: any) => { pinned: string | null; ids: string[] };
+	assert.deepEqual(runPinLifecycle([questions[0]], null), { pinned: "Q001", ids: ["Q001"] }, "기존 answered Q001은 fresh reload에서 다시 pin한다");
+	assert.deepEqual(runPinLifecycle(questions, "Q001"), { pinned: "Q001", ids: ["Q001", "Q002"] }, "polling으로 state를 다시 받아도 기존 thread pin을 보존한다");
+	assert.deepEqual(runPinLifecycle(questions, null), { pinned: "Q002", ids: ["Q001", "Q002"] }, "pin이 없는 reload는 canonical 최신 질문을 연다");
+	assert.deepEqual(runPinLifecycle([questions[0]], "Q001", { id: "Q003", status: "queued", scope: "session" }), { pinned: "Q003", ids: ["Q001", "Q003"] }, "새 질문 submit 응답을 현재 thread로 pin한다");
+
+	const contextHelperStart = html.indexOf("function activeMetaReviewQuestionContext");
+	const contextHelperEnd = html.indexOf("function metaReviewQuestionMatchesContext", contextHelperStart);
+	assert.ok(contextHelperStart >= 0 && contextHelperEnd > contextHelperStart);
+	const allModePayload = new Function(`var metaReviewQuestionScope='all',metaReviewContext={scope:'evidence',evidenceIds:['D002']};${html.slice(contextHelperStart, contextHelperEnd)}var context=activeMetaReviewQuestionContext();return metaReviewQuestionPayload(context);`)();
+	assert.deepEqual(allModePayload, { scope: "session" }, "모든 대화 composer의 새 질문은 전체 PR scope로 전송한다");
+	assert.match(html, />모든 대화<\/button>/);
+	assert.match(html, /if\(result\.question\)metaReviewRememberQuestion\(result\.question\)/);
 });
 
 test("Study Hard 질문 drawer는 direct와 worker 실행 상태를 같은 UI 문법으로 표시한다", () => {
@@ -3301,6 +3334,8 @@ test("Study Hard 질문 drawer는 direct와 worker 실행 상태를 같은 UI �
 	const helperEnd = html.indexOf("function metaReviewQuestionHtml", helperStart);
 	assert.ok(helperStart >= 0 && helperEnd > helperStart);
 	const helpers = new Function(`${html.slice(helperStart, helperEnd)}; return {questionExecutionPhase,metaReviewQuestionStatusText,metaReviewQuestionNeedsPolling};`)() as any;
+	assert.equal(helpers.questionExecutionPhase(undefined), "");
+	assert.equal(helpers.metaReviewQuestionStatusText(undefined), "");
 	assert.equal(helpers.questionExecutionPhase({ execution: { phase: "routing" } }), "routing");
 	assert.equal(helpers.metaReviewQuestionStatusText({ execution: { phase: "answering" } }), "현재 Pi가 실제 source를 확인하고 있어요.");
 	assert.equal(helpers.metaReviewQuestionStatusText({ execution: { phase: "worker-running" }, workerRunId: 12 }), "worker #12가 자료를 확인하고 있어요.");
