@@ -15,6 +15,7 @@ import {
 	markPrReviewQuestionWorkerStarted,
 	prReviewQuestionWorkerResultPath,
 	reservePrReviewQuestionWorkerLaunch,
+	retryPrReviewQuestionToWorker,
 	routePrReviewQuestion,
 } from "./question-worker.ts";
 import { createPrReviewRun, type PrReviewRunState } from "./run.ts";
@@ -300,6 +301,29 @@ test("Meta Review drawer 질문은 메인 Pi turn 없이 공통 background worke
 		assert.equal(messages.length, 0, "메인 Pi followUp routing turn을 만들면 안 된다");
 		assert.equal(entries.length, 1);
 		assert.match(entries[0]?.data.content || "", /Meta Review 질문/);
+	} finally {
+		rmSync(runDir, { recursive: true, force: true });
+	}
+});
+
+test("실패한 Meta Review 질문은 같은 ID로 공통 worker lifecycle을 재시도한다", () => {
+	const { runDir, state, question } = fixture();
+	try {
+		routePrReviewQuestion(state, question.id, "worker", "첫 worker", 1001);
+		const reservation = reservePrReviewQuestionWorkerLaunch(state, question.id, 1002);
+		const claim = claimPrReviewQuestionWorkerLaunch(state, question.id, reservation.dispatchToken, 1003);
+		failPrReviewQuestionWorker({ appendEntry() {}, sendMessage() {} } as any, state, question.id, claim.completionToken!, "첫 실행 실패", 40, 1004);
+		const requests: ProgrammaticSubagentLaunchRequest[] = [];
+		const retried = retryPrReviewQuestionToWorker({
+			appendEntry() {},
+			sendMessage() {},
+			events: { emit(_name: string, payload: unknown) { const request = payload as ProgrammaticSubagentLaunchRequest; requests.push(request); request.claim(); request.onStarted({ requestId: request.requestId, runId: 41, agent: request.agent }); } },
+		} as any, state, question.id, "/tmp/review-pr-42", 1005);
+		assert.equal(retried.id, question.id);
+		assert.equal(retried.status, "answering");
+		assert.equal(retried.workerRunId, 41);
+		assert.equal(retried.error, undefined);
+		assert.equal(requests.length, 1);
 	} finally {
 		rmSync(runDir, { recursive: true, force: true });
 	}

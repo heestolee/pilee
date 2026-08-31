@@ -26,7 +26,7 @@ import {
 	resolvePrReviewQuestionContext,
 	type PrReviewTranscriptEventKind,
 } from "../pr-review/chat.ts";
-import { dispatchPrReviewQuestionToWorker } from "../pr-review/question-worker.ts";
+import { dispatchPrReviewQuestionToWorker, retryPrReviewQuestionToWorker } from "../pr-review/question-worker.ts";
 import {
 	loadPrReviewRun,
 	readJson,
@@ -3061,6 +3061,17 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 					attachments: attachments.length ? attachments : undefined,
 				});
 				dispatchPrReviewQuestionToWorker(handle.pi, displayRun, question, handle.cwd || displayRun.target.root || process.cwd());
+				sendJson(res, 202, { ok: true, question });
+				return;
+			}
+			if (pathname === "/meta-review/retry" && req.method === "POST") {
+				const link = handle.state.metaReview;
+				if (!link) throw new Error("연결된 Meta Review가 없습니다.");
+				const body = await readJsonBody(req);
+				const questionId = typeof body.questionId === "string" ? body.questionId : "";
+				if (!questionId) throw new Error("questionId가 필요합니다.");
+				const displayRun = resolveMetaReviewDisplayRun(link.runDir);
+				const question = retryPrReviewQuestionToWorker(handle.pi, displayRun, questionId, handle.cwd || displayRun.target.root || process.cwd());
 				sendJson(res, 202, { ok: true, question });
 				return;
 			}

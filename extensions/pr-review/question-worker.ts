@@ -655,6 +655,33 @@ function completionError(question: PrReviewQuestion, completion: ProgrammaticSub
 	return undefined;
 }
 
+export function retryPrReviewQuestionToWorker(
+	pi: ExtensionAPI,
+	state: PrReviewRunState,
+	questionId: string,
+	cwd: string,
+	now = Date.now(),
+): PrReviewQuestion {
+	const question = currentQuestion(state, questionId);
+	if (!isPrReviewQuestionTerminal(question)) return question;
+	workerLaunchLeases.delete(workerLeaseKey(state, questionId));
+	const retried = updatePrReviewQuestion(state.runDir, questionId, {
+		status: "queued",
+		execution: createQuestionRoutingExecution(now),
+		workerResultPath: undefined,
+		workerRunId: undefined,
+		expectedSourceSha256: undefined,
+		expectedHeadSha: undefined,
+		answer: undefined,
+		evidence: undefined,
+		uncertainty: undefined,
+		change: undefined,
+		error: undefined,
+		answeredAt: undefined,
+	}, now);
+	return dispatchPrReviewQuestionToWorker(pi, state, retried, cwd, now);
+}
+
 export function dispatchPrReviewQuestionToWorker(
 	pi: ExtensionAPI,
 	state: PrReviewRunState,
