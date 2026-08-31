@@ -24,8 +24,8 @@ source:
   - pilee-history:2026-05-04#33
   - pilee-history:2026-05-04#34
   - pilee-history:2026-05-05#42
-reviewed_at: 2026-07-30
-reviewed_commit: c45a4a4ebba6962cf6ab73de656c9b00a0f3e48e
+reviewed_at: 2026-08-31
+reviewed_commit: 21312736719de638c1640cbf79629017abc93598
 related:
   - pilee-knowledge-system
   - worktree-session-continuity
@@ -33,17 +33,19 @@ related:
 
 ## Overview
 
-pilee subagent는 Codex-first 실행 흐름을 기본으로 하되, 검증 판정처럼 false PASS 비용이 큰 역할에는 Claude Opus를 쓰는 hybrid 모델 정책으로 운영합니다. 기본 방향은 worker/planner/reviewer/challenger/browser처럼 구현·리뷰·도전·실행 책임이 큰 agent에는 강한 Codex 모델을 쓰고, verifier처럼 증거 판정 책임이 큰 agent에는 Claude Opus 5를 max effort로 쓰며, finder/searcher처럼 탐색·수집 중심 agent에는 더 가벼운 모델을 써 비용과 부하를 낮추는 것입니다.
+pilee subagent는 Codex와 Claude Code CLI를 역할별로 결합하는 hybrid 모델 정책으로 운영합니다. 구현·코드 리뷰·브라우저 실행은 강한 Codex 모델을 유지하고, false PASS 비용이 큰 verifier와 긴 맥락의 숨은 가정·실패 시나리오를 공격하는 challenger는 Claude Opus 5를 max effort로 사용합니다. finder/searcher처럼 탐색·수집 중심 agent에는 더 가벼운 모델을 써 비용과 부하를 낮춥니다.
 
 ## Model Split
 
 모든 agent를 같은 최고 모델로 통일하면 기준선은 단순해지지만, 탐색형 agent까지 같은 비용 구조를 갖게 됩니다. 현재 정책은 역할별 위험도와 출력 품질 요구를 나눕니다.
 
-- 구현·리뷰·도전·브라우저 실행 역할은 강한 Codex 모델을 유지합니다.
+- worker/planner/reviewer/browser는 강한 Codex 모델을 유지합니다.
 - verifier는 “증거 없는 PASS”의 비용이 크므로 Claude Opus 5를 `max` effort로 사용합니다. 구현보다 claim inventory, 재현, evidence 판정, skipped check/remaining risk 기록이 핵심 역할입니다.
-- verifier의 primary Opus 호출이 실패하면 `openai-codex/gpt-5.6-sol`로 fallback합니다. fallback은 검증 workflow를 끊지 않기 위한 안전장치이며, 실제 PASS 기준은 동일하게 evidence-first입니다.
+- challenger는 제품·구조 맥락의 숨은 가정과 실패 시나리오를 압박하는 판단 역할이므로 Claude Opus 5를 `max` effort로 사용합니다. reviewer는 Codex에 남겨 stress-interview의 provider 다양성을 보존합니다.
+- verifier와 challenger의 primary Opus는 Claude Code CLI first-party 구독 경로로 실행합니다. primary가 실패하면 `openai-codex/gpt-5.6-sol`을 Pi runtime으로 실행해 workflow를 이어갑니다. cross-runtime attempt는 terminal marker와 replay가 섞이지 않도록 별도 session JSONL에 기록합니다.
+- abort는 사용자가 실행을 중단한 의사이므로 fallback을 시작하지 않습니다. fallback이 실행돼도 verifier의 PASS 기준과 challenger의 가설/사실 분리 기준은 바뀌지 않습니다.
 - agent는 기존 단일 `modelFallback`과 순서형 `modelFallbacks` chain을 모두 지원합니다. Study Hard worker처럼 사용자 상호작용을 비동기로 닫아야 하는 역할은 `Sol → Terra → Spark` 순서로 provider 장애를 흡수합니다.
-- fallback model마다 같은 persisted session을 이어 쓰되 새 offset부터 terminal event를 읽어 이전 모델의 실패 marker가 다음 모델을 즉시 종료시키지 않게 합니다.
+- 같은 Pi runtime 안의 fallback은 persisted session을 이어 쓰되 새 offset부터 terminal event를 읽습니다. Claude→Pi cross-runtime fallback은 서로 다른 session JSONL을 사용해 이전 runtime의 completion marker가 다음 실행을 즉시 종료시키지 않게 합니다.
 - 단순 탐색·검색 역할은 가벼운 모델을 우선 사용합니다.
 - 모델 선택은 “얼마나 똑똑한가”보다 “이 agent가 실패했을 때 되돌리기 비용이 큰가”를 기준으로 조정합니다.
 
@@ -53,7 +55,7 @@ stress-interview와 self-healing은 subagent fan-out을 쓰지만, worker에게 
 
 ## Runtime Direction
 
-pilee의 agent 정의와 스킬 문서는 Claude Code CLI 관성 표현을 줄이고 Pi subagent runtime 기준으로 정렬합니다. 모델 provider는 역할별로 Codex/Claude를 섞을 수 있지만, 실행 표면은 `claude -p` 같은 외부 CLI 전제가 아니라 Pi subagent 도구 흐름을 우선합니다. 이 정책은 [worktree-session-continuity](./worktree-session-continuity.md)의 세션 이어가기 UX와 함께, 여러 agent가 동시에 움직여도 사람이 맥락을 회수할 수 있게 만드는 기반입니다.
+사용자-facing 실행 표면은 계속 Pi의 `subagent` 도구와 run/session UI로 통일합니다. 내부 runtime은 역할에 따라 나뉩니다. Codex agent는 Pi runtime을 사용하고, Claude-primary agent는 `runtime: claude`와 `subagent.claudeRuntime: "cli"`를 통해 Claude Code first-party 구독 경로를 사용합니다. CLI의 stream event는 Pi-compatible sidecar session으로 기록해 replay·continue·완료 알림을 기존 subagent UX에 합류시킵니다. `cc-system-prompt`는 prompt bridge일 뿐 provider/auth transport를 바꾸지 않으므로 이 runtime 선택을 대신하지 않습니다.
 
 ## Review Trigger
 

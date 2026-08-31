@@ -69,7 +69,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Worker는 readiness ownership을 가진다](./ai-worker-readiness-orchestrator.md) | active | high | 2026-08-30 | 5ad8414 | worker, subagent, orchestrator, readiness, bootstrap, diagnosis |
 | [Self-healing은 actionable item만 수정한다](./self-healing-actionable-loop.md) | active | high | 2026-08-04 | 9bc5850 | self-healing, actionable, worker, fix-class, subagent, 자동수정 |
 | [Stress Interview는 다축 검토다](./stress-interview-multi-axis-review.md) | active | high | 2026-08-04 | 9bc5850 | stress-interview, review, verifier, reviewer, challenger, subagent |
-| [Hybrid subagent 모델 운용 정책](./subagent-model-policy.md) | active | high | 2026-07-30 | c45a4a4 | subagent, codex, claude, model-policy, worker, finder |
+| [Hybrid subagent 모델 운용 정책](./subagent-model-policy.md) | active | high | 2026-08-31 | 2131273 | subagent, codex, claude, model-policy, worker, finder |
 | [Subagent 위임은 구체 프롬프트를 요구한다](./subagent-prompt-specificity.md) | active | high | 2026-08-08 | 3516f8a | subagent, prompt, delegation, worker, context, 위임 |
 | [Subagent는 slash command가 아니라 skill prompt를 위임받는다](./subagent-skill-delegation.md) | active | high | 2026-06-02 | 83617e9 | subagent, skill, slash-command, delegation, ship, ci-ship |
 | [Supervisor는 outcome guardrail이다](./supervisor-outcome-guardrail.md) | active | high | 2026-06-02 | 63f2a62 | supervisor, outcome, guardrail, steering, agent |
