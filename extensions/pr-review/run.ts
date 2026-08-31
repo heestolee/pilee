@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
+import { copyPrReviewQuestionHistory } from "./chat.ts";
 import type { ReviewDiffLine, ReviewSourceBundle } from "./evidence.ts";
 import { validateEvidenceIds } from "./evidence.ts";
 import {
@@ -489,6 +490,7 @@ export function saveMetaReviewSubmission(
 	if (document) writeJsonAtomic(state.documentPath, document);
 	atomicWrite(state.reportPath, renderMetaReviewMarkdown(state, bundle, guides, cards, document));
 	const next = { ...state, status: "ready" as const, updatedAt: Date.now() };
+	if (next.previousRunDir) copyPrReviewQuestionHistory(next.previousRunDir, next.runDir, next.runId);
 	writeJsonAtomic(join(state.runDir, "run.json"), next);
 	markMetaReviewRevisionReady(next, reconciliation?.counts);
 	return { guides, cards, document };

@@ -587,6 +587,15 @@ test("meta_review_run refresh appends a safe linear incremental revision", async
 		const inherited = loadPrReviewQuestions(refreshed.details.runDir);
 		assert.deepEqual(inherited.map((item) => item.id), [question.id], "새 revision에서도 기존 질문 thread를 유지한다");
 		assert.equal(inherited[0]?.runId, refreshed.details.runId, "승계한 질문은 새 revision identity를 사용한다");
+
+		const duringRefresh = createPrReviewQuestion(join(stateRoot, "runs", runId), { runId, question: "갱신 중 추가 질문", scope: "session" }, 3002);
+		const refreshedSource = JSON.parse(readFileSync(join(refreshed.details.runDir, "source.json"), "utf8"));
+		for (const chunk of refreshedSource.chunks) await tool.execute("inspect", { action: "inspect", runId: refreshed.details.runId, chunkId: chunk.id }, undefined, undefined, { cwd: "/tmp" });
+		const refreshedEvidenceIds = refreshedSource.lines.filter((line: any) => line.kind === "addition" || line.kind === "deletion").map((line: any) => line.id);
+		await tool.execute("submit", { action: "submit", runId: refreshed.details.runId, guides: [{ path: "src/example.ts", role: "상태 노출 정책", changeReason: "허용 상태 갱신", flow: "consumer → visible", hunks: [{ id: "E-02", title: "allowlist 갱신", evidenceIds: refreshedEvidenceIds, whatChanged: "조건 재변경", why: "새 상태 반영", evidence: "diff", responsibility: "policy", flowImpact: "허용 상태 갱신" }] }], cards: [] }, undefined, undefined, { cwd: "/tmp" });
+		const readyQuestions = loadPrReviewQuestions(refreshed.details.runDir);
+		assert.deepEqual(readyQuestions.map((item) => item.id), [question.id, duringRefresh.id], "captured→ready 사이의 질문도 새 revision에 병합한다");
+		assert.ok(readyQuestions.every((item) => item.runId === refreshed.details.runId));
 	} finally {
 		rmSync(stateRoot, { recursive: true, force: true });
 	}
