@@ -25,7 +25,7 @@ applies_to:
 source:
   - user-direction:2026-08-25-workspace-activation-redesign
 reviewed_at: 2026-08-31
-reviewed_commit: c712406a5bed5a5dbd0dab67a7b7a6257fc2ba5e
+reviewed_commit: 94a83c01f112ebec27e3f9bf9a7df842a7a06af9
 related:
   - worktree-execution-boundary
   - worktree-session-continuity
@@ -55,7 +55,7 @@ Authorization은 단순 keyword 존재 여부가 아닙니다. `worktree 만들�
 
 ## Activation Rule
 
-Slash `/wt new`는 worktree/session 생성 후 기존 `switchSession` 경로로 현재 panel을 exact target session/cwd로 직접 전환하고 최신 non-transition 요청 1개만 compact continuation으로 전달합니다. Slash `/wt fork`는 공통 worktree/full-lineage session 생성 후 현재 panel·새 탭·오른쪽 panel 중 활성화 위치를 선택하며 어느 경로든 최신 작업을 자동 계속합니다. 현재 panel은 직접 switch하고, 새 탭·오른쪽은 durable READY descriptor를 사용합니다. 새 panel activation 준비/open/READY가 실패해도 성공적으로 만든 worktree/session을 삭제하지 않고 recovery artifact로 보존합니다. `worktree_create`, `worktree_fork`, PR review checkout, Frame/TFT fork도 source panel 보존용 new-panel READY 계약을 유지합니다.
+Slash `/wt new`는 worktree/session 생성 후 기존 `switchSession` 경로로 현재 panel을 exact target session/cwd로 직접 전환하고 최신 non-transition 요청 1개만 compact continuation으로 전달합니다. Slash `/wt fork`는 공통 worktree/full-lineage session 생성 후 현재 panel·새 탭·오른쪽 panel 중 활성화 위치를 선택하며 어느 경로든 최신 작업을 자동 계속합니다. 현재 panel은 직접 switch하고, 새 탭·오른쪽은 durable READY descriptor를 사용합니다. Full-lineage target이 초기 READY 대기 시간을 넘기면 crash로 오판해 panel을 닫지 않고 `pending`으로 반환하며 descriptor를 열어 둡니다. Target receiver가 나중에 exact cwd/session READY를 기록하면 continuation을 한 번만 claim해 자동 실행합니다. 실제 activation 준비/open 실패가 확인돼도 성공적으로 만든 worktree/session은 recovery artifact로 보존합니다. `worktree_create`, `worktree_fork`, PR review checkout, Frame/TFT fork도 source panel 보존용 new-panel READY 계약을 유지합니다.
 
 Descriptor 전이는 `prepared → panel-opened → ready → continuing → continued`와 `prepared|panel-opened|ready|failed → cancelling → cancelled`를 구분합니다. Parent와 child process는 bounded retry·stale recovery가 있는 exclusive lock directory 안에서 전이를 claim합니다. Receiver가 `ready→continuing`을 먼저 소유하면 parent는 timeout cleanup을 수행하지 않고, parent가 cancellation을 먼저 소유하면 receiver는 continuation을 보내지 않습니다. 같은 descriptor를 연 duplicate receiver도 continuation을 두 번 dispatch할 수 없습니다.
 

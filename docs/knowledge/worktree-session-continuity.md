@@ -41,7 +41,7 @@ source:
   - user-direction:2026-08-18-pr-review-checkout-session
   - user-direction:2026-08-25-workspace-activation-redesign
 reviewed_at: 2026-08-31
-reviewed_commit: c712406a5bed5a5dbd0dab67a7b7a6257fc2ba5e
+reviewed_commit: 94a83c01f112ebec27e3f9bf9a7df842a7a06af9
 related:
   - subagent-model-policy
   - pilee-knowledge-system
@@ -65,7 +65,7 @@ fork-panel에서 종료된 대화는 transcript를 주입하는 것보다 세션
 
 ## Worktree Entry Rule
 
-기존 worktree로 현재 panel에서 돌아가는 기본 진입점은 `/wt switch`입니다. 사용자가 작업공간으로 돌아간다는 것은 “워크트리만 이동”이 아니라 “그 워크트리 안에서 이어갈 세션을 고른다”는 뜻이므로, `/wt switch`는 워크트리 선택 다음에 해당 worktree session picker까지 이어져야 합니다. `/wt sessions`는 독립 UX가 아니라 호환 alias로 남겨 같은 session picker 흐름을 호출합니다. 사용자가 직접 실행한 slash `/wt new`는 원래처럼 생성 직후 현재 panel을 exact target session/cwd로 직접 전환합니다. Slash `/wt fork`는 공통 생성 후 현재 panel·새 탭·오른쪽 panel 중 활성화 위치를 고릅니다. Tool·PR review·Frame/TFT 경로의 기존 source-panel 보존 계약은 별도로 유지됩니다.
+기존 worktree로 현재 panel에서 돌아가는 기본 진입점은 `/wt switch`입니다. 사용자가 작업공간으로 돌아간다는 것은 “워크트리만 이동”이 아니라 “그 워크트리 안에서 이어갈 세션을 고른다”는 뜻이므로, `/wt switch`는 워크트리 선택 다음에 해당 worktree session picker까지 이어져야 합니다. `/wt sessions`는 독립 UX가 아니라 호환 alias로 남겨 같은 session picker 흐름을 호출합니다. 사용자가 직접 실행한 slash `/wt new`는 원래처럼 생성 직후 현재 panel을 exact target session/cwd로 직접 전환합니다. Slash `/wt fork`는 공통 생성 후 현재 panel·새 탭·오른쪽 panel 중 활성화 위치를 고릅니다. 새 panel의 full session 기동이 READY 대기 시간을 넘겨도 panel과 descriptor를 유지하고, receiver가 나중에 READY가 되면 계승된 작업 continuation을 실행합니다. Tool·PR review·Frame/TFT 경로의 기존 source-panel 보존 계약은 별도로 유지됩니다.
 
 `/wt resume <workspace>`는 Conductor workspace 하나를 선택한 세션만 복구하지 않습니다. 해당 workspace의 Conductor 세션 전체를 Pi session으로 hydrate하고, 각 변환 세션에 source metadata를 남겨 재실행 시 중복 변환을 피합니다. hydrate가 끝나면 `/wt switch <workspace>`와 같은 세션 선택 흐름으로 이어져야 합니다. 복구된 Pi session 자체가 원본 transcript를 갖고 있으므로, workspace-level `conductor-context.md`가 특정 active Conductor session 요약을 다음 turn에 잘못 주입하지 않도록 `.loaded.md`로 보존 처리합니다.
 
