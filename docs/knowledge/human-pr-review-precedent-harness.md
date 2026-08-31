@@ -27,8 +27,9 @@ source:
   - user-direction:2026-08-30-structure-selection-and-source-backed-change-meaning
   - user-direction:2026-08-30-color-semantic-meaning-diagrams
   - user-direction:2026-08-30-meaning-chart-zoom-overlay
-reviewed_at: 2026-08-30
-reviewed_commit: 3c7b116
+  - user-direction:2026-08-31-meta-review-study-hard-worker-lifecycle-parity
+reviewed_at: 2026-08-31
+reviewed_commit: 9d3e5cb
 related:
   - evidence-first-verification-gate
   - live-artifact-preview-pattern
@@ -102,7 +103,7 @@ Review worktree는 read-only 실행 경계입니다. dependency bootstrap을 자
 
 질문 scope는 `전체 PR`과 `선택 블록`으로 분리합니다. `한눈에 보기`와 `변경 파일 관계`는 allowlisted `section` provenance를, file intro·diff line·semantic explanation hunk·ReviewCard는 exact `file | line | hunk | card` provenance와 evidence를 저장합니다. 선택 블록 대화는 같은 evidence를 공유하더라도 selection kind/id가 다른 블록과 섞지 않습니다. 질문은 같은 Pi session transcript에 visible user event로 기록되고 내부 run/tool 지침은 hidden control envelope로 분리합니다.
 
-Owner Pi는 질문을 글자 수나 파일 수가 아니라 work shape로 route합니다. selection과 현재 review source만으로 닫히는 질문은 exact checkout session이 direct로 답하고, 외부 precedent·실행 검증·여러 독립 경로 비교·전체 PR 재분석이 실제로 필요하면 같은 question ID를 worker로 승격합니다. worker 결과는 route 시점 source/head pin과 적용 직전 checkout diff가 모두 일치할 때만 답변으로 publish합니다. 공통 상태 전이와 recovery 계약은 [질문 UI와 실행 owner는 분리한다](./question-ui-execution-owner-routing.md)를 따릅니다.
+Owner Pi는 질문을 글자 수나 파일 수가 아니라 work shape로 route합니다. selection과 현재 review source만으로 닫히는 질문은 owner session이 direct로 답하고, 외부 precedent·실행 검증·여러 독립 경로 비교·전체 PR 재분석이 실제로 필요하면 같은 question ID를 Study Hard와 같은 programmatic isolated worker로 승격합니다. worker는 메인 session을 점유하지 않는 비동기 결과 생산자이며 질문·답변·실패는 owner Pi lineage와 같은 drawer thread에 돌아옵니다. GitHub PR worker는 current panel checkout이 아니라 immutable run source와 `repository + expectedHeadSha`를 읽고, current-work worker만 captured root의 live diff freshness를 요구합니다. 공통 상태 전이와 recovery 계약은 [질문 UI와 실행 owner는 분리한다](./question-ui-execution-owner-routing.md)를 따릅니다.
 
 답변은 `쉬운 설명 → 코드에서 확인된 사실 → 아직 모르는 정책/가정 → 리뷰 판단` 순서와 source evidence를 갖고 `questions.jsonl` append-only snapshot으로 보존됩니다. terminal answer/fail/stale는 한 snapshot으로 기록하고 늦은 callback이 다시 열지 못합니다. pending execution이 있는 동안만 live state를 polling하고 모두 끝나면 멈춥니다. Pi에서 `/diff`를 보며 나눈 대화도 같은 checkout/session을 사용하지만, 사용자의 명시적 갱신 요청 전에는 review artifact를 자동 수정하지 않습니다.
 

@@ -26,8 +26,9 @@ source:
   - user-direction:2026-08-30-meaning-and-structure-question-separation
   - review:2026-08-30-question-owner-race-invariants
   - user-direction:2026-08-30-study-hard-question-drawer-overlay
-reviewed_at: 2026-08-30
-reviewed_commit: a198cf2
+  - user-direction:2026-08-31-meta-review-study-hard-worker-lifecycle-parity
+reviewed_at: 2026-08-31
+reviewed_commit: 9d3e5cb
 related:
   - study-hard-worker-flexible-generation-strict-apply
   - human-pr-review-precedent-harness
@@ -114,10 +115,11 @@ Direct owner와 worker는 같은 pinned provenance를 받습니다. 이미지가
 Worker output은 답변 근거가 아니라 검증 대상입니다.
 
 - worker는 지정된 run-local result artifact만 제안하고 canonical state를 직접 바꾸지 않습니다.
-- coordinator는 result path, run/question identity, schema, source hash, checkout head를 검사합니다.
+- coordinator는 result path, run/question identity, schema, route 시점 source/head pin을 검사합니다.
 - source hash는 mutable artifact나 worker가 쓸 수 있는 `questions.jsonl`을 trust anchor로 삼지 않고 route 시점의 coordinator launch lease에 pin합니다. Meta Review question 전체 canonical은 process-global coordinator registry가 소유합니다. worker가 다른 question/Q999 snapshot을 추가하거나 JSONL을 truncate해도 전체 파일 불일치를 감지하고 trusted canonical + active failed snapshot으로 복구합니다.
-- 적용 직전 GitHub PR은 clean checkout, remote head, remote diff를 다시 확인하고 current-work는 base 대비 tracked·untracked diff를 다시 계산합니다.
-- 관찰된 head/hash/root/diff가 pin과 다를 때만 `stale`로 끝냅니다. git·gh 인증/네트워크/JSON 오류처럼 freshness를 관찰하지 못한 경우는 source 변경으로 주장하지 않고 worker `failed`로 기록합니다.
+- GitHub PR worker에서 current panel `ctx.cwd`는 실행 위치일 뿐 review truth가 아닙니다. `sourcePath`의 immutable evidence를 우선하고 추가 source는 `repository + expectedHeadSha`를 지정한 remote API 또는 pinned git object로 읽습니다. `expectedSourceSha256`는 `source.json` 파일 바이트 hash가 아니라 JSON의 `sourceSha256` 필드이자 normalized `source.diff` identity입니다.
+- 적용 직전 GitHub PR 질문은 저장된 immutable `source.diff`와 `source.json.sourceSha256`가 route pin과 같은지 검증합니다. PR 최신 head 변화는 별도 freshness badge와 명시적 새 run refresh가 담당하며, 기존 run에 달린 질문은 그 revision에 귀속합니다.
+- current-work 질문만 captured root의 현재 HEAD와 base 대비 tracked·untracked diff를 다시 계산합니다. 관찰된 head/hash/root/diff가 pin과 다를 때 `stale`로 끝냅니다.
 
 ## Failure Modes
 
@@ -127,7 +129,7 @@ Worker output은 답변 근거가 아니라 검증 대상입니다.
 - terminal status와 execution phase를 별도 snapshot으로 쓰면 늦은 callback이 `status=answered, execution=failed` 같은 모순을 만듭니다.
 - 질문 drawer를 열 때 학습노트 padding과 max-width를 함께 바꾸면 auto-fit grid가 반복 reflow되고, 닫힌 뒤 이전 card border가 균열처럼 남을 수 있습니다. Drawer만 transform하고 note geometry는 고정합니다.
 - generic update가 question execution을 덮거나 patch 누락·역순·중복을 chronology 변경으로 해석하면 worker→direct 역전, terminal reopen, callback 대상 소실, 잘못된 active question 선택을 만들 수 있습니다.
-- worker-writable question snapshot이나 artifact를 source pin으로 다시 읽거나 active ID 하나만 검사하면 prompt injection이 다른 질문과 durable log를 forge할 수 있습니다. reservation token을 completion 권한으로 재사용하면 claim 패자도 canonical을 종료할 수 있습니다. 반대로 artifact의 source hash를 HEAD만 확인하면 working diff가 바뀐 stale 답변을 승인하고, 관찰 실패까지 stale로 고정하면 일시 장애를 source 변경이라고 오진합니다.
+- worker-writable question snapshot이나 artifact를 source pin으로 다시 읽거나 active ID 하나만 검사하면 prompt injection이 다른 질문과 durable log를 forge할 수 있습니다. reservation token을 completion 권한으로 재사용하면 claim 패자도 canonical을 종료할 수 있습니다. 반대로 GitHub PR 질문을 current panel HEAD나 live PR 최신 상태에 묶으면 immutable run 질문이 panel 이동·후속 push만으로 실패하고, normalized diff identity를 `source.json` 파일 바이트 hash로 오해하면 valid artifact도 생성되지 않습니다. current-work에서는 반대로 live diff 재계산을 빼면 stale 답변을 승인합니다.
 - 내부 dispatch prompt를 `display:true`로 노출하면 사용자 대화가 run path와 tool 지침으로 오염됩니다.
 - 상단 문서 section을 session으로 저장하거나 구조 선택을 hunk/line으로 저장하면 사용자가 고른 연속 source 범위와 canonical 질문 범위가 달라집니다.
 - 변경 의미를 관련 구조 단위 하나의 질문으로 저장하면 다대다 계약 전환의 일부 evidence만 조사하게 됩니다.
