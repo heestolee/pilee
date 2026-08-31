@@ -31,6 +31,15 @@ export interface PrReviewQuestionEvidence {
 	note?: string;
 }
 
+export interface PrReviewQuestionChange {
+	status: "applied" | "applied-with-validation-failure" | "applied-with-refresh-failure";
+	files: string[];
+	validation: Array<{ command: string; status: "passed" | "failed"; output?: string }>;
+	refreshedRunId?: string;
+	refreshMode?: "incremental" | "full";
+	refreshError?: string;
+}
+
 export interface PrReviewQuestionAttachment {
 	id: string;
 	name: string;
@@ -65,6 +74,7 @@ export interface PrReviewQuestion {
 	answer?: string;
 	evidence?: PrReviewQuestionEvidence[];
 	uncertainty?: string;
+	change?: PrReviewQuestionChange;
 	error?: string;
 	createdAt: number;
 	updatedAt: number;

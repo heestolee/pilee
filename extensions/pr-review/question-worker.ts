@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
@@ -21,8 +21,10 @@ import {
 	publishPrReviewQuestionTranscript,
 	updatePrReviewQuestion,
 	type PrReviewQuestion,
+	type PrReviewQuestionChange,
 	type PrReviewQuestionEvidence,
 } from "./chat.ts";
+import { refreshCurrentWorkMetaReview } from "./current-work-refresh.ts";
 import { captureUnifiedDiff } from "./evidence.ts";
 import type { PrReviewRunState } from "./run.ts";
 
@@ -41,16 +43,25 @@ function throwStaleSource(message: string): never {
 	throw new PrReviewSourceStaleError(message);
 }
 
+interface MetaReviewQuestionWorkerValidation {
+	command: string;
+	args: string[];
+}
+
 interface MetaReviewQuestionWorkerArtifact {
-	schemaVersion: 1;
+	schemaVersion: 1 | 2;
 	kind: "meta-review-question-worker-result";
 	runId: string;
 	questionId: string;
 	headSha?: string;
 	sourceSha256: string;
+	intent: "answer" | "change";
 	answer: string;
 	evidence: PrReviewQuestionEvidence[];
 	uncertainty?: string;
+	patch?: string;
+	changedFiles?: string[];
+	validation?: MetaReviewQuestionWorkerValidation[];
 }
 
 export interface PrReviewQuestionRouteResult {
@@ -249,22 +260,46 @@ function readWorkerArtifact(state: PrReviewRunState, question: PrReviewQuestion,
 	const size = statSync(receivedPath).size;
 	if (size <= 0 || size > MAX_WORKER_RESULT_BYTES) throw new Error("Meta Review worker result는 1 byte 이상 2MB 이하여야 합니다.");
 	const raw = JSON.parse(readFileSync(receivedPath, "utf8")) as Record<string, unknown>;
-	if (raw.schemaVersion !== 1 || raw.kind !== "meta-review-question-worker-result") throw new Error("Meta Review worker result schema가 다릅니다.");
+	if (![1, 2].includes(Number(raw.schemaVersion)) || raw.kind !== "meta-review-question-worker-result") throw new Error("Meta Review worker result schema가 다릅니다.");
 	if (raw.runId !== state.runId || raw.questionId !== question.id) throw new Error("Meta Review worker result identity가 다릅니다.");
 	if (raw.sourceSha256 !== pin.sourceSha256) throw new Error("Meta Review worker result source가 routing snapshot과 다릅니다.");
 	if ((pin.headSha || undefined) !== (typeof raw.headSha === "string" && raw.headSha ? raw.headSha : undefined)) throw new Error("Meta Review worker result head가 routing snapshot과 다릅니다.");
 	const answer = typeof raw.answer === "string" ? raw.answer.trim() : "";
 	if (!answer || answer.length > 32_000) throw new Error("Meta Review worker answer는 1자 이상 32000자 이하여야 합니다.");
+	const intent = raw.schemaVersion === 2 && raw.intent === "change" ? "change" : "answer";
+	const patch = typeof raw.patch === "string" ? raw.patch.trim() : undefined;
+	const changedFiles = Array.isArray(raw.changedFiles)
+		? [...new Set(raw.changedFiles.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean))]
+		: [];
+	const validation = Array.isArray(raw.validation)
+		? raw.validation.slice(0, 3).map((item) => {
+			if (!item || typeof item !== "object") throw new Error("worker validation 항목이 객체가 아닙니다.");
+			const value = item as Record<string, unknown>;
+			if (typeof value.command !== "string" || !value.command.trim() || !Array.isArray(value.args) || !value.args.every((arg) => typeof arg === "string")) {
+				throw new Error("worker validation command 계약이 다릅니다.");
+			}
+			return { command: value.command.trim(), args: value.args.slice(0, 40).map(String) };
+		})
+		: [];
+	if (intent === "change") {
+		if (state.target.kind !== "current-work") throw new Error("GitHub PR immutable source에서는 코드 변경 artifact를 적용할 수 없습니다.");
+		if (!patch || patch.length > 1_500_000 || !patch.startsWith("diff --git ")) throw new Error("변경 요청 artifact에는 1.5MB 이하 unified git patch가 필요합니다.");
+		if (!changedFiles.length || changedFiles.some((path) => path.startsWith("/") || path.split(/[\\/]/).includes(".."))) throw new Error("변경 요청 artifact의 changedFiles가 안전한 상대 경로가 아닙니다.");
+	}
 	return {
-		schemaVersion: 1,
+		schemaVersion: Number(raw.schemaVersion) as 1 | 2,
 		kind: "meta-review-question-worker-result",
 		runId: state.runId,
 		questionId: question.id,
 		headSha: pin.headSha,
 		sourceSha256: String(raw.sourceSha256),
+		intent,
 		answer,
 		evidence: normalizeEvidence(raw.evidence),
 		uncertainty: typeof raw.uncertainty === "string" && raw.uncertainty.trim() ? raw.uncertainty.trim().slice(0, 8_000) : undefined,
+		patch,
+		changedFiles,
+		validation,
 	};
 }
 
@@ -439,6 +474,70 @@ async function assertObservedReviewSource(
 	if (observed !== pin.sourceSha256) throwStaleSource(`stale Meta Review source: expected ${pin.sourceSha256}, current ${observed}`);
 }
 
+const ALLOWED_VALIDATION_COMMANDS = new Set(["node", "npm", "npx", "pnpm", "yarn", "bun", "go", "cargo", "python", "python3", "pytest", "ruby", "bundle", "make"]);
+
+function patchFiles(patch: string): string[] {
+	return [...new Set([...patch.matchAll(/^diff --git a\/(.+?) b\/(.+)$/gm)].flatMap((match) => [match[1]!, match[2]!] ))].sort();
+}
+
+async function applyWorkerChange(
+	pi: Pick<ExtensionAPI, "exec">,
+	state: PrReviewRunState,
+	artifact: MetaReviewQuestionWorkerArtifact,
+	cwd: string,
+	now: number,
+): Promise<PrReviewQuestionChange> {
+	if (state.target.kind !== "current-work" || !artifact.patch || !artifact.changedFiles?.length) throw new Error("current-work change artifact가 완전하지 않습니다.");
+	const root = (await execText(pi, "git", ["rev-parse", "--show-toplevel"], cwd)).trim();
+	if (state.target.root && realpathSync(root) !== realpathSync(state.target.root)) throwStaleSource(`stale Meta Review root: expected ${state.target.root}, current ${root}`);
+	const declaredFiles = [...artifact.changedFiles].sort();
+	const observedPatchFiles = patchFiles(artifact.patch);
+	if (JSON.stringify(declaredFiles) !== JSON.stringify(observedPatchFiles)) throw new Error("변경 artifact의 changedFiles와 patch 경로가 다릅니다.");
+	const patchPath = join(state.runDir, "question-workers", `${artifact.questionId}.patch`);
+	writeFileSync(patchPath, `${artifact.patch.trimEnd()}\n`, "utf8");
+	try {
+		await execText(pi, "git", ["apply", "--check", "--whitespace=nowarn", patchPath], root);
+		await execText(pi, "git", ["apply", "--whitespace=nowarn", patchPath], root);
+	} finally {
+		unlinkSync(patchPath);
+	}
+
+	const validation: PrReviewQuestionChange["validation"] = [];
+	for (const check of artifact.validation ?? []) {
+		const label = [check.command, ...check.args].join(" ");
+		if (!ALLOWED_VALIDATION_COMMANDS.has(check.command)) {
+			validation.push({ command: label, status: "failed", output: "허용된 targeted validation command가 아닙니다." });
+			break;
+		}
+		const result = await pi.exec(check.command, check.args, { cwd: root, timeout: 120_000 });
+		const output = (result.stderr || result.stdout).trim().slice(0, 4_000) || undefined;
+		validation.push({ command: label, status: result.code === 0 ? "passed" : "failed", output });
+		if (result.code !== 0) break;
+	}
+
+	let refreshedRunId: string | undefined;
+	let refreshMode: "incremental" | "full" | undefined;
+	let refreshError: string | undefined;
+	try {
+		const refreshed = await refreshCurrentWorkMetaReview(pi, state, root, dirname(dirname(state.runDir)), "auto", now + 1);
+		if (refreshed.mode !== "none") {
+			refreshedRunId = refreshed.run.runId;
+			refreshMode = refreshed.mode;
+		}
+	} catch (error) {
+		refreshError = error instanceof Error ? error.message : String(error);
+	}
+	const validationFailed = validation.some((item) => item.status === "failed");
+	return {
+		status: refreshError ? "applied-with-refresh-failure" : validationFailed ? "applied-with-validation-failure" : "applied",
+		files: declaredFiles,
+		validation,
+		refreshedRunId,
+		refreshMode,
+		refreshError,
+	};
+}
+
 export async function applyPrReviewQuestionWorkerResult(
 	pi: Pick<ExtensionAPI, "appendEntry" | "sendMessage" | "exec">,
 	state: PrReviewRunState,
@@ -483,6 +582,7 @@ export async function applyPrReviewQuestionWorkerResult(
 		assertTrustedQuestionSnapshot(state, lease);
 		const question = lease.trustedQuestion;
 		const artifact = readWorkerArtifact(state, question, artifactPath, lease.pin);
+		const change = artifact.intent === "change" ? await applyWorkerChange(pi, state, artifact, cwd, now) : undefined;
 		const execution = updateQuestionExecutionPhase(question.execution, "answered", now);
 		return terminalLeaseQuestion(pi, state, lease, {
 			...question,
@@ -491,6 +591,7 @@ export async function applyPrReviewQuestionWorkerResult(
 			answer: artifact.answer,
 			evidence: artifact.evidence,
 			uncertainty: artifact.uncertainty,
+			change,
 			error: undefined,
 			answeredAt: now,
 			workerRunId: Number.isInteger(workerRunId) ? workerRunId : question.workerRunId,
@@ -538,9 +639,12 @@ expectedSourceSha256는 sourcePath 파일 바이트의 SHA-256이 아닙니다. 
 
 ## 완료 계약
 1. sourcePath의 immutable evidence와 필요한 실제 source/callsite/schema/test를 pinned source 계약에 따라 읽습니다.
-2. repository, review run, 질문 JSONL은 수정하지 않습니다. routine broad validation을 실행하지 않습니다.
-3. workerResultPath에 아래 JSON 하나만 씁니다: {"schemaVersion":1,"kind":"meta-review-question-worker-result","runId":"...","questionId":"...","headSha":"...","sourceSha256":"...","answer":"...","evidence":[{"label":"...","path":"...","line":1,"url":"...","note":"..."}],"uncertainty":"..."}.
-4. 성공 stdout은 [META_REVIEW_QUESTION_WORKER_RESULT], artifactPath, runId, questionId, summary만 출력합니다.`;
+2. repository, review run, 질문 JSONL은 직접 수정하지 않습니다. routine broad validation을 실행하지 않습니다.
+3. 설명 요청은 intent=answer로 답합니다. 사용자가 명시적으로 코드 수정을 요청했고 sourceMode=current-work-live일 때만 intent=change를 사용합니다.
+4. intent=change도 repository를 직접 수정하지 않고 현재 pinned source에 적용되는 unified git patch를 artifact.patch로 제안합니다. github-pr-immutable에서는 intent=change를 만들지 말고 변경 불가 이유를 답합니다.
+5. validation은 변경 파일에 대한 좁은 direct command만 최대 3개 제안하며 shell 문자열이 아니라 command와 args 배열로 분리합니다.
+6. workerResultPath에 schemaVersion 2 JSON 하나만 씁니다: {"schemaVersion":2,"kind":"meta-review-question-worker-result","runId":"...","questionId":"...","headSha":"...","sourceSha256":"...","intent":"answer|change","answer":"...","evidence":[{"label":"...","path":"...","line":1,"url":"...","note":"..."}],"uncertainty":"...","patch":"intent=change일 때만 unified diff","changedFiles":["relative/path"],"validation":[{"command":"pnpm","args":["exec","eslint","relative/path"]}]}.
+7. 성공 stdout은 [META_REVIEW_QUESTION_WORKER_RESULT], artifactPath, runId, questionId, summary만 출력합니다.`;
 }
 
 function completionError(question: PrReviewQuestion, completion: ProgrammaticSubagentCompleted): string | undefined {
