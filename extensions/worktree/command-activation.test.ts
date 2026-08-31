@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { buildCurrentPanelNewContinuation } from "./continuation.ts";
 
 const worktreeDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = join(worktreeDir, "..", "..");
@@ -19,59 +20,69 @@ function between(start: string, end: string): string {
 }
 
 const commandNew = between("async function handleNew", "async function listOneRepo");
-const commandFork = between("async function handleFork", "export async function runWorktreeForkFromCommandContext");
+const commandFork = between("async function handleCommandFork", "async function handleWorkflowFork");
+const workflowFork = between("async function handleWorkflowFork", "export async function runWorktreeForkFromCommandContext");
 
-test("/wt new offers current-panel while /wt fork preserves the source panel", () => {
-	assert.ok(commandNew.indexOf("chooseNewPanelPlacement") < commandNew.indexOf('pi.exec("git", ["fetch"'));
-	assert.match(commandNew, /includeCurrentPanel: true/);
-	assert.match(commandNew, /selectedLocation === "here"/);
-	assert.match(commandNew, /trySwitchSessionToWorktree/);
-	assert.match(commandNew, /activateWorkspaceInNewPanel/);
-	assert.match(commandNew, /cleanupCreatedSessionFile/);
-	assert.match(commandNew, /cleanupCreatedWorktree/);
-
-	assert.ok(commandFork.indexOf("buildNewPanelActivationContract") < commandFork.indexOf('pi.exec("git", ["fetch"'));
-	assert.match(commandFork, /activateWorkspaceInNewPanel/);
-	assert.doesNotMatch(commandFork, /switchSessionToWorktree/);
-	assert.doesNotMatch(commandFork, /trySwitchSessionToWorktree/);
-	assert.match(commandFork, /cleanupCreatedSessionFile/);
-	assert.match(commandFork, /cleanupCreatedWorktree/);
+test("slash /wt new and /wt fork keep the original current-panel creation path", () => {
+	for (const block of [commandNew, commandFork]) {
+		assert.match(block, /switchSessionToWorktree/);
+		assert.doesNotMatch(block, /chooseNewPanelPlacement|buildNewPanelActivationContract|activateWorkspaceInNewPanel/);
+		assert.doesNotMatch(block, /source Pi session provenance가 없어/);
+		assert.doesNotMatch(block, /cleanupCreatedWorktree|fullContextFailure/);
+		assert.ok(block.indexOf('pi.exec("git", ["worktree", "add"') < block.indexOf("switchSessionToWorktree"));
+	}
 });
 
-test("/wt new supports --here without asking for a new panel", () => {
-	assert.match(source, /here: boolean/);
-	assert.match(source, /t === "--here" \|\| t === "--current-panel"/);
-	assert.match(commandNew, /parsed\.here \? "here"/);
-	assert.match(commandNew, /workspaceAction: "create-worktree"/);
-	assert.match(commandNew, /activationTarget: "current-panel"/);
+test("slash /wt new and /wt fork resume work only after switching sessions", () => {
+	assert.match(commandNew, /currentPanelNewContinuation\(ctx/);
+	assert.match(commandNew, /afterSwitchFollowUp: continuation/);
+	assert.match(commandFork, /defaultCurrentPanelContinuation\("fork"/);
+	assert.match(commandFork, /afterSwitchFollowUp: continuation/);
+	assert.ok(commandNew.indexOf("switchSessionToWorktree") < commandNew.lastIndexOf("afterSwitchFollowUp"));
+	assert.ok(commandFork.indexOf("switchSessionToWorktree") < commandFork.indexOf('return { status: "switched"'));
+	assert.match(source, /recentUserPrompts\(source\.file, 3, 2_000\)/);
+	assert.match(source, /buildCurrentPanelNewContinuation\(prompts, input\)/);
 });
 
-test("/wt new allows a clean target before source session provenance exists", () => {
-	assert.match(commandNew, /const sourceSessionFile = sourceSessionCandidate && existsSync\(sourceSessionCandidate\) \? sourceSessionCandidate : undefined/);
-	assert.match(commandNew, /if \(requestedFullContext && !sourceSessionFile\)/);
-	assert.doesNotMatch(commandNew, /if \(!sourceSessionFile \|\| !existsSync\(sourceSessionFile\)\)/);
-	assert.match(commandNew, /sourceSessionFile,/);
-	assert.match(commandFork, /source Pi session provenance가 없어 \/wt fork/);
+test("/wt new compact continuation carries the latest task but not the transition command", () => {
+	const continuation = buildCurrentPanelNewContinuation(
+		["결제 오류 원인을 계속 조사해줘", "/wt new"],
+		{ name: "target", branch: "feature/target" },
+	);
+	assert.ok(continuation);
+	assert.match(continuation.content, /결제 오류 원인을 계속 조사해줘/);
+	assert.doesNotMatch(continuation.content, /\/wt new/);
+	assert.equal(continuation.details.compact, true);
+	assert.equal(buildCurrentPanelNewContinuation(["/wt new"], {}), undefined);
 });
 
-test("/wt fork keeps full transcript lineage and refuses an empty fallback session", () => {
+test("slash commands preserve context fallback instead of deleting a successfully created worktree", () => {
+	assert.match(commandNew, /fullContext: useFullContext/);
 	assert.match(commandFork, /fullContext: useFullContext/);
-	assert.match(commandFork, /fullContextFailure\(useFullContext, session\)/);
+	assert.doesNotMatch(commandNew, /fullContextFailure|cleanupCreatedSessionFile|cleanupCreatedWorktree/);
+	assert.doesNotMatch(commandFork, /fullContextFailure|cleanupCreatedSessionFile|cleanupCreatedWorktree/);
 	assert.match(source, /SessionManager\.forkFrom\(source\.file, worktreePath\)/);
 	assert.match(source, /createEmptySessionFile\(worktreePath, source\.file\)/);
 	assert.match(source, /parentSession,/);
 });
 
-test("/wt switch remains the explicit current-panel activation path", () => {
+test("Frame and TFT command-context fork keep the separate new-panel workflow", () => {
+	assert.match(workflowFork, /buildNewPanelActivationContract/);
+	assert.match(workflowFork, /activateWorkspaceInNewPanel/);
+	assert.match(workflowFork, /source Pi session provenance가 없어/);
+	assert.match(workflowFork, /fullContextFailure/);
+	assert.doesNotMatch(workflowFork, /switchSessionToWorktree/);
+	assert.match(source, /return handleWorkflowFork\(pi, args, ctx, options\)/);
+});
+
+test("/wt switch remains the explicit existing-worktree current-panel activation path", () => {
 	assert.match(source, /currentPanelSwitchContract\(ctx, "command", "\/wt switch"\)/);
 	assert.match(source, /resolveWorkspaceActivationAuthorization/);
 	assert.match(source, /switchSessionToWorktree\(ctx, resolved\.sessionFile/);
 });
 
-test("target READY is recorded for both new-panel and current-panel creation", () => {
+test("new-panel workflow receiver remains registered for tools and composed workflows", () => {
 	assert.match(source, /registerWorkspacePanelActivationReceiver\(pi\)/);
-	assert.match(source, /activationContract\?\.activationTarget === "current-panel"/);
-	assert.match(source, /WORKSPACE_ACTIVATION_READY_ENTRY_TYPE/);
 });
 
 test("explicit authorization uses the current P0/P1/P2 panel as source without a P0-only hard block", () => {

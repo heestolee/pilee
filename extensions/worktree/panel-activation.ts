@@ -739,10 +739,9 @@ export async function buildNewPanelActivationContract(input: {
 	authorizationSourceId: string;
 	authorizationConsumerId?: string;
 	continuation?: WorkspaceContinuation;
-	placement?: NewPanelPlacement;
 	placementTitle?: string;
 }): Promise<WorkspaceActivationContract | null> {
-	const placement = input.placement ?? await chooseNewPanelPlacement(input.ctx, input.placementTitle);
+	const placement = await chooseNewPanelPlacement(input.ctx, input.placementTitle);
 	if (!placement) return null;
 	const authorization = resolveWorkspaceActivationAuthorization({ ...input, activationTarget: "new-panel", placement });
 	return createWorkspaceActivationContract({

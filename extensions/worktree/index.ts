@@ -18,7 +18,6 @@ import { discoverAgents } from "../subagent/agents.ts";
 import { getFinalOutput, runSingleAgent } from "../subagent/runner.ts";
 import { makeSubagentSessionFile } from "../subagent/session.ts";
 import type { SingleResult, SubagentDetails } from "../subagent/types.ts";
-import { chooseNewPanelPlacement } from "../fork-panel/index.ts";
 import { resolveForkPanelIdentity } from "../utils/fork-panel-identity.ts";
 import { registerWorktreeDashboardShortcut } from "./shortcut.ts";
 import {
@@ -30,6 +29,7 @@ import {
 	type BootstrapSessionEntry,
 	type PostCreateBootstrapRequest,
 } from "./bootstrap-domains.ts";
+import { buildCurrentPanelNewContinuation } from "./continuation.ts";
 import { promotePlanningWorkArtifactsToWorktree, type WorkArtifactPromotionResult } from "./frame-artifacts.ts";
 import {
 	activateWorkspaceInNewPanel,
@@ -40,7 +40,6 @@ import {
 } from "./panel-activation.ts";
 import {
 	createWorkspaceActivationContract,
-	WORKSPACE_ACTIVATION_READY_ENTRY_TYPE,
 	workspaceAuthorizationConsumerId,
 	type WorkspaceActivationContract,
 	type WorkspaceContinuation,
@@ -564,7 +563,6 @@ interface NewArgs {
 	carryContext: boolean;
 	fullContext: boolean;
 	minimalContext: boolean;
-	here: boolean;
 	from?: string;
 	ticket?: string;
 	note?: string;
@@ -592,7 +590,7 @@ function tokenize(args: string): string[] {
 
 function parseNewArgs(args: string): NewArgs {
 	const tokens = tokenize(args);
-	const result: NewArgs = { hotfix: false, hotfeature: false, carryContext: false, fullContext: false, minimalContext: false, here: false };
+	const result: NewArgs = { hotfix: false, hotfeature: false, carryContext: false, fullContext: false, minimalContext: false };
 	const positional: string[] = [];
 	for (let i = 0; i < tokens.length; i++) {
 		const t = tokens[i];
@@ -601,7 +599,6 @@ function parseNewArgs(args: string): NewArgs {
 		else if (t === "--carry-context" || t === "--context" || t === "--fork-current") result.carryContext = true;
 		else if (t === "--full-context" || t === "--full-transcript") { result.fullContext = true; result.carryContext = true; }
 		else if (t === "--minimal-context" || t === "--minimal-handoff" || t === "--summary-only" || t === "--no-full-context") { result.minimalContext = true; result.carryContext = true; }
-		else if (t === "--here" || t === "--current-panel") result.here = true;
 		else if (t === "--from" && i + 1 < tokens.length) result.from = tokens[++i];
 		else if (t === "--ticket" && i + 1 < tokens.length) result.ticket = tokens[++i];
 		else if (t === "--note" && i + 1 < tokens.length) result.note = tokens[++i];
@@ -884,6 +881,36 @@ function workspaceContinuationFromFollowUp(
 		display: followUp.display,
 		details: followUp.details,
 	};
+}
+
+function defaultCurrentPanelContinuation(
+	kind: "fork",
+	input: { name?: string; branch?: string; ticket?: string; note?: string },
+): WorktreeAfterSwitchFollowUp {
+	return {
+		customType: `pilee-worktree-${kind}-current-panel-continuation`,
+		display: false,
+		content: [
+			`# Worktree ${kind} continuation`,
+			"",
+			"현재 panel이 새 worktree의 exact session/cwd로 전환됐다.",
+			"source conversation 전문과 parentSession lineage를 계승했으므로, 전환 자체를 설명하거나 추가 명령을 요구하지 말고 최신 non-status 사용자 의도를 바로 이어서 수행한다.",
+			input.name ? `- worktree: ${input.name}` : undefined,
+			input.branch ? `- branch: ${input.branch}` : undefined,
+			input.ticket ? `- ticket: ${input.ticket}` : undefined,
+			input.note ? `- note: ${input.note}` : undefined,
+		].filter((line): line is string => Boolean(line)).join("\n"),
+		details: { kind, activationTarget: "current-panel", ...input },
+	};
+}
+
+function currentPanelNewContinuation(
+	ctx: ExtensionContext,
+	input: { name?: string; branch?: string; ticket?: string; note?: string },
+): WorktreeAfterSwitchFollowUp | undefined {
+	const source = sourceSessionInfo(ctx);
+	const prompts = source.file && existsSync(source.file) ? recentUserPrompts(source.file, 3, 2_000) : [];
+	return buildCurrentPanelNewContinuation(prompts, input);
 }
 
 function defaultWorktreeContinuation(
@@ -1171,15 +1198,6 @@ function buildWorktreeSessionSwitchOptions(
 	return {
 		cwdOverride: wtPath,
 		withSession: async (newCtx: any) => {
-			const activationContract = options.activationContract;
-			if (activationContract?.activationTarget === "current-panel") {
-				newCtx.sessionManager.appendCustomEntry?.(WORKSPACE_ACTIVATION_READY_ENTRY_TYPE, {
-					activationId: activationContract.id,
-					workspaceAction: activationContract.workspaceAction,
-					activationTarget: activationContract.activationTarget,
-					readyAt: new Date().toISOString(),
-				});
-			}
 			newCtx.ui.notify(`✓ ${wtName} (${branch})${contextLabel}`, "info");
 			await newCtx.sendMessage?.(
 				{
@@ -2055,13 +2073,6 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 	notifyWorktreeCreationPanelNotice(repoRoot, ctx);
 	const hotfixGuard = getHotfixBaseGuardMessage(parsed, "/wt new");
 	if (hotfixGuard) { ctx.ui.notify(hotfixGuard, "error"); return; }
-	const sourceSessionCandidate = getSessionFileFromContext(ctx);
-	const sourceSessionFile = sourceSessionCandidate && existsSync(sourceSessionCandidate) ? sourceSessionCandidate : undefined;
-	const requestedFullContext = parsed.fullContext || (parsed.carryContext && !parsed.minimalContext);
-	if (requestedFullContext && !sourceSessionFile) {
-		ctx.ui.notify("BLOCKED: source Pi session provenance가 없어 /wt new의 context 계승을 시작하지 않습니다. 기본 clean /wt new는 사용할 수 있습니다.", "error");
-		return;
-	}
 
 	const config = loadConfig(repoRoot);
 	const baseBranch = parsed.from
@@ -2085,55 +2096,8 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 			: `${prefix}/${name}`;
 	const contextContent = readContextFileOption(ctx, parsed.contextFile);
 	if (parsed.contextFile && contextContent === null) return;
-	const useFullContext = requestedFullContext;
+	const useFullContext = parsed.fullContext || (parsed.carryContext && !parsed.minimalContext);
 	const useMinimalContext = parsed.minimalContext;
-	const selectedLocation = parsed.here ? "here" : await chooseNewPanelPlacement(
-		ctx,
-		`${name} worktree를 어디에서 시작할까요?`,
-		{ includeCurrentPanel: true },
-	);
-	if (!selectedLocation) {
-		ctx.ui.notify("BLOCKED: 시작 위치를 선택하지 않아 /wt new가 worktree를 만들지 않았습니다.", "warning");
-		return;
-	}
-
-	let activationPlan: WorktreeActivationPlan | undefined;
-	let contract: WorkspaceActivationContract;
-	if (selectedLocation === "here") {
-		activationPlan = await planWorktreeActivation(pi, ctx);
-		if (activationPlan.mode === "blocked") {
-			ctx.ui.notify(`BLOCKED: /wt new는 현재 패널을 새 worktree session으로 전환할 수 없습니다. ${activationPlan.reason}`, "error");
-			return;
-		}
-		const id = worktreeActivationId("wt-new-here");
-		contract = createWorkspaceActivationContract({
-			id,
-			workspaceAction: "create-worktree",
-			activationTarget: "current-panel",
-			contextMode: useFullContext ? "full" : "clean",
-			authorization: resolveWorkspaceActivationAuthorization({
-				id,
-				ctx,
-				workspaceAction: "create-worktree",
-				activationTarget: "current-panel",
-				authorizationSource: "command",
-				authorizationSourceId: parsed.here ? "/wt new --here" : "/wt new (현재 패널)",
-			}),
-		});
-	} else {
-		const newPanelContract = await buildNewPanelActivationContract({
-			id: worktreeActivationId("wt-new"),
-			ctx,
-			workspaceAction: "create-worktree",
-			contextMode: useFullContext ? "full" : "clean",
-			authorizationSource: "command",
-			authorizationSourceId: "/wt new",
-			continuation: defaultWorktreeContinuation("new", { name, branch: branchName, ticket: parsed.ticket, note: parsed.note }),
-			placement: selectedLocation,
-		});
-		if (!newPanelContract) return;
-		contract = newPanelContract;
-	}
 
 	const { name: registeredName, isNew: justRegistered } = autoRegister(repoRoot);
 	if (justRegistered) ctx.ui.notify(`Registered repo "${registeredName}" → ${repoRoot}`, "info");
@@ -2167,54 +2131,20 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 		fallbackContextOnFullFailure: useFullContext ? buildMinimalContextPack(ctx, "/wt new --carry-context fallback") : null,
 		sessionName: `${name} (${branchName})`,
 	});
-	const contextFailure = fullContextFailure(useFullContext, session);
-	if (contextFailure) {
-		const sessionCleanup = cleanupCreatedSessionFile(session.sessionFile);
-		const cleanup = await cleanupCreatedWorktree(pi, repoRoot, worktreePath, branchName);
-		ctx.ui.notify(`BLOCKED: /wt new ${contextFailure}. ${cleanupSummary(cleanup)}. session: ${sessionCleanup.removed ? "removed" : sessionCleanup.error}`, "error");
-		return;
-	}
 	const contextMode = selectContextMode(session, useFullContext, useMinimalContext);
 	recordWorktreeContextMeta(worktreePath, contextMode, session);
 	warnIfFullContextFallback(ctx, useFullContext, session);
-	if (contract.activationTarget === "current-panel") {
-		const switchResult = await trySwitchSessionToWorktree(
-			pi,
-			ctx,
-			session.sessionFile,
-			name,
-			worktreePath,
-			`${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}`,
-			activationPlan,
-			contract,
-		);
-		if (!switchResult.switched) {
-			const sessionCleanup = cleanupCreatedSessionFile(session.sessionFile);
-			const cleanup = await cleanupCreatedWorktree(pi, repoRoot, worktreePath, branchName);
-			ctx.ui.notify(`BLOCKED: /wt new current-panel 전환 실패 — ${switchResult.reason ?? "unknown"}. ${cleanupSummary(cleanup)}. session: ${sessionCleanup.removed ? "removed" : sessionCleanup.error}`, "error");
-		}
-		return;
-	}
+	const contextLabel = `${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}`;
+	const continuation = currentPanelNewContinuation(ctx, { name, branch: branchName, ticket: parsed.ticket, note: parsed.note });
 
-	const activation = await activateWorkspaceInNewPanel(pi, ctx, {
-		contract,
-		cwd: worktreePath,
-		sessionFile: session.sessionFile,
-		sourceSessionFile,
-		title: `${name} (${branchName})`,
-	});
-	if (activation.status !== "activated") {
-		if (!activation.safeToDeleteTarget) {
-			ctx.ui.notify(`BLOCKED: /wt new panel activation 실패 — ${activation.reason}. ${preservedActivationTargetSummary(activation, worktreePath, session.sessionFile)}`, "error");
-			return;
-		}
-		const sessionCleanup = cleanupCreatedSessionFile(session.sessionFile);
-		const cleanup = await cleanupCreatedWorktree(pi, repoRoot, worktreePath, branchName);
-		ctx.ui.notify(`BLOCKED: /wt new panel activation 실패 — ${activation.reason}. ${cleanupSummary(cleanup)}. session: ${sessionCleanup.removed ? "removed" : sessionCleanup.error}`, "error");
-		return;
+	try {
+		await switchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, contextLabel, {
+			afterSwitchFollowUp: continuation,
+		});
+	} catch (error) {
+		const reason = error instanceof Error ? error.message : String(error);
+		notifySwitchFallback(ctx, reason, worktreePath);
 	}
-	recordActivatedWorktree(worktreePath, contract, session.sessionFile, activation);
-	ctx.ui.notify(`✓ ${name} created (${branchName}) → ${activation.panelLabel} ${contract.placement}${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}`, "info");
 }
 
 async function listOneRepo(pi: ExtensionAPI, repoRoot: string, _ctx: ExtensionCommandContext): Promise<{ repo: string; lines: string[] }> {
@@ -2908,7 +2838,105 @@ async function showDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Pr
 	);
 }
 
-async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext, options: WorktreeForkCommandOptions = {}): Promise<WorktreeForkCommandResult> {
+async function handleCommandFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext): Promise<WorktreeForkCommandResult> {
+	const parsed = parseNewArgs(args);
+	const repoRoot = await resolveRepoRoot(pi, ctx, parsed.repo);
+	if (!repoRoot) return { status: "blocked", reason: "repo root was not resolved" };
+
+	notifyWorktreeCreationPanelNotice(repoRoot, ctx);
+	const hotfixGuard = getHotfixBaseGuardMessage(parsed, "/wt fork");
+	if (hotfixGuard) { ctx.ui.notify(hotfixGuard, "error"); return { status: "blocked", reason: hotfixGuard }; }
+
+	const { isNew: justRegistered } = autoRegister(repoRoot);
+	if (justRegistered) ctx.ui.notify(`Registered repo "${basename(repoRoot)}"`, "info");
+
+	const config = loadConfig(repoRoot);
+	const baseBranch = parsed.from
+		? parsed.from
+		: parsed.hotfix || parsed.hotfeature
+			? config.productionBranch
+			: config.baseBranch;
+	const prefix = parsed.hotfix ? "hotfix" : parsed.hotfeature ? "hotfeature" : config.branchPrefix;
+
+	mkdirSync(config.rootDir, { recursive: true });
+	const existing = new Set(listExistingWorktrees(config.rootDir).map((worktree) => worktree.name));
+	const name = parsed.name ?? pickName(config.namingScheme, existing);
+	if (existing.has(name)) {
+		const reason = `Worktree "${name}" already exists at ${config.rootDir}`;
+		ctx.ui.notify(reason, "error");
+		return { status: "blocked", reason, name };
+	}
+
+	const worktreePath = join(config.rootDir, name);
+	const branchName = parsed.branch
+		? parsed.branch
+		: parsed.ticket
+			? `${prefix}/${parsed.ticket}/${name}`
+			: `${prefix}/${name}`;
+	const contextContent = readContextFileOption(ctx, parsed.contextFile);
+	if (parsed.contextFile && contextContent === null) {
+		return { status: "blocked", reason: `context file not found: ${parsed.contextFile}`, name, branch: branchName, path: worktreePath };
+	}
+
+	const useFullContext = parsed.fullContext || !parsed.minimalContext;
+	const useMinimalContext = !useFullContext;
+	ctx.ui.notify(`Forking "${name}" from origin/${baseBranch} with ${useFullContext ? "full transcript" : "minimal handoff"}…`, "info");
+
+	const fetchR = await pi.exec("git", ["fetch", "origin", baseBranch], { cwd: repoRoot });
+	if (fetchR.code !== 0) {
+		const reason = `git fetch failed: ${fetchR.stderr?.trim().slice(0, 200) ?? "unknown error"}`;
+		ctx.ui.notify(reason, "error");
+		return { status: "failed", reason, name, branch: branchName, path: worktreePath };
+	}
+	const addR = await pi.exec("git", ["worktree", "add", worktreePath, "-b", branchName, `origin/${baseBranch}`], { cwd: repoRoot });
+	if (addR.code !== 0) {
+		const reason = `git worktree add failed: ${addR.stderr?.trim().slice(0, 200)}`;
+		ctx.ui.notify(reason, "error");
+		return { status: "failed", reason, name, branch: branchName, path: worktreePath };
+	}
+
+	writeMeta(worktreePath, { name, branch: branchName, baseBranch, createdAt: Date.now(), ticket: parsed.ticket, note: parsed.note });
+	const framePromotion = promotePlanningFrameToWorktree(worktreePath, readMeta(worktreePath) ?? {
+		name, branch: branchName, baseBranch, createdAt: Date.now(), ticket: parsed.ticket, note: parsed.note,
+	});
+	notifyFramePromotion(ctx, name, framePromotion);
+	ctx.ui.notify(`✓ ${name} forked (${branchName})`, "info");
+
+	if (config.setupScript) {
+		ctx.ui.notify(`Running setup: ${config.setupScript}…`, "info");
+		const setupR = await pi.exec("bash", ["-lc", config.setupScript], { cwd: worktreePath });
+		if (setupR.code !== 0) ctx.ui.notify(`Setup script failed (code ${setupR.code}). Worktree created but setup skipped.`, "warning");
+		else ctx.ui.notify("✓ Setup complete", "info");
+	}
+
+	const session = createWorktreeSession(ctx, worktreePath, {
+		fullContext: useFullContext,
+		contextContent: joinContextParts(
+			contextContent,
+			useMinimalContext ? buildMinimalContextPack(ctx, "/wt fork --minimal-context") : null,
+		),
+		fallbackContextOnFullFailure: useFullContext ? buildMinimalContextPack(ctx, "/wt fork fallback") : null,
+		sessionName: `${name} (${branchName})`,
+	});
+	const contextMode = selectContextMode(session, useFullContext, useMinimalContext);
+	recordWorktreeContextMeta(worktreePath, contextMode, session);
+	warnIfFullContextFallback(ctx, useFullContext, session);
+	const contextLabel = `${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}`;
+	const continuation = defaultCurrentPanelContinuation("fork", { name, branch: branchName, ticket: parsed.ticket, note: parsed.note });
+
+	try {
+		await switchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, contextLabel, {
+			afterSwitchFollowUp: continuation,
+		});
+		return { status: "switched", name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion };
+	} catch (error) {
+		const reason = error instanceof Error ? error.message : String(error);
+		notifySwitchFallback(ctx, reason, worktreePath);
+		return { status: "failed", reason, name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion };
+	}
+}
+
+async function handleWorkflowFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext, options: WorktreeForkCommandOptions = {}): Promise<WorktreeForkCommandResult> {
 	const parsed = parseNewArgs(args);
 	const repoRoot = await resolveRepoRoot(pi, ctx, parsed.repo);
 	if (!repoRoot) return { status: "blocked", reason: "repo root was not resolved" };
@@ -3038,7 +3066,7 @@ async function handleFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandC
 }
 
 export async function runWorktreeForkFromCommandContext(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext, options: WorktreeForkCommandOptions = {}): Promise<WorktreeForkCommandResult> {
-	return handleFork(pi, args, ctx, options);
+	return handleWorkflowFork(pi, args, ctx, options);
 }
 
 async function handleSwitch(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext) {
@@ -3706,8 +3734,8 @@ async function handleWt(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCon
 		const t = ctx.ui.theme;
 		ctx.ui.notify([
 			t.fg("accent", "Usage:"),
-			`  ${t.fg("warning", "/wt new")} ${t.fg("borderAccent", "[name] [--repo <name>] [--hotfix|--hotfeature|--from <branch>] [--ticket PROJ-123] [--carry-context|--minimal-context] [--here] — 현재 패널 또는 새 panel 선택")}`,
-			`  ${t.fg("warning", "/wt fork")} ${t.fg("borderAccent", "[name] [--context-file <path>] [--repo <name>] [--hotfix|--from <branch>] [--minimal-context] — full transcript + 새 panel")}`,
+			`  ${t.fg("warning", "/wt new")} ${t.fg("borderAccent", "[name] [--repo <name>] [--hotfix|--hotfeature|--from <branch>] [--ticket PROJ-123] [--carry-context|--minimal-context] — 생성 후 현재 panel에서 계속")}`,
+			`  ${t.fg("warning", "/wt fork")} ${t.fg("borderAccent", "[name] [--context-file <path>] [--repo <name>] [--hotfix|--from <branch>] [--minimal-context] — full transcript + 현재 panel에서 자동 계속")}`,
 			`  ${t.fg("warning", "/wt switch")} ${t.fg("borderAccent", "<name> | <repo>/<name>  — 워크트리 선택 후 세션 선택")}`,
 			`  ${t.fg("warning", "/wt resume")} ${t.fg("borderAccent", "<conductor-workspace>  — Conductor 워크스페이스 전체 세션 복원")}`,
 			`  ${t.fg("warning", "/wt bootstrap")} ${t.fg("borderAccent", "[status|--backend|--frontend|--all|--executor]  — profile 기반 의존성 AI orchestrator/worker 준비")}`,
@@ -3726,7 +3754,7 @@ async function handleWt(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCon
 
 	switch (sub) {
 		case "new": return handleNew(pi, rest, ctx);
-		case "fork": return handleFork(pi, rest, ctx);
+		case "fork": return handleCommandFork(pi, rest, ctx);
 		case "list": case "ls": return handleList(pi, rest, ctx);
 		case "rm": case "remove": return handleRemove(pi, rest, ctx);
 		case "switch": case "sw": return handleSwitch(pi, rest, ctx);

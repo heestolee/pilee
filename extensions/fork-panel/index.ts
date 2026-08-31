@@ -826,25 +826,11 @@ const NEW_PANEL_PLACEMENT_OPTIONS: Array<{ placement: NewPanelPlacement; label: 
 
 export async function chooseNewPanelPlacement(
 	ctx: ExtensionContext | ExtensionCommandContext,
-	title: string | undefined,
-	options: { includeCurrentPanel: true },
-): Promise<NewPanelPlacement | "here" | null>;
-export async function chooseNewPanelPlacement(
-	ctx: ExtensionContext | ExtensionCommandContext,
-	title?: string,
-	options?: { includeCurrentPanel?: false },
-): Promise<NewPanelPlacement | null>;
-export async function chooseNewPanelPlacement(
-	ctx: ExtensionContext | ExtensionCommandContext,
 	title = "새 작업 panel을 어디에 열까요?",
-	options: { includeCurrentPanel?: boolean } = {},
-): Promise<NewPanelPlacement | "here" | null> {
+): Promise<NewPanelPlacement | null> {
 	if (!ctx.hasUI) return null;
-	const placementOptions: Array<{ placement: NewPanelPlacement | "here"; label: string }> = options.includeCurrentPanel
-		? [{ placement: "here", label: "현재 패널" }, ...NEW_PANEL_PLACEMENT_OPTIONS]
-		: NEW_PANEL_PLACEMENT_OPTIONS;
-	const selected = await ctx.ui.select(title, placementOptions.map((option) => option.label));
-	return placementOptions.find((option) => option.label === selected)?.placement ?? null;
+	const selected = await ctx.ui.select(title, NEW_PANEL_PLACEMENT_OPTIONS.map((option) => option.label));
+	return NEW_PANEL_PLACEMENT_OPTIONS.find((option) => option.label === selected)?.placement ?? null;
 }
 
 function panelTargetFromPlacement(placement: NewPanelPlacement): PanelOpenTarget {

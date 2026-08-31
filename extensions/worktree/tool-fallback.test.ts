@@ -15,7 +15,8 @@ function between(start: string, end: string): string {
 }
 
 const commandNew = between("async function handleNew", "async function listOneRepo");
-const commandFork = between("async function handleFork", "export async function runWorktreeForkFromCommandContext");
+const commandFork = between("async function handleCommandFork", "async function handleWorkflowFork");
+const workflowFork = between("async function handleWorkflowFork", "export async function runWorktreeForkFromCommandContext");
 const createTool = between('name: "worktree_create"', 'name: "worktree_switch"');
 const switchTool = between('name: "worktree_switch"', 'name: "worktree_fork"');
 const forkTool = source.slice(source.indexOf('name: "worktree_fork"'));
@@ -28,21 +29,19 @@ test("worktree tools do not expose switch-command or absolute-path fallback", ()
 	assert.doesNotMatch(source, /setEditorText\([^)]*\/wt switch/);
 });
 
-test("/wt new selects current or new panel before creation while /wt fork stays new-panel only", () => {
-	assert.match(commandNew, /chooseNewPanelPlacement/);
-	assert.match(commandNew, /includeCurrentPanel: true/);
-	assert.match(commandNew, /trySwitchSessionToWorktree/);
-	assert.match(commandNew, /activateWorkspaceInNewPanel/);
-	assert.ok(commandNew.indexOf("chooseNewPanelPlacement") < commandNew.indexOf('pi.exec("git", ["fetch"'));
-
-	assert.match(commandFork, /buildNewPanelActivationContract/);
-	assert.match(commandFork, /activateWorkspaceInNewPanel/);
-	assert.ok(commandFork.indexOf("buildNewPanelActivationContract") < commandFork.indexOf('pi.exec("git", ["fetch"'));
-	assert.doesNotMatch(commandFork, /switchSessionToWorktree/);
-	assert.doesNotMatch(commandFork, /trySwitchSessionToWorktree/);
-	assert.match(commandFork, /sourceSessionFile/);
+test("slash /wt new and /wt fork create first, then switch the current panel directly", () => {
+	for (const block of [commandNew, commandFork]) {
+		assert.match(block, /switchSessionToWorktree/);
+		assert.doesNotMatch(block, /chooseNewPanelPlacement|buildNewPanelActivationContract|activateWorkspaceInNewPanel/);
+		assert.doesNotMatch(block, /cleanupCreatedWorktree|fullContextFailure/);
+	}
+	assert.match(commandFork, /defaultCurrentPanelContinuation/);
 	assert.match(commandFork, /fullContext: useFullContext/);
-	assert.match(commandFork, /workspaceContinuationFromFollowUp/);
+
+	assert.match(workflowFork, /buildNewPanelActivationContract/);
+	assert.match(workflowFork, /activateWorkspaceInNewPanel/);
+	assert.match(workflowFork, /workspaceContinuationFromFollowUp/);
+	assert.doesNotMatch(workflowFork, /switchSessionToWorktree/);
 });
 
 test("worktree_create and worktree_fork tools activate a sibling panel while switch stays current-panel", () => {
@@ -81,15 +80,18 @@ test("creation failure cleans only a confirmed-closed target and preserves child
 	assert.match(source, /function preservedActivationTargetSummary/);
 	assert.match(source, /\["worktree", "remove", "--force", worktreePath\]/);
 	assert.match(source, /\["branch", "-D", branchName\]/);
-	for (const block of [commandNew, commandFork, createTool, forkTool]) {
+	for (const block of [workflowFork, createTool, forkTool]) {
 		assert.match(block, /if \(!activation\.safeToDeleteTarget\)/);
 		assert.match(block, /preservedActivationTargetSummary/);
 		assert.match(block, /cleanupCreatedSessionFile/);
 		assert.match(block, /cleanupCreatedWorktree/);
 		assert.ok(block.indexOf("safeToDeleteTarget") < block.lastIndexOf("cleanupCreatedSessionFile"));
+		assert.doesNotMatch(block, /switchSessionToWorktree/);
 	}
-	for (const block of [commandFork, createTool, forkTool]) assert.doesNotMatch(block, /switchSessionToWorktree/);
-	assert.match(commandNew, /trySwitchSessionToWorktree/);
+	for (const block of [commandNew, commandFork]) {
+		assert.match(block, /switchSessionToWorktree/);
+		assert.doesNotMatch(block, /safeToDeleteTarget|cleanupCreatedWorktree/);
+	}
 });
 
 test("clean and full sessions preserve source lineage without mutating the source file", () => {
@@ -97,9 +99,12 @@ test("clean and full sessions preserve source lineage without mutating the sourc
 	assert.match(source, /SessionManager\.forkFrom\(source\.file, worktreePath\)/);
 	assert.match(source, /parentSession,/);
 	assert.match(source, /function fullContextFailure/);
-	for (const block of [commandNew, commandFork, forkTool]) {
+	for (const block of [workflowFork, forkTool]) {
 		assert.match(block, /fullContextFailure/);
 		assert.match(block, /cleanupCreatedSessionFile/);
 		assert.match(block, /cleanupCreatedWorktree/);
+	}
+	for (const block of [commandNew, commandFork]) {
+		assert.doesNotMatch(block, /fullContextFailure|cleanupCreatedSessionFile|cleanupCreatedWorktree/);
 	}
 });
