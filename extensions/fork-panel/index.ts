@@ -854,7 +854,8 @@ function currentPiCommand(): string {
 
 function buildSessionLaunchCommand(cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}): string {
 	const command = `cd ${shellQuote(cwd)} && ${buildEnvPrefix(env)}${currentPiCommand()} --session ${shellQuote(sessionFile)}`;
-	return esc(command);
+	const payload = Buffer.from(command, "utf8").toString("base64");
+	return esc(`eval "$(/usr/bin/printf %s ${shellQuote(payload)} | /usr/bin/base64 -D)"`);
 }
 
 function resolveReviveCwd(target: ForkRecord, fallbackCwd: string): { cwd: string; fallback: boolean; reason?: string } {

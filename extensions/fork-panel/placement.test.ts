@@ -48,14 +48,25 @@ test("chooseNewPanelPlacement stays scoped to composed new-panel workflows", asy
 	assert.equal(await chooseNewPanelPlacement({ ...ctx, hasUI: false }), null);
 });
 
-test("buildOpenSessionScript launches the exact cwd and session and returns terminal id", () => {
+function decodedInitialCommand(script: string): string {
+	const payload = script.match(/\/usr\/bin\/printf %s '([A-Za-z0-9+/=]+)' \| \/usr\/bin\/base64 -D/)?.[1];
+	assert.ok(payload, "initial input must carry an ASCII base64 payload");
+	return Buffer.from(payload, "base64").toString("utf8");
+}
+
+test("buildOpenSessionScript transports exact Unicode cwd and session through ASCII-only initial input", () => {
 	for (const target of ["tab" as const, splitPlacementFromDirections(["right"])]) {
-		const script = buildOpenSessionScript(target, "/tmp/work dir", "/tmp/exact session.jsonl", {
-			PI_WORKSPACE_ACTIVATION_FILE: "/tmp/activation.json",
+		const script = buildOpenSessionScript(target, "/tmp/한글 work dir", "/tmp/정확한 session.jsonl", {
+			PI_WORKSPACE_ACTIVATION_FILE: "/tmp/활성화.json",
 		});
-		assert.match(script, /cd '\/tmp\/work dir'/);
-		assert.match(script, /--session '\/tmp\/exact session\.jsonl'/);
-		assert.match(script, /PI_WORKSPACE_ACTIVATION_FILE='\/tmp\/activation\.json'/);
+		const command = decodedInitialCommand(script);
+		assert.match(command, /cd '\/tmp\/한글 work dir'/);
+		assert.match(command, /--session '\/tmp\/정확한 session\.jsonl'/);
+		assert.match(command, /PI_WORKSPACE_ACTIVATION_FILE='\/tmp\/활성화\.json'/);
+		const initialInput = script.match(/set initial input of launchConfig to "([^"]*(?:\\"[^"]*)*)\\n"/)?.[1] ?? "";
+		assert.ok(initialInput.length > 0);
+		assert.equal([...initialInput].every((char) => char.charCodeAt(0) < 128), true, "Ghostty initial input must be ASCII-only");
+		assert.doesNotMatch(initialInput, /한글|정확한|활성화/);
 		assert.match(script, /return id of newTerm/);
 	}
 
