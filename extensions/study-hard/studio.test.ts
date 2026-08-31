@@ -3271,50 +3271,39 @@ test("Meta Review 상단은 한눈에 보기, 파일 관계, 리뷰 포인트, �
 	assert.match(renderSource, /metaReviewOverviewHtml[\s\S]*metaReviewRelationshipHtml[\s\S]*metaReviewFindingsHtml[\s\S]*metaReviewReadingRailHtml/);
 });
 
-test("코드 리뷰 질문 drawer는 context를 바꿔도 현재 thread를 유지하고 모든 대화를 다시 연다", () => {
+test("코드 리뷰 질문 drawer는 각 범위의 대화를 분리하고 모든 대화에서 다시 찾는다", () => {
 	const html = buildStudyHardStudioHtml();
 	const helperStart = html.indexOf("function metaReviewQuestionMatchesContext");
-	const helperEnd = html.indexOf("function metaReviewEnsurePinnedQuestion", helperStart);
+	const helperEnd = html.indexOf("function metaReviewQuestionDraftKey", helperStart);
 	assert.ok(helperStart >= 0 && helperEnd > helperStart);
-	const helpers = new Function(`${html.slice(helperStart, helperEnd)}; return {metaReviewQuestionMatchesContext,metaReviewLatestQuestionId,metaReviewConversationQuestions};`)() as any;
+	const helpers = new Function(`var metaReviewQuestionsInitialized=false,metaReviewQuestionScope='session',metaReviewState={questions:[]};${html.slice(helperStart, helperEnd)}; return {metaReviewQuestionMatchesContext,metaReviewInitialQuestionScope,metaReviewConversationQuestions};`)() as any;
 	const matches = helpers.metaReviewQuestionMatchesContext as (question: any, context: any) => boolean;
 	assert.equal(matches({ scope: "session" }, { scope: "session" }), true);
 	assert.equal(matches({ scope: "session" }, { scope: "card", cardId: "R-01" }), false);
 	assert.equal(matches({ scope: "card", cardId: "R-01" }, { scope: "card", cardId: "R-01" }), true);
 	assert.equal(matches({ scope: "card", cardId: "R-02" }, { scope: "card", cardId: "R-01" }), false);
-	assert.equal(matches({ scope: "evidence", evidenceIds: ["D001", "D002"] }, { scope: "evidence", evidenceIds: ["D002"] }), true);
-	assert.equal(matches({ scope: "evidence", evidenceIds: ["D003"] }, { scope: "evidence", evidenceIds: ["D002"] }), false);
 	assert.equal(matches({ scope: "evidence", evidenceIds: ["D002"], selection: { kind: "hunk", id: "E-01" } }, { scope: "evidence", evidenceIds: ["D002"], selectionKind: "line", selectionId: "D002" }), false);
 	assert.equal(matches({ scope: "evidence", evidenceIds: ["D001", "D002"], selection: { kind: "hunk", id: "E-01" } }, { scope: "evidence", evidenceIds: ["D001", "D002"], selectionKind: "hunk", selectionId: "E-01" }), true);
 	assert.equal(matches({ scope: "section", sectionId: "relationships", selection: { kind: "section", id: "relationships" } }, { scope: "section", sectionId: "relationships", selectionKind: "section", selectionId: "relationships" }), true);
-	assert.equal(matches({ scope: "section", sectionId: "overview", selection: { kind: "section", id: "overview" } }, { scope: "section", sectionId: "relationships", selectionKind: "section", selectionId: "relationships" }), false);
-	assert.equal(matches({ scope: "declaration", declarationId: "A-local", declarationSide: "after", selection: { kind: "declaration", id: "A-local" } }, { scope: "declaration", declarationId: "A-local", declarationSide: "after", selectionKind: "declaration", selectionId: "A-local" }), true);
-	assert.equal(matches({ scope: "declaration", declarationId: "A-local", declarationSide: "before", selection: { kind: "declaration", id: "A-local" } }, { scope: "declaration", declarationId: "A-local", declarationSide: "after", selectionKind: "declaration", selectionId: "A-local" }), false);
-	assert.equal(matches({ scope: "meaning", meaningId: "M-contract", selection: { kind: "meaning", id: "M-contract" } }, { scope: "meaning", meaningId: "M-contract", selectionKind: "meaning", selectionId: "M-contract" }), true);
-	assert.equal(matches({ scope: "meaning", meaningId: "M-other", selection: { kind: "meaning", id: "M-other" } }, { scope: "meaning", meaningId: "M-contract", selectionKind: "meaning", selectionId: "M-contract" }), false);
+	assert.equal(matches({ scope: "declaration", declarationId: "A-local", declarationSide: "before" }, { scope: "declaration", declarationId: "A-local", declarationSide: "after" }), false);
+	assert.equal(matches({ scope: "meaning", meaningId: "M-contract" }, { scope: "meaning", meaningId: "M-contract" }), true);
 
 	const questions = [
 		{ id: "Q001", status: "answered", scope: "evidence", evidenceIds: ["D002"], selection: { kind: "hunk", id: "E-01" } },
 		{ id: "Q002", status: "answered", scope: "session" },
 	];
-	assert.equal(helpers.metaReviewLatestQuestionId(questions), "Q002");
-	assert.deepEqual(helpers.metaReviewConversationQuestions(questions, { scope: "file", fileId: "F034" }, "selection", "Q001").map((question: any) => question.id), ["Q001"], "exact context가 달라도 pinned Q001은 유지한다");
-	assert.deepEqual(helpers.metaReviewConversationQuestions(questions, { scope: "session" }, "all", "Q001").map((question: any) => question.id), ["Q001", "Q002"], "모든 대화에서 canonical 질문 전체를 다시 연다");
+	const ids = (items: any[]) => items.map((question) => question.id);
+	assert.equal(helpers.metaReviewInitialQuestionScope([]), "session");
+	assert.equal(helpers.metaReviewInitialQuestionScope([questions[0]]), "all", "기존 Q001이 있으면 최초 reload는 모든 대화를 연다");
+	assert.deepEqual(ids(helpers.metaReviewConversationQuestions(questions, { scope: "session" }, "session")), ["Q002"], "전체 PR은 session 질문만 표시한다");
+	assert.deepEqual(ids(helpers.metaReviewConversationQuestions(questions, { scope: "file", fileId: "F034" }, "selection")), [], "다른 file을 선택하면 Q001을 강제로 끼워 넣지 않는다");
+	assert.deepEqual(ids(helpers.metaReviewConversationQuestions(questions, { scope: "evidence", evidenceIds: ["D002"], selectionKind: "hunk", selectionId: "E-01" }, "selection")), ["Q001"], "원래 hunk를 다시 선택하면 Q001을 복원한다");
+	assert.deepEqual(ids(helpers.metaReviewConversationQuestions(questions, { scope: "session" }, "all")), ["Q001", "Q002"], "모든 대화는 canonical Q&A 전체를 표시한다");
 
-	const pinHelperStart = html.indexOf("function metaReviewLatestQuestionId");
-	const pinHelperEnd = html.indexOf("function metaReviewQuestionDraftKey", pinHelperStart);
-	assert.ok(pinHelperStart >= 0 && pinHelperEnd > pinHelperStart);
-	const runPinLifecycle = new Function("questions", "initialPinned", "remembered", `
-		var metaReviewState={questions:questions.slice()},metaReviewPinnedQuestionId=initialPinned;
-		${html.slice(pinHelperStart, pinHelperEnd)}
-		metaReviewEnsurePinnedQuestion();
-		if(remembered)metaReviewRememberQuestion(remembered);
-		return {pinned:metaReviewPinnedQuestionId,ids:metaReviewState.questions.map(function(question){return question.id;})};
-	`) as (questions: any[], initialPinned: string | null, remembered?: any) => { pinned: string | null; ids: string[] };
-	assert.deepEqual(runPinLifecycle([questions[0]], null), { pinned: "Q001", ids: ["Q001"] }, "기존 answered Q001은 fresh reload에서 다시 pin한다");
-	assert.deepEqual(runPinLifecycle(questions, "Q001"), { pinned: "Q001", ids: ["Q001", "Q002"] }, "polling으로 state를 다시 받아도 기존 thread pin을 보존한다");
-	assert.deepEqual(runPinLifecycle(questions, null), { pinned: "Q002", ids: ["Q001", "Q002"] }, "pin이 없는 reload는 canonical 최신 질문을 연다");
-	assert.deepEqual(runPinLifecycle([questions[0]], "Q001", { id: "Q003", status: "queued", scope: "session" }), { pinned: "Q003", ids: ["Q001", "Q003"] }, "새 질문 submit 응답을 현재 thread로 pin한다");
+	const lifecycleStart = html.indexOf("function metaReviewInitialQuestionScope");
+	const lifecycleEnd = html.indexOf("function metaReviewQuestionDraftKey", lifecycleStart);
+	const runLifecycle = new Function("questions", `var metaReviewQuestionsInitialized=false,metaReviewQuestionScope='session',metaReviewState={questions:questions.slice()};${html.slice(lifecycleStart, lifecycleEnd)}metaReviewInitializeQuestions(questions);var initial=metaReviewQuestionScope;metaReviewQuestionScope='selection';metaReviewInitializeQuestions(questions);metaReviewRememberQuestion({id:'Q003',scope:'session'});return {initial:initial,afterPolling:metaReviewQuestionScope,ids:metaReviewState.questions.map(function(question){return question.id;})};`) as (questions: any[]) => { initial: string; afterPolling: string; ids: string[] };
+	assert.deepEqual(runLifecycle([questions[0]]), { initial: "all", afterPolling: "selection", ids: ["Q001", "Q003"] }, "최초 reload만 모든 대화를 열고 polling은 사용자가 고른 탭을 보존한다");
 
 	const contextHelperStart = html.indexOf("function activeMetaReviewQuestionContext");
 	const contextHelperEnd = html.indexOf("function metaReviewQuestionMatchesContext", contextHelperStart);
