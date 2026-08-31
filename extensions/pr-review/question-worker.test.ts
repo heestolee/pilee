@@ -109,6 +109,13 @@ test("Meta Review 질문 worker task는 declaration hierarchy provenance를 유�
 			selection: { kind: "declaration", id: "A-F001-localState", label: "변수 · localState · 변경 후 L10" },
 		}, 1001);
 		const task = buildPrReviewQuestionWorkerTask(state, question, "/tmp/review-pr-42");
+		assert.match(task, /sourceMode: github-pr-immutable/);
+		assert.match(task, /repository: acme\/repo/);
+		assert.match(task, /현재 checkout HEAD를 요구하지 마세요/);
+		assert.match(task, /expectedHeadSha를 ref로 지정한 gh api/);
+		assert.match(task, /sourcePath 파일 바이트의 SHA-256이 아닙니다/);
+		assert.match(task, /sourcePath JSON의 sourceSha256 필드/);
+		assert.doesNotMatch(task, /git rev-parse HEAD를 확인/);
 		assert.match(task, /declarationId: A-F001-localState/);
 		assert.match(task, /declarationSide: after/);
 		assert.match(task, /selection: \{"kind":"declaration","id":"A-F001-localState"/);
@@ -134,6 +141,20 @@ test("Meta Review 질문 worker task는 첨부 이미지 provenance를 유지한
 		assert.match(task, /review\.png/);
 		assert.match(task, /\/tmp\/review\.png/);
 		assert.doesNotMatch(task, /data:image/);
+	} finally {
+		rmSync(runDir, { recursive: true, force: true });
+	}
+});
+
+test("current-work worker task는 live root와 diff freshness 계약을 유지한다", () => {
+	const { runDir, state, question } = fixture();
+	try {
+		state.target = { ...state.target, kind: "current-work", root: "/tmp/current-work", baseSha: "base-sha" };
+		const task = buildPrReviewQuestionWorkerTask(state, question, "/tmp/current-work");
+		assert.match(task, /sourceMode: current-work-live/);
+		assert.match(task, /repository: \(current-work\)/);
+		assert.match(task, /실제 파일을 이 root에서 읽고 현재 tracked·untracked diff/);
+		assert.doesNotMatch(task, /현재 checkout HEAD를 요구하지 마세요/);
 	} finally {
 		rmSync(runDir, { recursive: true, force: true });
 	}
@@ -327,27 +348,24 @@ test("실패 처리 뒤 늦은 worker completion은 terminal 질문을 되살리
 	}
 });
 
-test("checkout source와 artifact가 함께 바뀌어도 저장된 routing pin을 대체하지 못한다", async () => {
+test("immutable run diff가 바뀌면 저장된 routing pin을 대체하지 못한다", async () => {
 	const { runDir, state, question } = fixture();
 	try {
 		routePrReviewQuestion(state, question.id, "worker", "전체 흐름 검증", 1100);
 		const dispatchToken = reserveAndStartWorker(state, question.id, 74, 1150);
 		const changedDiff = DIFF.replace("newCall();", "newerCall();");
-		const changedSourceSha = captureUnifiedDiff(changedDiff).sourceSha256;
-		const artifactPath = writeArtifact(state, question.id, "바뀐 source 기준 답변", changedSourceSha);
+		writeFileSync(state.diffPath, changedDiff);
+		const artifactPath = writeArtifact(state, question.id);
 		const entries: any[] = [];
 		const pi = {
 			appendEntry(customType: string, data: any) { entries.push({ customType, data }); },
 			sendMessage() {},
-			async exec(command: string, args: string[]) {
-				if (command === "gh" && args[0] === "pr" && args[1] === "diff") return { code: 0, stdout: changedDiff, stderr: "" };
-				return freshSourceExec(command, args);
-			},
+			async exec() { throw new Error("GitHub PR run apply는 live checkout을 읽지 않아야 합니다."); },
 		} as any;
-		const stale = await applyPrReviewQuestionWorkerResult(pi, state, question.id, artifactPath, "/tmp/review-pr-42", dispatchToken, 74, 1200);
+		const stale = await applyPrReviewQuestionWorkerResult(pi, state, question.id, artifactPath, "/tmp/other-panel", dispatchToken, 74, 1200);
 		assert.equal(stale.status, "stale");
 		assert.equal(stale.execution?.phase, "stale");
-		assert.match(stale.error || "", /stale Meta Review source/);
+		assert.match(stale.error || "", /stale Meta Review source artifact/);
 		assert.equal(entries.length, 1);
 		assert.match(entries[0].data.content, /기준 변경/);
 	} finally {
@@ -431,7 +449,7 @@ test("worker의 다른 question forge와 JSONL truncate는 전체 canonical을 �
 	}
 });
 
-test("source freshness 관찰 실패는 source 변경이 아니라 worker 실패로 기록한다", async () => {
+test("GitHub PR worker 답변은 현재 panel checkout이나 live GitHub 관찰에 의존하지 않는다", async () => {
 	const { runDir, state, question } = fixture();
 	try {
 		routePrReviewQuestion(state, question.id, "worker", "전체 흐름 검증", 1100);
@@ -441,18 +459,56 @@ test("source freshness 관찰 실패는 source 변경이 아니라 worker 실패
 		const pi = {
 			appendEntry(customType: string, data: any) { entries.push({ customType, data }); },
 			sendMessage() {},
+			async exec() { throw new Error("현재 panel checkout과 live PR은 immutable run 답변 적용에 필요하지 않습니다."); },
+		} as any;
+		const answered = await applyPrReviewQuestionWorkerResult(pi, state, question.id, artifactPath, "/tmp/unrelated-panel", dispatchToken, 76, 1200);
+		assert.equal(answered.status, "answered");
+		assert.equal(answered.execution?.phase, "answered");
+		assert.match(answered.answer || "", /Web → API → DB/);
+		assert.equal(entries.length, 1);
+		assert.match(entries[0].data.content, /Meta Review 답변/);
+	} finally {
+		rmSync(runDir, { recursive: true, force: true });
+	}
+});
+
+test("current-work worker는 tracked와 untracked source가 routing pin과 같으면 답변을 적용한다", async () => {
+	const { runDir, state, question } = fixture();
+	try {
+		const untrackedDiff = `diff --git a/src/new.ts b/src/new.ts
+new file mode 100644
+--- /dev/null
++++ b/src/new.ts
+@@ -0,0 +1 @@
++export const added = true;
+`;
+		const currentWorkDiff = `${DIFF}${untrackedDiff}`;
+		const currentWorkSourceSha = captureUnifiedDiff(currentWorkDiff).sourceSha256;
+		writeFileSync(state.diffPath, currentWorkDiff);
+		writeFileSync(state.sourcePath, JSON.stringify({ sourceSha256: currentWorkSourceSha }));
+		state.target = { ...state.target, kind: "current-work", root: runDir, baseSha: "base-sha", number: 0 };
+		routePrReviewQuestion(state, question.id, "worker", "현재 변경 전체 검증", 1100);
+		const dispatchToken = reserveAndStartWorker(state, question.id, 75, 1150);
+		const artifactPath = writeArtifact(state, question.id, "현재 변경 답변", currentWorkSourceSha);
+		const entries: any[] = [];
+		const pi = {
+			appendEntry(customType: string, data: any) { entries.push({ customType, data }); },
+			sendMessage() {},
 			async exec(command: string, args: string[]) {
-				if (command === "gh" && args[0] === "pr" && args[1] === "view") return { code: 1, stdout: "", stderr: "oauth token expired" };
-				return freshSourceExec(command, args);
+				if (command !== "git") throw new Error(`unexpected command: ${command}`);
+				if (args[0] === "rev-parse" && args[1] === "--show-toplevel") return { code: 0, stdout: `${runDir}\n`, stderr: "" };
+				if (args[0] === "rev-parse" && args[1] === "HEAD") return { code: 0, stdout: `${HEAD}\n`, stderr: "" };
+				if (args[0] === "diff" && args[1] === "--no-color") return { code: 0, stdout: DIFF, stderr: "" };
+				if (args[0] === "ls-files") return { code: 0, stdout: "src/new.ts\0", stderr: "" };
+				if (args[0] === "diff" && args[1] === "--no-index") return { code: 1, stdout: untrackedDiff, stderr: "" };
+				throw new Error(`unexpected git args: ${args.join(" ")}`);
 			},
 		} as any;
-		const failed = await applyPrReviewQuestionWorkerResult(pi, state, question.id, artifactPath, "/tmp/review-pr-42", dispatchToken, 76, 1200);
-		assert.equal(failed.status, "failed");
-		assert.equal(failed.execution?.phase, "failed");
-		assert.match(failed.error || "", /oauth token expired/);
+		const answered = await applyPrReviewQuestionWorkerResult(pi, state, question.id, artifactPath, runDir, dispatchToken, 75, 1200);
+		assert.equal(answered.status, "answered");
+		assert.equal(answered.answer, "현재 변경 답변");
 		assert.equal(entries.length, 1);
-		assert.match(entries[0].data.content, /질문 실패/);
-		assert.doesNotMatch(entries[0].data.content, /기준 변경/);
+		assert.match(entries[0].data.content, /Meta Review 답변/);
 	} finally {
 		rmSync(runDir, { recursive: true, force: true });
 	}
@@ -486,22 +542,47 @@ test("current-work worker는 HEAD가 같아도 tracked diff 변경을 다시 계
 	}
 });
 
-test("worker 완료 시 checkout head가 바뀌면 답변 대신 stale 상태를 남긴다", async () => {
+test("stored PR diff를 읽을 수 없으면 명확한 stale source artifact로 기록한다", async () => {
+	const { runDir, state, question } = fixture();
+	try {
+		routePrReviewQuestion(state, question.id, "worker", "전체 흐름 검증", 1100);
+		const dispatchToken = reserveAndStartWorker(state, question.id, 72, 1150);
+		const artifactPath = writeArtifact(state, question.id);
+		rmSync(state.diffPath);
+		const entries: any[] = [];
+		const pi = {
+			appendEntry(customType: string, data: any) { entries.push({ customType, data }); },
+			sendMessage() {},
+			async exec() { throw new Error("GitHub PR run apply는 current checkout을 읽지 않아야 합니다."); },
+		} as any;
+		const stale = await applyPrReviewQuestionWorkerResult(pi, state, question.id, artifactPath, "/tmp/other-panel", dispatchToken, 72, 1200);
+		assert.equal(stale.status, "stale");
+		assert.equal(stale.execution?.phase, "stale");
+		assert.match(stale.error || "", /stale Meta Review source artifact/);
+		assert.equal(entries.length, 1);
+		assert.match(entries[0].data.content, /기준 변경/);
+	} finally {
+		rmSync(runDir, { recursive: true, force: true });
+	}
+});
+
+test("stored source metadata가 바뀌면 immutable diff가 같아도 stale 상태를 남긴다", async () => {
 	const { runDir, state, question } = fixture();
 	try {
 		const routed = routePrReviewQuestion(state, question.id, "worker", "전체 흐름 검증", 1100);
 		const dispatchToken = reserveAndStartWorker(state, question.id, 72, 1150);
 		const artifactPath = writeArtifact(state, question.id);
+		writeFileSync(state.sourcePath, JSON.stringify({ sourceSha256: "c".repeat(64) }));
 		const entries: any[] = [];
 		const pi = {
 			appendEntry(customType: string, data: any) { entries.push({ customType, data }); },
 			sendMessage() {},
-			async exec() { return { code: 0, stdout: `${"c".repeat(40)}\n`, stderr: "" }; },
+			async exec() { throw new Error("GitHub PR run apply는 current checkout을 읽지 않아야 합니다."); },
 		} as any;
-		const stale = await applyPrReviewQuestionWorkerResult(pi, state, question.id, artifactPath, "/tmp/review-pr-42", dispatchToken, 72, 1200);
+		const stale = await applyPrReviewQuestionWorkerResult(pi, state, question.id, artifactPath, "/tmp/other-panel", dispatchToken, 72, 1200);
 		assert.equal(stale.status, "stale");
 		assert.equal(stale.execution?.phase, "stale");
-		assert.match(stale.error || "", /stale Meta Review checkout/);
+		assert.match(stale.error || "", /stale Meta Review source artifact/);
 		assert.equal(entries.length, 1);
 		assert.match(entries[0].data.content, /기준 변경/);
 		assert.equal(routed.question.workerResultPath, artifactPath);

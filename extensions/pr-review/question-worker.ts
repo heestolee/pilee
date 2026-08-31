@@ -394,14 +394,21 @@ async function execText(
 	return result.stdout;
 }
 
-function nonReviewDirtyLines(status: string): string[] {
-	return status.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).filter((line) => {
-		const path = line.slice(3).replace(/^"|"$/g, "");
-		return path !== ".pi" && !path.startsWith(".pi/");
-	});
+function capturedPrRunSourceSha256(state: PrReviewRunState): string {
+	try {
+		const diff = readFileSync(state.diffPath, "utf8");
+		if (!diff.trim()) throwStaleSource("stale Meta Review source artifact: 저장된 PR diff가 비어 있습니다.");
+		const captured = captureUnifiedDiff(diff).sourceSha256;
+		const declared = sourceSha256(state);
+		if (captured !== declared) throwStaleSource(`stale Meta Review source artifact: declared ${declared}, captured ${captured}`);
+		return captured;
+	} catch (error) {
+		if (error instanceof PrReviewSourceStaleError) throw error;
+		throwStaleSource(`stale Meta Review source artifact: ${error instanceof Error ? error.message : String(error)}`);
+	}
 }
 
-async function observedSourceSha256(
+async function observedCurrentWorkSourceSha256(
 	pi: Pick<ExtensionAPI, "exec">,
 	state: PrReviewRunState,
 	cwd: string,
@@ -410,24 +417,12 @@ async function observedSourceSha256(
 	const root = (await execText(pi, "git", ["rev-parse", "--show-toplevel"], cwd)).trim();
 	const head = (await execText(pi, "git", ["rev-parse", "HEAD"], root)).trim();
 	if (pin.headSha && head !== pin.headSha) throwStaleSource(`stale Meta Review checkout: expected ${pin.headSha}, current ${head}`);
-	let diff = "";
-	if (state.target.kind === "current-work") {
-		if (state.target.root && realpathSync(root) !== realpathSync(state.target.root)) throwStaleSource(`stale Meta Review root: expected ${state.target.root}, current ${root}`);
-		diff = await execText(pi, "git", ["diff", "--no-color", "--find-renames", state.target.baseSha ?? "HEAD"], root);
-		const untracked = (await execText(pi, "git", ["ls-files", "--others", "--exclude-standard", "-z"], root)).split("\0").filter(Boolean);
-		for (const path of untracked) {
-			const addition = await execText(pi, "git", ["diff", "--no-index", "--no-color", "--", "/dev/null", path], root, true);
-			diff += `${diff && !diff.endsWith("\n") ? "\n" : ""}${addition}`;
-		}
-	} else {
-		const dirty = nonReviewDirtyLines(await execText(pi, "git", ["status", "--porcelain=v1", "--untracked-files=all"], root));
-		if (dirty.length) throwStaleSource(`stale Meta Review checkout has local changes: ${dirty.slice(0, 5).join(", ")}`);
-		const repository = `${state.target.owner}/${state.target.repo}`;
-		const metadataText = await execText(pi, "gh", ["pr", "view", String(state.target.number), "--repo", repository, "--json", "headRefOid"], root);
-		const remoteHead = (JSON.parse(metadataText) as { headRefOid?: unknown }).headRefOid;
-		if (typeof remoteHead !== "string" || !remoteHead.trim()) throw new Error("Meta Review PR head를 관찰하지 못했습니다.");
-		if (pin.headSha && remoteHead !== pin.headSha) throwStaleSource(`stale Meta Review PR head: expected ${pin.headSha}, current ${remoteHead}`);
-		diff = await execText(pi, "gh", ["pr", "diff", String(state.target.number), "--repo", repository, "--color", "never"], root);
+	if (state.target.root && realpathSync(root) !== realpathSync(state.target.root)) throwStaleSource(`stale Meta Review root: expected ${state.target.root}, current ${root}`);
+	let diff = await execText(pi, "git", ["diff", "--no-color", "--find-renames", state.target.baseSha ?? "HEAD"], root);
+	const untracked = (await execText(pi, "git", ["ls-files", "--others", "--exclude-standard", "-z"], root)).split("\0").filter(Boolean);
+	for (const path of untracked) {
+		const addition = await execText(pi, "git", ["diff", "--no-index", "--no-color", "--", "/dev/null", path], root, true);
+		diff += `${diff && !diff.endsWith("\n") ? "\n" : ""}${addition}`;
 	}
 	if (!diff.trim()) throwStaleSource("stale Meta Review source: 현재 diff가 비어 있습니다.");
 	return captureUnifiedDiff(diff).sourceSha256;
@@ -439,7 +434,9 @@ async function assertObservedReviewSource(
 	cwd: string,
 	pin: PrReviewQuestionSourcePin,
 ): Promise<void> {
-	const observed = await observedSourceSha256(pi, state, cwd, pin);
+	const observed = state.target.kind === "current-work"
+		? await observedCurrentWorkSourceSha256(pi, state, cwd, pin)
+		: capturedPrRunSourceSha256(state);
 	if (observed !== pin.sourceSha256) throwStaleSource(`stale Meta Review source: expected ${pin.sourceSha256}, current ${observed}`);
 }
 
@@ -506,11 +503,17 @@ export async function applyPrReviewQuestionWorkerResult(
 }
 
 export function buildPrReviewQuestionWorkerTask(state: PrReviewRunState, question: PrReviewQuestion, cwd: string): string {
+	const repository = state.target.kind === "current-work" ? "(current-work)" : `${state.target.owner}/${state.target.repo}`;
+	const sourceContract = state.target.kind === "current-work"
+		? `reviewCwd는 current-work source root입니다. 실제 파일을 이 root에서 읽고 현재 tracked·untracked diff가 sourcePath와 같은지 유지합니다.`
+		: `reviewCwd는 worker 실행 위치일 뿐 reviewed checkout이 아닙니다. 현재 checkout HEAD를 요구하지 마세요. sourcePath의 immutable evidence를 우선하고, 추가 source는 repository=${repository}의 expectedHeadSha를 ref로 지정한 gh api 또는 동등한 pinned git-object 조회로 읽으세요. plain working-tree 파일을 reviewed source로 사용하지 않습니다.`;
 	return `# Meta Review question worker request
 
-현재 PR review run의 사용자 질문을 실제 source 근거로 조사하고 지정된 artifact 하나만 작성하세요.
+현재 PR review run의 사용자 질문을 실제 source 근거로 조사하고 지정된 artifact 하나만 작성하세요. 질문과 답변의 대화 맥락은 메인 Pi session이 소유하며, worker는 Study Hard와 같은 비동기 결과 생산자입니다.
 
 - reviewCwd: ${cwd}
+- sourceMode: ${state.target.kind === "current-work" ? "current-work-live" : "github-pr-immutable"}
+- repository: ${repository}
 - runId: ${state.runId}
 - sourcePath: ${state.sourcePath}
 - expectedHeadSha: ${question.expectedHeadSha || "(none)"}
@@ -530,12 +533,15 @@ export function buildPrReviewQuestionWorkerTask(state: PrReviewRunState, questio
 ## 사용자 질문
 ${question.question}
 
+## source 계약
+${sourceContract}
+expectedSourceSha256는 sourcePath 파일 바이트의 SHA-256이 아닙니다. sourcePath JSON의 sourceSha256 필드이며 normalized source.diff의 identity입니다. sourcePath 자체를 shasum하지 말고 이 필드값을 artifact에 그대로 사용하세요.
+
 ## 완료 계약
-1. reviewCwd에서 git rev-parse HEAD를 확인하고 expected head와 다르면 artifact를 만들지 않습니다.
-2. sourcePath의 immutable evidence와 필요한 실제 source/callsite/schema/test를 읽습니다.
-3. repository, review run, 질문 JSONL은 수정하지 않습니다. routine broad validation을 실행하지 않습니다.
-4. workerResultPath에 아래 JSON 하나만 씁니다: {"schemaVersion":1,"kind":"meta-review-question-worker-result","runId":"...","questionId":"...","headSha":"...","sourceSha256":"...","answer":"...","evidence":[{"label":"...","path":"...","line":1,"url":"...","note":"..."}],"uncertainty":"..."}.
-5. 성공 stdout은 [META_REVIEW_QUESTION_WORKER_RESULT], artifactPath, runId, questionId, summary만 출력합니다.`;
+1. sourcePath의 immutable evidence와 필요한 실제 source/callsite/schema/test를 pinned source 계약에 따라 읽습니다.
+2. repository, review run, 질문 JSONL은 수정하지 않습니다. routine broad validation을 실행하지 않습니다.
+3. workerResultPath에 아래 JSON 하나만 씁니다: {"schemaVersion":1,"kind":"meta-review-question-worker-result","runId":"...","questionId":"...","headSha":"...","sourceSha256":"...","answer":"...","evidence":[{"label":"...","path":"...","line":1,"url":"...","note":"..."}],"uncertainty":"..."}.
+4. 성공 stdout은 [META_REVIEW_QUESTION_WORKER_RESULT], artifactPath, runId, questionId, summary만 출력합니다.`;
 }
 
 function completionError(question: PrReviewQuestion, completion: ProgrammaticSubagentCompleted): string | undefined {
