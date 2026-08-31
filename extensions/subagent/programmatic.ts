@@ -36,6 +36,43 @@ export interface ProgrammaticSubagentHooks {
 	onCompleted: ProgrammaticSubagentLaunchRequest["onCompleted"];
 }
 
+export interface ProgrammaticQuestionWorkerOptions {
+	requestId: string;
+	agent: string;
+	task: string;
+	contextMode?: "main" | "isolated";
+	continueRunId?: number;
+	onStarted: ProgrammaticSubagentLaunchRequest["onStarted"];
+	onCompleted: ProgrammaticSubagentLaunchRequest["onCompleted"];
+	onRejected: ProgrammaticSubagentLaunchRequest["onRejected"];
+}
+
+export function launchProgrammaticQuestionWorker(
+	pi: Pick<ExtensionAPI, "events">,
+	options: ProgrammaticQuestionWorkerOptions,
+): boolean {
+	if (!pi.events || typeof pi.events.emit !== "function") return false;
+	let claimed = false;
+	const request: ProgrammaticSubagentLaunchRequest = {
+		kind: "programmatic-subagent-launch",
+		requestId: options.requestId,
+		agent: options.agent,
+		task: options.task,
+		contextMode: options.contextMode ?? "isolated",
+		continueRunId: options.continueRunId,
+		claim: () => {
+			if (claimed) return false;
+			claimed = true;
+			return true;
+		},
+		onStarted: options.onStarted,
+		onCompleted: options.onCompleted,
+		onRejected: options.onRejected,
+	};
+	pi.events.emit(PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT, request);
+	return claimed;
+}
+
 export interface ProgrammaticSubagentLineageMessage {
 	customType: string;
 	content: string;

@@ -10,9 +10,8 @@ import {
 	type QuestionExecutionMode,
 } from "../questions/runtime.ts";
 import {
-	PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT,
+	launchProgrammaticQuestionWorker,
 	type ProgrammaticSubagentCompleted,
-	type ProgrammaticSubagentLaunchRequest,
 } from "../subagent/programmatic.ts";
 import {
 	appendPrReviewQuestionCoordinatorSnapshot,
@@ -552,6 +551,34 @@ function completionError(question: PrReviewQuestion, completion: ProgrammaticSub
 	return undefined;
 }
 
+export function dispatchPrReviewQuestionToWorker(
+	pi: ExtensionAPI,
+	state: PrReviewRunState,
+	question: PrReviewQuestion,
+	cwd: string,
+	now = Date.now(),
+): PrReviewQuestion {
+	publishPrReviewQuestionTranscript(pi, state, question, "question");
+	try {
+		const routed = routePrReviewQuestion(state, question.id, "worker", "Code Review drawer 요청은 공통 background worker가 처리합니다.", now);
+		if (!routed.workerLaunchRequired) return routed.question;
+		const reservation = reservePrReviewQuestionWorkerLaunch(state, question.id, now);
+		if (!reservation.dispatchRequired) return currentQuestion(state, question.id);
+		if (!launchPrReviewQuestionWorker(pi, state, routed.question, cwd, reservation.dispatchToken, now)) {
+			throw new Error("표준 subagent dispatcher가 Meta Review launch request를 claim하지 않았습니다.");
+		}
+		return currentQuestion(state, question.id);
+	} catch (error) {
+		const failed = updatePrReviewQuestion(state.runDir, question.id, {
+			status: "failed",
+			execution: updateQuestionExecutionPhase(routeQuestionExecution(question.execution, "worker", "background worker launch 실패", now), "failed", now),
+			error: error instanceof Error ? error.message : String(error),
+		}, now);
+		publishPrReviewQuestionTranscript(pi, state, failed, "failed");
+		throw error;
+	}
+}
+
 export function launchPrReviewQuestionWorker(
 	pi: ExtensionAPI,
 	state: PrReviewRunState,
@@ -564,43 +591,35 @@ export function launchPrReviewQuestionWorker(
 	const launchClaim = claimPrReviewQuestionWorkerLaunch(state, question.id, dispatchToken, now);
 	if (!launchClaim.claimed || !launchClaim.completionToken) return false;
 	const completionToken = launchClaim.completionToken;
-	let dispatcherClaimed = false;
-	const request: ProgrammaticSubagentLaunchRequest = {
-		kind: "programmatic-subagent-launch",
-		requestId: `meta-review-question:${state.runId}:${question.id}:${dispatchToken}`,
-		agent: "meta-review-question-worker",
-		task: buildPrReviewQuestionWorkerTask(state, launchClaim.question, cwd),
-		contextMode: "isolated",
-		claim: () => {
-			if (dispatcherClaimed) return false;
-			dispatcherClaimed = true;
-			return true;
-		},
-		onStarted: ({ runId }) => { markPrReviewQuestionWorkerStarted(state, question.id, completionToken, runId); },
-		onCompleted: async (completion) => {
-			const lease = leaseForCompletion(state, question.id, completionToken);
-			if (lease.phase === "terminal") return;
-			const error = completionError(lease.trustedQuestion, completion);
-			if (error) {
-				failPrReviewQuestionWorker(pi, state, question.id, completionToken, error, completion.runId);
-				return;
-			}
-			const artifactPath = completion.output.match(/^artifactPath:\s*(.+)$/m)![1]!.trim();
-			try {
-				await applyPrReviewQuestionWorkerResult(pi, state, question.id, artifactPath, cwd, completionToken, completion.runId);
-			} catch (applyError) {
-				failPrReviewQuestionWorker(pi, state, question.id, completionToken, applyError instanceof Error ? applyError.message : String(applyError), completion.runId);
-			}
-		},
-		onRejected: (error) => { failPrReviewQuestionWorker(pi, state, question.id, completionToken, error); },
-	};
+	let launched = false;
 	try {
-		pi.events.emit(PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT, request);
+		launched = launchProgrammaticQuestionWorker(pi, {
+			requestId: `meta-review-question:${state.runId}:${question.id}:${dispatchToken}`,
+			agent: "meta-review-question-worker",
+			task: buildPrReviewQuestionWorkerTask(state, launchClaim.question, cwd),
+			onStarted: ({ runId }) => { markPrReviewQuestionWorkerStarted(state, question.id, completionToken, runId); },
+			onCompleted: async (completion) => {
+				const lease = leaseForCompletion(state, question.id, completionToken);
+				if (lease.phase === "terminal") return;
+				const error = completionError(lease.trustedQuestion, completion);
+				if (error) {
+					failPrReviewQuestionWorker(pi, state, question.id, completionToken, error, completion.runId);
+					return;
+				}
+				const artifactPath = completion.output.match(/^artifactPath:\s*(.+)$/m)![1]!.trim();
+				try {
+					await applyPrReviewQuestionWorkerResult(pi, state, question.id, artifactPath, cwd, completionToken, completion.runId);
+				} catch (applyError) {
+					failPrReviewQuestionWorker(pi, state, question.id, completionToken, applyError instanceof Error ? applyError.message : String(applyError), completion.runId);
+				}
+			},
+			onRejected: (error) => { failPrReviewQuestionWorker(pi, state, question.id, completionToken, error); },
+		});
 	} catch (error) {
 		releasePrReviewQuestionWorkerClaim(state, question.id, dispatchToken);
 		throw error;
 	}
-	if (!dispatcherClaimed) {
+	if (!launched) {
 		releasePrReviewQuestionWorkerClaim(state, question.id, dispatchToken);
 		return false;
 	}

@@ -9,6 +9,7 @@ import {
 	applyPrReviewQuestionWorkerResult,
 	buildPrReviewQuestionWorkerTask,
 	claimPrReviewQuestionWorkerLaunch,
+	dispatchPrReviewQuestionToWorker,
 	failPrReviewQuestionWorker,
 	launchPrReviewQuestionWorker,
 	markPrReviewQuestionWorkerStarted,
@@ -268,6 +269,37 @@ test("reservation token과 false claimant는 worker apply/fail completion 권한
 		);
 		const answered = await applyPrReviewQuestionWorkerResult(pi, state, question.id, artifactPath, "/tmp/review-pr-42", winner.completionToken!, 78, 1200);
 		assert.equal(answered.status, "answered");
+	} finally {
+		rmSync(runDir, { recursive: true, force: true });
+	}
+});
+
+test("Meta Review drawer 질문은 메인 Pi turn 없이 공통 background worker를 즉시 시작한다", () => {
+	const { runDir, state, question } = fixture();
+	try {
+		const requests: ProgrammaticSubagentLaunchRequest[] = [];
+		const entries: any[] = [];
+		const messages: any[] = [];
+		const pi = {
+			appendEntry(customType: string, data: any) { entries.push({ customType, data }); },
+			sendMessage(message: any, options: any) { messages.push({ message, options }); },
+			events: {
+				emit(_name: string, payload: unknown) {
+					const request = payload as ProgrammaticSubagentLaunchRequest;
+					requests.push(request);
+					request.claim();
+					request.onStarted({ requestId: request.requestId, runId: 70, agent: request.agent });
+				},
+			},
+		} as any;
+		const dispatched = dispatchPrReviewQuestionToWorker(pi, state, question, "/tmp/review-pr-42", 1100);
+		assert.equal(requests.length, 1);
+		assert.equal(requests[0]?.agent, "meta-review-question-worker");
+		assert.equal(dispatched.workerRunId, 70);
+		assert.equal(dispatched.execution?.phase, "worker-running");
+		assert.equal(messages.length, 0, "메인 Pi followUp routing turn을 만들면 안 된다");
+		assert.equal(entries.length, 1);
+		assert.match(entries[0]?.data.content || "", /Meta Review 질문/);
 	} finally {
 		rmSync(runDir, { recursive: true, force: true });
 	}

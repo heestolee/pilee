@@ -7,11 +7,11 @@ import type { GlimpseWindow } from "../utils/glimpse.ts";
 import { buildMetaReviewClientState } from "./view-model.ts";
 import {
 	createPrReviewQuestion,
-	dispatchPrReviewQuestionToSession,
 	failPrReviewQuestion,
 	resolvePrReviewQuestionContext,
 	type PrReviewQuestion,
 } from "./chat.ts";
+import { dispatchPrReviewQuestionToWorker } from "./question-worker.ts";
 import {
 	loadPrReviewRun,
 	saveHumanDecision,
@@ -210,7 +210,7 @@ export async function openPrReviewStudio(
 	state: PrReviewRunState,
 ): Promise<{ mode: string; url: string }> {
 	const handle = await startPrReviewStudioServer(state, {
-		onQuestion: (question) => dispatchPrReviewQuestionToSession(pi, state, question),
+		onQuestion: (question) => { dispatchPrReviewQuestionToWorker(pi, state, question, ctx.cwd); },
 	});
 	const result = await openCompanionUrl(pi, ctx, handle.url, `PR Review · #${state.target.number} ${state.target.title}`, {
 		key: `pr-review:${state.runId}`,

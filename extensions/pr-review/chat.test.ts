@@ -6,7 +6,6 @@ import { test } from "node:test";
 import {
 	answerPrReviewQuestion,
 	createPrReviewQuestion,
-	dispatchPrReviewQuestionToSession,
 	failPrReviewQuestion,
 	loadPrReviewQuestions,
 	PR_REVIEW_TRANSCRIPT_LINEAGE_ENTRY,
@@ -138,55 +137,6 @@ test("terminal Meta Review 질문은 늦은 answer와 fail이 원자 상태를 �
 	} finally {
 		rmSync(answeredDir, { recursive: true, force: true });
 		rmSync(failedDir, { recursive: true, force: true });
-	}
-});
-
-test("Glimpse question dispatches into the same Pi session with review-worktree investigation rules", () => {
-	const runDir = mkdtempSync(join(tmpdir(), "pilee-pr-review-chat-dispatch-"));
-	try {
-		const question = createPrReviewQuestion(runDir, {
-			runId: "acme-repo-pr-42-head-1",
-			question: "이 리뷰가 과한 것 아닌가?",
-			scope: "evidence",
-			cardId: "R-01",
-			filePath: "migration.js",
-			evidenceIds: ["D000427"],
-			selection: { kind: "line", id: "D000427", label: "코드 줄 · migration.js:27" },
-			attachmentIds: ["review-image-1"],
-			attachments: [{ id: "review-image-1", name: "diagram.png", mimeType: "image/png", path: "/tmp/review-image-1.png", url: "/attachments/review-image-1.png" }],
-		}, 1000);
-		const messages: any[] = [];
-		const entries: any[] = [];
-		const pi = {
-			appendEntry(customType: string, data: any) { entries.push({ customType, data }); },
-			sendMessage(message: any, options: any) { messages.push({ message, options }); },
-		} as any;
-		dispatchPrReviewQuestionToSession(pi, runState(runDir), question);
-		assert.equal(entries.length, 1);
-		assert.equal(entries[0].customType, PR_REVIEW_TRANSCRIPT_LINEAGE_ENTRY);
-		assert.equal(entries[0].data.display, true);
-		assert.match(entries[0].data.content, /Meta Review 질문/);
-		assert.match(entries[0].data.content, /이 리뷰가 과한 것 아닌가/);
-		assert.equal(messages.length, 1);
-		assert.equal(messages[0].message.customType, "pilee-meta-review-question");
-		assert.equal(messages[0].message.display, false);
-		assert.equal(messages[0].options.deliverAs, "followUp");
-		assert.equal(messages[0].options.triggerTurn, true);
-		assert.match(messages[0].message.content, /실제 source, callsite, schema, test/);
-		assert.match(messages[0].message.content, /meta_review_chat.*route/);
-		assert.match(messages[0].message.content, /meta_review_chat.*answer/);
-		assert.match(messages[0].message.content, /D000427/);
-		assert.match(messages[0].message.content, /selectedBlock: line:D000427/);
-		assert.match(messages[0].message.content, /diagram\.png/);
-		assert.match(messages[0].message.content, /\/tmp\/review-image-1\.png/);
-		assert.doesNotMatch(messages[0].message.content, /data:image/);
-		assert.deepEqual(loadPrReviewQuestions(runDir)[0]?.attachmentIds, ["review-image-1"]);
-		assert.equal(loadPrReviewQuestions(runDir)[0]?.attachments?.[0]?.name, "diagram.png");
-		assert.equal(loadPrReviewQuestions(runDir)[0]?.status, "queued");
-		assert.equal(loadPrReviewQuestions(runDir)[0]?.execution?.phase, "routing");
-		assert.equal(loadPrReviewQuestions(runDir)[0]?.transcriptEventKeys?.length, 1);
-	} finally {
-		rmSync(runDir, { recursive: true, force: true });
 	}
 });
 

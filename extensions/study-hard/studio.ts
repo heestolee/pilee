@@ -19,7 +19,6 @@ import {
 } from "../questions/runtime.ts";
 import {
 	createPrReviewQuestion,
-	dispatchPrReviewQuestionToSession,
 	loadPrReviewQuestions,
 	PR_REVIEW_TRANSCRIPT_LINEAGE_ENTRY,
 	reloadPrReviewQuestionCanonical,
@@ -27,6 +26,7 @@ import {
 	resolvePrReviewQuestionContext,
 	type PrReviewTranscriptEventKind,
 } from "../pr-review/chat.ts";
+import { dispatchPrReviewQuestionToWorker } from "../pr-review/question-worker.ts";
 import {
 	loadPrReviewRun,
 	readJson,
@@ -53,9 +53,8 @@ import {
 	type LearningProposalStatus,
 } from "../learning-companion/state.ts";
 import {
-	PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT,
+	launchProgrammaticQuestionWorker,
 	type ProgrammaticSubagentCompleted,
-	type ProgrammaticSubagentLaunchRequest,
 } from "../subagent/programmatic.ts";
 import { captureGlimpseHtmlPng, getGlimpseOpen } from "../utils/glimpse.ts";
 import { buildStudyHardStudioHtml } from "./studio-html.ts";
@@ -2845,19 +2844,11 @@ function sendLearnerQuestionToWorkerDispatcher(
 		return;
 	}
 
-	let claimed = false;
-	const request: ProgrammaticSubagentLaunchRequest = {
-		kind: "programmatic-subagent-launch",
+	const launched = launchProgrammaticQuestionWorker(handle.pi, {
 		requestId: `${question.orchestrationId || question.id}${options.continueRunId ? `:rebase:${question.workerRebaseCount || 1}` : ""}`,
 		agent: "study-hard-worker",
 		task: buildStudyHardWorkerTask(handle, question, options),
-		contextMode: "isolated",
 		continueRunId: options.continueRunId,
-		claim: () => {
-			if (claimed) return false;
-			claimed = true;
-			return true;
-		},
 		onStarted: ({ runId }) => {
 			const currentQuestion = handle.state.questions.find((item) => item.id === question.id);
 			if (!isCurrentWorkerQuestion(handle, question.id, question.orchestrationId) || hasTerminalQuestionExecution(currentQuestion)) return;
@@ -2876,9 +2867,8 @@ function sendLearnerQuestionToWorkerDispatcher(
 		onRejected: (error) => {
 			markCurrentWorkerQuestionFailed(handle, question.id, question.orchestrationId, error, options.continueRunId);
 		},
-	};
-	handle.pi.events.emit(PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT, request);
-	if (!claimed) throw new Error("표준 subagent dispatcher가 Study Hard launch request를 claim하지 않았습니다.");
+	});
+	if (!launched) throw new Error("표준 subagent dispatcher가 Study Hard launch request를 claim하지 않았습니다.");
 }
 
 function sendStudyHardTransitionRequest(handle: StudyHardHandle, intent: StudyHardTransitionIntent): { frameExists: boolean; frameTitle?: string } {
@@ -3070,7 +3060,7 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 					attachmentIds: attachmentIds.length ? attachmentIds : undefined,
 					attachments: attachments.length ? attachments : undefined,
 				});
-				dispatchPrReviewQuestionToSession(handle.pi, displayRun, question);
+				dispatchPrReviewQuestionToWorker(handle.pi, displayRun, question, handle.cwd || displayRun.target.root || process.cwd());
 				sendJson(res, 202, { ok: true, question });
 				return;
 			}

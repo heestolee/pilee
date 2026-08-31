@@ -3333,7 +3333,7 @@ test("Study Hard 질문 drawer는 direct와 worker 실행 상태를 같은 UI �
 	assert.equal(helpers.metaReviewQuestionNeedsPolling({ execution: { phase: "answered" } }), false);
 });
 
-test("Study Hard 코드 리뷰 surface는 explanation, 결정, 질문, 명시적 refresh 요청을 같은 run에 연결한다", async () => {
+test("Study Hard 코드 리뷰 surface는 공통 worker 질문, 결정, 명시적 refresh 요청을 같은 run에 연결한다", async () => {
 	const reviewRoot = mkdtempSync(join(tmpdir(), "study-hard-meta-review-"));
 	const diff = `diff --git a/src/policy.ts b/src/policy.ts\nindex 1111111..2222222 100644\n--- a/src/policy.ts\n+++ b/src/policy.ts\n@@ -1,3 +1,4 @@\n export function visible(status: string) {\n-  return status !== "HIDDEN";\n+  const allowed = new Set(["OPEN", "READY"]);\n+  return allowed.has(status);\n }\n`;
 	const beforeSource = `export function visible(status: string) {\n  return status !== "HIDDEN";\n}\n`;
@@ -3374,8 +3374,18 @@ test("Study Hard 코드 리뷰 surface는 explanation, 결정, 질문, 명시적
 		meanings: [{ id: "M-visible-contract", title: "암묵적 상태 허용을 명시적 노출 계약으로 전환", beforeContract: "부정 조건을 통과하는 상태가 노출될 수 있었습니다.", afterContract: "명시한 상태만 노출됩니다.", mechanism: "policy가 allowlist를 소유합니다.", impact: "향후 상태 추가가 자동 노출되지 않습니다.", paths: ["src/policy.ts"], evidenceIds: changedEvidenceIds, basis: [{ kind: "definition", path: "src/policy.ts", line: 1, summary: "visible policy 정의가 allowlist를 소유합니다." }], confidence: "high" }],
 	});
 	const messages: any[] = [];
+	const workerRequests: any[] = [];
+	const transcriptEntries: any[] = [];
 	const handle = await startStudyHardStudio({
+		appendEntry(customType: string, data: any) { transcriptEntries.push({ customType, data }); },
 		sendMessage(message: any, options: any) { messages.push({ message, options }); },
+		events: {
+			emit(_name: string, request: any) {
+				workerRequests.push(request);
+				request.claim();
+				request.onStarted({ requestId: request.requestId, runId: 80 + workerRequests.length, agent: request.agent });
+			},
+		},
 		exec() { throw new Error("no browser fallback in test"); },
 	} as any, { hasUI: false, cwd: "/tmp/review-pr-42", sessionManager: { getBranch: () => [] } } as any, {
 		url: "https://github.com/acme/repo/pull/42",
@@ -3420,13 +3430,16 @@ test("Study Hard 코드 리뷰 surface는 explanation, 결정, 질문, 명시적
 		assert.deepEqual(questionState.questions[0]?.attachmentIds, [uploaded.id]);
 		assert.equal(questionState.questions[0]?.attachments?.[0]?.name, "review.png");
 		assert.equal(questionState.questions[0]?.attachments?.[0]?.path, uploaded.path);
-		const questionMessages = messages.filter(({ message }) => message.customType === "pilee-meta-review-question");
-		assert.equal(questionMessages.length, 5);
-		assert.match(questionMessages[0]?.message.content || "", /review\.png/);
-		assert.match(questionMessages[1]?.message.content || "", /sectionId: relationships/);
-		assert.match(questionMessages[2]?.message.content || "", /meaningId: M-visible-contract/);
-		assert.match(questionMessages[3]?.message.content || "", new RegExp(`declarationId: ${visibleDeclaration.id}`));
-		assert.match(questionMessages[0]?.message.content || "", new RegExp(uploaded.path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+		assert.equal(workerRequests.length, 5);
+		assert.ok(workerRequests.every((request) => request.agent === "meta-review-question-worker"));
+		assert.match(workerRequests[0]?.task || "", /review\.png/);
+		assert.match(workerRequests[1]?.task || "", /sectionId: relationships/);
+		assert.match(workerRequests[2]?.task || "", /meaningId: M-visible-contract/);
+		assert.match(workerRequests[3]?.task || "", new RegExp(`declarationId: ${visibleDeclaration.id}`));
+		assert.match(workerRequests[0]?.task || "", new RegExp(uploaded.path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+		assert.equal(messages.filter(({ message }) => message.customType === "pilee-meta-review-question").length, 0);
+		assert.equal(transcriptEntries.length, 5);
+		assert.ok(questionState.questions.every((question: any) => question.execution.phase === "worker-running"));
 		response = await fetch(new URL("/attachments/remove", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ attachmentId: uploaded.id }) });
 		assert.equal(response.status, 409);
 		response = await fetch(new URL("/meta-review/refresh", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ mode: "full" }) });

@@ -4,6 +4,7 @@ import {
 	PROGRAMMATIC_SUBAGENT_HOOKS,
 	PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT,
 	PROGRAMMATIC_SUBAGENT_LINEAGE_ENTRY,
+	launchProgrammaticQuestionWorker,
 	queueProgrammaticSubagentLineage,
 	registerProgrammaticSubagentLauncher,
 	restoreProgrammaticSubagentLineageEntry,
@@ -36,6 +37,42 @@ function createEventHarness() {
 		listenerCount: (name: string) => listeners.get(name)?.length ?? 0,
 	};
 }
+
+test("공통 question worker dispatcher는 같은 programmatic lifecycle을 한 번만 claim한다", () => {
+	const requests: ProgrammaticSubagentLaunchRequest[] = [];
+	const pi = {
+		events: {
+			emit(name: string, payload: unknown) {
+				assert.equal(name, PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT);
+				requests.push(payload as ProgrammaticSubagentLaunchRequest);
+				assert.equal(requests[0]?.claim(), true);
+				assert.equal(requests[0]?.claim(), false);
+			},
+		},
+	} as any;
+	const started: number[] = [];
+	const launched = launchProgrammaticQuestionWorker(pi, {
+		requestId: "question:Q001",
+		agent: "study-hard-worker",
+		task: "artifact를 생성해",
+		onStarted: ({ runId }) => started.push(runId),
+		onCompleted() {},
+		onRejected() {},
+	});
+	assert.equal(launched, true);
+	assert.equal(requests.length, 1);
+	assert.equal(requests[0]?.contextMode, "isolated");
+	requests[0]?.onStarted({ requestId: "question:Q001", runId: 17, agent: "study-hard-worker" });
+	assert.deepEqual(started, [17]);
+	assert.equal(launchProgrammaticQuestionWorker({ events: undefined } as any, {
+		requestId: "question:Q002",
+		agent: "meta-review-question-worker",
+		task: "답변을 생성해",
+		onStarted() {},
+		onCompleted() {},
+		onRejected() {},
+	}), false);
+});
 
 test("programmatic launcher는 기존 execute에 main-context run을 전달하고 callback으로 완료한다", async () => {
 	const { pi } = createEventHarness();
