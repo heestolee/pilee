@@ -24,7 +24,11 @@ import {
 } from "./claude-stream-parser.js";
 import { resolveClaudeRuntimeMode } from "./config.js";
 import { formatToolCallPlain } from "./format.js";
-import { resolveModelFallbackChain } from "./model-fallback.js";
+import {
+	executeModelFallbackChain,
+	makeCrossRuntimeFallbackSessionFile,
+	resolveModelFallbackChain,
+} from "./model-fallback.js";
 import {
 	extractActivityPreviewFromTextDelta,
 	extractThoughtText,
@@ -216,81 +220,99 @@ export async function runSingleAgent(
 		};
 	}
 
-	if (agent.runtime === "claude") {
-		if (resolveClaudeRuntimeMode(defaultCwd) === "sdk") {
-			const { runClaudeAgentViaSdk } = await import("./claude-sdk-runner.js");
-			return runClaudeAgentViaSdk(
+	const primaryRuntime = agent.runtime;
+	const completedAttempt = await executeModelFallbackChain<SingleResult>({
+		primaryRuntime,
+		primaryModel: agent.model,
+		fallbackModels: resolveModelFallbackChain(agent),
+		signal,
+		execute: async (spec) => {
+			const attemptAgent: AgentConfig = { ...agent, runtime: spec.runtime, model: spec.model };
+			if (spec.runtime === "claude") {
+				const attemptSidecar =
+					spec.fallbackIndex === 0
+						? sidecarSessionFile
+						: makeCrossRuntimeFallbackSessionFile(sidecarSessionFile, spec.fallbackIndex);
+				const attemptResumeSessionId = spec.fallbackIndex === 0 ? resumeSessionId : undefined;
+				if (resolveClaudeRuntimeMode(defaultCwd) === "sdk") {
+					const { runClaudeAgentViaSdk } = await import("./claude-sdk-runner.js");
+					return runClaudeAgentViaSdk(
+						defaultCwd,
+						attemptAgent,
+						task,
+						step,
+						signal,
+						onUpdate,
+						makeDetails,
+						attemptResumeSessionId,
+						attemptSidecar,
+					);
+				}
+				return runClaudeAgent(
+					defaultCwd,
+					attemptAgent,
+					task,
+					step,
+					signal,
+					onUpdate,
+					makeDetails,
+					attemptResumeSessionId,
+					attemptSidecar,
+				);
+			}
+
+			const crossedFromClaude = primaryRuntime === "claude";
+			const attemptSessionFile = crossedFromClaude
+				? makeCrossRuntimeFallbackSessionFile(sessionFile, spec.fallbackIndex)
+				: sessionFile;
+			const attemptSessionBaseOffset = crossedFromClaude
+				? 0
+				: spec.fallbackIndex === 0
+					? persistedSessionBaseOffset
+					: getSessionFileSize(sessionFile);
+			return runPiAgent(
 				defaultCwd,
-				agent,
+				attemptAgent,
+				agentName,
 				task,
 				step,
 				signal,
 				onUpdate,
 				makeDetails,
-				resumeSessionId,
-				sidecarSessionFile,
+				attemptSessionFile,
+				attemptSessionBaseOffset,
 			);
-		}
-		return runClaudeAgent(
-			defaultCwd,
-			agent,
-			task,
-			step,
-			signal,
-			onUpdate,
-			makeDetails,
-			resumeSessionId,
-			sidecarSessionFile,
-		);
-	}
-
-	let result = await runPiAgent(
-		defaultCwd,
-		agent,
-		agentName,
-		task,
-		step,
-		signal,
-		onUpdate,
-		makeDetails,
-		sessionFile,
-		persistedSessionBaseOffset,
-	);
-
-	let previousModel = agent.model;
-	for (const fallbackModel of resolveModelFallbackChain(agent)) {
-		if (signal?.aborted || result.exitCode === 0) break;
-		const previousResult = result;
-		const fallbackSessionBaseOffset = getSessionFileSize(sessionFile);
-		result = await runPiAgent(
-			defaultCwd,
-			{ ...agent, model: fallbackModel },
-			agentName,
-			task,
-			step,
-			signal,
-			onUpdate,
-			makeDetails,
-			sessionFile,
-			fallbackSessionBaseOffset,
-		);
-		appendModelFallbackDiagnostic(result, previousModel, fallbackModel, previousResult);
-		previousModel = fallbackModel;
-	}
-	return result;
+		},
+		onFallback: (next, previous) => {
+			appendModelFallbackDiagnostic(
+				next.result,
+				previous.spec.model,
+				next.spec.model,
+				previous.result,
+				previous.spec.runtime,
+				next.spec.runtime,
+			);
+		},
+	});
+	return completedAttempt.result;
 }
 
 function appendModelFallbackDiagnostic(
 	result: SingleResult,
 	previousModel: string | undefined,
-	fallbackModel: string,
+	fallbackModel: string | undefined,
 	previousResult: SingleResult,
+	previousRuntime: AgentConfig["runtime"],
+	fallbackRuntime: AgentConfig["runtime"],
 ): void {
 	const previousFailure = previousResult.errorMessage || previousResult.stderr.trim() || getFinalOutput(previousResult.messages).trim();
 	appendStderrDiagnostic(
 		result,
-		`Model ${previousModel ?? "(inherit current model)"} failed with exit ${previousResult.exitCode}; retried with fallback model ${fallbackModel}.`,
+		`Model ${previousModel ?? "(inherit current model)"} (${previousRuntime}) failed with exit ${previousResult.exitCode}; retried with fallback model ${fallbackModel ?? "(inherit current model)"} (${fallbackRuntime}).`,
 	);
+	if (previousResult.sessionFile && previousResult.sessionFile !== result.sessionFile) {
+		appendStderrDiagnostic(result, `Previous attempt session: ${previousResult.sessionFile}`);
+	}
 	if (previousFailure) appendStderrDiagnostic(result, `Previous model error: ${previousFailure}`);
 }
 
