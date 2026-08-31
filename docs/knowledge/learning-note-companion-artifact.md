@@ -23,8 +23,8 @@ applies_to:
 source:
   - user-direction:2026-07-17-learning-note-companion
   - user-direction:2026-08-30-study-hard-meta-review-shared-shell
-reviewed_at: 2026-08-30
-reviewed_commit: 5d2d11a996e096090f0485917b729ca63ed54051
+reviewed_at: 2026-08-31
+reviewed_commit: 59d090bb8b6de0901ba47190d511e65217fee977
 related:
   - frame-v2-learning-note-pilot
   - study-hard-public-engine-private-publisher
@@ -129,6 +129,19 @@ Notion 저장은 기존 Study Hard payload와 private publisher 경계를 유지
 - 기존 `noteDocument`와 run identity를 보존한 채 `metaReview`와 `activeSurface=review`만 연결합니다.
 - 같은 URL의 dormant run은 선택하지 않습니다.
 - generated browser `render()`와 `setSurface()`를 실제 DOM에서 실행했을 때 코드 리뷰 탭과 review surface가 활성화됩니다.
+
+## Review Conversation Ownership Rule
+
+Meta Review 질문은 Pi transcript 알림만으로 완료하지 않습니다. `questions.jsonl`의 질문·답변이 canonical이고, Study Hard 코드 리뷰 drawer는 현재 질문 ID를 pin해 selection·polling·render 변화 뒤에도 같은 thread를 유지합니다.
+
+- 새 질문 응답 ID를 즉시 현재 thread로 pin합니다.
+- reload처럼 client pin이 없으면 canonical의 최신 질문을 다시 엽니다.
+- 현재 selection의 exact-context 질문과 pinned thread를 함께 보여 줍니다.
+- `모든 대화`에서 selection scope와 무관하게 canonical Q&A 전체를 다시 찾을 수 있습니다.
+- `모든 대화` composer의 새 질문은 전체 PR `session` scope로 전달합니다.
+- 질문이 없으면 실행 phase도 없으며 `답변 경로 확인 중` 같은 유령 상태를 표시하지 않습니다.
+
+질문의 source scope와 evidence anchor는 답변 근거로 보존하지만, context가 바뀌었다는 이유로 이미 열린 대화를 숨기는 필터로 사용하지 않습니다. Pi transcript는 durable notification이고, 질문·답변을 읽고 이어가는 사용자-facing owner는 같은 Study Hard drawer입니다.
 
 ## Workflow Boundary
 
