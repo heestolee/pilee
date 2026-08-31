@@ -23,7 +23,7 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-11-worktree-cwd-binding
 reviewed_at: 2026-08-31
-reviewed_commit: 090cb14078e5ca278d45a76da01d366aebcec6dc
+reviewed_commit: c712406a5bed5a5dbd0dab67a7b7a6257fc2ba5e
 related:
   - worktree-session-continuity
   - session-identity-over-filenames
@@ -40,7 +40,7 @@ Worktree는 단순한 디렉터리 편의 기능이 아니라 작업 실행 경�
 
 ## Runtime Binding Rule
 
-worktree session이 활성화됐다면 session header의 cwd와 exact session file이 실행 경계의 source of truth입니다. Slash `/wt new`·`/wt fork`는 worktree/session 생성 후 현재 panel을 그 exact target으로 직접 전환하고, compact/full continuation을 전환 뒤에 전달합니다. `worktree_create`·`worktree_fork` tool과 PR review·Frame/TFT workflow는 source panel을 유지하고 durable target READY가 확인된 새 panel에서 실행 경계를 만듭니다. `/wt switch`·`worktree_switch`는 current panel을 기존 worktree session으로 전환합니다. 어떤 경로든 session 전환이 실패했다면 절대경로만 들고 구현을 계속하지 않습니다. `/frame`과 Frame Studio 같은 identity 계산도 `ctx.cwd`만 믿지 말고 현재 session file의 header cwd를 먼저 읽어 worktree-bound artifact로 승격해야 합니다.
+worktree session이 활성화됐다면 session header의 cwd와 exact session file이 실행 경계의 source of truth입니다. Slash `/wt new`는 worktree/session 생성 후 현재 panel을 그 exact target으로 직접 전환하고 compact continuation을 전달합니다. Slash `/wt fork`는 공통 생성 후 현재 panel을 직접 전환하거나 새 탭·오른쪽 panel의 durable READY를 확인한 뒤 full-lineage continuation을 전달합니다. `worktree_create`·`worktree_fork` tool과 PR review·Frame/TFT workflow는 기존 source-panel/new-panel READY 계약을 유지합니다. `/wt switch`·`worktree_switch`는 current panel을 기존 worktree session으로 전환합니다. 어떤 경로든 session 전환이 실패했다면 절대경로만 들고 구현을 계속하지 않습니다. `/frame`과 Frame Studio 같은 identity 계산도 `ctx.cwd`만 믿지 말고 현재 session file의 header cwd를 먼저 읽어 worktree-bound artifact로 승격해야 합니다.
 
 planning frame에서 `fork해서 시작`을 선택한 경우 실행 경계는 “worktree가 생겼다”가 아니라 “새 작업 panel의 exact session이 READY이고 첫 implementation slice continuation이 전달됐다”가 기준입니다. `frame_worktree_fork`는 저장된 `/frame` command context를 사용하되 일반 slash `/wt fork`와 분리된 composed workflow runner를 호출하고, source panel을 보존한 채 planning frame/task를 승격합니다. command context나 READY가 없으면 worktree를 만들지 않거나 생성 artifact를 정리하고 BLOCKED로 멈춥니다.
 

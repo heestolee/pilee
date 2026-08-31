@@ -23,7 +23,7 @@ source:
   - user-direction:2026-05-17-full-worktree-fork-default
   - user-direction:2026-08-25-workspace-activation-redesign
 reviewed_at: 2026-08-31
-reviewed_commit: 090cb14078e5ca278d45a76da01d366aebcec6dc
+reviewed_commit: c712406a5bed5a5dbd0dab67a7b7a6257fc2ba5e
 related:
   - worktree-execution-boundary
   - worktree-session-continuity
@@ -32,7 +32,7 @@ related:
 
 ## Judgment
 
-Worktree 생성은 단순한 파일 시스템 작업이 아니라 실행 경계와 세션 계보를 동시에 만드는 결정입니다. runtime profile이 protected repo로 지정한 업무 레포에서도 사용자가 현재 보고 있는 패널의 대화가 기본 source session입니다. 다만 source가 어디인지와 target을 어느 panel에서 활성화할지는 workflow별로 다릅니다. 사용자가 직접 실행한 slash `/wt new`·`/wt fork`는 기존 생성 방식대로 현재 panel을 target session으로 전환합니다. Agent tool·PR review·Frame/TFT처럼 source panel 보존 자체가 목적에 포함된 composed workflow만 placement를 물어 새 panel을 엽니다.
+Worktree 생성은 단순한 파일 시스템 작업이 아니라 실행 경계와 세션 계보를 동시에 만드는 결정입니다. runtime profile이 protected repo로 지정한 업무 레포에서도 사용자가 현재 보고 있는 패널의 대화가 기본 source session입니다. 다만 source가 어디인지와 target을 어느 panel에서 활성화할지는 workflow별로 다릅니다. 사용자가 직접 실행한 slash `/wt new`는 기존 생성 방식대로 현재 panel을 target session으로 전환합니다. Slash `/wt fork`는 공통 생성을 마친 뒤 현재 panel·새 탭·오른쪽 panel 중 사용자가 고른 위치에서 활성화합니다. Agent tool·PR review·Frame/TFT처럼 source panel 보존 자체가 목적에 포함된 composed workflow는 별도 placement/READY 계약을 유지합니다.
 
 ## Gate Rule
 

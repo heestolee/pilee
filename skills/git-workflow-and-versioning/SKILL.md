@@ -188,7 +188,7 @@ The "NOT TOUCHED" section shows scope discipline and helps reviewers.
 
 - “새 branch를 만들어 작업”은 현재 workspace에서 branch만 생성·전환합니다. 격리가 더 안전하다는 이유로 worktree를 만들지 않습니다.
 - production 기반 branch 전환은 현재 worktree를 in-place로 바꾸는 `/to-production` 계약을 사용합니다.
-- `/wt new`, `/wt fork`, `worktree_create`, `worktree_fork`는 사용자가 worktree topology를 명시적으로 허용한 경우에만 실행합니다. slash `/wt new|fork`는 생성 후 현재 panel을 target session으로 직접 전환하고, agent tool·PR review·Frame/TFT처럼 source panel 보존이 workflow 계약인 경우에만 새 panel placement를 묻습니다.
+- `/wt new`, `/wt fork`, `worktree_create`, `worktree_fork`는 사용자가 worktree topology를 명시적으로 허용한 경우에만 실행합니다. slash `/wt new`는 생성 후 현재 panel로 직접 전환합니다. Slash `/wt fork`는 공통 생성 후 `현재 패널`·`새 탭`·`오른쪽 패널` 중 활성화 위치를 묻습니다. Agent tool·PR review·Frame/TFT처럼 source panel 보존이 workflow 계약인 경우에는 기존 new-panel placement/READY 계약을 유지합니다.
 - `/wt switch`와 `worktree_switch`만 기존 worktree session을 current panel에서 여는 명시적 이동 경로입니다.
 - 새 panel open/READY/continuation 실패를 current-panel switch나 절대경로 작업으로 대체하지 않습니다.
 
