@@ -29,7 +29,7 @@ source:
   - user-direction:2026-08-30-meaning-chart-zoom-overlay
   - user-direction:2026-08-31-meta-review-study-hard-worker-lifecycle-parity
 reviewed_at: 2026-09-01
-reviewed_commit: 20ea93e
+reviewed_commit: 09bfcc3
 related:
   - evidence-first-verification-gate
   - live-artifact-preview-pattern
@@ -105,11 +105,11 @@ Review worktree는 read-only 실행 경계입니다. dependency bootstrap을 자
 
 Meta Review drawer는 모든 설명·검증·변경 요청을 Study Hard와 같은 `launchProgrammaticQuestionWorker`로 즉시 실행합니다. 메인 Pi에 routing follow-up을 보내지 않으며 worker는 표준 `#N` lifecycle로 질문 thread에 답변·실패·stale·재시도를 돌려줍니다. GitHub PR worker는 current panel checkout이 아니라 immutable run source와 `repository + expectedHeadSha`를 읽고, current-work worker만 captured root의 live diff freshness를 요구합니다. 공통 상태 전이와 recovery 계약은 [질문 UI와 실행 owner는 분리한다](./question-ui-execution-owner-routing.md)를 따릅니다.
 
-사용자가 current-work에서 명시적으로 수정을 요청하면 worker는 repository를 직접 편집하지 않고 patch artifact를 만듭니다. Coordinator가 source pin과 root를 다시 검증하고 patch·targeted validation을 적용한 뒤 새 Meta Review revision을 캡처합니다. GitHub PR immutable source에서는 변경 artifact를 거부합니다.
+사용자가 current-work에서 명시적으로 수정을 요청하면 worker는 repository를 직접 편집하지 않고 patch artifact를 만듭니다. Coordinator가 source pin과 root를 다시 검증하고 patch·targeted validation을 적용한 뒤 새 Meta Review revision을 캡처합니다. 기존 Q&A snapshot은 새 run identity로 승계하고, 기존 Meta Review completion prompt를 owner Pi에 전달해 pending chunk inspection과 submit을 자동으로 시작합니다. GitHub PR immutable source에서는 변경 artifact를 거부합니다.
 
 답변은 `쉬운 설명 → 코드에서 확인된 사실 → 아직 모르는 정책/가정 → 리뷰 판단` 순서와 source evidence를 갖고 `questions.jsonl` append-only snapshot으로 보존됩니다. terminal answer/fail/stale는 한 snapshot으로 기록하고 늦은 callback이 다시 열지 못합니다. pending execution이 있는 동안만 live state를 polling하고 모두 끝나면 멈춥니다. Polling 중에는 open details, 문서·drawer·thread scroll, composer draft와 focus를 복원해 읽던 위치를 초기화하지 않습니다.
 
-Study Hard의 메모보드는 `학습 메모 | 코드 리뷰` 탭을 가진 하나의 공통 card renderer입니다. 두 canonical을 합치지 않고 adapter만 공용화하며 코드 리뷰 메모에는 worker 번호, 변경 파일, validation, refresh revision을 함께 표시합니다.
+Study Hard의 메모보드는 `학습 메모 | 코드 리뷰` 탭을 가진 하나의 공통 card renderer입니다. 두 canonical을 합치지 않고 adapter만 공용화하며 코드 리뷰 메모에는 worker 번호, 변경 파일, validation, refresh revision을 함께 표시합니다. 질문 ID가 같아도 source별 UI key를 사용하며 refresh run이 ready 되기 전후를 `갱신 중/완료`로 구분합니다.
 
 Meta Review session의 review truth는 immutable run과 checkout metadata이지만, workflow가 source conversation에서 시작됐다면 전체 transcript와 `parentSession` lineage도 기본 보존합니다. Source context는 정책·의도·이전 판단을 제공하고, run/head metadata는 코드 revision truth를 제공합니다.
 

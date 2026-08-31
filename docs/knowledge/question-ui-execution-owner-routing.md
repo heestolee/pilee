@@ -28,7 +28,7 @@ source:
   - user-direction:2026-08-30-study-hard-question-drawer-overlay
   - user-direction:2026-08-31-meta-review-study-hard-worker-lifecycle-parity
 reviewed_at: 2026-09-01
-reviewed_commit: 20ea93e
+reviewed_commit: 09bfcc3
 related:
   - study-hard-worker-flexible-generation-strict-apply
   - human-pr-review-precedent-harness
@@ -122,12 +122,12 @@ Worker output은 답변 근거가 아니라 검증 대상입니다.
 - GitHub PR worker에서 current panel `ctx.cwd`는 실행 위치일 뿐 review truth가 아닙니다. `sourcePath`의 immutable evidence를 우선하고 추가 source는 `repository + expectedHeadSha`를 지정한 remote API 또는 pinned git object로 읽습니다. `expectedSourceSha256`는 `source.json` 파일 바이트 hash가 아니라 JSON의 `sourceSha256` 필드이자 normalized `source.diff` identity입니다.
 - 적용 직전 GitHub PR 질문은 저장된 immutable `source.diff`와 `source.json.sourceSha256`가 route pin과 같은지 검증합니다. PR 최신 head 변화는 별도 freshness badge와 명시적 새 run refresh가 담당하며, 기존 run에 달린 질문은 그 revision에 귀속합니다.
 - current-work 질문만 captured root의 현재 HEAD와 base 대비 tracked·untracked diff를 다시 계산합니다. 관찰된 head/hash/root/diff가 pin과 다를 때 `stale`로 끝냅니다.
-- 명시적 변경 요청은 worker가 repository를 직접 수정하지 않고 schema v2의 unified patch, changed files, targeted validation command를 제안합니다. Coordinator는 pin을 다시 확인하고 `git apply --check` 뒤 patch를 적용하며 allowlist direct command만 실행하고 새 Meta Review revision을 캡처합니다.
+- 명시적 변경 요청은 worker가 repository를 직접 수정하지 않고 schema v2의 unified patch, changed files, targeted validation command를 제안합니다. Coordinator는 pin을 다시 확인하고 `git apply --check` 뒤 patch를 적용하며 allowlist direct command만 실행하고 새 Meta Review revision을 캡처합니다. 기존 질문 snapshot은 새 runId로 재귀속해 승계하고 기존 Meta Review completion prompt를 owner Pi에 전달하므로 새 별도 runner 없이 review submit까지 이어집니다.
 - GitHub PR immutable source의 change artifact는 repository에 적용하지 않습니다. validation 또는 refresh 실패가 patch 적용 사실을 숨기지 않도록 question의 `change.status`에 별도로 남깁니다.
 
 ## Shared Memo Board and Polling Rule
 
-Study Hard의 기존 생각 보드는 공통 memo item/card renderer로 확장합니다. `학습 메모`와 `코드 리뷰` 탭은 같은 카드 geometry, 상태 filter, worker 번호, 답변 펼치기, 원문 이동 action을 사용하지만 canonical은 Study Hard state와 Meta Review `questions.jsonl`로 분리합니다. 코드 리뷰 카드는 답변뿐 아니라 변경 파일, validation 결과, captured refresh revision도 함께 보여줍니다.
+Study Hard의 기존 생각 보드는 공통 memo item/card renderer로 확장합니다. `학습 메모`와 `코드 리뷰` 탭은 같은 카드 geometry, 상태 filter, worker 번호, 답변 펼치기, 원문 이동 action을 사용하지만 canonical은 Study Hard state와 Meta Review `questions.jsonl`로 분리합니다. 코드 리뷰 카드는 답변뿐 아니라 변경 파일, validation 결과, refresh revision을 함께 보여주고, source별 UI key와 revision ready 상태로 펼침·갱신 중·갱신 완료를 구분합니다.
 
 Active 질문 polling은 card를 갱신하더라도 사용자의 읽기 상태를 지우지 않습니다. DOM 교체 전후에 open details index, review/document/drawer/thread scroll, composer draft, input focus와 selection을 캡처·복원합니다. 코드 리뷰 메모 탭에서도 active worker가 있으면 같은 polling을 계속합니다.
 

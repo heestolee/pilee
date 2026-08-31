@@ -208,9 +208,9 @@ artifact path는 현재 run의 고정 파일만 허용하며, 성공한 뒤 tran
 
 Meta Review drawer는 메인 Pi routing turn을 만들지 않고 Study Hard와 같은 programmatic worker lifecycle을 바로 사용합니다. 질문·답변·실패는 같은 question ID/thread에 남고 실패·stale는 같은 ID로 재시도합니다.
 
-Current-work에서 사용자가 명시적으로 수정을 요청하면 worker는 source를 직접 편집하지 않고 schema v2 patch artifact를 제안합니다. Coordinator가 route pin과 현재 diff를 다시 검증해 patch와 좁은 validation을 적용하고 새 Meta Review revision을 캡처합니다. GitHub PR immutable source에서는 변경을 적용하지 않습니다.
+Current-work에서 사용자가 명시적으로 수정을 요청하면 worker는 source를 직접 편집하지 않고 schema v2 patch artifact를 제안합니다. Coordinator가 route pin과 현재 diff를 다시 검증해 patch와 좁은 validation을 적용하고 새 Meta Review revision을 캡처합니다. 기존 질문 thread는 새 run identity로 승계하고 기존 Meta Review completion workflow를 owner Pi에 전달해 pending inspection과 submit을 이어갑니다. GitHub PR immutable source에서는 변경을 적용하지 않습니다.
 
-Pending execution이 있는 동안만 polling하며 open details, scroll, draft와 focus를 복원합니다. 메모보드의 `학습 메모 | 코드 리뷰` 탭은 같은 card renderer를 쓰되 canonical state는 합치지 않습니다.
+Pending execution이 있는 동안만 polling하며 open details, scroll, draft와 focus를 복원합니다. 메모보드의 `학습 메모 | 코드 리뷰` 탭은 같은 card renderer를 쓰되 canonical state는 합치지 않고 source별 UI key를 사용합니다. 변경 적용 뒤에는 refresh revision 상태를 `갱신 중/완료/실패`로 구분합니다.
 
 ## 완료 응답
 
