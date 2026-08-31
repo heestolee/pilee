@@ -40,8 +40,8 @@ source:
   - user-direction:2026-05-17-full-worktree-fork-default
   - user-direction:2026-08-18-pr-review-checkout-session
   - user-direction:2026-08-25-workspace-activation-redesign
-reviewed_at: 2026-08-26
-reviewed_commit: 272c85be373f745c6e80cb0b33296ebd568ecf58
+reviewed_at: 2026-08-31
+reviewed_commit: 10f943eef618fff46b0074024f33cf652b1a5566
 related:
   - subagent-model-policy
   - pilee-knowledge-system
@@ -73,7 +73,7 @@ fork-panel에서 종료된 대화는 transcript를 주입하는 것보다 세션
 
 ## Context Sharing Rule
 
-worktree 생성의 context sharing은 command 의미에 맞춰 나뉩니다. `/wt fork`와 `worktree_fork`는 source panel 대화의 조사·판단·파일 포인터를 그대로 이어받는 것이 사용자 기대이므로 full transcript와 `parentSession` lineage를 기본으로 복사합니다. P0/P1/P2는 위치 표시일 뿐 기본 source를 바꾸지 않습니다. Full fork가 실패하면 빈 session이나 minimal fallback에서 작업을 시작하지 않고 생성 artifact를 정리한 뒤 BLOCKED 처리합니다. 반대로 `/wt new`는 깨끗한 세션이고, source session provenance만 header/meta에 남깁니다. `--minimal-context` / `minimalContext: true`를 명시한 경우에만 최근 user prompt, source session `/archive <path>` reference, 선택적 summary를 담은 최소 전달 pack을 붙입니다.
+worktree 생성의 context sharing은 command 의미에 맞춰 나뉩니다. `/wt fork`와 `worktree_fork`는 source panel 대화의 조사·판단·파일 포인터를 그대로 이어받는 것이 사용자 기대이므로 full transcript와 `parentSession` lineage를 기본으로 복사합니다. P0/P1/P2는 위치 표시일 뿐 기본 source를 바꾸지 않습니다. Full fork가 실패하면 빈 session이나 minimal fallback에서 작업을 시작하지 않고 생성 artifact를 정리한 뒤 BLOCKED 처리합니다. 반대로 `/wt new`는 깨끗한 세션입니다. Source session이 이미 있으면 provenance를 header/meta에 남기지만, 깨끗한 Pi 세션에서 아직 source JSONL이 없으면 기본 `/wt new`는 provenance 없이 시작할 수 있습니다. `--carry-context`는 source session이 없으면 생성 전에 차단하고, `--minimal-context` / `minimalContext: true`는 source가 있을 때만 최근 user prompt, source session `/archive <path>` reference, 선택적 summary를 담은 최소 전달 pack을 붙입니다.
 
 최소 전달 정보도 “보조 힌트”가 아니라 복구 가능한 artifact입니다. 새 session JSONL에 실제 `worktree-context` custom message로 persist되어야 하며, `.pi/worktree-meta.json`에는 `context.mode`, source session file/title/cwd, target session file, full transcript copy 여부가 남아야 합니다. UI의 cwd binding도 `전문 계승`, `최소 전달 메모 저장`, `대체 전달 메모 저장`처럼 실제 전달 상태를 말해야 합니다. handoff를 숨긴다는 뜻은 전달 사실을 감추는 것이 아니라, 사용자가 별도 handoff 절차를 수행해야만 worktree를 만들 수 있는 UX를 없앤다는 뜻입니다.
 

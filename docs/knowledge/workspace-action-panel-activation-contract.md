@@ -24,8 +24,8 @@ applies_to:
   - /wt switch
 source:
   - user-direction:2026-08-25-workspace-activation-redesign
-reviewed_at: 2026-08-26
-reviewed_commit: 272c85be373f745c6e80cb0b33296ebd568ecf58
+reviewed_at: 2026-08-31
+reviewed_commit: 10f943eef618fff46b0074024f33cf652b1a5566
 related:
   - worktree-execution-boundary
   - worktree-session-continuity
@@ -71,7 +71,7 @@ Host adapter runtime E2E는 사용자가 작업 중인 terminal·tab·window를 
 
 ## Context and Continuation
 
-`/wt fork`와 목적형 workflow의 fork는 full transcript와 `parentSession` lineage를 기본으로 보존합니다. `/wt new`의 기본은 clean session이지만 source session provenance는 header/metadata에 남겨 복구 가능성을 유지합니다. Full context를 요청했는데 `SessionManager.forkFrom`이 실패하면 빈 session이나 minimal fallback에서 작업을 시작하지 않고 BLOCKED 처리합니다.
+`/wt fork`와 목적형 workflow의 fork는 full transcript와 `parentSession` lineage를 기본으로 보존합니다. `/wt new`의 기본은 clean session입니다. Source session이 이미 있으면 header/metadata에 provenance를 남기지만, 깨끗한 Pi 세션의 첫 action이라 아직 source JSONL이 없으면 provenance를 꾸며내거나 기본 `/wt new`를 차단하지 않습니다. Exact target cwd/session READY는 그대로 검증합니다. `--carry-context`처럼 실제 source context를 요구한 경우에만 source session이 없으면 worktree 생성 전에 BLOCKED 처리합니다. Full context를 요청했는데 `SessionManager.forkFrom`이 실패하면 빈 session이나 minimal fallback에서 작업을 시작하지 않고 BLOCKED 처리합니다.
 
 Worktree directory나 session file을 만들었다고 workflow가 완료된 것은 아닙니다. PR review는 Review Studio와 `/diff`를 사용할 수 있는 target session까지, Frame fork는 승격된 frame/task를 읽고 첫 ready implementation slice를 시작하는 continuation까지 닫혀야 합니다.
 
