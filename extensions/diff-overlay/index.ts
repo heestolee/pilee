@@ -2706,13 +2706,13 @@ export class DiffOverlay {
 		const maxOffset = commitPanelViewport(prefixRows + fileRows, contentH).maxOffset;
 		st.commitFileScrollOffset = clamp(st.commitFileScrollOffset, 0, maxOffset);
 
-		if (matchesKey(data, Key.up)) {
+		if (matchesKey(data, Key.up) && (!files || files.length === 0)) {
 			st.commitFileScrollOffset = Math.max(0, st.commitFileScrollOffset - ARROW_SCROLL_STEP);
 			st.commitFileManualScroll = true;
 			tui.requestRender();
 			return;
 		}
-		if (matchesKey(data, Key.down)) {
+		if (matchesKey(data, Key.down) && (!files || files.length === 0)) {
 			st.commitFileScrollOffset = Math.min(maxOffset, st.commitFileScrollOffset + ARROW_SCROLL_STEP);
 			st.commitFileManualScroll = true;
 			tui.requestRender();
@@ -2750,10 +2750,10 @@ export class DiffOverlay {
 		const maxIndex = files.length - 1;
 		st.commitFileSelectedIndex = clamp(st.commitFileSelectedIndex, 0, maxIndex);
 		const selectedIndex = st.commitFileSelectedIndex;
-		if (matchesKey(data, "k")) {
+		if (matchesKey(data, Key.up) || matchesKey(data, "k")) {
 			st.commitFileSelectedIndex = clamp(selectedIndex - 1, 0, maxIndex);
 			st.commitFileManualScroll = false;
-		} else if (matchesKey(data, "j")) {
+		} else if (matchesKey(data, Key.down) || matchesKey(data, "j")) {
 			st.commitFileSelectedIndex = clamp(selectedIndex + 1, 0, maxIndex);
 			st.commitFileManualScroll = false;
 		} else if (matchesKey(data, Key.enter)) {
@@ -2871,8 +2871,7 @@ export class DiffOverlay {
 		lines.push(`  ${t.fg("warning", "Enter")}  ${t.fg("muted", "오른쪽 상세 패널로 이동")}`);
 		lines.push("");
 		lines.push(`  ${t.fg("accent", "── commit 모드: 오른쪽 (파일/diff) ──")}`);
-		lines.push(`  ${t.fg("warning", "↑/↓")}    ${t.fg("muted", "10줄 스크롤")}`);
-		lines.push(`  ${t.fg("warning", "j/k")}    ${t.fg("muted", "파일 선택")}`);
+		lines.push(`  ${t.fg("warning", "↑/↓·j/k")} ${t.fg("muted", "파일 선택")}`);
 		lines.push(`  ${t.fg("warning", "u/i")}    ${t.fg("muted", "100줄 스크롤")}`);
 		lines.push(`  ${t.fg("warning", "Enter")}  ${t.fg("muted", "diff 펼치기/접기")}`);
 		lines.push(`  ${t.fg("warning", "m")}      ${t.fg("muted", "커밋 메시지 접기/펼치기")}`);
@@ -2961,7 +2960,7 @@ export class DiffOverlay {
 							: "  ↑/↓ 10lines  ·  j/k 1line  ·  u/i 100lines  ·  g/G Top/Bottom  ·  / Search  ·  s Scope  ·  w Wrap  ·  a Full  ·  c Changed-only  ·  r Review  ·  , Help  ·  q Close"
 				: st.focus === "left"
 					? "  ↑/↓ Select Commit  ·  m Message  ·  Enter → Details  ·  Tab/v Toggle Diff  ·  S Stash  ·  q/Esc Close"
-					: "  ↑/↓ 10lines  ·  j/k Select File  ·  u/i 100lines  ·  g/G Top/Bottom  ·  m Message  ·  Enter Fold/Unfold  ·  r Review  ·  ←/Esc → Commits  ·  q Close";
+					: "  ↑/↓·j/k Select File  ·  u/i 100lines  ·  g/G Top/Bottom  ·  m Message  ·  Enter Fold/Unfold  ·  r Review  ·  ←/Esc → Commits  ·  q Close";
 		footer.push(t.fg("dim", hint));
 		footer.push(...new DynamicBorder((s: string) => t.fg("accent", s)).render(w));
 

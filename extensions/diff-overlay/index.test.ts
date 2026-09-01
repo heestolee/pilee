@@ -235,6 +235,67 @@ test("commit details render the full message before files on one scroll surface"
 	assert.doesNotMatch(collapsed, /fix: full subject/u);
 });
 
+test("commit detail arrow keys move file selection while preserving message display", () => {
+	const commit = { hash: "abc123", shortHash: "abc123", author: "author", relativeDate: "1h", subject: "fix: full subject" };
+	const files = [
+		{
+			path: "src/a.ts",
+			status: "modified",
+			rawStatus: "M",
+			previousPath: null,
+			diffTotals: { additions: 2, deletions: 1, binaryFiles: 0 },
+		},
+		{
+			path: "src/b.ts",
+			status: "modified",
+			rawStatus: "M",
+			previousPath: null,
+			diffTotals: { additions: 1, deletions: 1, binaryFiles: 0 },
+		},
+	];
+	const state = {
+		showHelp: false,
+		searchMode: false,
+		reviewInput: { active: false },
+		viewMode: "commit",
+		focus: "right",
+		commits: [commit],
+		commitSelectedIndex: 0,
+		commitFilesCache: new Map([[commit.hash, files]]),
+		commitFilesLoading: new Set(),
+		commitMessageCache: new Map([[commit.hash, "fix: full subject\n\nCause paragraph."]]),
+		commitMessageLoading: new Set(),
+		commitMessageExpanded: true,
+		commitExpandedByHash: new Map(),
+		commitFileDiffCache: new Map(),
+		commitFileDiffLoading: new Set(),
+		commitFileSelectedIndex: 0,
+		commitFileScrollOffset: 0,
+		commitFileManualScroll: true,
+		reviewDrafts: [],
+		wrapLines: true,
+		showFullFile: false,
+	} as any;
+	const theme = {
+		fg: (_color: string, text: string) => text,
+		bg: (_color: string, text: string) => text,
+		bold: (text: string) => text,
+	} as any;
+	let renderRequests = 0;
+	const overlay = new DiffOverlay({} as any, "/repo", state, () => {});
+	const tui = { requestRender: () => { renderRequests += 1; }, terminal: { rows: 40 } };
+
+	overlay.handleInput("\u001b[B", tui);
+	assert.equal(state.commitFileSelectedIndex, 1);
+	assert.equal(state.commitFileManualScroll, false);
+	assert.match(renderCommitFiles(theme, state, 80, 20).join("\n"), /Cause paragraph\./u);
+
+	overlay.handleInput("\u001b[A", tui);
+	assert.equal(state.commitFileSelectedIndex, 0);
+	assert.equal(state.commitMessageExpanded, true);
+	assert.equal(renderRequests >= 2, true);
+});
+
 test("commit panel reserves an indicator row without hiding the final content row", () => {
 	assert.deepEqual(commitPanelViewport(7, 4), { contentHeight: 3, maxOffset: 4, showIndicator: true });
 	assert.deepEqual(commitPanelViewport(3, 4), { contentHeight: 4, maxOffset: 0, showIndicator: false });
