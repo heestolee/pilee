@@ -1,12 +1,19 @@
 ---
 name: meta-review
-description: 현재 작업 또는 다른 사람의 GitHub PR을 읽기 전용으로 검토해 거의 모든 diff를 학습 가능한 설명으로 풀고, exact evidence에 연결된 리뷰 초안·판단·LLM 재발 방지 메타 관점을 만든다. pilee `/meta-review [PR URL]` extension이 내부에서 인라인 로드하는 전용 workflow다. GitHub 댓글 게시, 코드 수정, Issue 생성은 하지 않는다.
+description: 현재 세션의 작업 diff 또는 지정한 GitHub PR을 읽기 전용으로 검토해 거의 모든 diff를 학습 가능한 설명으로 풀고, exact evidence에 연결된 리뷰 초안·판단·LLM 재발 방지 메타 관점을 만든다. `/meta-review`는 현재 작업, `/meta-review <PR URL>`은 지정 PR을 source로 삼는다. GitHub 댓글 게시, 코드 수정, Issue 생성은 하지 않는다.
 disable-model-invocation: true
 ---
 
 # Meta Review
 
-`/meta-review [PR URL]`이 캡처한 immutable diff를 먼저 독립적으로 읽고, 모든 변경 파일과 추가·삭제 줄을 semantic explanation hunk로 설명한 뒤 각 실제 리뷰 포인트를 사람이 채택·수정·폐기할 수 있게 만든다.
+`/meta-review`가 캡처한 immutable diff를 먼저 독립적으로 읽고, 모든 변경 파일과 추가·삭제 줄을 semantic explanation hunk로 설명한 뒤 각 실제 리뷰 포인트를 사람이 채택·수정·폐기할 수 있게 만든다.
+
+## Source contract
+
+- 인자 없는 `/meta-review`가 기본 경로다. 현재 세션 worktree의 base→HEAD·staged·unstaged diff와 untracked 파일을 현재 작업 source로 캡처한다.
+- `/meta-review <GitHub PR URL>`은 다른 사람의 PR이나 고정된 원격 review source를 명시할 때 사용한다.
+- PR 생성 전이라는 이유로 URL을 요구하지 않는다. 현재 작업 diff가 있으면 Meta Review를 시작할 수 있다.
+- 두 경로 모두 실행 시점 source를 immutable snapshot으로 고정한 뒤 동일한 설명·리뷰 workflow를 사용한다.
 
 ## 핵심 경계
 

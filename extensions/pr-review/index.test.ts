@@ -447,6 +447,7 @@ test("/meta-review without args opens current work in the Study Hard code review
 		const tools = new Map<string, any>();
 		const messages: any[] = [];
 		const opened: any[] = [];
+		const notices: string[] = [];
 		const pi = {
 			registerCommand(name: string, value: any) { commands.set(name, value); },
 			registerTool(value: any) { tools.set(value.name, value); },
@@ -467,7 +468,15 @@ test("/meta-review without args opens current work in the Study Hard code review
 			},
 		} as any;
 		registerPrReview(pi, { stateRoot, now: () => 1000, openMetaReview: async (_pi, _ctx, state) => { opened.push(state); return { studio: { url: "http://127.0.0.1/review" }, studyRunId: "study-current" } as any; } });
-		await commands.get("meta-review").handler("", { cwd: "/tmp/acme-repo", hasUI: true, ui: { notify() {}, setStatus() {} } });
+		const context = { cwd: "/tmp/acme-repo", hasUI: true, ui: { notify(message: string) { notices.push(message); }, setStatus() {} } };
+		await commands.get("meta-review").handler("help", context);
+		assert.match(notices[0] ?? "", /\/meta-review\s+현재 작업 diff 검토/);
+		assert.match(notices[0] ?? "", /\/meta-review <GitHub PR URL>\s+지정 PR 검토/);
+		await assert.rejects(
+			() => tools.get("meta_review_run").execute("status-before-run", { action: "status" }, undefined, undefined, context),
+			/현재 작업은 \/meta-review, 지정 PR은 \/meta-review <GitHub PR URL>/,
+		);
+		await commands.get("meta-review").handler("", context);
 		assert.equal(opened.length, 1);
 		assert.equal(opened[0].target.kind, "current-work");
 		assert.equal(messages.length, 1);

@@ -88,16 +88,20 @@ function readMetaReviewSubmissionArtifact(state: PrReviewRunState, artifactPath:
 	return value as MetaReviewSubmissionArtifact;
 }
 
-const HELP = `Meta Review — guided diff walkthrough and human-centered review harness
+const HELP = `Meta Review — 현재 작업 또는 지정 PR의 diff 설명·리뷰
 
-Usage:
-  /meta-review <GitHub PR URL>
+사용법:
+  /meta-review                  현재 작업 diff 검토
+  /meta-review <GitHub PR URL>  지정 PR 검토
   /meta-review help
 
-Output:
+기본 검토 대상:
+  URL이 없으면 현재 세션 worktree의 base→HEAD·working diff와 untracked 파일을 캡처합니다.
+
+결과:
   모든 변경 파일·diff 설명 + exact evidence review draft + LLM 재발 방지 meta perspective
 
-Safety:
+안전 경계:
   read-only exact checkout · source panel 보존 · no code changes · no GitHub review posting`;
 
 interface RegisterOptions {
@@ -205,7 +209,7 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			if (signal?.aborted) throw new Error("Meta Review run cancelled");
 			const runId = params.runId ?? latestRunId;
-			if (!runId) throw new Error("active Meta Review run이 없습니다. /meta-review [PR URL]로 시작하세요.");
+			if (!runId) throw new Error("active Meta Review run이 없습니다. 현재 작업은 /meta-review, 지정 PR은 /meta-review <GitHub PR URL>로 시작하세요.");
 			const state = runFromId(stateRoot, runId);
 			const source = readJson<ReviewSourceBundle>(state.sourcePath);
 			const repository = `${state.target.owner}/${state.target.repo}`;
