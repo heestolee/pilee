@@ -122,12 +122,19 @@ function appendSessionEntry(session: SessionManager, entry: Record<string, unkno
 	appendFileSync(path, `${JSON.stringify(entry)}\n`, "utf8");
 }
 
-function createReviewSession(ctx: ExtensionCommandContext, worktreePath: string, metadata: PrReviewWorkspaceMetadata, activationId: string): string {
-	const source = sourceSessionFile(ctx);
-	if (!source || !existsSync(source)) throw new Error("source Pi session file is required for PR review provenance");
-	const session = SessionManager.forkFrom(source, worktreePath);
+function createReviewSession(source: string | null, worktreePath: string, metadata: PrReviewWorkspaceMetadata, activationId: string): string {
+	const session = source
+		? SessionManager.forkFrom(source, worktreePath)
+		: SessionManager.create(worktreePath, sessionDirForWorktree(worktreePath));
 	const sessionFile = session.getSessionFile();
-	if (!sessionFile) throw new Error("full transcript fork did not create a target PR review session");
+	if (!sessionFile) throw new Error("target PR review session file is missing");
+	if (!source) {
+		const header = session.getHeader();
+		if (!header) throw new Error("fresh PR review session header is missing");
+		writeFileSync(sessionFile, `${JSON.stringify(header)}\n`, "utf8");
+	}
+	const fullTranscriptCopied = Boolean(source);
+	const contextMode = source ? "full-transcript" : "fresh";
 	let parentId = session.getLeafId();
 	const now = new Date().toISOString();
 	const infoId = `pr_review_info_${Date.now().toString(36)}`;
@@ -154,16 +161,21 @@ function createReviewSession(ctx: ExtensionCommandContext, worktreePath: string,
 			`- Head: ${metadata.headSha}`,
 			metadata.runId ? `- Meta Review run: ${metadata.runId}` : "- Meta Review run: 아직 연결되지 않음",
 			`- Metadata: ${prReviewWorkspacePath(worktreePath)}`,
-			`- Source conversation: ${source}`,
-			`- Reopen source: /archive ${source}`,
-			"- Source conversation 전문과 parentSession lineage를 계승했다. checkout metadata가 /diff와 /meta-review가 공유하는 source truth다.",
+			...(source ? [
+				`- Source conversation: ${source}`,
+				`- Reopen source: /archive ${source}`,
+				"- Source conversation 전문과 parentSession lineage를 계승했다. checkout metadata가 /diff와 /meta-review가 공유하는 source truth다.",
+			] : [
+				"- Source conversation: 없음 (fresh review session)",
+				"- 복사할 기존 대화 파일이 없어 PR checkout/run metadata만으로 새 리뷰 세션을 시작했다.",
+			]),
 			"- 이 worktree는 read-only review workspace다. 사용자가 별도 수정을 요청하기 전에는 repository를 변경하지 않는다.",
 		].join("\n"),
 		details: {
 			metadataPath: prReviewWorkspacePath(worktreePath),
-			sourceSessionFile: source,
-			fullTranscriptCopied: true,
-			contextMode: "full-transcript",
+			sourceSessionFile: source ?? undefined,
+			fullTranscriptCopied,
+			contextMode,
 			activationId,
 		},
 	});
@@ -233,8 +245,9 @@ export async function runPrReviewWorktreeFromCommandContext(
 	request: PrReviewWorktreeRequest,
 	runtime: PrReviewWorktreeRuntime = {},
 ): Promise<PrReviewWorktreeResult> {
-	const source = sourceSessionFile(ctx);
-	if (!source || !existsSync(source)) return { status: "blocked", reason: "source Pi session provenance가 없어 review worktree를 만들지 않았습니다." };
+	const sourceCandidate = sourceSessionFile(ctx);
+	const source = sourceCandidate && existsSync(sourceCandidate) ? sourceCandidate : null;
+	const contextMode = source ? "full-transcript" : "fresh";
 	const repoRoot = await resolveRepoRoot(pi, ctx, request.repo);
 	if (!repoRoot) return { status: "blocked", reason: `등록된 repository를 찾지 못했습니다: ${request.repo}` };
 
@@ -247,7 +260,7 @@ export async function runPrReviewWorktreeFromCommandContext(
 		id: `pr-review-${request.number}-${request.headSha.slice(0, 8)}-${Date.now().toString(36)}`,
 		ctx,
 		workspaceAction: existedBefore ? "use-existing-worktree" : "create-worktree",
-		contextMode: "full",
+		contextMode: source ? "full" : "clean",
 		authorizationSource: "command",
 		authorizationSourceId: request.intent === "diff" ? "/diff" : "/meta-review",
 		continuation: reviewContinuation(request),
@@ -306,8 +319,8 @@ export async function runPrReviewWorktreeFromCommandContext(
 		branch: identity.branch,
 		worktreeName: identity.name,
 		worktreePath,
-		sourceSessionFile: source,
-		contextMode: "full-transcript",
+		sourceSessionFile: source ?? undefined,
+		contextMode,
 		activationContractId: contract.id,
 		activationIntent: request.intent ?? "meta-review",
 		diffAutoOpenPending: request.intent === "diff",
@@ -317,13 +330,13 @@ export async function runPrReviewWorktreeFromCommandContext(
 
 	let sessionFile: string | undefined;
 	try {
-		sessionFile = createReviewSession(ctx, worktreePath, metadata, contract.id);
+		sessionFile = createReviewSession(source, worktreePath, metadata, contract.id);
 		writePrReviewWorkspaceMetadata(worktreePath, { ...metadata, targetSessionFile: sessionFile });
 	} catch (error) {
 		cleanupReviewSession(sessionFile);
 		if (created) await cleanupCreatedReviewWorktree(pi, repoRoot, worktreePath, identity.branch);
 		else if (previousMetadata) writePrReviewWorkspaceMetadata(worktreePath, previousMetadata);
-		return { status: "failed", reason: `PR review full session fork failed: ${error instanceof Error ? error.message : String(error)}`, name: identity.name, branch: identity.branch, path: worktreePath };
+		return { status: "failed", reason: `PR review session creation failed: ${error instanceof Error ? error.message : String(error)}`, name: identity.name, branch: identity.branch, path: worktreePath };
 	}
 
 	const activate = runtime.activate ?? activateWorkspaceInNewPanel;
@@ -331,7 +344,7 @@ export async function runPrReviewWorktreeFromCommandContext(
 		contract,
 		cwd: worktreePath,
 		sessionFile,
-		sourceSessionFile: source,
+		sourceSessionFile: source ?? undefined,
 		title: `PR #${request.number} review · ${request.title}`,
 	});
 	if (activation.status !== "activated") {
@@ -366,7 +379,7 @@ export async function runPrReviewWorktreeFromCommandContext(
 	writePrReviewWorkspaceMetadata(worktreePath, activatedMetadata);
 	writeWorktreeMeta(worktreePath, {
 		...readWorktreeMeta(worktreePath),
-		context: { mode: "full-transcript", sourceSessionFile: source, targetSessionFile: sessionFile, fullTranscriptCopied: true, createdAt: Date.now() },
+		context: { mode: contextMode, sourceSessionFile: source ?? undefined, targetSessionFile: sessionFile, fullTranscriptCopied: Boolean(source), createdAt: Date.now() },
 		activation: { contract, status: "activated", sessionFile, panelLabel: activation.panelLabel, forkId: activation.forkId, readyAt: activation.readyAt },
 	});
 	return { status: "activated", name: identity.name, branch: identity.branch, path: worktreePath, sessionFile, reused, activation };

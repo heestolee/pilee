@@ -24,7 +24,7 @@ export interface PrReviewWorkspaceMetadata {
 	worktreePath: string;
 	sourceSessionFile?: string;
 	targetSessionFile?: string;
-	contextMode?: "full-transcript";
+	contextMode?: "full-transcript" | "fresh";
 	activationContractId?: string;
 	activationIntent?: "meta-review" | "diff";
 	diffAutoOpenPending?: boolean;
@@ -56,7 +56,7 @@ export function validatePrReviewWorkspaceMetadata(value: unknown): PrReviewWorks
 	if (metadata.headRefName !== undefined && typeof metadata.headRefName !== "string") throw new Error("invalid PR review workspace headRefName");
 	if (metadata.sourceSessionFile !== undefined && typeof metadata.sourceSessionFile !== "string") throw new Error("invalid PR review workspace sourceSessionFile");
 	if (metadata.targetSessionFile !== undefined && typeof metadata.targetSessionFile !== "string") throw new Error("invalid PR review workspace targetSessionFile");
-	if (metadata.contextMode !== undefined && metadata.contextMode !== "full-transcript") throw new Error("invalid PR review workspace contextMode");
+	if (metadata.contextMode !== undefined && metadata.contextMode !== "full-transcript" && metadata.contextMode !== "fresh") throw new Error("invalid PR review workspace contextMode");
 	if (metadata.activationContractId !== undefined && typeof metadata.activationContractId !== "string") throw new Error("invalid PR review workspace activationContractId");
 	if (metadata.activationIntent !== undefined && !["meta-review", "diff"].includes(String(metadata.activationIntent))) throw new Error("invalid review context activationIntent");
 	if (metadata.diffAutoOpenPending !== undefined && typeof metadata.diffAutoOpenPending !== "boolean") throw new Error("invalid review context diffAutoOpenPending");

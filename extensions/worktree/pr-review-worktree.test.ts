@@ -44,7 +44,7 @@ function setupRepository() {
 	git(repo, ["push", "-q", "-u", "origin", "main"]);
 	const baseSha = git(repo, ["rev-parse", "HEAD"]);
 	git(repo, ["switch", "-q", "-c", "feature/review"]);
-	writeFileSync(join(repo, "value.txt"), "head\n", "utf8");
+	writeFileSync(join(repo, "value.txt"), `head\nfixture=${root}\n`, "utf8");
 	git(repo, ["add", "value.txt"]);
 	git(repo, ["commit", "-q", "-m", "head"]);
 	const headSha = git(repo, ["rev-parse", "HEAD"]);
@@ -101,6 +101,7 @@ function contractBuilder(order: string[]) {
 test("PR review creates a head-pinned worktree and activates a full-lineage exact session in a new panel", async () => {
 	const f = setupRepository();
 	let targetSessionDir = "";
+	let targetPath = "";
 	try {
 		const sourceBefore = readFileSync(f.sourceSession, "utf8");
 		const order: string[] = [];
@@ -126,6 +127,7 @@ test("PR review creates a head-pinned worktree and activates a full-lineage exac
 				return { status: "activated", contract: input.contract, placement: "right", terminalId: "term-42", forkId: "fork-42", panelLabel: "P1", readyAt: "2026-08-25T00:00:00.000Z", continuationDispatched: true };
 			},
 		});
+		targetPath = result.path ?? "";
 		assert.equal(result.status, "activated");
 		if (result.status !== "activated") return;
 		targetSessionDir = sessionDirFor(result.path);
@@ -150,6 +152,52 @@ test("PR review creates a head-pinned worktree and activates a full-lineage exac
 		assert.equal(metadata?.activation?.panelLabel, "P1");
 	} finally {
 		if (targetSessionDir) rmSync(targetSessionDir, { recursive: true, force: true });
+		if (targetPath) rmSync(targetPath, { recursive: true, force: true });
+		rmSync(f.root, { recursive: true, force: true });
+	}
+});
+
+test("PR review starts a fresh target session when the source session file is not materialized yet", async () => {
+	const f = setupRepository();
+	let targetSessionDir = "";
+	let targetPath = "";
+	try {
+		rmSync(f.sourceSession, { force: true });
+		let activationInput: any;
+		const order: string[] = [];
+		const pi = {
+			exec(command: string, args: string[], options?: { cwd?: string }) { return Promise.resolve(run(command, args, options?.cwd ?? f.repo)); },
+		} as any;
+		const ctx = {
+			cwd: f.repo,
+			hasUI: true,
+			sessionManager: { getSessionFile: () => f.sourceSession, getSessionName: () => undefined, getCwd: () => f.repo },
+			ui: { notify() {} },
+		} as any;
+		const result = await runPrReviewWorktreeFromCommandContext(pi, ctx, request(f.baseSha, f.headSha), {
+			buildContract: contractBuilder(order) as any,
+			activate: async (_pi, _ctx, input) => {
+				activationInput = input;
+				return { status: "activated", contract: input.contract, placement: "right", terminalId: "term-fresh", forkId: "fork-fresh", panelLabel: "P1", readyAt: "2026-09-02T00:00:00.000Z", continuationDispatched: true };
+			},
+		});
+		targetPath = result.path ?? "";
+		assert.equal(result.status, "activated", result.status === "activated" ? undefined : result.reason);
+		if (result.status !== "activated") return;
+		targetSessionDir = sessionDirFor(result.path);
+		const targetSession = readFileSync(result.sessionFile, "utf8");
+		const header = JSON.parse(targetSession.split("\n")[0]!);
+		assert.equal(header.parentSession, undefined);
+		assert.match(targetSession, /fresh review session/);
+		assert.doesNotMatch(targetSession, /PR #42를 리뷰해줘/);
+		assert.equal(activationInput.sourceSessionFile, undefined);
+		assert.equal(activationInput.contract.contextMode, "clean");
+		const metadata = readPrReviewWorkspaceMetadata(result.path);
+		assert.equal(metadata?.sourceSessionFile, undefined);
+		assert.equal(metadata?.contextMode, "fresh");
+	} finally {
+		if (targetSessionDir) rmSync(targetSessionDir, { recursive: true, force: true });
+		if (targetPath) rmSync(targetPath, { recursive: true, force: true });
 		rmSync(f.root, { recursive: true, force: true });
 	}
 });
@@ -194,8 +242,8 @@ test("PR review activation failure removes its new session/worktree and never fa
 test("PR review preserves its session and worktree when panel termination is not confirmed", async () => {
 	const f = setupRepository();
 	let targetSessionDir = "";
+	let targetPath = "";
 	try {
-		let targetPath = "";
 		let targetSessionFile = "";
 		const order: string[] = [];
 		const pi = {
@@ -231,6 +279,7 @@ test("PR review preserves its session and worktree when panel termination is not
 		assert.equal(readPrReviewWorkspaceMetadata(targetPath)?.targetSessionFile, targetSessionFile);
 	} finally {
 		if (targetSessionDir) rmSync(targetSessionDir, { recursive: true, force: true });
+		if (targetPath) rmSync(targetPath, { recursive: true, force: true });
 		rmSync(f.root, { recursive: true, force: true });
 	}
 });
