@@ -904,7 +904,12 @@ test("Meta Review standalone export는 작성된 파일 순서와 이유를 읽�
 	assert.equal(progress.style.width, "53%");
 	assert.equal(percent.textContent, "53% 읽음");
 	assert.ok(detailToggle);
+	const firstSection = sections.get("meta-review-file-1");
+	assert.ok(firstSection);
+	firstSection.offsetTop = 1200;
 	assert.doesNotThrow(() => detailToggle?.());
+	assert.equal(classNames.get("meta-review-file-2")?.has("active"), true);
+	assert.equal(classNames.get("meta-review-file-1")?.has("active"), false);
 });
 
 test("Study Hard renders understanding answers as collapsed callout disclosures without architecture visuals", () => {
