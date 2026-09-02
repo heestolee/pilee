@@ -166,8 +166,21 @@ function findingsSection(state: MetaReviewClientState): StudyNoteSection | undef
 	return { id: "meta-review-findings", kind: "reflection", title: "실제 리뷰 포인트", blocks };
 }
 
+function orderedFileGuides(state: MetaReviewClientState): Array<{ guide: MetaReviewClientState["guides"][number]; fileIndex: number; sectionId: string }> {
+	const indexed = state.guides.map((guide, fileIndex) => ({ guide, fileIndex, sectionId: `meta-review-file-${fileIndex + 1}` }));
+	const byPath = new Map(indexed.map((item) => [item.guide.path, item]));
+	const seen = new Set<string>();
+	const ordered = (state.document?.relationships?.readingOrder || []).flatMap((step) => {
+		const item = byPath.get(step.path);
+		if (!item || seen.has(step.path)) return [];
+		seen.add(step.path);
+		return [item];
+	});
+	return [...ordered, ...indexed.filter((item) => !seen.has(item.guide.path))];
+}
+
 function fileSections(state: MetaReviewClientState): StudyNoteSection[] {
-	return state.guides.map((guide, fileIndex) => {
+	return orderedFileGuides(state).map(({ guide, fileIndex, sectionId }) => {
 		const file = state.source.files.find((candidate) => candidate.path === guide.path);
 		const blocks: StudyNoteBlock[] = [
 			{
@@ -197,7 +210,7 @@ function fileSections(state: MetaReviewClientState): StudyNoteSection[] {
 			if (source) blocks.push({ id: `${prefix}-code`, type: "code", code: { language: "diff", code: source, lineNumberMode: "none", reference: { kind: "code", label: guide.path, path: guide.path } } });
 			if (hunk.uncertainty) blocks.push({ id: `${prefix}-uncertainty`, type: "callout", tone: "warning", title: "불확실한 가정", body: hunk.uncertainty });
 		}
-		return { id: `meta-review-file-${fileIndex + 1}`, kind: "node", subjectId: file?.id, title: guide.path, blocks };
+		return { id: sectionId, kind: "node", subjectId: file?.id, title: guide.path, blocks };
 	});
 }
 
@@ -231,7 +244,7 @@ export function buildMetaReviewNoteDocument(state: MetaReviewClientState): Study
 }
 
 function buildMetaReviewReadingFlow(state: MetaReviewClientState): MetaReviewExportReadingStep[] {
-	const sectionIdByPath = new Map(state.guides.map((guide, index) => [guide.path, `meta-review-file-${index + 1}`]));
+	const sectionIdByPath = new Map(orderedFileGuides(state).map((item) => [item.guide.path, item.sectionId]));
 	return (state.document?.relationships?.readingOrder || []).flatMap((step) => {
 		const sectionId = sectionIdByPath.get(step.path);
 		return sectionId ? [{ path: step.path, reason: step.reason, sectionId }] : [];

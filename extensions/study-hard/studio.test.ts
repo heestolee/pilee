@@ -857,6 +857,54 @@ test("Meta Review standalone export는 작성된 파일 순서와 이유를 읽�
 	assert.match(rail, /href="#meta-review-file-2"/);
 	assert.match(rail, /consumer를 먼저 확인합니다/);
 	assert.match(rail, /producer 계약으로 돌아갑니다/);
+	assert.ok(html.indexOf('<section id="meta-review-file-2">') < html.indexOf('<section id="meta-review-file-1">'));
+
+	const classNames = new Map<string, Set<string>>();
+	const link = (sectionId: string) => {
+		const names = new Set<string>();
+		classNames.set(sectionId, names);
+		return {
+			getAttribute: (name: string) => name === "data-export-reading-link" ? sectionId : null,
+			classList: { toggle: (name: string, enabled: boolean) => enabled ? names.add(name) : names.delete(name) },
+		};
+	};
+	const links = [link("meta-review-file-2"), link("meta-review-file-1")];
+	const sections = new Map([
+		["meta-review-file-2", { offsetTop: 100 }],
+		["meta-review-file-1", { offsetTop: 900 }],
+	]);
+	const progress = { style: { width: "" } };
+	const percent = { textContent: "" };
+	const windowListeners = new Map<string, () => void>();
+	let detailToggle: (() => void) | undefined;
+	const mockWindow = {
+		scrollY: 0,
+		innerHeight: 400,
+		addEventListener: (name: string, listener: () => void) => windowListeners.set(name, listener),
+		requestAnimationFrame: (callback: () => void) => callback(),
+	};
+	const mockDocument = {
+		documentElement: { scrollHeight: 2000 },
+		getElementById: (id: string) => sections.get(id),
+		querySelectorAll: (selector: string) => selector === "[data-export-reading-link]" ? links
+			: selector === "[data-export-reading-progress]" ? [progress]
+				: selector === "[data-export-reading-percent]" ? [percent]
+					: selector === "details" ? [{ addEventListener: (name: string, listener: () => void) => { if (name === "toggle") detailToggle = listener; } }]
+						: [],
+	};
+	const inlineScript = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map((match) => match[1]).find((script) => script.includes("data-export-reading-link"));
+	assert.ok(inlineScript);
+	new Function("window", "document", "mermaid", inlineScript)(mockWindow, mockDocument, { initialize: () => undefined });
+	assert.equal(classNames.get("meta-review-file-2")?.has("active"), true);
+	assert.equal(classNames.get("meta-review-file-1")?.has("active"), false);
+	mockWindow.scrollY = 850;
+	windowListeners.get("scroll")?.();
+	assert.equal(classNames.get("meta-review-file-2")?.has("visited"), true);
+	assert.equal(classNames.get("meta-review-file-1")?.has("active"), true);
+	assert.equal(progress.style.width, "53%");
+	assert.equal(percent.textContent, "53% 읽음");
+	assert.ok(detailToggle);
+	assert.doesNotThrow(() => detailToggle?.());
 });
 
 test("Study Hard renders understanding answers as collapsed callout disclosures without architecture visuals", () => {

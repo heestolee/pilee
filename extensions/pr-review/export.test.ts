@@ -99,3 +99,41 @@ test("Meta Review export model은 overview·관계·의미·finding·전체 설�
 		"신규 상태의 자동 노출을 막기 위해서입니다.",
 	]) assert.match(serialized, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 });
+
+test("Meta Review export 문서의 파일 section은 authored reading order를 따른다", () => {
+	const document = buildMetaReviewNoteDocument({
+		run: {
+			target: { kind: "github-pr", url: "https://github.com/acme/repo/pull/42", number: 42, title: "Reading order", headSha: "head" },
+		},
+		source: {
+			sourceSha256: "source",
+			files: [
+				{ id: "F001", path: "src/first.ts", lines: [] },
+				{ id: "F002", path: "src/second.ts", lines: [] },
+			],
+		},
+		document: {
+			overview: { summary: "요약", reviewFocus: "순서" },
+			relationships: {
+				summary: "consumer에서 producer로 읽습니다.",
+				relations: [],
+				readingOrder: [
+					{ path: "src/second.ts", reason: "consumer를 먼저 확인합니다." },
+					{ path: "src/first.ts", reason: "producer 계약으로 돌아갑니다." },
+				],
+			},
+			meanings: [],
+		},
+		guides: [
+			{ path: "src/first.ts", role: "producer", changeReason: "계약 변경", flow: "producer", hunks: [] },
+			{ path: "src/second.ts", role: "consumer", changeReason: "소비 확인", flow: "consumer", hunks: [] },
+		],
+		explanationCoverage: { filesExplained: 2, totalFiles: 2, changedLinesExplained: 0, totalChangedLines: 0 },
+		cards: [],
+		questions: [],
+	} as any);
+
+	const fileSections = document.sections.filter((section) => section.kind === "node");
+	assert.deepEqual(fileSections.map((section) => section.title), ["src/second.ts", "src/first.ts"]);
+	assert.deepEqual(fileSections.map((section) => section.id), ["meta-review-file-2", "meta-review-file-1"]);
+});
