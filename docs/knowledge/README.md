@@ -199,7 +199,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-06-02 | 63f2a62 | fork-panel, revive, repanel, ghostty, spatial, panel |
 | [Frame은 마지막에 Plan을 합성한다](./frame-plan-synthesis-continuity.md) | active | high | 2026-08-31 | 090cb14 | frame, implementation-plan, tft-studio, worktree, continuity, planning |
 | [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-06-02 | 7861f10 | frame, planning, identity, home-directory, ticket, session-title |
-| [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-09-02 | ac0ef13 | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
+| [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-09-02 | 7295019 | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
 | [Frame v2는 작업·학습 lane을 양방향으로 연결한다](./frame-v2-learning-note-pilot.md) | active | high | 2026-07-18 | 88b560c | frame-v2, frame, study-hard, learning-note, worktree |
 | [Meta Review는 전체 diff 설명 뒤에 독립 판단과 precedent를 붙인다](./human-pr-review-precedent-harness.md) | active | high | 2026-09-02 | 5dd4575 | pr-review, human-review, precedent, evidence, glimpse, meta-review |
 | [Interactive shell은 bash가 아닌 터미널 세션이다](./interactive-shell-overlay-tool.md) | active | high | 2026-06-29 | 680f937 | interactive-shell, shell, tui, dev-server, overlay, dispatch |
