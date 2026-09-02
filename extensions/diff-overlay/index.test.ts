@@ -85,11 +85,13 @@ test("parseDiffArgs supports PR auto mode and explicit base override", () => {
 	assert.deepEqual(parseDiffArgs("development"), { error: "지원하지 않는 인자입니다: development" });
 });
 
-test("/diff <PR URL> prepares an independent head-pinned review context", async () => {
+test("/diff <PR URL> current-panel handoff stops using the stale source command context", async () => {
 	const commands = new Map<string, any>();
 	const events = new Map<string, any>();
 	const requests: any[] = [];
 	const statuses: Array<[string, string | undefined]> = [];
+	const notifications: string[] = [];
+	let switched = false;
 	const pi = {
 		registerCommand(name: string, value: any) { commands.set(name, value); },
 		on(name: string, handler: any) { events.set(name, handler); },
@@ -112,19 +114,27 @@ test("/diff <PR URL> prepares an independent head-pinned review context", async 
 		}),
 		reviewWorkspaceRunner: async (_pi, _ctx, request) => {
 			requests.push(request);
-			return { status: "activated", name: "review-pr-42-bbbbbbbb", branch: "review/pr-42-bbbbbbbb", path: "/tmp/review", sessionFile: "/tmp/review.jsonl", reused: false, activation: { status: "activated", panelLabel: "P1", placement: "right" } } as any;
+			switched = true;
+			return { status: "switched", name: "review-pr-42-bbbbbbbb", branch: "review/pr-42-bbbbbbbb", path: "/tmp/review", sessionFile: "/tmp/review.jsonl", reused: false, continuationDispatched: true, contract: { activationTarget: "current-panel" } } as any;
 		},
 	});
 	await commands.get("diff").handler("https://github.com/acme/repo/pull/42", {
 		cwd: "/tmp",
 		hasUI: true,
-		ui: { notify() {}, setStatus(key: string, value?: string) { statuses.push([key, value]); } },
+		ui: {
+			notify(message: string) { notifications.push(message); },
+			setStatus(key: string, value?: string) {
+				if (switched) throw new Error("stale source command context used after switch");
+				statuses.push([key, value]);
+			},
+		},
 	});
 	assert.equal(requests.length, 1);
 	assert.equal(requests[0].intent, "diff");
 	assert.equal(requests[0].runId, undefined);
 	assert.equal(requests[0].headSha, "b".repeat(40));
-	assert.deepEqual(statuses.at(-1), ["diff", undefined]);
+	assert.deepEqual(statuses.at(-1), ["diff", "PR #42 checkout 준비 중"]);
+	assert.equal(notifications.some((message) => /외부 PR \/diff 준비 실패/.test(message)), false);
 	assert.ok(events.has("session_start"));
 });
 

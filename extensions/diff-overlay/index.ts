@@ -3084,6 +3084,7 @@ export function registerDiffOverlay(pi: ExtensionAPI, options: DiffOverlayExtens
 					headRefName: target.headRefName,
 					headSha: target.headSha,
 				});
+				if (activated.status === "switched") return;
 				ctx.ui.setStatus("diff", undefined);
 				if (activated.status !== "activated") throw new Error(activated.reason);
 				return;
