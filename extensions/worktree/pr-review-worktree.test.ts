@@ -24,6 +24,14 @@ function sessionDirFor(path: string): string {
 	return join(homedir(), ".pi", "agent", "sessions", `--${path.slice(1).replace(/\//g, "-")}--`);
 }
 
+function cleanupReviewTarget(repo: string, targetPath: string, targetSessionDir: string): void {
+	if (targetSessionDir) rmSync(targetSessionDir, { recursive: true, force: true });
+	if (!targetPath) return;
+	const removed = run("git", ["worktree", "remove", "--force", targetPath], repo);
+	if (removed.code !== 0) rmSync(targetPath, { recursive: true, force: true });
+	run("git", ["worktree", "prune"], repo);
+}
+
 function setupRepository() {
 	const root = mkdtempSync(join(tmpdir(), "pilee-pr-review-worktree-"));
 	const origin = join(root, "origin.git");
@@ -174,8 +182,7 @@ test("PR review offers only current panel or new tab and opens a head-pinned ses
 		assert.equal(metadata?.activation?.placement, "tab");
 		assert.equal(metadata?.activation?.panelLabel, "P1");
 	} finally {
-		if (targetSessionDir) rmSync(targetSessionDir, { recursive: true, force: true });
-		if (targetPath) rmSync(targetPath, { recursive: true, force: true });
+		cleanupReviewTarget(f.repo, targetPath, targetSessionDir);
 		rmSync(f.root, { recursive: true, force: true });
 	}
 });
@@ -247,8 +254,58 @@ test("PR review switches the current panel to a fresh target session and warns b
 		assert.equal(metadata?.contextMode, "fresh");
 		assert.equal(metadata?.activation?.target, "current-panel");
 	} finally {
-		if (targetSessionDir) rmSync(targetSessionDir, { recursive: true, force: true });
-		if (targetPath) rmSync(targetPath, { recursive: true, force: true });
+		cleanupReviewTarget(f.repo, targetPath, targetSessionDir);
+		rmSync(f.root, { recursive: true, force: true });
+	}
+});
+
+test("PR review without interactive UI does not choose the current panel implicitly", async () => {
+	const f = setupRepository();
+	let targetPath = "";
+	try {
+		const pi = {
+			exec(command: string, args: string[], options?: { cwd?: string }) { return Promise.resolve(run(command, args, options?.cwd ?? f.repo)); },
+		} as any;
+		const result = await runPrReviewWorktreeFromCommandContext(pi, {
+			cwd: f.repo,
+			hasUI: false,
+			sessionManager: { getSessionFile: () => f.sourceSession },
+			ui: { notify() {} },
+		} as any, request(f.baseSha, f.headSha));
+		targetPath = result.path ?? "";
+		assert.equal(result.status, "blocked");
+		assert.match(result.status === "blocked" ? result.reason : "", /열기 위치를 선택하지 않아/);
+		assert.equal(existsSync(targetPath), false);
+	} finally {
+		cleanupReviewTarget(f.repo, targetPath, targetPath ? sessionDirFor(targetPath) : "");
+		rmSync(f.root, { recursive: true, force: true });
+	}
+});
+
+test("PR review current-panel switch cancellation rolls back the prepared worktree, session, and branch", async () => {
+	const f = setupRepository();
+	let targetPath = "";
+	let targetSessionDir = "";
+	try {
+		const pi = {
+			exec(command: string, args: string[], options?: { cwd?: string }) { return Promise.resolve(run(command, args, options?.cwd ?? f.repo)); },
+		} as any;
+		const result = await runPrReviewWorktreeFromCommandContext(pi, {
+			cwd: f.repo,
+			hasUI: true,
+			sessionManager: { getSessionFile: () => f.sourceSession, getSessionName: () => "source review", getCwd: () => f.repo },
+			ui: { notify() {}, async select() { return "현재 패널"; } },
+			async switchSession() { return { cancelled: true }; },
+		} as any, request(f.baseSha, f.headSha));
+		targetPath = result.path ?? "";
+		targetSessionDir = targetPath ? sessionDirFor(targetPath) : "";
+		assert.equal(result.status, "blocked");
+		assert.match(result.status === "blocked" ? result.reason : "", /전환을 취소/);
+		assert.equal(existsSync(targetPath), false);
+		assert.equal(existsSync(targetSessionDir), false);
+		assert.equal(run("git", ["show-ref", "--verify", "--quiet", `refs/heads/review/pr-42-${f.headSha.slice(0, 8)}`], f.repo).code, 1);
+	} finally {
+		cleanupReviewTarget(f.repo, targetPath, targetSessionDir);
 		rmSync(f.root, { recursive: true, force: true });
 	}
 });
@@ -329,8 +386,7 @@ test("PR review preserves its session and worktree when panel termination is not
 		assert.equal(git(targetPath, ["rev-parse", "HEAD"]), f.headSha);
 		assert.equal(readPrReviewWorkspaceMetadata(targetPath)?.targetSessionFile, targetSessionFile);
 	} finally {
-		if (targetSessionDir) rmSync(targetSessionDir, { recursive: true, force: true });
-		if (targetPath) rmSync(targetPath, { recursive: true, force: true });
+		cleanupReviewTarget(f.repo, targetPath, targetSessionDir);
 		rmSync(f.root, { recursive: true, force: true });
 	}
 });

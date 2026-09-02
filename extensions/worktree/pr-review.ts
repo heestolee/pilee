@@ -140,7 +140,7 @@ async function choosePrReviewOpenTarget(
 	ctx: ExtensionCommandContext,
 	request: PrReviewWorktreeRequest,
 ): Promise<PrReviewOpenTarget | null> {
-	if (!ctx.hasUI) return "current";
+	if (!ctx.hasUI) return null;
 	const notice = prReviewCurrentPanelHeadNotice(await currentPanelRevision(pi, ctx.cwd), request);
 	if (notice) ctx.ui.notify(notice, "warning");
 	const selected = await ctx.ui.select(
