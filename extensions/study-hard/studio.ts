@@ -2223,7 +2223,13 @@ async function runMetaReviewNotionSync(handle: StudyHardHandle, conflictResoluti
 		writeFileSync(htmlPath, htmlContent, "utf-8");
 		const htmlAsset: StudyFileExportAsset = { fileName: basename(htmlPath), mimeType: "text/html", path: htmlPath, sha256: createHash("sha256").update(htmlContent).digest("hex") };
 		const inputPath = join(directory, "notion-sync.json");
-		const syncPayload = buildNotionSyncPayload(exportState, [], htmlAsset, undefined, conflictResolution, { artifactKind: "meta-review", artifactLabel: "Meta Review" });
+		const syncPayload = buildNotionSyncPayload(exportState, [], htmlAsset, undefined, conflictResolution, {
+			artifactKind: "meta-review",
+			artifactLabel: "Meta Review",
+			targetSessionId: handle.state.runId,
+			artifactInstanceId: sidecar.sessionId,
+			artifactPlacement: "learning-note-bottom",
+		});
 		writeFileSync(inputPath, JSON.stringify(syncPayload, null, 2), "utf-8");
 		const { stdout } = await execFileAsync(process.env.STUDY_HARD_PYTHON || "python3", [handle.syncScript, "--file", inputPath], { maxBuffer: 4 * 1024 * 1024, timeout: 300_000 });
 		const result = JSON.parse(String(stdout).trim()) as Record<string, unknown>;
@@ -2353,6 +2359,9 @@ function localCalendarDate(now = new Date()): string {
 interface StudyNotionSyncPayloadOptions {
 	artifactKind?: "study-hard" | "meta-review";
 	artifactLabel?: string;
+	targetSessionId?: string;
+	artifactInstanceId?: string;
+	artifactPlacement?: "learning-note-bottom";
 }
 
 function buildNotionSyncPayload(state: StudyHardBoardState, diagramAssets: StudyDiagramExportAsset[], htmlAsset: StudyFileExportAsset, workContract?: ResolvedStudyHardWorkContract, conflictResolution?: Record<string, unknown>, options: StudyNotionSyncPayloadOptions = {}): Record<string, unknown> {
@@ -2360,6 +2369,9 @@ function buildNotionSyncPayload(state: StudyHardBoardState, diagramAssets: Study
 		...materializeVisualReferences(state),
 		artifactKind: options.artifactKind || "study-hard",
 		artifactLabel: options.artifactLabel || "Study Hard",
+		targetSessionId: options.targetSessionId,
+		artifactInstanceId: options.artifactInstanceId,
+		artifactPlacement: options.artifactPlacement,
 		workContract: workContract ? { title: workContract.title, hash: workContract.hash, markdown: workContract.markdown } : undefined,
 		date: state.notionSync?.calendarDate || localCalendarDate(),
 		sourceUrl: state.url,
