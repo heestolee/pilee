@@ -403,6 +403,7 @@ interface StudyHardHandle {
 	syncScript: string;
 	downloadDir: string;
 	notionSyncInFlight: boolean;
+	metaReviewStartInFlight?: Promise<StudyMetaReviewLink>;
 	capabilityToken: string;
 	agentRunner: StudyLearningAgentRunner;
 	agentModel?: string;
@@ -3006,17 +3007,27 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 					sendJson(res, 200, { ok: true, metaReview: handle.state.metaReview, reused: true });
 					return;
 				}
-				const start = requestStudyHardMetaReviewStart(handle.pi, {
-					cwd: handle.cwd || process.cwd(),
-					studyRunId: handle.state.runId,
-				});
-				if (!start) throw new Error("Meta Review extension이 현재 Study Hard 세션의 시작 요청을 받지 못했습니다.");
-				const started = await start;
-				const updated = updateStudyHardStudio(handle.state.runId, {
-					activeSurface: "review",
-					metaReview: { ...started, linkedAt: Date.now() },
-				}, handle.state.revision);
-				sendJson(res, 202, { ok: true, metaReview: updated.state.metaReview, reused: false });
+				const reused = !!handle.metaReviewStartInFlight;
+				if (!handle.metaReviewStartInFlight) {
+					handle.metaReviewStartInFlight = (async () => {
+						const start = requestStudyHardMetaReviewStart(handle.pi, {
+							cwd: handle.cwd || process.cwd(),
+							studyRunId: handle.state.runId,
+						});
+						if (!start) throw new Error("Meta Review extension이 현재 Study Hard 세션의 시작 요청을 받지 못했습니다.");
+						const started = await start;
+						if (handle.state.metaReview) return handle.state.metaReview;
+						const updated = updateStudyHardStudio(handle.state.runId, {
+							activeSurface: "review",
+							metaReview: { ...started, linkedAt: Date.now() },
+						});
+						return updated.state.metaReview!;
+					})().finally(() => {
+						handle.metaReviewStartInFlight = undefined;
+					});
+				}
+				const metaReview = await handle.metaReviewStartInFlight;
+				sendJson(res, 202, { ok: true, metaReview, reused });
 				return;
 			}
 			if (pathname === "/meta-review/state" && req.method === "GET") {

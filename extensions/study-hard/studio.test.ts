@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { after, test } from "node:test";
+import { parseHTML } from "linkedom";
 import { setGlimpseOpenForTests } from "../utils/glimpse.ts";
 import type { LearningCompanionManifest } from "../learning-companion/state.ts";
 import { PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT, type ProgrammaticSubagentLaunchRequest } from "../subagent/programmatic.ts";
@@ -3060,6 +3061,18 @@ test("Study Hard 코드 리뷰 surface는 미연결 첫 진입과 연결 후 갱
 	assert.doesNotMatch(html, /<section class="reviewQuestionPanel"/);
 	assert.match(html, /function requestMetaReviewStart/);
 	assert.match(html, /\/meta-review\/start/);
+	const helperStart = html.indexOf("function renderMetaReviewStartTab()");
+	const helperEnd = html.indexOf("\n    async function requestMetaReviewStart", helperStart);
+	assert.ok(helperStart >= 0 && helperEnd > helperStart);
+	const { document } = parseHTML(html);
+	const renderStartState = new Function("document", "state", "metaReviewStartStatus", "metaReviewStartError", `
+		${html.slice(helperStart, helperEnd)}
+		renderMetaReviewStartTab();
+		var tab=document.getElementById('reviewSurfaceTab');
+		return { text:tab.textContent, disabled:tab.disabled, title:tab.title };
+	`);
+	assert.deepEqual(renderStartState(document, { metaReview: undefined }, "starting", ""), { text: "코드 리뷰 준비 중…", disabled: true, title: "현재 작업 diff를 이 Study Hard 창에서 검토합니다." });
+	assert.deepEqual(renderStartState(document, { metaReview: undefined }, "error", "capture failed"), { text: "코드 리뷰 · 다시 시도", disabled: false, title: "코드 리뷰 시작 실패 · capture failed" });
 	assert.match(html, /function requestMetaReviewRefresh/);
 	assert.match(html, /function scheduleMetaReviewPolling/);
 	assert.match(html, /function metaReviewQuestionNeedsPolling/);
@@ -3430,7 +3443,7 @@ test("Study Hard 코드 리뷰 탭은 미연결 상태에도 보이고 첫 클�
 			emit(name: string, request: any) {
 				if (name !== STUDY_HARD_META_REVIEW_START_EVENT || !request.claim()) return;
 				startCalls += 1;
-				request.onStarted({ runId: "current-review-run", runDir: "/tmp/current-review-run", source: "current-work" });
+				setTimeout(() => request.onStarted({ runId: "current-review-run", runDir: "/tmp/current-review-run", source: "current-work" }), 10);
 			},
 		},
 		exec() { throw new Error("no browser fallback in test"); },
@@ -3445,13 +3458,18 @@ test("Study Hard 코드 리뷰 탭은 미연결 상태에도 보이고 첫 클�
 		assert.doesNotMatch(html, /id="reviewSurfaceTab"[^>]*hidden/);
 		assert.match(html, /function requestMetaReviewStart\(\)/);
 
-		let response = await fetch(new URL("/meta-review/start", handle.url), {
+		const startRequest = () => fetch(new URL("/meta-review/start", handle.url), {
 			method: "POST",
 			headers: authorizedHeaders(handle),
 			body: JSON.stringify({}),
 		});
-		assert.equal(response.status, 202);
-		assert.equal((await response.json() as any).reused, false);
+		const [firstResponse, concurrentResponse] = await Promise.all([startRequest(), startRequest()]);
+		assert.equal(firstResponse.status, 202);
+		assert.equal(concurrentResponse.status, 202);
+		const firstResult = await firstResponse.json() as any;
+		const concurrentResult = await concurrentResponse.json() as any;
+		assert.equal(firstResult.metaReview.runId, concurrentResult.metaReview.runId);
+		assert.deepEqual([firstResult.reused, concurrentResult.reused].sort(), [false, true]);
 		const linked = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
 		assert.equal(linked.url, "https://example.com/learning-source");
 		assert.equal(linked.title, "기존 학습노트");
@@ -3462,7 +3480,7 @@ test("Study Hard 코드 리뷰 탭은 미연결 상태에도 보이고 첫 클�
 		assert.equal(typeof linked.metaReview.linkedAt, "number");
 		assert.equal(startCalls, 1);
 
-		response = await fetch(new URL("/meta-review/start", handle.url), {
+		const response = await fetch(new URL("/meta-review/start", handle.url), {
 			method: "POST",
 			headers: authorizedHeaders(handle),
 			body: JSON.stringify({}),
