@@ -6,15 +6,17 @@ import { test } from "node:test";
 import { parseHTML } from "linkedom";
 import { setGlimpseOpenForTests } from "../utils/glimpse.ts";
 import {
+	STUDY_HARD_META_REVIEW_OPEN_EVENT,
 	registerStudyHardMetaReviewOpenBroker,
 	registerStudyHardMetaReviewStartBroker,
 	requestStudyHardMetaReviewOpen,
 	requestStudyHardMetaReviewStart,
 } from "../study-hard/meta-review-broker.ts";
-import { registerStudyHardBoardTool, stopStudyHardStudios } from "../study-hard/studio.ts";
+import { registerStudyHardBoardTool, startStudyHardStudio, stopStudyHardStudios } from "../study-hard/studio.ts";
 import { createPrReviewQuestion, loadPrReviewQuestions } from "./chat.ts";
 import { captureUnifiedDiff } from "./evidence.ts";
 import { captureCurrentWorkRun, captureGitHubPrRun, parseGitHubPrUrl, registerPrReview } from "./index.ts";
+import { loadPrReviewRun } from "./run.ts";
 
 const BASE_SOURCE = `export function visible(status: string) {
   return status !== "HIDDEN";
@@ -119,6 +121,15 @@ test("Study Hard Meta Review broker는 shared event bus당 owner 하나만 유�
 	const secondPi = { events } as any;
 	let firstOpenCalls = 0;
 	let secondOpenCalls = 0;
+	let legacyOpenCalls = 0;
+	const legacyDispose = events.on(STUDY_HARD_META_REVIEW_OPEN_EVENT, (payload: any) => {
+		if (!payload.claim()) return;
+		legacyOpenCalls += 1;
+		payload.onOpened({ runId: "legacy", url: "http://127.0.0.1:0", statePath: "/tmp/legacy", revision: 0 });
+	});
+	const registrySymbol = Symbol.for("pilee.study-hard.meta-review-open-broker");
+	const registry = ((globalThis as any)[registrySymbol] ??= {});
+	registry.owners = new WeakMap([[events, legacyDispose]]);
 	const input = { ctx: { hasUI: false } as any, url: "https://example.com/review", title: "Review", fallbackRunId: "fallback", patch: {} };
 	const disposeFirst = registerStudyHardMetaReviewOpenBroker(firstPi, async () => {
 		firstOpenCalls += 1;
@@ -134,6 +145,7 @@ test("Study Hard Meta Review broker는 shared event bus당 owner 하나만 유�
 		assert.equal((await completion).runId, "second");
 		assert.equal(firstOpenCalls, 0);
 		assert.equal(secondOpenCalls, 1);
+		assert.equal(legacyOpenCalls, 0);
 		assert.equal(requestStudyHardMetaReviewOpen({} as any, input), undefined);
 	} finally {
 		disposeFirst();
@@ -158,6 +170,69 @@ test("Study Hard Meta Review start broker는 현재 창에 연결할 run만 반�
 		assert.equal(requestStudyHardMetaReviewStart({} as any, { cwd: "/tmp", studyRunId: "study" }), undefined);
 	} finally {
 		dispose();
+	}
+});
+
+test("Study Hard first entry는 실제 PR Review start callback으로 current-work run을 연결한다", async () => {
+	const stateRoot = mkdtempSync(join(tmpdir(), "pilee-meta-review-first-entry-integration-"));
+	const studyStateRoot = mkdtempSync(join(tmpdir(), "pilee-study-hard-first-entry-integration-"));
+	const previousStudyStateDir = process.env.STUDY_HARD_STATE_DIR;
+	process.env.STUDY_HARD_STATE_DIR = studyStateRoot;
+	const events = createTestEventBus();
+	const commands = new Map<string, any>();
+	const tools = new Map<string, any>();
+	const messages: any[] = [];
+	const pi = {
+		events,
+		registerCommand(name: string, value: any) { commands.set(name, value); },
+		registerTool(value: any) { tools.set(value.name, value); },
+		on() {},
+		sendMessage(message: any, options: any) { messages.push({ message, options }); },
+		async exec(command: string, args: string[]) {
+			if (command === "gh") return { code: 1, stdout: "", stderr: "no PR" };
+			if (args[0] === "rev-parse" && args[1] === "--show-toplevel") return { code: 0, stdout: "/tmp/acme-repo\n", stderr: "" };
+			if (args[0] === "branch") return { code: 0, stdout: "feature/current\n", stderr: "" };
+			if (args[0] === "rev-parse" && args[1] === "HEAD") return { code: 0, stdout: "head1234567890\n", stderr: "" };
+			if (args[0] === "symbolic-ref") return { code: 0, stdout: "origin/development\n", stderr: "" };
+			if (args[0] === "merge-base" && args[2] === "origin/development") return { code: 0, stdout: "base1234567890\n", stderr: "" };
+			if (args[0] === "merge-base") return { code: 1, stdout: "", stderr: "" };
+			if (args[0] === "diff") return { code: 0, stdout: DIFF, stderr: "" };
+			if (args[0] === "ls-files") return { code: 0, stdout: "", stderr: "" };
+			if (args[0] === "remote") return { code: 0, stdout: "git@github.com:acme/repo.git\n", stderr: "" };
+			throw new Error(`unexpected ${command} ${args.join(" ")}`);
+		},
+	} as any;
+	registerPrReview(pi, { stateRoot, now: () => 1000 });
+	const handle = await startStudyHardStudio(pi, { hasUI: false, cwd: "/tmp/acme-repo" } as any, {
+		url: "https://example.com/learning-source",
+		runId: "meta-review-first-entry-integration",
+		title: "기존 학습노트",
+	});
+	try {
+		const response = await fetch(new URL("/meta-review/start", handle.url), {
+			method: "POST",
+			headers: { "Content-Type": "application/json", "X-Study-Hard-Capability": handle.capabilityToken },
+			body: JSON.stringify({}),
+		});
+		assert.equal(response.status, 202);
+		const result = await response.json() as any;
+		assert.equal(result.metaReview.source, "current-work");
+		assert.equal(loadPrReviewRun(result.metaReview.runDir).revisionMode, "initial");
+		const board = await fetch(new URL("/state", handle.url)).then((item) => item.json() as Promise<any>);
+		assert.equal(board.url, "https://example.com/learning-source");
+		assert.equal(board.title, "기존 학습노트");
+		assert.equal(board.activeSurface, "review");
+		assert.equal(board.metaReview.runId, result.metaReview.runId);
+		assert.equal(messages.length, 1);
+		assert.equal(messages[0].message.customType, "pilee-meta-review-command");
+		assert.equal(messages[0].message.details.studyRunId, "meta-review-first-entry-integration");
+		assert.equal(messages[0].options.triggerTurn, true);
+	} finally {
+		stopStudyHardStudios();
+		rmSync(stateRoot, { recursive: true, force: true });
+		rmSync(studyStateRoot, { recursive: true, force: true });
+		if (previousStudyStateDir === undefined) delete process.env.STUDY_HARD_STATE_DIR;
+		else process.env.STUDY_HARD_STATE_DIR = previousStudyStateDir;
 	}
 });
 
@@ -232,14 +307,17 @@ test("meta_review_run open은 기존 학습노트 창에 코드리뷰 탭을 연
 		const html = await fetch(board.details.url).then((response) => response.text());
 		const setSurfaceStart = html.indexOf("function setSurface(");
 		const setSurfaceEnd = html.indexOf("\n    function ", setSurfaceStart);
+		const startTabStart = html.indexOf("function renderMetaReviewStartTab()");
+		const startTabEnd = html.indexOf("\n    async function requestMetaReviewStart", startTabStart);
 		const renderStart = html.indexOf("function render(){");
 		const renderEnd = html.indexOf("\n    document.getElementById('historyPreviewClose')", renderStart);
-		assert.ok(setSurfaceStart >= 0 && setSurfaceEnd > setSurfaceStart && renderStart >= 0 && renderEnd > renderStart);
+		assert.ok(setSurfaceStart >= 0 && setSurfaceEnd > setSurfaceStart && startTabStart >= 0 && startTabEnd > startTabStart && renderStart >= 0 && renderEnd > renderStart);
 		const setSurfaceSource = html.slice(setSurfaceStart, setSurfaceEnd);
+		const startTabSource = html.slice(startTabStart, startTabEnd);
 		const renderSource = html.slice(renderStart, renderEnd);
 		const { document, window } = parseHTML(html);
 		const rendered = new Function("document", "window", "initialState", `
-			var state=initialState,metaReviewState=null,metaReviewPollTimer=null;
+			var state=initialState,metaReviewState=null,metaReviewPollTimer=null,metaReviewStartStatus='idle',metaReviewStartError='';
 			function esc(value){return String(value??'');}
 			function thoughtQuestions(){return [];}
 			function thoughtQuestionCategory(){} function thoughtCounts(){} function thoughtGroups(){} function sequenceSource(){}
@@ -248,6 +326,7 @@ test("meta_review_run open은 기존 학습노트 창에 코드리뷰 탭을 연
 			function loadMetaReview(){window.__metaReviewLoaded=(window.__metaReviewLoaded||0)+1;}
 			function post(){return Promise.resolve();}
 			${setSurfaceSource}
+			${startTabSource}
 			${renderSource}
 			render();
 			return {

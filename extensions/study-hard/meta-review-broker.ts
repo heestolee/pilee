@@ -49,6 +49,7 @@ interface StudyHardMetaReviewStartRequest extends StudyHardMetaReviewStartInput 
 interface StudyHardMetaReviewBrokerRegistry {
 	openOwners: WeakMap<object, () => void>;
 	startOwners: WeakMap<object, () => void>;
+	owners?: WeakMap<object, () => void>;
 }
 
 const BROKER_REGISTRY = Symbol.for("pilee.study-hard.meta-review-open-broker");
@@ -100,6 +101,8 @@ export function registerStudyHardMetaReviewOpenBroker(
 	if (!pi.events || typeof pi.events.on !== "function") return () => {};
 	const registry = brokerRegistry();
 	const ownerKey = pi.events as object;
+	registry.owners?.get(ownerKey)?.();
+	registry.owners?.delete(ownerKey);
 	registry.openOwners.get(ownerKey)?.();
 
 	const disposeListener = pi.events.on(STUDY_HARD_META_REVIEW_OPEN_EVENT, (payload) => {
