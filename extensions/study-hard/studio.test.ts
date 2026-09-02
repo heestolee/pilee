@@ -9,6 +9,7 @@ import { PROGRAMMATIC_SUBAGENT_LAUNCH_EVENT, type ProgrammaticSubagentLaunchRequ
 import { captureUnifiedDiff } from "../pr-review/evidence.ts";
 import { enrichReviewSourceDeclarations } from "../pr-review/declarations.ts";
 import { createPrReviewRun, markChunkInspected, saveMetaReviewSubmission } from "../pr-review/run.ts";
+import { STUDY_HARD_META_REVIEW_START_EVENT } from "./meta-review-broker.ts";
 import { applyStudyHardWorkerResult, attachStudyHardLearningCompanion, buildStudyHardStudioHtml, buildStudyNoteExportHtml, checkpointStudyHardLearning, createInitialBoardState, layoutStudyGraph, loadPersistedStudyHardState, markStudyHardWorkerFailed, markStudyHardWorkerStarted, mergeBoardState, openExistingStudyHardStudio, proposeStudyHardLearningChange, recordStudyHardLearningEvent, registerStudyHardBoardTool, resolveStudyNoteBlockVisual, respondStudyHardQuestion, routeStudyHardQuestion, startStudyHardStudio, stopStudyHardStudios, updateStudyHardStudio } from "./studio.ts";
 
 const originalStateDir = process.env.STUDY_HARD_STATE_DIR;
@@ -3041,9 +3042,10 @@ test("Studio 재시작은 중단된 learner 질문을 의미 routing coordinator
 	}
 });
 
-test("Study Hard 코드 리뷰 surface는 Meta Review가 연결될 때만 노출된다", () => {
+test("Study Hard 코드 리뷰 surface는 미연결 첫 진입과 연결 후 갱신을 모두 제공한다", () => {
 	const html = buildStudyHardStudioHtml();
-	assert.match(html, /id="reviewSurfaceTab"[^>]*hidden>코드 리뷰/);
+	assert.match(html, /id="reviewSurfaceTab"[^>]*>코드 리뷰<\/button>/);
+	assert.doesNotMatch(html, /id="reviewSurfaceTab"[^>]*hidden/);
 	assert.match(html, /id="reviewSurface"/);
 	assert.match(html, /id="reviewRefreshButton"/);
 	assert.match(html, /id="reviewFullRefreshButton"/);
@@ -3056,6 +3058,8 @@ test("Study Hard 코드 리뷰 surface는 Meta Review가 연결될 때만 노출
 	assert.match(html, /전체 PR/);
 	assert.match(html, /선택 블록/);
 	assert.doesNotMatch(html, /<section class="reviewQuestionPanel"/);
+	assert.match(html, /function requestMetaReviewStart/);
+	assert.match(html, /\/meta-review\/start/);
 	assert.match(html, /function requestMetaReviewRefresh/);
 	assert.match(html, /function scheduleMetaReviewPolling/);
 	assert.match(html, /function metaReviewQuestionNeedsPolling/);
@@ -3416,6 +3420,59 @@ test("Meta Review polling은 토글·스크롤·draft focus를 캡처하고 복�
 	assert.doesNotMatch(html, /같은 Pi 세션에 전달 중/);
 	assert.match(html, /공통 worker에 전달 중/);
 	assert.match(html, /Worker로 다시 시도/);
+});
+
+test("Study Hard 코드 리뷰 탭은 미연결 상태에도 보이고 첫 클릭 run을 현재 창에 연결한다", async () => {
+	let startCalls = 0;
+	const handle = await startStudyHardStudio({
+		sendMessage() {},
+		events: {
+			emit(name: string, request: any) {
+				if (name !== STUDY_HARD_META_REVIEW_START_EVENT || !request.claim()) return;
+				startCalls += 1;
+				request.onStarted({ runId: "current-review-run", runDir: "/tmp/current-review-run", source: "current-work" });
+			},
+		},
+		exec() { throw new Error("no browser fallback in test"); },
+	} as any, { hasUI: false, cwd: "/tmp/current-work" } as any, {
+		url: "https://example.com/learning-source",
+		runId: "meta-review-first-entry-test",
+		title: "기존 학습노트",
+	});
+	try {
+		const html = await fetch(handle.url).then((response) => response.text());
+		assert.match(html, /id="reviewSurfaceTab"[^>]*>코드 리뷰<\/button>/);
+		assert.doesNotMatch(html, /id="reviewSurfaceTab"[^>]*hidden/);
+		assert.match(html, /function requestMetaReviewStart\(\)/);
+
+		let response = await fetch(new URL("/meta-review/start", handle.url), {
+			method: "POST",
+			headers: authorizedHeaders(handle),
+			body: JSON.stringify({}),
+		});
+		assert.equal(response.status, 202);
+		assert.equal((await response.json() as any).reused, false);
+		const linked = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		assert.equal(linked.url, "https://example.com/learning-source");
+		assert.equal(linked.title, "기존 학습노트");
+		assert.equal(linked.activeSurface, "review");
+		assert.equal(linked.metaReview.runId, "current-review-run");
+		assert.equal(linked.metaReview.runDir, "/tmp/current-review-run");
+		assert.equal(linked.metaReview.source, "current-work");
+		assert.equal(typeof linked.metaReview.linkedAt, "number");
+		assert.equal(startCalls, 1);
+
+		response = await fetch(new URL("/meta-review/start", handle.url), {
+			method: "POST",
+			headers: authorizedHeaders(handle),
+			body: JSON.stringify({}),
+		});
+		assert.equal(response.status, 200);
+		assert.equal((await response.json() as any).reused, true);
+		assert.equal(startCalls, 1, "이미 연결된 코드 리뷰는 새 run을 만들면 안 된다");
+	} finally {
+		stopStudyHardStudios();
+	}
 });
 
 test("Study Hard 코드 리뷰 surface는 공통 worker 질문, 결정, 명시적 refresh 요청을 같은 run에 연결한다", async () => {
