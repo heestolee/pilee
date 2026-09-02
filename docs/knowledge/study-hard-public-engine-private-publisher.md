@@ -19,7 +19,7 @@ source:
   - user-direction:2026-07-21-study-hard-notion-static-export
   - user-direction:2026-09-03-meta-review-export-actions
 reviewed_at: 2026-09-03
-reviewed_commit: 4e8148c
+reviewed_commit: 0662141
 related:
   - private-overlay-package-boundary
   - context-loading-minimal-surface
@@ -76,7 +76,7 @@ Notion token, database ID, page naming, upload body schema를 public extension�
 
 Meta Review도 별도 Notion SDK나 개인 destination을 public code에 추가하지 않습니다. Public `extensions/pr-review`가 최신 ready revision의 document·guide·finding·changed-line evidence·질문을 `noteDocument` 호환 구조로 변환하고, Study Hard가 기존 HTML renderer와 configured publisher를 실행합니다. HTML과 Notion은 반드시 같은 export snapshot을 소비합니다.
 
-Meta Review의 sync metadata는 학습노트 state가 아니라 source review run의 `export-state.json` sidecar에 둡니다. Review series에서 파생한 stable session ID로 같은 Notion 페이지를 찾되 개인 database ID, token, tag와 페이지 naming은 publisher가 계속 소유합니다. Notion에서 선택한 내용을 generated review canonical로 역수입하지 않으며, 충돌 선택은 해당 Notion write 결과에만 적용합니다. 따라서 publisher가 없거나 실패해도 HTML 내보내기와 로컬 Meta Review는 계속 동작합니다.
+Meta Review의 sync metadata는 학습노트 state가 아니라 source review run의 `export-state.json` sidecar에 둡니다. Publisher payload를 만들 때 Study Hard board state를 통째로 spread하지 않고 review export에 필요한 필드만 allowlist해 goals·summary·followups 같은 학습 전용 section이 섞이지 않게 합니다. Review series에서 파생한 stable session ID로 같은 Notion 페이지를 찾되 개인 database ID, token, tag와 페이지 naming은 publisher가 계속 소유합니다. Notion에서 선택한 내용을 generated review canonical로 역수입하지 않으며, 충돌 선택은 해당 Notion write 결과에만 적용합니다. 따라서 publisher가 없거나 실패해도 HTML 내보내기와 로컬 Meta Review는 계속 동작합니다.
 
 ### Section Sync And Conflict Rule
 

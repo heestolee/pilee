@@ -83,7 +83,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Convention Lens는 작업 종료 시 관련 판단만 투영한다](./convention-lens-event-driven-projection.md) | experimental | high | 2026-08-25 | c077eab | convention-lens, agent-settled, stop-hook, graph, evidence, reviewer |
 | [학습노트 companion은 독립 canonical을 sidecar로 연결한다](./learning-note-companion-artifact.md) | active | high | 2026-08-31 | dc5e8c1 | learning-note, companion-artifact, frame-v2, study-hard, worktree, checkpoint |
 | [질문 UI와 실행 owner는 분리한다](./question-ui-execution-owner-routing.md) | active | high | 2026-09-01 | 09bfcc3 | question-runtime, orchestration, direct, worker, study-hard, meta-review |
-| [Study Hard 엔진은 public이고 개인 publisher만 private다](./study-hard-public-engine-private-publisher.md) | active | high | 2026-09-03 | 4e8148c | study-hard, public-private-boundary, notion, runtime-profile, local-state |
+| [Study Hard 엔진은 public이고 개인 publisher만 private다](./study-hard-public-engine-private-publisher.md) | active | high | 2026-09-03 | 662141 | study-hard, public-private-boundary, notion, runtime-profile, local-state |
 | [Study Hard worker는 유연하게 생성하고 extension coordinator가 엄격하게 적용한다](./study-hard-worker-flexible-generation-strict-apply.md) | active | high | 2026-09-01 | 20ea93e | study-hard, subagent, worker, three-way-merge, optimistic-concurrency, glimpse |
 | [Utils surface는 사용자 계약을 만들지 않는다](./utility-surface-stays-invisible.md) | active | high | 2026-06-02 | d8f8c4c | utils, internal, surface, abstraction, extension |
 
@@ -201,7 +201,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-06-02 | 7861f10 | frame, planning, identity, home-directory, ticket, session-title |
 | [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-09-02 | 7295019 | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
 | [Frame v2는 작업·학습 lane을 양방향으로 연결한다](./frame-v2-learning-note-pilot.md) | active | high | 2026-07-18 | 88b560c | frame-v2, frame, study-hard, learning-note, worktree |
-| [Meta Review는 전체 diff 설명 뒤에 독립 판단과 precedent를 붙인다](./human-pr-review-precedent-harness.md) | active | high | 2026-09-03 | 4e8148c | pr-review, human-review, precedent, evidence, glimpse, meta-review |
+| [Meta Review는 전체 diff 설명 뒤에 독립 판단과 precedent를 붙인다](./human-pr-review-precedent-harness.md) | active | high | 2026-09-03 | 662141 | pr-review, human-review, precedent, evidence, glimpse, meta-review |
 | [Interactive shell은 bash가 아닌 터미널 세션이다](./interactive-shell-overlay-tool.md) | active | high | 2026-06-29 | 680f937 | interactive-shell, shell, tui, dev-server, overlay, dispatch |
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-06-02 | 7861f10 | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 264ea17 | local-dev, server, startup, diagnosis, dev |
