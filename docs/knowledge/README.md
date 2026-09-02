@@ -201,7 +201,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-06-02 | 7861f10 | frame, planning, identity, home-directory, ticket, session-title |
 | [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-09-02 | 7295019 | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
 | [Frame v2는 작업·학습 lane을 양방향으로 연결한다](./frame-v2-learning-note-pilot.md) | active | high | 2026-07-18 | 88b560c | frame-v2, frame, study-hard, learning-note, worktree |
-| [Meta Review는 전체 diff 설명 뒤에 독립 판단과 precedent를 붙인다](./human-pr-review-precedent-harness.md) | active | high | 2026-09-02 | 80e630e | pr-review, human-review, precedent, evidence, glimpse, meta-review |
+| [Meta Review는 전체 diff 설명 뒤에 독립 판단과 precedent를 붙인다](./human-pr-review-precedent-harness.md) | active | high | 2026-09-02 | 93ddc04 | pr-review, human-review, precedent, evidence, glimpse, meta-review |
 | [Interactive shell은 bash가 아닌 터미널 세션이다](./interactive-shell-overlay-tool.md) | active | high | 2026-06-29 | 680f937 | interactive-shell, shell, tui, dev-server, overlay, dispatch |
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-06-02 | 7861f10 | artifact, glimpse, preview, sse, upload, local-first |
 | [로컬 개발 서버 시작은 진단 가능한 절차여야 한다](./local-dev-startup-diagnosis.md) | active | high | 2026-05-07 | 264ea17 | local-dev, server, startup, diagnosis, dev |
@@ -233,11 +233,11 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Working Context Card는 큰 맥락을 현재 slice로 압축한다](./work-context-card-task-board.md) | active | high | 2026-06-02 | 61ccbc9 | work-context, tasks, workflow, context, guard |
 | [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-07-23 | eddf3b4 | workflow, guard, intent, audit, hotfix, continuation |
 | [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-06-02 | 61ccbc9 | workflow, frame, tft, hotfix, scope, incremental |
-| [작업공간 동작과 panel activation은 별도 계약이다](./workspace-action-panel-activation-contract.md) | active | high | 2026-09-02 | 80e630e | workspace, worktree, branch, activation, panel, authorization |
-| [Worktree 생성은 현재 패널 대화가 source다](./worktree-creation-parent-gate.md) | active | high | 2026-09-02 | 80e630e | worktree, fork-panel, current-panel, hotfix, context, profile-driven |
+| [작업공간 동작과 panel activation은 별도 계약이다](./workspace-action-panel-activation-contract.md) | active | high | 2026-09-02 | 93ddc04 | workspace, worktree, branch, activation, panel, authorization |
+| [Worktree 생성은 현재 패널 대화가 source다](./worktree-creation-parent-gate.md) | active | high | 2026-09-02 | 93ddc04 | worktree, fork-panel, current-panel, hotfix, context, profile-driven |
 | [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-08-31 | c712406 | worktree, dependencies, bootstrap, profile-driven, worker, subagent |
-| [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-09-02 | 80e630e | worktree, workspace, repo, branch, execution-boundary, cwd-binding |
-| [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-09-02 | 80e630e | worktree, session, revive, fork-panel, panel-inbox, handoff |
+| [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-09-02 | 93ddc04 | worktree, workspace, repo, branch, execution-boundary, cwd-binding |
+| [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-09-02 | 93ddc04 | worktree, session, revive, fork-panel, panel-inbox, handoff |
 
 ## Knowledge Map
 

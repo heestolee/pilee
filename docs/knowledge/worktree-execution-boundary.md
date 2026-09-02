@@ -24,7 +24,7 @@ source:
   - user-direction:2026-05-11-worktree-cwd-binding
   - user-direction:2026-09-02-pr-review-current-panel-or-tab
 reviewed_at: 2026-09-02
-reviewed_commit: 80e630e
+reviewed_commit: 93ddc04
 related:
   - worktree-session-continuity
   - session-identity-over-filenames

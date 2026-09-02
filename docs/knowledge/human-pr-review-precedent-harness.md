@@ -31,7 +31,7 @@ source:
   - user-direction:2026-09-02-study-hard-code-review-discoverability
   - user-direction:2026-09-02-pr-review-current-panel-or-tab
 reviewed_at: 2026-09-02
-reviewed_commit: 80e630e
+reviewed_commit: 93ddc04
 related:
   - evidence-first-verification-gate
   - live-artifact-preview-pattern
