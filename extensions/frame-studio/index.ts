@@ -145,6 +145,7 @@ const ASK_TIMEOUT_MS = 8 * 60 * 60 * 1000;
 const TFT_RESUME_CUSTOM_TYPE = "pilee-tft-studio-resume";
 const nodeRequire = createRequire(import.meta.url);
 let elkBundlePath: string | undefined;
+let mermaidBundlePath: string | undefined;
 
 function resolveElkBundlePath(): string | undefined {
 	if (elkBundlePath !== undefined) return elkBundlePath || undefined;
@@ -156,8 +157,23 @@ function resolveElkBundlePath(): string | undefined {
 	return elkBundlePath || undefined;
 }
 
+function resolveMermaidBundlePath(): string | undefined {
+	if (mermaidBundlePath !== undefined) return mermaidBundlePath || undefined;
+	try {
+		mermaidBundlePath = nodeRequire.resolve("mermaid/dist/mermaid.min.js");
+	} catch {
+		mermaidBundlePath = "";
+	}
+	return mermaidBundlePath || undefined;
+}
+
 export function tftStudioElkBundleSource(): string | undefined {
 	const bundle = resolveElkBundlePath();
+	return bundle ? readFileSync(bundle, "utf-8") : undefined;
+}
+
+export function tftStudioMermaidBundleSource(): string | undefined {
+	const bundle = resolveMermaidBundlePath();
 	return bundle ? readFileSync(bundle, "utf-8") : undefined;
 }
 
@@ -578,13 +594,18 @@ function listenOnLoopback(server: Server): Promise<string> {
 	});
 }
 
-export function buildPageHtml(options: { staticState?: unknown; inlineElk?: boolean; omitElk?: boolean; visualOnly?: boolean } = {}): string {
+export function buildPageHtml(options: { staticState?: unknown; inlineElk?: boolean; omitElk?: boolean; inlineMermaid?: boolean; omitMermaid?: boolean; visualOnly?: boolean } = {}): string {
 	const staticStateScript = options.staticState ? scriptSafeJson(options.staticState) : "null";
 	const elkScript = options.omitElk
 		? ""
 		: options.inlineElk
 			? `<script>${scriptSafeContent(tftStudioElkBundleSource() || "")}</script>`
 			: `<script src="/elk.bundled.js"></script>`;
+	const mermaidScript = options.omitMermaid
+		? ""
+		: options.inlineMermaid
+			? `<script>${scriptSafeContent(tftStudioMermaidBundleSource() || "")}</script>`
+			: `<script src="/mermaid.min.js"></script>`;
 	const bodyClass = options.visualOnly ? ` class="tft-visual-only"` : "";
 	return String.raw`<!doctype html>
 <html lang="ko">
@@ -642,6 +663,16 @@ h1 { margin:8px 0 6px; font-size:28px; line-height:1.18; }
 .markdown tr:nth-child(even) td { background:#fafaf9; }
 .markdown code { background:rgba(120,113,108,.13); border-radius:6px; padding:1px 5px; }
 .markdown pre { background:#292524; color:#fafaf9; border-radius:12px; padding:14px; overflow:auto; }
+.mermaid-visual { border:1px solid #ddd6fe; border-radius:18px; background:#fbfaff; margin:16px 0; padding:14px; overflow:hidden; min-width:0; max-width:100%; }
+.mermaid-visual-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:10px; }
+.mermaid-visual-title { color:#5b21b6; font-size:14px; font-weight:950; }
+.mermaid-visual-diagram { display:flex; justify-content:center; overflow:auto; border:1px solid #ede9fe; border-radius:14px; background:#fff; padding:14px; min-width:0; max-width:100%; }
+.mermaid-visual-diagram svg { display:block; max-width:100%; height:auto; }
+.mermaid-visual-failed { border-color:#fecaca; background:#fffafa; }
+.mermaid-visual-error { border:1px solid #fecaca; background:#fef2f2; color:#991b1b; border-radius:12px; padding:10px 11px; font-weight:850; }
+.mermaid-visual-source { margin-top:10px; }
+.mermaid-visual-source summary { cursor:pointer; color:#7f1d1d; font-size:12px; font-weight:850; }
+.mermaid-visual-source pre { margin-bottom:0; white-space:pre-wrap; }
 .tft-visual { border:1px solid var(--line); border-radius:18px; background:#fbfdff; margin:16px 0; padding:14px; overflow:hidden; min-width:0; max-width:100%; }
 .tft-visual-head { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start; margin-bottom:12px; min-width:0; }
 .tft-visual-title { font-weight:950; font-size:16px; overflow-wrap:anywhere; }
@@ -1148,6 +1179,7 @@ body.tft-visual-only .data-visual { margin:0; }
   </main>
 </div>
 ${elkScript}
+${mermaidScript}
 <script>
 ${webviewCopyScript()}
 var state = null;
@@ -1164,6 +1196,48 @@ function simpleHash(s) { var h = 5381; for (var i = 0; i < s.length; i++) h = ((
 function visualPlaceholder(source) {
   var id = 'tftv-' + simpleHash(source) + '-' + Math.random().toString(36).slice(2, 7);
   return '<div id="' + id + '" class="tft-visual" data-source="' + encodeURIComponent(source) + '"><div class="status">TFT visual 렌더링 중...</div></div>';
+}
+function mermaidPlaceholder(source) {
+  var id = 'mermaid-' + simpleHash(source) + '-' + Math.random().toString(36).slice(2, 7);
+  return '<div id="' + id + '" class="mermaid-visual" data-mermaid-source="' + encodeURIComponent(source) + '"><div class="status">Mermaid 렌더링 중...</div></div>';
+}
+var mermaidInitialized = false;
+function mermaidRuntime() {
+  var runtime = window && window.mermaid;
+  return runtime && runtime.default ? runtime.default : runtime;
+}
+function renderMermaidFallbackElement(el, source, error) {
+  el.className = 'mermaid-visual mermaid-visual-failed';
+  el.innerHTML = '<div class="mermaid-visual-head"><div class="mermaid-visual-title">Mermaid diagram</div><span class="badge">fallback</span></div>'
+    + '<div class="mermaid-visual-error">Mermaid 렌더링 실패: ' + esc(error && error.message ? error.message : error) + '</div>'
+    + '<details class="mermaid-visual-source" open><summary>Mermaid 원문</summary><pre><code>' + esc(source) + '</code></pre></details>';
+  el.setAttribute('data-rendered', 'error');
+}
+async function renderMermaidElement(el) {
+  var status = el.getAttribute('data-rendered');
+  if (status === 'pending' || status === '1' || status === 'error') return;
+  var source = '';
+  el.setAttribute('data-rendered', 'pending');
+  try {
+    source = decodeURIComponent(el.getAttribute('data-mermaid-source') || '');
+    if (!source.trim()) throw new Error('Mermaid 원문이 비어 있습니다.');
+    var runtime = mermaidRuntime();
+    if (!runtime || typeof runtime.render !== 'function') throw new Error('Mermaid runtime을 불러오지 못했습니다.');
+    if (!mermaidInitialized) {
+      runtime.initialize({ startOnLoad:false, securityLevel:'strict', theme:'base' });
+      mermaidInitialized = true;
+    }
+    var renderId = 'mermaid-svg-' + simpleHash(source) + '-' + Math.random().toString(36).slice(2, 9);
+    var result = await runtime.render(renderId, source);
+    var svg = typeof result === 'string' ? result : result && result.svg;
+    if (!svg) throw new Error('Mermaid가 SVG를 반환하지 않았습니다.');
+    el.className = 'mermaid-visual';
+    el.innerHTML = '<div class="mermaid-visual-head"><div class="mermaid-visual-title">Mermaid diagram</div><span class="badge">rendered</span></div><div class="mermaid-visual-diagram">' + svg + '</div>';
+    if (result && typeof result.bindFunctions === 'function') result.bindFunctions(el);
+    el.setAttribute('data-rendered', '1');
+  } catch (error) {
+    renderMermaidFallbackElement(el, source, error);
+  }
 }
 function normalizeVisualStatus(value, fallback) { return String(value || fallback || 'same').trim().toLowerCase().replace(/_/g, '-'); }
 function pillClass(value) {
@@ -2384,6 +2458,12 @@ async function renderTftVisualElement(el) {
 function renderPendingTftVisuals() {
   return Promise.all(Array.prototype.slice.call(document.querySelectorAll('.tft-visual[data-source]')).map(function(el) { return renderTftVisualElement(el); }));
 }
+function renderPendingMermaidVisuals() {
+  return Promise.all(Array.prototype.slice.call(document.querySelectorAll('.mermaid-visual[data-mermaid-source]')).map(function(el) { return renderMermaidElement(el); }));
+}
+function renderPendingStudioVisuals() {
+  return Promise.all([renderPendingTftVisuals(), renderPendingMermaidVisuals()]);
+}
 function isVisualOnlyEmbed() { return document.body && document.body.classList.contains('tft-visual-only'); }
 function visualEmbedRoot() { return document.querySelector('.tft-visual, .brm-visual, .ifp-visual, .layer-visual, .phase-visual, .arch-visual, .data-visual'); }
 function notifyVisualEmbedReady() {
@@ -2579,6 +2659,15 @@ function renderMarkdown(md) {
       idx++;
       while (idx < lines.length && lines[idx].trim().indexOf(String.fromCharCode(96).repeat(3)) !== 0) { visualLines.push(lines[idx]); idx++; }
       html.push(visualPlaceholder(visualLines.join('\n')));
+      continue;
+    }
+    var mermaidFence = String.fromCharCode(96).repeat(3) + 'mermaid';
+    if (!inCode && (fence.toLowerCase() === mermaidFence || fence.toLowerCase().indexOf(mermaidFence + ' ') === 0)) {
+      closeList();
+      var mermaidLines = [];
+      idx++;
+      while (idx < lines.length && lines[idx].trim().indexOf(String.fromCharCode(96).repeat(3)) !== 0) { mermaidLines.push(lines[idx]); idx++; }
+      html.push(mermaidPlaceholder(mermaidLines.join('\n')));
       continue;
     }
     if (/^\s*/.test(line) && fence.indexOf(String.fromCharCode(96).repeat(3)) === 0) { closeList(); if (inCode) html.push('</code></pre>'); else html.push('<pre><code>'); inCode = !inCode; continue; }
@@ -2818,7 +2907,7 @@ function render(s, options) {
   document.getElementById('flowStatus').textContent = tabStatus(s, active);
   document.getElementById('timeline').innerHTML = renderStageRuns(visibleTimelineEntries(s), s, active);
   setTimeout(function() {
-    var visualRender = renderPendingTftVisuals();
+    var visualRender = renderPendingStudioVisuals();
     restoreScrollAfterRender(scrollSnapshot);
     if (visualRender && typeof visualRender.then === 'function') visualRender.then(function() { restoreScrollAfterRender(scrollSnapshot); notifyVisualEmbedReady(); }).catch(function() { restoreScrollAfterRender(scrollSnapshot); notifyVisualEmbedReady(); });
     else notifyVisualEmbedReady();
@@ -2946,7 +3035,7 @@ export function buildTftVisualEmbedHtml(spec: Record<string, unknown>, options: 
 	};
 	const kind = typeof normalizedSpec.kind === "string" ? normalizedSpec.kind : "";
 	const usesDedicatedLayout = ["architecture-flow", "backend-layer-map", "data-model-migration-map", "independent-flow-panels", "bounded-responsibility-map"].includes(kind);
-	return buildPageHtml({ staticState: state, inlineElk: !usesDedicatedLayout, omitElk: usesDedicatedLayout, visualOnly: true });
+	return buildPageHtml({ staticState: state, inlineElk: !usesDedicatedLayout, omitElk: usesDedicatedLayout, omitMermaid: true, visualOnly: true });
 }
 
 export function buildStaticTftStudioHtmlFromTranscript(filePath: string): string {
@@ -2981,7 +3070,7 @@ export function buildStaticTftStudioHtmlFromTranscript(filePath: string): string
 		timeline: Array.isArray(parsed.timeline) ? normalizeTimelineEntries(parsed.timeline) : [],
 		logs: Array.isArray(parsed.logs) ? parsed.logs : [],
 	};
-	return buildPageHtml({ staticState: serializeState(state) });
+	return buildPageHtml({ staticState: serializeState(state), inlineMermaid: true });
 }
 
 function createServerFor(state: FrameStudioState): FrameStudioHandle {
@@ -3014,6 +3103,17 @@ function createServerFor(state: FrameStudioState): FrameStudioHandle {
 				if (!bundle) {
 					res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
 					res.end("elkjs bundle not found");
+					return;
+				}
+				res.writeHead(200, { "content-type": "application/javascript; charset=utf-8", "cache-control": "public, max-age=3600" });
+				res.end(readFileSync(bundle, "utf-8"));
+				return;
+			}
+			if (req.method === "GET" && url.pathname === "/mermaid.min.js") {
+				const bundle = resolveMermaidBundlePath();
+				if (!bundle) {
+					res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+					res.end("mermaid bundle not found");
 					return;
 				}
 				res.writeHead(200, { "content-type": "application/javascript; charset=utf-8", "cache-control": "public, max-age=3600" });
