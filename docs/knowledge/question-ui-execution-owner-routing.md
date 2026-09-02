@@ -27,8 +27,9 @@ source:
   - review:2026-08-30-question-owner-race-invariants
   - user-direction:2026-08-30-study-hard-question-drawer-overlay
   - user-direction:2026-08-31-meta-review-study-hard-worker-lifecycle-parity
-reviewed_at: 2026-09-01
-reviewed_commit: 09bfcc3
+  - user-direction:2026-09-03-meta-review-local-pr-patch-boundary
+reviewed_at: 2026-09-03
+reviewed_commit: 4266cfd8b468766424c98c4ae8285c0e8433e16c
 related:
   - study-hard-worker-flexible-generation-strict-apply
   - human-pr-review-precedent-harness
@@ -43,14 +44,14 @@ related:
 
 Study Hard와 Meta Review의 비동기 질문은 `launchProgrammaticQuestionWorker`라는 하나의 programmatic lifecycle을 사용합니다. 질문 surface는 도메인별 task와 completion callback만 제공하고, 공통 launcher가 표준 `#N` worker, start/completion/rejection, continue run을 소유합니다. Meta Review drawer는 메인 Pi follow-up routing turn을 만들지 않고 즉시 격리 worker를 시작합니다.
 
-Study Hard의 현재 학습 문맥만으로 닫히는 설명은 owner Pi가 direct로 답할 수 있지만, worker로 전환된 뒤의 lifecycle은 Meta Review와 같습니다. Meta Review 질문은 설명과 current-work 변경 요청 모두 전용 artifact worker가 처리해 실행 형태를 하나로 고정합니다.
+Study Hard의 현재 학습 문맥만으로 닫히는 설명은 owner Pi가 direct로 답할 수 있지만, worker로 전환된 뒤의 lifecycle은 Meta Review와 같습니다. Meta Review 질문은 설명과 명시적 reviewed-code 변경 요청 모두 전용 artifact worker가 처리해 실행 형태를 하나로 고정합니다.
 
 ## Surface Default
 
 두 surface는 공통 state machine을 쓰되 기존 사용 성격에 맞는 애매한 경우의 기본값을 유지합니다.
 
 - Study Hard: 현재 학습 문맥만으로 닫히는 설명은 direct, 학습 노트 변경·외부 조사·실행 검증은 worker입니다. 애매하면 기존 안전 경계와 호환되도록 worker를 택합니다.
-- Meta Review: 선택 section·meaning·declaration·line·hunk·card와 전체 질문 모두 공통 programmatic launcher를 통해 `meta-review-question-worker`가 처리합니다. current-work의 명시적 변경 요청만 change artifact를 만들며 GitHub PR immutable source에서는 답변만 허용합니다.
+- Meta Review: 선택 section·meaning·declaration·line·hunk·card와 전체 질문 모두 공통 programmatic launcher를 통해 `meta-review-question-worker`가 처리합니다. 명시적 reviewed-code 변경 요청은 source 종류와 무관하게 change artifact를 만들 수 있습니다. GitHub PR의 immutable source는 원본 evidence를 고정하며, patch는 일치하는 clean local review checkout에만 적용합니다.
 
 사용자에게 `direct / worker` 선택 control을 보여주지 않습니다. UI에는 `답변 경로 확인 → 현재 Pi 확인 → worker 전환/실행 → 완료/실패/stale`처럼 현재 상태만 자연스럽게 표시합니다.
 
@@ -121,9 +122,9 @@ Worker output은 답변 근거가 아니라 검증 대상입니다.
 - source hash는 mutable artifact나 worker가 쓸 수 있는 `questions.jsonl`을 trust anchor로 삼지 않고 route 시점의 coordinator launch lease에 pin합니다. Meta Review question 전체 canonical은 process-global coordinator registry가 소유합니다. worker가 다른 question/Q999 snapshot을 추가하거나 JSONL을 truncate해도 전체 파일 불일치를 감지하고 trusted canonical + active failed snapshot으로 복구합니다.
 - GitHub PR worker에서 current panel `ctx.cwd`는 실행 위치일 뿐 review truth가 아닙니다. `sourcePath`의 immutable evidence를 우선하고 추가 source는 `repository + expectedHeadSha`를 지정한 remote API 또는 pinned git object로 읽습니다. `expectedSourceSha256`는 `source.json` 파일 바이트 hash가 아니라 JSON의 `sourceSha256` 필드이자 normalized `source.diff` identity입니다.
 - 적용 직전 GitHub PR 질문은 저장된 immutable `source.diff`와 `source.json.sourceSha256`가 route pin과 같은지 검증합니다. PR 최신 head 변화는 별도 freshness badge와 명시적 새 run refresh가 담당하며, 기존 run에 달린 질문은 그 revision에 귀속합니다.
-- current-work 질문만 captured root의 현재 HEAD와 base 대비 tracked·untracked diff를 다시 계산합니다. 관찰된 head/hash/root/diff가 pin과 다를 때 `stale`로 끝냅니다.
+- current-work 질문은 captured root의 현재 HEAD와 base 대비 tracked·untracked diff를 다시 계산합니다. 관찰된 head/hash/root/diff가 pin과 다를 때 `stale`로 끝냅니다. GitHub PR 설명 질문은 현재 panel checkout과 무관하게 immutable run에서 답합니다.
 - 명시적 변경 요청은 worker가 repository를 직접 수정하지 않고 schema v2의 unified patch, changed files, targeted validation command를 제안합니다. Coordinator는 pin을 다시 확인하고 `git apply --check` 뒤 patch를 적용하며 allowlist direct command만 실행하고 새 Meta Review revision을 캡처합니다. 기존 질문 snapshot은 새 runId로 재귀속해 승계하고 기존 Meta Review completion prompt를 owner Pi에 전달하므로 새 별도 runner 없이 review submit까지 이어집니다.
-- GitHub PR immutable source의 change artifact는 repository에 적용하지 않습니다. validation 또는 refresh 실패가 patch 적용 사실을 숨기지 않도록 question의 `change.status`에 별도로 남깁니다.
+- GitHub PR change artifact는 local review checkout의 repository, HEAD, clean status가 pinned PR과 모두 일치할 때만 적용합니다. 원본 PR run과 evidence는 수정하지 않고 적용된 checkout을 새 current-work source로 캡처하며 원본 PR base SHA를 유지합니다. commit, push, review reply 같은 원격 write는 하지 않습니다. validation 또는 refresh 실패가 patch 적용 사실을 숨기지 않도록 question의 `change.status`에 별도로 남깁니다.
 
 ## Shared Memo Board and Polling Rule
 
@@ -139,7 +140,8 @@ Active 질문 polling은 card를 갱신하더라도 사용자의 읽기 상태�
 - terminal status와 execution phase를 별도 snapshot으로 쓰면 늦은 callback이 `status=answered, execution=failed` 같은 모순을 만듭니다.
 - 질문 drawer를 열 때 학습노트 padding과 max-width를 함께 바꾸면 auto-fit grid가 반복 reflow되고, 닫힌 뒤 이전 card border가 균열처럼 남을 수 있습니다. Drawer만 transform하고 note geometry는 고정합니다.
 - generic update가 question execution을 덮거나 patch 누락·역순·중복을 chronology 변경으로 해석하면 worker→direct 역전, terminal reopen, callback 대상 소실, 잘못된 active question 선택을 만들 수 있습니다.
-- worker-writable question snapshot이나 artifact를 source pin으로 다시 읽거나 active ID 하나만 검사하면 prompt injection이 다른 질문과 durable log를 forge할 수 있습니다. reservation token을 completion 권한으로 재사용하면 claim 패자도 canonical을 종료할 수 있습니다. 반대로 GitHub PR 질문을 current panel HEAD나 live PR 최신 상태에 묶으면 immutable run 질문이 panel 이동·후속 push만으로 실패하고, normalized diff identity를 `source.json` 파일 바이트 hash로 오해하면 valid artifact도 생성되지 않습니다. current-work에서는 반대로 live diff 재계산을 빼면 stale 답변을 승인합니다.
+- worker-writable question snapshot이나 artifact를 source pin으로 다시 읽거나 active ID 하나만 검사하면 prompt injection이 다른 질문과 durable log를 forge할 수 있습니다. reservation token을 completion 권한으로 재사용하면 claim 패자도 canonical을 종료할 수 있습니다. 반대로 GitHub PR 설명 질문을 current panel HEAD나 live PR 최신 상태에 묶으면 immutable run 질문이 panel 이동·후속 push만으로 실패하고, normalized diff identity를 `source.json` 파일 바이트 hash로 오해하면 valid artifact도 생성되지 않습니다. current-work에서는 반대로 live diff 재계산을 빼면 stale 답변을 승인합니다.
+- GitHub PR source가 immutable이라는 이유로 local patch artifact까지 금지하면 원격 보호와 로컬 실험을 혼동합니다. 반대로 checkout repository·HEAD·clean 상태를 확인하지 않고 patch를 적용하면 다른 작업이나 기존 local diff를 덮을 수 있습니다.
 - 내부 dispatch prompt를 `display:true`로 노출하면 사용자 대화가 run path와 tool 지침으로 오염됩니다.
 - 상단 문서 section을 session으로 저장하거나 구조 선택을 hunk/line으로 저장하면 사용자가 고른 연속 source 범위와 canonical 질문 범위가 달라집니다.
 - 변경 의미를 관련 구조 단위 하나의 질문으로 저장하면 다대다 계약 전환의 일부 evidence만 조사하게 됩니다.

@@ -32,8 +32,9 @@ source:
   - user-direction:2026-09-02-pr-review-current-panel-or-tab
   - user-direction:2026-09-03-meta-review-export-actions
   - user-direction:2026-09-03-meta-review-export-reading-flow
+  - user-direction:2026-09-03-meta-review-local-pr-patch-boundary
 reviewed_at: 2026-09-03
-reviewed_commit: "cbbb829"
+reviewed_commit: 4266cfd8b468766424c98c4ae8285c0e8433e16c
 related:
   - evidence-first-verification-gate
   - live-artifact-preview-pattern
@@ -117,7 +118,7 @@ Study Hard의 `코드 리뷰` 탭은 Meta Review가 아직 연결되지 않았�
 
 Meta Review drawer는 모든 설명·검증·변경 요청을 Study Hard와 같은 `launchProgrammaticQuestionWorker`로 즉시 실행합니다. 메인 Pi에 routing follow-up을 보내지 않으며 worker는 표준 `#N` lifecycle로 질문 thread에 답변·실패·stale·재시도를 돌려줍니다. GitHub PR worker는 current panel checkout이 아니라 immutable run source와 `repository + expectedHeadSha`를 읽고, current-work worker만 captured root의 live diff freshness를 요구합니다. 공통 상태 전이와 recovery 계약은 [질문 UI와 실행 owner는 분리한다](./question-ui-execution-owner-routing.md)를 따릅니다.
 
-사용자가 current-work에서 명시적으로 수정을 요청하면 worker는 repository를 직접 편집하지 않고 patch artifact를 만듭니다. Coordinator가 source pin과 root를 다시 검증하고 patch·targeted validation을 적용한 뒤 새 Meta Review revision을 캡처합니다. 기존 Q&A snapshot은 새 run identity로 승계하고, 기존 Meta Review completion prompt를 owner Pi에 전달해 pending chunk inspection과 submit을 자동으로 시작합니다. GitHub PR immutable source에서는 변경 artifact를 거부합니다.
+사용자가 명시적으로 reviewed code 수정을 요청하면 worker는 source 종류와 무관하게 repository를 직접 편집하지 않고 pinned patch artifact를 만듭니다. Current-work에서는 coordinator가 source pin과 live diff를 다시 검증합니다. GitHub PR에서는 원본 run과 evidence를 immutable로 유지하면서 local review checkout의 repository·HEAD·clean 상태가 pinned PR과 일치할 때만 patch를 적용합니다. 적용된 checkout은 원본 PR base SHA를 유지한 새 current-work Meta Review revision으로 캡처합니다. 기존 Q&A snapshot은 새 run identity로 승계하고, 기존 Meta Review completion prompt를 owner Pi에 전달해 pending chunk inspection과 submit을 자동으로 시작합니다. 이 경로는 commit, push, review reply 같은 원격 write를 하지 않습니다.
 
 답변은 `쉬운 설명 → 코드에서 확인된 사실 → 아직 모르는 정책/가정 → 리뷰 판단` 순서와 source evidence를 갖고 `questions.jsonl` append-only snapshot으로 보존됩니다. terminal answer/fail/stale는 한 snapshot으로 기록하고 늦은 callback이 다시 열지 못합니다. pending execution이 있는 동안만 live state를 polling하고 모두 끝나면 멈춥니다. Polling 중에는 open details, 문서·drawer·thread scroll, composer draft와 focus를 복원해 읽던 위치를 초기화하지 않습니다.
 
@@ -138,7 +139,7 @@ Meta Review session의 review truth는 immutable run과 checkout metadata이지�
 
 ## Explicit Refresh and Revisions
 
-코드 리뷰 본문은 임의 background check만으로 바뀌지 않습니다. 외부 PR의 head/base 또는 현재 worktree diff hash는 읽기 전용으로 비교해 `새 변경 있음` badge만 표시합니다. 사용자가 `갱신하기`를 누르거나 current-work change artifact가 coordinator를 통해 실제 적용됐을 때만 새 immutable run을 series의 다음 revision으로 추가합니다.
+코드 리뷰 본문은 임의 background check만으로 바뀌지 않습니다. 외부 PR의 head/base 또는 현재 worktree diff hash는 읽기 전용으로 비교해 `새 변경 있음` badge만 표시합니다. 사용자가 `갱신하기`를 누르거나 질문 worker의 change artifact가 coordinator를 통해 local checkout에 실제 적용됐을 때만 새 immutable run을 다음 revision으로 추가합니다. GitHub PR에서 파생한 local patch는 원본 PR series를 덮지 않고 current-work revision으로 전환합니다.
 
 이전 head가 최신 head의 ancestor이고 base가 유지된 안전한 선형 변경은 incremental로 처리합니다. 이전 revision과 diff가 동일한 파일은 guide·ReviewCard·사람 편집 문구·인간 결정을 최신 evidence ID로 remap하고, unchanged 파일만 포함한 file-isolated chunk는 auto-inspect합니다. agent는 pending chunk와 impacted file만 다시 읽습니다. rebase, force-push, base/merge-base 변경, ancestry 불명은 full review로 승격하며 사용자는 `전체 다시 검토`를 강제할 수 있습니다. 이전 revision의 질문·AI 원문·사람이 편집한 문구·인간 결정은 덮어쓰지 않습니다. 새 설명 hunk는 `new`, 동일 hunk는 `unchanged`, 같은 identity의 코드가 달라지면 `review-again`, 근거가 사라지면 `evidence-removed`로 reconcile합니다.
 
@@ -159,6 +160,7 @@ Meta Review의 코드 리뷰 탭은 GitHub write 도구가 아닙니다. `review
 - machine-draft annotation을 팀 합의처럼 쓰면 잘못된 규칙을 증폭합니다.
 - 모든 review point에 lint·skill 후속을 강제하면 `no-meta-action`을 표현하지 못합니다.
 - local working tree를 PR head로 가정하면 diff와 주변 코드의 revision이 달라질 수 있습니다.
+- GitHub PR source의 immutability를 local checkout 수정 금지로 확대하면 원격 보호와 사용자가 요청한 로컬 실험을 혼동합니다. 반대로 repository·HEAD·clean 상태를 확인하지 않은 patch 적용은 다른 checkout이나 기존 변경을 오염시킵니다.
 - 코드 리뷰 탭을 Meta Review 연결 뒤에만 노출하면 사용자는 이미 구현된 갱신 경로를 발견하지 못하고 `/meta-review`를 다시 시작해 별도 창 문제를 만듭니다.
 - 코드 리뷰 탭이 열렸다는 사실만으로 explanation coverage, finding 품질, 사용자 채택을 증명할 수 없습니다.
 - `/diff`와 `/meta-review`가 다른 checkout/head를 보면 Pi 대화와 문서형 리뷰가 서로 다른 코드를 설명하게 됩니다.
