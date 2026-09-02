@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildMetaReviewNoteDocument } from "./export.ts";
+import { buildMetaReviewExportSnapshotFromState, buildMetaReviewNoteDocument } from "./export.ts";
 
 test("Meta Review export model은 overview·관계·의미·finding·전체 설명 줄·질문을 한 문서에 보존한다", () => {
 	const document = buildMetaReviewNoteDocument({
@@ -101,8 +101,12 @@ test("Meta Review export model은 overview·관계·의미·finding·전체 설�
 });
 
 test("Meta Review export 문서의 파일 section은 authored reading order를 따른다", () => {
-	const document = buildMetaReviewNoteDocument({
+	const state = {
 		run: {
+			runId: "reading-order-run",
+			status: "ready",
+			updatedAt: 2000,
+			revisionNumber: 1,
 			target: { kind: "github-pr", url: "https://github.com/acme/repo/pull/42", number: 42, title: "Reading order", headSha: "head" },
 		},
 		source: {
@@ -131,8 +135,13 @@ test("Meta Review export 문서의 파일 section은 authored reading order를 �
 		explanationCoverage: { filesExplained: 2, totalFiles: 2, changedLinesExplained: 0, totalChangedLines: 0 },
 		cards: [],
 		questions: [],
-	} as any);
+	} as any;
+	const before = structuredClone(state);
+	const snapshot = buildMetaReviewExportSnapshotFromState(state);
+	const document = snapshot.noteDocument;
 
+	assert.deepEqual(state, before, "state 기반 export는 입력 snapshot을 변경하지 않는다");
+	assert.deepEqual(snapshot.readingFlow.map((step) => step.path), ["src/second.ts", "src/first.ts"]);
 	const fileSections = document.sections.filter((section) => section.kind === "node");
 	assert.deepEqual(fileSections.map((section) => section.title), ["src/second.ts", "src/first.ts"]);
 	assert.deepEqual(fileSections.map((section) => section.id), ["meta-review-file-2", "meta-review-file-1"]);
