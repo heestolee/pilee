@@ -11,13 +11,15 @@ status: active
 confidence: high
 applies_to:
   - extensions/study-hard
+  - extensions/pr-review
   - extensions/learning-companion
   - extensions/utils/private-profiles
 source:
   - user-direction:2026-07-17-study-hard-public-migration
   - user-direction:2026-07-21-study-hard-notion-static-export
-reviewed_at: 2026-07-30
-reviewed_commit: ac5b326
+  - user-direction:2026-09-03-meta-review-export-actions
+reviewed_at: 2026-09-03
+reviewed_commit: 4ac8cf7
 related:
   - private-overlay-package-boundary
   - context-loading-minimal-surface
@@ -45,6 +47,7 @@ Public `extensions/study-hard`가 소유하는 범위:
 - Q&A transcript integration
 - revision/history snapshot과 restore
 - standalone HTML export와 interactive visual/PNG fallback
+- Meta Review ready revision을 같은 structured document renderer/publisher contract로 내보내는 adapter
 - macOS Glimpse native visual snapshot, 비-macOS browser capture fallback
 - `~/.pi/agent/study-hard` local state lifecycle
 - optional learning companion event/checkpoint/proposal metadata와 `/study-hard current` reopen
@@ -68,6 +71,12 @@ Public engine은 다음 generic 설정만 읽습니다.
 환경변수 `STUDY_HARD_SYNC_SCRIPT`, `STUDY_HARD_DOWNLOAD_DIR`가 profile보다 우선합니다. 구체적인 개인 경로와 Notion destination 규칙은 private overlay 또는 local config에 남습니다.
 
 Notion token, database ID, page naming, upload body schema를 public extension에 넣지 않습니다. Public engine은 generic visual PNG asset과 원본 spec까지만 publisher에 넘기고, private publisher가 이를 Notion image block·설명·spec toggle로 변환합니다. Publisher가 없어도 HTML export와 학습·작업 시작은 계속 가능합니다.
+
+### Meta Review Export Adapter Rule
+
+Meta Review도 별도 Notion SDK나 개인 destination을 public code에 추가하지 않습니다. Public `extensions/pr-review`가 최신 ready revision의 document·guide·finding·changed-line evidence·질문을 `noteDocument` 호환 구조로 변환하고, Study Hard가 기존 HTML renderer와 configured publisher를 실행합니다. HTML과 Notion은 반드시 같은 export snapshot을 소비합니다.
+
+Meta Review의 sync metadata는 학습노트 state가 아니라 source review run의 `export-state.json` sidecar에 둡니다. Review series에서 파생한 stable session ID로 같은 Notion 페이지를 찾되 개인 database ID, token, tag와 페이지 naming은 publisher가 계속 소유합니다. Notion에서 선택한 내용을 generated review canonical로 역수입하지 않으며, 충돌 선택은 해당 Notion write 결과에만 적용합니다. 따라서 publisher가 없거나 실패해도 HTML 내보내기와 로컬 Meta Review는 계속 동작합니다.
 
 ### Section Sync And Conflict Rule
 
@@ -165,6 +174,8 @@ Glimpse의 learner 질문은 extension coordinator가 실제 `study-hard-worker 
 - 페이지 전체 shadow swap은 section 단위 부분 동기화 계약을 깨고 page identity·수동 정리·비관리 block을 불필요하게 교체합니다.
 - conflict를 오류 문자열로만 반환하면 사용자는 어떤 section이 충돌했는지, 어느 쪽을 보존할지 결정할 수 없습니다.
 - 이미지를 attachments에만 남기면 학습노트의 설명 순서와 Notion 본문에서 그림의 의미가 사라집니다.
+- Meta Review가 별도 개인 Notion client를 public extension에 넣으면 같은 publisher 계약이 복제되고 private destination 정보가 새어 나갑니다.
+- Notion Meta Review snapshot을 generated review canonical로 역수입하면 immutable source 기반 설명과 외부 편집본의 책임이 섞입니다.
 - persisted Q&A 전문을 새 session에 재생하면 transcript 보존이 아니라 현재 context 오염이 됩니다.
 - worker가 전체 proposed note를 transcript에 출력하면 병렬 질문 수만큼 P0 context가 중복됩니다.
 - worker가 state를 직접 쓰거나 last-write-wins를 사용하면 병렬 결과가 조용히 유실됩니다.

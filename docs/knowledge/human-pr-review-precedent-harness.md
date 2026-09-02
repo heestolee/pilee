@@ -30,8 +30,9 @@ source:
   - user-direction:2026-08-31-meta-review-study-hard-worker-lifecycle-parity
   - user-direction:2026-09-02-study-hard-code-review-discoverability
   - user-direction:2026-09-02-pr-review-current-panel-or-tab
-reviewed_at: 2026-09-02
-reviewed_commit: 93ddc04
+  - user-direction:2026-09-03-meta-review-export-actions
+reviewed_at: 2026-09-03
+reviewed_commit: 4ac8cf7
 related:
   - evidence-first-verification-gate
   - live-artifact-preview-pattern
@@ -123,6 +124,17 @@ Study Hard의 메모보드는 `학습 메모 | 코드 리뷰` 탭을 가진 하�
 
 Meta Review session의 review truth는 immutable run과 checkout metadata이지만, workflow가 source conversation에서 시작됐다면 전체 transcript와 `parentSession` lineage도 기본 보존합니다. Source context는 정책·의도·이전 판단을 제공하고, run/head metadata는 코드 revision truth를 제공합니다.
 
+## Export And Action Menu Contract
+
+코드 리뷰 toolbar의 화살표는 갱신 방식뿐 아니라 현재 review artifact의 추가 작업을 여는 action menu입니다. `<summary>` 안에 다시 `<button>`을 중첩하지 않고, 같은 화살표 재클릭·메뉴 바깥 클릭·`Esc`·항목 선택에서 닫혀야 합니다. 열린 메뉴가 review 본문과 다음 조작을 계속 가리는 상태는 단순 미관 문제가 아니라 조작 lifecycle의 구멍입니다.
+
+`HTML 내보내기`와 `Notion 저장`은 화면 DOM이나 오래된 `review.md`를 임의 복사하지 않습니다. 최신 ready revision의 `document.json`, `guides.json`, `cards.json`, `questions.jsonl`, immutable source를 하나의 구조화 export snapshot으로 변환합니다. Overview, 관계와 읽는 순서, source-backed 변경 의미, finding과 사람 결정, 모든 설명 hunk의 changed-line evidence, 질문·답변이 같은 snapshot에 포함되어야 합니다.
+
+- HTML은 학습노트와 같은 standalone renderer를 재사용하되 artifact label을 `Meta Review`로 구분하고 configured Downloads 경로에 저장합니다.
+- Notion은 같은 구조화 문서를 기존 private publisher에 전달합니다. Review series에서 파생한 stable session ID로 같은 페이지를 upsert하고 page/section hash는 source run의 `export-state.json` sidecar에만 보존합니다.
+- Meta Review는 generated review canonical이므로 Notion에서 유지하거나 직접 정리한 block을 `document.json`·`guides.json`·`cards.json`·`questions.jsonl`로 역수입하지 않습니다. 양쪽 변경이 겹치면 기존 block diff UI에서 이번 Notion 저장 결과만 선택합니다.
+- 저장 중 새 ready revision이 생기면 저장된 revision과 현재 revision을 분리해 stale 상태를 알립니다. 외부 write는 사용자가 `Notion 저장`을 누른 경우에만 실행합니다.
+
 ## Explicit Refresh and Revisions
 
 코드 리뷰 본문은 임의 background check만으로 바뀌지 않습니다. 외부 PR의 head/base 또는 현재 worktree diff hash는 읽기 전용으로 비교해 `새 변경 있음` badge만 표시합니다. 사용자가 `갱신하기`를 누르거나 current-work change artifact가 coordinator를 통해 실제 적용됐을 때만 새 immutable run을 series의 다음 revision으로 추가합니다.
@@ -163,5 +175,7 @@ Meta Review의 코드 리뷰 탭은 GitHub write 도구가 아닙니다. `review
 - 전체 시스템 지도를 모든 meaning 카드에 넣으면 inline diff보다 diagram이 더 커집니다. Flowchart 12 node·20 edge, sequence 8 actor·16 message 안에서 해당 전환만 압축합니다.
 - Inline chart의 CSS 높이만 무제한으로 늘리면 review 문서 흐름이 깨집니다. Inline은 compact하게 유지하고 자세히 보기는 full-screen overlay와 내부 scroll로 분리합니다.
 - 기존 SVG DOM을 그대로 clone하면 Mermaid marker·definition ID가 문서에서 중복될 수 있습니다. Overlay는 canonical source를 unique render ID로 다시 렌더링합니다.
+- action menu를 native toggle에만 맡기면서 interactive element를 중첩하거나 item/outside/Esc close를 생략하면 한 번 열린 메뉴가 사용자의 다음 조작을 가립니다.
+- HTML과 Notion이 서로 다른 source를 변환하거나 Notion 내용을 review canonical로 역수입하면 같은 revision의 설명·finding·질문이 서로 달라집니다.
 - declaration source를 render 시 mutable checkout에서 다시 읽으면 immutable review run과 다른 코드를 질문하게 됩니다.
 - diff freshness hash에 full-source hash를 섞으면 기존 remote/current diff stale 검산과 호환되지 않습니다.
