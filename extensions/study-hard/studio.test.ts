@@ -3623,6 +3623,8 @@ test("Study Hard 코드 리뷰 surface는 공통 worker 질문, 결정, 명시�
 		const notionInputPath = join(run.runDir, "exports", "notion-sync.json");
 		const notionInput = JSON.parse(readFileSync(notionInputPath, "utf8"));
 		assert.match(notionInput.sessionId, /^meta-review-/);
+		assert.equal(notionInput.artifactKind, "meta-review");
+		assert.equal(notionInput.artifactLabel, "Meta Review");
 		assert.equal(notionInput.noteDocument.title, "Meta Review · #42 Visibility contract");
 		assert.equal(notionInput.noteDocument.sections.some((section: any) => section.id === "meta-review-file-1"), true);
 		const exportSidecar = JSON.parse(readFileSync(join(run.runDir, "export-state.json"), "utf8"));
