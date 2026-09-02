@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { readPrReviewWorkspaceMetadata } from "../pr-review/workspace.ts";
 import { createWorkspaceActivationContract, explicitWorkspaceAuthorization } from "../utils/workspace-activation-contract.ts";
-import { runPrReviewWorktreeFromCommandContext } from "./pr-review.ts";
+import { prReviewCurrentPanelHeadNotice, runPrReviewWorktreeFromCommandContext } from "./pr-review.ts";
 
 function run(command: string, args: string[], cwd: string) {
 	const result = spawnSync(command, args, { cwd, encoding: "utf8" });
@@ -79,11 +79,12 @@ function request(baseSha: string, headSha: string) {
 function contractBuilder(order: string[]) {
 	return async (input: any) => {
 		order.push("contract");
+		const placement = input.placement ?? "tab";
 		return createWorkspaceActivationContract({
 			id: input.id,
 			workspaceAction: input.workspaceAction,
 			activationTarget: "new-panel",
-			placement: "right",
+			placement,
 			contextMode: input.contextMode,
 			continuation: input.continuation,
 			authorization: explicitWorkspaceAuthorization({
@@ -92,13 +93,24 @@ function contractBuilder(order: string[]) {
 				action: input.workspaceAction,
 				decision: "allow",
 				activationTarget: "new-panel",
-				placement: "right",
+				placement,
 			}),
 		});
 	};
 }
 
-test("PR review creates a head-pinned worktree and activates a full-lineage exact session in a new panel", async () => {
+test("PR review current-panel HEAD notice appears only when the target HEAD differs", () => {
+	const requestTarget = { number: 42, headSha: "abcdef1234567890" };
+	assert.equal(prReviewCurrentPanelHeadNotice(null, requestTarget), null);
+	assert.equal(prReviewCurrentPanelHeadNotice({ head: requestTarget.headSha, branch: "feature/review" }, requestTarget), null);
+	const notice = prReviewCurrentPanelHeadNotice({ head: "1111111111111111", branch: "main" }, requestTarget);
+	assert.match(notice ?? "", /main \(11111111\)/);
+	assert.match(notice ?? "", /PR #42 HEAD abcdef12/);
+	assert.match(notice ?? "", /기존 worktree의 branch\/HEAD는 수정하지 않고/);
+	assert.match(notice ?? "", /새 탭.*현재 패널은 그대로 유지/);
+});
+
+test("PR review offers only current panel or new tab and opens a head-pinned session in a new tab", async () => {
 	const f = setupRepository();
 	let targetSessionDir = "";
 	let targetPath = "";
@@ -107,6 +119,7 @@ test("PR review creates a head-pinned worktree and activates a full-lineage exac
 		const order: string[] = [];
 		let activationInput: any;
 		let switchCalled = false;
+		let selection: { title: string; options: string[] } | undefined;
 		const pi = {
 			exec(command: string, args: string[], options?: { cwd?: string }) {
 				if (command === "git" && args[0] === "fetch") order.push("fetch");
@@ -117,20 +130,28 @@ test("PR review creates a head-pinned worktree and activates a full-lineage exac
 			cwd: f.repo,
 			hasUI: true,
 			sessionManager: { getSessionFile: () => f.sourceSession, getSessionName: () => "source review", getCwd: () => f.repo },
-			ui: { notify() {} },
+			ui: {
+				notify() {},
+				async select(title: string, options: string[]) {
+					selection = { title, options };
+					return "새 탭";
+				},
+			},
 			switchSession() { switchCalled = true; },
 		} as any;
 		const result = await runPrReviewWorktreeFromCommandContext(pi, ctx, request(f.baseSha, f.headSha), {
 			buildContract: contractBuilder(order) as any,
 			activate: async (_pi, _ctx, input) => {
 				activationInput = input;
-				return { status: "activated", contract: input.contract, placement: "right", terminalId: "term-42", forkId: "fork-42", panelLabel: "P1", readyAt: "2026-08-25T00:00:00.000Z", continuationDispatched: true };
+				return { status: "activated", contract: input.contract, placement: "tab", terminalId: "term-42", forkId: "fork-42", panelLabel: "P1", readyAt: "2026-08-25T00:00:00.000Z", continuationDispatched: true };
 			},
 		});
 		targetPath = result.path ?? "";
 		assert.equal(result.status, "activated");
 		if (result.status !== "activated") return;
 		targetSessionDir = sessionDirFor(result.path);
+		assert.deepEqual(selection?.options, ["현재 패널", "새 탭"]);
+		assert.match(selection?.title ?? "", /PR #42 review를 어디에서 열까요/);
 		assert.ok(order.indexOf("contract") >= 0 && order.indexOf("contract") < order.indexOf("fetch"), "placement contract must be fixed before worktree creation");
 		assert.equal(git(result.path, ["rev-parse", "HEAD"]), f.headSha);
 		assert.equal(git(result.path, ["branch", "--show-current"]), "review/pr-42-" + f.headSha.slice(0, 8));
@@ -143,12 +164,14 @@ test("PR review creates a head-pinned worktree and activates a full-lineage exac
 		assert.equal(activationInput.sessionFile, result.sessionFile);
 		assert.equal(activationInput.cwd, result.path);
 		assert.equal(activationInput.contract.contextMode, "full");
+		assert.equal(activationInput.contract.placement, "tab");
 		assert.equal(activationInput.contract.continuation.customType, "pr-review-workspace-ready");
 		assert.equal(switchCalled, false);
 		const metadata = readPrReviewWorkspaceMetadata(result.path);
 		assert.equal(metadata?.targetSessionFile, result.sessionFile);
 		assert.equal(metadata?.contextMode, "full-transcript");
 		assert.equal(metadata?.activation?.target, "new-panel");
+		assert.equal(metadata?.activation?.placement, "tab");
 		assert.equal(metadata?.activation?.panelLabel, "P1");
 	} finally {
 		if (targetSessionDir) rmSync(targetSessionDir, { recursive: true, force: true });
@@ -157,14 +180,18 @@ test("PR review creates a head-pinned worktree and activates a full-lineage exac
 	}
 });
 
-test("PR review starts a fresh target session when the source session file is not materialized yet", async () => {
+test("PR review switches the current panel to a fresh target session and warns before changing the panel HEAD", async () => {
 	const f = setupRepository();
 	let targetSessionDir = "";
 	let targetPath = "";
 	try {
 		rmSync(f.sourceSession, { force: true });
-		let activationInput: any;
 		const order: string[] = [];
+		const notifications: Array<{ message: string; level: string }> = [];
+		let selection: { title: string; options: string[] } | undefined;
+		let switchedSession = "";
+		const replacementStatuses: Array<[string, string | undefined]> = [];
+		const replacementMessages: Array<{ message: any; options: any }> = [];
 		const pi = {
 			exec(command: string, args: string[], options?: { cwd?: string }) { return Promise.resolve(run(command, args, options?.cwd ?? f.repo)); },
 		} as any;
@@ -172,29 +199,53 @@ test("PR review starts a fresh target session when the source session file is no
 			cwd: f.repo,
 			hasUI: true,
 			sessionManager: { getSessionFile: () => f.sourceSession, getSessionName: () => undefined, getCwd: () => f.repo },
-			ui: { notify() {} },
+			ui: {
+				notify(message: string, level: string) { notifications.push({ message, level }); },
+				async select(title: string, options: string[]) {
+					selection = { title, options };
+					return "현재 패널";
+				},
+			},
+			async switchSession(sessionPath: string, options: any) {
+				switchedSession = sessionPath;
+				await options.withSession({
+					ui: {
+						notify(message: string, level: string) { notifications.push({ message, level }); },
+						setStatus(key: string, value?: string) { replacementStatuses.push([key, value]); },
+					},
+					async sendMessage(message: any, messageOptions: any) { replacementMessages.push({ message, options: messageOptions }); },
+				});
+				return { cancelled: false };
+			},
 		} as any;
 		const result = await runPrReviewWorktreeFromCommandContext(pi, ctx, request(f.baseSha, f.headSha), {
 			buildContract: contractBuilder(order) as any,
-			activate: async (_pi, _ctx, input) => {
-				activationInput = input;
-				return { status: "activated", contract: input.contract, placement: "right", terminalId: "term-fresh", forkId: "fork-fresh", panelLabel: "P1", readyAt: "2026-09-02T00:00:00.000Z", continuationDispatched: true };
-			},
+			activate: async () => { throw new Error("new-panel activation must not run for current panel"); },
 		});
 		targetPath = result.path ?? "";
-		assert.equal(result.status, "activated", result.status === "activated" ? undefined : result.reason);
-		if (result.status !== "activated") return;
+		assert.equal(result.status, "switched", result.status === "switched" ? undefined : result.reason);
+		if (result.status !== "switched") return;
 		targetSessionDir = sessionDirFor(result.path);
+		assert.deepEqual(selection?.options, ["현재 패널", "새 탭"]);
+		assert.equal(order.length, 0, "current-panel selection must not build a new-panel contract");
+		assert.equal(switchedSession, result.sessionFile);
+		assert.equal(result.contract.activationTarget, "current-panel");
+		assert.equal(result.contract.placement, undefined);
 		const targetSession = readFileSync(result.sessionFile, "utf8");
 		const header = JSON.parse(targetSession.split("\n")[0]!);
 		assert.equal(header.parentSession, undefined);
 		assert.match(targetSession, /fresh review session/);
 		assert.doesNotMatch(targetSession, /PR #42를 리뷰해줘/);
-		assert.equal(activationInput.sourceSessionFile, undefined);
-		assert.equal(activationInput.contract.contextMode, "clean");
+		assert.ok(notifications.some((item) => item.level === "warning" && /기존 worktree의 branch\/HEAD는 수정하지 않고/.test(item.message)));
+		assert.deepEqual(replacementStatuses, [["meta-review", undefined]]);
+		assert.equal(replacementMessages.length, 1);
+		assert.equal(replacementMessages[0].message.customType, "pr-review-workspace-ready");
+		assert.equal(replacementMessages[0].options.deliverAs, "followUp");
+		assert.equal(replacementMessages[0].options.triggerTurn, true);
 		const metadata = readPrReviewWorkspaceMetadata(result.path);
 		assert.equal(metadata?.sourceSessionFile, undefined);
 		assert.equal(metadata?.contextMode, "fresh");
+		assert.equal(metadata?.activation?.target, "current-panel");
 	} finally {
 		if (targetSessionDir) rmSync(targetSessionDir, { recursive: true, force: true });
 		if (targetPath) rmSync(targetPath, { recursive: true, force: true });
@@ -216,7 +267,7 @@ test("PR review activation failure removes its new session/worktree and never fa
 			cwd: f.repo,
 			hasUI: true,
 			sessionManager: { getSessionFile: () => f.sourceSession, getSessionName: () => "source review", getCwd: () => f.repo },
-			ui: { notify() {} },
+			ui: { notify() {}, async select() { return "새 탭"; } },
 			switchSession() { switchCalled = true; },
 		} as any;
 		const result = await runPrReviewWorktreeFromCommandContext(pi, ctx, request(f.baseSha, f.headSha), {
@@ -224,7 +275,7 @@ test("PR review activation failure removes its new session/worktree and never fa
 			activate: async (_pi, _ctx, input) => {
 				targetPath = input.cwd;
 				targetSessionDir = dirnameForSession(input.sessionFile);
-				return { status: "failed", reason: "READY timeout", contract: input.contract, placement: "right", safeToDeleteTarget: true };
+				return { status: "failed", reason: "READY timeout", contract: input.contract, placement: "tab", safeToDeleteTarget: true };
 			},
 		});
 		assert.equal(result.status, "failed");
@@ -253,7 +304,7 @@ test("PR review preserves its session and worktree when panel termination is not
 			cwd: f.repo,
 			hasUI: true,
 			sessionManager: { getSessionFile: () => f.sourceSession, getSessionName: () => "source review", getCwd: () => f.repo },
-			ui: { notify() {} },
+			ui: { notify() {}, async select() { return "새 탭"; } },
 		} as any;
 		const result = await runPrReviewWorktreeFromCommandContext(pi, ctx, request(f.baseSha, f.headSha), {
 			buildContract: contractBuilder(order) as any,
@@ -265,7 +316,7 @@ test("PR review preserves its session and worktree when panel termination is not
 					status: "blocked",
 					reason: "terminal close not confirmed",
 					contract: input.contract,
-					placement: "right",
+					placement: "tab",
 					descriptorPath: "/tmp/workspace-activation.json",
 					safeToDeleteTarget: false,
 				};

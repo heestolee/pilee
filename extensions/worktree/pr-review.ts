@@ -8,7 +8,12 @@ import {
 	loadWorktreeRepoProfiles,
 	type WorktreeRepoProfile,
 } from "../utils/private-profiles.ts";
-import type { WorkspaceContinuation } from "../utils/workspace-activation-contract.ts";
+import {
+	createWorkspaceActivationContract,
+	explicitWorkspaceAuthorization,
+	type WorkspaceActivationContract,
+	type WorkspaceContinuation,
+} from "../utils/workspace-activation-contract.ts";
 import {
 	prReviewWorkspacePath,
 	prReviewWorktreeIdentity,
@@ -47,6 +52,8 @@ export interface PrReviewWorktreeRequest {
 	afterSwitchFollowUp?: WorktreeAfterSwitchFollowUp;
 }
 
+export type PrReviewOpenTarget = "current" | "tab";
+
 export type PrReviewWorktreeResult =
 	| {
 		status: "activated";
@@ -56,6 +63,16 @@ export type PrReviewWorktreeResult =
 		sessionFile: string;
 		reused: boolean;
 		activation: Extract<WorkspacePanelActivationResult, { status: "activated" }>;
+	}
+	| {
+		status: "switched";
+		name: string;
+		branch: string;
+		path: string;
+		sessionFile: string;
+		reused: boolean;
+		contract: WorkspaceActivationContract;
+		continuationDispatched: boolean;
 	}
 	| { status: "blocked" | "failed"; reason: string; name?: string; branch?: string; path?: string; activation?: WorkspacePanelActivationResult };
 
@@ -86,6 +103,51 @@ async function resolveRepoRoot(pi: ExtensionAPI, ctx: ExtensionCommandContext, r
 	const cwdRoot = await repoRootFromCwd(pi, ctx.cwd);
 	if (cwdRoot && (!repoName || basename(cwdRoot) === repoName)) return cwdRoot;
 	return null;
+}
+
+interface CurrentPanelRevision {
+	head: string;
+	branch?: string;
+}
+
+const PR_REVIEW_OPEN_TARGET_OPTIONS: ReadonlyArray<{ target: PrReviewOpenTarget; label: string }> = [
+	{ target: "current", label: "현재 패널" },
+	{ target: "tab", label: "새 탭" },
+];
+
+export function prReviewCurrentPanelHeadNotice(
+	current: CurrentPanelRevision | null,
+	target: Pick<PrReviewWorktreeRequest, "number" | "headSha">,
+): string | null {
+	if (!current || current.head === target.headSha) return null;
+	const currentLabel = current.branch?.trim() || "detached HEAD";
+	return [
+		`현재 패널은 ${currentLabel} (${current.head.slice(0, 8)})를 보고 있습니다.`,
+		`“현재 패널”을 선택하면 기존 worktree의 branch/HEAD는 수정하지 않고, 이 패널을 PR #${target.number} HEAD ${target.headSha.slice(0, 8)} review session으로 전환합니다.`,
+		`“새 탭”을 선택하면 현재 패널은 그대로 유지합니다.`,
+	].join("\n");
+}
+
+async function currentPanelRevision(pi: ExtensionAPI, cwd: string): Promise<CurrentPanelRevision | null> {
+	const head = await git(pi, cwd, ["rev-parse", "HEAD"]);
+	if (head.code !== 0 || !head.stdout.trim()) return null;
+	const branch = await git(pi, cwd, ["branch", "--show-current"]);
+	return { head: head.stdout.trim(), branch: branch.code === 0 ? branch.stdout.trim() || undefined : undefined };
+}
+
+async function choosePrReviewOpenTarget(
+	pi: ExtensionAPI,
+	ctx: ExtensionCommandContext,
+	request: PrReviewWorktreeRequest,
+): Promise<PrReviewOpenTarget | null> {
+	if (!ctx.hasUI) return "current";
+	const notice = prReviewCurrentPanelHeadNotice(await currentPanelRevision(pi, ctx.cwd), request);
+	if (notice) ctx.ui.notify(notice, "warning");
+	const selected = await ctx.ui.select(
+		`PR #${request.number} review를 어디에서 열까요?`,
+		PR_REVIEW_OPEN_TARGET_OPTIONS.map((option) => option.label),
+	);
+	return PR_REVIEW_OPEN_TARGET_OPTIONS.find((option) => option.label === selected)?.target ?? null;
 }
 
 function matchingProfile(repoRoot: string, repoName: string): WorktreeRepoProfile | undefined {
@@ -255,18 +317,44 @@ export async function runPrReviewWorktreeFromCommandContext(
 	const rootDir = reviewRootDir(repoRoot, request.repo);
 	const worktreePath = join(rootDir, identity.name);
 	const existedBefore = existsSync(worktreePath);
-	const buildContract = runtime.buildContract ?? buildNewPanelActivationContract;
-	const contract = await buildContract({
-		id: `pr-review-${request.number}-${request.headSha.slice(0, 8)}-${Date.now().toString(36)}`,
-		ctx,
-		workspaceAction: existedBefore ? "use-existing-worktree" : "create-worktree",
-		contextMode: source ? "full" : "clean",
-		authorizationSource: "command",
-		authorizationSourceId: request.intent === "diff" ? "/diff" : "/meta-review",
-		continuation: reviewContinuation(request),
-		placementTitle: `PR #${request.number} review panel을 어디에 열까요?`,
-	});
-	if (!contract) return { status: "blocked", reason: "새 panel 위치를 선택하지 않아 PR review worktree를 만들거나 열지 않았습니다.", name: identity.name, branch: identity.branch, path: worktreePath };
+	const openTarget = await choosePrReviewOpenTarget(pi, ctx, request);
+	if (!openTarget) return { status: "blocked", reason: "열기 위치를 선택하지 않아 PR review worktree를 만들거나 열지 않았습니다.", name: identity.name, branch: identity.branch, path: worktreePath };
+
+	const activationId = `pr-review-${request.number}-${request.headSha.slice(0, 8)}-${Date.now().toString(36)}`;
+	const workspaceAction = existedBefore ? "use-existing-worktree" : "create-worktree";
+	const contractContextMode = source ? "full" : "clean";
+	const authorizationSourceId = request.intent === "diff" ? "/diff" : "/meta-review";
+	const continuation = reviewContinuation(request);
+	let contract: WorkspaceActivationContract | null;
+	if (openTarget === "tab") {
+		const buildContract = runtime.buildContract ?? buildNewPanelActivationContract;
+		contract = await buildContract({
+			id: activationId,
+			ctx,
+			workspaceAction,
+			contextMode: contractContextMode,
+			authorizationSource: "command",
+			authorizationSourceId,
+			continuation,
+			placement: "tab",
+		});
+	} else {
+		contract = createWorkspaceActivationContract({
+			id: activationId,
+			workspaceAction,
+			activationTarget: "current-panel",
+			contextMode: contractContextMode,
+			continuation,
+			authorization: explicitWorkspaceAuthorization({
+				source: ctx.hasUI ? "tui" : "command",
+				sourceId: `${authorizationSourceId}:open-current-panel`,
+				action: workspaceAction,
+				decision: "allow",
+				activationTarget: "current-panel",
+			}),
+		});
+	}
+	if (!contract) return { status: "blocked", reason: "새 탭 activation contract를 만들지 못해 PR review worktree를 만들거나 열지 않았습니다.", name: identity.name, branch: identity.branch, path: worktreePath };
 
 	mkdirSync(rootDir, { recursive: true });
 	let reused = false;
@@ -337,6 +425,75 @@ export async function runPrReviewWorktreeFromCommandContext(
 		if (created) await cleanupCreatedReviewWorktree(pi, repoRoot, worktreePath, identity.branch);
 		else if (previousMetadata) writePrReviewWorkspaceMetadata(worktreePath, previousMetadata);
 		return { status: "failed", reason: `PR review session creation failed: ${error instanceof Error ? error.message : String(error)}`, name: identity.name, branch: identity.branch, path: worktreePath };
+	}
+	if (!sessionFile) return { status: "failed", reason: "PR review session path가 만들어지지 않았습니다.", name: identity.name, branch: identity.branch, path: worktreePath };
+
+	const rollbackPreparedTarget = async () => {
+		cleanupReviewSession(sessionFile);
+		if (created) await cleanupCreatedReviewWorktree(pi, repoRoot, worktreePath, identity.branch);
+		else if (previousMetadata) writePrReviewWorkspaceMetadata(worktreePath, previousMetadata);
+		else rmSync(prReviewWorkspacePath(worktreePath), { force: true });
+	};
+
+	if (openTarget === "current") {
+		let replacementStarted = false;
+		let continuationDispatched = false;
+		try {
+			const switched = await ctx.switchSession(sessionFile, {
+				withSession: async (newCtx) => {
+					replacementStarted = true;
+					newCtx.ui.setStatus(request.intent === "diff" ? "diff" : "meta-review", undefined);
+					const switchedAt = new Date().toISOString();
+					try {
+						writePrReviewWorkspaceMetadata(worktreePath, {
+							...metadata,
+							targetSessionFile: sessionFile,
+							activation: { target: "current-panel", switchedAt },
+						});
+						writeWorktreeMeta(worktreePath, {
+							...readWorktreeMeta(worktreePath),
+							context: { mode: contextMode, sourceSessionFile: source ?? undefined, targetSessionFile: sessionFile, fullTranscriptCopied: Boolean(source), createdAt: Date.now() },
+							activation: { contract, status: "switched", sessionFile, switchedAt },
+						});
+					} catch (error) {
+						newCtx.ui.notify(`PR review 전환 기록 저장 실패: ${error instanceof Error ? error.message : String(error)}`, "warning");
+					}
+
+					newCtx.ui.notify(`✓ PR #${request.number} review를 현재 패널에서 이어갑니다.`, "info");
+					try {
+						const followUp = contract.continuation;
+						if (followUp) {
+							await newCtx.sendMessage(
+								{
+									customType: followUp.customType,
+									content: followUp.content,
+									display: followUp.display ?? false,
+									details: { ...followUp.details, activationTarget: "current-panel", worktreePath, sessionFile },
+								},
+								{ deliverAs: "followUp", triggerTurn: true },
+							);
+						}
+						continuationDispatched = true;
+					} catch (error) {
+						newCtx.ui.notify(`PR review session 전환은 완료됐지만 자동 시작 메시지 전달에 실패했습니다: ${error instanceof Error ? error.message : String(error)}`, "warning");
+					}
+				},
+			});
+			if (switched.cancelled && !replacementStarted) {
+				await rollbackPreparedTarget();
+				return { status: "blocked", reason: "현재 패널의 PR review session 전환을 취소했습니다.", name: identity.name, branch: identity.branch, path: worktreePath };
+			}
+			if (!replacementStarted) {
+				return { status: "failed", reason: `현재 패널 전환 완료를 확인하지 못해 worktree/session을 보존했습니다: ${worktreePath}`, name: identity.name, branch: identity.branch, path: worktreePath };
+			}
+			return { status: "switched", name: identity.name, branch: identity.branch, path: worktreePath, sessionFile, reused, contract, continuationDispatched };
+		} catch (error) {
+			if (replacementStarted) {
+				return { status: "switched", name: identity.name, branch: identity.branch, path: worktreePath, sessionFile, reused, contract, continuationDispatched };
+			}
+			await rollbackPreparedTarget();
+			return { status: "failed", reason: `현재 패널의 PR review session 전환 실패: ${error instanceof Error ? error.message : String(error)}`, name: identity.name, branch: identity.branch, path: worktreePath };
+		}
 	}
 
 	const activate = runtime.activate ?? activateWorkspaceInNewPanel;

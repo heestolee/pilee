@@ -28,13 +28,18 @@ export interface PrReviewWorkspaceMetadata {
 	activationContractId?: string;
 	activationIntent?: "meta-review" | "diff";
 	diffAutoOpenPending?: boolean;
-	activation?: {
-		target: "new-panel";
-		placement: "right" | "left" | "up" | "down" | "tab";
-		panelLabel: string;
-		forkId: string;
-		readyAt: string;
-	};
+	activation?:
+		| {
+			target: "new-panel";
+			placement: "right" | "left" | "up" | "down" | "tab";
+			panelLabel: string;
+			forkId: string;
+			readyAt: string;
+		}
+		| {
+			target: "current-panel";
+			switchedAt: string;
+		};
 	createdAt: number;
 }
 
@@ -63,9 +68,14 @@ export function validatePrReviewWorkspaceMetadata(value: unknown): PrReviewWorks
 	if (metadata.activation !== undefined) {
 		if (!metadata.activation || typeof metadata.activation !== "object" || Array.isArray(metadata.activation)) throw new Error("invalid PR review workspace activation");
 		const activation = metadata.activation as Record<string, unknown>;
-		if (activation.target !== "new-panel") throw new Error("invalid PR review workspace activation target");
-		if (!["right", "left", "up", "down", "tab"].includes(String(activation.placement))) throw new Error("invalid PR review workspace activation placement");
-		for (const key of ["panelLabel", "forkId", "readyAt"] as const) assertString(activation[key], `activation.${key}`);
+		if (activation.target === "current-panel") {
+			assertString(activation.switchedAt, "activation.switchedAt");
+		} else if (activation.target === "new-panel") {
+			if (!["right", "left", "up", "down", "tab"].includes(String(activation.placement))) throw new Error("invalid PR review workspace activation placement");
+			for (const key of ["panelLabel", "forkId", "readyAt"] as const) assertString(activation[key], `activation.${key}`);
+		} else {
+			throw new Error("invalid PR review workspace activation target");
+		}
 	}
 	return metadata as unknown as PrReviewWorkspaceMetadata;
 }
