@@ -36,7 +36,7 @@ source:
   - user-direction:2026-06-16-data-model-migration-map
   - user-feedback:2026-09-02-frame-studio-mermaid-rendering
 reviewed_at: 2026-09-02
-reviewed_commit: 8a34b6a
+reviewed_commit: ac0ef13
 related:
   - frame-planning-identity
   - frame-verify-contract
@@ -64,7 +64,7 @@ TFT Studio의 소유자는 현재 패널이 아니라 작업 단위입니다. wo
 
 TFT Studio는 tabbed markdown live view와 single/multi option, 직접 입력을 지원합니다. markdown live view는 frame draft의 success criteria처럼 표가 핵심인 문서를 그대로 읽을 수 있어야 하므로 GitHub-style pipe table(`| header |`, `|---|`)을 table로 렌더링합니다. Decide/Verify 문서는 `####` 같은 깊은 heading을 자주 쓰므로 `#`~`######` heading도 literal markdown이 보이지 않게 렌더링해야 합니다. 표나 heading이 raw pipe/`####` paragraph로 깨지면 검증 기준을 함께 좁히는 UI 목적을 잃습니다.
 
-기존 기획 문서가 `mermaid` fenced block을 포함하면 raw code block으로 낮추지 않고 로컬 패키지의 Mermaid browser bundle로 SVG를 렌더링합니다. 외부 CDN에 의존하지 않고 `securityLevel: strict`를 적용하며, 문법 오류나 runtime 누락 시에는 문서 전체를 막지 않고 오류와 escape된 원문을 같은 카드에 보존합니다. Live Studio는 loopback asset route를 사용하고 archive static preview는 같은 bundle을 inline해 reopen에서도 같은 결과를 유지합니다. 구조화 상태·관계·학습 카드가 필요한 신규 TFT artifact는 여전히 `tft-visual`을 우선하며, Mermaid 지원은 이미 존재하는 표준 diagram fence를 읽을 수 있게 하는 호환 경계입니다.
+기존 기획 문서가 `mermaid` fenced block을 포함하면 raw code block으로 낮추지 않고 로컬 패키지의 Mermaid browser bundle로 SVG를 렌더링합니다. 외부 CDN에 의존하지 않고 `securityLevel: strict`와 문서 CSP를 함께 적용해 외부 image/connect 요청을 차단하며, 문법 오류나 runtime 누락 시에는 문서 전체를 막지 않고 오류와 escape된 원문을 같은 카드에 보존합니다. Live Studio는 loopback asset route를 사용하고 archive static preview는 Mermaid fence가 있을 때만 같은 bundle을 inline해 reopen 결과와 일반 archive 크기를 함께 보존합니다. 구조화 상태·관계·학습 카드가 필요한 신규 TFT artifact는 여전히 `tft-visual`을 우선하며, Mermaid 지원은 이미 존재하는 표준 diagram fence를 읽을 수 있게 하는 호환 경계입니다.
 
 사용자가 선택하거나 취소하면 tool 응답으로 돌아오고, headless/no-UI 환경에서는 blocking하지 않고 numbered text fallback으로 내려갑니다. 질문 대기는 agent turn을 붙잡는 blocking 상태라서 무한 대기하지는 않지만, 실제 frame 검토는 긴 회의/휴식 후에도 이어질 수 있으므로 기본 timeout은 짧은 30분이 아니라 작업 세션 단위의 긴 window로 둡니다.
 
