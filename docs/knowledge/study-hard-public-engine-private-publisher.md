@@ -99,7 +99,7 @@ Notion publisher는 페이지 전체를 managed document 하나로 취급하지 
 - Notion에만 추가된 block이 있으면 개수와 image 포함 여부를 경고하고, `변경될 Study Hard 적용` 시 제거된다는 결과를 선택 전에 명시합니다. Notion-only 변경은 modal을 띄우지 않고 자동 import하되 완료 상태에 가져온 section·image 수를 표시합니다.
 - `직접 정리`는 Markdown editor가 아니라 기존 block type·id·순서를 유지하는 block editor입니다. paragraph text, callout title/body, list item, table cell, code, image caption처럼 block 내부 텍스트만 편집해 structured blocks로 양쪽 canonical에 저장합니다.
 - Study Hard 일반 section은 기존 section 단위 부분 동기화를 유지합니다. Meta Review만 `targetSessionId`의 페이지 하단 단일 toggle을 관리하며, 같은 `artifactInstanceId`의 반복 저장은 새 section을 추가하지 않고 최신 revision으로 교체합니다.
-- 매 저장 시 같은 revision의 standalone HTML을 생성해 page 하단 managed file block으로 교체하고 file block identity/hash를 sync state에 보존합니다.
+- 매 저장 시 같은 revision의 standalone HTML을 생성합니다. Study Hard는 page 하단 managed file block으로 교체하고, Meta Review는 HTML ZIP heading/file을 `🔎 Meta Review` toggle children에 포함해 그 toggle 하나가 실제 최종 top-level block이 되게 합니다. File block identity/hash는 sync state에 보존합니다.
 
 이 계약은 merge conflict와 같습니다. 충돌 검출은 publisher가 담당하지만 최종 선택은 사용자에게 돌려주고, 자동 import도 block 구조를 보존해야 합니다.
 
