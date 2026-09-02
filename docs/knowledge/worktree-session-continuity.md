@@ -40,8 +40,9 @@ source:
   - user-direction:2026-05-17-full-worktree-fork-default
   - user-direction:2026-08-18-pr-review-checkout-session
   - user-direction:2026-08-25-workspace-activation-redesign
-reviewed_at: 2026-08-31
-reviewed_commit: 94a83c01f112ebec27e3f9bf9a7df842a7a06af9
+  - user-direction:2026-09-02-pr-review-current-panel-or-tab
+reviewed_at: 2026-09-02
+reviewed_commit: 80e630e
 related:
   - subagent-model-policy
   - pilee-knowledge-system
@@ -65,7 +66,7 @@ fork-panel에서 종료된 대화는 transcript를 주입하는 것보다 세션
 
 ## Worktree Entry Rule
 
-기존 worktree로 현재 panel에서 돌아가는 기본 진입점은 `/wt switch`입니다. 사용자가 작업공간으로 돌아간다는 것은 “워크트리만 이동”이 아니라 “그 워크트리 안에서 이어갈 세션을 고른다”는 뜻이므로, `/wt switch`는 워크트리 선택 다음에 해당 worktree session picker까지 이어져야 합니다. `/wt sessions`는 독립 UX가 아니라 호환 alias로 남겨 같은 session picker 흐름을 호출합니다. 사용자가 직접 실행한 slash `/wt new`는 원래처럼 생성 직후 현재 panel을 exact target session/cwd로 직접 전환합니다. Slash `/wt fork`는 공통 생성 후 현재 panel·새 탭·오른쪽 panel 중 활성화 위치를 고릅니다. 새 panel의 full session 기동이 READY 대기 시간을 넘겨도 panel과 descriptor를 유지하고, receiver가 나중에 READY가 되면 계승된 작업 continuation을 실행합니다. Tool·PR review·Frame/TFT 경로의 기존 source-panel 보존 계약은 별도로 유지됩니다.
+기존 worktree로 현재 panel에서 돌아가는 기본 진입점은 `/wt switch`입니다. 사용자가 작업공간으로 돌아간다는 것은 “워크트리만 이동”이 아니라 “그 워크트리 안에서 이어갈 세션을 고른다”는 뜻이므로, `/wt switch`는 워크트리 선택 다음에 해당 worktree session picker까지 이어져야 합니다. `/wt sessions`는 독립 UX가 아니라 호환 alias로 남겨 같은 session picker 흐름을 호출합니다. 사용자가 직접 실행한 slash `/wt new`는 원래처럼 생성 직후 현재 panel을 exact target session/cwd로 직접 전환합니다. Slash `/wt fork`는 공통 생성 후 현재 panel·새 탭·오른쪽 panel 중 활성화 위치를 고릅니다. 새 panel의 full session 기동이 READY 대기 시간을 넘겨도 panel과 descriptor를 유지하고, receiver가 나중에 READY가 되면 계승된 작업 continuation을 실행합니다. Tool·Frame/TFT 경로의 기존 source-panel 보존 계약은 별도로 유지합니다. PR review는 사용자가 `현재 패널 | 새 탭` 중 하나를 고르며 현재 패널을 택하면 source conversation을 복사한 exact review session으로 직접 전환합니다.
 
 `/wt resume <workspace>`는 Conductor workspace 하나를 선택한 세션만 복구하지 않습니다. 해당 workspace의 Conductor 세션 전체를 Pi session으로 hydrate하고, 각 변환 세션에 source metadata를 남겨 재실행 시 중복 변환을 피합니다. hydrate가 끝나면 `/wt switch <workspace>`와 같은 세션 선택 흐름으로 이어져야 합니다. 복구된 Pi session 자체가 원본 transcript를 갖고 있으므로, workspace-level `conductor-context.md`가 특정 active Conductor session 요약을 다음 turn에 잘못 주입하지 않도록 `.loaded.md`로 보존 처리합니다.
 
@@ -77,7 +78,7 @@ worktree 생성의 context sharing은 command 의미에 맞춰 나뉩니다. Sla
 
 최소 전달 정보도 “보조 힌트”가 아니라 복구 가능한 artifact입니다. 새 session JSONL에 실제 `worktree-context` custom message로 persist되어야 하며, `.pi/worktree-meta.json`에는 `context.mode`, source session file/title/cwd, target session file, full transcript copy 여부가 남아야 합니다. UI의 cwd binding도 `전문 계승`, `최소 전달 메모 저장`, `대체 전달 메모 저장`처럼 실제 전달 상태를 말해야 합니다. handoff를 숨긴다는 뜻은 전달 사실을 감추는 것이 아니라, 사용자가 별도 handoff 절차를 수행해야만 worktree를 만들 수 있는 UX를 없앤다는 뜻입니다.
 
-PR review workspace도 source conversation에서 시작한 목적형 fork이므로 full transcript와 lineage를 보존합니다. 동시에 immutable PR run, `.pi/pr-review.json`, exact checkout이 review truth이며, metadata에는 source/target session과 activation placement/READY provenance를 남깁니다. Review continuation은 새 panel exact session이 READY인 뒤 Review Studio와 `/diff` 사용 상태까지 이어집니다. PR truth가 별도 canonical이라는 사실은 full source context를 버리는 근거가 아닙니다.
+PR review workspace도 source conversation에서 시작한 목적형 fork이므로 full transcript와 lineage를 보존합니다. 동시에 immutable PR run, `.pi/review-context.json`, exact checkout이 review truth이며, metadata에는 source/target session과 current-panel switch 또는 new-tab READY provenance를 남깁니다. 복사할 source session 파일이 아직 없으면 차단하지 않고 checkout/run metadata를 가진 fresh review session을 만듭니다. 열기 위치는 `현재 패널 | 새 탭` 두 개뿐입니다. 현재 패널 HEAD와 PR HEAD가 다르면 기존 worktree의 branch/HEAD는 건드리지 않고 이 panel이 review session으로 전환된다는 사실을 먼저 알립니다. 어느 위치든 continuation은 Review Studio와 `/diff` 사용 상태까지 이어져야 합니다. PR truth가 별도 canonical이라는 사실은 존재하는 full source context를 버리는 근거가 아닙니다.
 
 fork-panel의 handoff는 패널 생명주기와 분리합니다. 자식 패널이 닫혀야만 맥락이 전달되는 구조는 사용자가 불필요하게 패널을 종료하게 만들고, 즉시 follow-up 주입은 부모 대화 흐름을 끊을 수 있습니다. 기본 handoff는 parent inbox에 unread 항목으로 저장하고, 부모가 `/panels`에서 선택해 입력창에 삽입하거나 명시적으로 follow-up 전송할 때만 대화 컨텍스트에 들어옵니다.
 

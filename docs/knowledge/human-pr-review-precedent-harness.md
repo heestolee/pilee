@@ -29,8 +29,9 @@ source:
   - user-direction:2026-08-30-meaning-chart-zoom-overlay
   - user-direction:2026-08-31-meta-review-study-hard-worker-lifecycle-parity
   - user-direction:2026-09-02-study-hard-code-review-discoverability
+  - user-direction:2026-09-02-pr-review-current-panel-or-tab
 reviewed_at: 2026-09-02
-reviewed_commit: 5dd4575
+reviewed_commit: 80e630e
 related:
   - evidence-first-verification-gate
   - live-artifact-preview-pattern
@@ -95,6 +96,8 @@ Inline 압축 때문에 label을 읽기 어려우면 각 카드의 `확대해서
 ## Checkout Execution Boundary
 
 `/meta-review <URL>`과 `/diff <URL>`은 같은 checkout 준비 계층을 사용합니다. GitHub PR head SHA에서 전용 `review/pr-<number>-<head>` worktree를 만들고, `.pi/review-context.json`에 base/head/선택적 run/source-target session/activation provenance를 저장합니다. legacy `.pi/pr-review.json`은 읽기 fallback으로만 유지합니다. `/diff <URL>`은 Meta Review artifact를 만들지 않고 exact checkout session에서 raw diff를 바로 열 수 있으며, 이후 같은 세션에서 `/meta-review`를 실행하면 동일 source context에 run을 연결합니다.
+
+Review worktree가 필요하다는 사실은 별도 분할 panel이 필요하다는 뜻이 아닙니다. Checkout 준비 뒤 열기 위치는 `현재 패널 | 새 탭` 두 개만 제시합니다. 현재 패널을 고르면 Pi의 session replacement API로 exact review session을 열고, 새 탭을 고르면 source panel을 유지한 채 durable READY 뒤 continuation을 실행합니다. 현재 panel HEAD와 PR HEAD가 다를 때만 선택 전에 경고하며, 이 경고는 source worktree의 branch/HEAD를 직접 수정하지 않고 panel의 active session/cwd가 바뀐다는 사실을 설명해야 합니다. Session replacement 뒤 original command context는 stale이므로 command handler는 `switched`를 terminal handoff로 처리하고 새 context에서만 status 정리와 follow-up 전송을 수행합니다.
 
 Review worktree는 read-only 실행 경계입니다. dependency bootstrap을 자동 실행하지 않고 사용자가 수정 요청을 별도로 주기 전에는 repository를 변경하지 않습니다. `/diff`는 explicit `--base`가 없을 때 review context를 먼저 읽고 captured head와 현재 HEAD가 같을 때만 base SHA와의 merge-base를 사용합니다. Head가 drift하면 기존 설명과 finding을 유효한 것처럼 보여주지 않고 stale 오류를 냅니다.
 

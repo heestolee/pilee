@@ -24,8 +24,9 @@ applies_to:
   - /wt switch
 source:
   - user-direction:2026-08-25-workspace-activation-redesign
-reviewed_at: 2026-08-31
-reviewed_commit: e38c1637107f90a8e398dbfc9cb4779cb70e1ab9
+  - user-direction:2026-09-02-pr-review-current-panel-or-tab
+reviewed_at: 2026-09-02
+reviewed_commit: 80e630e
 related:
   - worktree-execution-boundary
   - worktree-session-continuity
@@ -55,11 +56,11 @@ Authorization은 단순 keyword 존재 여부가 아닙니다. `worktree 만들�
 
 ## Activation Rule
 
-Slash `/wt new`는 worktree/session 생성 후 기존 `switchSession` 경로로 현재 panel을 exact target session/cwd로 직접 전환하고 최신 non-transition 요청 1개만 compact continuation으로 전달합니다. Slash `/wt fork`는 공통 worktree/full-lineage session 생성 후 현재 panel·새 탭·오른쪽 panel 중 활성화 위치를 선택하며 어느 경로든 최신 작업을 자동 계속합니다. 현재 panel은 직접 switch하고, 새 탭·오른쪽은 durable READY descriptor를 사용합니다. Full-lineage target이 초기 READY 대기 시간을 넘기면 crash로 오판해 panel을 닫지 않고 `pending`으로 반환하며 descriptor를 열어 둡니다. Target receiver가 나중에 exact cwd/session READY를 기록하면 continuation을 한 번만 claim해 자동 실행합니다. 실제 activation 준비/open 실패가 확인돼도 성공적으로 만든 worktree/session은 recovery artifact로 보존합니다. `worktree_create`, `worktree_fork`, PR review checkout, Frame/TFT fork도 source panel 보존용 new-panel READY 계약을 유지합니다.
+Slash `/wt new`는 worktree/session 생성 후 기존 `switchSession` 경로로 현재 panel을 exact target session/cwd로 직접 전환하고 최신 non-transition 요청 1개만 compact continuation으로 전달합니다. Slash `/wt fork`는 공통 worktree/full-lineage session 생성 후 현재 panel·새 탭·오른쪽 panel 중 활성화 위치를 선택하며 어느 경로든 최신 작업을 자동 계속합니다. 현재 panel은 직접 switch하고, 새 탭·오른쪽은 durable READY descriptor를 사용합니다. Full-lineage target이 초기 READY 대기 시간을 넘기면 crash로 오판해 panel을 닫지 않고 `pending`으로 반환하며 descriptor를 열어 둡니다. Target receiver가 나중에 exact cwd/session READY를 기록하면 continuation을 한 번만 claim해 자동 실행합니다. 실제 activation 준비/open 실패가 확인돼도 성공적으로 만든 worktree/session은 recovery artifact로 보존합니다. `worktree_create`, `worktree_fork`, Frame/TFT fork는 source panel 보존용 new-panel READY 계약을 유지합니다. PR review checkout은 head-pinned worktree 준비와 화면 topology를 분리해 `현재 패널 | 새 탭`만 묻습니다. 현재 패널은 exact review session으로 직접 switch하고 새 탭만 READY descriptor를 사용합니다. 현재 panel HEAD와 PR HEAD가 다를 때는 기존 worktree HEAD를 수정하지 않고 panel의 active review session만 바뀐다는 경고를 선택 전에 보여줍니다.
 
 Descriptor 전이는 `prepared → panel-opened → ready → continuing → continued`와 `prepared|panel-opened|ready|failed → cancelling → cancelled`를 구분합니다. Parent와 child process는 bounded retry·stale recovery가 있는 exclusive lock directory 안에서 전이를 claim합니다. Receiver가 `ready→continuing`을 먼저 소유하면 parent는 timeout cleanup을 수행하지 않고, parent가 cancellation을 먼저 소유하면 receiver는 continuation을 보내지 않습니다. 같은 descriptor를 연 duplicate receiver도 continuation을 두 번 dispatch할 수 없습니다.
 
-`/wt switch`와 `worktree_switch`는 사용자가 기존 worktree로 현재 panel을 옮기는 명시적 경로입니다. current-panel activation은 이 switch/here 계열에만 남기며, new-panel open 실패를 current-panel switch로 대체하지 않습니다.
+`/wt switch`와 `worktree_switch`는 사용자가 기존 worktree로 현재 panel을 옮기는 명시적 경로입니다. PR review의 `현재 패널` 선택도 사용자가 고른 명시적 current-panel activation입니다. 어떤 workflow에서도 new-panel open 실패를 current-panel switch로 몰래 대체하지 않습니다.
 
 명시적 worktree authorization은 P0/P1/P2 어느 panel에서든 현재 보이는 conversation을 source로 사용할 수 있습니다. Source panel은 그대로 남고 target은 선택한 placement에 열립니다. 부모 P0를 source로 쓰고 싶을 때만 사용자가 P0에서 실행하며, `/handoff`는 필수 생성 절차가 아닙니다. Panel 번호는 stage·context-carry·hotfix/base·authorization gate를 우회하지 않습니다.
 
@@ -71,7 +72,7 @@ Host adapter runtime E2E는 사용자가 작업 중인 terminal·tab·window를 
 
 ## Context and Continuation
 
-Slash `/wt fork`는 full transcript와 `parentSession` lineage를 기본으로 시도하되 fork copy 실패가 이미 성공한 worktree 생성을 취소하지 않으며, 기존 fallback context/session과 경고를 남긴 뒤 현재 panel 전환을 계속합니다. Slash `/wt new`는 clean session을 만들고 full transcript 대신 source의 최신 non-transition 요청 1개를 최대 2,000자로 전달합니다. Source session이 아직 없으면 provenance를 꾸며내거나 생성을 차단하지 않습니다. 반대로 별도 panel에서 자동 실행되는 tool·PR review·Frame/TFT workflow는 요구한 full lineage/READY가 없으면 생성 전 또는 안전한 cleanup 뒤 BLOCKED 처리할 수 있습니다.
+Slash `/wt fork`는 full transcript와 `parentSession` lineage를 기본으로 시도하되 fork copy 실패가 이미 성공한 worktree 생성을 취소하지 않으며, 기존 fallback context/session과 경고를 남긴 뒤 현재 panel 전환을 계속합니다. Slash `/wt new`는 clean session을 만들고 full transcript 대신 source의 최신 non-transition 요청 1개를 최대 2,000자로 전달합니다. Source session이 아직 없으면 provenance를 꾸며내거나 생성을 차단하지 않습니다. PR review도 source session 파일이 아직 없으면 PR checkout/run metadata를 가진 fresh review session을 만들고 사용자가 고른 현재 panel 또는 새 탭에서 계속합니다. 별도 panel에서 자동 실행되는 tool·Frame/TFT workflow는 요구한 full lineage/READY가 없으면 생성 전 또는 안전한 cleanup 뒤 BLOCKED 처리할 수 있습니다.
 
 Worktree directory나 session file을 만들었다고 workflow가 완료된 것은 아닙니다. PR review는 Review Studio와 `/diff`를 사용할 수 있는 target session까지, Frame fork는 승격된 frame/task를 읽고 첫 ready implementation slice를 시작하는 continuation까지 닫혀야 합니다.
 
