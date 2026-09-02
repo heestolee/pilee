@@ -32,7 +32,7 @@ source:
   - user-direction:2026-09-02-pr-review-current-panel-or-tab
   - user-direction:2026-09-03-meta-review-export-actions
 reviewed_at: 2026-09-03
-reviewed_commit: "0662141"
+reviewed_commit: "7d28356"
 related:
   - evidence-first-verification-gate
   - live-artifact-preview-pattern
@@ -131,7 +131,7 @@ Meta Review session의 review truth는 immutable run과 checkout metadata이지�
 `HTML 내보내기`와 `Notion 저장`은 화면 DOM이나 오래된 `review.md`를 임의 복사하지 않습니다. 최신 ready revision의 `document.json`, `guides.json`, `cards.json`, `questions.jsonl`, immutable source를 하나의 구조화 export snapshot으로 변환합니다. Overview, 관계와 읽는 순서, source-backed 변경 의미, finding과 사람 결정, 모든 설명 hunk의 changed-line evidence, 질문·답변이 같은 snapshot에 포함되어야 합니다.
 
 - HTML은 학습노트와 같은 standalone renderer를 재사용하되 artifact label을 `Meta Review`로 구분하고 configured Downloads 경로에 저장합니다.
-- Notion은 같은 구조화 문서를 기존 private publisher에 전달합니다. Synthetic state는 Study Hard board 전체를 spread하지 않고 export 필드만 allowlist해 학습 목표·요약·후속 복습이 review 문서에 섞이지 않게 합니다. Review series에서 파생한 stable session ID로 같은 페이지를 upsert하고 page/section hash는 source run의 `export-state.json` sidecar에만 보존합니다.
+- Notion은 같은 구조화 문서를 기존 private publisher에 전달합니다. Synthetic state는 Study Hard board 전체를 spread하지 않고 export 필드만 allowlist해 학습 목표·요약·후속 복습이 review 문서에 섞이지 않게 합니다. 연결된 Study Hard `runId`로 같은 학습노트를 찾고, review series의 stable artifact ID와 page/section hash는 source run의 `export-state.json` sidecar에만 보존합니다. 학습노트가 있으면 최하단의 단일 `🔎 Meta Review` toggle을 최신 revision으로 교체하고, 없으면 같은 Study Hard ID의 페이지를 생성합니다.
 - Meta Review는 generated review canonical이므로 Notion에서 유지하거나 직접 정리한 block을 `document.json`·`guides.json`·`cards.json`·`questions.jsonl`로 역수입하지 않습니다. 양쪽 변경이 겹치면 기존 block diff UI에서 이번 Notion 저장 결과만 선택합니다.
 - 저장 중 새 ready revision이 생기면 저장된 revision과 현재 revision을 분리해 stale 상태를 알립니다. 외부 write는 사용자가 `Notion 저장`을 누른 경우에만 실행합니다.
 
@@ -177,5 +177,6 @@ Meta Review의 코드 리뷰 탭은 GitHub write 도구가 아닙니다. `review
 - 기존 SVG DOM을 그대로 clone하면 Mermaid marker·definition ID가 문서에서 중복될 수 있습니다. Overlay는 canonical source를 unique render ID로 다시 렌더링합니다.
 - action menu를 native toggle에만 맡기면서 interactive element를 중첩하거나 item/outside/Esc close를 생략하면 한 번 열린 메뉴가 사용자의 다음 조작을 가립니다.
 - HTML과 Notion이 서로 다른 source를 변환하거나 Notion 내용을 review canonical로 역수입하면 같은 revision의 설명·finding·질문이 서로 달라집니다.
+- Meta Review를 자체 ID의 별도 페이지로 저장하거나 기존 toggle을 archive하지 않고 append만 하면 같은 학습 흐름이 분리되거나 revision별 중복 section이 누적됩니다.
 - declaration source를 render 시 mutable checkout에서 다시 읽으면 immutable review run과 다른 코드를 질문하게 됩니다.
 - diff freshness hash에 full-source hash를 섞으면 기존 remote/current diff stale 검산과 호환되지 않습니다.

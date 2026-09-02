@@ -19,7 +19,7 @@ source:
   - user-direction:2026-07-21-study-hard-notion-static-export
   - user-direction:2026-09-03-meta-review-export-actions
 reviewed_at: 2026-09-03
-reviewed_commit: "0662141"
+reviewed_commit: "7d28356"
 related:
   - private-overlay-package-boundary
   - context-loading-minimal-surface
@@ -76,7 +76,9 @@ Notion token, database ID, page naming, upload body schema를 public extension�
 
 Meta Review도 별도 Notion SDK나 개인 destination을 public code에 추가하지 않습니다. Public `extensions/pr-review`가 최신 ready revision의 document·guide·finding·changed-line evidence·질문을 `noteDocument` 호환 구조로 변환하고, Study Hard가 기존 HTML renderer와 configured publisher를 실행합니다. HTML과 Notion은 반드시 같은 export snapshot을 소비합니다.
 
-Meta Review의 sync metadata는 학습노트 state가 아니라 source review run의 `export-state.json` sidecar에 둡니다. Publisher payload를 만들 때 Study Hard board state를 통째로 spread하지 않고 review export에 필요한 필드만 allowlist해 goals·summary·followups 같은 학습 전용 section이 섞이지 않게 합니다. Review series에서 파생한 stable session ID로 같은 Notion 페이지를 찾되 개인 database ID, token, tag와 페이지 naming은 publisher가 계속 소유합니다. Notion에서 선택한 내용을 generated review canonical로 역수입하지 않으며, 충돌 선택은 해당 Notion write 결과에만 적용합니다. 따라서 publisher가 없거나 실패해도 HTML 내보내기와 로컬 Meta Review는 계속 동작합니다.
+Meta Review의 sync metadata는 학습노트 state가 아니라 source review run의 `export-state.json` sidecar에 둡니다. Publisher payload를 만들 때 Study Hard board state를 통째로 spread하지 않고 review export에 필요한 필드만 allowlist해 goals·summary·followups 같은 학습 전용 section이 섞이지 않게 합니다. Public adapter는 연결된 Study Hard `runId`를 `targetSessionId`, review series에서 파생한 stable ID를 `artifactInstanceId`로 분리해 전달하고, 개인 database ID, token, tag와 페이지 naming은 publisher가 계속 소유합니다.
+
+Private publisher는 `targetSessionId`가 같은 학습노트를 우선 찾습니다. 있으면 기존 본문과 비관리 block을 보존한 채 문서 최하단의 단일 `🔎 Meta Review` toggle을 최신 revision으로 갱신하고, 없으면 같은 Study Hard ID로 새 페이지를 생성합니다. 갱신은 새 toggle 전체를 쓰고 semantic hash를 read-back 검증한 뒤 이전 toggle만 archive하여 중복을 남기지 않습니다. 중간 자식 쓰기가 실패하면 부분 toggle을 정리합니다. Notion에서 선택한 내용을 generated review canonical로 역수입하지 않으며, 충돌 선택은 해당 Notion write 결과에만 적용합니다. 따라서 publisher가 없거나 실패해도 HTML 내보내기와 로컬 Meta Review는 계속 동작합니다.
 
 ### Section Sync And Conflict Rule
 
@@ -96,6 +98,7 @@ Notion publisher는 페이지 전체를 managed document 하나로 취급하지 
 - 직접 정리의 자동 초안은 unchanged 1회, current-only 보존, desired-only 추가, changed는 current 기본값으로 구성합니다. 사용자는 changed row마다 current/desired source를 고르고 block 내부 필드를 수정하거나 block을 삭제·재배열할 수 있습니다.
 - Notion에만 추가된 block이 있으면 개수와 image 포함 여부를 경고하고, `변경될 Study Hard 적용` 시 제거된다는 결과를 선택 전에 명시합니다. Notion-only 변경은 modal을 띄우지 않고 자동 import하되 완료 상태에 가져온 section·image 수를 표시합니다.
 - `직접 정리`는 Markdown editor가 아니라 기존 block type·id·순서를 유지하는 block editor입니다. paragraph text, callout title/body, list item, table cell, code, image caption처럼 block 내부 텍스트만 편집해 structured blocks로 양쪽 canonical에 저장합니다.
+- Study Hard 일반 section은 기존 section 단위 부분 동기화를 유지합니다. Meta Review만 `targetSessionId`의 페이지 하단 단일 toggle을 관리하며, 같은 `artifactInstanceId`의 반복 저장은 새 section을 추가하지 않고 최신 revision으로 교체합니다.
 - 매 저장 시 같은 revision의 standalone HTML을 생성해 page 하단 managed file block으로 교체하고 file block identity/hash를 sync state에 보존합니다.
 
 이 계약은 merge conflict와 같습니다. 충돌 검출은 publisher가 담당하지만 최종 선택은 사용자에게 돌려주고, 자동 import도 block 구조를 보존해야 합니다.
@@ -176,6 +179,7 @@ Glimpse의 learner 질문은 extension coordinator가 실제 `study-hard-worker 
 - 이미지를 attachments에만 남기면 학습노트의 설명 순서와 Notion 본문에서 그림의 의미가 사라집니다.
 - Meta Review가 별도 개인 Notion client를 public extension에 넣으면 같은 publisher 계약이 복제되고 private destination 정보가 새어 나갑니다.
 - Notion Meta Review snapshot을 generated review canonical로 역수입하면 immutable source 기반 설명과 외부 편집본의 책임이 섞입니다.
+- Meta Review 자체 ID만으로 별도 페이지를 찾으면 같은 Study Hard 학습 흐름이 Notion에서 분리되고, 반복 저장마다 toggle을 append만 하면 동일 review section이 중복됩니다.
 - persisted Q&A 전문을 새 session에 재생하면 transcript 보존이 아니라 현재 context 오염이 됩니다.
 - worker가 전체 proposed note를 transcript에 출력하면 병렬 질문 수만큼 P0 context가 중복됩니다.
 - worker가 state를 직접 쓰거나 last-write-wins를 사용하면 병렬 결과가 조용히 유실됩니다.
