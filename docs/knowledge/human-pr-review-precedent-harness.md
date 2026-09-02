@@ -32,9 +32,10 @@ source:
   - user-direction:2026-09-02-pr-review-current-panel-or-tab
   - user-direction:2026-09-03-meta-review-export-actions
   - user-direction:2026-09-03-meta-review-export-reading-flow
+  - user-direction:2026-09-03-meta-review-live-static-renderer-parity
   - user-direction:2026-09-03-meta-review-local-pr-patch-boundary
 reviewed_at: 2026-09-03
-reviewed_commit: 4266cfd8b468766424c98c4ae8285c0e8433e16c
+reviewed_commit: "870259f"
 related:
   - evidence-first-verification-gate
   - live-artifact-preview-pattern
@@ -132,7 +133,7 @@ Meta Review session의 review truth는 immutable run과 checkout metadata이지�
 
 `HTML 내보내기`와 `Notion 저장`은 화면 DOM이나 오래된 `review.md`를 임의 복사하지 않습니다. 최신 ready revision의 `document.json`, `guides.json`, `cards.json`, `questions.jsonl`, immutable source를 하나의 구조화 export snapshot으로 변환합니다. Overview, 관계와 읽는 순서, source-backed 변경 의미, finding과 사람 결정, 모든 설명 hunk의 changed-line evidence, 질문·답변이 같은 snapshot에 포함되어야 합니다.
 
-- HTML은 학습노트와 같은 standalone renderer를 재사용하되 artifact label을 `Meta Review`로 구분하고 configured Downloads 경로에 저장합니다. 다만 Easy Review 계열의 핵심 navigation인 `relationships.readingOrder`를 일반 list로만 평탄화하지 않습니다. Snapshot이 파일 순서·이유·section anchor를 별도로 전달하고, renderer는 Meta Review에서만 sticky `읽는 흐름` rail·진행률·파일 이동 anchor를 복원합니다. 파일 section 자체도 authored reading order로 배치하고 현재·지난 상태는 실제 DOM 위치를 기준으로 계산하며, 접힌 내용을 펼쳐 위치가 달라지면 즉시 다시 계산합니다. 좁은 화면에서는 rail을 본문 위 panel로 전환하며, script가 실행되지 않아도 본문의 명시적 `읽는 흐름` 목록으로 같은 순서를 읽을 수 있어야 합니다.
+- HTML과 live 코드 리뷰 surface는 서로 다른 renderer를 갖지 않습니다. 최신 `MetaReviewClientState` 하나에서 pure review document renderer가 `한눈에 보기 → 관계 → 변경 의미 → finding → guided diff → 읽는 흐름` DOM을 만들고, 같은 CSS 상수 한 사본을 Glimpse와 standalone shell이 함께 사용합니다. Live는 이 fragment에 선택·질문·결정·갱신 binding을 붙이고, standalone은 server mutation control과 endpoint를 제거한 뒤 file jump·details·읽기 진행률·Mermaid fallback을 로컬 script로만 제공합니다. Glimpse drawer의 질문·답변은 선택 범위, worker, evidence, 변경 파일·검증·갱신 결과를 잃지 않는 read-only appendix로 보존합니다. 파일 section과 rail은 authored reading order를 따르고, canonical order에서 빠진 legacy 파일도 실제 렌더된 rail step과 진행률 분모에 포함합니다. Configured Downloads HTML과 Notion에 첨부되는 HTML은 같은 standalone renderer의 동일 bytes여야 합니다.
 - Notion은 같은 구조화 문서를 기존 private publisher에 전달합니다. Synthetic state는 Study Hard board 전체를 spread하지 않고 export 필드만 allowlist해 학습 목표·요약·후속 복습이 review 문서에 섞이지 않게 합니다. 연결된 Study Hard `runId`로 같은 학습노트를 찾고, review series의 stable artifact ID와 page/section hash는 source run의 `export-state.json` sidecar에만 보존합니다. 학습노트가 있으면 HTML ZIP까지 children으로 포함한 단일 `🔎 Meta Review` toggle을 최하단에서 최신 revision으로 교체하고, 없으면 같은 Study Hard ID의 페이지를 생성합니다.
 - Meta Review는 generated review canonical이므로 Notion에서 유지하거나 직접 정리한 block을 `document.json`·`guides.json`·`cards.json`·`questions.jsonl`로 역수입하지 않습니다. 양쪽 변경이 겹치면 기존 block diff UI에서 이번 Notion 저장 결과만 선택합니다.
 - 저장 중 새 ready revision이 생기면 저장된 revision과 현재 revision을 분리해 stale 상태를 알립니다. 외부 write는 사용자가 `Notion 저장`을 누른 경우에만 실행합니다.
@@ -179,6 +180,7 @@ Meta Review의 코드 리뷰 탭은 GitHub write 도구가 아닙니다. `review
 - Inline chart의 CSS 높이만 무제한으로 늘리면 review 문서 흐름이 깨집니다. Inline은 compact하게 유지하고 자세히 보기는 full-screen overlay와 내부 scroll로 분리합니다.
 - 기존 SVG DOM을 그대로 clone하면 Mermaid marker·definition ID가 문서에서 중복될 수 있습니다. Overlay는 canonical source를 unique render ID로 다시 렌더링합니다.
 - action menu를 native toggle에만 맡기면서 interactive element를 중첩하거나 item/outside/Esc close를 생략하면 한 번 열린 메뉴가 사용자의 다음 조작을 가립니다.
+- Live와 HTML에 별도 review renderer나 CSS 사본을 두면 같은 state여도 시각 계층·파일 순서·escape 규칙이 다시 갈라집니다. 공통 renderer를 우회한 dead browser helper를 테스트로 보호하지 않습니다.
 - HTML과 Notion이 서로 다른 source를 변환하거나 Notion 내용을 review canonical로 역수입하면 같은 revision의 설명·finding·질문이 서로 달라집니다.
 - Meta Review를 자체 ID의 별도 페이지로 저장하거나 기존 toggle을 archive하지 않고 append만 하면 같은 학습 흐름이 분리되거나 revision별 중복 section이 누적됩니다.
 - declaration source를 render 시 mutable checkout에서 다시 읽으면 immutable review run과 다른 코드를 질문하게 됩니다.

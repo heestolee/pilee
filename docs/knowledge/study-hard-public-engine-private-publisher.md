@@ -19,8 +19,9 @@ source:
   - user-direction:2026-07-21-study-hard-notion-static-export
   - user-direction:2026-09-03-meta-review-export-actions
   - user-direction:2026-09-03-meta-review-export-reading-flow
+  - user-direction:2026-09-03-meta-review-live-static-renderer-parity
 reviewed_at: 2026-09-03
-reviewed_commit: "cbbb829"
+reviewed_commit: "870259f"
 related:
   - private-overlay-package-boundary
   - context-loading-minimal-surface
@@ -48,7 +49,7 @@ Public `extensions/study-hard`가 소유하는 범위:
 - Q&A transcript integration
 - revision/history snapshot과 restore
 - standalone HTML export와 interactive visual/PNG fallback
-- Meta Review ready revision을 같은 structured document renderer/publisher contract로 내보내는 adapter
+- Meta Review ready revision을 live/standalone 공통 review renderer와 structured publisher contract로 내보내는 adapter
 - macOS Glimpse native visual snapshot, 비-macOS browser capture fallback
 - `~/.pi/agent/study-hard` local state lifecycle
 - optional learning companion event/checkpoint/proposal metadata와 `/study-hard current` reopen
@@ -75,9 +76,9 @@ Notion token, database ID, page naming, upload body schema를 public extension�
 
 ### Meta Review Export Adapter Rule
 
-Meta Review도 별도 Notion SDK나 개인 destination을 public code에 추가하지 않습니다. Public `extensions/pr-review`가 최신 ready revision의 document·guide·finding·changed-line evidence·질문을 `noteDocument` 호환 구조로 변환하고, Study Hard가 기존 HTML renderer와 configured publisher를 실행합니다. HTML과 Notion은 반드시 같은 export snapshot을 소비합니다.
+Meta Review도 별도 Notion SDK나 개인 destination을 public code에 추가하지 않습니다. Public `extensions/pr-review`는 최신 ready revision에서 `MetaReviewClientState`를 한 번 만들고, 그 snapshot으로 두 표현을 파생합니다. Pure review document renderer는 live Glimpse와 standalone HTML이 함께 쓰는 DOM/CSS를 만들고, structured adapter는 Notion native section을 위한 `noteDocument`를 만듭니다. HTML과 Notion은 반드시 같은 export snapshot을 소비합니다.
 
-Renderer 재사용은 review 전용 navigation을 평탄화해도 된다는 뜻이 아닙니다. Export snapshot은 `relationships.readingOrder`의 파일 순서·이유·대상 section anchor를 일급 `readingFlow`로 함께 보존합니다. Meta Review standalone HTML은 넓은 화면에서 오른쪽 sticky `읽는 흐름` rail과 읽기 진행률을, 좁은 화면에서 본문 위 일반 panel을 렌더링합니다. 같은 순서는 `noteDocument` 안에도 명시적 `읽는 흐름` heading과 ordered list로 남겨 Notion·인쇄·script 비활성 환경에서도 읽을 수 있어야 하며, 실제 파일 section도 그 순서로 배치합니다. 진행 상태는 rail 배열 위치가 아니라 현재 DOM 위치로 계산하고 `details` 확장으로 section 위치가 바뀌면 즉시 갱신합니다. 일반 Study Hard export에는 review rail을 추가하지 않습니다.
+Live와 HTML의 renderer가 둘이면 정적 파일이라는 이유가 아니라 구현 분기 때문에 계층이 달라집니다. 따라서 `한눈에 보기`, 관계·변경 의미 Mermaid, finding, compact guided diff, authored reading rail은 하나의 pure renderer와 CSS 상수에서만 생성합니다. Live는 선택·질문·결정·갱신 binding을 붙이고, standalone은 server action/state transport 없이 file jump·details·읽기 진행률·Mermaid fallback만 로컬에서 처리합니다. 질문 drawer는 standalone 하단 read-only appendix로 보존하되 선택 범위, worker, evidence, local change·validation·refresh 결과를 잃지 않습니다. 넓은 화면의 sticky rail과 좁은 화면의 상단 panel은 같은 CSS breakpoint를 쓰며, canonical reading order에 없는 legacy 파일도 rail에 append하고 실제 렌더된 step을 진행률 분모로 사용합니다. 일반 Study Hard export에는 review renderer나 rail을 추가하지 않습니다.
 
 Meta Review의 sync metadata는 학습노트 state가 아니라 source review run의 `export-state.json` sidecar에 둡니다. Publisher payload를 만들 때 Study Hard board state를 통째로 spread하지 않고 review export에 필요한 필드만 allowlist해 goals·summary·followups 같은 학습 전용 section이 섞이지 않게 합니다. Public adapter는 연결된 Study Hard `runId`를 `targetSessionId`, review series에서 파생한 stable ID를 `artifactInstanceId`로 분리해 전달하고, 개인 database ID, token, tag와 페이지 naming은 publisher가 계속 소유합니다.
 
@@ -102,7 +103,7 @@ Notion publisher는 페이지 전체를 managed document 하나로 취급하지 
 - Notion에만 추가된 block이 있으면 개수와 image 포함 여부를 경고하고, `변경될 Study Hard 적용` 시 제거된다는 결과를 선택 전에 명시합니다. Notion-only 변경은 modal을 띄우지 않고 자동 import하되 완료 상태에 가져온 section·image 수를 표시합니다.
 - `직접 정리`는 Markdown editor가 아니라 기존 block type·id·순서를 유지하는 block editor입니다. paragraph text, callout title/body, list item, table cell, code, image caption처럼 block 내부 텍스트만 편집해 structured blocks로 양쪽 canonical에 저장합니다.
 - Study Hard 일반 section은 기존 section 단위 부분 동기화를 유지합니다. Meta Review만 `targetSessionId`의 페이지 하단 단일 toggle을 관리하며, 같은 `artifactInstanceId`의 반복 저장은 새 section을 추가하지 않고 최신 revision으로 교체합니다.
-- 매 저장 시 같은 revision의 standalone HTML을 생성합니다. Study Hard는 page 하단 managed file block으로 교체하고, Meta Review는 HTML ZIP heading/file을 `🔎 Meta Review` toggle children에 포함해 그 toggle 하나가 실제 최종 top-level block이 되게 합니다. File block identity/hash는 sync state에 보존합니다.
+- 매 저장 시 같은 revision의 standalone HTML을 생성합니다. Study Hard는 page 하단 managed file block으로 교체하고, Meta Review는 configured Downloads와 동일한 standalone renderer bytes를 HTML ZIP heading/file로 `🔎 Meta Review` toggle children에 포함해 그 toggle 하나가 실제 최종 top-level block이 되게 합니다. File block identity/hash는 sync state에 보존합니다.
 
 이 계약은 merge conflict와 같습니다. 충돌 검출은 publisher가 담당하지만 최종 선택은 사용자에게 돌려주고, 자동 import도 block 구조를 보존해야 합니다.
 
