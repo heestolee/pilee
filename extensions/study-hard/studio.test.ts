@@ -3094,6 +3094,36 @@ test("Study Hard 코드 리뷰 surface는 미연결 첫 진입과 연결 후 갱
 	assert.equal(linked.metaReview?.runId, "run-1");
 });
 
+test("Meta Review 추가 작업 메뉴는 다시 클릭·바깥 클릭·Esc·항목 선택에서 닫힌다", () => {
+	const html = buildStudyHardStudioHtml();
+	const { document, window } = parseHTML(html);
+	const menu = document.getElementById("reviewActionMenu") as HTMLDetailsElement;
+	const summary = menu.querySelector("summary") as HTMLElement;
+	assert.ok(menu);
+	assert.ok(summary);
+	assert.equal(summary.querySelector("button"), null, "summary 안에 interactive button을 중첩하지 않는다");
+	const helperStart = html.indexOf("function closeMetaReviewActionMenu");
+	const helperEnd = html.indexOf("async function exportHtml", helperStart);
+	assert.ok(helperStart >= 0 && helperEnd > helperStart);
+	new Function("document", `${html.slice(helperStart, helperEnd)};bindMetaReviewActionMenu();`)(document);
+	const click = () => summary.dispatchEvent(new window.Event("click", { bubbles: true, cancelable: true }));
+	click();
+	assert.equal(menu.open, true);
+	click();
+	assert.equal(menu.open, false, "같은 summary를 다시 누르면 닫힌다");
+	click();
+	const outside = document.createElement("button");
+	document.body.appendChild(outside);
+	outside.dispatchEvent(new window.Event("click", { bubbles: true }));
+	assert.equal(menu.open, false, "메뉴 바깥을 누르면 닫힌다");
+	click();
+	const escape = new window.Event("keydown", { bubbles: true });
+	Object.defineProperty(escape, "key", { value: "Escape" });
+	document.dispatchEvent(escape);
+	assert.equal(menu.open, false, "Esc를 누르면 닫힌다");
+	assert.match(html, /reviewFullRefreshButton['"]\)\.addEventListener\(['"]click['"],function\(\)\{closeMetaReviewActionMenu\(\);requestMetaReviewRefresh\(['"]full['"]\);\}\)/);
+});
+
 test("코드 리뷰 변경 파일 관계는 flowchart 또는 sequence로 렌더링한다", () => {
 	const html = buildStudyHardStudioHtml();
 	const helperStart = html.indexOf("function metaReviewBasename");
