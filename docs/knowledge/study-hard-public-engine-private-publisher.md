@@ -20,7 +20,7 @@ source:
   - user-direction:2026-09-03-meta-review-export-actions
   - user-direction:2026-09-03-meta-review-export-reading-flow
 reviewed_at: 2026-09-03
-reviewed_commit: "342898c"
+reviewed_commit: "cbbb829"
 related:
   - private-overlay-package-boundary
   - context-loading-minimal-surface
@@ -77,7 +77,7 @@ Notion token, database ID, page naming, upload body schema를 public extension�
 
 Meta Review도 별도 Notion SDK나 개인 destination을 public code에 추가하지 않습니다. Public `extensions/pr-review`가 최신 ready revision의 document·guide·finding·changed-line evidence·질문을 `noteDocument` 호환 구조로 변환하고, Study Hard가 기존 HTML renderer와 configured publisher를 실행합니다. HTML과 Notion은 반드시 같은 export snapshot을 소비합니다.
 
-Renderer 재사용은 review 전용 navigation을 평탄화해도 된다는 뜻이 아닙니다. Export snapshot은 `relationships.readingOrder`의 파일 순서·이유·대상 section anchor를 일급 `readingFlow`로 함께 보존합니다. Meta Review standalone HTML은 넓은 화면에서 오른쪽 sticky `읽는 흐름` rail과 읽기 진행률을, 좁은 화면에서 본문 위 일반 panel을 렌더링합니다. 같은 순서는 `noteDocument` 안에도 명시적 `읽는 흐름` heading과 ordered list로 남겨 Notion·인쇄·script 비활성 환경에서도 읽을 수 있어야 합니다. 일반 Study Hard export에는 review rail을 추가하지 않습니다.
+Renderer 재사용은 review 전용 navigation을 평탄화해도 된다는 뜻이 아닙니다. Export snapshot은 `relationships.readingOrder`의 파일 순서·이유·대상 section anchor를 일급 `readingFlow`로 함께 보존합니다. Meta Review standalone HTML은 넓은 화면에서 오른쪽 sticky `읽는 흐름` rail과 읽기 진행률을, 좁은 화면에서 본문 위 일반 panel을 렌더링합니다. 같은 순서는 `noteDocument` 안에도 명시적 `읽는 흐름` heading과 ordered list로 남겨 Notion·인쇄·script 비활성 환경에서도 읽을 수 있어야 하며, 실제 파일 section도 그 순서로 배치합니다. 진행 상태는 rail 배열 위치가 아니라 현재 DOM 위치로 계산하고 `details` 확장으로 section 위치가 바뀌면 즉시 갱신합니다. 일반 Study Hard export에는 review rail을 추가하지 않습니다.
 
 Meta Review의 sync metadata는 학습노트 state가 아니라 source review run의 `export-state.json` sidecar에 둡니다. Publisher payload를 만들 때 Study Hard board state를 통째로 spread하지 않고 review export에 필요한 필드만 allowlist해 goals·summary·followups 같은 학습 전용 section이 섞이지 않게 합니다. Public adapter는 연결된 Study Hard `runId`를 `targetSessionId`, review series에서 파생한 stable ID를 `artifactInstanceId`로 분리해 전달하고, 개인 database ID, token, tag와 페이지 naming은 publisher가 계속 소유합니다.
 
