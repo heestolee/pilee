@@ -3046,7 +3046,14 @@ function markdownHasMermaidFence(markdown: string | undefined): boolean {
 function stateHasMermaidFence(state: FrameStudioState): boolean {
 	if (markdownHasMermaidFence(state.markdown)) return true;
 	if (Object.values(state.tabs).some((tab) => markdownHasMermaidFence(tab.markdown))) return true;
-	return state.timeline.some((entry) => markdownHasMermaidFence(entry.markdown));
+	if (markdownHasMermaidFence(state.question?.markdown) || markdownHasMermaidFence(state.question?.question)) return true;
+	if (markdownHasMermaidFence(state.lastAnswer?.question)) return true;
+	return state.timeline.some((entry) =>
+		markdownHasMermaidFence(entry.markdown)
+		|| markdownHasMermaidFence(entry.question?.markdown)
+		|| markdownHasMermaidFence(entry.question?.question)
+		|| markdownHasMermaidFence(entry.answer?.question),
+	);
 }
 
 export function buildStaticTftStudioHtmlFromTranscript(filePath: string): string {

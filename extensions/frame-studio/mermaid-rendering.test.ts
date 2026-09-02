@@ -75,11 +75,14 @@ test("Frame Studio는 로컬 Mermaid browser bundle과 외부 image 차단 CSP�
 	assert.ok(bundle && bundle.length > 100_000, "installed Mermaid browser bundle should be readable");
 });
 
-test("정적 archive는 Mermaid가 있을 때만 bundle을 inline하고 TFT visual embed에서는 생략한다", () => {
+test("정적 archive는 렌더 대상 어디에든 Mermaid가 있을 때만 bundle을 inline한다", () => {
 	const dir = mkdtempSync(join(tmpdir(), "pilee-mermaid-static-"));
 	const mermaidFile = join(dir, "with-mermaid.json");
+	const questionFile = join(dir, "question-mermaid.json");
+	const answerFile = join(dir, "answer-mermaid.json");
 	const plainFile = join(dir, "without-mermaid.json");
 	const mermaidMarkdown = ["# Diagram", "", "```mermaid", "flowchart LR", "A --> B", "```"].join("\n");
+	const questionMarkdown = ["질문 제목: 구조 선택", "", "현재 이해:", "```mermaid", "flowchart LR", "Q --> A", "```", "", "질문:", "어떤 구조가 좋을까요?"].join("\n");
 	const transcript = (markdown: string) => ({
 		title: "Static Mermaid test",
 		activeTab: "frame",
@@ -90,9 +93,25 @@ test("정적 archive는 Mermaid가 있을 때만 bundle을 inline하고 TFT visu
 		logs: [],
 	});
 	try {
+		const plainTranscript = transcript("# Plain transcript");
 		writeFileSync(mermaidFile, JSON.stringify(transcript(mermaidMarkdown)));
-		writeFileSync(plainFile, JSON.stringify(transcript("# Plain transcript")));
+		writeFileSync(questionFile, JSON.stringify({
+			...plainTranscript,
+			status: "awaiting",
+			question: { id: "q1", tab: "frame", question: questionMarkdown, options: [], multiSelect: false, allowText: false, createdAt: 1 },
+			timeline: [],
+		}));
+		writeFileSync(answerFile, JSON.stringify({
+			...plainTranscript,
+			timeline: [{
+				id: "a1", time: 1, kind: "answer", tab: "frame",
+				answer: { status: "answered", question: questionMarkdown, selectedIndices: [], selectedOptions: [], submittedAt: 1 },
+			}],
+		}));
+		writeFileSync(plainFile, JSON.stringify(plainTranscript));
 		const mermaidHtml = buildStaticTftStudioHtmlFromTranscript(mermaidFile);
+		const questionHtml = buildStaticTftStudioHtmlFromTranscript(questionFile);
+		const answerHtml = buildStaticTftStudioHtmlFromTranscript(answerFile);
 		const plainHtml = buildStaticTftStudioHtmlFromTranscript(plainFile);
 		const visualEmbedHtml = buildTftVisualEmbedHtml({
 			kind: "architecture-flow",
@@ -102,6 +121,8 @@ test("정적 archive는 Mermaid가 있을 때만 bundle을 inline하고 TFT visu
 		});
 
 		assert.match(mermaidHtml, /globalThis\["mermaid"\]/);
+		assert.match(questionHtml, /globalThis\["mermaid"\]/);
+		assert.match(answerHtml, /globalThis\["mermaid"\]/);
 		assert.doesNotMatch(mermaidHtml, /<script src="\/mermaid\.min\.js"><\/script>/);
 		assert.doesNotMatch(plainHtml, /globalThis\["mermaid"\]|<script src="\/mermaid\.min\.js">/);
 		assert.doesNotMatch(visualEmbedHtml, /globalThis\["mermaid"\]|<script src="\/mermaid\.min\.js">/);
