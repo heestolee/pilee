@@ -32,7 +32,7 @@ source:
   - user-direction:2026-09-02-pr-review-current-panel-or-tab
   - user-direction:2026-09-03-meta-review-export-actions
 reviewed_at: 2026-09-03
-reviewed_commit: 0662141
+reviewed_commit: "0662141"
 related:
   - evidence-first-verification-gate
   - live-artifact-preview-pattern
