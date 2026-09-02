@@ -33,6 +33,7 @@ import {
 	saveHumanDecision,
 	type HumanReviewDecision,
 } from "../pr-review/run.ts";
+import { buildMetaReviewExportSnapshot, type MetaReviewExportSnapshot } from "../pr-review/export.ts";
 import { buildMetaReviewClientState, resolveMetaReviewDisplayRun } from "../pr-review/view-model.ts";
 import { checkMetaReviewFreshness } from "../pr-review/freshness.ts";
 import type { ReviewSourceBundle } from "../pr-review/evidence.ts";
@@ -2050,8 +2051,13 @@ function exportWorkContractHtml(workContract?: Pick<ResolvedStudyHardWorkContrac
 	return `<details class="workContract"><summary>작업 기획 전체 보기 · ${escapeExportHtml(workContract.title)}<span>${escapeExportHtml(meta)}</span></summary><div class="workContractBody">${buildStudyHardWorkContractHtml(workContract.markdown)}</div></details>`;
 }
 
-export function buildStudyNoteExportHtml(state: StudyHardBoardState, diagramAssetList: StudyDiagramExportAsset[] = [], workContract?: Pick<ResolvedStudyHardWorkContract, "title" | "hash" | "markdown">): string {
+interface StudyNoteExportOptions {
+	artifactLabel?: string;
+}
+
+export function buildStudyNoteExportHtml(state: StudyHardBoardState, diagramAssetList: StudyDiagramExportAsset[] = [], workContract?: Pick<ResolvedStudyHardWorkContract, "title" | "hash" | "markdown">, options: StudyNoteExportOptions = {}): string {
 	const document = state.noteDocument;
+	const artifactLabel = options.artifactLabel?.trim() || "Study Hard";
 	const diagramAssets = new Map(diagramAssetList.map((asset) => [asset.blockId, asset]));
 	const sections = document.sections.map((section) => exportNoteSectionHtml(section, state, diagramAssets)).join("");
 	const companion = exportLearningCompanionHtml(state);
@@ -2060,7 +2066,7 @@ export function buildStudyNoteExportHtml(state: StudyHardBoardState, diagramAsse
 	return `<!doctype html>
 <html lang="ko"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${escapeExportHtml(document.title)}</title>
 <style>:root{color-scheme:light;--text:#2d2925;--muted:#756e66;--line:#d8cfc1;--panel:#fffdf8;--accent:#157a6e;--warn:#b7791f;--ok:#3f7d54;--review:#7660a9}*{box-sizing:border-box}body{margin:0;background:#f6f1e7;color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}.page{max-width:920px;margin:0 auto;padding:48px 28px 90px}.hero{padding-bottom:22px;border-bottom:1px solid var(--line);margin-bottom:32px}.hero h1{font-size:34px;line-height:1.25;margin:0 0 10px}.meta,.muted{color:var(--muted);font-size:12px;line-height:1.6}.meta a{color:var(--accent)}.workContract{margin:0 0 32px;border:1px solid #c8bbab;border-radius:14px;background:#f3eee5;overflow:hidden}.workContract summary{display:flex;justify-content:space-between;gap:12px;padding:14px 16px;cursor:pointer;font-size:13px;font-weight:800}.workContract summary span{color:var(--muted);font-size:10px}.workContractBody{padding:18px;background:var(--panel);max-height:72vh;overflow:auto}.workContractDocument h1{font-size:27px}.workContractDocument h2{margin-top:28px;font-size:21px}.workContractTable{overflow:auto;border:1px solid var(--line);border-radius:10px}.workContractTable table{width:100%;min-width:620px;border-collapse:collapse;font-size:11px}.workContractTable th,.workContractTable td{padding:9px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.workContractCode{padding:14px;border-radius:10px;background:#2f2b27;color:#f8f3e9;overflow:auto}.workContractDocument blockquote{padding:10px 14px;border-left:4px solid var(--accent);background:#edf6f3}section{margin:0 0 42px}section>h2{font-size:23px;padding-bottom:9px;border-bottom:1px solid var(--line)}h3{font-size:17px}p,li{line-height:1.75}li{margin:4px 0}.noteDepth1{margin-left:26px}.noteDepth2{margin-left:52px}.callout{border:1px solid #b9d6df;border-left:5px solid #4f87a4;border-radius:12px;padding:13px 15px;background:#edf6f8;margin:15px 0}.callout.warning{border-color:#e4c48d;border-left-color:var(--warn);background:#fff3df}.callout.success{border-color:#bbd9c0;border-left-color:var(--ok);background:#edf7ef}.callout.question{border-color:#cfc3e9;border-left-color:var(--review);background:#f3effa}.callout strong{display:flex;align-items:center;gap:7px;margin-bottom:6px}.calloutIcon{font-size:14px}.callout p{margin:0;white-space:pre-wrap}.answerDisclosure{margin:15px 0;border:1px solid #cfc3e9;border-radius:12px;background:#f3effa;overflow:hidden}.answerDisclosure>summary{display:flex;justify-content:space-between;gap:12px;padding:14px 15px;cursor:pointer;font-size:13px;font-weight:800}.answerDisclosure>summary>span{display:flex;align-items:center;gap:7px}.answerDisclosure>summary small{color:var(--muted);font-size:10px;font-weight:600}.answerDisclosure[open]>summary{border-bottom:1px solid #cfc3e9}.answerDisclosureBody{padding:13px 15px;background:var(--panel)}.answerDisclosureBody p{margin:0;white-space:pre-wrap}.diagram,.codeStudy,.reference{border:1px solid #d2c7b9;border-radius:14px;background:var(--panel);padding:14px;margin:15px 0;overflow:auto}.diagram svg{display:block;max-width:100%;height:auto;margin:auto}.codeTitle{font-size:11px;color:var(--muted);font-weight:700;margin-bottom:5px}.codeMeta{font-size:11px;color:var(--muted);margin:0 0 9px}.codeStudy pre{margin:0;padding:14px;background:#f1ece3;border-radius:10px;overflow:auto;font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace}.annotations{margin:12px 0 0;padding-left:24px}.annotations li{font-size:12px}.annotations strong,.annotations span{display:block}.tableWrap{margin:15px 0;overflow-x:auto;border:1px solid #d2c7b9;border-radius:12px;background:var(--panel)}.noteTable{width:100%;min-width:760px;border-collapse:collapse;font-size:12px;line-height:1.5}.noteTable th,.noteTable td{padding:10px 11px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.noteTable th{background:#eee8de;font-weight:800;white-space:nowrap}.noteTable tr:last-child td{border-bottom:0}.noteTable th:last-child,.noteTable td:last-child{border-right:0}.references{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}.reference{margin:0}.reference p{font-size:12px}.reference a{color:var(--accent);font-weight:700;font-size:12px}.visualStudyDisclosure{margin:16px 0;border:1px solid #c8bbab;border-radius:16px;background:#f3eee5;overflow:hidden}.visualStudyDisclosure>summary{display:flex;justify-content:space-between;gap:12px;padding:14px 16px;cursor:pointer;font-size:13px;font-weight:800}.visualStudyDisclosure>summary small{color:var(--muted);font-size:10px;font-weight:600}.visualStudyDisclosure[open]>summary{border-bottom:1px solid var(--line)}.visualStudyDisclosure>.visualStudy{margin:0;border:0;border-radius:0}.visualStudy{border:1px solid #d2c7b9;border-radius:16px;background:var(--panel);padding:14px;margin:16px 0}.visualStudy figcaption{display:grid;gap:4px;margin-bottom:10px}.visualStudy figcaption span{color:var(--muted);font-size:12px}.visualFrame{display:block;width:100%;min-height:280px;border:0;background:#fff;border-radius:12px}.visualFallback,.visualSpec{margin-top:10px}.visualFallback summary,.visualSpec summary{cursor:pointer;font-size:12px;font-weight:700;color:var(--accent)}.visualFallback img{display:block;max-width:100%;height:auto;margin:10px auto 0}.visualSpec pre{max-height:320px;overflow:auto;background:#f1ece3;border-radius:10px;padding:12px;font:11px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap}hr{border:0;border-top:1px solid var(--line);margin:28px 0}@media(max-width:640px){.page{padding:28px 16px 60px}.hero h1{font-size:27px}.noteDepth1{margin-left:14px}.noteDepth2{margin-left:28px}}</style>
-</head><body><main class="page"><header class="hero"><h1>${escapeExportHtml(document.title)}</h1><div class="meta">Study Hard · revision ${state.revision} · ${escapeExportHtml(new Date(state.updatedAt).toLocaleString("ko-KR"))}${sourceUrl ? ` · <a href="${escapeExportHtml(sourceUrl)}">원본 자료</a>` : ""}</div></header>${workContractDetails}${sections}${companion}</main><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script><script>window.addEventListener('message',function(event){if(!event.data||event.data.type!=='pilee:tft-visual-ready')return;document.querySelectorAll('iframe.visualFrame').forEach(function(frame){if(frame.contentWindow===event.source){var height=Math.max(220,Math.min(12000,Number(event.data.height)||0));if(height)frame.style.height=height+'px';}});});mermaid.initialize({startOnLoad:true,theme:'base',securityLevel:'strict'});</script></body></html>`;
+</head><body><main class="page"><header class="hero"><h1>${escapeExportHtml(document.title)}</h1><div class="meta">${escapeExportHtml(artifactLabel)} · revision ${state.revision} · ${escapeExportHtml(new Date(state.updatedAt).toLocaleString("ko-KR"))}${sourceUrl ? ` · <a href="${escapeExportHtml(sourceUrl)}">원본 자료</a>` : ""}</div></header>${workContractDetails}${sections}${companion}</main><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script><script>window.addEventListener('message',function(event){if(!event.data||event.data.type!=='pilee:tft-visual-ready')return;document.querySelectorAll('iframe.visualFrame').forEach(function(frame){if(frame.contentWindow===event.source){var height=Math.max(220,Math.min(12000,Number(event.data.height)||0));if(height)frame.style.height=height+'px';}});});mermaid.initialize({startOnLoad:true,theme:'base',securityLevel:'strict'});</script></body></html>`;
 }
 
 function exportDir(runId: string): string {
@@ -2069,12 +2075,35 @@ function exportDir(runId: string): string {
 	return dir;
 }
 
-function writeStudyNoteExport(state: StudyHardBoardState, downloadDir: string, diagramAssets: StudyDiagramExportAsset[] = [], workContract?: ResolvedStudyHardWorkContract): { fileName: string; path: string } {
+function writeStudyNoteExport(state: StudyHardBoardState, downloadDir: string, diagramAssets: StudyDiagramExportAsset[] = [], workContract?: ResolvedStudyHardWorkContract, options: StudyNoteExportOptions = {}): { fileName: string; path: string } {
 	const fileName = `${safeFileName(state.noteDocument.title)}-r${state.revision}.html`;
 	mkdirSync(downloadDir, { recursive: true });
 	const path = join(downloadDir, fileName);
-	writeFileSync(path, buildStudyNoteExportHtml(state, diagramAssets, workContract), "utf-8");
+	writeFileSync(path, buildStudyNoteExportHtml(state, diagramAssets, workContract, options), "utf-8");
 	return { fileName, path };
+}
+
+function metaReviewStudyState(handle: StudyHardHandle, snapshot: MetaReviewExportSnapshot): StudyHardBoardState {
+	return {
+		...handle.state,
+		title: snapshot.title,
+		url: snapshot.sourceUrl,
+		revision: snapshot.revision,
+		updatedAt: snapshot.updatedAt,
+		noteDocument: snapshot.noteDocument,
+		flows: [],
+		questions: [],
+		attachments: [],
+		companion: undefined,
+	};
+}
+
+function writeMetaReviewHtmlExport(handle: StudyHardHandle): MetaReviewExportSnapshot & { fileName: string; path: string } {
+	const link = handle.state.metaReview;
+	if (!link) throw new Error("연결된 Meta Review가 없습니다.");
+	const snapshot = buildMetaReviewExportSnapshot(link.runDir);
+	const exported = writeStudyNoteExport(metaReviewStudyState(handle, snapshot), handle.downloadDir, [], undefined, { artifactLabel: "Meta Review" });
+	return { ...snapshot, ...exported };
 }
 
 function browserDiagramBlockIds(state: StudyHardBoardState): string[] {
@@ -3130,6 +3159,11 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 					details: { runId: displayRun.runId, runDir: displayRun.runDir, mode },
 				}, { deliverAs: "followUp", triggerTurn: true });
 				sendJson(res, 202, { ok: true, runId: displayRun.runId, mode });
+				return;
+			}
+			if (pathname === "/meta-review/export/html" && req.method === "POST") {
+				const exported = writeMetaReviewHtmlExport(handle);
+				sendJson(res, 200, { ok: true, runId: exported.runId, revision: exported.revision, sourceSha256: exported.sourceSha256, fileName: exported.fileName, path: exported.path });
 				return;
 			}
 			if (pathname === "/work-contract" && req.method === "GET") {

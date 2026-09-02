@@ -3122,6 +3122,8 @@ test("Meta Review 추가 작업 메뉴는 다시 클릭·바깥 클릭·Esc·항
 	document.dispatchEvent(escape);
 	assert.equal(menu.open, false, "Esc를 누르면 닫힌다");
 	assert.match(html, /reviewFullRefreshButton['"]\)\.addEventListener\(['"]click['"],function\(\)\{closeMetaReviewActionMenu\(\);requestMetaReviewRefresh\(['"]full['"]\);\}\)/);
+	assert.match(html, /id="reviewHtmlExportButton"[^>]*>HTML 내보내기<\/button>/);
+	assert.match(html, /post\(['"]\/meta-review\/export\/html['"]/);
 });
 
 test("코드 리뷰 변경 파일 관계는 flowchart 또는 sequence로 렌더링한다", () => {
@@ -3581,6 +3583,7 @@ test("Study Hard 코드 리뷰 surface는 공통 worker 질문, 결정, 명시�
 		url: "https://github.com/acme/repo/pull/42",
 		runId: "meta-review-route-test",
 		initialPatch: { activeSurface: "review", metaReview: { runId: run.runId, runDir: run.runDir, source: "github-pr", linkedAt: 1000 } },
+		downloadDir: join(reviewRoot, "Downloads"),
 	});
 	try {
 		const stateResponse = await fetch(new URL("/meta-review/state", handle.url));
@@ -3592,7 +3595,20 @@ test("Study Hard 코드 리뷰 surface는 공통 worker 질문, 결정, 명시�
 		assert.equal(state.explanationCoverage.changedLinesExplained, bundle.stats.changedRows);
 		assert.ok(state.source.files[0].declarationSource.after.text.includes("const allowed"));
 		assert.equal(state.document.meanings[0].id, "M-visible-contract");
-		let response = await fetch(new URL("/meta-review/decision", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ cardId: "R-01", decision: "review-only" }) });
+		let response = await fetch(new URL("/meta-review/export/html", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: "{}" });
+		assert.equal(response.status, 200);
+		const htmlExport = await response.json() as any;
+		assert.equal(htmlExport.runId, run.runId);
+		assert.equal(htmlExport.revision, 1);
+		assert.ok(existsSync(htmlExport.path));
+		const exportedHtml = readFileSync(htmlExport.path, "utf8");
+		assert.match(exportedHtml, /Meta Review · #42 Visibility contract/);
+		assert.match(exportedHtml, /Meta Review · revision 1/);
+		assert.match(exportedHtml, /consumer 계약을 함께 확인합니다/);
+		assert.match(exportedHtml, /실제 리뷰 포인트/);
+		assert.match(exportedHtml, /src\/policy\.ts/);
+		assert.match(exportedHtml, /const allowed = new Set/);
+		response = await fetch(new URL("/meta-review/decision", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ cardId: "R-01", decision: "review-only" }) });
 		assert.equal(response.status, 200);
 		assert.equal((await response.json() as any).card.decision, "review-only");
 		response = await fetch(new URL("/attachments", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ scope: "session", name: "review.png", mimeType: "image/png", dataUrl: `data:image/png;base64,${Buffer.from("review-question-image").toString("base64")}`, note: "Meta Review 질문 입력창에서 붙여넣은 이미지" }) });
