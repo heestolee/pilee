@@ -34,8 +34,9 @@ import {
 	writeJsonAtomic,
 	type HumanReviewDecision,
 } from "../pr-review/run.ts";
-import { buildMetaReviewExportSnapshot, type MetaReviewExportSnapshot } from "../pr-review/export.ts";
-import { buildMetaReviewClientState, resolveMetaReviewDisplayRun } from "../pr-review/view-model.ts";
+import { buildMetaReviewExportSnapshot, buildMetaReviewExportSnapshotFromState, type MetaReviewExportSnapshot } from "../pr-review/export.ts";
+import { buildMetaReviewClientState, resolveMetaReviewDisplayRun, type MetaReviewClientState } from "../pr-review/view-model.ts";
+import { buildMetaReviewLivePayload, buildMetaReviewStandaloneHtml } from "../pr-review/document-renderer.ts";
 import { checkMetaReviewFreshness } from "../pr-review/freshness.ts";
 import type { ReviewSourceBundle } from "../pr-review/evidence.ts";
 import {
@@ -2124,12 +2125,13 @@ function writeStudyNoteExport(state: StudyHardBoardState, downloadDir: string, d
 	return { fileName, path };
 }
 
-function resolveMetaReviewExportSnapshot(handle: StudyHardHandle): { link: StudyMetaReviewLink; snapshot: MetaReviewExportSnapshot } {
+function resolveMetaReviewExportSnapshot(handle: StudyHardHandle): { link: StudyMetaReviewLink; state: MetaReviewClientState; snapshot: MetaReviewExportSnapshot } {
 	const link = handle.state.metaReview;
 	if (!link) throw new Error("연결된 Meta Review가 없습니다.");
 	const linkedRun = loadPrReviewRun(link.runDir);
 	if (linkedRun.runId !== link.runId) throw new Error("Study Hard Meta Review link가 다른 run을 가리킵니다.");
-	return { link, snapshot: buildMetaReviewExportSnapshot(link.runDir) };
+	const state = buildMetaReviewClientState(link.runDir);
+	return { link, state, snapshot: buildMetaReviewExportSnapshotFromState(state) };
 }
 
 function metaReviewStudyState(snapshot: MetaReviewExportSnapshot, notionSync?: StudyNotionSyncState, sessionId = snapshot.seriesId): StudyHardBoardState {
@@ -2164,9 +2166,12 @@ function metaReviewStudyState(snapshot: MetaReviewExportSnapshot, notionSync?: S
 }
 
 function writeMetaReviewHtmlExport(handle: StudyHardHandle): MetaReviewExportSnapshot & { fileName: string; path: string } {
-	const { snapshot } = resolveMetaReviewExportSnapshot(handle);
-	const exported = writeStudyNoteExport(metaReviewStudyState(snapshot), handle.downloadDir, [], undefined, { artifactLabel: "Meta Review", readingFlow: snapshot.readingFlow });
-	return { ...snapshot, ...exported };
+	const { state, snapshot } = resolveMetaReviewExportSnapshot(handle);
+	const fileName = `${safeFileName(snapshot.title)}-r${snapshot.revision}.html`;
+	mkdirSync(handle.downloadDir, { recursive: true });
+	const path = join(handle.downloadDir, fileName);
+	writeFileSync(path, buildMetaReviewStandaloneHtml(state), "utf-8");
+	return { ...snapshot, fileName, path };
 }
 
 function metaReviewExportDirectory(link: StudyMetaReviewLink): string {
@@ -2237,7 +2242,7 @@ function normalizedNotionConflictResolution(value: unknown): Record<string, unkn
 async function runMetaReviewNotionSync(handle: StudyHardHandle, conflictResolution: Record<string, unknown>): Promise<Record<string, unknown>> {
 	if (!existsSync(handle.syncScript)) throw new Error("Notion 동기화 스크립트를 찾지 못했습니다.");
 	if (handle.notionSyncInFlight) throw new Error("Notion 동기화가 이미 진행 중입니다.");
-	const { link, snapshot } = resolveMetaReviewExportSnapshot(handle);
+	const { link, state, snapshot } = resolveMetaReviewExportSnapshot(handle);
 	const sidecar = loadMetaReviewExportSidecar(link, snapshot);
 	const snapshotHash = createHash("sha256").update(JSON.stringify(snapshot.noteDocument)).digest("hex");
 	const notionSync = sidecar.notionSync ? { ...sidecar.notionSync, sectionSourceHashes: undefined } : undefined;
@@ -2246,7 +2251,7 @@ async function runMetaReviewNotionSync(handle: StudyHardHandle, conflictResoluti
 	try {
 		const directory = metaReviewExportDirectory(link);
 		const htmlPath = join(directory, `meta-review-${safeFileName(snapshot.runId)}-revision-${snapshot.revision}.html`);
-		const htmlContent = buildStudyNoteExportHtml(exportState, [], undefined, { artifactLabel: "Meta Review", readingFlow: snapshot.readingFlow });
+		const htmlContent = buildMetaReviewStandaloneHtml(state);
 		writeFileSync(htmlPath, htmlContent, "utf-8");
 		const htmlAsset: StudyFileExportAsset = { fileName: basename(htmlPath), mimeType: "text/html", path: htmlPath, sha256: createHash("sha256").update(htmlContent).digest("hex") };
 		const inputPath = join(directory, "notion-sync.json");
@@ -3265,7 +3270,8 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 				}
 				const run = loadPrReviewRun(link.runDir);
 				if (run.runId !== link.runId) throw new Error("Study Hard Meta Review link가 다른 run을 가리킵니다.");
-				sendJson(res, 200, buildMetaReviewClientState(link.runDir));
+				const reviewState = buildMetaReviewClientState(link.runDir);
+				sendJson(res, 200, buildMetaReviewLivePayload(reviewState));
 				return;
 			}
 			if (pathname === "/meta-review/freshness" && req.method === "GET") {

@@ -3130,7 +3130,8 @@ test("Study Hard 코드 리뷰 surface는 미연결 첫 진입과 연결 후 갱
 	assert.match(html, /id="reviewQuestionButton"[^>]*>질문 패널</);
 	assert.match(html, /#workspace\.rightDrawerOpen #reviewSurface \.reviewBody/);
 	assert.match(html, /function renderMetaReview/);
-	assert.match(html, /function metaReviewExplanationHtml/);
+	assert.match(html, /target\.innerHTML=metaReviewState\.documentHtml/);
+	assert.doesNotMatch(html, /function metaReviewExplanationHtml/);
 	assert.match(html, /function renderMetaReviewConversation/);
 	assert.match(html, /function selectMetaReviewContext/);
 	assert.match(html, /전체 PR/);
@@ -3211,58 +3212,6 @@ test("Meta Review 추가 작업 메뉴는 다시 클릭·바깥 클릭·Esc·항
 	assert.match(html, /Meta Review 원본은 바뀌지 않으며/);
 });
 
-test("코드 리뷰 변경 파일 관계는 flowchart 또는 sequence로 렌더링한다", () => {
-	const html = buildStudyHardStudioHtml();
-	const helperStart = html.indexOf("function metaReviewBasename");
-	const helperEnd = html.indexOf("function metaReviewFirstParagraph", helperStart);
-	assert.ok(helperStart >= 0 && helperEnd > helperStart);
-	const relationshipMermaid = new Function(`${html.slice(helperStart, helperEnd)}; return metaReviewRelationshipMermaid;`)() as (document: any, source: any) => string;
-	const source = { files: [{ id: "F-policy", path: "src/policy.ts" }, { id: "F-consumer", path: "src/consumer.ts" }] };
-	const relationships = {
-		summary: "consumer가 policy를 호출합니다.",
-		diagram: "flowchart",
-		relations: [{ from: "src/consumer.ts", to: "src/policy.ts", label: "노출 여부 조회" }],
-		readingOrder: [{ path: "src/policy.ts" }, { path: "src/consumer.ts" }],
-	};
-	const flowchart = relationshipMermaid({ relationships }, source);
-	assert.match(flowchart, /^flowchart LR/m);
-	assert.match(flowchart, /F0\["01 · policy\.ts"\]/);
-	assert.match(flowchart, /F1 -->\|노출 여부 조회\| F0/);
-	const sequence = relationshipMermaid({ relationships: { ...relationships, diagram: "sequence" } }, source);
-	assert.match(sequence, /^sequenceDiagram/m);
-	assert.match(sequence, /participant F0 as 01 · policy\.ts/);
-	assert.match(sequence, /F1->>F0: 노출 여부 조회/);
-});
-
-test("변경 의미 visual은 역할 색상 flowchart와 sequence source를 구조화 spec에서 생성한다", () => {
-	const html = buildStudyHardStudioHtml();
-	const helperStart = html.indexOf("function metaReviewMeaningVisualRoleMeta");
-	const helperEnd = html.indexOf("function metaReviewMeaningVisualHtml", helperStart);
-	assert.ok(helperStart >= 0 && helperEnd > helperStart);
-	const visualMermaid = new Function(`function metaReviewMermaidText(value){return String(value||'').replace(/[\\r\\n\"'\\[\\]{}<>]/g,' ').replace(/\\s+/g,' ').trim();}${html.slice(helperStart, helperEnd)}; return metaReviewMeaningVisualMermaid;`)() as (visual: any) => string;
-	const flowchart = visualMermaid({
-		kind: "flowchart", direction: "LR",
-		groups: [{ id: "before", label: "기존", phase: "before" }, { id: "after", label: "신규", phase: "after" }],
-		nodes: [{ id: "manual", label: "수동 처리", role: "removed", groupId: "before" }, { id: "owner", label: "공통 책임", role: "moved", groupId: "after" }, { id: "guard", label: "검증", role: "guard", groupId: "after" }],
-		edges: [{ from: "manual", to: "owner", label: "책임 이동", role: "moved" }, { from: "owner", to: "guard", label: "검증", role: "guard", style: "dashed" }],
-	});
-	assert.match(flowchart, /^flowchart LR/m);
-	assert.match(flowchart, /subgraph G1\["BEFORE · 기존"\]/);
-	assert.match(flowchart, /class N1 role_removed/);
-	assert.match(flowchart, /classDef role_moved/);
-	assert.match(flowchart, /linkStyle 1 stroke:#b36a00,stroke-width:2px,stroke-dasharray:5 4/);
-	const sequence = visualMermaid({
-		kind: "sequence",
-		actors: [{ id: "admin", label: "관리자", role: "context" }, { id: "modal", label: "모달", role: "moved" }, { id: "server", label: "서버", role: "guard" }],
-		messages: [{ from: "admin", to: "modal", label: "정렬", role: "context" }, { from: "modal", to: "server", label: "expected + ordered", role: "new" }, { from: "server", to: "modal", label: "충돌 refetch", role: "guard", style: "dashed", note: "최신 snapshot" }],
-	});
-	assert.match(sequence, /^sequenceDiagram/m);
-	assert.match(sequence, /rect rgb\(255,242,217\)/);
-	assert.match(sequence, /A3-->>A2: 충돌 refetch/);
-	assert.match(sequence, /Note over A3,A2: 최신 snapshot/);
-	for (const marker of ["reviewMeaningDiagramViewport", "reviewMeaningLegend", "data-review-visual-kind", "max-height:320px", "읽는 법"]) assert.match(html, new RegExp(marker));
-});
-
 test("변경 의미 visual은 차트 전용 확대 overlay와 zoom controls를 제공한다", () => {
 	const html = buildStudyHardStudioHtml();
 	for (const marker of [
@@ -3275,80 +3224,14 @@ test("변경 의미 visual은 차트 전용 확대 overlay와 zoom controls를 �
 		"openMetaReviewMeaningVisual",
 		"closeMetaReviewMeaningVisual",
 		"setMetaReviewMeaningVisualZoom",
-		"확대해서 보기",
 	]) assert.match(html, new RegExp(marker));
 	assert.match(html, /event\.key!==['"]Escape['"]/);
 	assert.match(html, /event\.target===event\.currentTarget/);
 	assert.match(html, /event\.stopPropagation\(\)/);
 });
 
-test("코드 리뷰 surface는 한눈에 보기, 독립 관계·finding, compact 파일 목록과 접힌 문맥을 유지한다", () => {
+test("declaration selection interaction은 상위·하위 범위와 full source 탐색을 유지한다", () => {
 	const html = buildStudyHardStudioHtml();
-	for (const marker of ["reviewOverviewLead", "Review attention", "변경 파일 관계", "실제 리뷰 포인트", "reviewFileSummaryRow", "파일 역할", "호출·데이터 흐름", "사용자·후속 영향"]) assert.match(html, new RegExp(marker));
-	const fileStart = html.indexOf("function metaReviewFileHtml");
-	const fileEnd = html.indexOf("function metaReviewContextKey", fileStart);
-	assert.ok(fileStart >= 0 && fileEnd > fileStart);
-	const fileRenderer = html.slice(fileStart, fileEnd);
-	assert.match(fileRenderer, /<details class="reviewFile"/);
-	assert.doesNotMatch(fileRenderer, /<details class="reviewFile" open/);
-	assert.match(fileRenderer, /<summary>[\s\S]*metaReviewFileIntroHtml/);
-});
-
-test("코드 리뷰 설명 카드는 evidence 줄을 변경 전후 범위로 표시한다", () => {
-	const html = buildStudyHardStudioHtml();
-	const helperStart = html.indexOf("function compactMetaReviewLineRanges");
-	const helperEnd = html.indexOf("function metaReviewExplanationHtml", helperStart);
-	assert.ok(helperStart >= 0 && helperEnd > helperStart);
-	const lineRangeLabel = new Function(`${html.slice(helperStart, helperEnd)}; return metaReviewLineRangeLabel;`)() as (hunk: any, file: any) => string;
-	const file = {
-		lines: [
-			{ id: "D001", kind: "deletion", oldLine: 8 },
-			{ id: "D002", kind: "deletion", oldLine: 9 },
-			{ id: "D003", kind: "addition", newLine: 8 },
-			{ id: "D004", kind: "addition", newLine: 9 },
-			{ id: "D005", kind: "addition", newLine: 13 },
-			{ id: "D006", kind: "context", oldLine: 10, newLine: 10 },
-		],
-	};
-	assert.equal(lineRangeLabel({ evidenceIds: ["D001", "D002", "D003", "D004", "D005"] }, file), "변경 전 L8–L9 · 변경 후 L8–L9 · L13");
-	assert.equal(lineRangeLabel({ evidenceIds: ["D001", "D002"] }, file), "변경 전 L8–L9");
-	assert.equal(lineRangeLabel({ evidenceIds: ["D006"] }, file), "대상 L10");
-	assert.equal(lineRangeLabel({ evidenceIds: ["unknown"] }, file), "");
-	assert.match(html, /reviewExplanationRange/);
-	assert.match(html, /설명 범위 ·/);
-});
-
-test("changed code row는 semantic hunk를 일급 선택 단위로 사용하고 나머지 row는 line으로 fallback한다", () => {
-	const html = buildStudyHardStudioHtml();
-	const helperStart = html.indexOf("function metaReviewDeclarationForLine");
-	const helperEnd = html.indexOf("function metaReviewSelectionAttributes", helperStart);
-	assert.ok(helperStart >= 0 && helperEnd > helperStart);
-	const selectionContext = new Function(`${html.slice(helperStart, helperEnd)}; return metaReviewLineSelectionContext;`)() as (line: any, file: any, hunk?: any) => any;
-	const file = { id: "F001", path: "src/policy.ts" };
-	assert.deepEqual(selectionContext({ id: "D001", newLine: 8 }, file, { id: "E-01", title: "공개 상태 계약", evidenceIds: ["D001", "D002"] }), {
-		selectionKind: "hunk",
-		selectionId: "E-01",
-		selectionLabel: "변경 단위 · 공개 상태 계약",
-		evidenceIds: ["D001", "D002"],
-	});
-	assert.deepEqual(selectionContext({ id: "D003", kind: "context", oldLine: 9, newLine: 9 }, file), {
-		selectionKind: "line",
-		selectionId: "D003",
-		selectionLabel: "코드 줄 · src/policy.ts:9",
-		evidenceIds: ["D003"],
-	});
-	for (const marker of ["reviewSemanticUnitHeader", "reviewSemanticUnit", "reviewSemanticStart", "reviewSemanticEnd"]) assert.match(html, new RegExp(marker));
-	assert.match(html, /reviewLine\.reviewSemanticUnit\.selected/);
-	assert.match(html, /element\.dataset\.reviewLine&&selectedEvidence\.has\(element\.dataset\.reviewLine\)/);
-	assert.match(html, /metaReviewDeclarationIsWithin\(elementFile,element\.dataset\.reviewDeclaration,context\.declarationId\)/);
-});
-
-test("declaration selection은 가장 작은 선언을 고르고 Glimpse에서 상위·하위 범위와 full source를 탐색한다", () => {
-	const html = buildStudyHardStudioHtml();
-	const helperStart = html.indexOf("function metaReviewDeclarationForLine");
-	const helperEnd = html.indexOf("function metaReviewDeclarationContext", helperStart);
-	assert.ok(helperStart >= 0 && helperEnd > helperStart);
-	const declarationForLine = new Function(`${html.slice(helperStart, helperEnd)}; return metaReviewDeclarationForLine;`)() as (file: any, line: any) => any;
 	const file = {
 		declarationSource: {
 			declarations: [
@@ -3358,10 +3241,6 @@ test("declaration selection은 가장 작은 선언을 고르고 Glimpse에서 �
 			],
 		},
 	};
-	assert.equal(declarationForLine(file, { kind: "addition", newLine: 4 })?.declaration.id, "A-local");
-	assert.equal(declarationForLine(file, { kind: "context", oldLine: 5, newLine: 5 })?.declaration.id, "A-function");
-	assert.equal(declarationForLine(file, { kind: "deletion", oldLine: 4 })?.side, "before");
-	assert.equal(declarationForLine({ declarationSource: { declarations: [{ id: "A-file", kind: "file", depth: 0, after: { startLine: 1, endLine: 10 } }] } }, { kind: "addition", newLine: 3 }), undefined);
 	const containmentStart = html.indexOf("function metaReviewDeclarationIsWithin");
 	const containmentEnd = html.indexOf("function metaReviewDeclarationRangeLabel", containmentStart);
 	const isWithin = new Function(`function metaReviewDeclarationById(file,id){return file.declarationSource.declarations.find(item=>item.id===id);}${html.slice(containmentStart, containmentEnd)}; return metaReviewDeclarationIsWithin;`)() as (file: any, candidateId: string, ancestorId: string) => boolean;
@@ -3380,31 +3259,34 @@ test("declaration selection은 가장 작은 선언을 고르고 Glimpse에서 �
 	]) assert.match(html, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 	assert.match(html, /reviewSemanticUnitHeader,.reviewDeclarationUnitHeader \{ display:none; \}/);
 	assert.match(html, /reviewLine\.selected\.selectionStart/);
+	assert.doesNotMatch(html, /function metaReviewDeclarationForLine|function metaReviewFileHtml/);
 });
 
-test("Meta Review 상단은 한눈에 보기, 파일 관계, 리뷰 포인트, 읽는 흐름을 독립 surface로 렌더링한다", () => {
+test("Meta Review live shell은 공통 document CSS와 server-rendered fragment만 소비한다", () => {
 	const html = buildStudyHardStudioHtml();
-	for (const marker of [
-		"function metaReviewOverviewHtml",
-		"<h2>한눈에 보기</h2>",
-		"function metaReviewRelationshipHtml",
-		"reviewRelationshipSection",
-		"reviewRelationshipGuide",
-		"관계를 읽는 법",
-		"function metaReviewFindingsHtml",
-		"reviewFindingsSection",
-		"function metaReviewReadingRailHtml",
-		"reviewReadingRail",
-	]) assert.match(html, new RegExp(marker));
+	for (const marker of ["reviewRelationshipSection", "reviewRelationshipGuide", "reviewFindingsSection", "reviewReadingRail"]) assert.match(html, new RegExp(marker));
+	assert.equal((html.match(/\.reviewOverviewLead \{/g) || []).length, 1, "live review CSS는 공통 상수 한 사본만 사용한다");
 	assert.match(html, /reviewRelationshipDiagram svg \{[^}]*width:max\(100%,1040px\)/);
 	assert.match(html, /#workspace\.rightDrawerOpen #reviewSurface \.reviewReadingRail \{ display:none/);
-	assert.match(html, /reviewFindingIndex reviewSelectable/);
-	assert.match(html, /data-review-select-kind="card"/);
 	const renderStart = html.indexOf("function renderMetaReview()");
 	const renderEnd = html.indexOf("function scheduleMetaReviewPolling", renderStart);
 	const renderSource = html.slice(renderStart, renderEnd);
 	assert.ok(renderStart >= 0 && renderEnd > renderStart);
-	assert.match(renderSource, /metaReviewOverviewHtml[\s\S]*metaReviewRelationshipHtml[\s\S]*metaReviewFindingsHtml[\s\S]*metaReviewReadingRailHtml/);
+	assert.match(renderSource, /target\.innerHTML=metaReviewState\.documentHtml/);
+	assert.doesNotMatch(html, /function metaReviewOverviewHtml|function metaReviewRelationshipHtml|function metaReviewFindingsHtml|function metaReviewReadingRailHtml/);
+});
+
+test("Meta Review 읽기 진행률은 authored order 밖의 fallback rail 파일도 분모에 포함한다", () => {
+	const html = buildStudyHardStudioHtml();
+	const helperStart = html.indexOf("function updateMetaReviewReadingProgress");
+	const helperEnd = html.indexOf("function bindMetaReview()", helperStart);
+	assert.ok(helperStart >= 0 && helperEnd > helperStart);
+	const { document } = parseHTML(`<span id="reviewReadingProgress"></span><button data-reading-file="F001"></button><button data-reading-file="F002"></button><button data-reading-file="F003"></button>`);
+	const readFiles = new Set(["F003"]);
+	const helpers = new Function("document", "metaReviewReadFileIds", `${html.slice(helperStart, helperEnd)}; return { updateMetaReviewReadingProgress };`)(document, readFiles) as any;
+	helpers.updateMetaReviewReadingProgress();
+	assert.equal(document.getElementById("reviewReadingProgress")?.textContent, "33% 읽음");
+	assert.equal(document.querySelector('[data-reading-file="F003"]')?.classList.contains("active"), true);
 });
 
 test("코드 리뷰 질문 drawer는 각 범위의 대화를 분리하고 모든 대화에서 다시 찾는다", () => {
@@ -3690,6 +3572,9 @@ test("Study Hard 코드 리뷰 surface는 공통 worker 질문, 결정, 명시�
 		assert.equal(state.explanationCoverage.changedLinesExplained, bundle.stats.changedRows);
 		assert.ok(state.source.files[0].declarationSource.after.text.includes("const allowed"));
 		assert.equal(state.document.meanings[0].id, "M-visible-contract");
+		assert.match(state.documentHtml, /class="reviewLayout"/);
+		assert.match(state.documentHtml, /class="reviewOverview reviewSelectable"/);
+		assert.match(state.documentHtml, /class="reviewFile"/);
 		let response = await fetch(new URL("/meta-review/export/html", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: "{}" });
 		assert.equal(response.status, 200);
 		const htmlExport = await response.json() as any;
@@ -3701,11 +3586,14 @@ test("Study Hard 코드 리뷰 surface는 공통 worker 질문, 결정, 명시�
 		assert.match(exportedHtml, /Meta Review · revision 1/);
 		assert.match(exportedHtml, /consumer 계약을 함께 확인합니다/);
 		assert.match(exportedHtml, /실제 리뷰 포인트/);
-		assert.match(exportedHtml, /<aside class="exportReadingRail"/);
+		assert.match(exportedHtml, /<aside class="reviewReadingRail"/);
+		assert.match(exportedHtml, /class="reviewOverview"/);
+		assert.match(exportedHtml, /class="reviewFile"/);
+		assert.match(exportedHtml, /class="reviewExplanation"/);
 		assert.match(exportedHtml, /읽는 흐름/);
-		assert.match(exportedHtml, /href="#meta-review-file-1"/);
+		assert.match(exportedHtml, /data-review-file-jump="F001"/);
 		assert.match(exportedHtml, /정책과 호출 결과를 함께 확인합니다/);
-		assert.match(exportedHtml, /data-export-reading-progress/);
+		assert.doesNotMatch(exportedHtml, /exportReadingRail|data-review-decision|data-review-draft|\/meta-review\/|fetch\s*\(/);
 		assert.match(exportedHtml, /src\/policy\.ts/);
 		const inlineExportScripts = [...exportedHtml.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map((match) => match[1]).filter((script) => script.trim());
 		assert.ok(inlineExportScripts.length > 0);
@@ -3717,6 +3605,9 @@ test("Study Hard 코드 리뷰 surface는 공통 worker 질문, 결정, 명시�
 		let notionExport = await response.json() as any;
 		assert.equal(notionExport.status, "synced");
 		assert.equal(notionExport.syncedRevision, 1);
+		const notionHtmlPath = readdirSync(join(run.runDir, "exports")).map((name) => join(run.runDir, "exports", name)).find((path) => path.endsWith(".html"));
+		assert.ok(notionHtmlPath);
+		assert.equal(readFileSync(notionHtmlPath, "utf8"), exportedHtml, "Downloads와 Notion 첨부 HTML은 같은 static renderer 결과다");
 		const notionInputPath = join(run.runDir, "exports", "notion-sync.json");
 		const notionInput = JSON.parse(readFileSync(notionInputPath, "utf8"));
 		assert.match(notionInput.sessionId, /^meta-review-/);
@@ -3731,6 +3622,7 @@ test("Study Hard 코드 리뷰 surface는 공통 worker 질문, 결정, 명시�
 		assert.equal(notionInput.summary, "");
 		assert.deepEqual(notionInput.followups, []);
 		assert.equal(JSON.stringify(notionInput).includes("STUDY-HARD-"), false, "학습 보드 상태가 Meta Review Notion payload에 섞이지 않는다");
+		assert.equal(JSON.stringify(notionInput).includes("documentHtml"), false, "live 렌더 fragment가 Notion payload에 섞이지 않는다");
 		assert.equal(notionInput.noteDocument.sections.some((section: any) => section.id === "meta-review-file-1"), true);
 		const exportSidecar = JSON.parse(readFileSync(join(run.runDir, "export-state.json"), "utf8"));
 		assert.equal(exportSidecar.lastExport.runId, run.runId);
