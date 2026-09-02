@@ -3121,7 +3121,12 @@ test("Meta Review 추가 작업 메뉴는 다시 클릭·바깥 클릭·Esc·항
 	Object.defineProperty(escape, "key", { value: "Escape" });
 	document.dispatchEvent(escape);
 	assert.equal(menu.open, false, "Esc를 누르면 닫힌다");
-	assert.match(html, /reviewFullRefreshButton['"]\)\.addEventListener\(['"]click['"],function\(\)\{closeMetaReviewActionMenu\(\);requestMetaReviewRefresh\(['"]full['"]\);\}\)/);
+	for (const buttonId of ["reviewFullRefreshButton", "reviewNotionExportButton", "reviewHtmlExportButton"]) {
+		click();
+		assert.equal(menu.open, true);
+		document.getElementById(buttonId)?.dispatchEvent(new window.Event("click", { bubbles: true }));
+		assert.equal(menu.open, false, `${buttonId} 선택 시 닫힌다`);
+	}
 	assert.match(html, /id="reviewNotionExportButton"[^>]*>Notion 저장<\/button>/);
 	assert.match(html, /id="reviewHtmlExportButton"[^>]*>HTML 내보내기<\/button>/);
 	assert.match(html, /post\(['"]\/meta-review\/export\/notion['"]/);
@@ -3587,7 +3592,14 @@ test("Study Hard 코드 리뷰 surface는 공통 worker 질문, 결정, 명시�
 	} as any, { hasUI: false, cwd: "/tmp/review-pr-42", sessionManager: { getBranch: () => [] } } as any, {
 		url: "https://github.com/acme/repo/pull/42",
 		runId: "meta-review-route-test",
-		initialPatch: { activeSurface: "review", metaReview: { runId: run.runId, runDir: run.runDir, source: "github-pr", linkedAt: 1000 } },
+		initialPatch: {
+			activeSurface: "review",
+			metaReview: { runId: run.runId, runDir: run.runDir, source: "github-pr", linkedAt: 1000 },
+			summary: "STUDY-HARD-SUMMARY-CANARY",
+			goals: ["STUDY-HARD-GOAL-CANARY"],
+			quickMap: "STUDY-HARD-MAP-CANARY",
+			followups: ["STUDY-HARD-FOLLOWUP-CANARY"],
+		},
 		syncScript: fakeSyncScript,
 		downloadDir: join(reviewRoot, "Downloads"),
 	});
@@ -3626,6 +3638,11 @@ test("Study Hard 코드 리뷰 surface는 공통 worker 질문, 결정, 명시�
 		assert.equal(notionInput.artifactKind, "meta-review");
 		assert.equal(notionInput.artifactLabel, "Meta Review");
 		assert.equal(notionInput.noteDocument.title, "Meta Review · #42 Visibility contract");
+		assert.deepEqual(notionInput.goals, []);
+		assert.equal(notionInput.quickMap, "");
+		assert.equal(notionInput.summary, "");
+		assert.deepEqual(notionInput.followups, []);
+		assert.equal(JSON.stringify(notionInput).includes("STUDY-HARD-"), false, "학습 보드 상태가 Meta Review Notion payload에 섞이지 않는다");
 		assert.equal(notionInput.noteDocument.sections.some((section: any) => section.id === "meta-review-file-1"), true);
 		const exportSidecar = JSON.parse(readFileSync(join(run.runDir, "export-state.json"), "utf8"));
 		assert.equal(exportSidecar.lastExport.runId, run.runId);

@@ -2105,27 +2105,40 @@ function resolveMetaReviewExportSnapshot(handle: StudyHardHandle): { link: Study
 	return { link, snapshot: buildMetaReviewExportSnapshot(link.runDir) };
 }
 
-function metaReviewStudyState(handle: StudyHardHandle, snapshot: MetaReviewExportSnapshot, notionSync?: StudyNotionSyncState, sessionId = snapshot.seriesId): StudyHardBoardState {
+function metaReviewStudyState(snapshot: MetaReviewExportSnapshot, notionSync?: StudyNotionSyncState, sessionId = snapshot.seriesId): StudyHardBoardState {
 	return {
-		...handle.state,
+		schemaVersion: 1,
 		runId: sessionId,
 		title: snapshot.title,
 		sourceTitle: snapshot.title,
 		url: snapshot.sourceUrl,
 		revision: snapshot.revision,
-		updatedAt: snapshot.updatedAt,
-		noteDocument: snapshot.noteDocument,
+		sourceKind: "code",
+		learningPhase: "explain",
+		coachRole: "lead",
+		layoutMode: "auto",
+		viewMode: "detail",
+		goals: [],
+		quickMap: "",
+		mermaid: "",
+		nodes: [],
+		edges: [],
 		flows: [],
+		noteDocument: snapshot.noteDocument,
+		activeSurface: "review",
 		questions: [],
 		attachments: [],
-		companion: undefined,
 		notionSync,
+		summary: "",
+		followups: [],
+		createdAt: snapshot.updatedAt,
+		updatedAt: snapshot.updatedAt,
 	};
 }
 
 function writeMetaReviewHtmlExport(handle: StudyHardHandle): MetaReviewExportSnapshot & { fileName: string; path: string } {
 	const { snapshot } = resolveMetaReviewExportSnapshot(handle);
-	const exported = writeStudyNoteExport(metaReviewStudyState(handle, snapshot), handle.downloadDir, [], undefined, { artifactLabel: "Meta Review" });
+	const exported = writeStudyNoteExport(metaReviewStudyState(snapshot), handle.downloadDir, [], undefined, { artifactLabel: "Meta Review" });
 	return { ...snapshot, ...exported };
 }
 
@@ -2201,7 +2214,7 @@ async function runMetaReviewNotionSync(handle: StudyHardHandle, conflictResoluti
 	const sidecar = loadMetaReviewExportSidecar(link, snapshot);
 	const snapshotHash = createHash("sha256").update(JSON.stringify(snapshot.noteDocument)).digest("hex");
 	const notionSync = sidecar.notionSync ? { ...sidecar.notionSync, sectionSourceHashes: undefined } : undefined;
-	const exportState = metaReviewStudyState(handle, snapshot, notionSync, sidecar.sessionId);
+	const exportState = metaReviewStudyState(snapshot, notionSync, sidecar.sessionId);
 	handle.notionSyncInFlight = true;
 	try {
 		const directory = metaReviewExportDirectory(link);
