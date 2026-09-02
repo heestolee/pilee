@@ -30,7 +30,7 @@ source:
   - user-direction:2026-08-31-meta-review-study-hard-worker-lifecycle-parity
   - user-direction:2026-09-02-study-hard-code-review-discoverability
 reviewed_at: 2026-09-02
-reviewed_commit: 5dd2909
+reviewed_commit: 5dd4575
 related:
   - evidence-first-verification-gate
   - live-artifact-preview-pattern
