@@ -612,6 +612,7 @@ export function buildPageHtml(options: { staticState?: unknown; inlineElk?: bool
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'" />
 <title>TFT Studio</title>
 <style>
 :root {
@@ -1224,7 +1225,7 @@ async function renderMermaidElement(el) {
     var runtime = mermaidRuntime();
     if (!runtime || typeof runtime.render !== 'function') throw new Error('Mermaid runtime을 불러오지 못했습니다.');
     if (!mermaidInitialized) {
-      runtime.initialize({ startOnLoad:false, securityLevel:'strict', theme:'base' });
+      runtime.initialize({ startOnLoad:false, securityLevel:'strict', theme:'base', suppressErrorRendering:true });
       mermaidInitialized = true;
     }
     var renderId = 'mermaid-svg-' + simpleHash(source) + '-' + Math.random().toString(36).slice(2, 9);
@@ -3038,6 +3039,16 @@ export function buildTftVisualEmbedHtml(spec: Record<string, unknown>, options: 
 	return buildPageHtml({ staticState: state, inlineElk: !usesDedicatedLayout, omitElk: usesDedicatedLayout, omitMermaid: true, visualOnly: true });
 }
 
+function markdownHasMermaidFence(markdown: string | undefined): boolean {
+	return /(^|\n)\s*```mermaid(?:\s|$)/i.test(markdown || "");
+}
+
+function stateHasMermaidFence(state: FrameStudioState): boolean {
+	if (markdownHasMermaidFence(state.markdown)) return true;
+	if (Object.values(state.tabs).some((tab) => markdownHasMermaidFence(tab.markdown))) return true;
+	return state.timeline.some((entry) => markdownHasMermaidFence(entry.markdown));
+}
+
 export function buildStaticTftStudioHtmlFromTranscript(filePath: string): string {
 	const resolved = realpathSync(filePath);
 	const parsed = JSON.parse(readFileSync(resolved, "utf-8")) as Partial<FrameStudioState>;
@@ -3070,7 +3081,12 @@ export function buildStaticTftStudioHtmlFromTranscript(filePath: string): string
 		timeline: Array.isArray(parsed.timeline) ? normalizeTimelineEntries(parsed.timeline) : [],
 		logs: Array.isArray(parsed.logs) ? parsed.logs : [],
 	};
-	return buildPageHtml({ staticState: serializeState(state), inlineMermaid: true });
+	const includesMermaid = stateHasMermaidFence(state);
+	return buildPageHtml({
+		staticState: serializeState(state),
+		inlineMermaid: includesMermaid,
+		omitMermaid: !includesMermaid,
+	});
 }
 
 function createServerFor(state: FrameStudioState): FrameStudioHandle {

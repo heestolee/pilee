@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
-import { buildPageHtml, tftStudioMermaidBundleSource } from "./index.ts";
+import { buildPageHtml, buildStaticTftStudioHtmlFromTranscript, buildTftVisualEmbedHtml, tftStudioMermaidBundleSource } from "./index.ts";
 
 function extractStudioScript(html: string): string {
 	const scripts = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map((match) => match[1]);
@@ -62,11 +65,50 @@ function loadStudioMarkdownRuntime(mermaid: unknown) {
 	};
 }
 
-test("Frame Studio는 로컬 Mermaid browser bundle을 제공한다", () => {
+test("Frame Studio는 로컬 Mermaid browser bundle과 외부 image 차단 CSP를 제공한다", () => {
 	const html = buildPageHtml();
 	assert.match(html, /<script src="\/mermaid\.min\.js"><\/script>/);
+	assert.match(html, /http-equiv="Content-Security-Policy"/);
+	assert.match(html, /img-src 'self' data: blob:/);
+	assert.match(html, /connect-src 'self'/);
 	const bundle = tftStudioMermaidBundleSource();
 	assert.ok(bundle && bundle.length > 100_000, "installed Mermaid browser bundle should be readable");
+});
+
+test("정적 archive는 Mermaid가 있을 때만 bundle을 inline하고 TFT visual embed에서는 생략한다", () => {
+	const dir = mkdtempSync(join(tmpdir(), "pilee-mermaid-static-"));
+	const mermaidFile = join(dir, "with-mermaid.json");
+	const plainFile = join(dir, "without-mermaid.json");
+	const mermaidMarkdown = ["# Diagram", "", "```mermaid", "flowchart LR", "A --> B", "```"].join("\n");
+	const transcript = (markdown: string) => ({
+		title: "Static Mermaid test",
+		activeTab: "frame",
+		status: "done",
+		markdown,
+		tabs: { frame: { markdown, step: "Visual", updatedAt: 1 } },
+		timeline: [{ id: "u1", time: 1, kind: "update", tab: "frame", step: "Visual", markdown }],
+		logs: [],
+	});
+	try {
+		writeFileSync(mermaidFile, JSON.stringify(transcript(mermaidMarkdown)));
+		writeFileSync(plainFile, JSON.stringify(transcript("# Plain transcript")));
+		const mermaidHtml = buildStaticTftStudioHtmlFromTranscript(mermaidFile);
+		const plainHtml = buildStaticTftStudioHtmlFromTranscript(plainFile);
+		const visualEmbedHtml = buildTftVisualEmbedHtml({
+			kind: "architecture-flow",
+			title: "TFT visual only",
+			nodes: [{ id: "a", title: "A" }, { id: "b", title: "B" }],
+			edges: [{ from: "a", to: "b" }],
+		});
+
+		assert.match(mermaidHtml, /globalThis\["mermaid"\]/);
+		assert.doesNotMatch(mermaidHtml, /<script src="\/mermaid\.min\.js"><\/script>/);
+		assert.doesNotMatch(plainHtml, /globalThis\["mermaid"\]|<script src="\/mermaid\.min\.js">/);
+		assert.doesNotMatch(visualEmbedHtml, /globalThis\["mermaid"\]|<script src="\/mermaid\.min\.js">/);
+		assert.ok(plainHtml.length < mermaidHtml.length - 3_000_000, "plain archive should not carry the Mermaid bundle weight");
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
 });
 
 test("mermaid fence를 코드 블록이 아닌 diagram placeholder로 변환한다", () => {
@@ -101,7 +143,7 @@ test("여러 Mermaid diagram을 한 번 초기화하고 각각 고유 SVG로 렌
 	await studio.renderMermaidElement(second);
 
 	assert.equal(initialized.length, 1);
-	assert.deepEqual(initialized[0], { startOnLoad: false, securityLevel: "strict", theme: "base" });
+	assert.deepEqual(initialized[0], { startOnLoad: false, securityLevel: "strict", theme: "base", suppressErrorRendering: true });
 	assert.equal(rendered.length, 2);
 	assert.notEqual(rendered[0].id, rendered[1].id);
 	assert.match(first.innerHTML, /<svg data-render-id=/);
