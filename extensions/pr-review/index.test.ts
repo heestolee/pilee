@@ -626,23 +626,31 @@ test("/meta-review captures one PR from any cwd and sends the inlined workflow",
 	}
 });
 
-test("/meta-review hands a UI invocation to a head-pinned review workspace session", async () => {
+test("/meta-review current-panel handoff stops using the stale source command context", async () => {
 	const stateRoot = mkdtempSync(join(tmpdir(), "pilee-pr-review-workspace-command-"));
 	try {
 		const { pi, commands, messages } = fixture();
 		const requests: any[] = [];
+		const notifications: string[] = [];
+		let switched = false;
 		registerPrReview(pi, {
 			stateRoot,
 			now: () => 1500,
 			reviewWorkspaceRunner: async (_pi, _ctx, request) => {
 				requests.push(request);
-				return { status: "activated", name: "review-pr-42-head1234", branch: "review/pr-42-head1234", path: "/tmp/review-pr-42", sessionFile: "/tmp/review.jsonl", reused: false, activation: { status: "activated", panelLabel: "P1", placement: "right" } };
+				switched = true;
+				return { status: "switched", name: "review-pr-42-head1234", branch: "review/pr-42-head1234", path: "/tmp/review-pr-42", sessionFile: "/tmp/review.jsonl", reused: false, continuationDispatched: true, contract: { activationTarget: "current-panel" } };
 			},
 		});
 		await commands.get("meta-review").handler("https://github.com/acme/repo/pull/42", {
 			cwd: "/tmp",
 			hasUI: true,
-			ui: { notify() {}, setStatus() {} },
+			ui: {
+				notify(message: string) { notifications.push(message); },
+				setStatus() {
+					if (switched) throw new Error("stale source command context used after switch");
+				},
+			},
 		});
 		assert.equal(requests.length, 1);
 		assert.equal(requests[0].repo, "repo");
@@ -651,6 +659,7 @@ test("/meta-review hands a UI invocation to a head-pinned review workspace sessi
 		assert.equal(requests[0].headSha, "head1234567890");
 		assert.match(requests[0].afterSwitchFollowUp.content, /meta_review_run.*open/);
 		assert.match(requests[0].afterSwitchFollowUp.content, /\.pi\/review-context\.json/);
+		assert.equal(notifications.some((message) => /meta-review failed/.test(message)), false);
 		assert.equal(messages.length, 0);
 	} finally {
 		rmSync(stateRoot, { recursive: true, force: true });

@@ -540,6 +540,7 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 							details: { runId: state.runId, runDir: state.runDir, target: state.target },
 						},
 					});
+					if (activated.status === "switched") return;
 					ctx.ui.setStatus("meta-review", undefined);
 					if (activated.status !== "activated") throw new Error(activated.reason);
 					return;
