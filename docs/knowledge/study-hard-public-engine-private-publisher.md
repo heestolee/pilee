@@ -19,7 +19,7 @@ source:
   - user-direction:2026-07-21-study-hard-notion-static-export
   - user-direction:2026-09-03-meta-review-export-actions
 reviewed_at: 2026-09-03
-reviewed_commit: 4ac8cf7
+reviewed_commit: 4e8148c
 related:
   - private-overlay-package-boundary
   - context-loading-minimal-surface
