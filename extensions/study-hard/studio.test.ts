@@ -3122,8 +3122,11 @@ test("Meta Review 추가 작업 메뉴는 다시 클릭·바깥 클릭·Esc·항
 	document.dispatchEvent(escape);
 	assert.equal(menu.open, false, "Esc를 누르면 닫힌다");
 	assert.match(html, /reviewFullRefreshButton['"]\)\.addEventListener\(['"]click['"],function\(\)\{closeMetaReviewActionMenu\(\);requestMetaReviewRefresh\(['"]full['"]\);\}\)/);
+	assert.match(html, /id="reviewNotionExportButton"[^>]*>Notion 저장<\/button>/);
 	assert.match(html, /id="reviewHtmlExportButton"[^>]*>HTML 내보내기<\/button>/);
+	assert.match(html, /post\(['"]\/meta-review\/export\/notion['"]/);
 	assert.match(html, /post\(['"]\/meta-review\/export\/html['"]/);
+	assert.match(html, /Meta Review 원본은 바뀌지 않으며/);
 });
 
 test("코드 리뷰 변경 파일 관계는 flowchart 또는 sequence로 렌더링한다", () => {
@@ -3565,6 +3568,8 @@ test("Study Hard 코드 리뷰 surface는 공통 worker 질문, 결정, 명시�
 		relationships: { summary: "단일 정책 파일 안에서 변경이 완결됩니다.", diagram: "flowchart", relations: [], readingOrder: [{ path: "src/policy.ts", reason: "정책과 호출 결과를 함께 확인합니다." }] },
 		meanings: [{ id: "M-visible-contract", title: "암묵적 상태 허용을 명시적 노출 계약으로 전환", beforeContract: "부정 조건을 통과하는 상태가 노출될 수 있었습니다.", afterContract: "명시한 상태만 노출됩니다.", mechanism: "policy가 allowlist를 소유합니다.", impact: "향후 상태 추가가 자동 노출되지 않습니다.", paths: ["src/policy.ts"], evidenceIds: changedEvidenceIds, basis: [{ kind: "definition", path: "src/policy.ts", line: 1, summary: "visible policy 정의가 allowlist를 소유합니다." }], confidence: "high" }],
 	});
+	const fakeSyncScript = join(reviewRoot, "meta-review-notion-sync.py");
+	writeFileSync(fakeSyncScript, `import json,sys\np=json.load(open(sys.argv[2]))\nr=p.get('conflictResolution') or {}\nbase={'status':'synced','pageId':'meta-page-1','pageUrl':'https://notion.so/metapage1','calendarDate':'2026-09-03','sectionHashes':{'meta-review-overview':'notion-hash'},'sectionSourceHashes':{'meta-review-overview':'source-hash'},'sectionBlockIds':{'meta-review-overview':'block-1'},'sectionHeadingIds':{'meta-review-overview':'heading-1'},'sectionModes':{'meta-review-overview':'study-hard'},'htmlDividerId':'divider-1','htmlHeadingId':'html-heading-1','htmlBlockId':'html-block-1','htmlHash':'html-hash','htmlFileName':'meta-review.html'}\nif not p.get('notionSync'):\n print(json.dumps(base))\nelif not r:\n print(json.dumps({'status':'conflict','pageId':'meta-page-1','pageUrl':'https://notion.so/metapage1','calendarDate':'2026-09-03','conflicts':[{'sectionId':'meta-review-overview','title':'한눈에 보기','currentPreview':'Notion edit','desiredPreview':'Meta Review edit','currentNoteBlocks':[{'id':'notion-p','type':'paragraph','text':'Notion edit'}],'desiredNoteBlocks':[{'id':'review-p','type':'paragraph','text':'Meta Review edit'}]}]}))\nelse:\n base['importedSections']=[{'sectionId':'meta-review-overview','title':'한눈에 보기','source':'notion','blocks':[{'id':'notion-p','type':'paragraph','text':'Notion edit'}]}]\n base['sectionModes']={'meta-review-overview':'notion'}\n print(json.dumps(base))\n`, "utf8");
 	const messages: any[] = [];
 	const workerRequests: any[] = [];
 	const transcriptEntries: any[] = [];
@@ -3583,6 +3588,7 @@ test("Study Hard 코드 리뷰 surface는 공통 worker 질문, 결정, 명시�
 		url: "https://github.com/acme/repo/pull/42",
 		runId: "meta-review-route-test",
 		initialPatch: { activeSurface: "review", metaReview: { runId: run.runId, runDir: run.runDir, source: "github-pr", linkedAt: 1000 } },
+		syncScript: fakeSyncScript,
 		downloadDir: join(reviewRoot, "Downloads"),
 	});
 	try {
@@ -3608,6 +3614,32 @@ test("Study Hard 코드 리뷰 surface는 공통 worker 질문, 결정, 명시�
 		assert.match(exportedHtml, /실제 리뷰 포인트/);
 		assert.match(exportedHtml, /src\/policy\.ts/);
 		assert.match(exportedHtml, /const allowed = new Set/);
+		const boardBeforeNotion = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		response = await fetch(new URL("/meta-review/export/notion", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: "{}" });
+		assert.equal(response.status, 200);
+		let notionExport = await response.json() as any;
+		assert.equal(notionExport.status, "synced");
+		assert.equal(notionExport.syncedRevision, 1);
+		const notionInputPath = join(run.runDir, "exports", "notion-sync.json");
+		const notionInput = JSON.parse(readFileSync(notionInputPath, "utf8"));
+		assert.match(notionInput.sessionId, /^meta-review-/);
+		assert.equal(notionInput.noteDocument.title, "Meta Review · #42 Visibility contract");
+		assert.equal(notionInput.noteDocument.sections.some((section: any) => section.id === "meta-review-file-1"), true);
+		const exportSidecar = JSON.parse(readFileSync(join(run.runDir, "export-state.json"), "utf8"));
+		assert.equal(exportSidecar.lastExport.runId, run.runId);
+		assert.equal(exportSidecar.notionSync.pageId, "meta-page-1");
+		response = await fetch(new URL("/meta-review/export/notion", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: "{}" });
+		notionExport = await response.json() as any;
+		assert.equal(notionExport.status, "conflict");
+		assert.equal(notionExport.conflicts[0].sectionId, "meta-review-overview");
+		assert.ok(Array.isArray(notionExport.conflicts[0].blockDiff));
+		response = await fetch(new URL("/meta-review/export/notion", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ conflictResolution: { "meta-review-overview": { choice: "notion" } } }) });
+		notionExport = await response.json() as any;
+		assert.equal(notionExport.status, "synced");
+		assert.equal(notionExport.importedSections[0].source, "notion");
+		const boardAfterNotion = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
+		assert.deepEqual(boardAfterNotion.noteDocument, boardBeforeNotion.noteDocument, "Notion 선택은 학습노트 canonical을 바꾸지 않는다");
+		assert.deepEqual(boardAfterNotion.metaReview, boardBeforeNotion.metaReview, "Notion 선택은 Meta Review link를 바꾸지 않는다");
 		response = await fetch(new URL("/meta-review/decision", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: JSON.stringify({ cardId: "R-01", decision: "review-only" }) });
 		assert.equal(response.status, 200);
 		assert.equal((await response.json() as any).card.decision, "review-only");

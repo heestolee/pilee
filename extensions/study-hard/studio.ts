@@ -31,6 +31,7 @@ import {
 	loadPrReviewRun,
 	readJson,
 	saveHumanDecision,
+	writeJsonAtomic,
 	type HumanReviewDecision,
 } from "../pr-review/run.ts";
 import { buildMetaReviewExportSnapshot, type MetaReviewExportSnapshot } from "../pr-review/export.ts";
@@ -390,6 +391,19 @@ interface ResolvedStudyHardWorkContract extends StudyHardWorkContractSummary {
 
 type StudyHardClientState = StudyHardBoardState & { workContract?: StudyHardWorkContractSummary };
 type StudyHardTransitionIntent = "apply-frame" | "start-work";
+
+interface MetaReviewExportSidecar {
+	schemaVersion: 1;
+	seriesId: string;
+	sessionId: string;
+	notionSync?: StudyNotionSyncState;
+	lastExport?: {
+		runId: string;
+		revision: number;
+		snapshotHash: string;
+		syncedAt: number;
+	};
+}
 
 interface StudyHardHandle {
 	state: StudyHardBoardState;
@@ -2083,10 +2097,20 @@ function writeStudyNoteExport(state: StudyHardBoardState, downloadDir: string, d
 	return { fileName, path };
 }
 
-function metaReviewStudyState(handle: StudyHardHandle, snapshot: MetaReviewExportSnapshot): StudyHardBoardState {
+function resolveMetaReviewExportSnapshot(handle: StudyHardHandle): { link: StudyMetaReviewLink; snapshot: MetaReviewExportSnapshot } {
+	const link = handle.state.metaReview;
+	if (!link) throw new Error("연결된 Meta Review가 없습니다.");
+	const linkedRun = loadPrReviewRun(link.runDir);
+	if (linkedRun.runId !== link.runId) throw new Error("Study Hard Meta Review link가 다른 run을 가리킵니다.");
+	return { link, snapshot: buildMetaReviewExportSnapshot(link.runDir) };
+}
+
+function metaReviewStudyState(handle: StudyHardHandle, snapshot: MetaReviewExportSnapshot, notionSync?: StudyNotionSyncState, sessionId = snapshot.seriesId): StudyHardBoardState {
 	return {
 		...handle.state,
+		runId: sessionId,
 		title: snapshot.title,
+		sourceTitle: snapshot.title,
 		url: snapshot.sourceUrl,
 		revision: snapshot.revision,
 		updatedAt: snapshot.updatedAt,
@@ -2095,15 +2119,130 @@ function metaReviewStudyState(handle: StudyHardHandle, snapshot: MetaReviewExpor
 		questions: [],
 		attachments: [],
 		companion: undefined,
+		notionSync,
 	};
 }
 
 function writeMetaReviewHtmlExport(handle: StudyHardHandle): MetaReviewExportSnapshot & { fileName: string; path: string } {
-	const link = handle.state.metaReview;
-	if (!link) throw new Error("연결된 Meta Review가 없습니다.");
-	const snapshot = buildMetaReviewExportSnapshot(link.runDir);
+	const { snapshot } = resolveMetaReviewExportSnapshot(handle);
 	const exported = writeStudyNoteExport(metaReviewStudyState(handle, snapshot), handle.downloadDir, [], undefined, { artifactLabel: "Meta Review" });
 	return { ...snapshot, ...exported };
+}
+
+function metaReviewExportDirectory(link: StudyMetaReviewLink): string {
+	const directory = join(link.runDir, "exports");
+	mkdirSync(directory, { recursive: true });
+	return directory;
+}
+
+function metaReviewExportSidecarPath(link: StudyMetaReviewLink): string {
+	return join(link.runDir, "export-state.json");
+}
+
+function metaReviewSessionId(snapshot: MetaReviewExportSnapshot): string {
+	return `meta-review-${createHash("sha256").update(snapshot.seriesId).digest("hex").slice(0, 20)}`;
+}
+
+function loadMetaReviewExportSidecar(link: StudyMetaReviewLink, snapshot: MetaReviewExportSnapshot): MetaReviewExportSidecar {
+	const path = metaReviewExportSidecarPath(link);
+	if (!existsSync(path)) return { schemaVersion: 1, seriesId: snapshot.seriesId, sessionId: metaReviewSessionId(snapshot) };
+	const sidecar = readJson<MetaReviewExportSidecar>(path);
+	if (sidecar.schemaVersion !== 1 || sidecar.seriesId !== snapshot.seriesId || !sidecar.sessionId) throw new Error("Meta Review export state가 현재 review series와 일치하지 않습니다.");
+	return sidecar;
+}
+
+function resultNotionSync(result: Record<string, unknown>, previous: StudyNotionSyncState | undefined, sessionId: string, revision: number, snapshotHash: string): StudyNotionSyncState {
+	const map = (key: string) => result[key] && typeof result[key] === "object" && !Array.isArray(result[key]) ? result[key] as Record<string, string> : undefined;
+	return {
+		...previous,
+		pageId: typeof result.pageId === "string" ? result.pageId : previous?.pageId,
+		calendarDate: typeof result.calendarDate === "string" ? result.calendarDate : previous?.calendarDate,
+		pageUrl: typeof result.pageUrl === "string" ? result.pageUrl : previous?.pageUrl,
+		sessionId,
+		sectionHashes: map("sectionHashes") || previous?.sectionHashes,
+		sectionSourceHashes: map("sectionSourceHashes") || previous?.sectionSourceHashes,
+		sectionBlockIds: map("sectionBlockIds") || previous?.sectionBlockIds,
+		sectionHeadingIds: map("sectionHeadingIds") || previous?.sectionHeadingIds,
+		sectionModes: map("sectionModes") || previous?.sectionModes,
+		htmlDividerId: typeof result.htmlDividerId === "string" ? result.htmlDividerId : previous?.htmlDividerId,
+		htmlHeadingId: typeof result.htmlHeadingId === "string" ? result.htmlHeadingId : previous?.htmlHeadingId,
+		htmlBlockId: typeof result.htmlBlockId === "string" ? result.htmlBlockId : previous?.htmlBlockId,
+		htmlHash: typeof result.htmlHash === "string" ? result.htmlHash : previous?.htmlHash,
+		htmlFileName: typeof result.htmlFileName === "string" ? result.htmlFileName : previous?.htmlFileName,
+		lastSyncedRevision: revision,
+		lastSyncedHash: snapshotHash,
+		lastSyncedAt: Date.now(),
+	};
+}
+
+function normalizedNotionConflictResolution(value: unknown): Record<string, unknown> {
+	const rawResolution = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+	const conflictResolution: Record<string, unknown> = {};
+	for (const [sectionId, raw] of Object.entries(rawResolution)) {
+		if (raw === "notion" || raw === "study-hard") {
+			conflictResolution[sectionId] = raw;
+			continue;
+		}
+		if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+		const item = raw as Record<string, unknown>;
+		if (item.choice === "notion" || item.choice === "study-hard") conflictResolution[sectionId] = { choice: item.choice };
+		else if (item.choice === "manual") {
+			const blocks = normalizeNoteBlocks(item.blocks);
+			if (blocks) conflictResolution[sectionId] = { choice: "manual", blocks };
+		}
+	}
+	return conflictResolution;
+}
+
+async function runMetaReviewNotionSync(handle: StudyHardHandle, conflictResolution: Record<string, unknown>): Promise<Record<string, unknown>> {
+	if (!existsSync(handle.syncScript)) throw new Error("Notion 동기화 스크립트를 찾지 못했습니다.");
+	if (handle.notionSyncInFlight) throw new Error("Notion 동기화가 이미 진행 중입니다.");
+	const { link, snapshot } = resolveMetaReviewExportSnapshot(handle);
+	const sidecar = loadMetaReviewExportSidecar(link, snapshot);
+	const snapshotHash = createHash("sha256").update(JSON.stringify(snapshot.noteDocument)).digest("hex");
+	const notionSync = sidecar.notionSync ? { ...sidecar.notionSync, sectionSourceHashes: undefined } : undefined;
+	const exportState = metaReviewStudyState(handle, snapshot, notionSync, sidecar.sessionId);
+	handle.notionSyncInFlight = true;
+	try {
+		const directory = metaReviewExportDirectory(link);
+		const htmlPath = join(directory, `meta-review-${safeFileName(snapshot.runId)}-revision-${snapshot.revision}.html`);
+		const htmlContent = buildStudyNoteExportHtml(exportState, [], undefined, { artifactLabel: "Meta Review" });
+		writeFileSync(htmlPath, htmlContent, "utf-8");
+		const htmlAsset: StudyFileExportAsset = { fileName: basename(htmlPath), mimeType: "text/html", path: htmlPath, sha256: createHash("sha256").update(htmlContent).digest("hex") };
+		const inputPath = join(directory, "notion-sync.json");
+		const syncPayload = buildNotionSyncPayload(exportState, [], htmlAsset, undefined, conflictResolution);
+		writeFileSync(inputPath, JSON.stringify(syncPayload, null, 2), "utf-8");
+		const { stdout } = await execFileAsync(process.env.STUDY_HARD_PYTHON || "python3", [handle.syncScript, "--file", inputPath], { maxBuffer: 4 * 1024 * 1024, timeout: 300_000 });
+		const result = JSON.parse(String(stdout).trim()) as Record<string, unknown>;
+		if (Array.isArray(result.conflicts)) {
+			result.conflicts = result.conflicts.map((raw) => {
+				if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+				const conflict = raw as Record<string, unknown>;
+				const current = normalizeNoteBlocks(conflict.currentNoteBlocks) || [];
+				const desired = normalizeNoteBlocks(conflict.desiredNoteBlocks) || [];
+				return { ...conflict, blockDiff: diffStudyNoteBlocks(current, desired) };
+			});
+		}
+		if (result.status === "conflict") return { ...result, syncedRevision: snapshot.revision, currentRevision: snapshot.revision, staleAfterSync: false };
+		const current = buildMetaReviewExportSnapshot(link.runDir);
+		const currentHash = createHash("sha256").update(JSON.stringify(current.noteDocument)).digest("hex");
+		const staleAfterSync = current.runId !== snapshot.runId || currentHash !== snapshotHash;
+		const nextSidecar: MetaReviewExportSidecar = {
+			schemaVersion: 1,
+			seriesId: snapshot.seriesId,
+			sessionId: sidecar.sessionId,
+			notionSync: resultNotionSync(result, sidecar.notionSync, sidecar.sessionId, snapshot.revision, snapshotHash),
+			lastExport: { runId: snapshot.runId, revision: snapshot.revision, snapshotHash, syncedAt: Date.now() },
+		};
+		writeJsonAtomic(metaReviewExportSidecarPath(link), nextSidecar);
+		return { ...result, syncedRevision: snapshot.revision, currentRevision: current.revision, staleAfterSync };
+	} catch (error) {
+		const detail = studyHardSyncErrorDetail(error);
+		console.error(`[meta-review:notion-sync] ${detail}`);
+		throw new Error(detail);
+	} finally {
+		handle.notionSyncInFlight = false;
+	}
 }
 
 function browserDiagramBlockIds(state: StudyHardBoardState): string[] {
@@ -3166,6 +3305,12 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 				sendJson(res, 200, { ok: true, runId: exported.runId, revision: exported.revision, sourceSha256: exported.sourceSha256, fileName: exported.fileName, path: exported.path });
 				return;
 			}
+			if (pathname === "/meta-review/export/notion" && req.method === "POST") {
+				const body = await readJsonBody(req);
+				const result = await runMetaReviewNotionSync(handle, normalizedNotionConflictResolution(body.conflictResolution));
+				sendJson(res, 200, { ok: true, ...result });
+				return;
+			}
 			if (pathname === "/work-contract" && req.method === "GET") {
 				const workContract = resolveStudyHardWorkContract(handle);
 				if (!workContract) {
@@ -3199,22 +3344,7 @@ export async function startStudyHardStudio(pi: ExtensionAPI, ctx: ExtensionComma
 			if (pathname === "/export/notion" && req.method === "POST") {
 				const body = await readJsonBody(req);
 				const diagramAssets = await prepareExportDiagramAssets(handle.state, body.diagramAssets);
-				const rawResolution = body.conflictResolution && typeof body.conflictResolution === "object" && !Array.isArray(body.conflictResolution) ? body.conflictResolution as Record<string, unknown> : {};
-				const conflictResolution: Record<string, unknown> = {};
-				for (const [sectionId, raw] of Object.entries(rawResolution)) {
-					if (raw === "notion" || raw === "study-hard") {
-						conflictResolution[sectionId] = raw;
-						continue;
-					}
-					if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
-					const item = raw as Record<string, unknown>;
-					if (item.choice === "notion" || item.choice === "study-hard") conflictResolution[sectionId] = { choice: item.choice };
-					else if (item.choice === "manual") {
-						const blocks = normalizeNoteBlocks(item.blocks);
-						if (blocks) conflictResolution[sectionId] = { choice: "manual", blocks };
-					}
-				}
-				const result = await runStudyHardNotionSync(handle, diagramAssets, conflictResolution);
+				const result = await runStudyHardNotionSync(handle, diagramAssets, normalizedNotionConflictResolution(body.conflictResolution));
 				sendJson(res, 200, { ok: true, ...result });
 				return;
 			}
