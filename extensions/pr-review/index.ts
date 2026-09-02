@@ -8,7 +8,10 @@ import { normalizeQuestionExecution } from "../questions/runtime.ts";
 import { expandProfileTemplate, loadPrReviewProfiles, type PrReviewCorpusProfile } from "../utils/private-profiles.ts";
 import { runPrReviewWorktreeFromCommandContext } from "../worktree/pr-review.ts";
 import { readPrReviewWorkspaceMetadata, writePrReviewWorkspaceMetadata } from "./workspace.ts";
-import { requestStudyHardMetaReviewOpen } from "../study-hard/meta-review-broker.ts";
+import {
+	registerStudyHardMetaReviewStartBroker,
+	requestStudyHardMetaReviewOpen,
+} from "../study-hard/meta-review-broker.ts";
 import { startStudyHardStudio } from "../study-hard/studio.ts";
 import type { MetaReviewDocumentInput, MetaReviewFileGuideInput } from "./guidance.ts";
 import { captureGitHubPrRun, fetchGitHubPrTarget, parseGitHubPrUrl } from "./github-source.ts";
@@ -183,6 +186,46 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 	const stateRoot = options.stateRoot ?? DEFAULT_STATE_ROOT;
 	const now = options.now ?? (() => Date.now());
 	let latestRunId: string | undefined;
+
+	const captureCurrentMetaReview = async (cwd: string): Promise<PrReviewRunState> => {
+		const workspace = readPrReviewWorkspaceMetadata(cwd);
+		let state: PrReviewRunState;
+		if (workspace?.runId && workspace.runDir) {
+			state = loadPrReviewRun(workspace.runDir);
+		} else if (workspace?.prUrl) {
+			const captured = await captureGitHubPrRun(pi, cwd, parseGitHubPrUrl(workspace.prUrl), stateRoot, now());
+			const capturedSource = readJson<ReviewSourceBundle>(captured.sourcePath);
+			state = attachMetaReviewRevision(captured, capturedSource.sourceSha256, "initial", undefined, now()).run;
+			writePrReviewWorkspaceMetadata(cwd, { ...workspace, runId: state.runId, runDir: state.runDir, activationIntent: "meta-review", diffAutoOpenPending: false });
+		} else {
+			const captured = await captureCurrentWorkRun(pi, cwd, stateRoot, now());
+			const capturedSource = readJson<ReviewSourceBundle>(captured.sourcePath);
+			state = attachMetaReviewRevision(captured, capturedSource.sourceSha256, "initial", undefined, now()).run;
+		}
+		if (!state.seriesId) {
+			const currentSource = readJson<ReviewSourceBundle>(state.sourcePath);
+			state = attachMetaReviewRevision(state, currentSource.sourceSha256, "initial", undefined, now()).run;
+		}
+		latestRunId = state.runId;
+		return state;
+	};
+
+	const disposeMetaReviewStartBroker = registerStudyHardMetaReviewStartBroker(pi, async ({ cwd, studyRunId }) => {
+		const state = await captureCurrentMetaReview(cwd);
+		if (state.status !== "ready") {
+			pi.sendMessage({
+				customType: META_REVIEW_COMMAND_CUSTOM_TYPE,
+				content: buildPrReviewPrompt(state),
+				display: false,
+				details: { command: "meta-review", runId: state.runId, runDir: state.runDir, studyRunId, target: state.target, skillPath: META_REVIEW_SKILL_PATH },
+			}, { deliverAs: "followUp", triggerTurn: true });
+		}
+		return {
+			runId: state.runId,
+			runDir: state.runDir,
+			source: state.target.kind === "current-work" ? "current-work" : "github-pr",
+		};
+	});
 
 	pi.registerTool({
 		name: "meta_review_run",
@@ -431,7 +474,10 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 		},
 	});
 
-	pi.on("session_shutdown", () => closePrReviewStudios());
+	pi.on("session_shutdown", () => {
+		disposeMetaReviewStartBroker();
+		closePrReviewStudios();
+	});
 
 	pi.registerCommand("meta-review", {
 		description: "현재 작업 또는 GitHub PR을 거의 모든 diff 설명·리뷰 초안·메타 관점으로 읽기 전용 검토",
@@ -444,25 +490,7 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 			try {
 				if (!trimmed) {
 					ctx.ui.setStatus("meta-review", "현재 review source 캡처 중");
-					const workspace = readPrReviewWorkspaceMetadata(ctx.cwd);
-					let state: PrReviewRunState;
-					if (workspace?.runId && workspace.runDir) {
-						state = loadPrReviewRun(workspace.runDir);
-					} else if (workspace?.prUrl) {
-						const captured = await captureGitHubPrRun(pi, ctx.cwd, parseGitHubPrUrl(workspace.prUrl), stateRoot, now());
-						const capturedSource = readJson<ReviewSourceBundle>(captured.sourcePath);
-						state = attachMetaReviewRevision(captured, capturedSource.sourceSha256, "initial", undefined, now()).run;
-						writePrReviewWorkspaceMetadata(ctx.cwd, { ...workspace, runId: state.runId, runDir: state.runDir, activationIntent: "meta-review", diffAutoOpenPending: false });
-					} else {
-						const captured = await captureCurrentWorkRun(pi, ctx.cwd, stateRoot, now());
-						const capturedSource = readJson<ReviewSourceBundle>(captured.sourcePath);
-						state = attachMetaReviewRevision(captured, capturedSource.sourceSha256, "initial", undefined, now()).run;
-					}
-					if (!state.seriesId) {
-						const currentSource = readJson<ReviewSourceBundle>(state.sourcePath);
-						state = attachMetaReviewRevision(state, currentSource.sourceSha256, "initial", undefined, now()).run;
-					}
-					latestRunId = state.runId;
+					const state = await captureCurrentMetaReview(ctx.cwd);
 					const source = readJson<ReviewSourceBundle>(state.sourcePath);
 					const opened = await (options.openMetaReview ?? openMetaReviewInStudyHard)(pi, ctx, state, source);
 					ctx.ui.setStatus("meta-review", undefined);

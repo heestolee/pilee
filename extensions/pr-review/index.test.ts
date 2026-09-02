@@ -5,7 +5,12 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { parseHTML } from "linkedom";
 import { setGlimpseOpenForTests } from "../utils/glimpse.ts";
-import { registerStudyHardMetaReviewOpenBroker, requestStudyHardMetaReviewOpen } from "../study-hard/meta-review-broker.ts";
+import {
+	registerStudyHardMetaReviewOpenBroker,
+	registerStudyHardMetaReviewStartBroker,
+	requestStudyHardMetaReviewOpen,
+	requestStudyHardMetaReviewStart,
+} from "../study-hard/meta-review-broker.ts";
 import { registerStudyHardBoardTool, stopStudyHardStudios } from "../study-hard/studio.ts";
 import { createPrReviewQuestion, loadPrReviewQuestions } from "./chat.ts";
 import { captureUnifiedDiff } from "./evidence.ts";
@@ -133,6 +138,26 @@ test("Study Hard Meta Review broker는 shared event bus당 owner 하나만 유�
 	} finally {
 		disposeFirst();
 		disposeSecond();
+	}
+});
+
+test("Study Hard Meta Review start broker는 현재 창에 연결할 run만 반환한다", async () => {
+	const events = createTestEventBus();
+	const pi = { events } as any;
+	let received: any;
+	const dispose = registerStudyHardMetaReviewStartBroker(pi, async (input) => {
+		received = input;
+		return { runId: "current-run", runDir: "/tmp/current-run", source: "current-work" };
+	});
+	try {
+		const completion = requestStudyHardMetaReviewStart(pi, { cwd: "/tmp/current-work", studyRunId: "study-current" });
+		assert.ok(completion);
+		assert.deepEqual(await completion, { runId: "current-run", runDir: "/tmp/current-run", source: "current-work" });
+		assert.equal(received.cwd, "/tmp/current-work");
+		assert.equal(received.studyRunId, "study-current");
+		assert.equal(requestStudyHardMetaReviewStart({} as any, { cwd: "/tmp", studyRunId: "study" }), undefined);
+	} finally {
+		dispose();
 	}
 });
 
