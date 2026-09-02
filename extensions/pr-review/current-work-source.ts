@@ -67,11 +67,12 @@ export async function captureCurrentWorkRun(
 	cwd: string,
 	stateRoot: string,
 	now = Date.now(),
+	baseOverride?: { baseSha?: string; baseRefName?: string },
 ): Promise<PrReviewRunState> {
 	const root = (await gitText(pi, cwd, ["rev-parse", "--show-toplevel"])).trim();
 	const branch = (await gitText(pi, root, ["branch", "--show-current"])).trim() || "HEAD";
 	const headSha = (await gitText(pi, root, ["rev-parse", "HEAD"])).trim();
-	const base = await currentWorkBase(pi, root, branch);
+	const base = baseOverride?.baseSha ? baseOverride : await currentWorkBase(pi, root, branch);
 	let diff = await gitText(pi, root, ["diff", "--no-color", "--find-renames", base.baseSha ?? "HEAD"]);
 	const untracked = (await gitText(pi, root, ["ls-files", "--others", "--exclude-standard", "-z"])).split("\0").filter(Boolean);
 	for (const path of untracked) {

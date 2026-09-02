@@ -25,7 +25,7 @@ import {
 	type PrReviewQuestionChange,
 	type PrReviewQuestionEvidence,
 } from "./chat.ts";
-import { refreshCurrentWorkMetaReview } from "./current-work-refresh.ts";
+import { refreshMetaReviewAfterLocalPatch } from "./current-work-refresh.ts";
 import { captureUnifiedDiff } from "./evidence.ts";
 import { buildPrReviewPrompt, META_REVIEW_COMMAND_CUSTOM_TYPE, META_REVIEW_SKILL_PATH } from "./prompt.ts";
 import { loadPrReviewRun, type PrReviewRunState } from "./run.ts";
@@ -285,7 +285,6 @@ function readWorkerArtifact(state: PrReviewRunState, question: PrReviewQuestion,
 		})
 		: [];
 	if (intent === "change") {
-		if (state.target.kind !== "current-work") throw new Error("GitHub PR immutable source에서는 코드 변경 artifact를 적용할 수 없습니다.");
 		if (!patch || patch.length > 1_500_000 || !patch.startsWith("diff --git ")) throw new Error("변경 요청 artifact에는 1.5MB 이하 unified git patch가 필요합니다.");
 		if (!changedFiles.length || changedFiles.some((path) => path.startsWith("/") || path.split(/[\\/]/).includes(".."))) throw new Error("변경 요청 artifact의 changedFiles가 안전한 상대 경로가 아닙니다.");
 	}
@@ -361,6 +360,26 @@ function terminalLeaseQuestion(
 	const published = publishPrReviewQuestionTranscript(pi, state, appended, eventKind);
 	lease.trustedQuestion = structuredClone(published);
 	return published;
+}
+
+function staleLeaseQuestion(
+	pi: Pick<ExtensionAPI, "appendEntry" | "sendMessage">,
+	state: PrReviewRunState,
+	lease: PrReviewQuestionWorkerLease,
+	message: string,
+	workerRunId: number | undefined,
+	now: number,
+): PrReviewQuestion {
+	const question = lease.trustedQuestion;
+	const execution = updateQuestionExecutionPhase(question.execution, "stale", now);
+	return terminalLeaseQuestion(pi, state, lease, {
+		...question,
+		status: "stale",
+		execution,
+		workerRunId: Number.isInteger(workerRunId) ? workerRunId : question.workerRunId,
+		error: message || "Meta Review review source가 변경되었습니다.",
+		updatedAt: now,
+	}, "stale");
 }
 
 function prunePrReviewQuestionWorkerLeases(now: number): void {
@@ -483,6 +502,32 @@ function patchFiles(patch: string): string[] {
 	return [...new Set([...patch.matchAll(/^diff --git a\/(.+?) b\/(.+)$/gm)].flatMap((match) => [match[1]!, match[2]!] ))].sort();
 }
 
+function githubRepositoryFromRemote(remote: string): string | undefined {
+	const match = remote.trim().match(/github\.com[:/]([^/]+)\/(.+?)(?:\.git)?$/u);
+	return match ? `${match[1]}/${match[2]}`.toLowerCase() : undefined;
+}
+
+async function localChangeRoot(
+	pi: Pick<ExtensionAPI, "exec">,
+	state: PrReviewRunState,
+	cwd: string,
+): Promise<string> {
+	const root = (await execText(pi, "git", ["rev-parse", "--show-toplevel"], cwd)).trim();
+	if (state.target.kind === "current-work") {
+		if (state.target.root && realpathSync(root) !== realpathSync(state.target.root)) throwStaleSource(`stale Meta Review root: expected ${state.target.root}, current ${root}`);
+		return root;
+	}
+	const head = (await execText(pi, "git", ["rev-parse", "HEAD"], root)).trim();
+	if (!state.target.headSha || head !== state.target.headSha) throwStaleSource(`stale Meta Review local checkout: expected ${state.target.headSha || "(missing)"}, current ${head}`);
+	const remote = (await execText(pi, "git", ["remote", "get-url", "origin"], root)).trim();
+	const repository = githubRepositoryFromRemote(remote);
+	const expectedRepository = `${state.target.owner}/${state.target.repo}`.toLowerCase();
+	if (repository !== expectedRepository) throwStaleSource(`stale Meta Review local repository: expected ${expectedRepository}, current ${repository || "(unknown)"}`);
+	const status = await execText(pi, "git", ["status", "--porcelain=v1", "--untracked-files=all"], root);
+	if (status.trim()) throwStaleSource("Meta Review local checkout에 기존 변경이 있어 PR snapshot 기반 patch를 안전하게 적용할 수 없습니다.");
+	return root;
+}
+
 async function applyWorkerChange(
 	pi: Pick<ExtensionAPI, "exec">,
 	state: PrReviewRunState,
@@ -490,9 +535,8 @@ async function applyWorkerChange(
 	cwd: string,
 	now: number,
 ): Promise<PrReviewQuestionChange> {
-	if (state.target.kind !== "current-work" || !artifact.patch || !artifact.changedFiles?.length) throw new Error("current-work change artifact가 완전하지 않습니다.");
-	const root = (await execText(pi, "git", ["rev-parse", "--show-toplevel"], cwd)).trim();
-	if (state.target.root && realpathSync(root) !== realpathSync(state.target.root)) throwStaleSource(`stale Meta Review root: expected ${state.target.root}, current ${root}`);
+	if (!artifact.patch || !artifact.changedFiles?.length) throw new Error("Meta Review change artifact가 완전하지 않습니다.");
+	const root = await localChangeRoot(pi, state, cwd);
 	const declaredFiles = [...artifact.changedFiles].sort();
 	const observedPatchFiles = patchFiles(artifact.patch);
 	if (JSON.stringify(declaredFiles) !== JSON.stringify(observedPatchFiles)) throw new Error("변경 artifact의 changedFiles와 patch 경로가 다릅니다.");
@@ -522,7 +566,7 @@ async function applyWorkerChange(
 	let refreshMode: "incremental" | "full" | undefined;
 	let refreshError: string | undefined;
 	try {
-		const refreshed = await refreshCurrentWorkMetaReview(pi, state, root, dirname(dirname(state.runDir)), "auto", now + 1);
+		const refreshed = await refreshMetaReviewAfterLocalPatch(pi, state, root, dirname(dirname(state.runDir)), now + 1);
 		if (refreshed.mode !== "none") {
 			refreshedRunId = refreshed.run.runId;
 			refreshMode = refreshed.mode;
@@ -590,18 +634,7 @@ export async function applyPrReviewQuestionWorkerResult(
 		} catch (integrityError) {
 			return failPrReviewQuestionWorker(pi, state, questionId, completionToken, integrityError instanceof Error ? integrityError.message : String(integrityError), workerRunId, now);
 		}
-		if (error instanceof PrReviewSourceStaleError) {
-			const question = lease.trustedQuestion;
-			const execution = updateQuestionExecutionPhase(question.execution, "stale", now);
-			return terminalLeaseQuestion(pi, state, lease, {
-				...question,
-				status: "stale",
-				execution,
-				workerRunId: Number.isInteger(workerRunId) ? workerRunId : question.workerRunId,
-				error: message || "Meta Review review source가 변경되었습니다.",
-				updatedAt: now,
-			}, "stale");
-		}
+		if (error instanceof PrReviewSourceStaleError) return staleLeaseQuestion(pi, state, lease, message, workerRunId, now);
 		return failPrReviewQuestionWorker(pi, state, questionId, completionToken, message, workerRunId, now);
 	}
 	try {
@@ -641,7 +674,16 @@ export async function applyPrReviewQuestionWorkerResult(
 		}
 		return answered;
 	} catch (error) {
-		return failPrReviewQuestionWorker(pi, state, questionId, completionToken, error instanceof Error ? error.message : String(error), workerRunId, now);
+		const message = error instanceof Error ? error.message : String(error);
+		if (error instanceof PrReviewSourceStaleError) {
+			try {
+				assertTrustedQuestionSnapshot(state, lease);
+			} catch (integrityError) {
+				return failPrReviewQuestionWorker(pi, state, questionId, completionToken, integrityError instanceof Error ? integrityError.message : String(integrityError), workerRunId, now);
+			}
+			return staleLeaseQuestion(pi, state, lease, message, workerRunId, now);
+		}
+		return failPrReviewQuestionWorker(pi, state, questionId, completionToken, message, workerRunId, now);
 	}
 }
 
@@ -649,7 +691,7 @@ export function buildPrReviewQuestionWorkerTask(state: PrReviewRunState, questio
 	const repository = state.target.kind === "current-work" ? "(current-work)" : `${state.target.owner}/${state.target.repo}`;
 	const sourceContract = state.target.kind === "current-work"
 		? `reviewCwd는 current-work source root입니다. 실제 파일을 이 root에서 읽고 현재 tracked·untracked diff가 sourcePath와 같은지 유지합니다.`
-		: `reviewCwd는 worker 실행 위치일 뿐 reviewed checkout이 아닙니다. 현재 checkout HEAD를 요구하지 마세요. sourcePath의 immutable evidence를 우선하고, 추가 source는 repository=${repository}의 expectedHeadSha를 ref로 지정한 gh api 또는 동등한 pinned git-object 조회로 읽으세요. plain working-tree 파일을 reviewed source로 사용하지 않습니다.`;
+		: `sourcePath와 expectedHeadSha가 review truth인 immutable PR snapshot입니다. 설명 근거는 repository=${repository}의 expectedHeadSha를 ref로 지정한 gh api 또는 동등한 pinned git-object 조회로 읽고 plain working-tree 파일로 대체하지 않습니다. 명시적 변경 요청의 patch도 이 pinned source 기준으로 만들며, coordinator가 reviewCwd의 repository·HEAD·clean 상태가 일치할 때만 로컬에 적용합니다.`;
 	return `# Meta Review question worker request
 
 현재 PR review run의 사용자 질문을 실제 source 근거로 조사하고 지정된 artifact 하나만 작성하세요. 질문과 답변의 대화 맥락은 메인 Pi session이 소유하며, worker는 Study Hard와 같은 비동기 결과 생산자입니다.
@@ -683,8 +725,8 @@ expectedSourceSha256는 sourcePath 파일 바이트의 SHA-256이 아닙니다. 
 ## 완료 계약
 1. sourcePath의 immutable evidence와 필요한 실제 source/callsite/schema/test를 pinned source 계약에 따라 읽습니다.
 2. repository, review run, 질문 JSONL은 직접 수정하지 않습니다. routine broad validation을 실행하지 않습니다.
-3. 설명 요청은 intent=answer로 답합니다. 사용자가 명시적으로 코드 수정을 요청했고 sourceMode=current-work-live일 때만 intent=change를 사용합니다.
-4. intent=change도 repository를 직접 수정하지 않고 현재 pinned source에 적용되는 unified git patch를 artifact.patch로 제안합니다. github-pr-immutable에서는 intent=change를 만들지 말고 변경 불가 이유를 답합니다.
+3. 설명 요청은 intent=answer로 답합니다. 사용자가 명시적으로 reviewed code 수정을 요청하면 sourceMode과 무관하게 intent=change를 사용합니다.
+4. intent=change도 repository를 직접 수정하지 않고 현재 pinned source에 적용되는 unified git patch를 artifact.patch로 제안합니다. github-pr-immutable은 원본 evidence를 고정한다는 뜻이며, coordinator가 일치하는 clean local checkout에만 patch를 적용하고 새 current-work revision으로 전환합니다.
 5. validation은 변경 파일에 대한 좁은 direct command만 최대 3개 제안하며 shell 문자열이 아니라 command와 args 배열로 분리합니다.
 6. workerResultPath에 schemaVersion 2 JSON 하나만 씁니다: {"schemaVersion":2,"kind":"meta-review-question-worker-result","runId":"...","questionId":"...","headSha":"...","sourceSha256":"...","intent":"answer|change","answer":"...","evidence":[{"label":"...","path":"...","line":1,"url":"...","note":"..."}],"uncertainty":"...","patch":"intent=change일 때만 unified diff","changedFiles":["relative/path"],"validation":[{"command":"pnpm","args":["exec","eslint","relative/path"]}]}.
 7. 성공 stdout은 [META_REVIEW_QUESTION_WORKER_RESULT], artifactPath, runId, questionId, summary만 출력합니다.`;

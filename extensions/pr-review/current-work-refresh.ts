@@ -55,3 +55,30 @@ export async function refreshCurrentWorkMetaReview(
 		incrementalSeed,
 	};
 }
+
+export async function refreshMetaReviewAfterLocalPatch(
+	pi: Pick<ExtensionAPI, "exec">,
+	state: PrReviewRunState,
+	cwd: string,
+	stateRoot: string,
+	now = Date.now(),
+): Promise<CurrentWorkMetaReviewRefreshResult> {
+	if (state.target.kind === "current-work") {
+		return refreshCurrentWorkMetaReview(pi, state, cwd, stateRoot, "auto", now);
+	}
+	const captured = await captureCurrentWorkRun(pi, cwd, stateRoot, now, {
+		baseSha: state.target.baseSha,
+		baseRefName: state.target.baseRefName,
+	});
+	const capturedSource = readJson<ReviewSourceBundle>(captured.sourcePath);
+	const linked = attachMetaReviewRevision(captured, capturedSource.sourceSha256, "full", state, now);
+	copyPrReviewQuestionHistory(state.runDir, linked.run.runDir, linked.run.runId);
+	return {
+		mode: "full",
+		reason: "GitHub PR의 immutable snapshot에서 파생한 로컬 patch를 current-work source로 전환했습니다.",
+		previousRunId: state.runId,
+		run: linked.run,
+		revision: linked.revision,
+		series: linked.series,
+	};
+}

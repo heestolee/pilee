@@ -86,6 +86,24 @@ function writeArtifact(
 	return path;
 }
 
+function writeChangeArtifact(state: PrReviewRunState, questionId: string): string {
+	const path = prReviewQuestionWorkerResultPath(state, questionId);
+	writeFileSync(path, JSON.stringify({
+		schemaVersion: 2,
+		kind: "meta-review-question-worker-result",
+		runId: state.runId,
+		questionId,
+		headSha: HEAD,
+		sourceSha256: SOURCE_SHA,
+		intent: "change",
+		answer: "변경을 제안합니다.",
+		evidence: [],
+		patch: "diff --git a/src/web.ts b/src/web.ts\n--- a/src/web.ts\n+++ b/src/web.ts\n@@ -1 +1 @@\n-newCall();\n+changedCall();\n",
+		changedFiles: ["src/web.ts"],
+	}));
+	return path;
+}
+
 function reserveAndStartWorker(state: PrReviewRunState, questionId: string, workerRunId: number, now: number): string {
 	const reservation = reservePrReviewQuestionWorkerLaunch(state, questionId, now);
 	assert.equal(reservation.dispatchRequired, true);
@@ -113,11 +131,12 @@ test("Meta Review 질문 worker task는 declaration hierarchy provenance를 유�
 		const task = buildPrReviewQuestionWorkerTask(state, question, "/tmp/review-pr-42");
 		assert.match(task, /sourceMode: github-pr-immutable/);
 		assert.match(task, /repository: acme\/repo/);
-		assert.match(task, /현재 checkout HEAD를 요구하지 마세요/);
+		assert.match(task, /immutable PR snapshot/);
 		assert.match(task, /expectedHeadSha를 ref로 지정한 gh api/);
+		assert.match(task, /clean local checkout에만 patch를 적용/);
+		assert.match(task, /sourceMode과 무관하게 intent=change/);
 		assert.match(task, /sourcePath 파일 바이트의 SHA-256이 아닙니다/);
 		assert.match(task, /sourcePath JSON의 sourceSha256 필드/);
-		assert.doesNotMatch(task, /git rev-parse HEAD를 확인/);
 		assert.match(task, /declarationId: A-F001-localState/);
 		assert.match(task, /declarationSide: after/);
 		assert.match(task, /selection: \{"kind":"declaration","id":"A-F001-localState"/);
@@ -475,12 +494,35 @@ test("current-work 변경 요청은 pinned patch를 적용하고 Meta Review rev
 	}
 });
 
-test("GitHub PR immutable source의 변경 artifact는 repository 적용 없이 거부한다", async () => {
-	const { runDir, state, question } = fixture();
+test("GitHub PR 변경 요청은 일치하는 clean local checkout에 적용하고 current-work revision으로 전환한다", async () => {
+	const stateRoot = mkdtempSync(join(tmpdir(), "pilee-meta-review-pr-change-state-"));
+	const repoRoot = mkdtempSync(join(tmpdir(), "pilee-meta-review-pr-change-repo-"));
+	mkdirSync(join(stateRoot, "runs"), { recursive: true });
+	mkdirSync(join(repoRoot, "src"), { recursive: true });
+	const before = "oldCall();\n";
+	const current = "newCall();\n";
+	const changed = "changedCall();\n";
+	writeFileSync(join(repoRoot, "src", "web.ts"), current);
+	const initialDiff = `diff --git a/src/web.ts b/src/web.ts\nindex 1111111..2222222 100644\n--- a/src/web.ts\n+++ b/src/web.ts\n@@ -1 +1 @@\n-oldCall();\n+newCall();\n`;
+	const changedDiff = `diff --git a/src/web.ts b/src/web.ts\nindex 1111111..3333333 100644\n--- a/src/web.ts\n+++ b/src/web.ts\n@@ -1 +1 @@\n-oldCall();\n+changedCall();\n`;
+	const patch = `diff --git a/src/web.ts b/src/web.ts\n--- a/src/web.ts\n+++ b/src/web.ts\n@@ -1 +1 @@\n-newCall();\n+changedCall();\n`;
+	const state = createPrReviewRun(stateRoot, {
+		kind: "github-pr",
+		url: "https://github.com/acme/repo/pull/42",
+		owner: "acme",
+		repo: "repo",
+		number: 42,
+		title: "Review target",
+		baseSha: "base123",
+		headSha: HEAD,
+		baseRefName: "development",
+		headRefName: "feature/pr-42",
+	}, captureUnifiedDiff(initialDiff), initialDiff, 1000);
 	try {
-		routePrReviewQuestion(state, question.id, "worker", "변경 요청", 1001);
-		const reservation = reservePrReviewQuestionWorkerLaunch(state, question.id, 1002);
-		const claim = claimPrReviewQuestionWorkerLaunch(state, question.id, reservation.dispatchToken, 1003);
+		const question = createPrReviewQuestion(state.runDir, { runId: state.runId, question: "newCall을 changedCall로 바꿔줘.", scope: "file", filePath: "src/web.ts" }, 1001);
+		routePrReviewQuestion(state, question.id, "worker", "PR 로컬 변경 요청", 1002);
+		const reservation = reservePrReviewQuestionWorkerLaunch(state, question.id, 1003);
+		const claim = claimPrReviewQuestionWorkerLaunch(state, question.id, reservation.dispatchToken, 1004);
 		const artifactPath = prReviewQuestionWorkerResultPath(state, question.id);
 		writeFileSync(artifactPath, JSON.stringify({
 			schemaVersion: 2,
@@ -488,22 +530,110 @@ test("GitHub PR immutable source의 변경 artifact는 repository 적용 없이 
 			runId: state.runId,
 			questionId: question.id,
 			headSha: HEAD,
-			sourceSha256: SOURCE_SHA,
+			sourceSha256: captureUnifiedDiff(initialDiff).sourceSha256,
 			intent: "change",
-			answer: "변경을 제안합니다.",
-			evidence: [],
-			patch: "diff --git a/src/web.ts b/src/web.ts\n--- a/src/web.ts\n+++ b/src/web.ts\n@@ -1 +1 @@\n-oldCall();\n+changedCall();\n",
+			answer: "요청한 호출명을 로컬 review checkout에서 변경했습니다.",
+			evidence: [{ label: "호출 위치", path: "src/web.ts", line: 1 }],
+			patch,
 			changedFiles: ["src/web.ts"],
+			validation: [{ command: "node", args: ["-e", "process.exit(0)"] }],
 		}));
-		let execCount = 0;
+		let applied = false;
+		const messages: Array<{ message: any; options: any }> = [];
+		const pi = {
+			appendEntry() {},
+			sendMessage(message: any, options: any) { messages.push({ message, options }); },
+			async exec(command: string, args: string[]) {
+				if (command === "node") return { code: 0, stdout: "ok\n", stderr: "" };
+				if (command !== "git") throw new Error(`unexpected command ${command}`);
+				if (args[0] === "rev-parse" && args[1] === "--show-toplevel") return { code: 0, stdout: `${repoRoot}\n`, stderr: "" };
+				if (args[0] === "rev-parse" && args[1] === "HEAD") return { code: 0, stdout: `${HEAD}\n`, stderr: "" };
+				if (args[0] === "remote") return { code: 0, stdout: "git@github.com:acme/repo.git\n", stderr: "" };
+				if (args[0] === "status") return { code: 0, stdout: "", stderr: "" };
+				if (args[0] === "apply" && args.includes("--check")) return { code: 0, stdout: "", stderr: "" };
+				if (args[0] === "apply") {
+					applied = true;
+					writeFileSync(join(repoRoot, "src", "web.ts"), changed);
+					return { code: 0, stdout: "", stderr: "" };
+				}
+				if (args[0] === "branch") return { code: 0, stdout: "review/pr-42\n", stderr: "" };
+				if (args[0] === "merge-base") return { code: 0, stdout: "base123\n", stderr: "" };
+				if (args[0] === "diff") return { code: 0, stdout: applied ? changedDiff : initialDiff, stderr: "" };
+				if (args[0] === "ls-files") return { code: 0, stdout: "", stderr: "" };
+				if (args[0] === "show") return { code: 0, stdout: before, stderr: "" };
+				throw new Error(`unexpected git ${args.join(" ")}`);
+			},
+		} as any;
+		const originalDiff = readFileSync(state.diffPath, "utf8");
+		const answered = await applyPrReviewQuestionWorkerResult(pi, state, question.id, artifactPath, repoRoot, claim.completionToken!, 92, 1010);
+		assert.equal(readFileSync(join(repoRoot, "src", "web.ts"), "utf8"), changed);
+		assert.equal(readFileSync(state.diffPath, "utf8"), originalDiff, "원본 PR source artifact는 바꾸지 않는다");
+		assert.equal(answered.status, "answered");
+		assert.equal(answered.change?.status, "applied");
+		assert.equal(answered.change?.refreshMode, "full");
+		assert.notEqual(answered.change?.refreshedRunId, state.runId);
+		const refreshed = JSON.parse(readFileSync(join(stateRoot, "runs", answered.change!.refreshedRunId!, "run.json"), "utf8"));
+		assert.equal(refreshed.target.kind, "current-work");
+		assert.equal(refreshed.target.baseSha, "base123", "파생 revision도 원본 PR base SHA를 유지한다");
+		assert.equal(refreshed.target.baseRefName, "development");
+		assert.equal(refreshed.previousRunDir, state.runDir);
+		assert.equal(messages.length, 1);
+		assert.equal(messages[0].message.details.command, "meta-review-refresh");
+	} finally {
+		rmSync(stateRoot, { recursive: true, force: true });
+		rmSync(repoRoot, { recursive: true, force: true });
+	}
+});
+
+test("GitHub PR 변경 요청은 local checkout HEAD가 pinned PR과 다르면 적용하지 않는다", async () => {
+	const { runDir, state, question } = fixture();
+	try {
+		routePrReviewQuestion(state, question.id, "worker", "변경 요청", 1001);
+		const reservation = reservePrReviewQuestionWorkerLaunch(state, question.id, 1002);
+		const claim = claimPrReviewQuestionWorkerLaunch(state, question.id, reservation.dispatchToken, 1003);
+		const artifactPath = writeChangeArtifact(state, question.id);
+		let applyAttempted = false;
 		const failed = await applyPrReviewQuestionWorkerResult({
 			appendEntry() {},
 			sendMessage() {},
-			async exec() { execCount += 1; throw new Error("git apply must not run"); },
-		} as any, state, question.id, artifactPath, "/tmp/unrelated", claim.completionToken!, 92, 1004);
-		assert.equal(failed.status, "failed");
-		assert.match(failed.error || "", /GitHub PR immutable source/);
-		assert.equal(execCount, 0);
+			async exec(command: string, args: string[]) {
+				if (command === "git" && args[0] === "rev-parse" && args[1] === "--show-toplevel") return { code: 0, stdout: "/tmp/review-pr-42\n", stderr: "" };
+				if (command === "git" && args[0] === "rev-parse" && args[1] === "HEAD") return { code: 0, stdout: `${"c".repeat(40)}\n`, stderr: "" };
+				if (command === "git" && args[0] === "apply") applyAttempted = true;
+				throw new Error(`unexpected command: ${command} ${args.join(" ")}`);
+			},
+		} as any, state, question.id, artifactPath, "/tmp/review-pr-42", claim.completionToken!, 93, 1004);
+		assert.equal(failed.status, "stale");
+		assert.match(failed.error || "", /stale Meta Review local checkout/);
+		assert.equal(applyAttempted, false);
+	} finally {
+		rmSync(runDir, { recursive: true, force: true });
+	}
+});
+
+test("GitHub PR 변경 요청은 이미 local diff가 있으면 덮어쓰지 않는다", async () => {
+	const { runDir, state, question } = fixture();
+	try {
+		routePrReviewQuestion(state, question.id, "worker", "변경 요청", 1001);
+		const reservation = reservePrReviewQuestionWorkerLaunch(state, question.id, 1002);
+		const claim = claimPrReviewQuestionWorkerLaunch(state, question.id, reservation.dispatchToken, 1003);
+		const artifactPath = writeChangeArtifact(state, question.id);
+		let applyAttempted = false;
+		const failed = await applyPrReviewQuestionWorkerResult({
+			appendEntry() {},
+			sendMessage() {},
+			async exec(command: string, args: string[]) {
+				if (command === "git" && args[0] === "rev-parse" && args[1] === "--show-toplevel") return { code: 0, stdout: "/tmp/review-pr-42\n", stderr: "" };
+				if (command === "git" && args[0] === "rev-parse" && args[1] === "HEAD") return { code: 0, stdout: `${HEAD}\n`, stderr: "" };
+				if (command === "git" && args[0] === "remote") return { code: 0, stdout: "https://github.com/acme/repo.git\n", stderr: "" };
+				if (command === "git" && args[0] === "status") return { code: 0, stdout: " M src/web.ts\n", stderr: "" };
+				if (command === "git" && args[0] === "apply") applyAttempted = true;
+				throw new Error(`unexpected command: ${command} ${args.join(" ")}`);
+			},
+		} as any, state, question.id, artifactPath, "/tmp/review-pr-42", claim.completionToken!, 94, 1004);
+		assert.equal(failed.status, "stale");
+		assert.match(failed.error || "", /기존 변경이 있어/);
+		assert.equal(applyAttempted, false);
 	} finally {
 		rmSync(runDir, { recursive: true, force: true });
 	}
