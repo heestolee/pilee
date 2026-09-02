@@ -832,7 +832,31 @@ test("buildStudyNoteExportHtml creates a standalone learning note with Mermaid a
 	assert.match(html, /<em>Line numbering: relative, start 1<\/em>/);
 	assert.match(html, /class="callout question"/);
 	assert.match(html, /aria-label="질문">❓<\/span>/);
+	assert.doesNotMatch(html, /class="exportReadingRail"/);
 	assert.doesNotMatch(html, /htmlExportButton/);
+});
+
+test("Meta Review standalone export는 작성된 파일 순서와 이유를 읽는 흐름 rail에 보존한다", () => {
+	const state = createInitialBoardState({ url: "https://example.com/review", runId: "meta-review-reading-flow-export" });
+	state.noteDocument = {
+		title: "Meta Review · reading flow",
+		sections: [
+			{ id: "meta-review-file-1", kind: "node", title: "src/first.ts", blocks: [] },
+			{ id: "meta-review-file-2", kind: "node", title: "src/second.ts", blocks: [] },
+		],
+	};
+	const html = buildStudyNoteExportHtml(state, [], undefined, {
+		artifactLabel: "Meta Review",
+		readingFlow: [
+			{ path: "src/second.ts", reason: "consumer를 먼저 확인합니다.", sectionId: "meta-review-file-2" },
+			{ path: "src/first.ts", reason: "producer 계약으로 돌아갑니다.", sectionId: "meta-review-file-1" },
+		],
+	});
+	const rail = html.match(/<aside class="exportReadingRail"[\s\S]*?<\/aside>/)?.[0] || "";
+	assert.ok(rail.indexOf("src/second.ts") < rail.indexOf("src/first.ts"));
+	assert.match(rail, /href="#meta-review-file-2"/);
+	assert.match(rail, /consumer를 먼저 확인합니다/);
+	assert.match(rail, /producer 계약으로 돌아갑니다/);
 });
 
 test("Study Hard renders understanding answers as collapsed callout disclosures without architecture visuals", () => {
@@ -3624,7 +3648,15 @@ test("Study Hard 코드 리뷰 surface는 공통 worker 질문, 결정, 명시�
 		assert.match(exportedHtml, /Meta Review · revision 1/);
 		assert.match(exportedHtml, /consumer 계약을 함께 확인합니다/);
 		assert.match(exportedHtml, /실제 리뷰 포인트/);
+		assert.match(exportedHtml, /<aside class="exportReadingRail"/);
+		assert.match(exportedHtml, /읽는 흐름/);
+		assert.match(exportedHtml, /href="#meta-review-file-1"/);
+		assert.match(exportedHtml, /정책과 호출 결과를 함께 확인합니다/);
+		assert.match(exportedHtml, /data-export-reading-progress/);
 		assert.match(exportedHtml, /src\/policy\.ts/);
+		const inlineExportScripts = [...exportedHtml.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map((match) => match[1]).filter((script) => script.trim());
+		assert.ok(inlineExportScripts.length > 0);
+		for (const script of inlineExportScripts) assert.doesNotThrow(() => new Function(script));
 		assert.match(exportedHtml, /const allowed = new Set/);
 		const boardBeforeNotion = await fetch(new URL("/state", handle.url)).then((result) => result.json() as Promise<any>);
 		response = await fetch(new URL("/meta-review/export/notion", handle.url), { method: "POST", headers: authorizedHeaders(handle), body: "{}" });

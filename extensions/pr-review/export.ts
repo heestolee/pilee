@@ -1,6 +1,12 @@
 import type { StudyNoteBlock, StudyNoteDocument, StudyNoteSection } from "../study-hard/studio.ts";
 import { buildMetaReviewClientState, type MetaReviewClientState } from "./view-model.ts";
 
+export interface MetaReviewExportReadingStep {
+	path: string;
+	reason: string;
+	sectionId: string;
+}
+
 export interface MetaReviewExportSnapshot {
 	runId: string;
 	seriesId: string;
@@ -9,6 +15,7 @@ export interface MetaReviewExportSnapshot {
 	title: string;
 	sourceUrl: string;
 	sourceSha256: string;
+	readingFlow: MetaReviewExportReadingStep[];
 	noteDocument: StudyNoteDocument;
 }
 
@@ -81,12 +88,17 @@ function relationshipSection(state: MetaReviewClientState): StudyNoteSection | u
 			rows: relationships.relations.map((relation) => [relation.from, relation.to, relation.label, relation.detail || ""]),
 		});
 	}
-	blocks.push({
-		id: "meta-review-reading-order",
-		type: "list",
-		ordered: true,
-		items: relationships.readingOrder.map((step) => `${step.path} — ${step.reason}`),
-	});
+	if (relationships.readingOrder.length) {
+		blocks.push(
+			heading("meta-review-reading-order-title", "읽는 흐름"),
+			{
+				id: "meta-review-reading-order",
+				type: "list",
+				ordered: true,
+				items: relationships.readingOrder.map((step) => `${step.path} — ${step.reason}`),
+			},
+		);
+	}
 	return { id: "meta-review-relationships", kind: "flow", title: "변경 파일 관계와 읽는 순서", blocks };
 }
 
@@ -218,6 +230,14 @@ export function buildMetaReviewNoteDocument(state: MetaReviewClientState): Study
 	return { title, sections };
 }
 
+function buildMetaReviewReadingFlow(state: MetaReviewClientState): MetaReviewExportReadingStep[] {
+	const sectionIdByPath = new Map(state.guides.map((guide, index) => [guide.path, `meta-review-file-${index + 1}`]));
+	return (state.document?.relationships?.readingOrder || []).flatMap((step) => {
+		const sectionId = sectionIdByPath.get(step.path);
+		return sectionId ? [{ path: step.path, reason: step.reason, sectionId }] : [];
+	});
+}
+
 export function buildMetaReviewExportSnapshot(linkedRunDir: string): MetaReviewExportSnapshot {
 	const state = buildMetaReviewClientState(linkedRunDir);
 	if (state.run.status !== "ready") throw new Error("완료된 Meta Review revision이 없어 내보낼 수 없습니다.");
@@ -230,6 +250,7 @@ export function buildMetaReviewExportSnapshot(linkedRunDir: string): MetaReviewE
 		title: noteDocument.title,
 		sourceUrl: state.run.target.url,
 		sourceSha256: state.source.sourceSha256,
+		readingFlow: buildMetaReviewReadingFlow(state),
 		noteDocument,
 	};
 }

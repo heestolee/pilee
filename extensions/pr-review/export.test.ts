@@ -88,6 +88,7 @@ test("Meta Review export model은 overview·관계·의미·finding·전체 설�
 	for (const expected of [
 		"consumer 계약",
 		"노출 여부 조회",
+		"읽는 흐름",
 		"Before 계약",
 		"실제 리뷰 포인트",
 		"기존 호출자가 의도적으로 제외되는지 확인해주세요.",
