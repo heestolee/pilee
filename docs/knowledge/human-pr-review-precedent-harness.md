@@ -31,8 +31,9 @@ source:
   - user-direction:2026-09-02-study-hard-code-review-discoverability
   - user-direction:2026-09-02-pr-review-current-panel-or-tab
   - user-direction:2026-09-03-meta-review-export-actions
+  - user-direction:2026-09-03-meta-review-export-reading-flow
 reviewed_at: 2026-09-03
-reviewed_commit: "7d28356"
+reviewed_commit: "342898c"
 related:
   - evidence-first-verification-gate
   - live-artifact-preview-pattern
@@ -130,7 +131,7 @@ Meta Review session의 review truth는 immutable run과 checkout metadata이지�
 
 `HTML 내보내기`와 `Notion 저장`은 화면 DOM이나 오래된 `review.md`를 임의 복사하지 않습니다. 최신 ready revision의 `document.json`, `guides.json`, `cards.json`, `questions.jsonl`, immutable source를 하나의 구조화 export snapshot으로 변환합니다. Overview, 관계와 읽는 순서, source-backed 변경 의미, finding과 사람 결정, 모든 설명 hunk의 changed-line evidence, 질문·답변이 같은 snapshot에 포함되어야 합니다.
 
-- HTML은 학습노트와 같은 standalone renderer를 재사용하되 artifact label을 `Meta Review`로 구분하고 configured Downloads 경로에 저장합니다.
+- HTML은 학습노트와 같은 standalone renderer를 재사용하되 artifact label을 `Meta Review`로 구분하고 configured Downloads 경로에 저장합니다. 다만 Easy Review 계열의 핵심 navigation인 `relationships.readingOrder`를 일반 list로만 평탄화하지 않습니다. Snapshot이 파일 순서·이유·section anchor를 별도로 전달하고, renderer는 Meta Review에서만 sticky `읽는 흐름` rail·진행률·파일 이동 anchor를 복원합니다. 좁은 화면에서는 rail을 본문 위 panel로 전환하며, script가 실행되지 않아도 본문의 명시적 `읽는 흐름` 목록으로 같은 순서를 읽을 수 있어야 합니다.
 - Notion은 같은 구조화 문서를 기존 private publisher에 전달합니다. Synthetic state는 Study Hard board 전체를 spread하지 않고 export 필드만 allowlist해 학습 목표·요약·후속 복습이 review 문서에 섞이지 않게 합니다. 연결된 Study Hard `runId`로 같은 학습노트를 찾고, review series의 stable artifact ID와 page/section hash는 source run의 `export-state.json` sidecar에만 보존합니다. 학습노트가 있으면 HTML ZIP까지 children으로 포함한 단일 `🔎 Meta Review` toggle을 최하단에서 최신 revision으로 교체하고, 없으면 같은 Study Hard ID의 페이지를 생성합니다.
 - Meta Review는 generated review canonical이므로 Notion에서 유지하거나 직접 정리한 block을 `document.json`·`guides.json`·`cards.json`·`questions.jsonl`로 역수입하지 않습니다. 양쪽 변경이 겹치면 기존 block diff UI에서 이번 Notion 저장 결과만 선택합니다.
 - 저장 중 새 ready revision이 생기면 저장된 revision과 현재 revision을 분리해 stale 상태를 알립니다. 외부 write는 사용자가 `Notion 저장`을 누른 경우에만 실행합니다.
