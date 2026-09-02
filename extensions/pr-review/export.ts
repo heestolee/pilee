@@ -231,7 +231,7 @@ function questionsSection(state: MetaReviewClientState): StudyNoteSection | unde
 		if (question.uncertainty) blocks.push({ id: `${prefix}-uncertainty`, type: "callout", tone: "warning", title: "불확실성", body: question.uncertainty });
 		if (question.error) blocks.push({ id: `${prefix}-error`, type: "callout", tone: "warning", title: "처리 오류", body: question.error });
 		if (question.evidence?.length) blocks.push({ id: `${prefix}-evidence`, type: "reference-list", references: question.evidence.map((evidence, evidenceIndex) => ({ id: `${prefix}-evidence-${evidenceIndex + 1}`, kind: evidence.path ? "code" : "link", label: evidence.label, path: evidence.path, line: undefined, startLine: evidence.line, url: evidence.url, note: evidence.note })) });
-		if (question.change) blocks.push({ id: `${prefix}-change`, type: "list", items: [`변경 상태: ${question.change.status}`, `변경 파일: ${question.change.files.join(", ") || "없음"}`, `리뷰 갱신: ${question.change.refreshedRunId || "미실행"}${question.change.refreshMode ? ` · ${question.change.refreshMode}` : ""}`] });
+		if (question.change) blocks.push({ id: `${prefix}-change`, type: "list", items: [`로컬 변경 상태: ${question.change.status}`, `로컬 변경 파일: ${question.change.files.join(", ") || "없음"}`, `리뷰 갱신: ${question.change.refreshedRunId || "미실행"}${question.change.refreshMode ? ` · ${question.change.refreshMode}` : ""}`] });
 	}
 	return { id: "meta-review-questions", kind: "reflection", title: "질문과 답변", blocks };
 }
@@ -251,8 +251,7 @@ function buildMetaReviewReadingFlow(state: MetaReviewClientState): MetaReviewExp
 	});
 }
 
-export function buildMetaReviewExportSnapshot(linkedRunDir: string): MetaReviewExportSnapshot {
-	const state = buildMetaReviewClientState(linkedRunDir);
+export function buildMetaReviewExportSnapshotFromState(state: MetaReviewClientState): MetaReviewExportSnapshot {
 	if (state.run.status !== "ready") throw new Error("완료된 Meta Review revision이 없어 내보낼 수 없습니다.");
 	const noteDocument = buildMetaReviewNoteDocument(state);
 	return {
@@ -266,4 +265,8 @@ export function buildMetaReviewExportSnapshot(linkedRunDir: string): MetaReviewE
 		readingFlow: buildMetaReviewReadingFlow(state),
 		noteDocument,
 	};
+}
+
+export function buildMetaReviewExportSnapshot(linkedRunDir: string): MetaReviewExportSnapshot {
+	return buildMetaReviewExportSnapshotFromState(buildMetaReviewClientState(linkedRunDir));
 }

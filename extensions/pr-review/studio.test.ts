@@ -63,7 +63,7 @@ test("Review Studio HTML uses the Easy Review document hierarchy with inline hum
 	for (const marker of ["report-header", "overview report-section", "attention report-section", "review-layout", "review-section", "inline-fold", "inline-code-note", "review-companion", "conversation-thread", "companion-contents"]) {
 		assert.match(html, new RegExp(marker));
 	}
-	for (const label of ["먼저 볼 점", "파일별 diff", "리뷰 채택", "메타 포함", "리뷰 문구 수정", "후속", "폐기", "이해하면서 질문하기", "더 쉽게", "사실/추측", "질문 보내기", "공통 worker", "Worker로 다시 시도", "captureReviewInteraction", "restoreReviewInteraction"]) {
+	for (const label of ["먼저 볼 점", "파일별 diff", "리뷰 채택", "메타 포함", "리뷰 문구 수정", "후속", "폐기", "이해하면서 질문하기", "더 쉽게", "사실/추측", "질문 보내기", "공통 worker", "Worker로 다시 시도", "로컬 변경 적용 완료", "captureReviewInteraction", "restoreReviewInteraction"]) {
 		assert.match(html, new RegExp(label));
 	}
 	const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];

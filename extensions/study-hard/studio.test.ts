@@ -3471,7 +3471,7 @@ test("Study Hard 질문 drawer는 direct와 worker 실행 상태를 같은 UI �
 
 test("공통 메모보드는 학습 메모와 코드 리뷰 질문을 같은 카드 계약으로 렌더링한다", () => {
 	const html = buildStudyHardStudioHtml();
-	for (const marker of ["data-memo-source=\"study\"", "data-memo-source=\"review\"", "function memoBoardCardHtml", "코드 위치 보기", "변경 적용 완료"]) assert.match(html, new RegExp(marker));
+	for (const marker of ["data-memo-source=\"study\"", "data-memo-source=\"review\"", "function memoBoardCardHtml", "코드 위치 보기", "로컬 변경 적용 완료"]) assert.match(html, new RegExp(marker));
 	const helperStart = html.indexOf("function reviewMemoQuestions");
 	const helperEnd = html.indexOf("function noteBlockElement", helperStart);
 	assert.ok(helperStart >= 0 && helperEnd > helperStart);
@@ -3489,7 +3489,7 @@ test("공통 메모보드는 학습 메모와 코드 리뷰 질문을 같은 카
 	`)() as any;
 	const question = { id: "Q007", question: "호출을 바꿔줘", status: "answered", execution: { phase: "answered" }, filePath: "src/auth.ts", answer: "변경했습니다.", workerRunId: 15, change: { status: "applied", files: ["src/auth.ts"], validation: [], refreshedRunId: "run-2", refreshMode: "incremental" } };
 	assert.equal(helpers.reviewMemoCategory(question), "applied");
-	assert.equal(helpers.reviewMemoStateLabel(question), "변경 적용 · 리뷰 갱신 중");
+	assert.equal(helpers.reviewMemoStateLabel(question), "로컬 변경 적용 · 리뷰 갱신 중");
 	assert.match(helpers.reviewMemoSummaryText(question), /리뷰 incremental 갱신 중/);
 	let card = helpers.memoBoardCardHtml(helpers.reviewMemoItem(question));
 	assert.match(card, /worker #15/);
@@ -3500,7 +3500,7 @@ test("공통 메모보드는 학습 메모와 코드 리뷰 질문을 같은 카
 	card = helpers.memoBoardCardHtml(helpers.reviewMemoItem(question));
 	assert.match(card, /aria-expanded="true"/);
 	helpers.metaReviewState.run = { runId: "run-2", status: "ready" };
-	assert.equal(helpers.reviewMemoStateLabel(question), "변경 적용 · 리뷰 갱신 완료");
+	assert.equal(helpers.reviewMemoStateLabel(question), "로컬 변경 적용 · 리뷰 갱신 완료");
 	assert.match(helpers.reviewMemoSummaryText(question), /리뷰 incremental 갱신 완료/);
 });
 
