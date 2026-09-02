@@ -28,8 +28,9 @@ source:
   - user-direction:2026-08-30-color-semantic-meaning-diagrams
   - user-direction:2026-08-30-meaning-chart-zoom-overlay
   - user-direction:2026-08-31-meta-review-study-hard-worker-lifecycle-parity
-reviewed_at: 2026-09-01
-reviewed_commit: 09bfcc3
+  - user-direction:2026-09-02-study-hard-code-review-discoverability
+reviewed_at: 2026-09-02
+reviewed_commit: 5dd2909
 related:
   - evidence-first-verification-gate
   - live-artifact-preview-pattern
@@ -97,6 +98,12 @@ Inline 압축 때문에 label을 읽기 어려우면 각 카드의 `확대해서
 
 Review worktree는 read-only 실행 경계입니다. dependency bootstrap을 자동 실행하지 않고 사용자가 수정 요청을 별도로 주기 전에는 repository를 변경하지 않습니다. `/diff`는 explicit `--base`가 없을 때 review context를 먼저 읽고 captured head와 현재 HEAD가 같을 때만 base SHA와의 merge-base를 사용합니다. Head가 drift하면 기존 설명과 finding을 유효한 것처럼 보여주지 않고 stale 오류를 냅니다.
 
+## Discoverable First Entry
+
+Study Hard의 `코드 리뷰` 탭은 Meta Review가 아직 연결되지 않았더라도 항상 보여야 합니다. 숨겨진 기능을 사용자가 `/meta-review` 명령으로 다시 발견하게 만들면 같은 학습노트에서 시작할 수 있는 흐름이 별도 Glimpse 생성 문제로 바뀝니다.
+
+미연결 상태의 첫 클릭은 현재 Study Hard handle의 작업 cwd를 PR Review extension에 전달해 current-work source를 capture하고, immutable initial revision과 분석 prompt를 만든 뒤 반환된 `runId/runDir/source`만 현재 Study Hard state에 연결합니다. 학습노트 URL·제목·본문 canonical은 바꾸지 않으며 별도 창도 열지 않습니다. 이미 연결된 상태에서는 새 run을 만들지 않고 기존 코드 리뷰 surface를 열며, 이후 변경은 명시적 `갱신하기`와 revision 계약을 그대로 사용합니다.
+
 ## Guided Review Conversation
 
 코드 리뷰 탭은 학습노트와 같은 오른쪽 detail drawer를 질문 surface로 재사용합니다. 본문 하단에 별도 composer를 중복하지 않고, 코드 리뷰 진입 때 drawer를 한 번 열며 toolbar의 `질문 패널`로 다시 열 수 있습니다. 본문은 drawer 너비만큼 줄어들어 선택 context와 diff를 동시에 읽습니다.
@@ -136,6 +143,7 @@ Meta Review의 코드 리뷰 탭은 GitHub write 도구가 아닙니다. `review
 - machine-draft annotation을 팀 합의처럼 쓰면 잘못된 규칙을 증폭합니다.
 - 모든 review point에 lint·skill 후속을 강제하면 `no-meta-action`을 표현하지 못합니다.
 - local working tree를 PR head로 가정하면 diff와 주변 코드의 revision이 달라질 수 있습니다.
+- 코드 리뷰 탭을 Meta Review 연결 뒤에만 노출하면 사용자는 이미 구현된 갱신 경로를 발견하지 못하고 `/meta-review`를 다시 시작해 별도 창 문제를 만듭니다.
 - 코드 리뷰 탭이 열렸다는 사실만으로 explanation coverage, finding 품질, 사용자 채택을 증명할 수 없습니다.
 - `/diff`와 `/meta-review`가 다른 checkout/head를 보면 Pi 대화와 문서형 리뷰가 서로 다른 코드를 설명하게 됩니다.
 - background freshness check가 artifact를 자동 갱신하면 사용자가 읽던 판단 기준이 중간에 바뀝니다.
