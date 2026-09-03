@@ -15,7 +15,7 @@ import {
 import { registerStudyHardBoardTool, startStudyHardStudio, stopStudyHardStudios } from "../study-hard/studio.ts";
 import { createPrReviewQuestion, loadPrReviewQuestions } from "./chat.ts";
 import { captureUnifiedDiff } from "./evidence.ts";
-import { captureCurrentWorkRun, captureGitHubPrRun, parseGitHubPrUrl, registerPrReview } from "./index.ts";
+import { captureCurrentWorkRun, captureGitHubPrRun, parseGitHubPrUrl, registerPrReview, registerPrReviewTranscriptRenderer } from "./index.ts";
 import { loadPrReviewRun } from "./run.ts";
 
 const BASE_SOURCE = `export function visible(status: string) {
@@ -103,6 +103,19 @@ function fixture(events = createTestEventBus()) {
 	} as any;
 	return { pi, commands, tools, messages, entries, execCalls };
 }
+
+test("Meta Review transcript lineage는 Study Hard와 같은 visible entry renderer를 등록한다", () => {
+	let rendererType = "";
+	let renderer: any;
+	registerPrReviewTranscriptRenderer({
+		registerEntryRenderer(type: string, value: any) { rendererType = type; renderer = value; },
+	} as any);
+	assert.equal(rendererType, "meta-review-transcript-lineage");
+	const theme = { bg: (_name: string, text: string) => text, fg: (_name: string, text: string) => text };
+	assert.equal(renderer({ data: { content: "숨긴 entry", details: {} } }, { expanded: false }, theme), undefined);
+	const visible = renderer({ data: { content: "🔎 Meta Review 질문 · 전체 PR", details: {}, display: true } }, { expanded: false }, theme);
+	assert.ok(visible);
+});
 
 test("parseGitHubPrUrl accepts canonical and changes URLs", () => {
 	assert.deepEqual(parseGitHubPrUrl("https://github.com/creatrip/product/pull/4919/changes"), {

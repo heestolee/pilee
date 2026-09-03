@@ -162,13 +162,46 @@ test("Meta Review transcript fallback은 사용자 Q&A만 display true로 한 �
 		const answered = answerPrReviewQuestion(runDir, created.id, "정책 파일의 공개 상태 allowlist를 소유합니다.", [], undefined, 2000);
 		const withAnswerTranscript = publishPrReviewQuestionTranscript(pi, state, answered, "answer");
 		publishPrReviewQuestionTranscript(pi, state, withAnswerTranscript, "answer");
-		assert.equal(messages.length, 2);
-		assert.ok(messages.every(({ message, options }) => message.display === true && options.deliverAs === "nextTurn" && options.triggerTurn === false));
-		assert.match(messages[0].message.content, /Meta Review 질문/);
-		assert.match(messages[1].message.content, /Meta Review 답변/);
-		assert.match(messages[1].message.content, /정책 파일의 공개 상태 allowlist/);
+		const visibleMessages = messages.filter(({ message }) => message.display === true);
+		const contextMessages = messages.filter(({ message }) => message.display === false);
+		assert.equal(visibleMessages.length, 2);
+		assert.equal(contextMessages.length, 2);
+		assert.ok(messages.every(({ options }) => options.deliverAs === "nextTurn" && options.triggerTurn === false));
+		assert.match(visibleMessages[0].message.content, /Meta Review 질문/);
+		assert.match(visibleMessages[1].message.content, /Meta Review 답변/);
+		assert.match(visibleMessages[1].message.content, /정책 파일의 공개 상태 allowlist/);
+		assert.ok(contextMessages.every(({ message }) => /Meta Review lineage context/.test(message.content)));
+		assert.match(contextMessages[0].message.content, /이 선택 블록의 책임은 무엇인가/);
+		assert.match(contextMessages[1].message.content, /정책 파일의 공개 상태 allowlist/);
 		assert.doesNotMatch(messages.map(({ message }) => message.content).join("\n"), /runDir|workerResultPath|답변 규칙/);
 		assert.equal(loadPrReviewQuestions(runDir)[0]?.transcriptEventKeys?.length, 2);
+	} finally {
+		rmSync(runDir, { recursive: true, force: true });
+	}
+});
+
+test("Meta Review 질문은 visible entry와 hidden Pi context를 함께 남긴다", () => {
+	const runDir = mkdtempSync(join(tmpdir(), "pilee-pr-review-chat-visible-context-"));
+	try {
+		const state = runState(runDir);
+		const question = createPrReviewQuestion(runDir, { runId: state.runId, question: "이 변경의 책임을 설명해줘", scope: "session" }, 1000);
+		const entries: any[] = [];
+		const messages: any[] = [];
+		const published = publishPrReviewQuestionTranscript({
+			appendEntry(customType: string, data: any) { entries.push({ customType, data }); },
+			sendMessage(message: any, options: any) { messages.push({ message, options }); },
+		} as any, state, question, "question");
+		assert.equal(entries.length, 1);
+		assert.equal(entries[0].customType, PR_REVIEW_TRANSCRIPT_LINEAGE_ENTRY);
+		assert.equal(entries[0].data.display, true);
+		assert.match(entries[0].data.content, /🔎 Meta Review 질문/);
+		assert.equal(messages.length, 1);
+		assert.equal(messages[0].message.display, false);
+		assert.match(messages[0].message.content, /Meta Review lineage context/);
+		assert.match(messages[0].message.content, /이 변경의 책임을 설명해줘/);
+		assert.equal(messages[0].options.deliverAs, "nextTurn");
+		assert.equal(messages[0].options.triggerTurn, false);
+		assert.equal(published.transcriptEventKeys?.length, 1);
 	} finally {
 		rmSync(runDir, { recursive: true, force: true });
 	}

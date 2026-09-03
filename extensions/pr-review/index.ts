@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { DEFAULT_MAX_BYTES, truncateHead, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { Box, Text } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
 import { normalizeQuestionExecution } from "../questions/runtime.ts";
 import { expandProfileTemplate, loadPrReviewProfiles, type PrReviewCorpusProfile } from "../utils/private-profiles.ts";
@@ -23,8 +24,10 @@ import {
 	copyPrReviewQuestionHistory,
 	failPrReviewQuestion,
 	loadPrReviewQuestions,
+	PR_REVIEW_TRANSCRIPT_LINEAGE_ENTRY,
 	publishPrReviewQuestionTranscript,
 	type PrReviewQuestionEvidence,
+	type PrReviewTranscriptLineageEntryData,
 } from "./chat.ts";
 import { searchPrReviewCorpus } from "./corpus.ts";
 import {
@@ -180,6 +183,16 @@ function statusText(state: PrReviewRunState, source: ReviewSourceBundle, corpora
 		"files:",
 		...source.files.map((file) => `- ${file.id} ${file.status} +${file.additions}/-${file.deletions} ${file.path}`),
 	].join("\n");
+}
+
+export function registerPrReviewTranscriptRenderer(pi: Pick<ExtensionAPI, "registerEntryRenderer">): void {
+	pi.registerEntryRenderer<PrReviewTranscriptLineageEntryData>(PR_REVIEW_TRANSCRIPT_LINEAGE_ENTRY, (entry, _options, theme) => {
+		const data = entry.data;
+		if (data?.display !== true || typeof data.content !== "string") return undefined;
+		const box = new Box(1, 1, (text) => theme.bg("customMessageBg", text));
+		box.addChild(new Text(theme.fg("customMessageText", data.content), 0, 0));
+		return box;
+	});
 }
 
 export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}): void {
@@ -571,5 +584,6 @@ export function registerPrReview(pi: ExtensionAPI, options: RegisterOptions = {}
 }
 
 export default function (pi: ExtensionAPI): void {
+	registerPrReviewTranscriptRenderer(pi);
 	registerPrReview(pi);
 }

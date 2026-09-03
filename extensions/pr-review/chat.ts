@@ -509,6 +509,11 @@ export function stalePrReviewQuestion(
 export type PrReviewTranscriptEventKind = "question" | "answer" | "failed" | "stale";
 
 export const PR_REVIEW_TRANSCRIPT_LINEAGE_ENTRY = "meta-review-transcript-lineage";
+export interface PrReviewTranscriptLineageEntryData {
+	content: string;
+	details: Record<string, unknown>;
+	display?: boolean;
+}
 const PR_REVIEW_TRANSCRIPT_CUSTOM_TYPE = "pilee-meta-review-transcript";
 
 function transcriptEventText(question: PrReviewQuestion, eventKind: PrReviewTranscriptEventKind): string {
@@ -533,6 +538,35 @@ function transcriptEventKey(question: PrReviewQuestion, eventKind: PrReviewTrans
 	return `${eventKind}:${question.id}:${createHash("sha256").update(transcriptEventText(question, eventKind)).digest("hex").slice(0, 12)}`;
 }
 
+function publishPrReviewTranscriptEvent(
+	pi: Pick<ExtensionAPI, "appendEntry" | "sendMessage">,
+	content: string,
+	details: Record<string, unknown>,
+): boolean {
+	let visible = false;
+	try {
+		pi.appendEntry<PrReviewTranscriptLineageEntryData>(PR_REVIEW_TRANSCRIPT_LINEAGE_ENTRY, { content, details, display: true });
+		visible = true;
+	} catch {}
+	if (!visible) {
+		try {
+			pi.sendMessage({ customType: PR_REVIEW_TRANSCRIPT_CUSTOM_TYPE, content, display: true, details }, { deliverAs: "nextTurn", triggerTurn: false });
+			visible = true;
+		} catch {}
+	}
+	let contextualized = false;
+	try {
+		pi.sendMessage({
+			customType: PR_REVIEW_TRANSCRIPT_CUSTOM_TYPE,
+			content: `[Meta Review lineage context — 현재 사용자 요청이 이 이벤트를 묻지 않으면 답변하지 마세요.]\n\n${content}`,
+			display: false,
+			details,
+		}, { deliverAs: "nextTurn", triggerTurn: false });
+		contextualized = true;
+	} catch {}
+	return visible || contextualized;
+}
+
 export function replayPrReviewQuestionTranscript(
 	pi: Pick<ExtensionAPI, "appendEntry" | "sendMessage">,
 	state: PrReviewRunState,
@@ -544,18 +578,7 @@ export function replayPrReviewQuestionTranscript(
 	if (currentSessionEventKeys.has(eventKey)) return eventKey;
 	const content = transcriptEventText(question, eventKind);
 	const details = { runId: state.runId, questionId: question.id, eventKind, eventKey, scope: question.scope, selection: question.selection };
-	let published = false;
-	try {
-		pi.appendEntry(PR_REVIEW_TRANSCRIPT_LINEAGE_ENTRY, { content, details, display: true });
-		published = true;
-	} catch {}
-	if (!published) {
-		try {
-			pi.sendMessage({ customType: PR_REVIEW_TRANSCRIPT_CUSTOM_TYPE, content, display: true, details }, { deliverAs: "nextTurn", triggerTurn: false });
-			published = true;
-		} catch {}
-	}
-	if (!published) return undefined;
+	if (!publishPrReviewTranscriptEvent(pi, content, details)) return undefined;
 	currentSessionEventKeys.add(eventKey);
 	return eventKey;
 }
@@ -571,18 +594,7 @@ export function publishPrReviewQuestionTranscript(
 	if (current.transcriptEventKeys?.includes(eventKey)) return current;
 	const content = transcriptEventText(current, eventKind);
 	const details = { runId: state.runId, questionId: current.id, eventKind, eventKey, scope: current.scope, selection: current.selection };
-	let published = false;
-	try {
-		pi.appendEntry(PR_REVIEW_TRANSCRIPT_LINEAGE_ENTRY, { content, details, display: true });
-		published = true;
-	} catch {}
-	if (!published) {
-		try {
-			pi.sendMessage({ customType: PR_REVIEW_TRANSCRIPT_CUSTOM_TYPE, content, display: true, details }, { deliverAs: "nextTurn", triggerTurn: false });
-			published = true;
-		} catch {}
-	}
-	if (!published) return current;
+	if (!publishPrReviewTranscriptEvent(pi, content, details)) return current;
 	return updatePrReviewQuestion(state.runDir, current.id, {
 		transcriptEventKeys: [...new Set([...(current.transcriptEventKeys ?? []), eventKey])],
 	});

@@ -317,7 +317,8 @@ test("Meta Review drawer 질문은 메인 Pi turn 없이 공통 background worke
 		assert.equal(requests[0]?.agent, "meta-review-question-worker");
 		assert.equal(dispatched.workerRunId, 70);
 		assert.equal(dispatched.execution?.phase, "worker-running");
-		assert.equal(messages.length, 0, "메인 Pi followUp routing turn을 만들면 안 된다");
+		assert.equal(messages.filter((item) => item.options.triggerTurn === true).length, 0, "메인 Pi followUp routing turn을 만들면 안 된다");
+		assert.equal(messages.filter((item) => item.message.display === false && item.options.triggerTurn === false).length, 1, "질문은 다음 Pi turn의 hidden lineage context로 전달한다");
 		assert.equal(entries.length, 1);
 		assert.match(entries[0]?.data.content || "", /Meta Review 질문/);
 	} finally {
@@ -477,8 +478,9 @@ test("current-work 변경 요청은 pinned patch를 적용하고 Meta Review rev
 		assert.equal(answered.change?.validation[0]?.status, "passed");
 		assert.equal(answered.change?.refreshMode, "incremental");
 		assert.notEqual(answered.change?.refreshedRunId, state.runId);
-		assert.equal(messages.length, 1, "새 revision completion 요청을 owner Pi에 전달한다");
-		const refreshRequest = messages.find((item) => item.message.customType === "pilee-meta-review-command");
+		const refreshRequests = messages.filter((item) => item.message.customType === "pilee-meta-review-command");
+		assert.equal(refreshRequests.length, 1, "새 revision completion 요청을 owner Pi에 전달한다");
+		const refreshRequest = refreshRequests[0];
 		assert.ok(refreshRequest);
 		assert.equal(refreshRequest.message.details.command, "meta-review-refresh");
 		assert.equal(refreshRequest.message.details.runId, answered.change?.refreshedRunId);
@@ -577,8 +579,9 @@ test("GitHub PR 변경 요청은 일치하는 clean local checkout에 적용하�
 		assert.equal(refreshed.target.baseSha, "base123", "파생 revision도 원본 PR base SHA를 유지한다");
 		assert.equal(refreshed.target.baseRefName, "development");
 		assert.equal(refreshed.previousRunDir, state.runDir);
-		assert.equal(messages.length, 1);
-		assert.equal(messages[0].message.details.command, "meta-review-refresh");
+		const refreshRequests = messages.filter((item) => item.message.customType === "pilee-meta-review-command");
+		assert.equal(refreshRequests.length, 1);
+		assert.equal(refreshRequests[0].message.details.command, "meta-review-refresh");
 	} finally {
 		rmSync(stateRoot, { recursive: true, force: true });
 		rmSync(repoRoot, { recursive: true, force: true });
