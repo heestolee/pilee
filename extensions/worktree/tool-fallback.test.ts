@@ -17,6 +17,7 @@ function between(start: string, end: string): string {
 const commandNew = between("async function handleNew", "async function listOneRepo");
 const commandFork = between("async function handleCommandFork", "async function handleWorkflowFork");
 const workflowFork = between("async function handleWorkflowFork", "export async function runWorktreeForkFromCommandContext");
+const currentPanelSwitch = between("async function switchSessionToWorktree", "async function requestSessionSwitchToWorktree");
 const createTool = between('name: "worktree_create"', 'name: "worktree_switch"');
 const switchTool = between('name: "worktree_switch"', 'name: "worktree_fork"');
 const forkTool = source.slice(source.indexOf('name: "worktree_fork"'));
@@ -31,6 +32,8 @@ test("worktree tools do not expose switch-command or absolute-path fallback", ()
 
 test("slash /wt new stays direct while /wt fork branches activation only after creation", () => {
 	assert.match(commandNew, /switchSessionToWorktree/);
+	assert.match(commandNew, /currentPanelCreatedWorktreeContract\(ctx, "\/wt new"/);
+	assert.match(commandNew, /activationContract,/);
 	assert.doesNotMatch(commandNew, /chooseNewPanelPlacement|buildNewPanelActivationContract|activateWorkspaceInNewPanel/);
 	assert.doesNotMatch(commandNew, /cleanupCreatedWorktree|fullContextFailure/);
 
@@ -38,6 +41,8 @@ test("slash /wt new stays direct while /wt fork branches activation only after c
 	assert.match(commandFork, /switchSessionToWorktree/);
 	assert.match(commandFork, /activateWorkspaceInNewPanel/);
 	assert.match(commandFork, /defaultCurrentPanelContinuation/);
+	assert.match(commandFork, /currentPanelCreatedWorktreeContract\(ctx, "\/wt fork"/);
+	assert.match(commandFork, /activationContract,/);
 	assert.match(commandFork, /fullContext: useFullContext/);
 	assert.doesNotMatch(commandFork, /cleanupCreatedWorktree|fullContextFailure/);
 
@@ -45,6 +50,9 @@ test("slash /wt new stays direct while /wt fork branches activation only after c
 	assert.match(workflowFork, /activateWorkspaceInNewPanel/);
 	assert.match(workflowFork, /workspaceContinuationFromFollowUp/);
 	assert.doesNotMatch(workflowFork, /switchSessionToWorktree/);
+
+	assert.match(currentPanelSwitch, /options\.activationContract\?\.workspaceAction !== "create-worktree"/);
+	assert.match(currentPanelSwitch, /withCreatedWorktreeProjectTrust/);
 });
 
 test("worktree_create and worktree_fork tools activate a sibling panel while switch stays current-panel", () => {

@@ -43,7 +43,10 @@ import {
 	resolveWorkspaceActivationAuthorization,
 	type WorkspacePanelActivationResult,
 } from "./panel-activation.ts";
-import { registerCreatedWorktreeProjectTrust } from "./project-trust.ts";
+import {
+	registerCreatedWorktreeProjectTrust,
+	withCreatedWorktreeProjectTrust,
+} from "./project-trust.ts";
 import {
 	createWorkspaceActivationContract,
 	workspaceAuthorizationConsumerId,
@@ -991,6 +994,28 @@ function preservedActivationTargetSummary(
 	].filter(Boolean).join(" · ");
 }
 
+function currentPanelCreatedWorktreeContract(
+	ctx: ExtensionContext | ExtensionCommandContext,
+	sourceId: string,
+	contextMode: "full" | "clean",
+): WorkspaceActivationContract {
+	const id = worktreeActivationId("create-current");
+	return createWorkspaceActivationContract({
+		id,
+		workspaceAction: "create-worktree",
+		activationTarget: "current-panel",
+		contextMode,
+		authorization: resolveWorkspaceActivationAuthorization({
+			id,
+			ctx,
+			workspaceAction: "create-worktree",
+			activationTarget: "current-panel",
+			authorizationSource: "command",
+			authorizationSourceId: sourceId,
+		}),
+	});
+}
+
 function currentPanelSwitchContract(
 	ctx: ExtensionContext | ExtensionCommandContext,
 	source: "command" | "tool",
@@ -1243,7 +1268,17 @@ function buildWorktreeSessionSwitchOptions(
 async function switchSessionToWorktree(ctx: ExtensionContext, sessionFile: string, wtName: string, wtPath: string, contextLabel = "", options: SwitchSessionToWorktreeOptions = {}) {
 	const switchSession = (ctx as WorktreeSessionSwitchContext).switchSession;
 	if (typeof switchSession !== "function") throw new Error("switchSession API가 없습니다");
-	await switchSession.call(ctx, sessionFile, buildWorktreeSessionSwitchOptions(wtName, wtPath, contextLabel, options));
+	const run = () => switchSession.call(ctx, sessionFile, buildWorktreeSessionSwitchOptions(wtName, wtPath, contextLabel, options));
+	if (options.activationContract?.workspaceAction !== "create-worktree") {
+		await run();
+		return;
+	}
+	await withCreatedWorktreeProjectTrust({
+		contract: options.activationContract,
+		cwd: wtPath,
+		sessionFile,
+		run,
+	});
 }
 
 async function requestSessionSwitchToWorktree(ctx: ExtensionContext, sessionFile: string, wtName: string, wtPath: string, contextLabel = "", options: SwitchSessionToWorktreeOptions = {}) {
@@ -2143,10 +2178,12 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 	warnIfFullContextFallback(ctx, useFullContext, session);
 	const contextLabel = `${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}`;
 	const continuation = currentPanelNewContinuation(ctx, { name, branch: branchName, ticket: parsed.ticket, note: parsed.note });
+	const activationContract = currentPanelCreatedWorktreeContract(ctx, "/wt new", useFullContext ? "full" : "clean");
 
 	try {
 		await switchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, contextLabel, {
 			afterSwitchFollowUp: continuation,
+			activationContract,
 		});
 	} catch (error) {
 		const reason = error instanceof Error ? error.message : String(error);
@@ -2949,9 +2986,11 @@ async function handleCommandFork(pi: ExtensionAPI, args: string, ctx: ExtensionC
 	const contextLabel = `${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}`;
 	if (openTarget === "current") {
 		const continuation = defaultCurrentPanelContinuation("fork", { name, branch: branchName, ticket: parsed.ticket, note: parsed.note });
+		const activationContract = currentPanelCreatedWorktreeContract(ctx, "/wt fork", useFullContext ? "full" : "clean");
 		try {
 			await switchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, contextLabel, {
 				afterSwitchFollowUp: continuation,
+				activationContract,
 			});
 			return { status: "switched", name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion };
 		} catch (error) {

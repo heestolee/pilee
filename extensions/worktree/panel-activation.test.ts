@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -15,6 +15,7 @@ import {
 	consumeCreatedWorktreeProjectTrust,
 	CREATED_WORKTREE_PROJECT_TRUST_ENV,
 	prepareCreatedWorktreeProjectTrust,
+	withCreatedWorktreeProjectTrust,
 } from "./project-trust.ts";
 import {
 	consumeWorkspaceAuthorization,
@@ -130,6 +131,28 @@ test("created worktree trust is exact-path, remembered, and single-use", () => {
 		);
 		assert.deepEqual(consumeCreatedWorktreeProjectTrust(f.root, {}), { trusted: "undecided" });
 	} finally {
+		rmSync(f.root, { recursive: true, force: true });
+	}
+});
+
+test("current-panel switch exposes created-worktree trust only during replacement", async () => {
+	const f = fixture();
+	const previous = process.env[CREATED_WORKTREE_PROJECT_TRUST_ENV];
+	try {
+		const trustRoot = join(f.root, "current-panel-project-trust");
+		const decision = await withCreatedWorktreeProjectTrust({
+			contract: contract("trust-current-panel"),
+			cwd: f.root,
+			sessionFile: f.targetSession,
+			root: trustRoot,
+			run: async () => consumeCreatedWorktreeProjectTrust(f.root, process.env, { root: trustRoot }),
+		});
+		assert.deepEqual(decision, { trusted: "yes", remember: true });
+		assert.equal(process.env[CREATED_WORKTREE_PROJECT_TRUST_ENV], previous);
+		assert.deepEqual(readdirSync(trustRoot), []);
+	} finally {
+		if (previous === undefined) delete process.env[CREATED_WORKTREE_PROJECT_TRUST_ENV];
+		else process.env[CREATED_WORKTREE_PROJECT_TRUST_ENV] = previous;
 		rmSync(f.root, { recursive: true, force: true });
 	}
 });
