@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -50,6 +50,24 @@ function contract(id: string, continuation?: WorkspaceContinuation) {
 			placement: "right",
 		}),
 		createdAt: "2026-08-25T00:00:00.000Z",
+	});
+}
+
+function existingWorktreeContract(id: string) {
+	return createWorkspaceActivationContract({
+		id,
+		workspaceAction: "use-existing-worktree",
+		activationTarget: "new-panel",
+		placement: "right",
+		contextMode: "full",
+		authorization: explicitWorkspaceAuthorization({
+			source: "command",
+			sourceId: "/wt switch",
+			action: "use-existing-worktree",
+			decision: "allow",
+			activationTarget: "new-panel",
+			placement: "right",
+		}),
 	});
 }
 
@@ -120,6 +138,7 @@ test("created worktree trust is exact-path, remembered, and single-use", () => {
 			now: 1_000,
 		});
 		const env = { [CREATED_WORKTREE_PROJECT_TRUST_ENV]: prepared.path };
+		assert.equal(statSync(prepared.path).mode & 0o777, 0o600);
 		assert.deepEqual(
 			consumeCreatedWorktreeProjectTrust(f.root, env, { root: trustRoot, now: 1_001 }),
 			{ trusted: "yes", remember: true },
@@ -157,7 +176,57 @@ test("current-panel switch exposes created-worktree trust only during replacemen
 	}
 });
 
-test("created worktree trust defers mismatched and expired paths to Pi", () => {
+test("current-panel trust scopes are serialized across concurrent replacements", async () => {
+	const first = fixture();
+	const second = fixture();
+	const previous = process.env[CREATED_WORKTREE_PROJECT_TRUST_ENV];
+	let releaseFirst!: () => void;
+	let signalFirstStarted!: () => void;
+	const firstReleased = new Promise<void>((resolve) => { releaseFirst = resolve; });
+	const firstStarted = new Promise<void>((resolve) => { signalFirstStarted = resolve; });
+	let secondStarted = false;
+	try {
+		const firstRoot = join(first.root, "current-panel-project-trust");
+		const secondRoot = join(second.root, "current-panel-project-trust");
+		const firstRun = withCreatedWorktreeProjectTrust({
+			contract: contract("trust-current-panel-first"),
+			cwd: first.root,
+			sessionFile: first.targetSession,
+			root: firstRoot,
+			run: async () => {
+				signalFirstStarted();
+				const decision = consumeCreatedWorktreeProjectTrust(first.root, process.env, { root: firstRoot });
+				await firstReleased;
+				return decision;
+			},
+		});
+		await firstStarted;
+		const secondRun = withCreatedWorktreeProjectTrust({
+			contract: contract("trust-current-panel-second"),
+			cwd: second.root,
+			sessionFile: second.targetSession,
+			root: secondRoot,
+			run: async () => {
+				secondStarted = true;
+				return consumeCreatedWorktreeProjectTrust(second.root, process.env, { root: secondRoot });
+			},
+		});
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		assert.equal(secondStarted, false, "a second replacement must not overwrite the active trust env");
+		releaseFirst();
+		assert.deepEqual(await firstRun, { trusted: "yes", remember: true });
+		assert.deepEqual(await secondRun, { trusted: "yes", remember: true });
+		assert.equal(process.env[CREATED_WORKTREE_PROJECT_TRUST_ENV], previous);
+	} finally {
+		releaseFirst();
+		if (previous === undefined) delete process.env[CREATED_WORKTREE_PROJECT_TRUST_ENV];
+		else process.env[CREATED_WORKTREE_PROJECT_TRUST_ENV] = previous;
+		rmSync(first.root, { recursive: true, force: true });
+		rmSync(second.root, { recursive: true, force: true });
+	}
+});
+
+test("created worktree trust defers mismatched, malformed, expired, and missing-session paths to Pi", () => {
 	const f = fixture();
 	try {
 		const trustRoot = join(f.root, "project-trust");
@@ -185,6 +254,26 @@ test("created worktree trust defers mismatched and expired paths to Pi", () => {
 		});
 		assert.deepEqual(
 			consumeCreatedWorktreeProjectTrust(f.root, { [CREATED_WORKTREE_PROJECT_TRUST_ENV]: expired.path }, { root: trustRoot, now: 301_001 }),
+			{ trusted: "undecided" },
+		);
+
+		const malformedPath = join(trustRoot, "malformed.json");
+		writeFileSync(malformedPath, "{not-json", "utf8");
+		assert.deepEqual(
+			consumeCreatedWorktreeProjectTrust(f.root, { [CREATED_WORKTREE_PROJECT_TRUST_ENV]: malformedPath }, { root: trustRoot }),
+			{ trusted: "undecided" },
+		);
+		assert.equal(existsSync(malformedPath), false);
+
+		const missingSession = prepareCreatedWorktreeProjectTrust({
+			contract: contract("trust-missing-session"),
+			cwd: f.root,
+			sessionFile: f.targetSession,
+			root: trustRoot,
+		});
+		rmSync(f.targetSession);
+		assert.deepEqual(
+			consumeCreatedWorktreeProjectTrust(f.root, { [CREATED_WORKTREE_PROJECT_TRUST_ENV]: missingSession.path }, { root: trustRoot }),
 			{ trusted: "undecided" },
 		);
 	} finally {
@@ -310,6 +399,59 @@ test("new panel activation waits for exact-session continuation and never switch
 		assert.equal(messages.length, 1);
 		assert.equal(switchCalled, false, "new-panel failure/success must never use current-panel switchSession");
 		assert.equal(readFileSync(f.sourceSession, "utf8"), f.sourceBefore);
+	} finally {
+		rmSync(f.root, { recursive: true, force: true });
+	}
+});
+
+test("new-panel use-existing activation omits automatic trust without blocking startup", async () => {
+	const f = fixture();
+	try {
+		const activationRoot = join(f.root, "existing-worktree");
+		const result = await activateWorkspaceInNewPanel({} as any, {} as any, {
+			contract: existingWorktreeContract("existing-worktree"),
+			cwd: f.root,
+			sessionFile: f.targetSession,
+			title: "Existing worktree",
+			activationRoot,
+		}, {
+			openPanel: async (_hostPi, request) => {
+				assert.equal(request.env?.[CREATED_WORKTREE_PROJECT_TRUST_ENV], undefined);
+				await receiveWorkspacePanelActivation({} as any, {
+					cwd: f.root,
+					sessionManager: { getSessionFile: () => f.targetSession, getCwd: () => f.root, appendCustomEntry() {} },
+				} as any, request.env);
+				return { status: "opened", terminalId: "term-existing", forkId: "fork-existing", panelLabel: "P1" };
+			},
+		});
+		assert.equal(result.status, "activated");
+	} finally {
+		rmSync(f.root, { recursive: true, force: true });
+	}
+});
+
+test("openPanel throw returns a recoverable failed result instead of leaking an exception", async () => {
+	const f = fixture();
+	try {
+		const activationRoot = join(f.root, "open-throw");
+		const result = await activateWorkspaceInNewPanel({} as any, {} as any, {
+			contract: contract("open-throw"),
+			cwd: f.root,
+			sessionFile: f.targetSession,
+			title: "Open throw",
+			activationRoot,
+		}, {
+			openPanel: async () => { throw new Error("synthetic host exception"); },
+		});
+		assert.equal(result.status, "failed");
+		if (result.status !== "activated" && result.status !== "pending") {
+			assert.equal(result.safeToDeleteTarget, false);
+			assert.equal(result.descriptorPath, join(activationRoot, "open-throw.json"));
+		}
+		const descriptor = readWorkspacePanelActivation(join(activationRoot, "open-throw.json"));
+		assert.equal(descriptor?.status, "failed");
+		assert.match(descriptor?.error ?? "", /synthetic host exception/);
+		assert.equal(readdirSync(join(activationRoot, "project-trust")).filter((name) => name.endsWith(".json")).length, 1);
 	} finally {
 		rmSync(f.root, { recursive: true, force: true });
 	}

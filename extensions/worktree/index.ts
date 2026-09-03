@@ -43,10 +43,8 @@ import {
 	resolveWorkspaceActivationAuthorization,
 	type WorkspacePanelActivationResult,
 } from "./panel-activation.ts";
-import {
-	registerCreatedWorktreeProjectTrust,
-	withCreatedWorktreeProjectTrust,
-} from "./project-trust.ts";
+import { registerCreatedWorktreeProjectTrust } from "./project-trust.ts";
+import { runWorktreeSessionReplacement } from "./session-switch-trust.ts";
 import {
 	createWorkspaceActivationContract,
 	workspaceAuthorizationConsumerId,
@@ -1268,16 +1266,11 @@ function buildWorktreeSessionSwitchOptions(
 async function switchSessionToWorktree(ctx: ExtensionContext, sessionFile: string, wtName: string, wtPath: string, contextLabel = "", options: SwitchSessionToWorktreeOptions = {}) {
 	const switchSession = (ctx as WorktreeSessionSwitchContext).switchSession;
 	if (typeof switchSession !== "function") throw new Error("switchSession API가 없습니다");
-	const run = () => switchSession.call(ctx, sessionFile, buildWorktreeSessionSwitchOptions(wtName, wtPath, contextLabel, options));
-	if (options.activationContract?.workspaceAction !== "create-worktree") {
-		await run();
-		return;
-	}
-	await withCreatedWorktreeProjectTrust({
-		contract: options.activationContract,
+	await runWorktreeSessionReplacement({
+		activationContract: options.activationContract,
 		cwd: wtPath,
 		sessionFile,
-		run,
+		run: () => switchSession.call(ctx, sessionFile, buildWorktreeSessionSwitchOptions(wtName, wtPath, contextLabel, options)),
 	});
 }
 

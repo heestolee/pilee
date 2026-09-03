@@ -469,6 +469,31 @@ function activatedResult(
 	};
 }
 
+async function markPanelOpenFailure(
+	path: string,
+	placement: NewPanelPlacement,
+	reason: string,
+	panel: { terminalId?: string; forkId?: string; panelLabel?: string } = {},
+): Promise<void> {
+	const failedAt = new Date().toISOString();
+	try {
+		await mutateDescriptor(path, (current) => current.status === "prepared"
+			? {
+				...current,
+				status: "failed",
+				failedAt,
+				error: reason,
+				panel: panel.terminalId && panel.forkId && panel.panelLabel
+					? { placement, terminalId: panel.terminalId, forkId: panel.forkId, panelLabel: panel.panelLabel }
+					: current.panel,
+			}
+			: current);
+	} catch {
+		// A host command may have created a live surface before failing.
+		// Preserve recovery artifacts even when the descriptor cannot be annotated.
+	}
+}
+
 export async function activateWorkspaceInNewPanel(
 	pi: ExtensionAPI,
 	_ctx: ExtensionContext | ExtensionCommandContext,
@@ -480,42 +505,58 @@ export async function activateWorkspaceInNewPanel(
 		throw new Error("activateWorkspaceInNewPanel은 new-panel contract만 받습니다.");
 	}
 	const prepared = prepareWorkspacePanelActivation(input);
-	let projectTrustPath: string;
-	try {
-		projectTrustPath = prepareCreatedWorktreeProjectTrust({
-			contract: input.contract,
-			cwd: input.cwd,
-			sessionFile: input.sessionFile,
-			root: input.trustRoot ?? (input.activationRoot ? join(input.activationRoot, "project-trust") : undefined),
-		}).path;
-	} catch (error) {
-		rmSync(prepared.path, { force: true });
-		rmSync(`${prepared.path}.lock`, { recursive: true, force: true });
-		return {
-			status: "blocked",
-			reason: `created worktree project trust 준비 실패: ${error instanceof Error ? error.message : String(error)}`,
-			contract: input.contract,
-			placement,
-			safeToDeleteTarget: true,
-		};
+	let projectTrustPath: string | undefined;
+	if (input.contract.workspaceAction === "create-worktree") {
+		try {
+			projectTrustPath = prepareCreatedWorktreeProjectTrust({
+				contract: input.contract,
+				cwd: input.cwd,
+				sessionFile: input.sessionFile,
+				root: input.trustRoot ?? (input.activationRoot ? join(input.activationRoot, "project-trust") : undefined),
+			}).path;
+		} catch (error) {
+			rmSync(prepared.path, { force: true });
+			rmSync(`${prepared.path}.lock`, { recursive: true, force: true });
+			return {
+				status: "blocked",
+				reason: `created worktree project trust 준비 실패: ${error instanceof Error ? error.message : String(error)}`,
+				contract: input.contract,
+				placement,
+				safeToDeleteTarget: true,
+			};
+		}
 	}
 	const openPanel = dependencies.openPanel ?? openExactSessionInNewPanel;
 	const closePanel = dependencies.closePanel ?? closeExactSessionPanel;
 	const removePanelRecord = dependencies.removePanelRecord ?? removeExactSessionPanelRecord;
 	const sleep = dependencies.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
 
-	const opened = await openPanel(pi, {
-		activationId: input.contract.id,
-		placement,
-		cwd: input.cwd,
-		sessionFile: input.sessionFile,
-		sourceSessionFile: input.sourceSessionFile,
-		title: input.title,
-		env: {
-			[WORKSPACE_ACTIVATION_ENV]: prepared.path,
-			[CREATED_WORKTREE_PROJECT_TRUST_ENV]: projectTrustPath,
-		},
-	});
+	let opened: ExactSessionPanelOpenResult;
+	try {
+		opened = await openPanel(pi, {
+			activationId: input.contract.id,
+			placement,
+			cwd: input.cwd,
+			sessionFile: input.sessionFile,
+			sourceSessionFile: input.sourceSessionFile,
+			title: input.title,
+			env: {
+				[WORKSPACE_ACTIVATION_ENV]: prepared.path,
+				...(projectTrustPath ? { [CREATED_WORKTREE_PROJECT_TRUST_ENV]: projectTrustPath } : {}),
+			},
+		});
+	} catch (error) {
+		const reason = `panel open threw before ownership could be confirmed: ${error instanceof Error ? error.message : String(error)}`;
+		await markPanelOpenFailure(prepared.path, placement, reason);
+		return {
+			status: "failed",
+			reason,
+			contract: input.contract,
+			placement,
+			descriptorPath: prepared.path,
+			safeToDeleteTarget: false,
+		};
+	}
 	if (opened.status === "blocked") {
 		removeCreatedWorktreeProjectTrust(projectTrustPath);
 		rmSync(prepared.path, { force: true });
@@ -529,23 +570,7 @@ export async function activateWorkspaceInNewPanel(
 		};
 	}
 	if (opened.status === "failed") {
-		const failedAt = new Date().toISOString();
-		try {
-			await mutateDescriptor(prepared.path, (current) => current.status === "prepared"
-				? {
-					...current,
-					status: "failed",
-					failedAt,
-					error: opened.reason,
-					panel: opened.terminalId && opened.forkId && opened.panelLabel
-						? { placement, terminalId: opened.terminalId, forkId: opened.forkId, panelLabel: opened.panelLabel }
-						: current.panel,
-				}
-				: current);
-		} catch {
-			// A host command may have created a live surface before reporting failure.
-			// Preserve every recovery artifact even when the descriptor cannot be annotated.
-		}
+		await markPanelOpenFailure(prepared.path, placement, opened.reason, opened);
 		return {
 			status: "failed",
 			reason: opened.reason,

@@ -20,6 +20,11 @@ export const CREATED_WORKTREE_PROJECT_TRUST_ENV = "PI_CREATED_WORKTREE_PROJECT_T
 const CREATED_WORKTREE_PROJECT_TRUST_VERSION = 1;
 const CREATED_WORKTREE_PROJECT_TRUST_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_CREATED_WORKTREE_PROJECT_TRUST_ROOT = join(getAgentDir(), "workspace-project-trust");
+const CREATED_WORKTREE_PROJECT_TRUST_LOCK = Symbol.for("pilee.created-worktree-project-trust-lock");
+
+type CreatedWorktreeProjectTrustLockState = {
+	tail: Promise<void>;
+};
 
 type CreatedWorktreeProjectTrustDescriptor = {
 	version: typeof CREATED_WORKTREE_PROJECT_TRUST_VERSION;
@@ -181,6 +186,25 @@ export function consumeCreatedWorktreeProjectTrust(
 		: { trusted: "undecided" };
 }
 
+function createdWorktreeProjectTrustLockState(): CreatedWorktreeProjectTrustLockState {
+	const host = globalThis as typeof globalThis & Record<symbol, CreatedWorktreeProjectTrustLockState | undefined>;
+	return host[CREATED_WORKTREE_PROJECT_TRUST_LOCK]
+		??= { tail: Promise.resolve() };
+}
+
+async function withCreatedWorktreeProjectTrustLock<T>(run: () => Promise<T>): Promise<T> {
+	const state = createdWorktreeProjectTrustLockState();
+	const predecessor = state.tail;
+	let release!: () => void;
+	state.tail = new Promise<void>((resolve) => { release = resolve; });
+	await predecessor;
+	try {
+		return await run();
+	} finally {
+		release();
+	}
+}
+
 export async function withCreatedWorktreeProjectTrust<T>(input: {
 	contract: WorkspaceActivationContract;
 	cwd: string;
@@ -189,16 +213,20 @@ export async function withCreatedWorktreeProjectTrust<T>(input: {
 	run: () => Promise<T>;
 }): Promise<T> {
 	if (input.contract.workspaceAction !== "create-worktree") return input.run();
-	const prepared = prepareCreatedWorktreeProjectTrust(input);
-	const previous = process.env[CREATED_WORKTREE_PROJECT_TRUST_ENV];
-	process.env[CREATED_WORKTREE_PROJECT_TRUST_ENV] = prepared.path;
-	try {
-		return await input.run();
-	} finally {
-		if (previous === undefined) delete process.env[CREATED_WORKTREE_PROJECT_TRUST_ENV];
-		else process.env[CREATED_WORKTREE_PROJECT_TRUST_ENV] = previous;
-		removeCreatedWorktreeProjectTrust(prepared.path);
-	}
+	return withCreatedWorktreeProjectTrustLock(async () => {
+		const prepared = prepareCreatedWorktreeProjectTrust(input);
+		const previous = process.env[CREATED_WORKTREE_PROJECT_TRUST_ENV];
+		process.env[CREATED_WORKTREE_PROJECT_TRUST_ENV] = prepared.path;
+		try {
+			return await input.run();
+		} finally {
+			if (process.env[CREATED_WORKTREE_PROJECT_TRUST_ENV] === prepared.path) {
+				if (previous === undefined) delete process.env[CREATED_WORKTREE_PROJECT_TRUST_ENV];
+				else process.env[CREATED_WORKTREE_PROJECT_TRUST_ENV] = previous;
+			}
+			removeCreatedWorktreeProjectTrust(prepared.path);
+		}
+	});
 }
 
 export function registerCreatedWorktreeProjectTrust(pi: ExtensionAPI): void {
