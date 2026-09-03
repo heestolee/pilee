@@ -29,7 +29,7 @@ source:
   - user-direction:2026-08-31-meta-review-study-hard-worker-lifecycle-parity
   - user-direction:2026-09-03-meta-review-local-pr-patch-boundary
 reviewed_at: 2026-09-03
-reviewed_commit: 4266cfd8b468766424c98c4ae8285c0e8433e16c
+reviewed_commit: 2d3882d
 related:
   - study-hard-worker-flexible-generation-strict-apply
   - human-pr-review-precedent-harness
@@ -103,7 +103,7 @@ Direct와 worker는 동일한 `scope`, `sectionId`, meaning ID, declaration ID/s
 - 질문·답변·실패/stale: owner Pi lineage에 `display:true`로 기록합니다.
 - run path, tool action, worker result path, dispatch 규칙: `display:false` control message로만 전달합니다.
 - event key를 question state에 보존해 reload·retry·중복 completion에서 같은 visible 대화를 다시 만들지 않습니다.
-- visible lineage는 사용자가 “아까 질문 drawer에서 무슨 대화를 했나”라고 물을 때 현재 session이 답할 수 있는 기록입니다. 영구 canonical은 Study Hard state 또는 Meta Review `questions.jsonl`입니다.
+- visible lineage는 사용자가 “아까 질문 drawer에서 무슨 대화를 했나”라고 물을 때 현재 session이 답할 수 있는 기록입니다. Study Hard와 Meta Review 모두 `appendEntry(... display:true)`와 전용 entry renderer로 질문·답변 카드를 즉시 보여주고, 모델에는 별도 `display:false + nextTurn` context를 전달합니다. visible entry 저장만 성공했다고 모델 context 전달을 생략하지 않습니다. 영구 canonical은 Study Hard state 또는 Meta Review `questions.jsonl`입니다.
 
 ## Attachment Boundary
 
