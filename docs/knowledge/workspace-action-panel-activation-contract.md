@@ -25,8 +25,9 @@ applies_to:
 source:
   - user-direction:2026-08-25-workspace-activation-redesign
   - user-direction:2026-09-02-pr-review-current-panel-or-tab
-reviewed_at: 2026-09-02
-reviewed_commit: 93ddc04
+  - user-direction:2026-09-03-wt-created-project-trust
+reviewed_at: 2026-09-03
+reviewed_commit: 184752e
 related:
   - worktree-execution-boundary
   - worktree-session-continuity
@@ -63,6 +64,21 @@ Descriptor 전이는 `prepared → panel-opened → ready → continuing → con
 `/wt switch`와 `worktree_switch`는 사용자가 기존 worktree로 현재 panel을 옮기는 명시적 경로입니다. PR review의 `현재 패널` 선택도 사용자가 고른 명시적 current-panel activation입니다. 어떤 workflow에서도 new-panel open 실패를 current-panel switch로 몰래 대체하지 않습니다.
 
 명시적 worktree authorization은 P0/P1/P2 어느 panel에서든 현재 보이는 conversation을 source로 사용할 수 있습니다. Source panel은 그대로 남고 target은 선택한 placement에 열립니다. 부모 P0를 source로 쓰고 싶을 때만 사용자가 P0에서 실행하며, `/handoff`는 필수 생성 절차가 아닙니다. Panel 번호는 stage·context-carry·hotfix/base·authorization gate를 우회하지 않습니다.
+
+## Project Trust Boundary
+
+사용자가 `/wt new`·`/wt fork`를 실행하거나 동일한 durable authorization을 소비한 `worktree_create`·`worktree_fork`·Frame/TFT fork를 선택했다면, 그 실행이 만든 exact target cwd는 별도 `Trust project folder?` 질문을 다시 요구하지 않습니다. Worktree 생성 권한이 곧 모든 하위 폴더의 포괄 신뢰는 아니므로, Pi의 `project_trust` 훅에서 해당 target 하나만 `remember: true`로 저장합니다.
+
+생성 프로세스는 agent 전역 디렉터리에 0600 권한의 일회성 승인 파일을 만들고 exact cwd·target session·`create-worktree` authorization provenance·5분 TTL을 기록합니다. 새 panel activation은 승인 파일 경로를 child 환경으로 전달하고, 현재 panel activation은 `switchSession()` 호출 동안만 같은 환경을 노출합니다. Global worktree extension은 project-local resource가 로드되기 전 `project_trust`에서 이 파일을 검증하고 한 번 소비합니다.
+
+다음 경우에는 `trusted: "undecided"`를 반환해 Pi의 저장된 결정·`defaultProjectTrust`·기본 질문 흐름에 그대로 맡깁니다.
+
+- 승인 파일이 없거나 이미 소비됐다.
+- cwd가 다르거나 target session이 사라졌다.
+- TTL이 만료됐거나 `create-worktree` authorization이 아니다.
+- `/wt switch`·`worktree_switch`처럼 기존 worktree를 여는 동작이거나 임의 외부 폴더다.
+
+따라서 편의성은 명시적으로 생성한 한 target에만 적용되고, 부모 worktree root 전체나 모든 프로젝트를 자동 신뢰하지 않습니다.
 
 ## Host Adapter Boundary
 
