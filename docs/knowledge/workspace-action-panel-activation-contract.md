@@ -27,7 +27,7 @@ source:
   - user-direction:2026-09-02-pr-review-current-panel-or-tab
   - user-direction:2026-09-03-wt-created-project-trust
 reviewed_at: 2026-09-03
-reviewed_commit: 0e54c4d
+reviewed_commit: 42ca4b9
 related:
   - worktree-execution-boundary
   - worktree-session-continuity
@@ -69,7 +69,7 @@ Descriptor 전이는 `prepared → panel-opened → ready → continuing → con
 
 사용자가 `/wt new`·`/wt fork`를 실행하거나 동일한 durable authorization을 소비한 `worktree_create`·`worktree_fork`·Frame/TFT fork를 선택했다면, 그 실행이 만든 exact target cwd는 별도 `Trust project folder?` 질문을 다시 요구하지 않습니다. Worktree 생성 권한이 곧 모든 하위 폴더의 포괄 신뢰는 아니므로, Pi의 `project_trust` 훅에서 해당 target 하나만 `remember: true`로 저장합니다.
 
-생성 프로세스는 agent 전역 디렉터리에 0600 권한의 일회성 승인 파일을 만들고 exact cwd·target session·`create-worktree` authorization provenance·5분 TTL을 기록합니다. 새 panel activation은 승인 파일 경로를 child 환경으로 전달하고, 현재 panel activation은 `switchSession()` 호출 동안만 같은 환경을 노출합니다. 같은 process에서 current-panel replacement가 겹치면 FIFO로 직렬화하고, 각 실행은 자신이 소유한 env일 때만 이전 값을 복원합니다. Global worktree extension은 project-local resource가 로드되기 전 `project_trust`에서 이 파일을 검증하고 한 번 소비합니다.
+생성 프로세스는 agent 전역 디렉터리에 0600 권한의 일회성 승인 파일을 만들고 exact cwd·target session·`create-worktree` authorization provenance·5분 TTL을 기록합니다. 새 panel activation은 승인 파일 경로를 child 환경으로 전달하고, 현재 panel activation은 `switchSession()` 호출 동안만 같은 환경을 노출합니다. 같은 process에서 current-panel replacement가 겹치면 FIFO로 직렬화하고, 각 실행은 자신이 소유한 env일 때만 이전 값을 복원합니다. 이 trust scope가 실제 `switchSession.call()`까지 소유해 marker가 session replacement 전에 제거되는 wiring을 허용하지 않습니다. Global worktree extension은 project-local resource가 로드되기 전 `project_trust`에서 이 파일을 검증하고 한 번 소비합니다.
 
 다음 경우에는 `trusted: "undecided"`를 반환해 Pi의 저장된 결정·`defaultProjectTrust`·기본 질문 흐름에 그대로 맡깁니다.
 
