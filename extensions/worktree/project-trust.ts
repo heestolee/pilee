@@ -229,12 +229,19 @@ export async function withCreatedWorktreeProjectTrust<T>(input: {
 	});
 }
 
-export function registerCreatedWorktreeProjectTrust(pi: ExtensionAPI): void {
+export function registerCreatedWorktreeProjectTrust(
+	pi: ExtensionAPI,
+	options: { root?: string; env?: Record<string, string | undefined>; now?: number } = {},
+): void {
 	const trustCapablePi = pi as unknown as {
 		on(
 			event: "project_trust",
 			handler: (event: { cwd: string }) => ProjectTrustDecision | Promise<ProjectTrustDecision>,
 		): void;
 	};
-	trustCapablePi.on("project_trust", (event) => consumeCreatedWorktreeProjectTrust(event.cwd));
+	trustCapablePi.on("project_trust", (event) => consumeCreatedWorktreeProjectTrust(
+		event.cwd,
+		options.env ?? process.env,
+		{ root: options.root, now: options.now },
+	));
 }

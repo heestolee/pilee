@@ -51,11 +51,10 @@ test("slash /wt new stays direct while /wt fork branches activation only after c
 	assert.match(workflowFork, /workspaceContinuationFromFollowUp/);
 	assert.doesNotMatch(workflowFork, /switchSessionToWorktree/);
 
-	assert.match(currentPanelSwitch, /await runWorktreeSessionReplacement/);
+	assert.match(currentPanelSwitch, /await switchSessionToTrustedWorktree/);
 	assert.match(currentPanelSwitch, /activationContract: options\.activationContract/);
-	assert.equal(currentPanelSwitch.match(/switchSession\.call/g)?.length, 1);
-	assert.ok(currentPanelSwitch.indexOf("runWorktreeSessionReplacement") < currentPanelSwitch.indexOf("switchSession.call"));
-	assert.doesNotMatch(currentPanelSwitch, /await run\(\)/);
+	assert.match(currentPanelSwitch, /switchOptions: buildWorktreeSessionSwitchOptions/);
+	assert.doesNotMatch(currentPanelSwitch, /switchSession\.call|await run\(\)/);
 });
 
 test("worktree_create and worktree_fork tools activate a sibling panel while switch stays current-panel", () => {

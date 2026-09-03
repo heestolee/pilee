@@ -7,10 +7,11 @@ import {
 	createWorkspaceActivationContract,
 	explicitWorkspaceAuthorization,
 } from "../utils/workspace-activation-contract.ts";
-import { runWorktreeSessionReplacement } from "./session-switch-trust.ts";
+import { switchSessionToTrustedWorktree } from "./session-switch-trust.ts";
 import {
-	consumeCreatedWorktreeProjectTrust,
 	CREATED_WORKTREE_PROJECT_TRUST_ENV,
+	registerCreatedWorktreeProjectTrust,
+	type ProjectTrustDecision,
 } from "./project-trust.ts";
 
 function currentPanelCreateContract() {
@@ -29,7 +30,7 @@ function currentPanelCreateContract() {
 	});
 }
 
-test("current-panel replacement resolves trust before invoking the session switch", async () => {
+test("current-panel switch resolves the registered trust handler before replacement continues", async () => {
 	const root = mkdtempSync(join(tmpdir(), "pilee-session-switch-trust-"));
 	const worktree = join(root, "worktree");
 	const sessionFile = join(root, "target.jsonl");
@@ -37,21 +38,35 @@ test("current-panel replacement resolves trust before invoking the session switc
 	const previous = process.env[CREATED_WORKTREE_PROJECT_TRUST_ENV];
 	mkdirSync(worktree);
 	writeFileSync(sessionFile, `${JSON.stringify({ type: "session", version: 3, id: "target", timestamp: "2026-09-03T00:00:00.000Z", cwd: worktree })}\n`, "utf8");
+	let trustHandler!: (event: { cwd: string }) => ProjectTrustDecision | Promise<ProjectTrustDecision>;
+	registerCreatedWorktreeProjectTrust({
+		on(event: string, handler: typeof trustHandler) {
+			assert.equal(event, "project_trust");
+			trustHandler = handler;
+		},
+	} as any, { root: trustRoot });
+	const switchOptions = { identity: "exact-switch-options" };
 	let replacementCalls = 0;
 	try {
-		await runWorktreeSessionReplacement({
+		await switchSessionToTrustedWorktree({
+			context: {
+				switchSession: async (target, options) => {
+					replacementCalls += 1;
+					assert.equal(target, sessionFile);
+					assert.equal(options, switchOptions);
+					assert.deepEqual(
+						await trustHandler({ cwd: worktree }),
+						{ trusted: "yes", remember: true },
+						"project trust must resolve before the session switch continues",
+					);
+					return { cancelled: false };
+				},
+			},
 			activationContract: currentPanelCreateContract(),
 			cwd: worktree,
 			sessionFile,
+			switchOptions,
 			projectTrustRoot: trustRoot,
-			run: async () => {
-				replacementCalls += 1;
-				assert.deepEqual(
-					consumeCreatedWorktreeProjectTrust(worktree, process.env, { root: trustRoot }),
-					{ trusted: "yes", remember: true },
-					"project trust must resolve before the session switch continues",
-				);
-			},
 		});
 		assert.equal(replacementCalls, 1);
 		assert.equal(process.env[CREATED_WORKTREE_PROJECT_TRUST_ENV], previous);
