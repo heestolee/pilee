@@ -27,7 +27,7 @@ source:
   - user-direction:2026-09-02-pr-review-current-panel-or-tab
   - user-direction:2026-09-03-wt-created-project-trust
 reviewed_at: 2026-09-03
-reviewed_commit: 184752e
+reviewed_commit: 0e54c4d
 related:
   - worktree-execution-boundary
   - worktree-session-continuity
@@ -69,7 +69,7 @@ Descriptor 전이는 `prepared → panel-opened → ready → continuing → con
 
 사용자가 `/wt new`·`/wt fork`를 실행하거나 동일한 durable authorization을 소비한 `worktree_create`·`worktree_fork`·Frame/TFT fork를 선택했다면, 그 실행이 만든 exact target cwd는 별도 `Trust project folder?` 질문을 다시 요구하지 않습니다. Worktree 생성 권한이 곧 모든 하위 폴더의 포괄 신뢰는 아니므로, Pi의 `project_trust` 훅에서 해당 target 하나만 `remember: true`로 저장합니다.
 
-생성 프로세스는 agent 전역 디렉터리에 0600 권한의 일회성 승인 파일을 만들고 exact cwd·target session·`create-worktree` authorization provenance·5분 TTL을 기록합니다. 새 panel activation은 승인 파일 경로를 child 환경으로 전달하고, 현재 panel activation은 `switchSession()` 호출 동안만 같은 환경을 노출합니다. Global worktree extension은 project-local resource가 로드되기 전 `project_trust`에서 이 파일을 검증하고 한 번 소비합니다.
+생성 프로세스는 agent 전역 디렉터리에 0600 권한의 일회성 승인 파일을 만들고 exact cwd·target session·`create-worktree` authorization provenance·5분 TTL을 기록합니다. 새 panel activation은 승인 파일 경로를 child 환경으로 전달하고, 현재 panel activation은 `switchSession()` 호출 동안만 같은 환경을 노출합니다. 같은 process에서 current-panel replacement가 겹치면 FIFO로 직렬화하고, 각 실행은 자신이 소유한 env일 때만 이전 값을 복원합니다. Global worktree extension은 project-local resource가 로드되기 전 `project_trust`에서 이 파일을 검증하고 한 번 소비합니다.
 
 다음 경우에는 `trusted: "undecided"`를 반환해 Pi의 저장된 결정·`defaultProjectTrust`·기본 질문 흐름에 그대로 맡깁니다.
 
@@ -94,7 +94,7 @@ Worktree directory나 session file을 만들었다고 workflow가 완료된 것�
 
 ## Failure Rule
 
-새 panel open, exact-session READY, context fork, continuation dispatch 중 하나라도 실패하면 source panel은 그대로 둡니다. Parent가 cancellation을 claim하고 target terminal close가 확인된 경우에만 이번 실행이 만든 session/worktree/branch 삭제를 허용합니다. Terminal close가 실패하거나 child가 이미 `continuing|continued`를 소유했다면 descriptor·panel record·target session·worktree를 recovery artifact로 보존하고 `safeToDeleteTarget: false`를 반환합니다. Cleanup이 완전하지 않으면 남은 artifact와 원인을 BLOCKED 결과에 명시하며 current-panel fallback이나 절대경로 작업으로 성공을 꾸미지 않습니다.
+새 panel open, exact-session READY, context fork, continuation dispatch 중 하나라도 실패하면 source panel은 그대로 둡니다. Host adapter가 결과 대신 throw하면 surface 생성 여부를 확인할 수 없으므로 descriptor를 `failed`로 기록하고 trust marker는 exact cwd·TTL recovery artifact로 보존하며 `safeToDeleteTarget: false`를 반환합니다. Parent가 cancellation을 claim하고 target terminal close가 확인된 경우에만 이번 실행이 만든 session/worktree/branch 삭제를 허용합니다. Terminal close가 실패하거나 child가 이미 `continuing|continued`를 소유했다면 descriptor·panel record·target session·worktree를 recovery artifact로 보존하고 `safeToDeleteTarget: false`를 반환합니다. Cleanup이 완전하지 않으면 남은 artifact와 원인을 BLOCKED 결과에 명시하며 current-panel fallback이나 절대경로 작업으로 성공을 꾸미지 않습니다.
 
 ## In-place Branch Boundary
 
