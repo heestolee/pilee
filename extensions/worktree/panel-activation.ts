@@ -16,6 +16,11 @@ import {
 	type ExactSessionPanelOpenResult,
 } from "../fork-panel/index.ts";
 import {
+	CREATED_WORKTREE_PROJECT_TRUST_ENV,
+	prepareCreatedWorktreeProjectTrust,
+	removeCreatedWorktreeProjectTrust,
+} from "./project-trust.ts";
+import {
 	appendWorkspaceAuthorizationEvent,
 	consumeWorkspaceAuthorization,
 	createWorkspaceActivationContract,
@@ -147,6 +152,7 @@ interface ActivateWorkspacePanelInput {
 	timeoutMs?: number;
 	timeoutPolicy?: "cancel" | "preserve-pending";
 	activationRoot?: string;
+	trustRoot?: string;
 }
 
 interface ActivationDependencies {
@@ -474,6 +480,25 @@ export async function activateWorkspaceInNewPanel(
 		throw new Error("activateWorkspaceInNewPanel은 new-panel contract만 받습니다.");
 	}
 	const prepared = prepareWorkspacePanelActivation(input);
+	let projectTrustPath: string;
+	try {
+		projectTrustPath = prepareCreatedWorktreeProjectTrust({
+			contract: input.contract,
+			cwd: input.cwd,
+			sessionFile: input.sessionFile,
+			root: input.trustRoot ?? (input.activationRoot ? join(input.activationRoot, "project-trust") : undefined),
+		}).path;
+	} catch (error) {
+		rmSync(prepared.path, { force: true });
+		rmSync(`${prepared.path}.lock`, { recursive: true, force: true });
+		return {
+			status: "blocked",
+			reason: `created worktree project trust 준비 실패: ${error instanceof Error ? error.message : String(error)}`,
+			contract: input.contract,
+			placement,
+			safeToDeleteTarget: true,
+		};
+	}
 	const openPanel = dependencies.openPanel ?? openExactSessionInNewPanel;
 	const closePanel = dependencies.closePanel ?? closeExactSessionPanel;
 	const removePanelRecord = dependencies.removePanelRecord ?? removeExactSessionPanelRecord;
@@ -486,9 +511,13 @@ export async function activateWorkspaceInNewPanel(
 		sessionFile: input.sessionFile,
 		sourceSessionFile: input.sourceSessionFile,
 		title: input.title,
-		env: { [WORKSPACE_ACTIVATION_ENV]: prepared.path },
+		env: {
+			[WORKSPACE_ACTIVATION_ENV]: prepared.path,
+			[CREATED_WORKTREE_PROJECT_TRUST_ENV]: projectTrustPath,
+		},
 	});
 	if (opened.status === "blocked") {
+		removeCreatedWorktreeProjectTrust(projectTrustPath);
 		rmSync(prepared.path, { force: true });
 		rmSync(`${prepared.path}.lock`, { recursive: true, force: true });
 		return {
@@ -554,6 +583,7 @@ export async function activateWorkspaceInNewPanel(
 	const timeoutMs = input.timeoutMs ?? DEFAULT_READY_TIMEOUT_MS;
 	const final = await waitForWorkspacePanelActivation(prepared.path, expectedStatus, timeoutMs, sleep);
 	if (reachedExpectedStatus(final, expectedStatus)) {
+		removeCreatedWorktreeProjectTrust(projectTrustPath);
 		rmSync(prepared.path, { force: true });
 		return activatedResult(input, placement, opened, final);
 	}
@@ -601,6 +631,7 @@ export async function activateWorkspaceInNewPanel(
 	if (!cancellation.changed) {
 		const current = cancellation.descriptor;
 		if (reachedExpectedStatus(current, expectedStatus)) {
+			removeCreatedWorktreeProjectTrust(projectTrustPath);
 			rmSync(prepared.path, { force: true });
 			return activatedResult(input, placement, opened, current);
 		}
@@ -682,6 +713,7 @@ export async function activateWorkspaceInNewPanel(
 	} catch {
 		// Terminal close is the deletion safety boundary; keep the descriptor for recovery if finalization fails.
 	}
+	removeCreatedWorktreeProjectTrust(projectTrustPath);
 	return {
 		status: final?.status === "failed" ? "failed" : "blocked",
 		reason,

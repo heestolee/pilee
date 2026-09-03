@@ -43,6 +43,7 @@ import {
 	resolveWorkspaceActivationAuthorization,
 	type WorkspacePanelActivationResult,
 } from "./panel-activation.ts";
+import { registerCreatedWorktreeProjectTrust } from "./project-trust.ts";
 import {
 	createWorkspaceActivationContract,
 	workspaceAuthorizationConsumerId,
@@ -3839,6 +3840,7 @@ async function handleWt(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCon
 
 export default function (pi: ExtensionAPI) {
 	installRequestSessionSwitchPatch();
+	registerCreatedWorktreeProjectTrust(pi);
 	registerWorkspacePanelActivationReceiver(pi);
 	const configuredRepoLabel = profiledRepoLabel();
 	pi.registerCommand("wt", {

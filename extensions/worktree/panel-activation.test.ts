@@ -12,6 +12,11 @@ import {
 	WORKSPACE_ACTIVATION_ENV,
 } from "./panel-activation.ts";
 import {
+	consumeCreatedWorktreeProjectTrust,
+	CREATED_WORKTREE_PROJECT_TRUST_ENV,
+	prepareCreatedWorktreeProjectTrust,
+} from "./project-trust.ts";
+import {
 	consumeWorkspaceAuthorization,
 	createWorkspaceActivationContract,
 	explicitWorkspaceAuthorization,
@@ -102,11 +107,74 @@ test("target receiver writes READY before dispatching continuation", async () =>
 	}
 });
 
-test("clean target without source session provenance can become READY in a new panel", async () => {
+test("created worktree trust is exact-path, remembered, and single-use", () => {
+	const f = fixture();
+	try {
+		const trustRoot = join(f.root, "project-trust");
+		const prepared = prepareCreatedWorktreeProjectTrust({
+			contract: contract("trust-exact-path"),
+			cwd: f.root,
+			sessionFile: f.targetSession,
+			root: trustRoot,
+			now: 1_000,
+		});
+		const env = { [CREATED_WORKTREE_PROJECT_TRUST_ENV]: prepared.path };
+		assert.deepEqual(
+			consumeCreatedWorktreeProjectTrust(f.root, env, { root: trustRoot, now: 1_001 }),
+			{ trusted: "yes", remember: true },
+		);
+		assert.equal(existsSync(prepared.path), false, "trust authorization must be consumed once");
+		assert.deepEqual(
+			consumeCreatedWorktreeProjectTrust(f.root, env, { root: trustRoot, now: 1_002 }),
+			{ trusted: "undecided" },
+		);
+		assert.deepEqual(consumeCreatedWorktreeProjectTrust(f.root, {}), { trusted: "undecided" });
+	} finally {
+		rmSync(f.root, { recursive: true, force: true });
+	}
+});
+
+test("created worktree trust defers mismatched and expired paths to Pi", () => {
+	const f = fixture();
+	try {
+		const trustRoot = join(f.root, "project-trust");
+		const other = join(f.root, "other");
+		mkdirSync(other);
+		const mismatch = prepareCreatedWorktreeProjectTrust({
+			contract: contract("trust-mismatch"),
+			cwd: f.root,
+			sessionFile: f.targetSession,
+			root: trustRoot,
+			now: 1_000,
+		});
+		assert.deepEqual(
+			consumeCreatedWorktreeProjectTrust(other, { [CREATED_WORKTREE_PROJECT_TRUST_ENV]: mismatch.path }, { root: trustRoot, now: 1_001 }),
+			{ trusted: "undecided" },
+		);
+		assert.equal(existsSync(mismatch.path), false);
+
+		const expired = prepareCreatedWorktreeProjectTrust({
+			contract: contract("trust-expired"),
+			cwd: f.root,
+			sessionFile: f.targetSession,
+			root: trustRoot,
+			now: 1_000,
+		});
+		assert.deepEqual(
+			consumeCreatedWorktreeProjectTrust(f.root, { [CREATED_WORKTREE_PROJECT_TRUST_ENV]: expired.path }, { root: trustRoot, now: 301_001 }),
+			{ trusted: "undecided" },
+		);
+	} finally {
+		rmSync(f.root, { recursive: true, force: true });
+	}
+});
+
+test("clean target without source session provenance is trusted before becoming READY in a new panel", async () => {
 	const f = fixture();
 	try {
 		const activation = contract("clean-no-source");
 		const activationRoot = join(f.root, "clean-no-source");
+		const trustRoot = join(activationRoot, "project-trust");
 		const result = await activateWorkspaceInNewPanel({} as any, {} as any, {
 			contract: activation,
 			cwd: f.root,
@@ -116,6 +184,10 @@ test("clean target without source session provenance can become READY in a new p
 		}, {
 			openPanel: async (_hostPi, request) => {
 				assert.equal(request.sourceSessionFile, undefined);
+				assert.deepEqual(
+					consumeCreatedWorktreeProjectTrust(f.root, request.env, { root: trustRoot }),
+					{ trusted: "yes", remember: true },
+				);
 				await receiveWorkspacePanelActivation({} as any, {
 					cwd: f.root,
 					sessionManager: { getSessionFile: () => f.targetSession, getCwd: () => f.root, appendCustomEntry() {} },
