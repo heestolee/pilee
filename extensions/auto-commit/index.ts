@@ -394,6 +394,14 @@ export interface LogicalAtomGateResult {
 	blocks: string[];
 }
 
+function i18nCompanionReason(path: string): string | undefined {
+	const normalized = normalizeGitPath(path);
+	const fileName = normalized.split("/").at(-1) ?? normalized;
+	if (/(^|\/)(?:public\/)?locales\/[^/]+\/[^/]+\.(?:json|ya?ml)$/u.test(normalized)) return "i18n-locale";
+	if (/^generated-types\.[cm]?[tj]sx?$/u.test(fileName) && /(^|\/)(?:i18n|l10n|localization)(\/|$)/u.test(normalized)) return "generated";
+	return undefined;
+}
+
 function companionReason(path: string): string | undefined {
 	const normalized = normalizeGitPath(path);
 	const fileName = normalized.split("/").at(-1) ?? normalized;
@@ -409,10 +417,11 @@ function companionReason(path: string): string | undefined {
 }
 
 function classifyLogicalAtomPaths(paths: string[]): LogicalAtomPathClassification[] {
-	return paths.map((path) => {
-		const normalized = normalizeGitPath(path);
-		const reason = companionReason(normalized);
-		return reason ? { path: normalized, role: "companion", reason } : { path: normalized, role: "primary" };
+	const normalizedPaths = paths.map(normalizeGitPath);
+	const hasNonI18nPrimaryChange = normalizedPaths.some((path) => !companionReason(path) && !i18nCompanionReason(path));
+	return normalizedPaths.map((path) => {
+		const reason = companionReason(path) ?? (hasNonI18nPrimaryChange ? i18nCompanionReason(path) : undefined);
+		return reason ? { path, role: "companion", reason } : { path, role: "primary" };
 	});
 }
 
@@ -996,6 +1005,7 @@ export default function (pi: ExtensionAPI) {
 			"auto_commit record.evidence is optional and only for non-obvious decision evidence such as before-fail/after-pass behavior, preserved schema/invariants, or a measurement that justifies the choice. Do not list routine test/lint/typecheck/build success, test counts, browser dimensions, or capture review; those belong in CI, PR test plans, or verify reports.",
 			"auto_commit records must preserve durable rationale and provenance, not raw agent reasoning or unverified claims; omit unavailable links rather than inventing them.",
 			"auto_commit enforces a diff-aware logical atom gate: 3+ primary files, large diffs, layer mix, and surface fan-out are evaluated before commit; small same-cluster fan-out may pass with warnings.",
+			"Treat locale snapshots created by an i18n generator, generated i18n key/type artifacts, their tests, and the consuming code as one logical atom. Do not split that feature by language or separate generation from application.",
 			"For action=quick, default pushPolicy=push-if-tracking commits and pushes to the safe upstream feature branch when available.",
 			"Treat status=committed_not_pushed as incomplete when the user expected push; do not report done until push is resolved.",
 			"auto_commit rejects conventional commit scope parentheses by default; use messages like 'feat: 한글 설명'.",

@@ -88,6 +88,62 @@ test("logical atom gate allows primary path with companion files", () => {
 	}));
 });
 
+test("logical atom gate keeps i18n generator outputs with consuming code in one commit", () => {
+	const result = evaluateLogicalAtomGate({
+		commits: [{
+			message: "feat: 예약 변경 철회 문구 다국어 적용",
+			paths: [
+				"frontend/apps/web/domain/common/myPage/MyReservation/MyReservationDateChangeRequestButton.tsx",
+				"frontend/apps/web/domain/common/myPage/MyReservation/MyReservationSpotCardActionButton.test.tsx",
+				"frontend/apps/web/i18n/generated-types.ts",
+				"frontend/apps/web/public/locales/de/common.json",
+				"frontend/apps/web/public/locales/en/common.json",
+				"frontend/apps/web/public/locales/es/common.json",
+				"frontend/apps/web/public/locales/fr/common.json",
+				"frontend/apps/web/public/locales/id/common.json",
+				"frontend/apps/web/public/locales/it/common.json",
+				"frontend/apps/web/public/locales/ja/common.json",
+				"frontend/apps/web/public/locales/mn/common.json",
+				"frontend/apps/web/public/locales/ru/common.json",
+				"frontend/apps/web/public/locales/th/common.json",
+				"frontend/apps/web/public/locales/vi/common.json",
+				"frontend/apps/web/public/locales/zh-CN/common.json",
+				"frontend/apps/web/public/locales/zh-HK/common.json",
+				"frontend/apps/web/public/locales/zh-TW/common.json",
+			],
+		}],
+	});
+
+	assert.equal(result.decision, "pass");
+	assert.deepEqual(result.warnings, []);
+	assert.deepEqual(result.blocks, []);
+});
+
+test("logical atom gate keeps locale-only batches as primary without consuming code", () => {
+	const paths = ["de", "en", "es", "fr", "it", "ja"].map(
+		(locale) => `frontend/apps/web/public/locales/${locale}/common.json`,
+	);
+	const result = evaluateLogicalAtomGate({
+		commits: [{ message: "chore: locale snapshot 동기화", paths }],
+	});
+
+	assert.equal(result.decision, "block");
+	assert.match(result.blocks.join("\n"), /6 primary paths/u);
+});
+
+test("logical atom gate keeps locale source modules as primary paths", () => {
+	const paths = Array.from(
+		{ length: 6 },
+		(_, index) => `frontend/apps/web/locales/runtime/source-${index}.ts`,
+	);
+	const result = evaluateLogicalAtomGate({
+		commits: [{ message: "refactor: locale runtime 모듈 정리", paths }],
+	});
+
+	assert.equal(result.decision, "block");
+	assert.match(result.blocks.join("\n"), /6 primary paths/u);
+});
+
 test("buildCommitMessage renders only selected semantic sections with scannable bullets", () => {
 	const message = buildCommitMessage({
 		message: "fix: webhook 재시도 차단",
@@ -181,6 +237,8 @@ test("tool guidance keeps record lenses selective and routine verification out o
 	assert.match(guidance, /parallel decisions.*bullets/u);
 	assert.match(guidance, /evidence is optional/u);
 	assert.match(guidance, /Do not list routine test\/lint\/typecheck\/build success/u);
+	assert.match(guidance, /i18n generator.*one logical atom/u);
+	assert.match(guidance, /Do not split that feature by language/u);
 });
 
 test("formatResult makes unpushed commits explicit", () => {
