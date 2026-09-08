@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { chmodSync, closeSync, copyFileSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, readSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join, relative } from "node:path";
+import { basename, delimiter, dirname, join, relative } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 import type { AutocompleteItem } from "@mariozechner/pi-tui";
@@ -865,6 +865,17 @@ function pruneSessionLaunchScripts(root: string): void {
 	} catch {}
 }
 
+export function buildSessionRuntimePath(currentPath = process.env.PATH): string {
+	const entries = [
+		dirname(process.execPath),
+		join(homedir(), ".local", "bin"),
+		"/opt/homebrew/bin",
+		"/usr/local/bin",
+		...(currentPath ?? "").split(delimiter),
+	].filter(Boolean);
+	return [...new Set(entries)].join(delimiter);
+}
+
 function prepareSessionLaunchScript(
 	cwd: string,
 	sessionFile: string,
@@ -874,7 +885,8 @@ function prepareSessionLaunchScript(
 	mkdirSync(root, { recursive: true, mode: 0o700 });
 	pruneSessionLaunchScripts(root);
 	const scriptPath = join(root, `launch-${Date.now()}-${randomUUID().slice(0, 8)}.sh`);
-	const command = `cd ${shellQuote(cwd)} && ${buildEnvPrefix(env)}${currentPiCommand()} --session ${shellQuote(sessionFile)}`;
+	const runtimeEnv = { ...env, PATH: env.PATH || buildSessionRuntimePath() };
+	const command = `cd ${shellQuote(cwd)} && ${buildEnvPrefix(runtimeEnv)}${currentPiCommand()} --session ${shellQuote(sessionFile)}`;
 	writeFileSync(scriptPath, `#!/bin/bash\nrm -f -- ${shellQuote(scriptPath)}\nexec /bin/bash -lc ${shellQuote(command)}\n`, { encoding: "utf8", mode: 0o700 });
 	chmodSync(scriptPath, 0o700);
 	return { command: esc(scriptPath), scriptPath };

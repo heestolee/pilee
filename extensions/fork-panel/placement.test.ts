@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import test from "node:test";
 import {
 	buildOpenSessionPlan,
 	buildRepanelScript,
+	buildSessionRuntimePath,
 	chooseNewPanelPlacement,
 	openExactSessionInNewPanel,
 	parsePanelTargetRequest,
@@ -67,6 +68,9 @@ test("buildOpenSessionScript uses a short ASCII script command while preserving 
 			assert.ok(launchScript.includes("/tmp/정확한 session.jsonl"));
 			assert.ok(launchScript.includes("PI_WORKSPACE_ACTIVATION_FILE="));
 			assert.ok(launchScript.includes("/tmp/활성화.json"));
+			assert.ok(launchScript.includes("PATH="));
+			assert.ok(launchScript.includes(dirname(process.execPath)));
+			assert.ok(launchScript.includes(join(homedir(), ".local", "bin")));
 			assert.ok(launchScript.indexOf("rm -f --") < launchScript.indexOf("exec /bin/bash"));
 			assert.match(plan.script, /return id of newTerm/);
 		}
@@ -86,6 +90,19 @@ test("buildOpenSessionScript uses a short ASCII script command while preserving 
 	} finally {
 		rmSync(launchRoot, { recursive: true, force: true });
 	}
+});
+
+test("session runtime PATH는 Node, 사용자 bin, Homebrew와 기존 PATH를 보존한다", () => {
+	const runtimePath = buildSessionRuntimePath("/usr/bin:/bin").split(":");
+	assert.deepEqual(runtimePath.slice(0, 4), [
+		dirname(process.execPath),
+		join(homedir(), ".local", "bin"),
+		"/opt/homebrew/bin",
+		"/usr/local/bin",
+	]);
+	assert.ok(runtimePath.includes("/usr/bin"));
+	assert.ok(runtimePath.includes("/bin"));
+	assert.equal(new Set(runtimePath).size, runtimePath.length);
 });
 
 test("short launch script runs in a background PTY with exact Unicode cwd, env, and session", () => {
