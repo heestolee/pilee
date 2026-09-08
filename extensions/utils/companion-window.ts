@@ -121,12 +121,32 @@ function isOpen(record: CompanionRecord | undefined): record is CompanionRecord 
 	return Boolean(record?.window && !record.closed);
 }
 
+async function waitForReady(win: GlimpseWindow, timeoutMs: number): Promise<boolean> {
+	return await new Promise<boolean>((resolve) => {
+		let settled = false;
+		const finish = (ready: boolean) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			resolve(ready);
+		};
+		const fail = () => {
+			try { win.close(); } catch {}
+			finish(false);
+		};
+		const timer = setTimeout(fail, timeoutMs);
+		win.on("ready", () => finish(true));
+		win.on("closed", () => finish(false));
+		win.on("error", fail);
+	});
+}
+
 export async function openCompanionHtml(
 	pi: ExtensionAPI,
 	ctx: Pick<ExtensionContext, "cwd" | "sessionManager">,
 	html: string,
 	title: string,
-	options: { width?: number; height?: number; openLinks?: boolean; key?: string } = {},
+	options: { width?: number; height?: number; openLinks?: boolean; key?: string; readyTimeoutMs?: number } = {},
 ): Promise<CompanionOpenResult> {
 	const key = options.key ?? sessionKey(ctx);
 	const open = await resolveGlimpseOpen();
@@ -144,8 +164,11 @@ export async function openCompanionHtml(
 		return { mode: "reused", key, window: existing.window };
 	}
 	const geometry = await rightHalfGeometry(pi, options.width ?? 1180, options.height ?? 920);
+	let win: GlimpseWindow | undefined;
 	try {
-		const win = open(html, { ...geometry, title, openLinks });
+		win = open("", { ...geometry, title, openLinks });
+		if (!await waitForReady(win, options.readyTimeoutMs ?? 5_000)) return { mode: "none", key };
+		writeHtml(win, html);
 		const record: CompanionRecord = { key, title, html, openLinks, window: win, closed: false, updatedAt: Date.now() };
 		win.on("closed", () => {
 			record.closed = true;
@@ -154,6 +177,7 @@ export async function openCompanionHtml(
 		companions.set(key, record);
 		return { mode: "glimpse", key, window: win };
 	} catch {
+		try { win?.close(); } catch {}
 		return { mode: "none", key };
 	}
 }
@@ -163,7 +187,7 @@ export async function openCompanionUrl(
 	ctx: Pick<ExtensionContext, "cwd" | "sessionManager">,
 	url: string,
 	title: string,
-	options: { width?: number; height?: number; openLinks?: boolean; key?: string } = {},
+	options: { width?: number; height?: number; openLinks?: boolean; key?: string; readyTimeoutMs?: number } = {},
 ): Promise<CompanionOpenResult> {
 	return openCompanionHtml(pi, ctx, redirectHtml(url, title), title, options);
 }

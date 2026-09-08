@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 
 export interface GlimpseWindow {
 	on(event: "closed", handler: () => void): void;
+	on(event: "error", handler: (error: Error) => void): void;
 	on(event: "message", handler: (data: unknown) => void): void;
 	on(event: "ready", handler: (info: { screen?: { visibleHeight?: number } }) => void): void;
 	close(): void;
@@ -397,6 +398,22 @@ function resolveDarwinHostWithShortcutSupport(resolvedGlimpseMjs: string, dir: s
 	}
 }
 
+export function buildDarwinHostAdapterScript(realHost: string): string {
+	return `#!/usr/bin/env bash
+set -euo pipefail
+real_host=${shellQuote(realHost)}
+filter_stderr() {
+  while IFS= read -r line; do
+    case "$line" in
+      *"TSM AdjustCapsLockLEDForKeyTransitionHandling"*|*"_ISSetPhysicalKeyboardCapsLockLED Inhibit"*|*"IMKCFRunLoopWakeUpReliable"*) continue ;;
+      *) printf '%s\\n' "$line" >&2 ;;
+    esac
+  done
+}
+exec "$real_host" "$@" 2> >(filter_stderr)
+`;
+}
+
 function installDarwinHostAdapter(resolvedGlimpseMjs: string): void {
 	if (process.platform !== "darwin") return;
 
@@ -408,18 +425,7 @@ function installDarwinHostAdapter(resolvedGlimpseMjs: string): void {
 	const realHost = resolveDarwinHostWithShortcutSupport(resolvedGlimpseMjs, dir);
 	if (!realHost) return;
 
-	const content = `#!/usr/bin/env bash
-set -euo pipefail
-real_host=${shellQuote(realHost)}
-exec "$real_host" "$@" 2> >(
-  while IFS= read -r line; do
-    case "$line" in
-      *"TSM AdjustCapsLockLEDForKeyTransitionHandling"*|*"_ISSetPhysicalKeyboardCapsLockLED Inhibit"*|*"IMKCFRunLoopWakeUpReliable"*) ;;
-      *) printf '%s\\n' "$line" >&2 ;;
-    esac
-  done
-)
-`;
+	const content = buildDarwinHostAdapterScript(realHost);
 	try {
 		mkdirSync(dir, { recursive: true });
 		if (!existsSync(wrapper) || readFileSync(wrapper, "utf-8") !== content) {

@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
-import { captureGlimpseHtmlPng, patchDarwinWebViewShortcutSupport, setGlimpseOpenForTests, type GlimpseOpen, type GlimpseWindow } from "./glimpse.ts";
+import { buildDarwinHostAdapterScript, captureGlimpseHtmlPng, patchDarwinWebViewShortcutSupport, setGlimpseOpenForTests, type GlimpseOpen, type GlimpseWindow } from "./glimpse.ts";
 
 test("Glimpse macOS host patch adds a native WKWebView snapshot command", () => {
 	const require = createRequire(import.meta.url);
@@ -15,6 +16,15 @@ test("Glimpse macOS host patch adds a native WKWebView snapshot command", () => 
 	assert.match(patched, /WKSnapshotConfiguration\(\)/);
 	assert.match(patched, /webView\.takeSnapshot/);
 	assert.match(patched, /data:image\/png;base64,/);
+});
+
+test("Glimpse host adapter는 macOS 기본 Bash 3 문법을 지킨다", () => {
+	const script = buildDarwinHostAdapterScript("/tmp/fake glimpse host");
+	const syntax = spawnSync("/bin/bash", ["-n"], { input: script, encoding: "utf8" });
+	assert.equal(syntax.status, 0, syntax.stderr);
+	assert.match(script, /filter_stderr\(\)/);
+	assert.match(script, /\*"IMKCFRunLoopWakeUpReliable"\*\) continue ;;/);
+	assert.match(script, /2> >\(filter_stderr\)/);
 });
 
 test("captureGlimpseHtmlPng requests a bounded snapshot and returns its PNG response", async () => {
