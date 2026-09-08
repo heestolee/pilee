@@ -248,7 +248,7 @@ test("관계와 변경 의미 Mermaid는 공통 renderer의 authored order와 �
 	assert.match(relationshipSource, /^flowchart LR/m);
 	assert.match(relationshipSource, /F1\["01 · second\.ts"\]/);
 	assert.match(relationshipSource, /F2\["02 · first\.ts"\]/);
-	assert.match(relationshipSource, /F1 -->\|노출 정책 조회\| F2/);
+	assert.match(relationshipSource, /F1 -->\|"노출 정책 조회"\| F2/);
 	const meaningSource = decodeURIComponent(relationshipDocument.querySelector(".reviewMeaningVisual [data-mermaid-source]")?.getAttribute("data-mermaid-source") || "");
 	assert.match(meaningSource, /subgraph G1\["BEFORE · 기존"\]/);
 	assert.match(meaningSource, /class N1 role_removed/);
@@ -272,6 +272,16 @@ test("관계와 변경 의미 Mermaid는 공통 renderer의 authored order와 �
 	assert.match(meaningSequence, /rect rgb\(255,242,217\)/);
 	assert.match(meaningSequence, /A2-->>A1: 충돌 refetch/);
 	assert.match(meaningSequence, /Note over A2,A1: 최신 snapshot/);
+});
+
+test("flowchart edge label은 Mermaid 제어문자를 보존한 채 quote한다", () => {
+	const state = fixtureState();
+	state.document.relationships.relations[0].label = "1:1 run()";
+	state.document.meanings[0].visual.edges[0].label = "1:1 run()";
+	const { document } = parseHTML(renderMetaReviewDocument(state, { mode: "live" }));
+	const sources = [...document.querySelectorAll("[data-mermaid-source]")].map((element) => decodeURIComponent(element.getAttribute("data-mermaid-source") || ""));
+
+	assert.ok(sources.filter((source) => source.startsWith("flowchart")).every((source) => source.includes('|"1:1 run()"|')));
 });
 
 test("설명 range와 live 선택 단위는 생성된 diff DOM에서 직접 보존된다", () => {
@@ -328,4 +338,42 @@ test("standalone runtime은 file jump·details·reading progress와 Mermaid fall
 	assert.equal(document.getElementById("reviewReadingProgress")?.textContent, "33% 읽음");
 	assert.match(document.querySelector(".diagramFallback")?.textContent || "", /flowchart LR/);
 	assert.ok(document.querySelector("details.reviewFile"), "파일 본문은 native details로 유지한다");
+});
+
+test("standalone runtime은 실패한 Mermaid가 body에 남긴 error SVG를 제거한다", async () => {
+	const html = buildMetaReviewStandaloneHtml(fixtureState());
+	const { document, window } = parseHTML(html);
+	const appendErrorArtifact = (id: string) => {
+		const wrapper = document.createElement("div");
+		wrapper.id = `d${id}`;
+		const svg = document.createElement("svg");
+		svg.id = id;
+		svg.setAttribute("aria-roledescription", "error");
+		wrapper.appendChild(svg);
+		document.body.appendChild(wrapper);
+	};
+	appendErrorArtifact("stale-mermaid-error");
+	let renderCalls = 0;
+	(window as any).mermaid = {
+		initialize() {},
+		async render(id: string) {
+			renderCalls += 1;
+			appendErrorArtifact(id);
+			throw new Error("Parse error");
+		},
+	};
+	const inlineScripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map((match) => match[1] || "").filter((source) => source.trim());
+	for (const script of inlineScripts) new Function("window", "document", "requestAnimationFrame", "setTimeout", script)(window, document, () => {}, (callback: () => void) => callback());
+	await new Promise((resolve) => setTimeout(resolve, 0));
+
+	assert.ok(renderCalls > 0);
+	assert.equal(document.querySelectorAll('body > div[id^="d"] > svg[aria-roledescription="error"]').length, 0);
+	const initialRenderCalls = renderCalls;
+	const expand = document.querySelector("[data-review-visual-expand]") as any;
+	expand.dispatchEvent(new (window as any).Event("click", { bubbles: true, cancelable: true }));
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	assert.ok(renderCalls > initialRenderCalls, "확대 overlay도 Mermaid render를 실행한다");
+	assert.equal(document.querySelectorAll('body > div[id^="d"] > svg[aria-roledescription="error"]').length, 0);
+	assert.match(document.getElementById("reviewMeaningVisualOverlayStage")?.textContent || "", /flowchart LR/);
+	assert.match(html, /body > div\[id\^="d"\] > svg\[aria-roledescription="error"\]\{display:none!important\}/);
 });

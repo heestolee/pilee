@@ -636,6 +636,12 @@ test("buildStudyHardStudioHtml keeps the learning note geometry stable under the
 	assert.match(html, /\/history\//);
 	assert.match(html, /sequenceDiagram/);
 	assert.match(html, /renderNoteMermaidDiagrams/);
+	assert.match(html, /function cleanupMermaidRender/);
+	assert.match(html, /function cleanupStaleMermaidErrors/);
+	const mermaidRenderCount = [...html.matchAll(/window\.mermaid\.render\(/g)].length;
+	assert.equal([...html.matchAll(/window\.mermaid\.render\(renderId,source\)/g)].length, mermaidRenderCount);
+	assert.equal([...html.matchAll(/finally\{cleanupMermaidRender\(renderId\);\}/g)].length, mermaidRenderCount);
+	assert.match(html, /body > div\[id\^="d"\] > svg\[aria-roledescription="error"\] \{ display:none !important; \}/);
 	assert.match(html, /function isOverviewMermaidSource/);
 	assert.match(html, /target\.classList\.toggle\('fitOverview',isOverviewMermaidSource\(source\)\)/);
 	const overviewClassifierSource = html.match(/function isOverviewMermaidSource\(source\)\{[^}]+\}/)?.[0];
