@@ -52,6 +52,8 @@ Bad:
   x1y2z3a add task feature, fix sidebar, update deps
 ```
 
+다국어 기능에서 i18n generator가 만든 locale snapshot, generated key/type, 관련 테스트, 그리고 번역 키를 소비하는 코드는 하나의 사용자 기능을 완성하는 companion set이다. 언어권별로 쪼개거나 생성물과 적용 코드를 분리하지 않는다. 서로 독립적으로 배포해야 하는 번역 작업이라는 명시적 근거가 있을 때만 나눈다.
+
 ### Commit Messages
 
 첫 줄은 결과 중심의 짧은 문장으로 의도를 설명합니다. 비자명한 변경의 본문은 diff에서 사라지는 인과관계와 판단을 보존하는 작은 engineering decision log입니다. 고정 양식을 채우지 말고 다음 렌즈 중 해당 commit을 이해하는 데 필요한 것만 고릅니다.
@@ -122,13 +124,25 @@ Repeat until feature complete.
 
 You never lose more than one increment of work. If something goes wrong, `git reset --hard HEAD` returns to the last verified state.
 
+### Rollback intent and proportional verification
+
+rollback 요청을 실행하기 전에 작업 모드를 구분한다.
+
+- **전체 리버트** — 대상 commit의 전체 patch를 역적용한다. 눈에 보이는 일부 파일이나 UI만 수동으로 되돌리지 않는다.
+- **선택적 롤백** — 제거할 변경과 보존할 변경을 명시하고, 전체 리버트인 것처럼 기록하지 않는다.
+- **커밋 역사 삭제** — 사용자가 commit 삭제나 history rewrite를 명시한 경우에만 drop/reset/cherry-pick과 `--force-with-lease`를 사용한다.
+
+사용자 표현이 명확하면 같은 선택을 다시 묻지 않는다. 전체 리버트 뒤에는 대상 patch의 모든 관련 경로가 의도대로 역적용됐는지 확인한다. 같은 경로에서 CI가 실패하면 새 fix를 덧대기 전에 불완전한 역적용부터 의심한다.
+
+검증은 상황에 비례한다. 대상 commit 직후를 바로 되돌리는 단순 리버트라면 부모 tree와 관련 경로가 같은지 확인할 수 있지만, 후속 정상 변경이 섞인 리버트에는 이 동일성 검사를 하드 게이트로 강제하지 않는다. 선택적 롤백과 history rewrite도 각각 명시한 최종 경로·남길 commit 목록을 기준으로 확인한다.
+
 ### Frame slice commit rhythm
 
 `/frame`이 만든 `implementation_plan.slices[]`가 있으면 각 slice는 커밋 후보 단위다. 하드하게 다음 작업을 막기보다, slice closure 시점마다 아래를 기본값으로 수행한다.
 
 1. currentSlice의 claim/scope/evidence를 확인한다.
 2. 가까운 검증이 통과하면 `work_context action=commit_plan`으로 explicit `auto_commit` plan을 생성한다.
-3. plan을 검토할 때 한 commit entry의 primary path가 3개 이상이면 파일 수만 보지 말고 diff 양, layer mix, cluster/surface fan-out을 확인한다. 작은 동일 cluster 변경은 warning allow가 가능하지만, 큰 diff나 layer-mixed 변경은 logical atom 단위로 쪼갠다. test/generated/schema/package metadata는 companion으로만 붙인다.
+3. plan을 검토할 때 한 commit entry의 primary path가 3개 이상이면 파일 수만 보지 말고 diff 양, layer mix, cluster/surface fan-out을 확인한다. 작은 동일 cluster 변경은 warning allow가 가능하지만, 큰 diff나 layer-mixed 변경은 logical atom 단위로 쪼갠다. test/generated/schema/package metadata와 i18n locale snapshot/generated key type은 companion으로만 붙인다.
 4. plan을 검토한 뒤 `auto_commit action=apply`로 커밋한다.
 5. 커밋을 미루면 이유를 `work_context checkpoint`에 남긴다.
 
@@ -228,6 +242,7 @@ git log --grep="keyword"       → search commit messages
 ## Handling Generated Files
 
 - Commit lockfiles, checked-in migrations, and generated schemas the project expects
+- Commit i18n generator locale snapshots and generated key/types with the consuming feature instead of splitting by locale or generation step
 - Do not commit build output, local environment files, or editor config
 - Maintain a `.gitignore` that covers generated artifacts, secrets, and local-only files
 

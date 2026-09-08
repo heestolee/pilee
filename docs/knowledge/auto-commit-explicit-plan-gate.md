@@ -6,15 +6,19 @@ tags:
   - commit
   - plan
   - safety
+  - i18n
+  - localization
 category: workflow
 status: active
 confidence: high
 applies_to:
   - extensions/auto-commit
   - extensions/work-context
-source: public
-reviewed_at: 2026-08-26
-reviewed_commit: dd55c1095e8d8624945c947a28ab5032f231a5a7
+source:
+  - public
+  - user-direction:2026-09-08-i18n-commit-atomicity
+reviewed_at: 2026-09-08
+reviewed_commit: ffd551d072c01ed0628f58dfa804dbde146a29a7
 related:
   - change-integration-discipline
   - request-traceability-surgical-changes
@@ -43,7 +47,8 @@ title_en: Auto-commit executes only explicit plans
 - `evidence`는 선택한 판단을 이해시키는 비자명한 근거에만 쓴다. 수정 전 실패→수정 후 통과, schema/invariant 무변경, 설계를 뒷받침하는 수치는 남길 수 있지만 일반 test/lint/typecheck/build 통과, 테스트 개수, 브라우저 치수와 캡처 확인은 CI·PR test plan·verify report에 둔다.
 - `record`는 raw chain-of-thought나 실행 로그가 아니라 diff에서 사라지는 인과관계, 선택 이유·불변조건·트레이드오프와 stable provenance만 보존한다. 확인하지 않은 근거나 존재하지 않는 링크를 만들지 않는다.
 - 단순 generated/mechanical entry는 `recordOmissionReason`을 명시해 제목-only를 유지할 수 있다. `quick`은 이 예외를 자주 쓰는 tiny hotfix/copy 전용 경로이며 비자명한 변경을 우회하는 수단이 아니다.
-- `test`, `spec`, `__tests__`, `tests`, `__generated__`, `generated`, `gen`, `schema.gql`, `schema.graphql`, package metadata는 companion path로 분류한다. companion은 source/test/generated/schema/package metadata 보조 관계가 닫히는 logical atom에만 붙일 수 있다.
+- `test`, `spec`, `__tests__`, `tests`, `__generated__`, `generated`, `gen`, `schema.gql`, `schema.graphql`, package metadata는 companion path로 분류한다. i18n generator가 만드는 `locales/<locale>/` 아래의 JSON/YAML snapshot과 i18n `generated-types`도 번역 키 소비 코드에 붙는 companion이다. companion은 source/test/generated/schema/package metadata 보조 관계가 닫히는 logical atom에만 붙일 수 있다.
+- locale snapshot, generated key/type, 관련 테스트, 번역 키 소비 코드가 하나의 다국어 기능을 완성하면 같은 commit entry로 유지한다. 파일 수를 줄이려고 언어권별로 쪼개거나 생성물과 적용 코드를 분리하지 않는다.
 - push는 plan의 `push`, `pushPolicy`, 또는 quick path 기본값(`push-if-tracking`)으로만 수행한다. 결과는 `committed_and_pushed` / `committed_not_pushed`로 분리해 보고한다.
 - `status`는 현재 branch/head와 안전한 push target/ahead/behind뿐 아니라 dirty diff의 commit readiness, ship readiness caveat, split recommendation을 진단한다.
 - `status`의 `READY_WITH_CAVEATS`는 “nearest validation 후 커밋 가능한 diff”라는 뜻이지 ship 완료가 아니다. migration 실행, UI capture, 최종 verify-report는 ship caveat로 남길 수 있다.
@@ -59,6 +64,7 @@ title_en: Auto-commit executes only explicit plans
 - renderer가 선택된 lens를 모두 같은 무제목 문단으로 이어 가독성을 잃거나, 반대로 빈 section을 만들기 위해 내용을 억지로 채우면 중단한다.
 - 관련 issue/PR/review가 있는데 이동 가능한 line number나 설명 없는 숫자만 남기고 stable permalink를 생략하면 provenance 품질을 다시 확인한다.
 - 한 commit entry가 큰 diff, layer-mixed 변경, 과도한 cluster/surface fan-out인데 `auto_commit`이 그대로 실행되면 중단한다. primary path 3~5개라도 작은 동일 cluster 변경이면 warning을 출력하고 허용할 수 있다.
+- i18n generator의 locale snapshot과 실제 번역 키 적용을 언어권별 또는 생성/적용별 commit으로 나누도록 유도하면 중단한다. 이 파일들은 하나의 사용자 기능에 붙는 companion이며, 자동으로 기존 여러 commit을 합치거나 history를 rewrite하는 근거는 아니다.
 - currentSlice scope 밖 파일을 기본 commit plan에 섞으면 중단하고 [Slice 완료는 commit 후보를 만든다](./slice-auto-commit-rhythm.md)의 leftover 원칙을 적용한다.
 - auto-commit 결과가 `committed_not_pushed`인데 사용자가 push 보류를 말하지 않았다면 완료 보고 전에 push 실패/스킵을 해결한다.
 - verified slice가 있고 dirty diff가 남아 있는데 “migration 실행 전”, “UI 캡처 전”, “최종 verify 전”만을 이유로 commit을 미루면 중단하고 commit plan을 만들거나 명시적 checkpoint reason을 남긴다.
