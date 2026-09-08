@@ -185,10 +185,10 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [AskUserQuestion은 의사결정 게이트다](./ask-user-question-decision-gates.md) | active | high | 2026-06-02 | ce5e875 | ask-user-question, tft, decision-gate, question, non-delegable, 질문 |
 | [AskUserQuestion 옵션은 행동 분기를 표현한다](./ask-user-question-option-design.md) | active | high | 2026-06-02 | ce5e875 | ask-user-question, option, wording, ceremony, tft, 질문 |
 | [Atomic evidence workflow는 작은 claim을 증거로 닫는다](./atomic-evidence-workflow.md) | active | high | 2026-06-02 | ce5e875 | atomic, evidence, claim, slice, verification, frame |
-| [Auto-commit은 명시 계획만 실행한다](./auto-commit-explicit-plan-gate.md) | active | high | 2026-09-08 | ffd551d | auto-commit, git, commit, plan, safety, i18n |
+| [Auto-commit은 명시 계획만 실행한다](./auto-commit-explicit-plan-gate.md) | active | high | 2026-09-08 | ff01ad9 | auto-commit, git, commit, plan, safety, i18n |
 | [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | high | 2026-06-02 | cc0bd98 | backlog, tasks, provenance, source-session, session, 맥락 |
 | [Bash tool override는 명령 의도와 출력 노이즈를 분리한다](./bash-tool-title-output-override.md) | active | high | 2026-06-24 | fae9aa3 | bash, tool, override, ui, output, title |
-| [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md) | active | high | 2026-09-08 | ffd551d | git, incremental, code-review, commit, revert, rollback |
+| [변경 통합은 작은 단위와 검증을 요구한다](./change-integration-discipline.md) | active | high | 2026-09-08 | ff01ad9 | git, incremental, code-review, commit, revert, rollback |
 | [CI-Ship은 PR 후 검증 실패 대응 단계다](./ci-ship-failure-response-boundary.md) | active | high | 2026-06-02 | cc0bd98 | ci-ship, ci, github-actions, pull-request, failure-analysis, ship |
 | [Clean handoff는 compact와 새 세션 사이의 전환 계약이다](./clean-handoff-session-continuation.md) | active | high | 2026-06-02 | cc0bd98 | session, handoff, compact, context, archive, continue-clean |
 | [자동 로드 컨텍스트는 최소 surface만 가진다](./context-loading-minimal-surface.md) | active | high | 2026-06-02 | cc0bd98 | context, agents-md, memory, system-prompt, token, autoload |

@@ -18,7 +18,7 @@ source:
   - public
   - user-direction:2026-09-08-i18n-commit-atomicity
 reviewed_at: 2026-09-08
-reviewed_commit: ffd551d072c01ed0628f58dfa804dbde146a29a7
+reviewed_commit: ff01ad920e4a75d5b9a3ec263e47126ced48926c
 related:
   - change-integration-discipline
   - request-traceability-surgical-changes
