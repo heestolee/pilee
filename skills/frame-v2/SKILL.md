@@ -196,6 +196,7 @@ Study Hard 렌더러는 매번 연결된 Frame의 존재를 확인한다.
 ## Worktree와 구현
 
 - Frame이 있고 Frame promotion을 포함한 fork를 원할 때만 `frame_v2_worktree_fork`를 사용한다.
+- 전용 fork도 slash `/wt fork`와 동일하게 `현재 패널 | 새 탭 | 오른쪽 패널`을 선택하며, 선택한 위치의 exact session에서 구현을 시작한다.
 - Frame이 없거나 해당 전용 fork가 필요하지 않으면 기존 worktree·구현 흐름을 사용한다. Frame v2가 별도 차단을 만들지 않는다.
 - worktree 전환 뒤 companion이 있으면 같은 companionId/runId를 유지한다.
 - 새 세션은 존재하는 canonical만 읽고 없는 artifact를 이유로 다른 정상 작업 흐름을 막지 않는다.
@@ -217,6 +218,7 @@ Study Hard 렌더러는 매번 연결된 Frame의 존재를 확인한다.
 - [ ] 선택 결과를 command가 다시 묻지 않고 prompt와 manifest에 보존했다.
 - [ ] Study Hard 완료 여부가 구현 hard gate가 되지 않았다.
 - [ ] Study Hard 시작 전에 Frame 존재 여부를 확인했다.
+- [ ] Frame v2 fork가 `/wt fork`와 같은 세 가지 panel 위치를 제공하고 선택한 위치에서 continuation을 시작했다.
 - [ ] Frame이 있으면 학습노트 최상단에 전체 기획 dropdown이 기본 접힘으로 보였다.
 - [ ] Frame이 없으면 dropdown이 나타나지 않았다.
 - [ ] 학습 본문은 Mental Model·Before/After·코드 읽기·이해 확인 중심이다.

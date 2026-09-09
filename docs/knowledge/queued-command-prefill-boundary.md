@@ -37,7 +37,7 @@ related:
 
 ## Judgment
 
-Pi 대화에 slash command 문자열을 queue했다고 해서 그 command가 실제로 실행된다고 가정하면 안 됩니다. 실행 경계가 중요한 작업은 목적에 맞는 실제 activation API로 수행합니다. current-panel 이동인 `/wt switch`는 `switchSession` 또는 deferred `requestSessionSwitch`를 사용하고, new/fork/create 흐름은 fork-panel host adapter로 exact cwd/session을 새 panel에서 연 뒤 target READY ack를 기다립니다. 둘을 서로의 fallback으로 사용하지 않습니다.
+Pi 대화에 slash command 문자열을 queue했다고 해서 그 command가 실제로 실행된다고 가정하면 안 됩니다. 실행 경계가 중요한 작업은 사용자가 고른 panel에 맞는 실제 activation API로 수행합니다. current-panel 이동인 `/wt switch`와 current-panel fork는 `switchSession` 또는 deferred `requestSessionSwitch`를 사용하고, 새 panel을 고른 fork/create 흐름은 fork-panel host adapter로 exact cwd/session을 연 뒤 target READY ack를 기다립니다. 둘을 사용자가 고르지 않은 방향의 fallback으로 바꾸지 않습니다.
 
 ## Boundary Rule
 
@@ -51,7 +51,7 @@ Subagent에 slash command 문자열을 그대로 넘기는 것도 command 실행
 
 `worktree_create`, `worktree_switch`, `worktree_fork` 같은 일반 도구는 slash command를 몰래 실행하지 않습니다. `worktree_create`와 `worktree_fork`는 매 실행 placement를 묻고 source panel을 유지한 채 exact target session을 새 Ghostty panel/tab에서 엽니다. target process는 session file과 cwd를 확인해 READY를 먼저 기록하고, 그 뒤에만 continuation을 follow-up으로 시작합니다. `worktree_switch`만 `switchSession` 또는 deferred `requestSessionSwitch`로 current panel을 이동합니다. 새 panel open/READY가 실패하면 이번 실행의 terminal/fork record/session/worktree/branch를 정리하고 BLOCKED로 끝내며, current-panel relaunch·slash prefill·절대경로 작업으로 우회하지 않습니다.
 
-`/frame`처럼 command shim에서 시작해 agent가 Step 9 결정을 처리하는 흐름은 command context bridge를 둡니다. `/frame` command handler가 자신의 `ExtensionCommandContext`를 frame identity에 묶어 저장하고, Step 9의 `fork해서 시작`은 `frame_worktree_fork` tool을 통해 사용자 slash `/wt fork`와 분리된 composed workflow runner를 호출합니다. placement 선택과 READY handshake는 이 workflow path에서 실행되고, 새 panel continuation이 승격된 frame/task의 첫 ready slice를 시작합니다. bridge context가 없거나 session이 맞지 않으면 worktree를 만들지 않고 BLOCKED로 멈춥니다.
+`/frame`처럼 command shim에서 시작해 agent가 Step 9 결정을 처리하는 흐름은 command context bridge를 둡니다. `/frame` command handler가 자신의 `ExtensionCommandContext`를 frame identity에 묶어 저장하고, Step 9의 `fork해서 시작`은 `frame_worktree_fork` tool을 통해 composed workflow runner를 호출합니다. 이 runner는 slash `/wt fork`와 같은 `현재 패널 | 새 탭 | 오른쪽 패널` 선택을 사용하되 full-lineage와 Frame/task 승격을 강제합니다. 현재 패널은 `switchSession`, 새 위치는 READY handshake 뒤 continuation으로 첫 ready slice를 시작합니다. bridge context가 없거나 session이 맞지 않으면 worktree를 만들지 않고 BLOCKED로 멈춥니다.
 
 ## Failure Mode
 
