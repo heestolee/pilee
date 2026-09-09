@@ -19,6 +19,8 @@ import { getFinalOutput, runSingleAgent } from "../subagent/runner.ts";
 import { makeSubagentSessionFile } from "../subagent/session.ts";
 import type { SingleResult, SubagentDetails } from "../subagent/types.ts";
 import { resolveForkPanelIdentity } from "../utils/fork-panel-identity.ts";
+import { parseGitStatusPorcelainV2 } from "../utils/git-utils.ts";
+import { readCoordinatedRepoGitStatus } from "../utils/repo-status.ts";
 import { registerWorktreeDashboardShortcut } from "./shortcut.ts";
 import {
 	bootstrapDomainProfiles,
@@ -553,18 +555,11 @@ interface WorktreeGitStatus {
 }
 
 async function getWorktreeStatus(pi: ExtensionAPI, path: string): Promise<WorktreeGitStatus | null> {
-	const status = await pi.exec("git", ["status", "--porcelain"], { cwd: path });
-	if (status.code !== 0) return null;
-	const changes = status.stdout?.trim().split("\n").filter(Boolean).length ?? 0;
-
-	const ahead_behind = await pi.exec("git", ["rev-list", "--left-right", "--count", "HEAD...@{u}"], { cwd: path });
-	let ahead = 0, behind = 0;
-	if (ahead_behind.code === 0 && ahead_behind.stdout) {
-		const parts = ahead_behind.stdout.trim().split(/\s+/);
-		ahead = Number.parseInt(parts[0] ?? "0");
-		behind = Number.parseInt(parts[1] ?? "0");
-	}
-	return { changes, ahead, behind };
+	const result = await readCoordinatedRepoGitStatus(pi, path);
+	if (!result || result.code !== 0) return null;
+	const summary = parseGitStatusPorcelainV2(result.stdout);
+	const changes = result.stdout.split(/\r?\n/u).filter((line) => line && !line.startsWith("# ")).length;
+	return { changes, ahead: summary.ahead, behind: summary.behind };
 }
 
 // ─── Argument parsing ──────────────────────────────────────────────────────

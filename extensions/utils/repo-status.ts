@@ -256,6 +256,29 @@ function parsePrSnapshot(
 	}
 }
 
+export async function readCoordinatedRepoGitStatus(
+	pi: ExtensionAPI,
+	cwd: string,
+): Promise<RepoStatusCommandResult | null> {
+	const cached = await readRepoStatusCache(cwd, REPO_STATUS_CACHE_MAX_AGE_MS);
+	if (cached) return cached;
+	if (await isRepoStatusPaused(cwd)) return null;
+
+	const lease = await acquireRepoStatusLease(cwd);
+	if (!lease) {
+		return await waitForRepoStatusCache(cwd, { maxAgeMs: REPO_STATUS_CACHE_MAX_AGE_MS });
+	}
+
+	try {
+		const result = await pi.exec("git", [...GIT_STATUS_ARGS], { cwd });
+		const normalized = { code: result.code ?? 1, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+		await writeRepoStatusCache(cwd, normalized);
+		return normalized;
+	} finally {
+		await lease.release();
+	}
+}
+
 export function createRepoStatusTracker(pi: ExtensionAPI, cwd: string): RepoStatusTracker {
 	let snapshot: RepoStatusSnapshot = EMPTY_SNAPSHOT;
 	let disposed = false;
@@ -404,26 +427,6 @@ export function createRepoStatusTracker(pi: ExtensionAPI, cwd: string): RepoStat
 		}
 	};
 
-	const readCoordinatedGitStatus = async (): Promise<RepoStatusCommandResult | null> => {
-		const cached = await readRepoStatusCache(cwd, REPO_STATUS_CACHE_MAX_AGE_MS);
-		if (cached) return cached;
-		if (await isRepoStatusPaused(cwd)) return null;
-
-		const lease = await acquireRepoStatusLease(cwd);
-		if (!lease) {
-			return await waitForRepoStatusCache(cwd, { maxAgeMs: REPO_STATUS_CACHE_MAX_AGE_MS });
-		}
-
-		try {
-			const result = await pi.exec("git", [...GIT_STATUS_ARGS], { cwd });
-			const normalized = { code: result.code ?? 1, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
-			await writeRepoStatusCache(cwd, normalized);
-			return normalized;
-		} finally {
-			await lease.release();
-		}
-	};
-
 	const refreshGitState = async () => {
 		if (disposed) return;
 		if (gitRefreshRunning) {
@@ -433,7 +436,7 @@ export function createRepoStatusTracker(pi: ExtensionAPI, cwd: string): RepoStat
 
 		gitRefreshRunning = true;
 		try {
-			const result = await readCoordinatedGitStatus();
+			const result = await readCoordinatedRepoGitStatus(pi, cwd);
 			if (disposed || !result) return;
 			applyGitStatusResult(result);
 		} catch {

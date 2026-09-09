@@ -13,6 +13,7 @@ function between(start: string, end: string): string {
 	return source.slice(startIndex, endIndex);
 }
 
+const statusRead = between("async function getWorktreeStatus", "// ─── Argument parsing");
 const dashboardLoad = between("async function loadDashboardWorktrees", "function statusIcon");
 const dashboardRender = between("async function showDashboard", "async function handleSwitch");
 
@@ -21,6 +22,8 @@ test("wt switch dashboard opens from metadata without waiting for per-worktree g
 	assert.match(dashboardLoad, /gitStatus: cachedDashboardStatus\(w\.path\)/);
 	assert.match(dashboardRender, /createDashboardStatusLoader<WorktreeGitStatus \| null>/);
 	assert.match(dashboardRender, /concurrency: 4/);
+	assert.match(statusRead, /readCoordinatedRepoGitStatus\(pi, path\)/);
+	assert.doesNotMatch(statusRead, /pi\.exec\(/);
 });
 
 test("wt switch schedules git status only for currently rendered rows", () => {
