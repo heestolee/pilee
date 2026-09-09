@@ -15,10 +15,12 @@ applies_to:
   - extensions/utils/repo-status-coordination
   - extensions/auto-commit
   - extensions/update-branch
+  - extensions/worktree
 source:
   - user-direction:2026-06-23-index-lock-polling
-reviewed_at: 2026-06-23
-reviewed_commit: 458a2c4119d037c16fb420b8d1bde1ab187c08ab
+  - user-direction:2026-09-09-wt-switch-picker-latency
+reviewed_at: 2026-09-09
+reviewed_commit: 298d997
 related:
   - update-branch-safe-pull-command
   - auto-commit-explicit-plan-gate
@@ -40,6 +42,10 @@ git --no-optional-locks status --porcelain=v2 --branch --untracked-files=normal
 ```
 
 짧은 3초 polling은 대형 repo/worktree에서 과격합니다. 기본 polling은 15초 이상으로 두고, PR/check 상태처럼 원격 I/O가 있는 정보는 더 긴 주기를 사용합니다.
+
+## Dashboard Fan-out Rule
+
+Worktree dashboard처럼 여러 repo/worktree를 한 번에 나열하는 UI는 모든 row의 `git status`를 선계산한 뒤 열지 않습니다. Registry와 metadata로 shell을 먼저 렌더링하고, 현재 viewport에 보이는 row만 bounded concurrency로 조회합니다. 상태 조회는 공용 cache/lease와 `--no-optional-locks`를 재사용하며, ahead/behind도 별도 `rev-list` process를 추가하지 않고 porcelain v2 branch header에서 함께 읽습니다. 사용자가 dashboard를 닫으면 아직 시작하지 않은 조회 queue는 폐기합니다.
 
 ## Cross-process Coordination Rule
 

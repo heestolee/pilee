@@ -212,7 +212,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Private overlay package는 회사·개인 실행 맥락을 담는다](./private-overlay-package-boundary.md) | active | high | 2026-06-02 | fad9c36 | privacy, package, overlay, skill, company-context |
 | [Queued command는 실행 보장이 아니다](./queued-command-prefill-boundary.md) | active | high | 2026-08-31 | 090cb14 | queued-messages, slash-command, prefill, worktree, session, boundary |
 | [Read/Edit tool override는 필요한 증거만 펼친다](./read-edit-tool-output-override.md) | active | high | 2026-06-02 | 41c70e0 | read, edit, tool, override, diff, preview |
-| [Repo status polling은 index.lock을 만들지 않도록 조율한다](./repo-status-index-lock-coordination.md) | active | high | 2026-06-23 | 458a2c4 | repo-status, git, index-lock, polling, auto-commit, workflow |
+| [Repo status polling은 index.lock을 만들지 않도록 조율한다](./repo-status-index-lock-coordination.md) | active | high | 2026-09-09 | 298d997 | repo-status, git, index-lock, polling, auto-commit, workflow |
 | [변경된 줄은 요청으로 추적 가능해야 한다](./request-traceability-surgical-changes.md) | active | high | 2026-06-02 | 41c70e0 | request-traceability, surgical-change, karpathy, diff, scope, review |
 | [종료된 포크는 transcript 주입보다 revive가 우선이다](./revive-over-transcript-recall.md) | active | high | 2026-06-02 | 41c70e0 | revive, recall, fork-panel, session, continuity, 세션 |
 | [세션 분류는 원본 위의 sidecar다](./session-classification-sidecar.md) | active | high | 2026-06-02 | 91c739f | archive, show-report, session-classification, sidecar, session, ai-suggestion |
@@ -237,7 +237,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Worktree 생성은 현재 패널 대화가 source다](./worktree-creation-parent-gate.md) | active | high | 2026-09-02 | 93ddc04 | worktree, fork-panel, current-panel, hotfix, context, profile-driven |
 | [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-08-31 | c712406 | worktree, dependencies, bootstrap, profile-driven, worker, subagent |
 | [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-09-02 | 93ddc04 | worktree, workspace, repo, branch, execution-boundary, cwd-binding |
-| [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-09-02 | 93ddc04 | worktree, session, revive, fork-panel, panel-inbox, handoff |
+| [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-09-09 | 298d997 | worktree, session, revive, fork-panel, panel-inbox, handoff |
 
 ## Knowledge Map
 
