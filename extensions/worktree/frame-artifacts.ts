@@ -39,6 +39,8 @@ export interface PromotePlanningWorkArtifactsOptions {
 	worktreePath: string;
 	targetFramePath: string;
 	sourceFramePath?: string | null;
+	sourceSessionFile?: string | null;
+	sourceTasksPath?: string | null;
 	workUnitsRoot?: string;
 	now?: number;
 }
@@ -119,6 +121,20 @@ function filterTaskBoardForFrame(board: any, sourceFramePath?: string | null): a
 	return { ...board, tasks };
 }
 
+export function framePathFromTaskBoard(tasksPath: string | undefined | null): string | undefined {
+	if (!tasksPath) return undefined;
+	const board = readJson<any>(tasksPath);
+	if (!Array.isArray(board?.tasks)) return undefined;
+	const candidates = new Set<string>();
+	for (const task of board.tasks) {
+		const framePath = task?.refs?.frame;
+		if (typeof framePath === "string" && framePath.trim() && existsSync(framePath.trim())) {
+			candidates.add(framePath.trim());
+		}
+	}
+	return candidates.size === 1 ? [...candidates][0] : undefined;
+}
+
 export function retargetPlanningTaskBoard(board: any, options: {
 	sourceFramePath?: string | null;
 	targetFramePath: string;
@@ -157,11 +173,12 @@ export function promotePlanningWorkArtifactsToWorktree(options: PromotePlanningW
 		companion: { status: "missing-source", targetPath: targetCompanionPath },
 	};
 
-	const sourceSessionFile = sourceSessionFileFromFrame(options.frame);
-	if (!sourceSessionFile) {
+	const sourceSessionFile = options.sourceSessionFile || sourceSessionFileFromFrame(options.frame);
+	const sourceTasksPath = options.sourceTasksPath
+		|| (sourceSessionFile ? join(workUnitDirForSessionFile(sourceSessionFile, options.workUnitsRoot), "work-tasks.json") : undefined);
+	if (!sourceTasksPath) {
 		result.tasks.status = "missing-source-session";
 	} else {
-		const sourceTasksPath = join(workUnitDirForSessionFile(sourceSessionFile, options.workUnitsRoot), "work-tasks.json");
 		result.tasks.sourcePath = sourceTasksPath;
 		if (!existsSync(sourceTasksPath)) {
 			result.tasks.status = "missing-source";

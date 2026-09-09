@@ -35,7 +35,11 @@ import {
 	commandForkOpenTargetForLabel,
 	type CommandForkOpenTarget,
 } from "./fork-open-target.ts";
-import { promotePlanningWorkArtifactsToWorktree, type WorkArtifactPromotionResult } from "./frame-artifacts.ts";
+import {
+	framePathFromTaskBoard,
+	promotePlanningWorkArtifactsToWorktree,
+	type WorkArtifactPromotionResult,
+} from "./frame-artifacts.ts";
 import {
 	activateWorkspaceInNewPanel,
 	buildNewPanelActivationContract,
@@ -45,6 +49,7 @@ import {
 } from "./panel-activation.ts";
 import { registerCreatedWorktreeProjectTrust } from "./project-trust.ts";
 import { switchSessionToTrustedWorktree } from "./session-switch-trust.ts";
+import { resolveTaskWorkUnit } from "../utils/work-context.ts";
 import {
 	createWorkspaceActivationContract,
 	workspaceAuthorizationConsumerId,
@@ -332,8 +337,14 @@ type FrameDocLoose = Record<string, any>;
 export type FramePromotionResult =
 	| { status: "promoted"; framePath: string; frameMdPath: string; sourcePath: string; canonicalHash?: string; artifacts?: WorkArtifactPromotionResult }
 	| { status: "exists"; framePath: string; artifacts?: WorkArtifactPromotionResult }
-	| { status: "missing-source" }
+	| { status: "missing-source"; artifacts?: WorkArtifactPromotionResult }
 	| { status: "error"; error: string; artifacts?: WorkArtifactPromotionResult };
+
+interface WorkArtifactSource {
+	sourceSessionFile?: string;
+	sourceTasksPath?: string;
+	sourceFramePath?: string;
+}
 
 function safeFrameSlug(text: string): string {
 	return text
@@ -415,10 +426,31 @@ function renderFrameMirror(frame: FrameDocLoose): string {
 	].filter((line): line is string => line !== undefined).join("\n");
 }
 
-function promotePlanningFrameToWorktree(worktreePath: string, meta: WorktreeMeta): FramePromotionResult {
+function workArtifactSourceForContext(ctx: ExtensionContext): WorkArtifactSource {
+	const sourceSessionFile = getSessionFileFromContext(ctx) ?? undefined;
+	if (!sourceSessionFile) return {};
+	const sourceUnit = resolveTaskWorkUnit(ctx.cwd, sourceSessionFile).unit;
+	const sourceTasksPath = existsSync(sourceUnit.tasksPath) ? sourceUnit.tasksPath : undefined;
+	return {
+		sourceSessionFile,
+		sourceTasksPath,
+		sourceFramePath: sourceUnit.framePath ?? framePathFromTaskBoard(sourceTasksPath),
+	};
+}
+
+export function promotePlanningFrameToWorktree(
+	worktreePath: string,
+	meta: WorktreeMeta,
+	source: WorkArtifactSource = {},
+): FramePromotionResult {
 	const targetFramePath = join(worktreePath, ".pi", "frame.json");
 	const targetMdPath = join(worktreePath, ".pi", "frame.md");
-	const sourcePath = meta.frame?.sourcePlanningFrame ?? planningFramePathForTicket(meta.ticket);
+	const sourceCandidates = [
+		meta.frame?.sourcePlanningFrame,
+		planningFramePathForTicket(meta.ticket),
+		source.sourceFramePath,
+	].filter((path): path is string => typeof path === "string" && Boolean(path));
+	const sourcePath = sourceCandidates.find((path) => existsSync(path));
 	if (existsSync(targetFramePath)) {
 		try {
 			const existingFrame = JSON.parse(readFileSync(targetFramePath, "utf8")) as FrameDocLoose;
@@ -427,6 +459,8 @@ function promotePlanningFrameToWorktree(worktreePath: string, meta: WorktreeMeta
 				worktreePath,
 				targetFramePath,
 				sourceFramePath: sourcePath,
+				sourceSessionFile: source.sourceSessionFile,
+				sourceTasksPath: source.sourceTasksPath,
 			});
 			return { status: "exists", framePath: targetFramePath, artifacts };
 		} catch {
@@ -434,7 +468,16 @@ function promotePlanningFrameToWorktree(worktreePath: string, meta: WorktreeMeta
 		}
 	}
 
-	if (!sourcePath || !existsSync(sourcePath)) return { status: "missing-source" };
+	if (!sourcePath) {
+		const artifacts = promotePlanningWorkArtifactsToWorktree({
+			frame: {},
+			worktreePath,
+			targetFramePath,
+			sourceSessionFile: source.sourceSessionFile,
+			sourceTasksPath: source.sourceTasksPath,
+		});
+		return { status: "missing-source", artifacts };
+	}
 
 	try {
 		const frame = JSON.parse(readFileSync(sourcePath, "utf8")) as FrameDocLoose;
@@ -474,6 +517,7 @@ function promotePlanningFrameToWorktree(worktreePath: string, meta: WorktreeMeta
 		const nextMeta = readMeta(worktreePath) ?? meta;
 		writeMeta(worktreePath, {
 			...nextMeta,
+			ticket: nextMeta.ticket ?? (typeof frame.ticket?.key === "string" ? frame.ticket.key : undefined),
 			frame: {
 				path: targetFramePath,
 				updatedAt: now,
@@ -488,6 +532,8 @@ function promotePlanningFrameToWorktree(worktreePath: string, meta: WorktreeMeta
 			worktreePath,
 			targetFramePath,
 			sourceFramePath: sourcePath,
+			sourceSessionFile: source.sourceSessionFile,
+			sourceTasksPath: source.sourceTasksPath,
 			now,
 		});
 
@@ -498,7 +544,7 @@ function promotePlanningFrameToWorktree(worktreePath: string, meta: WorktreeMeta
 }
 
 function framePromotionContextLabel(result: FramePromotionResult): string {
-	const tasksCopied = result.status !== "missing-source" && result.artifacts?.tasks.status === "copied";
+	const tasksCopied = result.artifacts?.tasks.status === "copied";
 	if (result.status === "promoted" && tasksCopied) return " — frame/tasks promoted";
 	if (result.status === "promoted") return " — frame promoted";
 	if (tasksCopied) return " — tasks promoted";
@@ -508,7 +554,7 @@ function framePromotionContextLabel(result: FramePromotionResult): string {
 function framePromotionSummary(result: FramePromotionResult): string {
 	const parts: string[] = [];
 	if (result.status === "promoted") parts.push(`Planning frame promoted to ${result.framePath}`);
-	if (result.status !== "missing-source" && result.artifacts?.tasks.status === "copied") {
+	if (result.artifacts?.tasks.status === "copied") {
 		parts.push(`Planning task board promoted to ${result.artifacts.tasks.targetPath}`);
 	}
 	return parts.length ? ` ${parts.join(". ")}.` : "";
@@ -517,9 +563,9 @@ function framePromotionSummary(result: FramePromotionResult): string {
 function notifyFramePromotion(ctx: ExtensionContext, name: string, result: FramePromotionResult): void {
 	if (result.status === "promoted") ctx.ui.notify(`✓ planning frame promoted to ${name}/.pi/frame.json`, "info");
 	else if (result.status === "error") ctx.ui.notify(`Frame promotion skipped: ${result.error}`, "warning");
-	if (result.status !== "missing-source" && result.artifacts?.tasks.status === "copied") {
+	if (result.artifacts?.tasks.status === "copied") {
 		ctx.ui.notify(`✓ planning task board promoted to ${name}/.pi/work-tasks.json`, "info");
-	} else if (result.status !== "missing-source" && result.artifacts?.tasks.status === "error") {
+	} else if (result.artifacts?.tasks.status === "error") {
 		ctx.ui.notify(`Task board promotion skipped: ${result.artifacts.tasks.error}`, "warning");
 	}
 }
@@ -996,6 +1042,7 @@ function currentPanelCreatedWorktreeContract(
 	ctx: ExtensionContext | ExtensionCommandContext,
 	sourceId: string,
 	contextMode: "full" | "clean",
+	authorizationConsumerId?: string,
 ): WorkspaceActivationContract {
 	const id = worktreeActivationId("create-current");
 	return createWorkspaceActivationContract({
@@ -1008,8 +1055,9 @@ function currentPanelCreatedWorktreeContract(
 			ctx,
 			workspaceAction: "create-worktree",
 			activationTarget: "current-panel",
-			authorizationSource: "command",
+			authorizationSource: authorizationConsumerId ? "tui" : "command",
 			authorizationSourceId: sourceId,
+			authorizationConsumerId,
 		}),
 	});
 }
@@ -2888,6 +2936,7 @@ async function chooseCommandForkOpenTarget(
 
 async function handleCommandFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext): Promise<WorktreeForkCommandResult> {
 	const parsed = parseNewArgs(args);
+	const artifactSource = workArtifactSourceForContext(ctx);
 	const repoRoot = await resolveRepoRoot(pi, ctx, parsed.repo);
 	if (!repoRoot) return { status: "blocked", reason: "repo root was not resolved" };
 
@@ -2952,7 +3001,7 @@ async function handleCommandFork(pi: ExtensionAPI, args: string, ctx: ExtensionC
 	writeMeta(worktreePath, { name, branch: branchName, baseBranch, createdAt: Date.now(), ticket: parsed.ticket, note: parsed.note });
 	const framePromotion = promotePlanningFrameToWorktree(worktreePath, readMeta(worktreePath) ?? {
 		name, branch: branchName, baseBranch, createdAt: Date.now(), ticket: parsed.ticket, note: parsed.note,
-	});
+	}, artifactSource);
 	notifyFramePromotion(ctx, name, framePromotion);
 	ctx.ui.notify(`✓ ${name} forked (${branchName})`, "info");
 
@@ -3049,6 +3098,7 @@ async function handleWorkflowFork(pi: ExtensionAPI, args: string, ctx: Extension
 		ctx.ui.notify(`BLOCKED: ${reason}`, "error");
 		return { status: "blocked", reason };
 	}
+	const artifactSource = workArtifactSourceForContext(ctx);
 
 	const config = loadConfig(repoRoot);
 	const baseBranch = parsed.from
@@ -3075,24 +3125,44 @@ async function handleWorkflowFork(pi: ExtensionAPI, args: string, ctx: Extension
 	if (parsed.contextFile && contextContent === null) return { status: "blocked", reason: `context file not found: ${parsed.contextFile}`, name, branch: branchName, path: worktreePath };
 	const useFullContext = parsed.fullContext || !parsed.minimalContext;
 	const useMinimalContext = !useFullContext;
+	const openTarget = await chooseCommandForkOpenTarget(ctx, name);
+	if (!openTarget) {
+		const reason = "fork를 계속할 위치를 선택하지 않아 /wt fork가 worktree를 만들지 않았습니다.";
+		ctx.ui.notify(`BLOCKED: ${reason}`, "warning");
+		return { status: "blocked", reason, name, branch: branchName, path: worktreePath };
+	}
 	const continuation = workspaceContinuationFromFollowUp(
 		options.afterSwitchFollowUp,
 		defaultWorktreeContinuation("fork", { name, branch: branchName, ticket: parsed.ticket, note: parsed.note }),
 	);
-	const contract = await buildNewPanelActivationContract({
-		id: worktreeActivationId("wt-fork"),
-		ctx,
-		workspaceAction: "create-worktree",
-		contextMode: useFullContext ? "full" : "clean",
-		authorizationSource: options.afterSwitchFollowUp ? "tui" : "command",
-		authorizationSourceId: options.afterSwitchFollowUp?.customType ?? "/wt fork",
-		authorizationConsumerId: options.authorizationConsumerId,
-		continuation,
-		placementTitle: `${name} fork를 어디에 열까요?`,
-	});
-	if (!contract) {
-		const reason = "새 panel 위치를 선택하지 않아 /wt fork가 worktree를 만들지 않았습니다.";
-		ctx.ui.notify(`BLOCKED: ${reason}`, "warning");
+	const authorizationSourceId = options.afterSwitchFollowUp?.customType ?? "/wt fork";
+	let contract: WorkspaceActivationContract;
+	try {
+		if (openTarget === "current") {
+			contract = currentPanelCreatedWorktreeContract(
+				ctx,
+				authorizationSourceId,
+				useFullContext ? "full" : "clean",
+				options.authorizationConsumerId,
+			);
+		} else {
+			const built = await buildNewPanelActivationContract({
+				id: worktreeActivationId("wt-fork"),
+				ctx,
+				workspaceAction: "create-worktree",
+				contextMode: useFullContext ? "full" : "clean",
+				authorizationSource: options.afterSwitchFollowUp ? "tui" : "command",
+				authorizationSourceId,
+				authorizationConsumerId: options.authorizationConsumerId,
+				continuation,
+				placement: openTarget,
+			});
+			if (!built) throw new Error("new panel activation contract를 만들지 못했습니다.");
+			contract = built;
+		}
+	} catch (error) {
+		const reason = error instanceof Error ? error.message : String(error);
+		ctx.ui.notify(`BLOCKED: /wt fork ${openTarget} activation 준비 실패 — ${reason}`, "error");
 		return { status: "blocked", reason, name, branch: branchName, path: worktreePath };
 	}
 
@@ -3115,7 +3185,7 @@ async function handleWorkflowFork(pi: ExtensionAPI, args: string, ctx: Extension
 	writeMeta(worktreePath, { name, branch: branchName, baseBranch, createdAt: Date.now(), ticket: parsed.ticket, note: parsed.note });
 	const framePromotion = promotePlanningFrameToWorktree(worktreePath, readMeta(worktreePath) ?? {
 		name, branch: branchName, baseBranch, createdAt: Date.now(), ticket: parsed.ticket, note: parsed.note,
-	});
+	}, artifactSource);
 	notifyFramePromotion(ctx, name, framePromotion);
 	if (config.setupScript) {
 		ctx.ui.notify(`Running setup: ${config.setupScript}…`, "info");
@@ -3140,6 +3210,22 @@ async function handleWorkflowFork(pi: ExtensionAPI, args: string, ctx: Extension
 	const contextMode = selectContextMode(session, useFullContext, useMinimalContext);
 	recordWorktreeContextMeta(worktreePath, contextMode, session);
 	warnIfFullContextFallback(ctx, useFullContext, session);
+	const contextLabel = `${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}`;
+	if (openTarget === "current") {
+		const currentFollowUp = options.afterSwitchFollowUp
+			?? defaultCurrentPanelContinuation("fork", { name, branch: branchName, ticket: parsed.ticket, note: parsed.note });
+		try {
+			await switchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, contextLabel, {
+				afterSwitchFollowUp: currentFollowUp,
+				activationContract: contract,
+			});
+			return { status: "switched", name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion };
+		} catch (error) {
+			const reason = error instanceof Error ? error.message : String(error);
+			ctx.ui.notify(`BLOCKED: /wt fork current activation 실패 — ${reason}. worktree/session preserved: ${worktreePath}`, "error");
+			return { status: "failed", reason, name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion };
+		}
+	}
 	const activation = await activateWorkspaceInNewPanel(pi, ctx, {
 		contract,
 		cwd: worktreePath,
@@ -4198,6 +4284,7 @@ export default function (pi: ExtensionAPI) {
 					details: { blocked: true, action: "worktree_fork", reason: "missing source session provenance", noWorktreeCreated: true },
 				};
 			}
+			const artifactSource = workArtifactSourceForContext(ctx);
 
 			const config = loadConfig(repoRoot);
 			const baseBranch = params.hotfix ? config.productionBranch : config.baseBranch;
@@ -4261,7 +4348,7 @@ export default function (pi: ExtensionAPI) {
 				createdAt: Date.now(),
 				ticket: params.ticket,
 				note: params.note,
-			});
+			}, artifactSource);
 
 			const contextNote = params.context?.trim() || null;
 			const session = createWorktreeSession(ctx, worktreePath, {

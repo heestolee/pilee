@@ -40,6 +40,8 @@ test("slash /wt fork offers exactly current, tab, and right targets after shared
 	assert.equal(commandForkOpenTargetForLabel("현재 패널"), "current");
 	assert.equal(commandForkOpenTargetForLabel("새 탭"), "tab");
 	assert.equal(commandForkOpenTargetForLabel("오른쪽 패널"), "right");
+	assert.match(commandFork, /workArtifactSourceForContext/);
+	assert.match(commandFork, /}, artifactSource\)/);
 	assert.match(commandFork, /chooseCommandForkOpenTarget/);
 	assert.match(commandFork, /openTarget === "current"/);
 	assert.match(commandFork, /switchSessionToWorktree/);
@@ -83,12 +85,16 @@ test("slash commands preserve context fallback instead of deleting a successfull
 	assert.match(source, /parentSession,/);
 });
 
-test("Frame and TFT command-context fork keep the separate new-panel workflow", () => {
+test("Frame and TFT command-context fork reuse the slash fork target interface", () => {
+	assert.match(workflowFork, /workArtifactSourceForContext/);
+	assert.match(workflowFork, /}, artifactSource\)/);
+	assert.match(workflowFork, /chooseCommandForkOpenTarget/);
+	assert.match(workflowFork, /openTarget === "current"/);
+	assert.match(workflowFork, /switchSessionToWorktree/);
 	assert.match(workflowFork, /buildNewPanelActivationContract/);
 	assert.match(workflowFork, /activateWorkspaceInNewPanel/);
 	assert.match(workflowFork, /source Pi session provenance가 없어/);
 	assert.match(workflowFork, /fullContextFailure/);
-	assert.doesNotMatch(workflowFork, /switchSessionToWorktree/);
 	assert.match(source, /return handleWorkflowFork\(pi, args, ctx, options\)/);
 });
 

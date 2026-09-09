@@ -5,7 +5,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { writeLearningCompanionManifest } from "../learning-companion/state.ts";
-import { promotePlanningWorkArtifactsToWorktree, workUnitDirForSessionFile } from "./frame-artifacts.ts";
+import {
+	framePathFromTaskBoard,
+	promotePlanningWorkArtifactsToWorktree,
+	workUnitDirForSessionFile,
+} from "./frame-artifacts.ts";
 
 function writeJson(path: string, value: unknown) {
 	mkdirSync(dirname(path), { recursive: true });
@@ -123,4 +127,48 @@ test("planning frame promotion carries task board into worktree work-unit", () =
 	assert.equal(second.companion.status, "target-exists");
 	assert.equal(second.companion.runId, sourceCompanion.runId);
 	assert.equal(readJson(targetTasksPath).tasks.length, 1);
+});
+
+test("task board reveals its single existing Frame without a ticket argument", () => {
+	const root = mkdtempSync(join(tmpdir(), "pilee-wt-task-frame-source-"));
+	const framePath = join(root, "planning", "frame.json");
+	const missingFramePath = join(root, "planning", "missing-frame.json");
+	const tasksPath = join(root, "work-tasks.json");
+	writeJson(framePath, { version: 1, goal: "carry me" });
+	writeJson(tasksPath, {
+		nextId: 3,
+		tasks: [
+			{ id: "1", refs: { frame: framePath } },
+			{ id: "2", refs: { frame: missingFramePath } },
+		],
+	});
+
+	assert.equal(framePathFromTaskBoard(tasksPath), framePath);
+});
+
+test("session task board is carried even when no Frame exists", () => {
+	const root = mkdtempSync(join(tmpdir(), "pilee-wt-task-only-"));
+	const sourceTasksPath = join(root, "source", "work-tasks.json");
+	const worktreePath = join(root, "worktree");
+	const targetFramePath = join(worktreePath, ".pi", "frame.json");
+	writeJson(sourceTasksPath, {
+		nextId: 2,
+		tasks: [{ id: "1", subject: "Frame 없는 조사 태스크", status: "pending", metadata: {} }],
+	});
+	mkdirSync(worktreePath, { recursive: true });
+
+	const result = promotePlanningWorkArtifactsToWorktree({
+		frame: {},
+		worktreePath,
+		targetFramePath,
+		sourceTasksPath,
+		now: 5678,
+	});
+
+	assert.equal(result.tasks.status, "copied");
+	assert.equal(result.tasks.count, 1);
+	assert.equal(result.context.status, "skipped");
+	const targetTasks = readJson(join(worktreePath, ".pi", "work-tasks.json"));
+	assert.equal(targetTasks.tasks[0].subject, "Frame 없는 조사 태스크");
+	assert.equal(targetTasks.tasks[0].metadata.promotedFromWorkUnit, sourceTasksPath);
 });
