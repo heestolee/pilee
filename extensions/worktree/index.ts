@@ -30,6 +30,7 @@ import {
 	type PostCreateBootstrapRequest,
 } from "./bootstrap-domains.ts";
 import { buildCurrentPanelNewContinuation } from "./continuation.ts";
+import { createDashboardStatusLoader } from "./dashboard-status-loader.ts";
 import {
 	COMMAND_FORK_OPEN_TARGET_OPTIONS,
 	commandForkOpenTargetForLabel,
@@ -545,7 +546,13 @@ function listExistingWorktrees(rootDir: string): ExistingWorktree[] {
 	return result.sort((a, b) => (b.meta?.createdAt ?? 0) - (a.meta?.createdAt ?? 0));
 }
 
-async function getWorktreeStatus(pi: ExtensionAPI, path: string): Promise<{ changes: number; ahead: number; behind: number } | null> {
+interface WorktreeGitStatus {
+	changes: number;
+	ahead: number;
+	behind: number;
+}
+
+async function getWorktreeStatus(pi: ExtensionAPI, path: string): Promise<WorktreeGitStatus | null> {
 	const status = await pi.exec("git", ["status", "--porcelain"], { cwd: path });
 	if (status.code !== 0) return null;
 	const changes = status.stdout?.trim().split("\n").filter(Boolean).length ?? 0;
@@ -2516,7 +2523,20 @@ interface DashboardWorktree {
 	repoName: string;
 	status: WorktreeStatus;
 	meta: WorktreeMeta | null;
-	gitStatus?: { changes: number; ahead: number; behind: number } | null;
+	gitStatus?: WorktreeGitStatus | null;
+}
+
+const DASHBOARD_STATUS_CACHE_TTL_MS = 15_000;
+const dashboardStatusCache = new Map<string, { value: WorktreeGitStatus | null; loadedAt: number }>();
+
+function cachedDashboardStatus(path: string): WorktreeGitStatus | null | undefined {
+	const cached = dashboardStatusCache.get(path);
+	if (!cached) return undefined;
+	if (Date.now() - cached.loadedAt > DASHBOARD_STATUS_CACHE_TTL_MS) {
+		dashboardStatusCache.delete(path);
+		return undefined;
+	}
+	return cached.value;
 }
 
 async function loadDashboardWorktrees(pi: ExtensionAPI): Promise<DashboardWorktree[]> {
@@ -2535,11 +2555,10 @@ async function loadDashboardWorktrees(pi: ExtensionAPI): Promise<DashboardWorktr
 			const pathKey = realPathForCompare(w.path);
 			if (seenWorktreePaths.has(pathKey)) continue;
 			seenWorktreePaths.add(pathKey);
-			const gs = await getWorktreeStatus(pi, w.path);
 			results.push({
 				name: w.name, path: w.path, branch: w.branch, repoName,
 				status: w.meta?.status ?? "active",
-				meta: w.meta, gitStatus: gs,
+				meta: w.meta, gitStatus: cachedDashboardStatus(w.path),
 			});
 		}
 	}
@@ -2571,8 +2590,9 @@ function cycleStatus(current: WorktreeStatus): WorktreeStatus {
 	return MAIN_STATUSES[(idx + 1) % MAIN_STATUSES.length];
 }
 
-function gitStatusStr(gs: { changes: number; ahead: number; behind: number } | null | undefined, theme: any): string {
-	if (!gs) return "?";
+function gitStatusStr(gs: WorktreeGitStatus | null | undefined, theme: any): string {
+	if (gs === undefined) return theme.fg("border", "…");
+	if (gs === null) return "?";
 	const parts: string[] = [];
 	if (gs.changes > 0) parts.push(theme.fg("warning", `${gs.changes} changes`));
 	if (gs.ahead > 0) parts.push(theme.fg("accent", `↑${gs.ahead}`));
@@ -2615,6 +2635,32 @@ async function showDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Pr
 
 	return ctx.ui.custom<DashboardWorktree | null>(
 		(tui, theme, _kb, done) => {
+			let closed = false;
+			const statusLoader = createDashboardStatusLoader<WorktreeGitStatus | null>({
+				concurrency: 4,
+				onUpdate: () => { if (!closed) (tui as any).requestRender?.(); },
+			});
+			const finish = (value: DashboardWorktree | null) => {
+				closed = true;
+				statusLoader.close();
+				done(value);
+			};
+			const scheduleStatuses = (items: DashboardWorktree[]) => {
+				statusLoader.schedule(items
+					.filter((item) => item.gitStatus === undefined)
+					.map((item) => ({
+						key: item.path,
+						load: async () => {
+							const cached = cachedDashboardStatus(item.path);
+							if (cached !== undefined) return cached;
+							let value: WorktreeGitStatus | null;
+							try { value = await getWorktreeStatus(pi, item.path); } catch { value = null; }
+							dashboardStatusCache.set(item.path, { value, loadedAt: Date.now() });
+							return value;
+						},
+						apply: (value) => { item.gitStatus = value; },
+					})));
+			};
 			const renderHelp = (w: number): string[] => {
 				const lines: string[] = [];
 				lines.push(...new DynamicBorder((s: string) => theme.fg("accent", s)).render(w));
@@ -2693,6 +2739,8 @@ async function showDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Pr
 						let scrollOffset = 0;
 						if (selectedIdx >= scrollOffset + visibleHeight) scrollOffset = selectedIdx - visibleHeight + 1;
 						if (selectedIdx < scrollOffset) scrollOffset = selectedIdx;
+						const renderedItems = visible.slice(scrollOffset, scrollOffset + visibleHeight);
+						queueMicrotask(() => { if (!closed) scheduleStatuses(renderedItems); });
 
 						let lastStatus: WorktreeStatus | null = null;
 						for (let i = scrollOffset; i < Math.min(visible.length, scrollOffset + visibleHeight); i++) {
@@ -2763,14 +2811,14 @@ async function showDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Pr
 					}
 
 					// Navigation
-					if (data === "q" || matchesKey(data, Key.escape)) { done(null); return; }
+					if (data === "q" || matchesKey(data, Key.escape)) { finish(null); return; }
 					if (matchesKey(data, Key.up) || data === "k") { selectedIdx = Math.max(0, selectedIdx - 1); }
 					else if (matchesKey(data, Key.down) || data === "j") { selectedIdx = Math.min(visible.length - 1, selectedIdx + 1); }
 
 					// Enter: switch
 					else if (matchesKey(data, Key.enter)) {
 						const wt = visible[selectedIdx];
-						if (wt) done(wt);
+						if (wt) finish(wt);
 						return;
 					}
 
@@ -2827,12 +2875,12 @@ async function showDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Pr
 					else if (matchesKey(data, ",")) { showHelp = true; }
 
 					// n: new worktree (exit overlay, pre-fill command)
-					else if (data === "n") { done(null); ctx.ui.setEditorText("/wt new"); return; }
+					else if (data === "n") { finish(null); ctx.ui.setEditorText("/wt new"); return; }
 
 					// d: delete (mark for removal on close)
 					else if (data === "d") {
 						const wt = visible[selectedIdx];
-						if (wt) { done(null); ctx.ui.setEditorText(`/wt rm ${wt.name}`); return; }
+						if (wt) { finish(null); ctx.ui.setEditorText(`/wt rm ${wt.name}`); return; }
 					}
 
 					(tui as any).requestRender?.();
