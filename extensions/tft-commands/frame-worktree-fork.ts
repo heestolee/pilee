@@ -31,7 +31,7 @@ export function buildFrameForkContinuationPrompt(frameIdentity: FrameIdentity): 
 	return [
 		"# /frame → worktree fork continuation",
 		"",
-		"사용자가 `/frame` Step 9에서 `fork해서 시작`을 선택했고, source panel은 보존된 채 이 새 작업 panel에서 forked worktree exact session이 활성화됐다.",
+		"사용자가 `/frame` Step 9에서 `fork해서 시작`을 선택했고, 사용자가 고른 panel에서 forked worktree exact session이 활성화됐다. 현재 panel 선택은 source panel을 교체하고, 새 탭·오른쪽 panel 선택은 source panel을 보존한다.",
 		"",
 		"## 반드시 지킬 것",
 		"- 사용자에게 worktree 전환 명령을 다시 요구하지 않는다.",

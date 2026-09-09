@@ -143,11 +143,11 @@ function registerFrameWorktreeForkTool(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: FRAME_FORK_TOOL_NAME,
 		label: "Start Frame Worktree Fork",
-		description: "Continue a completed /frame through the real /wt fork command-context path, activate the exact forked session in a new panel, and start implementation there.",
-		promptSnippet: "After /frame Step 9 selects fork해서 시작, call frame_worktree_fork so the original /frame command context opens the exact forked session in a new panel while preserving the source panel.",
+		description: "Continue a completed /frame through the real /wt fork command-context path, activate the exact forked session in the selected panel, and start implementation there.",
+		promptSnippet: "After /frame Step 9 selects fork해서 시작, call frame_worktree_fork so the original /frame command context offers the same current panel, new tab, and right panel targets as /wt fork.",
 		promptGuidelines: [
 			"Use only after a /frame invocation has reached Step 9 and the user selected fork해서 시작.",
-			"Do not call worktree_fork for /frame completion; this tool reuses the original /frame command context so exact-session new-panel activation happens for real.",
+			"Do not call worktree_fork for /frame completion; this tool reuses the original /frame command context and the /wt fork panel-target interface so exact-session activation happens for real.",
 			"If this tool returns BLOCKED, stop and report that no forked session was started. Do not continue by absolute path or ask for a switch command.",
 		],
 		parameters: Type.Object({
@@ -199,8 +199,11 @@ function registerFrameWorktreeForkTool(pi: ExtensionAPI): void {
 				});
 			}
 
+			const activationSummary = result.status === "switched"
+				? "현재 panel을 exact session으로 전환"
+				: "선택한 새 작업 panel에서 exact session을 활성화";
 			return {
-				content: [{ type: "text", text: `✓ /frame fork가 command context에서 완료됐습니다. ${result.name} (${result.branch}) exact session을 새 작업 panel에서 활성화했고, source panel을 보존한 채 구현 follow-up을 시작했습니다.` }],
+				content: [{ type: "text", text: `✓ /frame fork가 command context에서 완료됐습니다. ${result.name} (${result.branch}) ${activationSummary}했고 구현 follow-up을 시작했습니다.` }],
 				details: { action: FRAME_FORK_TOOL_NAME, identityKey: record.key, result, autoStarted: true },
 			};
 		},
