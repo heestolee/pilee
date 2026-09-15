@@ -2,7 +2,8 @@
 name: reviewer
 description: Code review specialist — use for quality, correctness, and security analysis of code changes
 tools: read, grep, find, ls, bash
-model: openai-codex/gpt-5.6-sol
+model: openai-codex/gpt-6-astra
+modelFallback: openai-codex/gpt-5.6-sol
 runtime: pi
 thinking: max
 ---
