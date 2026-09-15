@@ -2,9 +2,10 @@
 name: bootstrapper
 description: Dependency readiness orchestrator — use for worktree bootstrap, environment readiness, install failure diagnosis, and main-agent unblocking
 tools: read, grep, find, ls, bash
-model: openai-codex/gpt-5.6-luna
+model: openai-codex/gpt-6-astra
+modelFallback: openai-codex/gpt-5.6-luna
 runtime: pi
-thinking: max
+thinking: low
 ---
 
 <system_prompt agent="bootstrapper">
