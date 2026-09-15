@@ -460,26 +460,28 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 
 ## Agents
 
-9 agents. `scripts/sync-agents.mjs` syncs them into `~/.pi/agent/agents/` after install.
+11 agents. `scripts/sync-agents.mjs` syncs them into `~/.pi/agent/agents/` after install.
 
 ### Subagents (`>>` symbols)
 
 | Agent | Symbol | Model | Role |
 |---|---|---|---|
-| **worker** | `>>` | openai-codex/gpt-5.5 | General implementation and fixes |
-| **finder** | `>>/` | openai-codex/gpt-5.4 | Code/file search with read-only tools |
-| **searcher** | `>>?` | openai-codex/gpt-5.4 | Web research and documentation lookup |
-| **planner** | `>>#` | openai-codex/gpt-5.5 | Implementation planning |
-| **challenger** | `>>!` | openai-codex/gpt-5.5 | Challenge plans, find holes and edge cases |
-| **browser** | `>>@` | openai-codex/gpt-5.5 | Playwright E2E and UI checks |
-| **bootstrapper** | internal `/wt` | openai-codex/gpt-5.5 | Dependency readiness orchestrator |
+| **worker** | `>>` | gpt-6-astra (max, fallback: Sol) | General implementation and fixes |
+| **finder** | `>>/` | gpt-6-astra (low, fallback: Luna) | Code/file search with read-only tools |
+| **searcher** | `>>?` | gpt-6-astra (high, fallback: Terra → Sol) | Web research and documentation lookup |
+| **planner** | `>>#` | gpt-6-astra (max, fallback: Sol) | Implementation planning |
+| **challenger** | `>>!` | claude-opus-5 (max, fallback: Astra → Sol) | Challenge hidden assumptions and decisions |
+| **browser** | `>>@` | gpt-6-astra (high, fallback: Sol) | Playwright E2E and UI checks |
+| **bootstrapper** | internal `/wt` | gpt-6-astra (low, fallback: Luna) | Dependency readiness orchestrator |
+| **meta-review-question-worker** | internal Meta Review | gpt-6-astra (max, fallback: Sol → Terra → Spark) | Pinned-source questions and patch artifacts |
+| **study-hard-worker** | internal Study Hard | gpt-6-astra (max, fallback: Sol → Terra → Spark) | Learning-note proposal artifacts |
 
 ### Review agents (`/stress-interview`)
 
 | Agent | Perspective |
 |---|---|
-| **verifier** | Does the implementation satisfy the requirement? |
-| **reviewer** | Is the code maintainable and consistent? |
+| **verifier** | Requirement evidence verdict (claude-opus-5, max, fallback: Astra → Sol) |
+| **reviewer** | Correctness, security, and maintainability review (gpt-6-astra, max, fallback: Sol) |
 
 ---
 
