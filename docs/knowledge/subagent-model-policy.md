@@ -24,8 +24,8 @@ source:
   - pilee-history:2026-05-04#33
   - pilee-history:2026-05-04#34
   - pilee-history:2026-05-05#42
-reviewed_at: 2026-08-31
-reviewed_commit: 21312736719de638c1640cbf79629017abc93598
+reviewed_at: 2026-09-15
+reviewed_commit: a326514967ca6cda46471d3c833e1bff9e834013
 related:
   - pilee-knowledge-system
   - worktree-session-continuity
@@ -33,21 +33,22 @@ related:
 
 ## Overview
 
-pilee subagent는 Codex와 Claude Code CLI를 역할별로 결합하는 hybrid 모델 정책으로 운영합니다. 구현·코드 리뷰·브라우저 실행은 강한 Codex 모델을 유지하고, false PASS 비용이 큰 verifier와 긴 맥락의 숨은 가정·실패 시나리오를 공격하는 challenger는 Claude Opus 5를 max effort로 사용합니다. finder/searcher처럼 탐색·수집 중심 agent에는 더 가벼운 모델을 써 비용과 부하를 낮춥니다.
+pilee subagent는 GPT-6 Astra를 기본 실행 모델로 사용하고 Claude Opus 5를 독립 검증 경계에 남기는 hybrid 모델 정책으로 운영합니다. 11개 agent 중 9개는 Astra를 primary로 사용하며, 역할 난도에 따라 `low`·`high`·`max` effort를 구분합니다. false PASS와 동일 모델 계열의 상관된 맹점을 줄이기 위해 verifier와 challenger만 Opus 5 `max`를 primary로 유지하고 Astra를 첫 fallback으로 둡니다.
 
 ## Model Split
 
-모든 agent를 같은 최고 모델로 통일하면 기준선은 단순해지지만, 탐색형 agent까지 같은 비용 구조를 갖게 됩니다. 현재 정책은 역할별 위험도와 출력 품질 요구를 나눕니다.
+Astra 사용률을 높이는 것과 모든 역할에 같은 effort를 강제하는 것은 다릅니다. 현재 정책은 모델은 Astra 중심으로 통일하되 역할의 판단 난도와 실패 비용에 맞춰 thinking을 나눕니다.
 
-- worker/planner/reviewer/browser는 강한 Codex 모델을 유지합니다.
+- worker/planner/reviewer는 구현·구조·diff 판단의 핵심 역할이므로 `gpt-6-astra`를 `max` effort로 사용하고 Sol로 fallback합니다.
+- Meta Review question worker와 Study Hard worker는 pinned source·구조화 artifact·충돌 보존 계약을 다루므로 Astra `max`를 사용하며 `Sol → Terra → Spark` fallback을 유지합니다.
+- browser와 searcher는 상태 해석·다중 도구·교차근거가 필요하지만 실행 지연도 중요하므로 Astra `high`를 사용합니다. 각각 기존 Sol, `Terra → Sol`을 fallback으로 둡니다.
+- finder와 bootstrapper는 좁은 탐색 또는 지정 executor·status·log 판정이 중심이므로 Astra `low`를 사용하고 Luna를 fallback으로 둡니다. Astra의 `minimal`도 실제로 `low`에 매핑되므로 명시적으로 `low`를 사용합니다.
 - verifier는 “증거 없는 PASS”의 비용이 크므로 Claude Opus 5를 `max` effort로 사용합니다. 구현보다 claim inventory, 재현, evidence 판정, skipped check/remaining risk 기록이 핵심 역할입니다.
-- challenger는 제품·구조 맥락의 숨은 가정과 실패 시나리오를 압박하는 판단 역할이므로 Claude Opus 5를 `max` effort로 사용합니다. reviewer는 Codex에 남겨 stress-interview의 provider 다양성을 보존합니다.
-- verifier와 challenger의 primary Opus는 Claude Code CLI first-party 구독 경로로 실행합니다. primary가 실패하면 `openai-codex/gpt-5.6-sol`을 Pi runtime으로 실행해 workflow를 이어갑니다. cross-runtime attempt는 terminal marker와 replay가 섞이지 않도록 별도 session JSONL에 기록합니다.
+- challenger는 제품·구조 맥락의 숨은 가정과 실패 시나리오를 압박하므로 Claude Opus 5를 `max` effort로 사용합니다. 두 Opus 역할 모두 `Astra → Sol` 순서로 fallback해 독립 검증을 우선하되 provider 장애로 workflow 전체가 막히지 않게 합니다.
 - abort는 사용자가 실행을 중단한 의사이므로 fallback을 시작하지 않습니다. fallback이 실행돼도 verifier의 PASS 기준과 challenger의 가설/사실 분리 기준은 바뀌지 않습니다.
-- agent는 기존 단일 `modelFallback`과 순서형 `modelFallbacks` chain을 모두 지원합니다. Study Hard worker처럼 사용자 상호작용을 비동기로 닫아야 하는 역할은 `Sol → Terra → Spark` 순서로 provider 장애를 흡수합니다.
-- 같은 Pi runtime 안의 fallback은 persisted session을 이어 쓰되 새 offset부터 terminal event를 읽습니다. Claude→Pi cross-runtime fallback은 서로 다른 session JSONL을 사용해 이전 runtime의 completion marker가 다음 실행을 즉시 종료시키지 않게 합니다.
-- 단순 탐색·검색 역할은 가벼운 모델을 우선 사용합니다.
-- 모델 선택은 “얼마나 똑똑한가”보다 “이 agent가 실패했을 때 되돌리기 비용이 큰가”를 기준으로 조정합니다.
+- agent는 기존 단일 `modelFallback`과 순서형 `modelFallbacks` chain을 모두 지원합니다. 같은 Pi runtime 안의 fallback은 persisted session을 이어 쓰되 새 offset부터 terminal event를 읽고, Claude→Pi cross-runtime fallback은 서로 다른 session JSONL을 사용합니다.
+- Astra의 도구 호출·구조화 출력·컨텍스트 한계는 역할별 fixture로 검증합니다. 반복 실패 시 전체 정책을 되돌리지 않고 해당 agent만 직전 primary로 복구합니다.
+- 모델 선택은 세대만이 아니라 역할 난도, 실패 시 되돌리기 비용, 독립 검증 필요성을 함께 기준으로 조정합니다.
 
 ## Prompt Specificity Rule
 
@@ -59,4 +60,4 @@ stress-interview와 self-healing은 subagent fan-out을 쓰지만, worker에게 
 
 ## Review Trigger
 
-새 agent를 추가하거나 모델 버전을 바꾸거나 self-healing/stress-interview 흐름을 수정하면 이 문서를 다시 봅니다. 특히 finder/searcher처럼 가벼운 모델을 쓰는 역할에서 품질 저하가 반복되면, 모델 자체보다 task prompt와 evidence 요구가 충분한지 먼저 확인합니다.
+새 agent를 추가하거나 모델 버전·thinking·fallback 순서를 바꾸거나 self-healing/stress-interview 흐름을 수정하면 이 문서를 다시 봅니다. 특히 finder/bootstrapper의 `low` 또는 browser/searcher의 `high`에서 품질 저하가 반복되면, effort를 올리기 전에 task prompt와 evidence 요구가 충분한지 먼저 확인합니다.
