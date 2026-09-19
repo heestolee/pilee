@@ -1,15 +1,16 @@
 import { randomUUID } from "node:crypto";
 import {
 	existsSync,
+	lstatSync,
 	mkdirSync,
 	readFileSync,
 	readdirSync,
 	realpathSync,
 	renameSync,
-	rmSync,
+	unlinkSync,
 	writeFileSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { getAgentDir, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
 	isWorkspaceActionAuthorized,
@@ -56,7 +57,20 @@ function samePath(left: string, right: string): boolean {
 }
 
 function isDirectChild(path: string, root: string): boolean {
-	return dirname(safeRealpath(path)) === safeRealpath(root);
+	return dirname(resolve(path)) === resolve(root);
+}
+
+function isRegularFile(path: string): boolean {
+	try { return lstatSync(path).isFile(); } catch { return false; }
+}
+
+function removeFileEntry(path: string): void {
+	try {
+		const entry = lstatSync(path);
+		if (entry.isFile() || entry.isSymbolicLink()) unlinkSync(path);
+	} catch {
+		// Trust cleanup must never turn an undecided trust decision into a host failure.
+	}
 }
 
 function readDescriptor(path: string): CreatedWorktreeProjectTrustDescriptor | null {
@@ -87,8 +101,9 @@ function pruneExpiredDescriptors(root: string, now: number): void {
 	for (const name of readdirSync(root)) {
 		if (!name.endsWith(".json")) continue;
 		const path = join(root, name);
+		if (!isRegularFile(path)) continue;
 		const descriptor = readDescriptor(path);
-		if (!descriptor || Date.parse(descriptor.expiresAt) <= now) rmSync(path, { force: true });
+		if (!descriptor || Date.parse(descriptor.expiresAt) <= now) removeFileEntry(path);
 	}
 }
 
@@ -156,7 +171,7 @@ export function prepareCreatedWorktreeProjectTrust(input: {
 }
 
 export function removeCreatedWorktreeProjectTrust(path: string | undefined): void {
-	if (path) rmSync(path, { force: true });
+	if (path) removeFileEntry(path);
 }
 
 export function consumeCreatedWorktreeProjectTrust(
@@ -167,23 +182,38 @@ export function consumeCreatedWorktreeProjectTrust(
 	const path = env[CREATED_WORKTREE_PROJECT_TRUST_ENV]?.trim();
 	if (!path) return { trusted: "undecided" };
 	const root = options.root ?? DEFAULT_CREATED_WORKTREE_PROJECT_TRUST_ROOT;
-	if (!existsSync(path) || !isDirectChild(path, root)) return { trusted: "undecided" };
+	if (!isDirectChild(path, root) || !isRegularFile(path)) return { trusted: "undecided" };
 
-	const descriptor = readDescriptor(path);
-	const now = options.now ?? Date.now();
-	const valid = Boolean(
-		descriptor
-		&& Date.parse(descriptor.expiresAt) > now
-		&& samePath(descriptor.cwd, cwd)
-		&& existsSync(descriptor.sessionFile)
-		&& descriptor.workspaceAction === "create-worktree"
-		&& descriptor.authorization.eventId
-		&& descriptor.authorization.consumerId
-	);
-	removeCreatedWorktreeProjectTrust(path);
-	return valid
-		? { trusted: "yes", remember: true }
-		: { trusted: "undecided" };
+	const originalName = basename(path);
+	const claimedPath = join(root, `.${originalName}.${process.pid}.${randomUUID()}.claim`);
+	try {
+		renameSync(path, claimedPath);
+	} catch {
+		return { trusted: "undecided" };
+	}
+
+	try {
+		if (!isRegularFile(claimedPath)) return { trusted: "undecided" };
+		const descriptor = readDescriptor(claimedPath);
+		const now = options.now ?? Date.now();
+		const valid = Boolean(
+			descriptor
+			&& originalName === `${descriptor.id}.json`
+			&& Date.parse(descriptor.expiresAt) > now
+			&& samePath(descriptor.cwd, cwd)
+			&& existsSync(descriptor.sessionFile)
+			&& descriptor.workspaceAction === "create-worktree"
+			&& descriptor.authorization.eventId
+			&& descriptor.authorization.consumerId
+		);
+		return valid
+			? { trusted: "yes", remember: true }
+			: { trusted: "undecided" };
+	} catch {
+		return { trusted: "undecided" };
+	} finally {
+		removeFileEntry(claimedPath);
+	}
 }
 
 function createdWorktreeProjectTrustLockState(): CreatedWorktreeProjectTrustLockState {
