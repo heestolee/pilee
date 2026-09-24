@@ -17,7 +17,7 @@ test("actual Pi renders full transcript through compaction, reload, and branch c
 	const { SessionManager } = await load("../../core/session-manager.js");
 	const theme = await load("theme/theme.js");
 	const require = createRequire(resolve(base!, "interactive-mode.js"));
-	const { Container } = await import(pathToFileURL(require.resolve("@earendil-works/pi-tui")).href);
+	const { Container, TuiMainScreen } = await import(pathToFileURL(require.resolve("@earendil-works/pi-tui")).href);
 	theme.initTheme("dark");
 	const proto = InteractiveMode.prototype;
 	const original = proto.renderSessionEntries;
@@ -35,6 +35,13 @@ test("actual Pi renders full transcript through compaction, reload, and branch c
 	const compact = session.appendCompaction("SUMMARY_ONE", kept, 5000);
 	const mode = Object.create(proto);
 	const editorHistory: string[] = [];
+	const renderer = new TuiMainScreen({ columns: 100, rows: 30, write() {}, hideCursor() {}, showCursor() {} });
+	renderer.requestRender = () => {};
+	const documentContainer = new Container();
+	const chatContainer = new Container();
+	documentContainer.addChild(chatContainer);
+	renderer.addChild(documentContainer);
+	const originalFrameRender = renderer.doRender;
 	Object.assign(mode, {
 		isInitialized: true,
 		runtimeHost: { session: {
@@ -42,8 +49,8 @@ test("actual Pi renders full transcript through compaction, reload, and branch c
 			settingsManager: { getShowTerminalProgress: () => false, getShowCacheMissNotices: () => false },
 			extensionRunner: { getMessageRenderer: () => undefined, getEntryRenderer: () => undefined },
 		} },
-		chatContainer: new Container(), pendingTools: new Map(),
-		ui: { requestRender() {} }, footer: { invalidate() {} },
+		chatContainer, documentContainer, renderer, pendingTools: new Map(),
+		ui: renderer, footer: { invalidate() {} },
 		editor: { addToHistory: (text: string) => editorHistory.push(text) },
 		toolOutputExpanded: true, hideThinkingBlock: true, outputPad: 1,
 		getMarkdownThemeWithSettings: () => theme.getMarkdownTheme(),
@@ -63,6 +70,9 @@ test("actual Pi renders full transcript through compaction, reload, and branch c
 		await toolGroupRenderer({} as ExtensionAPI);
 		assert.equal(proto.renderSessionEntries, patched, "reload does not stack wrappers");
 		mode.rebuildChatFromMessages();
+		assert.notEqual(renderer.doRender, originalFrameRender, "full-history projection installs the input fast path");
+		renderer.doRender();
+		assert.match(renderer.previousLines.join("\n"), /ORIGINAL_USER_FIRST/);
 		assert.match(text(), /ORIGINAL_USER_FIRST/);
 		assert.match(text(), /ORIGINAL_ASSISTANT_FIRST/);
 		assert.doesNotMatch(text(), /DO_NOT_DISPLAY/);

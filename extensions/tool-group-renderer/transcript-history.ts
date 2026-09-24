@@ -1,4 +1,5 @@
 import type { SessionEntry } from "@mariozechner/pi-coding-agent";
+import { installTranscriptRender } from "./transcript-render.ts";
 
 /** Display projection only; never replace SessionManager's model context. */
 export function transcriptEntries(
@@ -15,7 +16,7 @@ export function transcriptEntries(
 }
 
 type RenderOptions = { updateFooter?: boolean; populateHistory?: boolean };
-type TranscriptRenderer = {
+type TranscriptRenderer = Partial<Parameters<typeof installTranscriptRender>[0]> & {
 	sessionManager: { getBranch(): SessionEntry[] };
 	renderSessionEntries(entries: SessionEntry[], options?: RenderOptions): void;
 };
@@ -37,6 +38,9 @@ export function installTranscriptHistory(proto: TranscriptRenderer): boolean {
 
 	const state = { project: transcriptEntries };
 	const wrapped: PatchedRender = function (this: TranscriptRenderer, entries, options) {
+		if (this.chatContainer) installTranscriptRender({
+			chatContainer: this.chatContainer, documentContainer: this.documentContainer, renderer: this.renderer,
+		});
 		return original.call(this, state.project(this.sessionManager.getBranch(), entries), options);
 	};
 	wrapped[PATCH_STATE] = state;
