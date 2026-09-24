@@ -1,44 +1,84 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { SessionManager } from "@mariozechner/pi-coding-agent";
-import { transcriptEntries } from "./transcript-history.ts";
+import type { SessionEntry } from "@mariozechner/pi-coding-agent";
+import { installTranscriptHistory, preserveCompactionScreen } from "./transcript-history.ts";
 
-function fixture() {
-	const session = SessionManager.inMemory();
-	const old = session.appendMessage({ role: "user", content: "압축 전 질문 원문", timestamp: 1 });
-	const kept = session.appendMessage({ role: "user", content: "최근 질문", timestamp: 2 });
-	const compact = session.appendCompaction("요약만 모델에 전달", kept, 100_000);
-	return { session, old, kept, compact };
-}
-
-test("reload shows original entries in chronological order without changing model context", () => {
-	const { session, old, kept, compact } = fixture();
-	const branch = session.getBranch();
-	const snapshot = JSON.stringify(branch);
-	const contextBefore = session.buildSessionContext();
-	const selected = [branch[2], branch[1]];
-	assert.deepEqual(transcriptEntries(branch, selected).map((entry) => entry.id), [old, kept, compact]);
-	assert.equal(JSON.stringify(branch), snapshot);
-	assert.deepEqual(session.buildSessionContext(), contextBefore);
-	assert.equal(contextBefore.messages.some((message) => message.role === "user" && message.content === "압축 전 질문 원문"), false);
+test("initial/rebuild rendering passes Pi's selected entries and options through without reading the full branch", () => {
+	const entries: SessionEntry[] = [];
+	const options = { populateHistory: true };
+	let calls = 0;
+	const mode = {
+		sessionManager: { getBranch() { throw new Error("full branch must not be requested"); } },
+		renderSessionEntries(selected: SessionEntry[], selectedOptions?: typeof options) {
+			assert.equal(this, mode);
+			assert.equal(selected, entries);
+			assert.equal(selectedOptions, options);
+			calls++;
+		},
+	};
+	assert.equal(installTranscriptHistory(mode), true);
+	const installed = mode.renderSessionEntries;
+	assert.equal(installTranscriptHistory(mode), true);
+	assert.equal(mode.renderSessionEntries, installed, "reload does not stack wrappers");
+	mode.renderSessionEntries(entries, options);
+	assert.equal(calls, 1);
 });
 
-test("compaction completion restores history but lets core append the latest summary once", () => {
-	const { session, old, kept } = fixture();
-	const branch = session.getBranch();
-	assert.deepEqual(transcriptEntries(branch, [branch[1]]).map((entry) => entry.id), [old, kept]);
+test("reload disables the full-branch projection of an already installed legacy wrapper", () => {
+	const branch: SessionEntry[] = [];
+	const selected: SessionEntry[] = [];
+	const state = { project: (full: SessionEntry[], _context: SessionEntry[]) => full };
+	let displayed: SessionEntry[] = [];
+	const legacy = Object.assign((entries: SessionEntry[]) => {
+		displayed = state.project(branch, entries);
+	}, { [Symbol.for("pilee.tool-group-renderer.transcript-history")]: state });
+	const mode = { renderSessionEntries: legacy };
+	mode.renderSessionEntries(selected);
+	assert.equal(displayed, branch);
+	installTranscriptHistory(mode);
+	mode.renderSessionEntries(selected);
+	assert.equal(mode.renderSessionEntries, legacy);
+	assert.equal(displayed, selected, "old wrapper no longer expands the display to the entire branch");
 });
 
-test("compact-all with no retained tail still preserves every original message", () => {
-	const session = SessionManager.inMemory();
-	const old = session.appendMessage({ role: "user", content: "전체 압축 전 원문", timestamp: 1 });
-	session.appendCompaction("전체 요약", "", 100_000);
-	assert.deepEqual(transcriptEntries(session.getBranch(), []).map((entry) => entry.id), [old]);
+test("older Pi without the entry renderer is left unchanged", () => {
+	assert.equal(installTranscriptHistory({} as Parameters<typeof installTranscriptHistory>[0]), false);
 });
 
-test("uncompacted sessions keep the original render input", () => {
-	const session = SessionManager.inMemory();
-	session.appendMessage({ role: "user", content: "아직 압축 없음", timestamp: 1 });
-	const branch = session.getBranch();
-	assert.equal(transcriptEntries(branch, branch), branch);
+test("successful compaction receiver suppresses only direct clear/replay and never mutates live methods", async () => {
+	let clears = 0;
+	let replays = 0;
+	const mode = {
+		chatContainer: { clear() { clears++; } },
+		status: "compacting",
+		renderSessionEntries() { replays++; },
+		async flushCompactionQueue() {
+			assert.equal(this, mode, "queue reentry uses the actual mode, not the preservation receiver");
+			// A queued command can rebuild even before its first await.
+			this.chatContainer.clear();
+			this.renderSessionEntries();
+			await Promise.resolve();
+			this.chatContainer.clear();
+		},
+	};
+	const clear = mode.chatContainer.clear;
+	const render = mode.renderSessionEntries;
+	const receiver = preserveCompactionScreen(mode);
+	receiver.chatContainer.clear();
+	receiver.renderSessionEntries();
+	assert.equal(clears, 0);
+	assert.equal(replays, 0);
+	receiver.status = "ready";
+	assert.equal(mode.status, "ready", "core cleanup writes must persist on the actual mode");
+	assert.equal(mode.chatContainer.clear, clear);
+	assert.equal(mode.renderSessionEntries, render);
+	await receiver.flushCompactionQueue();
+	assert.equal(clears, 2);
+	assert.equal(replays, 1);
+	assert.throws(() => {
+		receiver.chatContainer.clear();
+		throw new Error("handler failed");
+	}, /handler failed/);
+	mode.chatContainer.clear();
+	assert.equal(clears, 3, "a handler error cannot leave a global no-op installed");
 });

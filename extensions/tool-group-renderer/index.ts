@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Container, Spacer, Text, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { truncatePlainToWidth } from "../utils/format-utils.ts";
-import { installTranscriptHistory } from "./transcript-history.ts";
+import { installTranscriptHistory, preserveCompactionScreen } from "./transcript-history.ts";
 
 const PATCH_STATE_KEY = Symbol.for("pilee.tool-group-renderer.patch-state");
 const PATCH_VERSION = "2026-06-03-mcp-content-collapse-r2";
@@ -165,6 +165,8 @@ type SessionContextLike = {
 type PrototypeMethods = {
 	handleEvent: (event: {
 		type: string;
+		result?: { summary: string; tokensBefore: number };
+		aborted?: boolean;
 		message?: SessionMessageLike;
 		toolCallId?: string;
 		toolName?: string;
@@ -1109,7 +1111,7 @@ export default async function toolGroupRenderer(_pi: ExtensionAPI): Promise<void
 	patchState.toolExecutionComponent = ToolExecutionComponent;
 	runtimeTheme = themeModule.theme as RuntimeTheme;
 
-	installTranscriptHistory(InteractiveMode.prototype);
+	const supportsEntryRendering = installTranscriptHistory(InteractiveMode.prototype);
 	const proto = InteractiveMode.prototype as InteractiveModeLike & PrototypeMethods;
 	if (!patchState.originals) {
 		patchState.originals = {
@@ -1135,6 +1137,11 @@ export default async function toolGroupRenderer(_pi: ExtensionAPI): Promise<void
 	};
 
 	proto.handleEvent = async function handleEventPatched(this: InteractiveModeLike, event) {
+		// Before initialization there is no existing screen to preserve.
+		if (supportsEntryRendering && this.isInitialized && event.type === "compaction_end" && !event.aborted && event.result) {
+			return originalHandleEvent.call(preserveCompactionScreen(this), event);
+		}
+
 		if (event.type === "agent_start" || event.type === "agent_end") {
 			breakGroup(this);
 		}
