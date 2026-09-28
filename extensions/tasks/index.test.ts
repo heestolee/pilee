@@ -81,13 +81,15 @@ function createCtx(cwd: string, sessionFile = join(cwd, "session.jsonl")) {
 				editorTexts.push(text);
 			},
 			setWidget() {},
-			custom(factory: any, _options: any) {
+			async custom(factory: any, _options: any) {
 				const record = { doneCalled: false };
 				customCalls.push(record);
-				const done = () => { record.doneCalled = true; };
-				factory({ requestRender() {} }, plainTheme, {}, done);
-				_options?.onHandle?.({ hide: () => { hideCalls++; } });
-				return _options?.overlayOptions?.nonCapturing ? new Promise<void>(() => {}) : Promise.resolve();
+				return new Promise<void>((resolve) => {
+					const done = () => { record.doneCalled = true; resolve(); };
+					factory({ requestRender() {} }, plainTheme, {}, done);
+					_options?.onHandle?.({ hide: () => { hideCalls++; } });
+					if (!_options?.overlayOptions?.nonCapturing) resolve();
+				});
 			},
 		},
 	};
@@ -138,6 +140,31 @@ test("Ctrl+Shift+O toggles the passive tasks overlay", async () => {
 		assert.equal(view.hideCalls, 1, "third toggle hides the existing passive overlay handle");
 		assert.equal(view.customCalls[0].doneCalled, true, "hiding should close the passive overlay component");
 		assert.match(view.notifications.at(-1)?.message ?? "", /숨겼습니다/);
+	} finally {
+		rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("a late overlay close cannot forget the replacement opened by consecutive toggles", async () => {
+	const cwd = createGitWorkdir();
+	try {
+		const harness = createPiHarness();
+		tasksExtension(harness.pi as any);
+		const view = createCtx(cwd);
+		const tasksCommand = harness.commands.get("tasks")!;
+		const toggle = harness.shortcuts.get("ctrl+shift+o")!;
+		await tasksCommand.handler("show", view.ctx);
+
+		// Pi can dispatch both key presses in one stdin chunk, before close settles.
+		const hiding = toggle.handler(view.ctx);
+		const reopening = toggle.handler(view.ctx);
+		await Promise.all([hiding, reopening]);
+		await new Promise<void>((resolve) => setImmediate(resolve));
+
+		await tasksCommand.handler("show", view.ctx);
+		assert.equal(view.customCalls.length, 2, "refresh must reuse the replacement, not create a third overlay");
+		await tasksCommand.handler("hide", view.ctx);
+		assert.ok(view.customCalls.every((call) => call.doneCalled), "every opened overlay must remain closable");
 	} finally {
 		rmSync(cwd, { recursive: true, force: true });
 	}

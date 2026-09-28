@@ -617,13 +617,15 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 		if (record?.opening) return;
-		taskOverlayStore.set(key, { opening: true });
+		const overlay: TaskOverlayRecord = { opening: true };
+		taskOverlayStore.set(key, overlay);
 		const initialStore = { nextId: store.nextId, tasks: store.tasks.map((task) => ({ ...task, metadata: { ...task.metadata } })) };
 		void ctx.ui.custom(
 			(tui, theme, _keybindings, done) => {
 				const component = new WorkTaskOverlayComponent(tui, theme, initialStore, agentRunning);
-				const current = taskOverlayStore.get(key) ?? { opening: false };
-				taskOverlayStore.set(key, { ...current, opening: false, component, close: done });
+				overlay.opening = false;
+				overlay.component = component;
+				overlay.close = done;
 				return component;
 			},
 			{
@@ -637,14 +639,12 @@ export default function (pi: ExtensionAPI) {
 					visible: (termWidth: number) => termWidth >= 80,
 				},
 				onHandle: (handle) => {
-					const current = taskOverlayStore.get(key) ?? { opening: false };
-					taskOverlayStore.set(key, { ...current, handle });
+					overlay.handle = handle;
 				},
 			},
 		).finally(() => {
-			const current = taskOverlayStore.get(key);
-			current?.component?.dispose();
-			taskOverlayStore.delete(key);
+			overlay.component?.dispose();
+			if (taskOverlayStore.get(key) === overlay) taskOverlayStore.delete(key);
 		}).catch(() => {});
 	}
 
