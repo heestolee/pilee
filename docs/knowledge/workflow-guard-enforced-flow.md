@@ -20,8 +20,8 @@ applies_to:
   - extensions/frame-studio
 source:
   - user-direction:2026-05-12-conductor-like-guards
-reviewed_at: 2026-07-23
-reviewed_commit: eddf3b4996700844a3b8ace6e68352531929b8ec
+reviewed_at: 2026-09-30
+reviewed_commit: d988b92aa23ba4f74d25252bbb2287ca3fd4a71a
 related:
   - workflow-weight-proportionality
   - validation-baseline-failure-cache
@@ -30,6 +30,7 @@ related:
   - frame-studio-interactive-decision-ui
   - change-integration-discipline
   - ultra-proactive-delegation-mode
+  - astra-adaptive-thinking-effort
   - study-hard-worker-flexible-generation-strict-apply
 title_en: Repeated workflow failures become enforced guard flows
 ---
@@ -45,6 +46,7 @@ title_en: Repeated workflow failures become enforced guard flows
 | 축 | 성격 | 강제 방식 |
 |---|---|---|
 | 요청 의도 분류 | soft default | `before_agent_start`에서 turn intent/weight를 주입하되 answer/investigate 분류만으로 일반 edit/write/file-producing bash를 막지 않음 |
+| Astra adaptive thinking | session-local state transition | Astra `xhigh`에서 아키텍처·보안·동시성·어려운 장애·실패 재시도만 `max`로 승격하고 `agent_settled` 뒤 복귀. 수동 max·상태 노트·비-Astra는 건드리지 않음 |
 | 파일 mutation 경계 | soft general + hard high-risk | 일반 edit/write와 파일 생성 bash는 허용하고, commit/push/install/destructive cleanup/worktree/external publish처럼 side effect가 큰 동작만 explicit intent 또는 전용 승인을 요구 |
 | fixed-vs-unfixed audit | hard audit path | “이미 대응/미대응/남은 gap” 요청에는 local history snapshot을 자동 주입하고 `friction → response evidence → current state → remaining gap` 형식을 요구 |
 | 작은 hotfix 기본 경로 | hard lightweight default | light turn에서 `verify_report_live start`, subagent fan-out, deep session/context mining을 막고 scope lock → focused change → nearest validation부터 시작 |

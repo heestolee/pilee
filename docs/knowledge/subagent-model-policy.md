@@ -24,11 +24,12 @@ source:
   - pilee-history:2026-05-04#33
   - pilee-history:2026-05-04#34
   - pilee-history:2026-05-05#42
-reviewed_at: 2026-09-15
-reviewed_commit: a326514967ca6cda46471d3c833e1bff9e834013
+reviewed_at: 2026-09-30
+reviewed_commit: d988b92aa23ba4f74d25252bbb2287ca3fd4a71a
 related:
   - pilee-knowledge-system
   - worktree-session-continuity
+  - astra-adaptive-thinking-effort
 ---
 
 ## Overview
@@ -49,6 +50,10 @@ Astra 사용률을 높이는 것과 모든 역할에 같은 effort를 강제하�
 - agent는 기존 단일 `modelFallback`과 순서형 `modelFallbacks` chain을 모두 지원합니다. 같은 Pi runtime 안의 fallback은 persisted session을 이어 쓰되 새 offset부터 terminal event를 읽고, Claude→Pi cross-runtime fallback은 서로 다른 session JSONL을 사용합니다.
 - Astra의 도구 호출·구조화 출력·컨텍스트 한계는 역할별 fixture로 검증합니다. 반복 실패 시 전체 정책을 되돌리지 않고 해당 agent만 직전 primary로 복구합니다.
 - 모델 선택은 세대만이 아니라 역할 난도, 실패 시 되돌리기 비용, 독립 검증 필요성을 함께 기준으로 조정합니다.
+
+## Main Session Boundary
+
+메인 Pi 세션의 기본 effort와 subagent role mapping은 별도 계약입니다. 메인 Astra는 `xhigh`를 기본으로 두고 [고위험 turn만 max로 승격](./astra-adaptive-thinking-effort.md)하지만, `agents/*.md`에 고정된 worker/planner/reviewer와 verifier/challenger의 effort를 자동으로 낮추거나 승격하지 않습니다. Subagent는 애초에 좁게 선택된 전문 역할과 failure cost를 기준으로 정의되므로 이 문서의 role mapping을 계속 따릅니다.
 
 ## Prompt Specificity Rule
 

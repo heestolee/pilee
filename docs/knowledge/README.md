@@ -67,13 +67,14 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [Worker는 readiness ownership을 가진다](./ai-worker-readiness-orchestrator.md) | active | high | 2026-09-01 | 20ea93e | worker, subagent, orchestrator, readiness, bootstrap, diagnosis |
+| [Astra는 xhigh 기본에서 필요한 turn만 max로 승격한다](./astra-adaptive-thinking-effort.md) | active | high | 2026-09-30 | d988b92 | astra, reasoning, thinking, xhigh, max, workflow-guard |
 | [Self-healing은 actionable item만 수정한다](./self-healing-actionable-loop.md) | active | high | 2026-08-04 | 9bc5850 | self-healing, actionable, worker, fix-class, subagent, 자동수정 |
 | [Stress Interview는 다축 검토다](./stress-interview-multi-axis-review.md) | active | high | 2026-08-04 | 9bc5850 | stress-interview, review, verifier, reviewer, challenger, subagent |
-| [Hybrid subagent 모델 운용 정책](./subagent-model-policy.md) | active | high | 2026-09-15 | a326514 | subagent, codex, claude, model-policy, worker, finder |
+| [Hybrid subagent 모델 운용 정책](./subagent-model-policy.md) | active | high | 2026-09-30 | d988b92 | subagent, codex, claude, model-policy, worker, finder |
 | [Subagent 위임은 구체 프롬프트를 요구한다](./subagent-prompt-specificity.md) | active | high | 2026-08-08 | 3516f8a | subagent, prompt, delegation, worker, context, 위임 |
 | [Subagent는 slash command가 아니라 skill prompt를 위임받는다](./subagent-skill-delegation.md) | active | high | 2026-06-02 | 83617e9 | subagent, skill, slash-command, delegation, ship, ci-ship |
 | [Supervisor는 outcome guardrail이다](./supervisor-outcome-guardrail.md) | active | high | 2026-06-02 | 63f2a62 | supervisor, outcome, guardrail, steering, agent |
-| [Ultra는 Max reasoning과 proactive delegation을 결합한 로컬 mode다](./ultra-proactive-delegation-mode.md) | active | high | 2026-07-13 | 2c1f13d | ultra, reasoning, codex, subagent, delegation, workflow-guard |
+| [Ultra는 Max reasoning과 proactive delegation을 결합한 로컬 mode다](./ultra-proactive-delegation-mode.md) | active | high | 2026-09-30 | d988b92 | ultra, reasoning, codex, subagent, delegation, workflow-guard |
 
 ### architecture
 
@@ -231,7 +232,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
 | [Update branch는 remote-first sync command다](./update-branch-safe-pull-command.md) | active | high | 2026-07-02 | 98d7502 | update-branch, slash-command, git, pull, index-lock, workflow |
 | [Working Context Card는 큰 맥락을 현재 slice로 압축한다](./work-context-card-task-board.md) | active | high | 2026-06-02 | 61ccbc9 | work-context, tasks, workflow, context, guard |
-| [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-07-23 | eddf3b4 | workflow, guard, intent, audit, hotfix, continuation |
+| [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-09-30 | d988b92 | workflow, guard, intent, audit, hotfix, continuation |
 | [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-06-02 | 61ccbc9 | workflow, frame, tft, hotfix, scope, incremental |
 | [작업공간 동작과 panel activation은 별도 계약이다](./workspace-action-panel-activation-contract.md) | active | high | 2026-09-02 | 93ddc04 | workspace, worktree, branch, activation, panel, authorization |
 | [Worktree 생성은 현재 패널 대화가 source다](./worktree-creation-parent-gate.md) | active | high | 2026-09-02 | 93ddc04 | worktree, fork-panel, current-panel, hotfix, context, profile-driven |
@@ -244,6 +245,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 ```mermaid
 graph TD
   doc_ai_worker_readiness_orchestrator["Worker는 readiness ownership을 가진다"]
+  doc_astra_adaptive_thinking_effort["Astra는 xhigh 기본에서 필요한 turn만 max로 승격한다"]
   doc_self_healing_actionable_loop["Self-healing은 actionable item만 수정한다"]
   doc_stress_interview_multi_axis_review["Stress Interview는 다축 검토다"]
   doc_subagent_model_policy["Hybrid subagent 모델 운용 정책"]
@@ -366,6 +368,9 @@ graph TD
   doc_ai_worker_readiness_orchestrator --> doc_subagent_model_policy
   doc_ai_worker_readiness_orchestrator --> doc_subagent_prompt_specificity
   doc_ai_worker_readiness_orchestrator --> doc_worktree_dependency_bootstrap_worker
+  doc_astra_adaptive_thinking_effort --> doc_subagent_model_policy
+  doc_astra_adaptive_thinking_effort --> doc_ultra_proactive_delegation_mode
+  doc_astra_adaptive_thinking_effort --> doc_workflow_guard_enforced_flow
   doc_self_healing_actionable_loop --> doc_stress_interview_multi_axis_review
   doc_self_healing_actionable_loop --> doc_subagent_model_policy
   doc_self_healing_actionable_loop --> doc_test_boundary_refactor
@@ -374,6 +379,7 @@ graph TD
   doc_stress_interview_multi_axis_review --> doc_self_healing_actionable_loop
   doc_stress_interview_multi_axis_review --> doc_subagent_model_policy
   doc_stress_interview_multi_axis_review --> doc_test_boundary_refactor
+  doc_subagent_model_policy --> doc_astra_adaptive_thinking_effort
   doc_subagent_model_policy --> doc_pilee_knowledge_system
   doc_subagent_model_policy --> doc_worktree_session_continuity
   doc_subagent_prompt_specificity --> doc_final_verification_parallelization
@@ -389,6 +395,7 @@ graph TD
   doc_supervisor_outcome_guardrail --> doc_ask_user_question_decision_gates
   doc_supervisor_outcome_guardrail --> doc_subagent_prompt_specificity
   doc_ultra_proactive_delegation_mode --> doc_ai_worker_readiness_orchestrator
+  doc_ultra_proactive_delegation_mode --> doc_astra_adaptive_thinking_effort
   doc_ultra_proactive_delegation_mode --> doc_subagent_model_policy
   doc_ultra_proactive_delegation_mode --> doc_workflow_guard_enforced_flow
   doc_architecture_friction_tft_lens --> doc_decide_tradeoff_challenge
@@ -768,6 +775,7 @@ graph TD
   doc_work_context_card_task_board --> doc_workflow_guard_enforced_flow
   doc_work_context_card_task_board --> doc_worktree_session_continuity
   doc_workflow_guard_enforced_flow --> doc_ask_user_question_decision_gates
+  doc_workflow_guard_enforced_flow --> doc_astra_adaptive_thinking_effort
   doc_workflow_guard_enforced_flow --> doc_change_integration_discipline
   doc_workflow_guard_enforced_flow --> doc_frame_studio_interactive_decision_ui
   doc_workflow_guard_enforced_flow --> doc_study_hard_worker_flexible_generation_strict_apply
@@ -806,7 +814,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 117
-- Links: 442
+- Documents: 118
+- Links: 448
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->

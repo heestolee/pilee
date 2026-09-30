@@ -16,11 +16,12 @@ applies_to:
 source:
   - external:openai-codex-rust-v0.144.1
   - user-direction:2026-07-10-ultra-mode
-reviewed_at: 2026-07-13
-reviewed_commit: 2c1f13d
+reviewed_at: 2026-09-30
+reviewed_commit: d988b92aa23ba4f74d25252bbb2287ca3fd4a71a
 related:
   - subagent-model-policy
   - workflow-guard-enforced-flow
+  - astra-adaptive-thinking-effort
   - ai-worker-readiness-orchestrator
 ---
 
@@ -52,6 +53,7 @@ pilee의 `workflow-guard`는 매 `before_agent_start`에서 `getThinkingLevel()`
 
 - `max`: provider에 Max reasoning을 요청하고 기존 worker opt-in 규칙을 유지합니다.
 - `ultra`: provider 요청은 Max로 정규화하고 proactive delegation 지침을 주입합니다.
+- adaptive `xhigh → max`: [Astra adaptive thinking](./astra-adaptive-thinking-effort.md)은 현재 level이 정확히 `xhigh`일 때만 동작하므로 수동 `max`와 `ultra`를 자동 복귀 대상으로 만들지 않습니다.
 - status-only turn: Ultra여도 이전 작업이나 worker를 자동 재개하지 않습니다.
 - 모델이 Ultra를 지원하지 않으면 core selector가 해당 모델의 최고 지원 level로 clamp합니다.
 
