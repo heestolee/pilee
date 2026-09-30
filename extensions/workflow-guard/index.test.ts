@@ -131,7 +131,7 @@ test("ordinary astra xhigh turns stay xhigh", async () => {
 	assert.doesNotMatch(start.systemPrompt, /ADAPTIVE THINKING/);
 });
 
-test("trivial edits mentioning security or concurrency stay xhigh", async () => {
+test("trivial edits mentioning high-risk domains stay xhigh", async () => {
 	const prompts = [
 		"보안 관련 주석 오타 수정",
 		"jwt 만료시간 주석 수정",
@@ -139,6 +139,8 @@ test("trivial edits mentioning security or concurrency stay xhigh", async () => 
 		"트랜잭션 단위 테스트 이름 수정해줘",
 		"멱등키 상수 값을 3으로 수정",
 		"deadlock 관련 TODO 주석 제거 검토",
+		"refactor the variable name in the architecture doc",
+		"아키텍처 문서 링크 바꿔줘",
 	];
 
 	for (const prompt of prompts) {

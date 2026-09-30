@@ -392,15 +392,14 @@ function adaptiveMaxReason(prompt: string): AdaptiveThinkingEscalation["reason"]
 		/(?:최고|최대한)\s*(?:깊게|강하게|추론)/,
 	])) return "explicit max request";
 
-	if (hasAny(normalized, [
+	const trivialArtifactEdit = hasAny(normalized, [
+		/(?:주석|오타|문구|줄바꿈|링크|테스트\s*이름|상수\s*값|변수\s*이름|변수명|todo|comment|typo|copy|line\s*break|link|test\s*name|constant\s*value|variable\s*name).*(?:수정|고쳐|제거|변경|추가|바꿔|리팩터|rename|fix|remove|change|add|refactor)/,
+		/(?:수정|고쳐|제거|변경|추가|바꿔|리팩터|rename|fix|remove|change|add|refactor).*(?:주석|오타|문구|줄바꿈|링크|테스트\s*이름|상수\s*값|변수\s*이름|변수명|todo|comment|typo|copy|line\s*break|link|test\s*name|constant\s*value|variable\s*name)/,
+	]);
+	if (!trivialArtifactEdit && hasAny(normalized, [
 		/(?:아키텍처|architecture|system\s*design|구조\s*설계).*(?:결정|선택|비교|트레이드오프|trade-?off|설계|개편|재구성|리팩터|바꿔|짜줘|정해|decid|choos|compar|redesign|refactor|restructur|design)/,
 		/(?:결정|선택|비교|트레이드오프|trade-?off|설계|개편|재구성|리팩터|decid|choos|compar|redesign|refactor|restructur|design).*(?:아키텍처|architecture|system\s*design|구조\s*설계)/,
 	])) return "architecture decision";
-
-	const trivialArtifactEdit = hasAny(normalized, [
-		/(?:주석|오타|문구|줄바꿈|링크|테스트\s*이름|상수\s*값|todo|comment|typo|copy|line\s*break|link|test\s*name|constant\s*value).*(?:수정|고쳐|제거|변경|추가|rename|fix|remove|change|add)/,
-		/(?:수정|고쳐|제거|변경|추가|rename|fix|remove|change|add).*(?:주석|오타|문구|줄바꿈|링크|테스트\s*이름|상수\s*값|todo|comment|typo|copy|line\s*break|link|test\s*name|constant\s*value)/,
-	]);
 	const securitySubject = /(?:보안|security|취약점|vulnerab|threat\s*model|인증\s*(?:흐름|구조|설계)|인가|권한\s*(?:모델|정책|경계)|oauth|jwt|csrf|xss|sql\s*injection|secret|credential|pii|개인정보|암호화)/;
 	const securityDepth = /(?:분석|설계|근본\s*원인|위협\s*(?:모델|분석)|공격\s*(?:경로|벡터)|우회\s*(?:가능|경로)|감사|취약점|audit|analy[sz]e|design|root\s*cause|threat\s*model|attack\s*(?:path|vector)|bypass|vulnerab)/;
 	if (!trivialArtifactEdit && securitySubject.test(normalized) && securityDepth.test(normalized)) return "security-sensitive reasoning";
