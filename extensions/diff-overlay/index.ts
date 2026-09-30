@@ -171,9 +171,9 @@ interface DiffState {
 	commitFileDiffCache: Map<string, string>;
 	commitFileDiffLoading: Set<string>;
 	commitExpandedByHash: Map<string, Set<string>>;
-	commitFileSelectedIndex: number;
+	commitFileSelectedIndex: number; // -1: commit message / section heading
+	commitFileLineOffset: number; // relative to the selected file header (or message start)
 	commitFileScrollOffset: number;
-	commitFileManualScroll: boolean;
 
 	viewMode: OverlayViewMode;
 	focus: FocusPane;
@@ -862,11 +862,6 @@ export function commitPanelViewport(totalRows: number, height: number): { conten
 	return { contentHeight, maxOffset: Math.max(0, totalRows - contentHeight), showIndicator };
 }
 
-function overlayContentHeight(totalHeight: number): number {
-	const bodyHeight = Math.max(3, totalHeight - 6);
-	return Math.max(1, bodyHeight - 2);
-}
-
 function isCommitFileMarkerLine(line: string): boolean {
 	return /^(\+\+\+|---)\s/.test(line);
 }
@@ -879,35 +874,6 @@ function shouldHideCommitParsedLine(line: ParsedDiffLine | undefined): boolean {
 function shouldHideDiffMetaLine(line: ParsedDiffLine | undefined): boolean {
 	if (!line || line.category !== "meta") return false;
 	return !line.originalLine.startsWith("\\");
-}
-
-function commitPanelPrefixRowCount(st: DiffState, commit: BranchCommitEntry, width: number): number {
-	if (commit.hash === UNCOMMITTED_HASH || !st.commitMessageExpanded) return 1;
-	const cached = st.commitMessageCache.get(commit.hash);
-	const messageRows = cached === undefined ? 1 : Math.max(1, buildCommitMessageLines(cached, width).length);
-	return messageRows + 2;
-}
-
-export function countCommitFileRows(
-	files: CommitFile[],
-	commitHash: string,
-	expanded: Set<string>,
-	diffCache: Map<string, string>,
-): number {
-	let rows = 0;
-	for (const file of files) {
-		rows += 1;
-		if (!expanded.has(file.path)) continue;
-		const raw = diffCache.get(commitDiffKey(commitHash, file.path));
-		if (raw === undefined) {
-			rows += 1;
-			continue;
-		}
-		const parsed = parseDiffLines(raw);
-		const visibleDiffLines = parsed.filter((line) => !shouldHideCommitParsedLine(line));
-		rows += Math.max(1, visibleDiffLines.length);
-	}
-	return rows;
 }
 
 // ─── Tree state helpers ────────────────────────────────────────────────────
@@ -1934,9 +1900,14 @@ function commitPanelPrefixRows(t: Theme, st: DiffState, commit: BranchCommitEntr
 	return rows;
 }
 
-export function renderCommitFiles(t: Theme, st: DiffState, w: number, h: number): string[] {
+interface CommitPanelLayout {
+	rows: string[];
+	fileLineStart: number[];
+}
+
+function buildCommitPanelLayout(t: Theme, st: DiffState, w: number): CommitPanelLayout {
 	const selectedCommit = st.commits[st.commitSelectedIndex];
-	if (!selectedCommit) return [t.fg("muted", "  (no commit selected)")];
+	if (!selectedCommit) return { rows: [t.fg("muted", "  (no commit selected)")], fileLineStart: [] };
 
 	const commitHash = selectedCommit.hash;
 	const files = st.commitFilesCache.get(commitHash);
@@ -1950,16 +1921,14 @@ export function renderCommitFiles(t: Theme, st: DiffState, w: number, h: number)
 	} else if (files.length === 0) {
 		rows.push(t.fg("muted", "  (no changed files)"));
 	} else {
-		st.commitFileSelectedIndex = clamp(st.commitFileSelectedIndex, 0, files.length - 1);
 		for (let i = 0; i < files.length; i++) {
 			const file = files[i];
 			const selected = i === st.commitFileSelectedIndex;
 			fileLineStart[i] = rows.length;
 
-			const cursor = selected ? (active ? t.fg("accent", "▶") : t.fg("muted", "▸")) : " ";
 			const fold = expanded.has(file.path) ? t.fg("accent", "▾") : t.fg("dim", "▸");
 			const ic = t.fg(statusColor(file.status), icon(file.status));
-			const prefix = `${cursor} ${fold} ${ic} `;
+			const prefix = `${fold} ${ic} `;
 			const diffTotal = renderDiffTotals(t, file.diffTotals);
 			const suffix = `${t.fg("dim", " · ")}${diffTotal}`;
 			const nameW = Math.max(4, w - visibleWidth(prefix) - visibleWidth(suffix));
@@ -1994,20 +1963,44 @@ export function renderCommitFiles(t: Theme, st: DiffState, w: number, h: number)
 		}
 	}
 
+	return { rows, fileLineStart };
+}
+
+function commitCursorRow(st: DiffState, layout: CommitPanelLayout): number {
+	st.commitFileSelectedIndex = clamp(st.commitFileSelectedIndex, -1, layout.fileLineStart.length - 1);
+	const start = layout.fileLineStart[st.commitFileSelectedIndex] ?? 0;
+	const end = layout.fileLineStart[st.commitFileSelectedIndex + 1] ?? layout.rows.length;
+	st.commitFileLineOffset = clamp(st.commitFileLineOffset, 0, Math.max(0, end - start - 1));
+	return start + st.commitFileLineOffset;
+}
+
+function moveCommitCursor(st: DiffState, layout: CommitPanelLayout, target: number): void {
+	const row = clamp(target, 0, Math.max(0, layout.rows.length - 1));
+	st.commitFileSelectedIndex = layout.fileLineStart.findLastIndex((start) => start <= row);
+	st.commitFileLineOffset = row - (layout.fileLineStart[st.commitFileSelectedIndex] ?? 0);
+}
+
+export function renderCommitFiles(t: Theme, st: DiffState, w: number, h: number): string[] {
+	const layout = buildCommitPanelLayout(t, st, Math.max(1, w - 2));
+	const { rows } = layout;
+	const cursor = commitCursorRow(st, layout);
 	const max = Math.max(1, h);
 	const viewport = commitPanelViewport(rows.length, max);
-	const selectedLine = fileLineStart[st.commitFileSelectedIndex] ?? 0;
-	if (active && files && files.length > 0 && !st.commitFileManualScroll) {
-		if (selectedLine < st.commitFileScrollOffset) st.commitFileScrollOffset = selectedLine;
-		if (selectedLine >= st.commitFileScrollOffset + viewport.contentHeight) {
-			st.commitFileScrollOffset = selectedLine - viewport.contentHeight + 1;
+	const active = st.focus === "right";
+	if (active) {
+		if (cursor < st.commitFileScrollOffset) st.commitFileScrollOffset = cursor;
+		if (cursor >= st.commitFileScrollOffset + viewport.contentHeight) {
+			st.commitFileScrollOffset = cursor - viewport.contentHeight + 1;
 		}
 	}
 
 	st.commitFileScrollOffset = clamp(st.commitFileScrollOffset, 0, viewport.maxOffset);
 	const start = st.commitFileScrollOffset;
 	const end = Math.min(rows.length, start + viewport.contentHeight);
-	const visible = rows.slice(start, end);
+	const visible = rows.slice(start, end).map((row, index) => {
+		const marker = active && start + index === cursor ? t.fg("accent", "▶ ") : "  ";
+		return `${marker}${row}`;
+	});
 	while (visible.length < viewport.contentHeight) visible.push("");
 	if (viewport.showIndicator) visible.push(t.fg("dim", ` ${start + 1}–${end}/${rows.length}`));
 	while (visible.length < max) visible.push("");
@@ -2023,6 +2016,7 @@ export class DiffOverlay {
 	private done: (reviewPrompt?: string) => void;
 	private diffLoading = false;
 	private lastRightWidth = 80;
+	private lastTheme: Theme = { fg: (_color, text) => text, bg: (_color, text) => text, bold: (text) => text };
 
 	constructor(pi: ExtensionAPI, cwd: string, st: DiffState, done: (reviewPrompt?: string) => void) {
 		this.pi = pi;
@@ -2262,7 +2256,7 @@ export class DiffOverlay {
 		const commit = this.selectedCommit();
 		if (!commit) return null;
 		const files = this.st.commitFilesCache.get(commit.hash);
-		if (!files || files.length === 0) return null;
+		if (!files || files.length === 0 || this.st.commitFileSelectedIndex < 0) return null;
 		this.st.commitFileSelectedIndex = clamp(this.st.commitFileSelectedIndex, 0, files.length - 1);
 		return files[this.st.commitFileSelectedIndex] ?? null;
 	}
@@ -2277,9 +2271,9 @@ export class DiffOverlay {
 	}
 
 	private resetCommitFilesPanel(): void {
-		this.st.commitFileSelectedIndex = 0;
+		this.st.commitFileSelectedIndex = -1;
+		this.st.commitFileLineOffset = 0;
 		this.st.commitFileScrollOffset = 0;
-		this.st.commitFileManualScroll = false;
 	}
 
 	private async ensureDiff(tui: Tui): Promise<void> {
@@ -2617,8 +2611,7 @@ export class DiffOverlay {
 			const commit = this.selectedCommit();
 			if (commit && commit.hash !== UNCOMMITTED_HASH) {
 				st.commitMessageExpanded = !st.commitMessageExpanded;
-				st.commitFileScrollOffset = 0;
-				st.commitFileManualScroll = true;
+				if (st.commitFileSelectedIndex < 0) st.commitFileLineOffset = 0;
 				if (st.commitMessageExpanded) void this.ensureCommitMessage(tui);
 			}
 			tui.requestRender();
@@ -2672,7 +2665,6 @@ export class DiffOverlay {
 			} else if (matchesKey(data, Key.enter)) {
 				st.focus = "right";
 				this.resetCommitFilesPanel();
-				st.commitFileManualScroll = true;
 				void this.ensureCommitFiles(tui);
 				void this.ensureCommitMessage(tui);
 			}
@@ -2684,7 +2676,6 @@ export class DiffOverlay {
 		if (matchesKey(data, Key.escape) || matchesKey(data, Key.left)) {
 			st.focus = "left";
 			st.commitFileScrollOffset = 0;
-			st.commitFileManualScroll = false;
 			tui.requestRender();
 			return;
 		}
@@ -2698,47 +2689,17 @@ export class DiffOverlay {
 		void this.ensureCommitFiles(tui);
 		const files = st.commitFilesCache.get(commit.hash);
 		const expanded = this.expandedSet(commit.hash);
-		const contentH = overlayContentHeight(tui.terminal?.rows ?? 40);
-		const prefixRows = commitPanelPrefixRowCount(st, commit, Math.max(1, this.lastRightWidth));
-		const fileRows = files && files.length > 0
-			? countCommitFileRows(files, commit.hash, expanded, st.commitFileDiffCache)
-			: 1;
-		const maxOffset = commitPanelViewport(prefixRows + fileRows, contentH).maxOffset;
-		st.commitFileScrollOffset = clamp(st.commitFileScrollOffset, 0, maxOffset);
-
-		if (matchesKey(data, Key.up) && (!files || files.length === 0)) {
-			st.commitFileScrollOffset = Math.max(0, st.commitFileScrollOffset - ARROW_SCROLL_STEP);
-			st.commitFileManualScroll = true;
-			tui.requestRender();
-			return;
-		}
-		if (matchesKey(data, Key.down) && (!files || files.length === 0)) {
-			st.commitFileScrollOffset = Math.min(maxOffset, st.commitFileScrollOffset + ARROW_SCROLL_STEP);
-			st.commitFileManualScroll = true;
-			tui.requestRender();
-			return;
-		}
-		if (matchesKey(data, Key.pageUp) || matchesKey(data, Key.ctrl("u")) || matchesKey(data, "u")) {
-			st.commitFileScrollOffset = Math.max(0, st.commitFileScrollOffset - PAGE_SCROLL_STEP);
-			st.commitFileManualScroll = true;
-			tui.requestRender();
-			return;
-		}
-		if (matchesKey(data, Key.pageDown) || matchesKey(data, Key.ctrl("d")) || matchesKey(data, "i")) {
-			st.commitFileScrollOffset = Math.min(maxOffset, st.commitFileScrollOffset + PAGE_SCROLL_STEP);
-			st.commitFileManualScroll = true;
-			tui.requestRender();
-			return;
-		}
-		if (matchesKey(data, "g")) {
-			st.commitFileScrollOffset = 0;
-			st.commitFileManualScroll = true;
-			tui.requestRender();
-			return;
-		}
-		if (matchesKey(data, Key.shift("g"))) {
-			st.commitFileScrollOffset = maxOffset;
-			st.commitFileManualScroll = true;
+		const layout = buildCommitPanelLayout(this.lastTheme, st, Math.max(1, this.lastRightWidth - 2));
+		const cursor = commitCursorRow(st, layout);
+		let target: number | undefined;
+		if (matchesKey(data, Key.up) || matchesKey(data, "k")) target = cursor - 1;
+		else if (matchesKey(data, Key.down) || matchesKey(data, "j")) target = cursor + 1;
+		else if (matchesKey(data, Key.pageUp) || matchesKey(data, Key.ctrl("u")) || matchesKey(data, "u")) target = cursor - PAGE_SCROLL_STEP;
+		else if (matchesKey(data, Key.pageDown) || matchesKey(data, Key.ctrl("d")) || matchesKey(data, "i")) target = cursor + PAGE_SCROLL_STEP;
+		else if (matchesKey(data, "g")) target = 0;
+		else if (matchesKey(data, Key.shift("g"))) target = layout.rows.length - 1;
+		if (target !== undefined) {
+			moveCommitCursor(st, layout, target);
 			tui.requestRender();
 			return;
 		}
@@ -2747,16 +2708,7 @@ export class DiffOverlay {
 			return;
 		}
 
-		const maxIndex = files.length - 1;
-		st.commitFileSelectedIndex = clamp(st.commitFileSelectedIndex, 0, maxIndex);
-		const selectedIndex = st.commitFileSelectedIndex;
-		if (matchesKey(data, Key.up) || matchesKey(data, "k")) {
-			st.commitFileSelectedIndex = clamp(selectedIndex - 1, 0, maxIndex);
-			st.commitFileManualScroll = false;
-		} else if (matchesKey(data, Key.down) || matchesKey(data, "j")) {
-			st.commitFileSelectedIndex = clamp(selectedIndex + 1, 0, maxIndex);
-			st.commitFileManualScroll = false;
-		} else if (matchesKey(data, Key.enter)) {
+		if (matchesKey(data, Key.enter) && st.commitFileLineOffset === 0) {
 			const file = files[st.commitFileSelectedIndex];
 			if (file) {
 				if (expanded.has(file.path)) {
@@ -2765,7 +2717,6 @@ export class DiffOverlay {
 					expanded.add(file.path);
 					void this.ensureCommitFileDiff(commit.hash, file, tui);
 				}
-				st.commitFileManualScroll = false;
 			}
 		} else if (matchesKey(data, "r")) {
 			this.openCommitReviewDraftInput();
@@ -2871,9 +2822,9 @@ export class DiffOverlay {
 		lines.push(`  ${t.fg("warning", "Enter")}  ${t.fg("muted", "오른쪽 상세 패널로 이동")}`);
 		lines.push("");
 		lines.push(`  ${t.fg("accent", "── commit 모드: 오른쪽 (파일/diff) ──")}`);
-		lines.push(`  ${t.fg("warning", "↑/↓·j/k")} ${t.fg("muted", "파일 선택")}`);
+		lines.push(`  ${t.fg("warning", "↑/↓·j/k")} ${t.fg("muted", "제목·diff 한 줄씩 이동")}`);
 		lines.push(`  ${t.fg("warning", "u/i")}    ${t.fg("muted", "100줄 스크롤")}`);
-		lines.push(`  ${t.fg("warning", "Enter")}  ${t.fg("muted", "diff 펼치기/접기")}`);
+		lines.push(`  ${t.fg("warning", "Enter")}  ${t.fg("muted", "파일 제목에서 펼치기/접기")}`);
 		lines.push(`  ${t.fg("warning", "m")}      ${t.fg("muted", "커밋 메시지 접기/펼치기")}`);
 		lines.push(`  ${t.fg("warning", "g/G")}    ${t.fg("muted", "상세 surface 맨 위/맨 아래")}`);
 		lines.push(`  ${t.fg("warning", "←/Esc")}  ${t.fg("muted", "커밋 패널로 복귀")}`);
@@ -2888,6 +2839,7 @@ export class DiffOverlay {
 		if (this.st.showHelp) return this.renderHelp(w, h, t);
 
 		const st = this.st;
+		this.lastTheme = t;
 
 		const header: string[] = [];
 		header.push(...new DynamicBorder((s: string) => t.fg("accent", s)).render(w));
@@ -2960,7 +2912,7 @@ export class DiffOverlay {
 							: "  ↑/↓ 10lines  ·  j/k 1line  ·  u/i 100lines  ·  g/G Top/Bottom  ·  / Search  ·  s Scope  ·  w Wrap  ·  a Full  ·  c Changed-only  ·  r Review  ·  , Help  ·  q Close"
 				: st.focus === "left"
 					? "  ↑/↓ Select Commit  ·  m Message  ·  Enter → Details  ·  Tab/v Toggle Diff  ·  S Stash  ·  q/Esc Close"
-					: "  ↑/↓·j/k Select File  ·  u/i 100lines  ·  g/G Top/Bottom  ·  m Message  ·  Enter Fold/Unfold  ·  r Review  ·  ←/Esc → Commits  ·  q Close";
+					: "  ↑/↓·j/k 한 줄 이동  ·  u/i 100줄  ·  g/G 처음/끝  ·  m 메시지  ·  Enter 제목 접기/펼치기  ·  r 리뷰  ·  ←/Esc 커밋 목록  ·  q 닫기";
 		footer.push(t.fg("dim", hint));
 		footer.push(...new DynamicBorder((s: string) => t.fg("accent", s)).render(w));
 
@@ -3174,9 +3126,9 @@ export function registerDiffOverlay(pi: ExtensionAPI, options: DiffOverlayExtens
 			commitFileDiffCache: new Map(),
 			commitFileDiffLoading: new Set(),
 			commitExpandedByHash: new Map(),
-			commitFileSelectedIndex: 0,
+			commitFileSelectedIndex: -1,
+			commitFileLineOffset: 0,
 			commitFileScrollOffset: 0,
-			commitFileManualScroll: false,
 
 			viewMode: "diff",
 			focus: "left",

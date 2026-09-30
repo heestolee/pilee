@@ -8,7 +8,6 @@ import {
 	buildAddedFileDiff,
 	buildCommitMessageLines,
 	commitPanelViewport,
-	countCommitFileRows,
 	DiffOverlay,
 	findMergeBase,
 	formatDiffComparison,
@@ -170,18 +169,6 @@ test("commit message lines preserve paragraphs and bullets while wrapping to pan
 	assert.deepEqual(buildCommitMessageLines("", 34), []);
 });
 
-test("commit file row count keeps only rows rendered below the message section", () => {
-	const files = [{
-		path: "src/a.ts",
-		status: "modified",
-		rawStatus: "M",
-		previousPath: null,
-		diffTotals: { additions: 2, deletions: 1, binaryFiles: 0 },
-	}] as any;
-	assert.equal(countCommitFileRows(files, "abc123", new Set(), new Map()), 1);
-	assert.equal(countCommitFileRows(files, "abc123", new Set(["src/a.ts"]), new Map()), 2);
-});
-
 test("commit message loader reads the complete percent-B body", async () => {
 	const { pi, calls } = mockPi((command, args) => {
 		if (command === "git" && args.join(" ") === "show --no-patch --no-color --format=%B abc123") {
@@ -218,7 +205,7 @@ test("commit details render the full message before files on one scroll surface"
 		commitFileDiffLoading: new Set(),
 		commitFileSelectedIndex: 0,
 		commitFileScrollOffset: 0,
-		commitFileManualScroll: true,
+		commitFileLineOffset: 0,
 		focus: "left",
 		reviewDrafts: [],
 		wrapLines: true,
@@ -241,11 +228,12 @@ test("commit details render the full message before files on one scroll surface"
 	state.commitMessageExpanded = false;
 	state.commitFileScrollOffset = 0;
 	const collapsed = renderCommitFiles(theme, state, 80, 4).join("\n");
-	assert.match(collapsed, /^ CHANGED FILES/u);
+	assert.match(collapsed, /^\s+CHANGED FILES/u);
 	assert.doesNotMatch(collapsed, /fix: full subject/u);
 });
 
-test("commit detail arrow keys move file selection while preserving message display", () => {
+test("접힌 파일 제목 사이를 방향키로 이동해도 커밋 메시지가 유지된다", () => {
+	// given
 	const commit = { hash: "abc123", shortHash: "abc123", author: "author", relativeDate: "1h", subject: "fix: full subject" };
 	const files = [
 		{
@@ -281,7 +269,7 @@ test("commit detail arrow keys move file selection while preserving message disp
 		commitFileDiffLoading: new Set(),
 		commitFileSelectedIndex: 0,
 		commitFileScrollOffset: 0,
-		commitFileManualScroll: true,
+		commitFileLineOffset: 0,
 		reviewDrafts: [],
 		wrapLines: true,
 		showFullFile: false,
@@ -295,10 +283,13 @@ test("commit detail arrow keys move file selection while preserving message disp
 	const overlay = new DiffOverlay({} as any, "/repo", state, () => {});
 	const tui = { requestRender: () => { renderRequests += 1; }, terminal: { rows: 40 } };
 
+	// when
 	overlay.handleInput("\u001b[B", tui);
-	assert.equal(state.commitFileSelectedIndex, 1);
-	assert.equal(state.commitFileManualScroll, false);
-	assert.match(renderCommitFiles(theme, state, 80, 20).join("\n"), /Cause paragraph\./u);
+
+	// then
+	const rendered = renderCommitFiles(theme, state, 80, 20).join("\n");
+	assert.match(rendered, /▶.*src\/b\.ts/u);
+	assert.match(rendered, /Cause paragraph\./u);
 
 	overlay.handleInput("\u001b[A", tui);
 	assert.equal(state.commitFileSelectedIndex, 0);
@@ -311,7 +302,8 @@ test("commit panel reserves an indicator row without hiding the final content ro
 	assert.deepEqual(commitPanelViewport(3, 4), { contentHeight: 4, maxOffset: 0, showIndicator: false });
 });
 
-test("zero-file commits keep a long commit message scrollable", () => {
+test("변경 파일이 없어도 긴 커밋 메시지를 끝까지 탐색할 수 있다", () => {
+	// given
 	const commit = { hash: "empty123", shortHash: "empty12", author: "author", relativeDate: "now", subject: "docs: empty commit" };
 	const state = {
 		showHelp: false,
@@ -328,9 +320,9 @@ test("zero-file commits keep a long commit message scrollable", () => {
 		commitMessageExpanded: true,
 		commitExpandedByHash: new Map(),
 		commitFileDiffCache: new Map(),
-		commitFileSelectedIndex: 0,
+		commitFileSelectedIndex: -1,
 		commitFileScrollOffset: 0,
-		commitFileManualScroll: true,
+		commitFileLineOffset: 0,
 		wrapLines: true,
 		showFullFile: false,
 	} as any;
@@ -338,11 +330,19 @@ test("zero-file commits keep a long commit message scrollable", () => {
 	const overlay = new DiffOverlay({} as any, "/repo", state, () => {});
 	const tui = { requestRender: () => { renderRequests += 1; }, terminal: { rows: 12 } };
 
-	overlay.handleInput("\u001b[B", tui);
-	assert.equal(state.commitFileScrollOffset > 0, true);
-	state.commitFileScrollOffset = 0;
+	const theme = { fg: (_color: string, text: string) => text, bg: (_color: string, text: string) => text, bold: (text: string) => text };
+	const render = () => renderCommitFiles(theme, state, 80, 4).join("\n");
+
+	// when
+	for (let step = 0; step < 6; step++) {
+		overlay.handleInput("\u001b[B", tui);
+		render();
+	}
+
+	// then
+	assert.match(render(), /message line 7/);
 	overlay.handleInput("G", tui);
-	assert.equal(state.commitFileScrollOffset > 0, true);
+	assert.match(render(), /no changed files/);
 	assert.equal(renderRequests >= 2, true);
 });
 
