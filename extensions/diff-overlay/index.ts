@@ -2729,8 +2729,10 @@ export class DiffOverlay {
 		const layout = this.getCommitPanelLayout(this.lastRightWidth, this.lastTheme);
 		const cursor = commitCursorRow(st, layout);
 		let target: number | undefined;
-		if (matchesKey(data, Key.up) || matchesKey(data, "k")) target = cursor - 1;
-		else if (matchesKey(data, Key.down) || matchesKey(data, "j")) target = cursor + 1;
+		if (matchesKey(data, Key.up)) target = cursor - ARROW_SCROLL_STEP;
+		else if (matchesKey(data, Key.down)) target = cursor + ARROW_SCROLL_STEP;
+		else if (matchesKey(data, "k")) target = cursor - 1;
+		else if (matchesKey(data, "j")) target = cursor + 1;
 		else if (matchesKey(data, Key.pageUp) || matchesKey(data, Key.ctrl("u")) || matchesKey(data, "u")) target = cursor - PAGE_SCROLL_STEP;
 		else if (matchesKey(data, Key.pageDown) || matchesKey(data, Key.ctrl("d")) || matchesKey(data, "i")) target = cursor + PAGE_SCROLL_STEP;
 		else if (matchesKey(data, "g")) target = 0;
@@ -2860,7 +2862,8 @@ export class DiffOverlay {
 		lines.push(`  ${t.fg("warning", "Enter")}  ${t.fg("muted", "오른쪽 상세 패널로 이동")}`);
 		lines.push("");
 		lines.push(`  ${t.fg("accent", "── commit 모드: 오른쪽 (파일/diff) ──")}`);
-		lines.push(`  ${t.fg("warning", "↑/↓·j/k")} ${t.fg("muted", "제목·diff 한 줄씩 이동")}`);
+		lines.push(`  ${t.fg("warning", "↑/↓")}    ${t.fg("muted", "제목·diff 10줄 이동")}`);
+		lines.push(`  ${t.fg("warning", "j/k")}    ${t.fg("muted", "제목·diff 1줄 이동")}`);
 		lines.push(`  ${t.fg("warning", "u/i")}    ${t.fg("muted", "100줄 스크롤")}`);
 		lines.push(`  ${t.fg("warning", "Enter")}  ${t.fg("muted", "파일 제목에서 펼치기/접기")}`);
 		lines.push(`  ${t.fg("warning", "m")}      ${t.fg("muted", "커밋 메시지 접기/펼치기")}`);
@@ -2950,7 +2953,7 @@ export class DiffOverlay {
 							: "  ↑/↓ 10lines  ·  j/k 1line  ·  u/i 100lines  ·  g/G Top/Bottom  ·  / Search  ·  s Scope  ·  w Wrap  ·  a Full  ·  c Changed-only  ·  r Review  ·  , Help  ·  q Close"
 				: st.focus === "left"
 					? "  ↑/↓ Select Commit  ·  m Message  ·  Enter → Details  ·  Tab/v Toggle Diff  ·  S Stash  ·  q/Esc Close"
-					: "  ↑/↓·j/k 한 줄 이동  ·  u/i 100줄  ·  g/G 처음/끝  ·  m 메시지  ·  Enter 제목 접기/펼치기  ·  r 리뷰  ·  ←/Esc 커밋 목록  ·  q 닫기";
+					: "  ↑/↓ 10줄  ·  j/k 1줄  ·  u/i 100줄  ·  g/G 처음/끝  ·  m 메시지  ·  Enter 제목 접기/펼치기  ·  r 리뷰  ·  ←/Esc 커밋 목록  ·  q 닫기";
 		footer.push(t.fg("dim", hint));
 		footer.push(...new DynamicBorder((s: string) => t.fg("accent", s)).render(w));
 

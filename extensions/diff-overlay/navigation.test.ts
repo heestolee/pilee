@@ -42,7 +42,7 @@ function createPanel(colors = theme) {
 	return { state, overlay, tui, render, press, cursor, resize };
 }
 
-test("아래 방향키로 파일 제목과 펼친 diff를 순서대로 지나 다음 파일에 도달한다", () => {
+test("j/k로 파일 제목과 펼친 diff를 한 줄씩 연속 탐색한다", () => {
 	// given
 	const panel = createPanel();
 	assert.match(panel.cursor(), /a\.ts/);
@@ -50,7 +50,7 @@ test("아래 방향키로 파일 제목과 펼친 diff를 순서대로 지나 �
 	// when
 	const visited = [];
 	for (let step = 0; step < 5; step++) {
-		panel.press("\u001b[B");
+		panel.press("j");
 		visited.push(panel.cursor());
 	}
 
@@ -58,7 +58,57 @@ test("아래 방향키로 파일 제목과 펼친 diff를 순서대로 지나 �
 	for (const [index, expected] of [/@@/, /-before/, /\+after/, /\+last-a/, /b\.ts/].entries()) {
 		assert.match(visited[index], expected);
 	}
-	assert.match(panel.press("\u001b[A").find((line) => line.includes("▶")) ?? "", /\+last-a/);
+	assert.match(panel.press("k").find((line) => line.includes("▶")) ?? "", /\+last-a/);
+});
+
+test("커밋 diff에서도 방향키는 10줄씩 이동한다", () => {
+	// given
+	const panel = createPanel();
+	panel.state.commitFileDiffCache.set("abc123\0a.ts", "@@ -0,0 +1,30 @@\n" + Array.from({ length: 30 }, (_, i) => `+value-${i + 1}`).join("\n"));
+	panel.render();
+
+	// when
+	panel.press("\u001b[B");
+	const afterDown = panel.cursor();
+	panel.press("j");
+	const afterFineDown = panel.cursor();
+	panel.press("k");
+	panel.press("\u001b[B");
+	const afterSecondDown = panel.cursor();
+	panel.press("\u001b[A");
+	const afterUp = panel.cursor();
+	panel.press("\u001b[A");
+
+	// then
+	assert.match(afterDown, /value-9\b/);
+	assert.match(afterFineDown, /value-10\b/);
+	assert.match(afterSecondDown, /value-19\b/);
+	assert.match(afterUp, /value-9\b/);
+	assert.match(panel.cursor(), /a\.ts/);
+});
+
+test("방향키로 파일 경계를 넘어도 처음과 마지막 줄에서 멈춘다", () => {
+	// given
+	const panel = createPanel();
+	panel.state.commitFileDiffCache.set("abc123\0a.ts", "@@ -0,0 +1,8 @@\n" + Array.from({ length: 8 }, (_, i) => `+value-${i + 1}`).join("\n"));
+	panel.render();
+
+	// when
+	panel.press("\u001b[B");
+	const nextFile = panel.cursor();
+	panel.press("\u001b[A");
+	const previousFile = panel.cursor();
+	panel.press("\u001b[A");
+	panel.press("\u001b[A");
+	const top = panel.cursor();
+	panel.press("G");
+	panel.press("\u001b[B");
+
+	// then
+	assert.match(nextFile, /b\.ts/);
+	assert.match(previousFile, /a\.ts/);
+	assert.match(top, /CHANGED FILES/);
+	assert.match(panel.cursor(), /c\.ts/);
 });
 
 test("j/k로 접힌 파일과 펼친 파일을 오가며 제목에서만 접고 펼친다", () => {

@@ -232,7 +232,7 @@ test("commit details render the full message before files on one scroll surface"
 	assert.doesNotMatch(collapsed, /fix: full subject/u);
 });
 
-test("접힌 파일 제목 사이를 방향키로 이동해도 커밋 메시지가 유지된다", () => {
+test("접힌 파일 제목 사이를 j/k로 이동해도 커밋 메시지가 유지된다", () => {
 	// given
 	const commit = { hash: "abc123", shortHash: "abc123", author: "author", relativeDate: "1h", subject: "fix: full subject" };
 	const files = [
@@ -284,14 +284,14 @@ test("접힌 파일 제목 사이를 방향키로 이동해도 커밋 메시지�
 	const tui = { requestRender: () => { renderRequests += 1; }, terminal: { rows: 40 } };
 
 	// when
-	overlay.handleInput("\u001b[B", tui);
+	overlay.handleInput("j", tui);
 
 	// then
 	const rendered = renderCommitFiles(theme, state, 80, 20).join("\n");
 	assert.match(rendered, /▶.*src\/b\.ts/u);
 	assert.match(rendered, /Cause paragraph\./u);
 
-	overlay.handleInput("\u001b[A", tui);
+	overlay.handleInput("k", tui);
 	assert.equal(state.commitFileSelectedIndex, 0);
 	assert.equal(state.commitMessageExpanded, true);
 	assert.equal(renderRequests >= 2, true);
@@ -336,7 +336,7 @@ test("변경 파일이 없어도 긴 커밋 메시지를 끝까지 탐색할 수
 
 	// when
 	for (let step = 0; step < 6; step++) {
-		overlay.handleInput("\u001b[B", tui);
+		overlay.handleInput("j", tui);
 		render();
 	}
 
