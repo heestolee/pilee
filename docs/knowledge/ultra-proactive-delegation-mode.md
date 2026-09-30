@@ -17,7 +17,7 @@ source:
   - external:openai-codex-rust-v0.144.1
   - user-direction:2026-07-10-ultra-mode
 reviewed_at: 2026-09-30
-reviewed_commit: dedcc8905c087be0d6be2898e77203d9870a30c3
+reviewed_commit: 72429887fa9988bfe2ae14c248b77acdaa7303ca
 related:
   - subagent-model-policy
   - workflow-guard-enforced-flow

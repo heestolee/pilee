@@ -18,7 +18,7 @@ source:
   - user-direction:2026-09-30-astra-adaptive-effort
   - runtime-evidence:2026-09-30-astra-xhigh-max-sample
 reviewed_at: 2026-09-30
-reviewed_commit: dedcc8905c087be0d6be2898e77203d9870a30c3
+reviewed_commit: 72429887fa9988bfe2ae14c248b77acdaa7303ca
 related:
   - subagent-model-policy
   - workflow-guard-enforced-flow
