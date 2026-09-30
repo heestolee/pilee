@@ -87,7 +87,6 @@ const guardBySession = new Map<string, GuardState>();
 const lightPushDoneBySession = new Map<string, boolean>();
 const packageResolveFailuresBySession = new Map<string, { count: number; packages: string[] }>();
 const validationFailuresBySession = new Map<string, Map<string, { count: number; commands: string[] }>>();
-const adaptiveThinkingBySession = new Map<string, AdaptiveThinkingEscalation>();
 
 const workflowGuardToolSchema = Type.Object({
 	action: Type.Union([
@@ -394,16 +393,21 @@ function adaptiveMaxReason(prompt: string): AdaptiveThinkingEscalation["reason"]
 	])) return "explicit max request";
 
 	if (hasAny(normalized, [
-		/(?:아키텍처|architecture|system\s*design|구조\s*설계).*(?:결정|선택|비교|트레이드오프|trade-?off|설계|개편|재구성|리팩터|바꿔|짜줘|정해)/,
-		/(?:결정|선택|비교|트레이드오프|trade-?off|설계|개편|재구성|리팩터).*(?:아키텍처|architecture|system\s*design|구조\s*설계)/,
+		/(?:아키텍처|architecture|system\s*design|구조\s*설계).*(?:결정|선택|비교|트레이드오프|trade-?off|설계|개편|재구성|리팩터|바꿔|짜줘|정해|decid|choos|compar|redesign|refactor|restructur|design)/,
+		/(?:결정|선택|비교|트레이드오프|trade-?off|설계|개편|재구성|리팩터|decid|choos|compar|redesign|refactor|restructur|design).*(?:아키텍처|architecture|system\s*design|구조\s*설계)/,
 	])) return "architecture decision";
 
+	const trivialArtifactEdit = hasAny(normalized, [
+		/(?:주석|오타|문구|줄바꿈|링크|테스트\s*이름|상수\s*값|todo|comment|typo|copy|line\s*break|link|test\s*name|constant\s*value).*(?:수정|고쳐|제거|변경|추가|rename|fix|remove|change|add)/,
+		/(?:수정|고쳐|제거|변경|추가|rename|fix|remove|change|add).*(?:주석|오타|문구|줄바꿈|링크|테스트\s*이름|상수\s*값|todo|comment|typo|copy|line\s*break|link|test\s*name|constant\s*value)/,
+	]);
 	const securitySubject = /(?:보안|security|취약점|vulnerab|threat\s*model|인증\s*(?:흐름|구조|설계)|인가|권한\s*(?:모델|정책|경계)|oauth|jwt|csrf|xss|sql\s*injection|secret|credential|pii|개인정보|암호화)/;
-	const reasoningAction = /(?:분석|검토|리뷰|설계|구현|수정|고쳐|대응|감사|audit|review|analy[sz]e|design|fix|implement)/;
-	if (securitySubject.test(normalized) && reasoningAction.test(normalized)) return "security-sensitive reasoning";
+	const securityDepth = /(?:분석|설계|근본\s*원인|위협\s*(?:모델|분석)|공격\s*(?:경로|벡터)|우회\s*(?:가능|경로)|감사|취약점|audit|analy[sz]e|design|root\s*cause|threat\s*model|attack\s*(?:path|vector)|bypass|vulnerab)/;
+	if (!trivialArtifactEdit && securitySubject.test(normalized) && securityDepth.test(normalized)) return "security-sensitive reasoning";
 
 	const concurrencySubject = /(?:동시성|경합|race\s*condition|deadlock|데드락|트랜잭션|transaction|row\s*lock|분산\s*락|distributed\s*lock|멱등|idempot)/;
-	if (concurrencySubject.test(normalized) && reasoningAction.test(normalized)) return "concurrency reasoning";
+	const concurrencyDepth = /(?:분석|설계|근본\s*원인|근본|재현|디버|해결|방지|보장|원인|audit|analy[sz]e|design|root\s*cause|reproduc|debug|resolv|prevent|ensure|fix)/;
+	if (!trivialArtifactEdit && concurrencySubject.test(normalized) && concurrencyDepth.test(normalized)) return "concurrency reasoning";
 
 	const incidentSubject = /(?:장애|incident|outage|5\d\d|timeout|타임아웃|crash|크래시|hang|sentry)/;
 	const difficultCause = /(?:근본\s*원인|root\s*cause|간헐|반복|재현\s*(?:안|불가)|원인\s*불명|여러\s*번|어려운)/;
@@ -423,6 +427,7 @@ function maybeEscalateAdaptiveThinking(
 	ctx: { model?: { provider?: string; id?: string } },
 	key: string,
 	state: GuardState,
+	adaptiveThinkingBySession: Map<string, AdaptiveThinkingEscalation>,
 ): AdaptiveThinkingEscalation | undefined {
 	const active = adaptiveThinkingBySession.get(key);
 	if (active) {
@@ -447,10 +452,22 @@ function maybeEscalateAdaptiveThinking(
 	return escalation;
 }
 
-function restoreAdaptiveThinking(pi: ExtensionAPI, key: string): void {
-	const escalation = adaptiveThinkingBySession.get(key);
+function restoreAdaptiveThinking(
+	pi: ExtensionAPI,
+	key: string,
+	adaptiveThinkingBySession: Map<string, AdaptiveThinkingEscalation>,
+): void {
+	let escalationKey = key;
+	let escalation = adaptiveThinkingBySession.get(key);
+	if (!escalation && adaptiveThinkingBySession.size === 1) {
+		const fallback = adaptiveThinkingBySession.entries().next().value;
+		if (fallback) {
+			escalationKey = fallback[0];
+			escalation = fallback[1];
+		}
+	}
 	if (!escalation) return;
-	adaptiveThinkingBySession.delete(key);
+	adaptiveThinkingBySession.delete(escalationKey);
 	if (pi.getThinkingLevel() === escalation.targetLevel) pi.setThinkingLevel(escalation.previousLevel);
 }
 
@@ -1400,6 +1417,7 @@ export default function workflowGuard(
 ) {
 	const trustedInternalPullRequestRepositories = options.trustedInternalPullRequestRepositories
 		?? loadWorkflowGuardProfiles().flatMap((profile) => profile.trustedInternalPullRequestRepositories ?? []);
+	const adaptiveThinkingBySession = new Map<string, AdaptiveThinkingEscalation>();
 
 	pi.on("before_agent_start", async (event, ctx) => {
 		const key = sessionKey(ctx);
@@ -1419,7 +1437,7 @@ export default function workflowGuard(
 			const repository = await publishRepository(pi, ctx.cwd, event.prompt);
 			if (isTrustedInternalPullRequestRepository(repository, trustedInternalPullRequestRepositories)) markTrustedInternalPullRequest(state, repository!);
 		}
-		const adaptiveThinking = maybeEscalateAdaptiveThinking(pi, ctx, key, state);
+		const adaptiveThinking = maybeEscalateAdaptiveThinking(pi, ctx, key, state, adaptiveThinkingBySession);
 		const ultraMode = pi.getThinkingLevel() === "ultra";
 		rememberGuardState(key, state);
 		const audit = state.auditRequired ? buildAuditSnapshot({ prompt: event.prompt }) : undefined;
@@ -1437,11 +1455,11 @@ export default function workflowGuard(
 	});
 
 	pi.on("agent_settled", async (_event, ctx) => {
-		restoreAdaptiveThinking(pi, sessionKey(ctx));
+		restoreAdaptiveThinking(pi, sessionKey(ctx), adaptiveThinkingBySession);
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
-		restoreAdaptiveThinking(pi, sessionKey(ctx));
+		restoreAdaptiveThinking(pi, sessionKey(ctx), adaptiveThinkingBySession);
 	});
 
 	pi.on("tool_call", async (event, ctx) => {

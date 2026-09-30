@@ -6,10 +6,13 @@ import { join } from "node:path";
 import test from "node:test";
 import workflowGuard from "./index.ts";
 
+let harnessSequence = 0;
+
 function createHarness(options: { cwd?: string; originUrl?: string; trustedInternalPullRequestRepositories?: string[] } = {}) {
 	const hooks: Record<string, any> = {};
 	const tools: Record<string, any> = {};
 	const entries: Array<{ type: string; customType?: string; data?: unknown }> = [];
+	let sessionFile = `/tmp/workflow-guard-test-${++harnessSequence}.jsonl`;
 	let thinkingLevel = "high";
 	const thinkingChanges: string[] = [];
 	const pi = {
@@ -41,7 +44,7 @@ function createHarness(options: { cwd?: string; originUrl?: string; trustedInter
 		cwd: options.cwd ?? process.cwd(),
 		model: { provider: "openai-codex", id: "gpt-6-astra" },
 		sessionManager: {
-			getSessionFile: () => "/tmp/workflow-guard-test.jsonl",
+			getSessionFile: () => sessionFile,
 			getLeafId: () => "leaf-1",
 			getEntries: () => entries,
 			getBranch: () => entries,
@@ -55,6 +58,7 @@ function createHarness(options: { cwd?: string; originUrl?: string; trustedInter
 		thinkingChanges,
 		getThinkingLevel: () => thinkingLevel,
 		setThinkingLevel: (level: string) => { thinkingLevel = level; },
+		setSessionFile: (file: string) => { sessionFile = file; },
 	};
 }
 
@@ -93,6 +97,7 @@ test("astra xhigh escalates only high-risk turns to max and restores after settl
 	const triggers = [
 		["이 작업은 max로 올려서 처리해줘", "explicit max request"],
 		["서비스 아키텍처를 비교하고 트레이드오프를 결정해줘", "architecture decision"],
+		["redesign the system architecture and compare the tradeoffs", "architecture decision"],
 		["OAuth 인증과 권한 모델의 보안 취약점을 분석해줘", "security-sensitive reasoning"],
 		["트랜잭션 race condition과 deadlock을 근본 수정해줘", "concurrency reasoning"],
 		["간헐적으로 반복되는 503 장애의 근본 원인을 찾아줘", "difficult incident analysis"],
@@ -126,6 +131,26 @@ test("ordinary astra xhigh turns stay xhigh", async () => {
 	assert.doesNotMatch(start.systemPrompt, /ADAPTIVE THINKING/);
 });
 
+test("trivial edits mentioning security or concurrency stay xhigh", async () => {
+	const prompts = [
+		"보안 관련 주석 오타 수정",
+		"jwt 만료시간 주석 수정",
+		"권한 정책 문서에 줄바꿈 하나 추가하고 링크 고쳐줘",
+		"트랜잭션 단위 테스트 이름 수정해줘",
+		"멱등키 상수 값을 3으로 수정",
+		"deadlock 관련 TODO 주석 제거 검토",
+	];
+
+	for (const prompt of prompts) {
+		const harness = createHarness();
+		harness.setThinkingLevel("xhigh");
+		const start = await harness.hooks.before_agent_start({ prompt, systemPrompt: "base" }, harness.ctx);
+		assert.equal(harness.getThinkingLevel(), "xhigh", prompt);
+		assert.equal(start.message.details.adaptiveThinking, undefined, prompt);
+		assert.deepEqual(harness.thinkingChanges, [], prompt);
+	}
+});
+
 test("status notes and non-astra sessions never auto-escalate", async () => {
 	const statusHarness = createHarness();
 	statusHarness.setThinkingLevel("xhigh");
@@ -149,10 +174,28 @@ test("session shutdown restores an active automatic escalation", async () => {
 	harness.setThinkingLevel("xhigh");
 	await harness.hooks.before_agent_start({ prompt: "서비스 아키텍처를 비교하고 결정해줘", systemPrompt: "base" }, harness.ctx);
 	assert.equal(harness.getThinkingLevel(), "max");
+	harness.setSessionFile("/tmp/workflow-guard-replacement-session.jsonl");
 
 	await harness.hooks.session_shutdown({}, harness.ctx);
 	assert.equal(harness.getThinkingLevel(), "xhigh");
 	assert.deepEqual(harness.thinkingChanges, ["max", "xhigh"]);
+});
+
+test("automatic escalation state is isolated between extension instances", async () => {
+	const autoHarness = createHarness();
+	autoHarness.setThinkingLevel("xhigh");
+	await autoHarness.hooks.before_agent_start({ prompt: "서비스 아키텍처를 비교하고 결정해줘", systemPrompt: "base" }, autoHarness.ctx);
+	assert.equal(autoHarness.getThinkingLevel(), "max");
+
+	const manualHarness = createHarness();
+	manualHarness.setThinkingLevel("max");
+	const manual = await manualHarness.hooks.before_agent_start({ prompt: "OAuth 보안 취약점을 분석해줘", systemPrompt: "base" }, manualHarness.ctx);
+	assert.equal(manual.message.details.adaptiveThinking, undefined);
+	await manualHarness.hooks.agent_settled({}, manualHarness.ctx);
+	assert.equal(manualHarness.getThinkingLevel(), "max");
+
+	await autoHarness.hooks.agent_settled({}, autoHarness.ctx);
+	assert.equal(autoHarness.getThinkingLevel(), "xhigh");
 });
 
 test("manual max is preserved and never auto-restored", async () => {
