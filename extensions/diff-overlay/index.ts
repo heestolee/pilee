@@ -1967,7 +1967,10 @@ function buildCommitPanelLayout(t: Theme, st: DiffState, w: number): CommitPanel
 }
 
 function commitCursorRow(st: DiffState, layout: CommitPanelLayout): number {
-	st.commitFileSelectedIndex = clamp(st.commitFileSelectedIndex, -1, layout.fileLineStart.length - 1);
+	// Keep the first-file target while its asynchronous file list is still loading.
+	if (layout.fileLineStart.length > 0) {
+		st.commitFileSelectedIndex = clamp(st.commitFileSelectedIndex, -1, layout.fileLineStart.length - 1);
+	}
 	const start = layout.fileLineStart[st.commitFileSelectedIndex] ?? 0;
 	const end = layout.fileLineStart[st.commitFileSelectedIndex + 1] ?? layout.rows.length;
 	st.commitFileLineOffset = clamp(st.commitFileLineOffset, 0, Math.max(0, end - start - 1));
@@ -1980,8 +1983,10 @@ function moveCommitCursor(st: DiffState, layout: CommitPanelLayout, target: numb
 	st.commitFileLineOffset = row - (layout.fileLineStart[st.commitFileSelectedIndex] ?? 0);
 }
 
-export function renderCommitFiles(t: Theme, st: DiffState, w: number, h: number): string[] {
-	const layout = buildCommitPanelLayout(t, st, Math.max(1, w - 2));
+export function renderCommitFiles(
+	t: Theme, st: DiffState, w: number, h: number,
+	layout = buildCommitPanelLayout(t, st, Math.max(1, w - 2)),
+): string[] {
 	const { rows } = layout;
 	const cursor = commitCursorRow(st, layout);
 	const max = Math.max(1, h);
@@ -2002,7 +2007,7 @@ export function renderCommitFiles(t: Theme, st: DiffState, w: number, h: number)
 		return `${marker}${row}`;
 	});
 	while (visible.length < viewport.contentHeight) visible.push("");
-	if (viewport.showIndicator) visible.push(t.fg("dim", ` ${start + 1}–${end}/${rows.length}`));
+	if (viewport.showIndicator) visible.push(t.fg("dim", `   ${start + 1}–${end}/${rows.length}`));
 	while (visible.length < max) visible.push("");
 	return visible;
 }
@@ -2017,6 +2022,7 @@ export class DiffOverlay {
 	private diffLoading = false;
 	private lastRightWidth = 80;
 	private lastTheme: Theme = { fg: (_color, text) => text, bg: (_color, text) => text, bold: (text) => text };
+	private commitPanelCache?: { inputs: unknown[]; layout: CommitPanelLayout };
 
 	constructor(pi: ExtensionAPI, cwd: string, st: DiffState, done: (reviewPrompt?: string) => void) {
 		this.pi = pi;
@@ -2270,8 +2276,39 @@ export class DiffOverlay {
 		return set;
 	}
 
+	invalidate(): void {
+		this.commitPanelCache = undefined;
+	}
+
+	private getCommitPanelLayout(width: number, theme: Theme): CommitPanelLayout {
+		const st = this.st;
+		const commit = this.selectedCommit();
+		const hash = commit?.hash ?? "";
+		const files = st.commitFilesCache.get(hash);
+		const expanded = st.commitExpandedByHash.get(hash);
+		// Compare content references, not serialized diff text. Cursor/scroll movement
+		// within a file only changes the viewport, not the expensive wrapped layout.
+		const inputs = [
+			theme, width, commit, files, st.focus, st.commitFileSelectedIndex,
+			st.wrapLines, st.showFullFile, st.commitMessageExpanded,
+			st.commitMessageCache.get(hash), st.commitMessageLoading.has(hash), st.commitFilesLoading.has(hash),
+			...(files ?? []).flatMap((file) => {
+				const key = commitDiffKey(hash, file.path);
+				return [expanded?.has(file.path), st.commitFileDiffCache.get(key), st.commitFileDiffLoading.has(key)];
+			}),
+			...st.reviewDrafts,
+		];
+		const cached = this.commitPanelCache;
+		if (cached && cached.inputs.length === inputs.length && inputs.every((input, i) => Object.is(input, cached.inputs[i]))) {
+			return cached.layout;
+		}
+		const layout = buildCommitPanelLayout(theme, st, Math.max(1, width - 2));
+		this.commitPanelCache = { inputs, layout };
+		return layout;
+	}
+
 	private resetCommitFilesPanel(): void {
-		this.st.commitFileSelectedIndex = -1;
+		this.st.commitFileSelectedIndex = 0;
 		this.st.commitFileLineOffset = 0;
 		this.st.commitFileScrollOffset = 0;
 	}
@@ -2689,7 +2726,7 @@ export class DiffOverlay {
 		void this.ensureCommitFiles(tui);
 		const files = st.commitFilesCache.get(commit.hash);
 		const expanded = this.expandedSet(commit.hash);
-		const layout = buildCommitPanelLayout(this.lastTheme, st, Math.max(1, this.lastRightWidth - 2));
+		const layout = this.getCommitPanelLayout(this.lastRightWidth, this.lastTheme);
 		const cursor = commitCursorRow(st, layout);
 		let target: number | undefined;
 		if (matchesKey(data, Key.up) || matchesKey(data, "k")) target = cursor - 1;
@@ -2700,6 +2737,7 @@ export class DiffOverlay {
 		else if (matchesKey(data, Key.shift("g"))) target = layout.rows.length - 1;
 		if (target !== undefined) {
 			moveCommitCursor(st, layout, target);
+			st.error = null;
 			tui.requestRender();
 			return;
 		}
@@ -2976,7 +3014,7 @@ export class DiffOverlay {
 
 		const left = st.viewMode === "diff" ? renderFiles(t, st, leftW, contentH) : renderCommits(t, st, leftW, contentH);
 		const right =
-			st.viewMode === "diff" ? renderDiff(t, st, rightW, contentH) : renderCommitFiles(t, st, rightW, contentH);
+			st.viewMode === "diff" ? renderDiff(t, st, rightW, contentH) : renderCommitFiles(t, st, rightW, contentH, this.getCommitPanelLayout(rightW, t));
 
 		while (left.length < contentH) left.push("");
 		while (right.length < contentH) right.push("");
@@ -3126,7 +3164,7 @@ export function registerDiffOverlay(pi: ExtensionAPI, options: DiffOverlayExtens
 			commitFileDiffCache: new Map(),
 			commitFileDiffLoading: new Set(),
 			commitExpandedByHash: new Map(),
-			commitFileSelectedIndex: -1,
+			commitFileSelectedIndex: 0,
 			commitFileLineOffset: 0,
 			commitFileScrollOffset: 0,
 
@@ -3166,7 +3204,7 @@ export function registerDiffOverlay(pi: ExtensionAPI, options: DiffOverlayExtens
 				return {
 					render: (w) => overlay.render(w, tuiRef.terminal?.rows ?? 40, theme),
 					handleInput: (data) => overlay.handleInput(data, tuiRef),
-					invalidate: () => {},
+					invalidate: () => overlay.invalidate(),
 				};
 			},
 			{ overlay: true, overlayOptions: { width: "100%", maxHeight: "100%", anchor: "center" } },

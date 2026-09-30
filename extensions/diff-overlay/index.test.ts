@@ -323,6 +323,7 @@ test("변경 파일이 없어도 긴 커밋 메시지를 끝까지 탐색할 수
 		commitFileSelectedIndex: -1,
 		commitFileScrollOffset: 0,
 		commitFileLineOffset: 0,
+		reviewDrafts: [],
 		wrapLines: true,
 		showFullFile: false,
 	} as any;

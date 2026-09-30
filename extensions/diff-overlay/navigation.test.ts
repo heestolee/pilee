@@ -8,7 +8,7 @@ const theme = {
 	bold: (text: string) => text,
 };
 
-function createPanel() {
+function createPanel(colors = theme) {
 	const totals = { additions: 2, deletions: 1, binaryFiles: 0 };
 	const files = ["a.ts", "b.ts", "c.ts"].map((path) => ({ path, status: "modified", rawStatus: "M", diffTotals: totals }));
 	const state = {
@@ -34,7 +34,7 @@ function createPanel() {
 	const overlay = new DiffOverlay({} as any, "/repo", state, () => {});
 	const tui = { requestRender() {}, terminal: { rows: 14 } };
 	let width = 100;
-	const render = () => overlay.render(width, tui.terminal.rows, theme);
+	const render = () => overlay.render(width, tui.terminal.rows, colors);
 	const press = (key: string) => { overlay.handleInput(key, tui); return render(); };
 	const cursor = () => render().find((line) => line.includes("▶")) ?? "";
 	const resize = (columns: number, rows: number) => { width = columns; tui.terminal.rows = rows; return render(); };
@@ -182,6 +182,67 @@ test("diff에서 리뷰를 시작하면 커서가 속한 파일의 드래프트�
 	assert.deepEqual(panel.state.reviewDrafts.map(({ filePath, prompt }: { filePath: string; prompt: string }) => ({ filePath, prompt })), [
 		{ filePath: "c.ts", prompt: "확인할 내용" },
 	]);
+});
+
+test("커밋 메시지가 길어도 상세 패널에 진입하면 첫 파일 제목에서 시작한다", () => {
+	// given
+	const panel = createPanel();
+	panel.state.commitMessageExpanded = true;
+	panel.state.commitMessageCache.set("abc123", Array.from({ length: 40 }, (_, i) => `설명 ${i}`).join("\n"));
+	panel.press("\u001b[D");
+
+	// when
+	panel.press("\r");
+
+	// then
+	assert.match(panel.cursor(), /a\.ts/);
+	panel.press("k");
+	assert.match(panel.cursor(), /CHANGED FILES/);
+});
+
+test("파일 목록 로딩 중 렌더가 발생해도 도착 후 첫 파일에서 시작한다", () => {
+	// given
+	const panel = createPanel();
+	const files = panel.state.commitFilesCache.get("abc123");
+	panel.state.commitMessageExpanded = true;
+	panel.state.commitFilesCache.delete("abc123");
+	panel.render();
+
+	// when
+	panel.state.commitFilesCache.set("abc123", files);
+	panel.render();
+
+	// then
+	assert.match(panel.cursor(), /a\.ts/);
+});
+
+test("파일 선택 안내 오류는 파일로 이동하면 사라진다", () => {
+	// given
+	const panel = createPanel();
+	panel.press("g");
+	assert.match(panel.press("r").join("\n"), /Select a file before adding review feedback/);
+
+	// when
+	const frame = panel.press("j").join("\n");
+
+	// then
+	assert.match(panel.cursor(), /a\.ts/);
+	assert.doesNotMatch(frame, /Select a file before adding review feedback/);
+});
+
+test("테마 무효화 후에는 캐시된 파일 제목도 새 테마로 다시 그린다", () => {
+	// given
+	let color = "light";
+	const panel = createPanel({ ...theme, fg: (kind, text) => kind === "text" ? `${color}:${text}` : text });
+	panel.press("\r");
+	assert.match(panel.render().join("\n"), /light:b\.ts/);
+
+	// when
+	color = "dark";
+	panel.overlay.invalidate();
+
+	// then
+	assert.match(panel.render().join("\n"), /dark:b\.ts/);
 });
 
 test("일반 diff 모드는 방향키 10줄과 j/k 한 줄 스크롤을 유지한다", () => {
