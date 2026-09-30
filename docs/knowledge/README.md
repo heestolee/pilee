@@ -67,14 +67,14 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [Worker는 readiness ownership을 가진다](./ai-worker-readiness-orchestrator.md) | active | high | 2026-09-01 | 20ea93e | worker, subagent, orchestrator, readiness, bootstrap, diagnosis |
-| [Astra는 xhigh 기본에서 필요한 turn만 max로 승격한다](./astra-adaptive-thinking-effort.md) | active | high | 2026-09-30 | d988b92 | astra, reasoning, thinking, xhigh, max, workflow-guard |
+| [Astra는 xhigh 기본에서 필요한 turn만 max로 승격한다](./astra-adaptive-thinking-effort.md) | active | high | 2026-09-30 | dedcc89 | astra, reasoning, thinking, xhigh, max, workflow-guard |
 | [Self-healing은 actionable item만 수정한다](./self-healing-actionable-loop.md) | active | high | 2026-08-04 | 9bc5850 | self-healing, actionable, worker, fix-class, subagent, 자동수정 |
 | [Stress Interview는 다축 검토다](./stress-interview-multi-axis-review.md) | active | high | 2026-08-04 | 9bc5850 | stress-interview, review, verifier, reviewer, challenger, subagent |
-| [Hybrid subagent 모델 운용 정책](./subagent-model-policy.md) | active | high | 2026-09-30 | d988b92 | subagent, codex, claude, model-policy, worker, finder |
+| [Hybrid subagent 모델 운용 정책](./subagent-model-policy.md) | active | high | 2026-09-30 | dedcc89 | subagent, codex, claude, model-policy, worker, finder |
 | [Subagent 위임은 구체 프롬프트를 요구한다](./subagent-prompt-specificity.md) | active | high | 2026-08-08 | 3516f8a | subagent, prompt, delegation, worker, context, 위임 |
 | [Subagent는 slash command가 아니라 skill prompt를 위임받는다](./subagent-skill-delegation.md) | active | high | 2026-06-02 | 83617e9 | subagent, skill, slash-command, delegation, ship, ci-ship |
 | [Supervisor는 outcome guardrail이다](./supervisor-outcome-guardrail.md) | active | high | 2026-06-02 | 63f2a62 | supervisor, outcome, guardrail, steering, agent |
-| [Ultra는 Max reasoning과 proactive delegation을 결합한 로컬 mode다](./ultra-proactive-delegation-mode.md) | active | high | 2026-09-30 | d988b92 | ultra, reasoning, codex, subagent, delegation, workflow-guard |
+| [Ultra는 Max reasoning과 proactive delegation을 결합한 로컬 mode다](./ultra-proactive-delegation-mode.md) | active | high | 2026-09-30 | dedcc89 | ultra, reasoning, codex, subagent, delegation, workflow-guard |
 
 ### architecture
 
@@ -232,7 +232,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
 | [Update branch는 remote-first sync command다](./update-branch-safe-pull-command.md) | active | high | 2026-07-02 | 98d7502 | update-branch, slash-command, git, pull, index-lock, workflow |
 | [Working Context Card는 큰 맥락을 현재 slice로 압축한다](./work-context-card-task-board.md) | active | high | 2026-06-02 | 61ccbc9 | work-context, tasks, workflow, context, guard |
-| [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-09-30 | d988b92 | workflow, guard, intent, audit, hotfix, continuation |
+| [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-09-30 | dedcc89 | workflow, guard, intent, audit, hotfix, continuation |
 | [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-06-02 | 61ccbc9 | workflow, frame, tft, hotfix, scope, incremental |
 | [작업공간 동작과 panel activation은 별도 계약이다](./workspace-action-panel-activation-contract.md) | active | high | 2026-09-02 | 93ddc04 | workspace, worktree, branch, activation, panel, authorization |
 | [Worktree 생성은 현재 패널 대화가 source다](./worktree-creation-parent-gate.md) | active | high | 2026-09-02 | 93ddc04 | worktree, fork-panel, current-panel, hotfix, context, profile-driven |
