@@ -11,6 +11,7 @@ function createHarness(options: { cwd?: string; originUrl?: string; trustedInter
 	const tools: Record<string, any> = {};
 	const entries: Array<{ type: string; customType?: string; data?: unknown }> = [];
 	let thinkingLevel = "high";
+	const thinkingChanges: string[] = [];
 	const pi = {
 		on(name: string, fn: any) {
 			hooks[name] = fn;
@@ -25,6 +26,10 @@ function createHarness(options: { cwd?: string; originUrl?: string; trustedInter
 			return { code: 0, stdout: "", stderr: "" };
 		},
 		getThinkingLevel: () => thinkingLevel,
+		setThinkingLevel(level: string) {
+			thinkingLevel = level;
+			thinkingChanges.push(level);
+		},
 		appendEntry(customType: string, data: unknown) {
 			entries.push({ type: "custom", customType, data });
 		},
@@ -34,7 +39,7 @@ function createHarness(options: { cwd?: string; originUrl?: string; trustedInter
 	});
 	const ctx = {
 		cwd: options.cwd ?? process.cwd(),
-		model: { provider: "openai-codex", id: "gpt-5.6-sol" },
+		model: { provider: "openai-codex", id: "gpt-6-astra" },
 		sessionManager: {
 			getSessionFile: () => "/tmp/workflow-guard-test.jsonl",
 			getLeafId: () => "leaf-1",
@@ -42,7 +47,15 @@ function createHarness(options: { cwd?: string; originUrl?: string; trustedInter
 			getBranch: () => entries,
 		},
 	};
-	return { hooks, tools, ctx, entries, setThinkingLevel: (level: string) => { thinkingLevel = level; } };
+	return {
+		hooks,
+		tools,
+		ctx,
+		entries,
+		thinkingChanges,
+		getThinkingLevel: () => thinkingLevel,
+		setThinkingLevel: (level: string) => { thinkingLevel = level; },
+	};
 }
 
 test("native ultra enables proactive delegation without bypassing safety gates", async () => {
@@ -74,6 +87,84 @@ test("non-ultra thinking keeps explicit-request worker discipline", async () => 
 	assert.match(start.systemPrompt, /may justify one worker or read-only fan-out/);
 	assert.match(start.systemPrompt, /never authorizes overlapping parallel writers/);
 	assert.equal(start.message.details.ultraMode, false);
+});
+
+test("astra xhigh escalates only high-risk turns to max and restores after settling", async () => {
+	const triggers = [
+		["이 작업은 max로 올려서 처리해줘", "explicit max request"],
+		["서비스 아키텍처를 비교하고 트레이드오프를 결정해줘", "architecture decision"],
+		["OAuth 인증과 권한 모델의 보안 취약점을 분석해줘", "security-sensitive reasoning"],
+		["트랜잭션 race condition과 deadlock을 근본 수정해줘", "concurrency reasoning"],
+		["간헐적으로 반복되는 503 장애의 근본 원인을 찾아줘", "difficult incident analysis"],
+		["xhigh로 해결되지 않고 또 실패했어. 같은 문제를 다시 재시도해줘", "failed xhigh retry"],
+	] as const;
+
+	for (const [prompt, reason] of triggers) {
+		const harness = createHarness();
+		harness.setThinkingLevel("xhigh");
+		const start = await harness.hooks.before_agent_start({ prompt, systemPrompt: "base" }, harness.ctx);
+
+		assert.equal(harness.getThinkingLevel(), "max");
+		assert.deepEqual(harness.thinkingChanges, ["max"]);
+		assert.equal(start.message.details.adaptiveThinking.reason, reason);
+		assert.match(start.systemPrompt, /ADAPTIVE THINKING: xhigh → max/);
+
+		await harness.hooks.agent_settled({}, harness.ctx);
+		assert.equal(harness.getThinkingLevel(), "xhigh");
+		assert.deepEqual(harness.thinkingChanges, ["max", "xhigh"]);
+	}
+});
+
+test("ordinary astra xhigh turns stay xhigh", async () => {
+	const harness = createHarness();
+	harness.setThinkingLevel("xhigh");
+	const start = await harness.hooks.before_agent_start({ prompt: "검색 결과 카드 문구를 수정해줘", systemPrompt: "base" }, harness.ctx);
+
+	assert.equal(harness.getThinkingLevel(), "xhigh");
+	assert.deepEqual(harness.thinkingChanges, []);
+	assert.equal(start.message.details.adaptiveThinking, undefined);
+	assert.doesNotMatch(start.systemPrompt, /ADAPTIVE THINKING/);
+});
+
+test("status notes and non-astra sessions never auto-escalate", async () => {
+	const statusHarness = createHarness();
+	statusHarness.setThinkingLevel("xhigh");
+	const status = await statusHarness.hooks.before_agent_start({
+		prompt: "[dependency-bootstrap] BLOCKED — OAuth 보안 모듈 준비 실패",
+		systemPrompt: "base",
+	}, statusHarness.ctx);
+	assert.equal(statusHarness.getThinkingLevel(), "xhigh");
+	assert.equal(status.message.details.adaptiveThinking, undefined);
+
+	const solHarness = createHarness();
+	solHarness.setThinkingLevel("xhigh");
+	solHarness.ctx.model.id = "gpt-6.1-sol";
+	const sol = await solHarness.hooks.before_agent_start({ prompt: "OAuth 보안 취약점을 분석해줘", systemPrompt: "base" }, solHarness.ctx);
+	assert.equal(solHarness.getThinkingLevel(), "xhigh");
+	assert.equal(sol.message.details.adaptiveThinking, undefined);
+});
+
+test("session shutdown restores an active automatic escalation", async () => {
+	const harness = createHarness();
+	harness.setThinkingLevel("xhigh");
+	await harness.hooks.before_agent_start({ prompt: "서비스 아키텍처를 비교하고 결정해줘", systemPrompt: "base" }, harness.ctx);
+	assert.equal(harness.getThinkingLevel(), "max");
+
+	await harness.hooks.session_shutdown({}, harness.ctx);
+	assert.equal(harness.getThinkingLevel(), "xhigh");
+	assert.deepEqual(harness.thinkingChanges, ["max", "xhigh"]);
+});
+
+test("manual max is preserved and never auto-restored", async () => {
+	const harness = createHarness();
+	harness.setThinkingLevel("max");
+	const start = await harness.hooks.before_agent_start({ prompt: "OAuth 보안 취약점을 분석해줘", systemPrompt: "base" }, harness.ctx);
+
+	assert.equal(start.message.details.adaptiveThinking, undefined);
+	assert.deepEqual(harness.thinkingChanges, []);
+	await harness.hooks.agent_settled({}, harness.ctx);
+	assert.equal(harness.getThinkingLevel(), "max");
+	assert.deepEqual(harness.thinkingChanges, []);
 });
 
 test("external Issue and PR creation requires CONTRIBUTING review plus separate final approval", async () => {

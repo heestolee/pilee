@@ -26,6 +26,13 @@ import { formatWorkContextCard, gateWorkContext, loadOrDeriveWorkContext, type W
 type Intent = "answer" | "investigate" | "implement" | "hotfix" | "verify_report" | "audit" | "ship" | "knowledge" | "status_note" | "unknown";
 type WorkflowWeight = "none" | "light" | "standard" | "full";
 
+interface AdaptiveThinkingEscalation {
+	previousLevel: "xhigh";
+	targetLevel: "max";
+	reason: "explicit max request" | "architecture decision" | "security-sensitive reasoning" | "concurrency reasoning" | "difficult incident analysis" | "failed xhigh retry";
+	startedAt: string;
+}
+
 interface GuardState {
 	prompt: string;
 	intent: Intent;
@@ -80,6 +87,7 @@ const guardBySession = new Map<string, GuardState>();
 const lightPushDoneBySession = new Map<string, boolean>();
 const packageResolveFailuresBySession = new Map<string, { count: number; packages: string[] }>();
 const validationFailuresBySession = new Map<string, Map<string, { count: number; commands: string[] }>>();
+const adaptiveThinkingBySession = new Map<string, AdaptiveThinkingEscalation>();
 
 const workflowGuardToolSchema = Type.Object({
 	action: Type.Union([
@@ -376,6 +384,76 @@ function classifyPrompt(
 	return { prompt: authoritativePrompt, intent, weight, explicitHeavy, explicitMutation, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, explicitIssueAction, explicitExternalPublish, auditRequired, sqlReview, detachedArtifactTask, mixedRequest, parallelInvestigationSuggested, summary, continuationCue, followUpCorrection, largeWorkObserved: false, workspaceAuthorization, createdAt: new Date().toISOString(), sessionFile };
 }
 
+function adaptiveMaxReason(prompt: string): AdaptiveThinkingEscalation["reason"] | undefined {
+	const normalized = normalizeText(extractAuthoritativeRequest(prompt));
+	if (hasAny(normalized, [
+		/(?:thinking|reasoning|추론|사고)\s*(?:level|effort|레벨)?\s*(?:을|를|은|는|:)?\s*max\b/,
+		/\bmax\s*(?:thinking|reasoning|effort)\b/,
+		/\bmax(?:로|으로)?\s*(?:올려|승격|전환|사용|해줘)/,
+		/(?:최고|최대한)\s*(?:깊게|강하게|추론)/,
+	])) return "explicit max request";
+
+	if (hasAny(normalized, [
+		/(?:아키텍처|architecture|system\s*design|구조\s*설계).*(?:결정|선택|비교|트레이드오프|trade-?off|설계|개편|재구성|리팩터|바꿔|짜줘|정해)/,
+		/(?:결정|선택|비교|트레이드오프|trade-?off|설계|개편|재구성|리팩터).*(?:아키텍처|architecture|system\s*design|구조\s*설계)/,
+	])) return "architecture decision";
+
+	const securitySubject = /(?:보안|security|취약점|vulnerab|threat\s*model|인증\s*(?:흐름|구조|설계)|인가|권한\s*(?:모델|정책|경계)|oauth|jwt|csrf|xss|sql\s*injection|secret|credential|pii|개인정보|암호화)/;
+	const reasoningAction = /(?:분석|검토|리뷰|설계|구현|수정|고쳐|대응|감사|audit|review|analy[sz]e|design|fix|implement)/;
+	if (securitySubject.test(normalized) && reasoningAction.test(normalized)) return "security-sensitive reasoning";
+
+	const concurrencySubject = /(?:동시성|경합|race\s*condition|deadlock|데드락|트랜잭션|transaction|row\s*lock|분산\s*락|distributed\s*lock|멱등|idempot)/;
+	if (concurrencySubject.test(normalized) && reasoningAction.test(normalized)) return "concurrency reasoning";
+
+	const incidentSubject = /(?:장애|incident|outage|5\d\d|timeout|타임아웃|crash|크래시|hang|sentry)/;
+	const difficultCause = /(?:근본\s*원인|root\s*cause|간헐|반복|재현\s*(?:안|불가)|원인\s*불명|여러\s*번|어려운)/;
+	if (incidentSubject.test(normalized) && difficultCause.test(normalized)) return "difficult incident analysis";
+
+	if (hasAny(normalized, [
+		/(?:xhigh|이전|앞선|방금).*(?:해결되지|못\s*풀|실패|안\s*됐|안돼).*(?:다시|재시도|retry)/,
+		/(?:다시|재시도|retry).*(?:해결되지|못\s*풀|실패|안\s*됐|안돼)/,
+		/(?:같은|동일한?)\s*(?:문제|오류|실패).*(?:또|반복|재발|재시도)/,
+	])) return "failed xhigh retry";
+
+	return undefined;
+}
+
+function maybeEscalateAdaptiveThinking(
+	pi: ExtensionAPI,
+	ctx: { model?: { provider?: string; id?: string } },
+	key: string,
+	state: GuardState,
+): AdaptiveThinkingEscalation | undefined {
+	const active = adaptiveThinkingBySession.get(key);
+	if (active) {
+		if (pi.getThinkingLevel() === active.targetLevel) return active;
+		adaptiveThinkingBySession.delete(key);
+		return undefined;
+	}
+	if (state.intent === "status_note" || pi.getThinkingLevel() !== "xhigh") return undefined;
+	if (ctx.model?.provider !== "openai-codex" || !/(?:^|[-_])astra(?:$|[-_])/i.test(ctx.model.id ?? "")) return undefined;
+	const reason = adaptiveMaxReason(state.prompt);
+	if (!reason) return undefined;
+
+	pi.setThinkingLevel("max");
+	if (pi.getThinkingLevel() !== "max") return undefined;
+	const escalation: AdaptiveThinkingEscalation = {
+		previousLevel: "xhigh",
+		targetLevel: "max",
+		reason,
+		startedAt: new Date().toISOString(),
+	};
+	adaptiveThinkingBySession.set(key, escalation);
+	return escalation;
+}
+
+function restoreAdaptiveThinking(pi: ExtensionAPI, key: string): void {
+	const escalation = adaptiveThinkingBySession.get(key);
+	if (!escalation) return;
+	adaptiveThinkingBySession.delete(key);
+	if (pi.getThinkingLevel() === escalation.targetLevel) pi.setThinkingLevel(escalation.previousLevel);
+}
+
 function fastPaceBudgetSeconds(state: GuardState): number | undefined {
 	if (state.intent === "status_note") return undefined;
 	if (state.intent === "answer" || state.intent === "investigate" || state.intent === "audit" || state.weight === "light") return 30;
@@ -384,13 +462,25 @@ function fastPaceBudgetSeconds(state: GuardState): number | undefined {
 	return undefined;
 }
 
-function buildSystemPrompt(state: GuardState, ultraMode = false): string {
+function buildSystemPrompt(
+	state: GuardState,
+	ultraMode = false,
+	adaptiveThinking?: AdaptiveThinkingEscalation,
+): string {
 	const lines = [
 		"Workflow guard for this turn:",
 		`- Auto-classification: ${state.summary}.`,
 		"- Treat this as a guardrail generated from the user request, not as optional style advice.",
 		"- If the classification seems wrong, ask one short clarifying question before mutating files or starting heavy workflow.",
 	];
+
+	if (adaptiveThinking) {
+		lines.push(
+			`- ADAPTIVE THINKING: ${adaptiveThinking.previousLevel} → ${adaptiveThinking.targetLevel} for this run (${adaptiveThinking.reason}).`,
+			"- Keep max through retries and queued continuations; the runtime restores xhigh after agent_settled.",
+			"- Higher reasoning effort does not authorize broader scope, extra tools, or weaker evidence gates.",
+		);
+	}
 
 	if (state.intent !== "status_note") {
 		lines.push(
@@ -1329,20 +1419,29 @@ export default function workflowGuard(
 			const repository = await publishRepository(pi, ctx.cwd, event.prompt);
 			if (isTrustedInternalPullRequestRepository(repository, trustedInternalPullRequestRepositories)) markTrustedInternalPullRequest(state, repository!);
 		}
+		const adaptiveThinking = maybeEscalateAdaptiveThinking(pi, ctx, key, state);
 		const ultraMode = pi.getThinkingLevel() === "ultra";
 		rememberGuardState(key, state);
 		const audit = state.auditRequired ? buildAuditSnapshot({ prompt: event.prompt }) : undefined;
 		const card = state.detachedArtifactTask ? undefined : loadOrDeriveWorkContext(ctx.cwd, sessionFile);
-		const guardPrompt = `${buildSystemPrompt(state, ultraMode)}${workContextSection(card)}${sliceCommitRhythmSection(state, card)}`;
+		const guardPrompt = `${buildSystemPrompt(state, ultraMode, adaptiveThinking)}${workContextSection(card)}${sliceCommitRhythmSection(state, card)}`;
 		return {
 			systemPrompt: `${event.systemPrompt}\n\n${guardPrompt}`,
 			message: {
 				customType: "workflow_guard",
 				content: audit ? `${guardPrompt}\n\n${audit.text}` : guardPrompt,
 				display: false,
-				details: { state, ultraMode, audit: audit?.details, workContext: card ? { path: card.identity.contextPath, currentSlice: card.currentSlice?.id, mode: card.mode } : undefined },
+				details: { state, ultraMode, adaptiveThinking, audit: audit?.details, workContext: card ? { path: card.identity.contextPath, currentSlice: card.currentSlice?.id, mode: card.mode } : undefined },
 			},
 		};
+	});
+
+	pi.on("agent_settled", async (_event, ctx) => {
+		restoreAdaptiveThinking(pi, sessionKey(ctx));
+	});
+
+	pi.on("session_shutdown", async (_event, ctx) => {
+		restoreAdaptiveThinking(pi, sessionKey(ctx));
 	});
 
 	pi.on("tool_call", async (event, ctx) => {
