@@ -26,8 +26,8 @@ source:
   - pilee-history:2026-05-06#65
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-10-deep-interview-frame
-reviewed_at: 2026-06-02
-reviewed_commit: ce5e875d9e49a3a0b93215894e525b1933c6a145
+reviewed_at: 2026-10-07
+reviewed_commit: 1dc578d7810bf790806ce7d0b23adff50894d416
 related:
   - ask-user-question-decision-gates
   - evidence-first-verification-gate
@@ -50,21 +50,19 @@ AskUserQuestion의 옵션은 사실 진술이나 검수 결과가 아니라 이�
 
 ## Useful Replacement
 
-검수받고 싶은 단일 판단은 옵션화하지 않습니다. 본문에 `(명백: 저장소 컨벤션)`, `(명백: 직전 지시)`처럼 근거를 적고 진행합니다. 사용자는 침묵으로 동의하고, 틀렸으면 정정할 수 있습니다.
+기존 지시·결정·컨벤션으로 충분한 실행 세부는 근거를 적고 승인된 범위에서 진행합니다. `(명백)` 태그나 `ok` 응답은 필수가 아니며, 침묵을 새로운 실행 권한의 동의로 해석하지 않습니다.
 
 코드베이스, 문서, 티켓, 이전 frame, 세션 transcript로 확인 가능한 사실은 사용자에게 묻지 않습니다. 먼저 직접 확인하고, 확인 결과를 가정/근거로 보여준 뒤 남은 판단만 묻습니다.
 
-예외적으로 `/frame`의 목표·범위·성공 기준·검증 축 정렬은 단순 실행 판단이 아니라 후속 계약을 바꾸는 선택입니다. 이 경우 추천안이 명백해 보여도 질문하고, `(명백: ...)`은 질문 생략이 아니라 AI 판단 근거를 보여주는 주석으로 사용합니다.
+Frame에서도 중요한 미해결 판단이 있을 때만 질문합니다. 검증은 AI가 요구사항·성공 기준·변경 위험에서 도출합니다. 검증 범위 조정에 실제 비용·부작용·권한의 선택이 필요할 때만 그 차이를 묻습니다.
 
 ## Text-mode Rule
 
 AskUserQuestion은 반드시 modal UI여야 하는 것은 아닙니다. Pi처럼 선택 UI가 약한 환경에서는 `1`, `2`, `1,3`처럼 답할 수 있는 번호형 메뉴가 같은 의사결정 게이트 역할을 합니다. 중요한 것은 선택 후 행동이 달라지는지이며, 번호는 전달 방식일 뿐입니다.
 
-## Productive Resistance Rule
+## Reconsideration Rule
 
-`/frame`의 Productive Resistance 질문은 “정말 괜찮나요?”가 아니라 계약을 바꾸는 행동 옵션이어야 합니다. 예를 들어 성공 기준에 추가, 범위 밖으로 명시, 먼저 탐색, ask_first로 올리기처럼 선택 후 `frame.json`이 달라져야 합니다.
-
-`/decide`는 모든 결정에 tradeoff challenge를 수행합니다. 다만 강도는 low/medium/high/ask_first로 조절합니다. low risk라도 skip하지 않고 짧은 반론 카드를 보여주며, 옵션은 `선택 유지`, `보완 후 유지`, `재고`, `frame으로 돌아가기`처럼 선택 후 `decisions[].challenge`, `tradeoffs_accepted`, `mitigations`가 달라져야 합니다.
+기본 Frame/Decide의 의무 반론과 선택 후 유지/보완/재고 반복 메뉴는 제거합니다. 비용을 선택 전 비교에 포함하고, 선택 뒤에는 기록합니다. 새로운 중요한 근거가 결정을 바꾸거나 사용자가 명시적으로 grill/반론 검토를 요청한 경우에만 추가 검토하며, 수행한 기록만 선택적 `challenge`에 남깁니다. 저장·patch 반영을 이유로 같은 선택을 다시 승인받지 않습니다.
 
 ## Completion Feedback Rule
 

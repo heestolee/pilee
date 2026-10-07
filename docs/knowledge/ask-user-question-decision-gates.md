@@ -22,8 +22,8 @@ source:
   - pilee-history:2026-05-01#3
   - pilee-history:2026-05-01#5
   - user-direction:2026-05-07-local-resolver
-reviewed_at: 2026-06-02
-reviewed_commit: ce5e875d9e49a3a0b93215894e525b1933c6a145
+reviewed_at: 2026-10-07
+reviewed_commit: 1dc578d7810bf790806ce7d0b23adff50894d416
 related:
   - ask-user-question-option-design
   - frame-verify-contract
@@ -36,9 +36,9 @@ AskUserQuestion은 사용자의 클릭을 얻기 위한 확인창이 아니라, 
 
 ## Operating Rule
 
-구현 방식이 둘 이상이고 각각 다른 결과를 만들면 묻습니다. 결제, 보안, PII, 스키마, 외부 연동, 동시성, 운영 설정처럼 위임 금지 영역이면 사소해 보여도 묻습니다. 반대로 사용자가 이미 명확히 지시했거나 저장소 컨벤션상 단일 답이 명백하면 묻지 않고 `(명백: ...)`으로 판단 근거를 본문에 남깁니다.
+질문 승격의 단일 원천은 `skills/tft-guidelines/SKILL.md` 철칙 1입니다. 확인할 수 있는 사실은 먼저 조사하고, 공개 계약·보안 보장·운영/되돌리기/유지보수 비용을 실질적으로 바꾸는 미해결 선택을 근거·대안·추천과 함께 묻습니다. 이미 승인된 요구나 실행 세부를 후보가 여럿이라는 이유로 재질문하지 않습니다. 명확한 작업은 질문 0개도 정상입니다.
 
-`/decide`에서는 선택 질문 뒤에 항상 Productive Resistance를 둡니다. 이 challenge는 “정말 괜찮나요?” 확인이 아니라 선택한 대안의 가장 중요한 비용을 드러내고, 사용자가 유지/보완/재고/frame 복귀 중 하나를 고르게 하는 두 번째 decision gate입니다. 위험도는 challenge 생략 여부가 아니라 low/medium/high/ask_first 강도를 결정합니다.
+선택 전 비용을 비교하고 선택 후에는 수용한 tradeoff를 기록합니다. 기본 Frame/Decide에 의무 반론이나 검증축 선택을 두지 않습니다. 새 중요한 근거가 생기거나 사용자가 명시적으로 grill 검토를 요청할 때만 추가 검토합니다. 검증은 요구사항과 변경 위험에서 도출하며, 설계 선택과 외부 실행 권한은 분리합니다.
 
 ## Transport Rule
 

@@ -20,8 +20,8 @@ applies_to:
   - .pi/frame.json
 source:
   - user-direction:2026-05-09-architecture-lens
-reviewed_at: 2026-06-02
-reviewed_commit: ce5e875d9e49a3a0b93215894e525b1933c6a145
+reviewed_at: 2026-10-07
+reviewed_commit: 1dc578d7810bf790806ce7d0b23adff50894d416
 related:
   - frame-verify-contract
   - decide-tradeoff-challenge
@@ -32,11 +32,11 @@ related:
 
 AI 코딩에서 구조 비용은 미학 문제가 아니라 다음 변경 가능성의 비용입니다. 빠르게 붙인 작은 wrapper, 분산 조건, 얕은 module이 늘어나면 다음 사람이나 AI가 변경 지점을 찾지 못하고 같은 문제를 다른 위치에서 다시 고칠 수 있습니다.
 
-따라서 TFT는 기능 결과뿐 아니라 “다음 변경자가 길을 잃는 구조인가?”를 한 번 묻습니다. 단, 이 질문은 모든 작업을 리팩터링으로 키우라는 뜻이 아닙니다. 지금 고치지 않을 구조 비용도 `out_of_scope`, `risk_register`, decision tradeoff, verify finding, follow-up/backlog로 명시하면 충분합니다.
+따라서 TFT는 기능 결과뿐 아니라 “다음 변경자가 길을 잃는 구조인가?”를 AI의 검토 렌즈로 사용합니다. 모든 작업에서 사용자 질문을 만들지는 않습니다. 단, 이 질문은 모든 작업을 리팩터링으로 키우라는 뜻이 아닙니다. 지금 고치지 않을 구조 비용도 `out_of_scope`, `risk_register`, decision tradeoff, verify finding, follow-up/backlog로 명시하면 충분합니다.
 
 ## Frame Rule
 
-`/frame`은 코드 변경이 문서/카피 수준을 넘는다고 판단하면 사고 렌즈나 Productive Resistance에 architecture friction을 seed합니다.
+`/frame`은 실제 구조 변경이 있으면 architecture friction을 검토합니다. 중요한 미해결 기술적 손익이 있을 때만 tft-guidelines 기준으로 질문을 승격합니다.
 
 좋은 질문:
 
@@ -51,13 +51,7 @@ AI 코딩에서 구조 비용은 미학 문제가 아니라 다음 변경 가능
 
 `/decide`의 비교표에는 코드 구조를 건드리는 결정일 때 `구조 비용/AI 탐색성` 행이 들어가야 합니다. 빠른 구현 옵션이 항상 나쁜 것은 아니지만, 빠른 구현이 shallow module을 늘리거나 기존 개념을 새 이름으로 복제한다면 그 비용을 수용한 tradeoff로 기록해야 합니다.
 
-Challenge에서도 구조 비용은 `tradeoffs_accepted` 또는 `mitigations[]`로 이어져야 합니다.
-
-예:
-
-- 선택 유지 — 빠른 복구를 위해 wrapper 증가를 수용하고 follow-up 생성
-- 보완 후 유지 — public interface 이름을 기존 ubiquitous language에 맞춤
-- 재고 — deep module 경계로 묶는 대안을 다시 비교
+구조 비용은 선택 전 비교에 포함하고 `tradeoffs_accepted` 또는 `mitigations[]`로 남깁니다. 이미 선택한 비용을 별도 challenge 메뉴로 재승인받지 않습니다. 새로운 중요한 근거가 생기거나 명시적인 반론 검토 요청이 있을 때만 다시 비교합니다.
 
 ## Verify Rule
 
