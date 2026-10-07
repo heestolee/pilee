@@ -235,7 +235,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-09-30 | 7242988 | workflow, guard, intent, audit, hotfix, continuation |
 | [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-06-02 | 61ccbc9 | workflow, frame, tft, hotfix, scope, incremental |
 | [작업공간 동작과 panel activation은 별도 계약이다](./workspace-action-panel-activation-contract.md) | active | high | 2026-09-02 | 93ddc04 | workspace, worktree, branch, activation, panel, authorization |
-| [Worktree 생성은 현재 패널 대화가 source다](./worktree-creation-parent-gate.md) | active | high | 2026-09-02 | 93ddc04 | worktree, fork-panel, current-panel, hotfix, context, profile-driven |
+| [Worktree 생성은 현재 패널 대화가 source다](./worktree-creation-parent-gate.md) | active | high | 2026-10-07 | 727572a | worktree, fork-panel, current-panel, hotfix, context, profile-driven |
 | [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-08-31 | c712406 | worktree, dependencies, bootstrap, profile-driven, worker, subagent |
 | [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-09-02 | 93ddc04 | worktree, workspace, repo, branch, execution-boundary, cwd-binding |
 | [Worktree 세션 연속성과 식별성 원칙](./worktree-session-continuity.md) | active | high | 2026-09-09 | 298d997 | worktree, session, revive, fork-panel, panel-inbox, handoff |
