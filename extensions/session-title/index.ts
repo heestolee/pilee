@@ -1,4 +1,4 @@
-import path from "node:path";
+import { formatTerminalTitle, syncTerminalTitle } from "../utils/terminal-title.ts";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { completeSimple } from "@mariozechner/pi-ai";
 import { agentInputText, isAgentStatusText, readAgentStartInput } from "../utils/agent-start-input.ts";
@@ -40,11 +40,6 @@ function normalizeTitle(raw: string): string {
 
 function prefersKorean(text: string): boolean {
 	return /[가-힣]/u.test(text);
-}
-
-function formatTerminalTitle(title: string | undefined, cwd: string): string {
-	const project = path.basename(cwd) || "pi";
-	return title ? `π - ${title} - ${project}` : `π - ${project}`;
 }
 
 function extractUserPrompts(entries: { type: string; message?: { role: string; content: unknown } }[]): string[] {
@@ -108,7 +103,7 @@ export default function (pi: ExtensionAPI) {
 	function syncUi(ctx: ExtensionContext) {
 		try {
 			if (!ctx.hasUI) return;
-			ctx.ui.setTitle(formatTerminalTitle(getSessionName(), ctx.cwd));
+			syncTerminalTitle(ctx, formatTerminalTitle(getSessionName(), ctx.cwd));
 		} catch {
 			// Ignore stale extension contexts after session replacement/reload.
 		}
@@ -225,7 +220,7 @@ export default function (pi: ExtensionAPI) {
 			await reevaluateAtShutdown(ctx);
 		}
 		try {
-			if (ctx.hasUI) ctx.ui.setTitle(formatTerminalTitle(undefined, ctx.cwd));
+			if (ctx.hasUI) syncTerminalTitle(ctx, formatTerminalTitle(undefined, ctx.cwd));
 		} catch {
 			// Ignore stale extension contexts after session replacement/reload.
 		}
