@@ -59,6 +59,8 @@ test("생성된 WebView 스크립트가 파싱된다", () => {
 	assert.ok(scripts.length > 0, "inline script should exist");
 	for (const script of scripts) new Function(script);
 	assert.match(html, /question-context/);
+	assert.match(html, /대안·근거·비용/);
+	assert.doesNotMatch(html, /대안·challenge·mitigation/);
 });
 
 test("Backend Layer Visual Map 렌더러가 WebView bundle에 포함된다", () => {

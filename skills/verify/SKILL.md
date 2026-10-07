@@ -72,6 +72,7 @@ description: AI가 구현한 변경사항을 요구사항·문서·도메인 언
 
 - frame.json **없음** → `/frame을 먼저 실행하세요`라고 안내하고 종료한다. 단, 사용자가 `--no-frame` 플래그로 명시적으로 우회하면 자유 감사 모드로 진행한다.
 - frame.json **있음** → success_criteria, out_of_scope, boundaries, verify_plan, decisions, requirement_matrix, domain_work_map, policy_axis_scan, backend_layer_map, architecture_flow_map을 로드한다.
+- Decision의 `challenge`는 선택적 이력이다. legacy `challenged: true`와 새 `challenged: false`/필드 생략을 모두 읽고, challenge 누락만으로 실패시키지 않는다. 선택 근거·수용한 tradeoff·약속한 완화책·실제 검증 증거를 대조한다. 질문 승격은 `tft-guidelines` 철칙 1을 따른다.
 
 TFT Studio는 Verify를 강제로 요구하지 않는다. 하지만 `/verify`를 실제로 수행했다면 결과는 Studio transcript에만 남기지 않는다.
 
