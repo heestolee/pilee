@@ -75,7 +75,7 @@ export type WorkspaceTerminalSnapshot = GhosttyTerminal & {
 	panelLabel?: string;
 	forkId?: string;
 	parentSessionFile?: string;
-	match?: "active" | "fallback" | "none";
+	match?: "exact" | "active" | "fallback" | "none";
 };
 
 type WorkspaceTabSnapshot = Omit<GhosttyTab, "terminals"> & {
@@ -90,6 +90,8 @@ export type WorkspaceSnapshot = {
 	host: WorkspaceHost;
 	createdAt: number;
 	updatedAt: number;
+	complete?: true;
+	slot?: string;
 	window: {
 		id: string;
 		name: string;
