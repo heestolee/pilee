@@ -15,8 +15,8 @@ applies_to:
   - extensions/study-hard
 source:
   - user-direction:2026-07-17-frame-v2-bidirectional-lanes
-reviewed_at: 2026-07-18
-reviewed_commit: 88b560c62683ba149cbaf91ecca9487b65c973c9
+reviewed_at: 2026-10-07
+reviewed_commit: 1dc578d7810bf790806ce7d0b23adff50894d416
 related:
   - frame-verify-contract
   - frame-studio-interactive-decision-ui
@@ -48,11 +48,17 @@ Frame v2는 “학습을 마쳐야 Frame과 구현으로 갈 수 있는” 직�
 선택은 `frame-v2.json.entryMode`에 보존합니다. 이후 순서는 고정하지 않습니다.
 
 ```text
-Frame 먼저       → 구현 | Study Hard | 둘 다
-Study Hard 먼저  → 학습 | Frame | 구현 | 둘 다
+Frame 먼저       → 필요한 사실 조사 | /decide | 독립 slice 구현 | Study Hard
+Study Hard 먼저  → 학습 | Frame | 필요한 판단을 거친 작업
 ```
 
 단순 작업이나 hotfix는 Frame/Study Hard를 끝까지 기다리지 않고 작업을 시작할 수 있습니다. 학습은 같은 panel이나 별도 panel에서 병행할 수 있습니다. 기존 ask-first·worktree·DB·운영 안전 규칙은 유지하지만, Frame v2가 학습 완료를 새 hard gate로 추가하지 않습니다.
+
+## Decision Continuity Rule
+
+질문 승격은 tft-guidelines 한 곳에서 소유합니다. Frame v2의 스킬뿐 아니라 command shim이 주입하는 guided/draft prompt에도 의무 반론·검증축 선택·반복승인을 넣지 않습니다. 명확한 작업은 질문 0개도 정상입니다.
+
+미결정은 `미확인 사실 / 미해결 선택 / 영향받는 slice / 다음 행동`으로 드러냅니다. 조사할 사실이 남으면 좁게 조사하고, 중요한 기술적 손익이 남으면 근거·대안·추천과 함께 `/decide`로 연결합니다. 독립 구현이 가능하면 승인된 slice만 진행합니다. 이미 명확한 다음 의도는 다시 메뉴화하지 않습니다. canonical ready는 결정 해결이나 실행 권한의 대체물이 아닙니다.
 
 ## Canonical Separation Rule
 

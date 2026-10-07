@@ -17,8 +17,8 @@ applies_to:
   - .pi/frame.json
 source:
   - user-direction:2026-05-11-frame-plan-synthesis
-reviewed_at: 2026-08-31
-reviewed_commit: 090cb14078e5ca278d45a76da01d366aebcec6dc
+reviewed_at: 2026-10-07
+reviewed_commit: 1dc578d7810bf790806ce7d0b23adff50894d416
 related:
   - frame-verify-contract
   - frame-planning-identity
@@ -37,11 +37,11 @@ Plan은 Frame과 별개의 세계가 아니라 Frame이 수렴한 마지막 산�
 
 `frame.json`에는 성공 기준과 검증 계획만이 아니라, 그 계약에서 파생된 `implementation_plan`도 저장할 수 있습니다. 이 plan은 canonical contract를 대체하지 않습니다.
 
-- `status="blocked_by_decision"`: 남은 decision queue 때문에 실행 계획을 ready로 볼 수 없음
+- `status="blocked_by_decision"`: 전체 계획에 미결정이 남음. 각 slice의 의존성을 별도로 표시하며, 미결정과 독립적인 승인된 slice는 진행 가능
 - `status="draft"`: 방향은 있지만 검수/추가 탐색이 남음
 - `status="ready"`: frame + decisions에서 실행 slice와 첫 안전 단계가 도출됨
 
-`implementation_plan.derivedFrom`에는 frame hash와 decision id 목록을 남겨, plan이 즉흥 할 일 목록이 아니라 계약에서 파생됐음을 보여야 합니다.
+`implementation_plan.derivedFrom`에는 frame hash와 decision id 목록을 남겨, plan이 즉흥 할 일 목록이 아니라 계약에서 파생됐음을 보여야 합니다. 다음 행동은 미확인 사실의 좁은 조사, 근거가 모인 기술 선택의 `/decide`, 승인된 독립 slice 실행으로 구분합니다. 준비된 slice가 있다는 이유로 다른 slice의 미결정을 암묵적으로 해소하지 않습니다.
 
 ## UI Rule
 

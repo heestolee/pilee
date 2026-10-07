@@ -23,8 +23,8 @@ source:
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-10-deep-interview-frame
   - user-direction:2026-06-16-data-model-migration-map
-reviewed_at: 2026-06-16
-reviewed_commit: 87c864fab621e6b45f1682954b3357dc3ab50aed
+reviewed_at: 2026-10-07
+reviewed_commit: 1dc578d7810bf790806ce7d0b23adff50894d416
 related:
   - ask-user-question-decision-gates
   - evidence-first-verification-gate
@@ -46,7 +46,7 @@ Frame은 구현 전 자연어 메모가 아니라, Verify가 기계적으로 읽
 
 정확한 기획 근거(Jira, Notion, Slack, wireframe, PRD 등)가 있으면 Frame은 추가로 `source_evidence`, `requirement_matrix`, `domain_work_map`을 갖는 source-grounded contract가 됩니다. backend/data/API/DB 흐름이 구현·검증 이해를 좌우하면 `backend_layer_map`, `architecture_flow_map`, `data_model_migration_map`도 계약 surface입니다. 이때 success criteria는 큰 목표만 적는 곳이 아니라, 기획 원문 요구사항 ID가 구현 계약·domain lane·architecture edge/source-of-truth·DB entity/relationship/migration operation·검증 증거에 연결됐는지 확인하는 행 단위 계약입니다.
 
-`decisions[]`는 선택지만 저장하지 않습니다. `/decide`는 항상 tradeoff challenge를 수행하고, `challenge.intensity`, `challenge.objection`, 사용자 응답, 수용한 tradeoff와 완화책을 함께 저장합니다. source-grounded 결정에서는 `requirementIds`, `domainLanesImpacted`, `architectureFlowImpacts`, `verifyHandoffHints`도 함께 남겨야 합니다. 그래야 Verify가 “선택한 대안이 구현됐는가”뿐 아니라 “수용한 비용/완화책이 실제 구현과 맞는가”, “Frame requirement/source-of-truth 흐름이 결정 후에도 추적 가능한가”까지 대조할 수 있습니다.
+`decisions[]`는 선택뿐 아니라 조사 근거·추천 이유·수용한 tradeoff·완화책을 저장합니다. `challenge`는 명시적 grill 요청이나 새로운 중요한 근거로 실제 추가 검토를 한 경우의 선택적 이력입니다. legacy `challenged: true`를 보존하고 새 기록의 false/생략도 허용합니다. source-grounded 결정에서는 `requirementIds`, `domainLanesImpacted`, `architectureFlowImpacts`, `verifyHandoffHints`도 함께 남겨야 합니다. 그래야 Verify가 “선택한 대안이 구현됐는가”뿐 아니라 “수용한 비용/완화책이 실제 구현과 맞는가”, “Frame requirement/source-of-truth 흐름이 결정 후에도 추적 가능한가”까지 대조할 수 있습니다.
 
 `frame.md`는 사람이 읽기 위한 mirror이고, TFT Studio transcript는 계약을 만든 대화 전문입니다. 둘 다 canonical source가 아닙니다. transcript는 사용자가 어떤 질문과 선택을 거쳤는지 다시 열어보는 provenance이고, Verify가 기계적으로 판정할 기준은 여전히 최신 `frame.json`입니다. Studio tool result는 전체 전문 대신 `contextDigest`, `tabSnapshot`, `transcriptRef.openCommand`(`/archive <transcriptPath>`)를 반환해 현재 Pi turn의 working context와 전문 reopen link를 함께 제공합니다.
 
@@ -60,11 +60,11 @@ Verify는 frame의 success criteria뿐 아니라 requirement coverage, Domain Wo
 
 Frame은 초반부터 구현 plan을 대신 만들지 않습니다. 먼저 사용자가 볼 사고 렌즈와 실제 목표/범위 분기를 드러내고, 그 선택을 바탕으로 검증 계약을 작성합니다. 다만 목표·범위·성공 기준과 필요한 decisions가 닫힌 뒤에는 같은 Frame의 마지막 산출물로 `implementation_plan`을 합성할 수 있습니다. 이 plan은 frame contract를 대체하지 않고, `frame + decisions`에서 파생된 실행 지도입니다.
 
-`/frame`에서 목표·범위·성공 기준·검증 축은 명백해 보여도 묻고, `(명백: ...)`으로 AI 판단 근거를 표시합니다. 사용자가 검수해야 할 초점이 보이지 않으면 frame은 정교한 문서여도 TFT로는 실패입니다.
+질문 승격은 tft-guidelines의 공통 기준을 따릅니다. 이미 정해진 목표·범위는 재확인하지 않고, 중요한 미해결 기술 선택을 근거와 함께 드러냅니다. 검증은 AI가 요구사항과 변경 위험에서 도출하므로 검증축 선택 메뉴가 필요하지 않습니다.
 
 Frame의 질문 규율은 deep-interview식입니다. 질문을 많이 하는 것이 아니라 목표, 포함/제외 범위, 제약, 완료 기준, 기존 맥락/영향 범위 중 가장 큰 불확실성 하나만 골라 `현재 이해 / 막힌 결정 / 추천 답안 / 질문` 카드로 묻습니다. 코드베이스·문서·티켓·이전 frame으로 확인 가능한 사실은 사용자에게 묻지 않고 먼저 확인해야 합니다. 인터뷰는 계약에 반영할 결정사항과 열린 질문이 정리되면 멈춥니다.
 
-Productive Resistance는 독립 단계입니다. 성공 기준이 모호한지, 롤백 비용 큰 선택이 숨어 있는지, 이번 작업에서 무엇을 안 할지, 빠른 구현이 shallow module/분산 조건을 늘리는지 1~2개의 행동형 질문으로 흔든 뒤 draft를 작성합니다. 이때도 한 질문에는 가장 큰 불확실성 하나만 담고, 나머지 리스크는 risk seed나 follow-up으로 남깁니다.
+의무 반론·고정 질문 횟수·ok·저장 재승인은 기본 단계에서 제거합니다. 확인되지 않은 사실은 조사로, 중요한 기술 선택은 `/decide`로, 승인된 독립 slice는 구현으로 연결합니다. 미결정이 영향을 주는 slice를 표시하되 하나의 미결정으로 전체 작업을 막지 않습니다. 검증 증거와 위험 작업 승인은 그대로 유지합니다.
 
 ## Canonical-first Rule
 

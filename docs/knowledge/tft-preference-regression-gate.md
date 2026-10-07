@@ -25,8 +25,8 @@ applies_to:
   - skills/pilee-final-check
 source:
   - user-direction:2026-05-14-tft-preference-regression-gate
-reviewed_at: 2026-06-02
-reviewed_commit: 83617e9544615d818e6a7a17fa807f029a7db835
+reviewed_at: 2026-10-07
+reviewed_commit: 1dc578d7810bf790806ce7d0b23adff50894d416
 related:
   - ask-user-question-option-design
   - decide-tradeoff-challenge
@@ -71,7 +71,11 @@ TFT 계열 문서는 다음 계약을 공유해야 합니다.
 - `한 줄 질문` 계열 directive가 돌아오면 실패합니다.
 - `한 줄 반론` 계열 directive가 돌아오면 실패합니다.
 - 통과용 옵션이 돌아오면 실패합니다.
+- 의무 반론·검증축 선택·ok·저장 재승인 directive가 돌아오면 실패합니다.
+- 사실 조사·중요한 기술 판단·외부 실행 승인·독립 slice 경계가 빠지면 실패합니다.
 - 핵심 파일에서 판단 맥락 카드 계약이 빠지면 실패합니다.
+
+Frame v2의 스킬과 실제 command prompt도 대상입니다. `node --test scripts/tft-regression-audit.test.mjs`는 옛 directive 재삽입과 중요한 계약 삭제가 실패로 감지되는지 확인합니다. 검사는 문구 계약의 회귀를 검출할 뿐 실제 모델 대화 품질을 증명하지는 않습니다.
 
 스크립트가 PASS해도 모든 품질 검토가 끝난 것은 아닙니다. 다만 이 스크립트가 FAIL이면, 사용자가 이미 말한 선호를 다시 뒤집는 위험이 있으므로 pilee 변경을 완료하면 안 됩니다.
 
