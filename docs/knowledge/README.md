@@ -80,7 +80,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
-| [Architecture friction은 TFT의 검증 축이다](./architecture-friction-tft-lens.md) | active | high | 2026-06-02 | ce5e875 | architecture, frame, decide, verify, deep-module, shallow-module |
+| [Architecture friction은 TFT의 검증 축이다](./architecture-friction-tft-lens.md) | active | high | 2026-10-07 | 1dc578d | architecture, frame, decide, verify, deep-module, shallow-module |
 | [Convention Lens는 작업 종료 시 관련 판단만 투영한다](./convention-lens-event-driven-projection.md) | experimental | high | 2026-08-25 | c077eab | convention-lens, agent-settled, stop-hook, graph, evidence, reviewer |
 | [학습노트 companion은 독립 canonical을 sidecar로 연결한다](./learning-note-companion-artifact.md) | active | high | 2026-08-31 | dc5e8c1 | learning-note, companion-artifact, frame-v2, study-hard, worktree, checkpoint |
 | [질문 UI와 실행 owner는 분리한다](./question-ui-execution-owner-routing.md) | active | high | 2026-09-03 | 2d3882d | question-runtime, orchestration, direct, worker, study-hard, meta-review |
@@ -164,7 +164,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-06-02 | 91c739f | verify, evidence, gate, done, ready, verification |
-| [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-06-16 | 87c864f | frame, verify, frame-json, success-criteria, contract, verification |
+| [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-10-07 | 1dc578d | frame, verify, frame-json, success-criteria, contract, verification |
 | [반복 검증 실패는 baseline cache로 분리한다](./validation-baseline-failure-cache.md) | active | high | 2026-06-02 | d8f8c4c | preflight, validation, baseline, failure, cache, verification |
 | [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-06-02 | 61ccbc9 | verify, invalidation, code-change, freshness, gate, 검증 |
 | [Verify Report 전에는 PM-facing 계약과 readiness를 먼저 잠근다](./verify-report-preflight-readiness.md) | active | high | 2026-06-02 | 91c739f | verify-report, preflight, readiness, capture, data, account |
@@ -183,8 +183,8 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [검토 산출물은 다시 열 수 있어야 한다](./artifact-archive-reopenability.md) | active | high | 2026-06-02 | ce5e875 | artifact, archive, show-report, archive-command, history, html |
-| [AskUserQuestion은 의사결정 게이트다](./ask-user-question-decision-gates.md) | active | high | 2026-06-02 | ce5e875 | ask-user-question, tft, decision-gate, question, non-delegable, 질문 |
-| [AskUserQuestion 옵션은 행동 분기를 표현한다](./ask-user-question-option-design.md) | active | high | 2026-06-02 | ce5e875 | ask-user-question, option, wording, ceremony, tft, 질문 |
+| [AskUserQuestion은 의사결정 게이트다](./ask-user-question-decision-gates.md) | active | high | 2026-10-07 | 1dc578d | ask-user-question, tft, decision-gate, question, non-delegable, 질문 |
+| [AskUserQuestion 옵션은 행동 분기를 표현한다](./ask-user-question-option-design.md) | active | high | 2026-10-07 | 1dc578d | ask-user-question, option, wording, ceremony, tft, 질문 |
 | [Atomic evidence workflow는 작은 claim을 증거로 닫는다](./atomic-evidence-workflow.md) | active | high | 2026-06-02 | ce5e875 | atomic, evidence, claim, slice, verification, frame |
 | [Auto-commit은 명시 계획만 실행한다](./auto-commit-explicit-plan-gate.md) | active | high | 2026-09-08 | ff01ad9 | auto-commit, git, commit, plan, safety, i18n |
 | [Backlog는 원 세션 출처를 보존한다](./backlog-source-session-provenance.md) | active | high | 2026-06-02 | cc0bd98 | backlog, tasks, provenance, source-session, session, 맥락 |
@@ -193,15 +193,15 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [CI-Ship은 PR 후 검증 실패 대응 단계다](./ci-ship-failure-response-boundary.md) | active | high | 2026-06-02 | cc0bd98 | ci-ship, ci, github-actions, pull-request, failure-analysis, ship |
 | [Clean handoff는 compact와 새 세션 사이의 전환 계약이다](./clean-handoff-session-continuation.md) | active | high | 2026-06-02 | cc0bd98 | session, handoff, compact, context, archive, continue-clean |
 | [자동 로드 컨텍스트는 최소 surface만 가진다](./context-loading-minimal-surface.md) | active | high | 2026-06-02 | cc0bd98 | context, agents-md, memory, system-prompt, token, autoload |
-| [Decide는 선택을 한 번 공격한다](./decide-tradeoff-challenge.md) | active | high | 2026-06-02 | cc0bd98 | decide, tradeoff, challenge, productive-resistance, frame-json, decision |
+| [Decide는 근거와 수용한 비용을 남긴다](./decide-tradeoff-challenge.md) | active | high | 2026-10-07 | 1dc578d | decide, tradeoff, challenge, frame-json, decision, tft |
 | [외부 Issue와 PR은 기여 규칙 확인과 최종 승인 뒤에 게시한다](./external-issue-preview-gate.md) | active | high | 2026-08-12 | 97615ab | jira, github, issue, pull-request, contributing, preview |
 | [최종 검증은 메인 세션을 막지 않고 병렬화한다](./final-verification-parallelization.md) | active | high | 2026-06-02 | c6cd06f | verification, ship, final-check, subagent, background, parallel |
 | [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-06-02 | c6cd06f | fork-panel, handoff, inbox, inject, parent, panel |
 | [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-06-02 | 63f2a62 | fork-panel, revive, repanel, ghostty, spatial, panel |
-| [Frame은 마지막에 Plan을 합성한다](./frame-plan-synthesis-continuity.md) | active | high | 2026-08-31 | 090cb14 | frame, implementation-plan, tft-studio, worktree, continuity, planning |
+| [Frame은 마지막에 Plan을 합성한다](./frame-plan-synthesis-continuity.md) | active | high | 2026-10-07 | 1dc578d | frame, implementation-plan, tft-studio, worktree, continuity, planning |
 | [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-06-02 | 7861f10 | frame, planning, identity, home-directory, ticket, session-title |
 | [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-09-02 | 7295019 | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
-| [Frame v2는 작업·학습 lane을 양방향으로 연결한다](./frame-v2-learning-note-pilot.md) | active | high | 2026-07-18 | 88b560c | frame-v2, frame, study-hard, learning-note, worktree |
+| [Frame v2는 작업·학습 lane을 양방향으로 연결한다](./frame-v2-learning-note-pilot.md) | active | high | 2026-10-07 | 1dc578d | frame-v2, frame, study-hard, learning-note, worktree |
 | [Meta Review는 전체 diff 설명 뒤에 독립 판단과 precedent를 붙인다](./human-pr-review-precedent-harness.md) | active | high | 2026-09-03 | 870259f | pr-review, human-review, precedent, evidence, glimpse, meta-review |
 | [Interactive shell은 bash가 아닌 터미널 세션이다](./interactive-shell-overlay-tool.md) | active | high | 2026-06-29 | 680f937 | interactive-shell, shell, tui, dev-server, overlay, dispatch |
 | [Live artifact는 local preview first다](./live-artifact-preview-pattern.md) | active | high | 2026-06-02 | 7861f10 | artifact, glimpse, preview, sse, upload, local-first |
@@ -225,7 +225,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [정확한 기획 근거가 있으면 Frame은 추적 매트릭스를 만든다](./source-grounded-frame-planning.md) | active | high | 2026-06-02 | 63f2a62 | frame, tft-studio, planning, requirements, traceability, work-map |
 | [테스트는 책임 경계에 맞춰 다듬는다](./test-boundary-refactor.md) | active | high | 2026-08-04 | 9bc5850 | testing, mock, refactor, boundary, unit-test, contract-test |
 | [Command shim은 reviewable workflow source of truth를 지킨다](./tft-command-shim-skill-routing.md) | active | high | 2026-06-02 | 83617e9 | command-shim, skill, tft, frame, slash-command, routing |
-| [TFT Preference Regression Gate는 사용자 선호 역전을 막는다](./tft-preference-regression-gate.md) | active | high | 2026-06-02 | 83617e9 | tft, frame, decide, verify, ask-user-question, regression |
+| [TFT Preference Regression Gate는 사용자 선호 역전을 막는다](./tft-preference-regression-gate.md) | active | high | 2026-10-07 | 1dc578d | tft, frame, decide, verify, ask-user-question, regression |
 | [TFT visual은 구조 변화를 학습 가능한 그림으로 보여준다](./tft-visual-structure-renderer.md) | active | high | 2026-07-21 | 778f16e | tft-studio, tft-visual, elkjs, schema-diff, database, diagram |
 | [To-production은 현재 worktree의 production 기반 branch 전환이다](./to-production-source-preserving-hotfix.md) | active | high | 2026-07-02 | 5e6348a | to-production, hotfix, production, git, in-place, branch-switch |
 | [TUI 질문은 작은 의사결정 게이트다](./tui-ask-decision-overlay.md) | active | high | 2026-06-02 | d8f8c4c | tui, ask-user-question, decision-gate, tool, overlay |
@@ -316,7 +316,7 @@ graph TD
   doc_ci_ship_failure_response_boundary["CI-Ship은 PR 후 검증 실패 대응 단계다"]
   doc_clean_handoff_session_continuation["Clean handoff는 compact와 새 세션 사이의 전환 계약이다"]
   doc_context_loading_minimal_surface["자동 로드 컨텍스트는 최소 surface만 가진다"]
-  doc_decide_tradeoff_challenge["Decide는 선택을 한 번 공격한다"]
+  doc_decide_tradeoff_challenge["Decide는 근거와 수용한 비용을 남긴다"]
   doc_external_issue_preview_gate["외부 Issue와 PR은 기여 규칙 확인과 최종 승인 뒤에 게시한다"]
   doc_final_verification_parallelization["최종 검증은 메인 세션을 막지 않고 병렬화한다"]
   doc_fork_panel_parent_inbox["Fork-panel handoff는 parent inbox로 들어간다"]
