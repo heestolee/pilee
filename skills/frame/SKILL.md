@@ -1,6 +1,6 @@
 ---
 name: frame
-description: 작업 시작 전에 구체 질문으로 목표·성공 기준·범위·검증 초점을 함께 좁히고, 이후 /decide·/verify가 mechanically 읽을 수 있는 frame.json을 워크트리에 박제한다.
+description: 구현 전 목표·성공 기준·범위를 조사하고 중요한 미해결 기술 선택을 함께 판단해 frame.json으로 남긴다. /frame-v2가 재사용하며 명확한 실행 요청에 의무 질문이나 승인 절차를 추가하지 않는다.
 ---
 
 <PREREQUISITE>
@@ -18,8 +18,8 @@ description: 작업 시작 전에 구체 질문으로 목표·성공 기준·범
 
 이 스킬이 끝나면 다음이 보장된다:
 
-- 사용자가 핵심 목표·범위·검증 초점을 직접 확인했다.
-- Productive Resistance로 성공 기준/제외 범위/롤백 비용의 빈틈을 한 번 흔들었다.
+- 확인된 사실·가정·구현 제안·확정 요구를 구분하고 중요한 미해결 판단을 드러냈다.
+- 질문 승격은 `../tft-guidelines/SKILL.md` 철칙 1을 따랐다. 명확한 작업은 질문 0개도 정상이다.
 - `frame.json`에 검증 가능한 성공 기준과 verify plan이 박제됐다.
 - `frame.md`는 `frame.json`에서 재생성 가능한 사람용 mirror다.
 - 의사결정이 필요한 항목은 `kind="frame.decision"` 태스크로 큐잉됐다.
@@ -129,7 +129,7 @@ Jira, Notion, Slack, wireframe, PRD, 디자인 캡처처럼 정확한 기획 근
 - 화면 중심 작업이어도 Jira 요구사항이 사용자 action, 기존 action/API 재사용, refresh/cache, 동작 회귀를 포함하면 `kind:"architecture-flow"`로 **User/Action Flow Map**을 그린다. 이때 DB node가 없을 수 있지만, 화면 → shared action → existing boundary → verification edge가 요구사항 ID와 연결되어야 한다.
 - `triggered:false` 또는 `mode="not-applicable"`은 사용자 action/API/data/cache/refresh/verification flow가 정말 없고, 단순 copy/style처럼 구조 흐름 검수가 의미 없는 경우에만 쓴다.
 - 단, visual은 설명용이고 canonical 원천은 `backend_layer_map`, `architecture_flow_map`, `data_model_migration_map`이다.
-- 레이어 책임이 미해결이면 Step 3/4에서 “repo 조건인가, usecase 정책인가, VO 불변식인가”처럼 한 가지 분기로 묻는다.
+- 레이어 책임은 기존 패턴과 소비 경로를 먼저 조사한다. 책임 위치가 계약·보안·운영/유지보수 비용을 실질적으로 바꾸는 미해결 선택일 때만 Step 3/4에서 비교해 묻는다.
 - 세부 템플릿은 `references/backend-layer-map.md`를 따른다.
 
 ### 0-C. Data Model / Migration Map 게이트
@@ -215,37 +215,19 @@ Jira, Notion, Slack, wireframe, PRD, 디자인 캡처처럼 정확한 기획 근
 - 사용자가 이미 준 절차/제약이 있으면 일반론으로 덮지 말고 그 목적을 먼저 확인한다.
 - 과한 명령·schema 확장이 필요해 보이면 1차 보류하고, 나머지 명확한 작업을 닫은 뒤 사용자에게 묻는다.
 
-### 1. `(명백)` 질문 원칙
+### 1. 사실 조사와 기술 판단을 연결한다
 
-`/frame`의 목표·범위·성공 기준·검증 축은 후속 계약을 바꾸는 선택이다. AI가 보기에 추천안이 명백해도 **묻는다**. 대신 질문 앞에 `(명백: ...)`으로 왜 그렇게 보이는지 표시한다.
+기획의 원하는 결과·제약과 현재 시스템에 대한 추정·제안된 구현 수단을 구분한다. 확인 가능한 사실은 직접 조사하고, 조사한 사실이 대안을 어떻게 제한하는지 보여준다. 미확인 사실을 사용자가 골라야 할 문제로 만들지 않는다.
 
-```markdown
-(명백: 요청의 핵심은 버튼 노출 조건입니다. 다만 실패 메시지 포함 여부에 따라 검증 범위가 달라집니다.)
-질문: 이번 범위를 어디까지 잡을까요?
+공개 계약·보안 보장·운영/되돌리기/유지보수 비용을 실질적으로 바꾸는 미해결 기술 선택은 근거·대안·추천·손익을 비교해 `/decide`로 연결한다. 기존 결정으로 충분한 실행 세부는 근거와 함께 진행한다. 기술적 선택을 전부 AI에게 맡기거나 사소한 실행 방법을 모두 사용자에게 떠넘기지 않는다.
 
-1. 버튼 노출 조건만 수정 — 최소 범위
-2. 버튼 조건 + 실패 메시지까지 수정 — 추천
-3. 예약 상태 전환 전체 점검 — 넓은 범위
-```
+### 2. 의무 반론 대신 실제 빈칸만 다룬다
 
-`(명백)`은 질문 생략 사유가 아니라 사용자가 “내가 놓친 게 있나?”라고 혼동하지 않게 하는 판단 근거다. 단, 사용자가 선택해도 이후 행동이 달라지지 않는 실행 세부는 질문하지 말고 `(명백)`으로 보고 후 진행한다.
-
-### 2. Productive Resistance는 독립 단계
-
-`/frame`은 AI가 계획을 예쁘게 써주는 단계가 아니다. 사용자가 놓쳤을 수 있는 질문을 1~2개 던져 계획의 빈틈을 찾는다.
-
-Productive Resistance 질문은 반드시 행동형이어야 한다:
-
-- 성공 기준에 추가한다
-- 범위 밖으로 명시한다
-- 먼저 탐색한다
-- ask_first로 올린다
-
-“괜찮나요?” 같은 확신 확인은 금지한다.
+기본 흐름에는 의무 Productive Resistance, 고정 질문 횟수, 검증축 선택이 없다. 새 사실·미해결 비용이 선택을 바꿀 때만 질문한다. 이미 비교하고 선택한 tradeoff는 기록만 한다. 사용자가 명시적으로 grill/반론 검토를 요청하면 수행할 수 있다. 검증과 위험 작업의 실행 승인은 생략하지 않는다.
 
 ### 3. Architecture friction은 frame lens다
 
-`/frame`은 기능 결과만 맞추는 계약이 아니라, 다음 사람/AI가 변경 지점을 다시 찾을 수 있는 구조인지도 한 번 보게 만든다. 코드 변경이 문서/카피 수준을 넘으면 사고 렌즈나 Productive Resistance에 다음 질문을 seed한다.
+`/frame`은 기능 결과만 맞추는 계약이 아니라, 다음 사람/AI가 변경 지점을 다시 찾을 수 있는 구조인지도 한 번 보게 만든다. 실제 구조 변경이 있을 때 다음을 AI의 검토 렌즈로 사용한다. 별도 사용자 질문을 자동 생성하지 않는다.
 
 > 이번 변경이 작은 wrapper/분산 조건/shallow module을 늘리는가, 아니면 단순한 interface 뒤에 깊은 구현을 숨기는가?
 
@@ -271,8 +253,8 @@ Productive Resistance 질문은 반드시 행동형이어야 한다:
 Pi UI가 있고 `frame_studio` tool을 사용할 수 있으면, 번호형 텍스트만 출력하지 말고 Glimpse TFT Studio를 우선 사용한다. 도구 이름은 하위 호환을 위해 `frame_studio`지만, UI는 Frame/Decide/Verify/Verify Report 탭을 가진 TFT Studio shell이다.
 
 - Step 1 직후: `frame_studio action=start tab=frame`으로 identity-bound TFT Studio를 연다.
-- Step 2: 목표 fingerprint/가정/렌즈/정책축 스캔/백엔드 레이어 맵 markdown을 `frame_studio action=update tab=frame`으로 렌더링한 뒤, `frame_studio action=ask tab=frame`으로 `ok` 또는 정정 입력을 받는다. 버튼 없는 `ok` 문장을 markdown에만 남기지 않는다.
-- Step 3/4/5/7/9: 선택이 필요한 지점은 `frame_studio action=ask tab=frame`을 호출해 버튼/체크박스/직접입력으로 답을 받는다. 긴 판단 맥락 카드는 직전 `update` 또는 같은 `ask`의 `markdown`에 넣고, `question` 필드는 **짧은 질문 제목 한 줄**만 넣는다.
+- Step 2: 확인된 사실·가정·필요한 맵을 `frame_studio action=update tab=frame`으로 보여준다. 의례적인 `ok` 응답을 기다리지 않는다.
+- Step 3/4/7/9: 중요한 미해결 선택이나 새 권한이 필요한 경우에만 `frame_studio action=ask tab=frame`을 호출한다. Step 5 검증 계획은 AI가 도출해 보여주며 선택 메뉴로 만들지 않는다. 긴 판단 맥락 카드는 직전 `update` 또는 같은 `ask`의 `markdown`에 넣고, `question` 필드는 **짧은 질문 제목 한 줄**만 넣는다.
 - `ask.question`에 `현재 이해 / 막힌 결정 / 왜 중요한가 / 추천 답안 / 선택 후 달라지는 것 / 질문` 카드 전체를 넣지 않는다. 그런 호출은 Studio가 방어적으로 제목/본문을 분리하더라도 실패한 호출이다.
 - Step 6/8: 현재 markdown을 `frame_studio action=update tab=frame`으로 렌더링한다. 구현 계획은 별도 Plan 탭이 아니라 Frame 탭 마지막의 `Implementation plan synthesis` 섹션으로 보여준다.
 - 질문 본문을 채팅에 번호형 메뉴로 출력하는 것은 `frame_studio ask` 결과가 `unavailable`, `cancelled`, `timeout`일 때만 허용한다.
@@ -309,147 +291,30 @@ Pi UI가 있고 `frame_studio` tool을 사용할 수 있으면, 번호형 텍스
 6. 홈 디렉토리 자체(`/Users/...`)는 identity로 쓰지 않는다. 홈은 여러 기획 탭이 공유하므로 충돌한다.
 7. 메타/인자/하단 session title에서 `[A-Z]{2,}-\d+` 티켓 패턴을 추출한다. 발견되면 가능한 issue tracker 도구로 본문/acceptance/status를 가져온다.
 8. `git status` + `git log --oneline -5`로 진행 상태 파악 (git repo가 아니면 planning mode로 생략 사유 기록)
-9. 기존 frame이 있으면 **재진입 모드** — 덮어쓰기 전 사용자 확인
+9. 기존 frame이 있으면 **재진입 모드** — 기존 계약을 보존하며 요청된 delta만 반영한다. 새 범위·권한·중요한 미해결 판단이 생길 때만 묻는다.
 10. 워크트리에 결합된 이전 fork-panel summary가 있으면 짧게 인용
 
 이 단계에선 **유저에게 묻지 않는다.** 출력은 단 하나: identity + 수집된 컨텍스트 요약 카드.
 
 planning frame은 나중에 worktree가 만들어지면 해당 worktree의 `.pi/frame.json`으로 승격할 수 있어야 한다. 따라서 ticket, session title, 원래 session file, source cwd를 frame metadata에 남긴다.
 
-### Step 2: 목표 fingerprint + 사고 초점 카드
+### Step 2: 사실·요구·열린 판단 정리
 
-수집한 컨텍스트로 AI가 아래를 먼저 보여준다. 코드/문서/티켓/이전 frame으로 확인 가능한 것은 먼저 확인하고, 확인하지 못한 추정만 가정으로 표시한다.
+코드/문서/티켓/이전 frame에서 확인한 목표·범위·성공 기준을 짧게 보여준다. **확정 요구 / 확인된 사실 / 미확인 사실·가정 / 제안된 수단**을 구분한다. 가정이나 렌즈 수를 채우지 않는다.
 
-1. **내가 이해한 목표 fingerprint** — 사용자가 바로 정정할 수 있는 짧은 요약과 확인된 사실
-2. **명백해 보이는 추천 범위/검증 초점** — `(명백: ...)` 근거 포함
-3. **가정 4~6개** — 틀리면 사용자가 번호로 정정할 수 있는 문장
-4. **같이 볼 렌즈 3~4개** — 사용자가 무엇을 신경 써야 하는지 알려주는 구체 항목
-5. **Requirement Matrix 초안** — 기획 근거가 있으면 원문 요구사항 ID, 구현 계약, 검증 증거, 상태
-6. **Domain Work Map 초안** — FE Web/Admin/Mobile, BE, DB/Ops, Verification 레인과 각 레인이 닫는 요구사항 ID
-7. **정책축 스캔** — 트리거된 경우 시간 기준/적용 수/DEFAULT/채널/마이그레이션/cache 축의 확인값과 빈칸
-8. **백엔드 레이어 맵** — 트리거된 경우 resolver/usecase/service/repository/entity/VO/loader/consumer 책임과 call-flow, 가능하면 요구사항 ID
-9. **남은 불확실성 1개** — 다음 질문에서 풀 가장 큰 빈칸
+기획 근거가 있으면 Requirement Matrix와 Domain Work Map으로 요구사항 추적성을 유지한다. 정책축·레이어·흐름·데이터 맵은 위 트리거에 맞게 필요한 책임과 구조를 설명하되, 같은 내용을 여러 맵이나 질문으로 반복하지 않는다. 정정을 허용하지만 `ok`를 필수 응답으로 받지 않는다.
 
-예:
+### Step 3: 중요한 미해결 판단만 질문
 
-```markdown
-내가 이해한 목표:
-“파트너 예약 취소 흐름에서 권한별 버튼 노출과 실패 메시지를 정렬한다.”
+질문 승격은 tft-guidelines 철칙 1을 따른다. 코드로 답할 미확인 사실은 좁게 조사한다. 목표·범위·성공 기준이 이미 정해져 있으면 이 단계를 건너뛴다. 필요한 질문은 `현재 이해 / 막힌 결정 / 왜 중요한가 / 추천 / 선택 후 달라지는 것`을 갖춘 판단 맥락 카드와 실제 행동 선택지로 제시한다.
 
-(명백: 요청의 직접 증상은 버튼 미노출입니다. 다만 실패 메시지까지 포함할지에 따라 검증 범위가 달라집니다.)
+### Step 4: 기술 결정 연결
 
-가정:
-1. 대상은 admin 예약 취소 UI다.
-2. 성공 판정은 “취소 버튼 노출”이 아니라 “권한별 취소 가능/불가 흐름”이다.
-3. DB 스키마 변경은 없다.
-4. 검증은 admin UI 캡처 + 관련 mutation 테스트가 필요하다.
+실질적인 기술 손익이 남으면 `/decide`로 근거·대안·추천을 비교한다. 조사 전 단일 설계를 확정하지 않는다. 당장 결정하지 않을 경우 `미확인 사실 / 미해결 선택 / 영향받는 slice / 다음 행동`을 decision queue와 slice 의존성에 남긴다. 선택한 tradeoff를 다시 반론하는 별도 단계는 없다.
 
-같이 볼 렌즈:
-1. 권한 경계 — 누가 취소할 수 있고 누가 못 하는가
-2. UX 실패 경로 — 취소 실패 시 메시지/복구가 보이는가
-3. 검증 증거 — 테스트만으로 충분한가, 화면 캡처가 필요한가
-4. 구조 경계 — 조건/모듈이 흩어져 다음 AI가 길을 잃을 구조인가
+### Step 5: 검증 계획 도출
 
-정책축 스캔:
-- 트리거 없음 — 혜택/캠페인/가격/기간/DEFAULT/다중 채널 정책 변경이 아니다.
-
-백엔드 레이어 맵:
-- 트리거 없음 — backend resolver/usecase/repository/entity/VO/loader 책임 변경이 아니다.
-
-틀린 가정이 있으면 번호로 정정해주세요. 없으면 `ok`.
-```
-
-이 단계는 자유 텍스트 정정 턴이다. TFT Studio를 쓰면 카드를 `update`로 보여준 뒤 `ask`로 `ok`/정정 입력을 받아야 한다. 아직 draft를 쓰지 않는다.
-
-### Step 3: AskUserQuestion — 목표/범위 구체화
-
-목표 확인 질문은 추상 카테고리가 아니라 **이번 작업의 실제 분기**를 옵션화한다. 추천안이 명백해 보여도 질문하고, 질문 앞에 `(명백: ...)`으로 근거를 쓴다. 단, 질문은 Deep Interview 카드처럼 한 번에 하나의 불확실성만 다룬다.
-
-```markdown
-현재 이해: “파트너 예약 취소 흐름에서 권한별 버튼 노출과 실패 메시지를 정렬한다.”
-막힌 결정: 직접 증상만 고칠지, 실패 경로까지 성공 기준에 포함할지
-추천 답안: 2번 — 사용자가 보는 실패 경로까지 닫아야 검증이 완결됩니다.
-(명백: 요청은 “취소 버튼이 안 보임”이 핵심이라 1번이 최소 목표입니다. 다만 실패 메시지를 포함하면 검증 축이 하나 늘어납니다.)
-질문: 목표를 어디까지로 잡을까요?
-
-1. 최소 목표 — 취소 버튼 노출 조건만 수정
-2. 표준 목표 — 버튼 조건 + 실패 메시지까지 수정
-3. 넓은 목표 — 관련 예약 상태 전환 전체 점검
-4. 먼저 탐색 — 기존 예약 상태 모델을 더 읽고 다시 결정
-
-답은 번호로 주세요. 예: `2`
-```
-
-원칙:
-- 옵션은 매번 도메인 구체어로 작성한다. `성공 기준 수정`, `범위 수정` 같은 메타 옵션만 쓰지 않는다.
-- 가장 비싼 결정이 있으면 `막힌 결정` 또는 질문 앞 판단 맥락 카드에 표시한다.
-- 코드/문서/티켓을 읽으면 답할 수 있는 선택지는 먼저 직접 확인하고, 남은 판단만 사용자에게 묻는다.
-- Non-delegable 영역이면 이 단계에서 반드시 사용자 선택을 받는다.
-- 사용자가 숫자로 답하면 해당 옵션을 선택한 것으로 보고 바로 진행한다.
-
-### Step 4: AskUserQuestion — Productive Resistance
-
-목표/범위 선택 후, draft 작성 전에 계획을 흔드는 질문을 1~2개 던진다. 단순한 반론 나열이 아니라 frame 계약을 바꾸는 행동 옵션이어야 한다. 여러 리스크가 보여도 한 질문에는 가장 큰 불확실성 하나만 담고, 나머지는 risk seed로 남긴다.
-
-도출 기준:
-1. 성공 기준이 아직 측정/관찰 가능하지 않은가?
-2. 롤백 비용이 큰 선택(DB/API/상태 모델/외부 계약)이 숨어 있는가?
-3. 이번 작업에서 명시적으로 제외해야 할 항목이 있는가?
-4. 사용자가 나중에 “그건 당연히 포함이라고 생각했다”고 말할 수 있는 영역이 있는가?
-5. 정책축 스캔에서 시간 기준/다중 적용/DEFAULT/채널별 표시/마이그레이션 책임이 미해결인가?
-6. 백엔드 레이어 맵에서 책임 위치(repo/usecase/VO/service/loader)가 미해결인가?
-7. 변경을 빠르게 붙이면 shallow module, 분산 조건, 복잡한 public interface가 늘어나는가?
-
-예:
-
-```markdown
-현재 이해: “버튼 노출 조건 수정이 최소 목표로 선택됐다.”
-막힌 결정: 실패 경로를 성공 기준에 넣을지, 이번 범위 밖으로 둘지
-추천 답안: 1번 — 화면 증상 수정과 사용자 복구 가능성을 함께 검증합니다.
-(명백: 버튼 노출만 고치면 직접 증상은 해결됩니다. 하지만 실패 메시지를 제외하면 사용자는 실패 원인을 모를 수 있습니다.)
-질문: 실패 경로를 frame에 어떻게 반영할까요?
-
-1. 성공 기준에 추가 — 실패 메시지/복구까지 확인
-2. 범위 밖으로 명시 — 이번엔 버튼 노출만 검증
-3. 먼저 탐색 — 기존 실패 처리 구조를 읽고 결정
-```
-
-또 다른 예:
-
-```markdown
-질문: 이번 작업에서 명시적으로 제외할 항목은?
-
-1. 정산 상태 변경 제외 — UI/예약 상태만 다룸
-2. 외부 알림 변경 제외 — 알림톡/메일은 건드리지 않음
-3. 제외 없음 — 발견되는 연결 흐름까지 포함
-4. 먼저 탐색 — 영향 범위를 더 읽고 제외 범위 결정
-```
-
-빈틈 질문을 억지로 만들지 않는다. 정말 아무런 frame 계약 변화가 없으면 `(명백: 추가 Productive Resistance 없음 — 목표/범위/검증축이 단일 경로)`라고 보고하고 다음 단계로 간다.
-
-### Step 5: AskUserQuestion — 검증/리스크 초점 선택
-
-사용자가 “뭘 신경 써야 하는지 모르겠다”는 상황을 막기 위해, draft 작성 전에 검증 초점을 좁힌다. 초점이 명백해도 계약을 바꾸는 선택이면 묻고 `(명백)` 근거를 붙인다. 이 단계도 `현재 이해 / 막힌 결정 / 추천 답안 / 질문` 구조를 우선 사용한다.
-
-```markdown
-현재 이해: “버튼 조건과 실패 메시지를 표준 목표로 잡았다.”
-막힌 결정: draft에서 가장 엄격히 검증할 축 1~2개
-추천 답안: 1,4번 — 사용자 흐름 증거와 기존 정상 흐름 회귀를 함께 닫습니다.
-(명백: 이번 변경은 화면 노출 이슈라 사용자 흐름 캡처가 1순위입니다. 다만 권한 조건도 함께 바뀌면 회귀 방지가 중요합니다.)
-질문: frame draft에서 무엇을 가장 엄격히 볼까요? (최대 2개)
-
-1. 사용자 흐름 — 실제 화면/상태 변화 캡처
-2. 데이터 정합성 — 저장값/API 응답/캐시 무효화
-3. 권한·보안 — 접근 가능/불가 경계
-4. 회귀 방지 — 기존 정상 흐름 유지
-5. 구조 비용 — 모듈 경계/인터페이스 복잡도/다음 AI의 탐색 가능성
-6. 정책축 — 기준 시간/다중 적용/DEFAULT/채널 매트릭스/마이그레이션 재현성
-7. 백엔드 레이어 경계 — resolver/usecase/repository/VO/loader 중 책임 위치
-
-답은 번호로 주세요. 예: `1,4`
-```
-
-선택 결과는 `assumptions`, `success_criteria`, `verify_plan`, `risk_register` 작성의 우선순위가 된다.
+AI가 요구사항·성공 기준·실제 변경 위험에서 `verify_plan`과 필요한 edge case를 도출한다. 사용자에게 검증축 택1~2를 요구하지 않는다. 비용·외부 부작용·권한 때문에 검증 범위를 조정해야 할 때만 구체적인 선택을 묻고, 미실행 증거는 GAP으로 남긴다.
 
 ### Step 6: frame draft 작성 — 초반 plan 금지, 마지막 plan 합성 준비
 
@@ -484,12 +349,12 @@ AI가 frame draft를 작성한다. `/frame` 초반에는 구현 계획을 만들
 - `backend_layer_map`: 트리거된 작업이면 entry point, application flow, domain rule, data access, cache/batching, persistence, consumers의 책임과 call-flow. source-grounded mode에서는 각 레이어가 닫는 requirement ID도 함께 적고, markdown row에는 `요구사항` 컬럼을 둔다.
 - `architecture_flow_map`: 트리거된 작업이면 UI/API/Usecase/Domain/Repository/DB/Ops lane, 주요 node/edge, DB source-of-truth/PK/FK/legacy badge, 각 흐름이 닫는 requirement ID와 verification evidence를 적는다.
 - `data_model_migration_map`: 트리거된 작업이면 table/entity, column/constraint, relationship/cardinality, DDL/DML/backfill/rollback, runtime fallback/read flow, verification query를 요구사항 ID와 연결한다.
-- `edge_case_seeds[]`: Step 4/5 초점에 맞춘 3~5개
-  - 구조 렌즈를 선택했다면 “다음 AI/사람이 변경 지점을 찾을 수 있는가” 같은 탐색성 edge도 포함
+- `edge_case_seeds[]`: 요구사항과 변경 위험에서 도출한 실제 실패 경계. 고정 개수를 채우지 않는다.
+  - 구조 비용이 실제로 바뀌면 변경 지점 탐색성과 책임 경계도 검토한다.
 - `verify_plan`: `{ commands[], manual_checks[] }`
 - `implementation_plan`: 이 시점에는 `blocked_by_decision` 또는 `draft` 상태의 **합성 준비 섹션**만 둔다.
-  - decision queue가 남아 있으면 `status="blocked_by_decision"`으로 두고, 어떤 결정이 닫혀야 plan이 ready가 되는지 적는다.
-  - 결정이 모두 닫혔고 사용자가 저장을 승인하면 Step 8에서 `ready`로 합성한다.
+  - 남은 결정이 어떤 slice를 막는지 `blockedBy` 또는 slice 설명에 명시한다. 독립 slice와 전체 작업의 준비도를 구분한다.
+  - 승인된 요구와 닫힌 결정으로 준비된 범위는 Step 8에서 합성한다. 저장 재승인은 필요하지 않다.
 - `provenance`: Studio transcript path, 사용된 질문/답변 id, canonical hash placeholder
 
 Draft를 보여줄 때 맨 위에 반드시 다음을 붙인다:
@@ -510,27 +375,9 @@ Draft를 보여줄 때 맨 위에 반드시 다음을 붙인다:
 12. implementation plan이 frame/decide 결정과 matrix/work map에서 파생됐는가
 ```
 
-### Step 7: AskUserQuestion — 구체 patch 메뉴
+### Step 7: 정정 반영
 
-검수 질문은 카테고리 메뉴가 아니라 **draft에서 바로 고칠 수 있는 구체 항목**으로 만든다. Pi에서는 번호로 답할 수 있게 출력한다.
-
-```markdown
-질문: 저장 전에 무엇을 고칠까요? (복수 선택 가능)
-
-1. SC-2에 “취소 실패 메시지 노출” 추가
-2. out_of_scope에 “정산 상태 변경” 추가
-3. ask_first에 “예약 상태 enum 변경” 추가
-4. verify_plan에 admin 화면 캡처 추가
-5. 이대로 저장
-
-답은 번호로 주세요. 예: `1,4` 또는 `5`
-```
-
-원칙:
-- 가능한 한 실제 draft 항목을 옵션으로 쓴다.
-- 메타 옵션(`성공 기준 수정`)은 구체 항목을 만들 수 없을 때만 fallback으로 쓴다.
-- `이대로 저장`은 통과 의례가 아니라 저장 action이다. 선택 시 Step 8로 진행한다.
-- 선택된 항목만 자유 텍스트로 받아 patch한다. patch 후 같은 메뉴를 반복하지 말고, 변경 요약을 보여준 뒤 저장 확인만 짧게 받는다.
+확인된 요구·선택과 draft가 맞는지 AI가 대조하고, 사용자 정정이 있으면 반영한다. 미해결 선택이나 새로운 권한이 없으면 저장 메뉴·patch 후 재승인을 받지 않고 Step 8로 진행한다. 새로운 중요한 판단이 생겼을 때만 그 차이를 질문한다.
 
 ### Step 8: Canonical-first 영속화 + 의사결정 큐잉
 
@@ -539,8 +386,8 @@ Draft를 보여줄 때 맨 위에 반드시 다음을 붙인다:
 1. `FrameDoc` 객체를 완성한다.
 2. source-grounded mode이면 `requirement_matrix`의 모든 ID가 `implementation_plan.slices[]`, `domain_work_map`, `backend_layer_map`, `architecture_flow_map`, `data_model_migration_map`, `verify_plan`, `out_of_scope`, `decision_queue`, `blocked` 중 하나에 연결됐는지 확인한다. 미매핑 요구사항, `상태` 없는 matrix, requirement ID 없는 work/layer/flow/data map, 또는 원문 요구를 완화한 PASS 계약이 있으면 저장 전에 patch하거나 decision으로 큐잉한다.
 3. `implementation_plan`을 frame/decide 결정에서 합성한다.
-   - `decision_queue[]`가 남아 있으면 `status="blocked_by_decision"`으로 저장하고, Plan을 ready로 선언하지 않는다.
-   - 닫힌 결정만으로 실행 방향이 충분하면 `status="ready"`로 두고 `slices`, `firstSafeStep`, `readiness`, `gates`를 채운다.
+   - `decision_queue[]`가 남아 있으면 전체 Plan은 `status="blocked_by_decision"`으로 기록하되, 각 slice의 의존성을 따로 표시한다. 이 전체 상태만으로 독립 slice까지 막지 않는다.
+   - 필요한 결정이 닫혔으면 `status="ready"`로 두고 `slices`, `firstSafeStep`, `readiness`, `gates`를 채운다. `firstSafeStep`은 미결정에 의존하지 않는 조사 또는 승인된 독립 slice여야 한다.
    - 각 slice는 최소한 `claim`, `scope`, `evidence_needed`, `done_when`이 읽히게 작성한다. 별도 schema 확장이 과하면 기존 slice description/acceptance에 이 네 가지를 넣는다.
    - 이 Plan은 frame contract를 대체하지 않고, `derivedFrom.frameHash`와 `derivedFrom.decisionIds`로 출처를 남긴다.
 4. 필수 필드 점검:
@@ -584,7 +431,7 @@ Draft를 보여줄 때 맨 위에 반드시 다음을 붙인다:
 15. `verify_plan.manual_checks` → 각 항목당 `TaskCreate`:
     - `kind: "verify"`, `owner: "agent"`
     - `metadata: { kind: "frame.verify_check" }`
-16. TFT Studio를 쓰고 있으면 `frame_studio action=update tab=frame`으로 저장 결과와 Plan synthesis, Working Context Card 요약을 남긴다. 이때 `implementation_plan.slices[]`가 있으면 “각 slice는 검증 후 `work_context commit_plan` → `auto_commit apply`로 닫는 커밋 후보”라는 soft rhythm을 함께 표시한다. Step 9의 다음 단계 질문까지 끝난 뒤 **반드시** `frame_studio action=finish tab=frame`으로 닫는다.
+16. TFT Studio를 쓰고 있으면 `frame_studio action=update tab=frame`으로 저장 결과와 Plan synthesis, Working Context Card 요약을 남긴다. 이때 `implementation_plan.slices[]`가 있으면 “각 slice는 검증 후 `work_context commit_plan` → `auto_commit apply`로 닫는 커밋 후보”라는 soft rhythm을 함께 표시한다. Step 9의 실제 다음 행동 또는 중단 결과를 기록한 뒤 **반드시** `frame_studio action=finish tab=frame`으로 닫는다.
     - `frame.json` path
     - `frame.md` path
     - `canonicalHash`
@@ -603,20 +450,18 @@ TFT Studio finish invariant:
 - `frame.md` 생성만 실패하면 canonical은 성공으로 보고, mirror 재생성 필요를 사용자에게 알린다.
 - transcript와 canonical이 충돌하면 canonical이 우선이며, 충돌 내용을 `provenance.notes[]` 또는 사용자 보고에 남긴다.
 
-### Step 9: AskUserQuestion — 다음 단계
+### Step 9: 다음 행동 연결
 
-```markdown
-질문: <n>개 결정 큐잉 / verify 명령 <m>개 / plan 상태 <status>. 다음은?
+이미 승인된 다음 의도가 있으면 재메뉴 없이 그 행동을 수행한다. 의도가 없으면 현재 가능한 선택지만 제시한다.
 
-1. /decide — 큐잉된 결정 처리
-2. plan 보완 — Frame 안의 implementation_plan만 다듬기
-3. /verify dry-run — 검증 계획만 먼저 점검
-4. fork해서 시작 — worktree로 옮겨 같은 frame/plan으로 구현
-5. 바로 구현 시작 — 현재 worktree에서 진행
-6. 여기서 멈춤
+- 미확인 사실이 남음 → 필요한 근거를 좁게 조사
+- 비교할 근거가 모인 중요한 기술 선택 → `/decide — 기술 결정부터`
+- 미결정과 독립적인 slice → 승인된 범위에서 해당 slice 구현
+- 계획 보완 요청 → 같은 Frame의 implementation_plan 갱신
+- 새 worktree를 명시적으로 원함 → 전용 fork 도구의 승인·activation 계약
+- 여기서 멈춤 → 저장 결과와 남은 판단 보고
 
-답은 번호로 주세요. 예: `4`
-```
+`미확인 사실 / 미해결 선택 / 영향받는 slice / 다음 행동`을 보여준다. task 개수만 보고하거나 미결정을 구현 중 알아서 정할 항목으로 숨기지 않는다. Frame 저장은 구현·외부 실행·새 worktree의 권한을 부여하지 않는다.
 
 사용자의 다음 단계 선택까지 transcript에 남긴 뒤 `frame_studio action=finish`를 호출한다. `fork해서 시작`을 선택하면 `worktree_fork` tool이나 사용자 slash `/wt fork`를 호출하지 말고 `frame_worktree_fork` tool을 호출한다. 이 도구는 `/frame` command shim이 저장한 command context로 source panel 보존용 composed workflow runner를 실행하고 placement를 물은 뒤, forked worktree exact session을 새 작업 panel에서 활성화한다. target READY가 확인된 뒤 승격된 `.pi/frame.json`·task board를 읽고 첫 ready implementation slice를 시작하는 follow-up까지 이어져야 성공이다. tool이 `BLOCKED`를 반환하면 현재 세션에서 절대경로로 이어가거나 current-panel switch로 fallback하지 말고 사용자에게 이유를 보고한다. planning frame은 worktree 생성 시 `.pi/frame.json`으로 자동 승격되어야 하며, 사용자는 승격 절차를 따로 의식하지 않는다.
 
@@ -630,13 +475,13 @@ TFT Studio finish invariant:
 | "성공 기준은 코드 보면 알아" | verify는 코드를 다시 본다. frame.json은 verify가 코드를 보지 *않고도* PASS/FAIL을 정의할 수 있게 만든다. |
 | "ticket은 머리에 있으니 메타 안 적어도 됨" | 다음 fork·세션에서 사라진다. 30초 적는 비용 vs 30분 재구성 비용. |
 | "엣지 케이스는 verify에서 도출하면 됨" | verify 시점엔 구현이 끝났다. frame이 미리 시드를 박아야 구현 중 처리된다. |
-| "명백한데 왜 물어?" | `/frame`에서는 목표·범위·검증축이 계약을 바꾸므로 묻는다. 대신 `(명백)` 근거를 보여줘 혼동을 줄인다. |
-| "Productive Resistance는 시간 낭비" | 빈틈 질문 1개가 잘못된 성공 기준으로 1시간 구현하는 것을 막는다. |
+| "질문을 해야 TFT다" | 질문 수가 아니라 사실 조사와 중요한 미해결 판단의 해결이 목적이다. 이미 정해진 내용을 재승인받지 않는다. |
+| "반론 단계가 없으니 비용은 생략" | 비용·보안·되돌리기 차이는 선택 전 비교에 포함하고 수용한 손익을 기록한다. |
 | "테스트만 통과하면 구조 비용은 나중 문제" | AI가 다시 찾기 어려운 shallow module 증가는 다음 변경 비용이다. 지금 고치지 않아도 risk/out_of_scope/follow-up으로 남긴다. |
 | "frame.md만 있으면 충분" | frame.md는 mirror다. `/verify`와 `/decide`가 읽는 단일 원천은 frame.json이다. |
 | "tasks는 agent 내부 todo라 사용자가 안 봐도 됨" | work-task board는 현재 slice/사용자 결정/검증 대기 상태를 외부화하는 인지 도구다. 사용자에게 필요한 항목(owner=user, kind=decision/blocked)을 먼저 보이게 한다. |
 | "Ask first 영역까지 매번 적는 건 과하다" | 결제/보안/PII가 ask_first에 없으면 합리화로 우회된다. 5초로 가장 비싼 사고를 막는다. |
-| "AI가 draft를 잘 만들었으니 사용자는 OK만 누르면 됨" | TFT 실패다. draft 전에 사용자가 볼 렌즈와 실제 분기를 번호형 질문으로 좁힌다. |
+| "AI가 draft를 잘 만들었으니 사용자는 OK만 누르면 됨" | 통과용 승인 대신 조사 근거와 중요한 미해결 판단을 드러낸다. 이미 명확하면 질문 없이 저장한다. |
 | "모호하니 질문을 여러 개 한 번에 던지자" | Deep Interview 실패다. 가장 큰 불확실성 하나만 골라 `현재 이해 / 막힌 결정 / 왜 중요한가 / 추천 답안 / 선택 후 달라지는 것 / 질문` 카드로 묻는다. |
 | "사용자에게 물으면 빠르다" | 코드/문서/티켓/이전 frame으로 확인 가능한 사실은 먼저 직접 확인한다. 남은 판단만 묻는다. |
 | "처음부터 구현 계획까지 같이 주면 친절하다" | `/frame` 초반에는 plan을 만들지 않는다. 목표·범위·결정이 닫힌 뒤 Frame의 마지막 산출물로 implementation plan을 합성한다. |
@@ -798,7 +643,7 @@ type FrameDoc = {
     verificationQueries?: Array<{ id: string; title: string; sql?: string; description?: string }>;
     openQuestions?: string[];
   };
-  productive_resistance: Array<{
+  productive_resistance?: Array<{ // 실제 요청·수행한 반론만 기록; 생략/빈 배열 정상
     question: string;
     selected: string;
     rationale?: string;
@@ -839,6 +684,7 @@ type FrameDoc = {
       id: string;             // SLICE-1 ...
       goal: string;
       expectedFiles?: string[];
+      blockedBy?: string[];   // 영향받는 미해결 결정 ID; 독립 slice는 빈 배열/생략
       validation: string[];
     }>;
     firstSafeStep: string;
@@ -857,13 +703,13 @@ type FrameDoc = {
     rationale: string;
     tradeoffs_accepted: string;
     mitigations?: string[];
-    challenge: {
+    challenge?: { // 명시적 grill 요청 또는 새로운 중요한 근거로 실제 재검토한 경우만
       intensity: "low" | "medium" | "high" | "ask_first";
       objection: string;
       response: "accepted" | "accepted_with_mitigation" | "reconsidered" | "returned_to_frame";
       userSelection: string;
     };
-    challenged: true;         // /decide는 항상 challenge 수행
+    challenged?: boolean;    // legacy true 보존; 미수행은 false 또는 생략
     decidedAt: number;
   }>;
   decision_queue: Array<{
@@ -896,100 +742,15 @@ type FrameDoc = {
 
 ## §6: 실전 흐름 예시
 
+```text
+USER: /frame 목록의 필터를 추가하고 파일 다운로드도 제공하려고 해
+AI: 요구사항과 현재 목록/API/저장·권한 경계를 좁게 조사한다.
+AI: 목록 필터는 기존 계약으로 구현 가능하다. 다운로드는 기존 파일 식별·소유 정보가 확인되지 않아 먼저 조사한다.
+AI: 근거가 모이면 저장 구조 재사용과 조회 인덱스 추가의 보장·운영 비용을 비교해 /decide로 연결한다.
+USER: 다운로드 설계를 먼저 비교하자.
+AI: 확인된 근거와 추천을 갖고 해당 기술 선택을 비교한다. 필터 slice는 이 결정과 독립임을 기록한다.
+AI: 검증은 요구사항에서 도출한다. 검증축 선택·의무 반론·ok·저장 재승인 없이 canonical과 mirror를 저장한다.
+AI: 선택 결과를 결정 큐와 slice 의존성에 반영한다. 계획만 요청했으므로 코드 구현 권한은 추정하지 않는다.
 ```
-USER: /frame 결제 취소 시 부분 환불 지원해줘
 
-AI (Step 1, 질문 없음):
-컨텍스트:
-- worktree: atlanta-PROJ-123 (branch: feat/PROJ-123/partial-refund)
-- ticket(자동): PROJ-123 — "부분 환불 지원"
-- 변경 없음 (clean)
-
-AI (Step 2):
-내가 이해한 목표:
-“주문 결제에서 부분 환불을 지원하고 정산/관리자 확인까지 검증한다.”
-
-(명백: ticket acceptance에 정산과 관리자 UI가 함께 언급되어 있어 API만으로는 성공 기준이 닫히지 않습니다.)
-
-가정:
-1. 성공 판정은 “부분환불 API 호출 성공”이 아니라 “정산 반영까지 일치”다.
-2. DB 스키마 변경 가능성이 있다.
-3. 외부 PG는 Toss를 우선 확인한다.
-4. 관리자 UI는 범위에 포함될 수 있다.
-
-같이 볼 렌즈:
-1. 정산 데이터 정합성 — 환불 금액이 리포트까지 일치하는가
-2. 외부 PG 경계 — Toss만 할지, 다른 PG를 제외할지
-3. 관리자 UX — 부분환불 상태가 사람이 확인 가능하게 보이는가
-
-틀린 가정이 있으면 번호로 정정해주세요. 없으면 `ok`.
-
-USER: 3번 — Toss만 범위에 포함, PayPal은 제외.
-
-AI (Step 3):
-(명백: acceptance가 정산과 관리자 UI까지 요구하므로 3번이 가장 자연스럽습니다. 다만 범위를 줄일 수 있습니다.)
-질문: 목표를 어디까지로 잡을까요?
-
-1. Toss 부분환불 API만 지원
-2. Toss 부분환불 + 정산 반영까지 포함
-3. Toss 부분환불 + 정산 + 관리자 UI까지 포함
-4. 먼저 기존 환불 모델을 더 탐색
-
-USER: 3
-
-AI (Step 4 Productive Resistance):
-질문: 이번 작업에서 명시적으로 제외할 항목은?
-
-1. PayPal 부분환불 제외 — Toss만 frame에 포함
-2. 모바일 앱 표시 제외 — admin UI만 검증
-3. 제외 없음 — 연결 흐름 전체 포함
-4. 먼저 탐색 — 영향 범위 확인 후 제외 결정
-
-USER: 1,2
-
-AI (Step 5):
-질문: frame draft에서 무엇을 가장 엄격히 볼까요? (최대 2개)
-
-1. 정산 데이터 정합성
-2. Toss API 실패/재시도 경계
-3. 관리자 UI 캡처
-4. 기존 전액환불 회귀 방지
-
-USER: 1,3
-
-AI (Step 6 draft):
-검수할 때 볼 것:
-1. 성공 기준이 정산/관리자 결과까지 말하는가
-2. PayPal/모바일 앱 제외 범위가 명확한가
-3. 검증 증거가 테스트와 화면 캡처로 나뉘는가
-4. 선택한 답변이 frame 계약에 정확히 반영됐는가
-
-AI (Step 7):
-질문: 저장 전에 무엇을 고칠까요? (복수 선택 가능)
-
-1. SC-2에 “정산 리포트 금액 일치”를 더 명시
-2. out_of_scope에 “PayPal 부분환불” 추가
-3. verify_plan에 관리자 UI 캡처 추가
-4. edge_case에 “부분환불 후 같은 결제 재시도” 추가
-5. 이대로 저장
-
-USER: 4
-
-AI (Step 8):
-- implementation_plan.status=`blocked_by_decision` 기록
-- frame.json atomic write
-- frame.md regenerated from frame.json
-- canonicalHash 기록
-- frame.decision task 2개 큐잉
-- frame.verify_check task 2개 큐잉
-
-AI (Step 9):
-질문: 2개 결정 큐잉 / verify 명령 2개 / plan 상태 blocked_by_decision. 다음은?
-
-1. /decide — 큐잉된 결정 처리
-2. plan 보완 — Frame 안의 implementation_plan만 다듬기
-3. /verify dry-run — 검증 계획만 먼저 점검
-4. fork해서 시작 — worktree로 옮겨 같은 frame/plan으로 구현
-5. 바로 구현 시작 — 현재 worktree에서 진행
-6. 여기서 멈춤
-```
+명확한 작은 요청은 사실 확인 후 질문 없이 Frame을 저장할 수 있다. 사용자가 구현까지 이미 승인했다면 해당 범위의 첫 안전 행동으로 이어간다.
