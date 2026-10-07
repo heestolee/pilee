@@ -62,7 +62,7 @@ export interface WorktreeRepoProfile {
 	setupScript?: string;
 	autoOpenInGhostty?: boolean;
 	ghosttyDirection?: "right" | "left" | "down" | "up" | "tab";
-	namingScheme?: "pokemon" | "city" | "none";
+	namingScheme?: "words" | "pokemon" | "city" | "none";
 	gate?: WorktreeRepoGateProfile;
 	bootstrap?: WorktreeBootstrapProfile;
 }

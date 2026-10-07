@@ -28,7 +28,8 @@ test("slash /wt new keeps the original current-panel creation path", () => {
 	assert.match(commandNew, /switchSessionToWorktree/);
 	assert.doesNotMatch(commandNew, /chooseNewPanelPlacement|buildNewPanelActivationContract|activateWorkspaceInNewPanel/);
 	assert.doesNotMatch(commandNew, /source Pi session provenance가 없어|cleanupCreatedWorktree|fullContextFailure/);
-	assert.ok(commandNew.indexOf('pi.exec("git", ["worktree", "add"') < commandNew.indexOf("switchSessionToWorktree"));
+	assert.match(commandNew, /await createNamedWorktree\(/);
+	assert.ok(commandNew.indexOf("await createNamedWorktree(") < commandNew.indexOf("switchSessionToWorktree"));
 });
 
 test("slash /wt fork offers exactly current, tab, and right targets after shared creation", () => {
@@ -46,7 +47,8 @@ test("slash /wt fork offers exactly current, tab, and right targets after shared
 	assert.match(commandFork, /activateWorkspaceInNewPanel/);
 	assert.match(commandFork, /timeoutPolicy: "preserve-pending"/);
 	assert.match(commandFork, /activation\.status === "pending"/);
-	assert.ok(commandFork.indexOf('pi.exec("git", ["worktree", "add"') < commandFork.indexOf('if (openTarget === "current")'));
+	assert.match(commandFork, /await createNamedWorktree\(/);
+	assert.ok(commandFork.indexOf("await createNamedWorktree(") < commandFork.indexOf('if (openTarget === "current")'));
 	assert.doesNotMatch(commandFork, /cleanupCreatedWorktree|fullContextFailure/);
 });
 
@@ -100,6 +102,22 @@ test("/wt switch remains the explicit existing-worktree current-panel activation
 
 test("new-panel workflow receiver remains registered for tools and composed workflows", () => {
 	assert.match(source, /registerWorkspacePanelActivationReceiver\(pi\)/);
+});
+
+test("all five fresh creation paths allocate once and use only the final successful identity", () => {
+	const createTool = between('name: "worktree_create"', 'name: "worktree_switch"');
+	const forkTool = source.slice(source.indexOf('name: "worktree_fork"'));
+	for (const block of [commandNew, commandFork, workflowFork, createTool, forkTool]) {
+		assert.equal((block.match(/await createNamedWorktree\(/g) ?? []).length, 1);
+		assert.doesNotMatch(block, /pickName|\["worktree", "add"/);
+		assert.ok(block.indexOf("await createNamedWorktree(") < block.indexOf("writeMeta(worktreePath"));
+		assert.match(block, /sessionName: `\$\{name\} \(\$\{branchName\}\)`/);
+	}
+	for (const block of [workflowFork, createTool, forkTool]) {
+		assert.ok(block.indexOf("await createNamedWorktree(") < block.indexOf("contract.continuation ="));
+		assert.ok(block.indexOf("contract.continuation =") < block.indexOf("activateWorkspaceInNewPanel("));
+	}
+	assert.match(source, /namingScheme: "words"/);
 });
 
 test("explicit authorization uses the current P0/P1/P2 panel as source without a P0-only hard block", () => {

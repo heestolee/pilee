@@ -22,6 +22,8 @@ import { resolveForkPanelIdentity } from "../utils/fork-panel-identity.ts";
 import { parseGitStatusPorcelainV2 } from "../utils/git-utils.ts";
 import { readCoordinatedRepoGitStatus } from "../utils/repo-status.ts";
 import { registerWorktreeDashboardShortcut } from "./shortcut.ts";
+import { createNamedWorktree, type CreatedWorktree } from "./create-worktree.ts";
+import type { WorktreeNamingScheme } from "./names.ts";
 import {
 	bootstrapDomainProfiles,
 	getBootstrapDomains,
@@ -112,7 +114,7 @@ interface WorktreeConfig {
 	setupScript?: string;
 	autoOpenInGhostty: boolean;
 	ghosttyDirection: "right" | "left" | "down" | "up" | "tab";
-	namingScheme: "pokemon" | "city" | "none";
+	namingScheme: WorktreeNamingScheme;
 }
 
 const DEFAULT_CONFIG: WorktreeConfig = {
@@ -122,7 +124,7 @@ const DEFAULT_CONFIG: WorktreeConfig = {
 	branchPrefix: "feature",
 	autoOpenInGhostty: true,
 	ghosttyDirection: "tab",
-	namingScheme: "pokemon",
+	namingScheme: "words",
 };
 
 function expandHome(p: string): string {
@@ -199,42 +201,6 @@ function saveConfig(repoRoot: string, config: WorktreeConfig) {
 	const out = { ...config };
 	if (out.rootDir.startsWith(homedir())) out.rootDir = `~${out.rootDir.slice(homedir().length)}`;
 	writeFileSync(p, JSON.stringify(out, null, 2));
-}
-
-// ─── Pokemon names (1세대 151마리) ─────────────────────────────────────────
-
-const POKEMONS_GEN1 = [
-	"이상해씨", "이상해풀", "이상해꽃", "파이리", "리자드", "리자몽", "꼬부기", "어니부기", "거북왕",
-	"캐터피", "단데기", "버터플", "뿔충이", "딱충이", "독침붕", "구구", "피죤", "피죤투", "꼬렛", "레트라",
-	"깨비참", "깨비드릴조", "아보", "아보크", "피카츄", "라이츄", "모래두지", "고지", "니드런♀", "니드리나",
-	"니드퀸", "니드런♂", "니드리노", "니드킹", "삐삐", "픽시", "식스테일", "나인테일", "푸린", "푸크린",
-	"주뱃", "골뱃", "뚜벅쵸", "냄새꼬", "라플레시아", "파라스", "파라섹트", "콘팡", "도나리", "디그다",
-	"닥트리오", "나옹", "페르시온", "고라파덕", "골덕", "망키", "성원숭", "가디", "윈디", "발챙이",
-	"슈륙챙이", "강챙이", "캐이시", "윤겔라", "후딘", "알통몬", "근육몬", "괴력몬", "모다피", "우츠동",
-	"우츠보트", "왕눈해", "독파리", "꼬마돌", "데구리", "딱구리", "포니타", "날쌩마", "야돈", "야도란",
-	"코일", "레어코일", "파오리", "두두", "두트리오", "쥬쥬", "쥬레곤", "질뻐기", "질뻐꾸기", "셀러",
-	"파르셀", "고오스", "고우스트", "팬텀", "롱스톤", "슬리프", "슬리퍼", "크랩", "킹크랩", "찌리리공",
-	"붐볼", "아라리", "나시", "탕구리", "텅구리", "시라소몬", "홍수몬", "내루미", "또가스", "또도가스",
-	"뿔카노", "코뿌리", "럭키", "덩쿠리", "캥카", "쏘드라", "시드라", "콘치", "왕콘치", "별가사리",
-	"아쿠스타", "마임맨", "스라크", "루주라", "에레브", "마그마", "쁘사이저", "켄타로스", "잉어킹",
-	"갸라도스", "라프라스", "메타몽", "이브이", "샤미드", "쥬피썬더", "부스터", "폴리곤", "암나이트",
-	"암스타", "투구", "투구푸스", "프테라", "잠만보", "프리져", "썬더", "파이어", "미뇽", "신뇽",
-	"망나뇽", "뮤츠", "뮤"
-];
-
-const CITIES = [
-	"manila", "vancouver", "tokyo", "seoul", "paris", "london", "tokyo", "denpasar",
-	"chennai", "bandung", "houston", "abuja", "damascus", "zagreb", "douala", "budapest",
-	"abu-dhabi", "san-juan", "albuquerque", "kigali", "monrovia", "munich", "madrid",
-	"managua", "rabat", "lima", "atlanta", "amarillo", "algiers", "barcelona",
-];
-
-function pickName(scheme: WorktreeConfig["namingScheme"], existing: Set<string>): string {
-	if (scheme === "none") return `wt-${Date.now().toString(36)}`;
-	const pool = scheme === "pokemon" ? POKEMONS_GEN1 : CITIES;
-	const available = pool.filter((n) => !existing.has(n));
-	if (available.length === 0) return `${pool[Math.floor(Math.random() * pool.length)]}-${Date.now().toString(36).slice(-4)}`;
-	return available[Math.floor(Math.random() * available.length)];
 }
 
 // ─── Metadata ──────────────────────────────────────────────────────────────
@@ -2089,19 +2055,6 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 			? config.productionBranch
 			: config.baseBranch;
 	const prefix = parsed.hotfix ? "hotfix" : parsed.hotfeature ? "hotfeature" : config.branchPrefix;
-	mkdirSync(config.rootDir, { recursive: true });
-	const existing = new Set(listExistingWorktrees(config.rootDir).map((worktree) => worktree.name));
-	const name = parsed.name ?? pickName(config.namingScheme, existing);
-	if (existing.has(name)) {
-		ctx.ui.notify(`Worktree "${name}" already exists at ${config.rootDir}`, "error");
-		return;
-	}
-	const worktreePath = join(config.rootDir, name);
-	const branchName = parsed.branch
-		? parsed.branch
-		: parsed.ticket
-			? `${prefix}/${parsed.ticket}/${name}`
-			: `${prefix}/${name}`;
 	const contextContent = readContextFileOption(ctx, parsed.contextFile);
 	if (parsed.contextFile && contextContent === null) return;
 	const useFullContext = parsed.fullContext || (parsed.carryContext && !parsed.minimalContext);
@@ -2109,17 +2062,18 @@ async function handleNew(pi: ExtensionAPI, args: string, ctx: ExtensionCommandCo
 
 	const { name: registeredName, isNew: justRegistered } = autoRegister(repoRoot);
 	if (justRegistered) ctx.ui.notify(`Registered repo "${registeredName}" → ${repoRoot}`, "info");
-	ctx.ui.notify(`Creating worktree "${name}" from origin/${baseBranch}…`, "info");
-	const fetchR = await pi.exec("git", ["fetch", "origin", baseBranch], { cwd: repoRoot });
-	if (fetchR.code !== 0) {
-		ctx.ui.notify(`git fetch failed: ${fetchR.stderr?.trim().slice(0, 200) ?? "unknown error"}`, "error");
+	let created: CreatedWorktree;
+	try {
+		created = await createNamedWorktree(pi, {
+			repoRoot, rootDir: config.rootDir, baseBranch, prefix, ticket: parsed.ticket,
+			name: parsed.name, branch: parsed.branch, namingScheme: config.namingScheme,
+			onProgress: (message) => ctx.ui.notify(message, "info"),
+		});
+	} catch (error) {
+		ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
 		return;
 	}
-	const addR = await pi.exec("git", ["worktree", "add", worktreePath, "-b", branchName, `origin/${baseBranch}`], { cwd: repoRoot });
-	if (addR.code !== 0) {
-		ctx.ui.notify(`git worktree add failed: ${addR.stderr?.trim().slice(0, 200)}`, "error");
-		return;
-	}
+	const { name, worktreePath, branchName } = created;
 
 	writeMeta(worktreePath, { name, branch: branchName, baseBranch, createdAt: Date.now(), ticket: parsed.ticket, note: parsed.note });
 	const framePromotion = promotePlanningFrameToWorktree(worktreePath, readMeta(worktreePath) ?? {
@@ -2919,48 +2873,32 @@ async function handleCommandFork(pi: ExtensionAPI, args: string, ctx: ExtensionC
 			: config.baseBranch;
 	const prefix = parsed.hotfix ? "hotfix" : parsed.hotfeature ? "hotfeature" : config.branchPrefix;
 
-	mkdirSync(config.rootDir, { recursive: true });
-	const existing = new Set(listExistingWorktrees(config.rootDir).map((worktree) => worktree.name));
-	const name = parsed.name ?? pickName(config.namingScheme, existing);
-	if (existing.has(name)) {
-		const reason = `Worktree "${name}" already exists at ${config.rootDir}`;
-		ctx.ui.notify(reason, "error");
-		return { status: "blocked", reason, name };
-	}
-
-	const worktreePath = join(config.rootDir, name);
-	const branchName = parsed.branch
-		? parsed.branch
-		: parsed.ticket
-			? `${prefix}/${parsed.ticket}/${name}`
-			: `${prefix}/${name}`;
 	const contextContent = readContextFileOption(ctx, parsed.contextFile);
 	if (parsed.contextFile && contextContent === null) {
-		return { status: "blocked", reason: `context file not found: ${parsed.contextFile}`, name, branch: branchName, path: worktreePath };
+		return { status: "blocked", reason: `context file not found: ${parsed.contextFile}` };
 	}
-	const openTarget = await chooseCommandForkOpenTarget(ctx, name);
+	const openTarget = await chooseCommandForkOpenTarget(ctx, parsed.name ?? "새 워크트리");
 	if (!openTarget) {
 		const reason = "fork를 계속할 위치를 선택하지 않았습니다.";
 		ctx.ui.notify(reason, "info");
-		return { status: "blocked", reason, name, branch: branchName, path: worktreePath };
+		return { status: "blocked", reason };
 	}
 
 	const useFullContext = parsed.fullContext || !parsed.minimalContext;
 	const useMinimalContext = !useFullContext;
-	ctx.ui.notify(`Forking "${name}" from origin/${baseBranch} with ${useFullContext ? "full transcript" : "minimal handoff"}…`, "info");
-
-	const fetchR = await pi.exec("git", ["fetch", "origin", baseBranch], { cwd: repoRoot });
-	if (fetchR.code !== 0) {
-		const reason = `git fetch failed: ${fetchR.stderr?.trim().slice(0, 200) ?? "unknown error"}`;
+	let created: CreatedWorktree;
+	try {
+		created = await createNamedWorktree(pi, {
+			repoRoot, rootDir: config.rootDir, baseBranch, prefix, ticket: parsed.ticket,
+			name: parsed.name, branch: parsed.branch, namingScheme: config.namingScheme,
+			onProgress: (message) => ctx.ui.notify(message, "info"),
+		});
+	} catch (error) {
+		const reason = error instanceof Error ? error.message : String(error);
 		ctx.ui.notify(reason, "error");
-		return { status: "failed", reason, name, branch: branchName, path: worktreePath };
+		return { status: "failed", reason };
 	}
-	const addR = await pi.exec("git", ["worktree", "add", worktreePath, "-b", branchName, `origin/${baseBranch}`], { cwd: repoRoot });
-	if (addR.code !== 0) {
-		const reason = `git worktree add failed: ${addR.stderr?.trim().slice(0, 200)}`;
-		ctx.ui.notify(reason, "error");
-		return { status: "failed", reason, name, branch: branchName, path: worktreePath };
-	}
+	const { name, worktreePath, branchName } = created;
 
 	writeMeta(worktreePath, { name, branch: branchName, baseBranch, createdAt: Date.now(), ticket: parsed.ticket, note: parsed.note });
 	const framePromotion = promotePlanningFrameToWorktree(worktreePath, readMeta(worktreePath) ?? {
@@ -3068,28 +3006,10 @@ async function handleWorkflowFork(pi: ExtensionAPI, args: string, ctx: Extension
 			? config.productionBranch
 			: config.baseBranch;
 	const prefix = parsed.hotfix ? "hotfix" : parsed.hotfeature ? "hotfeature" : config.branchPrefix;
-	mkdirSync(config.rootDir, { recursive: true });
-	const existing = new Set(listExistingWorktrees(config.rootDir).map((worktree) => worktree.name));
-	const name = parsed.name ?? pickName(config.namingScheme, existing);
-	if (existing.has(name)) {
-		const reason = `Worktree "${name}" already exists at ${config.rootDir}`;
-		ctx.ui.notify(reason, "error");
-		return { status: "blocked", reason, name };
-	}
-	const worktreePath = join(config.rootDir, name);
-	const branchName = parsed.branch
-		? parsed.branch
-		: parsed.ticket
-			? `${prefix}/${parsed.ticket}/${name}`
-			: `${prefix}/${name}`;
 	const contextContent = readContextFileOption(ctx, parsed.contextFile);
-	if (parsed.contextFile && contextContent === null) return { status: "blocked", reason: `context file not found: ${parsed.contextFile}`, name, branch: branchName, path: worktreePath };
+	if (parsed.contextFile && contextContent === null) return { status: "blocked", reason: `context file not found: ${parsed.contextFile}` };
 	const useFullContext = parsed.fullContext || !parsed.minimalContext;
 	const useMinimalContext = !useFullContext;
-	const continuation = workspaceContinuationFromFollowUp(
-		options.afterSwitchFollowUp,
-		defaultWorktreeContinuation("fork", { name, branch: branchName, ticket: parsed.ticket, note: parsed.note }),
-	);
 	const contract = await buildNewPanelActivationContract({
 		id: worktreeActivationId("wt-fork"),
 		ctx,
@@ -3098,30 +3018,34 @@ async function handleWorkflowFork(pi: ExtensionAPI, args: string, ctx: Extension
 		authorizationSource: options.afterSwitchFollowUp ? "tui" : "command",
 		authorizationSourceId: options.afterSwitchFollowUp?.customType ?? "/wt fork",
 		authorizationConsumerId: options.authorizationConsumerId,
-		continuation,
-		placementTitle: `${name} fork를 어디에 열까요?`,
+		placementTitle: `${parsed.name ?? "새 워크트리"} fork를 어디에 열까요?`,
 	});
 	if (!contract) {
 		const reason = "새 panel 위치를 선택하지 않아 /wt fork가 worktree를 만들지 않았습니다.";
 		ctx.ui.notify(`BLOCKED: ${reason}`, "warning");
-		return { status: "blocked", reason, name, branch: branchName, path: worktreePath };
+		return { status: "blocked", reason };
 	}
 
 	const { isNew: justRegistered } = autoRegister(repoRoot);
 	if (justRegistered) ctx.ui.notify(`Registered repo "${basename(repoRoot)}"`, "info");
-	ctx.ui.notify(`Forking "${name}" from origin/${baseBranch} with ${useFullContext ? "full transcript" : "minimal handoff"}…`, "info");
-	const fetchR = await pi.exec("git", ["fetch", "origin", baseBranch], { cwd: repoRoot });
-	if (fetchR.code !== 0) {
-		const reason = `git fetch failed: ${fetchR.stderr?.trim().slice(0, 200) ?? "unknown error"}`;
+	let created: CreatedWorktree;
+	try {
+		created = await createNamedWorktree(pi, {
+			repoRoot, rootDir: config.rootDir, baseBranch, prefix, ticket: parsed.ticket,
+			name: parsed.name, branch: parsed.branch, namingScheme: config.namingScheme,
+			onProgress: (message) => ctx.ui.notify(message, "info"),
+		});
+	} catch (error) {
+		const reason = error instanceof Error ? error.message : String(error);
 		ctx.ui.notify(reason, "error");
-		return { status: "failed", reason, name, branch: branchName, path: worktreePath };
+		return { status: "failed", reason };
 	}
-	const addR = await pi.exec("git", ["worktree", "add", worktreePath, "-b", branchName, `origin/${baseBranch}`], { cwd: repoRoot });
-	if (addR.code !== 0) {
-		const reason = `git worktree add failed: ${addR.stderr?.trim().slice(0, 200)}`;
-		ctx.ui.notify(reason, "error");
-		return { status: "failed", reason, name, branch: branchName, path: worktreePath };
-	}
+	const { name, worktreePath, branchName } = created;
+	contract.continuation = workspaceContinuationFromFollowUp(
+		options.afterSwitchFollowUp,
+		defaultWorktreeContinuation("fork", { name, branch: branchName, ticket: parsed.ticket, note: parsed.note }),
+	);
+	contract.continuation.details = { ...contract.continuation.details, name, branch: branchName, path: worktreePath };
 
 	writeMeta(worktreePath, { name, branch: branchName, baseBranch, createdAt: Date.now(), ticket: parsed.ticket, note: parsed.note });
 	const framePromotion = promotePlanningFrameToWorktree(worktreePath, readMeta(worktreePath) ?? {
@@ -3973,12 +3897,6 @@ export default function (pi: ExtensionAPI) {
 			const config = loadConfig(repoRoot);
 			const baseBranch = params.hotfix ? config.productionBranch : config.baseBranch;
 			const prefix = params.hotfix ? "hotfix" : config.branchPrefix;
-			const existing = new Set(listExistingWorktrees(config.rootDir).map(w => w.name));
-			const name = params.name ?? pickName(config.namingScheme, existing);
-			if (existing.has(name)) throw new Error(`Worktree "${name}" already exists at ${config.rootDir}`);
-
-			const worktreePath = join(config.rootDir, name);
-			const branchName = params.ticket ? `${prefix}/${params.ticket}/${name}` : `${prefix}/${name}`;
 			const contract = await buildNewPanelActivationContract({
 				id: worktreeActivationId("tool-create"),
 				ctx,
@@ -3987,8 +3905,7 @@ export default function (pi: ExtensionAPI) {
 				authorizationSource: "tool",
 				authorizationSourceId: "worktree_create",
 				authorizationConsumerId: workspaceAuthorizationConsumerId("worktree_create", toolCallId),
-				continuation: defaultWorktreeContinuation("create-tool", { name, branch: branchName, ticket: params.ticket, note: params.note }),
-				placementTitle: `${name} worktree를 어디에 열까요?`,
+				placementTitle: `${params.name ?? "새 워크트리"} worktree를 어디에 열까요?`,
 			});
 			if (!contract) {
 				return {
@@ -3997,23 +3914,12 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 			autoRegister(repoRoot);
-			mkdirSync(config.rootDir, { recursive: true });
-
-			onUpdate?.({
-				content: [{ type: "text", text: `Fetching origin/${baseBranch}…` }],
-				details: {},
+			const { name, worktreePath, branchName } = await createNamedWorktree(pi, {
+				repoRoot, rootDir: config.rootDir, baseBranch, prefix, ticket: params.ticket,
+				name: params.name, namingScheme: config.namingScheme, signal,
+				onProgress: (text) => onUpdate?.({ content: [{ type: "text", text }], details: {} }),
 			});
-
-			const fetchR = await pi.exec("git", ["fetch", "origin", baseBranch], { cwd: repoRoot, signal });
-			if (fetchR.code !== 0) throw new Error(`git fetch failed: ${fetchR.stderr?.trim().slice(0, 300) ?? "unknown"}`);
-
-			onUpdate?.({
-				content: [{ type: "text", text: `Creating worktree "${name}" (${branchName})…` }],
-				details: {},
-			});
-
-			const addR = await pi.exec("git", ["worktree", "add", worktreePath, "-b", branchName, `origin/${baseBranch}`], { cwd: repoRoot, signal });
-			if (addR.code !== 0) throw new Error(`git worktree add failed: ${addR.stderr?.trim().slice(0, 300)}`);
+			contract.continuation = defaultWorktreeContinuation("create-tool", { name, branch: branchName, ticket: params.ticket, note: params.note });
 
 			writeMeta(worktreePath, {
 				name,
@@ -4212,12 +4118,6 @@ export default function (pi: ExtensionAPI) {
 			const config = loadConfig(repoRoot);
 			const baseBranch = params.hotfix ? config.productionBranch : config.baseBranch;
 			const prefix = params.hotfix ? "hotfix" : config.branchPrefix;
-			const existing = new Set(listExistingWorktrees(config.rootDir).map(w => w.name));
-			const name = params.name ?? pickName(config.namingScheme, existing);
-			if (existing.has(name)) throw new Error(`Worktree "${name}" already exists at ${config.rootDir}`);
-
-			const worktreePath = join(config.rootDir, name);
-			const branchName = params.ticket ? `${prefix}/${params.ticket}/${name}` : `${prefix}/${name}`;
 			const useFullContext = params.minimalContext ? false : params.fullContext === false ? false : true;
 			const useMinimalContext = !useFullContext;
 			const contract = await buildNewPanelActivationContract({
@@ -4228,8 +4128,7 @@ export default function (pi: ExtensionAPI) {
 				authorizationSource: "tool",
 				authorizationSourceId: "worktree_fork",
 				authorizationConsumerId: workspaceAuthorizationConsumerId("worktree_fork", toolCallId),
-				continuation: defaultWorktreeContinuation("fork-tool", { name, branch: branchName, ticket: params.ticket, note: params.note }),
-				placementTitle: `${name} fork를 어디에 열까요?`,
+				placementTitle: `${params.name ?? "새 워크트리"} fork를 어디에 열까요?`,
 			});
 			if (!contract) {
 				return {
@@ -4238,23 +4137,12 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 			autoRegister(repoRoot);
-			mkdirSync(config.rootDir, { recursive: true });
-
-			onUpdate?.({
-				content: [{ type: "text", text: `Fetching origin/${baseBranch}…` }],
-				details: {},
+			const { name, worktreePath, branchName } = await createNamedWorktree(pi, {
+				repoRoot, rootDir: config.rootDir, baseBranch, prefix, ticket: params.ticket,
+				name: params.name, namingScheme: config.namingScheme, signal,
+				onProgress: (text) => onUpdate?.({ content: [{ type: "text", text }], details: {} }),
 			});
-
-			const fetchR = await pi.exec("git", ["fetch", "origin", baseBranch], { cwd: repoRoot, signal });
-			if (fetchR.code !== 0) throw new Error(`git fetch failed: ${fetchR.stderr?.trim().slice(0, 300) ?? "unknown"}`);
-
-			onUpdate?.({
-				content: [{ type: "text", text: `Creating worktree "${name}" (${branchName})…` }],
-				details: {},
-			});
-
-			const addR = await pi.exec("git", ["worktree", "add", worktreePath, "-b", branchName, `origin/${baseBranch}`], { cwd: repoRoot, signal });
-			if (addR.code !== 0) throw new Error(`git worktree add failed: ${addR.stderr?.trim().slice(0, 300)}`);
+			contract.continuation = defaultWorktreeContinuation("fork-tool", { name, branch: branchName, ticket: params.ticket, note: params.note });
 
 			writeMeta(worktreePath, {
 				name,
