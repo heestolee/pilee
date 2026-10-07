@@ -133,6 +133,15 @@ test("two concurrent requests with the same sole free name both succeed across G
 	for (const result of results) assert.equal(basename(result.worktreePath), result.name);
 });
 
+test("a progress callback failure releases only the empty claimed directory", async (t) => {
+	const { git, options } = fixture(t);
+	await assert.rejects(createNamedWorktree(host, { ...options, name: "progress-failure", onProgress(message) {
+		if (message.startsWith("워크트리")) throw new Error("progress unavailable");
+	} }), /progress unavailable/);
+	assert.equal(existsSync(join(options.rootDir, "progress-failure")), false);
+	assert.equal(git("branch", "--list", "feature/progress-failure"), "");
+});
+
 test("checkout/permission failures and cancellation are not disguised as naming retries", async (t) => {
 	const { options } = fixture(t);
 	let attempts = 0;

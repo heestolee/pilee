@@ -126,9 +126,9 @@ export async function createNamedWorktree(pi: Pick<ExtensionAPI, "exec">, option
 				}
 			}
 		};
-		options.onProgress?.(`워크트리 "${name}"를 생성합니다…`);
 		let result;
 		try {
+			options.onProgress?.(`워크트리 "${name}"를 생성합니다…`);
 			result = await git(["worktree", "add", "-b", branchName, "--", worktreePath, baseOid]);
 		} catch (error) {
 			releaseEmptyClaim();
