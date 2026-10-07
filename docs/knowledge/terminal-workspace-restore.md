@@ -15,8 +15,8 @@ applies_to:
   - extensions/fork-panel
 source:
   - user-direction:2026-05-12-workspace-save-restore
-reviewed_at: 2026-06-02
-reviewed_commit: 83617e9544615d818e6a7a17fa807f029a7db835
+reviewed_at: 2026-10-07
+reviewed_commit: 5553e8e032443f87566a360c3500c3e7906d6d71
 related:
   - terminal-host-integration
   - fork-panel-spatial-continuity
@@ -46,6 +46,20 @@ autosave archive cleanup은 매 저장마다 무작정 돌리는 사용자가 �
 기본 restore mode는 append입니다. workspace 복원은 사용자의 현재 창을 닫거나 대체하지 않고, 새 tab을 추가한 뒤 저장된 session을 `pi --session`으로 다시 엽니다. 새 shell의 PATH는 현재 Pi 프로세스와 다를 수 있으므로 bare `pi`에 의존하지 않고 현재 실행 중인 Pi command 또는 명시 wrapper를 사용합니다. `/workspace list`가 보여주는 번호는 복원 대상 선택 UI의 일부이므로 `/workspace restore 2`처럼 그대로 사용할 수 있어야 합니다.
 
 번호 선택은 “저장 시각”만이 아니라 “복원 가능한 session이 실제로 연결됐는가”와 “얼마나 많은 session/panel을 되살릴 수 있는가”를 우선합니다. 단일 패널 최신 autosave가 목록 1번이나 기본 restore를 차지하면 사용자가 되살리려던 다중 패널 작업공간 대신 현재 디버깅 세션만 열릴 수 있습니다. 따라서 복원 가능한 snapshot을 먼저 정렬하고, 그 안에서는 session/panel 수 기반 복원성 점수가 높은 snapshot을 먼저 둡니다. restore report에는 requested target, resolved snapshot id/path를 함께 표시해 번호 매핑 오류를 즉시 볼 수 있어야 합니다.
+
+## Completion-gated Restore Rule
+
+생성 요청이 반환됐거나 일정 시간이 지났다는 사실은 복구 완료가 아닙니다. 한 패널의 실제 대상과 세션 준비를 확인한 뒤 같은 탭의 다음 패널을 만들고, 그 탭이 끝난 뒤 다음 탭을 만듭니다.
+
+- Ghostty의 `new tab` / `split`과 surface configuration의 `command`로 프로세스를 직접 시작합니다. `System Events`, 키 입력, 붙여넣기, 고정 대기 뒤 현재 선택 패널을 재조회하는 방식으로 복구하지 않습니다.
+- 시작 시 대상 창을 한 번 고정하고, 이후에는 생성 API가 반환한 tab/terminal ID만 사용합니다. 사용자의 포커스 이동을 대상 선택으로 해석하지 않습니다.
+- 각 실행에 고유한 launch request를 부여합니다. 새 Pi의 `session_start`가 실제 sessionFile/cwd를 대조해 READY receipt를 쓰며, 부모는 해당 프로세스 생존과 정확한 host 대상의 존재도 확인합니다. 전역 registry의 과거 세션 기록은 READY 증거가 아닙니다.
+- 세션 종료·전환·리로드는 receipt를 무효화합니다. 완료한 패널도 다음 생성 전과 최종 완료 전에 다시 확인합니다.
+- 생성 실패, 대상 유실, 세션 불일치, READY 제한 시간 초과는 다음 생성을 중단합니다. 완료한 패널은 자동으로 닫거나 재생성하지 않고 실행별 progress 기록에 완료 대상과 실패 단계를 남깁니다. source runtime 종료도 진행 중 복구를 취소합니다.
+
+이 계약은 입력창·포커스에 의존한 잘못된 대상 실행을 막습니다. 사용자가 복구 대상을 닫거나 프로세스를 종료하는 것까지 무시하고 성공을 보장하지는 않습니다. 그런 경우 실패를 명시하고 멈추는 것이 정상입니다. READY는 목표 Pi 세션 로드 확인이며, 화면 렌더 완료나 모델 응답 완료를 의미하지 않습니다.
+
+검증은 명령 handler 연결, 순차 READY gate, 대상/세션 유실, timeout, 취소를 mock host로 재현하고 생성 AppleScript를 컴파일합니다. 실제 terminal host E2E는 승인된 disposable 공간에서만 수행하며, 작업 중인 사용자의 탭·패널을 fixture로 쓰지 않습니다.
 
 ## Layout Fidelity Rule
 
