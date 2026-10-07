@@ -5,6 +5,7 @@ import { basename, dirname, join } from "node:path";
 import { getAgentDir, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { AutocompleteItem } from "@mariozechner/pi-tui";
 import { resolveForkPanelIdentity } from "../utils/fork-panel-identity.ts";
+import { receiveRestoreSession, restoreWorkspace } from "./restore.ts";
 
 const HOST = "ghostty";
 const SNAPSHOT_VERSION = 1;
@@ -31,6 +32,7 @@ const AUTOSAVE_LOCK_PATH = join(WORKSPACE_DIR, "autosave.lock");
 
 let autosaveScheduled = false;
 let latestContext: ExtensionContext | undefined;
+let restoreController: AbortController | undefined;
 
 type WorkspaceSource = "manual" | "auto";
 type WorkspaceHost = typeof HOST;
@@ -932,53 +934,19 @@ export function renderPlan(plan: RestorePlan): string {
 	return lines.join("\n");
 }
 
-export function buildRestoreScript(plan: RestorePlan): string {
-	const lines: string[] = [
-		`tell application "Ghostty"`,
-		`  activate`,
-		`end tell`,
-	];
-	for (const tabActions of plan.actions) {
-		const runnableActions = tabActions.filter((action) => action.command);
-		if (runnableActions.length === 0) continue;
-		lines.push(`tell application "System Events"`);
-		lines.push(`  tell process "Ghostty"`);
-		lines.push(`    keystroke "t" using command down`);
-		lines.push(`  end tell`);
-		lines.push(`end tell`);
-		lines.push(`delay 0.8`);
-		runnableActions.forEach((action, index) => {
-			if (!action.command) return;
-			if (index === 0) {
-				lines.push(`tell application "Ghostty"`);
-				lines.push(`  set targetTerm to focused terminal of selected tab of front window`);
-				lines.push(`  input text "${escAppleScript(action.command)}" to targetTerm`);
-				lines.push(`  send key "enter" to targetTerm`);
-				lines.push(`end tell`);
-				lines.push(`delay 0.5`);
-			} else {
-				lines.push(`tell application "Ghostty"`);
-				lines.push(`  set currentTerm to focused terminal of selected tab of front window`);
-				lines.push(`  set newTerm to split currentTerm direction right`);
-				lines.push(`  input text "${escAppleScript(action.command)}" to newTerm`);
-				lines.push(`  send key "enter" to newTerm`);
-				lines.push(`end tell`);
-				lines.push(`delay 0.5`);
-			}
+async function runRestore(pi: ExtensionAPI, ctx: ExtensionCommandContext, plan: RestorePlan): Promise<string> {
+	if (restoreController) throw new Error("이 세션에서 workspace 복구가 이미 진행 중입니다.");
+	const controller = new AbortController();
+	restoreController = controller;
+	try {
+		return await restoreWorkspace(pi, plan.actions, WORKSPACE_DIR, {
+			signal: controller.signal,
+			onProgress: (message) => ctx.ui.setStatus("workspace-restore", message),
 		});
+	} finally {
+		if (restoreController === controller) restoreController = undefined;
+		try { ctx.ui.setStatus("workspace-restore", undefined); } catch (error) { if (!isStaleCtxError(error)) throw error; }
 	}
-	return lines.join("\n");
-}
-
-async function runRestore(pi: ExtensionAPI, plan: RestorePlan): Promise<string> {
-	if (plan.runnable === 0) throw new Error("복원 가능한 Pi session이 없습니다.");
-	ensureWorkspaceDirs();
-	const script = buildRestoreScript(plan);
-	const path = join(WORKSPACE_DIR, `restore-${Date.now()}-${randomUUID().slice(0, 6)}.applescript`);
-	writeFileSync(path, script);
-	const result = await pi.exec("osascript", [path]);
-	if (result.code !== 0) throw new Error((result.stderr || result.stdout || "workspace restore 실패").trim());
-	return path;
 }
 
 function sendReport(pi: ExtensionAPI, title: string, body: string) {
@@ -1028,9 +996,15 @@ async function handleRestore(pi: ExtensionAPI, ctx: ExtensionCommandContext, arg
 		sendReport(pi, "Workspace restore dry-run", report);
 		return;
 	}
-	const scriptPath = await runRestore(pi, plan);
-	ctx.ui.notify(`workspace 복원 시작: ${plan.runnable} panels`, "info");
-	sendReport(pi, "Workspace restore 실행", `${report}\n\nscript: ${scriptPath}`);
+	try {
+		const reportPath = await runRestore(pi, ctx, plan);
+		ctx.ui.notify(`workspace 복원 완료: ${plan.runnable} panels · 세션 READY 확인`, "info");
+		sendReport(pi, "Workspace restore 완료", `${report}\n\n진행 기록: ${reportPath}`);
+	} catch (error) {
+		if (isStaleCtxError(error)) return;
+		sendReport(pi, "Workspace restore 중단", `${report}\n\n${error instanceof Error ? error.message : String(error)}`);
+		throw error;
+	}
 }
 
 async function handleStatus(pi: ExtensionAPI, ctx: ExtensionCommandContext) {
@@ -1230,6 +1204,8 @@ Usage:
 
 Notes:
 - 기본 restore mode는 append입니다. 현재 창을 닫거나 대체하지 않습니다.
+- 탭/패널은 Ghostty API로 직접 생성·실행하며, 각 Pi 세션 READY 확인 후 다음 패널·탭으로 넘어갑니다. 입력창 타이핑이나 선택 탭에 의존하지 않습니다.
+- 세션 READY를 60초 내 확인하지 못하거나 대상이 사라지면 다음 생성을 중단합니다. 완료한 패널은 보존하고 실패 위치를 기록합니다.
 - /workspace save 뒤에 이름을 붙이면 수동 snapshot 이름으로 저장됩니다. 공백이 있으면 따옴표로 감싸세요.
 - /workspace list의 번호를 그대로 /workspace <번호> 또는 /workspace restore <번호>에 사용할 수 있습니다.
 - 복원 가능한 session이 연결된 snapshot을 번호 목록에서 우선 표시하고, 그 안에서는 session/panel이 많은 복원성 높은 snapshot을 먼저 표시합니다.
@@ -1273,7 +1249,9 @@ function workspaceArgumentCompletions(argumentPrefix: string): AutocompleteItem[
 }
 
 export default function (pi: ExtensionAPI) {
+	let revokeRestoreReceipt: (() => void) | undefined;
 	pi.on("session_start", async (_event, ctx) => {
+		revokeRestoreReceipt = receiveRestoreSession(ctx);
 		writeActiveRecord(ctx);
 		scheduleAutosave(pi, ctx);
 	});
@@ -1287,6 +1265,9 @@ export default function (pi: ExtensionAPI) {
 	});
 	pi.on("session_shutdown", async () => {
 		latestContext = undefined;
+		restoreController?.abort();
+		revokeRestoreReceipt?.();
+		revokeRestoreReceipt = undefined;
 	});
 
 	pi.registerCommand("workspace", {
@@ -1312,6 +1293,7 @@ export default function (pi: ExtensionAPI) {
 				}
 				return await handleStatus(pi, ctx);
 			} catch (error) {
+				if (isStaleCtxError(error)) return;
 				ctx.ui.notify(`workspace 오류: ${error instanceof Error ? error.message : String(error)}`, "error");
 			}
 		},
