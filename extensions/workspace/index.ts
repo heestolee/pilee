@@ -1,10 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { dirname, join } from "node:path";
 import { getAgentDir, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { AutocompleteItem } from "@mariozechner/pi-tui";
-import { resolveForkPanelIdentity } from "../utils/fork-panel-identity.ts";
+import { bindCapturedWindow, captureGhosttyWindow, type GhosttyTerminal, type GhosttyTab, type GhosttyWindow } from "./capture.ts";
+import { createSessionRegistration, type RegistrationEnvironment } from "./registration.ts";
+import { readRegistrations } from "./registry.ts";
+import { saveCompleteSnapshot } from "./store.ts";
+export { parseGhosttySnapshotOutput, ghosttySnapshotScript } from "./capture.ts";
 import { receiveRestoreSession, restoreWorkspace } from "./restore.ts";
 import { pinSnapshotSelection, readSnapshotSelection, selectSnapshot, type PinnedSnapshotSource, type SnapshotReference } from "./selection.ts";
 import { planWorkspaceRestore, type RestorePlan } from "./planner.ts";
@@ -13,7 +17,6 @@ const HOST = "ghostty";
 const SNAPSHOT_VERSION = 1;
 const WORKSPACE_DIR = join(getAgentDir(), "workspaces");
 const SNAPSHOT_DIR = join(WORKSPACE_DIR, "snapshots");
-const ACTIVE_PATH = join(WORKSPACE_DIR, "active-sessions.json");
 const AUTOSAVE_ID = "autosave";
 const AUTOSAVE_ARCHIVE_PREFIX = "autosave-";
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -26,48 +29,17 @@ const AUTOSAVE_LEADER_LEASE_MS = 75 * 60 * 1000;
 const AUTOSAVE_LOCK_STALE_MS = 5 * 60 * 1000;
 const AUTOSAVE_INITIAL_DELAY_MIN_MS = 30_000;
 const AUTOSAVE_INITIAL_DELAY_JITTER_MS = 30_000;
-const ACTIVE_TTL_MS = DAY_MS;
 const AUTOSAVE_INTERVAL_MS = 60 * 60 * 1000;
 const AUTOSAVE_MIN_GAP_MS = 20_000;
 const AUTOSAVE_STATE_PATH = join(WORKSPACE_DIR, "autosave-state.json");
 const AUTOSAVE_LOCK_PATH = join(WORKSPACE_DIR, "autosave.lock");
 
 let restoreController: AbortController | undefined;
+let activeRegistration: ReturnType<typeof createSessionRegistration> | undefined;
+let captureLifecycle = new AbortController();
 
 type WorkspaceSource = "manual" | "auto";
 type WorkspaceHost = typeof HOST;
-
-type ActiveSessionRecord = {
-	sessionFile: string;
-	cwd: string;
-	title: string;
-	panelLabel: string;
-	forkId?: string;
-	parentSessionFile?: string;
-	updatedAt: number;
-	pid: number;
-};
-
-type GhosttyTerminal = {
-	id: string;
-	index: number;
-	name: string;
-	cwd: string;
-};
-
-type GhosttyTab = {
-	id: string;
-	index: number;
-	selected: boolean;
-	name: string;
-	terminals: GhosttyTerminal[];
-};
-
-type GhosttyWindow = {
-	id: string;
-	name: string;
-	tabs: GhosttyTab[];
-};
 
 export type WorkspaceTerminalSnapshot = GhosttyTerminal & {
 	sessionFile?: string;
@@ -148,10 +120,6 @@ function shellQuote(value: string): string {
 	return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-function escAppleScript(value: string): string {
-	return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
 function safeRealpath(path: string): string {
 	try { return realpathSync.native(path); } catch { return path; }
 }
@@ -168,19 +136,6 @@ function readJson<T>(path: string, fallback: T): T {
 function writeJson(path: string, value: unknown) {
 	mkdirSync(dirname(path), { recursive: true });
 	writeFileSync(path, JSON.stringify(value, null, 2));
-}
-
-function escapeRegex(value: string): string {
-	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function normalizeTitle(value: string): string {
-	const currentUser = basename(homedir());
-	return value
-		.replace(/^π\s*-\s*/u, "")
-		.replace(new RegExp(`\\s+-\\s+${escapeRegex(currentUser)}$`, "u"), "")
-		.trim()
-		.toLowerCase();
 }
 
 function displayDate(ts: number): string {
@@ -229,193 +184,16 @@ function buildSessionLaunchCommand(term: WorkspaceTerminalSnapshot): string | un
 	return `cd ${shellQuote(term.cwd)} && ${buildEnvPrefix(env)}${currentPiCommand()} --session ${shellQuote(term.sessionFile)}`;
 }
 
-function readActiveRecords(): ActiveSessionRecord[] {
-	const raw = readJson<{ records?: ActiveSessionRecord[] }>(ACTIVE_PATH, { records: [] }).records ?? [];
-	const cutoff = Date.now() - ACTIVE_TTL_MS;
-	return raw
-		.filter((record) => record.updatedAt >= cutoff && record.sessionFile && existsSync(record.sessionFile))
-		.sort((a, b) => b.updatedAt - a.updatedAt);
-}
+function readActiveRecords() { return readRegistrations(WORKSPACE_DIR); }
 
 function isStaleCtxError(err: unknown): boolean {
 	return String((err as Error)?.message ?? err).includes("ctx is stale");
 }
 
-function writeActiveRecord(ctx: ExtensionContext) {
-	let sessionFile: string | undefined;
-	try {
-		sessionFile = ctx.sessionManager.getSessionFile();
-	} catch (err) {
-		if (isStaleCtxError(err)) return;
-		throw err;
-	}
-	if (!sessionFile) return;
-	let sessionTitle: string;
-	let cwd: string;
-	try {
-		sessionTitle = ctx.sessionManager.getSessionName() || basename(sessionFile).replace(/\.jsonl$/u, "");
-		cwd = ctx.sessionManager.getCwd();
-	} catch (err) {
-		if (isStaleCtxError(err)) return;
-		throw err;
-	}
-	const identity = resolveForkPanelIdentity({ sessionFile });
-	const next: ActiveSessionRecord = {
-		sessionFile: safeRealpath(sessionFile),
-		cwd,
-		title: sessionTitle,
-		panelLabel: identity.panelLabel,
-		forkId: identity.forkId,
-		parentSessionFile: identity.parentSessionFile,
-		updatedAt: Date.now(),
-		pid: process.pid,
-	};
-	const records = readActiveRecords().filter((record) => safeRealpath(record.sessionFile) !== next.sessionFile);
-	records.unshift(next);
-	ensureWorkspaceDirs();
-	writeFileSync(ACTIVE_PATH, JSON.stringify({ updatedAt: Date.now(), records: records.slice(0, 500) }, null, 2));
-}
-
-function scoreActiveRecord(term: GhosttyTerminal, record: ActiveSessionRecord): number {
-	let score = 0;
-	if (safeRealpath(term.cwd) === safeRealpath(record.cwd)) score += 50;
-	const terminalTitle = normalizeTitle(term.name);
-	const recordTitle = normalizeTitle(record.title);
-	if (terminalTitle && recordTitle) {
-		if (terminalTitle === recordTitle) score += 70;
-		else if (terminalTitle.includes(recordTitle) || recordTitle.includes(terminalTitle)) {
-			score += recordTitle.length >= 6 || terminalTitle.length >= 6 ? 55 : 35;
-		}
-	}
-	if (record.title && term.name.includes(record.title)) score += 15;
-	return score;
-}
-
-function findActiveMatch(term: GhosttyTerminal, records: ActiveSessionRecord[]): ActiveSessionRecord | undefined {
-	let best: { record: ActiveSessionRecord; score: number } | undefined;
-	for (const record of records) {
-		const score = scoreActiveRecord(term, record);
-		if (score < 65) continue;
-		if (!best || score > best.score || (score === best.score && record.updatedAt > best.record.updatedAt)) {
-			best = { record, score };
-		}
-	}
-	return best?.record;
-}
-
-function readSessionSample(sessionFile: string, bytes = 128 * 1024): string {
-	let fd: number | undefined;
-	try {
-		const stat = statSync(sessionFile);
-		fd = openSync(sessionFile, "r");
-		const headLength = Math.min(bytes, stat.size);
-		const head = Buffer.alloc(headLength);
-		readSync(fd, head, 0, headLength, 0);
-		if (stat.size <= bytes) return head.toString("utf8");
-
-		const tailLength = Math.min(bytes, stat.size - headLength);
-		const tail = Buffer.alloc(tailLength);
-		readSync(fd, tail, 0, tailLength, Math.max(headLength, stat.size - tailLength));
-		return `${head.toString("utf8")}\n${tail.toString("utf8")}`;
-	} catch {
-		return "";
-	} finally {
-		if (fd !== undefined) {
-			try { closeSync(fd); } catch {}
-		}
-	}
-}
-
-function parseSessionInfo(sessionFile: string): { title?: string; cwd?: string } {
-	const sample = readSessionSample(sessionFile, 8 * 1024 * 1024);
-	if (!sample) return {};
-	const lines = sample.split(/\r?\n/u).filter(Boolean);
-	let title: string | undefined;
-	let cwd: string | undefined;
-	for (const line of lines) {
-		try {
-			const entry = JSON.parse(line);
-			if (entry?.type === "session" && typeof entry.cwd === "string" && !cwd) cwd = entry.cwd;
-			if (entry?.type === "session_info" && typeof entry.name === "string") title = entry.name;
-		} catch {}
-	}
-	return { title, cwd };
-}
-
-function collectRecentSessionFallbacks(limit = 500): ActiveSessionRecord[] {
-	const sessionsRoot = join(getAgentDir(), "sessions");
-	const files: string[] = [];
-	function walk(dir: string, depth: number) {
-		if (depth > 3) return;
-		let entries: string[] = [];
-		try { entries = readdirSync(dir); } catch { return; }
-		for (const entry of entries) {
-			const path = join(dir, entry);
-			let st;
-			try { st = statSync(path); } catch { continue; }
-			if (st.isDirectory()) {
-				if (entry === "subagents") continue;
-				walk(path, depth + 1);
-			} else if (entry.endsWith(".jsonl")) files.push(path);
-		}
-	}
-	walk(sessionsRoot, 0);
-	return files
-		.map((file) => {
-			let st;
-			try { st = statSync(file); } catch { return null; }
-			return { file, mtime: st.mtimeMs };
-		})
-		.filter((item): item is { file: string; mtime: number } => Boolean(item))
-		.sort((a, b) => b.mtime - a.mtime)
-		.slice(0, limit)
-		.map(({ file, mtime }) => {
-			const meta = parseSessionInfo(file);
-			const identity = resolveForkPanelIdentity({ sessionFile: file, env: {} });
-			return {
-				sessionFile: safeRealpath(file),
-				cwd: meta.cwd || homedir(),
-				title: meta.title || basename(file).replace(/\.jsonl$/u, ""),
-				panelLabel: identity.panelLabel,
-				forkId: identity.forkId,
-				parentSessionFile: identity.parentSessionFile,
-				updatedAt: mtime,
-				pid: 0,
-			};
-		});
-}
-
-function enrichWindow(window: GhosttyWindow, includeFallback: boolean): WorkspaceTabSnapshot[] {
-	const active = readActiveRecords();
-	const fallback = includeFallback ? collectRecentSessionFallbacks() : [];
-	return window.tabs.map((tab) => ({
-		...tab,
-		terminals: tab.terminals.map((term) => {
-			const activeMatch = findActiveMatch(term, active);
-			const fallbackMatch = activeMatch ? undefined : findActiveMatch(term, fallback);
-			const match = activeMatch ?? fallbackMatch;
-			return {
-				...term,
-				sessionFile: match?.sessionFile,
-				sessionTitle: match?.title,
-				panelLabel: match?.panelLabel,
-				forkId: match?.forkId,
-				parentSessionFile: match?.parentSessionFile,
-				match: activeMatch ? "active" : fallbackMatch ? "fallback" : "none",
-			};
-		}),
-	}));
-}
+function writeActiveRecord(ctx: ExtensionContext) { activeRegistration?.refresh(ctx); }
 
 function snapshotPath(id: string): string {
 	return join(SNAPSHOT_DIR, `${id}.json`);
-}
-
-function saveSnapshot(snapshot: WorkspaceSnapshot): string {
-	ensureWorkspaceDirs();
-	const path = snapshotPath(snapshot.id);
-	writeFileSync(path, JSON.stringify(snapshot, null, 2));
-	return path;
 }
 
 function readSnapshot(path: string): WorkspaceSnapshot | null {
@@ -638,7 +416,7 @@ function visibleSnapshotSummaries(summaries: WorkspaceSummary[]): WorkspaceSumma
 	return [...fixed, ...archives].sort(compareWorkspaceSummaries);
 }
 
-function buildSnapshot(window: GhosttyWindow, source: WorkspaceSource, name?: string, includeFallback = true): WorkspaceSnapshot {
+function buildSnapshot(window: GhosttyWindow, source: WorkspaceSource, name?: string): WorkspaceSnapshot {
 	const now = Date.now();
 	const label = name?.trim() || (source === "auto" ? "autosave" : `workspace ${displayDate(now)}`);
 	const id = source === "auto"
@@ -653,93 +431,9 @@ function buildSnapshot(window: GhosttyWindow, source: WorkspaceSource, name?: st
 		createdAt: now,
 		updatedAt: now,
 		window: { id: window.id, name: window.name },
-		tabs: enrichWindow(window, includeFallback),
+		complete: true,
+		tabs: bindCapturedWindow(window, WORKSPACE_DIR),
 	};
-}
-
-export function parseGhosttySnapshotOutput(stdout: string): GhosttyWindow {
-	const window: GhosttyWindow = { id: "", name: "", tabs: [] };
-	let currentTab: GhosttyTab | undefined;
-	for (const line of stdout.split(/\r?\n/u)) {
-		if (!line.trim()) continue;
-		const [kind, ...parts] = line.split("\t");
-		if (kind === "WINDOW") {
-			window.id = parts[0] || "";
-			window.name = parts[1] || "";
-			continue;
-		}
-		if (kind === "TAB") {
-			currentTab = {
-				id: parts[0] || "",
-				index: Number.parseInt(parts[1] || "0", 10) || window.tabs.length + 1,
-				selected: (parts[2] || "").toLowerCase() === "true",
-				name: parts[3] || "",
-				terminals: [],
-			};
-			window.tabs.push(currentTab);
-			continue;
-		}
-		if (kind === "TERM" && currentTab) {
-			currentTab.terminals.push({
-				id: parts[0] || "",
-				index: Number.parseInt(parts[1] || "0", 10) || currentTab.terminals.length + 1,
-				name: parts[2] || "",
-				cwd: parts[3] || homedir(),
-			});
-		}
-	}
-	return window;
-}
-
-export function ghosttySnapshotScript(): string {
-	return `property tabChar : character id 9
-property newlineChar : character id 10
-
-on cleanText(value)
-  set s to value as text
-  set s to my replaceText(tabChar, " ", s)
-  set s to my replaceText(newlineChar, " ", s)
-  set s to my replaceText(return, " ", s)
-  return s
-end cleanText
-
-on replaceText(findText, replaceText, sourceText)
-  set AppleScript's text item delimiters to findText
-  set textItems to text items of sourceText
-  set AppleScript's text item delimiters to replaceText
-  set sourceText to textItems as text
-  set AppleScript's text item delimiters to ""
-  return sourceText
-end replaceText
-
-tell application "Ghostty"
-  if not running then error "Ghostty is not running"
-  set targetWindow to front window
-  set out to "WINDOW" & tabChar & (id of targetWindow as text) & tabChar & my cleanText(name of targetWindow) & newlineChar
-  repeat with targetTab in tabs of targetWindow
-    set out to out & "TAB" & tabChar & (id of targetTab as text) & tabChar & (index of targetTab as text) & tabChar & (selected of targetTab as text) & tabChar & my cleanText(name of targetTab) & newlineChar
-    set termIndex to 0
-    repeat with targetTerm in terminals of targetTab
-      set termIndex to termIndex + 1
-      set termCwd to ""
-      try
-        set termCwd to working directory of targetTerm as text
-      end try
-      set out to out & "TERM" & tabChar & (id of targetTerm as text) & tabChar & (termIndex as text) & tabChar & my cleanText(name of targetTerm) & tabChar & my cleanText(termCwd) & newlineChar
-    end repeat
-  end repeat
-  return out
-end tell`;
-}
-
-async function captureGhosttyWindow(pi: ExtensionAPI): Promise<GhosttyWindow> {
-	const result = await pi.exec("osascript", ["-e", ghosttySnapshotScript()]);
-	if (result.code !== 0) {
-		throw new Error((result.stderr || result.stdout || "Ghostty snapshot 실패").trim());
-	}
-	const window = parseGhosttySnapshotOutput(result.stdout || "");
-	if (window.tabs.length === 0) throw new Error("Ghostty tab을 찾지 못했습니다.");
-	return window;
 }
 
 function tokenizeArgs(args: string): string[] {
@@ -869,10 +563,13 @@ function sendReport(pi: ExtensionAPI, title: string, body: string) {
 }
 
 async function handleSave(pi: ExtensionAPI, ctx: ExtensionCommandContext, args: WorkspaceArgs) {
+	if (!activeRegistration?.isCurrent()) throw new Error("현재 패널이 등록되지 않았습니다. /reload 후 다시 시도하세요.");
+	const runtime = captureLifecycle;
 	writeActiveRecord(ctx);
-	const window = await captureGhosttyWindow(pi);
-	const snapshot = buildSnapshot(window, "manual", args.name, true);
-	const path = saveSnapshot(snapshot);
+	const window = await captureGhosttyWindow(pi, runtime.signal);
+	if (runtime.signal.aborted || !activeRegistration.isCurrent()) return;
+	const snapshot = buildSnapshot(window, "manual", args.name);
+	const { path } = saveCompleteSnapshot(WORKSPACE_DIR, snapshot);
 	const summary: WorkspaceSummary = {
 		...readSnapshotSelection(path).reference,
 		name: snapshot.name,
@@ -1009,7 +706,8 @@ function shouldRunAutosaveCleanup(state: AutosaveState, now: number): boolean {
 }
 
 async function autosave(pi: ExtensionAPI, ctx: ExtensionContext, isActive: () => boolean) {
-	if (!isActive() || process.platform !== "darwin" || process.env.TERM_PROGRAM !== "ghostty") return;
+	if (!isActive() || process.platform !== "darwin" || process.env.TERM_PROGRAM !== "ghostty" || !activeRegistration?.isCurrent()) return;
+	const runtime = captureLifecycle;
 	const releaseLock = acquireAutosaveLock();
 	if (!releaseLock) return;
 	try {
@@ -1034,9 +732,9 @@ async function autosave(pi: ExtensionAPI, ctx: ExtensionContext, isActive: () =>
 
 		const leader = autosaveLeaderFor(ctx, state.leader, now);
 		writeActiveRecord(ctx);
-		const window = await captureGhosttyWindow(pi);
-		if (!isActive()) return;
-		const snapshot = buildSnapshot(window, "auto", "autosave", false);
+		const window = await captureGhosttyWindow(pi, runtime.signal);
+		if (!isActive() || runtime.signal.aborted || !activeRegistration.isCurrent()) return;
+		const snapshot = buildSnapshot(window, "auto", "autosave");
 		const stats = workspaceSnapshotStats(snapshot);
 		const nextHash = workspaceSnapshotHash(snapshot);
 		const cleanupDue = shouldRunAutosaveCleanup(state, now);
@@ -1116,24 +814,17 @@ Usage:
   /workspace [number|name-or-id]
   /workspace status
   /workspace save [name]
-  /workspace save "작업 이름"
-  /workspace restore [number|name-or-id] [--dry-run] [--append] [--all]
-  /workspace list [--all]
+  /workspace restore [number|name-or-id] [--dry-run] [--append]
+  /workspace list
 
 Notes:
-- 기본 restore mode는 append입니다. 현재 창을 닫거나 대체하지 않습니다.
-- 탭/패널은 Ghostty API로 직접 생성·실행하며, 각 Pi 세션 READY 확인 후 다음 패널·탭으로 넘어갑니다. 입력창 타이핑이나 선택 탭에 의존하지 않습니다.
-- 세션 READY를 60초 내 확인하지 못하거나 대상이 사라지면 다음 생성을 중단합니다. 완료한 패널은 보존하고 실패 위치를 기록합니다.
-- /workspace save 뒤에 이름을 붙이면 수동 snapshot 이름으로 저장됩니다. 공백이 있으면 따옴표로 감싸세요.
-- 같은 세션에서 직전 /workspace list [--all]의 번호를 그대로 /workspace restore <번호>에 사용합니다. 목록 뒤 파일이 변경·삭제되면 차단하며, 목록 없이 번호를 추정하지 않습니다.
-- 대상을 생략하면 자동 복원하지 않습니다. exact id 또는 보존 snapshot 파일 경로도 지정할 수 있으며, 선택한 원본 bytes/hash를 별도로 보존합니다.
-- 복원 가능한 session이 연결된 snapshot을 번호 목록에서 우선 표시하고, 그 안에서는 session/panel이 많은 복원성 높은 snapshot을 먼저 표시합니다.
-- 기본 목록은 오래된 autosave archive를 접고, 전체 archive는 /workspace list --all에서 봅니다. restore에 --all을 다시 붙일 필요는 없습니다.
-- autosave는 session 시작 30~60초 뒤 leader process가 첫 확인을 하고 이후 약 1시간마다 갱신합니다.
-- autosave는 snapshot 내용 hash가 바뀌지 않으면 파일을 새로 저장하지 않고, alias archive도 의미 있는 변화나 최소 보관 간격이 있을 때만 남깁니다.
-- autosave alias를 갱신하기 전 기존 autosave를 버전 보관본으로 보존하고, 복원성이 크게 낮은 snapshot으로는 덮어쓰지 않습니다.
-- Ghostty AppleScript가 split tree/비율을 제공하지 않아 split panel은 순차 right split으로 근사 복원합니다.
-- 복원은 원본에 명시된 sessionFile과 읽기 전용 header cwd만 사용합니다. 유실·미연결·추정 fallback·동일 파일 중복이 하나라도 있으면 전체 실행을 차단합니다. 제목으로 다른 세션을 대체하지 않습니다.`;
+- 패널은 짧은 임시 제목 표식으로 terminal ID에 정확히 등록합니다. 평소 제목은 그대로 유지합니다.
+- 이전 runtime·미등록 패널은 /reload가 필요하며, 누락·중복 binding이 있으면 새 snapshot을 저장하지 않습니다.
+- 수동 저장은 전체 exact 연결과 session header preflight를 통과한 뒤 atomic하게 저장합니다.
+- 자동 저장의 시작 지연·반복 실행·내용 변경 기준과 archive 보관 정책은 유지합니다.
+- 직전 목록의 번호는 같은 세션에서만 사용하며 파일 변경·삭제 시 다시 선택해야 합니다.
+- 기본 restore는 append입니다. 선택한 원본 bytes/hash와 전체 header-cwd preflight, 패널별 READY 확인을 유지합니다.
+- Ghostty가 split tree/비율을 제공하지 않아 패널 배치는 순차 right split으로 근사 복원합니다.`;
 
 function workspaceArgumentCompletions(argumentPrefix: string): AutocompleteItem[] | null {
 	const prefix = argumentPrefix.trimStart();
@@ -1167,7 +858,9 @@ function workspaceArgumentCompletions(argumentPrefix: string): AutocompleteItem[
 	return filtered.length > 0 ? filtered : null;
 }
 
-export default function (pi: ExtensionAPI) {
+export default function (pi: ExtensionAPI, environment?: RegistrationEnvironment) {
+	const registration = createSessionRegistration(pi, WORKSPACE_DIR, environment);
+	activeRegistration = registration;
 	const displayedLists = new Map<string | ExtensionContext["sessionManager"], SnapshotReference[]>();
 	const listKey = (ctx: ExtensionContext) => ctx.sessionManager.getSessionFile() || ctx.sessionManager;
 	let revokeRestoreReceipt: (() => void) | undefined;
@@ -1176,8 +869,9 @@ export default function (pi: ExtensionAPI) {
 		disposeAutosave?.();
 		revokeRestoreReceipt?.();
 		revokeRestoreReceipt = receiveRestoreSession(ctx);
-		writeActiveRecord(ctx);
-		disposeAutosave = scheduleAutosave(pi, ctx);
+		captureLifecycle = new AbortController();
+		await registration.start(ctx);
+		if (registration.isCurrent()) disposeAutosave = scheduleAutosave(pi, ctx);
 	});
 	pi.on("message_end", async (_event, ctx) => {
 		writeActiveRecord(ctx);
@@ -1188,6 +882,8 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_shutdown", async () => {
 		disposeAutosave?.();
 		disposeAutosave = undefined;
+		captureLifecycle.abort();
+		registration.stop();
 		restoreController?.abort();
 		revokeRestoreReceipt?.();
 		revokeRestoreReceipt = undefined;
