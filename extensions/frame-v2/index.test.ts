@@ -76,6 +76,31 @@ test("Frame v2 prompt follows the selected entry lane without making learning a 
 	assert.match(studyPrompt, /Guided mode: follow the learning conversation/);
 });
 
+for (const mode of ["--draft", "--guided"]) {
+	for (const lane of ["frame-first", "study-hard-first"] as const) {
+		test(`Frame v2 ${mode}/${lane}: 의무 질문 없이 조사·기술 결정·독립 실행을 연결한다`, () => {
+			const identity = testIdentity("/tmp/frame-v2-decision-contract");
+			const args = `${mode} search freshness`;
+			const prompt = buildFrameV2Prompt({
+				args, cwd: "/tmp", identity,
+				invocation: parseFrameV2Args(args, identity.key, lane) as any,
+				runId: "frame-v2-decision-contract",
+				statePath: "/tmp/frame-v2-decision-contract.json",
+				manifestPath: "/tmp/frame-v2-contract-manifest.json",
+			});
+			assert.match(prompt, /질문 승격 판단의 단일 원천/);
+			assert.match(prompt, /미확인 사실을 사용자 선택으로 바꾸지 않는다/);
+			assert.match(prompt, /공개 계약·보안 보장·운영 비용·되돌리기 비용·유지보수 비용/);
+			assert.match(prompt, /\/decide — 기술 결정부터/);
+			assert.match(prompt, /A ready slice must not depend on an unresolved choice or missing execution authorization/);
+			assert.match(prompt, /If none is ready, investigate the missing facts or present the blocking technical choice instead/);
+			assert.match(prompt, /Derive required verification from requirements and actual change risk; preserve external-action authorization/);
+			assert.match(prompt, /record accepted tradeoffs without a second challenge unless new material evidence appears/);
+			assert.doesNotMatch(prompt, /Deep Interview\/\(명백\)\/Productive Resistance|모든 결정에서 challenge를 수행|없으면 `ok`/);
+		});
+	}
+}
+
 test("/frame-v2 registers independent command and persists command-context manifest", async () => {
 	const root = mkdtempSync(join(tmpdir(), "frame-v2-command-"));
 	const piDir = join(root, ".pi");
@@ -189,6 +214,9 @@ test("/frame-v2 registers independent command and persists command-context manif
 		assert.match(continuation, /promoted `.pi\/frame\.json`/);
 		assert.match(continuation, /\.pi\/learning-companion\.json/);
 		assert.match(continuation, /Study Hard state remains the learning canonical/);
+		assert.match(continuation, /dependencies and execution authorization are satisfied/);
+		assert.match(continuation, /investigate missing facts or use \/decide/);
+		assert.match(continuation, /do not silently decide it or block unrelated ready slices/);
 		assert.equal(JSON.parse(readFileSync(manifestPath, "utf8")).status, "started");
 	} finally {
 		setFrameV2ForkRunnerForTests(undefined);

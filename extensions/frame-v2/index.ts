@@ -199,10 +199,12 @@ export function buildFrameV2Prompt(params: {
 		"- Frame v2 coordinates independent Frame, Study Hard, and implementation lanes; it does not replace their own canonical artifacts.",
 		`- selected entry lane: ${params.invocation.entryMode}`,
 		params.invocation.entryMode === "frame-first"
-			? "- Frame-first lane: use the standard Frame workflow to organize the work first. Afterwards offer implementation, Study Hard, or both; do not start Study Hard automatically."
+			? "- Frame-first lane: use the standard Frame workflow to organize the work first. Resolve factual unknowns through narrow investigation, then route material unresolved technical choices to /decide. Offer only applicable next actions: investigation, /decide, an independent ready slice, Study Hard, or stop; do not start Study Hard automatically."
 			: "- Study-Hard-first lane: build a pedagogical learning note first. Check whether a standard frame.json exists before opening the board; if it exists, expose the complete Frame as a read-only collapsed work contract, otherwise continue without it and offer Frame later.",
 		"- Study Hard may run before, alongside, or after implementation.",
-		"- If the user selects implementation or implementation + Study Hard, begin the first ready implementation slice immediately: make the first code edit or launch the implementation owner before opening/awaiting Study Hard work. Do not end with a choice summary.",
+		"- Before starting work, read unresolved decisions and their affected slices from the current Frame. A ready slice must not depend on an unresolved choice or missing execution authorization. Do not turn one blocked slice into a whole-work gate or treat another ready slice as permission to decide the blocked design silently.",
+		"- If the user selects implementation or implementation + Study Hard, begin the first ready implementation slice immediately: make the first code edit or launch the implementation owner before opening/awaiting Study Hard work. If none is ready, investigate the missing facts or present the blocking technical choice instead. Do not end with a choice summary.",
+		"- Question escalation has one source: tft-guidelines. Do not require objection rounds, verification-axis selection, fixed question counts, ok replies, or repeated save approval. Derive required verification from requirements and actual change risk; preserve external-action authorization. After an informed choice, record accepted tradeoffs without a second challenge unless new material evidence appears or the user explicitly requested grilling.",
 		"- Study Hard worker lifecycle, completion, and note revisions are non-steering background events. Do not treat them as a user request, a work transition, or a reason to stop an in-progress code slice unless the user explicitly asks about learning.",
 		"- While a Frame slice is in_progress and no code diff/implementation-owner launch has occurred, do not return a final response. Continue the selected implementation action.",
 		"- Do not create a Frame v2-specific hard gate for implementation. Existing safety and ask-first rules remain in force, but learning completion is status, not authorization.",
@@ -211,7 +213,7 @@ export function buildFrameV2Prompt(params: {
 		params.invocation.mode === "draft"
 			? "- Draft-first mode: show a researched draft for the selected lane before asking follow-up questions. Mark uncertainty instead of silently deciding it."
 			: params.invocation.entryMode === "frame-first"
-				? "- Guided mode: follow the current frame Deep Interview/(명백)/Productive Resistance rules without reducing them to a shorter substitute."
+				? "- Guided mode: investigate facts first, compare material unresolved technical tradeoffs with evidence and a recommendation, and ask only questions that change the outcome. Zero questions is valid for a clear task; do not repeat an already authorized next action as a menu."
 				: "- Guided mode: follow the learning conversation one concept at a time; use Frame questions only after the user chooses to create or amend a work contract.",
 		placeholderSource
 			? "- The source URL below is an internal placeholder. Do not fetch it; investigate the original arguments, current codebase, ticket, and conversation instead."
@@ -280,7 +282,7 @@ function buildContinuationPrompt(record: FrameV2CommandContextRecord): string {
 		`2. Reopen the attached Study Hard learning note through .pi/learning-companion.json when needed (source: ${learningCompanionManifestPath(record.identity.storageDir)}).`,
 		`3. Study Hard state remains the learning canonical: ${record.statePath}`,
 		`4. Source Frame v2 manifest: ${record.manifestPath}`,
-		"5. Refresh work_context, select the first ready implementation slice, and implement from the canonical frame contract.",
+		"5. Refresh work_context and check unresolved decisions against each slice in the canonical frame. Select the first ready implementation slice only if its dependencies and execution authorization are satisfied. If none is ready, investigate missing facts or use /decide for the blocking technical choice; do not silently decide it or block unrelated ready slices.",
 		"6. If `.pi/learning-companion.json` exists, use learning_companion only for meaningful slice/verify/PR/review checkpoints and explicit learning proposals. Missing companion never blocks work.",
 		"7. Do not rerun the Frame v2 interview or resume refinement unless the canonical frame has an explicit gap.",
 	].join("\n");
