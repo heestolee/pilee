@@ -36,9 +36,9 @@ export function selectSnapshot(
 	lastList: SnapshotReference[] | undefined,
 	cwd: string,
 ): SnapshotSelection {
-	if (!target) throw new Error("복구 대상을 지정하세요. /workspace list [--all]에서 확인한 번호, exact id 또는 파일 경로를 사용합니다.");
+	if (!target) throw new Error("복구 대상을 지정하세요. /workspace list에서 확인한 번호, exact id 또는 파일 경로를 사용합니다.");
 	if (/^\d+$/u.test(target)) {
-		if (!lastList) throw new Error("이 세션에서 먼저 /workspace list [--all]을 실행하세요. 번호를 새 목록으로 추정하지 않습니다.");
+		if (!lastList) throw new Error("이 세션에서 먼저 /workspace list를 실행하세요. 번호를 새 목록으로 추정하지 않습니다.");
 		const reference = lastList[Number(target) - 1];
 		if (!reference) throw new Error(`직전 목록에 없는 번호입니다: ${target}`);
 		return readSnapshotSelection(reference.path, reference);
@@ -46,6 +46,7 @@ export function selectSnapshot(
 	if (isAbsolute(target) || target.includes("/") || target.endsWith(".json")) return readSnapshotSelection(resolve(cwd, target));
 	const normalized = target.toLowerCase();
 	const exact = candidates.filter((item) => item.id.toLowerCase() === normalized);
+	if (normalized === "autosave" && !exact.length) throw new Error("autosave alias가 없습니다. /workspace list에서 실제 자동 저장 ID 또는 경로를 지정하세요.");
 	const matches = exact.length ? exact : candidates.filter((item) => item.name.toLowerCase().includes(normalized) || item.id.toLowerCase().includes(normalized));
 	if (matches.length !== 1) throw new Error(matches.length ? `여러 snapshot이 일치합니다. exact id 또는 경로를 선택하세요: ${matches.map((item) => item.id).join(", ")}` : `snapshot을 찾지 못했습니다: ${target}`);
 	return readSnapshotSelection(matches[0].path, matches[0]);

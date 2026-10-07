@@ -28,6 +28,11 @@ test("list --all numbers are session-scoped frozen references; completion and ex
 			return path;
 		};
 		for (let index = 1; index <= 18; index++) save(`autosave-20260101T00${String(index).padStart(2, "0")}00`, index);
+		const oldLarge = snapshot("old-large", 0);
+		oldLarge.tabs[0].terminals.push(...Array.from({ length: 20 }, () => ({ ...oldLarge.tabs[0].terminals[0] })));
+		writeFileSync(join(snapshots, "old-large.json"), JSON.stringify(oldLarge));
+		const newest = snapshot("newest-unresolved", 99);
+		writeFileSync(join(snapshots, "newest-unresolved.json"), JSON.stringify(newest, (key, value) => key === "sessionFile" ? undefined : value));
 		const messages: string[] = [];
 		const notices: string[] = [];
 		let calls = 0;
@@ -41,7 +46,13 @@ test("list --all numbers are session-scoped frozen references; completion and ex
 		const ctx = { cwd: root, sessionManager: { getSessionFile: () => join(root, "caller.jsonl") }, ui: { notify: (text: string) => { notices.push(text); } } } as ExtensionCommandContext;
 		await handler("restore 15 --dry-run", ctx);
 		assert.match(notices.at(-1)!, /먼저 \/workspace list/);
+		await handler("list", ctx);
+		const completeList = messages.at(-1)!;
+		assert.match(completeList, /1\. newest-unresolved/);
+		assert.match(completeList, /20\. old-large/);
+		assert.doesNotMatch(completeList, /숨긴/);
 		await handler("list --all", ctx);
+		assert.equal(messages.at(-1), completeList);
 		const chosenId = messages.at(-1)!.match(/15\. .*\((autosave-\w+)\)/)![1];
 		const bytes = readFileSync(join(snapshots, `${chosenId}.json`));
 		save("new-top", 1000);
@@ -55,7 +66,7 @@ test("list --all numbers are session-scoped frozen references; completion and ex
 		await handler("restore --dry-run", ctx);
 		assert.match(notices.at(-1)!, /대상을 지정/);
 		const completions = (await complete("restore "))!;
-		assert.ok(completions.length > 0);
+		assert.equal(completions.length, 21);
 		assert.ok(completions.every((item) => parseWorkspaceArgs(item.value).target!.startsWith(snapshots)));
 		save(chosenId, 9999, "replaced alias");
 		await handler("restore 15 --dry-run", ctx);

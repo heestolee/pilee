@@ -32,5 +32,8 @@ test("number selection keeps the displayed identity across reorder, deletion and
 		unlinkSync(first.path);
 		assert.throws(() => selectSnapshot("1", [second], lastList, root), /stale snapshot/);
 		assert.throws(() => selectSnapshot("3", [second], lastList, root), /직전 목록에 없는 번호/);
+		const hourly = write("autosave-20260101T010000", "hourly");
+		assert.throws(() => selectSnapshot("autosave", [hourly], undefined, root), /autosave alias가 없습니다/);
+		assert.equal(selectSnapshot(hourly.id, [hourly], undefined, root).reference.hash, hourly.hash);
 	} finally { rmSync(root, { recursive: true, force: true }); }
 });
