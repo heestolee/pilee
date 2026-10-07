@@ -69,7 +69,7 @@ type GhosttyWindow = {
 	tabs: GhosttyTab[];
 };
 
-type WorkspaceTerminalSnapshot = GhosttyTerminal & {
+export type WorkspaceTerminalSnapshot = GhosttyTerminal & {
 	sessionFile?: string;
 	sessionTitle?: string;
 	panelLabel?: string;
@@ -82,7 +82,7 @@ type WorkspaceTabSnapshot = Omit<GhosttyTab, "terminals"> & {
 	terminals: WorkspaceTerminalSnapshot[];
 };
 
-type WorkspaceSnapshot = {
+export type WorkspaceSnapshot = {
 	version: typeof SNAPSHOT_VERSION;
 	id: string;
 	name: string;
