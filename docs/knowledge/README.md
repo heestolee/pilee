@@ -144,7 +144,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-06-02 | fad9c36 | mcp, stderr, stdio, terminal, tui, noise |
 | [Runtime fan-out은 healthcheck 뒤의 실행 계약이다](./runtime-fanout-diagnosis.md) | active | high | 2026-06-02 | 91c739f | runtime, fanout, healthcheck, deployment, triage, root-cause |
 | [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-08-31 | e38c163 | terminal, ghostty, applescript, notify, host, integration |
-| [터미널 workspace 복원은 snapshot과 host adapter를 분리한다](./terminal-workspace-restore.md) | active | high | 2026-10-07 | 5553e8e | workspace, terminal, ghostty, snapshot, restore, session |
+| [터미널 workspace 복원은 snapshot과 host adapter를 분리한다](./terminal-workspace-restore.md) | active | high | 2026-10-07 | 1cba904 | workspace, terminal, ghostty, snapshot, restore, session |
 
 ### ui
 
