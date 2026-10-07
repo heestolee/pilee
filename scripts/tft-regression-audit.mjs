@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
-
-const root = process.cwd();
+import { pathToFileURL } from 'node:url';
 
 const targetFiles = [
   'AGENTS.md',
   'skills/ask-user-question-rules/SKILL.md',
   'skills/frame/SKILL.md',
+  'skills/frame-v2/SKILL.md',
+  'extensions/frame-v2/index.ts',
   'skills/frame/references/source-grounded-planning.md',
   'skills/decide/SKILL.md',
   'skills/verify/SKILL.md',
@@ -25,6 +26,24 @@ const targetFiles = [
 const negativeContextPattern = /금지|실패|나쁜|❌|돌아오면|막는다|제거|되돌아가면|의례화|통과용|directive|계열|아니다/;
 
 const forbiddenDirectives = [
+  {
+    id: 'mandatory-challenge',
+    pattern: /Productive Resistance는 (항상 한다|독립 단계)|모든 결정에서 challenge를 수행|모든 결정에 tradeoff challenge를 수행|low.*(skip하지|짧게.*도전)|반드시 challenge|challenge skip은 없다|Deep Interview\/\(명백\)\/Productive Resistance/,
+    allow: (line) => negativeContextPattern.test(line),
+    message: '의무 반론 대신 선택 전 비용 비교와 새 근거가 생긴 경우의 재검토를 사용하세요.',
+  },
+  {
+    id: 'verification-axis-ceremony',
+    pattern: /질문( 제목)?:.*검증\s*축\s*선택|무엇을 가장 엄격히 볼까요|가장 엄격히 검증할 축|### Step \d+: AskUserQuestion — 검증\/리스크 초점 선택/,
+    allow: (line) => negativeContextPattern.test(line),
+    message: '필수 검증은 요구사항과 변경 위험에서 도출하며 검증축 선택 메뉴로 만들지 않습니다.',
+  },
+  {
+    id: 'repeat-approval-ceremony',
+    pattern: /없으면 `ok`|저장 확인만 짧게 받는다|명백해 보여도 (질문하고|묻고|묻는다)|가정 4~6개|렌즈 3~4개/,
+    allow: (line) => negativeContextPattern.test(line),
+    message: '고정 질문 횟수·ok·저장 재승인 대신 중요한 미해결 판단만 묻습니다.',
+  },
   {
     id: 'one-line-question-rule',
     pattern: /(한\s*줄|한줄)\s*질문|질문이\s*한\s*줄|질문은\s*한\s*줄/,
@@ -84,7 +103,15 @@ const requiredContracts = [
   },
   {
     file: 'skills/decide/SKILL.md',
-    includes: ['짧은 반론 카드', '질문 제목: 접근 선택', '선택 후 달라지는 것', '요구사항 추적성', 'Domain Work Map 영향', 'Architecture/Data Flow 영향', 'verifyHandoffHints'],
+    includes: ['질문 제목: 접근 선택', '선택 후 달라지는 것', '요구사항 추적성', 'Domain Work Map 영향', 'Architecture/Data Flow 영향', 'verifyHandoffHints', 'challenge?:', '설계 선택 승인은 운영 실행 승인이 아니다', '이미 비교하고 선택한 tradeoff는 기록만'],
+  },
+  {
+    file: 'skills/frame-v2/SKILL.md',
+    includes: ['미확인 사실 / 미해결 선택 / 영향받는 slice / 다음 행동', '/decide — 기술 결정부터', '독립 slice 구현', '새 worktree·외부 실행 승인', '질문 0개도 정상'],
+  },
+  {
+    file: 'extensions/frame-v2/index.ts',
+    includes: ['route material unresolved technical choices to /decide', 'A ready slice must not depend on an unresolved choice', 'preserve external-action authorization', 'Zero questions is valid'],
   },
   {
     file: 'skills/verify/SKILL.md',
@@ -92,7 +119,7 @@ const requiredContracts = [
   },
   {
     file: 'skills/tft-guidelines/SKILL.md',
-    includes: ['짧은 질문 제목과 충분한 판단 맥락 카드'],
+    includes: ['짧은 질문 제목과 충분한 판단 맥락 카드', '질문 승격 판단의 단일 원천', '공개 계약·보안 보장·운영 비용·되돌리기 비용·유지보수 비용', '미확인 사실을 사용자 선택으로 바꾸지 않는다', '설계 선택 승인은 운영 실행 승인과 다르며', '필수 검증은 AI가 요구사항·성공 기준·실제 변경 위험에서 도출'],
   },
   {
     file: 'skills/pilee-final-check/SKILL.md',
@@ -112,13 +139,14 @@ const requiredContracts = [
   },
 ];
 
-function readRelative(file) {
-  return fs.readFileSync(path.join(root, file), 'utf8');
-}
+export function auditTftContracts(root = process.cwd(), overrides = {}) {
+  function readRelative(file) {
+    return Object.hasOwn(overrides, file) ? overrides[file] : fs.readFileSync(path.join(root, file), 'utf8');
+  }
 
-function existsRelative(file) {
-  return fs.existsSync(path.join(root, file));
-}
+  function existsRelative(file) {
+    return Object.hasOwn(overrides, file) || fs.existsSync(path.join(root, file));
+  }
 
 const failures = [];
 
@@ -158,6 +186,11 @@ for (const contract of requiredContracts) {
   }
 }
 
+return failures;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+const failures = auditTftContracts();
 if (failures.length > 0) {
   console.error('❌ TFT Preference Regression Gate failed');
   for (const failure of failures) {
@@ -172,3 +205,4 @@ console.log('✅ TFT Preference Regression Gate passed');
 console.log(`- scanned files: ${targetFiles.length}`);
 console.log(`- forbidden directive checks: ${forbiddenDirectives.length}`);
 console.log(`- required contract checks: ${requiredContracts.length}`);
+}
