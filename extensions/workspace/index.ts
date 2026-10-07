@@ -6,6 +6,8 @@ import { getAgentDir, type ExtensionAPI, type ExtensionCommandContext, type Exte
 import type { AutocompleteItem } from "@mariozechner/pi-tui";
 import { resolveForkPanelIdentity } from "../utils/fork-panel-identity.ts";
 import { receiveRestoreSession, restoreWorkspace } from "./restore.ts";
+import { pinSnapshotSelection, readSnapshotSelection, selectSnapshot, type PinnedSnapshotSource, type SnapshotReference } from "./selection.ts";
+import { planWorkspaceRestore, type RestorePlan } from "./planner.ts";
 
 const HOST = "ghostty";
 const SNAPSHOT_VERSION = 1;
@@ -97,15 +99,13 @@ export type WorkspaceSnapshot = {
 	tabs: WorkspaceTabSnapshot[];
 };
 
-type WorkspaceSummary = {
-	id: string;
+type WorkspaceSummary = SnapshotReference & {
 	name: string;
 	source: WorkspaceSource;
 	updatedAt: number;
 	tabs: number;
 	terminals: number;
 	matched: number;
-	path: string;
 };
 
 type WorkspaceArgs = {
@@ -138,24 +138,6 @@ type AutosaveState = {
 	};
 	error?: string;
 	deletedArchives?: number;
-};
-
-type RestoreAction = {
-	tabName: string;
-	terminalName: string;
-	cwd: string;
-	sessionFile?: string;
-	panelLabel?: string;
-	command?: string;
-	skipReason?: string;
-};
-
-type RestorePlan = {
-	snapshot: WorkspaceSnapshot;
-	actions: RestoreAction[][];
-	runnable: number;
-	skipped: number;
-	mode: "append";
 };
 
 function ensureWorkspaceDirs() {
@@ -244,7 +226,7 @@ function buildSessionLaunchCommand(term: WorkspaceTerminalSnapshot): string | un
 			PI_FORK_PARENT: term.parentSessionFile,
 		}
 		: {};
-	return `cd ${shellQuote(term.cwd || homedir())} && ${buildEnvPrefix(env)}${currentPiCommand()} --session ${shellQuote(term.sessionFile)}`;
+	return `cd ${shellQuote(term.cwd)} && ${buildEnvPrefix(env)}${currentPiCommand()} --session ${shellQuote(term.sessionFile)}`;
 }
 
 function readActiveRecords(): ActiveSessionRecord[] {
@@ -389,7 +371,7 @@ function collectRecentSessionFallbacks(limit = 500): ActiveSessionRecord[] {
 		.slice(0, limit)
 		.map(({ file, mtime }) => {
 			const meta = parseSessionInfo(file);
-			const identity = resolveForkPanelIdentity({ sessionFile: file });
+			const identity = resolveForkPanelIdentity({ sessionFile: file, env: {} });
 			return {
 				sessionFile: safeRealpath(file),
 				cwd: meta.cwd || homedir(),
@@ -631,11 +613,12 @@ function listSnapshots(): WorkspaceSummary[] {
 		.filter((entry) => entry.endsWith(".json"))
 		.map((entry) => {
 			const path = join(SNAPSHOT_DIR, entry);
-			const snapshot = readSnapshot(path);
-			if (!snapshot) return null;
+			let selected;
+			try { selected = readSnapshotSelection(path); } catch { return null; }
+			const { snapshot, reference } = selected;
 			const stats = workspaceSnapshotStats(snapshot);
 			return {
-				id: snapshot.id,
+				...reference,
 				name: snapshot.name,
 				source: snapshot.source,
 				updatedAt: snapshot.updatedAt,
@@ -653,32 +636,6 @@ function visibleSnapshotSummaries(summaries: WorkspaceSummary[]): WorkspaceSumma
 	const fixed = summaries.filter((summary) => !isAutosaveArchiveSummary(summary));
 	const archives = summaries.filter(isAutosaveArchiveSummary).slice(0, AUTOSAVE_LIST_ARCHIVE_LIMIT);
 	return [...fixed, ...archives].sort(compareWorkspaceSummaries);
-}
-
-function resolveSnapshot(target?: string, includeAll = false): { snapshot?: WorkspaceSnapshot; summary?: WorkspaceSummary; error?: string } {
-	const allSummaries = listSnapshots();
-	if (allSummaries.length === 0) return { error: "저장된 workspace snapshot이 없습니다. 먼저 /workspace save를 실행하세요." };
-	const visibleSummaries = visibleSnapshotSummaries(allSummaries);
-	const numberedSummaries = includeAll ? allSummaries : visibleSummaries;
-	let summary: WorkspaceSummary | undefined;
-	if (target) {
-		const normalized = target.toLowerCase();
-		if (/^[1-9]\d*$/u.test(normalized)) {
-			const index = Number.parseInt(normalized, 10) - 1;
-			summary = numberedSummaries[index];
-			if (!summary) return { error: `snapshot 번호를 찾지 못했습니다: ${target} (범위: 1-${numberedSummaries.length}${includeAll ? "" : "; 전체 archive는 /workspace list --all"})` };
-		} else {
-			summary = allSummaries.find((item) => item.id.toLowerCase() === normalized)
-				?? allSummaries.find((item) => item.name.toLowerCase() === normalized)
-				?? allSummaries.find((item) => item.id.toLowerCase().includes(normalized) || item.name.toLowerCase().includes(normalized));
-			if (!summary) return { error: `snapshot을 찾지 못했습니다: ${target}` };
-		}
-	} else {
-		summary = visibleSummaries[0] ?? allSummaries[0];
-	}
-	const snapshot = readSnapshot(summary.path);
-	if (!snapshot) return { error: `snapshot 파일을 읽지 못했습니다: ${summary.path}` };
-	return { snapshot, summary };
 }
 
 function buildSnapshot(window: GhosttyWindow, source: WorkspaceSource, name?: string, includeFallback = true): WorkspaceSnapshot {
@@ -846,58 +803,8 @@ export function parseWorkspaceArgs(args: string): WorkspaceArgs {
 	return { sub, target: positional.join(" ").trim() || undefined, dryRun, append, all };
 }
 
-function dedupeRecords(records: ActiveSessionRecord[]): ActiveSessionRecord[] {
-	const byFile = new Map<string, ActiveSessionRecord>();
-	for (const record of records) {
-		const key = safeRealpath(record.sessionFile);
-		const previous = byFile.get(key);
-		if (!previous || record.updatedAt > previous.updatedAt) byFile.set(key, record);
-	}
-	return [...byFile.values()].sort((a, b) => b.updatedAt - a.updatedAt);
-}
-
-function restoreLookupRecords(): ActiveSessionRecord[] {
-	return dedupeRecords([...readActiveRecords(), ...collectRecentSessionFallbacks(10_000)]);
-}
-
-function resolveTerminalForRestore(term: WorkspaceTerminalSnapshot, records: ActiveSessionRecord[]): WorkspaceTerminalSnapshot {
-	if (term.sessionFile && existsSync(term.sessionFile)) return term;
-	const match = findActiveMatch(term, records);
-	if (!match) return term;
-	return {
-		...term,
-		sessionFile: match.sessionFile,
-		sessionTitle: match.title,
-		panelLabel: match.panelLabel,
-		forkId: match.forkId,
-		parentSessionFile: match.parentSessionFile,
-		match: "fallback",
-	};
-}
-
 export function buildRestorePlan(snapshot: WorkspaceSnapshot): RestorePlan {
-	const records = restoreLookupRecords();
-	const actions = snapshot.tabs.map((tab) => tab.terminals.map((originalTerm) => {
-		const term = resolveTerminalForRestore(originalTerm, records);
-		const command = buildSessionLaunchCommand(term);
-		return {
-			tabName: tab.name || `tab ${tab.index}`,
-			terminalName: term.name || `terminal ${term.index}`,
-			cwd: term.cwd || homedir(),
-			sessionFile: term.sessionFile,
-			panelLabel: term.panelLabel || "P0",
-			command,
-			skipReason: command ? undefined : "연결된 Pi sessionFile 없음",
-		};
-	}));
-	const flat = actions.flat();
-	return {
-		snapshot,
-		actions,
-		runnable: flat.filter((action) => action.command).length,
-		skipped: flat.filter((action) => !action.command).length,
-		mode: "append",
-	};
+	return planWorkspaceRestore(snapshot, buildSessionLaunchCommand);
 }
 
 function renderSnapshotSummary(summary: WorkspaceSummary, index?: number): string {
@@ -918,28 +825,31 @@ function renderList(summaries: WorkspaceSummary[], hiddenArchives = 0): string {
 export function renderPlan(plan: RestorePlan): string {
 	const lines = [
 		`Workspace restore plan — ${plan.snapshot.name}`,
-		`mode: append · tabs ${plan.snapshot.tabs.length} · runnable ${plan.runnable} · skipped ${plan.skipped}`,
+		`mode: append · tabs ${plan.snapshot.tabs.length} · 원본 total ${plan.total} / ready ${plan.ready} / blocked ${plan.blocked}`,
+		plan.blocked || !plan.total ? "전체 preflight BLOCKED — 원본 패널이 모두 준비되기 전에는 실행하지 않습니다." : "전체 preflight READY — 실제 실행 전후 identity를 다시 확인합니다.",
 		"",
 	];
 	plan.actions.forEach((tabActions, tabIndex) => {
 		const tab = plan.snapshot.tabs[tabIndex];
 		lines.push(`Tab ${tabIndex + 1}: ${tab.name || `tab ${tab.index}`} · panels ${tabActions.length}`);
 		tabActions.forEach((action, termIndex) => {
-			const state = action.command ? "RUN" : "SKIP";
+			const state = action.command ? "READY" : "BLOCKED";
 			const label = action.panelLabel ? ` · ${action.panelLabel}` : "";
-			const reason = action.skipReason ? ` · ${action.skipReason}` : "";
-			lines.push(`  ${termIndex + 1}. ${state}${label} · ${action.terminalName} · ${action.cwd}${reason}`);
+			const reason = action.blockedReason ? ` · ${action.blockedReason}` : "";
+			lines.push(`  ${termIndex + 1}. ${state}${label} · ${action.terminalName} · ${action.sourcePanelKey}${reason}`);
+			lines.push(`     terminal cwd: ${action.terminalCwd} · session cwd: ${action.sessionCwd || "미확인"}`);
 		});
 	});
 	return lines.join("\n");
 }
 
-async function runRestore(pi: ExtensionAPI, ctx: ExtensionCommandContext, plan: RestorePlan): Promise<string> {
+async function runRestore(pi: ExtensionAPI, ctx: ExtensionCommandContext, plan: RestorePlan & { source: PinnedSnapshotSource }): Promise<string> {
 	if (restoreController) throw new Error("이 세션에서 workspace 복구가 이미 진행 중입니다.");
 	const controller = new AbortController();
 	restoreController = controller;
 	try {
 		return await restoreWorkspace(pi, plan.actions, WORKSPACE_DIR, {
+			source: plan.source,
 			signal: controller.signal,
 			onProgress: (message) => ctx.ui.setStatus("workspace-restore", message),
 		});
@@ -964,7 +874,7 @@ async function handleSave(pi: ExtensionAPI, ctx: ExtensionCommandContext, args: 
 	const snapshot = buildSnapshot(window, "manual", args.name, true);
 	const path = saveSnapshot(snapshot);
 	const summary: WorkspaceSummary = {
-		id: snapshot.id,
+		...readSnapshotSelection(path).reference,
 		name: snapshot.name,
 		source: snapshot.source,
 		updatedAt: snapshot.updatedAt,
@@ -977,17 +887,16 @@ async function handleSave(pi: ExtensionAPI, ctx: ExtensionCommandContext, args: 
 	sendReport(pi, "Workspace 저장 완료", `${renderSnapshotSummary(summary)}\n\npath: ${path}`);
 }
 
-async function handleRestore(pi: ExtensionAPI, ctx: ExtensionCommandContext, args: WorkspaceArgs) {
-	const resolved = resolveSnapshot(args.target, args.all);
-	if (!resolved.snapshot) {
-		ctx.ui.notify(resolved.error || "snapshot을 찾지 못했습니다.", "error");
-		return;
-	}
-	const plan = buildRestorePlan(resolved.snapshot);
+async function handleRestore(pi: ExtensionAPI, ctx: ExtensionCommandContext, args: WorkspaceArgs, lastList?: SnapshotReference[]) {
+	const selected = selectSnapshot(args.target, listSnapshots(), lastList, ctx.cwd);
+	const source = pinSnapshotSelection(selected, WORKSPACE_DIR);
+	const plan = { ...buildRestorePlan(selected.snapshot), source };
 	const report = [
-		`requested target: ${args.target || "<default>"}`,
-		resolved.summary ? `resolved snapshot: ${resolved.summary.name} (${resolved.summary.id})` : undefined,
-		resolved.summary ? `snapshot path: ${resolved.summary.path}` : undefined,
+		`requested target: ${args.target}`,
+		`resolved snapshot: ${selected.snapshot.name} (${source.id})`,
+		`snapshot path: ${source.path}`,
+		`source SHA256: ${source.hash}`,
+		`pinned source: ${source.pinnedPath}`,
 		"",
 		renderPlan(plan),
 	].filter((line): line is string => line !== undefined).join("\n");
@@ -997,8 +906,9 @@ async function handleRestore(pi: ExtensionAPI, ctx: ExtensionCommandContext, arg
 		return;
 	}
 	try {
+		if (plan.blocked || !plan.total) throw new Error(`전체 preflight BLOCKED: 원본 ${plan.total} / ready ${plan.ready} / blocked ${plan.blocked}. host 호출 없이 중단합니다.`);
 		const reportPath = await runRestore(pi, ctx, plan);
-		ctx.ui.notify(`workspace 복원 완료: ${plan.runnable} panels · 세션 READY 확인`, "info");
+		ctx.ui.notify(`workspace 복원 완료: ${plan.ready}/${plan.total} panels · 세션 READY 확인`, "info");
 		sendReport(pi, "Workspace restore 완료", `${report}\n\n진행 기록: ${reportPath}`);
 	} catch (error) {
 		if (isStaleCtxError(error)) return;
@@ -1207,14 +1117,15 @@ Notes:
 - 탭/패널은 Ghostty API로 직접 생성·실행하며, 각 Pi 세션 READY 확인 후 다음 패널·탭으로 넘어갑니다. 입력창 타이핑이나 선택 탭에 의존하지 않습니다.
 - 세션 READY를 60초 내 확인하지 못하거나 대상이 사라지면 다음 생성을 중단합니다. 완료한 패널은 보존하고 실패 위치를 기록합니다.
 - /workspace save 뒤에 이름을 붙이면 수동 snapshot 이름으로 저장됩니다. 공백이 있으면 따옴표로 감싸세요.
-- /workspace list의 번호를 그대로 /workspace <번호> 또는 /workspace restore <번호>에 사용할 수 있습니다.
+- 같은 세션에서 직전 /workspace list [--all]의 번호를 그대로 /workspace restore <번호>에 사용합니다. 목록 뒤 파일이 변경·삭제되면 차단하며, 목록 없이 번호를 추정하지 않습니다.
+- 대상을 생략하면 자동 복원하지 않습니다. exact id 또는 보존 snapshot 파일 경로도 지정할 수 있으며, 선택한 원본 bytes/hash를 별도로 보존합니다.
 - 복원 가능한 session이 연결된 snapshot을 번호 목록에서 우선 표시하고, 그 안에서는 session/panel이 많은 복원성 높은 snapshot을 먼저 표시합니다.
-- 기본 목록은 오래된 autosave archive를 접고, 전체 archive는 /workspace list --all에서 봅니다. 전체 목록의 번호로 복원할 때는 /workspace restore --all <번호>를 사용하세요.
+- 기본 목록은 오래된 autosave archive를 접고, 전체 archive는 /workspace list --all에서 봅니다. restore에 --all을 다시 붙일 필요는 없습니다.
 - autosave는 session 시작 30~60초 뒤 leader process가 첫 확인을 하고 이후 약 1시간마다 갱신합니다.
 - autosave는 snapshot 내용 hash가 바뀌지 않으면 파일을 새로 저장하지 않고, alias archive도 의미 있는 변화나 최소 보관 간격이 있을 때만 남깁니다.
 - autosave alias를 갱신하기 전 기존 autosave를 버전 보관본으로 보존하고, 복원성이 크게 낮은 snapshot으로는 덮어쓰지 않습니다.
 - Ghostty AppleScript가 split tree/비율을 제공하지 않아 split panel은 순차 right split으로 근사 복원합니다.
-- Pi session 매핑은 active session registry를 우선하고, restore 시점에도 최근 session fallback을 보조로 재확인합니다.`;
+- 복원은 원본에 명시된 sessionFile과 읽기 전용 header cwd만 사용합니다. 유실·미연결·추정 fallback·동일 파일 중복이 하나라도 있으면 전체 실행을 차단합니다. 제목으로 다른 세션을 대체하지 않습니다.`;
 
 function workspaceArgumentCompletions(argumentPrefix: string): AutocompleteItem[] | null {
 	const prefix = argumentPrefix.trimStart();
@@ -1223,7 +1134,7 @@ function workspaceArgumentCompletions(argumentPrefix: string): AutocompleteItem[
 	const commandItems: AutocompleteItem[] = [
 		{ value: "status", label: "status", description: "현재 Ghostty workspace 상태" },
 		{ value: "save", label: "save", description: "현재 Ghostty window snapshot 저장" },
-		{ value: "restore", label: "restore", description: "최신 snapshot을 append mode로 복원" },
+		{ value: "restore", label: "restore", description: "명시한 snapshot을 append mode로 복원" },
 		{ value: "list", label: "list", description: "저장된 snapshots 목록" },
 	];
 
@@ -1235,9 +1146,9 @@ function workspaceArgumentCompletions(argumentPrefix: string): AutocompleteItem[
 		const hasTarget = tokens.slice(1).some((token) => !token.startsWith("-"));
 		if (hasTarget) return null;
 		if (!hasTrailingSpace) return null;
-		return visibleSnapshotSummaries(listSnapshots()).map((summary, index) => ({
-			value: `restore ${index + 1}`,
-			label: `restore ${index + 1}`,
+		return visibleSnapshotSummaries(listSnapshots()).map((summary) => ({
+			value: `restore ${shellQuote(summary.path)}`,
+			label: `restore ${summary.id}`,
 			description: `${summary.name} · ${displayDate(summary.updatedAt)} · session ${summary.matched}/${summary.terminals}`,
 		}));
 	}
@@ -1249,6 +1160,8 @@ function workspaceArgumentCompletions(argumentPrefix: string): AutocompleteItem[
 }
 
 export default function (pi: ExtensionAPI) {
+	const displayedLists = new Map<string | ExtensionContext["sessionManager"], SnapshotReference[]>();
+	const listKey = (ctx: ExtensionContext) => ctx.sessionManager.getSessionFile() || ctx.sessionManager;
 	let revokeRestoreReceipt: (() => void) | undefined;
 	pi.on("session_start", async (_event, ctx) => {
 		revokeRestoreReceipt = receiveRestoreSession(ctx);
@@ -1281,12 +1194,13 @@ export default function (pi: ExtensionAPI) {
 					return;
 				}
 				if (args.sub === "save") return await handleSave(pi, ctx, args);
-				if (args.sub === "restore") return await handleRestore(pi, ctx, args);
+				if (args.sub === "restore") return await handleRestore(pi, ctx, args, displayedLists.get(listKey(ctx)));
 				if (args.sub === "list") {
 					const allSummaries = listSnapshots();
 					const summaries = args.all ? allSummaries : visibleSnapshotSummaries(allSummaries);
 					const hiddenArchives = args.all ? 0 : allSummaries.length - summaries.length;
 					const body = renderList(summaries, hiddenArchives);
+					displayedLists.set(listKey(ctx), summaries.map(({ id, path, realPath, hash }) => ({ id, path, realPath, hash })));
 					ctx.ui.notify("workspace snapshot 목록을 표시했습니다.", "info");
 					sendReport(pi, "Workspace list", body);
 					return;

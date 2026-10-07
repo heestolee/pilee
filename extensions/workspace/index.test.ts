@@ -9,12 +9,14 @@ import { receiveRestoreSession } from "./restore.ts";
 
 const root = mkdtempSync(join(tmpdir(), "workspace-command-"));
 process.env.PI_CODING_AGENT_DIR = root;
+process.env.HOME = root;
+process.env.TERM_PROGRAM = "test-host";
 const { default: registerWorkspace } = await import("./index.ts");
 
 test("/workspace connects the sequential restore runner and only reports completion after receipts", async () => {
 	try {
 		const sessionFile = join(root, "target.jsonl");
-		writeFileSync(sessionFile, '{}\n');
+		writeFileSync(sessionFile, JSON.stringify({ type: "session", version: 3, id: "target", cwd: root }) + "\n");
 		const snapshots = join(root, "workspaces", "snapshots");
 		mkdirSync(snapshots, { recursive: true });
 		writeFileSync(join(snapshots, "fixture.json"), JSON.stringify({
@@ -36,7 +38,7 @@ test("/workspace connects the sequential restore runner and only reports complet
 		const ctx = {
 			cwd: root, hasUI: true,
 			sessionManager: { getSessionFile: () => sessionFile, getSessionName: () => "fixture", getCwd: () => root },
-			ui: { notify: (text: string) => notices.push(text), setStatus: (_key: string, text?: string) => statuses.push(text) },
+			ui: { notify: (text: string) => { notices.push(text); }, setStatus: (_key: string, text?: string) => { statuses.push(text); } },
 		} as ExtensionCommandContext;
 		registerWorkspace({
 			on: (name, handler) => { hooks.set(name, handler); },
@@ -67,6 +69,14 @@ test("/workspace connects the sequential restore runner and only reports complet
 		assert.equal(statuses.at(-1), undefined);
 		const reportPath = messages.at(-1)!.split("진행 기록: ")[1];
 		assert.equal(JSON.parse(readFileSync(reportPath, "utf8")).status, "completed");
+		const callsBeforeRetry = calls.length;
+		await handler("restore fixture", ctx);
+		assert.match(notices.at(-1)!, /같은 source의 기존 복구 기록/);
+		assert.equal(calls.length, callsBeforeRetry);
+		const snapshotPath = join(snapshots, "fixture.json");
+		const nextSource = JSON.parse(readFileSync(snapshotPath, "utf8"));
+		nextSource.name = "separate recovery source";
+		writeFileSync(snapshotPath, JSON.stringify(nextSource));
 		fail = true;
 		await handler("restore fixture", ctx);
 		assert.match(messages.at(-1)!, /restore 중단/);
@@ -87,7 +97,8 @@ test("/workspace connects the sequential restore runner and only reports complet
 		assert.ok(!messages.some((message) => message.includes("restore 완료")));
 		autoReady = true;
 		await handler("restore fixture", ctx);
-		assert.match(messages.at(-1)!, /restore 완료/);
+		assert.match(notices.at(-1)!, /같은 source의 기존 복구 기록/);
+		assert.equal(requests.length, 2);
 
 		const childRequest = join(root, "child.json");
 		writeFileSync(childRequest, JSON.stringify({ sessionFile, cwd: root }));
