@@ -9,6 +9,7 @@ const targetFiles = [
   'skills/frame/SKILL.md',
   'skills/frame-v2/SKILL.md',
   'extensions/frame-v2/index.ts',
+  'extensions/tft-commands/frame-worktree-fork.ts',
   'skills/frame/references/source-grounded-planning.md',
   'skills/decide/SKILL.md',
   'skills/verify/SKILL.md',
@@ -26,6 +27,13 @@ const targetFiles = [
 const negativeContextPattern = /금지|실패|나쁜|❌|돌아오면|막는다|제거|되돌아가면|의례화|통과용|directive|계열|아니다/;
 
 const forbiddenDirectives = [
+  {
+    id: 'forced-implementation-decision-surface',
+    files: ['skills/frame/SKILL.md', 'skills/frame-v2/SKILL.md', 'skills/decide/SKILL.md', 'skills/tft-guidelines/SKILL.md', 'skills/ask-user-question-rules/SKILL.md', 'extensions/frame-v2/index.ts', 'extensions/tft-commands/frame-worktree-fork.ts'],
+    pattern: /^Pi UI와 `frame_studio`가 있으면 같은 work unit의 `tab=decide`를 사용한다|route material unresolved technical choices to \/decide|investigate missing facts or use \/decide|질문 본문을 채팅에 번호형 메뉴로 출력하는 것은.*때만 허용|구현 중.{0,30}(반드시|무조건).{0,30}(\/decide|웹뷰|Studio)/,
+    allow: (line) => negativeContextPattern.test(line),
+    message: '구현 중 추가 결정은 현재 대화가 기본입니다. 명시 /decide·웹뷰 요청만 별도 surface를 사용하세요.',
+  },
   {
     id: 'mandatory-challenge',
     pattern: /Productive Resistance는 (항상 한다|독립 단계)|모든 결정에서 challenge를 수행|모든 결정에 tradeoff challenge를 수행|low.*(skip하지|짧게.*도전)|반드시 challenge|challenge skip은 없다|Deep Interview\/\(명백\)\/Productive Resistance/,
@@ -103,15 +111,19 @@ const requiredContracts = [
   },
   {
     file: 'skills/decide/SKILL.md',
-    includes: ['질문 제목: 접근 선택', '선택 후 달라지는 것', '요구사항 추적성', 'Domain Work Map 영향', 'Architecture/Data Flow 영향', 'verifyHandoffHints', 'challenge?:', '설계 선택 승인은 운영 실행 승인이 아니다', '이미 비교하고 선택한 tradeoff는 기록만'],
+    includes: ['질문 제목: 접근 선택', '선택 후 달라지는 것', '요구사항 추적성', 'Domain Work Map 영향', 'Architecture/Data Flow 영향', 'verifyHandoffHints', 'challenge?:', '설계 선택 승인은 운영 실행 승인이 아니다', '이미 비교하고 선택한 tradeoff는 기록만', '구현 중 추가 결정은 현재 대화가 기본 surface', '명시 `/decide`', '질문 전에 최신 canonical', 'stable ID', '명시 답변을 기다린다', '침묵·취소·모호한 답은 승인이 아니다', 'pending과 같은 ID', '다른 미결정과 다른 task blocker는 보존', 'work_context refresh', 'verify_plan', 'frame.json.tmp', 'provenance.canonicalHash', 'Frame 없는 즉석 결정', '채팅 결정의 state 저장만으로', '저장 확인이나 이미 공개한 비용의 재승인은 필요하지 않다'],
   },
   {
     file: 'skills/frame-v2/SKILL.md',
-    includes: ['미확인 사실 / 미해결 선택 / 영향받는 slice / 다음 행동', '/decide — 기술 결정부터', '독립 slice 구현', '새 worktree·외부 실행 승인', '질문 0개도 정상'],
+    includes: ['미확인 사실 / 미해결 선택 / 영향받는 slice / 다음 행동', '현재 대화에서 결정', '명시 `/decide`', '독립 slice 구현', '새 worktree·외부 실행 승인', '질문 0개도 정상'],
   },
   {
     file: 'extensions/frame-v2/index.ts',
-    includes: ['route material unresolved technical choices to /decide', 'A ready slice must not depend on an unresolved choice', 'preserve external-action authorization', 'Zero questions is valid'],
+    includes: ['compare material unresolved technical choices in the current conversation', 'A ready slice must not depend on an unresolved choice', 'preserve external-action authorization', 'Zero questions is valid', 'Before asking, persist a stable ID', 'Wait for an explicit answer', 'Preserve other decisions and task blockers', 'Studio update/finish/open merely to save an inline decision', 'explicit /decide or requested webview comparison'],
+  },
+  {
+    file: 'extensions/tft-commands/frame-worktree-fork.ts',
+    includes: ['현재 대화에서 처리', '질문 전에 decision_queue에 stable ID', '명시 답변을 기다린다', '같은 ID로 decisions[]', '다른 미결정과 다른 task blocker는 보존', 'work_context refresh', '명시 /decide·웹뷰 비교 요청 경로는 유지'],
   },
   {
     file: 'skills/verify/SKILL.md',
@@ -160,6 +172,7 @@ for (const file of targetFiles) {
   const lines = text.split(/\r?\n/);
   for (const [index, line] of lines.entries()) {
     for (const rule of forbiddenDirectives) {
+      if (rule.files && !rule.files.includes(file)) continue;
       if (rule.pattern.test(line) && !rule.allow?.(line)) {
         failures.push({ file, line: index + 1, id: rule.id, message: rule.message, excerpt: line.trim() });
       }

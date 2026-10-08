@@ -16,6 +16,10 @@ for (const [file, directive, rule] of [
   ['skills/ask-user-question-rules/SKILL.md', '질문 제목: 검증 축 선택', 'verification-axis-ceremony'],
   ['skills/frame/SKILL.md', '틀린 가정이 있으면 정정해주세요. 없으면 `ok`.', 'repeat-approval-ceremony'],
   ['skills/frame/SKILL.md', 'patch 후 저장 확인만 짧게 받는다.', 'repeat-approval-ceremony'],
+  ['skills/decide/SKILL.md', 'Pi UI와 `frame_studio`가 있으면 같은 work unit의 `tab=decide`를 사용한다.', 'forced-implementation-decision-surface'],
+  ['extensions/frame-v2/index.ts', 'route material unresolved technical choices to /decide', 'forced-implementation-decision-surface'],
+  ['extensions/tft-commands/frame-worktree-fork.ts', '구현 중 중요한 결정은 반드시 /decide로 보낸다.', 'forced-implementation-decision-surface'],
+  ['skills/frame/SKILL.md', '질문 본문을 채팅에 번호형 메뉴로 출력하는 것은 UI가 unavailable일 때만 허용한다.', 'forced-implementation-decision-surface'],
 ]) {
   test(`옛 의례 재삽입 차단: ${directive}`, () => {
     const failures = auditTftContracts(root, { [file]: `${read(file)}\n${directive}\n` });
@@ -27,7 +31,15 @@ for (const [file, contract] of [
   ['skills/tft-guidelines/SKILL.md', '미확인 사실을 사용자 선택으로 바꾸지 않는다'],
   ['skills/tft-guidelines/SKILL.md', '공개 계약·보안 보장·운영 비용·되돌리기 비용·유지보수 비용'],
   ['skills/tft-guidelines/SKILL.md', '설계 선택 승인은 운영 실행 승인과 다르며'],
-  ['skills/frame-v2/SKILL.md', '/decide — 기술 결정부터'],
+  ['skills/frame-v2/SKILL.md', '현재 대화에서 결정'],
+  ['skills/decide/SKILL.md', '질문 전에 최신 canonical'],
+  ['skills/decide/SKILL.md', '명시 답변을 기다린다'],
+  ['skills/decide/SKILL.md', '침묵·취소·모호한 답은 승인이 아니다'],
+  ['skills/decide/SKILL.md', 'pending과 같은 ID'],
+  ['skills/decide/SKILL.md', '다른 미결정과 다른 task blocker는 보존'],
+  ['skills/decide/SKILL.md', '채팅 결정의 state 저장만으로'],
+  ['skills/decide/SKILL.md', 'Frame 없는 즉석 결정'],
+  ['skills/decide/SKILL.md', '명시 `/decide`'],
   ['extensions/frame-v2/index.ts', 'A ready slice must not depend on an unresolved choice'],
 ]) {
   test(`질문 축소 중 중요한 판단·안전 계약 삭제 감지: ${contract}`, () => {
