@@ -52,7 +52,11 @@ supersedes:
 
 `challenge`는 실제 추가 검토의 선택적 이력입니다. 기존 `challenged: true` 기록은 보존하고, 미수행은 false 또는 필드 생략으로 표현합니다. 기록 형식을 채우려고 하지 않은 반론·사용자 응답을 만들어내지 않습니다.
 
-결정 저장 후 해당 큐/task/slice 의존성을 해소하고 다른 미결정은 남깁니다. 미확인 사실은 조사, 근거가 모인 중요한 선택은 다음 `/decide`, 승인된 독립 slice는 구현으로 연결합니다. 전체 plan에 미결정이 남아도 독립 slice를 자동 차단하지 않습니다.
+구현 중 추가 결정은 현재 대화에서 처리합니다. 질문 전에 기존 `decision_queue`에 stable ID·근거·영향 slice·다음 행동을 남기고, 명시 답변 전에는 해당 선택에 의존하는 구현만 보류합니다. 침묵·취소·모호한 답은 승인이 아닙니다.
+
+명시 답변 뒤 같은 ID의 `decisions[]`에 선택·이유·수용한 손익을 기록하고, 해당 큐·risk·implementation plan/slice 의존성·verify 조건·linked Task·work_context를 동기화합니다. atomic write/hash/mirror 규칙을 재사용하며 저장 재승인은 묻지 않습니다. Task의 완료된 의존성 이력을 지우거나 다른 미결정·다른 task blocker까지 해제하지 않습니다. 전체 plan에 미결정이 남아도 승인된 독립 slice는 계속합니다.
+
+Frame이 없으면 기존 `.pi/decisions` 즉석 경로를 사용하며 Frame·웹뷰를 새로 강제하지 않습니다. 명시 `/decide` 또는 사용자가 웹뷰 비교를 요청한 경로는 유지합니다. 채팅 결정의 state 저장만으로 Studio update/finish나 창 재오픈을 호출하지 않습니다. 기존 창의 설명 mirror는 선택 사항이고 canonical은 아닙니다.
 
 ## Verify의 책임
 

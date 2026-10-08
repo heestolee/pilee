@@ -42,7 +42,7 @@ Frame은 구현 전 자연어 메모가 아니라, Verify가 기계적으로 읽
 
 ## Contract Shape
 
-`frame.json`에는 성공 기준, 검증 계획, 범위 밖 항목, 엣지 케이스 seed, 위험 register, decision queue, `/decide`가 추가하는 `decisions[]`, provenance가 구조화되어야 합니다. Verify는 이 계약의 `success_criteria`를 행 단위로 PASS/FAIL 판정합니다. 새 의사결정이 필요하면 `/decide`로 분리하고, 결정 결과를 다시 계약에 반영합니다.
+`frame.json`에는 성공 기준, 검증 계획, 범위 밖 항목, 엣지 케이스 seed, 위험 register, decision queue, 대화 결정과 명시 `/decide`가 함께 사용하는 `decisions[]`, provenance가 구조화되어야 합니다. Verify는 이 계약의 `success_criteria`를 행 단위로 PASS/FAIL 판정합니다. 구현 중 추가 결정은 현재 대화에서 처리하고, 명시 답변 후 같은 ID로 계약·slice 의존성·검증 조건·Task/work_context에 반영합니다.
 
 정확한 기획 근거(Jira, Notion, Slack, wireframe, PRD 등)가 있으면 Frame은 추가로 `source_evidence`, `requirement_matrix`, `domain_work_map`을 갖는 source-grounded contract가 됩니다. backend/data/API/DB 흐름이 구현·검증 이해를 좌우하면 `backend_layer_map`, `architecture_flow_map`, `data_model_migration_map`도 계약 surface입니다. 이때 success criteria는 큰 목표만 적는 곳이 아니라, 기획 원문 요구사항 ID가 구현 계약·domain lane·architecture edge/source-of-truth·DB entity/relationship/migration operation·검증 증거에 연결됐는지 확인하는 행 단위 계약입니다.
 
@@ -50,7 +50,7 @@ Frame은 구현 전 자연어 메모가 아니라, Verify가 기계적으로 읽
 
 `frame.md`는 사람이 읽기 위한 mirror이고, TFT Studio transcript는 계약을 만든 대화 전문입니다. 둘 다 canonical source가 아닙니다. transcript는 사용자가 어떤 질문과 선택을 거쳤는지 다시 열어보는 provenance이고, Verify가 기계적으로 판정할 기준은 여전히 최신 `frame.json`입니다. Studio tool result는 전체 전문 대신 `contextDigest`, `tabSnapshot`, `transcriptRef.openCommand`(`/archive <transcriptPath>`)를 반환해 현재 Pi turn의 working context와 전문 reopen link를 함께 제공합니다.
 
-Frame, Decide, Verify는 각각 canonical write가 성공한 뒤 TFT Studio stage run을 `finish`로 닫아야 합니다. Transcript가 `running`으로 남아 있으면 canonical에는 기록이 있어도 UI/provenance 상 그 stage가 아직 진행 중처럼 보입니다. 같은 작업에서 stage를 다시 실행하는 것은 새 trigger이며, 같은 transcript 안의 다음 run 카드로 이어집니다.
+Frame, Decide, Verify를 Studio에서 진행한 경우에는 canonical write가 성공한 뒤 해당 stage run을 `finish`로 닫아야 합니다. 채팅에서 결정했다면 state 저장 때문에 Studio update/finish나 창 재오픈을 호출하지 않습니다. Transcript가 `running`으로 남아 있으면 canonical에는 기록이 있어도 UI/provenance 상 그 stage가 아직 진행 중처럼 보입니다. 같은 작업에서 stage를 다시 실행하는 것은 새 trigger이며, 같은 transcript 안의 다음 run 카드로 이어집니다.
 
 코드 구조를 건드리는 작업에서는 architecture friction도 계약의 일부가 됩니다. 별도 schema가 없더라도 `review_lenses`, `risk_register`, `verify_plan.manual_checks`, decision tradeoff에 “다음 사람/AI가 길을 잃을 구조인가”를 남기면 Verify가 구조 side-effect를 확인할 수 있습니다.
 
@@ -64,7 +64,7 @@ Frame은 초반부터 구현 plan을 대신 만들지 않습니다. 먼저 사�
 
 Frame의 질문 규율은 deep-interview식입니다. 질문을 많이 하는 것이 아니라 목표, 포함/제외 범위, 제약, 완료 기준, 기존 맥락/영향 범위 중 가장 큰 불확실성 하나만 골라 `현재 이해 / 막힌 결정 / 추천 답안 / 질문` 카드로 묻습니다. 코드베이스·문서·티켓·이전 frame으로 확인 가능한 사실은 사용자에게 묻지 않고 먼저 확인해야 합니다. 인터뷰는 계약에 반영할 결정사항과 열린 질문이 정리되면 멈춥니다.
 
-의무 반론·고정 질문 횟수·ok·저장 재승인은 기본 단계에서 제거합니다. 확인되지 않은 사실은 조사로, 중요한 기술 선택은 `/decide`로, 승인된 독립 slice는 구현으로 연결합니다. 미결정이 영향을 주는 slice를 표시하되 하나의 미결정으로 전체 작업을 막지 않습니다. 검증 증거와 위험 작업 승인은 그대로 유지합니다.
+의무 반론·고정 질문 횟수·ok·저장 재승인은 기본 단계에서 제거합니다. 확인되지 않은 사실은 조사로, 구현 중 중요한 기술 선택은 현재 대화의 결정으로, 승인된 독립 slice는 구현으로 연결합니다. 질문 전 pending을 기록하고 침묵·취소·모호한 답으로 해제하지 않습니다. 명시 `/decide`·웹뷰 비교 요청 경로는 별도로 유지합니다. 미결정이 영향을 주는 slice를 표시하되 하나의 미결정으로 전체 작업을 막지 않습니다. 검증 증거와 위험 작업 승인은 그대로 유지합니다.
 
 ## Canonical-first Rule
 
