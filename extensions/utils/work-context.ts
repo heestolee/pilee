@@ -212,24 +212,49 @@ function sliceFromFrameSlice(item: any, index: number): WorkContextSlice {
 	};
 }
 
-function decisionQuestions(frame: any): WorkContextQuestion[] {
-	const queue = Array.isArray(frame?.decision_queue) ? frame.decision_queue : [];
-	const risks = Array.isArray(frame?.risk_register) ? frame.risk_register : [];
-	const fromQueue = queue.map((item: any, index: number) => ({
-		id: String(item?.taskId || item?.id || `D${index + 1}`),
-		owner: "user" as const,
-		text: String(item?.title || item?.risk || "열린 결정"),
-		blocks: asArray(item?.blocks),
-	}));
-	const fromRisks = risks
-		.filter((risk: any) => risk?.needs_decision)
-		.map((risk: any, index: number) => ({
-			id: String(risk?.id || `RISK-D${index + 1}`),
+function decisionQuestions(frame: any, existing: WorkContextQuestion[] = []): WorkContextQuestion[] {
+	if (!frame) return existing;
+	const queue = Array.isArray(frame.decision_queue) ? frame.decision_queue : [];
+	const risks = Array.isArray(frame.risk_register) ? frame.risk_register : [];
+	const decisions = Array.isArray(frame.decisions) ? frame.decisions : [];
+	const slices = Array.isArray(frame.implementation_plan?.slices) ? frame.implementation_plan.slices : [];
+	const resolvedIds = new Set<string>(decisions
+		.filter((decision: any) => typeof decision?.selected === "string" && decision.selected.trim() && Number.isFinite(decision.decidedAt))
+		.flatMap((decision: any) => asArray([decision.id ?? "", decision.taskId ?? ""])));
+	const canonicalIds = new Set(resolvedIds);
+	const queuedRisks = new Set<string>();
+	const fromQueue = queue.flatMap((item: any, index: number) => {
+		const id = String(item?.id || item?.taskId || `D${index + 1}`);
+		const aliases = asArray([id, item?.taskId ?? ""]);
+		for (const alias of aliases) canonicalIds.add(alias);
+		if (item?.riskRef) queuedRisks.add(String(item.riskRef));
+		if (aliases.some((alias) => resolvedIds.has(alias))) return [];
+		return [{
+			id,
 			owner: "user" as const,
-			text: String(risk?.risk || risk?.title || "결정 필요한 리스크"),
-			blocks: [],
-		}));
-	return [...fromQueue, ...fromRisks].slice(0, 8);
+			text: String(item?.title || item?.risk || "열린 결정"),
+			blocks: [...new Set([
+				...asArray(item?.blocks),
+				...slices.filter((slice: any) => asArray(slice?.blockedBy).some((ref) => aliases.includes(ref)))
+					.map((slice: any) => String(slice.id)),
+			])],
+		}];
+	});
+	const fromRisks = risks.flatMap((risk: any, index: number) => {
+		const id = String(risk?.id || `RISK-D${index + 1}`);
+		canonicalIds.add(id);
+		if (!risk?.needs_decision || queuedRisks.has(id) || resolvedIds.has(id)) return [];
+		return [{
+			id, owner: "user" as const, text: String(risk.risk || risk.title || "결정 필요한 리스크"),
+			blocks: [...new Set([
+				...asArray(risk.blocks),
+				...slices.filter((slice: any) => asArray(slice?.blockedBy).includes(id)).map((slice: any) => String(slice.id)),
+				...existing.filter((question) => question.id === id).flatMap((question) => question.blocks ?? []),
+			])],
+		}];
+	});
+	// Canonical-linked questions are refreshed; unrelated/manual blockers remain owned by their source.
+	return [...fromQueue, ...fromRisks, ...existing.filter((question) => !canonicalIds.has(question.id))];
 }
 
 function deriveMode(frame: any): WorkContextMode {
@@ -285,7 +310,7 @@ export function deriveWorkContext(cwd: string, sessionFile?: string, existing?: 
 			...asArray(frame?.out_of_scope).map((item) => `범위 밖: ${item}`),
 			...(existing?.mustNot ?? []),
 		], 10),
-		openQuestions: existing?.openQuestions?.length ? existing.openQuestions : decisionQuestions(frame),
+		openQuestions: decisionQuestions(frame, existing?.openQuestions),
 		verifyFocus: uniqueStrings([
 			...asArray(frame?.verify_plan?.manual_checks),
 			...asArray(frame?.verify_plan?.commands),
@@ -382,6 +407,14 @@ function isContextInternalPath(path: string): boolean {
 
 export function gateWorkContext(card: WorkContextCard | undefined, options: { action: "mutate" | "commit" | "status"; paths?: string[]; requireSlice?: boolean } = { action: "status" }): WorkContextGateResult {
 	if (!card) return { level: "pass", reasons: [] };
+	// A blocked implementation must still be able to persist the decision that unblocks it.
+	// This permits records only, not product edits or commits, and does not resolve any question.
+	const decisionRecordsOnly = options.action === "mutate" && Boolean(options.paths?.length) && options.paths!.every((path) => {
+		const rel = relativeToWorkUnit(card, path);
+		return /^\.pi\/(?:frame\.(?:json|md)(?:\.tmp)?|work-context\.json|work-tasks\.json)$/.test(rel)
+			|| /^\.pi\/decisions\/[^/]+\.md$/.test(rel);
+	});
+	if (decisionRecordsOnly) return { level: "pass", reasons: [], card };
 	const reasons: string[] = [];
 	const currentId = card.currentSlice?.id;
 	if (options.requireSlice && card.slices.length > 0 && !card.currentSlice) {
