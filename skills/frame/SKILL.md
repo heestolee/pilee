@@ -219,7 +219,7 @@ Jira, Notion, Slack, wireframe, PRD, 디자인 캡처처럼 정확한 기획 근
 
 기획의 원하는 결과·제약과 현재 시스템에 대한 추정·제안된 구현 수단을 구분한다. 확인 가능한 사실은 직접 조사하고, 조사한 사실이 대안을 어떻게 제한하는지 보여준다. 미확인 사실을 사용자가 골라야 할 문제로 만들지 않는다.
 
-공개 계약·보안 보장·운영/되돌리기/유지보수 비용을 실질적으로 바꾸는 미해결 기술 선택은 근거·대안·추천·손익을 비교해 `/decide`로 연결한다. 기존 결정으로 충분한 실행 세부는 근거와 함께 진행한다. 기술적 선택을 전부 AI에게 맡기거나 사소한 실행 방법을 모두 사용자에게 떠넘기지 않는다.
+공개 계약·보안 보장·운영/되돌리기/유지보수 비용을 실질적으로 바꾸는 미해결 기술 선택은 근거·대안·추천·손익을 비교한다. 구현 중 추가 결정은 `../decide/SKILL.md`의 inline decision 계약으로 현재 대화에서 처리하고 같은 canonical에 반영한다. 명시 `/decide`·웹뷰 비교 요청은 별도 경로로 유지한다. 기존 결정으로 충분한 실행 세부는 근거와 함께 진행한다. 기술적 선택을 전부 AI에게 맡기거나 사소한 실행 방법을 모두 사용자에게 떠넘기지 않는다.
 
 ### 2. 의무 반론 대신 실제 빈칸만 다룬다
 
@@ -250,14 +250,14 @@ Jira, Notion, Slack, wireframe, PRD, 디자인 캡처처럼 정확한 기획 근
 
 ## TFT Studio UI
 
-Pi UI가 있고 `frame_studio` tool을 사용할 수 있으면, 번호형 텍스트만 출력하지 말고 Glimpse TFT Studio를 우선 사용한다. 도구 이름은 하위 호환을 위해 `frame_studio`지만, UI는 Frame/Decide/Verify/Verify Report 탭을 가진 TFT Studio shell이다.
+명시 `/frame` 기획 세션에서 Pi UI가 있고 `frame_studio` tool을 사용할 수 있으면 Glimpse TFT Studio를 우선 사용한다. 이 UI 규칙을 이후 구현 중 추가 결정에 적용하지 않는다. 구현 중에는 현재 대화가 기본이며, state 저장을 이유로 Studio update/finish·창 재오픈을 호출하지 않는다. 도구 이름은 하위 호환을 위해 `frame_studio`지만, UI는 Frame/Decide/Verify/Verify Report 탭을 가진 TFT Studio shell이다.
 
 - Step 1 직후: `frame_studio action=start tab=frame`으로 identity-bound TFT Studio를 연다.
 - Step 2: 확인된 사실·가정·필요한 맵을 `frame_studio action=update tab=frame`으로 보여준다. 의례적인 `ok` 응답을 기다리지 않는다.
 - Step 3/4/7/9: 중요한 미해결 선택이나 새 권한이 필요한 경우에만 `frame_studio action=ask tab=frame`을 호출한다. Step 5 검증 계획은 AI가 도출해 보여주며 선택 메뉴로 만들지 않는다. 긴 판단 맥락 카드는 직전 `update` 또는 같은 `ask`의 `markdown`에 넣고, `question` 필드는 **짧은 질문 제목 한 줄**만 넣는다.
 - `ask.question`에 `현재 이해 / 막힌 결정 / 왜 중요한가 / 추천 답안 / 선택 후 달라지는 것 / 질문` 카드 전체를 넣지 않는다. 그런 호출은 Studio가 방어적으로 제목/본문을 분리하더라도 실패한 호출이다.
 - Step 6/8: 현재 markdown을 `frame_studio action=update tab=frame`으로 렌더링한다. 구현 계획은 별도 Plan 탭이 아니라 Frame 탭 마지막의 `Implementation plan synthesis` 섹션으로 보여준다.
-- 질문 본문을 채팅에 번호형 메뉴로 출력하는 것은 `frame_studio ask` 결과가 `unavailable`, `cancelled`, `timeout`일 때만 허용한다.
+- 이번 Frame 기획을 Studio에서 진행하는 동안에는 질문을 해당 surface에 둔다. 구현 중 inline decision 또는 사용자가 채팅을 요청한 경우는 웹뷰 실패 없이도 현재 대화에서 묻는다.
 - tool 결과가 `unavailable`, `cancelled`, `timeout`이면 `ask-user-question-rules`의 번호형 text-mode fallback으로 이어간다.
 - TFT Studio 제목과 identity는 command shim의 **Frame identity hint**를 따른다. P0/P1 panel label이 아니라 worktree/ticket/session planning identity에 귀속한다.
 - `frame_studio` 결과는 선택값뿐 아니라 `contextDigest`, `tabSnapshot`, `transcriptRef.openCommand`(`/archive <transcriptPath>`)를 반환한다. 전문 전체를 LLM context에 주입하지 말고, 확정 의미는 canonical에 쓰고 전문은 reference/provenance로 연결한다.
@@ -310,7 +310,7 @@ planning frame은 나중에 worktree가 만들어지면 해당 worktree의 `.pi/
 
 ### Step 4: 기술 결정 연결
 
-실질적인 기술 손익이 남으면 `/decide`로 근거·대안·추천을 비교한다. 조사 전 단일 설계를 확정하지 않는다. 당장 결정하지 않을 경우 `미확인 사실 / 미해결 선택 / 영향받는 slice / 다음 행동`을 decision queue와 slice 의존성에 남긴다. 선택한 tradeoff를 다시 반론하는 별도 단계는 없다.
+실질적인 기술 손익이 남으면 Decide의 조사·비교·기록 계약을 사용한다. 구현 중에는 현재 대화에서 묻고, 명시 `/decide`·웹뷰 요청이면 해당 surface로 비교한다. 조사 전 단일 설계를 확정하지 않는다. 당장 결정하지 않을 경우 `미확인 사실 / 미해결 선택 / 영향받는 slice / 다음 행동`을 decision queue와 slice 의존성에 남긴다. 선택한 tradeoff를 다시 반론하는 별도 단계는 없다.
 
 ### Step 5: 검증 계획 도출
 
@@ -455,7 +455,7 @@ TFT Studio finish invariant:
 이미 승인된 다음 의도가 있으면 재메뉴 없이 그 행동을 수행한다. 의도가 없으면 현재 가능한 선택지만 제시한다.
 
 - 미확인 사실이 남음 → 필요한 근거를 좁게 조사
-- 비교할 근거가 모인 중요한 기술 선택 → `/decide — 기술 결정부터`
+- 비교할 근거가 모인 중요한 기술 선택 → 현재 대화에서 결정. 명시 `/decide`·웹뷰 비교 요청이면 해당 경로
 - 미결정과 독립적인 slice → 승인된 범위에서 해당 slice 구현
 - 계획 보완 요청 → 같은 Frame의 implementation_plan 갱신
 - 새 worktree를 명시적으로 원함 → 전용 fork 도구의 승인·activation 계약
@@ -695,7 +695,7 @@ type FrameDoc = {
     gates: string[];          // ask_first/deploy/manual gates that still constrain execution
   };
   decisions: Array<{
-    id: string;               // DEC-1 ... (/decide가 추가)
+    id: string;               // DEC-1 ... (대화 결정과 명시 /decide가 같은 ID로 기록)
     title: string;
     taskId?: string;
     alternatives_considered: string[];
@@ -713,9 +713,13 @@ type FrameDoc = {
     decidedAt: number;
   }>;
   decision_queue: Array<{
-    taskId: string;
+    id?: string;              // 새 결정은 질문 전에 stable DEC-* ID 부여; legacy taskId 연결 보존
+    taskId?: string;          // canonical 기록 후 TaskCreate 결과를 연결
     title: string;
     riskRef?: string;
+    evidence?: string[];      // 확인한 근거 / 미확인 사실
+    blocks?: string[];        // 해당 선택에 의존하는 slice ID
+    nextAction?: string;      // 다음 조사 또는 현재 대화의 질문
   }>;
   provenance: {
     transcriptPath?: string;
@@ -746,7 +750,7 @@ type FrameDoc = {
 USER: /frame 목록의 필터를 추가하고 파일 다운로드도 제공하려고 해
 AI: 요구사항과 현재 목록/API/저장·권한 경계를 좁게 조사한다.
 AI: 목록 필터는 기존 계약으로 구현 가능하다. 다운로드는 기존 파일 식별·소유 정보가 확인되지 않아 먼저 조사한다.
-AI: 근거가 모이면 저장 구조 재사용과 조회 인덱스 추가의 보장·운영 비용을 비교해 /decide로 연결한다.
+AI: 근거가 모이면 저장 구조 재사용과 조회 인덱스 추가의 보장·운영 비용을 비교한다. 구현 중 추가 결정이면 현재 대화에서 묻고 state에 반영한다.
 USER: 다운로드 설계를 먼저 비교하자.
 AI: 확인된 근거와 추천을 갖고 해당 기술 선택을 비교한다. 필터 slice는 이 결정과 독립임을 기록한다.
 AI: 검증은 요구사항에서 도출한다. 검증축 선택·의무 반론·ok·저장 재승인 없이 canonical과 mirror를 저장한다.

@@ -43,7 +43,7 @@ disable-model-invocation: false
    - `learning-companion.json`: 두 원천을 연결하는 optional sidecar
 3. Frame 내용을 Study Hard 본문에 복사하지 않는다. 학습 본문은 학습자용 서사로 다시 구성한다.
 4. Frame이 있으면 Study Hard 문서 최상단에 **전체 Frame을 읽기 전용·기본 접힘 작업 기획**으로 표시한다. Frame이 없으면 이 영역을 만들지 않는다.
-5. 학습 인사이트가 작업 변경을 뜻하면 바로 Frame·task·코드를 바꾸지 않고 proposal로 남긴다. 사용자 수락 뒤 기존 `/decide`, work context, task, verify, 구현 workflow로 적용한다.
+5. 학습 인사이트가 작업 변경을 뜻하면 바로 Frame·task·코드를 바꾸지 않고 proposal로 남긴다. 사용자 수락 뒤 기존 Decide의 대화 기반 기록 계약, work context, task, verify, 구현 workflow로 적용한다. `/decide` 호출이나 웹뷰를 강제하지 않는다.
 6. 사용자의 이해 여부는 artifact·정답·AI 판정으로 추정하지 않는다. 다만 이해 완료가 구현 시작의 필수 조건도 아니다.
 7. companion 누락·손상은 구현·검증·commit·push를 막지 않는다.
 
@@ -76,7 +76,7 @@ Command shim이 다음 값을 제공한다.
 현재 `/frame` 규칙으로 목표·범위·결정·성공 기준·구현 지도를 정리한다.
 
 - 이미 유효한 `frame.json`이 있으면 덮어쓰지 말고 재진입 규칙을 따른다.
-- 질문 승격은 `../tft-guidelines/SKILL.md` 철칙 1을 따른다. 확인 가능한 사실은 먼저 조사하고, 공개 계약·보안·운영/되돌리기/유지보수 비용을 바꾸는 미해결 기술 선택은 근거·대안·추천을 갖고 `/decide`로 연결한다.
+- 질문 승격은 `../tft-guidelines/SKILL.md` 철칙 1을 따른다. 확인 가능한 사실은 먼저 조사하고, 공개 계약·보안·운영/되돌리기/유지보수 비용을 바꾸는 미해결 기술 선택은 근거·대안·추천을 갖고 비교한다. 구현 중 추가 결정은 `../decide/SKILL.md`의 기록 계약을 재사용해 현재 대화에서 처리한다.
 - 의무 반론·검증축 선택·고정 질문 횟수·`ok`·저장 재승인은 기본 단계가 아니다. 필요한 검증은 요구사항과 변경 위험에서 도출한다. 명확한 작업은 질문 0개도 정상이다.
 - `frame_v2_state action=ready`는 frame.json을 검증하고 Study Hard run과 연결하는 상태 기록이다. 구현 허가 gate가 아니다.
 
@@ -85,14 +85,14 @@ Command shim이 다음 값을 제공한다.
 Frame 정리 후 현재 `decision_queue`, `decisions`, slice의 의존성과 실행 권한을 읽는다. 미결정 개수만 보여주지 말고 `미확인 사실 / 미해결 선택 / 영향받는 slice / 다음 행동`을 짧게 드러낸다.
 
 - 근거 부족: 필요한 사실을 좁게 조사한다. 조사 전 단일 설계를 확정하거나 사용자 취향 질문으로 바꾸지 않는다.
-- 중요한 기술 선택이 남음: **`/decide — 기술 결정부터`**를 실제 다음 행동으로 제공한다. 직접 입력 예시에만 숨기지 않는다.
+- 중요한 기술 선택이 남음: **`현재 대화에서 결정`**을 실제 다음 행동으로 제공한다. 명시 `/decide`·웹뷰 비교 요청이면 해당 경로를 유지한다. 구현 중에는 질문 전 pending 큐에 stable ID·근거·영향 slice·다음 행동을 기록하고 명시 답변을 기다린다.
 - 독립적으로 준비된 slice가 있음: **`독립 slice 구현`** 또는 `독립 slice 구현과 Study Hard 병행`으로 해당 범위만 시작한다. 막힌 slice의 설계를 암묵적으로 결정하지 않는다.
 - 학습을 원함: Study Hard를 연다. 학습은 결정 해결·구현 권한을 대체하지 않는다.
 - 진행을 원하지 않음: 여기서 멈춘다.
 
 이미 다음 의도가 명확하면 재메뉴 없이 그 행동을 수행한다. 다음 의도가 없을 때만 현재 가능한 선택지를 묻는다. Frame 작성 자체를 구현·새 worktree·외부 실행 승인으로 해석하지 않는다. 하나의 미결정 때문에 독립 slice까지 막거나, Study Hard 완료를 요구하지 않는다.
 
-선택 뒤에는 좁은 조사, `/decide` 비교, 승인된 독립 slice의 첫 실행 중 하나로 이어간다. `frame_v2_state action=ready`는 canonical 연결 상태일 뿐 모든 결정이 닫혔다는 뜻이 아니다.
+선택 뒤에는 좁은 조사, 현재 대화의 결정, 승인된 독립 slice의 첫 실행 중 하나로 이어간다. 명시 답변 후 같은 ID로 `decisions[]`·큐·slice 의존성·verify 조건·linked Task·`work_context refresh`를 동기화한다. 다른 미결정과 다른 task blocker는 보존하고, 저장 재승인이나 state 저장을 위한 Studio update/finish·창 재오픈은 하지 않는다. `frame_v2_state action=ready`는 canonical 연결 상태일 뿐 모든 결정이 닫혔다는 뜻이 아니다.
 
 ### 3. Study Hard 연결
 
@@ -203,6 +203,7 @@ Study Hard 렌더러는 매번 연결된 Frame의 존재를 확인한다.
 - Frame이 없거나 해당 전용 fork가 필요하지 않으면 기존 worktree·구현 흐름을 사용한다. Frame v2가 별도 차단을 만들지 않는다.
 - worktree 전환 뒤 companion이 있으면 같은 companionId/runId를 유지한다.
 - 새 세션은 존재하는 canonical만 읽고 없는 artifact를 이유로 다른 정상 작업 흐름을 막지 않는다.
+- fork 뒤 구현 중에도 추가 결정의 기본 surface는 현재 대화다. 침묵·취소·모호한 답은 승인이 아니며 의존 slice만 보류한다. Frame이 없으면 `.pi/decisions` 즉석 경로를 사용하고 새 Frame/웹뷰를 요구하지 않는다.
 
 ## Output contract
 
@@ -227,6 +228,6 @@ Study Hard 렌더러는 매번 연결된 Frame의 존재를 확인한다.
 - [ ] Frame과 Study Hard를 서로 복사 canonical로 만들지 않았다.
 - [ ] Study Hard-first에서 Frame으로 전환해도 같은 runId·Q&A·revision을 유지했다.
 - [ ] 작업·학습 병행 중 proposal이 수락·적용 ref 없이 작업 canonical을 바꾸지 않았다.
-- [ ] 미확인 사실은 조사로, 중요한 기술 선택은 `/decide`로, 승인된 독립 slice는 구현으로 연결했다.
+- [ ] 미확인 사실은 조사로, 구현 중 중요한 선택은 현재 대화와 state 동기화로, 승인된 독립 slice는 구현으로 연결했다. 명시 `/decide`·웹뷰 요청 경로는 유지했다.
 - [ ] 이미 비교한 tradeoff를 다시 반론하거나 검증축 선택·저장 승인을 의례적으로 요구하지 않았다.
 - [ ] 기존 ask-first, worktree 안전, visual, export, companion failure-isolation 규칙을 유지했다.
