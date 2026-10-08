@@ -32,14 +32,21 @@ description: 공개 계약·보안 보장·운영/되돌리기/유지보수 비�
 /decide <topic>         # 즉석 의사결정
 ```
 
-## TFT Studio
+## 결정 surface 선택
 
-Pi UI와 `frame_studio`가 있으면 같은 work unit의 `tab=decide`를 사용한다.
+**구현 중 추가 결정은 현재 대화가 기본 surface다.** 이 스킬의 조사·비교·기록 계약만 재사용하며 `/decide` 호출이나 웹뷰를 요구하지 않는다. 채팅에서 선택을 받았으면 canonical과 Task/work_context를 갱신하고 승인된 작업으로 돌아간다.
+
+사용자가 명시 `/decide`를 호출하거나 웹뷰 비교를 요청한 경우에는 Pi UI와 `frame_studio`가 있으면 같은 work unit의 `tab=decide`를 사용한다. 사용자가 채팅을 원하면 채팅을 우선한다. 복잡한 비교에 visual이 유용하더라도 결정·저장은 웹뷰 가용성과 독립적이다.
+
+### Studio를 선택한 결정만
+
+아래 규칙은 이번 결정을 Studio에서 진행할 때만 적용한다. 과거에 같은 work unit의 창을 열었다는 이유로 inline decision을 Studio 결정으로 취급하지 않는다.
 
 - 조사 결과와 비교표는 `action=update`로 보여준다.
 - 실제 선택이 필요할 때만 `action=ask`를 쓴다. `question`은 짧은 제목, 판단 맥락 카드는 `markdown`에 넣는다.
 - `unavailable`, `cancelled`, `timeout`이면 번호형 text-mode fallback을 쓴다. UI에서 받은 선택을 채팅으로 다시 확인하지 않는다.
-- canonical 저장 후 실제 다음 행동 또는 중단 결과까지 기록하고 `action=finish`로 닫는다.
+- 이번 결정을 Studio에서 진행했다면 canonical 저장 후 실제 다음 행동 또는 중단 결과까지 기록하고 `action=finish`로 닫는다.
+- 채팅 결정의 state 저장만으로 `frame_studio`의 update/finish/open을 호출하거나 창을 재오픈하지 않는다. 기존 창에 설명을 mirror하는 것은 별도 필요·요청이 있을 때의 선택 사항이며 canonical 저장 조건이 아니다.
 - `contextDigest`와 `tabSnapshot`은 현재 turn의 요약이고 `transcriptRef.openCommand`는 전문 참조다. 결정을 transcript에만 남기지 않는다.
 
 ## Step 1: 결정과 영향 범위 읽기
@@ -80,7 +87,13 @@ Pi UI와 `frame_studio`가 있으면 같은 work unit의 `tab=decide`를 사용�
 - `policy_axis_scan`, `backend_layer_map`, `architecture_flow_map`이 있으면 실제로 달라지는 정책·계층·소비 경계를 대조한다.
 - 구조 이해에 도움이 되면 기존 TFT visual/call-flow를 사용한다. visual은 canonical을 대체하지 않는다.
 
-## Step 4: 필요한 선택을 한 번 받기
+## Step 4: Pending 기록 후 필요한 선택을 한 번 받기
+
+질문 전에 최신 canonical을 읽어 `decision_queue`에 stable ID(`id`, 예: `DEC-1`), 제목, 조사 근거(`evidence`), 영향 slice(`blocks`와 slice의 `blockedBy`), 다음 행동(`nextAction`)을 기록한다. 기존 pending 항목은 같은 ID를 재사용한다. legacy 항목에 `taskId`만 있으면 이를 연결 키로 보존하고 결정 ID와 매핑한다. Step 5와 같은 atomic write/hash/mirror 규칙을 적용한 뒤 기존 TaskCreate/TaskUpdate로 `kind="decision"`, `owner="user"`, `metadata.kind="frame.decision"`인 pending Task를 연결하고, 반환된 `taskId`를 canonical에 반영한다. `work_context refresh`로 해당 slice만 막혔는지 확인한다.
+
+Frame이 없으면 `<cwd>/.pi/decisions/<YYYY-MM-DD>-<slug>.md`에 같은 stable ID·근거·영향·다음 행동과 pending 상태를 기록한다. 즉석 결정을 위해 Frame이나 Studio를 새로 만들지 않는다.
+
+선택한 surface에서 아래 맥락과 선택지를 제시하고 **명시 답변을 기다린다**. 구현 중에는 현재 대화에서 묻고, 명시 `/decide`·웹뷰 요청으로 Studio를 선택했다면 해당 탭의 `ask`로 묻는다. 침묵·취소·모호한 답은 승인이 아니다. 명시적 보류도 pending 유지이지 구현 승인이 아니다. 답변 전에는 `decisions[]`에 선택을 기록하거나 Task를 completed로 바꾸거나 의존 구현을 시작하지 않는다. 독립적이며 승인된 ready slice는 계속할 수 있다.
 
 ```markdown
 질문 제목: 접근 선택
@@ -105,7 +118,7 @@ Pi UI와 `frame_studio`가 있으면 같은 work unit의 `tab=decide`를 사용�
 어떤 접근을 선택할까요?
 ```
 
-사용자의 선택을 받으면 Step 5로 바로 기록한다. 저장 확인이나 이미 공개한 비용의 재승인은 필요하지 않다.
+사용자의 명시 선택을 받으면 Step 5로 바로 기록한다. 번호 또는 자연어 선택이 어느 대안인지 명확하면 충분하며 저장 확인이나 이미 공개한 비용의 재승인은 필요하지 않다. 모호하면 결정에 필요한 차이만 다시 묻고 pending을 유지한다.
 
 선택 후 새로운 중요한 근거가 발견되면 `기존 결정 / 새 근거 / 영향받는 slice / 가능한 대응`을 보여주고 달라진 판단만 묻는다. 위험도가 높다는 이유만으로 동일한 질문을 반복하지 않는다.
 
@@ -139,13 +152,14 @@ type Decision = {
 };
 ```
 
-1. 최신 canonical과 `updatedAt`을 읽고 해당 결정을 append한다. 같은 결정 ID를 중복 생성하지 않는다.
-2. 대응하는 `decision_queue` 항목을 해소한다. 다른 미결정은 남기고, 그 결정을 참조하는 slice의 `blockedBy`/설명과 `implementation_plan`을 갱신한다.
-3. `frame.json.tmp` → rename으로 atomic write하고, `provenance.canonicalHash`를 제외한 payload hash와 mirror를 Frame 규칙대로 갱신한다.
-4. 연결된 `TaskUpdate`를 completed로 바꾸고 `decisionId`, `selected`, `decidedAt`을 남긴다. 실제 추가 검토를 한 경우에만 challenge metadata를 남긴다.
-5. `work_context refresh` 후 선택한 slice와 열린 질문의 해제 상태를 확인한다. 불일치가 있으면 명시적으로 동기화한다. canonical 저장 성공을 실행 권한으로 해석하지 않는다.
-6. frame이 없는 즉석 결정은 같은 근거·선택·tradeoff·완화책을 독립 파일에 저장한다.
-7. Studio에 decision id/path, 남은 미결정과 영향 slice, 수용한 비용·완화책, transcript ref를 표시한다.
+1. 최신 canonical과 `updatedAt`/hash를 다시 읽고 pending과 같은 ID로 `decisions[]`에 선택·이유·수용한 손익·`taskId`·`decidedAt`을 기록한다. 대화 중 다른 변경을 덮어쓰지 않고, 재시도 시 같은 결정 ID를 중복 생성하지 않는다.
+2. 대응하는 `decision_queue` 항목만 해소한다. 해당 선택으로 해결된 `risk_register.needs_decision`, slice의 `blockedBy`/설명, `implementation_plan`의 blockers/status/derivedFrom/첫 안전 행동을 갱신한다. 다른 미결정과 다른 task blocker는 보존한다. 남은 결정이 있으면 전체 plan의 `blocked_by_decision`은 유지할 수 있지만 독립 slice까지 막지 않는다.
+3. 선택으로 달라진 성공 기준·`verify_plan`·slice validation을 반영하고 `verifyHandoffHints`를 남긴다. 새 계약에 맞지 않는 기존 검증 결과는 재검증 대상으로 표시하며, 선택 저장 자체를 검증 PASS로 만들지 않는다.
+4. `frame.json.tmp` → rename으로 atomic write하고, `provenance.canonicalHash`를 제외한 payload hash와 `frame.md` mirror를 Frame 규칙대로 갱신한다. canonical write 실패 시 Task 완료/의존 slice 재개를 하지 않는다. mirror만 실패하면 그 gap을 알리고 재생성한다.
+5. canonical 저장 성공 후 해당 `taskId`만 `TaskUpdate status=completed`로 바꾸고 metadata에 `decisionId`, `selected`, `decidedAt`을 남긴다. 기존 Task 도구는 completed 의존성을 열린 blocker에서 제외하므로 `blockedBy` 배열을 통째로 비우지 않는다. linked slice/verify Task의 설명·acceptance도 달라진 계약에 맞추되 실제 완료 전 completed로 바꾸지 않는다. 실제 추가 검토를 한 경우에만 challenge metadata를 남긴다.
+6. `work_context refresh` 후 `openQuestions`, 영향받는 slice, verify focus를 확인한다. 필요하면 `set_slice`로 승인된 ready slice를 선택해 재개한다. Task/work_context 동기화가 실패하면 canonical을 되돌리거나 해결됐다고 보고하지 말고 남은 동기화 gap부터 복구한다. canonical 저장 성공을 새 실행 권한으로 해석하지 않는다.
+7. Frame 없는 즉석 결정은 pending 기록과 같은 파일/ID에 선택·이유·수용한 손익을 반영한다. 연결된 Task/work_context가 있으면 해당 결정만 동기화하고 다른 질문은 보존한다.
+8. 채팅에는 decision ID와 저장 위치·다음 행동을 짧게 보고한다. 이번 결정을 Studio에서 진행한 경우에만 그 탭에 결과와 transcript ref를 표시한다.
 
 `challenge`는 선택적 이력이다. 기존 `challenged: true` 기록을 지우거나 새 기록에 거짓 challenge를 만들지 않는다. `/verify`는 challenge 유무가 아니라 실제 선택·약속한 완화책·검증 증거를 대조한다.
 
@@ -156,17 +170,17 @@ type Decision = {
 | 현재 상태 | 다음 행동 |
 |---|---|
 | 다음 판단에 필요한 사실이 부족함 | 해당 사실을 좁게 조사 |
-| 근거가 모인 중요한 미결정이 남음 | 다음 `/decide` 비교 |
+| 근거가 모인 중요한 미결정이 남음 | 구현 중에는 현재 대화에서 다음 결정을 묻고 기록. 명시 `/decide`/웹뷰 요청이면 해당 경로 사용 |
 | 결정과 독립적인 ready slice가 있고 구현 승인도 있음 | 해당 slice의 첫 실행 |
-| 구현 계획을 원함 | 같은 Decide tab에서 `implementation_plan` 합성 |
+| 구현 계획을 원함 | 현재 surface에서 `implementation_plan` 합성·저장 |
 | 새로운 실행·외부 쓰기·worktree 권한이 필요함 | 필요한 승인만 받기 |
 | 사용자가 멈춤을 선택함 | canonical 저장 상태와 남은 판단을 남기고 종료 |
 
-`Plan 모드`를 선택했다면 선택 요약으로 끝내지 않는다. slice 목표/범위/증거, 첫 안전 행동, readiness, ask-first gate를 합성·저장하고 같은 tab에 보여준다. 구현까지 이미 승인됐으면 준비된 범위를 시작하고, 계획만 요청했으면 구현 승인을 추정하지 않는다.
+`Plan 모드`를 선택했다면 선택 요약으로 끝내지 않는다. slice 목표/범위/증거, 첫 안전 행동, readiness, ask-first gate를 합성·저장하고 현재 surface에 보여준다. 구현까지 이미 승인됐으면 준비된 범위를 시작하고, 계획만 요청했으면 구현 승인을 추정하지 않는다.
 
 worktree/panel 이동은 기존 명시적 승인과 전용 도구 계약을 따른다. `/frame-v2`에서 Frame promotion fork를 선택했다면 `frame_v2_worktree_fork`를 사용한다. 실패를 다른 경로나 절대경로 작업으로 우회하지 않는다.
 
-Studio를 사용했다면 canonical 저장과 실제 다음 행동/중단 결과를 `action=finish tab=decide`로 닫는다. 미해결 의존성이 있으면 이를 감춘 채 구현을 시작하지 않는다.
+이번 결정을 Studio에서 진행했다면 canonical 저장과 실제 다음 행동/중단 결과를 `action=finish tab=decide`로 닫는다. 채팅 결정이면 Studio를 호출하지 않는다. 미해결 의존성이 있으면 이를 감춘 채 구현을 시작하지 않는다.
 
 ## 예시: 비교한 비용은 다시 묻지 않는다
 
@@ -186,4 +200,6 @@ AI: 이미 비교한 비용의 유지/보완/재고 메뉴 없이 승인된 다�
 - [ ] 의무 반론·반복승인·가짜 대안을 만들지 않았는가?
 - [ ] 해결한 결정은 큐/task/slice에서 해제되고 다른 미결정은 유지됐는가?
 - [ ] 설계 승인과 외부 실행 승인을 구분했는가?
-- [ ] 실제 다음 행동을 수행하거나 중단 결과를 기록하고 Studio를 finish했는가?
+- [ ] 질문 전 pending을 기록하고 명시 답변 전에는 의존 구현·완료 처리를 보류했는가?
+- [ ] 채팅 결정이 웹뷰 없이 canonical/verify/Task/work_context에 반영됐는가?
+- [ ] 실제 다음 행동을 수행하거나 중단 결과를 기록했는가? 이번 결정을 Studio에서 진행한 경우에만 finish했는가?
