@@ -51,7 +51,7 @@ test("Frame v2 prompt follows the selected entry lane without making learning a 
 	assert.match(prompt, /Do not create a Frame v2-specific hard gate/);
 	assert.match(prompt, /begin the first ready implementation slice immediately/);
 	assert.match(prompt, /Study Hard worker lifecycle, completion, and note revisions are non-steering/);
-	assert.match(prompt, /do not return a final response/);
+	assert.match(prompt, /If it depends on a pending decision, ask in the current conversation and wait/);
 	assert.doesNotMatch(prompt, /Do not start implementation until/);
 	assert.doesNotMatch(prompt, /TFT Studio first/);
 	assert.match(prompt, /backend-layer-map/);
@@ -91,7 +91,15 @@ for (const mode of ["--draft", "--guided"]) {
 			assert.match(prompt, /질문 승격 판단의 단일 원천/);
 			assert.match(prompt, /미확인 사실을 사용자 선택으로 바꾸지 않는다/);
 			assert.match(prompt, /공개 계약·보안 보장·운영 비용·되돌리기 비용·유지보수 비용/);
-			assert.match(prompt, /\/decide — 기술 결정부터/);
+			assert.match(prompt, /현재 대화에서 결정/);
+			assert.match(prompt, /Before asking, persist a stable ID, evidence, affected slices, and next action/);
+			assert.match(prompt, /Wait for an explicit answer; silence, cancellation, or ambiguity is not approval/);
+			assert.match(prompt, /reuse that ID in decisions\[\] and synchronize the queue/);
+			assert.match(prompt, /verify conditions, linked Task, and work_context refresh/);
+			assert.match(prompt, /Preserve other decisions and task blockers/);
+			assert.match(prompt, /Do not ask for save approval or call Studio update\/finish\/open merely to save an inline decision/);
+			assert.match(prompt, /Explicit \/decide or requested webview comparison remains available/);
+			assert.match(prompt, /\.pi\/decisions without a Frame/);
 			assert.match(prompt, /A ready slice must not depend on an unresolved choice or missing execution authorization/);
 			assert.match(prompt, /If none is ready, investigate the missing facts or present the blocking technical choice instead/);
 			assert.match(prompt, /Derive required verification from requirements and actual change risk; preserve external-action authorization/);
@@ -215,8 +223,16 @@ test("/frame-v2 registers independent command and persists command-context manif
 		assert.match(continuation, /\.pi\/learning-companion\.json/);
 		assert.match(continuation, /Study Hard state remains the learning canonical/);
 		assert.match(continuation, /dependencies and execution authorization are satisfied/);
-		assert.match(continuation, /investigate missing facts or use \/decide/);
+		assert.match(continuation, /investigate missing facts or ask in the current conversation/);
 		assert.match(continuation, /do not silently decide it or block unrelated ready slices/);
+		assert.match(continuation, /skills\/decide\/SKILL.md/);
+		assert.match(continuation, /Before asking, persist a stable ID/);
+		assert.match(continuation, /wait for an explicit answer/);
+		assert.match(continuation, /Then record the same ID in decisions\[\]/);
+		assert.match(continuation, /verify conditions, linked Task, and work_context refresh/);
+		assert.match(continuation, /Preserve other decisions and task blockers/);
+		assert.match(continuation, /No save reapproval or Studio update\/finish\/open for inline decisions/);
+		assert.match(continuation, /explicit \/decide or requested webview comparison is still available/);
 		assert.equal(JSON.parse(readFileSync(manifestPath, "utf8")).status, "started");
 	} finally {
 		setFrameV2ForkRunnerForTests(undefined);

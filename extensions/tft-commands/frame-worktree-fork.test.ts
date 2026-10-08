@@ -37,7 +37,15 @@ test("frame fork continuation prompt starts implementation in forked session wit
 	assert.match(prompt, /source panel은 보존된 채/);
 	assert.match(prompt, /새 작업 panel에서 forked worktree exact session이 활성화됐다/);
 	assert.match(prompt, /\.pi\/frame\.json/);
-	assert.match(prompt, /frame의 첫 구현 slice부터 바로 이어서 작업한다/);
+	assert.match(prompt, /frame의 첫 ready 구현 slice부터 바로 이어서 작업한다/);
+	assert.match(prompt, /의존 slice만 보류하고 승인된 독립 slice는 진행/);
+	assert.match(prompt, /구현 중 추가 결정은 현재 대화에서 처리/);
+	assert.match(prompt, /질문 전에 decision_queue에 stable ID/);
+	assert.match(prompt, /침묵·취소·모호한 답은 승인이 아니며 명시 답변을 기다린다/);
+	assert.match(prompt, /같은 ID로 decisions\[\]·큐·implementation_plan\/slice 의존성·verify 조건·linked Task·work_context refresh/);
+	assert.match(prompt, /다른 미결정과 다른 task blocker는 보존/);
+	assert.match(prompt, /Studio update\/finish·창 재오픈은 하지 않는다/);
+	assert.match(prompt, /명시 \/decide·웹뷰 비교 요청 경로는 유지/);
 	assert.doesNotMatch(prompt, /\/wt switch/);
 });
 
