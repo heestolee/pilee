@@ -1,6 +1,6 @@
 {
   "name": "pilee",
-  "version": "0.1.336",
+  "version": "0.1.337",
   "description": "Personal pi coding agent config 🔥",
   "private": true,
   "type": "module",
@@ -51,8 +51,8 @@
     "test:workspace": "node scripts/run-typescript-test.mjs extensions/workspace/selection.test.ts extensions/workspace/selection-command.test.ts extensions/workspace/planner.test.ts extensions/workspace/identity-command.test.ts extensions/workspace/restore-claim.test.ts extensions/workspace/restore.test.ts extensions/workspace/index.test.ts",
     "test:worktree": "node scripts/run-typescript-test.mjs extensions/worktree/names.test.ts extensions/worktree/create-worktree.test.ts extensions/worktree/naming-command.test.ts extensions/utils/workspace-activation-contract.test.ts extensions/fork-panel/placement.test.ts extensions/worktree/bootstrap-domains.test.ts extensions/worktree/panel-activation.test.ts extensions/worktree/command-activation.test.ts extensions/worktree/dashboard-status-loader.test.ts extensions/worktree/dashboard-performance.test.ts extensions/worktree/shortcut.test.ts extensions/worktree/tool-fallback.test.ts extensions/worktree/frame-artifacts.test.ts extensions/worktree/pr-review-worktree.test.ts",
     "test:shortcut-atlas": "node scripts/run-typescript-test.mjs extensions/shortcut-atlas/registry.test.ts extensions/shortcut-atlas/index.test.ts",
-    "test:tft-commands": "node scripts/run-typescript-test.mjs extensions/tft-commands/frame-worktree-fork.test.ts",
-    "test:work-context": "node scripts/run-typescript-test.mjs extensions/work-context/slice-commit-plan.test.ts",
+    "test:tft-commands": "node scripts/run-typescript-test.mjs extensions/tft-commands/frame-worktree-fork.test.ts extensions/tft-commands/index.test.ts",
+    "test:work-context": "node scripts/run-typescript-test.mjs extensions/work-context/slice-commit-plan.test.ts extensions/work-context/decision-sync.test.ts",
     "test:auto-commit": "node scripts/run-typescript-test.mjs extensions/auto-commit/index.test.ts",
     "test:codex-fast-mode": "node scripts/run-typescript-test.mjs extensions/codex-fast-mode/index.test.ts",
     "test:workflow-guard": "node scripts/run-typescript-test.mjs extensions/workflow-guard/index.test.ts extensions/utils/private-profiles.test.ts",
