@@ -164,7 +164,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | Topic | Status | Confidence | Reviewed | Commit | Tags |
 |---|---|---:|---:|---:|---|
 | [완료 선언은 증거 뒤에만 온다](./evidence-first-verification-gate.md) | active | high | 2026-06-02 | 91c739f | verify, evidence, gate, done, ready, verification |
-| [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-10-07 | 1dc578d | frame, verify, frame-json, success-criteria, contract, verification |
+| [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-10-08 | 93b6e0a | frame, verify, frame-json, success-criteria, contract, verification |
 | [반복 검증 실패는 baseline cache로 분리한다](./validation-baseline-failure-cache.md) | active | high | 2026-06-02 | d8f8c4c | preflight, validation, baseline, failure, cache, verification |
 | [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-06-02 | 61ccbc9 | verify, invalidation, code-change, freshness, gate, 검증 |
 | [Verify Report 전에는 PM-facing 계약과 readiness를 먼저 잠근다](./verify-report-preflight-readiness.md) | active | high | 2026-06-02 | 91c739f | verify-report, preflight, readiness, capture, data, account |
@@ -193,7 +193,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [CI-Ship은 PR 후 검증 실패 대응 단계다](./ci-ship-failure-response-boundary.md) | active | high | 2026-06-02 | cc0bd98 | ci-ship, ci, github-actions, pull-request, failure-analysis, ship |
 | [Clean handoff는 compact와 새 세션 사이의 전환 계약이다](./clean-handoff-session-continuation.md) | active | high | 2026-06-02 | cc0bd98 | session, handoff, compact, context, archive, continue-clean |
 | [자동 로드 컨텍스트는 최소 surface만 가진다](./context-loading-minimal-surface.md) | active | high | 2026-06-02 | cc0bd98 | context, agents-md, memory, system-prompt, token, autoload |
-| [Decide는 근거와 수용한 비용을 남긴다](./decide-tradeoff-challenge.md) | active | high | 2026-10-07 | 1dc578d | decide, tradeoff, challenge, frame-json, decision, tft |
+| [Decide는 근거와 수용한 비용을 남긴다](./decide-tradeoff-challenge.md) | active | high | 2026-10-08 | 93b6e0a | decide, tradeoff, challenge, frame-json, decision, tft |
 | [외부 Issue와 PR은 기여 규칙 확인과 최종 승인 뒤에 게시한다](./external-issue-preview-gate.md) | active | high | 2026-08-12 | 97615ab | jira, github, issue, pull-request, contributing, preview |
 | [최종 검증은 메인 세션을 막지 않고 병렬화한다](./final-verification-parallelization.md) | active | high | 2026-06-02 | c6cd06f | verification, ship, final-check, subagent, background, parallel |
 | [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-06-02 | c6cd06f | fork-panel, handoff, inbox, inject, parent, panel |

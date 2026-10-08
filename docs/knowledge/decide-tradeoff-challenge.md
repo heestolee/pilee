@@ -20,8 +20,8 @@ applies_to:
   - extensions/frame-studio
 source:
   - user-direction:2026-10-07-evidence-first-decisions
-reviewed_at: 2026-10-07
-reviewed_commit: 1dc578d7810bf790806ce7d0b23adff50894d416
+reviewed_at: 2026-10-08
+reviewed_commit: 93b6e0aa41b7a89d157ede966843c115ee2de840
 related:
   - ask-user-question-decision-gates
   - ask-user-question-option-design
