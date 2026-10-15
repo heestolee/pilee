@@ -65,6 +65,7 @@ interface StoredMcpResult {
 
 interface McpFormattedResult {
 	text: string;
+	isError?: boolean;
 	details?: Record<string, unknown>;
 }
 
@@ -988,7 +989,7 @@ function renderJiraSummary(parsed: unknown, args: { server: string; tool: string
 }
 
 function buildHumanMcpSummary(args: { server: string; tool: string; action: string; output: string; parsed: unknown | undefined }): string[] | undefined {
-	if (args.parsed === undefined) return undefined;
+	if (args.action !== "call" || args.parsed === undefined) return undefined;
 	return renderSlackSummary(args.parsed, args)
 		?? renderNotionSummary(args.parsed, args)
 		?? renderJiraSummary(args.parsed, args);
@@ -1080,7 +1081,8 @@ function digestTimeRange(value: string | undefined): string | undefined {
 	return times[0];
 }
 
-function sourceCardLabel(args: { server: string; tool: string }, digest: string): string {
+function sourceCardLabel(args: { server: string; tool: string; action: string }, digest: string): string {
+	if (args.action !== "call") return "🔌 MCP";
 	const hint = sourceHint(args);
 	if (digest.includes("💬 Slack 결과 확인") || hint.includes("slack")) return "💬 Slack thread";
 	if (digest.includes("📝 Notion 결과 확인") || hint.includes("notion")) return "📝 Notion page";
@@ -1181,8 +1183,14 @@ function formatMcpOutput(args: {
 		output: args.output,
 		rawData: args.rawData,
 	});
+	const locator = buildMcpModelLocator({ card, responseId, server: args.server, tool: args.tool, action: args.action, output: args.output });
+	const isError = args.action === "call-error";
+	const diagnostic = redactSensitiveForDigest(visibleOutput);
 	return {
-		text: buildMcpModelLocator({ card, responseId, server: args.server, tool: args.tool, action: args.action, output: args.output }),
+		text: isError
+			? `MCP 호출 실패: ${args.server}/${args.tool}\n${diagnostic.slice(0, MCP_DIGEST_THRESHOLD_CHARS)}${diagnostic.length > MCP_DIGEST_THRESHOLD_CHARS ? "\n[오류 출력 일부 생략 — 아래 responseId로 전체 조회]" : ""}\n\n${locator}`
+			: args.action !== "call" && !shouldDigestMcpOutput(visibleOutput) ? diagnostic : locator,
+		isError,
 		details: {
 			mcpDigest: true,
 			mcpCollapsed: true,
@@ -1389,11 +1397,13 @@ async function invokeMcpTool(server: string, conn: Connection, toolName: string,
 		.filter((c) => c.type !== "text")
 		.map((c) => `[${c.type} content stored in raw json]`);
 	const output = [...parts, ...nonText].join("\n") || "(empty response)";
-	recordSuccess(server);
+	const isError = result.isError === true;
+	if (isError) recordFailure(server, compactLine(output));
+	else recordSuccess(server);
 	return formatMcpOutput({
 		server,
 		tool: toolName,
-		action: "call",
+		action: isError ? "call-error" : "call",
 		output,
 		rawData: { result, arguments: args ?? {} },
 		args,
@@ -1570,6 +1580,7 @@ export default function (pi: ExtensionAPI) {
 						}
 					}
 					const result = await callTool(params.tool, args, params.server);
+					if (result.isError) throw new Error(result.text);
 					return text(result.text, result.details);
 				}
 			}

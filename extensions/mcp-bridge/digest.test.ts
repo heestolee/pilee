@@ -165,6 +165,56 @@ test("MCP auto-heal reconnects and retries one read-only call through the regist
 	}
 });
 
+test("MCP discovery returns schemas and short metadata instead of source-data counts", () => {
+	for (const tool of ["slack_getThreadReplies", "notion_readPage", "jira_getIssue", "read_resource"]) {
+		const output = `Input schema:\n${JSON.stringify({ type: "object", required: ["resourceId"] })}`;
+		const result = __formatMcpOutputForTesting({ server: "test-server", tool, action: "describe", output });
+		assert.match(result.text, /resourceId/, `${tool}: schema must be usable immediately`);
+		assert.doesNotMatch(result.text, /Slack thread|Notion page|Jira|0개/);
+		assert.doesNotMatch(String(result.details?.fullDigest), /메시지:|페이지:|이슈:/);
+	}
+});
+
+test("MCP server errors remain errors and do not replay read or write tools", async () => {
+	const repoRoot = process.cwd();
+	const tempDir = mkdtempSync(join(tmpdir(), "pilee-mcp-error-contract-"));
+	const serverPath = join(tempDir, "server.mjs");
+	const countPath = join(tempDir, "calls.txt");
+	const names = ["slack_getThreadReplies", "notion_readPage", "jira_updateIssue", "read_resource"];
+	const errorText = 'Invalid arguments: [{"path":["resourceId"],"message":"Required"}]';
+	writeFileSync(serverPath, [
+		`import { appendFileSync } from "node:fs";`,
+		`import { McpServer } from ${JSON.stringify(pathToFileURL(join(repoRoot, "node_modules/@modelcontextprotocol/sdk/dist/esm/server/mcp.js")).href)};`,
+		`import { StdioServerTransport } from ${JSON.stringify(pathToFileURL(join(repoRoot, "node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js")).href)};`,
+		`const server = new McpServer({ name: "errors", version: "1.0.0" });`,
+		`for (const name of ${JSON.stringify(names)}) server.registerTool(name, { inputSchema: {} }, async () => {`,
+		`  appendFileSync(${JSON.stringify(countPath)}, name + "\\n");`,
+		`  return { isError: true, content: [{ type: "text", text: ${JSON.stringify(errorText)} }] };`,
+		`});`,
+		`await server.connect(new StdioServerTransport());`,
+	].join("\n"));
+	writeFileSync(join(tempDir, ".mcp.json"), JSON.stringify({ mcpServers: { errors: { command: process.execPath, args: [serverPath] } } }));
+	const { fakePi, tools, events } = createFakePi();
+	const oldCwd = process.cwd();
+	const oldHome = process.env.HOME;
+	try {
+		process.chdir(tempDir);
+		process.env.HOME = tempDir;
+		mcpBridge(fakePi as any);
+		await events.get("session_start")?.({}, { hasUI: false });
+		for (const tool of names) {
+			await assert.rejects(tools.get("mcp")!.execute("call", { action: "call", server: "errors", tool, args: "{}" }), /resourceId.*Required/);
+		}
+		assert.deepEqual(readFileSync(countPath, "utf8").trim().split("\n"), names);
+	} finally {
+		await events.get("session_shutdown")?.({}, { hasUI: false });
+		process.chdir(oldCwd);
+		if (oldHome === undefined) delete process.env.HOME;
+		else process.env.HOME = oldHome;
+		rmSync(tempDir, { recursive: true, force: true });
+	}
+});
+
 test("small JSON MCP output is digest-first instead of raw inline", () => {
 	const output = JSON.stringify({ ok: true, title: "작은 JSON", token: "secret-token-value" });
 	assert.equal(__shouldReturnDigestForTesting({ output }), true);

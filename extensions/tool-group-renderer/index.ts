@@ -602,6 +602,8 @@ function formatMcpCollapsedLine(result?: ToolResultLike, args?: unknown, expande
 
 	if (!result) return `🔌 MCP 실행 중 · ${server}/${tool}`;
 	if (result.isError) return `🔌 MCP 실패 · ${server}/${tool}${suffix}`;
+	const action = detailString(details, "action") ?? (isRecord(args) ? detailString(args, "action") : undefined);
+	if (action && action !== "call") return `🔌 MCP ${action} · ${server}/${tool}${suffix}`;
 
 	if (text.includes("💬 Slack 결과 확인")) {
 		const messageCount = extractLineValue(text, "메시지");

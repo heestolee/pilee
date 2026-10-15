@@ -57,7 +57,7 @@ test("get_mcp_content collapses in UI while preserving full content in details f
 		"## Raw MCP result",
 		'{ "structuredContent": { "messages": [{ "text": "원문 메시지" }] } }',
 	].join("\n");
-	const result = toolResult("📦 MCP 원문 · creatrip-internal/slack_getThreadReplies · 4개 메시지 · mcp_test · Ctrl+O 펼쳐보기\n모델 context에는 MCP 원문을 별도로 주입했습니다.", {
+	const result = toolResult(fullContent, {
 		mcpFullContent: true,
 		responseId: "mcp_test",
 		server: "creatrip-internal",
@@ -65,11 +65,20 @@ test("get_mcp_content collapses in UI while preserving full content in details f
 		fullContent,
 	});
 
-	assert.doesNotMatch(result.content[0].text ?? "", /원문 메시지|structuredContent|Raw MCP result/, "user-visible tool content must stay collapsed");
+	assert.match(result.content[0].text ?? "", /원문 메시지/, "model-visible tool content must retain the source");
 	assert.match(String(result.details?.fullContent), /원문 메시지/, "full MCP text remains available for UI expansion");
 	const line = __test__.formatMcpCollapsedLine(result);
 	assert.equal(line, "📦 MCP 원문 · creatrip-internal/slack_getThreadReplies · 4개 메시지 · mcp_test · Ctrl+O 펼쳐보기");
 	assert.doesNotMatch(line, /원문 메시지|structuredContent|Raw MCP result/);
+});
+
+test("MCP schema and discovery cards do not impersonate source data", () => {
+	for (const tool of ["slack_getThreadReplies", "notion_readPage", "jira_getIssue", "read_resource"]) {
+		const result = toolResult("Input schema: { required: [resourceId] }", { server: "test-server", tool, action: "describe" });
+		const line = __test__.formatMcpCollapsedLine(result);
+		assert.match(line, /MCP describe/);
+		assert.doesNotMatch(line, /Slack thread|Notion page|Jira|0개/);
+	}
 });
 
 test("MCP expanded hint changes when tool output is expanded", () => {
