@@ -22,8 +22,8 @@ source:
   - user-direction:2026-06-02-all-mcp-one-line-card
   - user-direction:2026-06-03-mcp-response-id-model-locator
   - user-direction:2026-06-03-mcp-full-content-dual-channel-render
-reviewed_at: 2026-06-03
-reviewed_commit: 7187e7d07e085f4ed29deed6898976d7ed1a928e
+reviewed_at: 2026-10-15
+reviewed_commit: 6f055811782c48151b0e8983102407c52464cf10
 related:
   - tool-output-noise-management
   - mcp-stderr-isolation
@@ -34,13 +34,15 @@ related:
 
 MCP tool 결과는 웹 검색처럼 대화 context를 쉽게 오염시킬 수 있습니다. 특히 Slack/Notion/Jira 같은 외부 시스템은 MCP `content[].text`에 JSON string을 담아 반환하는 일이 많고, 이 JSON을 그대로 보여주면 사용자는 실제 대화·문서·이슈 내용보다 schema noise를 먼저 보게 됩니다.
 
-따라서 MCP는 **구조화 출력부터 digest-first**로 다룹니다. JSON-like 결과는 크기와 무관하게 deterministic human digest로 바꾸고, 짧은 plain text만 그대로 통과시킵니다.
+따라서 MCP의 **정상 조회 데이터는 digest-first**로 다룹니다. 입력 오류와 도구 스키마는 데이터가 아니라 다음 호출에 필요한 실행 정보이므로 별도로 처리합니다. UI 접힘과 모델에게 근거를 전달하는 시점은 서로 다른 계약입니다.
 
 ## Digest-First Rule
 
 `extensions/mcp-bridge`는 MCP 결과를 대화창에 넣기 전에 사람이 읽는 digest layer와 세션 중 재조회 가능한 원문 layer를 분리합니다.
 
-- JSON-like 결과: 크기와 무관하게 digest-first로 저장하고, 모델-visible text에는 한 줄 카드 + `responseId` locator만 반환합니다. `Retrieved ...` 같은 상태 문구 뒤에 JSON payload가 붙어도 같은 규칙을 적용합니다.
+- JSON-like 정상 조회 결과: 크기와 무관하게 digest-first로 저장하고, 모델-visible text에는 한 줄 카드 + `responseId` locator만 반환합니다. `Retrieved ...` 같은 상태 문구 뒤에 JSON payload가 붙어도 같은 규칙을 적용합니다.
+- `describe`/`list`/`search`: 짧은 스키마·도구 메타데이터는 즉시 모델에 반환하고, 큰 결과는 locator로 제공합니다. 서비스 이름만 보고 대화·페이지·이슈의 빈 조회 결과로 요약하지 않습니다.
+- 호출 오류: MCP `isError`를 Pi 도구 오류로 보존하고, 오류 원인과 필수 인자를 바로 읽을 수 있게 전달합니다. 긴 오류는 명시적으로 축약하고 전체 조회 locator를 유지합니다. 도구 수준의 입력 거절은 transport 장애로 집계하거나 자동 replay하지 않습니다.
 - Slack 결과: JSON key/value가 아니라 채널, 참여자, 시간 범위, 대화 스레드 본문을 Pi의 MCP 결과 블럭에 직접 표시합니다. 메시지에 `userId`만 있고 별도 user/profile map이 있는 형태도 참여자와 발화자 이름으로 해석합니다.
 - Notion 결과: 페이지 제목, URL, 최종 수정, 주요 properties, 본문/block preview를 표시합니다. Markdown 이미지 링크의 signed URL은 출력하지 않고 `- 이미지: 파일명 · Notion 원문에서 확인`으로 축약합니다.
 - Jira 결과: issue key, summary, status, assignee/reporter, URL, description preview를 표시합니다.
@@ -48,10 +50,12 @@ MCP tool 결과는 웹 검색처럼 대화 context를 쉽게 오염시킬 수 �
 - Slack/Notion/Jira처럼 source-specific human digest가 만들어진 경우 generic `보존한 식별자/URL preview`를 덧붙이지 않습니다. 사람이 읽을 수 있는 digest 자체가 기본 surface입니다.
 - 별도 HTML/raw/full artifact 파일은 기본 생성하지 않습니다. Slack/Notion/Jira는 원본 시스템이 더 나은 source of truth이므로 로컬 중복 보관을 만들지 않습니다.
 - 같은 세션 중 원문이 필요하면 모델은 `get_mcp_content(responseId=...)`로 lazy retrieval합니다. 이때 MCP `content[].text`뿐 아니라 원 MCP result 구조(`structuredContent`, `_meta`, non-text content 등)가 있으면 함께 반환해, 외부 MCP가 사용자 UI용 요약과 원문 payload를 분리해도 모델이 원문 근거를 회수할 수 있어야 합니다.
-- 1차 `mcp` tool result의 UI 기본 표시는 한 줄 카드입니다. 모델-visible `content.text`에는 카드와 `responseId`/`get_mcp_content` locator만 담고, 전체 readable digest는 `details.fullDigest`에 보존해 기존 tool output 펼침 단축키 `Ctrl+O`로 보여줍니다. 이는 원문을 버리는 것이 아니라 UI 기본 표시와 모델용 lazy-retrieval 핸들을 분리하는 규칙입니다.
+- 1차 `mcp call` 정상 데이터의 UI 기본 표시는 한 줄 카드입니다. 모델-visible `content.text`에는 카드와 `responseId`/`get_mcp_content` locator만 담고, 전체 readable digest는 `details.fullDigest`에 보존해 기존 tool output 펼침 단축키 `Ctrl+O`로 보여줍니다. 이는 원문을 버리는 것이 아니라 UI 기본 표시와 모델용 lazy-retrieval 핸들을 분리하는 규칙입니다.
 - `get_mcp_content` tool result는 반대로 모델-visible `content.text`에 전문을 그대로 둡니다. 사용자 UI만 `tool-group-renderer`가 접힌 카드로 렌더링해야 합니다. 전문을 `details`로만 옮기거나 `content.text`에서 줄이면 모델이 다시 원문을 못 보는 회귀입니다.
 
-이 기준은 UI collapse가 아니라 context 절감 규칙입니다. 1차 MCP 호출은 처음부터 locator만 싣고, 원문이 필요한 순간의 `get_mcp_content` 호출은 모델 context에 전문을 싣되 터미널 UI만 접습니다.
+이 기준은 UI collapse가 아니라 context 절감 규칙입니다. 1차 정상 데이터 호출은 locator만 싣고, 원문이 필요한 순간의 `get_mcp_content` 호출은 모델 context에 전문을 싣되 터미널 UI만 접습니다.
+
+원문 전달을 `sendMessage(..., { triggerTurn: false })` 같은 별도 숨김 메시지에 맡기지 않습니다. 세션 기록에 append됐다는 사실은 진행 중인 실행 루프가 원문을 받았다는 증거가 아닙니다. 회귀 검증은 문자열 생성뿐 아니라 등록된 도구의 반환 `content`와 같은 사용자 요청의 다음 provider context에서 근거가 보이는지 확인합니다.
 
 ## Deterministic Digest Rule
 
