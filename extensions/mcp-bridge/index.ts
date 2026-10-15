@@ -68,15 +68,6 @@ interface McpFormattedResult {
 	details?: Record<string, unknown>;
 }
 
-interface McpModelInjection {
-	responseId: string;
-	server: string;
-	tool: string;
-	fullContent: string;
-}
-
-const MCP_MODEL_CONTEXT_CUSTOM_TYPE = "mcp-full-content-context";
-
 // --- Failure Tracker (in-memory, resets on session start) ---
 
 interface FailureRecord {
@@ -1270,21 +1261,6 @@ export function __formatMcpFullContentCardForTesting(args: { text: string; detai
 	return formatMcpFullContentCard(args);
 }
 
-function buildMcpModelInjection(injection: McpModelInjection): string {
-	return [
-		`[MCP full content for model-only context]`,
-		`responseId: ${injection.responseId}`,
-		`server: ${injection.server}`,
-		`tool: ${injection.tool}`,
-		"",
-		injection.fullContent,
-	].join("\n");
-}
-
-export function __buildMcpModelInjectionForTesting(injection: McpModelInjection): string {
-	return buildMcpModelInjection(injection);
-}
-
 function statusText(): string {
 	const configured = Object.keys(serverConfigs);
 	if (configured.length === 0) return "No MCP servers configured.";
@@ -1619,13 +1595,8 @@ export default function (pi: ExtensionAPI) {
 				action: stored.action,
 				fullContent,
 			};
-			pi.sendMessage({
-				customType: MCP_MODEL_CONTEXT_CUSTOM_TYPE,
-				content: buildMcpModelInjection({ responseId: stored.id, server: stored.server, tool: stored.tool, fullContent }),
-				display: false,
-				details: { responseId: stored.id, server: stored.server, tool: stored.tool },
-			}, { deliverAs: "steer", triggerTurn: false });
-			return text(`${formatMcpFullContentCard({ text: fullContent, details })}\n모델 context에는 MCP 원문을 숨김 메시지로 추가했습니다.`, details);
+			// Tool content reaches the current agent loop; UI renderers alone collapse it.
+			return text(fullContent, details);
 		},
 		renderResult(result, { expanded, isPartial }, theme, context) {
 			const textComponent = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);

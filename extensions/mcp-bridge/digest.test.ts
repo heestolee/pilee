@@ -4,12 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
-import mcpBridge, { __buildMcpDigestForTesting, __buildMcpFullContentForTesting, __buildMcpModelInjectionForTesting, __classifyBootstrapFailureForTesting, __formatMcpFullContentCardForTesting, __formatMcpOutputForTesting, __isReadOnlyMcpToolNameForTesting, __isReconnectableMcpErrorForTesting, __sanitizeMcpStderrForTesting, __shouldReturnDigestForTesting } from "./index.ts";
+import mcpBridge, { __buildMcpDigestForTesting, __buildMcpFullContentForTesting, __classifyBootstrapFailureForTesting, __formatMcpFullContentCardForTesting, __formatMcpOutputForTesting, __isReadOnlyMcpToolNameForTesting, __isReconnectableMcpErrorForTesting, __sanitizeMcpStderrForTesting, __shouldReturnDigestForTesting } from "./index.ts";
 
 function createFakePi() {
 	const tools = new Map<string, { execute: (id: string, params: any) => Promise<any> }>();
 	const events = new Map<string, (event: any, ctx: any) => Promise<void>>();
+	const messages: unknown[] = [];
 	const fakePi = {
+		sendMessage(message: unknown) { messages.push(message); },
 		registerTool(tool: { name: string; execute: (id: string, params: any) => Promise<any> }) {
 			tools.set(tool.name, tool);
 		},
@@ -19,7 +21,7 @@ function createFakePi() {
 			events.set(name, handler);
 		},
 	};
-	return { fakePi, tools, events };
+	return { fakePi, tools, events, messages };
 }
 
 test("MCP auto-heal retries only read-like tools", () => {
@@ -269,22 +271,21 @@ test("get_mcp_content render card hides full content text", () => {
 	assert.match(full, /원문 메시지/, "full content remains intact outside the user-visible card");
 });
 
-test("get_mcp_content model injection keeps full content out of user-visible card", () => {
-	const full = __buildMcpFullContentForTesting({
-		id: "mcp_test",
-		server: "creatrip-internal",
+test("get_mcp_content returns source text to the model in the same tool result", async () => {
+	const stored = __formatMcpOutputForTesting({
+		server: "test-server",
 		tool: "slack_getThreadReplies",
-		output: "Retrieved 4 message(s) from thread.\n원문 메시지",
+		output: "Retrieved 1 message(s) from thread.",
+		rawData: { result: { structuredContent: { messages: [{ text: "FIRST_REQUEST_SOURCE" }] } } },
 	});
-	const injection = __buildMcpModelInjectionForTesting({
-		responseId: "mcp_test",
-		server: "creatrip-internal",
-		tool: "slack_getThreadReplies",
-		fullContent: full,
-	});
-	assert.match(injection, /\[MCP full content for model-only context\]/);
-	assert.match(injection, /원문 메시지/);
-	assert.match(injection, /responseId: mcp_test/);
+	const { fakePi, tools, messages } = createFakePi();
+	mcpBridge(fakePi as any);
+	const result = await tools.get("get_mcp_content")!.execute("retrieve", { responseId: stored.details?.responseId });
+	assert.match(result.content[0].text, /FIRST_REQUEST_SOURCE/, "source must reach the next model call without another user prompt");
+	assert.match(result.content[0].text, /## Raw MCP result/);
+	assert.equal(messages.length, 0, "do not separately inject a duplicate or deferred source message");
+	const card = __formatMcpFullContentCardForTesting({ text: result.content[0].text, details: result.details });
+	assert.doesNotMatch(card, /FIRST_REQUEST_SOURCE/, "UI collapse must not remove model-visible source content");
 });
 
 test("Notion markdown image links are shortened without signed URLs", () => {
