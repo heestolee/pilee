@@ -206,6 +206,8 @@ test("MCP server errors remain errors and do not replay read or write tools", as
 			await assert.rejects(tools.get("mcp")!.execute("call", { action: "call", server: "errors", tool, args: "{}" }), /resourceId.*Required/);
 		}
 		assert.deepEqual(readFileSync(countPath, "utf8").trim().split("\n"), names);
+		const status = await tools.get("mcp")!.execute("status", { action: "status" });
+		assert.match(status.content[0].text, /failures: 0/, "tool-level errors must not count as server transport failures");
 	} finally {
 		await events.get("session_shutdown")?.({}, { hasUI: false });
 		process.chdir(oldCwd);

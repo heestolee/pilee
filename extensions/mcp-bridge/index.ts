@@ -1398,8 +1398,8 @@ async function invokeMcpTool(server: string, conn: Connection, toolName: string,
 		.map((c) => `[${c.type} content stored in raw json]`);
 	const output = [...parts, ...nonText].join("\n") || "(empty response)";
 	const isError = result.isError === true;
-	if (isError) recordFailure(server, compactLine(output));
-	else recordSuccess(server);
+	// A tool-level rejection is still a successful response from a healthy transport.
+	recordSuccess(server);
 	return formatMcpOutput({
 		server,
 		tool: toolName,
