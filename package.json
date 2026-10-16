@@ -1,6 +1,6 @@
 {
   "name": "pilee",
-  "version": "0.1.346",
+  "version": "0.1.347",
   "description": "Personal pi coding agent config 🔥",
   "private": true,
   "type": "module",
@@ -54,7 +54,8 @@
     "test:tft-commands": "node scripts/run-typescript-test.mjs extensions/tft-commands/frame-worktree-fork.test.ts extensions/tft-commands/index.test.ts",
     "test:work-context": "node scripts/run-typescript-test.mjs extensions/work-context/slice-commit-plan.test.ts extensions/work-context/decision-sync.test.ts",
     "test:auto-commit": "node scripts/run-typescript-test.mjs extensions/auto-commit/index.test.ts",
-    "test:codex-fast-mode": "node scripts/run-typescript-test.mjs extensions/codex-fast-mode/index.test.ts",
+    "test:codex-fast-mode": "node scripts/run-typescript-test.mjs extensions/codex-fast-mode/index.test.ts extensions/codex-fast-mode/state.test.ts extensions/custom-style/fast-badge.test.ts",
+    "test:pi-compat": "node scripts/run-typescript-test.mjs extensions/utils/agent-start-input.test.ts extensions/utils/short-label.test.ts extensions/workflow-guard/index.test.ts extensions/convention-lens/index.test.ts extensions/session-title/index.test.ts extensions/claude-hooks-bridge/index.test.ts extensions/ship-commands/index.test.ts extensions/worktree/agent-start.test.ts extensions/worktree/bootstrap-domains.test.ts extensions/workspace/lifecycle.test.ts extensions/fork-panel/lifecycle.test.ts extensions/fork-panel/summary.test.ts extensions/fork-panel/revive-cwd.test.ts extensions/notify/index.test.ts extensions/queued-messages/index.test.ts extensions/prompt-suggest-lite/model.test.ts extensions/subagent/registry-binding.test.ts extensions/subagent/sdk-readiness.test.ts extensions/retro/index.test.ts extensions/archive-to-html/classification.test.ts extensions/archive-to-html/session-open.test.ts extensions/codex-fast-mode/index.test.ts extensions/codex-fast-mode/state.test.ts extensions/custom-style/fast-badge.test.ts",
     "test:workflow-guard": "node scripts/run-typescript-test.mjs extensions/workflow-guard/index.test.ts extensions/utils/private-profiles.test.ts",
     "test:mcp-bridge": "node scripts/run-typescript-test.mjs extensions/mcp-bridge/digest.test.ts",
     "test:tool-group-renderer": "node scripts/run-typescript-test.mjs extensions/tool-group-renderer/mcp-renderer.test.ts",
@@ -69,10 +70,16 @@
     "test:learning-companion": "node scripts/run-typescript-test.mjs extensions/learning-companion/state.test.ts extensions/learning-companion/index.test.ts",
     "test:frame-v2": "node scripts/run-typescript-test.mjs extensions/frame-v2/artifact.test.ts extensions/frame-v2/index.test.ts"
   },
+  "peerDependencies": {
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "1.3.0"
+  },
   "dependencies": {
-    "@mariozechner/pi-ai": "^0.70.0",
-    "@mariozechner/pi-coding-agent": "^0.70.6",
-    "@mariozechner/pi-tui": "^0.70.6",
     "@modelcontextprotocol/sdk": "^1.25.0",
     "@mozilla/readability": "^0.5.0",
     "@xterm/addon-serialize": "^0.14.0",
@@ -86,7 +93,6 @@
     "node-pty": "^1.1.0",
     "pngjs": "^7.0.0",
     "turndown": "^7.2.2",
-    "typebox": "^1.1.37",
     "typescript": "^5.9.2",
     "yaml": "^2.7.0"
   }
