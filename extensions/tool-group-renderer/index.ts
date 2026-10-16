@@ -2,12 +2,13 @@ import { existsSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import * as PiHost from "@mariozechner/pi-coding-agent";
 import { Container, Spacer, Text, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { truncatePlainToWidth } from "../utils/format-utils.ts";
 import { installTranscriptHistory, preserveCompactionScreen } from "./transcript-history.ts";
 
 const PATCH_STATE_KEY = Symbol.for("pilee.tool-group-renderer.patch-state");
-const PATCH_VERSION = "2026-06-03-mcp-content-collapse-r2";
+const PATCH_VERSION = "2026-10-17-host-export-identity";
 const GROUP_STATE = Symbol("pilee.tool-group-renderer.state");
 function piPackageRootFromDistEntrypoint(filePath: string | undefined): string | null {
 	if (!filePath) return null;
@@ -178,6 +179,7 @@ type PrototypeMethods = {
 
 type PatchState = {
 	version?: string;
+	prototype?: InteractiveModeLike & PrototypeMethods;
 	originals?: PrototypeMethods;
 	toolExecutionComponent?: new (
 		toolName: string,
@@ -1104,17 +1106,34 @@ export default async function toolGroupRenderer(_pi: ExtensionAPI): Promise<void
 	const patchState = globalState[PATCH_STATE_KEY] ?? {};
 	globalState[PATCH_STATE_KEY] = patchState;
 
-	const [{ InteractiveMode }, { ToolExecutionComponent }, themeModule] = await Promise.all([
-		import(interactiveModuleUrl("interactive-mode.js")),
-		import(interactiveModuleUrl("components/tool-execution.js")),
-		import(interactiveModuleUrl("theme/theme.js")),
-	]);
-
-	patchState.toolExecutionComponent = ToolExecutionComponent;
-	runtimeTheme = themeModule.theme as RuntimeTheme;
+	const publicMode = Reflect.get(PiHost, "InteractiveMode");
+	const publicTool = Reflect.get(PiHost, "ToolExecutionComponent");
+	let InteractiveMode: { prototype: InteractiveModeLike & PrototypeMethods };
+	if (typeof publicMode === "function" && typeof publicTool === "function") {
+		InteractiveMode = publicMode;
+		patchState.toolExecutionComponent = publicTool;
+		_pi.on("session_start", (_event, ctx) => {
+			if (ctx.hasUI) runtimeTheme = ctx.ui.theme;
+		});
+	} else {
+		// Older hosts do not expose these classes. Never load a second dist graph
+		// when the current (possibly bundled) host already supplied its classes.
+		const [modeModule, toolModule, themeModule] = await Promise.all([
+			import(interactiveModuleUrl("interactive-mode.js")),
+			import(interactiveModuleUrl("components/tool-execution.js")),
+			import(interactiveModuleUrl("theme/theme.js")),
+		]);
+		InteractiveMode = modeModule.InteractiveMode;
+		patchState.toolExecutionComponent = toolModule.ToolExecutionComponent;
+		runtimeTheme = themeModule.theme as RuntimeTheme;
+	}
 
 	const supportsEntryRendering = installTranscriptHistory(InteractiveMode.prototype);
-	const proto = InteractiveMode.prototype as InteractiveModeLike & PrototypeMethods;
+	const proto = InteractiveMode.prototype;
+	if (patchState.prototype !== proto) {
+		patchState.originals = undefined;
+		patchState.prototype = proto;
+	}
 	if (!patchState.originals) {
 		patchState.originals = {
 			handleEvent: proto.handleEvent,
