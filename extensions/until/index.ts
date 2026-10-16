@@ -20,6 +20,7 @@ import { type ExtensionAPI, type ExtensionContext, getMarkdownTheme } from "@mar
 import { Box, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
 import { formatClock, formatKoreanDuration } from "../utils/time-utils.ts";
+import type { AgentStartMetadata } from "../utils/agent-start-input.ts";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -188,6 +189,7 @@ interface UntilTask {
 }
 
 interface UntilPromptMessageDetails {
+	agentStart: AgentStartMetadata;
 	taskId: number;
 	runCount: number;
 	intervalLabel: string;
@@ -301,6 +303,7 @@ export default function (pi: ExtensionAPI) {
 					content: wrappedPrompt,
 					display: true,
 					details: {
+						agentStart: { kind: "continuation", request: task.prompt },
 						taskId: task.id,
 						runCount: task.runCount,
 						intervalLabel: task.intervalLabel,
