@@ -6,13 +6,13 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ToolResultEvent } from "@mariozechner/pi-coding-agent";
-import { complete, getModel, type Api, type Message, type Model } from "@mariozechner/pi-ai";
+import type { Api, Message, Model } from "@mariozechner/pi-ai";
 import { buildStaticTftStudioHtmlFromTranscript, resumeTftStudioFromTranscript, tftStudioElkBundleSource } from "../frame-studio/index.ts";
 import { openCompanionHtml } from "../utils/companion-window.ts";
 import { expandProfileTemplate, loadArtifactBrowserProfiles, loadConductorProfiles } from "../utils/private-profiles.ts";
 import { webviewCopyCss, webviewCopyScript } from "../utils/webview-copy.ts";
 import { exportSessionFileToHtml, isPiSessionFile, openFile, SESSION_EXPORT_DIR } from "../utils/session-export.js";
-import { openSessionInGhosttyTab, type ArchiveSessionOpenTarget } from "./session-open.ts";
+import { openArchiveSessionHere, openSessionInGhosttyTab, resolveSessionHeaderCwd, type ArchiveSessionOpenTarget } from "./session-open.ts";
 import { searchSessionCandidates, type ConversationSearchResponse, type ConversationSearchResult, type ConversationSessionCandidate } from "./session-search.ts";
 import { registerVerifyReportLive } from "./verify-report-live.js";
 
@@ -803,19 +803,16 @@ function extractJsonObject(text: string): unknown {
 	throw new Error("Model did not return JSON object");
 }
 
-async function resolveClassificationModel(ctx: Pick<ExtensionContext, "model" | "modelRegistry">): Promise<{ model: Model<Api>; apiKey: string }> {
-	const lookupModel = getModel as (provider: string, modelId: string) => Model<Api> | undefined;
+async function resolveClassificationModel(ctx: Pick<ExtensionContext, "model" | "modelRegistry">): Promise<Model<Api>> {
+	const models = ctx.modelRegistry.getAll();
 	for (const { provider, id } of PREFERRED_CLASSIFICATION_MODELS) {
-		const model = lookupModel(provider, id);
+		const model = models.find((entry) => entry.provider === provider && entry.id === id);
 		if (!model) continue;
 		const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-		if (auth.ok && auth.apiKey) return { model, apiKey: auth.apiKey };
+		if (auth.ok) return model;
 	}
-	if (ctx.model) {
-		const auth = await ctx.modelRegistry.getApiKeyAndHeaders(ctx.model);
-		if (auth.ok && auth.apiKey) return { model: ctx.model as Model<Api>, apiKey: auth.apiKey };
-	}
-	throw new Error("No model API key available for session classification");
+	if (ctx.model) return ctx.model;
+	throw new Error("No model available for session classification");
 }
 
 function getTextFromModelContent(part: unknown): string {
@@ -824,14 +821,14 @@ function getTextFromModelContent(part: unknown): string {
 	return typeof record.text === "string" ? record.text : typeof record.refusal === "string" ? record.refusal : "";
 }
 
-async function suggestSessionClassification(filePath: string, ctx?: Pick<ExtensionContext, "model" | "modelRegistry">): Promise<{ classification: SessionClassification; model: string | null; fallbackUsed: boolean; fallbackReason?: string }> {
+export async function suggestSessionClassification(filePath: string, ctx?: Pick<ExtensionContext, "model" | "modelRegistry" | "signal">): Promise<{ classification: SessionClassification; model: string | null; fallbackUsed: boolean; fallbackReason?: string }> {
 	const entries = readSessionConversationEntries(filePath);
 	if (!entries.length) return { classification: deterministicSessionClassification(filePath, "no-conversation-entries"), model: null, fallbackUsed: true, fallbackReason: "no-conversation-entries" };
 	if (!ctx?.modelRegistry) return { classification: deterministicSessionClassification(filePath, "no-model-context"), model: null, fallbackUsed: true, fallbackReason: "no-model-context" };
 	try {
-		const { model, apiKey } = await resolveClassificationModel(ctx);
+		const model = await resolveClassificationModel(ctx);
 		const message: Message = { role: "user", content: [{ type: "text", text: buildClassificationPrompt(filePath, entries) }], timestamp: Date.now() };
-		const response = await complete(model, { messages: [message] }, { apiKey });
+		const response = await ctx.modelRegistry.streamSimple(model, { messages: [message] }, { signal: ctx.signal }).result();
 		const rawText = (Array.isArray(response.content) ? response.content : []).map(getTextFromModelContent).filter(Boolean).join("\n").trim();
 		const parsed = extractJsonObject(rawText);
 		const classification = sanitizeClassification({ ...(parsed as Record<string, unknown>), source: "ai-suggestion" }, filePath, loadSessionClassification(filePath));
@@ -1537,37 +1534,10 @@ function resolveAllowedPiSessionOpenPath(rawPath: string, allowedPaths: Set<stri
 	return resolved;
 }
 
-function isDirectoryPath(filePath: string): boolean {
-	try { return fs.statSync(filePath).isDirectory(); } catch { return false; }
-}
-
-function readSessionHeaderCwd(filePath: string): string {
-	try {
-		for (const line of readTextPreview(filePath, 256 * 1024).text.split(/\r?\n/)) {
-			if (!line.includes('"type":"session"')) continue;
-			try {
-				const parsed = JSON.parse(line) as { cwd?: string };
-				if (typeof parsed.cwd === "string" && parsed.cwd.trim()) return parsed.cwd;
-			} catch {}
-		}
-	} catch {}
-	return "";
-}
-
 function findConversationSessionCandidate(data: ArtifactBrowserData, resolvedPath: string): ConversationSessionCandidate | null {
 	let real = resolvedPath;
 	try { real = fs.realpathSync(resolvedPath); } catch {}
 	return conversationSessionCandidates(data).find((candidate) => candidate.path === real) ?? null;
-}
-
-function resolveArchiveSessionCwd(candidate: ConversationSessionCandidate | null, sessionFile: string, fallbackCwd: string): string {
-	for (const item of [candidate?.cwd, readSessionHeaderCwd(sessionFile), fallbackCwd]) {
-		if (!item) continue;
-		let resolved = item;
-		try { resolved = fs.realpathSync(item); } catch {}
-		if (isDirectoryPath(resolved)) return resolved;
-	}
-	return fallbackCwd;
 }
 
 function archiveSessionOpenEnv(candidate: ConversationSessionCandidate | null): Record<string, string | undefined> {
@@ -1577,20 +1547,6 @@ function archiveSessionOpenEnv(candidate: ConversationSessionCandidate | null): 
 		PI_FORK_PANEL_LABEL: candidate.panelLabel,
 		PI_FORK_PARENT: candidate.parentSessionFile,
 	};
-}
-
-async function openArchiveSessionHere(ctx: ExtensionCommandContext, sessionFile: string, openCwd: string, label: string) {
-	try {
-		const result = await ctx.switchSession(sessionFile, {
-			cwdOverride: openCwd,
-			withSession: async (nextCtx) => {
-				nextCtx.ui.notify(`${label} 세션 재개 → 현재 패널`, "info");
-			},
-		});
-		if (result.cancelled) ctx.ui.notify("세션 전환이 취소되었습니다", "warning");
-	} catch (error) {
-		ctx.ui.notify(`세션 전환 실패: ${error instanceof Error ? error.message : String(error)}`, "error");
-	}
 }
 
 function resolveSessionOpenTarget(value: string | null): ArchiveSessionOpenTarget {
@@ -1670,12 +1626,12 @@ function startArtifactBrowserServer(pi: ExtensionAPI, data: ArtifactBrowserData,
 					const resolved = resolveAllowedPiSessionOpenPath(url.searchParams.get("path") || "", allowedPaths);
 					const target = resolveSessionOpenTarget(url.searchParams.get("target"));
 					const candidate = findConversationSessionCandidate(data, resolved);
-					const openCwd = resolveArchiveSessionCwd(candidate, resolved, cwd);
+					const openCwd = resolveSessionHeaderCwd(resolved, candidate?.cwd);
 					const env = archiveSessionOpenEnv(candidate);
 					const label = candidate?.title || path.basename(resolved);
 					if (target === "here") {
-						jsonResponse(res, 200, { ok: true, mode: "here", message: `${label} 현재 패널 전환 요청됨`, cwd: openCwd });
-						setTimeout(() => { void openArchiveSessionHere(ctx, resolved, openCwd, label); }, 30);
+						const result = await openArchiveSessionHere(ctx, resolved, openCwd, label);
+						jsonResponse(res, result.cancelled ? 409 : 200, { ok: !result.cancelled, mode: "here", error: result.cancelled ? "세션 전환이 취소되었습니다" : undefined, cwd: openCwd });
 						return;
 					}
 					await openSessionInGhosttyTab(pi, openCwd, resolved, env);
