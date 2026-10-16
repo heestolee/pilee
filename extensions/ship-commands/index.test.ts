@@ -81,7 +81,11 @@ test("pr-ship extension blocks raw review writes only while its invocation is ac
 	const agentSettled = handlers.get("agent_settled");
 	assert.ok(beforeAgentStart && toolCall && agentSettled);
 
-	beforeAgentStart({ prompt: "You are executing `/pr-ship https://github.com/acme/product/pull/7`." });
+	beforeAgentStart({ messageType: "custom", message: {
+		customType: "pilee-ship-command-shim",
+		content: [{ type: "text", text: "You are executing `/pr-ship https://github.com/acme/product/pull/7`." }],
+		details: { command: "pr-ship", args: "https://github.com/acme/product/pull/7" },
+	} });
 	assert.deepEqual(toolCall({
 		toolName: "bash",
 		input: { command: "gh api repos/acme/product/pulls/7/requested_reviewers --method POST -f reviewers[]=HumanReviewer" },

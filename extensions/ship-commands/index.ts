@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { loadPrShipProfiles } from "../utils/private-profiles.ts";
+import { readAgentStartInput } from "../utils/agent-start-input.ts";
 import {
 	fetchCurrentPullRequestInfo,
 	fetchUnresolvedPullRequestReviewComments,
@@ -946,7 +947,9 @@ export default function shipCommands(pi: ExtensionAPI) {
 	registerPrShipReviewWriteTool(pi);
 
 	pi.on("before_agent_start", (event) => {
-		if (/executing `\/pr-ship(?:\s|`)|# pr-ship —/u.test(event.prompt)) {
+		const input = readAgentStartInput(event);
+		if ((input.kind === "command" && input.command === "pr-ship")
+			|| (input.kind === "user" && /(?:^\/pr-ship(?:\s|$)|executing `\/pr-ship(?:\s|`)|# pr-ship —)/u.test(input.text))) {
 			prShipWriteGuardActive = true;
 		}
 	});
