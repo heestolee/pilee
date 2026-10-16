@@ -4,7 +4,6 @@ title_en: Astra and GPT-6.1 Sol escalate only high-risk turns to max
 tags:
   - astra
   - gpt-6.1-sol
-  - pilot
   - reasoning
   - thinking
   - xhigh
@@ -21,8 +20,9 @@ source:
   - runtime-evidence:2026-09-30-astra-xhigh-max-sample
   - user-direction:2026-10-16-gpt-6.1-sol-pilot
   - runtime-evidence:2026-10-16-gpt-6.1-sol-effort-smoke
+  - user-direction:2026-10-16-gpt-6.1-sol-default-and-subagents
 reviewed_at: 2026-10-16
-reviewed_commit: 1c2fc841c80ebc5c2a46c5502cbbaf292ac679c6
+reviewed_commit: c6b2ab7288e7b340c5020eddea295b364014a9b6
 related:
   - subagent-model-policy
   - workflow-guard-enforced-flow
@@ -31,9 +31,9 @@ related:
 
 ## Judgment
 
-GPT-6 Astra 메인 세션과 GPT-6.1 Sol pilot 세션은 `xhigh`를 기본 effort로 사용하고, 더 많은 reasoning이 실제로 필요한 turn만 `max`로 승격합니다. `max`는 품질 보장 스위치가 아니라 더 많은 가설과 경로를 검토할 수 있게 하는 비용 높은 effort이므로 모든 요청에 고정하지 않습니다.
+GPT-6.1 Sol 메인 세션은 `xhigh`를 기본 effort로 사용하고, 더 많은 reasoning이 실제로 필요한 turn만 `max`로 승격합니다. `max`는 품질 보장 스위치가 아니라 더 많은 가설과 경로를 검토할 수 있게 하는 비용 높은 effort이므로 모든 요청에 고정하지 않습니다.
 
-로컬 Pi 기본 설정은 pilot 동안 Astra `xhigh`를 유지하고 6.1 Sol을 선택 가능한 후보로 엽니다. public pilee는 사용자의 전역 설정을 강제로 덮어쓰지 않고, 현재 세션이 OpenAI Codex Astra 또는 정확한 `gpt-6.1-sol`의 `xhigh`일 때만 `workflow-guard`가 turn-level 승격을 적용합니다.
+로컬 Pi 기본 설정은 GPT-6.1 Sol `xhigh`를 사용하고 Astra를 수동 선택·fallback 모델로 유지합니다. public pilee는 사용자의 전역 설정을 강제로 덮어쓰지 않으며, 현재 세션이 OpenAI Codex Astra 또는 정확한 `gpt-6.1-sol`의 `xhigh`일 때만 `workflow-guard`가 turn-level 승격을 적용합니다.
 
 ## Escalation Triggers
 
@@ -80,7 +80,7 @@ Reasoning effort 승격은 실행 권한 승격이 아닙니다. max가 되어�
 
 동일한 TypeScript 동시성 리뷰를 Astra의 각 effort로 한 번 실행한 로컬 표본에서 `xhigh`는 34.0초·reasoning 707 tokens, `max`는 50.5초·reasoning 1,304 tokens를 사용했고 최종 문제 판정과 수정안은 같았습니다. 이 표본은 고정 배수나 일반 품질 우위를 증명하지 않습니다. 다만 쉬운 문제에서 max의 추가 비용이 답 개선으로 이어지지 않을 수 있다는 운영 근거로만 사용합니다.
 
-GPT-6.1 Sol은 현재 OpenAI Codex OAuth 경로에서 `low`, `xhigh`, `max` 한 단어 응답 smoke가 모두 성공했습니다. `ultra`는 지원되지 않았으므로 자동 정책의 상한도 `max`로 유지합니다. 이 smoke는 접근성과 effort 계약만 증명하며, 긴 한국어 세션·tool settle latency·큰 context 품질은 pilot 관찰 항목으로 남깁니다.
+GPT-6.1 Sol은 현재 OpenAI Codex OAuth 경로에서 `low`, `xhigh`, `max` 한 단어 응답 smoke가 모두 성공했습니다. `ultra`는 지원되지 않았으므로 자동 정책의 상한도 `max`로 유지합니다. 메인 기본값과 Codex subagent primary는 6.1 Sol로 전환됐지만, 긴 한국어 세션·tool settle latency·큰 context 품질은 역할별 운영 관찰을 계속하며 반복 실패가 확인된 역할만 Astra로 복구합니다.
 
 ## Review Trigger
 

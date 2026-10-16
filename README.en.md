@@ -466,22 +466,22 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 
 | Agent | Symbol | Model | Role |
 |---|---|---|---|
-| **worker** | `>>` | gpt-6-astra (max, fallback: Sol) | General implementation and fixes |
-| **finder** | `>>/` | gpt-6-astra (low, fallback: Luna) | Code/file search with read-only tools |
-| **searcher** | `>>?` | gpt-6-astra (high, fallback: Terra → Sol) | Web research and documentation lookup |
-| **planner** | `>>#` | gpt-6-astra (max, fallback: Sol) | Implementation planning |
-| **challenger** | `>>!` | claude-opus-5-5 (max, fallback: Astra → Sol) | Challenge hidden assumptions and decisions |
-| **browser** | `>>@` | gpt-6-astra (high, fallback: Sol) | Playwright E2E and UI checks |
-| **bootstrapper** | internal `/wt` | gpt-6-astra (low, fallback: Luna) | Dependency readiness orchestrator |
-| **meta-review-question-worker** | internal Meta Review | gpt-6-astra (max, fallback: Sol → Terra → Spark) | Pinned-source questions and patch artifacts |
-| **study-hard-worker** | internal Study Hard | gpt-6-astra (max, fallback: Sol → Terra → Spark) | Learning-note proposal artifacts |
+| **worker** | `>>` | gpt-6.1-sol (max, fallback: Astra → 5.6 Sol) | General implementation and fixes |
+| **finder** | `>>/` | gpt-6.1-sol (low, fallback: Astra → 5.6 Luna) | Code/file search with read-only tools |
+| **searcher** | `>>?` | gpt-6.1-sol (high, fallback: Astra → 5.6 Terra → 5.6 Sol) | Web research and documentation lookup |
+| **planner** | `>>#` | gpt-6.1-sol (max, fallback: Astra → 5.6 Sol) | Implementation planning |
+| **challenger** | `>>!` | claude-opus-5-5 (max, fallback: Astra → 6.1 Sol) | Challenge hidden assumptions and decisions |
+| **browser** | `>>@` | gpt-6.1-sol (high, fallback: Astra → 5.6 Sol) | Playwright E2E and UI checks |
+| **bootstrapper** | internal `/wt` | gpt-6.1-sol (low, fallback: Astra → 5.6 Luna) | Dependency readiness orchestrator |
+| **meta-review-question-worker** | internal Meta Review | gpt-6.1-sol (max, fallback: Astra → 5.6 Sol → 5.6 Terra → 5.3 Spark) | Pinned-source questions and patch artifacts |
+| **study-hard-worker** | internal Study Hard | gpt-6.1-sol (max, fallback: Astra → 5.6 Sol → 5.6 Terra → 5.3 Spark) | Learning-note proposal artifacts |
 
 ### Review agents (`/stress-interview`)
 
 | Agent | Perspective |
 |---|---|
-| **verifier** | Requirement evidence verdict (claude-opus-5-5, max, fallback: Astra → Sol) |
-| **reviewer** | Correctness, security, and maintainability review (gpt-6-astra, max, fallback: Sol) |
+| **verifier** | Requirement evidence verdict (claude-opus-5-5, max, fallback: Astra → 6.1 Sol) |
+| **reviewer** | Correctness, security, and maintainability review (gpt-6.1-sol, max, fallback: Astra → 5.6 Sol) |
 
 ---
 

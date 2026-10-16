@@ -25,7 +25,7 @@ source:
   - pilee-history:2026-05-04#34
   - pilee-history:2026-05-05#42
 reviewed_at: 2026-10-16
-reviewed_commit: 0f9e47ac1ac4dcabd239aea49798b2efe9ba9fc2
+reviewed_commit: c6b2ab7288e7b340c5020eddea295b364014a9b6
 related:
   - pilee-knowledge-system
   - worktree-session-continuity
@@ -34,26 +34,26 @@ related:
 
 ## Overview
 
-pilee subagent는 GPT-6 Astra를 기본 실행 모델로 사용하고 Claude Opus 5.5를 독립 검증 경계에 남기는 hybrid 모델 정책으로 운영합니다. 11개 agent 중 9개는 Astra를 primary로 사용하며, 역할 난도에 따라 `low`·`high`·`max` effort를 구분합니다. false PASS와 동일 모델 계열의 상관된 맹점을 줄이기 위해 verifier와 challenger만 Opus 5.5 `max`를 primary로 유지하고 Astra를 첫 fallback으로 둡니다.
+pilee subagent는 GPT-6.1 Sol을 기본 실행 모델로 사용하고 Claude Opus 5.5를 독립 검증 경계에 남기는 hybrid 모델 정책으로 운영합니다. 11개 agent 중 9개는 6.1 Sol을 primary로 사용하며, 역할 난도에 따라 `low`·`high`·`max` effort를 구분합니다. false PASS와 동일 모델 계열의 상관된 맹점을 줄이기 위해 verifier와 challenger만 Opus 5.5 `max`를 primary로 유지하고, 모든 역할에서 Astra를 첫 fallback으로 둡니다.
 
 ## Model Split
 
-Astra 사용률을 높이는 것과 모든 역할에 같은 effort를 강제하는 것은 다릅니다. 현재 정책은 모델은 Astra 중심으로 통일하되 역할의 판단 난도와 실패 비용에 맞춰 thinking을 나눕니다.
+6.1 Sol을 primary로 통일하는 것과 모든 역할에 같은 effort를 강제하는 것은 다릅니다. 현재 정책은 Codex 역할의 모델 세대는 6.1 Sol로 맞추되 역할의 판단 난도와 실패 비용에 따라 thinking을 나눕니다.
 
-- worker/planner/reviewer는 구현·구조·diff 판단의 핵심 역할이므로 `gpt-6-astra`를 `max` effort로 사용하고 Sol로 fallback합니다.
-- Meta Review question worker와 Study Hard worker는 pinned source·구조화 artifact·충돌 보존 계약을 다루므로 Astra `max`를 사용하며 `Sol → Terra → Spark` fallback을 유지합니다.
-- browser와 searcher는 상태 해석·다중 도구·교차근거가 필요하지만 실행 지연도 중요하므로 Astra `high`를 사용합니다. 각각 기존 Sol, `Terra → Sol`을 fallback으로 둡니다.
-- finder와 bootstrapper는 좁은 탐색 또는 지정 executor·status·log 판정이 중심이므로 Astra `low`를 사용하고 Luna를 fallback으로 둡니다. Astra의 `minimal`도 실제로 `low`에 매핑되므로 명시적으로 `low`를 사용합니다.
+- worker/planner/reviewer는 구현·구조·diff 판단의 핵심 역할이므로 `gpt-6.1-sol`을 `max` effort로 사용하고 `Astra → 5.6 Sol`로 fallback합니다.
+- Meta Review question worker와 Study Hard worker는 pinned source·구조화 artifact·충돌 보존 계약을 다루므로 6.1 Sol `max`를 사용하며 `Astra → 5.6 Sol → 5.6 Terra → 5.3 Spark` fallback을 유지합니다.
+- browser와 searcher는 상태 해석·다중 도구·교차근거가 필요하지만 실행 지연도 중요하므로 6.1 Sol `high`를 사용합니다. browser는 `Astra → 5.6 Sol`, searcher는 `Astra → 5.6 Terra → 5.6 Sol`로 fallback합니다.
+- finder와 bootstrapper는 좁은 탐색 또는 지정 executor·status·log 판정이 중심이므로 6.1 Sol `low`를 사용하고 `Astra → 5.6 Luna`로 fallback합니다.
 - verifier는 “증거 없는 PASS”의 비용이 크므로 Claude Opus 5.5를 `max` effort로 사용합니다. 구현보다 claim inventory, 재현, evidence 판정, skipped check/remaining risk 기록이 핵심 역할입니다.
-- challenger는 제품·구조 맥락의 숨은 가정과 실패 시나리오를 압박하므로 Claude Opus 5.5를 `max` effort로 사용합니다. 두 Opus 역할 모두 `Astra → Sol` 순서로 fallback해 독립 검증을 우선하되 provider 장애로 workflow 전체가 막히지 않게 합니다.
+- challenger는 제품·구조 맥락의 숨은 가정과 실패 시나리오를 압박하므로 Claude Opus 5.5를 `max` effort로 사용합니다. 두 Opus 역할 모두 `Astra → 6.1 Sol` 순서로 fallback해 독립 검증을 우선하되 provider 장애로 workflow 전체가 막히지 않게 합니다.
 - abort는 사용자가 실행을 중단한 의사이므로 fallback을 시작하지 않습니다. fallback이 실행돼도 verifier의 PASS 기준과 challenger의 가설/사실 분리 기준은 바뀌지 않습니다.
 - agent는 기존 단일 `modelFallback`과 순서형 `modelFallbacks` chain을 모두 지원합니다. 같은 Pi runtime 안의 fallback은 persisted session을 이어 쓰되 새 offset부터 terminal event를 읽고, Claude→Pi cross-runtime fallback은 서로 다른 session JSONL을 사용합니다.
-- Astra의 도구 호출·구조화 출력·컨텍스트 한계는 역할별 fixture로 검증합니다. 반복 실패 시 전체 정책을 되돌리지 않고 해당 agent만 직전 primary로 복구합니다.
+- 6.1 Sol의 도구 호출·구조화 출력·컨텍스트 한계는 역할별 fixture로 검증합니다. 반복 실패 시 전체 정책을 되돌리지 않고 해당 agent만 Astra primary로 복구합니다.
 - 모델 선택은 세대만이 아니라 역할 난도, 실패 시 되돌리기 비용, 독립 검증 필요성을 함께 기준으로 조정합니다.
 
 ## Main Session Boundary
 
-메인 Pi 세션의 기본 effort와 subagent role mapping은 별도 계약입니다. 메인 Astra와 GPT-6.1 Sol pilot은 `xhigh`에서 [고위험 turn만 max로 승격](./astra-adaptive-thinking-effort.md)하지만, `agents/*.md`에 고정된 worker/planner/reviewer와 verifier/challenger의 effort를 자동으로 낮추거나 승격하지 않습니다. 1차 pilot에서는 기존 Astra·Opus 역할 매핑을 유지하고, 긴 한국어 세션·tool settle·큰 context 관찰이 닫힌 뒤 역할별로 교체합니다. Subagent는 애초에 좁게 선택된 전문 역할과 failure cost를 기준으로 정의되므로 실제 교체 전까지 이 문서의 현행 mapping을 계속 따릅니다.
+메인 Pi 세션의 기본 effort와 subagent role mapping은 별도 계약입니다. 메인 기본 모델은 GPT-6.1 Sol `xhigh`이며 [고위험 turn만 max로 승격](./astra-adaptive-thinking-effort.md)합니다. `agents/*.md`에 고정된 6.1 Sol 역할은 `low`·`high`·`max`, verifier/challenger는 Opus 5.5 `max`를 사용하며 메인의 turn-level 승격을 자동 전파하지 않습니다. Subagent는 좁게 선택된 전문 역할과 failure cost를 기준으로 고정 effort를 유지합니다.
 
 ## Prompt Specificity Rule
 
