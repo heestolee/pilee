@@ -1255,27 +1255,29 @@ Focus on: what was done, what was discovered/decided, key file/code references, 
 Each bullet 1-2 lines max. Be concrete (file paths, function names, ticket IDs).
 Output only the bullets, no preamble.`;
 
-async function generateSummary(entries: any[], ctx: ExtensionContext): Promise<string | null> {
+export async function generateSummary(entries: any[], ctx: ExtensionContext, legacyComplete = completeSimple): Promise<string | null> {
 	if (!ctx.model || !ctx.modelRegistry) return null;
 
 	const transcript = extractFullTranscript(entries);
 	if (!transcript || transcript.length < 200) return null; // too short
 
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), 20000);
 	try {
-		const auth = await ctx.modelRegistry.getApiKeyAndHeaders(ctx.model).catch(() => null);
-		if (!auth?.ok) return null;
-
-		const controller = new AbortController();
-		const timeout = setTimeout(() => controller.abort(), 20000);
-		const result = await completeSimple(
-			ctx.model,
-			{
-				systemPrompt: SUMMARY_SYSTEM_PROMPT,
-				messages: [{ role: "user", content: [{ type: "text", text: transcript.slice(0, 30000) }], timestamp: Date.now() }],
-			},
-			{ apiKey: auth.apiKey, headers: auth.headers, signal: controller.signal, reasoning: "minimal", maxTokens: 600 },
-		).catch(() => undefined);
-		clearTimeout(timeout);
+		const context = {
+			systemPrompt: SUMMARY_SYSTEM_PROMPT,
+			messages: [{ role: "user" as const, content: [{ type: "text" as const, text: transcript.slice(0, 30000) }], timestamp: Date.now() }],
+		};
+		const options = { signal: ctx.signal ? AbortSignal.any([controller.signal, ctx.signal]) : controller.signal, reasoning: "minimal" as const, maxTokens: 600 };
+		let result;
+		if (typeof ctx.modelRegistry.streamSimple === "function") {
+			// The registry owns provider routing, request-time auth, headers and environment.
+			result = await ctx.modelRegistry.streamSimple(ctx.model, context, options).result();
+		} else {
+			const auth = await ctx.modelRegistry.getApiKeyAndHeaders(ctx.model).catch(() => null);
+			if (!auth?.ok) return null;
+			result = await legacyComplete(ctx.model, context, { ...options, apiKey: auth.apiKey, headers: auth.headers });
+		}
 
 		if (!result || result.stopReason !== "stop") return null;
 		const text = result.content
@@ -1286,6 +1288,8 @@ async function generateSummary(entries: any[], ctx: ExtensionContext): Promise<s
 		return text || null;
 	} catch {
 		return null;
+	} finally {
+		clearTimeout(timeout);
 	}
 }
 
@@ -1326,7 +1330,7 @@ ${buildAnchorNavigationScript(target, "currentTerm", "anchorTerm")}
 end tell`;
 }
 
-export default function (pi: ExtensionAPI) {
+export default function (pi: ExtensionAPI, signals: Pick<NodeJS.Process, "on" | "removeListener" | "exit"> = process) {
 	const forkId = process.env.PI_FORK_ID;
 
 	// CHILD MODE additions: this session is a fork of a parent — write snapshots/inbox handoffs
@@ -1365,7 +1369,32 @@ export default function (pi: ExtensionAPI) {
 			} catch {}
 		};
 
+		const signalNames = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
+		let listening = false;
+		const onSignal = () => {
+			if (alreadyFinalized) return;
+			alreadyFinalized = true;
+			if (consumeRepanelMarker(forkId) || consumeActivationCleanupMarker(forkId)) {
+				signals.exit(0);
+				return;
+			}
+			writeAuto(true);
+		};
+		const removeSignals = () => {
+			if (!listening) return;
+			listening = false;
+			for (const signal of signalNames) signals.removeListener(signal, onSignal);
+		};
+
 		pi.on("session_start", async (_e, ctx) => {
+			alreadyFinalized = false;
+			latestCtx = ctx;
+			latestEntries = ctx.sessionManager.getEntries();
+			writeAuto(false);
+			if (!listening) {
+				for (const signal of signalNames) signals.on(signal, onSignal);
+				listening = true;
+			}
 			if (!childPanelLabel) return;
 			ctx.ui.notify(`${childPanelLabel} fork panel 시작됨 · /handoff: inbox 저장 · /done: handoff 후 종료`, "info");
 		});
@@ -1377,30 +1406,23 @@ export default function (pi: ExtensionAPI) {
 			writeAuto(false);
 		});
 
-		// Final write on graceful shutdown — has time to generate summary
-		pi.on("session_shutdown", async (_e, ctx) => {
+		pi.on("session_shutdown", async (event, ctx) => {
+			removeSignals();
 			if (alreadyFinalized) return;
+			latestEntries = ctx.sessionManager.getEntries();
+			latestCtx = undefined;
+			if (event.reason !== "quit") {
+				// Runtime replacement is not child completion. Keep the live snapshot/identity.
+				writeAuto(false);
+				return;
+			}
 			alreadyFinalized = true;
 			if (consumeRepanelMarker(forkId) || consumeActivationCleanupMarker(forkId)) return;
-			latestEntries = ctx.sessionManager.getEntries();
 			const lastMsg = extractLastAssistant(latestEntries);
 			const summary = await generateSummary(latestEntries, ctx);
 			const payload = assemblePayload({ mode: summary ? "summary" : "last", lastMessage: lastMsg, summary });
 			writeAuto(true, payload);
 		});
-
-		// Signal handlers (Cmd+W etc.) — no time for LLM, just last message
-		for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
-			process.on(sig, () => {
-				if (!alreadyFinalized) {
-					alreadyFinalized = true;
-					if (consumeRepanelMarker(forkId) || consumeActivationCleanupMarker(forkId)) {
-						process.exit(0);
-					}
-					writeAuto(true);
-				}
-			});
-		}
 
 		const buildManualHandoff = async (args: string | undefined, ctx: ExtensionContext, source: HandoffSource) => {
 			const tokens = (args ?? "").trim().split(/\s+/).filter(Boolean);
@@ -1856,7 +1878,7 @@ export default function (pi: ExtensionAPI) {
 						} else if (data === "d" && item) {
 							for (const inbox of loadInboxItems().filter((entry) => entry.forkId === item.record.forkId && entry.status !== "dismissed")) setInboxDismissed(inbox);
 							ctx.ui.notify(`${item.panelLabel} inbox를 dismiss 처리했습니다`, "info");
-						} else if (data === "o" && item) { done(null); void openRevive(item.record, ctx, "right"); return; }
+						} else if (data === "o" && item) { done(null); void openRevive(item.record, ctx, splitPlacementFromDirections(["right"])); return; }
 						(tui as any).requestRender?.();
 					},
 					invalidate: () => {},
@@ -2162,8 +2184,12 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	async function openReviveHereAtCwd(target: ForkRecord, ctx: ExtensionCommandContext, item: ReviveItem, reviveCwd: { cwd: string; fallback: boolean; reason?: string }) {
-		const headerSync = reviveCwd.fallback ? { updated: false } : ensureSessionHeaderCwd(target.sessionFile, reviveCwd.cwd);
-		if (headerSync.error) ctx.ui.notify(`revive cwd header 보정 실패: ${headerSync.error}`, "warning");
+		// InteractiveMode forwards withSession only; the stored header selects runtime/tool cwd.
+		const headerSync = ensureSessionHeaderCwd(target.sessionFile, reviveCwd.cwd);
+		if (headerSync.error) {
+			ctx.ui.notify(`revive cwd header 보정 실패: ${headerSync.error}. 전환을 중단합니다.`, "error");
+			return;
+		}
 		const isP0 = recordSource(target) === "p0";
 		const env = isP0 ? {} : {
 			PI_FORK_ID: target.forkId,
@@ -2176,19 +2202,27 @@ export default function (pi: ExtensionAPI) {
 			const launch = await runDetachedOsa(pi, script);
 			if (launch.code === 0) {
 				if (!isP0) { try { unlinkSync(join(HANDOFF_DIR, `${target.forkId}.json`)); } catch {} }
-				ctx.ui.notify(`${item.workspaceLabel} · ${item.title} 세션 재개 → 현재 패널 재실행`, reviveCwd.fallback ? "warning" : "info");
+				ctx.ui.notify(`${item.workspaceLabel} · ${item.title} 현재 패널 재실행 요청 · 새 runtime의 cwd 확인은 재시작 후 필요합니다.`, reviveCwd.fallback ? "warning" : "info");
 				ctx.shutdown();
 				return;
 			}
 			ctx.ui.notify(`현재 패널 재실행 실패: ${launch.stderr?.trim() || "unknown"}. in-process 전환으로 fallback합니다.`, "warning");
 		}
 
-		const chdirResult = reviveCwd.fallback ? { previous: process.cwd(), changed: false } : chdirForCurrentPanelRevive(reviveCwd.cwd);
-		if (chdirResult.error) ctx.ui.notify(`현재 패널 cwd 이동 실패: ${chdirResult.error}`, "warning");
+		const chdirResult = chdirForCurrentPanelRevive(reviveCwd.cwd);
+		if (chdirResult.error) {
+			ctx.ui.notify(`현재 패널 cwd 이동 실패: ${chdirResult.error}. 전환을 중단합니다.`, "error");
+			return;
+		}
+		let replaced = false;
 		try {
 			const result = await ctx.switchSession(target.sessionFile, {
-				cwdOverride: reviveCwd.cwd,
 				withSession: async (nextCtx) => {
+					replaced = true;
+					if (safeRealpath(nextCtx.cwd) !== safeRealpath(reviveCwd.cwd) || safeRealpath(nextCtx.sessionManager.getCwd()) !== safeRealpath(reviveCwd.cwd)) {
+						nextCtx.ui.notify(`revive cwd 불일치: 요청 ${reviveCwd.cwd} / 실제 ${nextCtx.cwd}. 작업을 계속하지 말고 올바른 cwd에서 다시 여세요.`, "error");
+						return;
+					}
 					const headerNote = headerSync.updated ? " · header cwd 보정" : "";
 					const processNote = chdirResult.changed ? " · process cwd 이동" : "";
 					const cwdNote = reviveCwd.fallback ? ` · cwd fallback: ${reviveCwd.reason}` : ` · cwd ${workspaceLabelFor(reviveCwd.cwd)}${headerNote}${processNote}`;
@@ -2200,6 +2234,7 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.notify("세션 전환이 취소되었습니다", "warning");
 			}
 		} catch (e) {
+			if (replaced) throw e;
 			if (chdirResult.changed) process.chdir(chdirResult.previous);
 			ctx.ui.notify(`세션 전환 실패: ${e instanceof Error ? e.message : e}`, "error");
 		}
