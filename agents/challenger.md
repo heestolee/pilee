@@ -2,7 +2,7 @@
 name: challenger
 description: Skeptical reviewer — use for stress-testing plans, exposing hidden assumptions, and challenging decisions before committing
 tools: read, grep, find, ls
-model: anthropic/claude-opus-5
+model: anthropic/claude-opus-5-5
 modelFallbacks: openai-codex/gpt-6-astra, openai-codex/gpt-5.6-sol
 runtime: claude
 thinking: max
