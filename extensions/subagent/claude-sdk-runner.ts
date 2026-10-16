@@ -1,6 +1,5 @@
 /** biome-ignore-all lint/suspicious/noExplicitAny: SDK stream payloads and tool bridge results are dynamic runtime data. */
 /** biome-ignore-all lint/complexity/noExcessiveCognitiveComplexity: SDK runner control flow mirrors the existing CLI runner lifecycle. */
-import { AbortError, query } from "@anthropic-ai/claude-agent-sdk";
 import { mapPiToolsToClaude, validateClaudeRuntimeModel } from "../utils/agent-utils.js";
 import type { AgentConfig } from "./agents.js";
 import { mapThinkingToClaudeEffort } from "./claude-args.js";
@@ -8,6 +7,12 @@ import { createClaudeSdkStreamAdapter } from "./claude-sdk-stream-adapter.js";
 import { createSidecarWriter } from "./claude-sidecar-writer.js";
 import { getFinalOutput } from "./runner.js";
 import type { OnUpdateCallback, SingleResult, SubagentDetails } from "./types.js";
+
+export function isMissingClaudeAgentSdk(error: unknown): boolean {
+	return error instanceof Error
+		&& "code" in error && error.code === "ERR_MODULE_NOT_FOUND"
+		&& /Cannot find package ['"]@anthropic-ai\/claude-agent-sdk['"]/.test(error.message);
+}
 
 function appendStderrDiagnostic(stderr: string, message: string): string {
 	const line = `[runner] ${message}`;
@@ -64,6 +69,20 @@ export async function runClaudeAgentViaSdk(
 		};
 	}
 
+	let sdk: typeof import("@anthropic-ai/claude-agent-sdk");
+	try {
+		sdk = await import("@anthropic-ai/claude-agent-sdk");
+	} catch (error) {
+		if (!isMissingClaudeAgentSdk(error)) throw error;
+		const message = "Claude SDK 모드를 시작할 수 없습니다: 선택적 의존성 @anthropic-ai/claude-agent-sdk가 없습니다. 패키지 관리자가 SDK 의존성을 준비하거나, 명시적으로 subagent.claudeRuntime=cli를 선택하세요. 자동 CLI 전환은 하지 않았습니다.";
+		return {
+			agent: agent.name, agentSource: agent.source, task, step, runtime: "claude", model: agent.model,
+			exitCode: 1, stopReason: "error", errorMessage: message, stderr: message, messages: [],
+			usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
+			sessionFile: sidecarSessionFile, claudeProjectDir: defaultCwd,
+		};
+	}
+	const { AbortError, query } = sdk;
 	const adapter = createClaudeSdkStreamAdapter();
 	const sidecar = sidecarSessionFile ? createSidecarWriter(sidecarSessionFile) : null;
 	const abortController = new AbortController();
