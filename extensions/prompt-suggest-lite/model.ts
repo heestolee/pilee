@@ -30,6 +30,7 @@ type StreamSimpleLike = (
 		apiKey?: string;
 		headers?: Record<string, string>;
 		reasoning?: AiThinkingLevel;
+		signal?: AbortSignal;
 		sessionId?: string;
 		onPayload?: (payload: unknown) => Promise<undefined>;
 	},
@@ -37,6 +38,7 @@ type StreamSimpleLike = (
 
 type ModelRegistryLike = {
 	getAll(): PiModel[];
+	streamSimple?: StreamSimpleLike;
 	getApiKeyAndHeaders?: (
 		model: PiModel,
 	) => Promise<{ ok: true; apiKey?: string; headers?: Record<string, string> } | { ok: false; error: string }>;
@@ -101,19 +103,25 @@ function getClaudeBridgeStreamSimple(): StreamSimpleLike | undefined {
 }
 
 async function invokeModel(
+	modelRegistry: ModelRegistryLike,
 	model: PiModel,
 	context: { systemPrompt: string; messages: Message[] },
 	options: {
-		apiKey?: string;
-		headers?: Record<string, string>;
 		reasoning?: AiThinkingLevel;
+		signal?: AbortSignal;
 	},
 ): Promise<CompletionResponseLike> {
+	if (typeof modelRegistry.streamSimple === "function") {
+		return await modelRegistry.streamSimple(model, context, options).result();
+	}
+	// Legacy hosts have no provider-aware registry stream boundary.
+	const auth = await resolveRequestAuth(model, modelRegistry);
+	const legacyOptions = { ...options, ...auth };
 	const claudeBridgeStream = getClaudeBridgeStreamSimple();
 	if (model.api === "claude-bridge" && claudeBridgeStream) {
-		return await claudeBridgeStream(model, context, options).result();
+		return await claudeBridgeStream(model, context, legacyOptions).result();
 	}
-	return await completeSimple(model, context, options);
+	return await completeSimple(model, context, legacyOptions);
 }
 
 export async function generatePromptSuggestion(params: {
@@ -125,13 +133,13 @@ export async function generatePromptSuggestion(params: {
 	if (!ctx.model) throw new Error("No active model available for prompt-suggest-lite");
 	const modelRegistry = ctx.modelRegistry as unknown as ModelRegistryLike;
 	const model = resolveModelForCall(ctx.model, config.modelRef, modelRegistry.getAll());
-	const { apiKey, headers } = await resolveRequestAuth(model, modelRegistry);
 	const userMessage: UserMessage = {
 		role: "user",
 		content: [{ type: "text", text: prompt }],
 		timestamp: Date.now(),
 	};
 	const response = await invokeModel(
+		modelRegistry,
 		model,
 		{
 			systemPrompt:
@@ -139,9 +147,8 @@ export async function generatePromptSuggestion(params: {
 			messages: [userMessage],
 		},
 		{
-			apiKey,
-			headers,
 			reasoning: toReasoning(config.thinking),
+			signal: ctx.signal,
 		},
 	);
 	return {
