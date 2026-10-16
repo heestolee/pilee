@@ -2,8 +2,8 @@
 name: searcher
 description: Research & search specialist — use for web research, documentation lookup, codebase-wide exploration, and gathering external information
 tools: bash, read, grep, find, ls, web_search, fetch_content, get_search_content
-model: openai-codex/gpt-6-astra
-modelFallbacks: openai-codex/gpt-5.6-terra, openai-codex/gpt-5.6-sol
+model: openai-codex/gpt-6.1-sol
+modelFallbacks: openai-codex/gpt-6-astra, openai-codex/gpt-5.6-terra, openai-codex/gpt-5.6-sol
 runtime: pi
 thinking: high
 ---

@@ -2,8 +2,8 @@
 name: finder
 description: Fast file/code locator — use for exploring codebases, finding files, locating specific code patterns
 tools: read, grep, find
-model: openai-codex/gpt-6-astra
-modelFallback: openai-codex/gpt-5.6-luna
+model: openai-codex/gpt-6.1-sol
+modelFallbacks: openai-codex/gpt-6-astra, openai-codex/gpt-5.6-luna
 runtime: pi
 thinking: low
 ---
