@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { completeSimple } from "@mariozechner/pi-ai";
+import { agentInputText, isAgentStatusText, readAgentStartInput } from "../utils/agent-start-input.ts";
 
 const MAX_TITLE_CHARS = 48;
 const MAX_PROMPT_CHARS = 800;
@@ -50,11 +51,8 @@ function extractUserPrompts(entries: { type: string; message?: { role: string; c
 	const prompts: string[] = [];
 	for (const e of entries) {
 		if (e.type !== "message" || e.message?.role !== "user") continue;
-		const c = e.message.content;
-		let text = "";
-		if (typeof c === "string") text = c;
-		else if (Array.isArray(c)) text = c.filter((p: any) => p.type === "text").map((p: any) => p.text).join(" ");
-		if (text.trim()) prompts.push(text.trim());
+		const text = agentInputText(e.message.content).trim();
+		if (text && !isAgentStatusText(text)) prompts.push(text);
 	}
 	return prompts;
 }
@@ -78,6 +76,7 @@ function buildRenameInput(prompts: string[]): string {
 export default function (pi: ExtensionAPI) {
 	let naming = false;
 	let selfHasSet = false;
+	let sessionGeneration = 0;
 	const isForkChild = !!process.env.PI_FORK_ID;
 	const collectedPrompts: string[] = [];
 
@@ -122,38 +121,43 @@ export default function (pi: ExtensionAPI) {
 		if (current && !isForkChild) return;
 
 		naming = true;
+		const generation = sessionGeneration;
 		try {
 			const raw = await callLLMForTitle(`User request:\n${prompt.slice(0, MAX_PROMPT_CHARS)}`, SYSTEM_PROMPT, ctx);
 			const title = normalizeTitle(raw || prompt.slice(0, MAX_TITLE_CHARS));
-			if (title && setSessionName(title)) {
+			if (generation === sessionGeneration && title && setSessionName(title)) {
 				selfHasSet = true;
 			}
 		} finally {
-			naming = false;
-			syncUi(ctx);
+			if (generation === sessionGeneration) {
+				naming = false;
+				syncUi(ctx);
+			}
 		}
 	}
 
 	async function callLLMForTitle(prompt: string, systemPrompt: string, ctx: ExtensionContext): Promise<string | undefined> {
 		if (!ctx.model || !ctx.modelRegistry) return undefined;
-		const auth = await ctx.modelRegistry.getApiKeyAndHeaders(ctx.model).catch(() => undefined);
-		if (!auth?.ok) return undefined;
-
 		const lang = prefersKorean(prompt)
 			? "Title language: Korean. Write the summary in Korean; keep product names and code identifiers as-is."
 			: "Title language: Preserve the user's language.";
 
 		const controller = new AbortController();
 		const timeout = setTimeout(() => controller.abort(), 8000);
-		const result = await completeSimple(
-			ctx.model,
-			{
-				systemPrompt,
-				messages: [{ role: "user", content: [{ type: "text", text: `${lang}\n\n${prompt}` }], timestamp: Date.now() }],
-			},
-			{ apiKey: auth.apiKey, headers: auth.headers, signal: controller.signal, reasoning: "minimal", maxTokens: 80 },
-		).catch(() => undefined);
-		clearTimeout(timeout);
+		const context = {
+			systemPrompt,
+			messages: [{ role: "user" as const, content: [{ type: "text" as const, text: `${lang}\n\n${prompt}` }], timestamp: Date.now() }],
+		};
+		const options = { signal: controller.signal, reasoning: "minimal" as const, maxTokens: 80 };
+		const result = await (async () => {
+			if (typeof ctx.modelRegistry.streamSimple === "function") {
+				return ctx.modelRegistry.streamSimple(ctx.model!, context, options).result();
+			}
+			// Legacy hosts require explicit auth; current hosts resolve it once inside streamSimple.
+			const auth = await ctx.modelRegistry.getApiKeyAndHeaders(ctx.model!);
+			if (!auth?.ok) return undefined;
+			return completeSimple(ctx.model!, context, { ...options, apiKey: auth.apiKey, headers: auth.headers });
+		})().catch(() => undefined).finally(() => clearTimeout(timeout));
 
 		if (result?.stopReason !== "stop") return undefined;
 		return result.content.filter((c): c is { type: "text"; text: string } => c.type === "text").map(c => c.text).join("").trim();
@@ -162,17 +166,21 @@ export default function (pi: ExtensionAPI) {
 	async function reevaluateAtShutdown(ctx: ExtensionContext) {
 		if (collectedPrompts.length < MIN_PROMPTS_FOR_REEVAL) return;
 		try {
-			const input = buildRenameInput(collectedPrompts);
+			const generation = sessionGeneration;
+			const prompts = [...collectedPrompts];
+			const input = buildRenameInput(prompts);
 			const raw = await callLLMForTitle(`User messages:\n${input}`, RENAME_SYSTEM_PROMPT, ctx);
+			if (generation !== sessionGeneration) return;
 			const title = normalizeTitle(raw || "");
 			if (title) setSessionName(title);
-			appendMarker({ ts: Date.now(), promptCount: collectedPrompts.length });
+			appendMarker({ ts: Date.now(), promptCount: prompts.length });
 		} catch { /* don't block shutdown */ }
 	}
 
 	async function safetyNetOnStartup(ctx: ExtensionContext) {
+		const generation = sessionGeneration;
 		try {
-			const entries = (ctx as any).sessionManager?.getEntries?.();
+			const entries = ctx.sessionManager.getBranch?.() ?? ctx.sessionManager.getEntries?.();
 			if (!entries) return;
 			const allEntries = Array.isArray(entries) ? entries : [...entries];
 
@@ -184,6 +192,7 @@ export default function (pi: ExtensionAPI) {
 
 			const input = buildRenameInput(prompts);
 			const raw = await callLLMForTitle(`User messages:\n${input}`, RENAME_SYSTEM_PROMPT, ctx);
+			if (generation !== sessionGeneration) return;
 			const title = normalizeTitle(raw || "");
 			if (title && setSessionName(title)) {
 				selfHasSet = true;
@@ -193,18 +202,25 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	pi.on("session_start", async (e: any, ctx) => {
+		sessionGeneration += 1;
+		collectedPrompts.length = 0;
+		naming = false;
+		selfHasSet = false;
 		syncUi(ctx);
 		if (e.reason === "startup" || e.reason === "resume") {
 			void safetyNetOnStartup(ctx).then(() => syncUi(ctx)).catch(() => {});
 		}
 	});
 	pi.on("before_agent_start", async (e, ctx) => {
-		collectedPrompts.push(e.prompt);
-		void autoName(e.prompt, ctx).catch(() => syncUi(ctx));
+		const input = readAgentStartInput(e);
+		if ((input.kind !== "user" && input.kind !== "command") || !input.request?.trim()) return;
+		collectedPrompts.push(input.request);
+		void autoName(input.request, ctx).catch(() => syncUi(ctx));
 	});
 	pi.on("session_tree", async (_e, ctx) => syncUi(ctx));
 	pi.on("agent_end", async (_e, ctx) => syncUi(ctx));
 	pi.on("session_shutdown", async (e: any, ctx) => {
+		sessionGeneration += 1;
 		if (e.reason !== "reload") {
 			await reevaluateAtShutdown(ctx);
 		}
