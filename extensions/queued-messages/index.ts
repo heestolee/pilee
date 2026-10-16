@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { Text, truncateToWidth } from "@mariozechner/pi-tui";
+import { truncateToWidth } from "@mariozechner/pi-tui";
 
 const WIDGET_ID = "queued-messages";
 
@@ -39,6 +39,10 @@ interface QueuedMessage {
 export default function (pi: ExtensionAPI) {
 	const queue: QueuedMessage[] = [];
 	let currentCtx: ExtensionContext | undefined;
+	let syncInterval: ReturnType<typeof setInterval> | undefined;
+	let idleInterval: ReturnType<typeof setInterval> | undefined;
+	let delayedSync: ReturnType<typeof setTimeout> | undefined;
+	let generation = 0;
 
 	// Idle watchdog state
 	let lastOutputAt = 0;
@@ -98,10 +102,11 @@ export default function (pi: ExtensionAPI) {
 		lastOutputAt = Date.now();
 	});
 
-	pi.on("tool_execution_start", async (e: any, ctx) => {
+	pi.on("tool_execution_start", async (event, ctx) => {
 		currentCtx = ctx;
-		currentTool = e.tool ?? e.name ?? "";
-		currentToolArgs = (e.args ?? e.input ?? "").toString().slice(0, 200);
+		currentTool = event.toolName;
+		const args = event.args;
+		currentToolArgs = (typeof args?.command === "string" ? args.command : typeof args?.path === "string" ? args.path : "").slice(0, 200);
 		lastOutputAt = Date.now();
 	});
 
@@ -119,72 +124,83 @@ export default function (pi: ExtensionAPI) {
 		syncWithReality(ctx);
 	});
 
-	// When agent fully done (followUp messages get delivered then)
+	// Sync after a low-level run; final settlement is tracked separately.
 	pi.on("agent_end", async (_e, ctx) => {
 		currentCtx = ctx;
-		agentRunning = false;
-		// agent_end fires before followUp delivery... give a tick
-		setTimeout(() => {
-			if (currentCtx) syncWithReality(currentCtx);
+		// agent_end can still be followed by retry/recovery or queued work.
+		clearTimeout(delayedSync);
+		const owner = generation;
+		delayedSync = setTimeout(() => {
+			if (owner === generation && currentCtx === ctx) syncWithReality(ctx);
 		}, 100);
+	});
+	pi.on("agent_settled", async () => {
+		agentRunning = false;
 	});
 
 	const isStaleCtxError = (err: unknown) => String((err as Error)?.message ?? err).includes("ctx is stale");
 
 	const stopUsingStaleCtx = () => {
-		currentCtx = null;
+		currentCtx = undefined;
 		queue.length = 0;
 		agentRunning = false;
 	};
 
 	// Periodic sync — best-effort cleanup if our tracking gets out of sync
-	const syncInterval = setInterval(() => {
-		if (!currentCtx) return;
-		try {
+	function startTimers() {
+		syncInterval = setInterval(() => {
+			if (!currentCtx) return;
 			syncWithReality(currentCtx);
-		} catch (err) {
-			if (!isStaleCtxError(err)) throw err;
-			stopUsingStaleCtx();
-		}
-	}, 1500);
+		}, 1500);
 
-	// Idle watchdog
-	const idleInterval = setInterval(() => {
-		if (!currentCtx?.hasUI || !agentRunning) return;
-		const now = Date.now();
-		const idleFor = now - lastOutputAt;
-		if (idleFor < IDLE_THRESHOLD_MS) return;
-		if (lastAlertAt > 0 && now - lastAlertAt < ALERT_REPEAT_MS) return;
+		// Idle watchdog
+		idleInterval = setInterval(() => {
+			try {
+				if (!currentCtx?.hasUI || !agentRunning) return;
+				const now = Date.now();
+				const idleFor = now - lastOutputAt;
+				if (idleFor < IDLE_THRESHOLD_MS) return;
+				if (lastAlertAt > 0 && now - lastAlertAt < ALERT_REPEAT_MS) return;
 
-		lastAlertAt = now;
-		const minutes = Math.floor(idleFor / 60000);
-
-		const lines: string[] = [
-			`⚠️ 에이전트가 ${minutes}분간 출력 없음`,
-		];
-		if (currentTool) {
-			lines.push(`🔄 현재 실행 중: ${currentTool}${currentToolArgs ? ` — ${currentToolArgs}` : ""}`);
-			const hint = getSlowCommandHint(currentTool, currentToolArgs);
-			if (hint) lines.push(`💡 ${hint}`);
-		}
-		if (queue.length > 0) {
-			lines.push("");
-			lines.push(`큐잉된 메시지 (${queue.length}개):`);
-			for (const [i, m] of queue.entries()) {
-				const preview = m.text.replace(/\n/g, " ").slice(0, 80);
-				lines.push(`  ${i + 1}. ${preview}${m.text.length > 80 ? "…" : ""}`);
+				lastAlertAt = now;
+				const minutes = Math.floor(idleFor / 60000);
+				const lines: string[] = [`⚠️ 에이전트가 ${minutes}분간 출력 없음`];
+				if (currentTool) {
+					lines.push(`🔄 현재 실행 중: ${currentTool}${currentToolArgs ? ` — ${currentToolArgs}` : ""}`);
+					const hint = getSlowCommandHint(currentTool, currentToolArgs);
+					if (hint) lines.push(`💡 ${hint}`);
+				}
+				if (queue.length > 0) {
+					lines.push("");
+					lines.push(`큐잉된 메시지 (${queue.length}개):`);
+					for (const [i, m] of queue.entries()) {
+						const preview = m.text.replace(/\n/g, " ").slice(0, 80);
+						lines.push(`  ${i + 1}. ${preview}${m.text.length > 80 ? "…" : ""}`);
+					}
+				}
+				lines.push("", "필요 시 Esc로 abort 가능");
+				currentCtx.ui.notify(lines.join("\n"), "warning");
+			} catch (err) {
+				if (!isStaleCtxError(err)) throw err;
+				stopUsingStaleCtx();
 			}
-		}
-		lines.push("");
-		lines.push("필요 시 Esc로 abort 가능");
+		}, IDLE_CHECK_INTERVAL_MS);
+		syncInterval.unref?.();
+		idleInterval.unref?.();
+	}
 
-		try {
-			currentCtx.ui.notify(lines.join("\n"), "warning");
-		} catch (err) {
-			if (!isStaleCtxError(err)) throw err;
-			stopUsingStaleCtx();
-		}
-	}, IDLE_CHECK_INTERVAL_MS);
+	function stopTimers() {
+		generation += 1;
+		clearInterval(syncInterval);
+		clearInterval(idleInterval);
+		clearTimeout(delayedSync);
+		syncInterval = undefined;
+		idleInterval = undefined;
+		delayedSync = undefined;
+		currentTool = "";
+		currentToolArgs = "";
+		stopUsingStaleCtx();
+	}
 
 	function syncWithReality(ctx: ExtensionContext) {
 		try {
@@ -203,18 +219,18 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	pi.on("session_start", async (_e, ctx) => {
+		stopTimers();
 		currentCtx = ctx;
 		queue.length = 0;
 		agentRunning = false;
 		lastOutputAt = 0;
 		lastAlertAt = 0;
 		clearWidget(ctx);
+		startTimers();
 	});
 
 	pi.on("session_shutdown", async (_e, ctx) => {
-		clearInterval(syncInterval);
-		clearInterval(idleInterval);
-		queue.length = 0;
-		clearWidget(ctx);
+		stopTimers();
+		try { clearWidget(ctx); } catch (error) { if (!isStaleCtxError(error)) throw error; }
 	});
 }
