@@ -339,7 +339,7 @@ export default function studyHard(pi: ExtensionAPI) {
 					customType: CUSTOM_TYPE,
 					content: buildStudyHardPrompt(invocation, ctx.cwd ?? process.cwd(), handle.state),
 					display: false,
-					details: invocation,
+					details: { ...invocation, agentStart: { kind: "command", command: "study-hard", args: args.trim(), purpose: "artifact" } },
 				},
 				{ deliverAs: "followUp", triggerTurn: true },
 			);
