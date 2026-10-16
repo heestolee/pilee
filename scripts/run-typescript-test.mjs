@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 function canStripTypes(nodeBin) {
 	const result = spawnSync(nodeBin, ["--experimental-strip-types", "--eval", ""], { encoding: "utf8" });
@@ -38,7 +39,8 @@ if (!selected) {
 	process.exit(1);
 }
 
-const result = spawnSync(selected, ["--experimental-strip-types", "--test", ...args], { stdio: "inherit" });
+const hostRegister = fileURLToPath(new URL("./pi-host-test-register.mjs", import.meta.url));
+const result = spawnSync(selected, ["--experimental-strip-types", "--import", hostRegister, "--test", ...args], { stdio: "inherit" });
 if (result.error) {
 	console.error(result.error.message);
 	process.exit(1);
