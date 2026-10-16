@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
@@ -48,6 +49,7 @@ interface GuardState {
 	auditRequired: boolean;
 	sqlReview: boolean;
 	detachedArtifactTask: boolean;
+	continuationScope?: "learning" | "review";
 	mixedRequest: boolean;
 	parallelInvestigationSuggested: boolean;
 	summary: string;
@@ -116,14 +118,15 @@ function activeSessionEntries(ctx: {
 	return ctx.sessionManager?.getBranch?.() ?? ctx.sessionManager?.getEntries?.() ?? [];
 }
 
-function restoreIntentGuard(entries: readonly unknown[], sessionFile?: string, currentTurn = false): GuardState | undefined {
+function restoreIntentGuard(entries: readonly unknown[], sessionFile?: string, currentTurn = false, explicitOnly = false): GuardState | undefined {
 	const authorization = restoreWorkspaceAuthorization(entries as Parameters<typeof restoreWorkspaceAuthorization>[0]);
 	for (const raw of [...entries].reverse()) {
 		const request = latestAgentRequest([raw]);
 		if (request) return { ...classifyPrompt(request, sessionFile), workspaceAuthorization: authorization };
-		const entry = raw as { type?: string; customType?: string; details?: { state?: GuardState; lastIntent?: GuardState } };
+		const entry = raw as { type?: string; customType?: string; details?: { state?: GuardState; lastIntent?: GuardState; activeContinuation?: GuardState } };
 		if (entry.type !== "custom_message" || entry.customType !== "workflow_guard") continue;
-		const state = currentTurn ? entry.details?.state : entry.details?.lastIntent ?? entry.details?.state;
+		const state = currentTurn ? entry.details?.state
+			: (!explicitOnly ? entry.details?.activeContinuation : undefined) ?? entry.details?.lastIntent ?? entry.details?.state;
 		if (state && (currentTurn || state.intent !== "status_note") && typeof state.prompt === "string" && Array.isArray(state.workspaceAuthorization?.events)) {
 			// Restore intent, never mint or reissue historical workspace authorization.
 			return { ...state, sessionFile, workspaceAuthorization: authorization };
@@ -325,7 +328,11 @@ function classifyPrompt(
 	const verifyReport = explicitHeavy && hasAny(normalized, [/verify[- ]?report|검증\s*리포트|캡처\s*리포트/]);
 	const knowledge = !statusNote && hasAny(normalized, [/ember|knowledge|불씨|지식|stale|freshness/]);
 	const hotfix = !statusNote && hasAny(normalized, [/hotfix|핫픽스|간단|문구|오타|copy|카피|one[- ]?line|한\s*줄|작은|small|quick|빨리|이거\s*하나/]);
-	const detachedArtifactTask = hasWorkerResultArtifactDirective(normalized);
+	const slashCommand = authoritativePrompt.trim().match(/^\/([a-z][a-z0-9-]*)(?:\s|$)/)?.[1];
+	const artifactCommand = ["frame", "frame-v2", "decide", "study-hard", "meta-review"].includes(slashCommand ?? "");
+	const implementationCommand = ["test-refine", "ember-ship", "study-hard-start-work"].includes(slashCommand ?? "");
+	const shipCommand = ["ship", "pr-ship", "ci-ship"].includes(slashCommand ?? "");
+	const detachedArtifactTask = hasWorkerResultArtifactDirective(normalized) || artifactCommand;
 	const noMutationRequested = hasAny(normalized, [/수정하지|고치지|변경하지|건드리지|커밋하지|푸시하지|하지\s*마|하지마|no\s*(edit|change|commit|push)|do\s*not\s*(edit|change|commit|push)/]);
 	const noMutation = noMutationRequested && !detachedArtifactTask;
 	const readOnlyShipSignal = hasAny(normalized, [/확인|상태|왜|원인|알려|조회|봐줘|보여|분석|비교|검토|여부|됐는지|되었는지|반영됐|반영되었|diff|status|check|view|analy[sz]e|review|compare/]);
@@ -333,9 +340,9 @@ function classifyPrompt(
 	const implementationDirective = !statusNote && !sqlReview && !noMutation && (hasImplementationDirective(normalized) || followUpCorrection);
 	const mixedRequest = implementationDirective && hasMixedImplementationInvestigationPrompt(authoritativePrompt, normalized);
 	const parallelInvestigationSuggested = mixedRequest;
-	const implement = implementationDirective || detachedArtifactTask;
+	const implement = implementationDirective || implementationCommand || detachedArtifactTask;
 	const explicitCreatePrCommand = /(?:^|\n)\s*\/create-pr(?:\s|$)/m.test(authoritativePrompt);
-	const shipDirective = !statusNote && !noMutation && (explicitCreatePrCommand || (!readOnlyShipSignal && hasShipDirective(normalized)));
+	const shipDirective = !statusNote && !noMutation && (shipCommand || explicitCreatePrCommand || (!readOnlyShipSignal && hasShipDirective(normalized)));
 	const explicitPrAction = shipDirective && (explicitCreatePrCommand || hasAny(normalized, [/create-pr|create\s+pr|open\s+pr|pull\s+request|\bpr\b\s*(?:생성|만들|올려|열어|작성|요청|리뷰\s*요청)/]));
 	const explicitIssueAction = hasAny(normalized, [/(?:github\s*)?(?:issue|이슈)\s*(?:생성|만들|올려|열어|작성|create|open)/, /(?:create|open)\s+(?:an?\s+)?issue/]);
 	const explicitExternalPublish = explicitPrAction || explicitIssueAction;
@@ -357,10 +364,10 @@ function classifyPrompt(
 	else if (sqlReview) intent = "investigate";
 	else if (auditRequired && !implementationDirective) intent = "audit";
 	else if (verifyReport) intent = "verify_report";
-	else if (knowledge && implement) intent = "knowledge";
+	else if ((knowledge || slashCommand === "ember-ship") && implement) intent = "knowledge";
 	else if (hotfix && implement) intent = "hotfix";
 	else if (explicitCommitPushOnly) intent = "ship";
-	else if (ship && implement) intent = "ship";
+	else if (ship) intent = "ship";
 	else if (implement) intent = "implement";
 	else if (investigate) intent = "investigate";
 	else if (answerOnly) intent = "answer";
@@ -373,7 +380,7 @@ function classifyPrompt(
 	else if (intent === "implement" || intent === "ship" || intent === "knowledge") weight = "standard";
 	else if (intent === "investigate" || intent === "audit" || intent === "answer") weight = "none";
 
-	const explicitMutation = !statusNote && !noMutation && (detachedArtifactTask || implementationDirective || shipDirective || explicitCommitPushOnly || hasAny(normalized, [/작업해|진행해|만들어|적용해|개선해|보강해|커밋\s*(?:해|해줘|해주세요|하자)|푸시\s*(?:해|해줘|해주세요|하자)/]));
+	const explicitMutation = !statusNote && !noMutation && ((detachedArtifactTask && !artifactCommand) || implementationCommand || implementationDirective || shipDirective || explicitCommitPushOnly || hasAny(normalized, [/작업해|진행해|만들어|적용해|개선해|보강해|커밋\s*(?:해|해줘|해주세요|하자)|푸시\s*(?:해|해줘|해주세요|하자)/]));
 	const explicitSingleCommit = hasAny(normalized, [/단일\s*커밋|한\s*커밋|one\s*commit|single\s*commit|squash/]);
 	const workspaceAuthorization = deriveWorkspaceAuthorization(
 		authoritativePrompt,
@@ -605,6 +612,12 @@ function buildSystemPrompt(
 			"- Keep this as a reminder, not a hard block: syntax-only or conceptual SQL questions may be answered without DB lookup when current row state is irrelevant.",
 		);
 	}
+	if (state.continuationScope) {
+		lines.push(
+			`- SCOPED CONTINUATION: ${state.continuationScope} question/result integration only.`,
+			"- Continue the review/learning artifact, not an older implementation task. Do not edit repository code, commit/push, publish externally, or create/switch worktrees from this follow-up.",
+		);
+	}
 	if (state.intent === "status_note") {
 		lines.push(
 			"- HARD STATUS NOTE PATH: the latest prompt is an environment/readiness/context-binding note, not a user task directive.",
@@ -724,6 +737,39 @@ function consumeGuardWorkspaceAuthorization(
 
 function isTempPath(path: string): boolean {
 	return path.startsWith("/tmp/") || path.startsWith("/private/tmp/") || path.includes("/var/folders/");
+}
+
+function scopedArtifactPath(cwd: string, path: string): boolean {
+	const absolute = resolve(cwd, path);
+	const roots = [
+		join(cwd, ".context"), join(cwd, ".pi", "decisions"),
+		...["frame-planning", "work-units", "study-hard", "state/pr-review"].map((name) => join(homedir(), ".pi", "agent", name)),
+	];
+	if (["frame.json", "frame.json.tmp", "frame.md", "work-context.json", "work-tasks.json"].some((name) => absolute === join(cwd, ".pi", name))) return true;
+	return roots.some((root) => {
+		const rel = relative(root, absolute);
+		return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+	});
+}
+
+function scopedBashAllowed(cwd: string, command: string): boolean {
+	// Scoped follow-ups can inspect source; arbitrary scripts/redirections must use artifact tools instead.
+	if (/[<>`]|\$\(/.test(command)) return false;
+	return shellCommandTokens(command).every((raw) => {
+		const tokens = unwrapShellPrefixes(raw);
+		const executable = executableName(tokens[0]);
+		const git = gitArguments(tokens);
+		if (git) return ["status", "diff", "show", "log", "grep", "rev-parse", "ls-files"].includes(git[0])
+			&& !tokens.some((token) => /^(?:-c|--config-env|--exec-path|--output|--ext-diff|--textconv|--open-files-in-pager)(?:=|$)/.test(token));
+		if (["pwd", "ls", "cat", "head", "tail", "grep", "rg", "stat", "wc", "diff", "echo", "printf"].includes(executable)) {
+			return !tokens.some((token) => /^(?:--pre|--hostname-bin)(?:=|$)/.test(token));
+		}
+		if (["mkdir", "touch"].includes(executable)) {
+			const paths = tokens.slice(1).filter((token) => !token.startsWith("-"));
+			return paths.length > 0 && paths.every((path) => scopedArtifactPath(cwd, path));
+		}
+		return false;
+	});
 }
 
 function pathBelongsToWorkContext(card: WorkContextCard, path: string): boolean {
@@ -1446,6 +1492,14 @@ export default function workflowGuard(
 		?? loadWorkflowGuardProfiles().flatMap((profile) => profile.trustedInternalPullRequestRepositories ?? []);
 	const adaptiveThinkingBySession = new Map<string, AdaptiveThinkingEscalation>();
 	const latestIntentBySession = new Map<string, GuardState>();
+	const activeContinuationBySession = new Map<string, GuardState>();
+
+	pi.on("session_tree", (_event, ctx) => {
+		const key = sessionKey(ctx);
+		restoreAdaptiveThinking(pi, key, adaptiveThinkingBySession);
+		for (const cache of [guardBySession, latestIntentBySession, activeContinuationBySession, lightPushDoneBySession, packageResolveFailuresBySession, validationFailuresBySession]) cache.delete(key);
+		// The next turn/tool rebuilds from getBranch(), including consumed authorization entries.
+	});
 
 	pi.on("before_agent_start", async (event, ctx) => {
 		const key = sessionKey(ctx);
@@ -1453,15 +1507,32 @@ export default function workflowGuard(
 		const entries = activeSessionEntries(ctx);
 		const restoredAuthorization = restoreWorkspaceAuthorization(entries);
 		const input = readAgentStartInput(event);
-		const previous = latestIntentBySession.get(key) ?? restoreIntentGuard(entries, sessionFile);
+		const explicitPrevious = latestIntentBySession.get(key) ?? restoreIntentGuard(entries, sessionFile, false, true);
+		const previous = activeContinuationBySession.get(key) ?? restoreIntentGuard(entries, sessionFile) ?? explicitPrevious;
 		const leafId = ctx.sessionManager?.getLeafId?.();
-		const inert = input.kind === "status" || input.kind === "unknown";
+		const inert = input.kind === "status" || input.kind === "unknown"
+			|| (input.kind === "continuation" && !input.scope && !input.request && !previous);
 		const prompt = inert ? "Workflow guard for this turn: internal status, not a new user request"
 			: input.request ?? previous?.prompt ?? "";
 		let state = classifyPrompt(prompt, sessionFile, restoredAuthorization.events, `workflow-guard:user-turn:${leafId ?? "current"}`);
-		const continuePrevious = input.kind === "continuation" || (input.kind === "user" && state.continuationCue);
+		if (input.kind === "command" && input.purpose && state.intent === "unknown") {
+			state.intent = input.purpose === "investigate" ? "investigate" : "implement";
+			state.weight = input.purpose === "investigate" ? "none" : "standard";
+			state.explicitMutation = input.purpose === "implement";
+			state.detachedArtifactTask = input.purpose === "artifact";
+			state.summary = `intent=${state.intent} · weight=${state.weight}${state.explicitMutation ? "" : " · mutation=not-requested"}`;
+		}
+		const continuePrevious = !inert && (input.kind === "continuation" || (input.kind === "user" && state.continuationCue));
 		if (continuePrevious) {
-			if (previous) state = { ...previous, sessionFile, continuationCue: true, summary: `${previous.summary} · continuation=latest-intent` };
+			if (input.scope) {
+				state = classifyPrompt(input.scope === "learning" ? "/study-hard" : "/meta-review", sessionFile);
+				state.continuationScope = input.scope;
+				state.continuationCue = true;
+			} else if (previous?.continuationScope) {
+				state = { ...previous, sessionFile, continuationCue: true };
+			} else if (input.kind === "continuation" && input.request) {
+				state = { ...classifyPrompt(input.request, sessionFile), continuationCue: true };
+			} else if (previous) state = { ...previous, sessionFile, continuationCue: true, summary: `${previous.summary} · continuation=latest-intent` };
 			// Continuation boilerplate never grants/reissues workspace rights.
 			state.workspaceAuthorization = restoredAuthorization;
 			state.summary = [
@@ -1473,8 +1544,14 @@ export default function workflowGuard(
 				state = { ...state, intent: "implement", weight: "standard", explicitMutation: true, summary: "intent=implement · weight=standard · continuation=latest-intent" };
 			}
 		}
-		if (!inert && state.intent !== "status_note") latestIntentBySession.set(key, state);
-		else if (previous) latestIntentBySession.set(key, previous);
+		if (!inert && !continuePrevious && state.intent !== "status_note") {
+			latestIntentBySession.set(key, state);
+			activeContinuationBySession.delete(key);
+		} else {
+			if (explicitPrevious) latestIntentBySession.set(key, explicitPrevious);
+			if (continuePrevious) activeContinuationBySession.set(key, state);
+			else if (previous?.continuationCue) activeContinuationBySession.set(key, previous);
+		}
 		if (workspaceAuthorizationChanged(restoredAuthorization, state.workspaceAuthorization)) {
 			persistWorkspaceAuthorization(pi, state.workspaceAuthorization);
 		}
@@ -1494,7 +1571,7 @@ export default function workflowGuard(
 				customType: "workflow_guard",
 				content: audit ? `${guardPrompt}\n\n${audit.text}` : guardPrompt,
 				display: false,
-				details: { state, lastIntent: latestIntentBySession.get(key), inputKind: input.kind, ultraMode, adaptiveThinking, audit: audit?.details, workContext: card ? { path: card.identity.contextPath, currentSlice: card.currentSlice?.id, mode: card.mode } : undefined },
+				details: { state, lastIntent: latestIntentBySession.get(key), activeContinuation: activeContinuationBySession.get(key), inputKind: input.kind, ultraMode, adaptiveThinking, audit: audit?.details, workContext: card ? { path: card.identity.contextPath, currentSlice: card.currentSlice?.id, mode: card.mode } : undefined },
 			},
 		};
 	});
@@ -1532,6 +1609,11 @@ export default function workflowGuard(
 			}
 		}
 
+		if (state.continuationScope && (event.toolName === "edit" || event.toolName === "write")
+			&& !scopedArtifactPath(ctx.cwd, String(event.input?.path ?? ""))) {
+			return { block: true, reason: `workflow_guard: ${state.continuationScope} follow-up may write only review/learning artifacts.` };
+		}
+
 		if ((event.toolName === "edit" || event.toolName === "write") && !isTempPath(String(event.input?.path ?? ""))) {
 			const mutationPath = String(event.input?.path ?? "");
 			if (state.explicitMutation && card && pathBelongsToWorkContext(card, mutationPath) && (state.weight === "standard" || state.weight === "full")) {
@@ -1541,6 +1623,9 @@ export default function workflowGuard(
 		}
 
 		const workspaceAction = workspaceActionForTool(event.toolName, event.input);
+		if (state.continuationScope && (workspaceAction || event.toolName === "auto_commit")) {
+			return { block: true, reason: `workflow_guard: ${state.continuationScope} follow-up does not authorize implementation or workspace actions.` };
+		}
 		if (workspaceAction) {
 			if (workspaceAction === "create-worktree" && !state.explicitMutation && !isWorkspaceActionAuthorized(state.workspaceAuthorization, workspaceAction)) {
 				const reason = highRiskMutationBlockReason(state, event.toolName);
@@ -1564,6 +1649,9 @@ export default function workflowGuard(
 			const command = String(event.input?.command ?? "");
 			const directWorktreeAddCount = gitWorktreeAddCommandCount(command);
 			const directWorktreeAdd = directWorktreeAddCount > 0;
+			if (state.continuationScope && (!scopedBashAllowed(ctx.cwd, command) || directWorktreeAdd || isHighRiskBashMutation(command) || isExternalIssueOrPrCreateCommand(command))) {
+				return { block: true, reason: `workflow_guard: ${state.continuationScope} follow-up is scoped to review/learning artifacts.` };
+			}
 			if (directWorktreeAddCount > 1) {
 				return { block: true, reason: "workflow_guard blocked git worktree add: one authorization event permits exactly one workspace action." };
 			}
@@ -1733,6 +1821,7 @@ export default function workflowGuard(
 				return toolText(`Classification: ${state.summary}`, { state });
 			}
 			if (params.action === "adopt") {
+				if (current?.continuationScope) throw new Error("Scoped follow-up cannot adopt broader authority; wait for a new explicit user/command request.");
 				const state = classifyPrompt(
 					String(params.prompt ?? current?.prompt ?? ""),
 					ctx.sessionManager?.getSessionFile?.(),
