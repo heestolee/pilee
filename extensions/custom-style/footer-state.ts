@@ -1,39 +1,19 @@
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { isFastConfigurationActive } from "../codex-fast-mode/index.ts";
+import { loadFastConfiguration } from "../codex-fast-mode/state.ts";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { subscribeRepoStatusInvalidation } from "../utils/repo-status-events.ts";
 import { createRepoStatusTracker, type RepoStatusSnapshot } from "../utils/repo-status.ts";
 import { type RuntimeInfo, readRuntimeInfo } from "./runtime.ts";
 
-const CODEX_FAST_STATE_FILE = join(homedir(), ".pi", "agent", "state", "codex-fast-mode.json");
-const CODEX_FAST_SUPPORTED_PROVIDER = "openai-codex";
 const FOOTER_STATE_REFRESH_INTERVAL_MS = 3000;
 
-type FastModeState = { enabled: boolean };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
+export function isCodexFastModeEnabled(cwd = process.cwd()): boolean {
+	try { return loadFastConfiguration(cwd).mode !== "off"; } catch { return false; }
 }
 
-function loadCodexFastModeState(): FastModeState {
-	try {
-		const parsed = JSON.parse(readFileSync(CODEX_FAST_STATE_FILE, "utf8"));
-		if (isRecord(parsed) && typeof parsed.enabled === "boolean") {
-			return { enabled: parsed.enabled };
-		}
-	} catch {
-		// missing/corrupt state — default off
-	}
-	return { enabled: false };
-}
-
-export function isCodexFastModeEnabled(): boolean {
-	return loadCodexFastModeState().enabled;
-}
-
-export function shouldUseCodexFastBadge(provider: string | undefined, isFastModeEnabled: boolean): boolean {
-	return isFastModeEnabled && provider === CODEX_FAST_SUPPORTED_PROVIDER;
+export function shouldUseCodexFastBadge(provider: string | undefined, isFastModeEnabled: boolean, modelId?: string, cwd = process.cwd()): boolean {
+	if (!isFastModeEnabled) return false;
+	try { return isFastConfigurationActive({ provider, id: modelId }, loadFastConfiguration(cwd)); } catch { return false; }
 }
 
 export interface FooterState {
@@ -64,14 +44,14 @@ export function createFooterStateManager(
 ): FooterStateManager {
 	let disposed = false;
 	let repoName: string | null = null;
-	let isCodexFastModeEnabled = loadCodexFastModeState().enabled;
+	let isCodexFastModeEnabled = false;
 	let runtime: RuntimeInfo | undefined;
 	const cwd = ctx.sessionManager.getCwd();
 	const repoStatusTracker = createRepoStatusTracker(pi, cwd);
 
 	const refreshCodexFastModeState = () => {
 		if (disposed) return;
-		const next = loadCodexFastModeState().enabled;
+		const next = shouldUseCodexFastBadge(ctx.model?.provider, true, ctx.model?.id, cwd);
 		if (next !== isCodexFastModeEnabled) {
 			isCodexFastModeEnabled = next;
 			requestRender();

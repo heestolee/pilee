@@ -84,7 +84,7 @@ function installEditor(pi: ExtensionAPI, ctx: ExtensionContext, getState: () => 
 			ctx.ui.theme,
 			() => {
 				const state = getState();
-				const modelLabel = shouldUseCodexFastBadge(ctx.model?.provider, isCodexFastModeEnabled())
+				const modelLabel = shouldUseCodexFastBadge(ctx.model?.provider, isCodexFastModeEnabled(ctx.cwd), ctx.model?.id, ctx.cwd)
 					? `${state.modelLabel} ⚡`
 					: state.modelLabel;
 				const panelPrefix = `${ctx.ui.theme.fg("accent", state.panelLabel)}${ctx.ui.theme.fg("border", " · ")}`;
