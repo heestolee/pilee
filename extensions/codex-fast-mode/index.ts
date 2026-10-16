@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { isRecord, loadFastConfiguration, saveFastConfiguration, type CodexFastModeState, type FastConfiguration } from "./state.ts";
+import { isRecord, loadFastConfiguration, registerFastConfigurationReader, saveFastConfiguration, type CodexFastModeState, type FastConfiguration, type SpeedMode } from "./state.ts";
 
 export { isCodexFastModeEnabled, loadCodexFastModeState, saveCodexFastModeState } from "./state.ts";
 export type { CodexFastModeState } from "./state.ts";
@@ -71,22 +71,30 @@ export function fastModeStatus(model: CodexModelLike, state: FastConfiguration):
 const ACTIONS = ["on", "off", "priority-on", "priority-off", "status"] as const;
 
 export default function codexFastMode(pi: ExtensionAPI) {
-	let configuration: FastConfiguration | undefined;
-	let loadedCwd: string | undefined;
+	let transient: { cwd: string; mode: SpeedMode; baseline: string } | undefined;
+	let releaseReader: (() => void) | undefined;
+	let startupApplied = false;
 	let writes: Promise<void> = Promise.resolve();
 
-	function current(ctx: ExtensionContext): FastConfiguration {
-		if (!configuration || loadedCwd !== ctx.cwd) {
-			configuration = loadFastConfiguration(ctx.cwd);
-			loadedCwd = ctx.cwd;
-		}
-		return configuration;
+	function selectionKey(state: FastConfiguration): string {
+		return JSON.stringify([state.settingsPath, state.source, state.mode, state.priority, state.legacyOnly, state.revision]);
 	}
 
-	function updateStatus(ctx: ExtensionContext): void {
+	function current(cwd: string): FastConfiguration {
+		try {
+			const persisted = loadFastConfiguration(cwd);
+			if (transient && (transient.cwd !== cwd || transient.baseline !== selectionKey(persisted))) transient = undefined;
+			return transient ? { ...persisted, mode: transient.mode, legacyOnly: false, priority: persisted.source === "legacy" ? true : persisted.priority } : persisted;
+		} catch (error) {
+			transient = undefined;
+			throw error;
+		}
+	}
+
+	function updateStatus(ctx: ExtensionContext, state: FastConfiguration | undefined): void {
 		if (!ctx.hasUI) return;
-		ctx.ui.setStatus("fast-priority", configuration?.mode === "off" ? undefined
-			: configuration ? fastModeStatus(ctx.model ?? {}, configuration) : "Fast · 비활성(설정 오류)");
+		ctx.ui.setStatus("fast-priority", state?.mode === "off" ? undefined
+			: state ? fastModeStatus(ctx.model ?? {}, state) : "Fast · 비활성(설정 오류)");
 	}
 
 	function warning(ctx: ExtensionContext, error: unknown): void {
@@ -97,12 +105,15 @@ export default function codexFastMode(pi: ExtensionAPI) {
 		// Queue the transition too, not just its write: concurrent bare toggles must
 		// observe the preceding mode and cannot collapse into the same value.
 		writes = writes.catch(() => undefined).then(() => {
-			const state = current(ctx);
+			const state = current(ctx.cwd);
 			if (action === "status") {
+				updateStatus(ctx, state);
 				if (ctx.hasUI) ctx.ui.notify(fastModeStatus(ctx.model ?? {}, state), "info");
 				return;
 			}
-			const next = { ...state };
+			// Priority-only commands must not persist the CLI startup mode.
+			const priorityOnly = action === "priority-on" || action === "priority-off";
+			const next = { ...(priorityOnly ? loadFastConfiguration(ctx.cwd) : state) };
 			if (action === "toggle-fast" || action === "toggle-ultrafast") {
 				const mode = action === "toggle-fast" ? "fast" : "ultrafast";
 				next.mode = state.mode === mode ? "off" : mode;
@@ -115,11 +126,12 @@ export default function codexFastMode(pi: ExtensionAPI) {
 				next.priority = action === "priority-on";
 			}
 			saveFastConfiguration(next);
-			configuration = { ...next, source: "settings" };
-			updateStatus(ctx);
-			if (ctx.hasUI) ctx.ui.notify(fastModeStatus(ctx.model ?? {}, next), "info");
+			transient = undefined;
+			const effective = current(ctx.cwd);
+			updateStatus(ctx, effective);
+			if (ctx.hasUI) ctx.ui.notify(fastModeStatus(ctx.model ?? {}, effective), "info");
 		});
-		return writes.catch((error) => warning(ctx, error));
+		return writes.catch((error) => { updateStatus(ctx, undefined); warning(ctx, error); });
 	}
 
 	pi.registerFlag("fast", { description: "Fast 모드로 시작", type: "boolean", default: false });
@@ -144,24 +156,34 @@ export default function codexFastMode(pi: ExtensionAPI) {
 		},
 	});
 	pi.on("session_start", (_event, ctx) => {
-		configuration = undefined;
+		releaseReader?.();
+		const cwd = ctx.cwd;
+		releaseReader = registerFastConfigurationReader(cwd, () => current(cwd));
 		try {
-			const state = current(ctx);
-			if (pi.getFlag("fast") === true) {
-				configuration = { ...state, mode: "fast", legacyOnly: false, priority: state.source === "legacy" ? true : state.priority };
+			const state = current(cwd);
+			if (!startupApplied) {
+				startupApplied = true;
+				const mode = pi.getFlag("ultrafast") === true ? "ultrafast" : pi.getFlag("fast") === true ? "fast" : undefined;
+				if (mode) transient = { cwd, mode, baseline: selectionKey(state) };
 			}
-			if (pi.getFlag("ultrafast") === true) {
-				const selected = current(ctx);
-				configuration = { ...selected, mode: "ultrafast", legacyOnly: false, priority: selected.source === "legacy" ? true : selected.priority };
-			}
-		} catch (error) { warning(ctx, error); }
-		updateStatus(ctx);
+			updateStatus(ctx, current(cwd));
+		} catch (error) { startupApplied = true; updateStatus(ctx, undefined); warning(ctx, error); }
 	});
-	pi.on("model_select", (_event, ctx) => updateStatus(ctx));
+	pi.on("model_select", (_event, ctx) => {
+		try { updateStatus(ctx, current(ctx.cwd)); }
+		catch (error) { updateStatus(ctx, undefined); warning(ctx, error); }
+	});
 	pi.on("before_provider_request", (event, ctx) => {
 		try {
-			const next = applyFastConfiguration(event.payload, ctx.model ?? {}, current(ctx));
+			const state = current(ctx.cwd);
+			updateStatus(ctx, state);
+			const next = applyFastConfiguration(event.payload, ctx.model ?? {}, state);
 			return next === event.payload ? undefined : next;
-		} catch (error) { warning(ctx, error); }
+		} catch (error) { updateStatus(ctx, undefined); warning(ctx, error); }
+	});
+	pi.on("session_shutdown", () => {
+		releaseReader?.();
+		releaseReader = undefined;
+		transient = undefined;
 	});
 }

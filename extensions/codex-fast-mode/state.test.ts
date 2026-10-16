@@ -73,8 +73,10 @@ test("mode persistence merges the effective scope atomically and preserves unrel
 		const globalBefore = readFileSync(f.global, "utf8");
 		const state = loadFastConfiguration(f.cwd);
 		saveFastConfiguration({ ...state, mode: "fast", priority: false });
+		const revision = loadFastConfiguration(f.cwd).revision;
+		assert.equal(typeof revision, "string");
 		assert.deepEqual(JSON.parse(readFileSync(f.project, "utf8")), {
-			custom: { keep: 1 }, "pi-codex-fast": { mode: "fast", enabled: true, priority: false, legacyOnly: false, extra: "keep" },
+			custom: { keep: 1 }, "pi-codex-fast": { mode: "fast", enabled: true, priority: false, legacyOnly: false, extra: "keep", revision },
 		});
 		assert.equal(loadFastConfiguration(f.cwd).priority, false);
 		assert.equal(readFileSync(f.global, "utf8"), globalBefore);

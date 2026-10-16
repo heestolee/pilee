@@ -11,9 +11,34 @@ export type FastConfiguration = {
 	legacyOnly: boolean;
 	source: "legacy" | "settings";
 	settingsPath: string;
+	revision?: string;
 };
 
 const SETTINGS_KEY = "pi-codex-fast";
+// jiti can instantiate this module separately for the entry point and footer.
+// Only the active extension lifecycle owns a reader; stale shutdowns cannot
+// remove a newer runtime's reader.
+const EFFECTIVE_READERS = Symbol.for("pilee.codex-fast-mode.effective-readers.v1");
+type ConfigurationReader = () => FastConfiguration;
+type FastGlobal = typeof globalThis & { [EFFECTIVE_READERS]?: Map<string, ConfigurationReader> };
+
+function readerKey(cwd: string): string {
+	return JSON.stringify([agentDir(), stateFile(), cwd]);
+}
+
+export function registerFastConfigurationReader(cwd: string, reader: ConfigurationReader): () => void {
+	const shared = globalThis as FastGlobal;
+	const readers = shared[EFFECTIVE_READERS] ??= new Map();
+	const key = readerKey(cwd);
+	readers.set(key, reader);
+	return () => {
+		if (readers.get(key) === reader) readers.delete(key);
+	};
+}
+
+export function loadEffectiveFastConfiguration(cwd: string): FastConfiguration {
+	return (globalThis as FastGlobal)[EFFECTIVE_READERS]?.get(readerKey(cwd))?.() ?? loadFastConfiguration(cwd);
+}
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -94,6 +119,7 @@ export function loadFastConfiguration(cwd: string): FastConfiguration {
 			legacyOnly: settings.legacyOnly === true,
 			source: "settings",
 			settingsPath: projectMode === undefined ? globalPath : projectPath,
+			...(typeof settings.revision === "string" ? { revision: settings.revision } : {}),
 		};
 	}
 	const legacy = loadCodexFastModeState();
@@ -111,6 +137,9 @@ export function saveFastConfiguration(state: FastConfiguration): void {
 			enabled: state.mode !== "off",
 			priority: state.priority,
 			legacyOnly: state.legacyOnly,
+			// Even OFF -> OFF is an explicit saved choice that supersedes a CLI
+			// override in an already-running panel. Unrelated settings writes do not.
+			revision: randomUUID(),
 		},
 	}));
 }
