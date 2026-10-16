@@ -203,11 +203,45 @@ applies_to: [src/**/*.ts]
 		assert.equal(submitted.details.submission.repairAuthorized, true);
 		assert.equal((await h.emit("tool_call", ctx, { toolName: "edit", input: { path: "src/service.ts" } })).find(Boolean), undefined);
 
-		await h.emit("before_agent_start", ctx, { prompt: h.messages[0]?.message.content });
+		await h.emit("before_agent_start", ctx, { messageType: "custom", message: {
+			...h.messages[0]?.message, content: [{ type: "text", text: h.messages[0]?.message.content }],
+		} });
 		await h.emit("agent_start", ctx);
 		await writeFile(join(root, "src/service.ts"), "export const value: Result = input;\n");
 		await h.emit("agent_settled", ctx);
 		assert.ok(h.entries.some((entry) => entry.data.status === "review-done" && entry.data.reason === "submission:AUTO_FIX"));
+	});
+});
+
+test("custom review/status keeps maxCycles and submit gate until a new user or session", async () => {
+	await withRepo(async (root) => {
+		const cards = join(root, "cards");
+		await mkdir(cards);
+		await writeFile(join(cards, "type.md"), "---\nid: type-contract\nstatus: reviewed\nsignals: [as unknown as]\n---\n# Type\n");
+		const h = harness({ id: "fixture", mode: "review", maxCycles: 1,
+			packs: [{ id: "cards", kind: "markdown-cards", rootDir: cards, authority: "team-convention", defaultStatus: "reviewed" }] }, { stateDir: join(root, "state") });
+		const ctx = context(root);
+		await h.emit("session_start", ctx, { reason: "startup" });
+		await h.emit("agent_start", ctx);
+		await writeFile(join(root, "src/service.ts"), "export const one = input as unknown as Result;\n");
+		await h.emit("agent_settled", ctx);
+		assert.equal(h.messages.length, 1);
+		for (const message of [h.messages[0].message, { customType: "worktree-dependency-bootstrap", content: "READY" }, { customType: "unknown", content: "reset review" }]) {
+			await h.emit("before_agent_start", ctx, { messageType: "custom", message });
+		}
+		assert.equal((await h.emit("tool_call", ctx, { toolName: "write", input: { path: "src/service.ts" } })).find(Boolean)?.block, true);
+		await h.tools.find((tool) => tool.name === "convention_lens").execute("submit", { action: "submit", verdict: "KEEP", summary: "변경 유지", findings: [] });
+		await h.emit("agent_start", ctx);
+		await writeFile(join(root, "src/service.ts"), "export const two = input as unknown as Result;\n");
+		await h.emit("agent_settled", ctx);
+		assert.equal(h.messages.length, 1);
+		assert.ok(h.entries.some((entry) => entry.data.reason === "max-cycle"));
+		await h.emit("session_start", ctx, { reason: "switch" });
+		assert.equal((await h.emit("tool_call", ctx, { toolName: "write", input: { path: "src/service.ts" } })).find(Boolean), undefined);
+		await h.emit("agent_start", ctx);
+		await writeFile(join(root, "src/service.ts"), "export const three = input as unknown as Result;\n");
+		await h.emit("agent_settled", ctx);
+		assert.equal(h.messages.length, 2);
 	});
 });
 

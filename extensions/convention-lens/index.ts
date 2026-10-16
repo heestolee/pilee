@@ -5,6 +5,7 @@ import { basename, join } from "node:path";
 import { StringEnum } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
+import { readAgentStartInput } from "../utils/agent-start-input.ts";
 import {
 	expandProfileTemplate,
 	loadConventionLensProfiles,
@@ -244,7 +245,8 @@ export function registerConventionLens(pi: ExtensionAPI, options: RegisterOption
 	});
 
 	pi.on("before_agent_start", (event) => {
-		if (!event.prompt.startsWith(CONVENTION_LENS_FOLLOWUP_MARKER)) state.cycle = 0;
+		const input = readAgentStartInput(event);
+		if ((input.kind === "user" || input.kind === "command") && !input.text.startsWith(CONVENTION_LENS_FOLLOWUP_MARKER)) state.cycle = 0;
 	});
 
 	pi.on("agent_start", async (_event, ctx) => {
