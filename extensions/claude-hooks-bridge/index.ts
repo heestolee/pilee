@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { readAgentStartInput } from "../utils/agent-start-input.ts";
 
 type Json = Record<string, unknown>;
 type HookEvent = "SessionStart" | "UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "Stop";
@@ -122,8 +123,10 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("before_agent_start", async (event, ctx) => {
+		const input = readAgentStartInput(event);
+		if ((input.kind !== "user" && input.kind !== "command") || !input.request?.trim()) return;
 		const { settings } = loadSettings(ctx.cwd);
-		await runHooks(settings, "UserPromptSubmit", ctx.cwd, { ...basePayload("UserPromptSubmit", ctx), prompt: event.prompt });
+		await runHooks(settings, "UserPromptSubmit", ctx.cwd, { ...basePayload("UserPromptSubmit", ctx), prompt: input.request });
 	});
 
 	pi.on("tool_call", async (event, ctx) => {
