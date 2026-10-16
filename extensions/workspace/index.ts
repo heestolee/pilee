@@ -32,8 +32,6 @@ const AUTOSAVE_MIN_GAP_MS = 20_000;
 const AUTOSAVE_STATE_PATH = join(WORKSPACE_DIR, "autosave-state.json");
 const AUTOSAVE_LOCK_PATH = join(WORKSPACE_DIR, "autosave.lock");
 
-let autosaveScheduled = false;
-let latestContext: ExtensionContext | undefined;
 let restoreController: AbortController | undefined;
 
 type WorkspaceSource = "manual" | "auto";
@@ -1008,8 +1006,8 @@ function shouldRunAutosaveCleanup(state: AutosaveState, now: number): boolean {
 	return listAutosaveArchives().length > AUTOSAVE_ARCHIVE_LIMIT;
 }
 
-async function autosave(pi: ExtensionAPI, ctx: ExtensionContext) {
-	if (process.platform !== "darwin" || process.env.TERM_PROGRAM !== "ghostty") return;
+async function autosave(pi: ExtensionAPI, ctx: ExtensionContext, isActive: () => boolean) {
+	if (!isActive() || process.platform !== "darwin" || process.env.TERM_PROGRAM !== "ghostty") return;
 	const releaseLock = acquireAutosaveLock();
 	if (!releaseLock) return;
 	try {
@@ -1035,6 +1033,7 @@ async function autosave(pi: ExtensionAPI, ctx: ExtensionContext) {
 		const leader = autosaveLeaderFor(ctx, state.leader, now);
 		writeActiveRecord(ctx);
 		const window = await captureGhosttyWindow(pi);
+		if (!isActive()) return;
 		const snapshot = buildSnapshot(window, "auto", "autosave", false);
 		const stats = workspaceSnapshotStats(snapshot);
 		const nextHash = workspaceSnapshotHash(snapshot);
@@ -1078,6 +1077,7 @@ async function autosave(pi: ExtensionAPI, ctx: ExtensionContext) {
 			deletedArchives,
 		});
 	} catch (error) {
+		if (!isActive() || isStaleCtxError(error)) return;
 		const now = Date.now();
 		const state = readJson<AutosaveState>(AUTOSAVE_STATE_PATH, {});
 		writeJson(AUTOSAVE_STATE_PATH, {
@@ -1092,14 +1092,20 @@ async function autosave(pi: ExtensionAPI, ctx: ExtensionContext) {
 	}
 }
 
-function scheduleAutosave(pi: ExtensionAPI, ctx: ExtensionContext) {
-	latestContext = ctx;
-	if (autosaveScheduled) return;
-	if (process.platform !== "darwin" || process.env.TERM_PROGRAM !== "ghostty") return;
-	autosaveScheduled = true;
+function scheduleAutosave(pi: ExtensionAPI, ctx: ExtensionContext): () => void {
+	if (process.platform !== "darwin" || process.env.TERM_PROGRAM !== "ghostty") return () => {};
+	let active = true;
+	const run = () => { if (active) void autosave(pi, ctx, () => active); };
 	const initialDelay = AUTOSAVE_INITIAL_DELAY_MIN_MS + Math.floor(Math.random() * AUTOSAVE_INITIAL_DELAY_JITTER_MS);
-	setTimeout(() => { if (latestContext) void autosave(pi, latestContext); }, initialDelay).unref?.();
-	setInterval(() => { if (latestContext) void autosave(pi, latestContext); }, AUTOSAVE_INTERVAL_MS).unref?.();
+	const initial = setTimeout(run, initialDelay);
+	const interval = setInterval(run, AUTOSAVE_INTERVAL_MS);
+	initial.unref?.();
+	interval.unref?.();
+	return () => {
+		active = false;
+		clearTimeout(initial);
+		clearInterval(interval);
+	};
 }
 
 const HELP = `Ghostty workspace snapshot/restore
@@ -1163,21 +1169,23 @@ export default function (pi: ExtensionAPI) {
 	const displayedLists = new Map<string | ExtensionContext["sessionManager"], SnapshotReference[]>();
 	const listKey = (ctx: ExtensionContext) => ctx.sessionManager.getSessionFile() || ctx.sessionManager;
 	let revokeRestoreReceipt: (() => void) | undefined;
+	let disposeAutosave: (() => void) | undefined;
 	pi.on("session_start", async (_event, ctx) => {
+		disposeAutosave?.();
+		revokeRestoreReceipt?.();
 		revokeRestoreReceipt = receiveRestoreSession(ctx);
 		writeActiveRecord(ctx);
-		scheduleAutosave(pi, ctx);
+		disposeAutosave = scheduleAutosave(pi, ctx);
 	});
 	pi.on("message_end", async (_event, ctx) => {
-		latestContext = ctx;
 		writeActiveRecord(ctx);
 	});
 	pi.on("agent_end", async (_event, ctx) => {
-		latestContext = ctx;
 		writeActiveRecord(ctx);
 	});
 	pi.on("session_shutdown", async () => {
-		latestContext = undefined;
+		disposeAutosave?.();
+		disposeAutosave = undefined;
 		restoreController?.abort();
 		revokeRestoreReceipt?.();
 		revokeRestoreReceipt = undefined;
