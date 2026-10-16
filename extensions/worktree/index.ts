@@ -26,6 +26,8 @@ import { createNamedWorktree, type CreatedWorktree } from "./create-worktree.ts"
 import type { WorktreeNamingScheme } from "./names.ts";
 import {
 	bootstrapDomainProfiles,
+	dependencyBootstrapPrompt,
+	isImplementationStartPrompt,
 	getBootstrapDomains,
 	getPostCreateBootstrapRequest,
 	pendingPostCreateActivationId,
@@ -1352,8 +1354,6 @@ const dependencyBootstrapJobs = new Map<string, BootstrapJob>();
 const dependencyBootstrapVisibleNotifications = new Map<string, number>();
 const DEPENDENCY_BOOTSTRAP_VISIBLE_NOTIFICATION_TTL_MS = 5 * 60 * 1000;
 const DEPENDENCY_BOOTSTRAP_STATUS_ID = "wt-deps";
-const DEFAULT_EXPLORATORY_PROMPT_REGEX = "(확인해볼래|조사|분석|왜|어떤|궁금|찾아|알려|정리해|봐봐|look into|investigate|analy[sz]e|explain|why)";
-const DEFAULT_IMPLEMENTATION_PROMPT_REGEX = "(구현|수정|작업|진행|이어서|마무리|고쳐|반영|검증|lint|test|커밋|푸시|pr|해줘|implement|fix|edit|change|continue|work on|verify|commit|push)";
 
 function shellQuote(value: string): string {
 	return `'${value.replace(/'/g, `'\\''`)}'`;
@@ -1369,21 +1369,6 @@ async function detectProfiledRepo(pi: ExtensionAPI, repoRoot: string): Promise<W
 	const remote = await pi.exec("git", ["config", "--get", "remote.origin.url"], { cwd: repoRoot });
 	if (remote.code === 0) remoteUrl = normalizeRemoteUrl(remote.stdout ?? "");
 	return getProfiledWorktreeRepos(repoRoot).find((profile) => repoProfileMatches(profile, repoRoot, registeredName, remoteUrl)) ?? null;
-}
-
-function textMatches(pattern: string | undefined, text: string): boolean {
-	if (!pattern) return false;
-	return regexTest(pattern, text);
-}
-
-function isImplementationStartPrompt(prompt: string, profile?: WorktreeRepoProfile): boolean {
-	const text = prompt.trim();
-	if (!text || text.startsWith("/")) return false;
-	const bootstrap = profile?.bootstrap;
-	const exploratoryPattern = bootstrap?.exploratoryPromptRegex ?? DEFAULT_EXPLORATORY_PROMPT_REGEX;
-	const implementationPattern = bootstrap?.implementationPromptRegex ?? DEFAULT_IMPLEMENTATION_PROMPT_REGEX;
-	if (textMatches(exploratoryPattern, text)) return textMatches(implementationPattern, text);
-	return textMatches(implementationPattern, text);
 }
 
 function isBootstrapDiagnosticPrompt(prompt: string): boolean {
@@ -3818,8 +3803,10 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("before_agent_start", async (event, ctx) => {
+		const prompt = dependencyBootstrapPrompt(event, bootstrapSessionEntries(ctx));
+		if (prompt === undefined) return undefined;
 		const postCreate = await resolvePostCreateBootstrapRequest(pi, ctx);
-		const result = await ensureDependencyBootstrapWorker(pi, ctx, event.prompt ?? "", postCreate
+		const result = await ensureDependencyBootstrapWorker(pi, ctx, prompt, postCreate
 			? { domains: postCreate.domains, reason: "post-create-ready", repoRoot: postCreate.repoRoot }
 			: {});
 		if (postCreate && result.state !== "not-company-repo" && result.state !== "not-implementation") {

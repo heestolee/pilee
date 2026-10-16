@@ -1,3 +1,5 @@
+import type { BeforeAgentStartEvent } from "@mariozechner/pi-coding-agent";
+import { latestAgentRequest, readAgentStartInput } from "../utils/agent-start-input.ts";
 import type { WorktreeBootstrapDomainProfile, WorktreeRepoProfile } from "../utils/private-profiles.ts";
 import { WORKSPACE_ACTIVATION_READY_ENTRY_TYPE } from "../utils/workspace-activation-contract.ts";
 
@@ -22,6 +24,28 @@ export interface PostCreateBootstrapRequest {
 
 function regexTest(pattern: string, value: string): boolean {
 	try { return new RegExp(pattern, "i").test(value); } catch { return false; }
+}
+
+export function dependencyBootstrapPrompt(event: BeforeAgentStartEvent, entries: readonly unknown[]): string | undefined {
+	const input = readAgentStartInput(event);
+	if (input.kind === "status" || input.kind === "unknown") return undefined;
+	if (input.kind === "user") return input.request;
+	if (input.kind === "command") {
+		const request = input.request?.replace(/^\/\S+\s*/, "") ?? "";
+		return ["ship", "pr-ship", "ci-ship", "verify"].includes(input.command ?? "") ? `검증 ${request}` : request;
+	}
+	const request = input.request ?? latestAgentRequest(entries);
+	return /^pilee-frame(?:-v2)?-worktree-fork-continuation$/.test(input.customType ?? "")
+		? `구현 시작 ${request ?? ""}` : request;
+}
+
+export function isImplementationStartPrompt(prompt: string, profile?: WorktreeRepoProfile): boolean {
+	const text = prompt.trim();
+	if (!text || text.startsWith("/")) return false;
+	const exploratoryPattern = profile?.bootstrap?.exploratoryPromptRegex ?? "(확인해볼래|조사|분석|왜|어떤|궁금|찾아|알려|정리해|봐봐|look into|investigate|analy[sz]e|explain|why)";
+	const implementationPattern = profile?.bootstrap?.implementationPromptRegex ?? "(구현|수정|작업|진행|이어서|마무리|고쳐|반영|검증|lint|test|커밋|푸시|pr|해줘|implement|fix|edit|change|continue|work on|verify|commit|push)";
+	if (regexTest(exploratoryPattern, text)) return regexTest(implementationPattern, text);
+	return regexTest(implementationPattern, text);
 }
 
 export function bootstrapDomainProfiles(profile: WorktreeRepoProfile): WorktreeBootstrapDomainProfile[] {
