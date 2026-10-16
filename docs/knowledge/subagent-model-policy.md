@@ -25,7 +25,7 @@ source:
   - pilee-history:2026-05-04#34
   - pilee-history:2026-05-05#42
 reviewed_at: 2026-10-16
-reviewed_commit: 1c2fc841c80ebc5c2a46c5502cbbaf292ac679c6
+reviewed_commit: 0f9e47ac1ac4dcabd239aea49798b2efe9ba9fc2
 related:
   - pilee-knowledge-system
   - worktree-session-continuity
@@ -34,7 +34,7 @@ related:
 
 ## Overview
 
-pilee subagent는 GPT-6 Astra를 기본 실행 모델로 사용하고 Claude Opus 5를 독립 검증 경계에 남기는 hybrid 모델 정책으로 운영합니다. 11개 agent 중 9개는 Astra를 primary로 사용하며, 역할 난도에 따라 `low`·`high`·`max` effort를 구분합니다. false PASS와 동일 모델 계열의 상관된 맹점을 줄이기 위해 verifier와 challenger만 Opus 5 `max`를 primary로 유지하고 Astra를 첫 fallback으로 둡니다.
+pilee subagent는 GPT-6 Astra를 기본 실행 모델로 사용하고 Claude Opus 5.5를 독립 검증 경계에 남기는 hybrid 모델 정책으로 운영합니다. 11개 agent 중 9개는 Astra를 primary로 사용하며, 역할 난도에 따라 `low`·`high`·`max` effort를 구분합니다. false PASS와 동일 모델 계열의 상관된 맹점을 줄이기 위해 verifier와 challenger만 Opus 5.5 `max`를 primary로 유지하고 Astra를 첫 fallback으로 둡니다.
 
 ## Model Split
 
@@ -44,8 +44,8 @@ Astra 사용률을 높이는 것과 모든 역할에 같은 effort를 강제하�
 - Meta Review question worker와 Study Hard worker는 pinned source·구조화 artifact·충돌 보존 계약을 다루므로 Astra `max`를 사용하며 `Sol → Terra → Spark` fallback을 유지합니다.
 - browser와 searcher는 상태 해석·다중 도구·교차근거가 필요하지만 실행 지연도 중요하므로 Astra `high`를 사용합니다. 각각 기존 Sol, `Terra → Sol`을 fallback으로 둡니다.
 - finder와 bootstrapper는 좁은 탐색 또는 지정 executor·status·log 판정이 중심이므로 Astra `low`를 사용하고 Luna를 fallback으로 둡니다. Astra의 `minimal`도 실제로 `low`에 매핑되므로 명시적으로 `low`를 사용합니다.
-- verifier는 “증거 없는 PASS”의 비용이 크므로 Claude Opus 5를 `max` effort로 사용합니다. 구현보다 claim inventory, 재현, evidence 판정, skipped check/remaining risk 기록이 핵심 역할입니다.
-- challenger는 제품·구조 맥락의 숨은 가정과 실패 시나리오를 압박하므로 Claude Opus 5를 `max` effort로 사용합니다. 두 Opus 역할 모두 `Astra → Sol` 순서로 fallback해 독립 검증을 우선하되 provider 장애로 workflow 전체가 막히지 않게 합니다.
+- verifier는 “증거 없는 PASS”의 비용이 크므로 Claude Opus 5.5를 `max` effort로 사용합니다. 구현보다 claim inventory, 재현, evidence 판정, skipped check/remaining risk 기록이 핵심 역할입니다.
+- challenger는 제품·구조 맥락의 숨은 가정과 실패 시나리오를 압박하므로 Claude Opus 5.5를 `max` effort로 사용합니다. 두 Opus 역할 모두 `Astra → Sol` 순서로 fallback해 독립 검증을 우선하되 provider 장애로 workflow 전체가 막히지 않게 합니다.
 - abort는 사용자가 실행을 중단한 의사이므로 fallback을 시작하지 않습니다. fallback이 실행돼도 verifier의 PASS 기준과 challenger의 가설/사실 분리 기준은 바뀌지 않습니다.
 - agent는 기존 단일 `modelFallback`과 순서형 `modelFallbacks` chain을 모두 지원합니다. 같은 Pi runtime 안의 fallback은 persisted session을 이어 쓰되 새 offset부터 terminal event를 읽고, Claude→Pi cross-runtime fallback은 서로 다른 session JSONL을 사용합니다.
 - Astra의 도구 호출·구조화 출력·컨텍스트 한계는 역할별 fixture로 검증합니다. 반복 실패 시 전체 정책을 되돌리지 않고 해당 agent만 직전 primary로 복구합니다.
@@ -62,6 +62,8 @@ stress-interview와 self-healing은 subagent fan-out을 쓰지만, worker에게 
 ## Runtime Direction
 
 사용자-facing 실행 표면은 계속 Pi의 `subagent` 도구와 run/session UI로 통일합니다. 내부 runtime은 역할에 따라 나뉩니다. Codex agent는 Pi runtime을 사용하고, Claude-primary agent는 `runtime: claude`와 `subagent.claudeRuntime: "cli"`를 통해 Claude Code first-party 구독 경로를 사용합니다. CLI의 stream event는 Pi-compatible sidecar session으로 기록해 replay·continue·완료 알림을 기존 subagent UX에 합류시킵니다. `cc-system-prompt`는 prompt bridge일 뿐 provider/auth transport를 바꾸지 않으므로 이 runtime 선택을 대신하지 않습니다.
+
+Claude 모델 버전을 바꿀 때는 Pi model catalog의 ID와 실제 Claude CLI의 `--model` 호출을 함께 확인합니다. Pi의 Anthropic provider OAuth와 Claude Code CLI 인증은 별도 transport이므로, Claude-primary agent의 readiness는 실제 primary인 CLI smoke로 판정하고 Pi provider 인증 실패를 곧바로 agent 장애로 일반화하지 않습니다.
 
 ## Review Trigger
 

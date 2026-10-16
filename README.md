@@ -497,7 +497,7 @@ slash `/wt new`는 worktree/clean session을 만든 뒤 현재 panel을 exact ta
 | **finder** | `>>/` | gpt-6-astra (low, fallback: Luna) | 파일/코드 탐색 (read/grep/find only) |
 | **searcher** | `>>?` | gpt-6-astra (high, fallback: Terra → Sol) | 웹 리서치/문서 조사 |
 | **planner** | `>>#` | gpt-6-astra (max, fallback: Sol) | 구현 계획 설계 |
-| **challenger** | `>>!` | claude-opus-5 (max, fallback: Astra → Sol) | 계획/결정의 숨은 가정 공격 |
+| **challenger** | `>>!` | claude-opus-5-5 (max, fallback: Astra → Sol) | 계획/결정의 숨은 가정 공격 |
 | **browser** | `>>@` | gpt-6-astra (high, fallback: Sol) | playwright E2E, UI 확인 |
 | **bootstrapper** | 내부 `/wt` | gpt-6-astra (low, fallback: Luna) | 의존성 readiness orchestrator |
 | **meta-review-question-worker** | 내부 Meta Review | gpt-6-astra (max, fallback: Sol → Terra → Spark) | 고정 source 질문·patch artifact |
@@ -507,7 +507,7 @@ slash `/wt new`는 worktree/clean session을 만든 뒤 현재 panel을 exact ta
 
 | 에이전트 | 관점 |
 |---------|------|
-| **verifier** | 요구사항 충족 증거 판정 (claude-opus-5, max, fallback: Astra → Sol) |
+| **verifier** | 요구사항 충족 증거 판정 (claude-opus-5-5, max, fallback: Astra → Sol) |
 | **reviewer** | 코드 품질·정확성·보안 검토 (gpt-6-astra, max, fallback: Sol) |
 
 ---

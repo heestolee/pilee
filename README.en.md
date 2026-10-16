@@ -470,7 +470,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | **finder** | `>>/` | gpt-6-astra (low, fallback: Luna) | Code/file search with read-only tools |
 | **searcher** | `>>?` | gpt-6-astra (high, fallback: Terra → Sol) | Web research and documentation lookup |
 | **planner** | `>>#` | gpt-6-astra (max, fallback: Sol) | Implementation planning |
-| **challenger** | `>>!` | claude-opus-5 (max, fallback: Astra → Sol) | Challenge hidden assumptions and decisions |
+| **challenger** | `>>!` | claude-opus-5-5 (max, fallback: Astra → Sol) | Challenge hidden assumptions and decisions |
 | **browser** | `>>@` | gpt-6-astra (high, fallback: Sol) | Playwright E2E and UI checks |
 | **bootstrapper** | internal `/wt` | gpt-6-astra (low, fallback: Luna) | Dependency readiness orchestrator |
 | **meta-review-question-worker** | internal Meta Review | gpt-6-astra (max, fallback: Sol → Terra → Spark) | Pinned-source questions and patch artifacts |
@@ -480,7 +480,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 
 | Agent | Perspective |
 |---|---|
-| **verifier** | Requirement evidence verdict (claude-opus-5, max, fallback: Astra → Sol) |
+| **verifier** | Requirement evidence verdict (claude-opus-5-5, max, fallback: Astra → Sol) |
 | **reviewer** | Correctness, security, and maintainability review (gpt-6-astra, max, fallback: Sol) |
 
 ---
