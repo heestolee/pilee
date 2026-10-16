@@ -24,8 +24,8 @@ source:
   - pilee-history:2026-05-04#33
   - pilee-history:2026-05-04#34
   - pilee-history:2026-05-05#42
-reviewed_at: 2026-09-30
-reviewed_commit: 72429887fa9988bfe2ae14c248b77acdaa7303ca
+reviewed_at: 2026-10-16
+reviewed_commit: 1c2fc841c80ebc5c2a46c5502cbbaf292ac679c6
 related:
   - pilee-knowledge-system
   - worktree-session-continuity
@@ -53,7 +53,7 @@ Astra 사용률을 높이는 것과 모든 역할에 같은 effort를 강제하�
 
 ## Main Session Boundary
 
-메인 Pi 세션의 기본 effort와 subagent role mapping은 별도 계약입니다. 메인 Astra는 `xhigh`를 기본으로 두고 [고위험 turn만 max로 승격](./astra-adaptive-thinking-effort.md)하지만, `agents/*.md`에 고정된 worker/planner/reviewer와 verifier/challenger의 effort를 자동으로 낮추거나 승격하지 않습니다. Subagent는 애초에 좁게 선택된 전문 역할과 failure cost를 기준으로 정의되므로 이 문서의 role mapping을 계속 따릅니다.
+메인 Pi 세션의 기본 effort와 subagent role mapping은 별도 계약입니다. 메인 Astra와 GPT-6.1 Sol pilot은 `xhigh`에서 [고위험 turn만 max로 승격](./astra-adaptive-thinking-effort.md)하지만, `agents/*.md`에 고정된 worker/planner/reviewer와 verifier/challenger의 effort를 자동으로 낮추거나 승격하지 않습니다. 1차 pilot에서는 기존 Astra·Opus 역할 매핑을 유지하고, 긴 한국어 세션·tool settle·큰 context 관찰이 닫힌 뒤 역할별로 교체합니다. Subagent는 애초에 좁게 선택된 전문 역할과 failure cost를 기준으로 정의되므로 실제 교체 전까지 이 문서의 현행 mapping을 계속 따릅니다.
 
 ## Prompt Specificity Rule
 

@@ -20,8 +20,8 @@ applies_to:
   - extensions/frame-studio
 source:
   - user-direction:2026-05-12-conductor-like-guards
-reviewed_at: 2026-09-30
-reviewed_commit: 72429887fa9988bfe2ae14c248b77acdaa7303ca
+reviewed_at: 2026-10-16
+reviewed_commit: 1c2fc841c80ebc5c2a46c5502cbbaf292ac679c6
 related:
   - workflow-weight-proportionality
   - validation-baseline-failure-cache
@@ -46,7 +46,7 @@ title_en: Repeated workflow failures become enforced guard flows
 | 축 | 성격 | 강제 방식 |
 |---|---|---|
 | 요청 의도 분류 | soft default | `before_agent_start`에서 turn intent/weight를 주입하되 answer/investigate 분류만으로 일반 edit/write/file-producing bash를 막지 않음 |
-| Astra adaptive thinking | session-local state transition | Astra `xhigh`에서 아키텍처·보안/동시성 깊이 신호·어려운 장애·실패 재시도만 `max`로 승격하고 `agent_settled` 뒤 복귀. trivial artifact edit·수동 max·분류된 상태 노트·비-Astra는 건드리지 않음 |
+| Astra·GPT-6.1 Sol adaptive thinking | session-local state transition | Astra 또는 정확한 `gpt-6.1-sol`의 `xhigh`에서 아키텍처·보안/동시성 깊이 신호·어려운 장애·실패 재시도만 `max`로 승격하고 `agent_settled` 뒤 복귀. 순수 trivial artifact edit·수동 max·분류된 상태 노트·그 외 모델은 건드리지 않고, 명시 deep analysis에 보조·부정 artifact edit가 섞여도 승격을 보존 |
 | 파일 mutation 경계 | soft general + hard high-risk | 일반 edit/write와 파일 생성 bash는 허용하고, commit/push/install/destructive cleanup/worktree/external publish처럼 side effect가 큰 동작만 explicit intent 또는 전용 승인을 요구 |
 | fixed-vs-unfixed audit | hard audit path | “이미 대응/미대응/남은 gap” 요청에는 local history snapshot을 자동 주입하고 `friction → response evidence → current state → remaining gap` 형식을 요구 |
 | 작은 hotfix 기본 경로 | hard lightweight default | light turn에서 `verify_report_live start`, subagent fan-out, deep session/context mining을 막고 scope lock → focused change → nearest validation부터 시작 |

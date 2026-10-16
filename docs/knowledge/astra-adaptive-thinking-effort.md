@@ -1,8 +1,10 @@
 ---
-title: Astra는 xhigh 기본에서 필요한 turn만 max로 승격한다
-title_en: Astra defaults to xhigh and escalates only high-risk turns to max
+title: Astra와 GPT-6.1 Sol은 필요한 turn만 max로 승격한다
+title_en: Astra and GPT-6.1 Sol escalate only high-risk turns to max
 tags:
   - astra
+  - gpt-6.1-sol
+  - pilot
   - reasoning
   - thinking
   - xhigh
@@ -17,8 +19,10 @@ applies_to:
 source:
   - user-direction:2026-09-30-astra-adaptive-effort
   - runtime-evidence:2026-09-30-astra-xhigh-max-sample
-reviewed_at: 2026-09-30
-reviewed_commit: 72429887fa9988bfe2ae14c248b77acdaa7303ca
+  - user-direction:2026-10-16-gpt-6.1-sol-pilot
+  - runtime-evidence:2026-10-16-gpt-6.1-sol-effort-smoke
+reviewed_at: 2026-10-16
+reviewed_commit: 1c2fc841c80ebc5c2a46c5502cbbaf292ac679c6
 related:
   - subagent-model-policy
   - workflow-guard-enforced-flow
@@ -27,9 +31,9 @@ related:
 
 ## Judgment
 
-GPT-6 Astra 메인 세션은 `xhigh`를 기본값으로 사용하고, 더 많은 reasoning이 실제로 필요한 turn만 `max`로 승격합니다. `max`는 품질 보장 스위치가 아니라 더 많은 가설과 경로를 검토할 수 있게 하는 비용 높은 effort이므로 모든 요청에 고정하지 않습니다.
+GPT-6 Astra 메인 세션과 GPT-6.1 Sol pilot 세션은 `xhigh`를 기본 effort로 사용하고, 더 많은 reasoning이 실제로 필요한 turn만 `max`로 승격합니다. `max`는 품질 보장 스위치가 아니라 더 많은 가설과 경로를 검토할 수 있게 하는 비용 높은 effort이므로 모든 요청에 고정하지 않습니다.
 
-로컬 Pi 기본 설정은 `xhigh`를 선택합니다. public pilee는 사용자의 전역 설정을 강제로 덮어쓰지 않고, 현재 세션이 Astra `xhigh`일 때만 `workflow-guard`가 turn-level 승격을 적용합니다.
+로컬 Pi 기본 설정은 pilot 동안 Astra `xhigh`를 유지하고 6.1 Sol을 선택 가능한 후보로 엽니다. public pilee는 사용자의 전역 설정을 강제로 덮어쓰지 않고, 현재 세션이 OpenAI Codex Astra 또는 정확한 `gpt-6.1-sol`의 `xhigh`일 때만 `workflow-guard`가 turn-level 승격을 적용합니다.
 
 ## Escalation Triggers
 
@@ -44,12 +48,12 @@ GPT-6 Astra 메인 세션은 `xhigh`를 기본값으로 사용하고, 더 많은
 | 어려운 장애 | 반복·간헐 5xx/timeout/crash의 root cause | 여러 실행 경로와 반증을 오래 유지해야 함 |
 | xhigh 실패 후 재시도 | `xhigh로 해결되지 않았어. 다시 재시도해줘` | 이미 낮은 effort 경로가 충분하지 않았다는 직접 증거 |
 
-보안·동시성 명사만으로는 승격하지 않습니다. 주석·오타·문구·줄바꿈·링크·테스트 이름·상수 값·TODO 같은 trivial artifact edit 신호가 있으면 `xhigh`를 유지합니다. 일반 구현, 보통 수준의 리뷰, `workflow-guard`가 `status_note`로 판정한 노트도 마찬가지입니다. `full` workflow라는 이유만으로 자동 max가 되지 않으며, 비-Astra 모델에도 이 정책을 적용하지 않습니다.
+보안·동시성 명사만으로는 승격하지 않습니다. 주석·오타·문구·줄바꿈·링크·테스트 이름·상수 값·TODO 같은 artifact edit만 요청하면 `xhigh`를 유지합니다. 반대로 근본원인 분석처럼 명시적인 deep reasoning 요청이 있고 주석 수정이 부정되거나 보조 작업으로 섞인 경우에는 trivial veto를 적용하지 않습니다. `분석하지 말고`처럼 deep action 자체가 금지된 구간은 positive 요청에서 제거하되, 별도의 재현·해결 요청이 남아 있으면 그 trigger는 보존합니다. `근본 원인 분석 결과` 같은 명사구도 실행 요청으로 보지 않으며, 요청형 분석·비교·결정·재현·해결·재시도 동사만 trivial veto를 해제합니다. 일반 구현, 보통 수준의 리뷰, `workflow-guard`가 `status_note`로 판정한 노트도 승격하지 않습니다. `full` workflow라는 이유만으로 자동 max가 되지 않으며, Astra와 정확한 `gpt-6.1-sol` 외 모델에는 이 정책을 적용하지 않습니다.
 
 ## State Machine
 
 1. `before_agent_start`에서 현재 모델과 thinking level을 읽습니다.
-2. 모델이 OpenAI Codex Astra이고 현재 level이 정확히 `xhigh`이며 trigger가 있을 때만 `setThinkingLevel("max")`를 호출합니다.
+2. 모델이 OpenAI Codex Astra 또는 정확한 `gpt-6.1-sol`이고 현재 level이 `xhigh`이며 trigger가 있을 때만 `setThinkingLevel("max")`를 호출합니다.
 3. 승격 기록은 session-local 메모리에 두고 retry, compaction retry, queued continuation이 끝날 때까지 유지합니다.
 4. `agent_settled`에서 현재 level이 여전히 자동 승격된 `max`이면 원래 `xhigh`로 복귀합니다.
 5. run 도중 session이 종료되거나 reload될 때도 `session_shutdown`에서 같은 복귀를 시도합니다.
@@ -74,13 +78,15 @@ Reasoning effort 승격은 실행 권한 승격이 아닙니다. max가 되어�
 
 ## Evidence Boundary
 
-동일한 TypeScript 동시성 리뷰를 각 effort로 한 번 실행한 로컬 표본에서 `xhigh`는 34.0초·reasoning 707 tokens, `max`는 50.5초·reasoning 1,304 tokens를 사용했고 최종 문제 판정과 수정안은 같았습니다. 이 표본은 고정 배수나 일반 품질 우위를 증명하지 않습니다. 다만 쉬운 문제에서 max의 추가 비용이 답 개선으로 이어지지 않을 수 있다는 운영 근거로만 사용합니다.
+동일한 TypeScript 동시성 리뷰를 Astra의 각 effort로 한 번 실행한 로컬 표본에서 `xhigh`는 34.0초·reasoning 707 tokens, `max`는 50.5초·reasoning 1,304 tokens를 사용했고 최종 문제 판정과 수정안은 같았습니다. 이 표본은 고정 배수나 일반 품질 우위를 증명하지 않습니다. 다만 쉬운 문제에서 max의 추가 비용이 답 개선으로 이어지지 않을 수 있다는 운영 근거로만 사용합니다.
+
+GPT-6.1 Sol은 현재 OpenAI Codex OAuth 경로에서 `low`, `xhigh`, `max` 한 단어 응답 smoke가 모두 성공했습니다. `ultra`는 지원되지 않았으므로 자동 정책의 상한도 `max`로 유지합니다. 이 smoke는 접근성과 effort 계약만 증명하며, 긴 한국어 세션·tool settle latency·큰 context 품질은 pilot 관찰 항목으로 남깁니다.
 
 ## Review Trigger
 
 다음 변화가 생기면 이 문서를 다시 검토합니다.
 
-- Astra의 지원 effort나 API mapping이 바뀔 때
+- Astra 또는 GPT-6.1 Sol의 지원 effort나 API mapping이 바뀔 때
 - trigger의 false positive/false negative가 반복될 때
 - `agent_settled`의 retry·follow-up lifecycle 계약이 바뀔 때
 - main과 subagent effort 정책을 통합하거나 분리하는 기준이 바뀔 때
