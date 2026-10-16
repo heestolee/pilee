@@ -1,5 +1,5 @@
 import type { BeforeAgentStartEvent } from "@mariozechner/pi-coding-agent";
-import { latestAgentRequest, readAgentStartInput } from "../utils/agent-start-input.ts";
+import { activeAgentContinuationScope, latestAgentRequest, readAgentStartInput } from "../utils/agent-start-input.ts";
 import type { WorktreeBootstrapDomainProfile, WorktreeRepoProfile } from "../utils/private-profiles.ts";
 import { WORKSPACE_ACTIVATION_READY_ENTRY_TYPE } from "../utils/workspace-activation-contract.ts";
 
@@ -28,7 +28,9 @@ function regexTest(pattern: string, value: string): boolean {
 
 export function dependencyBootstrapPrompt(event: BeforeAgentStartEvent, entries: readonly unknown[]): string | undefined {
 	const input = readAgentStartInput(event);
-	if (input.kind === "status" || input.kind === "unknown") return undefined;
+	if (input.kind === "status" || input.kind === "unknown" || input.scope) return undefined;
+	const shortCue = input.kind === "user" && /^(?:계속해?|이어가|이어서|진행해?|다음(?:으로)?|continue|proceed|go on|next)$/i.test(input.request?.trim() ?? "");
+	if ((input.kind === "continuation" || shortCue) && activeAgentContinuationScope(entries)) return undefined;
 	if (input.kind === "user") return input.request;
 	if (input.kind === "command") {
 		const request = input.request?.replace(/^\/\S+\s*/, "") ?? "";

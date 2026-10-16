@@ -28,6 +28,22 @@ test("readiness sees explicit custom implementation and inherited work, not arbi
 	}
 });
 
+test("scoped question/result readiness never bootstraps an unrelated implementation", () => {
+	for (const customType of ["heestolee.study-hard.question-route", "pilee-meta-review-worker-request"]) {
+		const question = custom(customType, "자료 질문: 코드 수정 권한 아님");
+		const scopedBranch = [...branch, { type: "custom_message", ...question.message }];
+		for (const event of [question, custom("subagent-tool", "구현하고 install 해줘", { status: "done" }), custom("subagent-tool", "실패", { status: "error" }), custom("until-prompt", "loop", { agentStart: { kind: "continuation", request: "예약 버그 구현해줘" } }), { messageType: "user", prompt: "계속해" } as BeforeAgentStartEvent]) {
+			const prompt = dependencyBootstrapPrompt(event, scopedBranch);
+			assert.equal(prompt, undefined);
+			assert.equal(isImplementationStartPrompt(prompt ?? ""), false);
+		}
+		const explicitBranch = [...scopedBranch, { type: "message", message: { role: "user", content: "이제 예약 버그 수정해줘" } }];
+		const prompt = dependencyBootstrapPrompt(custom("subagent-tool", "완료", { status: "done" }), explicitBranch);
+		assert.equal(prompt, "이제 예약 버그 수정해줘");
+		assert.equal(isImplementationStartPrompt(prompt!), true);
+	}
+});
+
 test("clean continuation preserves original request and no-request fork cannot invent work", () => {
 	assert.equal(dependencyBootstrapPrompt(custom("pilee-worktree-fork-continuation", "검증 수정 구현"), []), undefined);
 	assert.equal(dependencyBootstrapPrompt(custom("pilee-worktree-new-current-panel-continuation", "# Worktree new continuation\n## Latest request\nAPI 수정해줘\n- worktree: fixture"), []), "API 수정해줘");
