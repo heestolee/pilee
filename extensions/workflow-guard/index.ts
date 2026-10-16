@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import { parseSubagentCommandVerb } from "../subagent/cli.ts";
+import { latestAgentRequest, readAgentStartInput } from "../utils/agent-start-input.ts";
 import { loadWorkflowGuardProfiles } from "../utils/private-profiles.ts";
 import {
 	appendWorkspaceAuthorizationEvent,
@@ -113,6 +114,22 @@ function activeSessionEntries(ctx: {
 	};
 }): Array<{ type?: string; customType?: string; data?: unknown }> {
 	return ctx.sessionManager?.getBranch?.() ?? ctx.sessionManager?.getEntries?.() ?? [];
+}
+
+function restoreIntentGuard(entries: readonly unknown[], sessionFile?: string, currentTurn = false): GuardState | undefined {
+	const authorization = restoreWorkspaceAuthorization(entries as Parameters<typeof restoreWorkspaceAuthorization>[0]);
+	for (const raw of [...entries].reverse()) {
+		const request = latestAgentRequest([raw]);
+		if (request) return { ...classifyPrompt(request, sessionFile), workspaceAuthorization: authorization };
+		const entry = raw as { type?: string; customType?: string; details?: { state?: GuardState; lastIntent?: GuardState } };
+		if (entry.type !== "custom_message" || entry.customType !== "workflow_guard") continue;
+		const state = currentTurn ? entry.details?.state : entry.details?.lastIntent ?? entry.details?.state;
+		if (state && (currentTurn || state.intent !== "status_note") && typeof state.prompt === "string" && Array.isArray(state.workspaceAuthorization?.events)) {
+			// Restore intent, never mint or reissue historical workspace authorization.
+			return { ...state, sessionFile, workspaceAuthorization: authorization };
+		}
+	}
+	return undefined;
 }
 
 function persistWorkspaceAuthorization(pi: ExtensionAPI, authorization: WorkspaceAuthorizationProvenance): void {
@@ -1428,29 +1445,47 @@ export default function workflowGuard(
 	const trustedInternalPullRequestRepositories = options.trustedInternalPullRequestRepositories
 		?? loadWorkflowGuardProfiles().flatMap((profile) => profile.trustedInternalPullRequestRepositories ?? []);
 	const adaptiveThinkingBySession = new Map<string, AdaptiveThinkingEscalation>();
+	const latestIntentBySession = new Map<string, GuardState>();
 
 	pi.on("before_agent_start", async (event, ctx) => {
 		const key = sessionKey(ctx);
 		const sessionFile = ctx.sessionManager?.getSessionFile?.();
-		const restoredAuthorization = restoreWorkspaceAuthorization(activeSessionEntries(ctx));
+		const entries = activeSessionEntries(ctx);
+		const restoredAuthorization = restoreWorkspaceAuthorization(entries);
+		const input = readAgentStartInput(event);
+		const previous = latestIntentBySession.get(key) ?? restoreIntentGuard(entries, sessionFile);
 		const leafId = ctx.sessionManager?.getLeafId?.();
-		const state = classifyPrompt(
-			event.prompt,
-			sessionFile,
-			restoredAuthorization.events,
-			`workflow-guard:user-turn:${leafId ?? "current"}`,
-		);
+		const inert = input.kind === "status" || input.kind === "unknown";
+		const prompt = inert ? "Workflow guard for this turn: internal status, not a new user request"
+			: input.request ?? previous?.prompt ?? "";
+		let state = classifyPrompt(prompt, sessionFile, restoredAuthorization.events, `workflow-guard:user-turn:${leafId ?? "current"}`);
+		const continuePrevious = input.kind === "continuation" || (input.kind === "user" && state.continuationCue);
+		if (continuePrevious) {
+			if (previous) state = { ...previous, sessionFile, continuationCue: true, summary: `${previous.summary} · continuation=latest-intent` };
+			// Continuation boilerplate never grants/reissues workspace rights.
+			state.workspaceAuthorization = restoredAuthorization;
+			state.summary = [
+				...state.summary.split(" · ").filter((part) => !/^workspace(?:Allow|Deny)=/.test(part)),
+				restoredAuthorization.allowedActions.length ? `workspaceAllow=${restoredAuthorization.allowedActions.join(",")}` : undefined,
+				restoredAuthorization.deniedActions.length ? `workspaceDeny=${restoredAuthorization.deniedActions.join(",")}` : undefined,
+			].filter(Boolean).join(" · ");
+			if (/^pilee-frame(?:-v2)?-worktree-fork-continuation$/.test(input.customType ?? "")) {
+				state = { ...state, intent: "implement", weight: "standard", explicitMutation: true, summary: "intent=implement · weight=standard · continuation=latest-intent" };
+			}
+		}
+		if (!inert && state.intent !== "status_note") latestIntentBySession.set(key, state);
+		else if (previous) latestIntentBySession.set(key, previous);
 		if (workspaceAuthorizationChanged(restoredAuthorization, state.workspaceAuthorization)) {
 			persistWorkspaceAuthorization(pi, state.workspaceAuthorization);
 		}
 		if (state.explicitPrAction && !state.explicitIssueAction) {
-			const repository = await publishRepository(pi, ctx.cwd, event.prompt);
+			const repository = await publishRepository(pi, ctx.cwd, state.prompt);
 			if (isTrustedInternalPullRequestRepository(repository, trustedInternalPullRequestRepositories)) markTrustedInternalPullRequest(state, repository!);
 		}
 		const adaptiveThinking = maybeEscalateAdaptiveThinking(pi, ctx, key, state, adaptiveThinkingBySession);
 		const ultraMode = pi.getThinkingLevel() === "ultra";
 		rememberGuardState(key, state);
-		const audit = state.auditRequired ? buildAuditSnapshot({ prompt: event.prompt }) : undefined;
+		const audit = state.auditRequired ? buildAuditSnapshot({ prompt: state.prompt }) : undefined;
 		const card = state.detachedArtifactTask ? undefined : loadOrDeriveWorkContext(ctx.cwd, sessionFile);
 		const guardPrompt = `${buildSystemPrompt(state, ultraMode, adaptiveThinking)}${workContextSection(card)}${sliceCommitRhythmSection(state, card)}`;
 		return {
@@ -1459,7 +1494,7 @@ export default function workflowGuard(
 				customType: "workflow_guard",
 				content: audit ? `${guardPrompt}\n\n${audit.text}` : guardPrompt,
 				display: false,
-				details: { state, ultraMode, adaptiveThinking, audit: audit?.details, workContext: card ? { path: card.identity.contextPath, currentSlice: card.currentSlice?.id, mode: card.mode } : undefined },
+				details: { state, lastIntent: latestIntentBySession.get(key), inputKind: input.kind, ultraMode, adaptiveThinking, audit: audit?.details, workContext: card ? { path: card.identity.contextPath, currentSlice: card.currentSlice?.id, mode: card.mode } : undefined },
 			},
 		};
 	});
@@ -1473,8 +1508,10 @@ export default function workflowGuard(
 	});
 
 	pi.on("tool_call", async (event, ctx) => {
-		const state = guardBySession.get(sessionKey(ctx));
+		const key = sessionKey(ctx);
+		const state = guardBySession.get(key) ?? restoreIntentGuard(activeSessionEntries(ctx), ctx.sessionManager?.getSessionFile?.(), true);
 		if (!state) return undefined;
+		guardBySession.set(key, state);
 		const card = state.detachedArtifactTask ? undefined : loadOrDeriveWorkContext(ctx.cwd, ctx.sessionManager?.getSessionFile?.());
 
 		if (state.intent === "status_note" && event.toolName !== "workflow_guard") {
@@ -1705,6 +1742,7 @@ export default function workflowGuard(
 				state.largeWorkObserved = current?.largeWorkObserved ?? false;
 				state.largeWorkBasis = current?.largeWorkBasis;
 				rememberGuardState(key, state);
+				if (state.intent !== "status_note") latestIntentBySession.set(key, state);
 				return toolText(`Adopted workflow guard: ${state.summary}`, { previous: current ?? null, state, reason: params.reason });
 			}
 			if (params.action === "audit") {

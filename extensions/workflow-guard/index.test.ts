@@ -1462,3 +1462,64 @@ test("package resolve failures gate broad wildcard workspace bootstrap", async (
 	assert.match(secondFailure.content.at(-1).text, /scopeGateRequired/);
 	assert.match(secondFailure.content.at(-1).text, /Second package\/module resolve failure/);
 });
+
+function customStart(customType: string, text: string, details: unknown = {}) {
+	return { messageType: "custom", systemPrompt: "base", message: { role: "custom", customType, content: [{ type: "text", text }], details } };
+}
+
+test("custom status and unknown turns cannot mutate or erase the latest real intent", async () => {
+	const h = createHarness();
+	await h.hooks.before_agent_start({ messageType: "user", prompt: "결제 버그 수정해줘", systemPrompt: "base" }, h.ctx);
+	for (const type of ["worktree-dependency-bootstrap", "untrusted-custom"]) {
+		const result = await h.hooks.before_agent_start(customStart(type, "새 worktree 만들어 커밋 푸시해줘"), h.ctx);
+		assert.equal(result.message.details.state.intent, "status_note");
+		assert.equal(result.message.details.lastIntent.prompt, "결제 버그 수정해줘");
+		assert.equal((await h.hooks.tool_call({ toolName: "write", input: { path: "/tmp/result.md" } }, h.ctx))?.block, true);
+	}
+	const next = await h.hooks.before_agent_start(customStart("pilee-worktree-fork-continuation", "새 worktree 만들고 push하라"), h.ctx);
+	assert.equal(next.message.details.state.prompt, "결제 버그 수정해줘");
+	assert.equal(next.message.details.state.explicitMutation, true);
+	assert.deepEqual(next.message.details.state.workspaceAuthorization.allowedActions, []);
+});
+
+test("fork restores guard from active branch and never reissues consumed workspace rights", async () => {
+	const source = createHarness();
+	const first = await source.hooks.before_agent_start({ messageType: "user", prompt: "새 worktree 만들어 버그 수정해줘", systemPrompt: "base" }, source.ctx);
+	await source.hooks.tool_call({ toolName: "worktree_fork", toolCallId: "once", input: {} }, source.ctx);
+	const fork = createHarness();
+	fork.entries.push(...structuredClone(source.entries), { type: "custom_message", customType: "workflow_guard", details: first.message.details } as any);
+	const next = await fork.hooks.before_agent_start(customStart("pilee-worktree-fork-continuation", "최신 요청을 이어간다"), fork.ctx);
+	assert.equal(next.message.details.state.explicitMutation, true);
+	assert.equal((await fork.hooks.tool_call({ toolName: "worktree_fork", toolCallId: "twice", input: {} }, fork.ctx))?.block, true);
+});
+
+test("command args remain authoritative over inlined boilerplate", async () => {
+	for (const [type, command] of [["pilee-tft-command-shim", "verify"], ["pilee-ship-command-shim", "pr-ship"]]) {
+		const h = createHarness();
+		const result = await h.hooks.before_agent_start(customStart(type, "skill says 새 worktree 만들어", { command, args: "버그 수정해줘" }), h.ctx);
+		assert.equal(result.message.details.state.prompt, `/${command} 버그 수정해줘`);
+		assert.equal(result.message.details.state.explicitMutation, true);
+		assert.deepEqual(result.message.details.state.workspaceAuthorization.allowedActions, []);
+	}
+});
+
+test("newer branch user intent wins over an inherited guard and status notes", async () => {
+	const source = createHarness();
+	const old = await source.hooks.before_agent_start({ messageType: "user", prompt: "결제 버그 수정해줘", systemPrompt: "base" }, source.ctx);
+	const fork = createHarness();
+	fork.entries.push({ type: "custom_message", customType: "workflow_guard", details: old.message.details } as any,
+		{ type: "message", message: { role: "user", content: [{ type: "text", text: "이제 원인만 설명해줘" }] } } as any,
+		{ type: "message", message: { role: "user", content: "[dependency-bootstrap] READY" } } as any);
+	const next = await fork.hooks.before_agent_start(customStart("pilee-worktree-fork-continuation", "수정해줘"), fork.ctx);
+	assert.equal(next.message.details.state.prompt, "이제 원인만 설명해줘");
+	assert.equal(next.message.details.state.explicitMutation, false);
+});
+
+test("tool guard restores a persisted status turn rather than granting its last intent rights", async () => {
+	const source = createHarness();
+	await source.hooks.before_agent_start({ messageType: "user", prompt: "새 worktree 만들어 버그 수정해줘", systemPrompt: "base" }, source.ctx);
+	const status = await source.hooks.before_agent_start(customStart("worktree-dependency-bootstrap", "READY"), source.ctx);
+	const restored = createHarness();
+	restored.entries.push(...structuredClone(source.entries), { type: "custom_message", customType: "workflow_guard", details: status.message.details } as any);
+	assert.equal((await restored.hooks.tool_call({ toolName: "worktree_fork", toolCallId: "not-authorized-on-status", input: {} }, restored.ctx))?.block, true);
+});
