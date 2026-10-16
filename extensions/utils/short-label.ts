@@ -13,7 +13,9 @@ export type ShortLabelContext = {
 	model?: SummaryModel;
 	modelRegistry?: {
 		getApiKeyAndHeaders: (model: SummaryModel) => Promise<AuthResult>;
+		streamSimple?: (...args: Parameters<typeof completeSimple>) => { result(): ReturnType<typeof completeSimple> };
 	};
+	signal?: AbortSignal;
 };
 
 export type GenerateShortLabelOptions = {
@@ -36,34 +38,27 @@ export async function generateShortLabel(ctx: ShortLabelContext, options: Genera
 	const model = ctx.model;
 	if (!model || !ctx.modelRegistry) return "";
 
-	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-	if (!auth.ok) return "";
-
+	if (ctx.signal?.aborted) return "";
 	const controller = new AbortController();
+	const abort = () => controller.abort(ctx.signal?.reason);
+	ctx.signal?.addEventListener("abort", abort, { once: true });
 	const timeoutMs = options.timeoutMs ?? 10000;
 	const timer = setTimeout(() => controller.abort(), timeoutMs);
 
 	try {
-		const result = await completeSimple(
-			model,
-			{
-				systemPrompt: options.systemPrompt,
-				messages: [
-					{
-						role: "user",
-						content: [{ type: "text", text: options.prompt }],
-						timestamp: Date.now(),
-					},
-				],
-			},
-			{
-				apiKey: auth.apiKey,
-				headers: auth.headers,
-				signal: controller.signal,
-				reasoning: "minimal",
-				maxTokens: options.maxTokens ?? 60,
-			},
-		);
+		const context = {
+			systemPrompt: options.systemPrompt,
+			messages: [{ role: "user" as const, content: [{ type: "text" as const, text: options.prompt }], timestamp: Date.now() }],
+		};
+		const request = { signal: controller.signal, reasoning: "minimal" as const, maxTokens: options.maxTokens ?? 60 };
+		let result: SummaryResult;
+		if (ctx.modelRegistry.streamSimple) {
+			result = await ctx.modelRegistry.streamSimple(model, context, request).result();
+		} else {
+			const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+			if (!auth.ok) return "";
+			result = await completeSimple(model, context, { ...request, apiKey: auth.apiKey, headers: auth.headers });
+		}
 
 		if (result.stopReason !== "stop") return "";
 		const extractText = options.extractText ?? defaultExtractText;
@@ -72,5 +67,6 @@ export async function generateShortLabel(ctx: ShortLabelContext, options: Genera
 		return "";
 	} finally {
 		clearTimeout(timer);
+		ctx.signal?.removeEventListener("abort", abort);
 	}
 }

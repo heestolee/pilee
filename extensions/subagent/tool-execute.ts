@@ -128,13 +128,8 @@ type SubagentToolExecuteContext = {
 	cwd: string;
 	hasUI?: boolean;
 	model?: ShortLabelContext["model"];
-	modelRegistry?: {
+	modelRegistry?: NonNullable<ShortLabelContext["modelRegistry"]> & {
 		getAll: () => Array<{ provider: string; id: string; contextWindow?: number }>;
-		getApiKeyAndHeaders?: (model: NonNullable<ShortLabelContext["model"]>) => Promise<{
-			ok: boolean;
-			apiKey?: string;
-			headers?: Record<string, string>;
-		}>;
 	};
 	sessionManager: {
 		getSessionFile?: () => string | undefined;
@@ -147,7 +142,7 @@ type SubagentToolExecuteContext = {
 	};
 };
 
-function refreshDisplayTaskInBackground(
+export function refreshDisplayTaskInBackground(
 	runState: CommandRunState,
 	rawTask: string,
 	ctx: SubagentToolExecuteContext,
@@ -159,9 +154,7 @@ function refreshDisplayTaskInBackground(
 	const refreshToken = createDisplayTaskRefreshToken(runState);
 	void summarizeSubagentDisplayTask(rawTask, {
 		model: ctx.model,
-		modelRegistry: {
-			getApiKeyAndHeaders: ctx.modelRegistry.getApiKeyAndHeaders,
-		},
+		modelRegistry: ctx.modelRegistry,
 	})
 		.then((displayTask) => {
 			if (!displayTask || runState.removed) return;
