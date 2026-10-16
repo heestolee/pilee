@@ -1,5 +1,5 @@
 import { isFastConfigurationActive } from "../codex-fast-mode/index.ts";
-import { loadFastConfiguration } from "../codex-fast-mode/state.ts";
+import { loadEffectiveFastConfiguration } from "../codex-fast-mode/state.ts";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { subscribeRepoStatusInvalidation } from "../utils/repo-status-events.ts";
 import { createRepoStatusTracker, type RepoStatusSnapshot } from "../utils/repo-status.ts";
@@ -8,12 +8,12 @@ import { type RuntimeInfo, readRuntimeInfo } from "./runtime.ts";
 const FOOTER_STATE_REFRESH_INTERVAL_MS = 3000;
 
 export function isCodexFastModeEnabled(cwd = process.cwd()): boolean {
-	try { return loadFastConfiguration(cwd).mode !== "off"; } catch { return false; }
+	try { return loadEffectiveFastConfiguration(cwd).mode !== "off"; } catch { return false; }
 }
 
 export function shouldUseCodexFastBadge(provider: string | undefined, isFastModeEnabled: boolean, modelId?: string, cwd = process.cwd()): boolean {
 	if (!isFastModeEnabled) return false;
-	try { return isFastConfigurationActive({ provider, id: modelId }, loadFastConfiguration(cwd)); } catch { return false; }
+	try { return isFastConfigurationActive({ provider, id: modelId }, loadEffectiveFastConfiguration(cwd)); } catch { return false; }
 }
 
 export interface FooterState {
@@ -92,7 +92,7 @@ export function createFooterStateManager(
 		getState(): FooterState {
 			return {
 				repoStatus: repoStatusTracker.getSnapshot(),
-				isCodexFastModeEnabled,
+				isCodexFastModeEnabled: shouldUseCodexFastBadge(ctx.model?.provider, true, ctx.model?.id, cwd),
 				repoName,
 				runtime,
 			};
