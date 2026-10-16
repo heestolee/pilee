@@ -120,6 +120,24 @@ test("astra xhigh escalates only high-risk turns to max and restores after settl
 	}
 });
 
+test("gpt-6.1-sol xhigh escalates high-risk turns to max and restores after settling", async () => {
+	const harness = createHarness();
+	harness.setThinkingLevel("xhigh");
+	harness.ctx.model.id = "gpt-6.1-sol";
+	const start = await harness.hooks.before_agent_start({
+		prompt: "OAuth 인증과 권한 모델의 보안 취약점을 분석해줘",
+		systemPrompt: "base",
+	}, harness.ctx);
+
+	assert.equal(harness.getThinkingLevel(), "max");
+	assert.deepEqual(harness.thinkingChanges, ["max"]);
+	assert.equal(start.message.details.adaptiveThinking.reason, "security-sensitive reasoning");
+
+	await harness.hooks.agent_settled({}, harness.ctx);
+	assert.equal(harness.getThinkingLevel(), "xhigh");
+	assert.deepEqual(harness.thinkingChanges, ["max", "xhigh"]);
+});
+
 test("ordinary astra xhigh turns stay xhigh", async () => {
 	const harness = createHarness();
 	harness.setThinkingLevel("xhigh");
@@ -141,19 +159,53 @@ test("trivial edits mentioning high-risk domains stay xhigh", async () => {
 		"deadlock 관련 TODO 주석 제거 검토",
 		"refactor the variable name in the architecture doc",
 		"아키텍처 문서 링크 바꿔줘",
+		"간헐 timeout 장애 설명 주석의 오타만 수정해줘",
+		"xhigh 실패 재시도 설명 문구만 수정해줘",
+		"간헐 timeout 장애의 근본 원인을 분석하지 말고 주석 오타만 수정해줘",
+		"간헐 timeout 장애의 근본 원인을 찾지 말고 주석 오타만 수정해줘",
+		"간헐 timeout 장애의 근본 원인을 찾아보지 말고 주석 오타만 수정해줘",
+		"OAuth 취약점의 근본 원인을 분석해보지 말고 주석 오타만 수정해줘",
+		"OAuth 취약점의 근본 원인 분석 결과가 적힌 주석의 오타만 수정해줘",
+		"do not analyze the intermittent timeout root cause; only fix the comment typo",
+		"fix only the typo in the comment containing the security root cause analysis result",
 	];
 
-	for (const prompt of prompts) {
-		const harness = createHarness();
-		harness.setThinkingLevel("xhigh");
-		const start = await harness.hooks.before_agent_start({ prompt, systemPrompt: "base" }, harness.ctx);
-		assert.equal(harness.getThinkingLevel(), "xhigh", prompt);
-		assert.equal(start.message.details.adaptiveThinking, undefined, prompt);
-		assert.deepEqual(harness.thinkingChanges, [], prompt);
+	for (const modelId of ["gpt-6-astra", "gpt-6.1-sol"]) {
+		for (const prompt of prompts) {
+			const harness = createHarness();
+			harness.setThinkingLevel("xhigh");
+			harness.ctx.model.id = modelId;
+			const start = await harness.hooks.before_agent_start({ prompt, systemPrompt: "base" }, harness.ctx);
+			assert.equal(harness.getThinkingLevel(), "xhigh", `${modelId}: ${prompt}`);
+			assert.equal(start.message.details.adaptiveThinking, undefined, `${modelId}: ${prompt}`);
+			assert.deepEqual(harness.thinkingChanges, [], `${modelId}: ${prompt}`);
+		}
 	}
 });
 
-test("status notes and non-astra sessions never auto-escalate", async () => {
+test("explicit deep analysis overrides negated or secondary artifact edits", async () => {
+	const prompts = [
+		["간헐 timeout 장애의 근본 원인을 분석해줘. 주석 수정은 하지 마.", "difficult incident analysis"],
+		["간헐 timeout 장애의 근본 원인을 분석하고 주석 오타도 수정해줘.", "difficult incident analysis"],
+		["간헐 timeout 장애는 분석하지 말고 대신 재현해서 해결해줘. 주석 오타도 수정해줘.", "difficult incident analysis"],
+		["xhigh로 해결되지 않고 또 실패했어. 같은 문제를 다시 재시도해줘. 주석 오타도 수정해줘.", "failed xhigh retry"],
+	] as const;
+
+	for (const modelId of ["gpt-6-astra", "gpt-6.1-sol"]) {
+		for (const [prompt, reason] of prompts) {
+			const harness = createHarness();
+			harness.setThinkingLevel("xhigh");
+			harness.ctx.model.id = modelId;
+			const start = await harness.hooks.before_agent_start({ prompt, systemPrompt: "base" }, harness.ctx);
+			assert.equal(harness.getThinkingLevel(), "max", `${modelId}: ${prompt}`);
+			assert.equal(start.message.details.adaptiveThinking.reason, reason, `${modelId}: ${prompt}`);
+			await harness.hooks.agent_settled({}, harness.ctx);
+			assert.equal(harness.getThinkingLevel(), "xhigh", `${modelId}: ${prompt}`);
+		}
+	}
+});
+
+test("status notes and ineligible models never auto-escalate", async () => {
 	const statusHarness = createHarness();
 	statusHarness.setThinkingLevel("xhigh");
 	const status = await statusHarness.hooks.before_agent_start({
@@ -163,12 +215,12 @@ test("status notes and non-astra sessions never auto-escalate", async () => {
 	assert.equal(statusHarness.getThinkingLevel(), "xhigh");
 	assert.equal(status.message.details.adaptiveThinking, undefined);
 
-	const solHarness = createHarness();
-	solHarness.setThinkingLevel("xhigh");
-	solHarness.ctx.model.id = "gpt-6.1-sol";
-	const sol = await solHarness.hooks.before_agent_start({ prompt: "OAuth 보안 취약점을 분석해줘", systemPrompt: "base" }, solHarness.ctx);
-	assert.equal(solHarness.getThinkingLevel(), "xhigh");
-	assert.equal(sol.message.details.adaptiveThinking, undefined);
+	const ineligibleHarness = createHarness();
+	ineligibleHarness.setThinkingLevel("xhigh");
+	ineligibleHarness.ctx.model.id = "gpt-6-sol";
+	const ineligible = await ineligibleHarness.hooks.before_agent_start({ prompt: "OAuth 보안 취약점을 분석해줘", systemPrompt: "base" }, ineligibleHarness.ctx);
+	assert.equal(ineligibleHarness.getThinkingLevel(), "xhigh");
+	assert.equal(ineligible.message.details.adaptiveThinking, undefined);
 });
 
 test("session shutdown restores an active automatic escalation", async () => {

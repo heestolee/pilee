@@ -392,7 +392,16 @@ function adaptiveMaxReason(prompt: string): AdaptiveThinkingEscalation["reason"]
 		/(?:최고|최대한)\s*(?:깊게|강하게|추론)/,
 	])) return "explicit max request";
 
-	const trivialArtifactEdit = hasAny(normalized, [
+	const deepReasoningRequestText = normalized
+		.replace(/(?:분석|비교|결정|설계|재구성|재현|디버그|해결|방지|보장|규명|찾)(?:은|는|을|를)?\s*(?:하지\s*(?:마|말|않)|말고|않고|금지|제외)/g, " ")
+		.replace(/\b(?:do\s+not|don't|without)\s+(?:analy[sz]e|compare|decide|design|redesign|restructure|reproduce|debug|resolve|prevent|ensure|investigate|retry)\b/g, " ");
+	const explicitDeepReasoningRequest = hasAny(deepReasoningRequestText, [
+		/(?:분석|비교|결정|설계|재구성|재현|디버그|해결|방지|보장|규명)(?:해(?!보?지)(?:줘|주세요|봐|라|서|야|보자)?|하고|해야|하자|하도록|하길|하려|할래)/,
+		/(?:근본\s*원인|원인)(?:을|를|은|는)?\s*(?:찾아|분석해|규명해|해결해)(?!보?지)(?:줘|주세요|봐|서|야|보자)?/,
+		/(?:다시\s*)?(?:재시도|retry)(?:해(?:줘|주세요|봐)?|하고|해야|하자)/,
+		/\b(?:analy[sz](?:e|ing|ed)|compar(?:e|ing|ed)|decid(?:e|ing|ed)|design(?:ing|ed)?|redesign(?:ing|ed)?|restructur(?:e|ing|ed)|reproduc(?:e|ing|ed)|debug(?:ging|ged)?|resolv(?:e|ing|ed)|prevent(?:ing|ed)?|ensur(?:e|ing|ed)|investigat(?:e|ing|ed)|retry(?:ing|ied)?)\b/,
+	]);
+	const trivialArtifactEdit = !explicitDeepReasoningRequest && hasAny(normalized, [
 		/(?:주석|오타|문구|줄바꿈|링크|테스트\s*이름|상수\s*값|변수\s*이름|변수명|todo|comment|typo|copy|line\s*break|link|test\s*name|constant\s*value|variable\s*name).*(?:수정|고쳐|제거|변경|추가|바꿔|리팩터|rename|fix|remove|change|add|refactor)/,
 		/(?:수정|고쳐|제거|변경|추가|바꿔|리팩터|rename|fix|remove|change|add|refactor).*(?:주석|오타|문구|줄바꿈|링크|테스트\s*이름|상수\s*값|변수\s*이름|변수명|todo|comment|typo|copy|line\s*break|link|test\s*name|constant\s*value|variable\s*name)/,
 	]);
@@ -410,9 +419,9 @@ function adaptiveMaxReason(prompt: string): AdaptiveThinkingEscalation["reason"]
 
 	const incidentSubject = /(?:장애|incident|outage|5\d\d|timeout|타임아웃|crash|크래시|hang|sentry)/;
 	const difficultCause = /(?:근본\s*원인|root\s*cause|간헐|반복|재현\s*(?:안|불가)|원인\s*불명|여러\s*번|어려운)/;
-	if (incidentSubject.test(normalized) && difficultCause.test(normalized)) return "difficult incident analysis";
+	if (!trivialArtifactEdit && incidentSubject.test(normalized) && difficultCause.test(normalized)) return "difficult incident analysis";
 
-	if (hasAny(normalized, [
+	if (!trivialArtifactEdit && hasAny(normalized, [
 		/(?:xhigh|이전|앞선|방금).*(?:해결되지|못\s*풀|실패|안\s*됐|안돼).*(?:다시|재시도|retry)/,
 		/(?:다시|재시도|retry).*(?:해결되지|못\s*풀|실패|안\s*됐|안돼)/,
 		/(?:같은|동일한?)\s*(?:문제|오류|실패).*(?:또|반복|재발|재시도)/,
@@ -435,7 +444,9 @@ function maybeEscalateAdaptiveThinking(
 		return undefined;
 	}
 	if (state.intent === "status_note" || pi.getThinkingLevel() !== "xhigh") return undefined;
-	if (ctx.model?.provider !== "openai-codex" || !/(?:^|[-_])astra(?:$|[-_])/i.test(ctx.model.id ?? "")) return undefined;
+	const modelId = ctx.model?.id ?? "";
+	const supportsAdaptiveMax = /(?:^|[-_])astra(?:$|[-_])/i.test(modelId) || /^gpt-6\.1-sol$/i.test(modelId);
+	if (ctx.model?.provider !== "openai-codex" || !supportsAdaptiveMax) return undefined;
 	const reason = adaptiveMaxReason(state.prompt);
 	if (!reason) return undefined;
 
