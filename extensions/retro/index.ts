@@ -184,6 +184,10 @@ function resolveDate(arg: string): { date: string; category: string; label: stri
 
 export default function (pi: ExtensionAPI) {
 	let activeRetro: { pageId: string; title: string; content: string; date: string; category: string } | null = null;
+	let cancelPendingSave: (() => void) | undefined;
+	let saving = false;
+	pi.on("session_shutdown", () => { cancelPendingSave?.(); });
+	pi.on("session_start", () => { cancelPendingSave?.(); });
 
 	pi.registerCommand("retro", {
 		description: "회고 불러와서 대화하며 다듬기 (args: [date|monthly|weekly|save|view])",
@@ -193,6 +197,10 @@ export default function (pi: ExtensionAPI) {
 
 			// /retro save — 다듬은 내용 Notion에 반영
 			if (sub === "save") {
+				if (cancelPendingSave || saving) {
+					ctx.ui.notify("이미 회고 저장을 진행 중입니다.", "warning");
+					return;
+				}
 				if (!activeRetro) {
 					ctx.ui.notify("활성 회고가 없어요. /retro [날짜]로 먼저 불러오세요.", "warning");
 					return;
@@ -217,10 +225,11 @@ ${activeRetro.content}
 
 완성되면 제가 Notion에 반영할게요.`;
 
-				pi.sendUserMessage(prompt, { deliverAs: "followUp" });
-
+				const retro = activeRetro;
+				let consumed = false;
 				// Watch for the response with markers
 				const onMessage = async (event: any) => {
+					if (consumed) return;
 					const content = event?.message?.content;
 					if (!content || event?.message?.role !== "assistant") return;
 					const text = Array.isArray(content)
@@ -231,58 +240,73 @@ ${activeRetro.content}
 					const endMarker = "---RETRO_END---";
 					const startIdx = text.indexOf(startMarker);
 					const endIdx = text.indexOf(endMarker);
-					if (startIdx === -1 || endIdx === -1) return;
+					if (startIdx === -1 || endIdx <= startIdx) return;
 
 					const finalMd = text.slice(startIdx + startMarker.length, endIdx).trim();
 					if (!finalMd) return;
 
-					pi.off("message_end", onMessage);
+					cancelPendingSave?.();
+					saving = true;
+					try {
+						// Save to local cache
+						const categoryMap: Record<string, string> = {
+							"일간회고": "daily-retrospective",
+							"주간회고": "weekly-retrospective",
+							"월간회고": "monthly-retrospective",
+							"개발성장": "dev-growth-report",
+						};
+						const cacheSubdir = categoryMap[retro.category] ?? "";
+						if (REPORT_DIR && cacheSubdir) {
+							const cacheDir = join(REPORT_DIR, cacheSubdir);
+							mkdirSync(cacheDir, { recursive: true });
+							writeFileSync(join(cacheDir, `${retro.date}.md`), finalMd, "utf8");
+						}
 
-					// Save to local cache
-					const categoryMap: Record<string, string> = {
-						"일간회고": "daily-retrospective",
-						"주간회고": "weekly-retrospective",
-						"월간회고": "monthly-retrospective",
-						"개발성장": "dev-growth-report",
-					};
-					const cacheSubdir = categoryMap[activeRetro!.category] ?? "";
-					if (REPORT_DIR && cacheSubdir) {
-						const cacheDir = join(REPORT_DIR, cacheSubdir);
-						mkdirSync(cacheDir, { recursive: true });
-						writeFileSync(join(cacheDir, `${activeRetro!.date}.md`), finalMd, "utf8");
-					}
+						// Upload via configured Notion upload helper
+						const tmpFile = join(homedir(), ".pi", "agent", "retro-save-tmp.md");
+						writeFileSync(tmpFile, finalMd, "utf8");
 
-					// Upload via configured Notion upload helper
-					const tmpFile = join(homedir(), ".pi", "agent", "retro-save-tmp.md");
-					writeFileSync(tmpFile, finalMd, "utf8");
+						const iconMap: Record<string, string> = {
+							"일간회고": "📋", "주간회고": "📅", "월간회고": "📆", "개발성장": "📊",
+						};
+						const icon = iconMap[retro.category] ?? "📋";
+						if (!UPLOAD_SCRIPT) {
+							ctx.ui.notify("❌ Notion upload script is not configured. Set retro.uploadScript in a runtime profile or RETRO_UPLOAD_SCRIPT.", "error");
+							return;
+						}
 
-					const iconMap: Record<string, string> = {
-						"일간회고": "📋", "주간회고": "📅", "월간회고": "📆", "개발성장": "📊",
-					};
-					const icon = iconMap[activeRetro!.category] ?? "📋";
-					if (!UPLOAD_SCRIPT) {
-						ctx.ui.notify("❌ Notion upload script is not configured. Set retro.uploadScript in a runtime profile or RETRO_UPLOAD_SCRIPT.", "error");
-						return;
-					}
+						const result = await pi.exec("python3", [
+							UPLOAD_SCRIPT, "upsert",
+							"--title", retro.title,
+							"--date", retro.date,
+							"--category", retro.category,
+							"--icon", icon,
+							"--file", tmpFile,
+						]);
 
-					const result = await pi.exec("python3", [
-						UPLOAD_SCRIPT, "upsert",
-						"--title", activeRetro!.title,
-						"--date", activeRetro!.date,
-						"--category", activeRetro!.category,
-						"--icon", icon,
-						"--file", tmpFile,
-					]);
-
-					if (result.code === 0) {
-						ctx.ui.notify(`✅ "${activeRetro!.title}" Notion 반영 완료`, "info");
-						activeRetro!.content = finalMd;
-					} else {
-						ctx.ui.notify(`❌ Notion 반영 실패: ${result.stderr?.slice(0, 200) ?? "unknown"}`, "error");
+						if (result.code === 0) {
+							ctx.ui.notify(`✅ "${retro.title}" Notion 반영 완료`, "info");
+							retro.content = finalMd;
+						} else {
+							ctx.ui.notify(`❌ Notion 반영 실패: ${result.stderr?.slice(0, 200) ?? "unknown"}`, "error");
+						}
+					} finally {
+						saving = false;
 					}
 				};
 
-				pi.on("message_end", onMessage);
+				const unsubscribe = pi.on("message_end", onMessage);
+				cancelPendingSave = () => {
+					consumed = true;
+					unsubscribe();
+					cancelPendingSave = undefined;
+				};
+				try {
+					pi.sendUserMessage(prompt, { deliverAs: "followUp" });
+				} catch (error) {
+					cancelPendingSave?.();
+					throw error;
+				}
 				return;
 			}
 
