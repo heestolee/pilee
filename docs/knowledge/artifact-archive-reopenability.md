@@ -16,6 +16,7 @@ status: active
 confidence: high
 applies_to:
   - extensions/archive-to-html
+  - extensions/file-preview
   - archive
   - show-report
   - extensions/backlog
@@ -34,6 +35,7 @@ source:
   - user-direction:2026-06-02-mcp-scroll-only-no-artifact
   - user-direction:2026-05-25-session-body-search
   - user-direction:2026-05-26-session-search-revive-actions
+  - user-direction:2026-10-18-local-file-tui-preview
 reviewed_at: 2026-06-02
 reviewed_commit: ce5e875d9e49a3a0b93215894e525b1933c6a145
 related:
@@ -55,6 +57,14 @@ related:
 Archive의 `기획 / Frame`은 재진입 가능한 기획 artifact만 보여줍니다. `.context/work/**/Session <id>.md`처럼 fork-panel/Pi 대화 전문을 markdown으로 내보낸 파일은 session provenance이며, 기획 문서가 아니므로 `Pi 이력` 쪽에 남기고 planning tab에서는 제외합니다. TFT Studio transcript 카드에는 `이어하기` 버튼을 노출해, 사용자가 JSON path나 `/tft open ...` 명령을 직접 입력하지 않아도 archive를 실행한 현재 Pi session에서 같은 identity/timeline으로 이어갈 수 있게 합니다.
 
 TFT Studio transcript preview도 live Studio와 같은 stage run grouping과 markdown/visual renderer를 사용합니다. 같은 work unit에서 Frame/Decide/Verify를 여러 번 수행한 경우 `Frame Run #1`, `Frame Run #2`, `Verify Run #1`처럼 run 카드로 묶어 보여줘야, reopen 시 “같은 tab의 어느 반복 검증/결정인가”를 잃지 않습니다. `tft-visual` fenced block은 archive 전용 markdown preview로 다시 해석하지 않고 live TFT Studio renderer bundle을 재사용해야 합니다. 그렇지 않으면 `architecture-flow`나 `backend-layer-map` 같은 최신 visual payload가 예전 `tables` fallback으로 떨어져 transcript가 보이지 않는 artifact가 됩니다.
+
+## 대화 속 로컬 파일 열람
+
+로컬 Markdown·SQL 경로를 답변에 남기는 것만으로 전달이 완료되지는 않습니다. 사용자가 실제로 읽을 수 있도록 `/preview <경로>`는 읽기 전용 TUI를 제공하고, `/preview`는 현재 대화의 로컬 파일 링크를 다시 찾습니다. Markdown은 문서로 렌더하고 코드는 구문 강조하되, 미리보기에서 파일을 실행하거나 편집하지 않습니다.
+
+클릭 연결은 대화 원문이 아니라 공식 Markdown 렌더 변환 계층에서만 적용합니다. macOS 전용 URL handler와 OSC8 터미널 지원이 확인된 경우 불투명 capability를 원래 Pi 세션으로 전달합니다. 클릭을 지원하지 않으면 원래 경로를 보존하고 키보드 진입을 유지합니다. 임시 세션 URL을 모델 문맥이나 저장된 대화에 남기지 않습니다.
+
+파일 내용은 로컬 뷰어에서만 읽습니다. OS dispatcher는 경로나 명령이 아닌 capability만 전달하고, 같은 세션의 인증된 loopback 연결이 이를 검증합니다. 외부 웹 링크를 가로채거나 SQL을 실행하는 범용 URL handler로 확장하지 않습니다. 자세한 사용법과 설치·제거 경계는 [파일 미리보기](../../extensions/file-preview/README.md)에 둡니다.
 
 ## Open Original Rule
 
