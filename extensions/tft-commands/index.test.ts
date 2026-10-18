@@ -3,24 +3,48 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after } from "node:test";
-import { createJiti } from "@mariozechner/jiti";
+import { fileURLToPath } from "node:url";
+import { DefaultResourceLoader, SettingsManager } from "@mariozechner/pi-coding-agent";
 
-// Match Pi's loader and isolate any imported workspace/session state from the real user.
+// Use Pi's actual loader, including its host-module aliases, instead of a separate Jiti instance.
 const home = mkdtempSync(join(tmpdir(), "pilee-tft-command-"));
 process.env.HOME = home;
 process.env.PI_CODING_AGENT_DIR = join(home, ".pi", "agent");
-after(() => rmSync(home, { recursive: true, force: true }));
-const { default: tftCommands, buildPileeTftPrompt } = await createJiti(import.meta.url, { moduleCache: false }).import<typeof import("./index.ts")>("./index.ts");
+const loader = new DefaultResourceLoader({
+	cwd: home,
+	agentDir: process.env.PI_CODING_AGENT_DIR,
+	settingsManager: SettingsManager.create(home, process.env.PI_CODING_AGENT_DIR),
+	additionalExtensionPaths: [fileURLToPath(new URL("./index.ts", import.meta.url))],
+	noSkills: true,
+	noThemes: true,
+	noPromptTemplates: true,
+	noContextFiles: true,
+});
+await loader.reload();
+const loaded = loader.getExtensions();
+assert.deepEqual(loaded.errors, []);
+const extension = loaded.extensions.find((item) => item.commands.has("decide"))!;
+const messages: Array<{ content: string; details: { command: string } }> = [];
+loaded.runtime.sendMessage = (message: any) => { messages.push(message); };
+const ctx = { cwd: home, sessionManager: {}, ui: { notify() {} } };
+after(async () => {
+	for (const handler of extension.handlers.get("session_shutdown") ?? []) {
+		await handler({ type: "session_shutdown" } as any, ctx as any);
+	}
+	rmSync(home, { recursive: true, force: true });
+});
 
 for (const command of ["frame", "decide", "verify"] as const) {
-	test(`/${command} 주입에 구현 중 대화 결정과 저장 계약이 포함된다`, () => {
-		// given: 실제 shim이 읽는 스킬을 사용하며 에이전트 실행 자체를 흉내 내지 않는다.
-		const cwd = "/tmp/pilee-inline-decision-contract";
+	test(`/${command} 주입에 구현 중 대화 결정과 저장 계약이 포함된다`, async () => {
+		// given: 실제 Pi가 등록한 command와 canonical pilee 스킬을 사용한다.
+		messages.length = 0;
 
 		// when
-		const prompt = buildPileeTftPrompt(command, "", cwd);
+		await extension.commands.get(command)!.handler("", ctx as any);
 
 		// then
+		assert.equal(messages.length, 1);
+		const prompt = messages[0].content;
 		assert.match(prompt, /구현 중 추가 결정은 현재 대화에서 처리한다/);
 		assert.match(prompt, /질문 전에 기존 canonical의 `decision_queue`에 stable ID/);
 		assert.match(prompt, /침묵·취소·모호한 답은 승인이 아니며/);
@@ -35,17 +59,10 @@ for (const command of ["frame", "decide", "verify"] as const) {
 
 test("명시 /decide는 대화 기본값 변경 뒤에도 Decide 스킬로 전달된다", async () => {
 	// given
-	const commands = new Map<string, any>();
-	const messages: Array<{ content: string; details: { command: string } }> = [];
-	tftCommands({
-		registerTool() {},
-		registerCommand(name: string, options: any) { commands.set(name, options); },
-		sendMessage(message: any) { messages.push(message); },
-	} as any);
-	const ctx = { cwd: "/tmp", sessionManager: {}, ui: { notify() {} } };
+	messages.length = 0;
 
 	// when
-	await commands.get("decide").handler("저장 방식 비교", ctx);
+	await extension.commands.get("decide")!.handler("저장 방식 비교", ctx as any);
 
 	// then
 	assert.equal(messages.length, 1);

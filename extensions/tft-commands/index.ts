@@ -1,12 +1,14 @@
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { DefaultResourceLoader, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import { workspaceAuthorizationConsumerId } from "../utils/workspace-activation-contract.ts";
 import { runWorktreeForkFromCommandContext } from "../worktree/index.ts";
 import { buildFrameIdentity, type FrameIdentity, formatFrameIdentityHint, resolveEffectiveCwd } from "./frame-identity.ts";
 import { buildFrameForkContinuationPrompt, buildFrameWorktreeForkArgs, type FrameWorktreeForkParams } from "./frame-worktree-fork.ts";
+
+import { installExpectedSkillCollisionFilter } from "./skill-diagnostics.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = resolve(__dirname, "../..");
@@ -240,6 +242,14 @@ function registerTftCommand(pi: ExtensionAPI, command: TftCommandName): void {
 }
 
 export default function (pi: ExtensionAPI) {
+	let releaseFilter: (() => void) | undefined = installExpectedSkillCollisionFilter(DefaultResourceLoader.prototype, PACKAGE_ROOT);
+	pi.on("session_start", () => {
+		releaseFilter ??= installExpectedSkillCollisionFilter(DefaultResourceLoader.prototype, PACKAGE_ROOT);
+	});
+	pi.on("session_shutdown", () => {
+		releaseFilter?.();
+		releaseFilter = undefined;
+	});
 	registerFrameWorktreeForkTool(pi);
 	registerTftCommand(pi, "frame");
 	registerTftCommand(pi, "decide");
