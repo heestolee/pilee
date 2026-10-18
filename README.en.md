@@ -218,6 +218,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 | extension | `extensions/edit-tool-override` | [Read Edit Tool Output Override](./docs/knowledge/read-edit-tool-output-override.md) |
 | extension | `extensions/ember` | [Ember Friendly Knowledge Entrypoint](./docs/knowledge/ember-friendly-knowledge-entrypoint.md)<br>[Ember Ship Release Train](./docs/knowledge/ember-ship-release-train.md) |
 | extension | `extensions/ember-ship` | [Ember Friendly Knowledge Entrypoint](./docs/knowledge/ember-friendly-knowledge-entrypoint.md)<br>[Ember Ship Release Train](./docs/knowledge/ember-ship-release-train.md)<br>[Knowledge Review Queue PR Body](./docs/knowledge/knowledge-review-queue-pr-body.md)<br>[Skills As Portable Procedures](./docs/knowledge/skills-as-portable-procedures.md)<br>[TFT Command Shim Skill Routing](./docs/knowledge/tft-command-shim-skill-routing.md) |
+| extension | `extensions/file-preview` | [Artifact Archive Reopenability](./docs/knowledge/artifact-archive-reopenability.md) |
 | extension | `extensions/footer` | [Editor Affordance Not Context](./docs/knowledge/editor-affordance-not-context.md) |
 | extension | `extensions/fork-panel` | [Fork Panel Parent Inbox](./docs/knowledge/fork-panel-parent-inbox.md)<br>[Fork Panel Spatial Continuity](./docs/knowledge/fork-panel-spatial-continuity.md)<br>[MCP Stderr Isolation](./docs/knowledge/mcp-stderr-isolation.md)<br>[Revive Over Transcript Recall](./docs/knowledge/revive-over-transcript-recall.md)<br>[Session Identity Over Filenames](./docs/knowledge/session-identity-over-filenames.md)<br>[Terminal Host Integration](./docs/knowledge/terminal-host-integration.md)<br>[Terminal Workspace Restore](./docs/knowledge/terminal-workspace-restore.md)<br>[Theme Information Hierarchy](./docs/knowledge/theme-information-hierarchy.md)<br>[TUI Rendering Sanitization](./docs/knowledge/tui-rendering-sanitization.md)<br>[Workspace Action Panel Activation Contract](./docs/knowledge/workspace-action-panel-activation-contract.md)<br>[Worktree Creation Parent Gate](./docs/knowledge/worktree-creation-parent-gate.md)<br>[Worktree Session Continuity](./docs/knowledge/worktree-session-continuity.md) |
 | extension | `extensions/frame-studio` | [Ask User Question Decision Gates](./docs/knowledge/ask-user-question-decision-gates.md)<br>[Ask User Question Option Design](./docs/knowledge/ask-user-question-option-design.md)<br>[Decide Tradeoff Challenge](./docs/knowledge/decide-tradeoff-challenge.md)<br>[Embedded Webview Script Escape Boundary](./docs/knowledge/embedded-webview-script-escape-boundary.md)<br>[Frame Plan Synthesis Continuity](./docs/knowledge/frame-plan-synthesis-continuity.md)<br>[Frame Studio Interactive Decision UI](./docs/knowledge/frame-studio-interactive-decision-ui.md)<br>[Live Artifact Preview Pattern](./docs/knowledge/live-artifact-preview-pattern.md)<br>[Queued Command Prefill Boundary](./docs/knowledge/queued-command-prefill-boundary.md)<br>[Source Grounded Frame Planning](./docs/knowledge/source-grounded-frame-planning.md)<br>[Task Work Map Overlay](./docs/knowledge/task-work-map-overlay.md)<br>[TFT Visual Structure Renderer](./docs/knowledge/tft-visual-structure-renderer.md)<br>[Working Context Card compresses large context into the current slice](./docs/knowledge/work-context-card-task-board.md)<br>[Repeated workflow failures become enforced guard flows](./docs/knowledge/workflow-guard-enforced-flow.md) |
@@ -308,7 +309,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 ## Extensions
 
 <!-- PILEE_README_EXTENSIONS_START -->
-63 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
+64 extensions. Extensions that do not register tools, such as spinner or session-title, add no tool-schema token cost.
 
 > Generated from `extensions/*` plus inventory metadata in `scripts/knowledge.mjs`; refresh with `node scripts/knowledge.mjs --graph`.
 
@@ -395,6 +396,7 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 
 | Name | Role |
 |---|---|
+| **file-preview** | TODO: inventory role needed |
 | **learning-companion** | TODO: inventory role needed |
 | **pr-review** | TODO: inventory role needed |
 | **questions** | TODO: inventory role needed |
