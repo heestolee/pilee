@@ -36,7 +36,11 @@ test("worktree use prohibition denies switching while creation-only prohibition 
 });
 
 test("no new worktree does not deny existing switching in either clause order", () => {
-	for (const prompt of ["Run /wt switch repo/existing; no new worktree.", "No new worktree. Run /wt switch repo/existing."]) {
+	for (const prompt of [
+		"Run /wt switch repo/existing; no new worktree.", "No new worktree. Run /wt switch repo/existing.",
+		"/wt switch repo/existing 해. 새 worktree 생성은 금지", "새 워크트리 생성 금지. /wt switch repo/existing 해",
+		"/wt switch repo/existing 해. 새 워크트리는 쓰지 말고", "새 워크트리는 쓰지 말고 /wt switch repo/existing 해",
+	]) {
 		const authorization = deriveWorkspaceAuthorization(prompt);
 		assert.equal(isWorkspaceActionAuthorized(authorization, "create-worktree"), false);
 		assert.equal(isWorkspaceActionAuthorized(authorization, "use-existing-worktree"), true);

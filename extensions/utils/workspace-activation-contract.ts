@@ -143,12 +143,12 @@ function userTurnEvents(text: string, sourceId: string): WorkspaceAuthorizationE
 	}));
 	events.push(...worktreeDenials);
 	events.push(...[
-		new RegExp(`${WORKTREE_NOUN}.{0,36}(?:쓰지|사용하지|전환하지|switch하지|금지)`, "giu"),
+		new RegExp(`${WORKTREE_NOUN}(?:는|를|을|도)?\\s*(?:쓰지|사용하지|전환하지|switch하지|금지)`, "giu"),
 		/\bno\s+worktree\b/giu,
 		/\bdo\s+not\s+(?:use|switch\s+to)\s+(?:a\s+)?worktree\b/giu,
 	].flatMap((pattern) => collectMatches(normalized, pattern, {
 		source: "user-turn", sourceId, action: "use-existing-worktree", decision: "deny",
-	})));
+	})).filter((event) => !/(?:새|new)\s*$/iu.test(normalized.slice(0, event.index))));
 
 	const worktreeAllows = [
 		new RegExp(`${WORKTREE_NOUN}.{0,36}${CREATE_VERB}`, "giu"),
