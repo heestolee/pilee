@@ -21,7 +21,7 @@ applies_to:
 source:
   - user-direction:2026-05-12-conductor-like-guards
 reviewed_at: 2026-10-20
-reviewed_commit: cc111ca3ce34
+reviewed_commit: 15b19b51a00c1cd73b3df9f102e5189a225dcb2b
 related:
   - workflow-weight-proportionality
   - validation-baseline-failure-cache
@@ -93,6 +93,22 @@ Working Context Card의 slice scope는 해당 card가 소유한 repository 내�
 - 기존 만료·1회 소비 경계를 유지합니다. 다만 도구가 정확한 호출에 대해 `blocked`와 미생성·미전환을 명시하면 미실행이므로 재승인 없이 안전하게 재시도합니다. 성공·대상 보존·부작용 불명확 실패는 자동 재발급하지 않습니다.
 
 이 계약은 새로운 자연어 허용 단어 목록이나 별도 승인 UI를 늘리지 않습니다. trusted agent가 사용자 의미를 판단하고, runtime은 출처·범위·소비 같은 구조적 경계를 검증합니다. 모호함이 실제 사용자 의도에 있을 때만 질문합니다.
+
+## Merge Commit / Approval Rule
+
+정상 병합의 upstream 반영량은 새로 작성한 변경량이 아닙니다. pending merge는 `HEAD`, `MERGE_HEAD`, `ORIG_HEAD`, 공통 조상과 실제 index를 확인하고, Git의 `merge-tree --write-tree` 자동 병합 tree 대비 충돌 해결·추가작성 delta에만 큰 commit 기준을 적용합니다. upstream 파일 안에 추가한 변경도 이 delta에 남습니다. 일반 commit은 기존 staged 기준을 유지합니다.
+
+- 미해결 충돌, 비어 있거나 잘못된 parent, 여러 merge parent/공통 조상, 원 HEAD 불일치, 자동 병합 계산 실패는 승인과 무관하게 안전 차단합니다. binary 잔여 변경도 보수적으로 큰 delta로 봅니다.
+- commit inspection은 merge state·index·parents를 reset하거나 다시 stage하지 않습니다. Git object tree 계산만 수행합니다. 정상 경로는 충돌을 먼저 별도 `git add`로 해결한 뒤 index-only `git commit -m <message>`로 이어갑니다.
+- 일반 `tui_ask`의 옵션 라벨·자유텍스트는 단일 commit 승인이 아닙니다. `approval: { kind: "single-commit", command: "git -C <repo> commit -m <message>" }` 전용 계약만 사용합니다. 이 모드에서는 host가 질문·승인/분리/거절 라벨과 action을 함께 소유하며, custom options·action mapping·multi/text/default selection을 허용하지 않습니다. 일반 질문의 기존 선택·복수선택·자유텍스트 계약은 유지합니다.
+- 질문 호출 ID·원 요청·실제 target의 Git snapshot을 기록하고, 실제 overlay 실행이 host event bus로 전달한 action과 submitted 결과가 모두 일치할 때만 한 번 승인합니다. result metadata만 주입하거나 일반 옵션에 단일 커밋이라는 문구를 넣어서는 권한을 만들지 못합니다. canonical 분리/거절/취소는 이전 미사용 승인을 회수하고, session tree 이동은 대기 질문을 회수합니다.
+- 승인은 원 요청·cwd·repository·branch·HEAD·merge parent·index tree에 묶고 기존 TTL과 consumer ID를 사용해 한 번 소비합니다. 다른 요청, 상태 메시지, 대상 변경, 만료, 새 index에는 적용하지 않습니다. push 권한은 발급하지 않습니다.
+- 실제 사용자 요청의 단일 commit 지시도 해당 snapshot에 한정합니다. agent가 쓴 legacy `adopt.prompt`나 환경변수의 허용 문구로 승인을 만들지 않습니다.
+- `git -C`의 상대·복수 경로를 먼저 해석한 실제 target에서만 commit 검사·요청/질문 snapshot·실패 재시도·scope card를 확인합니다. source cwd의 미해결/dirty 상태나 non-Git 여부는 다른 target을 대신 판정하지 않습니다. repository/index를 바꾸는 env override는 계속 거절합니다.
+- 실패한 index-only commit 뒤 Git이 동일 parents/index/target임을 증명하면 같은 범위의 재시도만 허용합니다. 성공·상태 변경·판정 불가 실패는 승인 재발급이 아닙니다.
+- preflight는 bash 호출 전체보다 먼저 실행됩니다. stage/commit/push를 묶은 호출, path commit·자동 stage 옵션, 판정할 수 없는 wrapper는 별도 단계로 나눕니다. 차단됐을 때 앞선 `git add`가 실행됐다고 보고하지 않습니다.
+
+이 정책은 저장소의 Git hook 검사 범위를 바꾸거나 hook을 자동 생략하지 않습니다. upstream 전체를 다시 검사하는 저장소별 hook의 비용과 기존 실패는 별도 경계입니다.
 
 ## Audit Rule
 

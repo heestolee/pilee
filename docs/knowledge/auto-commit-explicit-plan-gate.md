@@ -17,8 +17,8 @@ applies_to:
 source:
   - public
   - user-direction:2026-09-08-i18n-commit-atomicity
-reviewed_at: 2026-09-08
-reviewed_commit: ff01ad920e4a75d5b9a3ec263e47126ced48926c
+reviewed_at: 2026-10-20
+reviewed_commit: 15b19b51a00c1cd73b3df9f102e5189a225dcb2b
 related:
   - change-integration-discipline
   - request-traceability-surgical-changes
@@ -40,6 +40,8 @@ title_en: Auto-commit executes only explicit plans
 - `auto_commit`은 실행 직전 diff-aware logical atom gate를 적용한다. 한 commit entry가 3개 이상 primary path를 가지면 파일 수만으로 막지 않고 diff 양, layer mix, cluster/surface fan-out을 함께 평가한다.
 - `quick`은 plan file을 생략하지만 message와 paths를 tool input에 반드시 명시해야 하며, dirty tree 전체를 자동 stage하지 않는다.
 - `split-head`는 clean worktree에서만 동작하고, reset 전에 backup branch를 둘 수 있어야 한다.
+- `apply`/`quick`/`split-head`는 pending `MERGE_HEAD`가 있으면 plan 검사·reset 전에 거절한다. generic path 분리 도구는 병합 parents/index를 재구성하지 않는다. 충돌을 별도 stage한 뒤 index-only `git commit -m <message>`로 병합을 계속한다.
+- stage 또는 commit/hook이 실패하면 다음 commit/push를 수행하거나 성공으로 보고하지 않는다. 실패 cleanup 중 새 merge state가 발견돼도 이를 reset하지 않는다. Git hook 범위를 바꾸거나 자동으로 skip하는 계약은 아니다.
 - commit message는 reviewable해야 하며, scope parentheses 같은 프로젝트별 convention 강제는 기본적으로 거부할 수 있다.
 - `apply`와 `split-head`의 비자명한 entry는 `situationImpact`, `cause`, `solution`, `rationale`, `tradeoffs`, `invariants`, `changeTrigger`, `evidence`, `references`를 optional lens로 사용한다. 모든 field를 채우지 않고 해당 commit에서 diff로 사라지는 complete-sentence 사실만 고른다. 같은 내용을 이미 담은 multiline `message`도 허용한다.
 - `solution`, `evidence`, `references`는 보조 정보라 이것만으로 durable record가 되지 않는다. 상황·원인·선택 이유·트레이드오프·불변조건·변경 계기 중 최소 하나가 있어야 한다.
