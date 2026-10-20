@@ -841,12 +841,23 @@ async function assertLogicalAtomGateForWorkingTree(pi: ExecHost, cwd: string, pl
 	return result.warnings;
 }
 
+async function hasPendingMerge(pi: ExecHost, cwd: string): Promise<boolean> {
+	const path = (await git(pi, cwd, ["rev-parse", "--git-path", "MERGE_HEAD"])).trim();
+	try { await stat(resolve(cwd, path)); return true; }
+	catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return false; throw error; }
+}
+
+async function assertNoPendingMerge(pi: ExecHost, cwd: string): Promise<void> {
+	if (await hasPendingMerge(pi, cwd)) throw new Error("auto_commit cannot reset a pending merge. Resolve and stage conflicts separately, then continue with index-only git commit -m <message> to preserve both parents. Do not reset or split the merge.");
+}
+
 async function commitEntry(
 	pi: ExecHost,
 	cwd: string,
 	entry: CommitPlanEntry,
 	commitNoVerify: boolean | undefined,
 ): Promise<{ message: string; hash: string; paths: string[] }> {
+	await assertNoPendingMerge(pi, cwd);
 	await git(pi, cwd, ["reset"], "git reset");
 	await git(pi, cwd, ["add", "--", ...entry.paths], `git add -- ${entry.paths.join(" ")}`);
 	const diff = await gitCode(pi, cwd, ["diff", "--cached", "--quiet"]);
@@ -854,6 +865,7 @@ async function commitEntry(
 	if (diff.code === 0) {
 		throw new Error(`No staged changes for commit: ${commitSubject(message)}`);
 	}
+	if (diff.code !== 1) throw new Error(`git diff --cached --quiet failed\n${diff.stderr}`);
 
 	const args = ["commit"];
 	if (commitNoVerify) args.push("--no-verify");
@@ -864,6 +876,7 @@ async function commitEntry(
 }
 
 async function applyPlan(pi: ExecHost, cwd: string, mode: AutoCommitMode, plan: AutoCommitPlan): Promise<AutoCommitResult> {
+	await assertNoPendingMerge(pi, cwd);
 	await assertExpectedHead(pi, cwd, plan.expectedHead);
 	const recordWarnings = assertCommitRecordGate(plan, mode);
 	return await withRepoStatusPaused(cwd, async () => {
@@ -885,6 +898,7 @@ async function applyPlan(pi: ExecHost, cwd: string, mode: AutoCommitMode, plan: 
 			for (const entry of plan.commits) {
 				commits.push(await commitEntry(pi, cwd, entry, plan.commitNoVerify));
 			}
+			await assertNoPendingMerge(pi, cwd);
 			await git(pi, cwd, ["reset"], "git reset");
 			const leftovers = await statusLines(pi, cwd);
 			if (leftovers.length > 0 && !plan.allowLeftovers) {
@@ -893,7 +907,8 @@ async function applyPlan(pi: ExecHost, cwd: string, mode: AutoCommitMode, plan: 
 			const push = await runPush(pi, cwd, plan.push, plan.pushPolicy);
 			return { mode, backupBranch: plan.backupBranch, commits, leftovers, pushed: push.status === "done", push, completion: completionFromPush(push), warnings };
 		} catch (error) {
-			await gitCode(pi, cwd, ["reset"]);
+			// Never let cleanup destroy merge state introduced while a tool/hook was running.
+			if (!(await hasPendingMerge(pi, cwd))) await gitCode(pi, cwd, ["reset"]);
 			throw error;
 		}
 	}, { reason: `auto_commit:${mode}` });
