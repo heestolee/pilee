@@ -20,8 +20,8 @@ applies_to:
   - extensions/frame-studio
 source:
   - user-direction:2026-05-12-conductor-like-guards
-reviewed_at: 2026-10-16
-reviewed_commit: 1c2fc841c80ebc5c2a46c5502cbbaf292ac679c6
+reviewed_at: 2026-10-20
+reviewed_commit: cc111ca3ce34
 related:
   - workflow-weight-proportionality
   - validation-baseline-failure-cache
@@ -79,6 +79,21 @@ Working Context Card의 slice scope는 해당 card가 소유한 repository 내�
 
 [Study Hard worker](./study-hard-worker-flexible-generation-strict-apply.md)가 지정된 `workerResultPath`에 결과 artifact를 쓰는 것은 제품 코드 mutation이 아니라 strict apply 전에 필요한 sidecar 생성입니다. 이 write는 허용하고, canonical Study Hard state 직접 수정과 최신 state 병합은 P0 coordinator에서 계속 엄격하게 통제합니다.
 
+## Semantic Authorization Rule
+
+자연어 classifier는 workflow 조언을 만들 뿐 실행 승인의 최종 판정기가 아닙니다. `unknown`은 거절이 아니라 `unassessed`입니다. 명시 요청을 놓쳤다고 해서 사용자가 표현을 바꾸거나 같은 작업을 다시 승인해야 해서는 안 됩니다.
+
+에이전트는 `workflow_guard status`가 반환한 원 요청 ID에 연결해 `adopt.assessment`로 의미 판단을 보정합니다. `intent`/`weight`와 실행할 `authorization: {toolName, input}`을 분리하고, 원 요청에 근거한 `reason`을 남깁니다. `prompt`를 더 강한 명령으로 재작성해 키워드 분류를 통과시키는 방식은 실행 권한을 만들지 않습니다.
+
+- 권한은 원 요청·cwd·도구·입력에 한정됩니다. worktree는 기존 durable event와 consumer proof를 실제 활성화 단계까지 재사용합니다. 다른 대상·base·action으로 확대하지 않습니다.
+- base가 중요하면 `authorization.base`에 의미상 요청된 `production`, `development`, `pr-head`를 기록합니다. 문장에 `production`이 등장한다는 이유만으로 부정문까지 production 요청으로 단정하지 않습니다.
+- 코드 수정 금지와 리뷰 checkout 허용은 공존할 수 있습니다. commit 금지와 push 금지도 별도 부작용이며 `auto_commit status`나 `commit-only`를 push로 보지 않습니다.
+- 명시 금지는 semantic 자기승인으로 뒤집지 않습니다. 이후 실제 사용자가 TUI에서 선택을 바꾸면 최신 provenance가 우선하며, 금지 선택도 allow로 오인하지 않습니다.
+- 짧은 continuation과 동일 요청의 반복만 원 권한을 계승합니다. 다른 저장 task, 상태 알림, 학습·리뷰 질문은 이전 실행 권한을 빌리지 않습니다.
+- 기존 만료·1회 소비 경계를 유지합니다. 다만 도구가 정확한 호출에 대해 `blocked`와 미생성·미전환을 명시하면 미실행이므로 재승인 없이 안전하게 재시도합니다. 성공·대상 보존·부작용 불명확 실패는 자동 재발급하지 않습니다.
+
+이 계약은 새로운 자연어 허용 단어 목록이나 별도 승인 UI를 늘리지 않습니다. trusted agent가 사용자 의미를 판단하고, runtime은 출처·범위·소비 같은 구조적 경계를 검증합니다. 모호함이 실제 사용자 의도에 있을 때만 질문합니다.
+
 ## Audit Rule
 
 워크플로 마찰을 재분석할 때는 old friction log를 곧바로 “미대응”으로 보지 않습니다.
@@ -94,7 +109,7 @@ Working Context Card의 slice scope는 해당 card가 소유한 repository 내�
 
 반대로 `커밋 diff`, `어제 커밋`, `반영 여부`, `반영 상태`처럼 `커밋`/`반영`이 분석 대상이나 상태 명사로 쓰이면 ship/implement 신호가 아닙니다. Guard classifier는 bare keyword 포함이 아니라 실행형 동사 맥락(`커밋해`, `푸시해`, `반영해`, `개선해`)을 mutation으로 보고, 명사+확인/분석/비교/여부 맥락은 read-only investigation으로 유지해야 합니다.
 
-진행 중 구현 결과에 대한 QA 피드백은 별도 correction axis로 봅니다. 사용자가 `와이어프레임에는 여기인데`, `니가 구현한 건 위에 있잖아`, `아래쪽에 있게는 못해?`처럼 방금 구현한 결과와 요구사항의 불일치를 지적하면, 표면 동사가 `확인해봐`/`못해?`여도 read-only investigation이 아니라 follow-up fix입니다. Guard가 이미 read-only로 시작된 뒤 agent가 근거 있게 오분류를 확인한 경우에는 `workflow_guard(action="adopt")`로 새 분류를 현재 세션 state에 반영해 같은 edit/write 차단을 반복하지 않습니다. adopt는 우회권이 아니라 “현재 guard state가 틀렸다는 이유를 남기는 재분류”입니다.
+진행 중 구현 결과에 대한 QA 피드백은 별도 correction axis로 봅니다. 사용자가 `와이어프레임에는 여기인데`, `니가 구현한 건 위에 있잖아`, `아래쪽에 있게는 못해?`처럼 방금 구현한 결과와 요구사항의 불일치를 지적하면, 표면 동사가 `확인해봐`/`못해?`여도 read-only investigation이 아니라 follow-up fix입니다. Guard가 이미 read-only로 시작된 뒤 agent가 근거 있게 오분류를 확인한 경우에는 `workflow_guard(action="adopt")`로 새 분류를 현재 세션 state에 반영해 같은 edit/write 차단을 반복하지 않습니다. 분류만 고칠 때는 기존 adopt를 쓰고, 고위험 동작의 명시 승인을 놓쳤을 때는 위 semantic assessment 계약으로 필요한 호출만 보정합니다.
 
 ## Lightweight Rule
 
@@ -171,7 +186,7 @@ Light PR/ship에서는 현재 diff, 최근 커밋, 사용자가 방금 확인한
 
 ## Boundary
 
-- Guard는 사용자 의도를 대체하지 않습니다. 분류가 틀렸다고 판단되면 mutation 전에 짧게 확인합니다.
+- Guard는 사용자 의도를 대체하지 않습니다. 분류 오류는 의미 보정으로 회복하고, 원 사용자 의도가 실제로 모호한 경우에만 확인합니다.
 - Baseline cache는 validation noise를 분리할 뿐 required check를 pass로 만들지 않습니다.
 - Full workflow는 금지된 것이 아니라 opt-in/승격 대상입니다.
 - Audit snapshot은 private/local history를 현재 세션에서만 참고하는 실행 맥락입니다. public knowledge에는 raw session text를 복사하지 않습니다.
