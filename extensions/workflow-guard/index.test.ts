@@ -1621,8 +1621,12 @@ test("light commit-push prompt uses push terminal path", async () => {
 	assert.match(start.systemPrompt, /Final response after successful push/);
 	assert.doesNotMatch(start.systemPrompt, /Slice commit-or-explain guard/);
 
-	const commitCommand = await hooks.tool_call({ toolName: "bash", input: { command: "git add a && git commit -m 'fix: test' && git push" } }, ctx);
-	assert.equal(commitCommand, undefined);
+	const compound = await hooks.tool_call({ toolName: "bash", input: { command: "git add a && git commit -m 'fix: test' && git push" } }, ctx);
+	assert.equal(compound?.block, true);
+	assert.match(compound.reason, /stage\/commit\/push separately/);
+	for (const command of ["git add a", "git commit -m 'fix: test'", "git push"]) {
+		assert.equal(await hooks.tool_call({ toolName: "bash", input: { command } }, ctx), undefined);
+	}
 });
 
 test("standard framed work injects commit-or-explain guard", async () => {

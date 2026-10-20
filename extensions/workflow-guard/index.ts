@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import { parseSubagentCommandVerb } from "../subagent/cli.ts";
+import { singleCommitApprovalPrompt } from "../tui-ask/index.ts";
+import { stagedDiffSummary, type StagedDiffSummary } from "./commit-scope.ts";
 import { latestAgentRequest, readAgentStartInput } from "../utils/agent-start-input.ts";
 import { loadWorkflowGuardProfiles } from "../utils/private-profiles.ts";
 import {
@@ -59,6 +61,7 @@ interface SemanticAssessment {
 interface GuardState {
 	request?: RequestAuthority;
 	assessment?: SemanticAssessment;
+	commitApproval?: { requestId: string; cwd: string; identity: string; expiresAt: string; sourceId: string; consumedBy?: string };
 	prompt: string;
 	intent: Intent;
 	weight: WorkflowWeight;
@@ -84,17 +87,6 @@ interface GuardState {
 	workspaceAuthorization: WorkspaceAuthorizationProvenance;
 	createdAt: string;
 	sessionFile?: string;
-}
-
-interface StagedDiffSummary {
-	files: string[];
-	fileCount: number;
-	added: number;
-	deleted: number;
-	areas: string[];
-	binaryFiles: number;
-	large: boolean;
-	reason: string;
 }
 
 interface AuditEntry {
@@ -1335,6 +1327,7 @@ function commitCompleteStopLineNote(state: GuardState | undefined, event: any): 
 	if (!state || state.intent === "status_note" || state.weight === "none") return undefined;
 	const bashCommit = event.toolName === "bash" && toolResultSucceeded(event) && isGitCommitCommand(toolResultCommand(event)) && !isGitPushCommand(toolResultCommand(event));
 	const autoCommitDone = event.toolName === "auto_commit"
+		&& toolResultSucceeded(event)
 		&& Array.isArray(event.details?.commits)
 		&& event.details.commits.length > 0
 		&& event.details?.completion !== "committed_not_pushed"
@@ -1368,46 +1361,38 @@ function shouldStopAfterPush(state: GuardState): boolean {
 	return state.weight === "light" && !state.explicitPrAction;
 }
 
-function isExplicitCommitBypass(command: string): boolean {
-	return /WORKFLOW_GUARD_ALLOW_LARGE_COMMIT=1|workflow-guard:allow-large-commit|workflow_guard:allow_large_commit/.test(command);
+function submittedCommitDecision(value: unknown): value is { status: "submitted"; question: string; options: string[]; selectedIndices: number[]; selectedOptions: string[] } {
+	return typeof value === "object" && value !== null && "status" in value && value.status === "submitted"
+		&& "question" in value && typeof value.question === "string"
+		&& "options" in value && Array.isArray(value.options) && value.options.every((item) => typeof item === "string")
+		&& "selectedIndices" in value && Array.isArray(value.selectedIndices) && value.selectedIndices.every((item) => Number.isInteger(item) && item > 0)
+		&& "selectedOptions" in value && Array.isArray(value.selectedOptions) && value.selectedOptions.every((item) => typeof item === "string");
 }
 
-function areaForPath(path: string): string {
-	const parts = path.split("/").filter(Boolean);
-	if (parts.length <= 1) return parts[0] || path;
-	if (["extensions", "skills", "docs"].includes(parts[0])) return `${parts[0]}/${parts[1]}`;
-	return parts[0];
+function commitApprovalMatches(state: GuardState, summary: StagedDiffSummary, cwd: string): boolean {
+	const approval = state.commitApproval;
+	return Boolean(approval && !approval.consumedBy && approval.requestId === state.request?.id
+		&& approval.cwd === cwd && approval.identity === summary.identity && Date.parse(approval.expiresAt) > Date.now());
 }
 
-async function stagedDiffSummary(pi: ExtensionAPI, cwd: string): Promise<StagedDiffSummary | null> {
-	const filesResult = await pi.exec("git", ["diff", "--cached", "--name-only"], { cwd });
-	if (filesResult.code !== 0) return null;
-	const files = (filesResult.stdout ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
-	if (files.length === 0) return { files, fileCount: 0, added: 0, deleted: 0, areas: [], binaryFiles: 0, large: false, reason: "no staged files" };
-
-	const numstatResult = await pi.exec("git", ["diff", "--cached", "--numstat"], { cwd });
-	let added = 0;
-	let deleted = 0;
-	let binaryFiles = 0;
-	if (numstatResult.code === 0) {
-		for (const line of (numstatResult.stdout ?? "").split("\n")) {
-			const [a, d] = line.split("\t");
-			if (!a && !d) continue;
-			if (a === "-" || d === "-") {
-				binaryFiles++;
-				continue;
-			}
-			added += Number.parseInt(a || "0", 10) || 0;
-			deleted += Number.parseInt(d || "0", 10) || 0;
-		}
+// Snapshot approvals cannot cover shell-side staging, path commits, or an ambiguous repository selector.
+function indexCommitCwd(command: string, cwd: string): string {
+	const commands = shellCommandTokens(command);
+	if (commands.length !== 1) throw new Error("stage/commit/push separately: preflight blocks the entire shell command; earlier git add has not run");
+	const tokens = [...commands[0]];
+	while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0] ?? "")) {
+		if (!/^GIT_OPTIONAL_LOCKS=[01]$/.test(tokens.shift()!)) throw new Error("unsupported commit environment: repository/index overrides cannot use a snapshot approval");
 	}
-	const areas = [...new Set(files.map(areaForPath))].sort();
-	const total = added + deleted;
-	const large = files.length > 8 || total > 700 || (areas.length > 3 && files.length > 4);
-	const reason = large
-		? `staged diff is large: ${files.length} files, +${added}/-${deleted}, ${areas.length} areas`
-		: `staged diff is small: ${files.length} files, +${added}/-${deleted}, ${areas.length} areas`;
-	return { files, fileCount: files.length, added, deleted, areas, binaryFiles, large, reason };
+	if (tokens.shift() !== "git") throw new Error("unsupported commit command wrapper; use direct git commit");
+	while (tokens[0] === "-C") { tokens.shift(); const path = tokens.shift(); if (!path) throw new Error("invalid git -C target"); cwd = resolve(cwd, path); }
+	if (tokens.shift() !== "commit") throw new Error("unsupported commit repository/options; use git -C <repo> commit");
+	while (tokens.length) {
+		const option = tokens.shift()!;
+		if (option === "-m" || option === "--message" || option === "-F" || option === "--file") { if (!tokens.shift()) throw new Error("missing commit message argument"); continue; }
+		if (["--no-verify", "--allow-empty", "--signoff", "-s", "--no-gpg-sign", "--quiet", "-q"].includes(option) || /^(?:--message|--file)=/.test(option)) continue;
+		throw new Error("unsupported commit scope: stage changes first, then use an index-only git commit -m <message>");
+	}
+	return cwd;
 }
 
 function formatLargeCommitBlock(summary: StagedDiffSummary): string {
@@ -1668,11 +1653,19 @@ export default function workflowGuard(
 	const adaptiveThinkingBySession = new Map<string, AdaptiveThinkingEscalation>();
 	const latestIntentBySession = new Map<string, GuardState>();
 	const activeContinuationBySession = new Map<string, GuardState>();
+	const pendingCommitDecisions = new Map<string, { toolCallId: string; requestId: string; cwd: string; command: string; input: { question: string; options: string[] }; identity: string; receipt?: { action: string; details: unknown } }>();
+	pi.events?.on("pilee:tui-commit-decision", (raw) => {
+		const event = raw as { sessionKey: string; toolCallId: string; command: string; action?: string; details: unknown };
+		const pending = pendingCommitDecisions.get(event.sessionKey);
+		if (pending && pending.toolCallId === event.toolCallId && pending.command === event.command && event.action) {
+			pending.receipt = { action: event.action, details: structuredClone(event.details) };
+		}
+	});
 
 	pi.on("session_tree", (_event, ctx) => {
 		const key = sessionKey(ctx);
 		restoreAdaptiveThinking(pi, key, adaptiveThinkingBySession);
-		for (const cache of [guardBySession, latestIntentBySession, activeContinuationBySession, lightPushDoneBySession, packageResolveFailuresBySession, validationFailuresBySession]) cache.delete(key);
+		for (const cache of [guardBySession, latestIntentBySession, activeContinuationBySession, lightPushDoneBySession, packageResolveFailuresBySession, validationFailuresBySession, pendingCommitDecisions]) cache.delete(key);
 		// The next turn/tool rebuilds from getBranch(), including consumed authorization entries.
 	});
 
@@ -1707,7 +1700,7 @@ export default function workflowGuard(
 				state = { ...previous, sessionFile, continuationCue: true };
 			} else if (input.kind === "continuation" && input.request) {
 				const sameRequest = previous?.request && normalizeText(extractAuthoritativeRequest(input.request)) === normalizeText(previous.request.prompt);
-				state = { ...classifyPrompt(input.request, sessionFile), request: sameRequest ? previous.request : undefined, assessment: sameRequest ? previous.assessment : undefined, continuationCue: true };
+				state = { ...classifyPrompt(input.request, sessionFile), request: sameRequest ? previous.request : undefined, assessment: sameRequest ? previous.assessment : undefined, commitApproval: sameRequest ? previous.commitApproval : undefined, continuationCue: true };
 			} else if (previous) state = { ...previous, sessionFile, continuationCue: true, summary: `${previous.summary} · continuation=latest-intent` };
 			// Continuation boilerplate never grants/reissues workspace rights.
 			state.workspaceAuthorization = restoredAuthorization;
@@ -1736,6 +1729,20 @@ export default function workflowGuard(
 			const repository = await publishRepository(pi, ctx.cwd, state.prompt);
 			if (isTrustedInternalPullRequestRepository(repository, trustedInternalPullRequestRepositories)) markTrustedInternalPullRequest(state, repository!);
 		}
+		if (!inert && !continuePrevious) {
+			pendingCommitDecisions.delete(key);
+			if (state.explicitSingleCommit && state.explicitMutation && state.request) {
+				const summaryTarget = (() => {
+					try {
+						const commands = shellCommandTokens(state.request!.prompt).filter((tokens) => gitArguments(tokens)?.[0] === "commit");
+						return commands.length === 1 ? indexCommitCwd(commands[0].map((token) => JSON.stringify(token)).join(" "), ctx.cwd) : ctx.cwd;
+					} catch { return undefined; }
+				})();
+				const summary = summaryTarget ? await stagedDiffSummary(pi, summaryTarget).catch(() => null) : null;
+				if (summary && summaryTarget) state.commitApproval = { requestId: state.request.id, cwd: summaryTarget, identity: summary.identity,
+					expiresAt: new Date(Date.now() + WORKSPACE_AUTHORIZATION_TTL_MS).toISOString(), sourceId: state.request.id };
+			}
+		}
 		const adaptiveThinking = maybeEscalateAdaptiveThinking(pi, ctx, key, state, adaptiveThinkingBySession);
 		const ultraMode = pi.getThinkingLevel() === "ultra";
 		rememberGuardState(key, state);
@@ -1758,6 +1765,7 @@ export default function workflowGuard(
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
+		pendingCommitDecisions.delete(sessionKey(ctx));
 		restoreAdaptiveThinking(pi, sessionKey(ctx), adaptiveThinkingBySession);
 	});
 
@@ -1802,6 +1810,25 @@ export default function workflowGuard(
 		const prohibited = requestMutationBlockReason(state, event.toolName, event.input ?? {}, ctx.cwd);
 		if (prohibited) return { block: true, reason: prohibited };
 
+		if (event.toolName === "tui_ask" && event.input?.approval !== undefined) {
+			pendingCommitDecisions.delete(key);
+			if (state.commitApproval) { state.commitApproval = undefined; persistSemanticAssessment(pi, state); }
+			try {
+				const input = singleCommitApprovalPrompt(event.input as any);
+				const command = String((event.input.approval as any)?.command ?? "");
+				const targetCwd = indexCommitCwd(command, ctx.cwd);
+				const denied = requestMutationBlockReason(state, "bash", { command }, ctx.cwd);
+				if (denied) return { block: true, reason: denied };
+				if (input && event.toolCallId && state.request && !state.continuationScope) {
+					const summary = await stagedDiffSummary(pi, targetCwd);
+					if (summary) pendingCommitDecisions.set(key, { toolCallId: event.toolCallId, requestId: state.request.id,
+						cwd: targetCwd, command, input, identity: summary.identity });
+				}
+			} catch (error) {
+				return { block: true, reason: `workflow_guard blocked approval: ${error instanceof Error ? error.message : String(error)}` };
+			}
+		}
+		let pendingCommitApproval = false;
 		let pendingWorkspaceAction: WorkspaceAction | undefined;
 		const workspaceAction = workspaceActionForTool(event.toolName, event.input);
 		if (state.continuationScope && (workspaceAction || event.toolName === "auto_commit")) {
@@ -1859,17 +1886,24 @@ export default function workflowGuard(
 			if (state.weight === "light" && !state.explicitHeavy && !state.auditRequired && isDeepContextMiningCommand(command)) {
 				return { block: true, reason: heavyToolBlockReason(state, "deep context mining") };
 			}
-			if (isHighRiskBashMutation(command) && !directWorktreeAdd) {
+			if (isGitCommitCommand(command)) {
+				try {
+					const targetCwd = indexCommitCwd(command, ctx.cwd);
+					const summary = await stagedDiffSummary(pi, targetCwd);
+					if (summary) pendingCommitApproval = commitApprovalMatches(state, summary, targetCwd);
+					if (summary?.large && !pendingCommitApproval) return { block: true, reason: formatLargeCommitBlock(summary) };
+					const commitCard = targetCwd === ctx.cwd ? card : loadOrDeriveWorkContext(targetCwd, ctx.sessionManager?.getSessionFile?.());
+					if (commitCard && summary?.files.length && !/WORK_CONTEXT_ALLOW_SCOPE=1|work-context:allow-scope/.test(command)) {
+						const result = gateWorkContext(commitCard, { action: "commit", paths: summary.files, requireSlice: state.weight === "standard" || state.weight === "full" });
+						if (result.level === "block") return { block: true, reason: formatWorkContextBlock(result, "git commit") };
+					}
+				} catch (error) {
+					return { block: true, reason: `workflow_guard blocked git commit: ${error instanceof Error ? error.message : String(error)}. No command in this bash call has executed.` };
+				}
+			}
+			if (isHighRiskBashMutation(command) && !directWorktreeAdd && !pendingCommitApproval) {
 				const reason = highRiskMutationBlockReason(state, "bash", event.input ?? {}, ctx.cwd);
 				if (reason) return { block: true, reason };
-			}
-			if (isGitCommitCommand(command) && !state.explicitSingleCommit && !isExplicitCommitBypass(command)) {
-				const summary = await stagedDiffSummary(pi, ctx.cwd);
-				if (summary?.large) return { block: true, reason: formatLargeCommitBlock(summary) };
-				if (card && summary?.files.length && !/WORK_CONTEXT_ALLOW_SCOPE=1|work-context:allow-scope/.test(command)) {
-					const result = gateWorkContext(card, { action: "commit", paths: summary.files, requireSlice: state.weight === "standard" || state.weight === "full" });
-					if (result.level === "block") return { block: true, reason: formatWorkContextBlock(result, "git commit") };
-				}
 			}
 		}
 
@@ -1887,6 +1921,10 @@ export default function workflowGuard(
 		if (pendingWorkspaceAction) {
 			const consumption = consumeGuardWorkspaceAuthorization(pi, state, pendingWorkspaceAction, event.toolName, event.toolCallId, event.input ?? {}, ctx.cwd);
 			if (!consumption.consumed) return { block: true, reason: `workflow_guard blocked ${event.toolName}: ${consumption.reason}` };
+		}
+		if (pendingCommitApproval) {
+			state.commitApproval!.consumedBy = workspaceAuthorizationConsumerId(event.toolName, event.toolCallId);
+			persistSemanticAssessment(pi, state);
 		}
 		if (semanticAuthorizationMatches(state, event.toolName, event.input ?? {}, ctx.cwd)) {
 			state.assessment!.consumedBy = workspaceAuthorizationConsumerId(event.toolName, event.toolCallId);
@@ -1913,6 +1951,37 @@ export default function workflowGuard(
 				persistWorkspaceAuthorization(pi, state.workspaceAuthorization);
 				persistSemanticAssessment(pi, state);
 			}
+			if (event.toolName === "bash" && event.toolCallId && state.commitApproval?.consumedBy === consumerId && !toolResultSucceeded(event)) {
+				// A failed index-only commit is retryable only when Git proves that parents/index/target did not change.
+				const targetCwd = (() => { try { return indexCommitCwd(toolResultCommand(event), ctx.cwd); } catch { return undefined; } })();
+				const summary = targetCwd ? await stagedDiffSummary(pi, targetCwd).catch(() => null) : null;
+				if (summary?.identity === state.commitApproval.identity && state.commitApproval.cwd === targetCwd) {
+					state.commitApproval.consumedBy = undefined;
+					persistSemanticAssessment(pi, state);
+				}
+			}
+			const pendingCommit = pendingCommitDecisions.get(sessionKey(ctx));
+			if (event.toolName === "tui_ask" && pendingCommit && pendingCommit.toolCallId === event.toolCallId) {
+				pendingCommitDecisions.delete(sessionKey(ctx));
+				// A newer cancellation/denial must not leave a previous approval live.
+				if (state.commitApproval) {
+					state.commitApproval = undefined;
+					persistSemanticAssessment(pi, state);
+				}
+				const details = event.details;
+				if (!event.isError && submittedCommitDecision(details) && state.intent !== "status_note" && !state.continuationScope
+					&& pendingCommit.requestId === state.request?.id && details.question === pendingCommit.input.question
+					&& isDeepStrictEqual(details.options, pendingCommit.input.options)) {
+					if (pendingCommit.receipt?.action === "approve-single-commit" && isDeepStrictEqual(pendingCommit.receipt.details, details)) {
+						const summary = await stagedDiffSummary(pi, pendingCommit.cwd).catch(() => null);
+						if (summary?.identity === pendingCommit.identity) {
+							state.commitApproval = { requestId: pendingCommit.requestId, cwd: pendingCommit.cwd, identity: summary.identity,
+								expiresAt: new Date(Date.now() + WORKSPACE_AUTHORIZATION_TTL_MS).toISOString(), sourceId: event.toolCallId };
+							persistSemanticAssessment(pi, state);
+						}
+					}
+				}
+			}
 			const decisions = decisionToolWorkspaceAuthorizations(event);
 			if (decisions.length > 0) {
 				const nextAuthorization = decisions.reduce((authorization, decision) => appendWorkspaceAuthorizationEvent(authorization, decision), state.workspaceAuthorization);
@@ -1922,7 +1991,7 @@ export default function workflowGuard(
 			const command = toolResultCommand(event);
 			const pushed = event.toolName === "bash"
 				? isGitPushCommand(command) && toolResultSucceeded(event)
-				: event.toolName === "auto_commit" && autoCommitPushed(event.details);
+				: event.toolName === "auto_commit" && toolResultSucceeded(event) && autoCommitPushed(event.details);
 			if (shouldStopAfterPush(state) && pushed) {
 				lightPushDoneBySession.set(sessionKey(ctx), true);
 				const note = [
@@ -2028,6 +2097,9 @@ export default function workflowGuard(
 					: { ...classifyPrompt(String(params.prompt ?? current?.prompt ?? ""), ctx.sessionManager?.getSessionFile?.()),
 						request: current?.request, assessment: current?.assessment,
 						workspaceAuthorization: current?.workspaceAuthorization ?? restoreWorkspaceAuthorization(activeSessionEntries(ctx)) };
+				// Agent-authored replacement prose cannot mint a single-commit approval.
+				state.explicitSingleCommit = current.explicitSingleCommit;
+				state.commitApproval = current.commitApproval;
 				state.largeWorkObserved = current?.largeWorkObserved ?? false;
 				state.largeWorkBasis = current?.largeWorkBasis;
 				if (params.assessment) {

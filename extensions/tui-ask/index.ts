@@ -4,6 +4,23 @@ import { Type } from "typebox";
 
 type TuiAskStatus = "submitted" | "cancelled" | "unavailable" | "invalid";
 
+type CommitAction = "approve-single-commit" | "split" | "deny";
+const COMMIT_CHOICES: ReadonlyArray<{ label: string; action: CommitAction }> = [
+	{ label: "현재 staged 변경을 단일 커밋으로 저장 승인 (push 제외)", action: "approve-single-commit" },
+	{ label: "단일 커밋 대신 파일별로 분리해서 저장", action: "split" },
+	{ label: "단일 커밋 승인 거절", action: "deny" },
+];
+export function singleCommitApprovalPrompt(params: TuiAskParams): { question: string; options: string[] } | undefined {
+	if (params.approval === undefined) return undefined;
+	if (params.approval?.kind !== "single-commit" || typeof params.approval.command !== "string" || !params.approval.command.trim()
+		|| Object.keys(params.approval).some((key) => !["kind", "command"].includes(key))
+		|| params.options !== undefined || params.multiSelect === true || params.allowText === true || params.defaultSelectedIndices !== undefined) {
+		throw new Error("single-commit approval requires a command and host-owned choices; custom action/option mappings are not allowed");
+	}
+	return { question: `다음 명령 대상의 현재 staged 변경 전체를 한 커밋으로 저장할까요? 승인은 현재 snapshot의 한 번 실행에만 적용되며 push는 허용하지 않습니다.\n${params.approval.command}`,
+		options: COMMIT_CHOICES.map((choice) => choice.label) };
+}
+
 interface TuiAskResult {
 	status: TuiAskStatus;
 	question: string;
@@ -23,9 +40,11 @@ interface TuiAskParams {
 	allowText?: boolean;
 	placeholder?: string;
 	defaultSelectedIndices?: number[];
+	approval?: { kind: "single-commit"; command: string };
 }
 
 const TuiAskParamsSchema = Type.Object({
+	approval: Type.Optional(Type.Object({ kind: Type.Literal("single-commit"), command: Type.String() }, { additionalProperties: false, description: "Snapshot approval for an index-only git commit. Uses host-owned question/choices; omit options, multiSelect, allowText and defaults. Generic labels never grant commit authority." })),
 	title: Type.Optional(Type.String({ description: "Short overlay title. Defaults to '질문'." })),
 	question: Type.String({ description: "Question to ask the user." }),
 	options: Type.Optional(Type.Array(Type.String(), { description: "Choice labels shown in the TUI overlay." })),
@@ -41,7 +60,9 @@ export default function tuiAsk(pi: ExtensionAPI) {
 		label: "TUI Ask",
 		description: "Ask the user through an in-terminal TUI overlay. Use for small decision gates such as branch naming, PR intent, approval, single/multiple choice, or direct text input. Prefer this over webview/Studio when a lightweight terminal interaction is enough.",
 		parameters: TuiAskParamsSchema,
-		async execute(_toolCallId, params: TuiAskParams, _signal, _onUpdate, ctx) {
+		async execute(toolCallId, params: TuiAskParams, _signal, _onUpdate, ctx) {
+			const approval = singleCommitApprovalPrompt(params);
+			if (approval) params = { ...params, ...approval, title: "단일 커밋 승인" };
 			const options = normalizeOptions(params.options);
 			const multiSelect = params.multiSelect === true;
 			const allowText = params.allowText === true;
@@ -87,20 +108,32 @@ export default function tuiAsk(pi: ExtensionAPI) {
 				{ overlay: true, overlayOptions: { width: "94%", minWidth: 64, maxHeight: "90%", anchor: "center" } },
 			);
 
-			return toolResult(
-				result ?? {
-					status: "cancelled",
-					question: params.question,
-					options,
-					selectedIndices: [],
-					selectedOptions: [],
-					text: null,
-					multiSelect,
-					allowText,
-				},
-			);
+			const details: TuiAskResult = result ?? {
+				status: "cancelled",
+				question: params.question,
+				options,
+				selectedIndices: [],
+				selectedOptions: [],
+				text: null,
+				multiSelect,
+				allowText,
+			};
+			if (approval) {
+				const index = details.selectedIndices.length === 1 ? details.selectedIndices[0] - 1 : -1;
+				const choice = COMMIT_CHOICES[index];
+				const action = details.status === "submitted" && details.question === approval.question
+					&& JSON.stringify(details.options) === JSON.stringify(approval.options)
+					&& !details.multiSelect && !details.allowText && details.text === null
+					&& choice && JSON.stringify(details.selectedOptions) === JSON.stringify([choice.label]) ? choice.action : undefined;
+				// The host event bus crosses independently loaded extension module instances; result metadata alone cannot issue approval.
+				pi.events?.emit("pilee:tui-commit-decision", { sessionKey: ctx.sessionManager?.getSessionFile?.() || ctx.cwd,
+					toolCallId, command: params.approval!.command, action, details: structuredClone(details) });
+			}
+			return toolResult(details);
 		},
 		renderCall(args: TuiAskParams, theme) {
+			const approval = singleCommitApprovalPrompt(args);
+			if (approval) args = { ...args, ...approval };
 			const options = normalizeOptions(args.options);
 			const flags = [args.multiSelect ? "multi" : "single", args.allowText ? "text" : null].filter(Boolean).join(" · ");
 			const lines = [`${theme.fg("toolTitle", theme.bold("tui_ask"))} ${theme.fg("muted", args.question)}`];
