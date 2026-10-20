@@ -194,23 +194,34 @@ function workspaceAuthorizationChanged(
 	return JSON.stringify(before.events) !== JSON.stringify(after.events);
 }
 
-function decisionToolWorkspaceAuthorization(event: any): WorkspaceAuthorizationEvent | null {
+function decisionToolWorkspaceAuthorizations(event: any): WorkspaceAuthorizationEvent[] {
 	let selectedText = "";
 	if (event.toolName === "tui_ask" && event.details?.status === "submitted") {
 		selectedText = [...(event.details.selectedOptions ?? []), event.details.text ?? ""].filter(Boolean).join(" ");
 	} else if (event.toolName === "frame_studio" && event.details?.answer?.status === "answered") {
 		selectedText = [...(event.details.answer.selectedOptions ?? []), event.details.answer.text ?? ""].filter(Boolean).join(" ");
 	}
-	if (!/(?:worktree|워크트리|fork해서(?:\s*구현)?\s*시작|별도\s*작업공간)/i.test(selectedText)) return null;
-	const selectedAction = deriveWorkspaceAuthorization(selectedText).events.at(-1);
-	return createWorkspaceAuthorizationEvent({
+	if (!/(?:worktree|워크트리|fork해서(?:\s*구현)?\s*시작|별도\s*작업공간)/i.test(selectedText)) return [];
+	const selectedActions = deriveWorkspaceAuthorization(selectedText).events;
+	// Preserve every action-specific decision: a later branch allow must not erase a create deny.
+	if (selectedActions.length === 0) {
+		if (/(?:기존|existing)\s*(?:worktree|워크트리)|(?:worktree|워크트리).*(?:전환|switch)/iu.test(selectedText)) {
+			selectedActions.push({ source: "tui", sourceId: "selection", action: "use-existing-worktree", decision: "allow" });
+		} else if (/fork해서(?:\s*구현)?\s*시작|별도\s*작업공간/iu.test(selectedText)) {
+			selectedActions.push({ source: "tui", sourceId: "selection", action: "create-worktree", decision: "allow" });
+		}
+	}
+	if (selectedActions.some((item) => item.action === "use-existing-worktree" && item.decision === "allow")
+		&& !selectedActions.some((item) => item.action === "create-worktree")) {
+		selectedActions.unshift({ source: "tui", sourceId: "selection", action: "create-worktree", decision: "deny" });
+	}
+	return selectedActions.map((selectedAction) => createWorkspaceAuthorizationEvent({
+		...selectedAction,
 		source: "tui",
 		sourceId: `${event.toolName}:${event.toolCallId ?? "selection"}`,
-		action: selectedAction?.action ?? "create-worktree",
-		decision: selectedAction?.decision ?? "allow",
-		activationTarget: "new-panel",
+		activationTarget: selectedAction.action === "create-worktree" ? "new-panel" : "current-panel",
 		text: selectedText,
-	});
+	}));
 }
 
 function rememberGuardState(key: string, state: GuardState) {
@@ -811,7 +822,7 @@ function autoCommitEffects(input: Record<string, unknown>, cwd: string): { commi
 	if (input.action === "quick") return { commit: true, push: (input.pushPolicy ?? "push-if-tracking") !== "commit-only" };
 	try {
 		const plan = JSON.parse(readFileSync(resolve(cwd, String(input.planPath ?? "")), "utf8"));
-		return { commit: true, push: (input.pushPolicy ?? plan.pushPolicy ?? (plan.push ? "push" : "commit-only")) !== "commit-only" };
+		return { commit: true, push: Boolean(plan.push) || (input.pushPolicy ?? plan.pushPolicy ?? "commit-only") !== "commit-only" };
 	} catch {
 		// The tool validates malformed/missing plans. Do not claim that an unknown plan is push-free.
 		return { commit: true, push: input.pushPolicy !== "commit-only" };
@@ -1902,9 +1913,9 @@ export default function workflowGuard(
 				persistWorkspaceAuthorization(pi, state.workspaceAuthorization);
 				persistSemanticAssessment(pi, state);
 			}
-			const decisionAuthorization = decisionToolWorkspaceAuthorization(event);
-			if (decisionAuthorization) {
-				const nextAuthorization = appendWorkspaceAuthorizationEvent(state.workspaceAuthorization, decisionAuthorization);
+			const decisions = decisionToolWorkspaceAuthorizations(event);
+			if (decisions.length > 0) {
+				const nextAuthorization = decisions.reduce((authorization, decision) => appendWorkspaceAuthorizationEvent(authorization, decision), state.workspaceAuthorization);
 				persistWorkspaceAuthorization(pi, nextAuthorization);
 				state.workspaceAuthorization = nextAuthorization;
 			}

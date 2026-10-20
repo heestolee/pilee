@@ -1502,6 +1502,8 @@ test("commit-only auto_commit and status do not violate a push prohibition", asy
 		await writeFile(planPath, JSON.stringify({ commits: [{ message: "fix: example", paths: ["a.ts"] }], pushPolicy: "commit-only" }));
 		assert.equal(await h.hooks.tool_call({ toolName: "auto_commit", input: { action: "apply", planPath } }, h.ctx), undefined);
 		assert.equal((await h.hooks.tool_call({ toolName: "auto_commit", input: { action: "apply", planPath, pushPolicy: "push" } }, h.ctx))?.block, true);
+		await writeFile(planPath, JSON.stringify({ commits: [{ message: "fix: example", paths: ["a.ts"] }], pushPolicy: "commit-only", push: { remote: "origin", branch: "feature/example" } }));
+		assert.equal((await h.hooks.tool_call({ toolName: "auto_commit", input: { action: "apply", planPath, pushPolicy: "commit-only" } }, h.ctx))?.block, true);
 	} finally { await rm(root, { recursive: true, force: true }); }
 	await h.hooks.before_agent_start({ prompt: "커밋과 푸시는 하지 마", systemPrompt: "base" }, h.ctx);
 	assert.equal(await h.hooks.tool_call({ toolName: "auto_commit", input: { action: "status" } }, h.ctx), undefined);
@@ -1520,6 +1522,32 @@ test("a later genuine TUI denial is not misread as a workspace approval", async 
 	await h.hooks.before_agent_start({ prompt: "새 worktree 만들어 작업해줘", systemPrompt: "base" }, h.ctx);
 	await h.hooks.tool_result({ toolName: "tui_ask", details: { status: "submitted", selectedOptions: ["worktree는 만들지 마"] } }, h.ctx);
 	assert.equal((await h.hooks.tool_call({ toolName: "worktree_fork", input: { repo: "repo" } }, h.ctx))?.block, true);
+});
+
+test("mixed TUI decisions preserve each action and never turn existing switch into create", async () => {
+	for (const selected of ["worktree는 만들지 말고 현재 브랜치로 전환해서 계속", "기존 worktree로 전환해서 계속"]) {
+		const h = createHarness();
+		await h.hooks.before_agent_start({ prompt: "새 worktree 만들어 작업해줘", systemPrompt: "base" }, h.ctx);
+		await h.hooks.tool_result({ toolName: "tui_ask", details: { status: "submitted", selectedOptions: [selected] } }, h.ctx);
+		const decisions = restoreWorkspaceAuthorization(h.entries);
+		const lastCreate = decisions.events.filter((item) => item.action === "create-worktree").at(-1);
+		if (selected.includes("만들지")) assert.equal(lastCreate?.decision, "deny");
+		else {
+			assert.equal(decisions.events.some((item) => item.source === "tui" && item.action === "create-worktree" && item.decision === "allow"), false);
+			assert.equal(decisions.allowedActions.includes("use-existing-worktree"), true);
+		}
+		assert.equal((await h.hooks.tool_call({ toolName: "worktree_fork", input: { repo: "repo" } }, h.ctx))?.block, true);
+	}
+});
+
+test("existing switch no-op can retry only with the matching noSessionSwitched result", async () => {
+	const h = createHarness();
+	const start = await h.hooks.before_agent_start({ prompt: "새 워크트리 생성 금지. 기존 pr-42 워크트리로 전환해서 /diff 보여줘", systemPrompt: "base" }, h.ctx);
+	const authorization = { toolName: "worktree_switch", input: { repo: "repo", name: "pr-42" } };
+	await adoptSemantic(h, start, authorization);
+	assert.equal(await h.hooks.tool_call({ ...authorization, toolCallId: "switch-no-op" }, h.ctx), undefined);
+	await h.hooks.tool_result({ ...authorization, toolCallId: "switch-no-op", details: { blocked: true, noSessionSwitched: true } }, h.ctx);
+	assert.equal(await h.hooks.tool_call({ ...authorization, toolCallId: "switch-retry" }, h.ctx), undefined);
 });
 
 test("production mentioned negatively is not a production base requirement", async () => {
