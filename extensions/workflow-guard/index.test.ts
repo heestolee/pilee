@@ -1780,36 +1780,34 @@ test("validation wrapper fan-out commands emit soft nudge instead of blocking", 
 	assert.equal(directVitest.details.workflowGuard.validationWrapperFanoutNudge, false);
 });
 
-test("package resolve failures gate broad wildcard workspace bootstrap", async () => {
+test("모듈 오류는 좁은 진단을 안내하되 실행 권한을 새로 차단하지 않는다", async () => {
+	// given
 	const { hooks, ctx } = createHarness();
-	await hooks.before_agent_start({ prompt: "스팟 리뷰 답글 기능 남은 작업 구현해줘", systemPrompt: "base" }, ctx);
+	await hooks.before_agent_start({ prompt: "기능 남은 작업 구현해줘", systemPrompt: "base" }, ctx);
+	const command = "cd apps/web && pnpm vitest run domain/foo.test.tsx";
 
+	// when
 	const firstFailure = await hooks.tool_result({
-		toolName: "bash",
-		input: { command: "cd frontend/apps/web && pnpm vitest run domain/foo.test.tsx" },
-		content: [{ type: "text", text: 'Error: Failed to resolve entry for package "@creatrip/utils".' }],
+		toolName: "bash", input: { command },
+		content: [{ type: "text", text: 'Error: Failed to resolve entry for package "@fixture/utils".' }],
 		details: { code: 1 },
 	}, ctx);
+	const broadBuild = await hooks.tool_call({
+		toolName: "bash", input: { command: "pnpm turbo build --filter='@fixture/*'" },
+	}, ctx);
+	const secondFailure = await hooks.tool_result({
+		toolName: "bash", input: { command },
+		content: [{ type: "text", text: 'Error: Failed to resolve entry for package "@fixture/bridge".' }],
+		details: { code: 1 },
+	}, ctx);
+
+	// then
 	assert.equal(firstFailure.details.workflowGuard.validationBootstrapScopeGate, true);
 	assert.match(firstFailure.content.at(-1).text, /narrowRecoveryOnly/);
-	assert.match(firstFailure.content.at(-1).text, /@creatrip\/utils/);
-
-	const broadBuildBlock = await hooks.tool_call({
-		toolName: "bash",
-		input: { command: "cd frontend && pnpm turbo build --filter='@creatrip*'" },
-	}, ctx);
-	assert.equal(broadBuildBlock?.block, true);
-	assert.match(broadBuildBlock.reason, /broad workspace bootstrap\/build/);
-	assert.match(broadBuildBlock.reason, /WORKFLOW_GUARD_ALLOW_BROAD_BOOTSTRAP=1/);
-
-	const secondFailure = await hooks.tool_result({
-		toolName: "bash",
-		input: { command: "cd frontend/apps/web && pnpm vitest run domain/foo.test.tsx" },
-		content: [{ type: "text", text: 'Error: Failed to resolve entry for package "@creatrip/bridge".' }],
-		details: { code: 1 },
-	}, ctx);
+	assert.equal(broadBuild, undefined);
 	assert.match(secondFailure.content.at(-1).text, /scopeGateRequired/);
-	assert.match(secondFailure.content.at(-1).text, /Second package\/module resolve failure/);
+	assert.match(secondFailure.content.at(-1).text, /넓은 설치\/빌드로 자동 확대하지 않습니다/);
+	assert.deepEqual(secondFailure.details.workflowGuard.packageResolveEvidence.packages, ["@fixture/utils", "@fixture/bridge"]);
 });
 
 function customStart(customType: string, text: string, details: unknown = {}) {

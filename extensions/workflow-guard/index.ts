@@ -104,7 +104,7 @@ const SEMANTIC_ASSESSMENT_ENTRY_TYPE = "workflow-guard-assessment";
 
 const guardBySession = new Map<string, GuardState>();
 const lightPushDoneBySession = new Map<string, boolean>();
-const packageResolveFailuresBySession = new Map<string, { count: number; packages: string[] }>();
+const packageResolveFailuresBySession = new Map<string, Map<string, { count: number; packages: string[] }>>();
 const validationFailuresBySession = new Map<string, Map<string, { count: number; commands: string[] }>>();
 
 const workflowGuardToolSchema = Type.Object({
@@ -591,7 +591,9 @@ function buildSystemPrompt(
 		lines.push(
 			"- Validation command fan-out discipline is a soft nudge/checklist, not a hard block by itself: before running lint/test/type-check/build/bootstrap, state the expected file/package/app fan-out in one line and prefer direct executables with explicit paths when narrowing matters.",
 			"- Do not assume `pnpm <script> -- <path>` narrows the script. If a wrapper script might contain fixed globs or ignore args, inspect package.json or use a direct command such as `pnpm exec eslint <file>` / `pnpm vitest run <file>`. If you still use the wrapper, mention the uncertainty and expected fan-out.",
-			"- Whole app/repo/workspace validation or wildcard package builds require a one-line reason tied to the current diff. Dependency/bootstrap recovery gets one narrow package-level attempt; after a second missing package/module signal, stop and report BLOCKED or ask before broad workspace build.",
+			"- Whole app/repo/workspace validation or wildcard package builds require a one-line reason tied to the current diff. Module errors are command-local evidence, not proof of a missing installation. Check the documented wrapper/cwd/environment before recovery; after a repeated failure report cause and next options before broadening, without declaring the whole environment BLOCKED from the probe alone.",
+			"- Execution evidence: a read-only dry-run, setup exit 0, or CLI --version proves only that path. Before an authorized operational action, read the repository's official entrypoint/workflow for execution cwd, configuration source, target identity, permissions and session prerequisites; an --env label alone does not prove configuration was supplied. Never print secrets.",
+			"- Blocker provenance: required target/permission/data-safety checks come from the user request or repository policy. Keep a supporting observation separate; do not invent a new exact-match requirement or repeated approval. If a discrepancy could mean the wrong target or missing authority, resolve it before execution, not by ignoring it. Existing approval covers only its unchanged scope.",
 			"- Search/history fan-out discipline: before the first investigative search/history command (`git log -S`, `git grep`, `rg`, `find`, `gh search`, `vcc_recall`), estimate ref/path/history/output fan-out. If the user gave anchors such as a symbol, file, URL, PR, commit, or branch, start with an anchored narrow lookup; broad repo/all-history/all-branch search is a soft fallback only after anchored lookup misses, and should be preceded by a one-line reason.",
 			"- LARGE WORK ROUTING (soft default): Judge work size by the work graph—input fan-out, complexity, uncertainty, runtime, and verification axes—not only by requested output count. Keep small or high-coordination work on the main agent; use no fixed numeric threshold or hard delegation rule, and re-evaluate after tool results or phase changes reveal the real scope.",
 			"- Choose a specialist by expected output and required tools: finder for local lookup; searcher for external research; planner for plans/dependency maps; worker for transformation/artifacts/implementation; reviewer/challenger for review and assumption attacks; verifier for executable evidence; browser for UI interaction/capture; bootstrapper for readiness; dedicated workers for their own workflow.",
@@ -1250,17 +1252,6 @@ function notifyValidationWrapperNudge(ctx: any): void {
 	}
 }
 
-function broadBootstrapBlockReason(command: string, failures: { count: number; packages: string[] } | undefined): string {
-	const packages = failures?.packages.length ? failures.packages.join(", ") : "unknown package";
-	return [
-		"workflow_guard blocked broad workspace bootstrap/build after package resolve failure.",
-		`Observed package/module resolve failures: ${packages}.`,
-		`Command: ${command}`,
-		"Use one narrow package-level recovery, or stop and report BLOCKED/ask before wildcard workspace build.",
-		"If this broad build is explicitly required, retry with WORKFLOW_GUARD_ALLOW_BROAD_BOOTSTRAP=1 and state the reason.",
-	].join("\n");
-}
-
 function packageResolveFailurePackages(text: string): string[] {
 	const packages = new Set<string>();
 	const patterns = [
@@ -1277,18 +1268,19 @@ function packageResolveFailurePackages(text: string): string[] {
 	return [...packages];
 }
 
-function packageResolveFailureNote(sessionRecord: { count: number; packages: string[] }): string {
-	const packages = sessionRecord.packages.length ? sessionRecord.packages.join(", ") : "unknown package";
-	const severity = sessionRecord.count >= 2 ? "scopeGateRequired" : "narrowRecoveryOnly";
-	const next = sessionRecord.count >= 2
-		? "Second package/module resolve failure observed. Stop broad recovery; report BLOCKED or ask before workspace-wide build/bootstrap."
-		: "One narrow package-level recovery is allowed. Do not run wildcard workspace build/bootstrap as the next step.";
+function packageResolveFailureNote(commandId: string, record: { count: number; packages: string[] }): string {
+	const severity = record.count >= 2 ? "scopeGateRequired" : "narrowRecoveryOnly";
 	return [
 		"",
-		`[workflow_guard] validationBootstrapScopeGate: ${severity}`,
-		`- Package/module resolve failure count in this turn: ${sessionRecord.count} (${packages}).`,
-		`- ${next}`,
-		"- If you continue, state the exact package/file fan-out before the next validation/bootstrap command.",
+		`[workflow_guard] validationBootstrapScopeGate: ${severity} (soft guidance)`,
+		`- 이 명령의 미해결 모듈 해석 실패: ${record.count}회 (${record.packages.join(", ")}).`,
+		`- 관측 명령 ID: ${commandId} (원 tool call 참조; 인자·설정값은 복제하지 않음)`,
+		"- 이 결과는 해당 호출의 실패이지 패키지 미설치나 환경 전체의 BLOCKED 증거가 아닙니다. 정식 CLI wrapper·cwd·설정 공급원을 먼저 확인하세요. internal JS/config의 raw Node probe는 wrapper가 제공하는 환경을 빠뜨릴 수 있습니다.",
+		record.count >= 2
+			? "- 같은 실패를 반복하지 말고 진단기 오류와 실제 실행 오류를 구분해 원인·시도·다음 행동을 보고하세요. 정식 경로의 좁은 확인은 가능하며, 넓은 설치/빌드로 자동 확대하지 않습니다."
+			: "- 설치를 가정하기 전에 정식 경로로 좁게 확인하세요. 복구가 실제 필요할 때만 승인된 범위에서 수행합니다.",
+		"- setup 성공은 준비 단계만 증명합니다. 같은 명령의 성공만 이 실패 이력을 해제하며, 다른 호출의 성공으로 환경 전체 READY를 선언하지 않습니다.",
+		"- 다음 검증/복구 전에는 예상 파일·패키지 fan-out을 한 줄로 밝히세요. 이 안내는 새 권한이나 필수 검증 면제가 아닙니다.",
 	].join("\n");
 }
 
@@ -1879,8 +1871,7 @@ export default function workflowGuard(
 				notifyValidationWrapperNudge(ctx);
 			}
 			if (isBroadWildcardWorkspaceBuildCommand(command) && !broadBootstrapBypass(command)) {
-				const failures = packageResolveFailuresBySession.get(sessionKey(ctx));
-				if (failures?.count) return { block: true, reason: broadBootstrapBlockReason(command, failures) };
+				// Resolve-error text is diagnostic evidence, not an execution authority boundary.
 				if (state.weight === "light" && !state.explicitHeavy) return { block: true, reason: heavyToolBlockReason(state, "broad wildcard workspace build") };
 			}
 			if (state.weight === "light" && !state.explicitHeavy && !state.auditRequired && isDeepContextMiningCommand(command)) {
@@ -2021,23 +2012,37 @@ export default function workflowGuard(
 			? validationWrapperNudgeNote(bashCommand)
 			: undefined;
 		let packageResolveNote: string | undefined;
+		let packageResolveEvidence: Record<string, unknown> | undefined;
 		let validationLoopNote: string | undefined;
-		if (ctx && state && event.toolName === "bash" && !toolResultSucceeded(event)) {
+		if (ctx && state && event.toolName === "bash") {
 			const command = bashCommand;
-			const output = (event.content ?? []).map((item: any) => String(item?.text ?? "")).join("\n");
-			const packages = packageResolveFailurePackages(output);
-			if (packages.length) {
-				const key = sessionKey(ctx);
-				const current = packageResolveFailuresBySession.get(key) ?? { count: 0, packages: [] };
-				const nextPackages = [...new Set([...current.packages, ...packages])];
-				const nextRecord = { count: current.count + 1, packages: nextPackages };
-				packageResolveFailuresBySession.set(key, nextRecord);
-				packageResolveNote = packageResolveFailureNote(nextRecord);
-			}
-			const validationKind = validationCommandKind(command);
-			if (validationKind) {
-				const record = recordValidationFailure(sessionKey(ctx), validationKind, command);
-				validationLoopNote = validationLoopFailureNote(validationKind, record);
+			const key = sessionKey(ctx);
+			const commandId = createHash("sha256").update(command).digest("hex").slice(0, 12);
+			const failures = packageResolveFailuresBySession.get(key) ?? new Map<string, { count: number; packages: string[] }>();
+			if (toolResultSucceeded(event)) {
+				// Match exact calls only: setup or an unrelated successful probe cannot clear this evidence.
+				if (command && failures.delete(command)) {
+					if (!failures.size) packageResolveFailuresBySession.delete(key);
+					packageResolveEvidence = { commandId, status: "recovered", remainingCommands: failures.size };
+					packageResolveNote = "\n[workflow_guard] 같은 명령의 정상 재실행으로 해당 모듈 실패 이력을 해제했습니다. 다른 실행 경로의 준비 완료나 실행 권한을 뜻하지 않습니다.";
+				}
+			} else {
+				const output = (event.content ?? []).map((item: any) => String(item?.text ?? "")).join("\n");
+				const packages = packageResolveFailurePackages(output);
+				if (packages.length) {
+					const current = failures.get(command) ?? { count: 0, packages: [] };
+					const nextRecord = { count: current.count + 1, packages: [...new Set([...current.packages, ...packages])] };
+					failures.set(command, nextRecord);
+					packageResolveFailuresBySession.set(key, failures);
+					packageResolveEvidence = { commandId, status: "failed", failureCount: nextRecord.count, packages: nextRecord.packages, remainingCommands: failures.size };
+					packageResolveNote = packageResolveFailureNote(commandId, nextRecord);
+				}
+				const validationKind = validationCommandKind(command);
+				// Module failures have their own command-local retry/clear lifecycle above.
+				if (validationKind && !packages.length) {
+					const record = recordValidationFailure(key, validationKind, command);
+					validationLoopNote = validationLoopFailureNote(validationKind, record);
+				}
 			}
 		}
 
@@ -2049,7 +2054,8 @@ export default function workflowGuard(
 		return appendWorkflowGuardResult(event, note, {
 			nextActionRequired: Boolean(continuityNote),
 			validationWrapperFanoutNudge: Boolean(validationWrapperNudge),
-			validationBootstrapScopeGate: Boolean(packageResolveNote),
+			validationBootstrapScopeGate: packageResolveEvidence?.status === "failed",
+			packageResolveEvidence,
 			validationLoopGate: Boolean(validationLoopNote),
 			commitCompleteStopLine: Boolean(commitStopLineNote),
 			fastPaceRequired: Boolean(paceNote),
