@@ -1,6 +1,6 @@
 {
   "name": "pilee",
-  "version": "0.1.350",
+  "version": "0.1.351",
   "description": "Personal pi coding agent config 🔥",
   "private": true,
   "type": "module",
@@ -56,7 +56,7 @@
     "test:auto-commit": "node scripts/run-typescript-test.mjs extensions/auto-commit/index.test.ts",
     "test:codex-fast-mode": "node scripts/run-typescript-test.mjs extensions/codex-fast-mode/index.test.ts extensions/codex-fast-mode/state.test.ts extensions/custom-style/fast-badge.test.ts",
     "test:pi-compat": "node scripts/run-typescript-test.mjs extensions/utils/agent-start-input.test.ts extensions/utils/short-label.test.ts extensions/workflow-guard/index.test.ts extensions/convention-lens/index.test.ts extensions/session-title/index.test.ts extensions/claude-hooks-bridge/index.test.ts extensions/ship-commands/index.test.ts extensions/worktree/agent-start.test.ts extensions/worktree/bootstrap-domains.test.ts extensions/workspace/lifecycle.test.ts extensions/fork-panel/lifecycle.test.ts extensions/fork-panel/summary.test.ts extensions/fork-panel/revive-cwd.test.ts extensions/notify/index.test.ts extensions/queued-messages/index.test.ts extensions/prompt-suggest-lite/model.test.ts extensions/subagent/registry-binding.test.ts extensions/subagent/sdk-readiness.test.ts extensions/retro/index.test.ts extensions/archive-to-html/classification.test.ts extensions/archive-to-html/session-open.test.ts extensions/codex-fast-mode/index.test.ts extensions/codex-fast-mode/state.test.ts extensions/custom-style/fast-badge.test.ts extensions/utils/agent-start-producers.test.ts extensions/workflow-guard/producer-input.test.ts extensions/tool-group-renderer/host-identity.test.ts extensions/tool-group-renderer/mcp-renderer.test.ts",
-    "test:workflow-guard": "node scripts/run-typescript-test.mjs extensions/workflow-guard/index.test.ts extensions/utils/private-profiles.test.ts",
+    "test:workflow-guard": "node scripts/run-typescript-test.mjs extensions/workflow-guard/index.test.ts extensions/workflow-guard/merge-commit.test.ts extensions/utils/private-profiles.test.ts",
     "test:mcp-bridge": "node scripts/run-typescript-test.mjs extensions/mcp-bridge/digest.test.ts",
     "test:tool-group-renderer": "node scripts/run-typescript-test.mjs extensions/tool-group-renderer/mcp-renderer.test.ts extensions/tool-group-renderer/host-identity.test.ts",
     "test:to-production": "node scripts/run-typescript-test.mjs extensions/to-production/index.test.ts",
