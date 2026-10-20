@@ -19,6 +19,13 @@ export type WorkspaceContextMode = "full" | "clean";
 export type WorkspaceAuthorizationSource = "command" | "tool" | "tui" | "user-turn";
 export type WorkspaceAuthorizationDecision = "allow" | "deny";
 
+export interface WorkspaceAuthorizationScope {
+	requestId: string;
+	cwd: string;
+	toolName: string;
+	input: Record<string, unknown>;
+}
+
 export interface WorkspaceAuthorizationEvent {
 	id?: string;
 	source: WorkspaceAuthorizationSource;
@@ -32,6 +39,8 @@ export interface WorkspaceAuthorizationEvent {
 	expiresAt?: string;
 	consumedAt?: string;
 	consumedBy?: string;
+	/** Semantic corrections authorize one exact invocation, not arbitrary topology changes. */
+	scope?: WorkspaceAuthorizationScope;
 }
 
 export interface WorkspaceAuthorizationProof {
@@ -133,6 +142,13 @@ function userTurnEvents(text: string, sourceId: string): WorkspaceAuthorizationE
 		decision: "deny",
 	}));
 	events.push(...worktreeDenials);
+	events.push(...[
+		new RegExp(`${WORKTREE_NOUN}.{0,36}(?:쓰지|사용하지|전환하지|switch하지|금지)`, "giu"),
+		/\bno\s+worktree\b/giu,
+		/\bdo\s+not\s+(?:use|switch\s+to)\s+(?:a\s+)?worktree\b/giu,
+	].flatMap((pattern) => collectMatches(normalized, pattern, {
+		source: "user-turn", sourceId, action: "use-existing-worktree", decision: "deny",
+	})));
 
 	const worktreeAllows = [
 		new RegExp(`${WORKTREE_NOUN}.{0,36}${CREATE_VERB}`, "giu"),

@@ -27,6 +27,22 @@ test("negative worktree intent remains denied even when branch work is requested
 	assert.equal(isWorkspaceActionAuthorized(authorization, "branch-in-place"), true);
 });
 
+test("worktree use prohibition denies switching while creation-only prohibition keeps actions separate", () => {
+	assert.equal(deriveWorkspaceAuthorization("worktree는 사용하지 마").deniedActions.includes("use-existing-worktree"), true);
+	assert.equal(deriveWorkspaceAuthorization("do not use a worktree").deniedActions.includes("use-existing-worktree"), true);
+	const existingOnly = deriveWorkspaceAuthorization("새 worktree 만들지 말고 /wt switch repo/existing");
+	assert.equal(isWorkspaceActionAuthorized(existingOnly, "create-worktree"), false);
+	assert.equal(isWorkspaceActionAuthorized(existingOnly, "use-existing-worktree"), true);
+});
+
+test("no new worktree does not deny existing switching in either clause order", () => {
+	for (const prompt of ["Run /wt switch repo/existing; no new worktree.", "No new worktree. Run /wt switch repo/existing."]) {
+		const authorization = deriveWorkspaceAuthorization(prompt);
+		assert.equal(isWorkspaceActionAuthorized(authorization, "create-worktree"), false);
+		assert.equal(isWorkspaceActionAuthorized(authorization, "use-existing-worktree"), true);
+	}
+});
+
 test("explicit worktree and switch requests authorize different activation actions", () => {
 	const create = deriveWorkspaceAuthorization("현재 대화를 fork해서 새 worktree 만들어줘");
 	const useExisting = deriveWorkspaceAuthorization("/wt switch product/review-pr-42");
@@ -180,6 +196,19 @@ test("new explicit deny supersedes an older unconsumed allow in durable state", 
 	}, now + 1);
 	assert.equal(isWorkspaceActionAuthorized(denied, "create-worktree"), false);
 	assert.equal(denied.deniedActions.includes("create-worktree"), true);
+});
+
+test("semantic invocation scope survives durable state and the exact consumer proof", () => {
+	const scope = { requestId: "original-user-turn", cwd: "/repo", toolName: "worktree_fork", input: { repo: "repo", name: "review-42", hotfix: true } };
+	const authorization = explicitWorkspaceAuthorization({
+		source: "tool", sourceId: "workflow_guard:adopt:original-user-turn", action: "create-worktree", decision: "allow", scope,
+	});
+	const restored = restoreWorkspaceAuthorization([{ type: "custom", customType: WORKSPACE_AUTHORIZATION_ENTRY_TYPE, data: JSON.parse(JSON.stringify(workspaceAuthorizationStateEntry(authorization))) }]);
+	assert.deepEqual(restored.events[0].scope, scope);
+	const consumed = consumeWorkspaceAuthorization(restored, "create-worktree", "worktree_fork:exact-call");
+	assert.deepEqual(consumed.proof?.events[0].scope, scope);
+	assert.equal(isWorkspaceActionAuthorized(consumed.authorization, "create-worktree"), false);
+	assert.equal(workspaceAuthorizationProofForConsumer(consumed.authorization, "create-worktree", "worktree_fork:other-call"), null);
 });
 
 test("activation contract requires authorization and placement consistency", () => {
