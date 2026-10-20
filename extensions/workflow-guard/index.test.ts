@@ -4,7 +4,10 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { Check } from "typebox/value";
 import workflowGuard from "./index.ts";
+import { restoreWorkspaceAuthorization, workspaceAuthorizationProofForConsumer } from "../utils/workspace-activation-contract.ts";
+import { buildNewPanelActivationContract } from "../worktree/panel-activation.ts";
 
 let harnessSequence = 0;
 
@@ -48,6 +51,7 @@ function createHarness(options: { cwd?: string; originUrl?: string; trustedInter
 			getLeafId: () => "leaf-1",
 			getEntries: () => entries,
 			getBranch: () => entries,
+			appendCustomEntry(customType: string, data: unknown) { entries.push({ type: "custom", customType, data }); },
 		},
 	};
 	return {
@@ -61,6 +65,17 @@ function createHarness(options: { cwd?: string; originUrl?: string; trustedInter
 		setSessionFile: (file: string) => { sessionFile = file; },
 	};
 }
+
+test("registered guard schema accepts structured assessment and keeps legacy calls valid", () => {
+	const { tools } = createHarness();
+	const schema = tools.workflow_guard.parameters;
+	const assessment = { requestId: "original-user-request", intent: "investigate", weight: "none", authorization: { toolName: "worktree_fork", input: { repo: "repo", name: "review", hotfix: false } } };
+	assert.equal(Check(schema, { action: "adopt", reason: "원 요청 근거", assessment }), true);
+	assert.equal(Check(schema, { action: "adopt", prompt: "legacy request", reason: "legacy correction" }), true);
+	assert.equal(Check(schema, { action: "classify", prompt: "preview only" }), true);
+	assert.equal(Check(schema, { action: "adopt", assessment: { ...assessment, requestId: 42 } }), false);
+	assert.equal(Check(schema, { action: "adopt", assessment: { ...assessment, intent: "status_note" } }), false);
+});
 
 test("native ultra enables proactive delegation without bypassing safety gates", async () => {
 	const { hooks, ctx, setThinkingLevel } = createHarness();
@@ -1211,6 +1226,308 @@ test("adopt action replaces stale classification while file mutation remains sof
 
 	const allowedEdit = await hooks.tool_call({ toolName: "edit", input: { path: join(process.cwd(), "allowed-after-adopt.ts") } }, ctx);
 	assert.equal(allowedEdit, undefined);
+});
+
+async function adoptSemantic(harness: ReturnType<typeof createHarness>, start: any, authorization: { toolName: string; input: Record<string, unknown>; base?: "production" | "development" | "pr-head" }, intent = "investigate") {
+	return harness.tools.workflow_guard.execute("semantic-adopt", {
+		action: "adopt",
+		reason: "원 사용자 요청의 의미를 확인했고 이 도구 호출만 수행해야 한다.",
+		assessment: {
+			requestId: start.message.details.state.request?.id ?? "missing-original-request",
+			intent,
+			authorization,
+		},
+	}, undefined, undefined, harness.ctx);
+}
+
+test("semantic adopt authorizes the actual checkout request without an implementation keyword", async (t) => {
+	for (const prompt of [
+		"https://github.com/acme/repo/pull/42/changes 여기 체크아웃해서 /diff로 볼 수 있게 세팅해봐",
+		"https://github.com/acme/repo/pull/42 이 상태를 독립 작업공간에 펼쳐 줘",
+	]) await t.test(prompt, async () => {
+		const h = createHarness();
+		const start = await h.hooks.before_agent_start({ prompt, systemPrompt: "base" }, h.ctx);
+		assert.equal(start.message.details.state.intent, "unknown");
+		assert.equal(start.message.details.state.explicitMutation, false);
+		const input = { repo: "repo", name: "review-checkout" };
+		await adoptSemantic(h, start, { toolName: "worktree_fork", input });
+		assert.equal(await h.hooks.tool_call({ toolName: "worktree_fork", toolCallId: "checkout", input }, h.ctx), undefined);
+	});
+});
+
+test("semantic checkout authorization does not turn a no-code-edit review into blanket mutation authority", async () => {
+	const h = createHarness();
+	const start = await h.hooks.before_agent_start({
+		prompt: "코드는 수정하지 말고 https://github.com/acme/repo/pull/42 여기 체크아웃해서 /diff로 볼 수 있게 세팅해봐. 커밋과 푸시는 하지 마.",
+		systemPrompt: "base",
+	}, h.ctx);
+	const input = { repo: "repo", name: "review-only" };
+	const adopted = await adoptSemantic(h, start, { toolName: "worktree_fork", input });
+	assert.equal(adopted.details.state.explicitMutation, false);
+	assert.equal(adopted.details.state.prompt, start.message.details.state.prompt);
+	assert.equal((await h.hooks.tool_call({ toolName: "edit", input: { path: join(h.ctx.cwd, "src/review.ts") } }, h.ctx))?.block, true);
+	assert.equal(await h.hooks.tool_call({ toolName: "write", input: { path: join(h.ctx.cwd, ".context/review/result.md") } }, h.ctx), undefined);
+	assert.equal(await h.hooks.tool_call({ toolName: "worktree_fork", toolCallId: "review-only", input }, h.ctx), undefined);
+	assert.equal((await h.hooks.tool_call({ toolName: "bash", input: { command: "git commit -m forbidden" } }, h.ctx))?.block, true);
+	assert.equal((await h.hooks.tool_call({ toolName: "bash", input: { command: "git push" } }, h.ctx))?.block, true);
+});
+
+test("semantic grants match the exact action, tool, target and base before consumption", async () => {
+	const h = createHarness();
+	const start = await h.hooks.before_agent_start({ prompt: "https://github.com/acme/repo/pull/42 여기 체크아웃해 둬", systemPrompt: "base" }, h.ctx);
+	const input = { repo: "repo", name: "review-42", hotfix: false };
+	await adoptSemantic(h, start, { toolName: "worktree_fork", input });
+	for (const event of [
+		{ toolName: "worktree_fork", input: { ...input, repo: "unrelated" } },
+		{ toolName: "worktree_fork", input: { ...input, name: "different" } },
+		{ toolName: "worktree_fork", input: { ...input, hotfix: true } },
+		{ toolName: "worktree_create", input },
+		{ toolName: "worktree_switch", input },
+		{ toolName: "bash", input: { command: "git worktree add /tmp/unrelated feature/unrelated" } },
+		{ toolName: "bash", input: { command: "git push" } },
+	]) assert.equal((await h.hooks.tool_call({ ...event, toolCallId: "mismatch" }, h.ctx))?.block, true, JSON.stringify(event));
+
+	assert.equal((await h.hooks.tool_call({ toolName: "worktree_fork", toolCallId: "other-cwd", input }, { ...h.ctx, cwd: "/tmp/other-repository" }))?.block, true);
+	assert.equal(await h.hooks.tool_call({ toolName: "worktree_fork", toolCallId: "exact", input: { hotfix: false, name: input.name, repo: input.repo } }, h.ctx), undefined);
+	const durable = restoreWorkspaceAuthorization(h.entries);
+	const proof = workspaceAuthorizationProofForConsumer(durable, "create-worktree", "worktree_fork:exact");
+	assert.ok(proof, "downstream activation must receive the same durable consumer proof");
+	assert.equal(proof.events[0].scope?.requestId, start.message.details.state.request.id);
+	assert.deepEqual(proof.events[0].scope?.input, input);
+	const contract = await buildNewPanelActivationContract({
+		id: "fake-activation", ctx: h.ctx as any, workspaceAction: "create-worktree", placement: "tab", contextMode: "full",
+		authorizationSource: "tool", authorizationSourceId: "worktree_fork", authorizationConsumerId: "worktree_fork:exact",
+	});
+	assert.equal(contract?.authorization.proof?.consumerId, "worktree_fork:exact");
+	assert.deepEqual(contract?.authorization.events[0].scope?.input, input);
+	assert.equal((await h.hooks.tool_call({ toolName: "worktree_fork", toolCallId: "reused", input }, h.ctx))?.block, true);
+	await assert.rejects(adoptSemantic(h, start, { toolName: "worktree_fork", input }), /이미 사용/);
+});
+
+test("semantic correction preserves cancellation, explicit prohibitions and branch-only topology", async () => {
+	for (const [prompt, authorization, error] of [
+		["worktree는 만들지 마", { toolName: "worktree_fork", input: { repo: "repo" } }, /명시적으로 거부/],
+		["새 브랜치 만들어서 작업해", { toolName: "worktree_fork", input: { repo: "repo" } }, /branch\/in-place/],
+		["현재 workspace에서 새 브랜치 만들어서 작업해", { toolName: "worktree_switch", input: { repo: "repo", name: "existing" } }, /branch\/in-place/],
+		["worktree는 사용하지 마", { toolName: "worktree_switch", input: { repo: "repo", name: "existing" } }, /명시적으로 거부/],
+		["취소해", { toolName: "worktree_fork", input: { repo: "repo" } }, /취소\/중단/],
+		["커밋과 푸시는 하지 마", { toolName: "bash", input: { command: "git commit -m forbidden" } }, /명시적으로 금지/],
+		["do not commit or push", { toolName: "bash", input: { command: "git push" } }, /명시적으로 금지/],
+		["패키지 설치하지 마", { toolName: "bash", input: { command: "npm install" } }, /명시적으로 금지/],
+		["삭제하지 마", { toolName: "bash", input: { command: "rm -rf /tmp/fixture" } }, /명시적으로 금지/],
+	] as const) {
+		const h = createHarness();
+		const start = await h.hooks.before_agent_start({ prompt, systemPrompt: "base" }, h.ctx);
+		await assert.rejects(adoptSemantic(h, start, authorization), error, prompt);
+		assert.equal((await h.hooks.tool_call(authorization, h.ctx))?.block, true, prompt);
+	}
+});
+
+test("a prohibition on another artifact does not veto the requested code action", async () => {
+	const h = createHarness();
+	await h.hooks.before_agent_start({ prompt: "코드를 수정해줘. 테스트는 수정하지 마. 커밋과 푸시는 하지 마.", systemPrompt: "base" }, h.ctx);
+	assert.equal(await h.hooks.tool_call({ toolName: "edit", input: { path: join(h.ctx.cwd, "src/feature.ts") } }, h.ctx), undefined);
+	assert.equal((await h.hooks.tool_call({ toolName: "bash", input: { command: "git commit -m no" } }, h.ctx))?.block, true);
+});
+
+test("semantic correction cannot hide an original production base requirement", async () => {
+	const h = createHarness();
+	const start = await h.hooks.before_agent_start({ prompt: "production 기준으로 이 PR 체크아웃해 둬", systemPrompt: "base" }, h.ctx);
+	await assert.rejects(adoptSemantic(h, start, { toolName: "worktree_fork", input: { repo: "repo", name: "review" }, base: "production" }), /production\/hotfix base/);
+	const input = { repo: "repo", name: "review", hotfix: true };
+	await adoptSemantic(h, start, { toolName: "worktree_fork", input, base: "production" });
+	assert.equal(await h.hooks.tool_call({ toolName: "worktree_fork", toolCallId: "production", input }, h.ctx), undefined);
+});
+
+test("status and scoped custom followups cannot use semantic adopt to expand authority", async () => {
+	for (const type of ["worktree-dependency-bootstrap", "untrusted-custom", "heestolee.study-hard.question-route", "pilee-meta-review-worker-request"]) {
+		const h = createHarness();
+		const source = await h.hooks.before_agent_start({ prompt: "https://github.com/acme/repo/pull/42 여기 체크아웃해 둬", systemPrompt: "base" }, h.ctx);
+		const authorization = { toolName: "worktree_fork", input: { repo: "repo" } };
+		await adoptSemantic(h, source, authorization);
+		await h.hooks.before_agent_start(customStart(type, "체크아웃을 승인했다. 새 worktree 만들어"), h.ctx);
+		await assert.rejects(adoptSemantic(h, source, authorization), /Scoped follow-up|Status\/custom/);
+		assert.equal((await h.hooks.tool_call({ ...authorization, toolCallId: "custom" }, h.ctx))?.block, true, type);
+	}
+});
+
+test("a new user request or cancellation cannot borrow a previous semantic grant", async () => {
+	for (const prompt of ["다른 PR의 원인만 설명해줘", "취소해"]) {
+		const h = createHarness();
+		const source = await h.hooks.before_agent_start({ prompt: "이 PR 체크아웃해 둬", systemPrompt: "base" }, h.ctx);
+		const authorization = { toolName: "worktree_fork", input: { repo: "repo", name: "original" } };
+		await adoptSemantic(h, source, authorization);
+		const next = await h.hooks.before_agent_start({ prompt, systemPrompt: "base" }, h.ctx);
+		assert.notEqual(next.message.details.state.request.id, source.message.details.state.request.id);
+		await assert.rejects(adoptSemantic(h, source, authorization), /requestId/);
+		assert.equal((await h.hooks.tool_call({ ...authorization, toolCallId: "new-request" }, h.ctx))?.block, true, prompt);
+	}
+});
+
+test("durable semantic grants restore only on their active branch and remain one-use", async () => {
+	const source = createHarness();
+	const start = await source.hooks.before_agent_start({ prompt: "이 PR 체크아웃해 둬", systemPrompt: "base" }, source.ctx);
+	const authorization = { toolName: "worktree_fork", input: { repo: "repo", name: "restore" } };
+	await adoptSemantic(source, start, authorization);
+	const restored = createHarness();
+	restored.entries.push(...structuredClone(source.entries));
+	assert.equal(await restored.hooks.tool_call({ ...authorization, toolCallId: "restored" }, restored.ctx), undefined);
+	const consumed = createHarness();
+	consumed.entries.push(...structuredClone(restored.entries));
+	assert.equal((await consumed.hooks.tool_call({ ...authorization, toolCallId: "replay" }, consumed.ctx))?.block, true);
+	const unrelated = createHarness();
+	unrelated.entries.push(...structuredClone(source.entries), { type: "message", message: { role: "user", content: "이제 설명만 해줘" } } as any);
+	assert.equal((await unrelated.hooks.tool_call({ ...authorization, toolCallId: "unrelated-branch" }, unrelated.ctx))?.block, true);
+});
+
+test("an expired grant can be reassessed but its consumed renewal cannot be replayed", async () => {
+	const h = createHarness();
+	const start = await h.hooks.before_agent_start({ prompt: "이 PR 체크아웃해 둬", systemPrompt: "base" }, h.ctx);
+	const authorization = { toolName: "worktree_fork", input: { repo: "repo", name: "renewal" } };
+	const adopted = await adoptSemantic(h, start, authorization);
+	adopted.details.state.workspaceAuthorization.events[0].expiresAt = "2000-01-01T00:00:00.000Z";
+	await adoptSemantic(h, start, authorization);
+	assert.equal(await h.hooks.tool_call({ ...authorization, toolCallId: "renewal" }, h.ctx), undefined);
+	await assert.rejects(adoptSemantic(h, start, authorization), /이미 사용/);
+});
+
+test("semantic high-risk bash correction is one-call scoped instead of mutation=true", async () => {
+	const h = createHarness();
+	const start = await h.hooks.before_agent_start({ prompt: "이 변경 이력을 남겨 둬", systemPrompt: "base" }, h.ctx);
+	const input = { command: "git commit -m 'fix: scoped history'" };
+	const adopted = await adoptSemantic(h, start, { toolName: "bash", input }, "ship");
+	assert.equal(adopted.details.state.explicitMutation, false);
+	assert.equal((await h.hooks.tool_call({ toolName: "bash", input: { command: `${input.command} && git push` } }, h.ctx))?.block, true);
+	assert.equal(await h.hooks.tool_call({ toolName: "bash", toolCallId: "commit", input }, h.ctx), undefined);
+	assert.equal((await h.hooks.tool_call({ toolName: "bash", toolCallId: "repeat", input }, h.ctx))?.block, true);
+	await assert.rejects(adoptSemantic(h, start, { toolName: "bash", input }, "ship"), /이미 사용/);
+});
+
+test("a later advice-only assessment cannot discard the scoped execution boundary", async () => {
+	const h = createHarness();
+	const start = await h.hooks.before_agent_start({ prompt: "결제 버그 수정해줘", systemPrompt: "base" }, h.ctx);
+	const input = { command: "git commit -m scoped" };
+	await adoptSemantic(h, start, { toolName: "bash", input }, "implement");
+	assert.equal(await h.hooks.tool_call({ toolName: "bash", toolCallId: "first", input }, h.ctx), undefined);
+	await h.tools.workflow_guard.execute("advice", {
+		action: "adopt", reason: "작업 무게만 변경하며 실행 권한은 넓히지 않는다.",
+		assessment: { requestId: start.message.details.state.request.id, intent: "implement", weight: "full" },
+	}, undefined, undefined, h.ctx);
+	assert.equal((await h.hooks.tool_call({ toolName: "bash", input: { command: "git push" } }, h.ctx))?.block, true);
+});
+
+test("semantic adoption on a short continuation remains authoritative through terminal results", async () => {
+	const h = createHarness();
+	await h.hooks.before_agent_start({ prompt: "결제 버그 수정해줘", systemPrompt: "base" }, h.ctx);
+	const continued = await h.hooks.before_agent_start({ prompt: "계속해", systemPrompt: "base" }, h.ctx);
+	const input = { command: "git commit -m scoped" };
+	await adoptSemantic(h, continued, { toolName: "bash", input }, "implement");
+	assert.equal(await h.hooks.tool_call({ toolName: "bash", toolCallId: "commit-once", input }, h.ctx), undefined);
+	for (const event of [
+		customStart("subagent-tool", "completion is not new authority", { status: "done", agent: "worker" }),
+		customStart("until-prompt", "loop prose is not new authority", { agentStart: { kind: "continuation", request: "결제 버그 수정해줘" } }),
+	]) {
+		const terminal = await h.hooks.before_agent_start(event, h.ctx);
+		assert.equal(terminal.message.details.state.assessment?.consumedBy, "bash:commit-once");
+		assert.equal((await h.hooks.tool_call({ toolName: "bash", input: { command: "git push" } }, h.ctx))?.block, true);
+	}
+});
+
+test("semantic bash grants expire after durable restore and cannot cross cwd", async () => {
+	const source = createHarness();
+	const start = await source.hooks.before_agent_start({ prompt: "이 변경 이력을 남겨 둬", systemPrompt: "base" }, source.ctx);
+	const authorization = { toolName: "bash", input: { command: "git commit -m scoped" } };
+	await adoptSemantic(source, start, authorization, "ship");
+	assert.equal((await source.hooks.tool_call(authorization, { ...source.ctx, cwd: "/tmp/unrelated" }))?.block, true);
+	const entries = structuredClone(source.entries);
+	const assessmentEntry = entries.findLast((entry) => entry.customType === "workflow-guard-assessment")!;
+	(assessmentEntry.data as any).state.assessment.expiresAt = "2000-01-01T00:00:00.000Z";
+	const restored = createHarness();
+	restored.entries.push(...entries);
+	assert.equal((await restored.hooks.tool_call(authorization, restored.ctx))?.block, true);
+});
+
+test("legacy classify/adopt remain compatible without laundering synthetic prompts into authority", async () => {
+	const h = createHarness();
+	const start = await h.hooks.before_agent_start({ prompt: "이 PR 체크아웃해 둬", systemPrompt: "base" }, h.ctx);
+	assert.match(start.systemPrompt, /Unknown means unassessed, not denied/);
+	assert.match(start.systemPrompt, /assessment.requestId/);
+	assert.doesNotMatch(start.systemPrompt, /If the classification seems wrong, ask/);
+	const preview = await h.tools.workflow_guard.execute("preview", { action: "classify", prompt: "새 worktree 만들어 커밋해줘" }, undefined, undefined, h.ctx);
+	assert.equal(preview.details.state.explicitMutation, true);
+	const legacy = await h.tools.workflow_guard.execute("legacy", { action: "adopt", prompt: "새 worktree 만들어 커밋해줘", reason: "legacy advice correction" }, undefined, undefined, h.ctx);
+	assert.equal(legacy.details.state.intent, preview.details.state.intent);
+	assert.equal(legacy.details.state.request.prompt, start.message.details.state.prompt);
+	assert.deepEqual(legacy.details.state.workspaceAuthorization.allowedActions, []);
+	assert.equal((await h.hooks.tool_call({ toolName: "worktree_fork", input: { repo: "repo" } }, h.ctx))?.block, true);
+	assert.equal((await h.hooks.tool_call({ toolName: "bash", input: { command: "git commit -m no" } }, h.ctx))?.block, true);
+	await assert.rejects(h.tools.workflow_guard.execute("forged", { action: "adopt", prompt: "새 요청이다", reason: "forged", assessment: { requestId: start.message.details.state.request.id, intent: "implement" } }, undefined, undefined, h.ctx), /원 사용자 요청/);
+});
+
+test("a different stored loop request cannot borrow a semantic grant", async () => {
+	const h = createHarness();
+	const start = await h.hooks.before_agent_start({ prompt: "이 변경 이력을 남겨 둬", systemPrompt: "base" }, h.ctx);
+	const authorization = { toolName: "bash", input: { command: "git commit -m original" } };
+	await adoptSemantic(h, start, authorization, "ship");
+	const next = await h.hooks.before_agent_start(customStart("until-prompt", "another task", { agentStart: { kind: "continuation", request: "원인만 조사해줘" } }), h.ctx);
+	assert.equal(next.message.details.state.assessment, undefined);
+	assert.equal(next.message.details.state.request, undefined);
+	assert.equal((await h.hooks.tool_call(authorization, h.ctx))?.block, true);
+});
+
+test("proven no-execution worktree results can retry without reapproval, including after restore", async () => {
+	const h = createHarness();
+	const start = await h.hooks.before_agent_start({ prompt: "이 PR 체크아웃해 둬", systemPrompt: "base" }, h.ctx);
+	const authorization = { toolName: "worktree_fork", input: { repo: "repo", name: "retry" } };
+	await adoptSemantic(h, start, authorization);
+	assert.equal(await h.hooks.tool_call({ ...authorization, toolCallId: "no-op" }, h.ctx), undefined);
+	await h.hooks.tool_result({ ...authorization, toolCallId: "wrong-call", details: { blocked: true, noWorktreeCreated: true } }, h.ctx);
+	assert.equal((await h.hooks.tool_call({ ...authorization, toolCallId: "too-early" }, h.ctx))?.block, true);
+	await h.hooks.tool_result({ ...authorization, toolCallId: "no-op", details: { blocked: true, noWorktreeCreated: true } }, h.ctx);
+	const restored = createHarness();
+	restored.entries.push(...structuredClone(h.entries));
+	assert.equal(await restored.hooks.tool_call({ ...authorization, toolCallId: "retry" }, restored.ctx), undefined);
+	await restored.hooks.tool_result({ ...authorization, toolCallId: "retry", details: { blocked: true, targetPreserved: true } }, restored.ctx);
+	assert.equal((await restored.hooks.tool_call({ ...authorization, toolCallId: "ambiguous" }, restored.ctx))?.block, true);
+});
+
+test("commit-only auto_commit and status do not violate a push prohibition", async () => {
+	const h = createHarness();
+	await h.hooks.before_agent_start({ prompt: "커밋만 해줘. 푸시는 하지 마.", systemPrompt: "base" }, h.ctx);
+	assert.equal(await h.hooks.tool_call({ toolName: "auto_commit", input: { action: "quick", pushPolicy: "commit-only", paths: ["a.ts"], message: "fix: example" } }, h.ctx), undefined);
+	assert.equal((await h.hooks.tool_call({ toolName: "auto_commit", input: { action: "quick", paths: ["a.ts"], message: "fix: example" } }, h.ctx))?.block, true);
+	const root = await mkdtemp(join(tmpdir(), "semantic-commit-plan-"));
+	try {
+		const planPath = join(root, "plan.json");
+		await writeFile(planPath, JSON.stringify({ commits: [{ message: "fix: example", paths: ["a.ts"] }], pushPolicy: "commit-only" }));
+		assert.equal(await h.hooks.tool_call({ toolName: "auto_commit", input: { action: "apply", planPath } }, h.ctx), undefined);
+		assert.equal((await h.hooks.tool_call({ toolName: "auto_commit", input: { action: "apply", planPath, pushPolicy: "push" } }, h.ctx))?.block, true);
+	} finally { await rm(root, { recursive: true, force: true }); }
+	await h.hooks.before_agent_start({ prompt: "커밋과 푸시는 하지 마", systemPrompt: "base" }, h.ctx);
+	assert.equal(await h.hooks.tool_call({ toolName: "auto_commit", input: { action: "status" } }, h.ctx), undefined);
+	assert.equal((await h.hooks.tool_call({ toolName: "auto_commit", input: { action: "quick", pushPolicy: "commit-only" } }, h.ctx))?.block, true);
+});
+
+test("a later genuine TUI approval supersedes an earlier workspace denial", async () => {
+	const h = createHarness();
+	await h.hooks.before_agent_start({ prompt: "worktree 만들지 마", systemPrompt: "base" }, h.ctx);
+	await h.hooks.tool_result({ toolName: "tui_ask", details: { status: "submitted", question: "구현 위치", selectedOptions: ["별도 worktree를 생성해서 계속"] } }, h.ctx);
+	assert.equal(await h.hooks.tool_call({ toolName: "worktree_fork", toolCallId: "later-user-choice", input: { repo: "repo" } }, h.ctx), undefined);
+});
+
+test("a later genuine TUI denial is not misread as a workspace approval", async () => {
+	const h = createHarness();
+	await h.hooks.before_agent_start({ prompt: "새 worktree 만들어 작업해줘", systemPrompt: "base" }, h.ctx);
+	await h.hooks.tool_result({ toolName: "tui_ask", details: { status: "submitted", selectedOptions: ["worktree는 만들지 마"] } }, h.ctx);
+	assert.equal((await h.hooks.tool_call({ toolName: "worktree_fork", input: { repo: "repo" } }, h.ctx))?.block, true);
+});
+
+test("production mentioned negatively is not a production base requirement", async () => {
+	const h = createHarness();
+	const start = await h.hooks.before_agent_start({ prompt: "production 말고 development 기준으로 이 PR 체크아웃해 둬", systemPrompt: "base" }, h.ctx);
+	const input = { repo: "repo", name: "review", hotfix: false };
+	await adoptSemantic(h, start, { toolName: "worktree_fork", input, base: "development" });
+	assert.equal(await h.hooks.tool_call({ toolName: "worktree_fork", toolCallId: "development", input }, h.ctx), undefined);
 });
 
 test("push status questions stay read-only instead of commit-push terminal path", async () => {

@@ -1,4 +1,5 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -18,10 +19,12 @@ import {
 	type WorkspaceAction,
 	type WorkspaceAuthorizationEvent,
 	type WorkspaceAuthorizationProvenance,
+	type WorkspaceAuthorizationScope,
 	workspaceAuthorizationConsumerId,
 	workspaceAuthorizationReason,
 	workspaceAuthorizationStateEntry,
 	WORKSPACE_AUTHORIZATION_ENTRY_TYPE,
+	WORKSPACE_AUTHORIZATION_TTL_MS,
 } from "../utils/workspace-activation-contract.ts";
 import { formatWorkContextCard, gateWorkContext, loadOrDeriveWorkContext, type WorkContextCard, type WorkContextGateResult } from "../utils/work-context.ts";
 
@@ -35,7 +38,27 @@ interface AdaptiveThinkingEscalation {
 	startedAt: string;
 }
 
+interface RequestAuthority {
+	id: string;
+	kind: "user" | "command";
+	cwd: string;
+	prompt: string;
+	mutationHint: boolean;
+}
+
+interface SemanticAssessment {
+	requestId: string;
+	intent?: Intent;
+	weight?: WorkflowWeight;
+	authorization?: Pick<WorkspaceAuthorizationScope, "toolName" | "input"> & { base?: "production" | "development" | "pr-head" };
+	reason: string;
+	expiresAt: string;
+	consumedBy?: string;
+}
+
 interface GuardState {
+	request?: RequestAuthority;
+	assessment?: SemanticAssessment;
 	prompt: string;
 	intent: Intent;
 	weight: WorkflowWeight;
@@ -85,6 +108,7 @@ const EXTENSION_DIR = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = dirname(dirname(EXTENSION_DIR));
 const HISTORY_FILE = join(PACKAGE_ROOT, "docs", "pilee-history.md");
 const MAX_GUARD_STATES = 80;
+const SEMANTIC_ASSESSMENT_ENTRY_TYPE = "workflow-guard-assessment";
 
 const guardBySession = new Map<string, GuardState>();
 const lightPushDoneBySession = new Map<string, boolean>();
@@ -99,7 +123,17 @@ const workflowGuardToolSchema = Type.Object({
 		Type.Literal("audit"),
 	], { description: "Workflow guard action." }),
 	prompt: Type.Optional(Type.String({ description: "Prompt/request text to classify/adopt or audit. Defaults to the current turn prompt when available." })),
-	reason: Type.Optional(Type.String({ description: "Why an adopted classification should replace the current session guard state." })),
+	reason: Type.Optional(Type.String({ description: "Why an adopted classification should replace the current session guard state. Required for semantic assessment; cite the original user request, not a fabricated replacement prompt." })),
+	assessment: Type.Optional(Type.Object({
+		requestId: Type.String({ description: "Current authoritative request ID from workflow_guard status or the guard prompt." }),
+		intent: Type.Optional(Type.Union((["answer", "investigate", "implement", "hotfix", "verify_report", "audit", "ship", "knowledge", "unknown"] as const).map((value) => Type.Literal(value)))),
+		weight: Type.Optional(Type.Union((["none", "light", "standard", "full"] as const).map((value) => Type.Literal(value)))),
+		authorization: Type.Optional(Type.Object({
+			toolName: Type.String({ description: "Exact workspace or high-risk bash tool to authorize. Does not grant unrelated mutation permission." }),
+			input: Type.Record(Type.String(), Type.Unknown(), { description: "Exact next tool input, including repository/target/base or bash command. One use only." }),
+			base: Type.Optional(Type.Union([Type.Literal("production"), Type.Literal("development"), Type.Literal("pr-head")], { description: "Semantically requested checkout base, not a keyword found in the prompt. For workspace creation, production requires hotfix:true; development requires hotfix:false or omission." })),
+		})),
+	}, { description: "Trusted main-agent semantic correction tied to the original request. Never infer permission from status/custom prose or override explicit denials." })),
 	topic: Type.Optional(Type.String({ description: "Audit topic or friction summary." })),
 	targets: Type.Optional(Type.Array(Type.String(), { description: "Optional target names, paths, commits, or worktree labels to search in recent history." })),
 	sinceDays: Type.Optional(Type.Number({ description: "How many days of local pilee history to scan for audit evidence. Default 14." })),
@@ -118,12 +152,26 @@ function activeSessionEntries(ctx: {
 	return ctx.sessionManager?.getBranch?.() ?? ctx.sessionManager?.getEntries?.() ?? [];
 }
 
-function restoreIntentGuard(entries: readonly unknown[], sessionFile?: string, currentTurn = false, explicitOnly = false): GuardState | undefined {
+function restoreIntentGuard(entries: readonly unknown[], sessionFile?: string, currentTurn = false, explicitOnly = false, cwd = process.cwd()): GuardState | undefined {
 	const authorization = restoreWorkspaceAuthorization(entries as Parameters<typeof restoreWorkspaceAuthorization>[0]);
 	for (const raw of [...entries].reverse()) {
 		const request = latestAgentRequest([raw]);
-		if (request) return { ...classifyPrompt(request, sessionFile), workspaceAuthorization: authorization };
-		const entry = raw as { type?: string; customType?: string; details?: { state?: GuardState; lastIntent?: GuardState; activeContinuation?: GuardState } };
+		if (request) {
+			const state = classifyPrompt(request, sessionFile);
+			return {
+				...state,
+				request: {
+					id: `restored:${createHash("sha256").update(JSON.stringify([sessionFile, raw])).digest("hex")}`,
+					kind: (raw as { type?: string }).type === "message" ? "user" : "command",
+					cwd, prompt: state.prompt, mutationHint: state.explicitMutation,
+				},
+				workspaceAuthorization: authorization,
+			};
+		}
+		const entry = raw as { type?: string; customType?: string; data?: { state?: GuardState }; details?: { state?: GuardState; lastIntent?: GuardState; activeContinuation?: GuardState } };
+		if (entry.type === "custom" && entry.customType === SEMANTIC_ASSESSMENT_ENTRY_TYPE && entry.data?.state) {
+			return { ...entry.data.state, sessionFile, workspaceAuthorization: authorization };
+		}
 		if (entry.type !== "custom_message" || entry.customType !== "workflow_guard") continue;
 		const state = currentTurn ? entry.details?.state
 			: (!explicitOnly ? entry.details?.activeContinuation : undefined) ?? entry.details?.lastIntent ?? entry.details?.state;
@@ -154,11 +202,12 @@ function decisionToolWorkspaceAuthorization(event: any): WorkspaceAuthorizationE
 		selectedText = [...(event.details.answer.selectedOptions ?? []), event.details.answer.text ?? ""].filter(Boolean).join(" ");
 	}
 	if (!/(?:worktree|워크트리|fork해서(?:\s*구현)?\s*시작|별도\s*작업공간)/i.test(selectedText)) return null;
+	const selectedAction = deriveWorkspaceAuthorization(selectedText).events.at(-1);
 	return createWorkspaceAuthorizationEvent({
 		source: "tui",
 		sourceId: `${event.toolName}:${event.toolCallId ?? "selection"}`,
-		action: "create-worktree",
-		decision: "allow",
+		action: selectedAction?.action ?? "create-worktree",
+		decision: selectedAction?.decision ?? "allow",
 		activationTarget: "new-panel",
 		text: selectedText,
 	});
@@ -401,7 +450,7 @@ function classifyPrompt(
 		explicitHeavy && !sqlReview ? "heavy=explicit" : null,
 		workspaceAuthorization.allowedActions.length ? `workspaceAllow=${workspaceAuthorization.allowedActions.join(",")}` : null,
 		workspaceAuthorization.deniedActions.length ? `workspaceDeny=${workspaceAuthorization.deniedActions.join(",")}` : null,
-		!explicitMutation ? "mutation=not-requested" : null,
+		!explicitMutation ? (intent === "unknown" ? "mutation=unassessed" : "mutation=not-requested") : null,
 	].filter(Boolean).join(" · ");
 
 	return { prompt: authoritativePrompt, intent, weight, explicitHeavy, explicitMutation, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, explicitIssueAction, explicitExternalPublish, auditRequired, sqlReview, detachedArtifactTask, mixedRequest, parallelInvestigationSuggested, summary, continuationCue, followUpCorrection, largeWorkObserved: false, workspaceAuthorization, createdAt: new Date().toISOString(), sessionFile };
@@ -521,8 +570,10 @@ function buildSystemPrompt(
 	const lines = [
 		"Workflow guard for this turn:",
 		`- Auto-classification: ${state.summary}.`,
-		"- Treat this as a guardrail generated from the user request, not as optional style advice.",
-		"- If the classification seems wrong, ask one short clarifying question before mutating files or starting heavy workflow.",
+		"- Intent/weight are heuristic workflow advice, not final authorization. Unknown means unassessed, not denied.",
+		"- If explicit user intent was misclassified, use workflow_guard action=adopt with assessment.requestId, corrected intent/weight and an exact authorization {toolName,input}; do not rewrite the request to trigger keywords or ask the user to approve the same action again.",
+		"- Ask only when the actual user request is ambiguous. Semantic assessment cannot override explicit prohibitions, cancellation, scoped continuations, branch-only topology, or production/base safety.",
+		...(state.request ? [`- Authoritative request ID: ${state.request.id} (${state.request.kind}).`] : []),
 	];
 
 	if (adaptiveThinking) {
@@ -690,12 +741,13 @@ function buildSystemPrompt(
 	return lines.join("\n");
 }
 
-function highRiskMutationBlockReason(state: GuardState, toolName: string): string | undefined {
-	if (state.explicitMutation && state.intent !== "status_note") return undefined;
+function highRiskMutationBlockReason(state: GuardState, toolName: string, input: Record<string, unknown>, cwd: string): string | undefined {
+	if (semanticAuthorizationMatches(state, toolName, input, cwd)) return undefined;
+	if (state.explicitMutation && (state.request?.mutationHint ?? state.explicitMutation) && !state.assessment?.authorization && state.intent !== "status_note") return undefined;
 	return [
 		`workflow_guard blocked ${toolName}: this high-risk action was not explicitly requested (${state.summary}).`,
 		"Ordinary edit/write/file-producing bash calls are soft-guided and are not blocked by intent classification.",
-		"Ask the user before commit, push, package installation, destructive cleanup, or worktree creation.",
+		"This may be a heuristic miss, not a user refusal. For an explicit request use workflow_guard adopt with assessment.requestId and exact authorization {toolName,input}; ask only if real authority is missing or ambiguous.",
 	].join("\n");
 }
 
@@ -709,6 +761,7 @@ function workspaceAuthorizationBlockReason(state: GuardState, toolName: string, 
 	return [
 		`workflow_guard blocked ${toolName}: ${workspaceAuthorizationReason(state.workspaceAuthorization, action)}`,
 		"새 branch 요청은 현재 workspace의 in-place branch 동작으로 유지하고, 명시하지 않은 worktree topology로 확대하지 않습니다.",
+		"명시 요청을 heuristic이 놓쳤다면 workflow_guard adopt의 assessment.requestId와 정확한 authorization {toolName,input}으로 보정합니다. 이미 주어진 권한을 사용자에게 다시 묻지 않습니다.",
 		`authorization events: ${state.workspaceAuthorization.events.map((event) => `${event.source}:${event.sourceId}:${event.action}:${event.decision}`).join(", ") || "none"}`,
 	].join("\n");
 }
@@ -718,8 +771,14 @@ function consumeGuardWorkspaceAuthorization(
 	state: GuardState,
 	action: WorkspaceAction,
 	toolName: string,
-	toolCallId?: string,
+	toolCallId: string | undefined,
+	input: Record<string, unknown>,
+	cwd: string,
 ): { consumed: boolean; reason?: string } {
+	const scope = [...state.workspaceAuthorization.events].reverse().find((event) => event.action === action)?.scope;
+	if (scope && (scope.requestId !== state.request?.id || scope.cwd !== cwd || scope.toolName !== toolName || !isDeepStrictEqual(scope.input, input))) {
+		return { consumed: false, reason: "semantic authorization의 원 요청·도구·대상이 현재 호출과 다릅니다." };
+	}
 	const consumerId = workspaceAuthorizationConsumerId(toolName, toolCallId);
 	const consumption = consumeWorkspaceAuthorization(state.workspaceAuthorization, action, consumerId);
 	if (!consumption.proof) return { consumed: false, reason: workspaceAuthorizationReason(consumption.authorization, action) };
@@ -733,6 +792,111 @@ function consumeGuardWorkspaceAuthorization(
 			reason: `workspace authorization consumption을 session에 저장하지 못했습니다: ${error instanceof Error ? error.message : String(error)}`,
 		};
 	}
+}
+
+function semanticAuthorizationMatches(state: GuardState, toolName: string, input: Record<string, unknown>, cwd: string): boolean {
+	const assessment = state.assessment;
+	return Boolean(assessment?.authorization && !assessment.consumedBy && Date.parse(assessment.expiresAt) > Date.now()
+		&& assessment.requestId === state.request?.id && state.request.cwd === cwd
+		&& assessment.authorization.toolName === toolName
+		&& isDeepStrictEqual(assessment.authorization.input, input));
+}
+
+function persistSemanticAssessment(pi: ExtensionAPI, state: GuardState): void {
+	pi.appendEntry(SEMANTIC_ASSESSMENT_ENTRY_TYPE, { state: structuredClone(state) });
+}
+
+function autoCommitEffects(input: Record<string, unknown>, cwd: string): { commit: boolean; push: boolean } {
+	if (input.action === "status") return { commit: false, push: false };
+	if (input.action === "quick") return { commit: true, push: (input.pushPolicy ?? "push-if-tracking") !== "commit-only" };
+	try {
+		const plan = JSON.parse(readFileSync(resolve(cwd, String(input.planPath ?? "")), "utf8"));
+		return { commit: true, push: (input.pushPolicy ?? plan.pushPolicy ?? (plan.push ? "push" : "commit-only")) !== "commit-only" };
+	} catch {
+		// The tool validates malformed/missing plans. Do not claim that an unknown plan is push-free.
+		return { commit: true, push: input.pushPolicy !== "commit-only" };
+	}
+}
+
+function requestMutationBlockReason(state: GuardState, toolName: string, input: Record<string, unknown>, cwd = process.cwd()): string | undefined {
+	const prompt = normalizeText(state.request?.prompt ?? state.prompt);
+	const workspaceAction = workspaceActionForTool(toolName, input);
+	const command = toolName === "bash" ? String(input.command ?? "") : "";
+	const git = semanticGitCommands(command);
+	const autoCommit = toolName === "auto_commit" ? autoCommitEffects(input, cwd) : { commit: false, push: false };
+	const mutates = workspaceAction || isHighRiskBashMutation(command) || ["edit", "write"].includes(toolName) || autoCommit.commit || autoCommit.push;
+	if (!mutates) return undefined;
+	if (/^(?:(?:아니|일단|잠깐)[,\s]*)?(?:취소(?:해)?|중단해|멈춰|그만(?:해)?|cancel|stop|abort)(?:\s*(?:해줘|해주세요|it|this))?[.!?]*$/i.test(prompt)) {
+		return "현재 원 사용자 요청이 취소/중단입니다. adopt로 실행 권한을 복원하지 않습니다.";
+	}
+	const prohibited = (noun: string) => new RegExp(`(?:${noun})(?:\\s*(?:과|와|및|/|,|and|or)\\s*(?:커밋|푸시|commit|push))*\\s*(?:은|는|을|를|도)?\\s*(?:하지\\s*(?:마|말)|금지)|(?:do\\s+not|don't|no)\\s+(?:(?:commit|push)\\s*(?:and|or|/)\\s*)?(?:${noun})\\b`, "iu").test(prompt);
+	if ((git.some((args) => args[0] === "commit") || autoCommit.commit) && prohibited("커밋|commit")) return "원 사용자 요청에서 commit을 명시적으로 금지했습니다.";
+	if ((git.some((args) => args[0] === "push") || autoCommit.push) && prohibited("푸시|push")) return "원 사용자 요청에서 push를 명시적으로 금지했습니다.";
+	if (/(?:npm|pnpm|yarn)\s+(?:install|add|remove|update)\b/.test(command) && prohibited("설치|추가|제거|업데이트|install|add|remove|update")) return "원 사용자 요청에서 dependency 변경을 명시적으로 금지했습니다.";
+	if ((git.some((args) => args[0] === "clean" || args[0] === "reset") || /\brm\s+-rf\b/.test(command)) && prohibited("삭제|정리|리셋|제거|clean|reset|remove")) return "원 사용자 요청에서 destructive cleanup을 명시적으로 금지했습니다.";
+	const noCodeEdits = /코드(?:는|를|도)?\s*(?:수정|변경)(?:은|는)?\s*(?:하지\s*(?:마|말)|금지)|(?:do\s+not|don't)\s+(?:edit|change|modify)\s+(?:the\s+)?code\b|\bno\s+code\s+(?:edits?|changes?)\b/iu.test(prompt);
+	if (["edit", "write"].includes(toolName) && noCodeEdits
+		&& !state.detachedArtifactTask && !scopedArtifactPath(cwd, String(input.path ?? ""))) {
+		return "원 사용자 요청은 코드 수정을 금지합니다. checkout 권한은 코드 변경 권한이 아닙니다.";
+	}
+	if (workspaceAction && state.workspaceAuthorization.deniedActions.includes(workspaceAction)) {
+		return `${workspaceAction} 동작이 원 사용자 요청에서 명시적으로 거부됐습니다.`;
+	}
+	return undefined;
+}
+
+function applySemanticAssessment(
+	state: GuardState,
+	assessment: Omit<SemanticAssessment, "reason" | "expiresAt" | "consumedBy">,
+	reason: string,
+): GuardState {
+	if (!state.request || state.intent === "status_note") throw new Error("원 user/command 요청이 없는 status/custom follow-up은 semantic authority를 부여할 수 없습니다.");
+	if (assessment.requestId !== state.request.id) throw new Error("semantic assessment의 requestId가 현재 원 사용자 요청과 다릅니다.");
+	if (!reason.trim()) throw new Error("semantic assessment에는 원 사용자 요청에 근거한 reason이 필요합니다.");
+	const authorization = assessment.authorization;
+	let workspaceAuthorization = state.workspaceAuthorization;
+	if (authorization) {
+		const { toolName, input } = authorization;
+		const action = workspaceActionForTool(toolName, input);
+		if (!action && !(toolName === "bash" && isHighRiskBashMutation(String(input.command ?? "")) && !gitWorktreeAddCommandCount(String(input.command ?? "")))) {
+			throw new Error("semantic authorization은 정확한 workspace tool 또는 non-workspace high-risk bash 호출만 지원합니다.");
+		}
+		const prohibited = requestMutationBlockReason(state, toolName, input, state.request.cwd);
+		if (prohibited) throw new Error(prohibited);
+		if (action) {
+			const original = deriveWorkspaceAuthorization(state.request.prompt);
+			if (original.allowedActions.includes("branch-in-place") && !original.allowedActions.includes(action)) {
+				throw new Error("branch/in-place 요청은 worktree 생성·전환 권한이 아닙니다.");
+			}
+			if (action === "create-worktree" && authorization.base === "production" && input.hotfix !== true) {
+				throw new Error("원 요청의 production/hotfix base를 보존해야 합니다. hotfix: true가 필요합니다.");
+			}
+			if (action === "create-worktree" && authorization.base === "development" && input.hotfix === true) {
+				throw new Error("의미 판단으로 지정한 development base와 hotfix: true가 일치하지 않습니다.");
+			}
+			const previous = state.workspaceAuthorization.events.findLast((event) => event.scope?.requestId === state.request!.id
+				&& event.scope.toolName === toolName && isDeepStrictEqual(event.scope.input, input));
+			if (previous?.consumedAt) throw new Error("이 semantic workspace authorization은 이미 사용했습니다.");
+			if (!previous || (previous.expiresAt && Date.parse(previous.expiresAt) <= Date.now())) workspaceAuthorization = appendWorkspaceAuthorizationEvent(workspaceAuthorization, createWorkspaceAuthorizationEvent({
+				source: "tool", sourceId: `workflow_guard:adopt:${state.request.id}`, action, decision: "allow",
+				text: state.request.prompt, scope: { requestId: state.request.id, cwd: state.request.cwd, toolName, input: structuredClone(input) },
+			}));
+		} else if (state.assessment?.consumedBy && isDeepStrictEqual(state.assessment.authorization, authorization)) {
+			throw new Error("이 semantic authorization은 이미 사용했습니다.");
+		}
+	}
+	const next: GuardState = {
+		...state, prompt: state.request.prompt, intent: assessment.intent ?? state.intent, weight: assessment.weight ?? state.weight,
+		assessment: {
+			...structuredClone(assessment), reason,
+			authorization: authorization ? structuredClone(authorization) : state.assessment?.authorization,
+			consumedBy: authorization ? undefined : state.assessment?.consumedBy,
+			expiresAt: !authorization && state.assessment ? state.assessment.expiresAt : new Date(Date.now() + WORKSPACE_AUTHORIZATION_TTL_MS).toISOString(),
+		},
+		workspaceAuthorization,
+	};
+	next.summary = [`intent=${next.intent}`, `weight=${next.weight}`, ...state.summary.split(" · ").filter((part) => !/^(?:intent|weight|workspaceAllow|workspaceDeny|authority)=/.test(part)), "authority=semantic-scoped"].join(" · ");
+	return next;
 }
 
 function isTempPath(path: string): boolean {
@@ -1507,8 +1671,8 @@ export default function workflowGuard(
 		const entries = activeSessionEntries(ctx);
 		const restoredAuthorization = restoreWorkspaceAuthorization(entries);
 		const input = readAgentStartInput(event);
-		const explicitPrevious = latestIntentBySession.get(key) ?? restoreIntentGuard(entries, sessionFile, false, true);
-		const previous = activeContinuationBySession.get(key) ?? restoreIntentGuard(entries, sessionFile) ?? explicitPrevious;
+		const explicitPrevious = latestIntentBySession.get(key) ?? restoreIntentGuard(entries, sessionFile, false, true, ctx.cwd);
+		const previous = activeContinuationBySession.get(key) ?? restoreIntentGuard(entries, sessionFile, false, false, ctx.cwd) ?? explicitPrevious;
 		const leafId = ctx.sessionManager?.getLeafId?.();
 		const inert = input.kind === "status" || input.kind === "unknown"
 			|| (input.kind === "continuation" && !input.scope && !input.request && !previous);
@@ -1531,7 +1695,8 @@ export default function workflowGuard(
 			} else if (previous?.continuationScope) {
 				state = { ...previous, sessionFile, continuationCue: true };
 			} else if (input.kind === "continuation" && input.request) {
-				state = { ...classifyPrompt(input.request, sessionFile), continuationCue: true };
+				const sameRequest = previous?.request && normalizeText(extractAuthoritativeRequest(input.request)) === normalizeText(previous.request.prompt);
+				state = { ...classifyPrompt(input.request, sessionFile), request: sameRequest ? previous.request : undefined, assessment: sameRequest ? previous.assessment : undefined, continuationCue: true };
 			} else if (previous) state = { ...previous, sessionFile, continuationCue: true, summary: `${previous.summary} · continuation=latest-intent` };
 			// Continuation boilerplate never grants/reissues workspace rights.
 			state.workspaceAuthorization = restoredAuthorization;
@@ -1545,6 +1710,7 @@ export default function workflowGuard(
 			}
 		}
 		if (!inert && !continuePrevious && state.intent !== "status_note") {
+			state.request = { id: randomUUID(), kind: input.kind === "command" ? "command" : "user", cwd: ctx.cwd, prompt: state.prompt, mutationHint: state.explicitMutation };
 			latestIntentBySession.set(key, state);
 			activeContinuationBySession.delete(key);
 		} else {
@@ -1586,7 +1752,7 @@ export default function workflowGuard(
 
 	pi.on("tool_call", async (event, ctx) => {
 		const key = sessionKey(ctx);
-		const state = guardBySession.get(key) ?? restoreIntentGuard(activeSessionEntries(ctx), ctx.sessionManager?.getSessionFile?.(), true);
+		const state = guardBySession.get(key) ?? restoreIntentGuard(activeSessionEntries(ctx), ctx.sessionManager?.getSessionFile?.(), true, false, ctx.cwd);
 		if (!state) return undefined;
 		guardBySession.set(key, state);
 		const card = state.detachedArtifactTask ? undefined : loadOrDeriveWorkContext(ctx.cwd, ctx.sessionManager?.getSessionFile?.());
@@ -1622,22 +1788,23 @@ export default function workflowGuard(
 			}
 		}
 
+		const prohibited = requestMutationBlockReason(state, event.toolName, event.input ?? {}, ctx.cwd);
+		if (prohibited) return { block: true, reason: prohibited };
+
+		let pendingWorkspaceAction: WorkspaceAction | undefined;
 		const workspaceAction = workspaceActionForTool(event.toolName, event.input);
 		if (state.continuationScope && (workspaceAction || event.toolName === "auto_commit")) {
 			return { block: true, reason: `workflow_guard: ${state.continuationScope} follow-up does not authorize implementation or workspace actions.` };
 		}
 		if (workspaceAction) {
 			if (workspaceAction === "create-worktree" && !state.explicitMutation && !isWorkspaceActionAuthorized(state.workspaceAuthorization, workspaceAction)) {
-				const reason = highRiskMutationBlockReason(state, event.toolName);
+				const reason = highRiskMutationBlockReason(state, event.toolName, event.input ?? {}, ctx.cwd);
 				if (reason) return { block: true, reason };
 			}
 			if (!isWorkspaceActionAuthorized(state.workspaceAuthorization, workspaceAction)) {
 				return { block: true, reason: workspaceAuthorizationBlockReason(state, event.toolName, workspaceAction) };
 			}
-			const consumption = consumeGuardWorkspaceAuthorization(pi, state, workspaceAction, event.toolName, event.toolCallId);
-			if (!consumption.consumed) {
-				return { block: true, reason: `workflow_guard blocked ${event.toolName}: ${consumption.reason}` };
-			}
+			pendingWorkspaceAction = workspaceAction;
 		}
 
 		if (event.toolName === "read" && state.weight === "light" && !state.explicitHeavy && !state.auditRequired) {
@@ -1659,10 +1826,7 @@ export default function workflowGuard(
 				if (!isWorkspaceActionAuthorized(state.workspaceAuthorization, "create-worktree")) {
 					return { block: true, reason: workspaceAuthorizationBlockReason(state, "git worktree add", "create-worktree") };
 				}
-				const consumption = consumeGuardWorkspaceAuthorization(pi, state, "create-worktree", "bash", event.toolCallId);
-				if (!consumption.consumed) {
-					return { block: true, reason: `workflow_guard blocked git worktree add: ${consumption.reason}` };
-				}
+				pendingWorkspaceAction = "create-worktree";
 			}
 			if (isExternalIssueOrPrCreateCommand(command) && !hasExternalPublishApproval(command)) {
 				const repository = await publishRepository(pi, ctx.cwd, command);
@@ -1685,7 +1849,7 @@ export default function workflowGuard(
 				return { block: true, reason: heavyToolBlockReason(state, "deep context mining") };
 			}
 			if (isHighRiskBashMutation(command) && !directWorktreeAdd) {
-				const reason = highRiskMutationBlockReason(state, "bash mutation");
+				const reason = highRiskMutationBlockReason(state, "bash", event.input ?? {}, ctx.cwd);
 				if (reason) return { block: true, reason };
 			}
 			if (isGitCommitCommand(command) && !state.explicitSingleCommit && !isExplicitCommitBypass(command)) {
@@ -1709,12 +1873,35 @@ export default function workflowGuard(
 				}
 			}
 		}
+		if (pendingWorkspaceAction) {
+			const consumption = consumeGuardWorkspaceAuthorization(pi, state, pendingWorkspaceAction, event.toolName, event.toolCallId, event.input ?? {}, ctx.cwd);
+			if (!consumption.consumed) return { block: true, reason: `workflow_guard blocked ${event.toolName}: ${consumption.reason}` };
+		}
+		if (semanticAuthorizationMatches(state, event.toolName, event.input ?? {}, ctx.cwd)) {
+			state.assessment!.consumedBy = workspaceAuthorizationConsumerId(event.toolName, event.toolCallId);
+			persistSemanticAssessment(pi, state);
+		}
 		return undefined;
 	});
 
 	pi.on("tool_result", async (event, ctx) => {
 		const state = ctx ? guardBySession.get(sessionKey(ctx)) : undefined;
 		if (ctx && state) {
+			// A proven no-op may be retried; success or an ambiguous failure never renews execution authority.
+			const consumerId = workspaceAuthorizationConsumerId(event.toolName, event.toolCallId);
+			const noExecution = event.details?.blocked === true && (
+				(["worktree_create", "worktree_fork", "frame_worktree_fork", "frame_v2_worktree_fork"].includes(event.toolName) && event.details?.noWorktreeCreated === true)
+				|| (event.toolName === "worktree_switch" && event.details?.noSessionSwitched === true)
+			);
+			if (noExecution && event.toolCallId && state.assessment?.consumedBy === consumerId) {
+				state.assessment.consumedBy = undefined;
+				state.workspaceAuthorization = { ...state.workspaceAuthorization, events: state.workspaceAuthorization.events.map((item) =>
+					item.consumedBy === consumerId && item.scope?.requestId === state.request?.id
+						? { ...item, consumedAt: undefined, consumedBy: undefined } : item) };
+				state.workspaceAuthorization = restoreWorkspaceAuthorization([{ type: "custom", customType: WORKSPACE_AUTHORIZATION_ENTRY_TYPE, data: workspaceAuthorizationStateEntry(state.workspaceAuthorization) }]);
+				persistWorkspaceAuthorization(pi, state.workspaceAuthorization);
+				persistSemanticAssessment(pi, state);
+			}
 			const decisionAuthorization = decisionToolWorkspaceAuthorization(event);
 			if (decisionAuthorization) {
 				const nextAuthorization = appendWorkspaceAuthorizationEvent(state.workspaceAuthorization, decisionAuthorization);
@@ -1795,19 +1982,19 @@ export default function workflowGuard(
 	pi.registerTool({
 		name: "workflow_guard",
 		label: "Workflow Guard",
-		description: "Inspect or update the current enforced workflow classification, or build a fixed-vs-remaining audit snapshot. Use for request intent, light/hotfix path, misclassification recovery, and already-fixed-vs-unfixed audits.",
+		description: "Inspect advisory workflow classification or correct it using a structured semantic assessment of the original request. Unknown is not a denial. Adopt with assessment.requestId and exact authorization {toolName,input} for a missed explicit action, without asking the user twice. Also supports fixed-vs-remaining audit snapshots.",
 		promptSnippet: "Use workflow_guard when the request is about workflow friction, already-fixed vs remaining gaps, or when you need to inspect/adopt the current request classification.",
 		promptGuidelines: [
 			"For fixed-vs-unfixed audits, use action=audit and map friction → response evidence → current state → remaining gap.",
 			"For small hotfixes, respect the light path unless new risk axes appear; do not deep-scan transcripts/context just to satisfy a template.",
 			"If the user reports workflow drag, search for repeated judgment-drift patterns and translate them into guard rules.",
-			"Use action=adopt only when the current guard state is demonstrably wrong; include the reason so later tool blocks use the corrected state.",
-			"Do not treat this tool as permission to mutate files during an answer/investigation-only turn unless action=adopt has explicitly replaced a wrong read-only state.",
+			"Use action=adopt with assessment.requestId from status, semantic intent/weight, a reason grounded in the original request and exact next authorization {toolName,input}. This corrects a heuristic miss without fabricating replacement prompts or requiring renewed user approval.",
+			"Classification and execution permission are separate. Legacy prompt-only adopt changes advice, never mints workspace rights or broadens the original mutation hint. Semantic authorization is one-use, exact-input scoped and cannot override explicit denials/cancellation, status/custom prose, scoped learning/review continuations, branch-only requests or production/base safety.",
 		],
 		parameters: workflowGuardToolSchema,
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const key = sessionKey(ctx);
-			const current = guardBySession.get(key);
+			const current = guardBySession.get(key) ?? restoreIntentGuard(activeSessionEntries(ctx), ctx.sessionManager?.getSessionFile?.(), true, false, ctx.cwd);
 			if (params.action === "status") {
 				return toolText(current ? `Current workflow guard: ${current.summary}` : "No workflow guard state recorded for this session yet.", { state: current ?? null });
 			}
@@ -1821,17 +2008,24 @@ export default function workflowGuard(
 				return toolText(`Classification: ${state.summary}`, { state });
 			}
 			if (params.action === "adopt") {
-				if (current?.continuationScope) throw new Error("Scoped follow-up cannot adopt broader authority; wait for a new explicit user/command request.");
-				const state = classifyPrompt(
-					String(params.prompt ?? current?.prompt ?? ""),
-					ctx.sessionManager?.getSessionFile?.(),
-					current?.workspaceAuthorization.events ?? restoreWorkspaceAuthorization(activeSessionEntries(ctx)).events,
-					"workflow-guard:adopt",
-				);
+				if (!current) throw new Error("adopt에는 현재 원 사용자 요청이 필요합니다. classify로 가상 요청을 미리 볼 수 있습니다.");
+				if (current.continuationScope) throw new Error("Scoped follow-up cannot adopt broader authority; wait for a new explicit user/command request.");
+				if (current?.intent === "status_note") throw new Error("Status/custom follow-up cannot adopt user authority.");
+				if (params.assessment && (current.request?.cwd !== ctx.cwd || (params.prompt !== undefined && params.prompt !== current.request?.prompt))) throw new Error("semantic assessment는 현재 원 사용자 요청만 평가해야 합니다.");
+				const state = params.assessment
+					? applySemanticAssessment(current, params.assessment, params.reason ?? "")
+					: { ...classifyPrompt(String(params.prompt ?? current?.prompt ?? ""), ctx.sessionManager?.getSessionFile?.()),
+						request: current?.request, assessment: current?.assessment,
+						workspaceAuthorization: current?.workspaceAuthorization ?? restoreWorkspaceAuthorization(activeSessionEntries(ctx)) };
 				state.largeWorkObserved = current?.largeWorkObserved ?? false;
 				state.largeWorkBasis = current?.largeWorkBasis;
+				if (params.assessment) {
+					persistWorkspaceAuthorization(pi, state.workspaceAuthorization);
+					persistSemanticAssessment(pi, state);
+				}
 				rememberGuardState(key, state);
 				if (state.intent !== "status_note") latestIntentBySession.set(key, state);
+				if (activeContinuationBySession.has(key)) activeContinuationBySession.set(key, state);
 				return toolText(`Adopted workflow guard: ${state.summary}`, { previous: current ?? null, state, reason: params.reason });
 			}
 			if (params.action === "audit") {
