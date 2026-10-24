@@ -6,7 +6,7 @@ import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
 import { loadOrDeriveWorkContext, pathMatchesScope, resolveTaskWorkUnit } from "../utils/work-context.ts";
-import type { Task, TaskDisposition, TaskDispositionType, TaskGitFacts, TaskKind, TaskSource, TaskStatus, TaskStore } from "./types.ts";
+import type { Task, TaskDisposition, TaskDispositionType, TaskGitFacts, TaskKind, TaskStatus, TaskStore } from "./types.ts";
 
 function legacyStorePath(ctx: ExtensionContext): string {
 	const sessionId = ctx.sessionManager?.getSessionId?.() ?? "default";
