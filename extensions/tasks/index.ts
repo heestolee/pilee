@@ -5,46 +5,8 @@ import type { ExtensionAPI, ExtensionContext, ExtensionCommandContext, Theme, Th
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
-import { resolveTaskWorkUnit } from "../utils/work-context.ts";
-
-type TaskKind = "slice" | "decision" | "verify" | "blocked" | "followup" | "general";
-type TaskOwner = "agent" | "user" | "reviewer" | "subagent" | "external";
-type TaskStatus = "pending" | "in_progress" | "completed" | "deleted" | "rejected" | "deprioritized" | "superseded";
-type TaskDispositionType = "deleted" | "rejected" | "deprioritized" | "superseded" | "misread";
-type TaskSource = "frame" | "user" | "agent" | "subagent" | "verify" | "review" | "manual";
-
-interface TaskDisposition {
-	type: TaskDispositionType;
-	reason?: string;
-	at: number;
-	by?: TaskOwner | string;
-}
-
-interface Task {
-	id: string;
-	subject: string;
-	description: string;
-	activeForm?: string;
-	status: TaskStatus;
-	kind?: TaskKind;
-	owner?: TaskOwner | string;
-	area?: string;
-	source?: TaskSource | string;
-	disposition?: TaskDisposition;
-	acceptance?: string[];
-	refs?: Record<string, unknown>;
-	evidence?: string[];
-	blocks: string[];
-	blockedBy: string[];
-	metadata: Record<string, unknown>;
-	createdAt: number;
-	updatedAt: number;
-}
-
-interface TaskStore {
-	nextId: number;
-	tasks: Task[];
-}
+import { loadOrDeriveWorkContext, pathMatchesScope, resolveTaskWorkUnit } from "../utils/work-context.ts";
+import type { Task, TaskDisposition, TaskDispositionType, TaskGitFacts, TaskKind, TaskSource, TaskStatus, TaskStore } from "./types.ts";
 
 function legacyStorePath(ctx: ExtensionContext): string {
 	const sessionId = ctx.sessionManager?.getSessionId?.() ?? "default";
@@ -93,6 +55,29 @@ function save(ctx: ExtensionContext, store: TaskStore) {
 
 function find(store: TaskStore, id: string): Task | undefined {
 	return store.tasks.find((t) => t.id === id);
+}
+
+function recordCommitFacts(event: { isError?: boolean; details?: unknown }, ctx: ExtensionContext): boolean {
+	if (event.isError) return false;
+	const result = event.details as { completion?: string; commits?: TaskGitFacts["commits"]; push?: TaskGitFacts["push"] } | undefined;
+	if (!result || !["committed_and_pushed", "committed_not_pushed"].includes(result.completion ?? "") || !Array.isArray(result.commits)) return false;
+	const push = result.push;
+	if (!push || !["done", "not_requested", "skipped_no_safe_target", "failed"].includes(push.status)) return false;
+	if ((push.status === "done") !== (result.completion === "committed_and_pushed")) return false;
+	const card = loadOrDeriveWorkContext(ctx.cwd, ctx.sessionManager?.getSessionFile?.());
+	const slice = card?.currentSlice;
+	if (!slice?.taskId || card?.identity.tasksPath !== taskWorkUnit(ctx).unit.tasksPath) return false;
+	const store = load(ctx);
+	const task = find(store, slice.taskId);
+	if (!task || task.metadata?.workContextSliceId !== slice.id) return false;
+	const commits = result.commits.filter((commit) => /^[a-f0-9]{7,40}$/u.test(commit.hash)
+		&& Array.isArray(commit.paths) && commit.paths.every((path) => typeof path === "string")
+		&& commit.paths.some((path) => pathMatchesScope(path, slice.scope)));
+	if (commits.length === 0) return false;
+	task.git = { commits: commits.map(({ hash, paths }) => ({ hash, paths: [...paths] })), push: { status: push.status, remote: push.remote, branch: push.branch } };
+	task.updatedAt = Date.now();
+	save(ctx, store);
+	return true;
 }
 
 function openBlockers(store: TaskStore, task: Task): string[] {
@@ -253,6 +238,7 @@ export default function (pi: ExtensionAPI) {
 		parameters: Type.Object({
 			subject: Type.String({ description: "Brief task title" }),
 			description: Type.String({ description: "Detailed description" }),
+			status: Type.Optional(Type.Union([Type.Literal("pending"), Type.Literal("in_progress"), Type.Literal("blocked"), Type.Literal("completed")])),
 			activeForm: Type.Optional(Type.String({ description: "Present continuous form for spinner" })),
 			kind: Type.Optional(Type.Union([Type.Literal("slice"), Type.Literal("decision"), Type.Literal("verify"), Type.Literal("blocked"), Type.Literal("followup"), Type.Literal("general")])),
 			owner: Type.Optional(Type.Union([Type.Literal("agent"), Type.Literal("user"), Type.Literal("reviewer"), Type.Literal("subagent"), Type.Literal("external")])),
@@ -279,7 +265,7 @@ export default function (pi: ExtensionAPI) {
 				subject: params.subject,
 				description: params.description,
 				activeForm: params.activeForm,
-				status: "pending",
+				status: params.status ?? "pending",
 				kind: params.kind ?? (typeof metadata.kind === "string" ? metadata.kind as TaskKind : undefined),
 				owner: params.owner,
 				area: normalizeArea(params.area ?? metadata.area ?? metadata.group),
@@ -344,6 +330,7 @@ export default function (pi: ExtensionAPI) {
 				task.acceptance?.length ? `Acceptance:\n${task.acceptance.map((item) => `- ${item}`).join("\n")}` : null,
 				task.refs ? `Refs: ${JSON.stringify(task.refs)}` : null,
 				task.evidence?.length ? `Evidence:\n${task.evidence.map((item) => `- ${item}`).join("\n")}` : null,
+				task.git ? `Git: ${task.git.commits.map((commit) => commit.hash).join(", ")} · push=${task.git.push.status}` : null,
 				task.blocks.length > 0 ? `Blocks: ${task.blocks.join(", ")}` : null,
 				blockers.length > 0 ? `Blocked by (open): ${blockers.join(", ")}` : null,
 			].filter(Boolean);
@@ -365,6 +352,7 @@ export default function (pi: ExtensionAPI) {
 			status: Type.Optional(Type.Union([
 				Type.Literal("pending"),
 				Type.Literal("in_progress"),
+				Type.Literal("blocked"),
 				Type.Literal("completed"),
 				Type.Literal("deleted"),
 				Type.Literal("rejected"),
@@ -381,6 +369,7 @@ export default function (pi: ExtensionAPI) {
 			disposition: Type.Optional(Type.Union([Type.Literal("deleted"), Type.Literal("rejected"), Type.Literal("deprioritized"), Type.Literal("superseded"), Type.Literal("misread")])),
 			dispositionReason: Type.Optional(Type.String({ description: "Short reason shown next to strikethrough items" })),
 			acceptance: Type.Optional(Type.Array(Type.String())),
+			scope: Type.Optional(Type.Array(Type.String(), { description: "Update the scope of an explicitly linked Work Context slice." })),
 			refs: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
 			evidence: Type.Optional(Type.Array(Type.String())),
 			metadata: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
@@ -391,6 +380,7 @@ export default function (pi: ExtensionAPI) {
 			const store = load(ctx);
 			const task = find(store, params.taskId);
 			if (!task) return text(`Task #${params.taskId} not found.`);
+			if (params.scope && typeof task.metadata?.workContextSliceId !== "string") throw new Error("scope requires an explicitly linked Work Context slice");
 
 			if (params.status) {
 				task.status = params.status;
@@ -402,7 +392,7 @@ export default function (pi: ExtensionAPI) {
 						at: Date.now(),
 						by: params.owner ?? task.owner ?? "agent",
 					};
-				} else if (params.status === "pending" || params.status === "in_progress" || params.status === "completed") {
+				} else if (params.status === "pending" || params.status === "in_progress" || params.status === "blocked" || params.status === "completed") {
 					delete task.disposition;
 				}
 			} else if (params.disposition) {
@@ -430,6 +420,7 @@ export default function (pi: ExtensionAPI) {
 					else task.metadata[k] = v;
 				}
 			}
+			if (params.scope) task.metadata.workContextScope = params.scope;
 			if (params.addBlocks) {
 				for (const id of params.addBlocks) {
 					if (!task.blocks.includes(id)) task.blocks.push(id);
@@ -724,7 +715,12 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("tool_result", async (event, ctx) => {
 		latestCtx = ctx;
-		if (["TaskCreate", "TaskUpdate"].includes(event.toolName)) {
+		let gitChanged = false;
+		if (event.toolName === "auto_commit") {
+			try { gitChanged = recordCommitFacts(event, ctx); }
+			catch (error) { console.error(`Task Git 기록을 갱신하지 못했습니다: ${error instanceof Error ? error.message : String(error)}`); }
+		}
+		if (["TaskCreate", "TaskUpdate"].includes(event.toolName) || gitChanged) {
 			updateWidget(ctx);
 		}
 	});

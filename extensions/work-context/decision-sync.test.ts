@@ -154,8 +154,7 @@ test("실제 workflow guard도 pending 기록 저장과 답변 후 구현 재개
 		if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
 		if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
 	});
-	const { createJiti } = await import("@mariozechner/jiti");
-	const { default: guard } = await createJiti(import.meta.url, { moduleCache: false }).import<any>("../workflow-guard/index.ts");
+	const { default: guard } = await import("../workflow-guard/index.ts");
 	const hooks = new Map<string, any>();
 	guard({
 		on(name: string, callback: any) { hooks.set(name, callback); }, registerTool() {},

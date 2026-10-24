@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { resolveForkPanelIdentity } from "./fork-panel-identity.ts";
+import type { Task, TaskGitFacts, TaskStore } from "../tasks/types.ts";
 
 export type WorkUnitType = "worktree" | "session";
 export type WorkContextMode = "light" | "standard" | "full" | "unknown";
@@ -29,6 +30,7 @@ export interface TaskWorkUnitResolution {
 }
 
 export interface WorkContextSlice {
+	taskId?: string;
 	id: string;
 	title: string;
 	scope: string[];
@@ -62,6 +64,7 @@ export interface WorkContextCard {
 		dirtyState?: string;
 		lastValidation?: string;
 		lastCommit?: string;
+		git?: TaskGitFacts;
 	};
 	refs: {
 		frame?: string;
@@ -166,6 +169,11 @@ export function resolveTaskWorkUnit(cwd: string, sessionFile?: string, env: Node
 		framePath: parentUnit.framePath,
 	};
 	return { unit, parentUnit, panelLabel, seedFromParentTasksPath: parentUnit.tasksPath };
+}
+
+function resolveContextWorkUnit(cwd: string, sessionFile?: string): WorkUnitIdentity {
+	const location = resolveTaskWorkUnit(cwd, sessionFile);
+	return location.parentUnit && !existsSync(location.unit.contextPath) ? location.parentUnit : location.unit;
 }
 
 function readJson<T>(path: string): T | undefined {
@@ -276,23 +284,61 @@ function chooseCurrentSlice(existing: WorkContextCard | undefined, slices: WorkC
 	return slices.find((slice) => slice.status !== "completed") ?? slices[0];
 }
 
+export function findTaskForSlice(cwd: string, sessionFile: string | undefined, sliceId: string, taskId?: string): Task | undefined {
+	const location = resolveTaskWorkUnit(cwd, sessionFile);
+	const store = readJson<TaskStore>(location.unit.tasksPath)
+		?? (location.seedFromParentTasksPath ? readJson<TaskStore>(location.seedFromParentTasksPath) : undefined);
+	return store?.tasks.find((task) => taskId ? task.id === taskId : task.metadata?.workContextSliceId === sliceId);
+}
+
+function projectLinkedTasks(card: WorkContextCard): WorkContextCard {
+	if (!card.currentSlice?.taskId && !card.slices.some((slice) => slice.taskId)) return card;
+	const tasks = readJson<TaskStore>(card.identity.tasksPath)?.tasks ?? [];
+	const byId = new Map(tasks.map((task) => [task.id, task]));
+	const terminal = new Set(["completed", "deleted", "rejected", "deprioritized", "superseded"]);
+	const project = (slice: WorkContextSlice): WorkContextSlice => {
+		if (!slice.taskId) return slice;
+		const task = byId.get(slice.taskId);
+		const scope = task?.metadata?.workContextScope;
+		if (!task || task.metadata?.workContextSliceId !== slice.id || !Array.isArray(scope) || scope.some((path) => typeof path !== "string")) return { ...slice, status: "blocked" };
+		const blocked = task.status !== "completed" && task.blockedBy?.some((id) => {
+			const dependency = byId.get(id);
+			return dependency && !terminal.has(dependency.status);
+		});
+		const status = blocked ? "blocked" : task.status === "completed" ? "completed" : task.status === "in_progress" ? "in_progress" : task.status === "pending" ? "pending" : "blocked";
+		return { ...slice, title: task.subject, scope: [...scope], acceptance: [...(task.acceptance ?? [])], status };
+	};
+	const currentSlice = card.currentSlice ? project(card.currentSlice) : undefined;
+	return {
+		...card,
+		slices: card.slices.map(project),
+		currentSlice,
+		lastKnownState: { ...card.lastKnownState, git: currentSlice?.taskId ? byId.get(currentSlice.taskId)?.git : undefined },
+	};
+}
+
 export function loadWorkContext(cwd: string, sessionFile?: string): WorkContextCard | undefined {
-	const unit = resolveWorkUnit(cwd, sessionFile);
-	return readJson<WorkContextCard>(unit.contextPath);
+	const unit = resolveContextWorkUnit(cwd, sessionFile);
+	const card = readJson<WorkContextCard>(unit.contextPath);
+	return card ? projectLinkedTasks(card) : undefined;
 }
 
 export function deriveWorkContext(cwd: string, sessionFile?: string, existing?: WorkContextCard): WorkContextCard | undefined {
-	const unit = resolveWorkUnit(cwd, sessionFile);
+	const unit = resolveContextWorkUnit(cwd, sessionFile);
 	const frame = unit.framePath ? readJson<any>(unit.framePath) : undefined;
 	if (!frame && !existing) return undefined;
-	const slices = frame?.implementation_plan?.slices?.map(sliceFromFrameSlice) ?? existing?.slices ?? [];
+	const slices = frame?.implementation_plan?.slices?.map((item: unknown, index: number) => {
+		const slice = sliceFromFrameSlice(item, index);
+		const taskId = existing?.slices.find((saved) => saved.id === slice.id)?.taskId;
+		return taskId ? { ...slice, taskId } : slice;
+	}) ?? existing?.slices ?? [];
 	const currentSlice = chooseCurrentSlice(existing, slices);
 	const goal = String(frame?.goal || existing?.goal || "").trim();
 	const transcript = frame?.provenance?.transcriptPath || existing?.refs?.transcript;
 	const branch = unit.root ? gitBranch(unit.root) : undefined;
 	const dirtyState = unit.root ? gitDirtyState(unit.root) : undefined;
 	const lastCommit = unit.root ? gitLastCommit(unit.root) : undefined;
-	return {
+	return projectLinkedTasks({
 		schemaVersion: 1,
 		identity: unit,
 		updatedAt: new Date().toISOString(),
@@ -330,11 +376,11 @@ export function deriveWorkContext(cwd: string, sessionFile?: string, existing?: 
 			tasks: unit.tasksPath,
 		},
 		notes: existing?.notes,
-	};
+	});
 }
 
 export function refreshWorkContext(cwd: string, sessionFile?: string, patch: Partial<WorkContextCard> = {}): WorkContextCard {
-	const unit = resolveWorkUnit(cwd, sessionFile);
+	const unit = resolveContextWorkUnit(cwd, sessionFile);
 	const existing = readJson<WorkContextCard>(unit.contextPath);
 	const derived = deriveWorkContext(cwd, sessionFile, existing) ?? {
 		schemaVersion: 1 as const,
@@ -417,6 +463,7 @@ export function gateWorkContext(card: WorkContextCard | undefined, options: { ac
 	if (decisionRecordsOnly) return { level: "pass", reasons: [], card };
 	const reasons: string[] = [];
 	const currentId = card.currentSlice?.id;
+	if (card.currentSlice?.taskId && card.currentSlice.status === "blocked") reasons.push(`연결 Task #${card.currentSlice.taskId}가 차단·보류 상태이거나 유효하지 않습니다.`);
 	if (options.requireSlice && card.slices.length > 0 && !card.currentSlice) {
 		reasons.push("implementation_plan.slices는 있지만 currentSlice가 없습니다. 먼저 work_context set_slice로 현재 slice를 고정해야 합니다.");
 	}
@@ -449,6 +496,8 @@ export function formatWorkContextCard(card: WorkContextCard, maxItems = 4): stri
 		card.openQuestions.length ? `- open questions: ${card.openQuestions.slice(0, maxItems).map((q) => `${q.id}:${q.text}`).join(" / ")}` : undefined,
 		card.verifyFocus.length ? `- verify focus: ${card.verifyFocus.slice(0, maxItems).join(" / ")}` : undefined,
 		card.lastKnownState.dirtyState ? `- state: ${card.lastKnownState.dirtyState}${card.lastKnownState.lastCommit ? ` · ${card.lastKnownState.lastCommit}` : ""}` : undefined,
+		card.currentSlice?.taskId ? `- task: #${card.currentSlice.taskId} · ${card.currentSlice.status}` : undefined,
+		card.lastKnownState.git ? `- saved: ${card.lastKnownState.git.commits.map((commit) => commit.hash).join(", ")} · push=${card.lastKnownState.git.push.status}` : undefined,
 		card.refs.frame ? `- refs: frame=${card.refs.frame}${card.refs.tasks ? ` · tasks=${card.refs.tasks}` : ""}` : card.refs.tasks ? `- refs: tasks=${card.refs.tasks}` : undefined,
 	].filter(Boolean) as string[];
 	return lines.join("\n");
