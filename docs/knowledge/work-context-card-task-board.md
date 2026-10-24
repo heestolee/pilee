@@ -18,8 +18,8 @@ applies_to:
   - skills/frame
 source:
   - user-direction:2026-05-13-working-context-card
-reviewed_at: 2026-06-02
-reviewed_commit: 61ccbc9d3fb4d6eb5cb7f0558dd056eb385b0410
+reviewed_at: 2026-10-24
+reviewed_commit: bb2966dc6176d5d73b7a8528e756543caad2fe65
 related:
   - frame-studio-interactive-decision-ui
   - frame-plan-synthesis-continuity
