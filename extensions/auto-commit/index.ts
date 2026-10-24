@@ -70,9 +70,42 @@ interface AutoCommitResult {
 }
 
 const pushPolicySchema = StringEnum(["commit-only", "push-if-tracking", "push"] as const);
+const commitRecordSchema = Type.Object({
+	changeTrigger: Type.Optional(Type.String()),
+	situationImpact: Type.Optional(Type.String()),
+	cause: Type.Optional(Type.String()),
+	solution: Type.Optional(Type.String()),
+	rationale: Type.Optional(Type.String()),
+	tradeoffs: Type.Optional(Type.Array(Type.String())),
+	invariants: Type.Optional(Type.Array(Type.String())),
+	evidence: Type.Optional(Type.Array(Type.String())),
+	references: Type.Optional(Type.Array(Type.String())),
+});
+const commitPlanSchema = Type.Object({
+	expectedHead: Type.Optional(Type.String()),
+	resetTo: Type.Optional(Type.String()),
+	backupBranch: Type.Optional(Type.String()),
+	allowLeftovers: Type.Optional(Type.Boolean()),
+	rejectScopeParentheses: Type.Optional(Type.Boolean()),
+	commitNoVerify: Type.Optional(Type.Boolean()),
+	commits: Type.Array(Type.Object({
+		message: Type.String(),
+		paths: Type.Array(Type.String()),
+		record: Type.Optional(commitRecordSchema),
+		recordOmissionReason: Type.Optional(Type.String()),
+	})),
+	push: Type.Optional(Type.Object({
+		remote: Type.Optional(Type.String()),
+		branch: Type.Optional(Type.String()),
+		forceWithLease: Type.Optional(Type.Boolean()),
+		noVerify: Type.Optional(Type.Boolean()),
+	})),
+	pushPolicy: Type.Optional(pushPolicySchema),
+}, { description: "Explicit inline commit plan for apply/split-head. Uses the same safety gates as planPath without creating a JSON file." });
 const autoCommitToolSchema = Type.Object({
 	action: StringEnum(["status", "apply", "split-head", "quick"] as const),
-	planPath: Type.Optional(Type.String({ description: "Path to an auto-commit JSON plan file." })),
+	planPath: Type.Optional(Type.String({ description: "Existing JSON plan file. For apply/split-head provide exactly one of plan or planPath." })),
+	plan: Type.Optional(commitPlanSchema),
 	message: Type.Optional(Type.String({ description: "Commit message for action=quick." })),
 	paths: Type.Optional(Type.Array(Type.String(), { description: "Explicit file paths to commit for action=quick." })),
 	pushPolicy: Type.Optional(pushPolicySchema),
@@ -1011,10 +1044,10 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "auto_commit",
 		label: "Auto Commit",
-		description: "Apply an explicit JSON commit plan, enforce logical-atom and durable-record gates, run a quick explicit-path hotfix commit, optionally split HEAD, and report push-aware completion.",
-		promptSnippet: "Create focused git commits with durable rationale from an explicit JSON plan or quick explicit-path hotfix input.",
+		description: "Apply an explicit inline or file-backed commit plan, enforce logical-atom and durable-record gates, run a quick explicit-path hotfix commit, optionally split HEAD, and report push-aware completion.",
+		promptSnippet: "Create focused git commits with durable rationale from an inline plan, an existing plan file, or quick explicit-path hotfix input.",
 		promptGuidelines: [
-			"Use auto_commit with an explicit JSON commit plan whose file groups and messages are reviewable, or action=quick with explicit message+paths only for tiny hotfix/copy changes.",
+			"Prefer action=apply with an explicit plan object whose file groups, messages, record, and push policy are reviewable. Existing planPath files remain supported; do not create a JSON file just to call this tool. Use action=quick with explicit message+paths only for tiny hotfix/copy changes.",
 			"For nontrivial auto_commit apply/split-head entries, use commits[].record as optional lenses: situationImpact, cause, solution, rationale, tradeoffs, invariants, changeTrigger, evidence, and references. Populate only the complete-sentence facts that explain causal context or judgment lost from the diff; do not fill every field. A natural multiline message is also accepted, while truly mechanical/generated entries need recordOmissionReason.",
 			"Rendered records use selective semantic sections: causal context becomes short paragraphs, while parallel decisions, tradeoffs, invariants, and non-obvious evidence become bullets. Empty or irrelevant sections are omitted instead of forcing a checklist.",
 			"auto_commit record.evidence is optional and only for non-obvious decision evidence such as before-fail/after-pass behavior, preserved schema/invariants, or a measurement that justifies the choice. Do not list routine test/lint/typecheck/build success, test counts, browser dimensions, or capture review; those belong in CI, PR test plans, or verify reports.",
@@ -1035,8 +1068,11 @@ export default function (pi: ExtensionAPI) {
 				const result = await applyPlan(pi, ctx.cwd, "quick", buildQuickPlan(params));
 				return { content: [{ type: "text", text: formatResult(result) }], details: result };
 			}
-			if (!params.planPath) throw new Error("planPath is required");
-			const plan = await loadPlan(ctx.cwd, params.planPath);
+			if ((params.plan !== undefined) === (params.planPath !== undefined)) {
+				throw new Error("Provide exactly one of plan or planPath");
+			}
+			const plan = params.plan !== undefined ? params.plan : await loadPlan(ctx.cwd, params.planPath!);
+			assertPlan(plan);
 			const result = await applyPlan(pi, ctx.cwd, params.action, params.pushPolicy ? { ...plan, pushPolicy: params.pushPolicy } : plan);
 			return { content: [{ type: "text", text: formatResult(result) }], details: result };
 		},

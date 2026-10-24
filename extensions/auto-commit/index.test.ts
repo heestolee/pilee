@@ -614,3 +614,65 @@ test("action=quick commits explicit paths and pushes to safe upstream", async ()
 	const remoteHead = (await git(repo, "rev-parse", "origin/feature/test")).trim();
 	assert.equal(localHead, remoteHead);
 });
+
+for (const input of [
+	{ action: "apply" },
+	{ action: "apply", planPath: "plan.json", plan: { commits: [] } },
+	{ action: "apply", plan: { commits: [] } },
+]) {
+	test(`inline 계획은 잘못된 입력으로 Git을 실행하지 않는다: ${JSON.stringify(input)}`, async () => {
+		const tools: Record<string, any> = {};
+		let executions = 0;
+		autoCommit({
+			exec: async () => { executions++; throw new Error("Git must not run"); },
+			registerCommand() {},
+			registerTool(tool: any) { tools[tool.name] = tool; },
+		} as any);
+		await assert.rejects(tools.auto_commit.execute("invalid-plan", input, undefined, undefined, { cwd: tmpdir() }), /exactly one|at least one commit/);
+		assert.equal(executions, 0);
+	});
+}
+
+test("inline 계획은 기존 안전 검사를 거쳐 명시한 파일만 커밋하고 푸시한다", async () => {
+	const root = await mkdtemp(join(tmpdir(), "auto-commit-inline-"));
+	const repo = join(root, "repo");
+	const remote = join(root, "origin.git");
+	await git(root, "init", "--bare", remote);
+	await git(root, "init", "-b", "feature/inline", repo);
+	await git(repo, "config", "user.email", "test@example.com");
+	await git(repo, "config", "user.name", "Test User");
+	await writeFile(join(repo, "copy.txt"), "before\n");
+	await git(repo, "add", "copy.txt");
+	await git(repo, "commit", "-m", "chore: init");
+	await git(repo, "remote", "add", "origin", remote);
+	const head = (await git(repo, "rev-parse", "HEAD")).trim();
+	await writeFile(join(repo, "copy.txt"), "after\n");
+	await writeFile(join(repo, "unrelated.txt"), "preserve\n");
+	const tools: Record<string, any> = {};
+	autoCommit({
+		exec: async (command: string, args: string[], options: { cwd?: string } = {}) => exec(command, args, options.cwd ?? repo),
+		registerCommand() {},
+		registerTool(tool: any) { tools[tool.name] = tool; },
+	} as any);
+	const plan = {
+		expectedHead: head,
+		allowLeftovers: true,
+		commits: [{
+			message: "fix: 선택한 파일만 갱신",
+			paths: ["copy.txt"],
+			record: { rationale: "검토한 파일만 저장하고 별도 작업의 변경은 커밋 대상에서 제외한다." },
+		}],
+		push: { remote: "origin", branch: "feature/inline" },
+	};
+	const invoke = (value: unknown) => tools.auto_commit.execute("inline-plan", { action: "apply", plan: value }, undefined, undefined, { cwd: repo });
+	await assert.rejects(invoke({ ...plan, expectedHead: "0000000" }), /HEAD mismatch/);
+	await assert.rejects(invoke({ ...plan, commits: [{ message: "fix: 기록 없는 변경", paths: ["copy.txt"] }] }), /durable record gate/);
+	assert.equal((await git(repo, "rev-parse", "HEAD")).trim(), head);
+	const result = await invoke(plan);
+	assert.equal(result.details.completion, "committed_and_pushed");
+	assert.equal((await git(repo, "show", "HEAD:copy.txt")).trim(), "after");
+	assert.equal((await git(repo, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD")).trim(), "copy.txt");
+	assert.match(await git(repo, "log", "-1", "--format=%B"), /검토한 파일만 저장/);
+	assert.equal((await git(repo, "status", "--porcelain")).trim(), "?? unrelated.txt");
+	assert.equal((await git(repo, "rev-parse", "HEAD")).trim(), (await git(repo, "rev-parse", "origin/feature/inline")).trim());
+});

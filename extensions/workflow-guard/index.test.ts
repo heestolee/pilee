@@ -1510,6 +1510,21 @@ test("commit-only auto_commit and status do not violate a push prohibition", asy
 	assert.equal((await h.hooks.tool_call({ toolName: "auto_commit", input: { action: "quick", pushPolicy: "commit-only" } }, h.ctx))?.block, true);
 });
 
+test("inline auto_commit 계획도 원 요청의 커밋·푸시 금지를 보존한다", async () => {
+	const h = createHarness();
+	const plan = { commits: [{ message: "fix: 예제", paths: ["a.ts"] }], pushPolicy: "commit-only" };
+	await h.hooks.before_agent_start({ prompt: "커밋만 해줘. 푸시는 하지 마.", systemPrompt: "base" }, h.ctx);
+	const invoke = (input: unknown) => h.hooks.tool_call({ toolName: "auto_commit", input }, h.ctx);
+	assert.equal(await invoke({ action: "apply", plan }), undefined);
+	assert.equal((await invoke({ action: "apply", plan: { ...plan, pushPolicy: "push" } }))?.block, true);
+	assert.equal((await invoke({ action: "apply", plan, pushPolicy: "push" }))?.block, true);
+	assert.equal((await invoke({ action: "apply", plan: { ...plan, push: { remote: "origin", branch: "feature/example" } } }))?.block, true);
+	await h.hooks.before_agent_start({ prompt: "커밋과 푸시는 하지 마", systemPrompt: "base" }, h.ctx);
+	assert.equal((await invoke({ action: "apply", plan }))?.block, true);
+	await h.hooks.before_agent_start({ prompt: "커밋하고 푸시해줘", systemPrompt: "base" }, h.ctx);
+	assert.equal(await invoke({ action: "apply", plan: { ...plan, pushPolicy: "push" } }), undefined);
+});
+
 test("a later genuine TUI approval supersedes an earlier workspace denial", async () => {
 	const h = createHarness();
 	await h.hooks.before_agent_start({ prompt: "worktree 만들지 마", systemPrompt: "base" }, h.ctx);
@@ -1663,7 +1678,8 @@ test("standard framed work injects commit-or-explain guard", async () => {
 	assert.match(start.systemPrompt, /Slice commit-or-explain guard/);
 	assert.match(start.systemPrompt, /Pending migration execution, UI capture, or final verify-report is a ship-readiness caveat/);
 	assert.match(start.systemPrompt, /Before a final response with dirty diff: either commit the verified slice/);
-	assert.match(start.systemPrompt, /auto_commit must still use explicit JSON plans/);
+	assert.match(start.systemPrompt, /auto_commit must still use explicit inline\/file-backed plans/);
+	assert.match(start.systemPrompt, /pass a reviewable inline plan to auto_commit action=apply/);
 });
 
 test("light task stops tools after successful push", async () => {

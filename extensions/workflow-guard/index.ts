@@ -815,8 +815,13 @@ function autoCommitEffects(input: Record<string, unknown>, cwd: string): { commi
 	if (input.action === "status") return { commit: false, push: false };
 	if (input.action === "quick") return { commit: true, push: (input.pushPolicy ?? "push-if-tracking") !== "commit-only" };
 	try {
-		const plan = JSON.parse(readFileSync(resolve(cwd, String(input.planPath ?? "")), "utf8"));
-		return { commit: true, push: Boolean(plan.push) || (input.pushPolicy ?? plan.pushPolicy ?? "commit-only") !== "commit-only" };
+		const plan = input.plan === undefined
+			? JSON.parse(readFileSync(resolve(cwd, String(input.planPath ?? "")), "utf8"))
+			: input.plan;
+		if (!plan || typeof plan !== "object" || Array.isArray(plan)) throw new Error("Invalid commit plan");
+		const push = "push" in plan ? plan.push : undefined;
+		const policy = "pushPolicy" in plan ? plan.pushPolicy : undefined;
+		return { commit: true, push: Boolean(push) || (input.pushPolicy ?? policy ?? "commit-only") !== "commit-only" };
 	} catch {
 		// The tool validates malformed/missing plans. Do not claim that an unknown plan is push-free.
 		return { commit: true, push: input.pushPolicy !== "commit-only" };
@@ -1456,10 +1461,10 @@ function sliceCommitRhythmSection(state: GuardState, card?: WorkContextCard): st
 		"Slice commit-or-explain guard:",
 		`- Current slice ${card.currentSlice.id}: ${card.currentSlice.title}`,
 		"- Treat a verified slice as a commit candidate, not as something to batch until the whole implementation is done.",
-		"- When the slice's nearest validation passes, inspect git status/diff, call work_context action=commit_plan to write an explicit auto_commit JSON plan, then call auto_commit action=apply after reviewing the plan.",
+		"- When the slice's nearest validation passes, inspect git status/diff and pass a reviewable inline plan to auto_commit action=apply. Use work_context action=commit_plan only when file-group derivation is needed.",
 		"- Pending migration execution, UI capture, or final verify-report is a ship-readiness caveat, not a valid reason by itself to leave a verified code slice uncommitted.",
 		"- Before a final response with dirty diff: either commit the verified slice, or explicitly record the concrete reason in work_context checkpoint. Do not surprise the user at the end with a large uncommitted diff.",
-		"- This is not an auto-stage permission: auto_commit must still use explicit JSON plans or explicit quick paths.",
+		"- This is not an auto-stage permission: auto_commit must still use explicit inline/file-backed plans or explicit quick paths.",
 	].join("\n");
 }
 
