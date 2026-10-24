@@ -37,11 +37,13 @@ For each slice:
 
 이 단계는 하드 블록이 아니라 기본 리듬이다. slice가 완료되고 가장 가까운 검증이 통과하면, 다음 slice로 넘어가기 전에 현재 slice diff를 커밋 후보로 다룬다.
 
+Task와 현재 슬라이스가 같은 작업을 나타내면 `work_context set_slice syncTask=true`로 한 번에 연결한다. 연결 후 공유 필드는 한쪽 도구에서만 갱신하고, 같은 내용을 Task와 WCC에 반복 기록하지 않는다. 커밋·push 기록이 붙어도 작업 완료는 별도로 판단한다.
+
 1. `GIT_OPTIONAL_LOCKS=0 git status --short --branch`와 `git diff --stat`으로 현재 slice 변경만 있는지 확인한다.
-2. `work_context action=commit_plan`으로 currentSlice scope 기반 `auto_commit` JSON plan을 만든다.
-3. plan의 `message`, `paths`, `push` 대상을 읽어 관련 없는 파일이 섞이지 않았는지 확인한다.
+2. 파일·메시지·판단 근거가 정해졌다면 explicit plan 객체를 바로 준비한다. 파일 묶음 도출이 필요할 때만 `work_context action=commit_plan`을 사용하며, 도구 호출만을 위해 JSON 파일을 만들고 다시 읽지 않는다.
+3. plan의 `message`, `paths`, `push` 대상을 검토해 관련 없는 파일이 섞이지 않았는지 확인한다.
 4. 한 commit entry의 primary path가 3개 이상이면 `auto_commit` diff-aware logical atom gate가 diff 양, layer mix, cluster/surface fan-out을 평가한다. warning allow가 아닌 block이면 source/test/generated/schema companion 관계가 닫히는 더 작은 commit으로 쪼갠다.
-5. 적절하면 `auto_commit action=apply planPath=<planPath>`를 호출한다. plan에 `push`가 있으면 commit+push까지 완료된다.
+5. 적절하면 `auto_commit action=apply plan={...}`를 호출한다. 기존 파일이 있으면 `planPath=<planPath>`를 사용할 수 있다. plan에 `push`가 있으면 commit+push까지 완료된다.
 6. `auto_commit` 결과가 `push: skipped`이고 사용자가 push 보류를 지시하지 않았다면, 즉시 `git push`까지 끝낸 뒤 보고한다.
 7. 아직 slice가 불완전하거나 검증 전이면 커밋을 미루되, `work_context action=checkpoint`에 이유를 남긴다.
 

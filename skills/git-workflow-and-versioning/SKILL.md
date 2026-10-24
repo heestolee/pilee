@@ -141,9 +141,9 @@ rollback 요청을 실행하기 전에 작업 모드를 구분한다.
 `/frame`이 만든 `implementation_plan.slices[]`가 있으면 각 slice는 커밋 후보 단위다. 하드하게 다음 작업을 막기보다, slice closure 시점마다 아래를 기본값으로 수행한다.
 
 1. currentSlice의 claim/scope/evidence를 확인한다.
-2. 가까운 검증이 통과하면 `work_context action=commit_plan`으로 explicit `auto_commit` plan을 생성한다.
+2. 가까운 검증이 통과하면 explicit `auto_commit` plan 객체를 준비한다. 이미 파일·메시지·판단 근거가 정해졌다면 계획 파일 생성·읽기·수정 왕복을 생략한다. 파일 묶음 도출이 필요할 때만 `work_context action=commit_plan`을 사용한다.
 3. plan을 검토할 때 한 commit entry의 primary path가 3개 이상이면 파일 수만 보지 말고 diff 양, layer mix, cluster/surface fan-out을 확인한다. 작은 동일 cluster 변경은 warning allow가 가능하지만, 큰 diff나 layer-mixed 변경은 logical atom 단위로 쪼갠다. test/generated/schema/package metadata와 i18n locale snapshot/generated key type은 companion으로만 붙인다.
-4. plan을 검토한 뒤 `auto_commit action=apply`로 커밋한다.
+4. plan을 검토한 뒤 `auto_commit action=apply plan={...}`로 직접 커밋한다. 이미 있는 `planPath` 파일도 계속 지원한다.
 5. 커밋을 미루면 이유를 `work_context checkpoint`에 남긴다.
 
 이 리듬은 my-pi `/ship`의 “commit + verify + push가 기본” 원칙을 구현 중 slice 단위로 앞당긴 것이다. 마지막 ship/final-check에서 한꺼번에 커밋을 발견하는 흐름을 정상 경로로 보지 않는다.
