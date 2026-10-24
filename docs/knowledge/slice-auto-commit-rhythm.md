@@ -40,10 +40,10 @@ Frame으로 구현 계획을 세웠다면 `implementation_plan.slices[]`는 단�
 ## Commit-or-explain Rhythm
 
 1. currentSlice의 claim/scope/evidence를 확인합니다.
-2. 가장 가까운 검증이 통과하면 `work_context action=commit_plan`을 호출합니다.
-3. 생성된 JSON plan의 `message`, `paths`, `metadata.commitReadiness`, `metadata.shipReadiness`, `metadata.caveats`를 읽어 reviewable한지 확인합니다.
+2. 가장 가까운 검증이 통과하면 파일 묶음·메시지·판단 근거가 명시된 plan을 준비합니다. 이미 정해진 내용을 파일로 만들고 다시 읽지 않습니다. 파일 묶음 도출이 필요할 때만 `work_context action=commit_plan`을 호출합니다.
+3. plan의 `message`, `paths`, push 의도를 검토합니다. helper가 생성한 `metadata.commitReadiness`, `metadata.shipReadiness`, `metadata.caveats`는 commit과 ship의 판단을 분리하는 보조 정보입니다.
 4. 한 commit entry에 primary path가 3개 이상이면 diff 양, layer mix, cluster/surface fan-out을 확인합니다. 작은 동일 cluster 변경은 warning allow가 가능하지만, 큰 diff나 layer-mixed 변경은 logical atom 단위로 plan을 쪼갭니다. test/generated/schema/package metadata는 companion으로만 붙입니다.
-5. 적절하면 `auto_commit action=apply planPath=<planPath>`로 커밋합니다. 단일 copy/hotfix처럼 slice plan 파일을 만드는 비용이 작업보다 커질 때는 `auto_commit action=quick message=<...> paths=[...]`로 같은 explicit-path 원칙을 지키며 바로 닫을 수 있습니다.
+5. 적절하면 `auto_commit action=apply plan={...}`로 직접 커밋합니다. 기존 계획 파일이 있으면 `planPath=<planPath>`를 사용할 수 있습니다. 단일 copy/hotfix처럼 slice plan 파일을 만드는 비용이 작업보다 커질 때는 `auto_commit action=quick message=<...> paths=[...]`로 같은 explicit-path 원칙을 지키며 바로 닫을 수 있습니다.
 6. auto-commit 결과가 `committed_not_pushed`이면 사용자가 push 보류를 말하지 않은 한 push 실패/스킵을 먼저 해결합니다.
 7. 커밋을 보류하면 `work_context action=checkpoint`에 이유를 남깁니다. migration 실행, UI capture, 최종 verify-report 미완료는 ship readiness caveat일 수 있지만, nearest validation을 통과한 코드 slice의 commit blocker로 단독 사용하지 않습니다.
 
@@ -57,7 +57,7 @@ Frame으로 구현 계획을 세웠다면 `implementation_plan.slices[]`는 단�
 
 - `work_context commit_plan`은 currentSlice scope 기반으로 plan을 만들지만 곧바로 commit하지 않습니다.
 - `auto_commit status`와 `commit_plan`은 commit readiness와 ship readiness를 분리해 보여준다. 이는 agent 판단을 보조하는 진단이지 자동 staging 권한이 아닙니다.
-- `auto_commit apply`는 여전히 explicit JSON plan만 실행합니다.
+- `auto_commit apply`는 여전히 explicit JSON plan만 실행하지만, inline 객체와 기존 파일을 모두 받습니다.
 - `auto_commit quick`은 JSON 파일을 만들지 않는 light path지만, message와 paths가 명시된 경우에만 실행합니다.
 - outside-scope 파일은 기본적으로 leftovers로 남겨 unrelated change를 섞지 않습니다.
 - agent가 커밋을 미루면 checkpoint reason을 남기게 합니다.

@@ -56,6 +56,18 @@ Working Context Card는 work-unit scoped JSON입니다.
 
 전체 대화 전문, 긴 로그, 폐기된 안은 카드에 넣지 않습니다. 그런 raw context는 TFT Studio transcript, `/archive`, frame provenance로 다시 열 수 있게만 연결합니다.
 
+## 공유 상태는 한 번만 변경한다
+
+`work_context action=set_slice syncTask=true`는 기존 Task 도구를 중첩 호출해 슬라이스와 Task를 한 번에 연결합니다. `taskId`로 같은 work-unit의 기존 Task를 지정할 수도 있고, 같은 연결을 다시 선택해 Task를 중복 생성하지 않습니다.
+
+- 연결한 슬라이스의 **제목·범위·완료 조건·상태**는 Task가 기준입니다. `TaskUpdate`에서 바꾸면 WCC 조회·refresh·guard에도 반영됩니다.
+- 반대로 `set_slice`로 공유 필드를 바꾸면 기존 `TaskUpdate` 경로를 사용합니다. `sliceId`와 `slice: { status: "in_progress" }`처럼 바꿀 필드만 전달할 수 있습니다. 양쪽 도구에 같은 갱신을 반복하지 않습니다.
+- 연결하지 않은 기존 수동 슬라이스는 유지합니다. 연결 실패는 현재 슬라이스를 교체하지 않고, 보류·소실된 연결은 완료가 아니라 차단으로 취급합니다.
+- child panel에서 명시적으로 연결하면 WCC도 그 child의 Task 저장소와 같은 단위로 분리합니다. 부모 파일에는 자동 병합하지 않습니다.
+- `auto_commit`의 성공 영수증 중 현재 저장소·슬라이스 범위에 해당하는 commit과 push 결과는 Task와 WCC에 저장 사실로 표시합니다. **저장 성공은 기능·검증·Task 완료를 뜻하지 않습니다.** 임의의 bash 출력으로 push 성공을 추측하지 않습니다.
+
+Frame의 목표·성공 기준·결정 계약은 이 동기화로 변경하지 않습니다.
+
 ## Task Board Rule
 
 `tasks`는 agent 내부 todo가 아니라 work-unit의 외부 기억장치입니다. 기본 표시 우선순위는 다음과 같습니다.
@@ -68,7 +80,7 @@ Working Context Card는 work-unit scoped JSON입니다.
 
 Frame이 저장되면 `implementation_plan.slices[]`는 `kind=slice`, `risk_register.needs_decision`은 `kind=decision owner=user`, `verify_plan.manual_checks`는 `kind=verify` task로 내려갑니다. 이렇게 해야 사용자가 todo를 “agent가 알아서 처리하는 목록”이 아니라 “내가 개입해야 하는 판단과 현재 실행 단위”로 읽을 수 있습니다.
 
-현재 slice는 커밋 후보 단위이기도 합니다. slice 검증이 끝나면 `work_context commit_plan`으로 currentSlice scope에 맞는 `auto_commit` JSON plan을 만들 수 있어야 하고, outside-scope 변경은 기본적으로 leftovers로 남겨 unrelated diff를 섞지 않습니다. 이 plan은 `metadata.commitReadiness`와 `metadata.shipReadiness`를 분리해 저장하므로, migration 실행이나 UI capture처럼 ship readiness를 막는 항목을 코드 slice commit blocker로 오인하지 않습니다.
+현재 slice는 커밋 후보 단위이기도 합니다. slice 검증이 끝나고 파일 묶음이 정해졌다면 `auto_commit`에 `plan`을 직접 전달합니다. 묶음을 도출해야 할 때만 `work_context commit_plan`을 사용하고, outside-scope 변경은 기본적으로 leftovers로 남겨 unrelated diff를 섞지 않습니다. 이 plan은 `metadata.commitReadiness`와 `metadata.shipReadiness`를 분리해 저장하므로, migration 실행이나 UI capture처럼 ship readiness를 막는 항목을 코드 slice commit blocker로 오인하지 않습니다.
 
 Planning frame에서 `/wt fork` 또는 worktree 생성으로 실행 공간을 얻을 때는 task board도 frame과 같은 work-unit artifact로 계승합니다. source planning session의 `~/.pi/agent/work-units/<id>/work-tasks.json`을 target worktree의 `.pi/work-tasks.json`으로 복사하고, task의 `refs.frame`은 target `.pi/frame.json`을 가리키게 retarget합니다. 이미 target에 사용자 task가 있으면 덮어쓰지 않습니다. 이후 Working Context Card는 target frame 기준으로 refresh되어 `refs.tasks`가 새 task board를 가리켜야 합니다.
 

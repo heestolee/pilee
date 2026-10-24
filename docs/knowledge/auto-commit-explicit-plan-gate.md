@@ -31,12 +31,13 @@ title_en: Auto-commit executes only explicit plans
 
 ## 판단
 
-자동 커밋 도구는 agent가 임의로 변경 파일을 추론해 커밋하는 도구가 아니다. 기본은 사용자가 검토할 수 있는 JSON plan에 commit message와 path 묶음이 명시되어 있을 때만 실행한다. 단, 단일 문구·라벨 같은 light hotfix는 JSON 파일을 만들지 않더라도 `action=quick`에 message와 paths를 명시해 같은 안전 경계 안에서 commit+push까지 닫을 수 있다.
+자동 커밋 도구는 agent가 임의로 변경 파일을 추론해 커밋하는 도구가 아니다. 검토 가능한 JSON 형태의 plan에 commit message와 path 묶음이 명시되어 있어야 하지만, **계획 파일 생성은 필수가 아니다**. 내용이 이미 정해졌으면 `auto_commit action=apply plan={...}`로 직접 전달한다. 기존 `planPath` 입력은 유지하고, 단일 문구·라벨 같은 tiny hotfix는 `action=quick`에 message와 paths를 명시한다.
 
 ## 규칙
 
 - `auto_commit`은 `status`, `apply`, `split-head`, `quick`처럼 좁은 action만 제공한다.
-- `apply`는 plan file의 `commits[].paths`만 stage/commit한다.
+- `apply`/`split-head`는 `plan` 객체 또는 기존 `planPath` 중 정확히 하나를 받는다. 같은 HEAD·명시 경로·논리 원자·durable record 검사를 사용한다.
+- `apply`는 어느 입력 경로에서도 `commits[].paths`만 stage/commit한다. inline 입력도 원 요청의 commit/push 금지와 push 의도 검사를 거친다.
 - `auto_commit`은 실행 직전 diff-aware logical atom gate를 적용한다. 한 commit entry가 3개 이상 primary path를 가지면 파일 수만으로 막지 않고 diff 양, layer mix, cluster/surface fan-out을 함께 평가한다.
 - `quick`은 plan file을 생략하지만 message와 paths를 tool input에 반드시 명시해야 하며, dirty tree 전체를 자동 stage하지 않는다.
 - `split-head`는 clean worktree에서만 동작하고, reset 전에 backup branch를 둘 수 있어야 한다.
@@ -54,7 +55,7 @@ title_en: Auto-commit executes only explicit plans
 - push는 plan의 `push`, `pushPolicy`, 또는 quick path 기본값(`push-if-tracking`)으로만 수행한다. 결과는 `committed_and_pushed` / `committed_not_pushed`로 분리해 보고한다.
 - `status`는 현재 branch/head와 안전한 push target/ahead/behind뿐 아니라 dirty diff의 commit readiness, ship readiness caveat, split recommendation을 진단한다.
 - `status`의 `READY_WITH_CAVEATS`는 “nearest validation 후 커밋 가능한 diff”라는 뜻이지 ship 완료가 아니다. migration 실행, UI capture, 최종 verify-report는 ship caveat로 남길 수 있다.
-- `work_context action=commit_plan`은 currentSlice scope 기반 plan 파일을 만드는 helper일 뿐이며, 실제 commit은 여전히 plan 검토 후 `auto_commit apply`가 수행한다.
+- `work_context action=commit_plan`은 파일 묶음을 도출해야 할 때 사용하는 선택적 helper다. 이미 파일·메시지·본문이 정해졌다면 파일 생성→읽기→수정 없이 `auto_commit`의 `plan`에 직접 전달한다.
 - commit plan에는 `metadata.commitReadiness`, `metadata.shipReadiness`, `metadata.caveats`, `metadata.notBlockers`를 포함해 agent가 migration/UI 검증 대기를 commit blocker로 오인하지 않게 한다.
 
 ## Review trigger
