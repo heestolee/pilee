@@ -4,9 +4,11 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import {
 	formatWorkContextCard,
+	findTaskForSlice,
 	gateWorkContext,
 	loadOrDeriveWorkContext,
 	refreshWorkContext,
+	resolveTaskWorkUnit,
 	saveWorkContext,
 	type WorkContextCard,
 	type WorkContextMode,
@@ -14,10 +16,11 @@ import {
 } from "../utils/work-context.ts";
 import { formatCommitReadinessDiagnostic } from "../utils/commit-readiness.ts";
 import { buildSliceCommitPlan, sliceCommitPlanFileName, type SliceCommitPushPlan } from "./slice-commit-plan.ts";
+import type { Task } from "../tasks/types.ts";
 
 const sliceSchema = Type.Object({
-	id: Type.String({ description: "Slice id, e.g. S1 or SLICE-1" }),
-	title: Type.String({ description: "Current slice title" }),
+	id: Type.Optional(Type.String({ description: "Required for a new slice; existing slices may be selected with sliceId." })),
+	title: Type.Optional(Type.String({ description: "Required for a new slice; omit when updating only another shared field." })),
 	scope: Type.Optional(Type.Array(Type.String(), { description: "Paths/prefixes/globs this slice may touch" })),
 	acceptance: Type.Optional(Type.Array(Type.String(), { description: "Done-when checks for this slice" })),
 	status: Type.Optional(Type.Union([Type.Literal("pending"), Type.Literal("in_progress"), Type.Literal("completed"), Type.Literal("blocked")])),
@@ -75,6 +78,7 @@ function mergeSlice(card: WorkContextCard, params: { sliceId?: string; slice?: P
 	if (params.sliceId) selected = card.slices.find((slice) => slice.id === params.sliceId);
 	if (!selected && params.slice?.id) selected = card.slices.find((slice) => slice.id === params.slice?.id);
 	if (!selected && params.slice) {
+		if (!params.slice.id || !params.slice.title) throw new Error("A new slice requires id and title");
 		selected = {
 			id: params.slice.id || "S-current",
 			title: params.slice.title || "현재 slice",
@@ -98,12 +102,14 @@ export default function workContextExtension(pi: ExtensionAPI) {
 		name: "work_context",
 		label: "Work Context",
 		description: "Inspect or update the work-unit scoped Working Context Card. Use it to keep large context as a compact current-slice contract instead of carrying raw transcripts.",
-		promptSnippet: "Use work_context status/refresh before implementation in a framed worktree; use set_slice/checkpoint when moving between implementation slices.",
+		promptSnippet: "Use set_slice with syncTask:true to manage a slice and its Task in one call; linked slices read their title, scope, acceptance, and status from that Task.",
+		reachesTools: (input) => input.action === "set_slice" ? ["TaskCreate", "TaskUpdate"] : [],
 		promptGuidelines: [
 			"Working Context Card is the compact context carried each turn: goal, current slice, must keep/not, open questions, verify focus, and artifact refs.",
 			"Do not paste full transcripts into the card. Keep raw history in transcriptRef/archive and store only actionable current context.",
 			"Before editing a standard/full framed work, make sure currentSlice is selected and not blocked by open questions.",
-			"When a slice is complete and nearest validation passed, use action=commit_plan to create an explicit auto_commit JSON plan, then call auto_commit apply after reviewing it.",
+			"Use set_slice with syncTask:true to create or link one Task instead of duplicating TaskCreate/TaskUpdate and work_context calls. Once linked, update shared fields through either tool; commit/push facts do not mark the Task completed.",
+			"When a slice is verified and its file groups, messages, and rationale are known, pass an explicit plan object directly to auto_commit apply. Use action=commit_plan only when you need to derive file groups; do not create and reread a JSON file just to commit.",
 		],
 		parameters: Type.Object({
 			action: Type.Union([
@@ -118,6 +124,9 @@ export default function workContextExtension(pi: ExtensionAPI) {
 			goal: Type.Optional(Type.String()),
 			sliceId: Type.Optional(Type.String()),
 			slice: Type.Optional(sliceSchema),
+			syncTask: Type.Optional(Type.Boolean({ description: "For set_slice, create/link a Task as the shared source of title, scope, acceptance, and status." })),
+			taskId: Type.Optional(Type.String({ description: "For set_slice, link an existing Task from this work unit." })),
+			taskArea: Type.Optional(Type.String({ description: "Area/group for a Task created by syncTask." })),
 			mustKeep: Type.Optional(Type.Array(Type.String())),
 			mustNot: Type.Optional(Type.Array(Type.String())),
 			verifyFocus: Type.Optional(Type.Array(Type.String())),
@@ -149,8 +158,34 @@ export default function workContextExtension(pi: ExtensionAPI) {
 			let card = loadOrDeriveWorkContext(ctx.cwd, sf) ?? refreshWorkContext(ctx.cwd, sf);
 			if (params.action === "set_slice") {
 				card = mergeSlice(card, { sliceId: params.sliceId, slice: params.slice as Partial<WorkContextSlice> | undefined });
+				const slice = card.currentSlice!;
+				if (params.syncTask || params.taskId || (slice.taskId && params.slice)) {
+					if (params.taskId && slice.taskId && params.taskId !== slice.taskId) throw new Error("Slice is already linked to another Task");
+					const taskId = params.taskId ?? slice.taskId;
+					const existing = findTaskForSlice(ctx.cwd, sf, slice.id, taskId);
+					if (taskId && !existing) throw new Error(`Task #${taskId} not found in this work unit`);
+					if (existing?.metadata?.workContextSliceId && existing.metadata.workContextSliceId !== slice.id) throw new Error("Task is already linked to another slice");
+					const fields = {
+						...(!existing || params.slice?.title !== undefined ? { subject: slice.title } : {}),
+						...(!existing || params.slice?.acceptance !== undefined ? { acceptance: slice.acceptance } : {}),
+						metadata: { workContextSliceId: slice.id, ...(!existing?.metadata?.workContextSliceId || params.slice?.scope !== undefined ? { workContextScope: slice.scope } : {}) },
+						...(!existing || params.slice?.status !== undefined ? { status: slice.status ?? "in_progress" } : {}),
+					};
+					const outcome = await ctx.executeTool(existing ? "TaskUpdate" : "TaskCreate", existing
+						? { taskId: existing.id, ...fields }
+						: { ...fields, description: card.goal || slice.title, kind: "slice", owner: "agent", source: "agent", area: params.taskArea ?? "구현" });
+					const result = outcome.result;
+					const details = result.details as { task?: Task; tasksPath?: string } | undefined;
+					const unit = resolveTaskWorkUnit(ctx.cwd, sf).unit;
+					if (outcome.isError || !details?.task?.id || details.tasksPath !== unit.tasksPath) {
+						throw new Error(`Task 동기화 실패: ${result.content.filter((item) => item.type === "text").map((item) => item.text).join("\n")}`);
+					}
+					const linked = { ...slice, taskId: details.task.id };
+					card = { ...card, identity: unit, refs: { ...card.refs, tasks: unit.tasksPath }, currentSlice: linked, slices: card.slices.map((item) => item.id === slice.id ? linked : item) };
+				}
 				saveWorkContext(card);
-				return toolText(`currentSlice를 고정했습니다.\n\n${formatWorkContextCard(card)}`, { card, contextPath: card.identity.contextPath });
+				card = loadOrDeriveWorkContext(ctx.cwd, sf) ?? card;
+				return toolText(`currentSlice를 고정했습니다.\n\n${formatWorkContextCard(card)}`, { card, contextPath: card.identity.contextPath, taskId: card.currentSlice?.taskId });
 			}
 
 			if (params.action === "checkpoint") {
