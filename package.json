@@ -1,6 +1,6 @@
 {
   "name": "pilee",
-  "version": "0.1.352",
+  "version": "0.1.353",
   "description": "Personal pi coding agent config 🔥",
   "private": true,
   "type": "module",
@@ -52,7 +52,7 @@
     "test:worktree": "node scripts/run-typescript-test.mjs extensions/worktree/names.test.ts extensions/worktree/create-worktree.test.ts extensions/worktree/naming-command.test.ts extensions/utils/workspace-activation-contract.test.ts extensions/fork-panel/placement.test.ts extensions/worktree/bootstrap-domains.test.ts extensions/worktree/panel-activation.test.ts extensions/worktree/command-activation.test.ts extensions/worktree/dashboard-status-loader.test.ts extensions/worktree/dashboard-performance.test.ts extensions/worktree/shortcut.test.ts extensions/worktree/tool-fallback.test.ts extensions/worktree/frame-artifacts.test.ts extensions/worktree/pr-review-worktree.test.ts",
     "test:shortcut-atlas": "node scripts/run-typescript-test.mjs extensions/shortcut-atlas/registry.test.ts extensions/shortcut-atlas/index.test.ts",
     "test:tft-commands": "node scripts/run-typescript-test.mjs extensions/tft-commands/frame-worktree-fork.test.ts extensions/tft-commands/index.test.ts extensions/tft-commands/skill-diagnostics.test.ts",
-    "test:work-context": "node scripts/run-typescript-test.mjs extensions/work-context/slice-commit-plan.test.ts extensions/work-context/decision-sync.test.ts",
+    "test:work-context": "node scripts/run-typescript-test.mjs extensions/work-context/slice-commit-plan.test.ts extensions/work-context/decision-sync.test.ts extensions/work-context/task-sync.test.ts",
     "test:auto-commit": "node scripts/run-typescript-test.mjs extensions/auto-commit/index.test.ts",
     "test:codex-fast-mode": "node scripts/run-typescript-test.mjs extensions/codex-fast-mode/index.test.ts extensions/codex-fast-mode/state.test.ts extensions/custom-style/fast-badge.test.ts",
     "test:pi-compat": "node scripts/run-typescript-test.mjs extensions/utils/agent-start-input.test.ts extensions/utils/short-label.test.ts extensions/workflow-guard/index.test.ts extensions/convention-lens/index.test.ts extensions/session-title/index.test.ts extensions/claude-hooks-bridge/index.test.ts extensions/ship-commands/index.test.ts extensions/worktree/agent-start.test.ts extensions/worktree/bootstrap-domains.test.ts extensions/workspace/lifecycle.test.ts extensions/fork-panel/lifecycle.test.ts extensions/fork-panel/summary.test.ts extensions/fork-panel/revive-cwd.test.ts extensions/notify/index.test.ts extensions/queued-messages/index.test.ts extensions/prompt-suggest-lite/model.test.ts extensions/subagent/registry-binding.test.ts extensions/subagent/sdk-readiness.test.ts extensions/retro/index.test.ts extensions/archive-to-html/classification.test.ts extensions/archive-to-html/session-open.test.ts extensions/codex-fast-mode/index.test.ts extensions/codex-fast-mode/state.test.ts extensions/custom-style/fast-badge.test.ts extensions/utils/agent-start-producers.test.ts extensions/workflow-guard/producer-input.test.ts extensions/tool-group-renderer/host-identity.test.ts extensions/tool-group-renderer/mcp-renderer.test.ts",
