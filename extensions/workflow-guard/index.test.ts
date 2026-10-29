@@ -377,6 +377,78 @@ test("trusted internal PR repositories bypass only the upstream PR publish gate"
 	}
 });
 
+const createPrSkillInvocation = `<skill name="create-pr" location="/workspace/.agents/skills/create-pr/SKILL.md">
+# Create PR
+현재 브랜치의 git status와 git diff를 확인하고 PR을 생성합니다.
+예시 명령: gh pr create --repo example/project --title test --body body
+참고 링크에는 이슈 생성 요청의 배경을 남깁니다.
+</skill>`;
+
+test("회사 PR 스킬 호출은 설명 본문과 무관하게 CONTRIBUTING 확인 없이 통과한다", async () => {
+	const root = await mkdtemp(join(tmpdir(), "workflow-guard-company-skill-"));
+	try {
+		for (const prompt of [createPrSkillInvocation, createPrSkillInvocation.replace('name="create-pr"', "name='create-pr'")]) {
+			// given
+			const { hooks, ctx } = createHarness({ cwd: root, originUrl: "https://github.com/company/product.git", trustedInternalPullRequestRepositories: ["company/product"] });
+			// when
+			const start = await hooks.before_agent_start({ prompt, systemPrompt: "base" }, ctx);
+			const result = await hooks.tool_call({ toolName: "bash", input: { command: "gh pr create --repo company/product --title test --body body" } }, ctx);
+			// then
+			assert.equal(start.message.details.state.intent, "ship");
+			assert.equal(start.message.details.state.explicitPrAction, true);
+			assert.equal(start.message.details.state.explicitIssueAction, false);
+			assert.equal(start.message.details.state.prompt, prompt);
+			assert.doesNotMatch(start.systemPrompt, /First read the target repository's CONTRIBUTING|EXTERNAL ISSUE\/PR PUBLISH GATE/);
+			assert.match(start.systemPrompt, /CONTRIBUTING\.md 탐색·읽기나 게시 재승인을 요구하지/);
+			assert.equal(result, undefined);
+			const issue = await hooks.tool_call({ toolName: "bash", input: { command: "gh issue create --repo company/product --title test --body body" } }, ctx);
+			assert.equal(issue?.block, true);
+		}
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("회사 PR 스킬 뒤에서 지정한 외부 저장소에는 기여 승인 절차를 유지한다", async () => {
+	const root = await mkdtemp(join(tmpdir(), "workflow-guard-company-skill-external-"));
+	try {
+		// given
+		const { hooks, ctx } = createHarness({ cwd: root, originUrl: "https://github.com/company/product.git", trustedInternalPullRequestRepositories: ["company/product"] });
+		const prompt = `${createPrSkillInvocation}\n--repo outside/project`;
+		// when
+		const start = await hooks.before_agent_start({ prompt, systemPrompt: "base" }, ctx);
+		const result = await hooks.tool_call({ toolName: "bash", input: { command: "gh pr create --repo outside/project --title test --body body" } }, ctx);
+		// then
+		assert.equal(start.message.details.state.explicitPrAction, true);
+		assert.match(start.systemPrompt, /CONTRIBUTING/);
+		assert.equal(result?.block, true);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("회사 PR 스킬의 인용·검토·취소는 PR 생성 승인이 되지 않는다", async () => {
+	const root = await mkdtemp(join(tmpdir(), "workflow-guard-company-skill-readonly-"));
+	try {
+		const prompts = [
+			`내용만 설명해줘. PR 생성하지 마.\n${createPrSkillInvocation}`,
+			`${createPrSkillInvocation}\nPR 생성하지 마. 내용만 설명해줘.`,
+			createPrSkillInvocation.replace('name="create-pr"', 'name="review-guide"'),
+		];
+		for (const prompt of prompts) {
+			// given
+			const { hooks, ctx } = createHarness({ cwd: root, originUrl: "https://github.com/company/product.git", trustedInternalPullRequestRepositories: ["company/product"] });
+			// when
+			await hooks.before_agent_start({ prompt, systemPrompt: "base" }, ctx);
+			const result = await hooks.tool_call({ toolName: "bash", input: { command: "gh pr create --repo company/product --title test --body body" } }, ctx);
+			// then
+			assert.equal(result?.block, true);
+		}
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
 test("project-local profiles cannot self-declare a trusted PR repository", async () => {
 	const root = await mkdtemp(join(tmpdir(), "workflow-guard-project-profile-"));
 	try {

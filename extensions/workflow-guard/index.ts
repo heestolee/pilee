@@ -243,6 +243,11 @@ function extractAuthoritativeRequest(prompt: string): string {
 	return request || prompt;
 }
 
+function classificationRequest(prompt: string): string {
+	const invocation = prompt.trim().match(/^<skill\b[^>]*\sname=(["'])create-pr\1[^>]*>[\s\S]*?<\/skill>\s*([\s\S]*)$/u);
+	return invocation ? `/create-pr${invocation[2] ? `\n${invocation[2]}` : ""}` : prompt;
+}
+
 function hasWorkerResultArtifactDirective(normalized: string): boolean {
 	const studyHardWorkerEnvelope = /study[\s-]*hard[\s-]*worker/.test(normalized)
 		&& ["statepath", "questionid", "orchestrationid", "workerresultpath"].every((field) => normalized.includes(field));
@@ -360,8 +365,9 @@ function classifyPrompt(
 	workspaceAuthorizationSourceId = "workflow-guard:user-turn",
 ): GuardState {
 	const authoritativePrompt = extractAuthoritativeRequest(prompt);
-	const normalized = normalizeText(authoritativePrompt);
-	const statusNote = isStatusNotePrompt(authoritativePrompt);
+	const request = classificationRequest(authoritativePrompt);
+	const normalized = normalizeText(request);
+	const statusNote = isStatusNotePrompt(request);
 	const continuationCue = !statusNote && isContinuationCue(normalized);
 	const explicitHeavy = !statusNote && hasAny(normalized, [
 		/verify[- ]?report|검증\s*리포트|캡처\s*리포트|full\s*report/,
@@ -376,11 +382,11 @@ function classifyPrompt(
 		/(개선됐다매|개선됐다며|개선했다매|개선했다며).*(왜|아직|또|이래)/,
 		/(already fixed|still missing|remaining gap|fixed vs)/,
 	]);
-	const sqlReview = !statusNote && isSqlReviewPrompt(authoritativePrompt, normalized);
+	const sqlReview = !statusNote && isSqlReviewPrompt(request, normalized);
 	const verifyReport = explicitHeavy && hasAny(normalized, [/verify[- ]?report|검증\s*리포트|캡처\s*리포트/]);
 	const knowledge = !statusNote && hasAny(normalized, [/ember|knowledge|불씨|지식|stale|freshness/]);
 	const hotfix = !statusNote && hasAny(normalized, [/hotfix|핫픽스|간단|문구|오타|copy|카피|one[- ]?line|한\s*줄|작은|small|quick|빨리|이거\s*하나/]);
-	const slashCommand = authoritativePrompt.trim().match(/^\/([a-z][a-z0-9-]*)(?:\s|$)/)?.[1];
+	const slashCommand = request.trim().match(/^\/([a-z][a-z0-9-]*)(?:\s|$)/)?.[1];
 	const artifactCommand = ["frame", "frame-v2", "decide", "study-hard", "meta-review"].includes(slashCommand ?? "");
 	const implementationCommand = ["test-refine", "ember-ship", "study-hard-start-work"].includes(slashCommand ?? "");
 	const shipCommand = ["ship", "pr-ship", "ci-ship"].includes(slashCommand ?? "");
@@ -390,10 +396,10 @@ function classifyPrompt(
 	const readOnlyShipSignal = hasAny(normalized, [/확인|상태|왜|원인|알려|조회|봐줘|보여|분석|비교|검토|여부|됐는지|되었는지|반영됐|반영되었|diff|status|check|view|analy[sz]e|review|compare/]);
 	const followUpCorrection = !statusNote && !sqlReview && !noMutation && isFollowUpCorrectionPrompt(normalized);
 	const implementationDirective = !statusNote && !sqlReview && !noMutation && (hasImplementationDirective(normalized) || followUpCorrection);
-	const mixedRequest = implementationDirective && hasMixedImplementationInvestigationPrompt(authoritativePrompt, normalized);
+	const mixedRequest = implementationDirective && hasMixedImplementationInvestigationPrompt(request, normalized);
 	const parallelInvestigationSuggested = mixedRequest;
 	const implement = implementationDirective || implementationCommand || detachedArtifactTask;
-	const explicitCreatePrCommand = /(?:^|\n)\s*\/create-pr(?:\s|$)/m.test(authoritativePrompt);
+	const explicitCreatePrCommand = /(?:^|\n)\s*\/create-pr(?:\s|$)/m.test(request);
 	const shipDirective = !statusNote && !noMutation && (shipCommand || explicitCreatePrCommand || (!readOnlyShipSignal && hasShipDirective(normalized)));
 	const explicitPrAction = shipDirective && (explicitCreatePrCommand || hasAny(normalized, [/create-pr|create\s+pr|open\s+pr|pull\s+request|\bpr\b\s*(?:생성|만들|올려|열어|작성|요청|리뷰\s*요청)/]));
 	const explicitIssueAction = hasAny(normalized, [/(?:github\s*)?(?:issue|이슈)\s*(?:생성|만들|올려|열어|작성|create|open)/, /(?:create|open)\s+(?:an?\s+)?issue/]);
@@ -435,7 +441,7 @@ function classifyPrompt(
 	const explicitMutation = !statusNote && !noMutation && ((detachedArtifactTask && !artifactCommand) || implementationCommand || implementationDirective || shipDirective || explicitCommitPushOnly || hasAny(normalized, [/작업해|진행해|만들어|적용해|개선해|보강해|커밋\s*(?:해|해줘|해주세요|하자)|푸시\s*(?:해|해줘|해주세요|하자)/]));
 	const explicitSingleCommit = hasAny(normalized, [/단일\s*커밋|한\s*커밋|one\s*commit|single\s*commit|squash/]);
 	const workspaceAuthorization = deriveWorkspaceAuthorization(
-		authoritativePrompt,
+		request,
 		priorWorkspaceAuthorization,
 		workspaceAuthorizationSourceId,
 	);
@@ -615,6 +621,13 @@ function buildSystemPrompt(
 			`- FAST RESPONSE PACE: after each tool result, use a ${paceSeconds}-second decision budget. Choose one of: next narrow tool call, interim conclusion, scope-gate question, or final report. Do not silently spend minutes deciding the next step.`,
 			"- Silence breaker: if the next step is broad/long, a command may take more than ~30 seconds, or the previous command aborted/timed out/returned no usable evidence, state a short Korean progress/strategy-reset line before the next tool call instead of waiting for the user to ask what is happening.",
 			"- Tool exploration discipline: do not call broad tool list/schema/full-content discovery (`mcp list`, broad `describe`, `get_mcp_content`, raw transcript/context mining) unless the user explicitly asks about tools, a direct call fails from schema uncertainty, or the current evidence cannot identify the required tool.",
+		);
+	}
+
+	if (state.trustedInternalPullRequestRepository && state.intent !== "status_note") {
+		lines.push(
+			"- 회사 저장소 PR 경로: 허용된 회사 저장소에는 외부 upstream 기여 절차를 적용하지 않습니다.",
+			"- CONTRIBUTING.md 탐색·읽기나 게시 재승인을 요구하지 말고, 사용자가 요청한 PR 생성을 계속하세요. 프로젝트 자체의 작업·검증 규칙과 원래 요청 범위는 유지합니다.",
 		);
 	}
 
@@ -1187,7 +1200,7 @@ async function currentGitHubRepository(pi: ExtensionAPI, cwd: string): Promise<s
 }
 
 async function publishRepository(pi: ExtensionAPI, cwd: string, command = ""): Promise<string | undefined> {
-	const explicit = explicitPublishRepository(command);
+	const explicit = explicitPublishRepository(classificationRequest(command));
 	return explicit.specified ? explicit.repository : currentGitHubRepository(pi, cwd);
 }
 

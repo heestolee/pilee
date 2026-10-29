@@ -29,7 +29,7 @@ related:
 
 ## Judgment
 
-GitHub Issue/PR이나 Jira 같은 외부 시스템에 쓰는 내용은 로컬 답변과 다릅니다. 한번 전송되면 작성자 계정의 공개 기록이 되고 다른 사람이 보거나 자동화가 반응하므로, agent가 조용히 생성·수정하면 안 됩니다.
+GitHub Issue/PR이나 Jira 같은 외부 시스템에 쓰는 내용은 로컬 답변과 다릅니다. 한번 전송되면 작성자 계정의 공개 기록이 되고 다른 사람이 보거나 자동화가 반응하므로, agent가 조용히 생성·수정하면 안 됩니다. 다만 외부 API를 사용한다는 사실과 외부 upstream에 기여한다는 사실은 다릅니다. 명시적으로 요청한 조직 내부 PR에 외부 기여용 CONTRIBUTING·재승인 절차를 적용하지 않습니다.
 
 ## Contribution Fit Rule
 
@@ -43,8 +43,10 @@ GitHub CLI 생성 명령은 guard가 요구하는 CONTRIBUTING 확인/최종 승
 
 단, 설치된 private/global profile이 `trustedInternalPullRequestRepositories`로 명시한 조직 내부 저장소의 PR은 upstream 외부 기여가 아닙니다. 사용자가 그 PR 생성을 명시적으로 요청한 턴에는 CONTRIBUTING 재확인과 별도 최종 승인 게이트를 반복하지 않습니다. 이 예외는 PR에만 적용하며 GitHub Issue, profile에 없는 저장소, 명령의 `--repo/-R` 또는 REST 경로가 다른 저장소를 가리키는 경우에는 원래 게이트를 유지합니다. 대상 프로젝트 자신의 `.pi/profiles`는 스스로 이 권한을 선언할 수 없습니다. 구체적인 회사 저장소 이름은 public code가 아니라 private overlay profile에 둡니다.
 
+허용된 조직 내부 PR에는 CONTRIBUTING 파일의 유무를 탐색하거나 내용을 읽는 단계 자체를 추가하지 않습니다. 프로젝트 고유의 작업·검증 규칙은 그대로 따릅니다. 최상위 `create-pr` 스킬 호출은 `/create-pr` 요청으로 판별하고, 설명 본문의 예시 명령·검토 문구를 별도 사용자 지시로 읽지 않습니다. 원문은 보존하며, 호출 뒤에 사용자가 덧붙인 대상 저장소·취소 지시는 판단에 남깁니다. 인용·검토 대상으로 등장한 스킬이나 다른 스킬 이름은 PR 생성 승인이 아닙니다.
+
 조직별 Jira URL, project key 추론, MCP 우선순위, issue type convention은 public skill에 박지 않고 private/project overlay가 담당합니다.
 
 ## Failure Mode
 
-“문구만 조금 정리” 또는 “PR까지 해줘”라는 이유로 바로 게시하면 의도하지 않은 공개 커뮤니케이션이 됩니다. 특히 CONTRIBUTING 적합성을 확인하지 않은 구현은 작성자를 규칙 미준수 contributor처럼 보이게 할 수 있습니다. 외부 반영은 항상 contribution-fit-first, preview-first, separate-final-approval입니다.
+“문구만 조금 정리” 또는 “PR까지 해줘”라는 이유로 바로 게시하면 의도하지 않은 공개 커뮤니케이션이 됩니다. 특히 CONTRIBUTING 적합성을 확인하지 않은 구현은 작성자를 규칙 미준수 contributor처럼 보이게 할 수 있습니다. 외부 upstream 기여에는 contribution-fit-first, preview-first, separate-final-approval을 유지합니다. 조직 내부의 명시적 PR 생성 요청에는 이 별도 기여 절차를 반복하지 않습니다.
