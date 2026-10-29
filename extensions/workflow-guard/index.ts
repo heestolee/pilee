@@ -244,8 +244,12 @@ function extractAuthoritativeRequest(prompt: string): string {
 }
 
 function classificationRequest(prompt: string): string {
-	const invocation = prompt.trim().match(/^<skill\b[^>]*\sname=(["'])create-pr\1[^>]*>[\s\S]*?<\/skill>\s*([\s\S]*)$/u);
-	return invocation ? `/create-pr${invocation[2] ? `\n${invocation[2]}` : ""}` : prompt;
+	const invocation = prompt.trim().match(/^<skill\b[^>]*\sname=(["'])create-pr\1[^>]*>[\s\S]*?\n<\/skill>\s*([\s\S]*)$/u);
+	if (!invocation) return prompt;
+	const args = invocation[2];
+	const intentArgs = normalizeText(args.replace(/(?:^|\s)(?:--[a-z][a-z-]*|-[a-zA-Z])(?:=(?:"[^"]*"|'[^']*'|[^\s]+)|\s+(?:"[^"]*"|'[^']*'|[^\s]+))?/gu, ""));
+	if (intentArgs && isInvestigationOrAnswerClause(intentArgs) && !hasShipDirective(intentArgs)) return args;
+	return `/create-pr${args ? `\n${args}` : ""}`;
 }
 
 function hasWorkerResultArtifactDirective(normalized: string): boolean {
@@ -1200,7 +1204,7 @@ async function currentGitHubRepository(pi: ExtensionAPI, cwd: string): Promise<s
 }
 
 async function publishRepository(pi: ExtensionAPI, cwd: string, command = ""): Promise<string | undefined> {
-	const explicit = explicitPublishRepository(classificationRequest(command));
+	const explicit = explicitPublishRepository(command);
 	return explicit.specified ? explicit.repository : currentGitHubRepository(pi, cwd);
 }
 
@@ -1735,8 +1739,12 @@ export default function workflowGuard(
 		if (workspaceAuthorizationChanged(restoredAuthorization, state.workspaceAuthorization)) {
 			persistWorkspaceAuthorization(pi, state.workspaceAuthorization);
 		}
+		if (state.trustedInternalPullRequestRepository) {
+			delete state.trustedInternalPullRequestRepository;
+			state.summary = state.summary.replace("externalPublish=internal-trusted", "externalPublish=approval-gated");
+		}
 		if (state.explicitPrAction && !state.explicitIssueAction) {
-			const repository = await publishRepository(pi, ctx.cwd, state.prompt);
+			const repository = await publishRepository(pi, ctx.cwd, classificationRequest(state.prompt));
 			if (isTrustedInternalPullRequestRepository(repository, trustedInternalPullRequestRepositories)) markTrustedInternalPullRequest(state, repository!);
 		}
 		if (!inert && !continuePrevious) {
