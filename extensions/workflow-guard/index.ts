@@ -1403,7 +1403,7 @@ function indexCommitCwd(command: string, cwd: string): string {
 	while (tokens.length) {
 		const option = tokens.shift()!;
 		if (option === "-m" || option === "--message" || option === "-F" || option === "--file") { if (!tokens.shift()) throw new Error("missing commit message argument"); continue; }
-		if (["--no-verify", "--allow-empty", "--signoff", "-s", "--no-gpg-sign", "--quiet", "-q"].includes(option) || /^(?:--message|--file)=/.test(option)) continue;
+		if (["--no-verify", "--allow-empty", "--signoff", "-s", "--no-gpg-sign", "--quiet", "-q", "--no-edit"].includes(option) || /^(?:--message|--file)=/.test(option)) continue;
 		throw new Error("unsupported commit scope: stage changes first, then use an index-only git commit -m <message>");
 	}
 	return cwd;

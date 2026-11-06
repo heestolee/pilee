@@ -111,6 +111,17 @@ test("작은 충돌 해결은 upstream 규모와 독립적으로 허용한다", 
 	assert.equal(git(repo.cwd, "show", "-s", "--format=%P"), `${repo.head} ${repo.upstream}`);
 });
 
+test("충돌 해결 후 git commit --no-edit은 index-only 병합 커밋으로 허용한다", async (t) => {
+	// given
+	const repo = await fixture(t, { conflict: true });
+	await writeFile(join(repo.cwd, "note.txt"), "resolved\n"); git(repo.cwd, "add", "note.txt");
+	const h = harness(repo.cwd); await start(h);
+	// when
+	const blocked = await commitCheck(h, "git commit --no-edit");
+	// then
+	assert.equal(blocked, undefined);
+});
+
 test("병합 중 upstream 파일에 숨긴 큰 추가 변경은 차단한다", async (t) => {
 	// given
 	const repo = await fixture(t);
