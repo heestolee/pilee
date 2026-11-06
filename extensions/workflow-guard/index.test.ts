@@ -1522,6 +1522,47 @@ test("semantic high-risk bash correction is one-call scoped instead of mutation=
 	await assert.rejects(adoptSemantic(h, start, { toolName: "bash", input }, "ship"), /이미 사용/);
 });
 
+test("semantic bash grants match the command, not presentation fields or core tool name case", async () => {
+	const h = createHarness();
+	const start = await h.hooks.before_agent_start({ prompt: "이 변경 이력을 남겨 둠", systemPrompt: "base" }, h.ctx);
+	const command = "git push origin sync/branch";
+	await adoptSemantic(h, start, { toolName: "Bash", input: { command } }, "ship");
+	assert.equal((await h.hooks.tool_call({ toolName: "bash", toolCallId: "other", input: { command: `${command} --force`, title: "푸시" } }, h.ctx))?.block, true);
+	assert.equal(await h.hooks.tool_call({ toolName: "bash", toolCallId: "push", input: { command, title: "브랜치 푸시", timeout: 900000 } }, h.ctx), undefined);
+});
+
+test("Korean particles between commit/push and the verb still count as explicit requests", async () => {
+	for (const prompt of ["푸시도 해", "커밋도 해줘", "푸시까지 해"]) {
+		const h = createHarness();
+		const start = await h.hooks.before_agent_start({ prompt, systemPrompt: "base" }, h.ctx);
+		assert.equal(start.message.details.state.explicitMutation, true, prompt);
+	}
+	const h = createHarness();
+	await h.hooks.before_agent_start({ prompt: "푸시도 해", systemPrompt: "base" }, h.ctx);
+	assert.equal(await h.hooks.tool_call({ toolName: "bash", input: { command: "git push origin sync/branch" } }, h.ctx), undefined);
+	const denied = createHarness();
+	const deniedStart = await denied.hooks.before_agent_start({ prompt: "푸시는 하지마", systemPrompt: "base" }, denied.ctx);
+	assert.equal(deniedStart.message.details.state.explicitMutation, false);
+});
+
+test("explicit commit/push sent while the agent is working applies to the current request", async () => {
+	const h = createHarness();
+	await h.hooks.before_agent_start({ prompt: "https://github.com/acme/repo/pull/1 여기 컨플릭 해소해줘", systemPrompt: "base" }, h.ctx);
+	const push = { toolName: "bash", input: { command: "git push origin sync/branch", title: "푸시" } };
+	assert.equal((await h.hooks.tool_call(push, h.ctx))?.block, true);
+	await h.hooks.input({ type: "input", text: "[dependency-bootstrap] READY — product 준비 완료", source: "extension", streamingBehavior: "steer" }, h.ctx);
+	assert.equal((await h.hooks.tool_call(push, h.ctx))?.block, true);
+	await h.hooks.input({ type: "input", text: "푸시도 해", source: "interactive", streamingBehavior: "steer" }, h.ctx);
+	assert.equal(await h.hooks.tool_call(push, h.ctx), undefined);
+});
+
+test("a prohibition sent while the agent is working still blocks the prohibited action", async () => {
+	const h = createHarness();
+	await h.hooks.before_agent_start({ prompt: "커밋하고 푸시해", systemPrompt: "base" }, h.ctx);
+	await h.hooks.input({ type: "input", text: "푸시는 하지마", source: "interactive", streamingBehavior: "steer" }, h.ctx);
+	assert.equal((await h.hooks.tool_call({ toolName: "bash", input: { command: "git push origin main" } }, h.ctx))?.block, true);
+});
+
 test("a later advice-only assessment cannot discard the scoped execution boundary", async () => {
 	const h = createHarness();
 	const start = await h.hooks.before_agent_start({ prompt: "결제 버그 수정해줘", systemPrompt: "base" }, h.ctx);

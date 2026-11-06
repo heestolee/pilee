@@ -309,8 +309,8 @@ function hasShipDirective(normalized: string): boolean {
 		/create-pr|create\s+pr|open\s+pr|pull\s+request\s*(?:생성|만들|올려|열어|작성|create|open)/,
 		/\bpr\b\s*(?:생성|만들|올려|열어|작성|요청|리뷰\s*요청)/,
 		/커밋\s*(?:\/|&|\+|그리고|하고|해서)?\s*푸시\s*(?:해|해주세요|해줘|하자|하라|하세요|진행|완료)?/,
-		/커밋\s*(?:해|해주세요|해줘|하자|하라|하세요|하고|해서|진행|완료|남겨)/,
-		/푸시\s*(?:해|해주세요|해줘|하자|하라|하세요|하고|해서|진행|완료|올려)/,
+		/커밋(?:도|은|을|까지|만|좀)?\s*(?:해|해주세요|해줘|하자|하라|하세요|하고|해서|진행|완료|남겨)/,
+		/푸시(?:도|는|를|까지|만|좀)?\s*(?:해|해주세요|해줘|하자|하라|하세요|하고|해서|진행|완료|올려)/,
 		/\bcommit\s+(?:and\s+)?push\b/,
 		/\bcommit\s+(?:it|this|changes?|now|please)\b/,
 		/\bpush\s+(?:it|this|now|please)\b/,
@@ -362,6 +362,33 @@ function isFollowUpCorrectionPrompt(normalized: string): boolean {
 	]);
 }
 
+function requestsNoMutation(normalized: string): boolean {
+	return hasAny(normalized, [/수정하지|고치지|변경하지|건드리지|커밋하지|푸시하지|하지\s*마|하지마|no\s*(edit|change|commit|push)|do\s*not\s*(edit|change|commit|push)/]);
+}
+
+// 작업 중 사람이 보낸 메시지(steer/followUp)도 현재 요청의 명시 지시·금지로 합친다.
+function applySteeringInput(state: GuardState, text: string): GuardState {
+	if (!state.request || state.intent === "status_note") return state;
+	const steer = classifyPrompt(text, state.sessionFile);
+	if (steer.intent === "status_note") return state;
+	const prompt = `${state.request.prompt}\n${steer.prompt}`;
+	const request = { ...state.request, prompt };
+	if (requestsNoMutation(normalizeText(steer.prompt))) {
+		return { ...state, prompt, request: { ...request, mutationHint: false }, explicitMutation: false, assessment: undefined, summary: `${state.summary} · steer=no-mutation` };
+	}
+	if (!steer.explicitMutation) return { ...state, prompt, request };
+	const upgrade = ["unknown", "investigate", "answer", "audit"].includes(state.intent);
+	const intent = upgrade ? steer.intent : state.intent;
+	const weight = upgrade ? steer.weight : state.weight;
+	return {
+		...state, prompt, request: { ...request, mutationHint: true }, intent, weight,
+		explicitMutation: true, explicitCommitPushOnly: state.explicitCommitPushOnly || steer.explicitCommitPushOnly,
+		// 사람이 직접 지시했으므로 이전 단일 호출 승인으로 범위를 좁히지 않는다.
+		assessment: undefined,
+		summary: [`intent=${intent}`, `weight=${weight}`, ...state.summary.split(" · ").filter((part) => !/^(?:intent|weight|mutation|authority)=/.test(part)), "steer=explicit-mutation"].join(" · "),
+	};
+}
+
 function classifyPrompt(
 	prompt: string,
 	sessionFile?: string,
@@ -395,7 +422,7 @@ function classifyPrompt(
 	const implementationCommand = ["test-refine", "ember-ship", "study-hard-start-work"].includes(slashCommand ?? "");
 	const shipCommand = ["ship", "pr-ship", "ci-ship"].includes(slashCommand ?? "");
 	const detachedArtifactTask = hasWorkerResultArtifactDirective(normalized) || artifactCommand;
-	const noMutationRequested = hasAny(normalized, [/수정하지|고치지|변경하지|건드리지|커밋하지|푸시하지|하지\s*마|하지마|no\s*(edit|change|commit|push)|do\s*not\s*(edit|change|commit|push)/]);
+	const noMutationRequested = requestsNoMutation(normalized);
 	const noMutation = noMutationRequested && !detachedArtifactTask;
 	const readOnlyShipSignal = hasAny(normalized, [/확인|상태|왜|원인|알려|조회|봐줘|보여|분석|비교|검토|여부|됐는지|되었는지|반영됐|반영되었|diff|status|check|view|analy[sz]e|review|compare/]);
 	const followUpCorrection = !statusNote && !sqlReview && !noMutation && isFollowUpCorrectionPrompt(normalized);
@@ -412,8 +439,8 @@ function classifyPrompt(
 	const explicitCommitPushOnly = shipDirective && !implement && hasAny(normalized, [
 		/커밋\s*(?:\/|&|\+|그리고|하고|해서)?\s*푸시/,
 		/커밋푸시/,
-		/커밋\s*(?:해|해주세요|해줘|하자|하라|하세요|하고|해서|진행|완료|남겨)/,
-		/푸시\s*(?:해|해주세요|해줘|하자|하라|하세요|하고|해서|진행|완료|올려)/,
+		/커밋(?:도|은|을|까지|만|좀)?\s*(?:해|해주세요|해줘|하자|하라|하세요|하고|해서|진행|완료|남겨)/,
+		/푸시(?:도|는|를|까지|만|좀)?\s*(?:해|해주세요|해줘|하자|하라|하세요|하고|해서|진행|완료|올려)/,
 		/\bcommit\s+(?:and\s+)?push\b/,
 		/\bcommit\s+(?:it|this|changes?|now|please)\b/,
 		/\bpush\s+(?:it|this|now|please)\b/,
@@ -442,7 +469,7 @@ function classifyPrompt(
 	else if (intent === "implement" || intent === "ship" || intent === "knowledge") weight = "standard";
 	else if (intent === "investigate" || intent === "audit" || intent === "answer") weight = "none";
 
-	const explicitMutation = !statusNote && !noMutation && ((detachedArtifactTask && !artifactCommand) || implementationCommand || implementationDirective || shipDirective || explicitCommitPushOnly || hasAny(normalized, [/작업해|진행해|만들어|적용해|개선해|보강해|커밋\s*(?:해|해줘|해주세요|하자)|푸시\s*(?:해|해줘|해주세요|하자)/]));
+	const explicitMutation = !statusNote && !noMutation && ((detachedArtifactTask && !artifactCommand) || implementationCommand || implementationDirective || shipDirective || explicitCommitPushOnly || hasAny(normalized, [/작업해|진행해|만들어|적용해|개선해|보강해|커밋(?:도|은|을|까지|만|좀)?\s*(?:해|해줘|해주세요|하자)|푸시(?:도|는|를|까지|만|좀)?\s*(?:해|해줘|해주세요|하자)/]));
 	const explicitSingleCommit = hasAny(normalized, [/단일\s*커밋|한\s*커밋|one\s*commit|single\s*commit|squash/]);
 	const workspaceAuthorization = deriveWorkspaceAuthorization(
 		request,
@@ -798,7 +825,7 @@ function consumeGuardWorkspaceAuthorization(
 	cwd: string,
 ): { consumed: boolean; reason?: string } {
 	const scope = [...state.workspaceAuthorization.events].reverse().find((event) => event.action === action)?.scope;
-	if (scope && (scope.requestId !== state.request?.id || scope.cwd !== cwd || scope.toolName !== toolName || !isDeepStrictEqual(scope.input, input))) {
+	if (scope && (scope.requestId !== state.request?.id || scope.cwd !== cwd || !sameSemanticToolCall(scope.toolName, scope.input, toolName, input))) {
 		return { consumed: false, reason: "semantic authorization의 원 요청·도구·대상이 현재 호출과 다릅니다." };
 	}
 	const consumerId = workspaceAuthorizationConsumerId(toolName, toolCallId);
@@ -816,12 +843,29 @@ function consumeGuardWorkspaceAuthorization(
 	}
 }
 
+const CORE_TOOL_NAMES = new Set(["bash", "read", "edit", "write"]);
+
+function canonicalToolName(name: string): string {
+	const lower = name.toLowerCase();
+	return CORE_TOOL_NAMES.has(lower) ? lower : name;
+}
+
+// title·timeout은 표시·실행 제한값일 뿐 승인 대상(명령·작업 대상)이 아니다.
+function semanticToolInput(toolName: string, input: Record<string, unknown>): Record<string, unknown> {
+	if (canonicalToolName(toolName) === "bash") return { command: String(input.command ?? "").trim() };
+	return Object.fromEntries(Object.entries(input).filter(([key]) => key !== "title" && key !== "timeout"));
+}
+
+function sameSemanticToolCall(leftTool: string, leftInput: Record<string, unknown>, rightTool: string, rightInput: Record<string, unknown>): boolean {
+	return canonicalToolName(leftTool) === canonicalToolName(rightTool)
+		&& isDeepStrictEqual(semanticToolInput(leftTool, leftInput), semanticToolInput(rightTool, rightInput));
+}
+
 function semanticAuthorizationMatches(state: GuardState, toolName: string, input: Record<string, unknown>, cwd: string): boolean {
 	const assessment = state.assessment;
 	return Boolean(assessment?.authorization && !assessment.consumedBy && Date.parse(assessment.expiresAt) > Date.now()
 		&& assessment.requestId === state.request?.id && state.request.cwd === cwd
-		&& assessment.authorization.toolName === toolName
-		&& isDeepStrictEqual(assessment.authorization.input, input));
+		&& sameSemanticToolCall(assessment.authorization.toolName, assessment.authorization.input, toolName, input));
 }
 
 function persistSemanticAssessment(pi: ExtensionAPI, state: GuardState): void {
@@ -880,7 +924,7 @@ function applySemanticAssessment(
 	if (!state.request || state.intent === "status_note") throw new Error("원 user/command 요청이 없는 status/custom follow-up은 semantic authority를 부여할 수 없습니다.");
 	if (assessment.requestId !== state.request.id) throw new Error("semantic assessment의 requestId가 현재 원 사용자 요청과 다릅니다.");
 	if (!reason.trim()) throw new Error("semantic assessment에는 원 사용자 요청에 근거한 reason이 필요합니다.");
-	const authorization = assessment.authorization;
+	const authorization = assessment.authorization && { ...assessment.authorization, toolName: canonicalToolName(assessment.authorization.toolName) };
 	let workspaceAuthorization = state.workspaceAuthorization;
 	if (authorization) {
 		const { toolName, input } = authorization;
@@ -902,13 +946,15 @@ function applySemanticAssessment(
 				throw new Error("의미 판단으로 지정한 development base와 hotfix: true가 일치하지 않습니다.");
 			}
 			const previous = state.workspaceAuthorization.events.findLast((event) => event.scope?.requestId === state.request!.id
-				&& event.scope.toolName === toolName && isDeepStrictEqual(event.scope.input, input));
+				&& sameSemanticToolCall(event.scope.toolName, event.scope.input, toolName, input));
 			if (previous?.consumedAt) throw new Error("이 semantic workspace authorization은 이미 사용했습니다.");
 			if (!previous || (previous.expiresAt && Date.parse(previous.expiresAt) <= Date.now())) workspaceAuthorization = appendWorkspaceAuthorizationEvent(workspaceAuthorization, createWorkspaceAuthorizationEvent({
 				source: "tool", sourceId: `workflow_guard:adopt:${state.request.id}`, action, decision: "allow",
 				text: state.request.prompt, scope: { requestId: state.request.id, cwd: state.request.cwd, toolName, input: structuredClone(input) },
 			}));
-		} else if (state.assessment?.consumedBy && isDeepStrictEqual(state.assessment.authorization, authorization)) {
+		} else if (state.assessment?.consumedBy && state.assessment.authorization
+			&& sameSemanticToolCall(state.assessment.authorization.toolName, state.assessment.authorization.input, toolName, input)
+			&& state.assessment.authorization.base === authorization.base) {
 			throw new Error("이 semantic authorization은 이미 사용했습니다.");
 		}
 	}
@@ -1681,6 +1727,14 @@ export default function workflowGuard(
 		restoreAdaptiveThinking(pi, key, adaptiveThinkingBySession);
 		for (const cache of [guardBySession, latestIntentBySession, activeContinuationBySession, lightPushDoneBySession, packageResolveFailuresBySession, validationFailuresBySession, pendingCommitDecisions]) cache.delete(key);
 		// The next turn/tool rebuilds from getBranch(), including consumed authorization entries.
+	});
+
+	pi.on("input", (event, ctx) => {
+		if (!event.streamingBehavior || event.source === "extension") return { action: "continue" };
+		const key = sessionKey(ctx);
+		const state = guardBySession.get(key);
+		if (state) guardBySession.set(key, applySteeringInput(state, event.text));
+		return { action: "continue" };
 	});
 
 	pi.on("before_agent_start", async (event, ctx) => {
