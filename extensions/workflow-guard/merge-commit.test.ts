@@ -364,14 +364,27 @@ test("커밋만 허용한 요청에서 TUI 단일 커밋 선택이 push 권한�
 	assert.equal(commit, undefined); assert.equal(push?.block, true); assert.match(push.reason, /push/);
 });
 
-test("한 bash 호출의 stage와 commit은 미실행 경계를 명확히 알린다", async (t) => {
+test("한 bash 호출의 stage와 commit은 막지 않고 실제 index를 바꾸지 않은 채 검사한다", async (t) => {
 	// given
 	const repo = await fixture(t, { conflict: true }); const h = harness(repo.cwd); await start(h);
 	const index = git(repo.cwd, "ls-files", "--stage");
 	// when
-	const blocked = await commitCheck(h, "git add note.txt && git commit -m merge");
+	const checked = await commitCheck(h, "git add note.txt && git commit -m merge");
+	// then - 명령 형태로 막지 않되, 검사용 git add는 임시 index에만 적용된다.
+	assert.equal(checked, undefined);
+	assert.equal(git(repo.cwd, "ls-files", "--stage"), index);
+});
+
+test("한 bash 호출로 큰 변경을 stage해 커밋하면 임시 index로 재현해 큰 커밋을 막는다", async (t) => {
+	// given
+	const repo = await fixture(t, { merge: false, files: 1 });
+	for (let i = 0; i < 12; i++) await writeFile(join(repo.cwd, `bulk-${i}.txt`), "bulk\n".repeat(100));
+	const h = harness(repo.cwd); await start(h);
+	const index = git(repo.cwd, "ls-files", "--stage");
+	// when
+	const blocked = await commitCheck(h, "git add . && git commit -m bulk");
 	// then
-	assert.equal(blocked?.block, true); assert.match(blocked.reason, /No command.*executed/);
+	assert.equal(blocked?.block, true);
 	assert.equal(git(repo.cwd, "ls-files", "--stage"), index);
 });
 

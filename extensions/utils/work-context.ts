@@ -77,6 +77,8 @@ export interface WorkContextCard {
 export interface WorkContextGateResult {
 	level: WorkContextGateLevel;
 	reasons: string[];
+	// 사용자 결정·보류로 멈춘 사유. 범위 불일치 같은 기록 불일치와 달리 실행을 멈춰야 한다.
+	holds?: string[];
 	card?: WorkContextCard;
 }
 
@@ -462,14 +464,15 @@ export function gateWorkContext(card: WorkContextCard | undefined, options: { ac
 	});
 	if (decisionRecordsOnly) return { level: "pass", reasons: [], card };
 	const reasons: string[] = [];
+	const holds: string[] = [];
 	const currentId = card.currentSlice?.id;
-	if (card.currentSlice?.taskId && card.currentSlice.status === "blocked") reasons.push(`연결 Task #${card.currentSlice.taskId}가 차단·보류 상태이거나 유효하지 않습니다.`);
+	if (card.currentSlice?.taskId && card.currentSlice.status === "blocked") holds.push(`연결 Task #${card.currentSlice.taskId}가 차단·보류 상태이거나 유효하지 않습니다.`);
 	if (options.requireSlice && card.slices.length > 0 && !card.currentSlice) {
 		reasons.push("implementation_plan.slices는 있지만 currentSlice가 없습니다. 먼저 work_context set_slice로 현재 slice를 고정해야 합니다.");
 	}
 	const blockingQuestions = card.openQuestions.filter((question) => currentId && question.blocks?.includes(currentId));
 	if (blockingQuestions.length > 0) {
-		reasons.push(`currentSlice ${currentId}는 열린 사용자 결정에 막혀 있습니다: ${blockingQuestions.map((q) => q.id).join(", ")}`);
+		holds.push(`currentSlice ${currentId}는 열린 사용자 결정에 막혀 있습니다: ${blockingQuestions.map((q) => q.id).join(", ")}`);
 	}
 	const scope = card.currentSlice?.scope ?? [];
 	if (scope.length > 0 && options.paths?.length) {
@@ -480,7 +483,7 @@ export function gateWorkContext(card: WorkContextCard | undefined, options: { ac
 			reasons.push(`currentSlice 범위 밖 파일이 포함됐습니다: ${outside.slice(0, 8).join(", ")}`);
 		}
 	}
-	return { level: reasons.length > 0 ? "block" : "pass", reasons, card };
+	return { level: reasons.length + holds.length > 0 ? "block" : "pass", reasons: [...holds, ...reasons], holds, card };
 }
 
 export function formatWorkContextCard(card: WorkContextCard, maxItems = 4): string {

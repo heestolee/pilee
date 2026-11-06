@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { homedir } from "node:os";
+import { copyFile, rm } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { homedir, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
@@ -10,7 +11,7 @@ import { parseSubagentCommandVerb } from "../subagent/cli.ts";
 import { singleCommitApprovalPrompt } from "../tui-ask/index.ts";
 import { stagedDiffSummary, type StagedDiffSummary } from "./commit-scope.ts";
 import { latestAgentRequest, readAgentStartInput } from "../utils/agent-start-input.ts";
-import { loadWorkflowGuardProfiles } from "../utils/private-profiles.ts";
+import { loadWorkflowGuardProfiles, loadWorktreeRepoProfiles, type WorktreeRepoProfile } from "../utils/private-profiles.ts";
 import {
 	appendWorkspaceAuthorizationEvent,
 	consumeWorkspaceAuthorization,
@@ -67,6 +68,8 @@ interface GuardState {
 	weight: WorkflowWeight;
 	explicitHeavy: boolean;
 	explicitMutation: boolean;
+	// 사용자가 "실행하지 말고", "원인만 조사"처럼 실행·변경을 직접 막은 경우. 분류 추정(investigate)과 구분한다.
+	explicitReadOnly?: boolean;
 	explicitSingleCommit: boolean;
 	explicitCommitPushOnly: boolean;
 	explicitPrAction: boolean;
@@ -362,6 +365,14 @@ function isFollowUpCorrectionPrompt(normalized: string): boolean {
 	]);
 }
 
+function requestsReadOnly(normalized: string): boolean {
+	return hasAny(normalized, [
+		/(?:실행|수정|변경|설치|커밋|푸시|건드리|고치|반영|적용)(?:은|는|도|를|을)?\s*(?:하|되)?지\s*(?:말|마)/,
+		/(?:원인|확인|조사|분석|상태|리뷰|검토|보기|읽기|파악)만/,
+		/\bread[- ]?only\b|\b(?:do\s*not|don't)\s+(?:run|execute|change|modify|edit|install)\b|\bonly\s+(?:investigate|check|look|read)\b/,
+	]);
+}
+
 function requestsNoMutation(normalized: string): boolean {
 	return hasAny(normalized, [/수정하지|고치지|변경하지|건드리지|커밋하지|푸시하지|하지\s*마|하지마|no\s*(edit|change|commit|push)|do\s*not\s*(edit|change|commit|push)/]);
 }
@@ -373,8 +384,8 @@ function applySteeringInput(state: GuardState, text: string): GuardState {
 	if (steer.intent === "status_note") return state;
 	const prompt = `${state.request.prompt}\n${steer.prompt}`;
 	const request = { ...state.request, prompt };
-	if (requestsNoMutation(normalizeText(steer.prompt))) {
-		return { ...state, prompt, request: { ...request, mutationHint: false }, explicitMutation: false, assessment: undefined, summary: `${state.summary} · steer=no-mutation` };
+	if (requestsNoMutation(normalizeText(steer.prompt)) || (steer.explicitReadOnly && !steer.explicitMutation)) {
+		return { ...state, prompt, request: { ...request, mutationHint: false }, explicitMutation: false, explicitReadOnly: true, assessment: undefined, summary: `${state.summary} · steer=no-mutation` };
 	}
 	if (!steer.explicitMutation) return { ...state, prompt, request };
 	const upgrade = ["unknown", "investigate", "answer", "audit"].includes(state.intent);
@@ -382,7 +393,7 @@ function applySteeringInput(state: GuardState, text: string): GuardState {
 	const weight = upgrade ? steer.weight : state.weight;
 	return {
 		...state, prompt, request: { ...request, mutationHint: true }, intent, weight,
-		explicitMutation: true, explicitCommitPushOnly: state.explicitCommitPushOnly || steer.explicitCommitPushOnly,
+		explicitMutation: true, explicitReadOnly: false, explicitCommitPushOnly: state.explicitCommitPushOnly || steer.explicitCommitPushOnly,
 		// 사람이 직접 지시했으므로 이전 단일 호출 승인으로 범위를 좁히지 않는다.
 		assessment: undefined,
 		summary: [`intent=${intent}`, `weight=${weight}`, ...state.summary.split(" · ").filter((part) => !/^(?:intent|weight|mutation|authority)=/.test(part)), "steer=explicit-mutation"].join(" · "),
@@ -493,7 +504,8 @@ function classifyPrompt(
 		!explicitMutation ? (intent === "unknown" ? "mutation=unassessed" : "mutation=not-requested") : null,
 	].filter(Boolean).join(" · ");
 
-	return { prompt: authoritativePrompt, intent, weight, explicitHeavy, explicitMutation, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, explicitIssueAction, explicitExternalPublish, auditRequired, sqlReview, detachedArtifactTask, mixedRequest, parallelInvestigationSuggested, summary, continuationCue, followUpCorrection, largeWorkObserved: false, workspaceAuthorization, createdAt: new Date().toISOString(), sessionFile };
+	const explicitReadOnly = !statusNote && (noMutation || requestsReadOnly(normalized));
+	return { prompt: authoritativePrompt, intent, weight, explicitHeavy, explicitMutation, explicitReadOnly, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, explicitIssueAction, explicitExternalPublish, auditRequired, sqlReview, detachedArtifactTask, mixedRequest, parallelInvestigationSuggested, summary, continuationCue, followUpCorrection, largeWorkObserved: false, workspaceAuthorization, createdAt: new Date().toISOString(), sessionFile };
 }
 
 function adaptiveMaxReason(prompt: string): AdaptiveThinkingEscalation["reason"] | undefined {
@@ -794,8 +806,8 @@ function highRiskMutationBlockReason(state: GuardState, toolName: string, input:
 	if (semanticAuthorizationMatches(state, toolName, input, cwd)) return undefined;
 	if (state.explicitMutation && (state.request?.mutationHint ?? state.explicitMutation) && !state.assessment?.authorization && state.intent !== "status_note") return undefined;
 	return [
-		`workflow_guard blocked ${toolName}: this high-risk action was not explicitly requested (${state.summary}).`,
-		"Ordinary edit/write/file-producing bash calls are soft-guided and are not blocked by intent classification.",
+		`workflow_guard blocked ${toolName}: protected-repository worktree creation was not explicitly requested (${state.summary}).`,
+		"Ordinary commit/push/install/edit calls are never blocked by intent classification.",
 		"This may be a heuristic miss, not a user refusal. For an explicit request use workflow_guard adopt with assessment.requestId and exact authorization {toolName,input}; ask only if real authority is missing or ambiguous.",
 	].join("\n");
 }
@@ -1172,6 +1184,189 @@ function isHighRiskBashMutation(command: string): boolean {
 		|| /(^|[;&|]\s*)rm\s+-rf\b/.test(compact);
 }
 
+// 사용자가 요청하지 않았을 때만 막는 되돌리기 어려운 변경. 일반 commit/push/install은 막지 않는다.
+function isDangerousBashMutation(command: string): boolean {
+	const dangerousGit = semanticGitCommands(command).some((args) => {
+		const rest = args.slice(1);
+		if (args[0] === "push") {
+			return rest.some((arg) => /^(?:--force|--force-with-lease(?:=.*)?|--force-if-includes|--delete|--mirror|--prune)$/.test(arg)
+				|| (/^-[A-Za-z]+$/.test(arg) && /[fd]/.test(arg.slice(1)))
+				|| /^[+:]/.test(arg));
+		}
+		if (args[0] === "commit") return rest.includes("--amend");
+		if (args[0] === "reset") return rest.includes("--hard");
+		if (args[0] === "clean") return rest.some((arg) => arg.startsWith("-"));
+		return false;
+	});
+	return dangerousGit || /(^|[;&|]\s*)rm\s+-rf\b/.test(command.replace(/\s+/g, " ").trim());
+}
+
+// 되돌리기 어려운 작업은 "푸시해" 같은 일반 지시가 아니라 그 작업 자체를 말했을 때만 허용한다.
+function dangerousOperationMentions(command: string): RegExp[] {
+	const mentions: RegExp[] = [];
+	for (const args of semanticGitCommands(command)) {
+		const rest = args.slice(1);
+		if (args[0] === "push") {
+			if (rest.some((arg) => /^(?:--force|--force-with-lease(?:=.*)?|--force-if-includes|--mirror)$/.test(arg) || (/^-[A-Za-z]+$/.test(arg) && arg.includes("f")) || arg.startsWith("+"))) mentions.push(/force|강제|포스/);
+			if (rest.some((arg) => /^(?:--delete|--prune)$/.test(arg) || (/^-[A-Za-z]+$/.test(arg) && arg.includes("d")) || arg.startsWith(":"))) mentions.push(/delete|삭제|지워|지우/);
+		}
+		if (args[0] === "commit" && rest.includes("--amend")) mentions.push(/amend|어멘드|아멘드/);
+		if (args[0] === "reset" && rest.includes("--hard")) mentions.push(/reset|리셋|되돌|초기화/);
+		if (args[0] === "clean" && rest.some((arg) => arg.startsWith("-"))) mentions.push(/clean|정리|청소/);
+	}
+	if (/(^|[;&|]\s*)rm\s+-rf\b/.test(command.replace(/\s+/g, " ").trim())) mentions.push(/rm\s|삭제|지워|지우|정리/);
+	return mentions;
+}
+
+function dangerousMutationBlockReason(state: GuardState, input: Record<string, unknown>, cwd: string): string | undefined {
+	if (semanticAuthorizationMatches(state, "bash", input, cwd)) return undefined;
+	const prompt = normalizeText(state.request?.prompt ?? state.prompt);
+	const mentions = dangerousOperationMentions(String(input.command ?? ""));
+	if (state.explicitMutation && state.intent !== "status_note" && mentions.every((mention) => mention.test(prompt))) return undefined;
+	return [
+		`workflow_guard blocked bash: 되돌리기 어려운 작업(강제·삭제 push, --amend, reset --hard, clean, rm -rf)은 사용자가 그 작업을 직접 말했을 때만 실행합니다 (${state.summary}).`,
+		"일반 commit/push/install은 막지 않습니다. 사용자가 이 작업을 요청했다면 workflow_guard adopt로 정확한 명령을 보정하세요.",
+	].join("\n");
+}
+
+function gitTargetCwd(tokens: string[], cwd: string): string {
+	let target = cwd;
+	for (let index = 1; index < tokens.length && tokens[index]!.startsWith("-"); index++) {
+		const option = tokens[index]!;
+		if (option === "-C" && tokens[index + 1]) target = resolve(target, tokens[++index]!);
+		else if (["-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--exec-path"].includes(option)) index += 1;
+	}
+	return target;
+}
+
+interface CommitInspection {
+	cwd: string;
+	adds: Array<{ cwd: string; args: string[] }>;
+	all: boolean;
+	exact: boolean;
+}
+
+const COMMIT_VALUE_OPTIONS = new Set(["-m", "--message", "-F", "--file", "-C", "--reuse-message", "-c", "--reedit-message", "--author", "--date", "--cleanup", "-t", "--template", "--fixup", "--squash", "--trailer", "--pathspec-from-file"]);
+const INDEX_CHANGING_GIT = new Set(["rm", "mv", "restore", "reset", "stash", "checkout", "switch", "update-index", "read-tree", "apply", "am", "cherry-pick", "revert", "merge", "rebase", "pull"]);
+
+// 명령 형태(git add && git commit, 파이프, cd)는 막지 않고, 커밋될 index를 최대한 그대로 재현해 검사한다.
+function commitInspection(command: string, cwd: string): CommitInspection {
+	let current = cwd;
+	let exact = true;
+	const adds: CommitInspection["adds"] = [];
+	for (const raw of tokenizeShellCommands(command)) {
+		const tokens = unwrapShellPrefixes(raw);
+		if (executableName(tokens[0]) === "cd") {
+			if (tokens[1] && !tokens[1].startsWith("-")) current = resolve(current, tokens[1].replace(/^~(?=\/|$)/, homedir()));
+			else exact = false;
+			continue;
+		}
+		const args = gitArguments(tokens);
+		if (!args) continue;
+		// repo/index/config를 바꾸는 환경변수나 래퍼가 붙으면 검사한 index와 실제 커밋이 다를 수 있다.
+		const prefix = raw.slice(0, raw.length - tokens.length);
+		if (prefix.some((token) => !/^GIT_OPTIONAL_LOCKS=[01]$/.test(token))) exact = false;
+		if (tokens.some((token) => /^--(?:git-dir|work-tree)(?:=|$)/.test(token))) exact = false;
+		const target = gitTargetCwd(tokens, current);
+		if (args[0] === "add") {
+			adds.push({ cwd: target, args: args.slice(1) });
+			continue;
+		}
+		if (args[0] === "commit") {
+			let all = false;
+			const options = args.slice(1);
+			for (let index = 0; index < options.length; index++) {
+				const option = options[index]!;
+				if (/^\d*[<>]/.test(option)) continue;
+				if (option === "--") { exact = false; break; }
+				if (COMMIT_VALUE_OPTIONS.has(option)) { index += 1; continue; }
+				if (option === "--all") { all = true; continue; }
+				if (["--include", "--only", "--interactive", "--patch"].includes(option)) { exact = false; continue; }
+				if (/^-[A-Za-z]+$/.test(option)) {
+					if (option.includes("a")) all = true;
+					if (/[iop]/.test(option.slice(1))) exact = false;
+					if (/[mFcCt]$/.test(option)) index += 1;
+					continue;
+				}
+				if (!option.startsWith("-")) exact = false;
+			}
+			if (adds.some((addition) => addition.cwd !== target)) exact = false;
+			return { cwd: target, adds: adds.filter((addition) => addition.cwd === target), all, exact };
+		}
+		if (INDEX_CHANGING_GIT.has(args[0]!)) exact = false;
+	}
+	return { cwd: current, adds, all: false, exact: false };
+}
+
+// 같은 명령의 git add는 임시 index에만 적용해 실제 index를 바꾸지 않고 커밋 내용을 재현한다.
+async function inspectCommitIndex(pi: Pick<ExtensionAPI, "exec">, inspection: CommitInspection): Promise<StagedDiffSummary | null> {
+	const additions = [...inspection.adds, ...(inspection.all ? [{ cwd: inspection.cwd, args: ["-u"] }] : [])];
+	if (!additions.length) return stagedDiffSummary(pi, inspection.cwd);
+	const gitPath = await pi.exec("git", ["rev-parse", "--git-path", "index"], { cwd: inspection.cwd, timeout: 15_000 });
+	if (gitPath.code !== 0 || !gitPath.stdout?.trim()) return stagedDiffSummary(pi, inspection.cwd);
+	const scratch = join(tmpdir(), `workflow-guard-index-${randomUUID()}`);
+	const scoped = {
+		exec: (command: string, args: string[], options?: Parameters<ExtensionAPI["exec"]>[2]) => command === "git"
+			? pi.exec("env", [`GIT_INDEX_FILE=${scratch}`, "git", ...args], options)
+			: pi.exec(command, args, options),
+	} as Pick<ExtensionAPI, "exec">;
+	try {
+		try {
+			await copyFile(resolve(inspection.cwd, gitPath.stdout.trim()), scratch);
+		} catch (error) {
+			// 재현용 임시 index를 못 만들면 현재 index 기준 검사로 돌아간다.
+			if ((error as NodeJS.ErrnoException).code !== "ENOENT") return stagedDiffSummary(pi, inspection.cwd);
+		}
+		for (const addition of additions) {
+			const result = await scoped.exec("git", ["add", ...addition.args], { cwd: addition.cwd, timeout: 30_000 });
+			if (result.code !== 0) return stagedDiffSummary(pi, inspection.cwd);
+		}
+		return await stagedDiffSummary(scoped, inspection.cwd);
+	} finally {
+		await rm(scratch, { force: true });
+		await rm(`${scratch}.lock`, { force: true });
+	}
+}
+
+function worktreeAddCwds(command: string, cwd: string): string[] {
+	let current = cwd;
+	const targets: string[] = [];
+	for (const raw of tokenizeShellCommands(command)) {
+		const tokens = unwrapShellPrefixes(raw);
+		if (executableName(tokens[0]) === "cd" && tokens[1]) {
+			current = resolve(current, tokens[1].replace(/^~(?=\/|$)/, homedir()));
+			continue;
+		}
+		const args = gitArguments(tokens);
+		if (args?.[0] === "worktree" && args[1] === "add") targets.push(gitTargetCwd(tokens, current));
+	}
+	return targets.length ? targets : [cwd];
+}
+
+// worktree 생성 규칙은 프로필에 등록된 보호 저장소에만 적용한다. 프로필이 없으면 기존처럼 모두 보호한다.
+async function isProtectedWorktreeRepo(pi: Pick<ExtensionAPI, "exec">, cwd: string, profiles: WorktreeRepoProfile[]): Promise<boolean> {
+	if (!profiles.length) return true;
+	const read = async (args: string[]) => {
+		const result = await pi.exec("git", args, { cwd, timeout: 15_000 }).catch(() => undefined);
+		return result?.code === 0 ? (result.stdout ?? "").trim() : "";
+	};
+	const root = (await read(["rev-parse", "--show-toplevel"])) || cwd;
+	const remote = await read(["config", "--get", "remote.origin.url"]);
+	const paths = [root, cwd];
+	return profiles.some((profile) => {
+		const match = profile.match;
+		const rootDir = profile.rootDir?.replace("{home}", homedir());
+		if (rootDir && paths.some((path) => path === rootDir || path.startsWith(`${rootDir}/`))) return true;
+		if (!match) return false;
+		return (match.pathRegexes ?? []).some((pattern) => {
+			try { return paths.some((path) => new RegExp(pattern).test(path)); } catch { return false; }
+		})
+			|| (match.pathIncludes ?? []).some((part) => paths.some((path) => path.includes(part)))
+			|| (match.rootBasenames ?? []).includes(basename(root))
+			|| Boolean(remote && (match.remoteIncludes ?? []).some((part) => remote.includes(part)));
+	});
+}
+
 function gitWorktreeAddCommandCount(command: string): number {
 	return semanticGitCommands(command).filter((args) => args[0] === "worktree" && args[1] === "add").length;
 }
@@ -1496,14 +1691,26 @@ function isDeepContextMiningCommand(command: string): boolean {
 	return /(^|[;&|]\s*)(find|rg|grep|cat|sed|awk|python|python3|node)\b/.test(compact);
 }
 
-function formatWorkContextBlock(result: WorkContextGateResult, toolName: string): string {
+// 열린 사용자 결정·보류된 Task는 실행을 멈추고, 범위 불일치는 경고로만 남긴다.
+function workContextGateOutcome(result: WorkContextGateResult, toolName: string): { block?: string; note?: string } {
+	if (result.level !== "block") return {};
+	if (result.holds?.length) {
+		return { block: [
+			`workflow_guard blocked ${toolName}: 사용자 결정이나 보류가 풀리지 않았습니다.`,
+			...result.holds.map((reason) => `- ${reason}`),
+			"- 결정을 기록하거나 사용자에게 묻고 진행하세요.",
+			result.card ? formatWorkContextCard(result.card) : "",
+		].filter(Boolean).join("\n") };
+	}
+	return { note: workContextScopeNote(result, toolName) };
+}
+
+function workContextScopeNote(result: WorkContextGateResult, toolName: string): string {
 	return [
-		`workflow_guard blocked ${toolName}: Working Context Card gate failed.`,
+		`[workflow_guard] scopeNote: ${toolName}을 막지 않았지만 현재 Working Context slice와 맞지 않습니다.`,
 		...result.reasons.map((reason) => `- ${reason}`),
-		"",
-		"Set or refresh the current slice with work_context before retrying, or explicitly update the card if scope changed.",
-		result.card ? formatWorkContextCard(result.card) : "",
-	].filter(Boolean).join("\n");
+		"- 작업 범위가 바뀌었다면 work_context set_slice로 카드를 갱신하세요.",
+	].join("\n");
 }
 
 function workContextSection(card?: WorkContextCard): string {
@@ -1706,7 +1913,7 @@ function actionContinuityNote(kind: string, details: any): string | undefined {
 
 export default function workflowGuard(
 	pi: ExtensionAPI,
-	options: { trustedInternalPullRequestRepositories?: string[] } = {},
+	options: { trustedInternalPullRequestRepositories?: string[]; worktreeRepoProfiles?: WorktreeRepoProfile[] } = {},
 ) {
 	const trustedInternalPullRequestRepositories = options.trustedInternalPullRequestRepositories
 		?? loadWorkflowGuardProfiles().flatMap((profile) => profile.trustedInternalPullRequestRepositories ?? []);
@@ -1714,6 +1921,13 @@ export default function workflowGuard(
 	const latestIntentBySession = new Map<string, GuardState>();
 	const activeContinuationBySession = new Map<string, GuardState>();
 	const pendingCommitDecisions = new Map<string, { toolCallId: string; requestId: string; cwd: string; command: string; input: { question: string; options: string[] }; identity: string; receipt?: { action: string; details: unknown } }>();
+	// 막지 않기로 한 판단은 해당 도구 결과에 경고로만 남긴다.
+	const softNotes = new Map<string, string[]>();
+	const addSoftNote = (ctx: Parameters<typeof sessionKey>[0], toolCallId: string | undefined, note: string) => {
+		if (softNotes.size > 200) softNotes.clear();
+		const key = `${sessionKey(ctx)}:${toolCallId ?? ""}`;
+		softNotes.set(key, [...(softNotes.get(key) ?? []), note]);
+	};
 	pi.events?.on("pilee:tui-commit-decision", (raw) => {
 		const event = raw as { sessionKey: string; toolCallId: string; command: string; action?: string; details: unknown };
 		const pending = pendingCommitDecisions.get(event.sessionKey);
@@ -1875,7 +2089,9 @@ export default function workflowGuard(
 			const mutationPath = String(event.input?.path ?? "");
 			if (state.explicitMutation && card && pathBelongsToWorkContext(card, mutationPath) && (state.weight === "standard" || state.weight === "full")) {
 				const result = gateWorkContext(card, { action: "mutate", paths: [mutationPath], requireSlice: true });
-				if (result.level === "block") return { block: true, reason: formatWorkContextBlock(result, event.toolName) };
+				const outcome = workContextGateOutcome(result, event.toolName);
+				if (outcome.block) return { block: true, reason: outcome.block };
+				if (outcome.note) addSoftNote(ctx, event.toolCallId, outcome.note);
 			}
 		}
 
@@ -1929,10 +2145,18 @@ export default function workflowGuard(
 			if (state.continuationScope && (!scopedBashAllowed(ctx.cwd, command) || directWorktreeAdd || isHighRiskBashMutation(command) || isExternalIssueOrPrCreateCommand(command))) {
 				return { block: true, reason: `workflow_guard: ${state.continuationScope} follow-up is scoped to review/learning artifacts.` };
 			}
-			if (directWorktreeAddCount > 1) {
+			const protectedWorktreeAdd = directWorktreeAdd && await (async () => {
+				let profiles: WorktreeRepoProfile[] = [];
+				try { profiles = options.worktreeRepoProfiles ?? loadWorktreeRepoProfiles(); } catch {}
+				for (const target of worktreeAddCwds(command, ctx.cwd)) {
+					if (await isProtectedWorktreeRepo(pi, target, profiles)) return true;
+				}
+				return false;
+			})();
+			if (protectedWorktreeAdd && directWorktreeAddCount > 1) {
 				return { block: true, reason: "workflow_guard blocked git worktree add: one authorization event permits exactly one workspace action." };
 			}
-			if (directWorktreeAdd) {
+			if (protectedWorktreeAdd) {
 				if (!isWorkspaceActionAuthorized(state.workspaceAuthorization, "create-worktree")) {
 					return { block: true, reason: workspaceAuthorizationBlockReason(state, "git worktree add", "create-worktree") };
 				}
@@ -1958,23 +2182,35 @@ export default function workflowGuard(
 				return { block: true, reason: heavyToolBlockReason(state, "deep context mining") };
 			}
 			if (isGitCommitCommand(command)) {
+				const inspection = commitInspection(command, ctx.cwd);
 				try {
-					const targetCwd = indexCommitCwd(command, ctx.cwd);
-					const summary = await stagedDiffSummary(pi, targetCwd);
-					if (summary) pendingCommitApproval = commitApprovalMatches(state, summary, targetCwd);
+					const summary = await inspectCommitIndex(pi, inspection);
+					// 승인 snapshot은 현재 index를 그대로 커밋하는 호출에만 적용한다.
+					if (summary && inspection.exact && !inspection.adds.length && !inspection.all) pendingCommitApproval = commitApprovalMatches(state, summary, inspection.cwd);
 					if (summary?.large && !pendingCommitApproval) return { block: true, reason: formatLargeCommitBlock(summary) };
-					const commitCard = targetCwd === ctx.cwd ? card : loadOrDeriveWorkContext(targetCwd, ctx.sessionManager?.getSessionFile?.());
+					const commitCard = inspection.cwd === ctx.cwd ? card : loadOrDeriveWorkContext(inspection.cwd, ctx.sessionManager?.getSessionFile?.());
 					if (commitCard && summary?.files.length && !/WORK_CONTEXT_ALLOW_SCOPE=1|work-context:allow-scope/.test(command)) {
 						const result = gateWorkContext(commitCard, { action: "commit", paths: summary.files, requireSlice: state.weight === "standard" || state.weight === "full" });
-						if (result.level === "block") return { block: true, reason: formatWorkContextBlock(result, "git commit") };
+						const outcome = workContextGateOutcome(result, "git commit");
+						if (outcome.block) return { block: true, reason: outcome.block };
+						if (outcome.note) addSoftNote(ctx, event.toolCallId, outcome.note);
 					}
+					if (!inspection.exact) addSoftNote(ctx, event.toolCallId, "[workflow_guard] commitInspection: 명령 형태 때문에 커밋 내용을 정확히 재현하지 못해 현재 index 기준으로만 크기를 검사했고 막지 않았습니다.");
 				} catch (error) {
+					// 미해결 충돌·비정상 병합 등 index 자체가 이상한 상태만 여기까지 온다.
 					return { block: true, reason: `workflow_guard blocked git commit: ${error instanceof Error ? error.message : String(error)}. No command in this bash call has executed.` };
 				}
 			}
-			if (isHighRiskBashMutation(command) && !directWorktreeAdd && !pendingCommitApproval) {
-				const reason = highRiskMutationBlockReason(state, "bash", event.input ?? {}, ctx.cwd);
+			if (isDangerousBashMutation(command) && !pendingCommitApproval) {
+				const reason = dangerousMutationBlockReason(state, event.input ?? {}, ctx.cwd);
 				if (reason) return { block: true, reason };
+			} else if (isHighRiskBashMutation(command) && !state.explicitMutation && !pendingCommitApproval) {
+				if (state.explicitReadOnly && !semanticAuthorizationMatches(state, "bash", event.input ?? {}, ctx.cwd)) {
+					return { block: true, reason: `workflow_guard blocked bash: the user explicitly asked for read-only/no-execution in this request, so this mutation was not explicitly requested (${state.summary}). Follow the user's newer instruction if it changed.` };
+				}
+				if (["answer", "investigate", "audit"].includes(state.intent)) {
+					addSoftNote(ctx, event.toolCallId, "[workflow_guard] mutationNote: 현재 요청은 조회로 분류됐지만 막지 않았습니다. 실행한 변경을 보고에 분명히 밝히세요.");
+				}
 			}
 		}
 
@@ -2006,6 +2242,9 @@ export default function workflowGuard(
 
 	pi.on("tool_result", async (event, ctx) => {
 		const state = ctx ? guardBySession.get(sessionKey(ctx)) : undefined;
+		const softNoteKey = ctx ? `${sessionKey(ctx)}:${event.toolCallId ?? ""}` : undefined;
+		const softNote = softNoteKey ? softNotes.get(softNoteKey)?.join("\n") : undefined;
+		if (softNoteKey) softNotes.delete(softNoteKey);
 		if (ctx && state) {
 			// A proven no-op may be retried; success or an ambiguous failure never renews execution authority.
 			const consumerId = workspaceAuthorizationConsumerId(event.toolName, event.toolCallId);
@@ -2066,7 +2305,7 @@ export default function workflowGuard(
 			if (shouldStopAfterPush(state) && pushed) {
 				lightPushDoneBySession.set(sessionKey(ctx), true);
 				const note = [
-					"",
+					softNote ?? "",
 					"[workflow_guard] terminalActionRequired: true",
 					"- Light task reached successful push.",
 					"- Stop tool use now. Do not run extra `git status`, `git log`, `gh pr view`, `work_context`, or PR/branch checks.",
@@ -2129,7 +2368,7 @@ export default function workflowGuard(
 		const continuityNote = actionContinuityNote(event.toolName, event.details);
 		const commitStopLineNote = commitCompleteStopLineNote(state, event);
 		const paceNote = state ? fastPaceToolResultNote(state, event) : undefined;
-		const note = [largeWorkRoutingCheckpoint, continuityNote, validationWrapperNudge, packageResolveNote, validationLoopNote, commitStopLineNote, paceNote].filter(Boolean).join("\n");
+		const note = [softNote, largeWorkRoutingCheckpoint, continuityNote, validationWrapperNudge, packageResolveNote, validationLoopNote, commitStopLineNote, paceNote].filter(Boolean).join("\n");
 		if (!note) return undefined;
 		return appendWorkflowGuardResult(event, note, {
 			nextActionRequired: Boolean(continuityNote),
