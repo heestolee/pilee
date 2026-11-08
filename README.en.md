@@ -468,22 +468,22 @@ The linked knowledge docs are currently Korean. This English README keeps the sa
 
 | Agent | Symbol | Model | Role |
 |---|---|---|---|
-| **worker** | `>>` | gpt-6.1-sol (max, fallback: Astra → 5.6 Sol) | General implementation and fixes |
-| **finder** | `>>/` | gpt-6.1-sol (low, fallback: Astra → 5.6 Luna) | Code/file search with read-only tools |
-| **searcher** | `>>?` | gpt-6.1-sol (high, fallback: Astra → 5.6 Terra → 5.6 Sol) | Web research and documentation lookup |
-| **planner** | `>>#` | gpt-6.1-sol (max, fallback: Astra → 5.6 Sol) | Implementation planning |
-| **challenger** | `>>!` | claude-opus-5-5 (max, fallback: Astra → 6.1 Sol) | Challenge hidden assumptions and decisions |
-| **browser** | `>>@` | gpt-6.1-sol (high, fallback: Astra → 5.6 Sol) | Playwright E2E and UI checks |
-| **bootstrapper** | internal `/wt` | gpt-6.1-sol (low, fallback: Astra → 5.6 Luna) | Dependency readiness orchestrator |
-| **meta-review-question-worker** | internal Meta Review | gpt-6.1-sol (max, fallback: Astra → 5.6 Sol → 5.6 Terra → 5.3 Spark) | Pinned-source questions and patch artifacts |
-| **study-hard-worker** | internal Study Hard | gpt-6.1-sol (max, fallback: Astra → 5.6 Sol → 5.6 Terra → 5.3 Spark) | Learning-note proposal artifacts |
+| **worker** | `>>` | claude-opus-5-5 (max, fallback: Astra → 5.6 Sol) | General implementation and fixes |
+| **finder** | `>>/` | claude-opus-5-5 (low, fallback: Astra → 5.6 Luna) | Code/file search with read-only tools |
+| **searcher** | `>>?` | claude-opus-5-5 (high, fallback: Astra → 5.6 Terra → 5.6 Sol) | Web research and documentation lookup |
+| **planner** | `>>#` | claude-opus-5-5 (max, fallback: Astra → 5.6 Sol) | Implementation planning |
+| **challenger** | `>>!` | gpt-6-astra (max, fallback: 6.1 Sol → Opus 5.5) | Challenge hidden assumptions and decisions |
+| **browser** | `>>@` | claude-opus-5-5 (high, fallback: Astra → 5.6 Sol) | Playwright E2E and UI checks |
+| **bootstrapper** | internal `/wt` | claude-opus-5-5 (low, fallback: Astra → 5.6 Luna) | Dependency readiness orchestrator |
+| **meta-review-question-worker** | internal Meta Review | claude-opus-5-5 (max, fallback: Astra → 5.6 Sol → 5.6 Terra → 5.3 Spark) | Pinned-source questions and patch artifacts |
+| **study-hard-worker** | internal Study Hard | claude-opus-5-5 (max, fallback: Astra → 5.6 Sol → 5.6 Terra → 5.3 Spark) | Learning-note proposal artifacts |
 
 ### Review agents (`/stress-interview`)
 
 | Agent | Perspective |
 |---|---|
-| **verifier** | Requirement evidence verdict (claude-opus-5-5, max, fallback: Astra → 6.1 Sol) |
-| **reviewer** | Correctness, security, and maintainability review (gpt-6.1-sol, max, fallback: Astra → 5.6 Sol) |
+| **verifier** | Requirement evidence verdict (gpt-6-astra, max, fallback: 6.1 Sol → Opus 5.5) |
+| **reviewer** | Correctness, security, and maintainability review (claude-opus-5-5, max, fallback: Astra → 5.6 Sol) |
 
 ---
 

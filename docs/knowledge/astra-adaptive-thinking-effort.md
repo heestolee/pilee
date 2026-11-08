@@ -33,7 +33,7 @@ related:
 
 GPT-6.1 Sol 메인 세션은 `xhigh`를 기본 effort로 사용하고, 더 많은 reasoning이 실제로 필요한 turn만 `max`로 승격합니다. `max`는 품질 보장 스위치가 아니라 더 많은 가설과 경로를 검토할 수 있게 하는 비용 높은 effort이므로 모든 요청에 고정하지 않습니다.
 
-로컬 Pi 기본 설정은 GPT-6.1 Sol `xhigh`를 사용하고 Astra를 수동 선택·fallback 모델로 유지합니다. public pilee는 사용자의 전역 설정을 강제로 덮어쓰지 않으며, 현재 세션이 OpenAI Codex Astra 또는 정확한 `gpt-6.1-sol`의 `xhigh`일 때만 `workflow-guard`가 turn-level 승격을 적용합니다.
+로컬 Pi 기본 설정은 현재 Claude Opus 5.5 `xhigh`이며 GPT-6.1 Sol과 Astra는 수동 선택·verifier/challenger·fallback 모델로 사용합니다. public pilee는 사용자의 전역 설정을 강제로 덮어쓰지 않으며, 현재 세션이 OpenAI Codex Astra 또는 정확한 `gpt-6.1-sol`의 `xhigh`일 때만 `workflow-guard`가 turn-level 승격을 적용합니다.
 
 ## Escalation Triggers
 
