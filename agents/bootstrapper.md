@@ -2,7 +2,7 @@
 name: bootstrapper
 description: Dependency readiness orchestrator — use for worktree bootstrap, environment readiness, install failure diagnosis, and main-agent unblocking
 tools: read, grep, find, ls, bash
-model: openai-codex/gpt-6.1-sol
+model: anthropic/claude-opus-5-5
 modelFallbacks: openai-codex/gpt-6-astra, openai-codex/gpt-5.6-luna
 runtime: pi
 thinking: low

@@ -1,7 +1,7 @@
 ---
 name: study-hard-worker
 description: Study Hard Glimpse 질문을 명시적 task와 최신 board state로 분석해 유연한 학습 노트 제안을 만드는 전용 worker
-model: openai-codex/gpt-6.1-sol
+model: anthropic/claude-opus-5-5
 modelFallbacks: openai-codex/gpt-6-astra, openai-codex/gpt-5.6-sol, openai-codex/gpt-5.6-terra, openai-codex/gpt-5.3-codex-spark
 runtime: pi
 thinking: max

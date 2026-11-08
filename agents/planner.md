@@ -2,7 +2,7 @@
 name: planner
 description: Strategic planning agent — clarifies scope, researches codebase evidence, produces executable implementation plans, and returns the saved plan file path
 tools: read, grep, find, bash, write
-model: openai-codex/gpt-6.1-sol
+model: anthropic/claude-opus-5-5
 modelFallbacks: openai-codex/gpt-6-astra, openai-codex/gpt-5.6-sol
 runtime: pi
 thinking: max

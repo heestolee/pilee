@@ -2,7 +2,7 @@
 name: browser
 description: Browser automation specialist — use for UI testing, visual verification, web interaction via playwright-cli, and credentialed flows using agents/.env.browser
 tools: read, grep, find, ls, bash, edit, write
-model: openai-codex/gpt-6.1-sol
+model: anthropic/claude-opus-5-5
 modelFallbacks: openai-codex/gpt-6-astra, openai-codex/gpt-5.6-sol
 runtime: pi
 thinking: high

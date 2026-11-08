@@ -1,7 +1,7 @@
 ---
 name: meta-review-question-worker
 description: Meta Review 질문을 고정된 source에서 조사하고 명시적 reviewed-code 변경 요청은 로컬 적용용 patch artifact로 제안하는 worker
-model: openai-codex/gpt-6.1-sol
+model: anthropic/claude-opus-5-5
 modelFallbacks: openai-codex/gpt-6-astra, openai-codex/gpt-5.6-sol, openai-codex/gpt-5.6-terra, openai-codex/gpt-5.3-codex-spark
 runtime: pi
 thinking: max

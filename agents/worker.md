@@ -2,7 +2,7 @@
 name: worker
 description: General-purpose implementation agent — use for complex multi-file changes, architectural refactoring, and heavy implementation tasks
 tools: read, grep, find, ls, bash, edit, write
-model: openai-codex/gpt-6.1-sol
+model: anthropic/claude-opus-5-5
 modelFallbacks: openai-codex/gpt-6-astra, openai-codex/gpt-5.6-sol
 runtime: pi
 thinking: max
