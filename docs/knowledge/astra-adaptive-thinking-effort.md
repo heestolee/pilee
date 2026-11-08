@@ -1,6 +1,5 @@
 ---
 title: Astra와 GPT-6.1 Sol은 필요한 turn만 max로 승격한다
-title_en: Astra and GPT-6.1 Sol escalate only high-risk turns to max
 tags:
   - astra
   - gpt-6.1-sol
@@ -21,12 +20,13 @@ source:
   - user-direction:2026-10-16-gpt-6.1-sol-pilot
   - runtime-evidence:2026-10-16-gpt-6.1-sol-effort-smoke
   - user-direction:2026-10-16-gpt-6.1-sol-default-and-subagents
-reviewed_at: 2026-10-16
-reviewed_commit: c6b2ab7288e7b340c5020eddea295b364014a9b6
+reviewed_at: 2026-11-08
+reviewed_commit: b6a9d606f4ac40e90be73ad99e67c2a4593cc15a
 related:
   - subagent-model-policy
   - workflow-guard-enforced-flow
   - ultra-proactive-delegation-mode
+title_en: Astra and GPT-6.1 Sol escalate only high-risk turns to max
 ---
 
 ## Judgment
