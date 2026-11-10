@@ -375,6 +375,21 @@ test("한 bash 호출의 stage와 commit은 막지 않고 실제 index를 바꾸
 	assert.equal(git(repo.cwd, "ls-files", "--stage"), index);
 });
 
+test("병합 커밋에 로그 리다이렉션·후속 조회나 --no-edit를 붙여도 명령 형태로 막지 않는다", async (t) => {
+	const commands = [
+		"git commit -q --no-edit -m 'merge: development 통합'",
+		"git commit -q -m 'merge: development 통합' > /tmp/merge-commit.log 2>&1; echo \"exit=$?\"; rg -n 'summary|error' /tmp/merge-commit.log | tail -20; git log --oneline -2",
+	];
+	for (const command of commands) {
+		// given
+		const repo = await fixture(t); const h = harness(repo.cwd); await start(h, "병합 커밋해줘");
+		// when
+		const checked = await commitCheck(h, command);
+		// then
+		assert.equal(checked, undefined, command);
+	}
+});
+
 test("한 bash 호출로 큰 변경을 stage해 커밋하면 임시 index로 재현해 큰 커밋을 막는다", async (t) => {
 	// given
 	const repo = await fixture(t, { merge: false, files: 1 });
