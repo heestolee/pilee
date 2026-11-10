@@ -1449,12 +1449,14 @@ async function publishRepository(pi: ExtensionAPI, cwd: string, command = ""): P
 	return explicit.specified ? explicit.repository : currentGitHubRepository(pi, cwd);
 }
 
-function isTrustedInternalPullRequestRepository(repository: string | undefined, trustedRepositories: readonly string[]): boolean {
+function isTrustedInternalPullRequestRepository(repository: string | undefined, trustedRepositories: readonly string[], trustedOwners: readonly string[]): boolean {
 	if (!repository) return false;
 	const trusted = trustedRepositories
 		.map(normalizeGitHubRepository)
 		.filter((value): value is string => Boolean(value));
-	return trusted.includes(repository);
+	if (trusted.includes(repository)) return true;
+	const owner = repository.split("/")[0];
+	return trustedOwners.some((value) => value.trim().toLowerCase() === owner && /^[a-z0-9-]+$/.test(owner));
 }
 
 function markTrustedInternalPullRequest(state: GuardState, repository: string) {
@@ -1913,10 +1915,16 @@ function actionContinuityNote(kind: string, details: any): string | undefined {
 
 export default function workflowGuard(
 	pi: ExtensionAPI,
-	options: { trustedInternalPullRequestRepositories?: string[]; worktreeRepoProfiles?: WorktreeRepoProfile[] } = {},
+	options: { trustedInternalPullRequestRepositories?: string[]; trustedInternalPullRequestOwners?: string[]; worktreeRepoProfiles?: WorktreeRepoProfile[] } = {},
 ) {
+	// 호출자가 신뢰 목록을 주면 설치된 profile을 섪지 않는다.
+	const profiles = options.trustedInternalPullRequestRepositories === undefined && options.trustedInternalPullRequestOwners === undefined
+		? loadWorkflowGuardProfiles()
+		: [];
 	const trustedInternalPullRequestRepositories = options.trustedInternalPullRequestRepositories
-		?? loadWorkflowGuardProfiles().flatMap((profile) => profile.trustedInternalPullRequestRepositories ?? []);
+		?? profiles.flatMap((profile) => profile.trustedInternalPullRequestRepositories ?? []);
+	const trustedInternalPullRequestOwners = options.trustedInternalPullRequestOwners
+		?? profiles.flatMap((profile) => profile.trustedInternalPullRequestOwners ?? []);
 	const adaptiveThinkingBySession = new Map<string, AdaptiveThinkingEscalation>();
 	const latestIntentBySession = new Map<string, GuardState>();
 	const activeContinuationBySession = new Map<string, GuardState>();
@@ -2013,7 +2021,7 @@ export default function workflowGuard(
 		}
 		if (state.explicitPrAction && !state.explicitIssueAction) {
 			const repository = await publishRepository(pi, ctx.cwd, classificationRequest(state.prompt));
-			if (isTrustedInternalPullRequestRepository(repository, trustedInternalPullRequestRepositories)) markTrustedInternalPullRequest(state, repository!);
+			if (isTrustedInternalPullRequestRepository(repository, trustedInternalPullRequestRepositories, trustedInternalPullRequestOwners)) markTrustedInternalPullRequest(state, repository!);
 		}
 		if (!inert && !continuePrevious) {
 			pendingCommitDecisions.delete(key);
@@ -2168,7 +2176,7 @@ export default function workflowGuard(
 					&& !state.explicitIssueAction
 					&& isPullRequestCreateCommand(command)
 					&& externalIssueOrPrCreateCommandCount(command) === 1
-					&& isTrustedInternalPullRequestRepository(repository, trustedInternalPullRequestRepositories);
+					&& isTrustedInternalPullRequestRepository(repository, trustedInternalPullRequestRepositories, trustedInternalPullRequestOwners);
 				if (!trustedInternalPr) return { block: true, reason: externalPublishBlockReason() };
 			}
 			if (isTargetedValidationWrapperCommand(command) && !validationWrapperBypass(command)) {

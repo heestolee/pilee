@@ -11,7 +11,7 @@ import { buildNewPanelActivationContract } from "../worktree/panel-activation.ts
 
 let harnessSequence = 0;
 
-function createHarness(options: { cwd?: string; originUrl?: string; trustedInternalPullRequestRepositories?: string[]; worktreeRepoProfiles?: any[] } = {}) {
+function createHarness(options: { cwd?: string; originUrl?: string; trustedInternalPullRequestRepositories?: string[]; trustedInternalPullRequestOwners?: string[]; worktreeRepoProfiles?: any[] } = {}) {
 	const hooks: Record<string, any> = {};
 	const tools: Record<string, any> = {};
 	const entries: Array<{ type: string; customType?: string; data?: unknown }> = [];
@@ -42,6 +42,7 @@ function createHarness(options: { cwd?: string; originUrl?: string; trustedInter
 	} as any;
 	workflowGuard(pi, {
 		trustedInternalPullRequestRepositories: options.trustedInternalPullRequestRepositories ?? [],
+		trustedInternalPullRequestOwners: options.trustedInternalPullRequestOwners ?? [],
 		// 기본 harness는 모든 저장소를 보호 저장소로 보고 기존 worktree 권한 규칙을 검사한다.
 		worktreeRepoProfiles: options.worktreeRepoProfiles ?? [{ name: "protected", match: { pathRegexes: ["."] } }],
 	});
@@ -493,6 +494,49 @@ test("회사 PR 스킬의 신뢰 안내는 현재 저장소가 바뀌면 유지�
 		// then
 		assert.match(next.systemPrompt, /EXTERNAL ISSUE\/PR PUBLISH GATE/);
 		assert.doesNotMatch(next.systemPrompt, /회사 저장소 PR 경로/);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("신뢰 조직에 속한 저장소의 PR은 목록에 없어도 CONTRIBUTING 확인 없이 통과한다", async () => {
+	const root = await mkdtemp(join(tmpdir(), "workflow-guard-trusted-owner-"));
+	try {
+		// given
+		const { hooks, ctx } = createHarness({ cwd: root, originUrl: "https://github.com/company/infra.git", trustedInternalPullRequestOwners: ["Company"] });
+		// when
+		const start = await hooks.before_agent_start({ prompt: "/create-pr", systemPrompt: "base" }, ctx);
+		// then
+		assert.doesNotMatch(start.systemPrompt, /EXTERNAL ISSUE\/PR PUBLISH GATE/);
+		for (const command of [
+			"gh pr create --title test --body body",
+			"gh pr create --repo company/new-service --title test --body body",
+			"gh -R COMPANY/infra pr create --title test --body body",
+		]) {
+			assert.equal(await hooks.tool_call({ toolName: "bash", input: { command } }, ctx), undefined, command);
+		}
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("신뢰 조직과 이름만 비슷한 조직이나 같은 조직의 Issue는 기여 승인 절차를 유지한다", async () => {
+	const root = await mkdtemp(join(tmpdir(), "workflow-guard-trusted-owner-boundary-"));
+	try {
+		// given
+		const { hooks, ctx } = createHarness({ cwd: root, originUrl: "https://github.com/company/infra.git", trustedInternalPullRequestOwners: ["company"] });
+		await hooks.before_agent_start({ prompt: "/create-pr", systemPrompt: "base" }, ctx);
+		for (const command of [
+			"gh pr create --repo outside/project --title test --body body",
+			"gh pr create --repo company-evil/project --title test --body body",
+			"gh pr create --repo evilcompany/project --title test --body body",
+			"gh issue create --repo company/infra --title test --body body",
+		]) {
+			// when
+			const result = await hooks.tool_call({ toolName: "bash", input: { command } }, ctx);
+			// then
+			assert.equal(result?.block, true, command);
+		}
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}

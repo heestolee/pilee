@@ -66,10 +66,10 @@ test("workflow guard trust profiles load only from global and active package roo
 			workflowGuard: { trustedInternalPullRequestRepositories: ["global/repo"] },
 		}));
 		await writeFile(join(activePackageRoot, "pi", "profiles", "private.json"), JSON.stringify({
-			workflowGuard: { trustedInternalPullRequestRepositories: ["active/repo"] },
+			workflowGuard: { trustedInternalPullRequestRepositories: ["active/repo"], trustedInternalPullRequestOwners: ["active-org"] },
 		}));
 		await writeFile(join(projectRoot, ".pi", "profiles", "project.json"), JSON.stringify({
-			workflowGuard: { trustedInternalPullRequestRepositories: ["project/self-declared"] },
+			workflowGuard: { trustedInternalPullRequestRepositories: ["project/self-declared"], trustedInternalPullRequestOwners: ["project-org"] },
 		}));
 
 		const profiles = loadWorkflowGuardProfiles({ agentDir, activePackageRoots: [activePackageRoot] });
@@ -77,6 +77,7 @@ test("workflow guard trust profiles load only from global and active package roo
 			profiles.flatMap((profile) => profile.trustedInternalPullRequestRepositories ?? []).sort(),
 			["active/repo", "global/repo"],
 		);
+		assert.deepEqual(profiles.flatMap((profile) => profile.trustedInternalPullRequestOwners ?? []), ["active-org"]);
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}

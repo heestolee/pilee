@@ -120,6 +120,7 @@ export interface StudyHardProfile {
 
 export interface WorkflowGuardProfile {
 	trustedInternalPullRequestRepositories?: string[];
+	trustedInternalPullRequestOwners?: string[];
 }
 
 export interface PrReviewCorpusProfile {
