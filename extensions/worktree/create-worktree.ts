@@ -134,7 +134,11 @@ export async function createNamedWorktree(pi: Pick<ExtensionAPI, "exec">, option
 			releaseEmptyClaim();
 			throw error;
 		}
-		if (result.code === 0 && !result.killed) return { name, worktreePath, branchName };
+		if (result.code === 0 && !result.killed) {
+			// `gh pr create` without --base targets this branch instead of the repository default.
+			await checkedGit(["config", `branch.${branchName}.gh-merge-base`, baseBranch]);
+			return { name, worktreePath, branchName };
+		}
 		releaseEmptyClaim();
 		const reason = result.stderr.trim() || result.stdout.trim() || "실행 중단";
 		if (signal?.aborted || result.killed || !isCreationCollision(reason)) {

@@ -41,7 +41,7 @@ Worktree 생성은 단순한 파일 시스템 작업이 아니라 실행 경계�
 
 1. **Stage** — “확인해볼래?”처럼 조사 요청이면 worktree를 만들지 않습니다. 원인과 수정 후보를 먼저 좁힙니다.
 2. **Context carry** — 조사·계획·파일 경로·의사결정이 이미 대화에 있으면 fresh worktree가 아니라 `/wt fork` / `worktree_fork`를 사용합니다. 이 흐름의 기본 계승 단위는 전체 transcript입니다. 최소 handoff pack은 사용자가 `--minimal-context` / `minimalContext: true`처럼 의식적으로 가벼운 전달을 선택했을 때만 사용합니다.
-3. **Base branch** — hotfix/production 단서가 있으면 `--hotfix` / `hotfix: true`를 명시해 production 기반에서 시작합니다.
+3. **Base branch** — hotfix/production 단서가 있으면 `--hotfix` / `hotfix: true`를 명시해 production 기반에서 시작합니다. 생성 기준 브랜치는 새 브랜치의 `branch.<branch>.gh-merge-base`에도 기록되어, `--base` 없이 `gh pr create`를 실행해도 PR이 저장소 기본 브랜치가 아닌 생성 기준 브랜치로 향합니다. PR 대상이 생성 기준과 다르면(예: production→development 동기화) PR 생성 시 `--base`를 명시합니다.
 
 ## Current Panel Source Rule
 

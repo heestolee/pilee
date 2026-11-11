@@ -46,6 +46,13 @@ test("exhausted pool extends names without touching files, symlinks or existing 
 	assert.equal(readFileSync(join(options.rootDir, WORD_NAMES[0]), "utf8"), "occupied");
 });
 
+test("records the creation base as the default PR base so hotfix branches target production", async (t) => {
+	const { git, options } = fixture(t);
+	git("push", "origin", "HEAD:refs/heads/production");
+	const result = await createNamedWorktree(host, { ...options, baseBranch: "production", prefix: "hotfix" });
+	assert.equal(git("config", "--get", `branch.${result.branchName}.gh-merge-base`), "production");
+});
+
 test("skips orphan refs, remote-only refs, nested refs and registered worktrees outside the root", async (t) => {
 	const { dir, git, options } = fixture(t);
 	const [orphan, remote, nested, elsewhere, stale, symlink, free] = WORD_NAMES;
