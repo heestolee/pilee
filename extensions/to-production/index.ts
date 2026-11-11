@@ -505,6 +505,8 @@ async function fetchBase(pi: ExtensionAPI, plan: Plan): Promise<void> {
 async function applyInPlace(pi: ExtensionAPI, plan: Plan, artifacts: PreparedArtifacts): Promise<void> {
 	try {
 		await gitCapture(pi, plan.source.repoRoot, ["switch", "-c", plan.targetBranch, "--track", plan.baseRef], 300_000);
+		// `gh pr create` without --base targets production instead of the repository default.
+		await gitCapture(pi, plan.source.repoRoot, ["config", `branch.${plan.targetBranch}.gh-merge-base`, plan.fetchBranch]);
 		for (const commit of plan.source.commits) {
 			await gitCapture(pi, plan.source.repoRoot, ["cherry-pick", commit], 300_000);
 		}

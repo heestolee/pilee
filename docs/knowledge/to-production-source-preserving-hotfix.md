@@ -43,6 +43,8 @@ type: doctrine
 - 명시 선택 시 허용: untracked 파일만 source에 `git add`/`git commit`해 보존 commit을 만든 뒤 그 commit까지 cherry-pick
 - 금지: `git worktree add`, 자동 `git stash`, 자동 `git reset`, 자동 `git clean`, tracked dirty diff 자동 commit
 
+Target branch를 만든 직후 `branch.<target>.gh-merge-base`를 production으로 기록합니다. 그래야 `--base` 없이 `gh pr create`를 실행해도 PR이 저장소 기본 브랜치(development)가 아니라 production으로 향합니다.
+
 Clean worktree에서 이식할 commit/diff/untracked가 없는 것은 실패가 아닙니다. “작업 전 production 바라보게 세팅”은 `/to-production`의 정상 경로이며, production 기반 빈 target branch를 현재 worktree에 checkout하면 됩니다.
 
 ## Workspace Work Detection Rule

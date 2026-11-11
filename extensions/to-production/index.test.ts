@@ -203,6 +203,7 @@ test("to-production in-place apply switches current worktree and cherry-picks wi
 	const plan = {
 		source: { repoRoot, commits: ["2222222222222222222222222222222222222222", "3333333333333333333333333333333333333333"] },
 		baseRef: "origin/production",
+		fetchBranch: "production",
 		targetBranch: "hotfeature/COM-1/foo",
 	} as any;
 	const artifacts = { artifactDir: join(tmpdir(), "artifact"), backupBranch: "to-production/source-backup/source-1" } as any;
@@ -213,6 +214,7 @@ test("to-production in-place apply switches current worktree and cherry-picks wi
 	} } as any, plan, artifacts);
 	assert.deepEqual(calls, [
 		"switch -c hotfeature/COM-1/foo --track origin/production",
+		"config branch.hotfeature/COM-1/foo.gh-merge-base production",
 		"cherry-pick 2222222222222222222222222222222222222222",
 		"cherry-pick 3333333333333333333333333333333333333333",
 	]);
@@ -272,6 +274,7 @@ test("to-production executes clean setup in-place in a real git repo", async () 
 	assert.equal(result.details.mode, "in-place-branch-switch");
 	assert.equal(git(repo, ["branch", "--show-current"]).trim(), "hotfix/e2e");
 	assert.equal(git(repo, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"]).trim(), "origin/production");
+	assert.equal(git(repo, ["config", "--get", "branch.hotfix/e2e.gh-merge-base"]).trim(), "production");
 	assert.match(result.content[0].text, /production 기반 빈 branch로 준비/);
 	assert.match(git(repo, ["branch", "--list", "to-production/source-backup/*"]), /to-production\/source-backup\/source-/);
 });
