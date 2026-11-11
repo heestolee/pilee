@@ -743,9 +743,18 @@ export function lintVerifyReport(state: VerifyReportState): ReportLintWarning[] 
 	return warnings;
 }
 
+// 앱 화면처럼 세로로 긴 캡처는 원본 폭으로 그리면 한 화면을 다 차지하므로 1/3 크기로 보여 주고 원본은 링크로 연다.
+function isPortraitCapture(dimensions: ImageDimensions | null): boolean {
+	return Boolean(dimensions && dimensions.height >= dimensions.width * 1.3);
+}
+
 function renderImageFigure(evidence: Evidence, state: VerifyReportState, label: string, dimensions: ImageDimensions | null): string {
 	const src = relativeEvidencePath(evidence, state) ?? evidence.path ?? "";
-	return `<figure><img src="${escapeHtml(src)}" alt="${escapeHtml(label)}"><figcaption>${escapeHtml(label)} · ${escapeHtml(basename(evidence.path ?? src))}${escapeHtml(imageDimensionLabel(dimensions))}</figcaption></figure>`;
+	const image = `<img src="${escapeHtml(src)}" alt="${escapeHtml(label)}">`;
+	if (isPortraitCapture(dimensions)) {
+		return `<figure class="portrait-capture"><a href="${escapeHtml(src)}" target="_blank" rel="noreferrer">${image}</a><figcaption>${escapeHtml(label)} · ${escapeHtml(basename(evidence.path ?? src))}${escapeHtml(imageDimensionLabel(dimensions))}</figcaption></figure>`;
+	}
+	return `<figure>${image}<figcaption>${escapeHtml(label)} · ${escapeHtml(basename(evidence.path ?? src))}${escapeHtml(imageDimensionLabel(dimensions))}</figcaption></figure>`;
 }
 
 function renderEvidenceIntentStatic(evidence: Evidence): string {
@@ -860,6 +869,7 @@ function generateLivePage(initialState: unknown): string {
 	.evidence-card { border:1px solid var(--line); border-radius:14px; background:var(--panel2); padding:12px; min-width:0; }
 	.evidence-card.evidence-raw-card, .evidence-card.evidence-primary-image-card { grid-column:1 / -1; }
 	.evidence-card.evidence-primary-image-card img { width:100%; height:auto; }
+	.evidence-card figure.portrait-capture img { width:280px; max-width:100%; }
 	.evidence-card-head { display:flex; justify-content:space-between; gap:8px; align-items:center; margin-bottom:8px; color:var(--detail); }
 	.evidence-card-head span { color:var(--muted); font-size:11px; text-transform:uppercase; }
 	.evidence-intent { display:grid; gap:7px; margin:10px 0 0; }
@@ -899,6 +909,7 @@ function evKind(ev) { if (ev.kind) return ev.kind; if (ev.url) return 'link'; if
 function isTallImage(width, height) { var ratio = height / Math.max(width || 1, 1); return height >= 1600 || (height >= 1200 && ratio >= 2.4); }
 function maybeCollapseTallImage(img) {
   var fig = img.closest('figure[data-auto-collapse]');
+  if (fig && img.naturalWidth && img.naturalHeight >= img.naturalWidth * 1.3) fig.classList.add('portrait-capture');
   if (!fig || fig.closest('details.tall-image') || !img.naturalHeight || !img.naturalWidth || !isTallImage(img.naturalWidth, img.naturalHeight)) return;
   var details = document.createElement('details');
   details.className = 'tall-image';
@@ -941,7 +952,7 @@ function rawDetailsHtml(ev, kind, label) {
 function evHtml(ev) {
   var kind = evKind(ev); var label = ev.label || kind; var body = ''; var raw = shouldRawDetails(ev, kind);
   if (ev.url) body = '<a href="' + esc(ev.url) + '" target="_blank" rel="noreferrer">' + esc(label) + '</a>';
-  else if (ev.path && (kind === 'image' || kind === 'gif')) body = '<figure data-auto-collapse="true" data-label="' + esc(label) + '"><img src="/file?path=' + encodeURIComponent(ev.path) + '" alt="' + esc(label) + '" onload="maybeCollapseTallImage(this)"><figcaption>' + esc(label) + ' · ' + esc(ev.path.split('/').pop()) + '</figcaption></figure>';
+  else if (ev.path && (kind === 'image' || kind === 'gif')) body = '<figure data-auto-collapse="true" data-label="' + esc(label) + '"><a href="/file?path=' + encodeURIComponent(ev.path) + '" target="_blank" rel="noreferrer"><img src="/file?path=' + encodeURIComponent(ev.path) + '" alt="' + esc(label) + '" onload="maybeCollapseTallImage(this)"></a><figcaption>' + esc(label) + ' · ' + esc(ev.path.split('/').pop()) + '</figcaption></figure>';
   else if (raw) body = rawDetailsHtml(ev, kind, label);
   else if (ev.text) body = '<pre><code>' + esc(ev.text) + '</code></pre>';
   if (!body) return '';
@@ -1152,6 +1163,7 @@ function generateStaticReportHtml(state: VerifyReportState): string {
 	.evidence-card { border: 1px solid #e5e7eb; border-radius: 12px; background: #fff; padding: 12px; min-width: 0; }
 	.evidence-card.evidence-raw-card, .evidence-card.evidence-primary-image-card { grid-column: 1 / -1; }
 	.evidence-card.evidence-primary-image-card img { width: 100%; height: auto; }
+	.evidence-card figure.portrait-capture img { width: 280px; max-width: 100%; }
 	.evidence-card-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; margin-bottom: 8px; color: #1f2937; }
 	.evidence-card-head span { color: #6b7280; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
 	.evidence-intent { display: grid; gap: 7px; margin: 10px 0 0; }
