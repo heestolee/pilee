@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { copyFile, rm } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { homedir, tmpdir } from "node:os";
@@ -907,7 +907,9 @@ function requestMutationBlockReason(state: GuardState, toolName: string, input: 
 	const command = toolName === "bash" ? String(input.command ?? "") : "";
 	const git = semanticGitCommands(command);
 	const autoCommit = toolName === "auto_commit" ? autoCommitEffects(input, cwd) : { commit: false, push: false };
-	const mutates = workspaceAction || isHighRiskBashMutation(command) || ["edit", "write"].includes(toolName) || autoCommit.commit || autoCommit.push;
+	const publishes = isExternalIssueOrPrCreateCommand(command);
+	const removes = recursiveRmTargets(command, cwd).length > 0;
+	const mutates = workspaceAction || publishes || removes || isHighRiskBashMutation(command) || ["edit", "write"].includes(toolName) || autoCommit.commit || autoCommit.push;
 	if (!mutates) return undefined;
 	if (/^(?:(?:아니|일단|잠깐)[,\s]*)?(?:취소(?:해)?|중단해|멈춰|그만(?:해)?|cancel|stop|abort)(?:\s*(?:해줘|해주세요|it|this))?[.!?]*$/i.test(prompt)) {
 		return "현재 원 사용자 요청이 취소/중단입니다. adopt로 실행 권한을 복원하지 않습니다.";
@@ -916,7 +918,7 @@ function requestMutationBlockReason(state: GuardState, toolName: string, input: 
 	if ((git.some((args) => args[0] === "commit") || autoCommit.commit) && prohibited("커밋|commit")) return "원 사용자 요청에서 commit을 명시적으로 금지했습니다.";
 	if ((git.some((args) => args[0] === "push") || autoCommit.push) && prohibited("푸시|push")) return "원 사용자 요청에서 push를 명시적으로 금지했습니다.";
 	if (/(?:npm|pnpm|yarn)\s+(?:install|add|remove|update)\b/.test(command) && prohibited("설치|추가|제거|업데이트|install|add|remove|update")) return "원 사용자 요청에서 dependency 변경을 명시적으로 금지했습니다.";
-	if ((git.some((args) => args[0] === "clean" || args[0] === "reset") || /\brm\s+-rf\b/.test(command)) && prohibited("삭제|정리|리셋|제거|clean|reset|remove")) return "원 사용자 요청에서 destructive cleanup을 명시적으로 금지했습니다.";
+	if ((git.some((args) => args[0] === "clean" || args[0] === "reset") || removes) && prohibited("삭제|정리|리셋|제거|clean|reset|remove")) return "원 사용자 요청에서 destructive cleanup을 명시적으로 금지했습니다.";
 	const noCodeEdits = /코드(?:는|를|도)?\s*(?:수정|변경)(?:은|는)?\s*(?:하지\s*(?:마|말)|금지)|(?:do\s+not|don't)\s+(?:edit|change|modify)\s+(?:the\s+)?code\b|\bno\s+code\s+(?:edits?|changes?)\b/iu.test(prompt);
 	if (["edit", "write"].includes(toolName) && noCodeEdits
 		&& !state.detachedArtifactTask && !scopedArtifactPath(cwd, String(input.path ?? ""))) {
@@ -941,11 +943,11 @@ function applySemanticAssessment(
 	if (authorization) {
 		const { toolName, input } = authorization;
 		const action = workspaceActionForTool(toolName, input);
+		const prohibited = requestMutationBlockReason(state, toolName, input, state.request.cwd);
+		if (prohibited) throw new Error(prohibited);
 		if (!action && !(toolName === "bash" && isHighRiskBashMutation(String(input.command ?? "")) && !gitWorktreeAddCommandCount(String(input.command ?? "")))) {
 			throw new Error("semantic authorization은 정확한 workspace tool 또는 non-workspace high-risk bash 호출만 지원합니다.");
 		}
-		const prohibited = requestMutationBlockReason(state, toolName, input, state.request.cwd);
-		if (prohibited) throw new Error(prohibited);
 		if (action) {
 			const original = deriveWorkspaceAuthorization(state.request.prompt);
 			if (original.allowedActions.includes("branch-in-place") && !original.allowedActions.includes(action)) {
@@ -1131,7 +1133,7 @@ function unwrapShellPrefixes(tokens: string[]): string[] {
 
 function shellCommandTokens(command: string, depth = 0): string[][] {
 	if (depth > 2) return [];
-	const direct = tokenizeShellCommands(command);
+	const direct = tokenizeShellCommands(stripHeredocBodies(command));
 	const nested: string[][] = [];
 	for (const rawTokens of direct) {
 		const tokens = unwrapShellPrefixes(rawTokens);
@@ -1181,51 +1183,282 @@ function isHighRiskBashMutation(command: string): boolean {
 	const compact = command.replace(/\s+/g, " ").trim();
 	return riskyGit
 		|| /(^|[;&|]\s*)(npm|pnpm|yarn)\s+(install|add|remove|update)\b/.test(compact)
-		|| /(^|[;&|]\s*)rm\s+-rf\b/.test(compact);
+		|| recursiveRmTargets(command, process.cwd()).some((target) => !target.temp);
 }
 
-// 사용자가 요청하지 않았을 때만 막는 되돌리기 어려운 변경. 일반 commit/push/install은 막지 않는다.
-function isDangerousBashMutation(command: string): boolean {
-	const dangerousGit = semanticGitCommands(command).some((args) => {
-		const rest = args.slice(1);
-		if (args[0] === "push") {
-			return rest.some((arg) => /^(?:--force|--force-with-lease(?:=.*)?|--force-if-includes|--delete|--mirror|--prune)$/.test(arg)
-				|| (/^-[A-Za-z]+$/.test(arg) && /[fd]/.test(arg.slice(1)))
-				|| /^[+:]/.test(arg));
-		}
-		if (args[0] === "commit") return rest.includes("--amend");
-		if (args[0] === "reset") return rest.includes("--hard");
-		if (args[0] === "clean") return rest.some((arg) => arg.startsWith("-"));
-		return false;
-	});
-	return dangerousGit || /(^|[;&|]\s*)rm\s+-rf\b/.test(command.replace(/\s+/g, " ").trim());
+const TEMP_ROOTS = [...new Set(["/tmp", "/private/tmp", "/var/folders", "/private/var/folders", tmpdir()])];
+const PROTECTED_BRANCH = /^(?:main|master|develop|development|production|prod|staging|release(?:\/.+)?)$/u;
+const MKTEMP_VALUE = "\u0000mktemp";
+
+interface ShellStep {
+	tokens: string[];
+	cwd: string | null;
+	vars: ReadonlyMap<string, string | null>;
 }
 
-// 되돌리기 어려운 작업은 "푸시해" 같은 일반 지시가 아니라 그 작업 자체를 말했을 때만 허용한다.
-function dangerousOperationMentions(command: string): RegExp[] {
-	const mentions: RegExp[] = [];
-	for (const args of semanticGitCommands(command)) {
-		const rest = args.slice(1);
-		if (args[0] === "push") {
-			if (rest.some((arg) => /^(?:--force|--force-with-lease(?:=.*)?|--force-if-includes|--mirror)$/.test(arg) || (/^-[A-Za-z]+$/.test(arg) && arg.includes("f")) || arg.startsWith("+"))) mentions.push(/force|강제|포스/);
-			if (rest.some((arg) => /^(?:--delete|--prune)$/.test(arg) || (/^-[A-Za-z]+$/.test(arg) && arg.includes("d")) || arg.startsWith(":"))) mentions.push(/delete|삭제|지워|지우/);
+interface RmTarget {
+	word: string;
+	path: string | null;
+	temp: boolean;
+}
+
+interface IrreversibleLoss {
+	description: string;
+	mention: RegExp;
+}
+
+function isUnderTempRoot(path: string): boolean {
+	return TEMP_ROOTS.some((root) => path.startsWith(`${root}/`));
+}
+
+// heredoc 본문(커밋 메시지 등)은 실행되는 명령이 아니다.
+function stripHeredocBodies(command: string): string {
+	const lines: string[] = [];
+	let terminator: string | null = null;
+	for (const line of command.split("\n")) {
+		if (terminator !== null) {
+			if (line.replace(/^\t+/u, "") === terminator) terminator = null;
+			continue;
 		}
-		if (args[0] === "commit" && rest.includes("--amend")) mentions.push(/amend|어멘드|아멘드/);
-		if (args[0] === "reset" && rest.includes("--hard")) mentions.push(/reset|리셋|되돌|초기화/);
-		if (args[0] === "clean" && rest.some((arg) => arg.startsWith("-"))) mentions.push(/clean|정리|청소/);
+		lines.push(line);
+		const match = /(?<!<)<<-?(?!<)\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/u.exec(line);
+		if (match) terminator = match[2]!;
 	}
-	if (/(^|[;&|]\s*)rm\s+-rf\b/.test(command.replace(/\s+/g, " ").trim())) mentions.push(/rm\s|삭제|지워|지우|정리/);
-	return mentions;
+	return lines.join("\n");
 }
 
-function dangerousMutationBlockReason(state: GuardState, input: Record<string, unknown>, cwd: string): string | undefined {
-	if (semanticAuthorizationMatches(state, "bash", input, cwd)) return undefined;
-	const prompt = normalizeText(state.request?.prompt ?? state.prompt);
-	const mentions = dangerousOperationMentions(String(input.command ?? ""));
-	if (state.explicitMutation && state.intent !== "status_note" && mentions.every((mention) => mention.test(prompt))) return undefined;
+// 정의되지 않은 변수나 명령 치환이 남으면 null(해석 불가)이다.
+function expandShellWord(word: string, vars: ReadonlyMap<string, string | null>, cwd: string | null): string | null {
+	let unresolved = false;
+	const value = word.replace(/^~(?=\/|$)/u, homedir()).replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/gu, (_match, braced?: string, bare?: string) => {
+		const name = (braced ?? bare)!;
+		const known = vars.has(name) ? vars.get(name) : name === "HOME" ? homedir() : name === "TMPDIR" ? tmpdir() : name === "PWD" ? cwd : undefined;
+		if (known === null || known === undefined) {
+			unresolved = true;
+			return "";
+		}
+		return known;
+	});
+	return unresolved || /[`$]/u.test(value) ? null : value;
+}
+
+// cd와 단순 변수 대입을 따라가며 각 명령의 실행 위치를 추적한다.
+function shellSteps(command: string, cwd: string): ShellStep[] {
+	const vars = new Map<string, string | null>();
+	for (const match of command.matchAll(/(?:^|[\s;&|(])([A-Za-z_][A-Za-z0-9_]*)=["']?\$\(\s*mktemp\b/gu)) vars.set(match[1]!, MKTEMP_VALUE);
+	let current: string | null = cwd;
+	const steps: ShellStep[] = [];
+	for (const raw of tokenizeShellCommands(stripHeredocBodies(command))) {
+		let index = raw[0] === "export" ? 1 : 0;
+		const assignments: string[] = [];
+		while (/^[A-Za-z_][A-Za-z0-9_]*=/u.test(raw[index] ?? "")) assignments.push(raw[index++]!);
+		if (index === raw.length) {
+			for (const assignment of assignments) {
+				const separator = assignment.indexOf("=");
+				const name = assignment.slice(0, separator);
+				if (vars.get(name) !== MKTEMP_VALUE) vars.set(name, expandShellWord(assignment.slice(separator + 1), vars, current));
+			}
+			continue;
+		}
+		const tokens = unwrapShellPrefixes(raw);
+		if (executableName(tokens[0]) === "cd") {
+			const target = tokens[1] === undefined ? homedir() : tokens[1].startsWith("-") ? null : expandShellWord(tokens[1], vars, current);
+			current = target === null ? null : isAbsolute(target) ? resolve(target) : current === null ? null : resolve(current, target);
+			continue;
+		}
+		steps.push({ tokens, cwd: current, vars: new Map(vars) });
+	}
+	return steps;
+}
+
+function recursiveRmTargets(command: string, cwd: string): RmTarget[] {
+	const targets: RmTarget[] = [];
+	for (const step of shellSteps(command, cwd)) {
+		if (executableName(step.tokens[0]) !== "rm") continue;
+		let recursive = false;
+		let endOfOptions = false;
+		const words: string[] = [];
+		for (const token of step.tokens.slice(1)) {
+			if (!endOfOptions && token === "--") {
+				endOfOptions = true;
+				continue;
+			}
+			if (!endOfOptions && token.startsWith("-") && token !== "-") {
+				if (token === "--recursive" || /^-[A-Za-z]*[rR][A-Za-z]*$/u.test(token)) recursive = true;
+				continue;
+			}
+			words.push(token);
+		}
+		if (!recursive) continue;
+		for (const word of words) {
+			const expanded = expandShellWord(word, step.vars, step.cwd);
+			if (expanded?.startsWith(MKTEMP_VALUE)) {
+				targets.push({ word, path: null, temp: true });
+				continue;
+			}
+			const path = expanded === null ? null : isAbsolute(expanded) ? resolve(expanded) : step.cwd === null ? null : resolve(step.cwd, expanded);
+			targets.push({ word, path, temp: Boolean(path && isUnderTempRoot(path)) });
+		}
+	}
+	return targets;
+}
+
+function stepGitCwd(step: ShellStep): string | null {
+	let target = step.cwd;
+	for (let index = 1; index < step.tokens.length && step.tokens[index]!.startsWith("-"); index++) {
+		const option = step.tokens[index]!;
+		if (option === "-C" && step.tokens[index + 1] !== undefined) {
+			const value = expandShellWord(step.tokens[++index]!, step.vars, target);
+			target = value === null ? null : isAbsolute(value) ? resolve(value) : target === null ? null : resolve(target, value);
+		} else if (["-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--exec-path"].includes(option)) index += 1;
+	}
+	return target;
+}
+
+function realpathLoose(path: string): string {
+	let existing = path;
+	const rest: string[] = [];
+	while (!existsSync(existing) && dirname(existing) !== existing) {
+		rest.unshift(basename(existing));
+		existing = dirname(existing);
+	}
+	try {
+		return join(realpathSync(existing), ...rest);
+	} catch {
+		return path;
+	}
+}
+
+async function gitOutput(pi: Pick<ExtensionAPI, "exec">, cwd: string, args: string[]): Promise<string | null> {
+	try {
+		const result = await pi.exec("git", args, { cwd, timeout: 15_000 });
+		return result.code === 0 ? result.stdout ?? "" : null;
+	} catch {
+		return null;
+	}
+}
+
+async function pushLosses(pi: Pick<ExtensionAPI, "exec">, step: ShellStep, args: string[], losses: IrreversibleLoss[], notes: string[]): Promise<boolean> {
+	const positional: string[] = [];
+	let force = false;
+	let lease = false;
+	let remove = false;
+	let mirror = false;
+	const rest = args.slice(1);
+	for (let index = 0; index < rest.length; index++) {
+		const arg = rest[index]!;
+		if (arg === "--") {
+			positional.push(...rest.slice(index + 1));
+			break;
+		}
+		if (["-o", "--push-option", "--receive-pack", "--exec", "--repo"].includes(arg)) index += 1;
+		else if (/^--force-with-lease(?:=.*)?$|^--force-if-includes$/u.test(arg)) force = lease = true;
+		else if (arg === "--force") force = true;
+		else if (arg === "--delete") remove = true;
+		else if (arg === "--mirror" || arg === "--prune") mirror = true;
+		else if (/^-[A-Za-z]+$/u.test(arg)) {
+			if (arg.includes("f")) force = true;
+			if (arg.includes("d")) remove = true;
+		} else if (!arg.startsWith("-")) positional.push(arg);
+	}
+	if (mirror) {
+		losses.push({ description: "git push --mirror/--prune은 원격 브랜치를 한꺼번에 덮어쓰거나 지웁니다.", mention: /mirror|prune|미러/u });
+		return true;
+	}
+	const refspecs = positional.slice(1).map((spec) => expandShellWord(spec, step.vars, step.cwd));
+	if (refspecs.some((spec) => spec?.startsWith("+"))) force = true;
+	if (refspecs.some((spec) => spec?.startsWith(":"))) remove = true;
+	if (!force && !remove) return true;
+	if (refspecs.includes(null)) return false;
+	let branches = (refspecs.length ? refspecs as string[] : ["HEAD"]).map((spec) => {
+		const bare = spec.replace(/^\+/u, "");
+		const destination = bare.includes(":") ? bare.slice(bare.indexOf(":") + 1) : bare;
+		return destination.replace(/^refs\/heads\//u, "");
+	});
+	if (branches.some((branch) => !branch || branch === "HEAD")) {
+		const target = stepGitCwd(step);
+		const current = target === null ? "" : (await gitOutput(pi, target, ["symbolic-ref", "--short", "-q", "HEAD"]))?.trim() ?? "";
+		if (!current) return false;
+		branches = branches.map((branch) => !branch || branch === "HEAD" ? current : branch);
+	}
+	const protectedBranches = branches.filter((branch) => PROTECTED_BRANCH.test(branch));
+	if (protectedBranches.length) {
+		losses.push(remove
+			? { description: `보호 브랜치(${protectedBranches.join(", ")})를 원격에서 삭제합니다.`, mention: /delete|삭제|지워|지우/u }
+			: { description: `보호 브랜치(${protectedBranches.join(", ")})를 강제 push하면 원격 이력이 사라집니다.`, mention: /force|강제|포스/u });
+	} else if (force && !lease) {
+		notes.push("[workflow_guard] forcePushNote: 보호 브랜치가 아니라 막지 않았습니다. 다른 사람의 커밋을 덮지 않도록 --force-with-lease를 우선 쓰세요.");
+	}
+	return true;
+}
+
+// 되돌릴 수 없는 손실은 명령의 대상과 현재 상태로 판단한다. 해석하지 못한 명령은 막지 않고 경고만 남긴다.
+async function irreversibleLossCheck(pi: Pick<ExtensionAPI, "exec">, command: string, cwd: string): Promise<{ losses: IrreversibleLoss[]; notes: string[] }> {
+	const losses: IrreversibleLoss[] = [];
+	const notes: string[] = [];
+	const unresolved = (what: string) => notes.push(`[workflow_guard] lossCheck: ${what}의 대상을 해석하지 못해 막지 않았습니다. 실제로 사라지는 범위를 확인하고 보고하세요.`);
+	let stashed = false;
+	for (const step of shellSteps(command, cwd)) {
+		const args = gitArguments(step.tokens);
+		if (!args?.length) continue;
+		if (args[0] === "stash" && !["pop", "apply", "list", "show", "drop", "clear", "branch"].includes(args[1] ?? "")) stashed = true;
+		if (args[0] === "push") {
+			if (!await pushLosses(pi, step, args, losses, notes)) unresolved("강제·삭제 git push");
+			continue;
+		}
+		const target = stepGitCwd(step);
+		if (args[0] === "reset" && args.includes("--hard") && !stashed) {
+			const status = target === null ? null : await gitOutput(pi, target, ["status", "--porcelain", "--untracked-files=no"]);
+			if (status === null) unresolved("git reset --hard");
+			else {
+				const dirty = status.split("\n").filter(Boolean).length;
+				if (dirty) losses.push({ description: `커밋하지 않은 변경 ${dirty}개 파일이 git reset --hard로 사라집니다.`, mention: /reset|리셋|되돌|초기화|버려|폐기/u });
+			}
+			continue;
+		}
+		if (args[0] === "clean") {
+			const options = args.slice(1);
+			if (!options.some((option) => option === "--force" || /^-[A-Za-z]*f/u.test(option))) continue;
+			const dryRun = options.flatMap((option) => {
+				if (option === "--force" || option === "--interactive") return [];
+				if (!/^-[A-Za-z]+$/u.test(option)) return [option];
+				const kept = option.replace(/[fi]/gu, "");
+				return kept === "-" ? [] : [kept];
+			});
+			const preview = target === null ? null : await gitOutput(pi, target, ["clean", "-n", ...dryRun]);
+			if (preview === null) unresolved("git clean");
+			else {
+				const removed = preview.split("\n").filter(Boolean).map((line) => line.replace(/^Would remove /u, ""));
+				if (removed.length) losses.push({ description: `git clean이 추적하지 않는 파일 ${removed.length}개를 지웁니다 (${removed.slice(0, 3).join(", ")}${removed.length > 3 ? " …" : ""}).`, mention: /clean|정리|청소|삭제|지워|지우/u });
+			}
+		}
+	}
+	for (const target of recursiveRmTargets(command, cwd)) {
+		if (target.temp) continue;
+		if (target.path === null) {
+			unresolved(`rm -r ${target.word}`);
+			continue;
+		}
+		const globIndex = target.path.search(/[*?[]/u);
+		if (globIndex < 0 && !existsSync(target.path)) continue;
+		const base = globIndex < 0 ? target.path : target.path.slice(0, globIndex).replace(/\/[^/]*$/u, "") || "/";
+		const real = realpathLoose(base);
+		if (isUnderTempRoot(real)) continue;
+		const probe = existsSync(real) && statSync(real).isDirectory() ? real : dirname(real);
+		const top = (await gitOutput(pi, probe, ["rev-parse", "--show-toplevel"]))?.trim();
+		const insideGitDir = Boolean(top) && (real === `${top}/.git` || real.startsWith(`${top}/.git/`));
+		const wholeTree = globIndex >= 0 ? real === top && basename(target.path) === "*" : real === top;
+		const inside = Boolean(top) && (real === top || real.startsWith(`${top}/`)) && !insideGitDir && !wholeTree;
+		if (!inside) losses.push({ description: `${target.word}는 작업 공간이나 임시 폴더 밖이라 지우면 되돌릴 수 없습니다.`, mention: /rm\s|삭제|지워|지우|정리/u });
+	}
+	return { losses, notes };
+}
+
+function irreversibleLossBlockReason(state: GuardState, losses: IrreversibleLoss[]): string {
 	return [
-		`workflow_guard blocked bash: 되돌리기 어려운 작업(강제·삭제 push, --amend, reset --hard, clean, rm -rf)은 사용자가 그 작업을 직접 말했을 때만 실행합니다 (${state.summary}).`,
-		"일반 commit/push/install은 막지 않습니다. 사용자가 이 작업을 요청했다면 workflow_guard adopt로 정확한 명령을 보정하세요.",
+		`workflow_guard blocked bash: 되돌릴 수 없는 손실이 생기는 명령입니다 (${state.summary}).`,
+		...losses.map((loss) => `- ${loss.description}`),
+		"사용자가 이 작업을 직접 요청했다면 workflow_guard adopt로 정확한 명령을 보정하세요. 아니라면 대상을 좁히거나 먼저 보존(commit·stash·백업)하세요.",
 	].join("\n");
 }
 
@@ -2213,10 +2446,15 @@ export default function workflowGuard(
 					addSoftNote(ctx, event.toolCallId, `[workflow_guard] commitInspection: 커밋 내용을 검사하지 못해 막지 않았습니다 (${message}). 커밋 크기와 범위를 직접 확인하세요.`);
 				}
 			}
-			if (isDangerousBashMutation(command) && !pendingCommitApproval) {
-				const reason = dangerousMutationBlockReason(state, event.input ?? {}, ctx.cwd);
-				if (reason) return { block: true, reason };
-			} else if (isHighRiskBashMutation(command) && !state.explicitMutation && !pendingCommitApproval) {
+			const lossCheck = await irreversibleLossCheck(pi, command, ctx.cwd);
+			for (const note of lossCheck.notes) addSoftNote(ctx, event.toolCallId, note);
+			if (lossCheck.losses.length && !pendingCommitApproval && !semanticAuthorizationMatches(state, "bash", event.input ?? {}, ctx.cwd)) {
+				const prompt = normalizeText(state.request?.prompt ?? state.prompt);
+				// 사용자가 그 작업 자체를 말했는지만 본다. 금지 표현은 requestMutationBlockReason이 먼저 막는다.
+				const requested = state.intent !== "status_note" && !state.explicitReadOnly && lossCheck.losses.every((loss) => loss.mention.test(prompt));
+				if (!requested) return { block: true, reason: irreversibleLossBlockReason(state, lossCheck.losses) };
+			}
+			if (isHighRiskBashMutation(command) && !state.explicitMutation && !pendingCommitApproval) {
 				if (state.explicitReadOnly && !semanticAuthorizationMatches(state, "bash", event.input ?? {}, ctx.cwd)) {
 					return { block: true, reason: `workflow_guard blocked bash: the user explicitly asked for read-only/no-execution in this request, so this mutation was not explicitly requested (${state.summary}). Follow the user's newer instruction if it changed.` };
 				}

@@ -1450,7 +1450,7 @@ test("semantic grants match the exact action, tool, target and base before consu
 		{ toolName: "worktree_create", input },
 		{ toolName: "worktree_switch", input },
 		{ toolName: "bash", input: { command: "git worktree add /tmp/unrelated feature/unrelated" } },
-		{ toolName: "bash", input: { command: "git push --force" } },
+		{ toolName: "bash", input: { command: "git push --force origin main" } },
 	]) assert.equal((await h.hooks.tool_call({ ...event, toolCallId: "mismatch" }, h.ctx))?.block, true, JSON.stringify(event));
 
 	assert.equal((await h.hooks.tool_call({ toolName: "worktree_fork", toolCallId: "other-cwd", input }, { ...h.ctx, cwd: "/tmp/other-repository" }))?.block, true);
@@ -1560,7 +1560,7 @@ test("an expired grant can be reassessed but its consumed renewal cannot be repl
 test("semantic high-risk bash correction is one-call scoped instead of mutation=true", async () => {
 	const h = createHarness();
 	const start = await h.hooks.before_agent_start({ prompt: "이 변경 이력을 남겨 둬", systemPrompt: "base" }, h.ctx);
-	const input = { command: "git push --force-with-lease origin scoped-history" };
+	const input = { command: "git push --force-with-lease origin main" };
 	const adopted = await adoptSemantic(h, start, { toolName: "bash", input }, "ship");
 	assert.equal(adopted.details.state.explicitMutation, false);
 	assert.equal((await h.hooks.tool_call({ toolName: "bash", input: { command: `${input.command} && git push` } }, h.ctx))?.block, true);
@@ -1572,19 +1572,24 @@ test("semantic high-risk bash correction is one-call scoped instead of mutation=
 test("semantic bash grants match the command, not presentation fields or core tool name case", async () => {
 	const h = createHarness();
 	const start = await h.hooks.before_agent_start({ prompt: "이 변경 이력을 남겨 둠", systemPrompt: "base" }, h.ctx);
-	const command = "git push --force-with-lease origin sync/branch";
+	const command = "git push --force-with-lease origin development";
 	await adoptSemantic(h, start, { toolName: "Bash", input: { command } }, "ship");
 	assert.equal((await h.hooks.tool_call({ toolName: "bash", toolCallId: "other", input: { command: `${command} --force`, title: "푸시" } }, h.ctx))?.block, true);
 	assert.equal(await h.hooks.tool_call({ toolName: "bash", toolCallId: "push", input: { command, title: "브랜치 푸시", timeout: 900000 } }, h.ctx), undefined);
 });
 
-test("ordinary commit/push are never blocked by intent guesses; irreversible variants still need a request", async () => {
+test("ordinary commit/push are never blocked by intent guesses; irreversible variants are judged by their target", async () => {
 	const h = createHarness();
 	await h.hooks.before_agent_start({ prompt: "좀 빨리좀 그러면", systemPrompt: "base" }, h.ctx);
-	for (const command of ["git commit -m merge", "git push origin sync/branch", "git add a && git commit -m x", "pnpm install --frozen-lockfile"]) {
+	for (const command of [
+		"git commit -m merge", "git push origin sync/branch", "git add a && git commit -m x", "pnpm install --frozen-lockfile",
+		// 보호 브랜치가 아닌 내 작업 브랜치의 강제·삭제 push, 커밋된 상태의 reset, amend는 되돌릴 수 있다.
+		"git push -f origin x", "git push --force-with-lease origin feature/COM-1/x", "git push origin :old", "git push origin --delete hotfix/sec-a02",
+		"git reset --hard HEAD~1", "git commit --amend -m x",
+	]) {
 		assert.equal(await h.hooks.tool_call({ toolName: "bash", input: { command } }, h.ctx), undefined, command);
 	}
-	for (const command of ["git push --force origin main", "git push -f origin x", "git push origin :old", "git push origin +HEAD:main", "git reset --hard HEAD~1", "git commit --amend -m x"]) {
+	for (const command of ["git push --force origin main", "git push origin +HEAD:main", "git push origin :development", "git push --delete origin production", "git push --mirror origin"]) {
 		assert.equal((await h.hooks.tool_call({ toolName: "bash", input: { command } }, h.ctx))?.block, true, command);
 	}
 });
@@ -1593,7 +1598,7 @@ test("a general push request does not authorize force/delete pushes, but naming 
 	const h = createHarness();
 	await h.hooks.before_agent_start({ prompt: "푸시도 해", systemPrompt: "base" }, h.ctx);
 	assert.equal(await h.hooks.tool_call({ toolName: "bash", input: { command: "git push origin main" } }, h.ctx), undefined);
-	for (const command of ["git push --force origin main", "git push origin :old", "git reset --hard HEAD~1"]) {
+	for (const command of ["git push --force origin main", "git push origin :main"]) {
 		assert.equal((await h.hooks.tool_call({ toolName: "bash", input: { command } }, h.ctx))?.block, true, command);
 	}
 	const forced = createHarness();
@@ -1646,21 +1651,21 @@ test("a prohibition sent while the agent is working still blocks the prohibited 
 test("a later advice-only assessment cannot discard the scoped execution boundary", async () => {
 	const h = createHarness();
 	const start = await h.hooks.before_agent_start({ prompt: "결제 버그 수정해줘", systemPrompt: "base" }, h.ctx);
-	const input = { command: "git push --force-with-lease origin scoped" };
+	const input = { command: "git push --force-with-lease origin main" };
 	await adoptSemantic(h, start, { toolName: "bash", input }, "implement");
 	assert.equal(await h.hooks.tool_call({ toolName: "bash", toolCallId: "first", input }, h.ctx), undefined);
 	await h.tools.workflow_guard.execute("advice", {
 		action: "adopt", reason: "작업 무게만 변경하며 실행 권한은 넓히지 않는다.",
 		assessment: { requestId: start.message.details.state.request.id, intent: "implement", weight: "full" },
 	}, undefined, undefined, h.ctx);
-	assert.equal((await h.hooks.tool_call({ toolName: "bash", input: { command: "git push --force" } }, h.ctx))?.block, true);
+	assert.equal((await h.hooks.tool_call({ toolName: "bash", input: { command: "git push --force origin main" } }, h.ctx))?.block, true);
 });
 
 test("semantic adoption on a short continuation remains authoritative through terminal results", async () => {
 	const h = createHarness();
 	await h.hooks.before_agent_start({ prompt: "결제 버그 수정해줘", systemPrompt: "base" }, h.ctx);
 	const continued = await h.hooks.before_agent_start({ prompt: "계속해", systemPrompt: "base" }, h.ctx);
-	const input = { command: "git push --force-with-lease origin scoped" };
+	const input = { command: "git push --force-with-lease origin main" };
 	await adoptSemantic(h, continued, { toolName: "bash", input }, "implement");
 	assert.equal(await h.hooks.tool_call({ toolName: "bash", toolCallId: "commit-once", input }, h.ctx), undefined);
 	for (const event of [
@@ -1669,14 +1674,14 @@ test("semantic adoption on a short continuation remains authoritative through te
 	]) {
 		const terminal = await h.hooks.before_agent_start(event, h.ctx);
 		assert.equal(terminal.message.details.state.assessment?.consumedBy, "bash:commit-once");
-		assert.equal((await h.hooks.tool_call({ toolName: "bash", input: { command: "git push --force" } }, h.ctx))?.block, true);
+		assert.equal((await h.hooks.tool_call({ toolName: "bash", input: { command: "git push --force origin main" } }, h.ctx))?.block, true);
 	}
 });
 
 test("semantic bash grants expire after durable restore and cannot cross cwd", async () => {
 	const source = createHarness();
 	const start = await source.hooks.before_agent_start({ prompt: "이 변경 이력을 남겨 둬", systemPrompt: "base" }, source.ctx);
-	const authorization = { toolName: "bash", input: { command: "git push --force-with-lease origin scoped" } };
+	const authorization = { toolName: "bash", input: { command: "git push --force-with-lease origin main" } };
 	await adoptSemantic(source, start, authorization, "ship");
 	assert.equal((await source.hooks.tool_call(authorization, { ...source.ctx, cwd: "/tmp/unrelated" }))?.block, true);
 	const entries = structuredClone(source.entries);
@@ -1700,14 +1705,14 @@ test("legacy classify/adopt remain compatible without laundering synthetic promp
 	assert.equal(legacy.details.state.request.prompt, start.message.details.state.prompt);
 	assert.deepEqual(legacy.details.state.workspaceAuthorization.allowedActions, []);
 	assert.equal((await h.hooks.tool_call({ toolName: "worktree_fork", input: { repo: "repo" } }, h.ctx))?.block, true);
-	assert.equal((await h.hooks.tool_call({ toolName: "bash", input: { command: "git push --force origin no" } }, h.ctx))?.block, true);
+	assert.equal((await h.hooks.tool_call({ toolName: "bash", input: { command: "git push --force origin main" } }, h.ctx))?.block, true);
 	await assert.rejects(h.tools.workflow_guard.execute("forged", { action: "adopt", prompt: "새 요청이다", reason: "forged", assessment: { requestId: start.message.details.state.request.id, intent: "implement" } }, undefined, undefined, h.ctx), /원 사용자 요청/);
 });
 
 test("a different stored loop request cannot borrow a semantic grant", async () => {
 	const h = createHarness();
 	const start = await h.hooks.before_agent_start({ prompt: "이 변경 이력을 남겨 둬", systemPrompt: "base" }, h.ctx);
-	const authorization = { toolName: "bash", input: { command: "git push --force-with-lease origin original" } };
+	const authorization = { toolName: "bash", input: { command: "git push --force-with-lease origin production" } };
 	await adoptSemantic(h, start, authorization, "ship");
 	const next = await h.hooks.before_agent_start(customStart("until-prompt", "another task", { agentStart: { kind: "continuation", request: "원인만 조사해줘" } }), h.ctx);
 	assert.equal(next.message.details.state.assessment, undefined);
