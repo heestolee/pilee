@@ -88,15 +88,17 @@ test("native ultra enables proactive delegation without bypassing safety gates",
 	assert.match(start.systemPrompt, /ULTRA PROACTIVE DELEGATION MODE/);
 	assert.match(start.systemPrompt, /explicit user request before spawning sub-agents no longer applies/);
 	assert.match(start.systemPrompt, /parallel work would materially improve speed or quality/);
-	assert.match(start.systemPrompt, /Existing read-only, mutation, side-effect, and light-path safety gates still apply/);
+	assert.match(start.systemPrompt, /Existing read-only, mutation and side-effect safety gates and light-path guidance still apply/);
 	assert.doesNotMatch(start.systemPrompt, /worker\/subagent orchestration is opt-in/);
 	assert.equal(start.message.details.ultraMode, true);
 
 	const lightStart = await hooks.before_agent_start({ prompt: "작은 문구만 수정해줘", systemPrompt: "base" }, ctx);
-	const subagentBlock = await hooks.tool_call({ toolName: "subagent", input: { command: "subagent run worker -- 문구 수정" } }, ctx);
+	const subagentCall = { toolName: "subagent", toolCallId: "ultra-light-subagent", input: { command: "subagent run worker -- 문구 수정" } };
 	assert.match(lightStart.systemPrompt, /ULTRA PROACTIVE DELEGATION MODE/);
-	assert.equal(subagentBlock?.block, true);
-	assert.match(subagentBlock.reason, /subagent fan-out/);
+	// light 경로는 안내만 한다.
+	assert.equal(await hooks.tool_call(subagentCall, ctx), undefined);
+	const note = await hooks.tool_result({ ...subagentCall, content: [] }, ctx);
+	assert.match(note.content.at(-1).text, /lightPathNote: .*subagent fan-out/);
 });
 
 test("non-ultra thinking keeps explicit-request worker discipline", async () => {
@@ -578,7 +580,7 @@ test("project-local profiles cannot self-declare a trusted PR repository", async
 	}
 });
 
-test("light hotfix PR path blocks deep context mining", async () => {
+test("light hotfix PR path warns instead of blocking deep context mining", async () => {
 	const { hooks, ctx } = createHarness();
 	const start = await hooks.before_agent_start({ prompt: "/create-pr hotfix/foo 생성해줘", systemPrompt: "base" }, ctx);
 
@@ -587,13 +589,13 @@ test("light hotfix PR path blocks deep context mining", async () => {
 	assert.match(start.systemPrompt, /auto_commit action=quick/);
 	assert.match(start.systemPrompt, /Product judgment discipline/);
 
-	const readBlock = await hooks.tool_call({ toolName: "read", input: { path: "/repo/.context/work/foo/context.md" } }, ctx);
-	assert.equal(readBlock?.block, true);
-	assert.match(readBlock.reason, /deep context read/);
+	const read = { toolName: "read", toolCallId: "deep-read", input: { path: "/repo/.context/work/foo/context.md" } };
+	assert.equal(await hooks.tool_call(read, ctx), undefined);
+	assert.match((await hooks.tool_result({ ...read, content: [] }, ctx)).content.at(-1).text, /lightPathNote: .*deep context read/);
 
-	const bashBlock = await hooks.tool_call({ toolName: "bash", input: { command: "rg membership .context/work/foo" } }, ctx);
-	assert.equal(bashBlock?.block, true);
-	assert.match(bashBlock.reason, /deep context mining/);
+	const mining = { toolName: "bash", toolCallId: "deep-mining", input: { command: "rg membership .context/work/foo" } };
+	assert.equal(await hooks.tool_call(mining, ctx), undefined);
+	assert.match((await hooks.tool_result({ ...mining, content: [] }, ctx)).content.at(-1).text, /lightPathNote: .*deep context mining/);
 
 	const normalRead = await hooks.tool_call({ toolName: "read", input: { path: "/repo/package.json" } }, ctx);
 	assert.equal(normalRead, undefined);
@@ -1023,7 +1025,7 @@ test("large-work routing selects specialists by expected output and capability",
 	assert.match(start.systemPrompt, /Partial failure stays an explicit GAP/);
 });
 
-test("structural signals checkpoint once while light fan-out stays blocked until adopt", async () => {
+test("structural signals checkpoint once while light fan-out stays advisory", async () => {
 	const { hooks, tools, ctx } = createHarness();
 	const start = await hooks.before_agent_start({ prompt: "작은 결과 문구만 수정해줘", systemPrompt: "base" }, ctx);
 	assert.match(start.systemPrompt, /intent=hotfix · weight=light/);
@@ -1061,8 +1063,7 @@ test("structural signals checkpoint once while light fan-out stays blocked until
 		"batch --agent finder --task 조사",
 		"chain --agent finder --task 조사",
 	]) {
-		const blockedAfterSignal = await hooks.tool_call({ toolName: "subagent", input: { command } }, ctx);
-		assert.equal(blockedAfterSignal?.block, true, command);
+		assert.equal(await hooks.tool_call({ toolName: "subagent", input: { command } }, ctx), undefined, command);
 	}
 	const allowedContinue = await hooks.tool_call({
 		toolName: "subagent",
@@ -1145,11 +1146,6 @@ test("large-work routing rejects text resemblance and untrusted metadata", async
 			isError: item.isError,
 		}, ctx);
 		assert.equal(result.details.workflowGuard.largeWorkRoutingSuggested, false, item.name);
-		const blocked = await hooks.tool_call({
-			toolName: "subagent",
-			input: { command: "subagent run worker -- 작은 문구 수정" },
-		}, ctx);
-		assert.equal(blocked?.block, true, item.name);
 	}
 });
 
@@ -1166,11 +1162,9 @@ test("small sequential results stay on the main agent without routing escalation
 	}, ctx);
 	assert.equal(result.details.workflowGuard.largeWorkRoutingSuggested, false);
 
-	const blocked = await hooks.tool_call({
-		toolName: "subagent",
-		input: { command: "subagent run worker -- 작은 문구 수정" },
-	}, ctx);
-	assert.equal(blocked?.block, true);
+	const subagent = { toolName: "subagent", toolCallId: "small-subagent", input: { command: "subagent run worker -- 작은 문구 수정" } };
+	assert.equal(await hooks.tool_call(subagent, ctx), undefined);
+	assert.match((await hooks.tool_result({ ...subagent, content: [] }, ctx)).content.at(-1).text, /lightPathNote/);
 });
 
 test("answer and investigation turns use soft read-only guidance", async () => {
@@ -1928,7 +1922,7 @@ test("standard framed work injects commit-or-explain guard", async () => {
 	assert.match(start.systemPrompt, /pass a reviewable inline plan to auto_commit action=apply/);
 });
 
-test("light task stops tools after successful push", async () => {
+test("light task nudges completion after successful push without blocking", async () => {
 	const { hooks, ctx } = createHarness();
 	await hooks.before_agent_start({ prompt: "작은 문구만 수정하고 커밋푸시해줘", systemPrompt: "base" }, ctx);
 
@@ -1942,12 +1936,10 @@ test("light task stops tools after successful push", async () => {
 	assert.equal(result.details.workflowGuard.terminalActionRequired, true);
 	assert.match(result.content.at(-1).text, /Light task reached successful push/);
 
-	const statusBlock = await hooks.tool_call({ toolName: "bash", input: { command: "git status --short --branch && git log --oneline -3" } }, ctx);
-	assert.equal(statusBlock?.block, true);
-	assert.match(statusBlock.reason, /light task already reached successful push/);
-
-	const workContextBlock = await hooks.tool_call({ toolName: "work_context", input: { action: "checkpoint" } }, ctx);
-	assert.equal(workContextBlock?.block, true);
+	const status = { toolName: "bash", toolCallId: "post-push-status", input: { command: "git status --short --branch && git log --oneline -3" } };
+	assert.equal(await hooks.tool_call(status, ctx), undefined);
+	assert.match((await hooks.tool_result({ ...status, content: [] }, ctx)).content.at(-1).text, /postPushNote/);
+	assert.equal(await hooks.tool_call({ toolName: "work_context", input: { action: "checkpoint" } }, ctx), undefined);
 });
 
 test("explicit PR light path can continue after push", async () => {

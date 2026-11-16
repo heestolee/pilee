@@ -692,7 +692,7 @@ function buildSystemPrompt(
 			"- ULTRA PROACTIVE DELEGATION MODE: proactive multi-agent delegation is active.",
 			"- Any earlier instruction requiring an explicit user request before spawning sub-agents no longer applies.",
 			"- Use sub-agents when parallel work would materially improve speed or quality.",
-			"- Do not delegate trivial sequential work. Existing read-only, mutation, side-effect, and light-path safety gates still apply.",
+			"- Do not delegate trivial sequential work. Existing read-only, mutation and side-effect safety gates and light-path guidance still apply.",
 		);
 	}
 
@@ -1912,12 +1912,8 @@ function statusNoteToolBlockReason(state: GuardState, toolName: string): string 
 	].join("\n");
 }
 
-function heavyToolBlockReason(state: GuardState, toolName: string): string {
-	return [
-		`workflow_guard blocked ${toolName}: current request is light (${state.summary}).`,
-		"Use scope lock → focused change → nearest validation first.",
-		"Start worker fan-out, capture-heavy report, or deep session/context mining only after explicit user request or a newly discovered risk axis.",
-	].join("\n");
+function lightPathNote(state: GuardState, toolName: string): string {
+	return `[workflow_guard] lightPathNote: 현재 요청은 가벼운 작업으로 분류됐지만 ${toolName}을 막지 않았습니다 (${state.summary}). 꼭 필요한 단계인지 확인하고, 아니라면 범위를 줄여 다음 작업으로 넘어가세요.`;
 }
 
 function isDeepContextPath(path: string): boolean {
@@ -2316,17 +2312,7 @@ export default function workflowGuard(
 		}
 
 		if (lightPushDoneBySession.get(sessionKey(ctx)) && event.toolName !== "workflow_guard") {
-			const command = event.toolName === "bash" ? String(event.input?.command ?? "") : "";
-			const isExplicitBypass = event.toolName === "bash" && /WORKFLOW_GUARD_ALLOW_POST_PUSH_CHECK=1/.test(command);
-			if (!isExplicitBypass) {
-				return {
-					block: true,
-					reason: [
-						"workflow_guard blocked extra tool use: light task already reached successful push.",
-						"Report completion now in one short Korean line. Do not run extra status/log/PR/work_context checks unless the user asks a new question.",
-					].join("\n"),
-				};
-			}
+			addSoftNote(ctx, event.toolCallId, "[workflow_guard] postPushNote: 가벼운 작업이 이미 push까지 끝났습니다. 사용자가 요청한 다음 단계가 아니라면 추가 확인 없이 완료를 보고하세요.");
 		}
 
 		if (state.continuationScope && (event.toolName === "edit" || event.toolName === "write")
@@ -2378,7 +2364,7 @@ export default function workflowGuard(
 
 		if (event.toolName === "read" && state.weight === "light" && !state.explicitHeavy && !state.auditRequired) {
 			const path = String(event.input?.path ?? "");
-			if (isDeepContextPath(path)) return { block: true, reason: heavyToolBlockReason(state, "deep context read") };
+			if (isDeepContextPath(path)) addSoftNote(ctx, event.toolCallId, lightPathNote(state, "deep context read"));
 		}
 
 		if (event.toolName === "bash") {
@@ -2413,10 +2399,10 @@ export default function workflowGuard(
 			}
 			if (isBroadWildcardWorkspaceBuildCommand(command) && !broadBootstrapBypass(command)) {
 				// Resolve-error text is diagnostic evidence, not an execution authority boundary.
-				if (state.weight === "light" && !state.explicitHeavy) return { block: true, reason: heavyToolBlockReason(state, "broad wildcard workspace build") };
+				if (state.weight === "light" && !state.explicitHeavy) addSoftNote(ctx, event.toolCallId, lightPathNote(state, "broad wildcard workspace build"));
 			}
 			if (state.weight === "light" && !state.explicitHeavy && !state.auditRequired && isDeepContextMiningCommand(command)) {
-				return { block: true, reason: heavyToolBlockReason(state, "deep context mining") };
+				addSoftNote(ctx, event.toolCallId, lightPathNote(state, "deep context mining"));
 			}
 			if (isGitCommitCommand(command)) {
 				const inspection = commitInspection(command, ctx.cwd);
@@ -2462,13 +2448,11 @@ export default function workflowGuard(
 
 		if (state.weight === "light" && !state.explicitHeavy) {
 			if (event.toolName === "verify_report_live" && String(event.input?.action ?? "") === "start") {
-				return { block: true, reason: heavyToolBlockReason(state, "verify_report_live") };
+				addSoftNote(ctx, event.toolCallId, lightPathNote(state, "verify_report_live"));
 			}
 			if (event.toolName === "subagent") {
 				const verb = parseSubagentCommandVerb(event.input?.command);
-				if (verb === "run" || verb === "batch" || verb === "chain") {
-					return { block: true, reason: heavyToolBlockReason(state, "subagent fan-out") };
-				}
+				if (verb === "run" || verb === "batch" || verb === "chain") addSoftNote(ctx, event.toolCallId, lightPathNote(state, "subagent fan-out"));
 			}
 		}
 		if (pendingWorkspaceAction) {

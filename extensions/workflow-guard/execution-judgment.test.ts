@@ -147,7 +147,7 @@ test("모듈 진단 뒤에도 점검-only 요청의 설치 차단은 유지한�
 	assert.equal(officialRead, undefined);
 });
 
-test("light 작업의 넓은 빌드 제한은 진단 안내와 독립적으로 유지한다", async () => {
+test("light 작업의 넓은 빌드는 막지 않고 안내만 한다", async () => {
 	// given
 	const h = harness();
 	await h.start("작은 문구만 수정해줘");
@@ -157,6 +157,5 @@ test("light 작업의 넓은 빌드 제한은 진단 안내와 독립적으로 �
 	const build = await h.call("pnpm turbo build --filter='@fixture/*'");
 
 	// then
-	assert.equal(build?.block, true);
-	assert.match(build.reason, /current request is light/);
+	assert.equal(build, undefined);
 });
