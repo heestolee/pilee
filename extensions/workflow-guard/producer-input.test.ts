@@ -56,7 +56,7 @@ test("real command variants classify as implementation, artifact or ship without
 	}
 });
 
-test("completion integrates prior intent while consumed authorization remains consumed across restore", async () => {
+test("completion integrates prior intent and never mints workspace rights across restore", async () => {
 	literal("subagent/tool-execute.ts", "subagent-tool");
 	const h = harness();
 	await h.start({ messageType: "user", prompt: "새 worktree 만들어 버그 수정해줘" });
@@ -65,13 +65,15 @@ test("completion integrates prior intent while consumed authorization remains co
 		const next = await h.start(custom("subagent-tool", details));
 		assert.equal(next.prompt, "새 worktree 만들어 버그 수정해줘");
 		assert.equal(next.explicitMutation, true);
-		assert.equal((await h.tool("worktree_fork", {}, "second"))?.block, true);
+		assert.deepEqual(next.workspaceAuthorization.allowedActions, []);
+		// worktree 생성은 기본 허용이라 이어가기 턴도 막지 않는다. 중복 worktree는 되돌릴 수 있는 비용이다.
+		assert.equal(await h.tool("worktree_fork", {}, "second"), undefined);
 	}
 	const restored = harness();
 	restored.entries.push(...structuredClone(h.entries));
 	const next = await restored.start(custom("subagent-tool", { status: "done", runId: 4 }));
 	assert.equal(next.explicitMutation, true);
-	assert.equal((await restored.tool("worktree_fork", {}, "restored"))?.block, true);
+	assert.deepEqual(next.workspaceAuthorization.allowedActions, []);
 });
 
 test("review and learner followups cannot inherit an unrelated implementation or topology approval", async () => {
@@ -120,7 +122,7 @@ test("short user cues inherit the actual mutation or readonly request, not the c
 	}
 });
 
-test("same-runtime tree navigation rebuilds intent both ways without abandoned or consumed rights", async () => {
+test("same-runtime tree navigation rebuilds intent both ways without minting workspace rights", async () => {
 	const h = harness();
 	await h.start({ messageType: "user", prompt: "새 worktree 만들어 결제 코드 수정해줘" });
 	const unconsumedBranch = structuredClone(h.entries);
@@ -133,18 +135,16 @@ test("same-runtime tree navigation rebuilds intent both ways without abandoned o
 		assert.equal(state.prompt, "원인만 설명해줘");
 		assert.equal(state.explicitMutation, false);
 		assert.deepEqual(state.workspaceAuthorization.allowedActions, []);
-		assert.equal((await h.tool("worktree_fork", {}, "abandoned"))?.block, true);
 	}
 	const readonlyBranch = structuredClone(h.entries);
 	await h.tree(mutationBranch);
 	const restored = await h.start({ messageType: "user", prompt: "계속해" });
 	assert.equal(restored.explicitMutation, true);
-	assert.equal((await h.tool("worktree_fork", {}, "consumed"))?.block, true);
 	await h.tree(unconsumedBranch);
 	assert.equal((await h.start(custom("subagent-tool", { status: "done" }))).explicitMutation, true);
 	await h.tree(readonlyBranch);
 	assert.equal((await h.start({ messageType: "user", prompt: "계속해" })).explicitMutation, false);
-	assert.equal((await h.tool("worktree_fork", {}, "abandoned-again"))?.block, true);
+	assert.equal((await h.tool("bash", { command: "git commit -m no" }))?.block, true);
 });
 
 test("scoped questions retain artifact-only state through completion, loop, restore and short cue", async () => {
@@ -182,7 +182,7 @@ test("scoped questions retain artifact-only state through completion, loop, rest
 	}
 });
 
-test("saved until task survives terminal results without reissuing topology authorization", async () => {
+test("saved until task survives terminal results without minting topology authorization", async () => {
 	const h = harness();
 	await h.start({ messageType: "user", prompt: "새 worktree 만들어 코드 수정해줘" });
 	assert.equal(await h.tool("worktree_fork", {}, "until-once"), undefined);
@@ -192,7 +192,7 @@ test("saved until task survives terminal results without reissuing topology auth
 		const state = await h.start(event);
 		assert.equal(state.prompt, request);
 		assert.equal(state.explicitMutation, true);
-		assert.equal((await h.tool("worktree_fork", {}, "until-twice"))?.block, true);
+		assert.deepEqual(state.workspaceAuthorization.allowedActions, []);
 	}
 });
 

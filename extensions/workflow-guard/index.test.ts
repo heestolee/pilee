@@ -781,25 +781,34 @@ test("branch-only and negative worktree intents cannot authorize semantic git wo
 		assert.match(start.message.details.state.summary, /workspaceAllow=branch-in-place/);
 		const blocked = await hooks.tool_call({ toolName: "worktree_create", input: { repo: "repo" } }, ctx);
 		assert.equal(blocked?.block, true, prompt);
-		assert.match(blocked.reason, /branch\/in-place 요청은 새 worktree 생성 권한이 아닙니다|명시적으로 거부됐습니다/);
+		assert.match(blocked.reason, /branch\/in-place|명시적으로 거부했습니다/);
 		for (const command of commands) {
 			const manual = await hooks.tool_call({ toolName: "bash", input: { command } }, ctx);
 			assert.equal(manual?.block, true, `${prompt}: ${command}`);
-			assert.match(manual.reason, /branch\/in-place 요청은 새 worktree 생성 권한이 아닙니다|명시적으로 거부됐습니다/);
+			assert.match(manual.reason, /branch\/in-place|명시적으로 거부했습니다/);
 		}
 		assert.equal(await hooks.tool_call({ toolName: "bash", input: { command: "git -C /repo status --short" } }, ctx), undefined);
 		assert.equal(await hooks.tool_call({ toolName: "bash", input: { command: "env /usr/bin/git -C /repo branch --show-current" } }, ctx), undefined);
 	}
 });
 
-test("explicit worktree and switch intents authorize one matching action only", async () => {
+test("worktree creation and switch are allowed by default and each call gets its own durable proof", async () => {
 	const create = createHarness();
 	const createStart = await create.hooks.before_agent_start({ prompt: "현재 대화를 fork해서 새 worktree 만들어줘", systemPrompt: "base" }, create.ctx);
 	assert.match(createStart.message.details.state.summary, /workspaceAllow=create-worktree/);
 	assert.equal(await create.hooks.tool_call({ toolName: "worktree_fork", toolCallId: "fork-1", input: { repo: "repo" } }, create.ctx), undefined);
-	const reusedCreate = await create.hooks.tool_call({ toolName: "worktree_create", toolCallId: "create-2", input: { repo: "repo" } }, create.ctx);
-	assert.equal(reusedCreate?.block, true);
-	assert.match(reusedCreate.reason, /이미 사용했습니다/);
+	// "4개 각각 포크패널"처럼 같은 요청에서 여러 번 만들 수 있다.
+	assert.equal(await create.hooks.tool_call({ toolName: "worktree_create", toolCallId: "create-2", input: { repo: "repo" } }, create.ctx), undefined);
+	const durable = restoreWorkspaceAuthorization(create.entries);
+	assert.ok(workspaceAuthorizationProofForConsumer(durable, "create-worktree", "worktree_fork:fork-1"));
+	assert.ok(workspaceAuthorizationProofForConsumer(durable, "create-worktree", "worktree_create:create-2"));
+
+	for (const prompt of ["일단 9번 먼저 시작하자. 이거 핸드오프만들어서 오른쪽에 포크패널 생성하고 바로 작업시작", "확인해볼래?"]) {
+		const missed = createHarness();
+		await missed.hooks.before_agent_start({ prompt, systemPrompt: "base" }, missed.ctx);
+		assert.equal(await missed.hooks.tool_call({ toolName: "worktree_fork", toolCallId: "panel", input: { repo: "repo" } }, missed.ctx), undefined, prompt);
+		assert.ok(workspaceAuthorizationProofForConsumer(restoreWorkspaceAuthorization(missed.entries), "create-worktree", "worktree_fork:panel"), prompt);
+	}
 
 	for (const [index, command] of [
 		"git -C /repo worktree add /tmp/target feature/target",
@@ -811,21 +820,19 @@ test("explicit worktree and switch intents authorize one matching action only", 
 		const direct = createHarness();
 		await direct.hooks.before_agent_start({ prompt: "새 worktree 만들어줘", systemPrompt: "base" }, direct.ctx);
 		assert.equal(await direct.hooks.tool_call({ toolName: "bash", toolCallId: `bash-${index}`, input: { command } }, direct.ctx), undefined, command);
-		const reused = await direct.hooks.tool_call({ toolName: "bash", toolCallId: `bash-reuse-${index}`, input: { command } }, direct.ctx);
-		assert.equal(reused?.block, true, command);
+		assert.equal(await direct.hooks.tool_call({ toolName: "bash", toolCallId: `bash-reuse-${index}`, input: { command } }, direct.ctx), undefined, command);
 	}
 
 	const useExisting = createHarness();
 	const switchStart = await useExisting.hooks.before_agent_start({ prompt: "/wt switch repo/target", systemPrompt: "base" }, useExisting.ctx);
 	assert.match(switchStart.message.details.state.summary, /workspaceAllow=use-existing-worktree/);
 	assert.equal(await useExisting.hooks.tool_call({ toolName: "worktree_switch", toolCallId: "switch-1", input: { repo: "repo", name: "target" } }, useExisting.ctx), undefined);
-	const reusedSwitch = await useExisting.hooks.tool_call({ toolName: "worktree_switch", toolCallId: "switch-2", input: { repo: "repo", name: "target" } }, useExisting.ctx);
-	assert.equal(reusedSwitch?.block, true);
+	assert.equal(await useExisting.hooks.tool_call({ toolName: "worktree_switch", toolCallId: "switch-2", input: { repo: "repo", name: "target" } }, useExisting.ctx), undefined);
 	const listOnly = await useExisting.hooks.tool_call({ toolName: "worktree_switch", toolCallId: "switch-list", input: { repo: "repo" } }, useExisting.ctx);
 	assert.equal(listOnly, undefined, "listing worktrees must not require or consume switch authorization");
 });
 
-test("grouped and wrapped direct worktree commands consume exactly one authorization", async () => {
+test("grouped and wrapped direct worktree commands in protected repos only leave a tool recommendation", async () => {
 	const commands = [
 		"(git -C /repo worktree add /tmp/target feature/target)",
 		"sudo git -C /repo worktree add /tmp/target feature/target",
@@ -843,31 +850,19 @@ test("grouped and wrapped direct worktree commands consume exactly one authoriza
 			toolCallId: `wrapped-${index}`,
 			input: { command },
 		}, harness.ctx), undefined, command);
-		const reused = await harness.hooks.tool_call({
-			toolName: "bash",
-			toolCallId: `wrapped-reuse-${index}`,
-			input: { command },
-		}, harness.ctx);
-		assert.equal(reused?.block, true, command);
-		assert.match(reused.reason, /이미 사용했습니다/);
+		const note = await harness.hooks.tool_result({ toolName: "bash", toolCallId: `wrapped-${index}`, input: { command }, content: [] }, harness.ctx);
+		assert.match(note.content.at(-1).text, /worktreeNote/, command);
 	}
 });
 
-test("one authorization cannot execute multiple worktree additions in one bash tool", async () => {
+test("several worktree additions in one bash call are not blocked", async () => {
 	const harness = createHarness();
 	await harness.hooks.before_agent_start({ prompt: "새 worktree 만들어줘", systemPrompt: "base" }, harness.ctx);
-	const multiple = await harness.hooks.tool_call({
+	assert.equal(await harness.hooks.tool_call({
 		toolName: "bash",
 		toolCallId: "multi-add",
 		input: { command: "git worktree add /tmp/one feature/one && env git worktree add /tmp/two feature/two" },
-	}, harness.ctx);
-	assert.equal(multiple?.block, true);
-	assert.match(multiple.reason, /exactly one workspace action/);
-	assert.equal(await harness.hooks.tool_call({
-		toolName: "bash",
-		toolCallId: "single-after-block",
-		input: { command: "git worktree add /tmp/one feature/one" },
-	}, harness.ctx), undefined, "blocked multi-action command must not consume the authorization");
+	}, harness.ctx), undefined);
 });
 
 test("TUI worktree approval survives a neutral next turn and is consumed by the matching frame tool", async () => {
@@ -887,12 +882,6 @@ test("TUI worktree approval survives a neutral next turn and is consumed by the 
 		toolCallId: "frame-fork-1",
 		input: { identityKey: "frame-1" },
 	}, harness.ctx), undefined);
-	const reused = await harness.hooks.tool_call({
-		toolName: "frame_worktree_fork",
-		toolCallId: "frame-fork-2",
-		input: { identityKey: "frame-1" },
-	}, harness.ctx);
-	assert.equal(reused?.block, true);
 	const latestState = harness.entries.at(-1)?.data as any;
 	const consumed = latestState.events.find((event: any) => event.sourceId === "frame_studio:frame-answer-1");
 	assert.equal(consumed.consumedBy, "frame_worktree_fork:frame-fork-1");
@@ -1438,22 +1427,11 @@ test("semantic checkout authorization does not turn a no-code-edit review into b
 	assert.equal((await h.hooks.tool_call({ toolName: "bash", input: { command: "git push" } }, h.ctx))?.block, true);
 });
 
-test("semantic grants match the exact action, tool, target and base before consumption", async () => {
+test("semantic worktree grants still hand their exact scope to the downstream proof", async () => {
 	const h = createHarness();
 	const start = await h.hooks.before_agent_start({ prompt: "https://github.com/acme/repo/pull/42 여기 체크아웃해 둬", systemPrompt: "base" }, h.ctx);
 	const input = { repo: "repo", name: "review-42", hotfix: false };
 	await adoptSemantic(h, start, { toolName: "worktree_fork", input });
-	for (const event of [
-		{ toolName: "worktree_fork", input: { ...input, repo: "unrelated" } },
-		{ toolName: "worktree_fork", input: { ...input, name: "different" } },
-		{ toolName: "worktree_fork", input: { ...input, hotfix: true } },
-		{ toolName: "worktree_create", input },
-		{ toolName: "worktree_switch", input },
-		{ toolName: "bash", input: { command: "git worktree add /tmp/unrelated feature/unrelated" } },
-		{ toolName: "bash", input: { command: "git push --force origin main" } },
-	]) assert.equal((await h.hooks.tool_call({ ...event, toolCallId: "mismatch" }, h.ctx))?.block, true, JSON.stringify(event));
-
-	assert.equal((await h.hooks.tool_call({ toolName: "worktree_fork", toolCallId: "other-cwd", input }, { ...h.ctx, cwd: "/tmp/other-repository" }))?.block, true);
 	assert.equal(await h.hooks.tool_call({ toolName: "worktree_fork", toolCallId: "exact", input: { hotfix: false, name: input.name, repo: input.repo } }, h.ctx), undefined);
 	const durable = restoreWorkspaceAuthorization(h.entries);
 	const proof = workspaceAuthorizationProofForConsumer(durable, "create-worktree", "worktree_fork:exact");
@@ -1466,7 +1444,9 @@ test("semantic grants match the exact action, tool, target and base before consu
 	});
 	assert.equal(contract?.authorization.proof?.consumerId, "worktree_fork:exact");
 	assert.deepEqual(contract?.authorization.events[0].scope?.input, input);
-	assert.equal((await h.hooks.tool_call({ toolName: "worktree_fork", toolCallId: "reused", input }, h.ctx))?.block, true);
+	// 같은 입력의 두 번째 호출은 기본 허용으로 진행되고, adopt 기록을 다시 쓰지는 않는다.
+	assert.equal(await h.hooks.tool_call({ toolName: "worktree_fork", toolCallId: "reused", input }, h.ctx), undefined);
+	assert.equal(workspaceAuthorizationProofForConsumer(restoreWorkspaceAuthorization(h.entries), "create-worktree", "worktree_fork:reused")?.events[0].scope, undefined);
 	await assert.rejects(adoptSemantic(h, start, { toolName: "worktree_fork", input }), /이미 사용/);
 });
 
@@ -1518,7 +1498,7 @@ test("status and scoped custom followups cannot use semantic adopt to expand aut
 });
 
 test("a new user request or cancellation cannot borrow a previous semantic grant", async () => {
-	for (const prompt of ["다른 PR의 원인만 설명해줘", "취소해"]) {
+	for (const [prompt, blocked] of [["다른 PR의 원인만 설명해줘", false], ["취소해", true]] as const) {
 		const h = createHarness();
 		const source = await h.hooks.before_agent_start({ prompt: "이 PR 체크아웃해 둬", systemPrompt: "base" }, h.ctx);
 		const authorization = { toolName: "worktree_fork", input: { repo: "repo", name: "original" } };
@@ -1526,7 +1506,8 @@ test("a new user request or cancellation cannot borrow a previous semantic grant
 		const next = await h.hooks.before_agent_start({ prompt, systemPrompt: "base" }, h.ctx);
 		assert.notEqual(next.message.details.state.request.id, source.message.details.state.request.id);
 		await assert.rejects(adoptSemantic(h, source, authorization), /requestId/);
-		assert.equal((await h.hooks.tool_call({ ...authorization, toolCallId: "new-request" }, h.ctx))?.block, true, prompt);
+		// worktree 생성은 기본 허용이다. 취소처럼 사용자가 직접 막은 경우만 차단한다.
+		assert.equal((await h.hooks.tool_call({ ...authorization, toolCallId: "new-request" }, h.ctx))?.block === true, blocked, prompt);
 	}
 });
 
@@ -1538,12 +1519,13 @@ test("durable semantic grants restore only on their active branch and remain one
 	const restored = createHarness();
 	restored.entries.push(...structuredClone(source.entries));
 	assert.equal(await restored.hooks.tool_call({ ...authorization, toolCallId: "restored" }, restored.ctx), undefined);
+	const restoredProof = workspaceAuthorizationProofForConsumer(restoreWorkspaceAuthorization(restored.entries), "create-worktree", "worktree_fork:restored");
+	assert.deepEqual(restoredProof?.events[0].scope?.input, authorization.input);
 	const consumed = createHarness();
 	consumed.entries.push(...structuredClone(restored.entries));
-	assert.equal((await consumed.hooks.tool_call({ ...authorization, toolCallId: "replay" }, consumed.ctx))?.block, true);
-	const unrelated = createHarness();
-	unrelated.entries.push(...structuredClone(source.entries), { type: "message", message: { role: "user", content: "이제 설명만 해줘" } } as any);
-	assert.equal((await unrelated.hooks.tool_call({ ...authorization, toolCallId: "unrelated-branch" }, unrelated.ctx))?.block, true);
+	assert.equal(await consumed.hooks.tool_call({ ...authorization, toolCallId: "replay" }, consumed.ctx), undefined);
+	const replayProof = workspaceAuthorizationProofForConsumer(restoreWorkspaceAuthorization(consumed.entries), "create-worktree", "worktree_fork:replay");
+	assert.equal(replayProof?.events[0].scope, undefined, "a consumed semantic grant is never replayed");
 });
 
 test("an expired grant can be reassessed but its consumed renewal cannot be replayed", async () => {
@@ -1606,14 +1588,16 @@ test("a general push request does not authorize force/delete pushes, but naming 
 	assert.equal(await forced.hooks.tool_call({ toolName: "bash", input: { command: "git push --force-with-lease origin main" } }, forced.ctx), undefined);
 });
 
-test("git worktree add is gated only in protected repositories", async () => {
+test("git worktree add only leaves a tool recommendation in protected repositories", async () => {
 	const profiles = [{ name: "product", match: { pathRegexes: ["/creatrip/product$"] } }];
 	const open = createHarness({ worktreeRepoProfiles: profiles });
 	await open.hooks.before_agent_start({ prompt: "훅 고쳐줘", systemPrompt: "base" }, open.ctx);
 	assert.equal(await open.hooks.tool_call({ toolName: "bash", input: { command: "git worktree add /tmp/pilee-fix -b fix/x origin/main" } }, open.ctx), undefined);
 	const guarded = createHarness({ cwd: "/Users/someone/creatrip/product", worktreeRepoProfiles: profiles });
 	await guarded.hooks.before_agent_start({ prompt: "훅 고쳐줘", systemPrompt: "base" }, guarded.ctx);
-	assert.equal((await guarded.hooks.tool_call({ toolName: "bash", input: { command: "git worktree add /tmp/product-x -b x" } }, guarded.ctx))?.block, true);
+	const add = { toolName: "bash", toolCallId: "product-add", input: { command: "git worktree add /tmp/product-x -b x" } };
+	assert.equal(await guarded.hooks.tool_call(add, guarded.ctx), undefined);
+	assert.match((await guarded.hooks.tool_result({ ...add, content: [] }, guarded.ctx)).content.at(-1).text, /worktreeNote/);
 });
 
 test("Korean particles between commit/push and the verb still count as explicit requests", async () => {
@@ -1704,7 +1688,8 @@ test("legacy classify/adopt remain compatible without laundering synthetic promp
 	assert.equal(legacy.details.state.intent, preview.details.state.intent);
 	assert.equal(legacy.details.state.request.prompt, start.message.details.state.prompt);
 	assert.deepEqual(legacy.details.state.workspaceAuthorization.allowedActions, []);
-	assert.equal((await h.hooks.tool_call({ toolName: "worktree_fork", input: { repo: "repo" } }, h.ctx))?.block, true);
+	// legacy adopt가 권한을 만들지는 않지만, worktree 생성은 원래 기본 허용이다.
+	assert.equal(await h.hooks.tool_call({ toolName: "worktree_fork", input: { repo: "repo" } }, h.ctx), undefined);
 	assert.equal((await h.hooks.tool_call({ toolName: "bash", input: { command: "git push --force origin main" } }, h.ctx))?.block, true);
 	await assert.rejects(h.tools.workflow_guard.execute("forged", { action: "adopt", prompt: "새 요청이다", reason: "forged", assessment: { requestId: start.message.details.state.request.id, intent: "implement" } }, undefined, undefined, h.ctx), /원 사용자 요청/);
 });
@@ -1720,20 +1705,20 @@ test("a different stored loop request cannot borrow a semantic grant", async () 
 	assert.equal((await h.hooks.tool_call(authorization, h.ctx))?.block, true);
 });
 
-test("proven no-execution worktree results can retry without reapproval, including after restore", async () => {
+test("worktree retries never need reapproval, including after restore", async () => {
 	const h = createHarness();
 	const start = await h.hooks.before_agent_start({ prompt: "이 PR 체크아웃해 둬", systemPrompt: "base" }, h.ctx);
 	const authorization = { toolName: "worktree_fork", input: { repo: "repo", name: "retry" } };
 	await adoptSemantic(h, start, authorization);
 	assert.equal(await h.hooks.tool_call({ ...authorization, toolCallId: "no-op" }, h.ctx), undefined);
 	await h.hooks.tool_result({ ...authorization, toolCallId: "wrong-call", details: { blocked: true, noWorktreeCreated: true } }, h.ctx);
-	assert.equal((await h.hooks.tool_call({ ...authorization, toolCallId: "too-early" }, h.ctx))?.block, true);
+	assert.equal(await h.hooks.tool_call({ ...authorization, toolCallId: "too-early" }, h.ctx), undefined);
 	await h.hooks.tool_result({ ...authorization, toolCallId: "no-op", details: { blocked: true, noWorktreeCreated: true } }, h.ctx);
 	const restored = createHarness();
 	restored.entries.push(...structuredClone(h.entries));
 	assert.equal(await restored.hooks.tool_call({ ...authorization, toolCallId: "retry" }, restored.ctx), undefined);
 	await restored.hooks.tool_result({ ...authorization, toolCallId: "retry", details: { blocked: true, targetPreserved: true } }, restored.ctx);
-	assert.equal((await restored.hooks.tool_call({ ...authorization, toolCallId: "ambiguous" }, restored.ctx))?.block, true);
+	assert.equal(await restored.hooks.tool_call({ ...authorization, toolCallId: "ambiguous" }, restored.ctx), undefined);
 });
 
 test("commit-only auto_commit and status do not violate a push prohibition", async () => {

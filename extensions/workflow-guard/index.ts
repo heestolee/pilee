@@ -17,7 +17,6 @@ import {
 	consumeWorkspaceAuthorization,
 	createWorkspaceAuthorizationEvent,
 	deriveWorkspaceAuthorization,
-	isWorkspaceActionAuthorized,
 	restoreWorkspaceAuthorization,
 	type WorkspaceAction,
 	type WorkspaceAuthorizationEvent,
@@ -88,6 +87,10 @@ interface GuardState {
 	largeWorkBasis?: string;
 	trustedInternalPullRequestRepository?: string;
 	workspaceAuthorization: WorkspaceAuthorizationProvenance;
+	// 요청 시작 시점의 권한 이벤트 수. 이후 이벤트가 이번 요청 안에서 내린 선택·허용이다.
+	workspaceEventBaseline?: number;
+	// worktree fork로 넘어온 자식 세션이 같은 요청을 이어가는 턴이다.
+	forkedContinuation?: boolean;
 	createdAt: string;
 	sessionFile?: string;
 }
@@ -505,7 +508,7 @@ function classifyPrompt(
 	].filter(Boolean).join(" · ");
 
 	const explicitReadOnly = !statusNote && (noMutation || requestsReadOnly(normalized));
-	return { prompt: authoritativePrompt, intent, weight, explicitHeavy, explicitMutation, explicitReadOnly, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, explicitIssueAction, explicitExternalPublish, auditRequired, sqlReview, detachedArtifactTask, mixedRequest, parallelInvestigationSuggested, summary, continuationCue, followUpCorrection, largeWorkObserved: false, workspaceAuthorization, createdAt: new Date().toISOString(), sessionFile };
+	return { prompt: authoritativePrompt, intent, weight, explicitHeavy, explicitMutation, explicitReadOnly, explicitSingleCommit, explicitCommitPushOnly, explicitPrAction, explicitIssueAction, explicitExternalPublish, auditRequired, sqlReview, detachedArtifactTask, mixedRequest, parallelInvestigationSuggested, summary, continuationCue, followUpCorrection, largeWorkObserved: false, workspaceAuthorization, workspaceEventBaseline: workspaceAuthorization.events.length, createdAt: new Date().toISOString(), sessionFile };
 }
 
 function adaptiveMaxReason(prompt: string): AdaptiveThinkingEscalation["reason"] | undefined {
@@ -802,14 +805,21 @@ function buildSystemPrompt(
 	return lines.join("\n");
 }
 
-function highRiskMutationBlockReason(state: GuardState, toolName: string, input: Record<string, unknown>, cwd: string): string | undefined {
-	if (semanticAuthorizationMatches(state, toolName, input, cwd)) return undefined;
-	if (state.explicitMutation && (state.request?.mutationHint ?? state.explicitMutation) && !state.assessment?.authorization && state.intent !== "status_note") return undefined;
-	return [
-		`workflow_guard blocked ${toolName}: protected-repository worktree creation was not explicitly requested (${state.summary}).`,
-		"Ordinary commit/push/install/edit calls are never blocked by intent classification.",
-		"This may be a heuristic miss, not a user refusal. For an explicit request use workflow_guard adopt with assessment.requestId and exact authorization {toolName,input}; ask only if real authority is missing or ambiguous.",
-	].join("\n");
+// worktree 생성·전환은 기본 허용한다. 이번 요청에서 사용자가 직접 거부했거나 현재 작업 공간에서 브랜치만 바꾸라고 한 경우만 막는다.
+function workspaceActionRefusal(state: GuardState, action: WorkspaceAction): string | undefined {
+	const events = state.workspaceAuthorization.events;
+	const latest = events.slice(state.workspaceEventBaseline ?? events.length)
+		.filter((event) => event.action === action && event.source !== "user-turn").at(-1);
+	if (latest) return latest.decision === "deny" ? `${action} 동작을 이번 요청의 선택지에서 명시적으로 거부했습니다.` : undefined;
+	if (action === "create-worktree" && state.forkedContinuation) {
+		return "worktree fork로 넘어온 세션입니다. 같은 요청으로 worktree를 또 만들지 말고 현재 작업 공간에서 이어가세요.";
+	}
+	const current = deriveWorkspaceAuthorization(state.request?.prompt ?? state.prompt);
+	if (current.deniedActions.includes(action)) return `${action} 동작을 원 사용자 요청에서 명시적으로 거부했습니다.`;
+	if (current.allowedActions.includes("branch-in-place") && !current.allowedActions.includes(action)) {
+		return "새 브랜치 요청은 현재 작업 공간에서 브랜치만 바꾸라는 뜻입니다(branch/in-place). 새 worktree를 만들거나 다른 worktree로 전환하지 않습니다.";
+	}
+	return undefined;
 }
 
 function workspaceActionForTool(toolName: string, input?: Record<string, unknown>): WorkspaceAction | undefined {
@@ -818,12 +828,10 @@ function workspaceActionForTool(toolName: string, input?: Record<string, unknown
 	return undefined;
 }
 
-function workspaceAuthorizationBlockReason(state: GuardState, toolName: string, action: WorkspaceAction): string {
+function workspaceRefusalBlockReason(toolName: string, refusal: string): string {
 	return [
-		`workflow_guard blocked ${toolName}: ${workspaceAuthorizationReason(state.workspaceAuthorization, action)}`,
-		"새 branch 요청은 현재 workspace의 in-place branch 동작으로 유지하고, 명시하지 않은 worktree topology로 확대하지 않습니다.",
-		"명시 요청을 heuristic이 놓쳤다면 workflow_guard adopt의 assessment.requestId와 정확한 authorization {toolName,input}으로 보정합니다. 이미 주어진 권한을 사용자에게 다시 묻지 않습니다.",
-		`authorization events: ${state.workspaceAuthorization.events.map((event) => `${event.source}:${event.sourceId}:${event.action}:${event.decision}`).join(", ") || "none"}`,
+		`workflow_guard blocked ${toolName}: ${refusal}`,
+		"사용자가 이번 요청에서 직접 막은 workspace 동작만 차단합니다. 사용자가 뜻을 바꿨다면 그 새 지시를 따르세요.",
 	].join("\n");
 }
 
@@ -837,11 +845,16 @@ function consumeGuardWorkspaceAuthorization(
 	cwd: string,
 ): { consumed: boolean; reason?: string } {
 	const scope = [...state.workspaceAuthorization.events].reverse().find((event) => event.action === action)?.scope;
-	if (scope && (scope.requestId !== state.request?.id || scope.cwd !== cwd || !sameSemanticToolCall(scope.toolName, scope.input, toolName, input))) {
-		return { consumed: false, reason: "semantic authorization의 원 요청·도구·대상이 현재 호출과 다릅니다." };
-	}
+	const scopeMatches = !scope || (scope.requestId === state.request?.id && scope.cwd === cwd && sameSemanticToolCall(scope.toolName, scope.input, toolName, input));
 	const consumerId = workspaceAuthorizationConsumerId(toolName, toolCallId);
-	const consumption = consumeWorkspaceAuthorization(state.workspaceAuthorization, action, consumerId);
+	let consumption = scopeMatches ? consumeWorkspaceAuthorization(state.workspaceAuthorization, action, consumerId) : undefined;
+	if (!consumption?.proof) {
+		// 기존 허용 기록이 없거나 이미 쓰였으면 이번 호출용 기본 허용을 기록한다. 도구는 이 기록을 실행 증명으로 확인한다.
+		const fallback = appendWorkspaceAuthorizationEvent(state.workspaceAuthorization, createWorkspaceAuthorizationEvent({
+			source: "tool", sourceId: `workflow_guard:default:${state.request?.id ?? "unknown"}`, action, decision: "allow",
+		}));
+		consumption = consumeWorkspaceAuthorization(fallback, action, consumerId);
+	}
 	if (!consumption.proof) return { consumed: false, reason: workspaceAuthorizationReason(consumption.authorization, action) };
 	try {
 		persistWorkspaceAuthorization(pi, consumption.authorization);
@@ -924,9 +937,8 @@ function requestMutationBlockReason(state: GuardState, toolName: string, input: 
 		&& !state.detachedArtifactTask && !scopedArtifactPath(cwd, String(input.path ?? ""))) {
 		return "원 사용자 요청은 코드 수정을 금지합니다. checkout 권한은 코드 변경 권한이 아닙니다.";
 	}
-	if (workspaceAction && state.workspaceAuthorization.deniedActions.includes(workspaceAction)) {
-		return `${workspaceAction} 동작이 원 사용자 요청에서 명시적으로 거부됐습니다.`;
-	}
+	const refusal = workspaceAction ? workspaceActionRefusal(state, workspaceAction) : undefined;
+	if (refusal) return refusal;
 	return undefined;
 }
 
@@ -2227,6 +2239,8 @@ export default function workflowGuard(
 			} else if (previous) state = { ...previous, sessionFile, continuationCue: true, summary: `${previous.summary} · continuation=latest-intent` };
 			// Continuation boilerplate never grants/reissues workspace rights.
 			state.workspaceAuthorization = restoredAuthorization;
+			state.workspaceEventBaseline = restoredAuthorization.events.length;
+			if (/^pilee-(?:frame(?:-v2)?-)?worktree-fork-continuation$/.test(input.customType ?? "")) state.forkedContinuation = true;
 			state.summary = [
 				...state.summary.split(" · ").filter((part) => !/^workspace(?:Allow|Deny)=/.test(part)),
 				restoredAuthorization.allowedActions.length ? `workspaceAllow=${restoredAuthorization.allowedActions.join(",")}` : undefined,
@@ -2364,13 +2378,7 @@ export default function workflowGuard(
 			return { block: true, reason: `workflow_guard: ${state.continuationScope} follow-up does not authorize implementation or workspace actions.` };
 		}
 		if (workspaceAction) {
-			if (workspaceAction === "create-worktree" && !state.explicitMutation && !isWorkspaceActionAuthorized(state.workspaceAuthorization, workspaceAction)) {
-				const reason = highRiskMutationBlockReason(state, event.toolName, event.input ?? {}, ctx.cwd);
-				if (reason) return { block: true, reason };
-			}
-			if (!isWorkspaceActionAuthorized(state.workspaceAuthorization, workspaceAction)) {
-				return { block: true, reason: workspaceAuthorizationBlockReason(state, event.toolName, workspaceAction) };
-			}
+			// 거부는 requestMutationBlockReason에서 이미 막았다. 남은 경우는 분류 결과와 관계없이 진행한다.
 			pendingWorkspaceAction = workspaceAction;
 		}
 
@@ -2394,14 +2402,10 @@ export default function workflowGuard(
 				}
 				return false;
 			})();
-			if (protectedWorktreeAdd && directWorktreeAddCount > 1) {
-				return { block: true, reason: "workflow_guard blocked git worktree add: one authorization event permits exactly one workspace action." };
-			}
 			if (protectedWorktreeAdd) {
-				if (!isWorkspaceActionAuthorized(state.workspaceAuthorization, "create-worktree")) {
-					return { block: true, reason: workspaceAuthorizationBlockReason(state, "git worktree add", "create-worktree") };
-				}
-				pendingWorkspaceAction = "create-worktree";
+				const refusal = workspaceActionRefusal(state, "create-worktree");
+				if (refusal) return { block: true, reason: workspaceRefusalBlockReason("git worktree add", refusal) };
+				addSoftNote(ctx, event.toolCallId, "[workflow_guard] worktreeNote: 보호 저장소는 worktree_create/worktree_fork 도구를 쓰면 세션·패널·의존성 준비까지 함께 됩니다.");
 			}
 			if (isExternalIssueOrPrCreateCommand(command) && !hasExternalPublishApproval(command)) {
 				const repository = await publishRepository(pi, ctx.cwd, command);

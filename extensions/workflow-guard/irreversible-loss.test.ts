@@ -131,3 +131,17 @@ test("recursive rm is judged by the resolved target, not by text that looks like
 	assert.equal(unresolved.blocked, undefined, "an unresolvable target warns instead of blocking");
 	assert.match(unresolved.note, /lossCheck/);
 });
+
+test("worktree creation follows refusals made in this request only", async () => {
+	const h = harness("/usr");
+	await h.start("/frame 새 기능");
+	await h.tuiChoice("현재 작업공간에서 계속, 별도 worktree는 쓰지 않음");
+	const refused = await h.tool("worktree_fork", { repo: "repo" });
+	assert.equal(refused?.block, true);
+	assert.match(refused.reason, /선택지에서 명시적으로 거부/);
+	await h.start("좋아 이제 오른쪽에 포크패널 만들어서 시작해");
+	assert.equal(await h.tool("worktree_fork", { repo: "repo" }), undefined, "an earlier choice does not veto a later request");
+	await h.start("새 브랜치 만들어서 여기서 작업해");
+	assert.equal((await h.tool("worktree_create", { repo: "repo" }))?.block, true);
+	assert.equal((await h.tool("worktree_switch", { repo: "repo", name: "other" }))?.block, true);
+});
