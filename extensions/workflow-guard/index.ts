@@ -2205,8 +2205,12 @@ export default function workflowGuard(
 					}
 					if (!inspection.exact) addSoftNote(ctx, event.toolCallId, "[workflow_guard] commitInspection: 명령 형태 때문에 커밋 내용을 정확히 재현하지 못해 현재 index 기준으로만 크기를 검사했고 막지 않았습니다.");
 				} catch (error) {
-					// 미해결 충돌·비정상 병합 등 index 자체가 이상한 상태만 여기까지 온다.
-					return { block: true, reason: `workflow_guard blocked git commit: ${error instanceof Error ? error.message : String(error)}. No command in this bash call has executed.` };
+					const message = error instanceof Error ? error.message : String(error);
+					// 미해결 충돌·비정상 병합 상태는 막는다. 가드가 git 명령을 실행하지 못한 경우만 경고로 남긴다.
+					if (!message.startsWith("commit inspection failed")) {
+						return { block: true, reason: `workflow_guard blocked git commit: ${message}. No command in this bash call has executed.` };
+					}
+					addSoftNote(ctx, event.toolCallId, `[workflow_guard] commitInspection: 커밋 내용을 검사하지 못해 막지 않았습니다 (${message}). 커밋 크기와 범위를 직접 확인하세요.`);
 				}
 			}
 			if (isDangerousBashMutation(command) && !pendingCommitApproval) {

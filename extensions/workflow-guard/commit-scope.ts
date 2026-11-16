@@ -21,9 +21,11 @@ const oid = /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u;
 // Git owns the graph/merge calculation. Never reset, checkout, stage, or change merge parents here.
 export async function stagedDiffSummary(pi: Pick<ExtensionAPI, "exec">, cwd: string): Promise<StagedDiffSummary | null> {
 	const run = (args: string[]) => pi.exec("git", args, { cwd, timeout: 15_000 });
+	// 병합 중에는 git 검사 실패도 병합 상태 이상으로 본다. 그 외 실패는 가드가 해석하지 못한 경우다.
+	let merging = false;
 	const checked = async (args: string[]) => {
 		const result = await run(args);
-		if (result.code !== 0) throw new Error(`commit inspection failed: git ${args[0]}`);
+		if (result.code !== 0) throw new Error(`${merging ? "unsupported merge state: inspection failed" : "commit inspection failed"}: git ${args[0]}`);
 		return result.stdout ?? "";
 	};
 	const root = (await checked(["rev-parse", "--show-toplevel"])).trim();
@@ -37,6 +39,7 @@ export async function stagedDiffSummary(pi: Pick<ExtensionAPI, "exec">, cwd: str
 		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 	}
 	const merge = mergeHead !== undefined;
+	merging = merge;
 	if (mergeHead !== undefined && !mergeHead.trim()) throw new Error("unsupported merge state: empty MERGE_HEAD");
 	if ((await checked(["ls-files", "--unmerged", "-z"])).length) {
 		throw new Error("unresolved merge conflicts: stage each resolution before retrying git commit");
