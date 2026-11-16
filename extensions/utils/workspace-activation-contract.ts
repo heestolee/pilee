@@ -274,7 +274,10 @@ export function workspaceAuthorizationProofForConsumer(
 	now = Date.now(),
 ): WorkspaceAuthorizationProvenance | null {
 	const events = reduceWorkspaceAuthorization(authorization.events, now).events;
-	const event = [...events].reverse().find((candidate) => candidate.action === action);
+	// 같은 요청에서 worktree를 여러 번 만들면 허용 이벤트가 쌓인다. 이 호출이 소비한 이벤트를 찾되, 그 뒤의 거부는 여전히 증명을 무효화한다.
+	const index = events.findLastIndex((candidate) => candidate.action === action && candidate.consumedBy === consumerId);
+	if (index >= 0 && events.slice(index + 1).some((candidate) => candidate.action === action && candidate.decision === "deny")) return null;
+	const event = index >= 0 ? events[index] : undefined;
 	if (
 		event?.decision !== "allow"
 		|| event.consumedBy !== consumerId
