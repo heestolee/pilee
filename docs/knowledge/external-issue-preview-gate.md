@@ -19,8 +19,8 @@ applies_to:
   - skills/ship
 source:
   - session-backfill:2026-05-05#skill-surface-review
-reviewed_at: 2026-11-10
-reviewed_commit: 5d396335278f051d020591dc11ae11ce8bab9641
+reviewed_at: 2026-11-16
+reviewed_commit: 42dcf5da538670f7c57156d2191d470131c5b077
 related:
   - live-artifact-preview-pattern
   - ask-user-question-decision-gates
@@ -29,7 +29,7 @@ related:
 
 ## Judgment
 
-GitHub Issue/PR이나 Jira 같은 외부 시스템에 쓰는 내용은 로컬 답변과 다릅니다. 한번 전송되면 작성자 계정의 공개 기록이 되고 다른 사람이 보거나 자동화가 반응하므로, agent가 조용히 생성·수정하면 안 됩니다. 다만 외부 API를 사용한다는 사실과 외부 upstream에 기여한다는 사실은 다릅니다. 명시적으로 요청한 조직 내부 PR에 외부 기여용 CONTRIBUTING·재승인 절차를 적용하지 않습니다.
+GitHub Issue/PR이나 Jira 같은 외부 시스템에 쓰는 내용은 로컬 답변과 다릅니다. 한번 전송되면 작성자 계정의 공개 기록이 되고 다른 사람이 보거나 자동화가 반응하므로, agent가 조용히 생성·수정하면 안 됩니다. 다만 외부 API를 사용한다는 사실과 외부 upstream에 기여한다는 사실은 다릅니다. 조직 내부 PR·Issue에는 외부 기여용 CONTRIBUTING·재승인 절차를 적용하지 않습니다.
 
 ## Contribution Fit Rule
 
@@ -41,9 +41,9 @@ Issue/PR 생성·수정 전에는 repo, 게시 계정, 제목, 본문, base/head
 
 GitHub CLI 생성 명령은 guard가 요구하는 CONTRIBUTING 확인/최종 승인 표식을 모두 가져야 합니다. REST/MCP 경로도 같은 계약을 따릅니다.
 
-단, 설치된 private/global profile이 `trustedInternalPullRequestOwners`로 명시한 조직의 모든 저장소와 `trustedInternalPullRequestRepositories`로 명시한 개별 저장소의 PR은 upstream 외부 기여가 아닙니다. 조직의 새 저장소를 하나씩 등록하지 않아도 되도록 회사 작업은 조직 단위 허용을 기본으로 쓰며, 조직 이름은 정확히 일치해야 합니다. 사용자가 그 PR 생성을 명시적으로 요청한 턴에는 CONTRIBUTING 재확인과 별도 최종 승인 게이트를 반복하지 않습니다. 이 예외는 PR에만 적용하며 GitHub Issue, profile에 없는 저장소, 명령의 `--repo/-R` 또는 REST 경로가 다른 저장소를 가리키는 경우에는 원래 게이트를 유지합니다. 대상 프로젝트 자신의 `.pi/profiles`는 스스로 이 권한을 선언할 수 없습니다. 구체적인 회사 저장소 이름은 public code가 아니라 private overlay profile에 둡니다.
+단, 설치된 private/global profile이 `trustedInternalPullRequestOwners`로 명시한 조직의 모든 저장소와 `trustedInternalPullRequestRepositories`로 명시한 개별 저장소의 PR은 upstream 외부 기여가 아닙니다. 조직의 새 저장소를 하나씩 등록하지 않아도 되도록 회사 작업은 조직 단위 허용을 기본으로 쓰며, 조직 이름은 정확히 일치해야 합니다. 이 저장소들의 PR·GitHub Issue는 요청 분류 결과와 관계없이 대상 저장소 소유자만 보고 판단하며, CONTRIBUTING 재확인과 별도 최종 승인 게이트를 반복하지 않습니다. "별 문제 없으면 /create-pr"처럼 분류가 PR 요청을 놓치는 말투가 실제로 막혔기 때문입니다. 사용자가 PR·Issue 생성을 명시적으로 금지하거나 취소한 경우는 계속 막습니다. profile에 없는 저장소, 이름만 비슷한 조직, 명령의 `--repo/-R` 또는 REST 경로가 다른 저장소를 가리키는 경우, 게시 명령이 둘 이상인 경우에는 원래 게이트를 유지합니다. 대상 프로젝트 자신의 `.pi/profiles`는 스스로 이 권한을 선언할 수 없습니다. 구체적인 회사 저장소 이름은 public code가 아니라 private overlay profile에 둡니다.
 
-허용된 조직 내부 PR에는 CONTRIBUTING 파일의 유무를 탐색하거나 내용을 읽는 단계 자체를 추가하지 않습니다. 프로젝트 고유의 작업·검증 규칙은 그대로 따릅니다. 최상위 `create-pr` 스킬 호출은 `/create-pr` 요청으로 판별하고, 설명 본문의 예시 명령·검토 문구를 별도 사용자 지시로 읽지 않습니다. 원문은 보존하며, 호출 뒤에 사용자가 덧붙인 대상 저장소·취소 지시는 판단에 남깁니다. 검토·설명만 요청한 인자, 인용·검토 대상으로 등장한 스킬이나 다른 스킬 이름은 PR 생성 승인이 아닙니다. 프롬프트용 정규화는 실행 명령의 대상 저장소 판별에 적용하지 않으며, 연속 턴에서도 현재 저장소의 신뢰 여부를 다시 확인합니다.
+허용된 조직 내부 PR에는 CONTRIBUTING 파일의 유무를 탐색하거나 내용을 읽는 단계 자체를 추가하지 않습니다. 프로젝트 고유의 작업·검증 규칙은 그대로 따릅니다. 최상위 `create-pr` 스킬 호출은 `/create-pr` 요청으로 판별하고, 설명 본문의 예시 명령·검토 문구를 별도 사용자 지시로 읽지 않습니다. 원문은 보존하며, 호출 뒤에 사용자가 덧붙인 대상 저장소·취소 지시는 판단에 남깁니다. 검토·설명만 요청한 인자, 인용·검토 대상으로 등장한 스킬이나 다른 스킬 이름은 PR 생성 요청이 아니므로 에이전트는 PR을 만들지 않습니다. 다만 가드는 이 판단을 하드 차단으로 강제하지 않고 명시적 금지·취소만 막습니다. 프롬프트용 정규화는 실행 명령의 대상 저장소 판별에 적용하지 않으며, 연속 턴에서도 현재 저장소의 신뢰 여부를 다시 확인합니다.
 
 조직별 Jira URL, project key 추론, MCP 우선순위, issue type convention은 public skill에 박지 않고 private/project overlay가 담당합니다.
 

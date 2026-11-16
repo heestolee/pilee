@@ -20,8 +20,8 @@ applies_to:
   - extensions/frame-studio
 source:
   - user-direction:2026-05-12-conductor-like-guards
-reviewed_at: 2026-10-20
-reviewed_commit: 15b19b51a00c1cd73b3df9f102e5189a225dcb2b
+reviewed_at: 2026-11-16
+reviewed_commit: 42dcf5da538670f7c57156d2191d470131c5b077
 related:
   - workflow-weight-proportionality
   - validation-baseline-failure-cache
@@ -39,7 +39,7 @@ title_en: Repeated workflow failures become enforced guard flows
 
 반복해서 같은 종류의 UX 실패가 발생하면 “다음부터 조심”이라는 문장만으로는 부족합니다. pilee에서는 요청 의도, 작업 무게, 이미 고친 항목과 남은 gap 구분, 선택 후 다음 행동을 turn-level guard/flow로 고정합니다.
 
-이 guard는 모든 규칙을 hard gate로 만들지 않습니다. 모호한 요청은 soft classification으로 시작하고, 분류 오차가 일상적인 파일 작업을 멈추지 않게 합니다. 도구 호출 차단은 외부 게시·worktree 생성·destructive command·큰 commit·status note처럼 오판 비용이 명확히 큰 경계에만 둡니다.
+이 guard는 모든 규칙을 hard gate로 만들지 않습니다. 요청 분류는 사용자 문장을 짐작한 결과이므로 안내 문구와 경고에만 씁니다. 2026-10~11월 한 달 기록에서 명시한 요청이 분류에서 빠져 막히는 마찰이 반복됐기 때문입니다. 하드 차단은 ① 사용자가 이번 요청에서 직접 금지·취소한 동작, ② 명령의 대상과 현재 상태로 확인되는 되돌릴 수 없는 손실, ③ 큰 commit·비정상 병합·status note·사내가 아닌 저장소 게시처럼 구조적 사실로 판단되는 경계에만 둡니다. 가드가 명령을 해석하지 못하면 막지 않고 경고만 남깁니다.
 
 ## Guard Classes
 
@@ -47,12 +47,12 @@ title_en: Repeated workflow failures become enforced guard flows
 |---|---|---|
 | 요청 의도 분류 | soft default | `before_agent_start`에서 turn intent/weight를 주입하되 answer/investigate 분류만으로 일반 edit/write/file-producing bash를 막지 않음 |
 | Astra·GPT-6.1 Sol adaptive thinking | session-local state transition | Astra 또는 정확한 `gpt-6.1-sol`의 `xhigh`에서 아키텍처·보안/동시성 깊이 신호·어려운 장애·실패 재시도만 `max`로 승격하고 `agent_settled` 뒤 복귀. 순수 trivial artifact edit·수동 max·분류된 상태 노트·그 외 모델은 건드리지 않고, 명시 deep analysis에 보조·부정 artifact edit가 섞여도 승격을 보존 |
-| 파일 mutation 경계 | soft general + hard high-risk | 일반 edit/write와 파일 생성 bash는 허용하고, commit/push/install/destructive cleanup/worktree/external publish처럼 side effect가 큰 동작만 explicit intent 또는 전용 승인을 요구 |
+| 파일·workspace mutation 경계 | soft general + 금지·손실 기반 hard | 일반 edit/write·commit·push·install·worktree 생성·전환은 분류와 무관하게 허용하고, 사용자의 명시 금지·취소와 대상·상태로 확인되는 되돌릴 수 없는 손실만 차단 |
 | fixed-vs-unfixed audit | hard audit path | “이미 대응/미대응/남은 gap” 요청에는 local history snapshot을 자동 주입하고 `friction → response evidence → current state → remaining gap` 형식을 요구 |
-| 작은 hotfix 기본 경로 | hard lightweight default | light turn에서 `verify_report_live start`, subagent fan-out, deep session/context mining을 막고 scope lock → focused change → nearest validation부터 시작 |
+| 작은 hotfix 기본 경로 | soft lightweight default | light turn에서도 `verify_report_live start`, subagent fan-out, deep session/context mining을 막지 않고 결과에 `lightPathNote`를 남겨 scope lock → focused change → nearest validation을 권함 |
 | fast response pace | hard prompt + result annotation | tool result 이후 none/light는 30초, standard는 60초, full은 120초 판단 예산 안에 다음 좁은 tool call·중간 결론·scope-gate 질문·최종 보고 중 하나로 전환하게 함 |
 | search/history fan-out 예산 | soft prompt + result annotation | 첫 조사 명령 전에 ref/path/history/output fan-out을 가볍게 추정하고, symbol/file/URL/PR/commit/branch anchor가 있으면 narrow lookup을 기본값으로 삼음. broad search는 fallback으로 허용하되 이유와 범위를 먼저 드러냄 |
-| light push 종료 | hard terminal rule | PR/status 작업을 명시하지 않은 light 작업은 push 성공을 종료 조건으로 보고, 추가 status/log/PR/work_context 도구 호출을 막아 한 줄 완료 보고로 끝냄 |
+| light push 종료 | soft terminal nudge | PR/status 작업을 명시하지 않은 light 작업은 push 성공을 종료 신호로 보고, 이후 도구 호출에 `postPushNote`를 남겨 한 줄 완료 보고를 유도. 호출 자체는 막지 않음 |
 | 판단 드리프트 억제 | hard prompt discipline + selective block | 코드 가능 여부와 제품 요구 충족을 분리하고, 사용자 지정 환경·dev 절차·SQL 안전장치를 과확장하지 않게 turn guard에 주입 |
 | UI choice continuity | hard result annotation | `tui_ask`/TFT Studio 선택 결과에 `nextActionRequired`를 붙여 선택 요약으로 멈추지 않게 함 |
 | 큰 commit 분리 | hard commit guard | staged diff가 크거나 여러 area를 섞으면 direct `git commit`을 차단하고 logical commit split을 요구 |
@@ -66,14 +66,29 @@ title_en: Repeated workflow failures become enforced guard flows
 
 따라서 answer/investigate/audit로 분류된 turn도 일반 `edit`, `write`, 파일 생성용 bash를 도구 수준에서 차단하지 않습니다. read-only는 기본 행동 지침으로 남기되, 실제 사용자 요청과 직접 연결된 산출물이나 수정이 확인되면 `workflow_guard adopt`로 분류를 바로잡고 진행합니다. 분류를 다시 맞추는 목적은 context·무게·후속 discipline을 정렬하는 것이지 막힌 파일 쓰기의 우회권을 얻는 것이 아닙니다.
 
-Hard block은 다음처럼 오판 비용이 명확히 큰 동작에 한정합니다.
+Hard block은 문장 짐작이 아니라 사실로 판단되는 경우에 한정합니다.
 
-- commit·push와 package install
-- destructive cleanup·reset
-- worktree 생성
-- 외부 Issue/PR 게시 승인
-- 큰 staged diff의 단일 commit
+- 사용자가 이번 요청에서 직접 금지·취소한 commit·push·install·삭제·PR/Issue 생성·worktree 생성·전환, "실행하지 말고"류의 read-only 요청 중 고위험 bash
+- "새 브랜치"처럼 현재 작업 공간에서 브랜치만 바꾸라는 요청 중 worktree 생성·전환
+- worktree fork로 넘어온 자식 세션이 같은 요청으로 다시 worktree를 만드는 것
+- 되돌릴 수 없는 손실(아래 Irreversible Loss Rule)
+- 사내 profile에 없는 저장소의 Issue/PR 게시
+- 큰 staged diff의 단일 commit, 미해결 충돌·비정상 병합
 - 실행 요청이 아닌 status note
+
+## Irreversible Loss Rule
+
+되돌릴 수 없는 작업은 사용자가 "강제"·"삭제"라고 말했는지가 아니라 명령의 대상과 현재 상태로 판단합니다. 명령 문자열이 아니라 shell token을 해석하고, `cd`·`git -C`·단순 변수 대입·`mktemp`를 따라가며 heredoc 본문과 검색어 안의 `rm -rf` 같은 글자는 명령으로 보지 않습니다.
+
+| 명령 | 막는 경우 | 통과하는 경우 |
+|---|---|---|
+| 강제·삭제 push | 보호 브랜치(main/master/develop/development/production/prod/staging/release*) 대상, `--mirror`/`--prune` | 내 작업 브랜치의 `--force-with-lease`·원격 삭제. 맨 `--force`는 lease 권장 경고 |
+| `git reset --hard` | 커밋하지 않은 tracked 변경이 있을 때 | 깨끗한 상태, 같은 명령에서 먼저 `git stash`한 경우 |
+| `git clean -f` | 같은 옵션의 dry run이 지울 파일을 보여줄 때 | 지울 파일이 없을 때, force 없는 호출 |
+| `rm -r` | 작업 공간(git work tree 내부)과 임시 폴더 밖, work tree 루트 자체, `.git` | `/tmp`·`$TMPDIR`·`mktemp` 경로, work tree 내부, 없는 경로 |
+| `git commit --amend` | 막지 않음(reflog로 복구 가능) | |
+
+대상을 해석하지 못하면(`$UNKNOWN/x`, 알 수 없는 현재 브랜치) 막지 않고 `lossCheck` 경고를 남깁니다. 막힌 작업은 사용자가 그 작업 자체(강제·삭제·reset·clean)를 말했거나, 에이전트가 원 요청에 근거해 `workflow_guard adopt`로 그 정확한 명령 하나를 보정했을 때만 실행합니다.
 
 Working Context Card의 slice scope는 해당 card가 소유한 repository 내부 mutation에만 적용합니다. 한 제품 worktree에서 별도 global artifact나 다른 repository의 pilee 파일을 다룬다고 해서 제품 slice 밖이라는 이유로 막지 않습니다. 반대로 같은 repository 안의 out-of-scope 변경과 commit gate는 계속 유지합니다.
 
@@ -83,6 +98,8 @@ Working Context Card의 slice scope는 해당 card가 소유한 repository 내�
 
 자연어 classifier는 workflow 조언을 만들 뿐 실행 승인의 최종 판정기가 아닙니다. `unknown`은 거절이 아니라 `unassessed`입니다. 명시 요청을 놓쳤다고 해서 사용자가 표현을 바꾸거나 같은 작업을 다시 승인해야 해서는 안 됩니다.
 
+worktree 생성·전환과 일반 commit·push·사내 PR은 분류와 무관하게 진행되므로 adopt가 필요 없습니다. adopt는 주로 사용자가 요청했지만 그 작업 이름을 말하지 않은 되돌릴 수 없는 명령(예: 보호 브랜치 동기화 강제 push) 하나를 보정하는 데 씁니다.
+
 에이전트는 `workflow_guard status`가 반환한 원 요청 ID에 연결해 `adopt.assessment`로 의미 판단을 보정합니다. `intent`/`weight`와 실행할 `authorization: {toolName, input}`을 분리하고, 원 요청에 근거한 `reason`을 남깁니다. `prompt`를 더 강한 명령으로 재작성해 키워드 분류를 통과시키는 방식은 실행 권한을 만들지 않습니다.
 
 - 권한은 원 요청·cwd·도구·입력에 한정됩니다. worktree는 기존 durable event와 consumer proof를 실제 활성화 단계까지 재사용합니다. 다른 대상·base·action으로 확대하지 않습니다.
@@ -90,7 +107,7 @@ Working Context Card의 slice scope는 해당 card가 소유한 repository 내�
 - 코드 수정 금지와 리뷰 checkout 허용은 공존할 수 있습니다. commit 금지와 push 금지도 별도 부작용이며 `auto_commit status`나 `commit-only`를 push로 보지 않습니다.
 - 명시 금지는 semantic 자기승인으로 뒤집지 않습니다. 이후 실제 사용자가 TUI에서 선택을 바꾸면 최신 provenance가 우선하며, 금지 선택도 allow로 오인하지 않습니다.
 - 짧은 continuation과 동일 요청의 반복만 원 권한을 계승합니다. 다른 저장 task, 상태 알림, 학습·리뷰 질문은 이전 실행 권한을 빌리지 않습니다.
-- 기존 만료·1회 소비 경계를 유지합니다. 다만 도구가 정확한 호출에 대해 `blocked`와 미생성·미전환을 명시하면 미실행이므로 재승인 없이 안전하게 재시도합니다. 성공·대상 보존·부작용 불명확 실패는 자동 재발급하지 않습니다.
+- adopt 권한은 만료·1회 소비 경계를 유지합니다. worktree 도구는 기본 허용이라 adopt가 소비돼도 다음 호출이 막히지 않고, 재사용된 adopt 기록이 다른 호출의 증명으로 재발급되지도 않습니다.
 
 이 계약은 새로운 자연어 허용 단어 목록이나 별도 승인 UI를 늘리지 않습니다. trusted agent가 사용자 의미를 판단하고, runtime은 출처·범위·소비 같은 구조적 경계를 검증합니다. 모호함이 실제 사용자 의도에 있을 때만 질문합니다.
 
@@ -99,6 +116,7 @@ Working Context Card의 slice scope는 해당 card가 소유한 repository 내�
 정상 병합의 upstream 반영량은 새로 작성한 변경량이 아닙니다. pending merge는 `HEAD`, `MERGE_HEAD`, `ORIG_HEAD`, 공통 조상과 실제 index를 확인하고, Git의 `merge-tree --write-tree` 자동 병합 tree 대비 충돌 해결·추가작성 delta에만 큰 commit 기준을 적용합니다. upstream 파일 안에 추가한 변경도 이 delta에 남습니다. 일반 commit은 기존 staged 기준을 유지합니다.
 
 - 미해결 충돌, 비어 있거나 잘못된 parent, 여러 merge parent/공통 조상, 원 HEAD 불일치, 자동 병합 계산 실패는 승인과 무관하게 안전 차단합니다. binary 잔여 변경도 보수적으로 큰 delta로 봅니다.
+- 병합 중이 아닌 상태에서 가드가 git 검사 자체를 실행하지 못하면(예: 변수로 지정한 경로를 해석 못함) 커밋을 막지 않고 `commitInspection` 경고만 남깁니다. 병합 중 검사 실패는 비정상 병합으로 보고 계속 막습니다.
 - commit inspection은 merge state·index·parents를 reset하거나 다시 stage하지 않습니다. Git object tree 계산만 수행합니다. 정상 경로는 충돌을 먼저 별도 `git add`로 해결한 뒤 index-only `git commit -m <message>`로 이어갑니다.
 - 일반 `tui_ask`의 옵션 라벨·자유텍스트는 단일 commit 승인이 아닙니다. `approval: { kind: "single-commit", command: "git -C <repo> commit -m <message>" }` 전용 계약만 사용합니다. 이 모드에서는 host가 질문·승인/분리/거절 라벨과 action을 함께 소유하며, custom options·action mapping·multi/text/default selection을 허용하지 않습니다. 일반 질문의 기존 선택·복수선택·자유텍스트 계약은 유지합니다.
 - 질문 호출 ID·원 요청·실제 target의 Git snapshot을 기록하고, 실제 overlay 실행이 host event bus로 전달한 action과 submitted 결과가 모두 일치할 때만 한 번 승인합니다. result metadata만 주입하거나 일반 옵션에 단일 커밋이라는 문구를 넣어서는 권한을 만들지 못합니다. canonical 분리/거절/취소는 이전 미사용 승인을 회수하고, session tree 이동은 대기 질문을 회수합니다.
@@ -138,7 +156,7 @@ Working Context Card의 slice scope는 해당 card가 소유한 repository 내�
 
 문구·라벨 같은 micro-hotfix에서 commit plan 파일을 만드는 절차가 작업보다 커지면, `auto_commit action=quick`으로 message와 paths를 명시해 commit+safe upstream push를 한 번에 닫는다. 이때 결과가 `committed_not_pushed`이면 guard는 완료 보고 전에 push 해결을 요구한다.
 
-문제의 핵심은 사용자가 폭발한 뒤 말하는 “걍 커밋푸시해”가 아니라, 그 전에 light 작업이 이미 커밋/푸시로 닫혔는데도 agent가 추가 확인을 이어가는 지점이다. 따라서 PR/status 작업을 명시하지 않은 light turn에서는 `git push` 또는 pushed `auto_commit` 성공을 terminal condition으로 본다. 이후 추가 `git status`, `git log`, `gh pr view`, `work_context`, PR/branch 확인을 막고 `완료: <sha> <message>` 같은 짧은 최종 보고만 남긴다. `push 상태 확인해줘`처럼 읽기 의도가 명시된 요청은 이 종료 규칙이 아니라 investigate path로 남긴다.
+문제의 핵심은 사용자가 폭발한 뒤 말하는 “걍 커밋푸시해”가 아니라, 그 전에 light 작업이 이미 커밋/푸시로 닫혔는데도 agent가 추가 확인을 이어가는 지점이다. 따라서 PR/status 작업을 명시하지 않은 light turn에서는 `git push` 또는 pushed `auto_commit` 성공을 terminal condition으로 본다. 이후 추가 `git status`, `git log`, `gh pr view`, `work_context`, PR/branch 확인을 도구 수준에서 막지는 않되 `postPushNote`로 `완료: <sha> <message>` 같은 짧은 최종 보고를 유도한다. 분류가 light로 틀렸을 때 후속 작업 전체가 멈추는 비용이 더 컸기 때문이다. `push 상태 확인해줘`처럼 읽기 의도가 명시된 요청은 이 종료 규칙이 아니라 investigate path로 남긴다.
 
 검증 축이 새로 늘어나면 standard/full로 승격할 수 있지만, 그 이유가 관찰된 risk여야 합니다. “늘 하던 full report”는 이유가 아닙니다.
 

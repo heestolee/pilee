@@ -194,7 +194,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Clean handoff는 compact와 새 세션 사이의 전환 계약이다](./clean-handoff-session-continuation.md) | active | high | 2026-06-02 | cc0bd98 | session, handoff, compact, context, archive, continue-clean |
 | [자동 로드 컨텍스트는 최소 surface만 가진다](./context-loading-minimal-surface.md) | active | high | 2026-06-02 | cc0bd98 | context, agents-md, memory, system-prompt, token, autoload |
 | [Decide는 근거와 수용한 비용을 남긴다](./decide-tradeoff-challenge.md) | active | high | 2026-10-08 | 93b6e0a | decide, tradeoff, challenge, frame-json, decision, tft |
-| [외부 Issue와 PR은 기여 규칙 확인과 최종 승인 뒤에 게시한다](./external-issue-preview-gate.md) | active | high | 2026-11-10 | 5d39633 | jira, github, issue, pull-request, contributing, preview |
+| [외부 Issue와 PR은 기여 규칙 확인과 최종 승인 뒤에 게시한다](./external-issue-preview-gate.md) | active | high | 2026-11-16 | 42dcf5d | jira, github, issue, pull-request, contributing, preview |
 | [최종 검증은 메인 세션을 막지 않고 병렬화한다](./final-verification-parallelization.md) | active | high | 2026-06-02 | c6cd06f | verification, ship, final-check, subagent, background, parallel |
 | [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-06-02 | c6cd06f | fork-panel, handoff, inbox, inject, parent, panel |
 | [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-06-02 | 63f2a62 | fork-panel, revive, repanel, ghostty, spatial, panel |
@@ -232,9 +232,9 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Until loop는 종료 조건을 명시 보고한다](./until-loop-explicit-reporting.md) | active | high | 2026-05-05 | 059f445 | until, loop, report, condition, automation |
 | [Update branch는 remote-first sync command다](./update-branch-safe-pull-command.md) | active | high | 2026-07-02 | 98d7502 | update-branch, slash-command, git, pull, index-lock, workflow |
 | [Working Context Card는 큰 맥락을 현재 slice로 압축한다](./work-context-card-task-board.md) | active | high | 2026-10-24 | bb2966d | work-context, tasks, workflow, context, guard |
-| [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-10-20 | 15b19b5 | workflow, guard, intent, audit, hotfix, continuation |
+| [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-11-16 | 42dcf5d | workflow, guard, intent, audit, hotfix, continuation |
 | [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-06-02 | 61ccbc9 | workflow, frame, tft, hotfix, scope, incremental |
-| [작업공간 동작과 panel activation은 별도 계약이다](./workspace-action-panel-activation-contract.md) | active | high | 2026-09-02 | 93ddc04 | workspace, worktree, branch, activation, panel, authorization |
+| [작업공간 동작과 panel activation은 별도 계약이다](./workspace-action-panel-activation-contract.md) | active | high | 2026-11-16 | 42dcf5d | workspace, worktree, branch, activation, panel, authorization |
 | [Worktree 생성은 현재 패널 대화가 source다](./worktree-creation-parent-gate.md) | active | high | 2026-10-07 | 727572a | worktree, fork-panel, current-panel, hotfix, context, profile-driven |
 | [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-08-31 | c712406 | worktree, dependencies, bootstrap, profile-driven, worker, subagent |
 | [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-09-02 | 93ddc04 | worktree, workspace, repo, branch, execution-boundary, cwd-binding |

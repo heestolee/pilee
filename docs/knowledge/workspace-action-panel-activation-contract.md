@@ -25,8 +25,8 @@ applies_to:
 source:
   - user-direction:2026-08-25-workspace-activation-redesign
   - user-direction:2026-09-02-pr-review-current-panel-or-tab
-reviewed_at: 2026-09-02
-reviewed_commit: 93ddc04
+reviewed_at: 2026-11-16
+reviewed_commit: 42dcf5da538670f7c57156d2191d470131c5b077
 related:
   - worktree-execution-boundary
   - worktree-session-continuity
@@ -52,7 +52,7 @@ related:
 - `continuation`: target session READY 뒤 시작할 workflow
 - `authorization`: command/tool/TUI/user turn 중 무엇이 해당 동작을 허용하거나 거부했는지
 
-Authorization은 단순 keyword 존재 여부가 아닙니다. `worktree 만들지 말고 branch만 만들어`처럼 같은 문장에 worktree와 branch가 함께 있어도 부정 대상과 허용 대상을 따로 보존합니다. User turn과 TUI 선택은 ID·source/sourceId·action·decision·target·placement·timestamp·TTL을 가진 session custom entry로 저장합니다. 중립 `계속해` turn과 compaction/session restore는 이 event를 복원하고, matching tool call만 한 번 소비합니다. 이미 소비된 allow는 두 번째 생성을 허용하지 않으며 이후 사용자의 명시적 deny가 최신 결정으로 우선합니다. Activation contract는 별도 allow를 만들지 않고 그 consumer proof의 동일 event ID/source/sourceId를 보존합니다. 단, `/wt new`·`/wt fork`·`/wt switch` 같은 slash command 자체는 명시적 사용자 action이므로 exact command provenance로 self-authorize할 수 있습니다.
+Authorization은 단순 keyword 존재 여부가 아닙니다. `worktree 만들지 말고 branch만 만들어`처럼 같은 문장에 worktree와 branch가 함께 있어도 부정 대상과 허용 대상을 따로 보존합니다. User turn과 TUI 선택은 ID·source/sourceId·action·decision·target·placement·timestamp·TTL을 가진 session custom entry로 저장합니다. 중립 `계속해` turn과 compaction/session restore는 이 event를 복원합니다. worktree 생성·전환은 기본 허용입니다. 이번 요청에서 사용자가 거부하거나 브랜치만 바꾸라고 하지 않았다면, workflow-guard는 남아 있는 allow(TUI·adopt·user turn)를 먼저 소비하고 없으면 그 호출용 allow event를 기록해 바로 소비합니다. 그래서 "4개 각각 포크패널"처럼 한 요청에서 여러 번 만들 수 있고, 분류가 "포크패널" 같은 표현을 놓쳐도 막히지 않습니다. 거부는 현재 요청 문장과 이번 요청 안에서 고른 TUI 선택만 봅니다. 이전 턴의 거부는 다음 요청을 막지 않습니다. worktree fork로 넘어온 자식 세션의 이어가기 턴은 같은 요청으로 worktree를 다시 만들지 않습니다. Activation contract는 별도 allow를 만들지 않고 그 consumer proof의 동일 event ID/source/sourceId를 보존합니다. Proof는 최신 event가 아니라 해당 consumer가 소비한 event로 찾고, 그 뒤에 같은 action의 deny가 있으면 무효입니다. 단, `/wt new`·`/wt fork`·`/wt switch` 같은 slash command 자체는 명시적 사용자 action이므로 exact command provenance로 self-authorize할 수 있습니다.
 
 ## Activation Rule
 
@@ -82,7 +82,7 @@ Worktree directory나 session file을 만들었다고 workflow가 완료된 것�
 
 ## In-place Branch Boundary
 
-사용자가 새 branch만 요청하면 현재 workspace에서 branch를 생성·전환합니다. production 기반 branch 전환은 `/to-production`의 current-workspace in-place 계약을 따릅니다. 새 worktree는 사용자가 worktree/fork/new topology를 명시적으로 허용했을 때만 생성합니다. Bash guard는 command-start regex가 아니라 shell token과 git verb를 해석해 assignment prefix, `env`/`command` wrapper, absolute git path, global option, nested shell 안의 `git worktree add`도 같은 authorization으로 판정합니다.
+사용자가 새 branch만 요청하면 현재 workspace에서 branch를 생성·전환합니다. production 기반 branch 전환은 `/to-production`의 current-workspace in-place 계약을 따릅니다. 새 worktree가 필요한지는 에이전트가 판단하며, 사용자가 이번 요청에서 브랜치만 바꾸라고 했거나 worktree를 금지했으면 만들지 않습니다. Bash guard는 command-start regex가 아니라 shell token과 git verb를 해석해 assignment prefix, `env`/`command` wrapper, absolute git path, global option, nested shell 안의 `git worktree add`도 같은 거부 규칙으로 판정합니다. 거부가 없으면 보호 저장소에서도 막지 않고, 세션·패널·의존성 준비를 함께 하는 전용 도구를 권하는 경고만 남깁니다.
 
 ## Re-review Triggers
 
