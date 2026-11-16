@@ -927,9 +927,10 @@ function requestMutationBlockReason(state: GuardState, toolName: string, input: 
 	if (/^(?:(?:아니|일단|잠깐)[,\s]*)?(?:취소(?:해)?|중단해|멈춰|그만(?:해)?|cancel|stop|abort)(?:\s*(?:해줘|해주세요|it|this))?[.!?]*$/i.test(prompt)) {
 		return "현재 원 사용자 요청이 취소/중단입니다. adopt로 실행 권한을 복원하지 않습니다.";
 	}
-	const prohibited = (noun: string) => new RegExp(`(?:${noun})(?:\\s*(?:과|와|및|/|,|and|or)\\s*(?:커밋|푸시|commit|push))*\\s*(?:은|는|을|를|도)?\\s*(?:하지\\s*(?:마|말)|금지)|(?:do\\s+not|don't|no)\\s+(?:(?:commit|push)\\s*(?:and|or|/)\\s*)?(?:${noun})\\b`, "iu").test(prompt);
+	const prohibited = (noun: string) => new RegExp(`(?:${noun})(?:\\s*(?:과|와|및|/|,|and|or)\\s*(?:커밋|푸시|commit|push))*\\s*(?:은|는|을|를|도)?\\s*(?:(?:하|만들|올리|열)지\\s*(?:마|말)|금지)|(?:do\\s+not|don't|no)\\s+(?:(?:commit|push)\\s*(?:and|or|/)\\s*)?(?:${noun})\\b`, "iu").test(prompt);
 	if ((git.some((args) => args[0] === "commit") || autoCommit.commit) && prohibited("커밋|commit")) return "원 사용자 요청에서 commit을 명시적으로 금지했습니다.";
 	if ((git.some((args) => args[0] === "push") || autoCommit.push) && prohibited("푸시|push")) return "원 사용자 요청에서 push를 명시적으로 금지했습니다.";
+	if (publishes && prohibited("pr\\s*(?:생성|작성)?|pull\\s+request|이슈\\s*(?:생성|작성)?|issue")) return "원 사용자 요청에서 PR/Issue 생성을 명시적으로 금지했습니다.";
 	if (/(?:npm|pnpm|yarn)\s+(?:install|add|remove|update)\b/.test(command) && prohibited("설치|추가|제거|업데이트|install|add|remove|update")) return "원 사용자 요청에서 dependency 변경을 명시적으로 금지했습니다.";
 	if ((git.some((args) => args[0] === "clean" || args[0] === "reset") || removes) && prohibited("삭제|정리|리셋|제거|clean|reset|remove")) return "원 사용자 요청에서 destructive cleanup을 명시적으로 금지했습니다.";
 	const noCodeEdits = /코드(?:는|를|도)?\s*(?:수정|변경)(?:은|는)?\s*(?:하지\s*(?:마|말)|금지)|(?:do\s+not|don't)\s+(?:edit|change|modify)\s+(?:the\s+)?code\b|\bno\s+code\s+(?:edits?|changes?)\b/iu.test(prompt);
@@ -1631,13 +1632,6 @@ function isExternalIssueOrPrCreateCommand(command: string): boolean {
 	const commandPrefix = "(?:[A-Z_][A-Z0-9_]*=[^\\s]+\\s+)*";
 	return new RegExp(`(^|[;&|]\\s*)${commandPrefix}gh\\s+${GH_REPO_SELECTOR}(issue|pr)\\s+create\\b`).test(compact)
 		|| new RegExp(`(^|[;&|]\\s*)${commandPrefix}gh\\s+api\\b(?=[^;&|]*(?:--method|-X)\\s+POST\\b)(?=[^;&|]*\\/(?:issues|pulls)(?:\\s|$|\\?))`).test(compact);
-}
-
-function isPullRequestCreateCommand(command: string): boolean {
-	const compact = command.replace(/\s+/g, " ").trim();
-	const commandPrefix = "(?:[A-Z_][A-Z0-9_]*=[^\\s]+\\s+)*";
-	return new RegExp(`(^|[;&|]\\s*)${commandPrefix}gh\\s+${GH_REPO_SELECTOR}pr\\s+create\\b`).test(compact)
-		|| new RegExp(`(^|[;&|]\\s*)${commandPrefix}gh\\s+api\\b(?=[^;&|]*(?:--method|-X)\\s+POST\\b)(?=[^;&|]*\\/pulls(?:\\s|$|\\?))`).test(compact);
 }
 
 function externalIssueOrPrCreateCommandCount(command: string): number {
@@ -2409,12 +2403,10 @@ export default function workflowGuard(
 			}
 			if (isExternalIssueOrPrCreateCommand(command) && !hasExternalPublishApproval(command)) {
 				const repository = await publishRepository(pi, ctx.cwd, command);
-				const trustedInternalPr = state.explicitPrAction
-					&& !state.explicitIssueAction
-					&& isPullRequestCreateCommand(command)
-					&& externalIssueOrPrCreateCommandCount(command) === 1
+				// 사내 저장소의 PR·Issue는 요청 분류와 관계없이 저장소 소유자만 보고 판단한다.
+				const trustedInternalPublish = externalIssueOrPrCreateCommandCount(command) === 1
 					&& isTrustedInternalPullRequestRepository(repository, trustedInternalPullRequestRepositories, trustedInternalPullRequestOwners);
-				if (!trustedInternalPr) return { block: true, reason: externalPublishBlockReason() };
+				if (!trustedInternalPublish) return { block: true, reason: externalPublishBlockReason() };
 			}
 			if (isTargetedValidationWrapperCommand(command) && !validationWrapperBypass(command)) {
 				notifyValidationWrapperNudge(ctx);

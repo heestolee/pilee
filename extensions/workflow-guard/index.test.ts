@@ -310,7 +310,7 @@ test("external Issue and PR creation requires CONTRIBUTING review plus separate 
 	assert.equal(approved, undefined);
 });
 
-test("trusted internal PR repositories bypass only the upstream PR publish gate", async () => {
+test("trusted internal repositories bypass only the upstream PR/Issue publish gate", async () => {
 	const root = await mkdtemp(join(tmpdir(), "workflow-guard-internal-pr-"));
 	try {
 		const { hooks, ctx } = createHarness({
@@ -343,7 +343,7 @@ test("trusted internal PR repositories bypass only the upstream PR publish gate"
 			toolName: "bash",
 			input: { command: "gh issue create --repo creatrip/product --title test --body body" },
 		}, ctx);
-		assert.equal(internalIssue?.block, true);
+		assert.equal(internalIssue, undefined);
 
 		const externalPr = await hooks.tool_call({
 			toolName: "bash",
@@ -410,7 +410,7 @@ test("회사 PR 스킬 호출은 설명 본문과 무관하게 CONTRIBUTING 확�
 			assert.match(start.systemPrompt, /CONTRIBUTING\.md 탐색·읽기나 게시 재승인을 요구하지/);
 			assert.equal(result, undefined);
 			const issue = await hooks.tool_call({ toolName: "bash", input: { command: "gh issue create --repo company/product --title test --body body" } }, ctx);
-			assert.equal(issue?.block, true);
+			assert.equal(issue, undefined);
 		}
 	} finally {
 		await rm(root, { recursive: true, force: true });
@@ -435,16 +435,29 @@ test("회사 PR 스킬 뒤에서 지정한 외부 저장소에는 기여 승인 
 	}
 });
 
-test("회사 PR 스킬의 인용·검토·취소는 PR 생성 승인이 되지 않는다", async () => {
+test("회사 PR은 요청 분류와 관계없이 통과하지만 명시적 금지·취소는 막는다", async () => {
 	const root = await mkdtemp(join(tmpdir(), "workflow-guard-company-skill-readonly-"));
 	try {
+		const allowed = [
+			"별 문제 없으면 /create-pr",
+			`${createPrSkillInvocation}\n이 스킬 문서 내용을 검토해줘`,
+			createPrSkillInvocation.replace('name="create-pr"', 'name="review-guide"'),
+		];
+		for (const prompt of allowed) {
+			const { hooks, ctx } = createHarness({ cwd: root, originUrl: "https://github.com/company/product.git", trustedInternalPullRequestOwners: ["company"] });
+			await hooks.before_agent_start({ prompt, systemPrompt: "base" }, ctx);
+			const result = await hooks.tool_call({ toolName: "bash", input: { command: "gh pr create --repo company/product --title test --body body" } }, ctx);
+			assert.equal(result, undefined, prompt);
+		}
+		const issue = createHarness({ cwd: root, originUrl: "https://github.com/company/product.git", trustedInternalPullRequestOwners: ["company"] });
+		await issue.hooks.before_agent_start({ prompt: "아니 깃헙이슈로 만들어야지", systemPrompt: "base" }, issue.ctx);
+		assert.equal(await issue.hooks.tool_call({ toolName: "bash", input: { command: "gh issue create --repo company/product --title t --body b" } }, issue.ctx), undefined);
+		assert.equal((await issue.hooks.tool_call({ toolName: "bash", input: { command: "gh issue create --repo outside/project --title t --body b" } }, issue.ctx))?.block, true);
 		const prompts = [
 			`내용만 설명해줘. PR 생성하지 마.\n${createPrSkillInvocation}`,
 			`${createPrSkillInvocation}\nPR 생성하지 마. 내용만 설명해줘.`,
-			`${createPrSkillInvocation}\n이 스킬 문서 내용을 검토해줘`,
-			`${createPrSkillInvocation}\n이 스킬이 어떻게 동작하는지 설명해줘`,
-			`${createPrSkillInvocation}\n--repo company/product 이 스킬 내용을 검토해줘`,
-			createPrSkillInvocation.replace('name="create-pr"', 'name="review-guide"'),
+			"PR은 만들지 마",
+			"취소해",
 		];
 		for (const prompt of prompts) {
 			// given
@@ -453,7 +466,7 @@ test("회사 PR 스킬의 인용·검토·취소는 PR 생성 승인이 되지 �
 			await hooks.before_agent_start({ prompt, systemPrompt: "base" }, ctx);
 			const result = await hooks.tool_call({ toolName: "bash", input: { command: "gh pr create --repo company/product --title test --body body" } }, ctx);
 			// then
-			assert.equal(result?.block, true);
+			assert.equal(result?.block, true, prompt);
 		}
 	} finally {
 		await rm(root, { recursive: true, force: true });
@@ -520,7 +533,7 @@ test("신뢰 조직에 속한 저장소의 PR은 목록에 없어도 CONTRIBUTIN
 	}
 });
 
-test("신뢰 조직과 이름만 비슷한 조직이나 같은 조직의 Issue는 기여 승인 절차를 유지한다", async () => {
+test("신뢰 조직과 이름만 비슷한 조직은 기여 승인 절차를 유지한다", async () => {
 	const root = await mkdtemp(join(tmpdir(), "workflow-guard-trusted-owner-boundary-"));
 	try {
 		// given
@@ -530,7 +543,7 @@ test("신뢰 조직과 이름만 비슷한 조직이나 같은 조직의 Issue�
 			"gh pr create --repo outside/project --title test --body body",
 			"gh pr create --repo company-evil/project --title test --body body",
 			"gh pr create --repo evilcompany/project --title test --body body",
-			"gh issue create --repo company/infra --title test --body body",
+			"gh issue create --repo company-evil/project --title test --body body",
 		]) {
 			// when
 			const result = await hooks.tool_call({ toolName: "bash", input: { command } }, ctx);
@@ -1461,6 +1474,7 @@ test("semantic correction preserves cancellation, explicit prohibitions and bran
 		["do not commit or push", { toolName: "bash", input: { command: "git push" } }, /명시적으로 금지/],
 		["패키지 설치하지 마", { toolName: "bash", input: { command: "npm install" } }, /명시적으로 금지/],
 		["삭제하지 마", { toolName: "bash", input: { command: "rm -rf /tmp/fixture" } }, /명시적으로 금지/],
+		["PR 생성하지 마", { toolName: "bash", input: { command: "gh pr create --title t --body b" } }, /명시적으로 금지/],
 	] as const) {
 		const h = createHarness();
 		const start = await h.hooks.before_agent_start({ prompt, systemPrompt: "base" }, h.ctx);
