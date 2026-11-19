@@ -2230,7 +2230,7 @@ export default function workflowGuard(
 			// Continuation boilerplate never grants/reissues workspace rights.
 			state.workspaceAuthorization = restoredAuthorization;
 			state.workspaceEventBaseline = restoredAuthorization.events.length;
-			if (/^pilee-(?:frame(?:-v2)?-)?worktree-fork-continuation$/.test(input.customType ?? "")) state.forkedContinuation = true;
+			if (/^pilee-(?:frame(?:-v2)?-worktree-fork|worktree-fork(?:-tool)?(?:-current-panel)?)-continuation$/.test(input.customType ?? "")) state.forkedContinuation = true;
 			state.summary = [
 				...state.summary.split(" · ").filter((part) => !/^workspace(?:Allow|Deny)=/.test(part)),
 				restoredAuthorization.allowedActions.length ? `workspaceAllow=${restoredAuthorization.allowedActions.join(",")}` : undefined,

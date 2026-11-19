@@ -2094,6 +2094,19 @@ test("fork restores guard from active branch and never reissues consumed workspa
 	assert.equal((await fork.hooks.tool_call({ toolName: "worktree_fork", toolCallId: "twice", input: {} }, fork.ctx))?.block, true);
 });
 
+test("tool and current-panel fork continuations also never re-fork", async () => {
+	for (const type of ["pilee-worktree-fork-tool-continuation", "pilee-worktree-fork-current-panel-continuation"]) {
+		const source = createHarness();
+		const first = await source.hooks.before_agent_start({ messageType: "user", prompt: "새 worktree 만들어 버그 수정해줘", systemPrompt: "base" }, source.ctx);
+		await source.hooks.tool_call({ toolName: "worktree_fork", toolCallId: "once", input: {} }, source.ctx);
+		const fork = createHarness();
+		fork.entries.push(...structuredClone(source.entries), { type: "custom_message", customType: "workflow_guard", details: first.message.details } as any);
+		const next = await fork.hooks.before_agent_start(customStart(type, "최신 요청을 이어간다"), fork.ctx);
+		assert.equal(next.message.details.state.explicitMutation, true, type);
+		assert.equal((await fork.hooks.tool_call({ toolName: "worktree_fork", toolCallId: "twice", input: {} }, fork.ctx))?.block, true, type);
+	}
+});
+
 test("command args remain authoritative over inlined boilerplate", async () => {
 	for (const [type, command] of [["pilee-tft-command-shim", "verify"], ["pilee-ship-command-shim", "pr-ship"]]) {
 		const h = createHarness();
