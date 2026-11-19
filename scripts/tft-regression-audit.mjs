@@ -127,7 +127,7 @@ const requiredContracts = [
   },
   {
     file: 'skills/verify/SKILL.md',
-    includes: ['source-grounded requirement coverage 검증', 'Domain Work Map coverage', 'Architecture/Data Flow 검증', 'verifyReportHandoff', 'reuse/revise/add/drop/blocked'],
+    includes: ['source-grounded requirement coverage 검증', 'Domain Work Map coverage', 'Architecture/Data Flow 검증', 'captureHandoff', 'reuse/revise/add/drop/blocked'],
   },
   {
     file: 'skills/tft-guidelines/SKILL.md',

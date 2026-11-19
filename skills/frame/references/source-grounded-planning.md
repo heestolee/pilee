@@ -209,7 +209,7 @@ source-grounded mode의 Frame draft는 최소한 다음을 포함한다.
 
 ## 6. Verification rule
 
-`/verify`와 `/verify-report`는 source-grounded frame에서 다음 기준을 따른다.
+`/verify`와 화면 캡처 보고서는 source-grounded frame에서 다음 기준을 따른다.
 
 - 모든 requirement ID는 `PASS`, `GAP`, `BLOCKED`, `OUT_OF_SCOPE` 중 하나여야 한다.
 - Domain Work Map의 각 lane은 구현 또는 의도적 제외/blocked로 닫혀야 한다.

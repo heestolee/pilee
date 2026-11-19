@@ -158,7 +158,7 @@ AskUserQuestion으로 승격하는 경우:
 - 변경 파일 lint/format/static check
 - 관련 unit/component test
 - 필요한 경우 타입체크 또는 build
-- UI 변경이면 화면 evidence는 `/verify-report` 또는 수동 확인으로 넘김
+- UI 변경이면 화면 evidence는 화면 캡처 보고서(프로젝트 캡처 명령, 예: `/make-capture --html`) 또는 수동 확인으로 넘김
 
 규칙:
 - 검증 명령은 claim과 연결한다. “명령이 성공했다”가 아니라 “이 명령이 무엇을 닫았는지”를 말한다.
@@ -260,7 +260,7 @@ frame.verifications.push({
   riskLensFindings: [...],
   unintendedChanges: [...],
   affectedScope: [...],
-  verifyReportHandoff: [...],
+  captureHandoff: [...],
   nextAction,
   tftStudio: { transcriptPath, transcriptRef, tab: "verify" },
   verifiedAt: Date.now()
@@ -276,12 +276,12 @@ frame.md 또는 자유 검증 보고서에는 아래 Output Format을 append한�
 미검증 UI/동작 evidence가 있으면 `/create-pr`를 첫 번째 추천으로 두지 않는다.
 
 추천 순서 예:
-- Visual/runtime gap 있음 → `/verify-report` 또는 수동 확인 후 verify 기록 추가
+- Visual/runtime gap 있음 → 화면 캡처 보고서 또는 수동 확인 후 verify 기록 추가
 - 코드 결함 있음 → 수정 후 `/verify --resume`
 - 코드 리뷰는 가능하지만 배포 Ready 아님 → 미검증 명시하고 PR 준비
 - 모든 evidence 닫힘 → `/create-pr`, `/stress-interview`, `/reflect`, 일단 멈춤
 
-`/verify-report` handoff 후보는 각 항목을 `reuse/revise/add/drop/blocked` 중 하나로 표시한다. 예: 기존 test plan item을 그대로 쓰면 `reuse`, 캡처 축을 바꾸면 `revise`, 새 evidence가 필요하면 `add`, 범위 밖이면 `drop`, 데이터/계정/환경 때문에 막히면 `blocked`.
+화면 캡처 handoff 후보(`captureHandoff`)는 각 항목을 `reuse/revise/add/drop/blocked` 중 하나로 표시한다. 예: 기존 test plan item을 그대로 쓰면 `reuse`, 캡처 축을 바꾸면 `revise`, 새 evidence가 필요하면 `add`, 범위 밖이면 `drop`, 데이터/계정/환경 때문에 막히면 `blocked`.
 
 질문이 실제 행동을 바꾸지 않으면 묻지 말고 추천만 보고한다. 선택이 필요하면 TFT Studio ask를 사용한다.
 
@@ -360,7 +360,7 @@ frame.md 또는 자유 검증 보고서에는 아래 Output Format을 append한�
 
 | 위험 | 정도 | 이유 | 다음 행동 |
 |---|---|---|---|
-| UI 캡처 없음 | 높음 | 핵심 요구가 화면 변경 | `/verify-report` 또는 수동 캡처 |
+| UI 캡처 없음 | 높음 | 핵심 요구가 화면 변경 | 화면 캡처 보고서 또는 수동 캡처 |
 
 ---
 
@@ -455,7 +455,7 @@ Gate Function, success criteria, risk lens, canonical schema를 상세히 펼친
 
 ### `/verify --report-ready`
 
-`/verify-report`에 넘길 캡처/동작 evidence 후보만 정리한다. UI 변경에서 유용하다.
+화면 캡처 보고서에 넘길 캡처/동작 evidence 후보만 정리한다. UI 변경에서 유용하다.
 
 ### `/verify --commit-audit`
 

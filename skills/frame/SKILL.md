@@ -12,7 +12,7 @@ description: 구현 전 목표·성공 기준·범위를 조사하고 중요한 
 
 # Frame
 
-`/frame`은 **구현 전 핵심 정렬**이자 **후속 TFT 사이클 setup**이다. 목표·범위·성공 기준을 사용자가 함께 검토하고, 그 결과를 `/decide`·`/verify`·`/verify-report`가 읽을 수 있는 canonical contract로 저장한다.
+`/frame`은 **구현 전 핵심 정렬**이자 **후속 TFT 사이클 setup**이다. 목표·범위·성공 기준을 사용자가 함께 검토하고, 그 결과를 `/decide`·`/verify`·화면 캡처 보고서가 읽을 수 있는 canonical contract로 저장한다.
 
 산출물의 단일 원천은 `frame.json`이다. markdown과 Studio transcript는 사람이 읽기 위한 mirror/provenance이지 canonical source가 아니다.
 
@@ -40,7 +40,7 @@ description: 구현 전 목표·성공 기준·범위를 조사하고 중요한 
 |---|---|---|
 | light | 단일 hotfix/copy/style, 영향 파일·route가 작고 side effect 없음 | 목표/범위/검증 축 한 번만 잠그고 바로 실행 |
 | standard | UI/BE/event 중 여러 축이 있음 | 기본 frame + 필요한 결정/verify plan |
-| full | 정책·DB·다중 role/viewport/before-after·릴리즈 리스크 | 정책축/레이어맵/decide/verify-report까지 풍부하게 사용 |
+| full | 정책·DB·다중 role/viewport/before-after·릴리즈 리스크 | 정책축/레이어맵/decide/화면 캡처 보고서까지 풍부하게 사용 |
 
 사용자가 “간단한 hotfix”, “빨리”, “문구만”, “이거 하나만”처럼 좁은 의도를 주면, 먼저 light frame으로 시작한다. 진행 중 검증 축이나 위험이 늘어나면 standard/full로 승격하되, 승격 이유를 한 문장으로 적는다.
 
@@ -264,7 +264,7 @@ Jira, Notion, Slack, wireframe, PRD, 디자인 캡처처럼 정확한 기획 근
 - `transcriptPath`는 전체 markdown/update/question/answer 전문 저장 위치다. 사용자가 다시 보고 싶어 하면 같은 identity로 `action=open`을 호출하거나 `transcriptRef.openCommand`로 `/archive`에서 다시 연다.
 - 현재 1차 shell은 Frame tab을 실제로 사용하고, Decide/Verify/Verify Report tab은 같은 work unit 안에서 후속 또는 선택 stage state를 보여줄 자리로 둔다.
 - 단, 후속 stage라는 말은 순서 강제가 아니다. 명확한 핫픽스/소규모 검증은 `Frame → Verify`, `Frame → Verify Report`, `Frame only`, 또는 필요한 경우 `Verify Report only`도 정상 경로다.
-- 각 탭은 UI shell일 뿐이고 canonical source는 stage별 structured data(`frame.json`, `frame.json.decisions[]`, `frame.json.verifications[]`, verify-report artifact refs)여야 한다. 전 단계 기록이 없다는 이유만으로 현재 탭 사용을 막지 않는다.
+- 각 탭은 UI shell일 뿐이고 canonical source는 stage별 structured data(`frame.json`, `frame.json.decisions[]`, `frame.json.verifications[]`, 캡처 보고서 artifact refs)여야 한다. 전 단계 기록이 없다는 이유만으로 현재 탭 사용을 막지 않는다.
 - Self-healing은 별도 TFT Studio tab이 아니다. 검증 실패/gap 이후 실행되는 repair loop이며, Studio에 표시한다면 Verify tab의 `Self-healing runs` / `Re-verify result` append section으로 남긴다.
 - TFT Studio에는 generative-ui dependency를 붙이지 않는다. 대신 flat/compact, 표·diagram은 시각 보조로만, 질문/선택/전문 보존은 deterministic renderer가 책임진다.
 
