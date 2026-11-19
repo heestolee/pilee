@@ -1,6 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import { learningCompanionManifestPath, writeLearningCompanionManifest } from "../learning-companion/state.ts";
@@ -19,10 +18,8 @@ import {
 	updateFrameV2ManifestStatus,
 	writeFrameV2Manifest,
 } from "./artifact.ts";
+import { formatInlinedSkill, pileeSkillPath as skillPath, readPileeSkill as readSkill } from "../utils/inlined-skill.ts";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const PACKAGE_ROOT = resolve(__dirname, "../..");
-const SKILLS_DIR = join(PACKAGE_ROOT, "skills");
 const SKILL_NAME = "frame-v2";
 const PREREQUISITE_SKILLS = ["tft-guidelines", "ask-user-question-rules"] as const;
 const CUSTOM_TYPE = "pilee-frame-v2-command";
@@ -154,26 +151,6 @@ function attachFrameV2LearningCompanion(record: FrameV2CommandContextRecord, fra
 	} catch (error) {
 		return { warning: error instanceof Error ? error.message : String(error) };
 	}
-}
-
-function skillPath(name: string): string {
-	return join(SKILLS_DIR, name, "SKILL.md");
-}
-
-function readSkill(name: string): { name: string; path: string; content: string } {
-	const path = skillPath(name);
-	return { name, path, content: readFileSync(path, "utf8").trimEnd() };
-}
-
-function formatInlinedSkill(skill: { name: string; path: string; content: string }): string {
-	return [
-		`----- BEGIN INLINED PILEE SKILL: ${skill.name} -----`,
-		`Location: ${skill.path}`,
-		`References are relative to: ${dirname(skill.path)}`,
-		"",
-		skill.content,
-		`----- END INLINED PILEE SKILL: ${skill.name} -----`,
-	].join("\n");
 }
 
 export function buildFrameV2Prompt(params: {

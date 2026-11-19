@@ -1,5 +1,4 @@
-import { readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DefaultResourceLoader, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
@@ -10,10 +9,10 @@ import { buildFrameIdentity, type FrameIdentity, formatFrameIdentityHint, resolv
 import { buildFrameForkContinuationPrompt, buildFrameWorktreeForkArgs, type FrameWorktreeForkParams } from "./frame-worktree-fork.ts";
 
 import { installExpectedSkillCollisionFilter } from "./skill-diagnostics.ts";
+import { formatInlinedSkill, pileeSkillPath as skillPath, readPileeSkill as readSkill } from "../utils/inlined-skill.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = resolve(__dirname, "../..");
-const SKILLS_DIR = join(PACKAGE_ROOT, "skills");
 
 const PREREQUISITE_SKILLS = ["tft-guidelines", "ask-user-question-rules"] as const;
 const SHIM_CUSTOM_TYPE = "pilee-tft-command-shim";
@@ -78,31 +77,6 @@ function getFrameCommandContext(identityKey?: string): FrameCommandContextRecord
 
 function blockedResult(text: string, details: Record<string, unknown> = {}) {
 	return { content: [{ type: "text" as const, text }], details: { blocked: true, ...details } };
-}
-
-function skillPath(skillName: string): string {
-	return join(SKILLS_DIR, skillName, "SKILL.md");
-}
-
-function readSkill(skillName: string): { name: string; path: string; content: string } {
-	const path = skillPath(skillName);
-	return {
-		name: skillName,
-		path,
-		content: readFileSync(path, "utf-8").trimEnd(),
-	};
-}
-
-function formatInlinedSkill(skill: { name: string; path: string; content: string }): string {
-	const baseDir = dirname(skill.path);
-	return [
-		`----- BEGIN INLINED PILEE SKILL: ${skill.name} -----`,
-		`Location: ${skill.path}`,
-		`References are relative to: ${baseDir}`,
-		"",
-		skill.content,
-		`----- END INLINED PILEE SKILL: ${skill.name} -----`,
-	].join("\n");
 }
 
 export function buildPileeTftPrompt(command: TftCommandName, args: string, cwd: string, frameIdentity?: FrameIdentity): string {
