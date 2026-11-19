@@ -41,7 +41,6 @@ reviewed_commit: ce5e875d9e49a3a0b93215894e525b1933c6a145
 related:
   - live-artifact-preview-pattern
   - backlog-source-session-provenance
-  - verify-report-workflow
   - frame-studio-interactive-decision-ui
   - tool-output-noise-management
 ---
@@ -53,6 +52,8 @@ related:
 ## Archive Rule
 
 완료된 HTML report와 web search review는 workspace capture와 사용자 history archive에 저장합니다. `/archive`는 최근 workspace 산출물, archive, TFT Studio transcript, planning markdown, Pi/Conductor session provenance를 함께 탐색하는 primary command입니다. 기존 `/show-report`는 compatibility alias로 남기며, native viewer가 안 되면 browser fallback을 제공합니다. TFT Studio tool result가 `transcriptRef.openCommand`를 반환할 때도 `/archive <transcriptPath>`를 사용해 전문을 context에 붙이지 않고 재개 가능한 artifact로 연결합니다.
+
+화면 캡처 비교 보고서는 작업 공간 안에만 두지 않습니다. 머지 뒤 작업 공간을 지우면 같이 사라지기 때문입니다. 보고서마다 `~/Documents/agent-history/capture-reports/<날짜>_<작업공간>[_<티켓>]_<제목>/` 폴더에 `index.html`, 원본 화질 `assets/`, 다시 만들 수 있는 `manifest.json`, 목록용 `report.json`을 둡니다. 사진을 base64로 HTML에 넣지 않고 파일로 남겨 용량이 늘지 않고 PR 첨부에도 그대로 씁니다. `/show-report`는 이 폴더를 `비교 보고서`로 목록에 보여줍니다. 예전 verify-report HTML(`agent-history/reports/`)도 계속 목록에 남습니다.
 
 Archive의 `기획 / Frame`은 재진입 가능한 기획 artifact만 보여줍니다. `.context/work/**/Session <id>.md`처럼 fork-panel/Pi 대화 전문을 markdown으로 내보낸 파일은 session provenance이며, 기획 문서가 아니므로 `Pi 이력` 쪽에 남기고 planning tab에서는 제외합니다. TFT Studio transcript 카드에는 `이어하기` 버튼을 노출해, 사용자가 JSON path나 `/tft open ...` 명령을 직접 입력하지 않아도 archive를 실행한 현재 Pi session에서 같은 identity/timeline으로 이어갈 수 있게 합니다.
 
