@@ -143,7 +143,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [MCP runtime은 장시간 세션에서 self-healing해야 한다](./mcp-runtime-self-healing.md) | active | high | 2026-07-02 | eda675a | mcp, runtime, self-healing, reconnect, retry |
 | [MCP stderr는 TUI 출력이 아니다](./mcp-stderr-isolation.md) | active | high | 2026-06-02 | fad9c36 | mcp, stderr, stdio, terminal, tui, noise |
 | [Runtime fan-out은 healthcheck 뒤의 실행 계약이다](./runtime-fanout-diagnosis.md) | active | high | 2026-06-02 | 91c739f | runtime, fanout, healthcheck, deployment, triage, root-cause |
-| [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-08-31 | e38c163 | terminal, ghostty, applescript, notify, host, integration |
+| [터미널 연동은 host adapter로 다룬다](./terminal-host-integration.md) | active | high | 2026-11-19 | ca8964f | terminal, ghostty, applescript, notify, host, integration |
 | [터미널 workspace 복원은 snapshot과 host adapter를 분리한다](./terminal-workspace-restore.md) | active | high | 2026-11-19 | 3e3b6c9 | workspace, terminal, ghostty, snapshot, restore, session |
 
 ### ui
@@ -193,7 +193,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Clean handoff는 compact와 새 세션 사이의 전환 계약이다](./clean-handoff-session-continuation.md) | active | high | 2026-06-02 | cc0bd98 | session, handoff, compact, context, archive, continue-clean |
 | [자동 로드 컨텍스트는 최소 surface만 가진다](./context-loading-minimal-surface.md) | active | high | 2026-06-02 | cc0bd98 | context, agents-md, memory, system-prompt, token, autoload |
 | [Decide는 근거와 수용한 비용을 남긴다](./decide-tradeoff-challenge.md) | active | high | 2026-10-08 | 93b6e0a | decide, tradeoff, challenge, frame-json, decision, tft |
-| [외부 Issue와 PR은 기여 규칙 확인과 최종 승인 뒤에 게시한다](./external-issue-preview-gate.md) | active | high | 2026-11-16 | 42dcf5d | jira, github, issue, pull-request, contributing, preview |
+| [외부 Issue와 PR은 기여 규칙 확인과 최종 승인 뒤에 게시한다](./external-issue-preview-gate.md) | active | high | 2026-11-19 | ca8964f | jira, github, issue, pull-request, contributing, preview |
 | [최종 검증은 메인 세션을 막지 않고 병렬화한다](./final-verification-parallelization.md) | active | high | 2026-06-02 | c6cd06f | verification, ship, final-check, subagent, background, parallel |
 | [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-06-02 | c6cd06f | fork-panel, handoff, inbox, inject, parent, panel |
 | [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-06-02 | 63f2a62 | fork-panel, revive, repanel, ghostty, spatial, panel |
@@ -233,7 +233,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Working Context Card는 큰 맥락을 현재 slice로 압축한다](./work-context-card-task-board.md) | active | high | 2026-10-24 | bb2966d | work-context, tasks, workflow, context, guard |
 | [반복 워크플로 실패는 guard/flow로 고정한다](./workflow-guard-enforced-flow.md) | active | high | 2026-11-16 | 42dcf5d | workflow, guard, intent, audit, hotfix, continuation |
 | [작업 절차의 무게는 변경 리스크에 비례해야 한다](./workflow-weight-proportionality.md) | active | high | 2026-06-02 | 61ccbc9 | workflow, frame, tft, hotfix, scope, incremental |
-| [작업공간 동작과 panel activation은 별도 계약이다](./workspace-action-panel-activation-contract.md) | active | high | 2026-11-19 | 11a806d | workspace, worktree, branch, activation, panel, authorization |
+| [작업공간 동작과 panel activation은 별도 계약이다](./workspace-action-panel-activation-contract.md) | active | high | 2026-11-19 | ca8964f | workspace, worktree, branch, activation, panel, authorization |
 | [Worktree 생성은 현재 패널 대화가 source다](./worktree-creation-parent-gate.md) | active | high | 2026-10-07 | 727572a | worktree, fork-panel, current-panel, hotfix, context, profile-driven |
 | [Worktree 의존성 준비는 조건부 worker가 맡는다](./worktree-dependency-bootstrap-worker.md) | active | high | 2026-11-19 | 11a806d | worktree, dependencies, bootstrap, profile-driven, worker, subagent |
 | [Worktree는 실행 경계다](./worktree-execution-boundary.md) | active | high | 2026-11-19 | 11a806d | worktree, workspace, repo, branch, execution-boundary, cwd-binding |

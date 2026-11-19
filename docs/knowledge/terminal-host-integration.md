@@ -27,8 +27,8 @@ source:
   - user-direction:2026-05-12-workspace-save-restore
   - user-direction:2026-05-11-glimpse-zoom-shortcuts
   - user-direction:2026-07-17-tft-visual-native-snapshot
-reviewed_at: 2026-08-31
-reviewed_commit: e38c1637107f90a8e398dbfc9cb4779cb70e1ab9
+reviewed_at: 2026-11-19
+reviewed_commit: ca8964f2c2ad4455e0abd68b7a192d47cac26aed
 related:
   - fork-panel-spatial-continuity
   - mcp-stderr-isolation
@@ -42,7 +42,7 @@ related:
 
 ## Adapter Rule
 
-새 탭, split, focus, notification, config reload, workspace restore는 host capability를 확인하고 fallback을 둡니다. 예를 들어 Cmd+T 동작은 working directory 설정만으로 충분하지 않고 tab inheritance 옵션도 같이 봐야 합니다. 알림은 OSC sequence보다 host에서 실제 동작하는 notifier를 우선합니다. 새 terminal에 Pi를 다시 띄우는 명령은 bare `pi`나 자동 `pi update`에 의존하지 않습니다. 새 shell의 PATH가 현재 Pi 프로세스와 다를 수 있으므로, 현재 프로세스의 `process.execPath` + `process.argv[1]` 또는 명시적 wrapper 경로를 보존해 `--session`을 실행해야 합니다. Ghostty `initial input`에는 한글 cwd/session/env가 포함된 raw command나 긴 inline base64 payload를 전달하지 않습니다. UTF-8 launch data는 mode `0700`의 self-deleting 임시 script 안에 두고 `surface configuration.command`에는 256자 미만의 ASCII script path만 전달합니다. Generated script test는 command 길이/ASCII, script 내부 exact Unicode, self-delete 순서를 확인하고, background PTY와 `macos-hidden=always` 별도 Ghostty process E2E로 실제 TTY·cwd·env·session 및 frontmost 불변을 검증합니다. Ghostty workspace 복원처럼 host geometry가 제한적으로만 노출되는 기능은 session continuity와 layout fidelity를 분리해 표시해야 합니다.
+새 탭, split, focus, notification, config reload, workspace restore는 host capability를 확인하고 fallback을 둡니다. 예를 들어 Cmd+T 동작은 working directory 설정만으로 충분하지 않고 tab inheritance 옵션도 같이 봐야 합니다. 알림은 OSC sequence보다 host에서 실제 동작하는 notifier를 우선합니다. 새 terminal에 Pi를 다시 띄우는 명령은 bare `pi`나 자동 `pi update`에 의존하지 않습니다. Ghostty가 띄운 새 화면은 PATH가 최소라서, 실행 명령은 명시 지정(`PILEE_PI_BIN`/`PI_BIN`) → PATH를 보정하는 사용자 wrapper → 현재 프로세스의 `process.execPath` + `process.argv[1]` 순으로 고른 뒤 `--session`을 실행합니다. 세션을 새 화면에 여는 모든 경로(fork panel, workspace 복원, `/show-report`의 새 탭 열기)는 같은 실행 명령·launch script 생성기를 쓰고, System Events keystroke처럼 포커스된 화면에 명령을 타이핑하는 방식은 쓰지 않습니다. Ghostty `initial input`에는 한글 cwd/session/env가 포함된 raw command나 긴 inline base64 payload를 전달하지 않습니다. UTF-8 launch data는 mode `0700`의 self-deleting 임시 script 안에 두고 `surface configuration.command`에는 256자 미만의 ASCII script path만 전달합니다. Generated script test는 command 길이/ASCII, script 내부 exact Unicode, self-delete 순서를 확인하고, background PTY와 `macos-hidden=always` 별도 Ghostty process E2E로 실제 TTY·cwd·env·session 및 frontmost 불변을 검증합니다. Ghostty workspace 복원처럼 host geometry가 제한적으로만 노출되는 기능은 session continuity와 layout fidelity를 분리해 표시해야 합니다.
 
 ## WebView/Open Rule
 
