@@ -87,10 +87,6 @@ export function loadCodexFastModeState(): CodexFastModeState {
 	return { enabled: false, priority: false };
 }
 
-export function isCodexFastModeEnabled(): boolean {
-	return loadCodexFastModeState().enabled;
-}
-
 export function saveCodexFastModeState(state: CodexFastModeState): void {
 	mergeAtomic(stateFile(), (current) => ({ ...current, ...state }));
 }

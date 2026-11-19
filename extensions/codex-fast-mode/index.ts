@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { isRecord, loadFastConfiguration, registerFastConfigurationReader, saveFastConfiguration, type CodexFastModeState, type FastConfiguration, type SpeedMode } from "./state.ts";
 
-export { isCodexFastModeEnabled, loadCodexFastModeState, saveCodexFastModeState } from "./state.ts";
+export { loadCodexFastModeState, saveCodexFastModeState } from "./state.ts";
 export type { CodexFastModeState } from "./state.ts";
 
 export const SUPPORTED_CODEX_PROVIDER = "openai-codex";
