@@ -97,7 +97,7 @@ related:
 
 ## Verify Report Rule
 
-`/verify-report`는 backend_layer_map이 있으면 UI 캡처만으로 끝내지 않습니다. 레이어 책임은 CODE_DIFF/BE evidence로 닫습니다. 예를 들어 “repo는 조회 조건만 소유”, “VO가 중복 방어를 소유”, “loader key에 basis 값 포함” 같은 항목은 코드 diff, unit test, generated schema, query result로 co-located evidence를 남깁니다.
+화면 캡처 보고서는 backend_layer_map이 있으면 UI 캡처만으로 끝내지 않습니다. 레이어 책임은 CODE_DIFF/BE evidence로 닫습니다. 예를 들어 “repo는 조회 조건만 소유”, “VO가 중복 방어를 소유”, “loader key에 basis 값 포함” 같은 항목은 코드 diff, unit test, generated schema, query result로 co-located evidence를 남깁니다.
 
 ## Boundary
 

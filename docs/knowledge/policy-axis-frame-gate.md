@@ -87,7 +87,7 @@ related:
 
 ## Verify Report Rule
 
-`/verify-report`는 `policy_axis_scan.channel_matrix`가 있으면 각 채널을 coverage item으로 승격합니다. UI 화면은 캡처로 닫고, Slack/API/DB/cache처럼 비가시 축은 BE/API/SQL/log/code diff evidence로 닫습니다. 화면 캡처가 없는 축도 PASS하려면 해당 정책축을 닫는 근거가 co-located evidence로 남아야 합니다.
+화면 캡처 보고서는 `policy_axis_scan.channel_matrix`가 있으면 각 채널을 coverage item으로 승격합니다. UI 화면은 캡처로 닫고, Slack/API/DB/cache처럼 비가시 축은 BE/API/SQL/log/code diff evidence로 닫습니다. 화면 캡처가 없는 축도 PASS하려면 해당 정책축을 닫는 근거가 co-located evidence로 남아야 합니다.
 
 ## Canonical Rule
 
@@ -114,4 +114,4 @@ related:
 - `/frame`이 정책축 스캔을 너무 자주 켜 사용자를 방해할 때
 - 정책형 작업에서 여전히 시간 기준/DEFAULT/다중 적용/채널 차이가 PR 후반에 발견될 때
 - `frame.json` schema에 더 엄격한 policy axis validation을 extension 수준에서 넣을지 결정할 때
-- `/decide`, `/verify`, `/verify-report`가 policy_axis_scan을 과하게 반복하거나 반대로 누락할 때
+- `/decide`, `/verify`, 화면 캡처 보고서가 policy_axis_scan을 과하게 반복하거나 반대로 누락할 때

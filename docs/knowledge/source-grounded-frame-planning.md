@@ -80,11 +80,11 @@ backend나 기존 action/API boundary가 얽힌 작업에서 layer map은 아키
 
 ## Verification Rule
 
-source-grounded frame의 `/decide`, `/verify`, `/verify-report`는 요구사항 ID별로 이어져야 합니다.
+source-grounded frame의 `/decide`, `/verify`, 화면 캡처 보고서는 요구사항 ID별로 이어져야 합니다.
 
 - `/decide`는 대안 비교표에 requirement ID, Domain Work Map lane, Architecture/Data Flow edge/source-of-truth 영향이 어떻게 달라지는지 적습니다.
 - `/verify`는 모든 requirement ID와 Domain Work Map lane을 `PASS`, `GAP`, `BLOCKED`, `OUT_OF_SCOPE` 중 하나로 닫고, Architecture Flow가 있으면 lane/node/edge/source-of-truth가 실제 diff와 일치하는지 확인합니다.
-- `/verify-report`는 `/verify`가 넘긴 후보를 PM-facing evidence item으로 재판정하되, Frame 항목을 `reuse/revise/add/drop/blocked`로 판정합니다.
+- 화면 캡처 보고서는 `/verify`가 넘긴 후보를 PM-facing evidence item으로 재판정하되, Frame 항목을 `reuse/revise/add/drop/blocked`로 판정합니다.
 - UI 요구는 캡처/GIF 없이 PASS가 아닙니다.
 - “영향 없음” 요구도 실제 consumer path 확인 없이 PASS가 아닙니다.
 - “자동 반려/로그” 요구는 dry-run, execute gate, log evidence 없이 PASS가 아닙니다.
