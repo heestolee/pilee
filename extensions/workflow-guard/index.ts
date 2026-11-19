@@ -769,7 +769,7 @@ function buildSystemPrompt(
 	}
 	if (state.weight === "light") {
 		lines.push(
-			"- HARD LIGHT PATH: default to scope lock → focused change → nearest validation → atomic commit → push. Do not start worker fan-out, stress interview, capture-heavy verify report, or deep session/context mining unless the user explicitly asks or a new risk axis appears.",
+			"- HARD LIGHT PATH: default to scope lock → focused change → nearest validation → atomic commit → push. Do not start worker fan-out, stress interview, capture-heavy screen report, or deep session/context mining unless the user explicitly asks or a new risk axis appears.",
 			"- Light PR/ship path: use `GIT_OPTIONAL_LOCKS=0 git status --short --branch`, current diff, recent commits, and the user's explicit intent. Do not run full transcript/session extraction just to fill templates.",
 			"- For tiny copy/label hotfixes with explicit paths, prefer `auto_commit action=quick` over a heavy commit_plan roundtrip when using auto_commit.",
 			"- If a commit tool reports `committed_not_pushed` or `push: skipped` and the user did not explicitly ask to hold push, immediately run `git push` before the final response.",
@@ -1969,7 +1969,7 @@ function sliceCommitRhythmSection(state: GuardState, card?: WorkContextCard): st
 		`- Current slice ${card.currentSlice.id}: ${card.currentSlice.title}`,
 		"- Treat a verified slice as a commit candidate, not as something to batch until the whole implementation is done.",
 		"- When the slice's nearest validation passes, inspect git status/diff and pass a reviewable inline plan to auto_commit action=apply. Use work_context action=commit_plan only when file-group derivation is needed.",
-		"- Pending migration execution, UI capture, or final verify-report is a ship-readiness caveat, not a valid reason by itself to leave a verified code slice uncommitted.",
+		"- Pending migration execution, UI capture, or a final capture report is a ship-readiness caveat, not a valid reason by itself to leave a verified code slice uncommitted.",
 		"- Before a final response with dirty diff: either commit the verified slice, or explicitly record the concrete reason in work_context checkpoint. Do not surprise the user at the end with a large uncommitted diff.",
 		"- This is not an auto-stage permission: auto_commit must still use explicit inline/file-backed plans or explicit quick paths.",
 	].join("\n");
@@ -2447,9 +2447,6 @@ export default function workflowGuard(
 		}
 
 		if (state.weight === "light" && !state.explicitHeavy) {
-			if (event.toolName === "verify_report_live" && String(event.input?.action ?? "") === "start") {
-				addSoftNote(ctx, event.toolCallId, lightPathNote(state, "verify_report_live"));
-			}
 			if (event.toolName === "subagent") {
 				const verb = parseSubagentCommandVerb(event.input?.command);
 				if (verb === "run" || verb === "batch" || verb === "chain") addSoftNote(ctx, event.toolCallId, lightPathNote(state, "subagent fan-out"));

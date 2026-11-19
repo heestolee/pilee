@@ -1916,7 +1916,7 @@ test("standard framed work injects commit-or-explain guard", async () => {
 	const start = await hooks.before_agent_start({ prompt: "남은 작업 구현해줘", systemPrompt: "base" }, { ...ctx, cwd: root });
 
 	assert.match(start.systemPrompt, /Slice commit-or-explain guard/);
-	assert.match(start.systemPrompt, /Pending migration execution, UI capture, or final verify-report is a ship-readiness caveat/);
+	assert.match(start.systemPrompt, /Pending migration execution, UI capture, or a final capture report is a ship-readiness caveat/);
 	assert.match(start.systemPrompt, /Before a final response with dirty diff: either commit the verified slice/);
 	assert.match(start.systemPrompt, /auto_commit must still use explicit inline\/file-backed plans/);
 	assert.match(start.systemPrompt, /pass a reviewable inline plan to auto_commit action=apply/);
