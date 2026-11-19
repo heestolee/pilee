@@ -56,6 +56,7 @@ import {
 	type WorkspaceContinuation,
 } from "../utils/workspace-activation-contract.ts";
 import { worktreeContinuationType } from "../utils/worktree-continuation.ts";
+import { readWorktreeMeta, worktreeMetaPath as metaPath } from "../utils/worktree-meta.ts";
 
 // ─── Repo registry ─────────────────────────────────────────────────────────
 
@@ -283,14 +284,8 @@ interface WorktreeMeta {
 	};
 }
 
-function metaPath(worktreePath: string): string {
-	return join(worktreePath, ".pi", "worktree-meta.json");
-}
-
 function readMeta(worktreePath: string): WorktreeMeta | null {
-	const p = metaPath(worktreePath);
-	if (!existsSync(p)) return null;
-	try { return JSON.parse(readFileSync(p, "utf8")); } catch { return null; }
+	return readWorktreeMeta<WorktreeMeta>(worktreePath);
 }
 
 function writeMeta(worktreePath: string, meta: WorktreeMeta) {

@@ -27,6 +27,7 @@ import {
 	type WorkspacePanelActivationResult,
 } from "./panel-activation.ts";
 import { chooseWorkspaceOpenTarget, type WorkspaceOpenTarget } from "./open-target.ts";
+import { readWorktreeMeta, worktreeMetaPath } from "../utils/worktree-meta.ts";
 
 const REGISTRY_PATH = join(homedir(), ".pi", "worktree-repos.json");
 
@@ -236,14 +237,6 @@ function createReviewSession(source: string | null, worktreePath: string, metada
 	return sessionFile;
 }
 
-function worktreeMetaPath(worktreePath: string): string {
-	return join(worktreePath, ".pi", "worktree-meta.json");
-}
-
-function readWorktreeMeta(worktreePath: string): Record<string, unknown> {
-	try { return JSON.parse(readFileSync(worktreeMetaPath(worktreePath), "utf8")) as Record<string, unknown>; } catch { return {}; }
-}
-
 function writeWorktreeMeta(worktreePath: string, value: Record<string, unknown>): void {
 	const path = worktreeMetaPath(worktreePath);
 	mkdirSync(dirname(path), { recursive: true });
@@ -442,7 +435,7 @@ export async function runPrReviewWorktreeFromCommandContext(
 							activation: { target: "current-panel", switchedAt },
 						});
 						writeWorktreeMeta(worktreePath, {
-							...readWorktreeMeta(worktreePath),
+							...readWorktreeMeta<Record<string, unknown>>(worktreePath),
 							context: { mode: contextMode, sourceSessionFile: source ?? undefined, targetSessionFile: sessionFile, fullTranscriptCopied: Boolean(source), createdAt: Date.now() },
 							activation: { contract, status: "switched", sessionFile, switchedAt },
 						});
@@ -526,7 +519,7 @@ export async function runPrReviewWorktreeFromCommandContext(
 	};
 	writePrReviewWorkspaceMetadata(worktreePath, activatedMetadata);
 	writeWorktreeMeta(worktreePath, {
-		...readWorktreeMeta(worktreePath),
+		...readWorktreeMeta<Record<string, unknown>>(worktreePath),
 		context: { mode: contextMode, sourceSessionFile: source ?? undefined, targetSessionFile: sessionFile, fullTranscriptCopied: Boolean(source), createdAt: Date.now() },
 		activation: { contract, status: "activated", sessionFile, panelLabel: activation.panelLabel, forkId: activation.forkId, readyAt: activation.readyAt },
 	});
