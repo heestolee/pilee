@@ -14,7 +14,6 @@ confidence: high
 applies_to:
   - skills/frame
   - skills/incremental-implementation
-  - skills/verify-report-preflight
 source:
   - user-direction:2026-05-12-worktree-speed-analysis
 reviewed_at: 2026-06-02
@@ -23,7 +22,6 @@ related:
   - request-traceability-surgical-changes
   - frame-verify-contract
   - worktree-session-continuity
-  - verify-report-preflight-readiness
 title_en: Workflow weight must match change risk
 ---
 

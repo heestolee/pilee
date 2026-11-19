@@ -34,12 +34,10 @@ tags:
   - 리포트
   - 증거
 category: verification
-status: active
+status: deprecated
 confidence: high
 applies_to:
-  - skills/verify-report
   - extensions/archive-to-html
-  - extensions/archive-to-html/verify-report-live.ts
   - show-report
 source:
   - pilee-history:2026-05-05#43
@@ -68,6 +66,8 @@ related:
 supersedes:
   - make-report-confirm-only-upload-flow
 ---
+
+> **Deprecated (2026-11-19)**: `verify-report` 스킬과 `verify_report_live` 도구는 제거됐다. 화면 확인은 private overlay의 캡처 명령(Creatrip `/make-capture --html`)이 만드는 수정 전·후 비교 보고서가 맡고, 보고서는 `~/Documents/agent-history/capture-reports/`에 보관돼 `/show-report`에서 다시 연다. 아래 판정 범위·자르기·GIF·수정 전·후 원칙은 그 캡처 기준으로 옮겨 계속 쓴다.
 
 ## Overview
 
