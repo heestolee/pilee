@@ -118,7 +118,7 @@ test("PR review current-panel HEAD notice appears only when the target HEAD diff
 	assert.match(notice ?? "", /새 탭.*현재 패널은 그대로 유지/);
 });
 
-test("PR review offers only current panel or new tab and opens a head-pinned session in a new tab", async () => {
+async function assertReviewOpensInNewPanel(label: string, placement: "tab" | "right") {
 	const f = setupRepository();
 	let targetSessionDir = "";
 	let targetPath = "";
@@ -142,7 +142,7 @@ test("PR review offers only current panel or new tab and opens a head-pinned ses
 				notify() {},
 				async select(title: string, options: string[]) {
 					selection = { title, options };
-					return "새 탭";
+					return label;
 				},
 			},
 			switchSession() { switchCalled = true; },
@@ -151,14 +151,14 @@ test("PR review offers only current panel or new tab and opens a head-pinned ses
 			buildContract: contractBuilder(order) as any,
 			activate: async (_pi, _ctx, input) => {
 				activationInput = input;
-				return { status: "activated", contract: input.contract, placement: "tab", terminalId: "term-42", forkId: "fork-42", panelLabel: "P1", readyAt: "2026-08-25T00:00:00.000Z", continuationDispatched: true };
+				return { status: "activated", contract: input.contract, placement, terminalId: "term-42", forkId: "fork-42", panelLabel: "P1", readyAt: "2026-08-25T00:00:00.000Z", continuationDispatched: true };
 			},
 		});
 		targetPath = result.path ?? "";
 		assert.equal(result.status, "activated");
 		if (result.status !== "activated") return;
 		targetSessionDir = sessionDirFor(result.path);
-		assert.deepEqual(selection?.options, ["현재 패널", "새 탭"]);
+		assert.deepEqual(selection?.options, ["현재 패널", "새 탭", "오른쪽 패널"]);
 		assert.match(selection?.title ?? "", /PR #42 review를 어디에서 열까요/);
 		assert.ok(order.indexOf("contract") >= 0 && order.indexOf("contract") < order.indexOf("fetch"), "placement contract must be fixed before worktree creation");
 		assert.equal(git(result.path, ["rev-parse", "HEAD"]), f.headSha);
@@ -172,19 +172,27 @@ test("PR review offers only current panel or new tab and opens a head-pinned ses
 		assert.equal(activationInput.sessionFile, result.sessionFile);
 		assert.equal(activationInput.cwd, result.path);
 		assert.equal(activationInput.contract.contextMode, "full");
-		assert.equal(activationInput.contract.placement, "tab");
+		assert.equal(activationInput.contract.placement, placement);
 		assert.equal(activationInput.contract.continuation.customType, "pr-review-workspace-ready");
 		assert.equal(switchCalled, false);
 		const metadata = readPrReviewWorkspaceMetadata(result.path);
 		assert.equal(metadata?.targetSessionFile, result.sessionFile);
 		assert.equal(metadata?.contextMode, "full-transcript");
 		assert.equal(metadata?.activation?.target, "new-panel");
-		assert.equal(metadata?.activation?.placement, "tab");
+		assert.equal(metadata?.activation?.placement, placement);
 		assert.equal(metadata?.activation?.panelLabel, "P1");
 	} finally {
 		cleanupReviewTarget(f.repo, targetPath, targetSessionDir);
 		rmSync(f.root, { recursive: true, force: true });
 	}
+}
+
+test("PR review offers the shared open targets and opens a head-pinned session in a new tab", async () => {
+	await assertReviewOpensInNewPanel("새 탭", "tab");
+});
+
+test("PR review opens the same head-pinned session in the right panel", async () => {
+	await assertReviewOpensInNewPanel("오른쪽 패널", "right");
 });
 
 test("PR review switches the current panel to a fresh target session and warns before changing the panel HEAD", async () => {
@@ -233,7 +241,7 @@ test("PR review switches the current panel to a fresh target session and warns b
 		assert.equal(result.status, "switched", result.status === "switched" ? undefined : result.reason);
 		if (result.status !== "switched") return;
 		targetSessionDir = sessionDirFor(result.path);
-		assert.deepEqual(selection?.options, ["현재 패널", "새 탭"]);
+		assert.deepEqual(selection?.options, ["현재 패널", "새 탭", "오른쪽 패널"]);
 		assert.equal(order.length, 0, "current-panel selection must not build a new-panel contract");
 		assert.equal(switchedSession, result.sessionFile);
 		assert.equal(result.contract.activationTarget, "current-panel");

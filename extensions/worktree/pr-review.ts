@@ -26,6 +26,7 @@ import {
 	buildNewPanelActivationContract,
 	type WorkspacePanelActivationResult,
 } from "./panel-activation.ts";
+import { chooseWorkspaceOpenTarget, type WorkspaceOpenTarget } from "./open-target.ts";
 
 const REGISTRY_PATH = join(homedir(), ".pi", "worktree-repos.json");
 
@@ -52,7 +53,7 @@ export interface PrReviewWorktreeRequest {
 	afterSwitchFollowUp?: WorktreeAfterSwitchFollowUp;
 }
 
-export type PrReviewOpenTarget = "current" | "tab";
+export type PrReviewOpenTarget = WorkspaceOpenTarget;
 
 export type PrReviewWorktreeResult =
 	| {
@@ -110,11 +111,6 @@ interface CurrentPanelRevision {
 	branch?: string;
 }
 
-const PR_REVIEW_OPEN_TARGET_OPTIONS: ReadonlyArray<{ target: PrReviewOpenTarget; label: string }> = [
-	{ target: "current", label: "현재 패널" },
-	{ target: "tab", label: "새 탭" },
-];
-
 export function prReviewCurrentPanelHeadNotice(
 	current: CurrentPanelRevision | null,
 	target: Pick<PrReviewWorktreeRequest, "number" | "headSha">,
@@ -124,7 +120,7 @@ export function prReviewCurrentPanelHeadNotice(
 	return [
 		`현재 패널은 ${currentLabel} (${current.head.slice(0, 8)})를 보고 있습니다.`,
 		`“현재 패널”을 선택하면 기존 worktree의 branch/HEAD는 수정하지 않고, 이 패널을 PR #${target.number} HEAD ${target.headSha.slice(0, 8)} review session으로 전환합니다.`,
-		`“새 탭”을 선택하면 현재 패널은 그대로 유지합니다.`,
+		`“새 탭”이나 “오른쪽 패널”을 선택하면 현재 패널은 그대로 유지합니다.`,
 	].join("\n");
 }
 
@@ -143,11 +139,7 @@ async function choosePrReviewOpenTarget(
 	if (!ctx.hasUI) return null;
 	const notice = prReviewCurrentPanelHeadNotice(await currentPanelRevision(pi, ctx.cwd), request);
 	if (notice) ctx.ui.notify(notice, "warning");
-	const selected = await ctx.ui.select(
-		`PR #${request.number} review를 어디에서 열까요?`,
-		PR_REVIEW_OPEN_TARGET_OPTIONS.map((option) => option.label),
-	);
-	return PR_REVIEW_OPEN_TARGET_OPTIONS.find((option) => option.label === selected)?.target ?? null;
+	return chooseWorkspaceOpenTarget(ctx, `PR #${request.number} review를 어디에서 열까요?`, null);
 }
 
 function matchingProfile(repoRoot: string, repoName: string): WorktreeRepoProfile | undefined {
@@ -325,8 +317,8 @@ export async function runPrReviewWorktreeFromCommandContext(
 	const contractContextMode = source ? "full" : "clean";
 	const authorizationSourceId = request.intent === "diff" ? "/diff" : "/meta-review";
 	const continuation = reviewContinuation(request);
-	let contract: WorkspaceActivationContract | null;
-	if (openTarget === "tab") {
+	let contract: WorkspaceActivationContract;
+	if (openTarget !== "current") {
 		const buildContract = runtime.buildContract ?? buildNewPanelActivationContract;
 		contract = await buildContract({
 			id: activationId,
@@ -336,7 +328,7 @@ export async function runPrReviewWorktreeFromCommandContext(
 			authorizationSource: "command",
 			authorizationSourceId,
 			continuation,
-			placement: "tab",
+			placement: openTarget,
 		});
 	} else {
 		contract = createWorkspaceActivationContract({
@@ -354,7 +346,6 @@ export async function runPrReviewWorktreeFromCommandContext(
 			}),
 		});
 	}
-	if (!contract) return { status: "blocked", reason: "새 탭 activation contract를 만들지 못해 PR review worktree를 만들거나 열지 않았습니다.", name: identity.name, branch: identity.branch, path: worktreePath };
 
 	mkdirSync(rootDir, { recursive: true });
 	let reused = false;
