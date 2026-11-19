@@ -7,6 +7,7 @@ import { formatLastInteractionLine, nextRelativeTimeRefreshDelayMs, resolveLastI
 import { createScreensaverDismissController, renderScreensaver, type ScreensaverRenderData, type ScreensaverTheme } from "./render.ts";
 import { POKEMON_KO_TO_ID, renderSprite } from "./sprite.ts";
 import { loadScreensaverTaskLines } from "./task-source.ts";
+import { readWorktreeMeta } from "../utils/worktree-meta.ts";
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
@@ -40,18 +41,7 @@ function loadConfig(): ScreensaverConfig {
 
 // ─── Worktree meta ─────────────────────────────────────────────────────────
 
-interface WorktreeMeta {
-	name?: string;
-	branch?: string;
-	ticket?: string;
-	note?: string;
-}
 
-function readWorktreeMeta(cwd: string): WorktreeMeta | null {
-	const p = join(cwd, ".pi", "worktree-meta.json");
-	if (!existsSync(p)) return null;
-	try { return JSON.parse(readFileSync(p, "utf8")); } catch { return null; }
-}
 
 // ─── State ─────────────────────────────────────────────────────────────────
 

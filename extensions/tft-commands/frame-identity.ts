@@ -3,13 +3,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import type { ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import { readWorktreeMeta, type WorktreeMetaSummary as WorktreeMeta } from "../utils/worktree-meta.ts";
 
-type WorktreeMeta = {
-	name?: string;
-	branch?: string;
-	ticket?: string;
-	note?: string;
-};
 
 type WorktreeHit = {
 	root: string;
@@ -53,15 +48,6 @@ function safeSlug(text: string): string {
 		.slice(0, 80) || "untitled";
 }
 
-function readJson<T>(path: string): T | null {
-	try {
-		if (!existsSync(path)) return null;
-		return JSON.parse(readFileSync(path, "utf8")) as T;
-	} catch {
-		return null;
-	}
-}
-
 function readSessionHeaderCwd(sessionFile: string | undefined): string | undefined {
 	if (!sessionFile) return undefined;
 	try {
@@ -92,8 +78,7 @@ export function resolveEffectiveCwd(ctx: ExtensionCommandContext): { cwd: string
 function findWorktree(cwd: string): WorktreeHit | null {
 	let current = resolve(cwd);
 	while (true) {
-		const metaPath = join(current, ".pi", "worktree-meta.json");
-		const meta = readJson<WorktreeMeta>(metaPath);
+		const meta = readWorktreeMeta(current);
 		if (meta) return { root: current, meta };
 		const parent = dirname(current);
 		if (parent === current) return null;
