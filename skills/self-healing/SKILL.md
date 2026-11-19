@@ -55,7 +55,7 @@ subagent run worker --main -- "read /tmp/<task>-self-healing-context.md. Cycle 1
 12. 회귀 점검을 통과한 수정 항목이 있으면 다시 `subagent run worker --main -- ...`으로 **남은 항목만** 수정 요청한다.
 13. Cycle 2 worker 뒤에도 Test Change Gate를 다시 적용하고, 테스트 noise를 남긴 채 종료하지 않는다.
 14. 2사이클 후 종료하고, 남은 리스크와 미해결 항목을 명시한다.
-15. UI/responsive/nav/typography처럼 화면 회귀 가능성이 있는 수정이 포함되면 캡처를 직접 수행하지 말고 **`/verify-report` 권장 여부와 추천 검증 축**만 남긴다. 예: `mobile 390px + breakpoint 500px + desktop 1440px`, `collapsed/expanded nav`, `computed typography`.
+15. UI/responsive/nav/typography처럼 화면 회귀 가능성이 있는 수정이 포함되면 캡처를 직접 수행하지 말고 **화면 캡처 보고서(프로젝트 캡처 명령) 권장 여부와 추천 확인 축**만 남긴다. 예: `mobile 390px + breakpoint 500px + desktop 1440px`, `collapsed/expanded nav`, `computed typography`.
 
 ## 수정 전 기존 결정·이전 대응 회귀 점검
 
@@ -186,7 +186,7 @@ reviewer가 `fix_class`를 제공하지 않으면 기존 심각도(Critical/Impo
 
 ## Recommendation
 - 추가 수동 작업 필요 여부
-- UI 변경이 있으면 `/verify-report` 권장 여부와 추천 coverage axis
+- UI 변경이 있으면 화면 캡처 보고서 권장 여부와 추천 확인 축
 ```
 
 ## 주의
