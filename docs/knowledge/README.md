@@ -21,7 +21,7 @@ tags: [search, keywords]
 category: verification | web-access | agent | workflow | knowledge
 status: active | experimental | deprecated | draft
 applies_to:
-  - skills/verify-report
+  - skills/verify
   - extensions/archive-to-html
 source:
   - pilee-history:2026-05-05#48
@@ -167,8 +167,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [Frame과 Verify는 구조화 계약이다](./frame-verify-contract.md) | active | high | 2026-10-08 | 93b6e0a | frame, verify, frame-json, success-criteria, contract, verification |
 | [반복 검증 실패는 baseline cache로 분리한다](./validation-baseline-failure-cache.md) | active | high | 2026-06-02 | d8f8c4c | preflight, validation, baseline, failure, cache, verification |
 | [검증 중 코드 변경은 이전 검증을 무효화한다](./verification-invalidation-on-change.md) | active | high | 2026-06-02 | 61ccbc9 | verify, invalidation, code-change, freshness, gate, 검증 |
-| [Verify Report 전에는 PM-facing 계약과 readiness를 먼저 잠근다](./verify-report-preflight-readiness.md) | active | high | 2026-06-02 | 91c739f | verify-report, preflight, readiness, capture, data, account |
-| [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | active | high | 2026-06-18 | 694e155 | verify-report, verification, evidence, coverage, capture, crop |
+| [Verify Report와 coverage-aware 증거 검증 흐름](./verify-report-workflow.md) | deprecated | high | 2026-06-18 | 694e155 | verify-report, verification, evidence, coverage, capture, crop |
 | [Verify risk lens는 generic core와 private overlay로 나눈다](./verify-risk-lens-overlay.md) | active | high | 2026-06-02 | 61ccbc9 | verify, risk-lens, overlay, private-overlay, verification, domain-check |
 
 ### web-access
@@ -300,7 +299,6 @@ graph TD
   doc_frame_verify_contract["Frame과 Verify는 구조화 계약이다"]
   doc_validation_baseline_failure_cache["반복 검증 실패는 baseline cache로 분리한다"]
   doc_verification_invalidation_on_change["검증 중 코드 변경은 이전 검증을 무효화한다"]
-  doc_verify_report_preflight_readiness["Verify Report 전에는 PM-facing 계약과 readiness를 먼저 잠근다"]
   doc_verify_report_workflow["Verify Report와 coverage-aware 증거 검증 흐름"]
   doc_verify_risk_lens_overlay["Verify risk lens는 generic core와 private overlay로 나눈다"]
   doc_curator_approved_source_selection["웹 검색은 승인된 출처 선택을 거친다"]
@@ -557,10 +555,6 @@ graph TD
   doc_validation_baseline_failure_cache --> doc_worktree_session_continuity
   doc_verification_invalidation_on_change --> doc_evidence_first_verification_gate
   doc_verification_invalidation_on_change --> doc_frame_verify_contract
-  doc_verify_report_preflight_readiness --> doc_evidence_first_verification_gate
-  doc_verify_report_preflight_readiness --> doc_live_artifact_preview_pattern
-  doc_verify_report_preflight_readiness --> doc_private_overlay_package_boundary
-  doc_verify_report_preflight_readiness --> doc_verify_report_workflow
   doc_verify_report_workflow --> doc_artifact_archive_reopenability
   doc_verify_report_workflow --> doc_evidence_first_verification_gate
   doc_verify_report_workflow --> doc_live_artifact_preview_pattern
@@ -581,7 +575,6 @@ graph TD
   doc_artifact_archive_reopenability --> doc_frame_studio_interactive_decision_ui
   doc_artifact_archive_reopenability --> doc_live_artifact_preview_pattern
   doc_artifact_archive_reopenability --> doc_tool_output_noise_management
-  doc_artifact_archive_reopenability --> doc_verify_report_workflow
   doc_ask_user_question_decision_gates --> doc_ask_user_question_option_design
   doc_ask_user_question_decision_gates --> doc_evidence_first_verification_gate
   doc_ask_user_question_decision_gates --> doc_frame_verify_contract
@@ -785,7 +778,6 @@ graph TD
   doc_workflow_guard_enforced_flow --> doc_workflow_weight_proportionality
   doc_workflow_weight_proportionality --> doc_frame_verify_contract
   doc_workflow_weight_proportionality --> doc_request_traceability_surgical_changes
-  doc_workflow_weight_proportionality --> doc_verify_report_preflight_readiness
   doc_workflow_weight_proportionality --> doc_worktree_session_continuity
   doc_workspace_action_panel_activation_contract --> doc_frame_plan_synthesis_continuity
   doc_workspace_action_panel_activation_contract --> doc_human_pr_review_precedent_harness
@@ -814,7 +806,7 @@ graph TD
 
 ## Review Metadata Summary
 
-- Documents: 118
-- Links: 448
+- Documents: 117
+- Links: 442
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
