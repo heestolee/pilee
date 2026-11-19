@@ -18,7 +18,6 @@ applies_to:
   - skills/frame
   - skills/decide
   - skills/verify
-  - skills/verify-report
   - skills/tft-guidelines
   - .pi/frame.json
   - frame-studio

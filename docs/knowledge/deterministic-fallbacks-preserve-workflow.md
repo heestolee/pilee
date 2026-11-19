@@ -14,7 +14,6 @@ applies_to:
   - extensions/web-access
   - extensions/archive-to-html
   - extensions/mcp-bridge
-  - skills/verify-report
 source:
   - pilee-history:2026-05-05#44
   - pilee-history:2026-05-05#45
