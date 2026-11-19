@@ -55,6 +55,7 @@ import {
 	type WorkspaceContextMode,
 	type WorkspaceContinuation,
 } from "../utils/workspace-activation-contract.ts";
+import { worktreeContinuationType } from "../utils/worktree-continuation.ts";
 
 // ─── Repo registry ─────────────────────────────────────────────────────────
 
@@ -868,7 +869,7 @@ function defaultCurrentPanelContinuation(
 	input: { name?: string; branch?: string; ticket?: string; note?: string },
 ): WorktreeAfterSwitchFollowUp {
 	return {
-		customType: `pilee-worktree-${kind}-current-panel-continuation`,
+		customType: worktreeContinuationType(kind, true),
 		display: false,
 		content: [
 			`# Worktree ${kind} continuation`,
@@ -900,7 +901,7 @@ function defaultWorktreeContinuation(
 	const fullContext = kind === "fork" || kind === "fork-tool";
 	return {
 		workflow: kind,
-		customType: `pilee-worktree-${kind}-continuation`,
+		customType: worktreeContinuationType(kind),
 		display: false,
 		content: [
 			`# Worktree ${kind} continuation`,

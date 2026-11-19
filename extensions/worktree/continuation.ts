@@ -1,3 +1,4 @@
+import { COMPACT_NEW_CONTINUATION_TYPE } from "../utils/worktree-continuation.ts";
 export interface CurrentPanelContinuationInput {
 	name?: string;
 	branch?: string;
@@ -19,7 +20,7 @@ export function buildCurrentPanelNewContinuation(
 	const latestPrompt = [...recentPrompts].reverse().find((prompt) => !/^\/wt\s+(new|fork)\b/i.test(prompt));
 	if (!latestPrompt && !input.ticket && !input.note) return undefined;
 	return {
-		customType: "pilee-worktree-new-current-panel-continuation",
+		customType: COMPACT_NEW_CONTINUATION_TYPE,
 		display: false,
 		content: [
 			"# Worktree new continuation",

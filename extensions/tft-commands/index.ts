@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { DefaultResourceLoader, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import { workspaceAuthorizationConsumerId } from "../utils/workspace-activation-contract.ts";
+import { FRAME_FORK_CONTINUATION_TYPE } from "../utils/worktree-continuation.ts";
 import { runWorktreeForkFromCommandContext } from "../worktree/index.ts";
 import { buildFrameIdentity, type FrameIdentity, formatFrameIdentityHint, resolveEffectiveCwd } from "./frame-identity.ts";
 import { buildFrameForkContinuationPrompt, buildFrameWorktreeForkArgs, type FrameWorktreeForkParams } from "./frame-worktree-fork.ts";
@@ -33,7 +34,6 @@ const COMMANDS: Record<TftCommandName, { description: string }> = {
 
 const FRAME_COMMAND_CONTEXT_TTL_MS = 6 * 60 * 60 * 1000;
 const FRAME_FORK_TOOL_NAME = "frame_worktree_fork";
-const FRAME_FORK_CONTINUATION_TYPE = "pilee-frame-worktree-fork-continuation";
 
 interface FrameCommandContextRecord {
 	key: string;

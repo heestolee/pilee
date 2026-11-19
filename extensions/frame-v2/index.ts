@@ -8,6 +8,7 @@ import { attachStudyHardLearningCompanion, loadPersistedStudyHardState, studyHar
 import { buildFrameIdentity, type FrameIdentity, formatFrameIdentityHint } from "../tft-commands/frame-identity.ts";
 import { buildFrameWorktreeForkArgs, type FrameWorktreeForkParams } from "../tft-commands/frame-worktree-fork.ts";
 import { workspaceAuthorizationConsumerId } from "../utils/workspace-activation-contract.ts";
+import { FRAME_V2_FORK_CONTINUATION_TYPE as FRAME_V2_CONTINUATION_TYPE } from "../utils/worktree-continuation.ts";
 import {
 	buildInitialFrameV2Note,
 	frameV2RunId,
@@ -28,7 +29,6 @@ const CUSTOM_TYPE = "pilee-frame-v2-command";
 const FRAME_V2_CONTEXT_TTL_MS = 6 * 60 * 60 * 1000;
 const FRAME_V2_STATE_TOOL = "frame_v2_state";
 const FRAME_V2_FORK_TOOL = "frame_v2_worktree_fork";
-const FRAME_V2_CONTINUATION_TYPE = "pilee-frame-v2-worktree-fork-continuation";
 
 const HELP = `Frame v2 — Frame과 Study Hard를 원하는 순서로 연결
 
