@@ -1018,7 +1018,7 @@ const README_EXTENSION_GROUPS = [
 		{ name: "tool-group-renderer", ko: "관련 도구 출력 그룹/축소", en: "Groups and collapses related tool output" },
 		{ name: "tft-commands", ko: "`/frame`/`/decide`/`/verify`를 pilee SKILL.md 인라인 실행으로 라우팅", en: "Routes `/frame`, `/decide`, `/verify` to pilee skills" },
 		{ name: "ship-commands", ko: "`/ship`/`/pr-ship`/`/ci-ship`을 pilee SKILL.md 인라인 실행으로 라우팅하고 PR 리뷰·CI 컨텍스트를 수집", en: "Routes `/ship`, `/pr-ship`, and `/ci-ship` to pilee skills and collects PR review/CI context" },
-		{ name: "frame-studio", ko: "Glimpse 기반 TFT Studio shell — Frame/Decide/Verify/Verify Report 탭 + 선택 UI/전문 저장 + 단일 companion WebView(`/companion`, `Ctrl+Shift+G`)", en: "Glimpse-based TFT Studio shell with Frame/Decide/Verify/Verify Report tabs, choices, transcript replay, and one companion WebView (`/companion`, `Ctrl+Shift+G`)" },
+		{ name: "frame-studio", ko: "Glimpse 기반 TFT Studio shell — Frame/Decide/Verify/Report 탭 + 선택 UI/전문 저장 + 단일 companion WebView(`/companion`, `Ctrl+Shift+G`)", en: "Glimpse-based TFT Studio shell with Frame/Decide/Verify/Report tabs, choices, transcript replay, and one companion WebView (`/companion`, `Ctrl+Shift+G`)" },
 		{ name: "frame-v2", ko: "`/frame-v2` — 최초 학습노트·Frame 시각화·Study Hard refinement·작업 시작을 잇는 독립 pilot", en: "`/frame-v2` pilot connecting an initial learning note, Frame visuals, Study Hard refinement, and implementation start" },
 		{ name: "study-hard", ko: "`/study-hard` — concept map·flow·Q&A·revision·HTML/Notion export를 제공하는 범용 학습 board", en: "`/study-hard` learning board with concept maps, flows, Q&A, revisions, and HTML/Notion export" },
 		{ name: "user-facing-language", ko: "사용자에게 보이는 진행/요약/답변은 짧은 한국어를 기본으로 하는 system prompt guard", en: "System prompt guard that keeps user-visible progress, summaries, and answers short and Korean-first" },
@@ -1109,8 +1109,6 @@ const README_SKILL_GROUPS = [
 		{ name: "pr-ship", ko: "PR 리뷰 코멘트 대응 후 커밋·push·스레드 답글·review re-request까지 수행 (`--push-only` 지원)", en: "Post-PR review response with commit, push, thread reply, review re-request, and `--push-only` mode" },
 		{ name: "ci-ship", ko: "PR CI 실패를 check/log 기반으로 분석해 수정·검증·push", en: "Post-PR CI failure analysis, fix, verification, and push workflow" },
 		{ name: "runtime-fanout-triage", ko: "healthcheck/preview/deploy 실패를 fan-out map과 contract 재현으로 진단", en: "Diagnoses healthcheck, preview, and deploy failures with fan-out maps and contract reproduction" },
-		{ name: "verify-report", ko: "캡처/네트워크/콘솔/코드 diff 기반 검증 리포트", en: "Capture/evidence-based verification reports" },
-		{ name: "verify-report-preflight", ko: "검증 리포트 전 readiness·작업 무게·차단 조건 점검", en: "Readiness, workflow weight, and blocker check before Verify Report" },
 		{ name: "start-local-dev", ko: "로컬 dev 서버 구동과 진단", en: "Local dev server startup diagnosis" },
 	] },
 ];
