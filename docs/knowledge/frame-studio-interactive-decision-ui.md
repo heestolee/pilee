@@ -134,7 +134,7 @@ Fork child panel(`P1`, `P2`, …)에서는 이 규칙이 특히 중요합니다.
 
 ## Boundary
 
-TFT Studio는 `/frame` co-thinking에서 시작해 `/decide`, `/verify`, `/verify-report`를 같은 work unit 안에 묶는 UI 계층입니다. 구현 계획을 자동 생성하거나 검증 완료를 선언하는 도구가 아닙니다. frame 결과의 검증 가능성은 여전히 [frame-verify-contract](./frame-verify-contract.md)와 [evidence-first-verification-gate](./evidence-first-verification-gate.md)의 기준을 따릅니다.
+TFT Studio는 `/frame` co-thinking에서 시작해 `/decide`, `/verify`, 화면 캡처 보고서를 같은 work unit 안에 묶는 UI 계층입니다. 구현 계획을 자동 생성하거나 검증 완료를 선언하는 도구가 아닙니다. frame 결과의 검증 가능성은 여전히 [frame-verify-contract](./frame-verify-contract.md)와 [evidence-first-verification-gate](./evidence-first-verification-gate.md)의 기준을 따릅니다.
 
 Frame tab은 `frame.json`, Decide tab은 `decisions[]`, Verify tab은 검증 결과, Verify Report tab은 evidence/report artifact refs를 보여줍니다. Decide tab은 product식 tradeoff comparison과 항상 수행되는 challenge를 보여주되, 최종 원천은 `frame.json.decisions[]`의 structured record입니다. Verify tab은 success criteria 판정뿐 아니라 실패 이후 self-healing run과 re-verify 결과를 append할 수 있습니다. 탭 간 이동이 canonical write 순서를 우회하면 안 되지만, 빈 이전 탭이 현재 탭 사용을 차단해서도 안 됩니다.
 

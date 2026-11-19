@@ -47,4 +47,4 @@ UI 변화는 캡처, 이벤트/API는 네트워크나 콘솔 로그, 백엔드 �
 
 Raw capture group은 supporting evidence 탐색을 돕지만, 그 자체가 PASS 판정은 아닙니다. 검증 결론은 여전히 criterion별 report item과 coverage axis에 묶여야 하며, group label은 “찾기 쉬운 보관” 역할을 합니다.
 
-Architecture side-effect도 같은 원칙을 따릅니다. “테스트 통과”만으로 구조 비용이 사라지지 않습니다. 변경이 module boundary/public interface/도메인 용어를 건드렸다면 `/verify`는 탐색성, 모듈 깊이, 용어 중복, decision mitigation 반영 여부를 근거와 함께 보고해야 합니다. source-grounded frame에서는 추가로 requirement ID coverage, Domain Work Map lane coverage, Architecture/Data Flow lane/node/edge/source-of-truth 일치 여부를 확인하고, 화면 증거가 필요한 gap은 `/verify-report` handoff 후보로 남겨야 합니다.
+Architecture side-effect도 같은 원칙을 따릅니다. “테스트 통과”만으로 구조 비용이 사라지지 않습니다. 변경이 module boundary/public interface/도메인 용어를 건드렸다면 `/verify`는 탐색성, 모듈 깊이, 용어 중복, decision mitigation 반영 여부를 근거와 함께 보고해야 합니다. source-grounded frame에서는 추가로 requirement ID coverage, Domain Work Map lane coverage, Architecture/Data Flow lane/node/edge/source-of-truth 일치 여부를 확인하고, 화면 증거가 필요한 gap은 화면 캡처 보고서 handoff 후보로 남겨야 합니다.

@@ -54,7 +54,7 @@ Frame, Decide, Verify를 Studio에서 진행한 경우에는 canonical write가 
 
 코드 구조를 건드리는 작업에서는 architecture friction도 계약의 일부가 됩니다. 별도 schema가 없더라도 `review_lenses`, `risk_register`, `verify_plan.manual_checks`, decision tradeoff에 “다음 사람/AI가 길을 잃을 구조인가”를 남기면 Verify가 구조 side-effect를 확인할 수 있습니다.
 
-Verify는 frame의 success criteria뿐 아니라 requirement coverage, Domain Work Map lane coverage, Backend Layer Map 일치, Architecture/Data Flow 일치, Data Model / Migration Map 일치, diff가 유발한 failure mode를 함께 읽어야 합니다. [verify-risk-lens-overlay](./verify-risk-lens-overlay.md)는 public generic lens와 project/private overlay를 나눠, schema/cache/API/runbook 같은 고위험 변경을 단순 코드 위치 확인만으로 PASS 처리하지 않게 합니다. `/verify-report`는 이 결과를 PM-facing evidence item으로 넘겨받아 `reuse/revise/add/drop/blocked`로 최종 report coverage를 재판정합니다.
+Verify는 frame의 success criteria뿐 아니라 requirement coverage, Domain Work Map lane coverage, Backend Layer Map 일치, Architecture/Data Flow 일치, Data Model / Migration Map 일치, diff가 유발한 failure mode를 함께 읽어야 합니다. [verify-risk-lens-overlay](./verify-risk-lens-overlay.md)는 public generic lens와 project/private overlay를 나눠, schema/cache/API/runbook 같은 고위험 변경을 단순 코드 위치 확인만으로 PASS 처리하지 않게 합니다. 화면 캡처 보고서는 이 결과를 PM-facing evidence item으로 넘겨받아 `reuse/revise/add/drop/blocked`로 최종 report coverage를 재판정합니다.
 
 ## Co-thinking Boundary
 
