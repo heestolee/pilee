@@ -116,7 +116,7 @@ export function buildCommitReadinessDiagnostic(paths: string[]): CommitReadiness
 	}
 	if (hasUi) {
 		caveats.push("UI capture or visual verification may still be pending");
-		notBlockers.push("pending UI capture/verify-report is a ship evidence caveat, not a commit blocker for a verified code slice");
+		notBlockers.push("pending UI capture/capture report is a ship evidence caveat, not a commit blocker for a verified code slice");
 	}
 	if (hasSchema) {
 		reasons.push("schema/codegen files are present; keep contract artifacts with the relevant API or consumer commit");

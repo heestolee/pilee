@@ -23,6 +23,6 @@ test("commit readiness separates commit caveats from ship readiness blockers", (
 	assert.equal(diagnostic.shipReadiness, "blocked_by_caveats");
 	assert.equal(diagnostic.splitRecommendation, "recommended");
 	assert.match(diagnostic.notBlockers.join("\n"), /deferred migration execution/);
-	assert.match(diagnostic.notBlockers.join("\n"), /pending UI capture\/verify-report/);
+	assert.match(diagnostic.notBlockers.join("\n"), /pending UI capture\/capture report/);
 	assert.match(formatCommitReadinessDiagnostic(diagnostic), /Pending|pending|migration/);
 });

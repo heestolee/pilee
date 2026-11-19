@@ -319,7 +319,7 @@ test("action=status reports commit readiness and ship caveats", async () => {
 	assert.match(text, /ship readiness: BLOCKED_BY_CAVEATS/);
 	assert.match(text, /split recommendation: RECOMMENDED/);
 	assert.match(text, /migration\/DB schema execution may still be pending/);
-	assert.match(text, /pending UI capture\/verify-report is a ship evidence caveat/);
+	assert.match(text, /pending UI capture\/capture report is a ship evidence caveat/);
 });
 
 test("action=split-head rejects missing records before moving HEAD or creating backup", async () => {
