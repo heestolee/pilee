@@ -29,6 +29,7 @@ import {
 	WORKSPACE_AUTHORIZATION_TTL_MS,
 } from "../utils/workspace-activation-contract.ts";
 import { formatWorkContextCard, gateWorkContext, loadOrDeriveWorkContext, type WorkContextCard, type WorkContextGateResult } from "../utils/work-context.ts";
+import { worktreeContinuationKind } from "../utils/worktree-continuation.ts";
 
 type Intent = "answer" | "investigate" | "implement" | "hotfix" | "verify_report" | "audit" | "ship" | "knowledge" | "status_note" | "unknown";
 type WorkflowWeight = "none" | "light" | "standard" | "full";
@@ -2230,13 +2231,14 @@ export default function workflowGuard(
 			// Continuation boilerplate never grants/reissues workspace rights.
 			state.workspaceAuthorization = restoredAuthorization;
 			state.workspaceEventBaseline = restoredAuthorization.events.length;
-			if (/^pilee-(?:frame(?:-v2)?-worktree-fork|worktree-fork(?:-tool)?(?:-current-panel)?)-continuation$/.test(input.customType ?? "")) state.forkedContinuation = true;
+			const worktreeContinuation = worktreeContinuationKind(input.customType);
+			if (worktreeContinuation === "fork" || worktreeContinuation === "frame-fork") state.forkedContinuation = true;
 			state.summary = [
 				...state.summary.split(" · ").filter((part) => !/^workspace(?:Allow|Deny)=/.test(part)),
 				restoredAuthorization.allowedActions.length ? `workspaceAllow=${restoredAuthorization.allowedActions.join(",")}` : undefined,
 				restoredAuthorization.deniedActions.length ? `workspaceDeny=${restoredAuthorization.deniedActions.join(",")}` : undefined,
 			].filter(Boolean).join(" · ");
-			if (/^pilee-frame(?:-v2)?-worktree-fork-continuation$/.test(input.customType ?? "")) {
+			if (worktreeContinuation === "frame-fork") {
 				state = { ...state, intent: "implement", weight: "standard", explicitMutation: true, summary: "intent=implement · weight=standard · continuation=latest-intent" };
 			}
 		}

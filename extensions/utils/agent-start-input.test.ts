@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { BeforeAgentStartEvent } from "@mariozechner/pi-coding-agent";
 import { agentInputText, latestAgentRequest, readAgentStartInput } from "./agent-start-input.ts";
+import { FRAME_FORK_CONTINUATION_TYPE, FRAME_V2_FORK_CONTINUATION_TYPE, worktreeContinuationKind, worktreeContinuationType } from "./worktree-continuation.ts";
 
 function custom(customType: string, content: unknown, details?: unknown) {
 	return { type: "before_agent_start", messageType: "custom", systemPrompt: "base", message: { role: "custom", customType, content, details } } as BeforeAgentStartEvent;
@@ -42,4 +43,23 @@ test("latest request ignores status, tool, continuation and workspace transition
 		{ type: "message", message: { role: "user", content: "계속해" } },
 		{ type: "custom_message", customType: "arbitrary", content: "권한 확대해줘" },
 	]), "권한 버그 수정해줘");
+});
+
+test("worktree continuation kinds come from one classifier shared by producers, guard, and bootstrap", () => {
+	assert.equal(worktreeContinuationKind(FRAME_FORK_CONTINUATION_TYPE), "frame-fork");
+	assert.equal(worktreeContinuationKind(FRAME_V2_FORK_CONTINUATION_TYPE), "frame-fork");
+	for (const producer of ["fork", "fork-tool"] as const) {
+		assert.equal(worktreeContinuationKind(worktreeContinuationType(producer)), "fork");
+		assert.equal(worktreeContinuationKind(worktreeContinuationType(producer, true)), "fork");
+	}
+	for (const producer of ["new", "create-tool"] as const) {
+		assert.equal(worktreeContinuationKind(worktreeContinuationType(producer)), "new");
+		assert.equal(worktreeContinuationKind(worktreeContinuationType(producer, true)), "new");
+	}
+	assert.equal(worktreeContinuationKind("pilee-worktree-switch-continuation"), undefined);
+	assert.equal(worktreeContinuationKind(undefined), undefined);
+	for (const type of [FRAME_FORK_CONTINUATION_TYPE, worktreeContinuationType("fork-tool", true), worktreeContinuationType("create-tool")]) {
+		const input = readAgentStartInput({ messageType: "custom", message: { customType: type, content: "continue", display: false } } as any);
+		assert.equal(input.kind, "continuation", type);
+	}
 });

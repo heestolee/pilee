@@ -1,5 +1,6 @@
 import type { BeforeAgentStartEvent } from "@mariozechner/pi-coding-agent";
 import { activeAgentContinuationScope, latestAgentRequest, readAgentStartInput } from "../utils/agent-start-input.ts";
+import { worktreeContinuationKind } from "../utils/worktree-continuation.ts";
 import type { WorktreeBootstrapDomainProfile, WorktreeRepoProfile } from "../utils/private-profiles.ts";
 import { WORKSPACE_ACTIVATION_READY_ENTRY_TYPE } from "../utils/workspace-activation-contract.ts";
 
@@ -37,7 +38,7 @@ export function dependencyBootstrapPrompt(event: BeforeAgentStartEvent, entries:
 		return ["ship", "pr-ship", "ci-ship", "verify"].includes(input.command ?? "") ? `검증 ${request}` : request;
 	}
 	const request = input.request ?? latestAgentRequest(entries);
-	return /^pilee-frame(?:-v2)?-worktree-fork-continuation$/.test(input.customType ?? "")
+	return worktreeContinuationKind(input.customType) === "frame-fork"
 		? `구현 시작 ${request ?? ""}` : request;
 }
 

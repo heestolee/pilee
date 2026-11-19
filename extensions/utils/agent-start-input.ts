@@ -1,4 +1,5 @@
 import type { BeforeAgentStartEvent } from "@mariozechner/pi-coding-agent";
+import { COMPACT_NEW_CONTINUATION_TYPE, worktreeContinuationKind } from "./worktree-continuation.ts";
 
 export interface AgentStartInput {
 	kind: "user" | "command" | "continuation" | "status" | "unknown";
@@ -104,9 +105,9 @@ export function readAgentStartInput(event: BeforeAgentStartEvent): AgentStartInp
 	}
 	if (customType === "pilee-tft-studio-resume") return { ...input, kind: "continuation" };
 	if (customType === "convention-lens-review"
-		|| /^pilee-(?:frame(?:-v2)?-worktree-fork|worktree-(?:new|fork|create-tool|fork-tool)(?:-current-panel)?)-continuation$/.test(customType)) {
+		|| worktreeContinuationKind(customType)) {
 		// Only the clean-session producer embeds a compact original request; fork instructions are not new authority.
-		const compact = customType === "pilee-worktree-new-current-panel-continuation"
+		const compact = customType === COMPACT_NEW_CONTINUATION_TYPE
 			? text.match(/(?:^|\n)## Latest request\n([\s\S]*?)(?=\n- (?:worktree|branch|ticket|note):|$)/)?.[1]?.trim() : undefined;
 		const note = typeof details?.note === "string" ? details.note : undefined;
 		return { ...input, kind: "continuation", request: compact || note };
