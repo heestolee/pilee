@@ -90,7 +90,7 @@ category: verification | web-access | agent | workflow | knowledge
 status: active | experimental | deprecated | draft
 confidence: high | medium | low # optional; high가 기본값
 applies_to:
-  - skills/verify-report
+  - skills/verify
 source:
   - pilee-history:YYYY-MM-DD#N
 reviewed_at: YYYY-MM-DD

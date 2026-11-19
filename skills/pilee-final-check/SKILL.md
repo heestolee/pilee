@@ -15,7 +15,7 @@ pilee 변경을 끝내기 전에 **요청 의도 → 실제 diff → 동작 구�
 
 - pilee repo의 extension/skill/prompt/theme/knowledge/README/AGENTS 변경이 끝났을 때
 - 사용자가 “구현 다 했으면 구멍 없는지”, “의도한대로 잘 동작하게”, “마지막 스텝으로 검증”, “파이리 작업 마무리”라고 말할 때
-- 다른 스킬(`skill-creator`, `pilee-knowledge`, `verify-report`, `ship` 등)로 pilee를 수정한 뒤 최종 보고 직전
+- 다른 스킬(`skill-creator`, `pilee-knowledge`, `ship` 등)로 pilee를 수정한 뒤 최종 보고 직전
 
 pilee가 아닌 product/lambda/외부 프로젝트 변경에는 해당 프로젝트의 `/verify`, `ship`, `pr-ship`, `ci-ship`을 우선한다.
 
