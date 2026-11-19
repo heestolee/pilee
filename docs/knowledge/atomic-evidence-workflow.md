@@ -20,7 +20,6 @@ applies_to:
   - agents/verifier
   - skills/frame
   - skills/verify
-  - skills/verify-report
   - skills/pilee-final-check
   - skills/incremental-implementation
 source:

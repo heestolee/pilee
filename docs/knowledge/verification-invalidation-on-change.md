@@ -13,7 +13,6 @@ status: active
 confidence: high
 applies_to:
   - skills/verify
-  - skills/verify-report
   - skills/code-review-and-quality
 source:
   - pilee-history:2026-05-01#4

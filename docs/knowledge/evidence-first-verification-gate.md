@@ -14,7 +14,6 @@ status: active
 confidence: high
 applies_to:
   - skills/verify
-  - skills/verify-report
   - extensions/archive-to-html
 source:
   - pilee-history:2026-05-01#4
