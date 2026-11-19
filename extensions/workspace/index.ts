@@ -245,6 +245,7 @@ export default function (pi: ExtensionAPI, environment?: RegistrationEnvironment
 		return buildSnapshot(window, source, name);
 	};
 	pi.on("session_start", async (_event, ctx) => {
+		revokeRestoreReceipt?.();
 		revokeRestoreReceipt = receiveRestoreSession(ctx);
 		stopAutosave?.();
 		const runtime = new AbortController();
