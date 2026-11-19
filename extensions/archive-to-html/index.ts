@@ -14,7 +14,6 @@ import { webviewCopyCss, webviewCopyScript } from "../utils/webview-copy.ts";
 import { exportSessionFileToHtml, isPiSessionFile, openFile, SESSION_EXPORT_DIR } from "../utils/session-export.js";
 import { openArchiveSessionHere, openSessionInGhosttyTab, resolveSessionHeaderCwd, type ArchiveSessionOpenTarget } from "./session-open.ts";
 import { searchSessionCandidates, type ConversationSearchResponse, type ConversationSearchResult, type ConversationSessionCandidate } from "./session-search.ts";
-import { registerVerifyReportLive } from "./verify-report-live.js";
 
 const ARCHIVE_DIR = path.join(os.homedir(), "Documents", "agent-history", "분류 전");
 const FRAME_TRANSCRIPTS_DIR = path.join(os.homedir(), ".pi", "agent", "frame-studio", "transcripts");
@@ -1003,8 +1002,6 @@ function wrapArchivedWidgetHTML(code: string, isSVG = false): string {
 }
 
 export default function (pi: ExtensionAPI) {
-	registerVerifyReportLive(pi);
-
 	const openArchiveCommand = async (args: string, ctx: ExtensionCommandContext) => {
 		if (!ctx.hasUI) return;
 
