@@ -44,7 +44,7 @@ Actionable finding은 회귀 테스트 하나와 1:1 대응하지 않습니다. 
 
 ## Verification Handoff Rule
 
-Self-healing은 수정 루프이지 검증 리포트 생성기가 아닙니다. UI/responsive/nav/typography 변경처럼 화면 증거가 필요한 경우 worker가 캡처를 직접 수행하기보다 `/verify-report` 권장 여부와 coverage axis를 남깁니다. 자동 수정 루프와 증거 수집 리포트는 서로 다른 책임입니다.
+Self-healing은 수정 루프이지 검증 리포트 생성기가 아닙니다. UI/responsive/nav/typography 변경처럼 화면 증거가 필요한 경우 worker가 캡처를 직접 수행하기보다 화면 캡처 보고서 권장 여부와 coverage axis를 남깁니다. 자동 수정 루프와 증거 수집 리포트는 서로 다른 책임입니다.
 
 ## Failure Mode
 

@@ -27,14 +27,14 @@ title_en: Workflow weight must match change risk
 
 ## Overview
 
-TFT, verify-report, worker fan-out, exhaustive validation은 모두 강한 도구입니다. 하지만 단일 hotfix나 copy 변경에도 같은 무게를 적용하면 구현보다 절차가 더 커집니다. pilee의 기본값은 “가볍게 시작하고, 증거가 필요해질 때 승격한다”입니다.
+TFT, 화면 캡처 보고서, worker fan-out, exhaustive validation은 모두 강한 도구입니다. 하지만 단일 hotfix나 copy 변경에도 같은 무게를 적용하면 구현보다 절차가 더 커집니다. pilee의 기본값은 “가볍게 시작하고, 증거가 필요해질 때 승격한다”입니다.
 
 ## Weight Classes
 
 | 무게 | 신호 | 적절한 절차 |
 |---|---|---|
 | light | 파일 1~2개, route/role/data 1개, side effect 없음 | 짧은 scope lock, focused 수정, 가장 가까운 검증 1개, 커밋. PR도 diff/commit/user intent 중심으로 작성 |
-| standard | UI/BE/event 중 여러 축, 작은 회귀 위험 | frame/verify 또는 verify-report를 필요한 축만 사용. worker는 병렬 소유권이 있을 때만 |
+| standard | UI/BE/event 중 여러 축, 작은 회귀 위험 | frame/verify 또는 화면 캡처 보고서를 필요한 축만 사용. worker는 병렬 소유권이 있을 때만 |
 | full | 정책/DB/다중 role/viewport/before-after/release risk | TFT, decide, worker fan-out, full report를 명시 계획 뒤 사용 |
 
 절차를 키우는 이유를 한 문장으로 설명할 수 없으면 절차를 줄입니다. 반대로 light로 시작했더라도 새로운 위험 축이 발견되면 standard/full로 승격하고 이유를 기록합니다.
@@ -43,7 +43,6 @@ TFT, verify-report, worker fan-out, exhaustive validation은 모두 강한 도�
 
 - 사용자가 “간단한 hotfix”, “문구만”, “이거 하나만”처럼 말하면 light path를 우선합니다.
 - `/frame`은 full plan을 자동 생성하기보다 작업 무게를 먼저 보정합니다.
-- `/verify-report-preflight`는 full report가 필요한지 판단하는 전 단계입니다.
 - Worker fan-out은 병렬 소유권이 필요할 때 쓰고, 단일 축 확인에는 기본값으로 쓰지 않습니다.
 - light PR/ship에서 PR 템플릿을 채우기 위해 raw session/context를 깊게 훑지 않습니다. 현재 diff, 최근 커밋, 사용자 intent가 우선 evidence입니다.
 - light 작업에서 PR/status 확인을 사용자가 명시하지 않았다면 push 성공이 종료 조건입니다. 사용자가 불만을 표한 뒤 말하는 “걍 커밋푸시해” 같은 탈출 문구에만 의존하지 말고, 그 전에 push가 성공한 시점에서 PR/branch/status 확인을 덧붙이지 않고 즉시 짧게 완료 보고합니다.

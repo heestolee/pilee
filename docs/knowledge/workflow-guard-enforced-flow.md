@@ -49,7 +49,7 @@ title_en: Repeated workflow failures become enforced guard flows
 | Astra·GPT-6.1 Sol adaptive thinking | session-local state transition | Astra 또는 정확한 `gpt-6.1-sol`의 `xhigh`에서 아키텍처·보안/동시성 깊이 신호·어려운 장애·실패 재시도만 `max`로 승격하고 `agent_settled` 뒤 복귀. 순수 trivial artifact edit·수동 max·분류된 상태 노트·그 외 모델은 건드리지 않고, 명시 deep analysis에 보조·부정 artifact edit가 섞여도 승격을 보존 |
 | 파일·workspace mutation 경계 | soft general + 금지·손실 기반 hard | 일반 edit/write·commit·push·install·worktree 생성·전환은 분류와 무관하게 허용하고, 사용자의 명시 금지·취소와 대상·상태로 확인되는 되돌릴 수 없는 손실만 차단 |
 | fixed-vs-unfixed audit | hard audit path | “이미 대응/미대응/남은 gap” 요청에는 local history snapshot을 자동 주입하고 `friction → response evidence → current state → remaining gap` 형식을 요구 |
-| 작은 hotfix 기본 경로 | soft lightweight default | light turn에서도 `verify_report_live start`, subagent fan-out, deep session/context mining을 막지 않고 결과에 `lightPathNote`를 남겨 scope lock → focused change → nearest validation을 권함 |
+| 작은 hotfix 기본 경로 | soft lightweight default | light turn에서도 subagent fan-out, deep session/context mining을 막지 않고 결과에 `lightPathNote`를 남겨 scope lock → focused change → nearest validation을 권함 |
 | fast response pace | hard prompt + result annotation | tool result 이후 none/light는 30초, standard는 60초, full은 120초 판단 예산 안에 다음 좁은 tool call·중간 결론·scope-gate 질문·최종 보고 중 하나로 전환하게 함 |
 | search/history fan-out 예산 | soft prompt + result annotation | 첫 조사 명령 전에 ref/path/history/output fan-out을 가볍게 추정하고, symbol/file/URL/PR/commit/branch anchor가 있으면 narrow lookup을 기본값으로 삼음. broad search는 fallback으로 허용하되 이유와 범위를 먼저 드러냄 |
 | light push 종료 | soft terminal nudge | PR/status 작업을 명시하지 않은 light 작업은 push 성공을 종료 신호로 보고, 이후 도구 호출에 `postPushNote`를 남겨 한 줄 완료 보고를 유도. 호출 자체는 막지 않음 |
