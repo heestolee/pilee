@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
@@ -28,15 +28,7 @@ import {
 } from "./panel-activation.ts";
 import { chooseWorkspaceOpenTarget, type WorkspaceOpenTarget } from "./open-target.ts";
 import { readWorktreeMeta, worktreeMetaPath } from "../utils/worktree-meta.ts";
-
-const REGISTRY_PATH = join(homedir(), ".pi", "worktree-repos.json");
-
-export interface WorktreeAfterSwitchFollowUp {
-	customType: string;
-	content: string;
-	display?: boolean;
-	details?: Record<string, unknown>;
-}
+import { canonicalRepoRoot, findCanonicalRepoRoot, loadRegistry, sessionDirForWorktree, type WorktreeAfterSwitchFollowUp } from "./repo-registry.ts";
 
 export interface PrReviewWorktreeRequest {
 	repo: string;
@@ -83,26 +75,14 @@ export interface PrReviewWorktreeRuntime {
 	activate?: typeof activateWorkspaceInNewPanel;
 }
 
-interface RepoRegistry { [name: string]: string }
-
-function loadRegistry(): RepoRegistry {
-	if (!existsSync(REGISTRY_PATH)) return {};
-	try { return JSON.parse(readFileSync(REGISTRY_PATH, "utf8")) as RepoRegistry; } catch { return {}; }
-}
-
 async function git(pi: ExtensionAPI, cwd: string, args: string[], timeout = 30_000) {
 	return pi.exec("git", args, { cwd, timeout });
 }
 
-async function repoRootFromCwd(pi: ExtensionAPI, cwd: string): Promise<string | null> {
-	const result = await git(pi, cwd, ["rev-parse", "--show-toplevel"]);
-	return result.code === 0 && result.stdout.trim() ? result.stdout.trim() : null;
-}
-
 async function resolveRepoRoot(pi: ExtensionAPI, ctx: ExtensionCommandContext, repoName: string): Promise<string | null> {
 	const registered = loadRegistry()[repoName];
-	if (registered && existsSync(registered)) return registered;
-	const cwdRoot = await repoRootFromCwd(pi, ctx.cwd);
+	if (registered && existsSync(registered)) return canonicalRepoRoot(pi, registered);
+	const cwdRoot = await findCanonicalRepoRoot(pi, ctx.cwd);
 	if (cwdRoot && (!repoName || basename(cwdRoot) === repoName)) return cwdRoot;
 	return null;
 }
@@ -165,10 +145,6 @@ function reviewRootDir(repoRoot: string, repoName: string): string {
 
 function sourceSessionFile(ctx: ExtensionCommandContext): string | null {
 	try { return ctx.sessionManager.getSessionFile() ?? null; } catch { return null; }
-}
-
-function sessionDirForWorktree(worktreePath: string): string {
-	return join(homedir(), ".pi", "agent", "sessions", `--${worktreePath.slice(1).replace(/\//g, "-")}--`);
 }
 
 function appendSessionEntry(session: SessionManager, entry: Record<string, unknown>): void {

@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, statSync, rmSync, renameSync, realpathSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, statSync, rmSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname, basename } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ThemeColor } from "@mariozechner/pi-coding-agent";
@@ -56,29 +56,20 @@ import {
 	type WorkspaceContinuation,
 } from "../utils/workspace-activation-contract.ts";
 import { worktreeContinuationType } from "../utils/worktree-continuation.ts";
+import {
+	canonicalRepoRoot,
+	findCanonicalRepoRoot,
+	findRepoRoot,
+	loadRegistry,
+	realPathForCompare,
+	saveRegistry,
+	sessionDirForWorktree,
+	type RepoRegistry,
+	type WorktreeAfterSwitchFollowUp,
+} from "./repo-registry.ts";
 import { readWorktreeMeta, worktreeMetaPath as metaPath } from "../utils/worktree-meta.ts";
 
 // ─── Repo registry ─────────────────────────────────────────────────────────
-
-const REGISTRY_PATH = join(homedir(), ".pi", "worktree-repos.json");
-
-interface RepoRegistry {
-	[name: string]: string; // name → absolute path
-}
-
-function loadRegistry(): RepoRegistry {
-	if (!existsSync(REGISTRY_PATH)) return {};
-	try { return JSON.parse(readFileSync(REGISTRY_PATH, "utf8")); } catch { return {}; }
-}
-
-function saveRegistry(reg: RepoRegistry) {
-	mkdirSync(dirname(REGISTRY_PATH), { recursive: true });
-	writeFileSync(REGISTRY_PATH, JSON.stringify(reg, null, 2));
-}
-
-function realPathForCompare(path: string): string {
-	try { return realpathSync.native(path); } catch { return path; }
-}
 
 function samePath(a: string, b: string): boolean {
 	return realPathForCompare(a) === realPathForCompare(b);
@@ -132,25 +123,6 @@ const DEFAULT_CONFIG: WorktreeConfig = {
 
 function expandHome(p: string): string {
 	return p.startsWith("~/") ? join(homedir(), p.slice(2)) : p;
-}
-
-async function findRepoRoot(pi: ExtensionAPI, cwd: string): Promise<string | null> {
-	const r = await pi.exec("git", ["rev-parse", "--show-toplevel"], { cwd });
-	return r.code === 0 ? (r.stdout ?? "").trim() || null : null;
-}
-
-async function canonicalRepoRoot(pi: ExtensionAPI, repoRoot: string): Promise<string> {
-	const worktrees = await pi.exec("git", ["worktree", "list", "--porcelain"], { cwd: repoRoot });
-	if (worktrees.code === 0) {
-		const main = (worktrees.stdout ?? "").split("\n").find((line) => line.startsWith("worktree "))?.slice("worktree ".length).trim();
-		if (main && existsSync(main)) return realPathForCompare(main);
-	}
-	return realPathForCompare(repoRoot);
-}
-
-async function findCanonicalRepoRoot(pi: ExtensionAPI, cwd: string): Promise<string | null> {
-	const repoRoot = await findRepoRoot(pi, cwd);
-	return repoRoot ? canonicalRepoRoot(pi, repoRoot) : null;
 }
 
 function getRepoName(repoRoot: string): string {
@@ -217,13 +189,6 @@ export type WorktreeContextMode =
 	| "context-pack"
 	| "fallback-context-pack"
 	| "fallback-empty";
-
-export interface WorktreeAfterSwitchFollowUp {
-	customType: string;
-	content: string;
-	display?: boolean;
-	details?: Record<string, unknown>;
-}
 
 interface SwitchSessionToWorktreeOptions {
 	afterSwitchFollowUp?: WorktreeAfterSwitchFollowUp;
@@ -585,11 +550,6 @@ function parseNewArgs(args: string): NewArgs {
 	}
 	if (positional.length > 0) result.name = positional[0];
 	return result;
-}
-
-function sessionDirForWorktree(worktreePath: string): string {
-	const pathEncoded = "--" + worktreePath.slice(1).replace(/\//g, "-") + "--";
-	return join(homedir(), ".pi", "agent", "sessions", pathEncoded);
 }
 
 function createEmptySessionFile(worktreePath: string, parentSession?: string): string {

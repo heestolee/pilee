@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { readPrReviewWorkspaceMetadata } from "../pr-review/workspace.ts";
 import { createWorkspaceActivationContract, explicitWorkspaceAuthorization } from "../utils/workspace-activation-contract.ts";
 import { prReviewCurrentPanelHeadNotice, runPrReviewWorktreeFromCommandContext } from "./pr-review.ts";
+import { canonicalRepoRoot, findCanonicalRepoRoot } from "./repo-registry.ts";
 
 function run(command: string, args: string[], cwd: string) {
 	const result = spawnSync(command, args, { cwd, encoding: "utf8" });
@@ -402,3 +403,18 @@ test("PR review preserves its session and worktree when panel termination is not
 function dirnameForSession(sessionFile: string): string {
 	return sessionFile.slice(0, sessionFile.lastIndexOf("/"));
 }
+
+test("PR review and /wt resolve the same canonical repository root from inside a worktree", async () => {
+	const f = setupRepository();
+	const linked = join(f.root, "linked-worktree");
+	try {
+		git(f.repo, ["worktree", "add", "-q", "-b", "feature/linked", linked]);
+		const pi = { exec: (command: string, args: string[], options?: { cwd?: string }) => Promise.resolve(run(command, args, options?.cwd ?? f.repo)) } as any;
+		const repoRoot = realpathSync(f.repo);
+		assert.equal(await findCanonicalRepoRoot(pi, linked), repoRoot);
+		assert.equal(await canonicalRepoRoot(pi, linked), repoRoot);
+		assert.equal(await findCanonicalRepoRoot(pi, f.repo), repoRoot);
+	} finally {
+		rmSync(f.root, { recursive: true, force: true });
+	}
+});
