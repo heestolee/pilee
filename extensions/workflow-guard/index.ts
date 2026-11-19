@@ -87,6 +87,8 @@ interface GuardState {
 	largeWorkObserved: boolean;
 	largeWorkBasis?: string;
 	trustedInternalPullRequestRepository?: string;
+	// 턴 시작 시 게시 대상 저장소를 알 수 없을 때, 실제 명령에서 신뢰로 판정될 저장소 범위
+	externalPublishTargetUnknown?: string;
 	workspaceAuthorization: WorkspaceAuthorizationProvenance;
 	// 요청 시작 시점의 권한 이벤트 수. 이후 이벤트가 이번 요청 안에서 내린 선택·허용이다.
 	workspaceEventBaseline?: number;
@@ -674,11 +676,16 @@ function buildSystemPrompt(
 	if (state.trustedInternalPullRequestRepository && state.intent !== "status_note") {
 		lines.push(
 			"- 회사 저장소 PR 경로: 허용된 회사 저장소에는 외부 upstream 기여 절차를 적용하지 않습니다.",
-			"- CONTRIBUTING.md 탐색·읽기나 게시 재승인을 요구하지 말고, 사용자가 요청한 PR 생성을 계속하세요. 프로젝트 자체의 작업·검증 규칙과 원래 요청 범위는 유지합니다.",
+			"- CONTRIBUTING.md 탐색·읽기나 게시 재승인을 요구하지 말고, 사용자가 요청한 Issue·PR 생성을 계속하세요. 프로젝트 자체의 작업·검증 규칙과 원래 요청 범위는 유지합니다.",
 		);
 	}
 
 	if (state.explicitExternalPublish && !state.trustedInternalPullRequestRepository && state.intent !== "status_note") {
+		if (state.externalPublishTargetUnknown !== undefined) {
+			lines.push(
+				`- 게시 대상 저장소 미확정: 실제 gh 명령의 대상(--repo, 없으면 작업 폴더 origin)으로 판정합니다. 사내 신뢰 저장소(${state.externalPublishTargetUnknown || "설정 없음"})면 아래 게이트 없이 사용자의 요청대로 진행하고, 그 밖의 저장소일 때만 아래 게이트를 따릅니다. 대상이 정해지기 전에 승인을 미리 요구하지 않습니다.`,
+			);
+		}
 		lines.push(
 			"- EXTERNAL ISSUE/PR PUBLISH GATE: do not create or submit an external Issue or PR in this turn.",
 			"- First read the target repository's CONTRIBUTING.md and every contribution guide it links that affects eligibility, scope, issue-first flow, or contributor approval.",
@@ -1704,6 +1711,15 @@ function markTrustedInternalPullRequest(state: GuardState, repository: string) {
 	state.summary = state.summary.replace("externalPublish=approval-gated", "externalPublish=internal-trusted");
 }
 
+function markExternalPublishTargetUnknown(state: GuardState, trustedScope: string) {
+	state.externalPublishTargetUnknown = trustedScope;
+	state.summary = state.summary.replace("externalPublish=approval-gated", "externalPublish=target-unknown");
+}
+
+function trustedPublishScopeLabel(trustedRepositories: readonly string[], trustedOwners: readonly string[]): string {
+	return [...trustedOwners.map((owner) => `${owner.trim()}/*`), ...trustedRepositories].filter(Boolean).join(", ");
+}
+
 function externalPublishBlockReason(): string {
 	return [
 		"workflow_guard blocked external Issue/PR creation: CONTRIBUTING review and final user approval are both required.",
@@ -2254,13 +2270,14 @@ export default function workflowGuard(
 		if (workspaceAuthorizationChanged(restoredAuthorization, state.workspaceAuthorization)) {
 			persistWorkspaceAuthorization(pi, state.workspaceAuthorization);
 		}
-		if (state.trustedInternalPullRequestRepository) {
-			delete state.trustedInternalPullRequestRepository;
-			state.summary = state.summary.replace("externalPublish=internal-trusted", "externalPublish=approval-gated");
-		}
-		if (state.explicitPrAction && !state.explicitIssueAction) {
+		delete state.trustedInternalPullRequestRepository;
+		delete state.externalPublishTargetUnknown;
+		state.summary = state.summary.replace(/externalPublish=(?:internal-trusted|target-unknown)/, "externalPublish=approval-gated");
+		// 실제 gh 명령을 막을지 정하는 tool_call 판정과 같은 저장소·신뢰 기준을 쓴다(Issue·PR 공통).
+		if (state.explicitExternalPublish) {
 			const repository = await publishRepository(pi, ctx.cwd, classificationRequest(state.prompt));
-			if (isTrustedInternalPullRequestRepository(repository, trustedInternalPullRequestRepositories, trustedInternalPullRequestOwners)) markTrustedInternalPullRequest(state, repository!);
+			if (!repository) markExternalPublishTargetUnknown(state, trustedPublishScopeLabel(trustedInternalPullRequestRepositories, trustedInternalPullRequestOwners));
+			else if (isTrustedInternalPullRequestRepository(repository, trustedInternalPullRequestRepositories, trustedInternalPullRequestOwners)) markTrustedInternalPullRequest(state, repository);
 		}
 		if (!inert && !continuePrevious) {
 			pendingCommitDecisions.delete(key);

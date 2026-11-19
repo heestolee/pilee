@@ -285,12 +285,13 @@ test("manual max is preserved and never auto-restored", async () => {
 });
 
 test("external Issue and PR creation requires CONTRIBUTING review plus separate final approval", async () => {
-	const { hooks, ctx } = createHarness();
+	const { hooks, ctx } = createHarness({ originUrl: "https://github.com/outside/project.git" });
 	const start = await hooks.before_agent_start({ prompt: "upstream에 이슈와 PR 만들어줘", systemPrompt: "base" }, ctx);
 
 	assert.match(start.systemPrompt, /EXTERNAL ISSUE\/PR PUBLISH GATE/);
 	assert.match(start.systemPrompt, /CONTRIBUTING\.md/);
 	assert.match(start.systemPrompt, /initial request.*is not final approval/i);
+	assert.doesNotMatch(start.systemPrompt, /게시 대상 저장소 미확정/);
 	assert.match(start.message.details.state.summary, /externalPublish=approval-gated/);
 
 	const issueBlock = await hooks.tool_call({ toolName: "bash", input: { command: "gh issue create --title test --body body" } }, ctx);
@@ -310,6 +311,22 @@ test("external Issue and PR creation requires CONTRIBUTING review plus separate 
 		},
 	}, ctx);
 	assert.equal(approved, undefined);
+});
+
+test("turn-start publish notice uses the same target and trust rule as the gh command check", async () => {
+	// 작업 폴더가 git 저장소가 아니면 대상은 실제 명령의 --repo로만 정해진다.
+	const unknown = createHarness({ trustedInternalPullRequestOwners: ["company"] });
+	const start = await unknown.hooks.before_agent_start({ prompt: "응 PR 올려줘", systemPrompt: "base" }, unknown.ctx);
+	assert.match(start.message.details.state.summary, /externalPublish=target-unknown/);
+	assert.match(start.systemPrompt, /게시 대상 저장소 미확정.*사내 신뢰 저장소\(company\/\*\)면 아래 게이트 없이/);
+	assert.equal(await unknown.hooks.tool_call({ toolName: "bash", input: { command: "gh pr create --repo company/product --title t --body b" } }, unknown.ctx), undefined);
+	assert.equal((await unknown.hooks.tool_call({ toolName: "bash", input: { command: "gh pr create --repo outside/project --title t --body b" } }, unknown.ctx))?.block, true);
+
+	// 신뢰 저장소의 Issue 요청도 PR과 같이 턴 시작부터 신뢰로 표시한다.
+	const issue = createHarness({ originUrl: "https://github.com/company/product.git", trustedInternalPullRequestOwners: ["company"] });
+	const issueStart = await issue.hooks.before_agent_start({ prompt: "깃헙 이슈 만들어줘", systemPrompt: "base" }, issue.ctx);
+	assert.match(issueStart.message.details.state.summary, /externalPublish=internal-trusted/);
+	assert.doesNotMatch(issueStart.systemPrompt, /EXTERNAL ISSUE\/PR PUBLISH GATE/);
 });
 
 test("trusted internal repositories bypass only the upstream PR/Issue publish gate", async () => {
