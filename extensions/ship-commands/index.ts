@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { loadPrShipProfiles } from "../utils/private-profiles.ts";
 import { readAgentStartInput } from "../utils/agent-start-input.ts";
@@ -22,10 +19,8 @@ import {
 	isDirectPrShipReviewWriteCommand,
 	registerPrShipReviewWriteTool,
 } from "./pr-ship-write-tool.ts";
+import { formatInlinedSkill, pileeSkillPath as skillPath, readPileeSkill as readSkill } from "../utils/inlined-skill.ts";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const PACKAGE_ROOT = resolve(__dirname, "../..");
-const SKILLS_DIR = join(PACKAGE_ROOT, "skills");
 const SHIM_CUSTOM_TYPE = "pilee-ship-command-shim";
 const MAX_COLLECTED_CONTEXT_CHARS = 18_000;
 
@@ -125,26 +120,6 @@ interface CiCheckSummary {
 	detailsUrl: string | null;
 	startedAt: string | null;
 	completedAt: string | null;
-}
-
-function skillPath(skillName: string): string {
-	return join(SKILLS_DIR, skillName, "SKILL.md");
-}
-
-function readSkill(skillName: string): { name: string; path: string; content: string } {
-	const path = skillPath(skillName);
-	return { name: skillName, path, content: readFileSync(path, "utf-8").trimEnd() };
-}
-
-function formatInlinedSkill(skill: { name: string; path: string; content: string }): string {
-	return [
-		`----- BEGIN INLINED PILEE SKILL: ${skill.name} -----`,
-		`Location: ${skill.path}`,
-		`References are relative to: ${dirname(skill.path)}`,
-		"",
-		skill.content,
-		`----- END INLINED PILEE SKILL: ${skill.name} -----`,
-	].join("\n");
 }
 
 function notify(ctx: ShipContext, message: string, level: "info" | "warning" | "error"): void {

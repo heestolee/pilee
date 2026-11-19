@@ -1,11 +1,10 @@
 import { readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import { formatInlinedSkill, pileeSkillPath as skillPath, readPileeSkill as readSkill } from "../utils/inlined-skill.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PACKAGE_ROOT = resolve(__dirname, "../..");
-const SKILLS_DIR = join(PACKAGE_ROOT, "skills");
 const EMBER_SHIP_WORKFLOW_PATH = join(__dirname, "WORKFLOW.md");
 const SHIM_CUSTOM_TYPE = "pilee-ember-ship-command";
 
@@ -26,37 +25,12 @@ Usage:
 
 Default: 안전 조건이 모두 충족되면 main merge + push까지 진행한다. BLOCKED면 branch/PR URL을 남기고 멈춘다.`;
 
-function skillPath(skillName: string): string {
-	return join(SKILLS_DIR, skillName, "SKILL.md");
-}
-
-function readSkill(skillName: string): { name: string; path: string; content: string } {
-	const path = skillPath(skillName);
-	return {
-		name: skillName,
-		path,
-		content: readFileSync(path, "utf-8").trimEnd(),
-	};
-}
-
 function readEmberShipWorkflow(): { name: string; path: string; content: string } {
 	return {
 		name: "ember-ship workflow",
 		path: EMBER_SHIP_WORKFLOW_PATH,
 		content: readFileSync(EMBER_SHIP_WORKFLOW_PATH, "utf-8").trimEnd(),
 	};
-}
-
-function formatInlinedSkill(skill: { name: string; path: string; content: string }): string {
-	const baseDir = dirname(skill.path);
-	return [
-		`----- BEGIN INLINED PILEE SKILL: ${skill.name} -----`,
-		`Location: ${skill.path}`,
-		`References are relative to: ${baseDir}`,
-		"",
-		skill.content,
-		`----- END INLINED PILEE SKILL: ${skill.name} -----`,
-	].join("\n");
 }
 
 function formatInlinedWorkflow(workflow: { name: string; path: string; content: string }): string {

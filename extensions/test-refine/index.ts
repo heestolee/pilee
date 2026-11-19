@@ -1,12 +1,8 @@
-import { readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import { formatInlinedSkill, pileeSkillPath as skillPath, readPileeSkill as readSkill } from "../utils/inlined-skill.ts";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const PACKAGE_ROOT = resolve(__dirname, "../..");
 const SKILL_NAME = "test-boundary-refactor";
-const SKILL_PATH = join(PACKAGE_ROOT, "skills", SKILL_NAME, "SKILL.md");
+const SKILL_PATH = skillPath(SKILL_NAME);
 const SHIM_CUSTOM_TYPE = "pilee-test-refine-command";
 
 const HELP = `Test Refine — practical test boundary refactor
@@ -28,26 +24,6 @@ export interface TestRefineGitSnapshot {
 	stagedFiles?: string[];
 	testLikeFiles?: string[];
 	error?: string;
-}
-
-function readSkill(): { name: string; path: string; content: string } {
-	return {
-		name: SKILL_NAME,
-		path: SKILL_PATH,
-		content: readFileSync(SKILL_PATH, "utf-8").trimEnd(),
-	};
-}
-
-function formatInlinedSkill(skill: { name: string; path: string; content: string }): string {
-	const baseDir = dirname(skill.path);
-	return [
-		`----- BEGIN INLINED PILEE SKILL: ${skill.name} -----`,
-		`Location: ${skill.path}`,
-		`References are relative to: ${baseDir}`,
-		"",
-		skill.content,
-		`----- END INLINED PILEE SKILL: ${skill.name} -----`,
-	].join("\n");
 }
 
 function splitLines(text = ""): string[] {
@@ -102,7 +78,7 @@ export async function collectTestRefineGitSnapshot(pi: ExtensionAPI, cwd: string
 }
 
 export function buildTestRefinePrompt(args: string, cwd: string, snapshot: TestRefineGitSnapshot): string {
-	const skill = readSkill();
+	const skill = readSkill(SKILL_NAME);
 	const commandLine = `/test-refine${args.trim() ? ` ${args.trim()}` : ""}`;
 	const explicitTargets = args
 		.split(/\s+/g)
