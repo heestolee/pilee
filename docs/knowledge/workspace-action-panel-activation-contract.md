@@ -25,8 +25,9 @@ applies_to:
 source:
   - user-direction:2026-08-25-workspace-activation-redesign
   - user-direction:2026-09-02-pr-review-current-panel-or-tab
-reviewed_at: 2026-11-16
-reviewed_commit: 42dcf5da538670f7c57156d2191d470131c5b077
+  - user-direction:2026-11-18-shared-worktree-open-target
+reviewed_at: 2026-11-19
+reviewed_commit: 11a806d057b166dce4b57d1fcd4a117114c39efb
 related:
   - worktree-execution-boundary
   - worktree-session-continuity
@@ -56,11 +57,11 @@ Authorization은 단순 keyword 존재 여부가 아닙니다. `worktree 만들�
 
 ## Activation Rule
 
-Slash `/wt new`는 worktree/session 생성 후 기존 `switchSession` 경로로 현재 panel을 exact target session/cwd로 직접 전환하고 최신 non-transition 요청 1개만 compact continuation으로 전달합니다. Slash `/wt fork`는 공통 worktree/full-lineage session 생성 후 현재 panel·새 탭·오른쪽 panel 중 활성화 위치를 선택하며 어느 경로든 최신 작업을 자동 계속합니다. 현재 panel은 직접 switch하고, 새 탭·오른쪽은 durable READY descriptor를 사용합니다. Full-lineage target이 초기 READY 대기 시간을 넘기면 crash로 오판해 panel을 닫지 않고 `pending`으로 반환하며 descriptor를 열어 둡니다. Target receiver가 나중에 exact cwd/session READY를 기록하면 continuation을 한 번만 claim해 자동 실행합니다. 실제 activation 준비/open 실패가 확인돼도 성공적으로 만든 worktree/session은 recovery artifact로 보존합니다. `worktree_create`, `worktree_fork`, Frame/TFT fork는 source panel 보존용 new-panel READY 계약을 유지합니다. PR review checkout은 head-pinned worktree 준비와 화면 topology를 분리해 `현재 패널 | 새 탭`만 묻습니다. 현재 패널은 exact review session으로 직접 switch하고 새 탭만 READY descriptor를 사용합니다. 현재 panel HEAD와 PR HEAD가 다를 때는 기존 worktree HEAD를 수정하지 않고 panel의 active review session만 바뀐다는 경고를 선택 전에 보여줍니다.
+Slash `/wt new`는 worktree/session 생성 후 기존 `switchSession` 경로로 현재 panel을 exact target session/cwd로 직접 전환하고 최신 non-transition 요청 1개만 compact continuation으로 전달합니다. Slash `/wt fork`는 공통 worktree/full-lineage session 생성 후 현재 panel·새 탭·오른쪽 panel 중 활성화 위치를 선택하며 어느 경로든 최신 작업을 자동 계속합니다. 현재 panel은 직접 switch하고, 새 탭·오른쪽은 durable READY descriptor를 사용합니다. Full-lineage target이 초기 READY 대기 시간을 넘기면 crash로 오판해 panel을 닫지 않고 `pending`으로 반환하며 descriptor를 열어 둡니다. Target receiver가 나중에 exact cwd/session READY를 기록하면 continuation을 한 번만 claim해 자동 실행합니다. 실제 activation 준비/open 실패가 확인돼도 성공적으로 만든 worktree/session은 recovery artifact로 보존합니다. 새 worktree를 여는 진입점은 모두 같은 공통 선택기로 `현재 패널 | 새 탭 | 오른쪽 패널`을 묻습니다. `/wt fork`, `worktree_create`·`worktree_fork` tool, PR review, Frame/TFT fork가 해당합니다. 새 탭·오른쪽은 어느 진입점이든 durable READY descriptor를 사용합니다. 현재 패널은 사용자가 고른 경우에만 쓰고, 언제 전환하는지만 실행 위치에 따라 다릅니다. Slash 명령(`/wt fork`, PR review)은 바로 switch합니다. 에이전트 턴 안에서 실행되는 tool과 Frame/TFT fork는 deferred `requestSessionSwitch`로 응답이 끝난 뒤 전환하고, tool 결과는 이번 턴에서 worktree 작업을 시작하지 말고 짧게 알린 뒤 끝내라고 안내합니다. 응답 뒤 전환 API가 없으면 worktree를 만들기 전에 BLOCKED입니다. UI가 없을 때는 `/wt fork`만 현재 패널을 기본으로 쓰고 나머지는 BLOCKED입니다. 진입점마다 선택지가 갈라졌던 이전 구조는 "에이전트가 판단으로 현재 panel을 교체하지 않는다"는 목적을 "사용자가 현재 패널을 고르지도 못한다"로 과하게 구현한 것이었습니다. 현재 panel HEAD와 PR HEAD가 다를 때는 기존 worktree HEAD를 수정하지 않고 panel의 active review session만 바뀐다는 경고를 선택 전에 보여줍니다.
 
 Descriptor 전이는 `prepared → panel-opened → ready → continuing → continued`와 `prepared|panel-opened|ready|failed → cancelling → cancelled`를 구분합니다. Parent와 child process는 bounded retry·stale recovery가 있는 exclusive lock directory 안에서 전이를 claim합니다. Receiver가 `ready→continuing`을 먼저 소유하면 parent는 timeout cleanup을 수행하지 않고, parent가 cancellation을 먼저 소유하면 receiver는 continuation을 보내지 않습니다. 같은 descriptor를 연 duplicate receiver도 continuation을 두 번 dispatch할 수 없습니다.
 
-`/wt switch`와 `worktree_switch`는 사용자가 기존 worktree로 현재 panel을 옮기는 명시적 경로입니다. PR review의 `현재 패널` 선택도 사용자가 고른 명시적 current-panel activation입니다. 어떤 workflow에서도 new-panel open 실패를 current-panel switch로 몰래 대체하지 않습니다.
+`/wt switch`와 `worktree_switch`는 사용자가 기존 worktree로 현재 panel을 옮기는 명시적 경로입니다. 공통 선택기의 `현재 패널` 선택도 사용자가 고른 명시적 current-panel activation입니다. 어떤 workflow에서도 한 위치의 활성화 실패를 다른 위치로 몰래 대체하지 않습니다. 현재 패널로 전환한 뒤의 fork continuation(`/wt fork`·tool·현재 패널 유형 모두)은 같은 요청으로 worktree를 다시 만들지 않습니다.
 
 명시적 worktree authorization은 P0/P1/P2 어느 panel에서든 현재 보이는 conversation을 source로 사용할 수 있습니다. Source panel은 그대로 남고 target은 선택한 placement에 열립니다. 부모 P0를 source로 쓰고 싶을 때만 사용자가 P0에서 실행하며, `/handoff`는 필수 생성 절차가 아닙니다. Panel 번호는 stage·context-carry·hotfix/base·authorization gate를 우회하지 않습니다.
 
