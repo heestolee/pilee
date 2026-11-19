@@ -482,7 +482,6 @@ test("new panel command contract records exact command and placement provenance"
 		id: "placement-contract",
 		ctx: {
 			hasUI: true,
-			ui: { select: async () => "새 탭" },
 			sessionManager: {
 				getBranch: () => entries,
 				appendCustomEntry: (customType: string, data: unknown) => entries.push({ type: "custom", customType, data }),
@@ -492,6 +491,7 @@ test("new panel command contract records exact command and placement provenance"
 		contextMode: "clean",
 		authorizationSource: "command",
 		authorizationSourceId: "/wt new",
+		placement: "tab",
 	});
 	assert.equal(built?.activationTarget, "new-panel");
 	assert.equal(built?.placement, "tab");
@@ -526,7 +526,6 @@ test("new panel tool contract reuses the exact workflow-guard consumed event", a
 		id: "tool-contract",
 		ctx: {
 			hasUI: true,
-			ui: { select: async () => "오른쪽 분할 패널" },
 			sessionManager: {
 				getBranch: () => entries,
 				appendCustomEntry: (customType: string, data: unknown) => entries.push({ type: "custom", customType, data }),
@@ -537,6 +536,7 @@ test("new panel tool contract reuses the exact workflow-guard consumed event", a
 		authorizationSource: "tui",
 		authorizationSourceId: "must-not-replace-actual-source",
 		authorizationConsumerId: "frame_worktree_fork:call-1",
+		placement: "right",
 	});
 	assert.equal(built?.authorization.events[0]?.id, "guard-auth-1");
 	assert.equal(built?.authorization.events[0]?.source, "tui");

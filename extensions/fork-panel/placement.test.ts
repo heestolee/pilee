@@ -7,7 +7,6 @@ import test from "node:test";
 import {
 	buildOpenSessionPlan,
 	buildRepanelScript,
-	chooseNewPanelPlacement,
 	openExactSessionInNewPanel,
 	parsePanelTargetRequest,
 	parseSplitPlacementArgs,
@@ -30,23 +29,6 @@ test("parseSplitPlacementArgs accepts repanel anchor-path syntax only", () => {
 	assert.deepEqual(parseSplitPlacementArgs("right down"), { anchorPath: ["right"], splitDirection: "down" });
 	assert.deepEqual(parseSplitPlacementArgs("down"), { anchorPath: [], splitDirection: "down" });
 	assert.equal(parseSplitPlacementArgs("right later"), null);
-});
-
-test("chooseNewPanelPlacement stays scoped to composed new-panel workflows", async () => {
-	const seen: string[][] = [];
-	const ctx = {
-		hasUI: true,
-		ui: {
-			async select(_title: string, choices: string[]) {
-				seen.push(choices);
-				return "새 탭";
-			},
-		},
-	} as any;
-	assert.equal(await chooseNewPanelPlacement(ctx), "tab");
-	assert.deepEqual(seen[0]?.slice(0, 2), ["오른쪽 분할 패널", "새 탭"]);
-	assert.equal(seen[0]?.some((choice) => choice.includes("현재 패널")), false);
-	assert.equal(await chooseNewPanelPlacement({ ...ctx, hasUI: false }), null);
 });
 
 test("buildOpenSessionScript uses a short ASCII script command while preserving exact Unicode launch data", () => {

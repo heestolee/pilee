@@ -8,7 +8,6 @@ import {
 	type ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
 import {
-	chooseNewPanelPlacement,
 	closeExactSessionPanel,
 	openExactSessionInNewPanel,
 	removeExactSessionPanelRecord,
@@ -764,17 +763,14 @@ export async function buildNewPanelActivationContract(input: {
 	authorizationSourceId: string;
 	authorizationConsumerId?: string;
 	continuation?: WorkspaceContinuation;
-	placement?: NewPanelPlacement;
-	placementTitle?: string;
-}): Promise<WorkspaceActivationContract | null> {
-	const placement = input.placement ?? await chooseNewPanelPlacement(input.ctx, input.placementTitle);
-	if (!placement) return null;
-	const authorization = resolveWorkspaceActivationAuthorization({ ...input, activationTarget: "new-panel", placement });
+	placement: NewPanelPlacement;
+}): Promise<WorkspaceActivationContract> {
+	const authorization = resolveWorkspaceActivationAuthorization({ ...input, activationTarget: "new-panel" });
 	return createWorkspaceActivationContract({
 		id: input.id,
 		workspaceAction: input.workspaceAction,
 		activationTarget: "new-panel",
-		placement,
+		placement: input.placement,
 		contextMode: input.contextMode,
 		continuation: input.continuation,
 		authorization,

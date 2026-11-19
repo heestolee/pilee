@@ -818,23 +818,6 @@ function modeLabel(mode: OpenMode): string {
 	return `${placementLabel(mode)} 패널`;
 }
 
-const NEW_PANEL_PLACEMENT_OPTIONS: Array<{ placement: NewPanelPlacement; label: string }> = [
-	{ placement: "right", label: "오른쪽 분할 패널" },
-	{ placement: "tab", label: "새 탭" },
-	{ placement: "left", label: "왼쪽 분할 패널" },
-	{ placement: "down", label: "아래 분할 패널" },
-	{ placement: "up", label: "위 분할 패널" },
-];
-
-export async function chooseNewPanelPlacement(
-	ctx: ExtensionContext | ExtensionCommandContext,
-	title = "새 작업 panel을 어디에 열까요?",
-): Promise<NewPanelPlacement | null> {
-	if (!ctx.hasUI) return null;
-	const selected = await ctx.ui.select(title, NEW_PANEL_PLACEMENT_OPTIONS.map((option) => option.label));
-	return NEW_PANEL_PLACEMENT_OPTIONS.find((option) => option.label === selected)?.placement ?? null;
-}
-
 function panelTargetFromPlacement(placement: NewPanelPlacement): PanelOpenTarget {
 	return placement === "tab" ? "tab" : splitPlacementFromDirections([placement]);
 }
