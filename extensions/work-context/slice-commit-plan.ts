@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { buildCommitReadinessDiagnostic, type CommitReadinessDiagnostic } from "../utils/commit-readiness.ts";
-import type { WorkContextCard } from "../utils/work-context.ts";
+import { pathMatchesScope, type WorkContextCard } from "../utils/work-context.ts";
 
 export interface GitStatusEntry {
 	index: string;
@@ -72,28 +72,6 @@ export function parseGitStatusPorcelain(lines: string[]): GitStatusEntry[] {
 		}
 	}
 	return entries;
-}
-
-function wildcardPattern(pattern: string): RegExp | undefined {
-	if (!pattern.includes("*") && !pattern.includes("...")) return undefined;
-	const escaped = pattern
-		.replace(/[.+?^${}()|[\]\\]/g, "\\$&")
-		.replace(/\\\.\\\.\\\./g, ".*")
-		.replace(/\\\*/g, "[^/]*");
-	return new RegExp(`^${escaped}(?:/.*)?$`);
-}
-
-function pathMatchesScope(path: string, scope: string[]): boolean {
-	const rel = path.replace(/^\.\//u, "").replace(/\\/g, "/");
-	if (scope.length === 0) return true;
-	return scope.some((raw) => {
-		const pattern = raw.trim().replace(/^\.\//u, "").replace(/\\/g, "/");
-		if (!pattern) return false;
-		const wildcard = wildcardPattern(pattern);
-		if (wildcard?.test(rel)) return true;
-		const normalized = pattern.replace(/\.\.\.$/u, "").replace(/\/$/u, "");
-		return rel === normalized || rel.startsWith(`${normalized}/`) || rel.includes(normalized);
-	});
 }
 
 function slugText(value: string): string {
