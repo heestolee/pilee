@@ -15,8 +15,8 @@ applies_to:
   - extensions/fork-panel
 source:
   - user-direction:2026-05-12-workspace-save-restore
-reviewed_at: 2026-10-07
-reviewed_commit: 1cba9042f9ac94f717e9898b5bfc9b2e222b70b1
+reviewed_at: 2026-11-19
+reviewed_commit: 3e3b6c97a4dd610f9b2a2153d788ff95fb208d6e
 related:
   - terminal-host-integration
   - fork-panel-spatial-continuity
@@ -29,23 +29,29 @@ related:
 
 ## Snapshot Rule
 
-snapshot에는 Ghostty window/tab/terminal id, tab 순서, terminal title, cwd, 연결된 Pi session file, panel label, fork metadata를 저장합니다. 현재 capture는 title/cwd 기반 registry 매칭을 사용하므로 저장된 연결과 실제 패널 identity의 신뢰도를 구분해야 합니다. registry가 없는 오래된 패널은 수동 save에서 최근 session fallback으로 후보를 남길 수 있지만, 이 후보를 복구 실행 승인으로 승격하지 않습니다. 미연결·유실·legacy fallback은 restore plan에서 `BLOCKED`로 표시하고 제목으로 다른 세션을 자동 대체하지 않습니다.
+snapshot에는 현재 front window의 Ghostty window/tab/terminal ID, 탭 순서, terminal title/cwd, 정확히 연결된 Pi session file, panel label, fork metadata를 저장합니다. 여러 창 전체나 split tree/비율을 capture하는 기능은 아닙니다.
+
+새 Pi process는 공식 `ctx.ui.setTitle()`로 자기 stdout에 짧은 임시 nonce 표식을 표시합니다. 읽기 전용 AppleScript가 **모든 창·탭·terminal**의 제목을 조회해 표식과 일치하는 단 하나의 terminal ID와 window ID를 확인합니다. 현재 focus/selected terminal이나 제목·cwd 유사도로 추정하지 않습니다. host timeout·중복 표식·제한된 재시도 후 미발견은 unbound 사유로 남깁니다. 등록 중 session-title 갱신은 표식을 보존하고, 완료·실패 시 최신 사람이 읽을 수 있는 제목으로 돌립니다. 상시 opaque token, UI monkeypatch, 키 입력은 사용하지 않습니다.
+
+registry는 process nonce별 atomic 파일입니다. 공유 파일 RMW·sessionFile dedupe·24시간 TTL을 쓰지 않습니다. 조용히 열린 패널도 PID 생존·OS 프로세스 시작 시각·exact host ID가 맞으면 포함하고, 죽거나 PID가 재사용된 프로세스와 identity 없는 legacy `active-sessions.json`은 제외합니다. 시작 시각은 locale/timezone을 고정한 OS 조회로 대조하며, 확인할 수 없는 기록은 exact로 승격하지 않습니다. 같은 제목·cwd·header ID를 가진 별도 session 파일은 합치지 않습니다. 프로세스 nonce는 reload에도 유지하되 등록 generation과 현재 ctx를 확인하여 이전 session의 늦은 응답·cleanup이 새 등록을 덮지 못하게 합니다. headless/RPC/subagent/noTTY에서는 등록과 autosave를 실행하지 않습니다.
+
+자동·수동 저장 모두 모든 capture 패널의 정확한 연결과 읽기 전용 v3 header-cwd preflight가 통과해야 complete입니다. 미등록 패널(일반 shell 포함), 중복 binding, 유실·미저장 session 파일이 하나라도 있으면 항목별 사유를 표시하고 **저장과 자동본 삭제를 모두 하지 않습니다**. 이전 runtime 패널은 새 binding 등록을 위해 `/reload`가 필요하며 강제 재시작하거나 최근 대화로 연결을 보완하지 않습니다. 기존 저장본의 미연결·legacy fallback도 복구 때 계속 차단합니다.
 
 ## Autosave Rule
 
-autosave는 명시 save를 대체하는 주 복원 경로가 아니라 안전망입니다. Ghostty/macOS 세션에서 시작 30~60초 뒤 첫 확인을 하고 이후 약 1시간마다 `autosave` snapshot을 확인합니다. 다만 실제 snapshot 저장은 각 Pi 패널이 아니라 전역 leader process 하나만 수행합니다. 다른 패널은 active session registry만 갱신하고, leader lease가 살아 있으면 autosave write를 건너뜁니다.
+실행 중인 Ghostty/macOS TUI는 **매 정각 하나씩**, 내용이 같아도 새 자동 snapshot을 저장합니다. 시작 직후 저장과 elapsed-hour interval은 없고, 현재 시각으로 다음 wall-clock hour를 계산하는 one-shot timer를 매번 예약합니다. 이벤트 루프·capture 지연은 정각부터 최대 5초만 허용하며, 늦게 깨어난 timer는 지난 slot을 저장하지 않고 다음 정각을 기다립니다. 꺼져 있던 시간이나 실패한 slot을 소급 생성하지 않습니다. snapshot의 저장시각과 slot key는 같은 실제 정각을 가리킵니다.
 
-autosave는 시간만 됐다고 파일을 새로 쓰지 않습니다. tab/panel 순서, cwd, terminal title, 연결된 session file, panel label 같은 복원 핵심 필드로 stable hash를 계산하고, 직전 hash와 같으면 `autosave` alias와 archive를 그대로 둡니다. 사용자가 의도한 복원 지점은 여전히 `/workspace save "이름"`으로 남긴 수동 snapshot이 기준이어야 합니다.
+여러 Pi 패널은 같은 slot의 atomic mkdir claim을 경쟁합니다. 한 패널만 capture하고, 시간 경과나 PID 추정으로 다른 소유자의 claim을 탈취하지 않습니다. 실패·crash한 slot도 재실행하지 않지만 다음 정각은 별도 claim이라 계속 저장할 수 있습니다. shutdown/reload는 timer와 진행 중 capture를 취소하며 stale ctx는 재예약·snapshot write를 하지 않습니다. 저장 허용 시각과 lifecycle 유효성은 분리하여, 현재 소유자의 capture가 정각 허용 지연을 넘기면 `capturing`에 남기지 않고 실패·건너뜀 사유를 기록합니다. 종료된 generation은 새 runtime의 상태를 덮어쓰지 않습니다.
 
-전역 `autosave`는 새 Pi 세션이나 단일 패널 창에서도 실행될 수 있으므로, 단일 alias 파일만 덮어쓰면 사용자가 부활시키려던 작업공간을 잃습니다. alias 갱신 전 기존 autosave는 `autosave-YYYYMMDDTHHMMSS` 형태의 versioned archive로 보존하되, archive는 snapshot hash가 바뀌고 tab/panel/session 수·복원 점수 변화 또는 최소 보관 간격이 있을 때만 남깁니다. 또한 기존 autosave에 연결된 session이 있는데 새 snapshot은 session 0개이거나, 기존 다중 panel autosave를 단일 panel snapshot이 크게 낮은 복원 점수로 대체하려는 경우에는 alias 갱신을 건너뛰고 상태 파일에 skip reason을 남깁니다.
+자동 snapshot은 최근 **10개 FIFO**입니다. 새 complete snapshot의 임시파일 write와 atomic rename이 성공한 뒤에만 오래된 `source=auto`를 정리합니다. 예전 `autosave.json` alias와 예전 자동 archive도 이 보관 대상에 포함하지만, 새 alias는 만들지 않습니다. `source=manual`은 이름에 autosave가 있어도 삭제하지 않고, corrupt/unknown 파일과 snapshot 디렉터리 밖의 `restore-sources`·복구 기록도 보존합니다. 불완전 capture나 write/rename 실패에서는 정상본을 삭제하지 않습니다. 완전한 단일 패널 snapshot도 저장하며 이전 다중 패널보다 작다는 이유로 차단하지 않습니다.
 
-autosave archive cleanup은 매 저장마다 무작정 돌리는 사용자가 보는 기능이 아니라 저장소 위생 안전장치입니다. leader autosave가 하루에 한 번 또는 archive pressure가 높을 때 prune하며, 최근 대표 archive와 일/주 단위 대표본만 남겨 전체 autosave archive를 작게 유지합니다. `/workspace list` 기본 목록은 현재 autosave, 수동 snapshot, 대표 archive만 보여주고 오래된 archive는 `/workspace list --all`에서 봅니다. 번호는 같은 Pi 세션에서 직전에 표시한 목록의 id/path/content hash와 대응합니다. 전체 목록을 본 뒤에도 `/workspace restore <번호>`만 사용하며 `--all`을 다시 요구하지 않습니다. 대상 파일이 변경·삭제됐거나 reload 후 목록 기록이 없으면 새 목록으로 조용히 재해석하지 않고 다시 선택하도록 안내합니다.
+`/workspace list`와 자동완성은 남아 있는 유효한 저장본을 **최신순으로 모두 표시**합니다. 읽기만으로 prune·숨김·복원성 점수 정렬을 하지 않습니다. `--all`은 이전 호출 호환을 위한 no-op이며 help에는 노출하지 않습니다. 번호는 같은 Pi 세션에서 직전에 표시한 목록의 id/path/content hash에 고정됩니다. 파일 변경·삭제 또는 reload 후 목록 기록 부재는 새 순서로 재해석하지 않고 다시 선택하도록 안내합니다.
 
 ## Restore Rule
 
 기본 restore mode는 append입니다. workspace 복원은 사용자의 현재 창을 닫거나 대체하지 않고, 새 tab을 추가한 뒤 저장된 session을 `pi --session`으로 다시 엽니다. 새 shell의 PATH는 현재 Pi 프로세스와 다를 수 있으므로 bare `pi`에 의존하지 않고 현재 실행 중인 Pi command 또는 명시 wrapper를 사용합니다. `/workspace list`가 보여주는 번호는 복원 대상 선택 UI의 일부이므로 `/workspace restore 2`처럼 그대로 사용할 수 있어야 합니다.
 
-번호 선택은 “저장 시각”만이 아니라 “복원 가능한 session이 실제로 연결됐는가”와 “얼마나 많은 session/panel을 되살릴 수 있는가”를 우선합니다. 단일 패널 최신 autosave를 자동 선택하면 사용자가 되살리려던 다중 패널 작업공간 대신 현재 디버깅 세션만 열릴 수 있습니다. 복원성 점수는 목록 정렬에만 쓰며, 대상을 생략한 restore는 실행하지 않습니다. exact id 또는 보존 snapshot 파일 경로를 직접 지정할 수도 있고, 부분 이름이 여러 저장본과 일치하면 선택을 요구합니다. restore report에는 requested target, resolved id/path, source SHA256과 pinned source 경로를 함께 표시합니다.
+목록은 session/panel 수와 무관하게 최신순이지만, 최신본을 자동 복구 대상으로 선택하지는 않습니다. 대상을 생략한 restore는 실행하지 않습니다. exact id 또는 보존 snapshot 파일 경로를 직접 지정할 수도 있고, 부분 이름이 여러 저장본과 일치하면 선택을 요구합니다. 예전 `autosave` exact ID도 실제로 남아 있는 alias 파일만 가리키며 최신 자동본으로 추정 치환하지 않습니다. restore report에는 requested target, resolved id/path, source SHA256과 pinned source 경로를 함께 표시합니다.
 
 선택한 원본 bytes는 content hash별 `restore-sources`에 보존합니다. 이후 autosave alias 교체나 archive prune이 실행 원본을 바꾸지 못하게 합니다. 이 pin은 작업공간 배치와 session 경로의 보존이지, JSONL 대화 내용을 저장 당시 시점으로 롤백하는 기능이 아닙니다.
 
@@ -73,7 +79,7 @@ autosave archive cleanup은 매 저장마다 무작정 돌리는 사용자가 �
 
 ## Layout Fidelity Rule
 
-Ghostty AppleScript가 split tree, pane 비율, tty를 안정적으로 노출하지 않으면 exact layout 복원을 약속하지 않습니다. 탭 순서와 패널 수, session/cwd/panel label을 우선 복원하고, split 방향·비율은 순차 split 같은 근사 복원으로 표시합니다. `--dry-run`은 실제 생성 없이 복구 계획과 차단 이유를 사용자에게 먼저 보여주는 안전장치입니다. registry의 idle/동시 갱신과 exact host binding 개선은 별도 과제이며, preflight가 기존 저장본의 누락 identity를 자동 복원해 주지는 않습니다.
+Ghostty AppleScript가 split tree, pane 비율, tty를 안정적으로 노출하지 않으면 exact layout 복원을 약속하지 않습니다. 탭 순서와 패널 수, session/cwd/panel label을 우선 복원하고, split 방향·비율은 순차 split 같은 근사 복원으로 표시합니다. `--dry-run`은 실제 생성 없이 복구 계획과 차단 이유를 사용자에게 먼저 보여주는 안전장치입니다. 새 exact registry도 기존 저장본의 누락 identity를 자동 복원하지는 않습니다. 등록·저장 검증은 임시 HOME/세션과 fake host를 사용하며, 실제 nonce 제목 반영·권한과 기존 패널의 reload 전환은 승인된 runtime 검증에서 별도로 확인해야 합니다.
 
 ## Failure Mode
 
