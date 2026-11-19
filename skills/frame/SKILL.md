@@ -463,7 +463,7 @@ TFT Studio finish invariant:
 
 `미확인 사실 / 미해결 선택 / 영향받는 slice / 다음 행동`을 보여준다. task 개수만 보고하거나 미결정을 구현 중 알아서 정할 항목으로 숨기지 않는다. Frame 저장은 구현·외부 실행·새 worktree의 권한을 부여하지 않는다.
 
-사용자의 다음 단계 선택까지 transcript에 남긴 뒤 `frame_studio action=finish`를 호출한다. `fork해서 시작`을 선택하면 `worktree_fork` tool이나 사용자 slash `/wt fork`를 호출하지 말고 `frame_worktree_fork` tool을 호출한다. 이 도구는 `/frame` command shim이 저장한 command context로 source panel 보존용 composed workflow runner를 실행하고 placement를 물은 뒤, forked worktree exact session을 새 작업 panel에서 활성화한다. target READY가 확인된 뒤 승격된 `.pi/frame.json`·task board를 읽고 첫 ready implementation slice를 시작하는 follow-up까지 이어져야 성공이다. tool이 `BLOCKED`를 반환하면 현재 세션에서 절대경로로 이어가거나 current-panel switch로 fallback하지 말고 사용자에게 이유를 보고한다. planning frame은 worktree 생성 시 `.pi/frame.json`으로 자동 승격되어야 하며, 사용자는 승격 절차를 따로 의식하지 않는다.
+사용자의 다음 단계 선택까지 transcript에 남긴 뒤 `frame_studio action=finish`를 호출한다. `fork해서 시작`을 선택하면 `worktree_fork` tool이나 사용자 slash `/wt fork`를 호출하지 말고 `frame_worktree_fork` tool을 호출한다. 이 도구는 `/frame` command shim이 저장한 command context로 composed workflow runner를 실행하고 공통 선택기로 `현재 패널 | 새 탭 | 오른쪽 패널`을 물은 뒤, forked worktree exact session을 고른 위치에서 활성화한다. 새 탭·오른쪽은 target READY가 확인된 뒤, 현재 패널은 이 응답이 끝나 현재 panel이 전환된 뒤 승격된 `.pi/frame.json`·task board를 읽고 첫 ready implementation slice를 시작하는 follow-up까지 이어져야 성공이다. 현재 패널을 고른 결과면 이번 턴에서 구현을 시작하지 말고 전환 예정만 짧게 알린 뒤 끝낸다. tool이 `BLOCKED`를 반환하면 현재 세션에서 절대경로로 이어가거나 선택하지 않은 위치로 fallback하지 말고 사용자에게 이유를 보고한다. planning frame은 worktree 생성 시 `.pi/frame.json`으로 자동 승격되어야 하며, 사용자는 승격 절차를 따로 의식하지 않는다.
 
 ---
 
