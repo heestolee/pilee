@@ -18,7 +18,6 @@ applies_to:
   - extensions/frame-studio
   - extensions/archive-to-html
   - extensions/web-access
-  - extensions/archive-to-html/verify-report-live.ts
 source:
   - pilee-history:2026-05-06#71
   - pilee-history:2026-05-07#89
