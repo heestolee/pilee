@@ -16,6 +16,7 @@ import { openArchiveSessionHere, openSessionInGhosttyTab, resolveSessionHeaderCw
 import { searchSessionCandidates, type ConversationSearchResponse, type ConversationSearchResult, type ConversationSessionCandidate } from "./session-search.ts";
 
 const ARCHIVE_DIR = path.join(os.homedir(), "Documents", "agent-history", "분류 전");
+const CAPTURE_REPORTS_DIR = path.join(os.homedir(), "Documents", "agent-history", "capture-reports");
 const FRAME_TRANSCRIPTS_DIR = path.join(os.homedir(), ".pi", "agent", "frame-studio", "transcripts");
 const SHOW_REPORT_SESSION_EXPORT_DIR = path.join(SESSION_EXPORT_DIR, "show-report");
 const NORMALIZED_CONDUCTOR_SESSION_DIR = path.join(SHOW_REPORT_SESSION_EXPORT_DIR, "normalized");
@@ -1094,7 +1095,7 @@ interface ReportEntry {
 	time: string;
 	ticket: string;
 	workspace: string;
-	source: "workspace" | "archive";
+	source: "workspace" | "archive" | "capture-report";
 	mtime: number;
 }
 
@@ -1376,7 +1377,26 @@ function collectReports(cwd: string): ReportEntry[] {
 		} catch {}
 	}
 
+	results.push(...collectCaptureReports());
 	return results.sort((a, b) => b.mtime - a.mtime).slice(0, 180);
+}
+
+// make-capture 비교 보고서는 보고서마다 index.html·assets/·report.json 폴더로 보관된다.
+function collectCaptureReports(): ReportEntry[] {
+	if (!fs.existsSync(CAPTURE_REPORTS_DIR)) return [];
+	const results: ReportEntry[] = [];
+	for (const dir of fs.readdirSync(CAPTURE_REPORTS_DIR)) {
+		const indexPath = path.join(CAPTURE_REPORTS_DIR, dir, "index.html");
+		if (!fs.existsSync(indexPath)) continue;
+		let meta: { title?: string; workspace?: string; ticket?: string; updatedAt?: string } = {};
+		try {
+			meta = JSON.parse(fs.readFileSync(path.join(CAPTURE_REPORTS_DIR, dir, "report.json"), "utf-8"));
+		} catch {}
+		const updated = meta.updatedAt ? Date.parse(meta.updatedAt) : Number.NaN;
+		const mtime = Number.isFinite(updated) ? updated : fs.statSync(indexPath).mtimeMs;
+		results.push({ path: indexPath, name: meta.title || dir, time: formatMtime(mtime), ticket: meta.ticket ?? "", workspace: meta.workspace ?? "", source: "capture-report", mtime });
+	}
+	return results;
 }
 
 function extractWebSearchQueries(html: string): string[] {
@@ -2835,6 +2855,7 @@ function artifactBrowserStyle(): string {
 }
 
 function reportSourceLabel(source: ReportEntry["source"]): string {
+	if (source === "capture-report") return "비교 보고서";
 	return source === "workspace" ? "workspace" : "archive";
 }
 
