@@ -34,8 +34,8 @@ test("slash /wt new stays direct while /wt fork branches activation only after c
 	assert.doesNotMatch(commandNew, /chooseNewPanelPlacement|buildNewPanelActivationContract|activateWorkspaceInNewPanel/);
 	assert.doesNotMatch(commandNew, /cleanupCreatedWorktree|fullContextFailure/);
 
-	assert.match(commandFork, /chooseCommandForkOpenTarget/);
-	assert.match(commandFork, /switchSessionToWorktree/);
+	assert.match(commandFork, /chooseWorkspaceOpenTarget/);
+	assert.match(commandFork, /activateCreatedWorktreeInCurrentPanel/);
 	assert.match(commandFork, /activateWorkspaceInNewPanel/);
 	assert.match(commandFork, /defaultCurrentPanelContinuation/);
 	assert.match(commandFork, /fullContext: useFullContext/);
@@ -47,13 +47,24 @@ test("slash /wt new stays direct while /wt fork branches activation only after c
 	assert.doesNotMatch(workflowFork, /switchSessionToWorktree/);
 });
 
-test("worktree_create and worktree_fork tools activate a sibling panel while switch stays current-panel", () => {
+test("worktree_create and worktree_fork tools offer the shared targets and switch the current panel only after the turn", () => {
+	const resolver = between("async function resolveToolOpenTarget", "function currentPanelToolResult");
+	assert.match(resolver, /chooseWorkspaceOpenTarget\(ctx, input\.title, null\)/);
+	assert.match(resolver, /openTarget === "current" && !hasRequestedSessionSwitchApi\(ctx\)/);
+	assert.match(resolver, /authorizationConsumerId: workspaceAuthorizationConsumerId\(input\.toolName, input\.toolCallId\)/);
+	assert.match(resolver, /currentPanelActivationContract\(ctx, contractInput\)/);
+	assert.match(resolver, /buildNewPanelActivationContract\(\{ \.\.\.contractInput, ctx, placement: openTarget \}\)/);
+	const toolResult = between("function currentPanelToolResult", "function getProfiledWorktreeRepos");
+	assert.match(toolResult, /새 panel로 대신 열지 않았습니다/);
+	assert.match(toolResult, /이 응답이 끝나면 현재 패널을/);
 	for (const block of [createTool, forkTool]) {
-		assert.match(block, /buildNewPanelActivationContract/);
-		assert.match(block, /authorizationConsumerId: workspaceAuthorizationConsumerId/);
+		assert.match(block, /resolveToolOpenTarget\(ctx, \{/);
+		assert.match(block, /activateCreatedWorktreeInCurrentPanel\(ctx, \{\s*timing: "after-turn"/);
 		assert.match(block, /activateWorkspaceInNewPanel/);
 		assert.match(block, /activationTarget: "new-panel"/);
-		assert.doesNotMatch(block, /trySwitchSessionToWorktree/);
+		assert.match(block, /현재 패널 \/ 새 탭 \/ 오른쪽 패널/);
+		assert.doesNotMatch(block, /trySwitchSessionToWorktree|timing: "now"|must ask for a new panel placement/);
+		assert.ok(block.indexOf('if (openTarget === "current")') < block.indexOf("activateWorkspaceInNewPanel("));
 	}
 	assert.match(switchTool, /currentPanelSwitchContract\(/);
 	assert.match(switchTool, /workspaceAuthorizationConsumerId\("worktree_switch", toolCallId\)/);
@@ -91,10 +102,9 @@ test("creation failure cleans only a confirmed-closed target and preserves child
 		assert.ok(block.indexOf("safeToDeleteTarget") < block.lastIndexOf("cleanupCreatedSessionFile"));
 		assert.doesNotMatch(block, /switchSessionToWorktree/);
 	}
-	for (const block of [commandNew, commandFork]) {
-		assert.match(block, /switchSessionToWorktree/);
-		assert.doesNotMatch(block, /safeToDeleteTarget|cleanupCreatedWorktree/);
-	}
+	assert.match(commandNew, /switchSessionToWorktree/);
+	assert.match(commandFork, /activateCreatedWorktreeInCurrentPanel/);
+	for (const block of [commandNew, commandFork]) assert.doesNotMatch(block, /safeToDeleteTarget|cleanupCreatedWorktree/);
 });
 
 test("clean and full sessions preserve source lineage without mutating the source file", () => {

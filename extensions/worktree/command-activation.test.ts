@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { buildCurrentPanelNewContinuation } from "./continuation.ts";
-import { COMMAND_FORK_OPEN_TARGET_OPTIONS, commandForkOpenTargetForLabel } from "./fork-open-target.ts";
+import { WORKSPACE_OPEN_TARGET_OPTIONS, chooseWorkspaceOpenTarget, workspaceOpenTargetForLabel } from "./open-target.ts";
 
 const worktreeDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = join(worktreeDir, "..", "..");
@@ -32,18 +32,31 @@ test("slash /wt new keeps the original current-panel creation path", () => {
 	assert.ok(commandNew.indexOf("await createNamedWorktree(") < commandNew.indexOf("switchSessionToWorktree"));
 });
 
-test("slash /wt fork offers exactly current, tab, and right targets after shared creation", () => {
-	assert.deepEqual(COMMAND_FORK_OPEN_TARGET_OPTIONS, [
+test("every worktree entry point shares exactly current, tab, and right targets", async () => {
+	assert.deepEqual(WORKSPACE_OPEN_TARGET_OPTIONS, [
 		{ target: "current", label: "현재 패널" },
 		{ target: "tab", label: "새 탭" },
 		{ target: "right", label: "오른쪽 패널" },
 	]);
-	assert.equal(commandForkOpenTargetForLabel("현재 패널"), "current");
-	assert.equal(commandForkOpenTargetForLabel("새 탭"), "tab");
-	assert.equal(commandForkOpenTargetForLabel("오른쪽 패널"), "right");
-	assert.match(commandFork, /chooseCommandForkOpenTarget/);
+	assert.equal(workspaceOpenTargetForLabel("현재 패널"), "current");
+	assert.equal(workspaceOpenTargetForLabel("새 탭"), "tab");
+	assert.equal(workspaceOpenTargetForLabel("오른쪽 패널"), "right");
+	assert.equal(workspaceOpenTargetForLabel(undefined), null);
+	const seen: string[][] = [];
+	const ctx = { hasUI: true, ui: { async select(_title: string, options: string[]) { seen.push(options); return "오른쪽 패널"; } } };
+	assert.equal(await chooseWorkspaceOpenTarget(ctx, "어디에서 계속할까요?", null), "right");
+	assert.deepEqual(seen[0], ["현재 패널", "새 탭", "오른쪽 패널"]);
+	assert.equal(await chooseWorkspaceOpenTarget({ ...ctx, hasUI: false }, "t", "current"), "current");
+	assert.equal(await chooseWorkspaceOpenTarget({ ...ctx, hasUI: false }, "t", null), null);
+	for (const block of [commandFork, workflowFork]) assert.match(block, /chooseWorkspaceOpenTarget\(ctx, /);
+	assert.match(source, /async function resolveToolOpenTarget[\s\S]*?chooseWorkspaceOpenTarget\(ctx, input\.title, null\)/);
+	assert.match(prReviewSource, /chooseWorkspaceOpenTarget\(ctx, `PR #/);
+	assert.doesNotMatch(source + prReviewSource, /chooseNewPanelPlacement|placementTitle|PR_REVIEW_OPEN_TARGET_OPTIONS|COMMAND_FORK_OPEN_TARGET_OPTIONS/);
+});
+
+test("slash /wt fork switches immediately only for the current panel after shared creation", () => {
 	assert.match(commandFork, /openTarget === "current"/);
-	assert.match(commandFork, /switchSessionToWorktree/);
+	assert.match(commandFork, /activateCreatedWorktreeInCurrentPanel\(ctx, \{\s*timing: "now"/);
 	assert.match(commandFork, /activateWorkspaceInNewPanel/);
 	assert.match(commandFork, /timeoutPolicy: "preserve-pending"/);
 	assert.match(commandFork, /activation\.status === "pending"/);
@@ -55,10 +68,12 @@ test("slash /wt fork offers exactly current, tab, and right targets after shared
 test("slash /wt new and /wt fork resume work only after switching sessions", () => {
 	assert.match(commandNew, /currentPanelNewContinuation\(ctx/);
 	assert.match(commandNew, /afterSwitchFollowUp: continuation/);
-	assert.match(commandFork, /defaultCurrentPanelContinuation\("fork"/);
-	assert.match(commandFork, /afterSwitchFollowUp: continuation/);
+	assert.match(commandFork, /followUp: defaultCurrentPanelContinuation\("fork"/);
 	assert.ok(commandNew.indexOf("switchSessionToWorktree") < commandNew.lastIndexOf("afterSwitchFollowUp"));
-	assert.ok(commandFork.indexOf("switchSessionToWorktree") < commandFork.indexOf('return { status: "switched"'));
+	assert.ok(commandFork.indexOf("activateCreatedWorktreeInCurrentPanel") < commandFork.indexOf('return { status: "switched"'));
+	const shared = between("async function activateCreatedWorktreeInCurrentPanel", "async function resolveToolOpenTarget");
+	assert.match(shared, /afterSwitchFollowUp: input\.followUp/);
+	assert.match(shared, /input\.timing === "now"[\s\S]*switchSessionToWorktree[\s\S]*requestSessionSwitchToWorktree/);
 	assert.match(source, /recentUserPrompts\(source\.file, 3, 2_000\)/);
 	assert.match(source, /buildCurrentPanelNewContinuation\(prompts, input\)/);
 });
@@ -85,12 +100,16 @@ test("slash commands preserve context fallback instead of deleting a successfull
 	assert.match(source, /parentSession,/);
 });
 
-test("Frame and TFT command-context fork keep the separate new-panel workflow", () => {
-	assert.match(workflowFork, /buildNewPanelActivationContract/);
+test("Frame and TFT fork run inside an agent turn, so the current panel switches only after the turn", () => {
+	assert.match(workflowFork, /buildNewPanelActivationContract\(\{ \.\.\.contractInput, ctx, placement: openTarget \}\)/);
+	assert.match(workflowFork, /currentPanelActivationContract\(ctx, contractInput\)/);
+	assert.match(workflowFork, /openTarget === "current" && !hasRequestedSessionSwitchApi\(ctx\)/);
+	assert.match(workflowFork, /timing: "after-turn"/);
+	assert.match(workflowFork, /options\.afterSwitchFollowUp \?\? defaultCurrentPanelContinuation/);
 	assert.match(workflowFork, /activateWorkspaceInNewPanel/);
 	assert.match(workflowFork, /source Pi session provenance가 없어/);
 	assert.match(workflowFork, /fullContextFailure/);
-	assert.doesNotMatch(workflowFork, /switchSessionToWorktree/);
+	assert.doesNotMatch(workflowFork, /switchSessionToWorktree|timing: "now"/);
 	assert.match(source, /return handleWorkflowFork\(pi, args, ctx, options\)/);
 });
 

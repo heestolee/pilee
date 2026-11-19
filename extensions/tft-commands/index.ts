@@ -202,7 +202,9 @@ function registerFrameWorktreeForkTool(pi: ExtensionAPI): void {
 			}
 
 			return {
-				content: [{ type: "text", text: `✓ /frame fork가 command context에서 완료됐습니다. ${result.name} (${result.branch}) exact session을 새 작업 panel에서 활성화했고, source panel을 보존한 채 구현 follow-up을 시작했습니다.` }],
+				content: [{ type: "text", text: result.status === "switched"
+					? `✓ /frame fork가 command context에서 완료됐습니다. ${result.name} (${result.branch}) exact session으로 이 응답이 끝난 뒤 현재 패널을 전환하고, 전환된 세션에서 구현 follow-up을 시작합니다. 이번 턴에서는 구현을 시작하지 말고 전환 예정만 짧게 알린 뒤 끝냅니다.`
+					: `✓ /frame fork가 command context에서 완료됐습니다. ${result.name} (${result.branch}) exact session을 새 작업 panel에서 활성화했고, source panel을 보존한 채 구현 follow-up을 시작했습니다.` }],
 				details: { action: FRAME_FORK_TOOL_NAME, identityKey: record.key, result, autoStarted: true },
 			};
 		},

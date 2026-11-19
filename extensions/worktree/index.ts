@@ -37,11 +37,7 @@ import {
 } from "./bootstrap-domains.ts";
 import { buildCurrentPanelNewContinuation } from "./continuation.ts";
 import { createDashboardStatusLoader } from "./dashboard-status-loader.ts";
-import {
-	COMMAND_FORK_OPEN_TARGET_OPTIONS,
-	commandForkOpenTargetForLabel,
-	type CommandForkOpenTarget,
-} from "./fork-open-target.ts";
+import { chooseWorkspaceOpenTarget, type WorkspaceOpenTarget } from "./open-target.ts";
 import { promotePlanningWorkArtifactsToWorktree, type WorkArtifactPromotionResult } from "./frame-artifacts.ts";
 import {
 	activateWorkspaceInNewPanel,
@@ -53,7 +49,10 @@ import {
 import {
 	createWorkspaceActivationContract,
 	workspaceAuthorizationConsumerId,
+	type WorkspaceAction,
 	type WorkspaceActivationContract,
+	type WorkspaceAuthorizationSource,
+	type WorkspaceContextMode,
 	type WorkspaceContinuation,
 } from "../utils/workspace-activation-contract.ts";
 
@@ -275,6 +274,11 @@ interface WorktreeMeta {
 		panelLabel: string;
 		forkId: string;
 		readyAt: string;
+	} | {
+		contract: WorkspaceActivationContract;
+		status: "switched" | "switch-requested";
+		sessionFile: string;
+		recordedAt: string;
 	};
 }
 
@@ -960,27 +964,43 @@ function preservedActivationTargetSummary(
 	].filter(Boolean).join(" · ");
 }
 
+function currentPanelActivationContract(
+	ctx: ExtensionContext | ExtensionCommandContext,
+	input: {
+		id: string;
+		workspaceAction: WorkspaceAction;
+		contextMode: WorkspaceContextMode;
+		authorizationSource: WorkspaceAuthorizationSource;
+		authorizationSourceId: string;
+		authorizationConsumerId?: string;
+	},
+): WorkspaceActivationContract {
+	return createWorkspaceActivationContract({
+		id: input.id,
+		workspaceAction: input.workspaceAction,
+		activationTarget: "current-panel",
+		contextMode: input.contextMode,
+		authorization: resolveWorkspaceActivationAuthorization({
+			...input,
+			ctx,
+			activationTarget: "current-panel",
+		}),
+	});
+}
+
 function currentPanelSwitchContract(
 	ctx: ExtensionContext | ExtensionCommandContext,
 	source: "command" | "tool",
 	sourceId: string,
 	authorizationConsumerId?: string,
 ): WorkspaceActivationContract {
-	const id = worktreeActivationId("switch");
-	return createWorkspaceActivationContract({
-		id,
+	return currentPanelActivationContract(ctx, {
+		id: worktreeActivationId("switch"),
 		workspaceAction: "use-existing-worktree",
-		activationTarget: "current-panel",
 		contextMode: "full",
-		authorization: resolveWorkspaceActivationAuthorization({
-			id,
-			ctx,
-			workspaceAction: "use-existing-worktree",
-			activationTarget: "current-panel",
-			authorizationSource: source,
-			authorizationSourceId: sourceId,
-			authorizationConsumerId,
-		}),
+		authorizationSource: source,
+		authorizationSourceId: sourceId,
+		authorizationConsumerId,
 	});
 }
 
@@ -1246,6 +1266,89 @@ async function trySwitchSessionToWorktree(
 		const reason = error instanceof Error ? error.message : String(error);
 		return { switched: false, reason };
 	}
+}
+
+function recordCurrentPanelActivation(
+	worktreePath: string,
+	contract: WorkspaceActivationContract,
+	sessionFile: string,
+	status: "switched" | "switch-requested",
+): void {
+	const meta = readMeta(worktreePath);
+	if (!meta) return;
+	writeMeta(worktreePath, { ...meta, activation: { contract, status, sessionFile, recordedAt: new Date().toISOString() } });
+}
+
+// slash 명령은 바로 전환하고, 에이전트 턴 안(tool·Frame/TFT fork)은 응답이 끝난 뒤 전환한다.
+async function activateCreatedWorktreeInCurrentPanel(
+	ctx: ExtensionContext,
+	input: {
+		timing: "now" | "after-turn";
+		sessionFile: string;
+		name: string;
+		worktreePath: string;
+		contextLabel: string;
+		contract?: WorkspaceActivationContract;
+		followUp?: WorktreeAfterSwitchFollowUp;
+	},
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+	const options = { afterSwitchFollowUp: input.followUp, activationContract: input.contract };
+	try {
+		if (input.timing === "now") {
+			await switchSessionToWorktree(ctx, input.sessionFile, input.name, input.worktreePath, input.contextLabel, options);
+		} else {
+			await requestSessionSwitchToWorktree(ctx, input.sessionFile, input.name, input.worktreePath, input.contextLabel, options);
+		}
+	} catch (error) {
+		return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+	}
+	if (input.contract) {
+		recordCurrentPanelActivation(input.worktreePath, input.contract, input.sessionFile, input.timing === "now" ? "switched" : "switch-requested");
+	}
+	return { ok: true };
+}
+
+// worktree_create·worktree_fork가 함께 쓰는 열기 위치 결정. 현재 패널은 이 응답이 끝난 뒤 전환한다.
+async function resolveToolOpenTarget(
+	ctx: ExtensionContext,
+	input: { toolName: "worktree_create" | "worktree_fork"; toolCallId: string; title: string; contextMode: WorkspaceContextMode },
+): Promise<{ openTarget: WorkspaceOpenTarget; contract: WorkspaceActivationContract } | { blockedText: string; reason: string }> {
+	const openTarget = await chooseWorkspaceOpenTarget(ctx, input.title, null);
+	if (!openTarget) {
+		return { blockedText: `BLOCKED: 열 위치를 선택하지 않아 ${input.toolName}가 worktree를 만들지 않았습니다.`, reason: "open target not selected" };
+	}
+	if (openTarget === "current" && !hasRequestedSessionSwitchApi(ctx)) {
+		return { blockedText: noToolSwitchBlockedText(input.toolName, "응답이 끝난 뒤 현재 패널을 전환할 API가 없습니다."), reason: "current-panel switch API missing" };
+	}
+	const contractInput = {
+		id: worktreeActivationId(input.toolName === "worktree_create" ? "tool-create" : "tool-fork"),
+		workspaceAction: "create-worktree" as const,
+		contextMode: input.contextMode,
+		authorizationSource: "tool" as const,
+		authorizationSourceId: input.toolName,
+		authorizationConsumerId: workspaceAuthorizationConsumerId(input.toolName, input.toolCallId),
+	};
+	const contract = openTarget === "current"
+		? currentPanelActivationContract(ctx, contractInput)
+		: await buildNewPanelActivationContract({ ...contractInput, ctx, placement: openTarget });
+	return { openTarget, contract };
+}
+
+function currentPanelToolResult(
+	toolName: "worktree_create" | "worktree_fork",
+	switched: { ok: true } | { ok: false; reason: string },
+	input: { summary: string; path: string; sessionFile: string; details: Record<string, unknown> },
+) {
+	if (!switched.ok) {
+		return {
+			content: [{ type: "text" as const, text: `BLOCKED: ${toolName} 현재 패널 전환 예약 실패 — ${switched.reason}. 새 panel로 대신 열지 않았습니다. worktree preserved: ${input.path} · session preserved: ${input.sessionFile}` }],
+			details: { ...input.details, blocked: true, activationTarget: "current-panel", targetPreserved: true },
+		};
+	}
+	return {
+		content: [{ type: "text" as const, text: `${input.summary} 이 응답이 끝나면 현재 패널을 이 worktree session으로 전환하고, 전환된 세션이 작업을 이어갑니다. 이번 턴에서는 이 worktree 작업을 시작하지 말고 전환 예정만 짧게 알린 뒤 끝냅니다.` }],
+		details: { ...input.details, activationTarget: "current-panel", activationMode: "request-switch", sessionFile: input.sessionFile },
+	};
 }
 
 function getProfiledWorktreeRepos(cwd?: string): WorktreeRepoProfile[] {
@@ -2826,18 +2929,6 @@ async function showDashboard(pi: ExtensionAPI, ctx: ExtensionCommandContext): Pr
 	);
 }
 
-async function chooseCommandForkOpenTarget(
-	ctx: ExtensionCommandContext,
-	name: string,
-): Promise<CommandForkOpenTarget | null> {
-	if (!ctx.hasUI) return "current";
-	const selected = await ctx.ui.select(
-		`${name} fork를 어디에서 계속할까요?`,
-		COMMAND_FORK_OPEN_TARGET_OPTIONS.map((option) => option.label),
-	);
-	return commandForkOpenTargetForLabel(selected);
-}
-
 async function handleCommandFork(pi: ExtensionAPI, args: string, ctx: ExtensionCommandContext): Promise<WorktreeForkCommandResult> {
 	const parsed = parseNewArgs(args);
 	const repoRoot = await resolveRepoRoot(pi, ctx, parsed.repo);
@@ -2862,7 +2953,7 @@ async function handleCommandFork(pi: ExtensionAPI, args: string, ctx: ExtensionC
 	if (parsed.contextFile && contextContent === null) {
 		return { status: "blocked", reason: `context file not found: ${parsed.contextFile}` };
 	}
-	const openTarget = await chooseCommandForkOpenTarget(ctx, parsed.name ?? "새 워크트리");
+	const openTarget = await chooseWorkspaceOpenTarget(ctx, `${parsed.name ?? "새 워크트리"} fork를 어디에서 계속할까요?`, "current");
 	if (!openTarget) {
 		const reason = "fork를 계속할 위치를 선택하지 않았습니다.";
 		ctx.ui.notify(reason, "info");
@@ -2913,22 +3004,22 @@ async function handleCommandFork(pi: ExtensionAPI, args: string, ctx: ExtensionC
 	warnIfFullContextFallback(ctx, useFullContext, session);
 	const contextLabel = `${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}`;
 	if (openTarget === "current") {
-		const continuation = defaultCurrentPanelContinuation("fork", { name, branch: branchName, ticket: parsed.ticket, note: parsed.note });
-		try {
-			await switchSessionToWorktree(ctx, session.sessionFile, name, worktreePath, contextLabel, {
-				afterSwitchFollowUp: continuation,
-			});
-			return { status: "switched", name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion };
-		} catch (error) {
-			const reason = error instanceof Error ? error.message : String(error);
-			notifySwitchFallback(ctx, reason, worktreePath);
-			return { status: "failed", reason, name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion };
-		}
+		const switched = await activateCreatedWorktreeInCurrentPanel(ctx, {
+			timing: "now",
+			sessionFile: session.sessionFile,
+			name,
+			worktreePath,
+			contextLabel,
+			followUp: defaultCurrentPanelContinuation("fork", { name, branch: branchName, ticket: parsed.ticket, note: parsed.note }),
+		});
+		if (switched.ok) return { status: "switched", name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion };
+		notifySwitchFallback(ctx, switched.reason, worktreePath);
+		return { status: "failed", reason: switched.reason, name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion };
 	}
 
 	let contract: WorkspaceActivationContract;
 	try {
-		const built = await buildNewPanelActivationContract({
+		contract = await buildNewPanelActivationContract({
 			id: worktreeActivationId("wt-command-fork"),
 			ctx,
 			workspaceAction: "create-worktree",
@@ -2938,8 +3029,6 @@ async function handleCommandFork(pi: ExtensionAPI, args: string, ctx: ExtensionC
 			continuation: defaultWorktreeContinuation("fork", { name, branch: branchName, ticket: parsed.ticket, note: parsed.note }),
 			placement: openTarget,
 		});
-		if (!built) throw new Error("new panel activation contract를 만들지 못했습니다.");
-		contract = built;
 	} catch (error) {
 		const reason = error instanceof Error ? error.message : String(error);
 		ctx.ui.notify(`BLOCKED: /wt fork ${openTarget} activation 준비 실패 — ${reason}. worktree/session preserved: ${worktreePath}`, "error");
@@ -2995,21 +3084,28 @@ async function handleWorkflowFork(pi: ExtensionAPI, args: string, ctx: Extension
 	if (parsed.contextFile && contextContent === null) return { status: "blocked", reason: `context file not found: ${parsed.contextFile}` };
 	const useFullContext = parsed.fullContext || !parsed.minimalContext;
 	const useMinimalContext = !useFullContext;
-	const contract = await buildNewPanelActivationContract({
-		id: worktreeActivationId("wt-fork"),
-		ctx,
-		workspaceAction: "create-worktree",
-		contextMode: useFullContext ? "full" : "clean",
-		authorizationSource: options.afterSwitchFollowUp ? "tui" : "command",
-		authorizationSourceId: options.afterSwitchFollowUp?.customType ?? "/wt fork",
-		authorizationConsumerId: options.authorizationConsumerId,
-		placementTitle: `${parsed.name ?? "새 워크트리"} fork를 어디에 열까요?`,
-	});
-	if (!contract) {
-		const reason = "새 panel 위치를 선택하지 않아 /wt fork가 worktree를 만들지 않았습니다.";
+	const openTarget = await chooseWorkspaceOpenTarget(ctx, `${parsed.name ?? "새 워크트리"} fork를 어디에서 계속할까요?`, null);
+	if (!openTarget) {
+		const reason = "열 위치를 선택하지 않아 /wt fork가 worktree를 만들지 않았습니다.";
 		ctx.ui.notify(`BLOCKED: ${reason}`, "warning");
 		return { status: "blocked", reason };
 	}
+	if (openTarget === "current" && !hasRequestedSessionSwitchApi(ctx)) {
+		const reason = "응답이 끝난 뒤 현재 패널을 전환할 API가 없어 worktree를 만들지 않았습니다.";
+		ctx.ui.notify(`BLOCKED: ${reason}`, "error");
+		return { status: "blocked", reason };
+	}
+	const contractInput = {
+		id: worktreeActivationId("wt-fork"),
+		workspaceAction: "create-worktree" as const,
+		contextMode: useFullContext ? "full" as const : "clean" as const,
+		authorizationSource: options.afterSwitchFollowUp ? "tui" as const : "command" as const,
+		authorizationSourceId: options.afterSwitchFollowUp?.customType ?? "/wt fork",
+		authorizationConsumerId: options.authorizationConsumerId,
+	};
+	const contract = openTarget === "current"
+		? currentPanelActivationContract(ctx, contractInput)
+		: await buildNewPanelActivationContract({ ...contractInput, ctx, placement: openTarget });
 
 	const { isNew: justRegistered } = autoRegister(repoRoot);
 	if (justRegistered) ctx.ui.notify(`Registered repo "${basename(repoRoot)}"`, "info");
@@ -3060,6 +3156,25 @@ async function handleWorkflowFork(pi: ExtensionAPI, args: string, ctx: Extension
 	const contextMode = selectContextMode(session, useFullContext, useMinimalContext);
 	recordWorktreeContextMeta(worktreePath, contextMode, session);
 	warnIfFullContextFallback(ctx, useFullContext, session);
+	if (openTarget === "current") {
+		const followUp = options.afterSwitchFollowUp ?? defaultCurrentPanelContinuation("fork", { name, branch: branchName, ticket: parsed.ticket, note: parsed.note });
+		const switched = await activateCreatedWorktreeInCurrentPanel(ctx, {
+			timing: "after-turn",
+			sessionFile: session.sessionFile,
+			name,
+			worktreePath,
+			contextLabel: `${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}`,
+			contract,
+			followUp: { ...followUp, details: { ...followUp.details, name, branch: branchName, path: worktreePath } },
+		});
+		if (!switched.ok) {
+			const reason = `${switched.reason}. worktree preserved: ${worktreePath} · session preserved: ${session.sessionFile}`;
+			ctx.ui.notify(`BLOCKED: /wt fork 현재 패널 전환 예약 실패 — ${reason}`, "error");
+			return { status: "failed", reason, name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion };
+		}
+		ctx.ui.notify(`✓ ${name} forked (${branchName}) → 응답이 끝나면 현재 패널에서 계속합니다${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}`, "info");
+		return { status: "switched", name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion };
+	}
 	const activation = await activateWorkspaceInNewPanel(pi, ctx, {
 		contract,
 		cwd: worktreePath,
@@ -3839,7 +3954,7 @@ export default function (pi: ExtensionAPI) {
 			`worktree_create may run from P0/P1/P2; treat the current panel conversation as the source unless the user explicitly asks to use the parent panel.`,
 			"If the request mentions hotfix/production/핫픽스, pass hotfix: true. Do not create a development-based hotfix branch.",
 			`Use worktree_create before editing files in configured protected repos (${configuredRepoLabel}) when a new worktree is actually needed. Do not manually run git worktree add.`,
-			"worktree_create must ask for a new panel placement, preserve the current panel, open the exact target session/cwd, and wait for READY before continuation. Panel open failure is BLOCKED and must never fall back to current-panel switchSession.",
+			"worktree_create asks the shared open target (현재 패널 / 새 탭 / 오른쪽 패널). 새 탭·오른쪽 패널 preserve the current panel, open the exact target session/cwd, and wait for READY before continuation. 현재 패널 switches this panel to the target session only after the current response ends; when the result says so, briefly tell the user and end the turn without starting the worktree work here. An activation failure is BLOCKED and never silently substitutes another target.",
 		],
 		parameters: Type.Object({
 			repo: Type.Optional(Type.String({ description: `Registered repo name (configured examples: ${configuredRepoLabel}). Auto-detected if omitted.` })),
@@ -3884,22 +3999,19 @@ export default function (pi: ExtensionAPI) {
 			const config = loadConfig(repoRoot);
 			const baseBranch = params.hotfix ? config.productionBranch : config.baseBranch;
 			const prefix = params.hotfix ? "hotfix" : config.branchPrefix;
-			const contract = await buildNewPanelActivationContract({
-				id: worktreeActivationId("tool-create"),
-				ctx,
-				workspaceAction: "create-worktree",
+			const target = await resolveToolOpenTarget(ctx, {
+				toolName: "worktree_create",
+				toolCallId,
+				title: `${params.name ?? "새 워크트리"} worktree를 어디에서 열까요?`,
 				contextMode: "clean",
-				authorizationSource: "tool",
-				authorizationSourceId: "worktree_create",
-				authorizationConsumerId: workspaceAuthorizationConsumerId("worktree_create", toolCallId),
-				placementTitle: `${params.name ?? "새 워크트리"} worktree를 어디에 열까요?`,
 			});
-			if (!contract) {
+			if ("blockedText" in target) {
 				return {
-					content: [{ type: "text", text: "BLOCKED: 새 panel 위치를 선택하지 않아 worktree_create가 worktree를 만들지 않았습니다." }],
-					details: { blocked: true, action: "worktree_create", reason: "new panel placement not selected", noWorktreeCreated: true },
+					content: [{ type: "text", text: target.blockedText }],
+					details: { blocked: true, action: "worktree_create", reason: target.reason, noWorktreeCreated: true },
 				};
 			}
+			const { openTarget, contract } = target;
 			autoRegister(repoRoot);
 			const { name, worktreePath, branchName } = await createNamedWorktree(pi, {
 				repoRoot, rootDir: config.rootDir, baseBranch, prefix, ticket: params.ticket,
@@ -3936,6 +4048,25 @@ export default function (pi: ExtensionAPI) {
 			const session = createWorktreeSession(ctx, worktreePath, { sessionName: `${name} (${branchName})` });
 			recordWorktreeContextMeta(worktreePath, "clean", session);
 			const frameText = framePromotionSummary(framePromotion);
+			if (openTarget === "current") {
+				const followUp = currentPanelNewContinuation(ctx, { name, branch: branchName, ticket: params.ticket, note: params.note });
+				contract.continuation = workspaceContinuationFromFollowUp(followUp, contract.continuation!);
+				const switched = await activateCreatedWorktreeInCurrentPanel(ctx, {
+					timing: "after-turn",
+					sessionFile: session.sessionFile,
+					name,
+					worktreePath,
+					contextLabel: framePromotionContextLabel(framePromotion),
+					contract,
+					followUp,
+				});
+				return currentPanelToolResult("worktree_create", switched, {
+					summary: `✓ Worktree "${name}" created (${branchName}) at ${worktreePath}.${frameText}`,
+					path: worktreePath,
+					sessionFile: session.sessionFile,
+					details: { name, branch: branchName, path: worktreePath, contract, framePromotion },
+				});
+			}
 			const activation = await activateWorkspaceInNewPanel(pi, ctx, {
 				contract,
 				cwd: worktreePath,
@@ -4059,7 +4190,7 @@ export default function (pi: ExtensionAPI) {
 			`worktree_fork may run from P0/P1/P2; treat the current panel conversation as the source unless the user explicitly asks to use the parent panel.`,
 			"If the request mentions hotfix/production/핫픽스, pass hotfix: true. Do not create a development-based hotfix branch.",
 			"The optional context parameter is an additional transfer note, not a replacement for the full transcript unless minimalContext is true.",
-			"worktree_fork must ask for a new panel placement, preserve the current panel, open the exact full-lineage target session/cwd, and wait for READY before continuation. Never fall back to current-panel switchSession.",
+			"worktree_fork asks the shared open target (현재 패널 / 새 탭 / 오른쪽 패널). 새 탭·오른쪽 패널 preserve the current panel, open the exact full-lineage target session/cwd, and wait for READY before continuation. 현재 패널 switches this panel to the full-lineage target session only after the current response ends; when the result says so, briefly tell the user and end the turn without starting the worktree work here. An activation failure is BLOCKED and never silently substitutes another target.",
 		],
 		parameters: Type.Object({
 			context: Type.Optional(Type.String({ description: "Optional compact markdown note to attach in addition to the transcript, or the summary handoff when minimalContext is true." })),
@@ -4107,22 +4238,19 @@ export default function (pi: ExtensionAPI) {
 			const prefix = params.hotfix ? "hotfix" : config.branchPrefix;
 			const useFullContext = params.minimalContext ? false : params.fullContext === false ? false : true;
 			const useMinimalContext = !useFullContext;
-			const contract = await buildNewPanelActivationContract({
-				id: worktreeActivationId("tool-fork"),
-				ctx,
-				workspaceAction: "create-worktree",
+			const target = await resolveToolOpenTarget(ctx, {
+				toolName: "worktree_fork",
+				toolCallId,
+				title: `${params.name ?? "새 워크트리"} fork를 어디에서 계속할까요?`,
 				contextMode: useFullContext ? "full" : "clean",
-				authorizationSource: "tool",
-				authorizationSourceId: "worktree_fork",
-				authorizationConsumerId: workspaceAuthorizationConsumerId("worktree_fork", toolCallId),
-				placementTitle: `${params.name ?? "새 워크트리"} fork를 어디에 열까요?`,
 			});
-			if (!contract) {
+			if ("blockedText" in target) {
 				return {
-					content: [{ type: "text", text: "BLOCKED: 새 panel 위치를 선택하지 않아 worktree_fork가 worktree를 만들지 않았습니다." }],
-					details: { blocked: true, action: "worktree_fork", reason: "new panel placement not selected", noWorktreeCreated: true },
+					content: [{ type: "text", text: target.blockedText }],
+					details: { blocked: true, action: "worktree_fork", reason: target.reason, noWorktreeCreated: true },
 				};
 			}
+			const { openTarget, contract } = target;
 			autoRegister(repoRoot);
 			const { name, worktreePath, branchName } = await createNamedWorktree(pi, {
 				repoRoot, rootDir: config.rootDir, baseBranch, prefix, ticket: params.ticket,
@@ -4181,6 +4309,25 @@ export default function (pi: ExtensionAPI) {
 
 			const frameText = framePromotionSummary(framePromotion);
 			const contextLength = params.context?.length ?? 0;
+			if (openTarget === "current") {
+				const followUp = defaultCurrentPanelContinuation("fork", { name, branch: branchName, ticket: params.ticket, note: params.note });
+				contract.continuation = workspaceContinuationFromFollowUp(followUp, contract.continuation!);
+				const switched = await activateCreatedWorktreeInCurrentPanel(ctx, {
+					timing: "after-turn",
+					sessionFile: session.sessionFile,
+					name,
+					worktreePath,
+					contextLabel: `${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}`,
+					contract,
+					followUp,
+				});
+				return currentPanelToolResult("worktree_fork", switched, {
+					summary: `✓ Worktree "${name}" forked (${branchName}) at ${worktreePath}. Context: ${contextMode}${contextLength ? `, note ${contextLength} chars` : ""}.${frameText}`,
+					path: worktreePath,
+					sessionFile: session.sessionFile,
+					details: { name, branch: branchName, path: worktreePath, contextLength, contextMode, contract, framePromotion },
+				});
+			}
 			const activation = await activateWorkspaceInNewPanel(pi, ctx, {
 				contract,
 				cwd: worktreePath,

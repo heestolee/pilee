@@ -418,10 +418,12 @@ function registerFrameV2ForkTool(pi: ExtensionAPI): void {
 					details: { frameV2IdentityKey: record.key, manifestPath: record.manifestPath, statePath: record.statePath },
 				},
 			});
-			if (result.status !== "activated" && result.status !== "switched") return blockedResult(`BLOCKED: Frame v2 worktree session의 새 panel activation이 완료되지 않았습니다. 사유: ${result.reason}`, { action: FRAME_V2_FORK_TOOL, result });
+			if (result.status !== "activated" && result.status !== "switched") return blockedResult(`BLOCKED: Frame v2 worktree session activation이 완료되지 않았습니다. 사유: ${result.reason}`, { action: FRAME_V2_FORK_TOOL, result });
 			updateFrameV2ManifestStatus(record.manifestPath, "started");
 			return {
-				content: [{ type: "text" as const, text: `✓ Frame v2 구현 세션 시작: ${result.name} (${result.branch})` }],
+				content: [{ type: "text" as const, text: result.status === "switched"
+					? `✓ Frame v2 구현 세션 준비: ${result.name} (${result.branch}). 이 응답이 끝나면 현재 패널을 이 세션으로 전환해 구현을 시작합니다. 이번 턴에서는 구현을 시작하지 말고 전환 예정만 짧게 알린 뒤 끝냅니다.`
+					: `✓ Frame v2 구현 세션 시작: ${result.name} (${result.branch})` }],
 				details: { action: FRAME_V2_FORK_TOOL, result, manifestPath: record.manifestPath, autoStarted: true },
 			};
 		},
