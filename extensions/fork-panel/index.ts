@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { chmodSync, closeSync, copyFileSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, readSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, readSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
@@ -8,6 +8,7 @@ import type { AutocompleteItem } from "@mariozechner/pi-tui";
 import { completeSimple } from "@mariozechner/pi-ai";
 import { expandProfileTemplate, loadArtifactBrowserProfiles } from "../utils/private-profiles.ts";
 import { resolveForkPanelIdentity, type ForkPanelIdentity } from "../utils/fork-panel-identity.ts";
+import { appleScriptString as esc, prepareSessionLaunchScript, SESSION_LAUNCH_ROOT, shellQuote } from "../utils/session-launch.ts";
 import type { NewPanelPlacement } from "../utils/workspace-activation-contract.ts";
 
 const SPLIT_DIRS = ["right", "left", "down", "up"] as const;
@@ -26,8 +27,6 @@ const HANDOFF_DIR = join(homedir(), ".pi", "agent", "fork-panel");
 const INBOX_DIR = join(HANDOFF_DIR, "inbox");
 const SESSIONS_ROOT = join(homedir(), ".pi", "agent", "sessions");
 const SESSION_PREVIEW_BYTES = 192 * 1024;
-const SESSION_LAUNCH_ROOT = "/tmp/pilee-panel-launch";
-const SESSION_LAUNCH_TTL_MS = 24 * 60 * 60 * 1000;
 
 let forkInProgress = false;
 const FORK_COOLDOWN_MS = 2000;
@@ -740,14 +739,6 @@ function buildPanelListItems(records: ForkRecord[], inboxItems: InboxItem[]): Pa
 	});
 }
 
-function esc(s: string): string {
-	return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
-function shellQuote(s: string): string {
-	return `'${s.replace(/'/g, `'\\''`)}'`;
-}
-
 function parseOpenMode(value: string | undefined): OpenMode | null {
 	const normalized = value?.trim().toLowerCase();
 	if (!normalized) return null;
@@ -820,47 +811,6 @@ function modeLabel(mode: OpenMode): string {
 
 function panelTargetFromPlacement(placement: NewPanelPlacement): PanelOpenTarget {
 	return placement === "tab" ? "tab" : splitPlacementFromDirections([placement]);
-}
-
-function buildEnvPrefix(env: Record<string, string | undefined>): string {
-	const entries = Object.entries(env).filter(([, value]) => !!value);
-	return entries.length > 0 ? `${entries.map(([key, value]) => `${key}=${shellQuote(value!)}`).join(" ")} ` : "";
-}
-
-function currentPiCommand(): string {
-	const envPi = process.env.PILEE_PI_BIN || process.env.PI_BIN;
-	if (envPi && existsSync(envPi)) return shellQuote(envPi);
-	const cliPath = process.argv[1] && existsSync(process.argv[1]) ? process.argv[1] : "";
-	if (cliPath) return `${shellQuote(process.execPath)} ${shellQuote(cliPath)}`;
-	const userWrapper = join(homedir(), ".local", "bin", "pi");
-	if (existsSync(userWrapper)) return shellQuote(userWrapper);
-	return "pi";
-}
-
-function pruneSessionLaunchScripts(root: string): void {
-	try {
-		const cutoff = Date.now() - SESSION_LAUNCH_TTL_MS;
-		for (const name of readdirSync(root)) {
-			if (!name.startsWith("launch-") || !name.endsWith(".sh")) continue;
-			const path = join(root, name);
-			try { if (statSync(path).mtimeMs < cutoff) unlinkSync(path); } catch {}
-		}
-	} catch {}
-}
-
-function prepareSessionLaunchScript(
-	cwd: string,
-	sessionFile: string,
-	env: Record<string, string | undefined> = {},
-	root = SESSION_LAUNCH_ROOT,
-): { command: string; scriptPath: string } {
-	mkdirSync(root, { recursive: true, mode: 0o700 });
-	pruneSessionLaunchScripts(root);
-	const scriptPath = join(root, `launch-${Date.now()}-${randomUUID().slice(0, 8)}.sh`);
-	const command = `cd ${shellQuote(cwd)} && ${buildEnvPrefix(env)}${currentPiCommand()} --session ${shellQuote(sessionFile)}`;
-	writeFileSync(scriptPath, `#!/bin/bash\nrm -f -- ${shellQuote(scriptPath)}\nexec /bin/bash -lc ${shellQuote(command)}\n`, { encoding: "utf8", mode: 0o700 });
-	chmodSync(scriptPath, 0o700);
-	return { command: esc(scriptPath), scriptPath };
 }
 
 function buildSessionLaunchCommand(cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}): string {
@@ -983,6 +933,27 @@ export function buildOpenSessionScript(mode: PanelOpenTarget, cwd: string, sessi
 	return buildOpenSessionPlan(mode, cwd, sessionFile, env).script;
 }
 
+// 세션을 새 Ghostty 탭·분할 화면에서 실행한다. fork 기록 없이 화면만 여는 경로(/show-report 등)도 이 함수를 쓴다.
+export async function launchSessionInGhostty(
+	pi: ExtensionAPI,
+	mode: PanelOpenTarget,
+	cwd: string,
+	sessionFile: string,
+	env: Record<string, string | undefined> = {},
+): Promise<{ ok: true; terminalId: string } | { ok: false; reason: string }> {
+	const launch = buildOpenSessionPlan(mode, cwd, sessionFile, env);
+	const result = await pi.exec("osascript", ["-e", launch.script]);
+	const terminalId = result.code === 0 ? result.stdout?.trim() : "";
+	if (terminalId) return { ok: true, terminalId };
+	try { unlinkSync(launch.launchScriptPath); } catch {}
+	return {
+		ok: false,
+		reason: result.code !== 0
+			? result.stderr?.trim() || result.stdout?.trim() || "Ghostty panel open failed"
+			: "Ghostty가 새 terminal id를 반환하지 않았습니다.",
+	};
+}
+
 export interface ExactSessionPanelOpenRequest {
 	activationId: string;
 	placement: NewPanelPlacement;
@@ -1016,26 +987,14 @@ export async function openExactSessionInNewPanel(
 
 	const panelLabel = allocatePanelLabel(request.sourceSessionFile);
 	const forkId = `wa_${request.activationId.replace(/[^A-Za-z0-9._-]/g, "-")}_${randomUUID().slice(0, 8)}`;
-	const launch = buildOpenSessionPlan(panelTargetFromPlacement(request.placement), request.cwd, request.sessionFile, {
+	const launched = await launchSessionInGhostty(pi, panelTargetFromPlacement(request.placement), request.cwd, request.sessionFile, {
 		...request.env,
 		PI_FORK_ID: forkId,
 		PI_FORK_PANEL_LABEL: panelLabel,
 		PI_FORK_PARENT: request.sourceSessionFile,
 	});
-	const result = await pi.exec("osascript", ["-e", launch.script]);
-	if (result.code !== 0) {
-		try { unlinkSync(launch.launchScriptPath); } catch {}
-		return {
-			status: "failed",
-			reason: result.stderr?.trim() || result.stdout?.trim() || "Ghostty panel open failed",
-			safeToDeleteTarget: false,
-		};
-	}
-	const terminalId = result.stdout?.trim();
-	if (!terminalId) {
-		try { unlinkSync(launch.launchScriptPath); } catch {}
-		return { status: "failed", reason: "Ghostty가 새 terminal id를 반환하지 않았습니다.", safeToDeleteTarget: false };
-	}
+	if (!launched.ok) return { status: "failed", reason: launched.reason, safeToDeleteTarget: false };
+	const { terminalId } = launched;
 
 	const entries = readSessionPreviewEntries(request.sessionFile);
 	try {

@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getAgentDir, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { AutocompleteItem } from "@mariozechner/pi-tui";
@@ -10,6 +9,7 @@ import { planWorkspaceRestore, type RestorePlan } from "./planner.ts";
 import { bindCapturedWindow, captureGhosttyWindow, type GhosttyTerminal, type GhosttyTab, type GhosttyWindow } from "./capture.ts";
 import { createSessionRegistration, supportsRegistration, type RegistrationEnvironment } from "./registration.ts";
 import { readRegistrations } from "./registry.ts";
+import { buildPiSessionCommand, shellQuote } from "../utils/session-launch.ts";
 import { listSnapshots, saveCompleteSnapshot, workspaceSnapshotStats, type WorkspaceSummary } from "./store.ts";
 import { saveHourlySnapshot, scheduleHourlyAutosave } from "./autosave.ts";
 export { parseGhosttySnapshotOutput, ghosttySnapshotScript } from "./capture.ts";
@@ -48,7 +48,6 @@ type WorkspaceArgs = {
 	all: boolean;
 };
 
-function shellQuote(value: string): string { return `'${value.replace(/'/g, `'\\''`)}'`; }
 function isStaleCtxError(err: unknown): boolean { return String((err as Error)?.message ?? err).includes("ctx is stale"); }
 function displayDate(ts: number): string {
 	return new Date(ts).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
@@ -56,24 +55,11 @@ function displayDate(ts: number): string {
 function slugify(value: string): string {
 	return value.trim().toLowerCase().replace(/[^a-z0-9가-힣._-]+/giu, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "workspace";
 }
-function currentPiCommand(): string {
-	const envPi = process.env.PILEE_PI_BIN || process.env.PI_BIN;
-	if (envPi && existsSync(envPi)) return shellQuote(envPi);
-	const userWrapper = join(homedir(), ".local", "bin", "pi");
-	if (existsSync(userWrapper)) return shellQuote(userWrapper);
-	const cliPath = process.argv[1] && existsSync(process.argv[1]) ? process.argv[1] : "";
-	if (cliPath) return `${shellQuote(process.execPath)} ${shellQuote(cliPath)}`;
-	return "pi";
-}
-function buildEnvPrefix(env: Record<string, string | undefined>): string {
-	const entries = Object.entries(env).filter(([, value]) => Boolean(value));
-	return entries.length > 0 ? `${entries.map(([key, value]) => `${key}=${shellQuote(value!)}`).join(" ")} ` : "";
-}
 function buildSessionLaunchCommand(term: WorkspaceTerminalSnapshot): string | undefined {
 	if (!term.sessionFile) return undefined;
 	const env = term.panelLabel && term.panelLabel !== "P0"
 		? { PI_FORK_ID: term.forkId, PI_FORK_PANEL_LABEL: term.panelLabel, PI_FORK_PARENT: term.parentSessionFile } : {};
-	return `cd ${shellQuote(term.cwd)} && ${buildEnvPrefix(env)}${currentPiCommand()} --session ${shellQuote(term.sessionFile)}`;
+	return buildPiSessionCommand(term.cwd, term.sessionFile, env);
 }
 function buildSnapshot(window: GhosttyWindow, source: WorkspaceSnapshot["source"], name?: string): WorkspaceSnapshot {
 	const now = Date.now();
