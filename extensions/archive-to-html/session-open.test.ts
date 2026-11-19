@@ -3,21 +3,17 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { buildOpenSessionTabScript, buildSessionLaunchCommand, openArchiveSessionHere, resolveSessionHeaderCwd } from "./session-open.ts";
+import { openArchiveSessionHere, resolveSessionHeaderCwd } from "./session-open.ts";
+import { buildPiSessionCommand } from "../utils/session-launch.ts";
 import type { ExtensionCommandContext, ReplacedSessionContext } from "@mariozechner/pi-coding-agent";
 
-test("buildSessionLaunchCommand quotes cwd, env, and session path", () => {
-	const command = buildSessionLaunchCommand("/tmp/work dir", "/tmp/session file.jsonl", { PI_FORK_PANEL_LABEL: "P1", EMPTY: undefined });
-	assert.match(command, /^cd '\/tmp\/work dir' && /);
-	assert.match(command, /PI_FORK_PANEL_LABEL='P1'/);
-	assert.match(command, /--session '\/tmp\/session file\.jsonl'/);
-});
-
-test("buildOpenSessionTabScript opens Ghostty tab and types session command", () => {
-	const script = buildOpenSessionTabScript("/tmp/work", "/tmp/session.jsonl");
-	assert.match(script, /keystroke "t" using command down/);
-	assert.match(script, /--session '\/tmp\/session\.jsonl'/);
-	assert.match(script, /key code 36/);
+test("session tab open uses the shared surface launcher instead of typing keystrokes", () => {
+	const source = readFileSync(fileURLToPath(new URL("./session-open.ts", import.meta.url)), "utf8");
+	assert.match(source, /launchSessionInGhostty\(pi, "tab", cwd, sessionFile, env\)/);
+	assert.doesNotMatch(source, /keystroke|System Events|key code|currentPiCommand|shellQuote/);
+	const command = buildPiSessionCommand("/tmp/work dir", "/tmp/session file.jsonl", { PI_FORK_PANEL_LABEL: "P1", EMPTY: undefined });
+	assert.match(command, /^cd '\/tmp\/work dir' && PI_FORK_PANEL_LABEL='P1' /);
+	assert.match(command, /--session '\/tmp\/session file\.jsonl'$/);
 });
 
 async function fixture(run: (file: string, cwd: string, raw: string) => Promise<void>) {
