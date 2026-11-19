@@ -14,7 +14,6 @@ confidence: high
 applies_to:
   - extensions/web-access
   - extensions/archive-to-html
-  - skills/verify-report
   - extensions/frame-studio
   - show-report
 source:

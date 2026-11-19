@@ -15,7 +15,6 @@ applies_to:
   - skills/db-write-migration
   - skills/start-local-dev
   - skills/jira-issue-management
-  - skills/verify-report
   - extensions/worktree
   - extensions/archive-to-html
   - extensions/preflight

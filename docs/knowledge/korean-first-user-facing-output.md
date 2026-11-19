@@ -15,7 +15,6 @@ applies_to:
   - extensions/web-access
   - web_search workflow=summary-review
   - extensions/custom-style
-  - skills/verify-report
 source:
   - pilee-history:2026-05-05#46
   - user-direction:2026-05-07-local-resolver
