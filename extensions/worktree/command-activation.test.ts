@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { buildCurrentPanelNewContinuation } from "./continuation.ts";
-import { WORKSPACE_OPEN_TARGET_OPTIONS, chooseWorkspaceOpenTarget, workspaceOpenTargetForLabel } from "./open-target.ts";
+import { DEFAULT_AGENT_OPEN_TARGET, WORKSPACE_OPEN_TARGET_OPTIONS, chooseWorkspaceOpenTarget, workspaceOpenTargetForLabel, workspaceOpenTargetParameter } from "./open-target.ts";
 
 const worktreeDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = join(worktreeDir, "..", "..");
@@ -48,10 +48,23 @@ test("every worktree entry point shares exactly current, tab, and right targets"
 	assert.deepEqual(seen[0], ["현재 패널", "새 탭", "오른쪽 패널"]);
 	assert.equal(await chooseWorkspaceOpenTarget({ ...ctx, hasUI: false }, "t", "current"), "current");
 	assert.equal(await chooseWorkspaceOpenTarget({ ...ctx, hasUI: false }, "t", null), null);
-	for (const block of [commandFork, workflowFork]) assert.match(block, /chooseWorkspaceOpenTarget\(ctx, /);
-	assert.match(source, /async function resolveToolOpenTarget[\s\S]*?chooseWorkspaceOpenTarget\(ctx, input\.title, null\)/);
+	// 사용자가 직접 입력한 slash 명령만 묻는다.
+	assert.match(commandFork, /chooseWorkspaceOpenTarget\(ctx, /);
 	assert.match(prReviewSource, /chooseWorkspaceOpenTarget\(ctx, `PR #/);
 	assert.doesNotMatch(source + prReviewSource, /chooseNewPanelPlacement|placementTitle|PR_REVIEW_OPEN_TARGET_OPTIONS|COMMAND_FORK_OPEN_TARGET_OPTIONS/);
+});
+
+test("agent-opened worktrees never ask and default to the right panel", () => {
+	assert.equal(DEFAULT_AGENT_OPEN_TARGET, "right");
+	const schema = workspaceOpenTargetParameter as any;
+	assert.deepEqual(schema.anyOf.map((option: any) => option.const), ["current", "tab", "right"]);
+	assert.match(schema.description, /not from specific words/);
+	assert.match(schema.description, /Never ask/);
+	const resolver = between("async function resolveToolOpenTarget", "function currentPanelToolResult");
+	assert.match(resolver, /input\.openTarget \?\? DEFAULT_AGENT_OPEN_TARGET/);
+	assert.match(workflowFork, /options\.openTarget \?\? DEFAULT_AGENT_OPEN_TARGET/);
+	for (const block of [resolver, workflowFork]) assert.doesNotMatch(block, /chooseWorkspaceOpenTarget|ui\.select/);
+	assert.match(source, /openTarget: workspaceOpenTargetParameter/);
 });
 
 test("slash /wt fork switches immediately only for the current panel after shared creation", () => {

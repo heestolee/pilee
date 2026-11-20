@@ -47,9 +47,10 @@ test("slash /wt new stays direct while /wt fork branches activation only after c
 	assert.doesNotMatch(workflowFork, /switchSessionToWorktree/);
 });
 
-test("worktree_create and worktree_fork tools offer the shared targets and switch the current panel only after the turn", () => {
+test("worktree_create and worktree_fork tools take openTarget without asking and switch the current panel only after the turn", () => {
 	const resolver = between("async function resolveToolOpenTarget", "function currentPanelToolResult");
-	assert.match(resolver, /chooseWorkspaceOpenTarget\(ctx, input\.title, null\)/);
+	assert.match(resolver, /input\.openTarget \?\? DEFAULT_AGENT_OPEN_TARGET/);
+	assert.doesNotMatch(resolver, /chooseWorkspaceOpenTarget|open target not selected/);
 	assert.match(resolver, /openTarget === "current" && !hasRequestedSessionSwitchApi\(ctx\)/);
 	assert.match(resolver, /authorizationConsumerId: workspaceAuthorizationConsumerId\(input\.toolName, input\.toolCallId\)/);
 	assert.match(resolver, /currentPanelActivationContract\(ctx, contractInput\)/);
@@ -58,11 +59,12 @@ test("worktree_create and worktree_fork tools offer the shared targets and switc
 	assert.match(toolResult, /새 panel로 대신 열지 않았습니다/);
 	assert.match(toolResult, /이 응답이 끝나면 현재 패널을/);
 	for (const block of [createTool, forkTool]) {
-		assert.match(block, /resolveToolOpenTarget\(ctx, \{/);
+		assert.match(block, /resolveToolOpenTarget\(ctx, \{[\s\S]*?openTarget: params\.openTarget,/);
+		assert.match(block, /openTarget: workspaceOpenTargetParameter/);
 		assert.match(block, /activateCreatedWorktreeInCurrentPanel\(ctx, \{\s*timing: "after-turn"/);
 		assert.match(block, /activateWorkspaceInNewPanel/);
 		assert.match(block, /activationTarget: "new-panel"/);
-		assert.match(block, /현재 패널 \/ 새 탭 \/ 오른쪽 패널/);
+		assert.match(block, /never asks where to open/);
 		assert.doesNotMatch(block, /trySwitchSessionToWorktree|timing: "now"|must ask for a new panel placement/);
 		assert.ok(block.indexOf('if (openTarget === "current")') < block.indexOf("activateWorkspaceInNewPanel("));
 	}

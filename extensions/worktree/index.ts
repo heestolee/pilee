@@ -37,7 +37,7 @@ import {
 } from "./bootstrap-domains.ts";
 import { buildCurrentPanelNewContinuation } from "./continuation.ts";
 import { createDashboardStatusLoader } from "./dashboard-status-loader.ts";
-import { chooseWorkspaceOpenTarget, type WorkspaceOpenTarget } from "./open-target.ts";
+import { chooseWorkspaceOpenTarget, DEFAULT_AGENT_OPEN_TARGET, workspaceOpenTargetParameter, type WorkspaceOpenTarget } from "./open-target.ts";
 import { promotePlanningWorkArtifactsToWorktree, type WorkArtifactPromotionResult } from "./frame-artifacts.ts";
 import {
 	activateWorkspaceInNewPanel,
@@ -198,6 +198,7 @@ interface SwitchSessionToWorktreeOptions {
 export interface WorktreeForkCommandOptions {
 	afterSwitchFollowUp?: WorktreeAfterSwitchFollowUp;
 	authorizationConsumerId?: string;
+	openTarget?: WorkspaceOpenTarget;
 }
 
 export type WorktreeForkCommandResult =
@@ -1264,15 +1265,13 @@ async function activateCreatedWorktreeInCurrentPanel(
 	return { ok: true };
 }
 
-// worktree_create·worktree_fork가 함께 쓰는 열기 위치 결정. 현재 패널은 이 응답이 끝난 뒤 전환한다.
+// worktree_create·worktree_fork가 함께 쓰는 열기 위치 결정. 묻지 않고, 정하지 않았으면 오른쪽 패널이다.
+// 현재 패널은 이 응답이 끝난 뒤 전환한다.
 async function resolveToolOpenTarget(
 	ctx: ExtensionContext,
-	input: { toolName: "worktree_create" | "worktree_fork"; toolCallId: string; title: string; contextMode: WorkspaceContextMode },
+	input: { toolName: "worktree_create" | "worktree_fork"; toolCallId: string; openTarget?: WorkspaceOpenTarget; contextMode: WorkspaceContextMode },
 ): Promise<{ openTarget: WorkspaceOpenTarget; contract: WorkspaceActivationContract } | { blockedText: string; reason: string }> {
-	const openTarget = await chooseWorkspaceOpenTarget(ctx, input.title, null);
-	if (!openTarget) {
-		return { blockedText: `BLOCKED: 열 위치를 선택하지 않아 ${input.toolName}가 worktree를 만들지 않았습니다.`, reason: "open target not selected" };
-	}
+	const openTarget = input.openTarget ?? DEFAULT_AGENT_OPEN_TARGET;
 	if (openTarget === "current" && !hasRequestedSessionSwitchApi(ctx)) {
 		return { blockedText: noToolSwitchBlockedText(input.toolName, "응답이 끝난 뒤 현재 패널을 전환할 API가 없습니다."), reason: "current-panel switch API missing" };
 	}
@@ -3040,12 +3039,7 @@ async function handleWorkflowFork(pi: ExtensionAPI, args: string, ctx: Extension
 	if (parsed.contextFile && contextContent === null) return { status: "blocked", reason: `context file not found: ${parsed.contextFile}` };
 	const useFullContext = parsed.fullContext || !parsed.minimalContext;
 	const useMinimalContext = !useFullContext;
-	const openTarget = await chooseWorkspaceOpenTarget(ctx, `${parsed.name ?? "새 워크트리"} fork를 어디에서 계속할까요?`, null);
-	if (!openTarget) {
-		const reason = "열 위치를 선택하지 않아 /wt fork가 worktree를 만들지 않았습니다.";
-		ctx.ui.notify(`BLOCKED: ${reason}`, "warning");
-		return { status: "blocked", reason };
-	}
+	const openTarget = options.openTarget ?? DEFAULT_AGENT_OPEN_TARGET;
 	if (openTarget === "current" && !hasRequestedSessionSwitchApi(ctx)) {
 		const reason = "응답이 끝난 뒤 현재 패널을 전환할 API가 없어 worktree를 만들지 않았습니다.";
 		ctx.ui.notify(`BLOCKED: ${reason}`, "error");
@@ -3910,7 +3904,7 @@ export default function (pi: ExtensionAPI) {
 			`worktree_create may run from P0/P1/P2; treat the current panel conversation as the source unless the user explicitly asks to use the parent panel.`,
 			"If the request mentions hotfix/production/핫픽스, pass hotfix: true. Do not create a development-based hotfix branch.",
 			`Use worktree_create before editing files in configured protected repos (${configuredRepoLabel}) when a new worktree is actually needed. Do not manually run git worktree add.`,
-			"worktree_create asks the shared open target (현재 패널 / 새 탭 / 오른쪽 패널). 새 탭·오른쪽 패널 preserve the current panel, open the exact target session/cwd, and wait for READY before continuation. 현재 패널 switches this panel to the target session only after the current response ends; when the result says so, briefly tell the user and end the turn without starting the worktree work here. An activation failure is BLOCKED and never silently substitutes another target.",
+			"worktree_create never asks where to open. Set openTarget from the user's meaning, or omit it to open the right panel. 새 탭·오른쪽 패널 preserve the current panel, open the exact target session/cwd, and wait for READY before continuation. 현재 패널 switches this panel to the target session only after the current response ends; when the result says so, briefly tell the user and end the turn without starting the worktree work here. An activation failure is BLOCKED and never silently substitutes another target.",
 		],
 		parameters: Type.Object({
 			repo: Type.Optional(Type.String({ description: `Registered repo name (configured examples: ${configuredRepoLabel}). Auto-detected if omitted.` })),
@@ -3918,6 +3912,7 @@ export default function (pi: ExtensionAPI) {
 			ticket: Type.Optional(Type.String({ description: "Issue/ticket key (e.g. 'PROJ-123')" })),
 			note: Type.Optional(Type.String({ description: "Short description of the work" })),
 			hotfix: Type.Optional(Type.Boolean({ description: "Branch from production instead of development" })),
+			openTarget: workspaceOpenTargetParameter,
 		}),
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
 			const repoName = params.repo;
@@ -3958,7 +3953,7 @@ export default function (pi: ExtensionAPI) {
 			const target = await resolveToolOpenTarget(ctx, {
 				toolName: "worktree_create",
 				toolCallId,
-				title: `${params.name ?? "새 워크트리"} worktree를 어디에서 열까요?`,
+				openTarget: params.openTarget,
 				contextMode: "clean",
 			});
 			if ("blockedText" in target) {
@@ -4146,7 +4141,7 @@ export default function (pi: ExtensionAPI) {
 			`worktree_fork may run from P0/P1/P2; treat the current panel conversation as the source unless the user explicitly asks to use the parent panel.`,
 			"If the request mentions hotfix/production/핫픽스, pass hotfix: true. Do not create a development-based hotfix branch.",
 			"The optional context parameter is an additional transfer note, not a replacement for the full transcript unless minimalContext is true.",
-			"worktree_fork asks the shared open target (현재 패널 / 새 탭 / 오른쪽 패널). 새 탭·오른쪽 패널 preserve the current panel, open the exact full-lineage target session/cwd, and wait for READY before continuation. 현재 패널 switches this panel to the full-lineage target session only after the current response ends; when the result says so, briefly tell the user and end the turn without starting the worktree work here. An activation failure is BLOCKED and never silently substitutes another target.",
+			"worktree_fork never asks where to open. Set openTarget from the user's meaning, or omit it to open the right panel. 새 탭·오른쪽 패널 preserve the current panel, open the exact full-lineage target session/cwd, and wait for READY before continuation. 현재 패널 switches this panel to the full-lineage target session only after the current response ends; when the result says so, briefly tell the user and end the turn without starting the worktree work here. An activation failure is BLOCKED and never silently substitutes another target.",
 		],
 		parameters: Type.Object({
 			context: Type.Optional(Type.String({ description: "Optional compact markdown note to attach in addition to the transcript, or the summary handoff when minimalContext is true." })),
@@ -4155,6 +4150,7 @@ export default function (pi: ExtensionAPI) {
 			ticket: Type.Optional(Type.String({ description: "Issue/ticket key (e.g. 'PROJ-123')" })),
 			note: Type.Optional(Type.String({ description: "Short description of the work" })),
 			hotfix: Type.Optional(Type.Boolean({ description: "Branch from production instead of development" })),
+			openTarget: workspaceOpenTargetParameter,
 			fullContext: Type.Optional(Type.Boolean({ description: "Compatibility flag. Default true; set false only with minimalContext-style summary handoff." })),
 			minimalContext: Type.Optional(Type.Boolean({ description: "Use summary/source-reference handoff instead of copying the full transcript. Default false." })),
 		}),
@@ -4197,7 +4193,7 @@ export default function (pi: ExtensionAPI) {
 			const target = await resolveToolOpenTarget(ctx, {
 				toolName: "worktree_fork",
 				toolCallId,
-				title: `${params.name ?? "새 워크트리"} fork를 어디에서 계속할까요?`,
+				openTarget: params.openTarget,
 				contextMode: useFullContext ? "full" : "clean",
 			});
 			if ("blockedText" in target) {
