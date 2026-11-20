@@ -136,7 +136,17 @@ export async function createNamedWorktree(pi: Pick<ExtensionAPI, "exec">, option
 		}
 		if (result.code === 0 && !result.killed) {
 			// `gh pr create` without --base targets this branch instead of the repository default.
-			await checkedGit(["config", `branch.${branchName}.gh-merge-base`, baseBranch]);
+			// 같은 저장소에 동시에 만들면 .git/config 잠금이 겹치므로, 잠금 실패만 잠깐 기다렸다 다시 쓴다.
+			const configArgs = ["config", `branch.${branchName}.gh-merge-base`, baseBranch];
+			for (let configAttempt = 0; ; configAttempt++) {
+				const config = await git(configArgs);
+				if (config.code === 0 && !config.killed) break;
+				if (config.killed || configAttempt >= 20 || !/could not lock config file/iu.test(config.stderr)) {
+					throw new Error(`git config 실패: ${config.stderr.trim() || config.stdout.trim() || "실행 중단"}`);
+				}
+				signal?.throwIfAborted();
+				await new Promise((resolve) => setTimeout(resolve, 50 + Math.floor(Math.random() * 100)));
+			}
 			return { name, worktreePath, branchName };
 		}
 		releaseEmptyClaim();

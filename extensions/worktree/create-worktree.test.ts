@@ -53,6 +53,30 @@ test("records the creation base as the default PR base so hotfix branches target
 	assert.equal(git("config", "--get", `branch.${result.branchName}.gh-merge-base`), "production");
 });
 
+test("같은 저장소의 다른 작업이 .git/config를 쓰는 중이면 PR 기준 브랜치 기록을 잠깐 기다렸다 다시 쓴다", async (t) => {
+	const { git, options } = fixture(t);
+	const lock = join(options.repoRoot, ".git", "config.lock");
+	let held = false;
+	const lockingHost = { async exec(command: string, args: string[], opts: any) {
+		if (args[0] === "config" && !held) {
+			held = true;
+			writeFileSync(lock, "");
+			setTimeout(() => rmSync(lock, { force: true }), 150);
+		}
+		return host.exec(command, args, opts);
+	} };
+	const result = await createNamedWorktree(lockingHost, { ...options, name: "locked-config" });
+	assert.equal(held, true);
+	assert.equal(git("config", "--get", `branch.${result.branchName}.gh-merge-base`), "main");
+});
+
+test("같은 저장소에 여러 worktree를 동시에 만들어도 모두 PR 기준 브랜치까지 기록된다", async (t) => {
+	const { git, options } = fixture(t);
+	const names = ["para-a", "para-b", "para-c", "para-d", "para-e"];
+	const results = await Promise.all(names.map((name) => createNamedWorktree(host, { ...options, name })));
+	for (const result of results) assert.equal(git("config", "--get", `branch.${result.branchName}.gh-merge-base`), "main");
+});
+
 test("skips orphan refs, remote-only refs, nested refs and registered worktrees outside the root", async (t) => {
 	const { dir, git, options } = fixture(t);
 	const [orphan, remote, nested, elsewhere, stale, symlink, free] = WORD_NAMES;
