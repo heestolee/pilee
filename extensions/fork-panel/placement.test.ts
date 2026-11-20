@@ -9,6 +9,7 @@ import {
 	openExactSessionInNewPanel,
 	parsePanelTargetRequest,
 	parseSplitPlacementArgs,
+	reservePanelLabel,
 } from "./index.ts";
 
 test("parsePanelTargetRequest treats leading directions as anchor path and preserves prompt", () => {
@@ -95,4 +96,15 @@ test("host script failure is unsafe because Ghostty may have already created a s
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
+});
+
+test("같은 부모에서 기록 전에 연속으로 정한 패널 번호는 겹치지 않고, 풀린 뒤에는 기록 기준으로 돌아간다", () => {
+	const parent = `/tmp/pilee-label-test-${process.pid}-${Date.now()}.jsonl`;
+	const reservations = [reservePanelLabel(parent), reservePanelLabel(parent), reservePanelLabel(parent)];
+	assert.deepEqual(reservations.map((reservation) => reservation.label), ["P1", "P2", "P3"]);
+	assert.equal(reservePanelLabel(`${parent}.other`).label, "P1");
+	for (const reservation of reservations) reservation.release();
+	const next = reservePanelLabel(parent);
+	assert.equal(next.label, "P1");
+	next.release();
 });

@@ -140,10 +140,24 @@ function panelNumber(label: string | undefined): number {
 	return match ? Number(match[1]) : 0;
 }
 
-function allocatePanelLabel(parentSessionFile?: string): string {
+// 같은 응답에서 여러 패널을 병렬로 열면 기록이 남기 전에 번호를 정하게 되므로, 기록될 때까지 번호를 잡아 둔다.
+const reservedPanelNumbers = new Map<string, Set<number>>();
+
+export function reservePanelLabel(parentSessionFile?: string): { label: string; release: () => void } {
+	const key = parentSessionFile ?? "";
+	const reserved = reservedPanelNumbers.get(key) ?? new Set<number>();
+	reservedPanelNumbers.set(key, reserved);
 	const records = Object.values(loadRecent()).filter((record) => record.parentSessionFile === parentSessionFile);
-	const max = records.reduce((acc, record) => Math.max(acc, panelNumber(record.panelLabel)), 0);
-	return `P${max + 1}`;
+	const max = records.reduce((acc, record) => Math.max(acc, panelNumber(record.panelLabel)), Math.max(0, ...reserved));
+	const number = max + 1;
+	reserved.add(number);
+	return {
+		label: `P${number}`,
+		release: () => {
+			reserved.delete(number);
+			if (reserved.size === 0 && reservedPanelNumbers.get(key) === reserved) reservedPanelNumbers.delete(key);
+		},
+	};
 }
 
 function recordSource(record: ForkRecord | undefined): ReviveSource {
@@ -925,7 +939,15 @@ export async function openExactSessionInNewPanel(
 		return { status: "blocked", reason: `source session file이 없습니다: ${request.sourceSessionFile}` };
 	}
 
-	const panelLabel = allocatePanelLabel(request.sourceSessionFile);
+	const reservation = reservePanelLabel(request.sourceSessionFile);
+	try {
+		return await openReservedPanel(pi, request, reservation.label);
+	} finally {
+		reservation.release();
+	}
+}
+
+async function openReservedPanel(pi: ExtensionAPI, request: ExactSessionPanelOpenRequest, panelLabel: string): Promise<ExactSessionPanelOpenResult> {
 	const forkId = `wa_${request.activationId.replace(/[^A-Za-z0-9._-]/g, "-")}_${randomUUID().slice(0, 8)}`;
 	const launched = await launchSessionInGhostty(pi, panelTargetFromPlacement(request.placement), request.cwd, request.sessionFile, {
 		...request.env,
@@ -1521,11 +1543,13 @@ export default function (pi: ExtensionAPI, signals: Pick<NodeJS.Process, "on" | 
 			const forkedFile = join(dir, `${timestamp}_${uuid}.jsonl`);
 			const newForkId = `fk_${uuid}_${timestamp}`;
 			const parentSessionFile = sessionFile;
-			const panelLabel = allocatePanelLabel(parentSessionFile);
+			const reservation = reservePanelLabel(parentSessionFile);
+			const panelLabel = reservation.label;
 
 			try {
 				copyFileSync(sessionFile, forkedFile);
 			} catch (e) {
+				reservation.release();
 				ctx.ui.notify(`세션 파일 복사 실패: ${e instanceof Error ? e.message : e}`, "error");
 				return;
 			}
@@ -1541,6 +1565,7 @@ export default function (pi: ExtensionAPI, signals: Pick<NodeJS.Process, "on" | 
 			setTimeout(() => { forkInProgress = false; }, FORK_COOLDOWN_MS);
 
 			if (!launched.ok) {
+				reservation.release();
 				forkInProgress = false;
 				ctx.ui.notify(`패널 생성 실패: ${launched.reason}`, "error");
 				try { unlinkSync(forkedFile); } catch {}
@@ -1562,6 +1587,7 @@ export default function (pi: ExtensionAPI, signals: Pick<NodeJS.Process, "on" | 
 				cwd: ctx.cwd,
 				createdAt: timestamp,
 			});
+			reservation.release();
 			watchHandoff(newForkId, label, ctx);
 
 			ctx.ui.notify(
