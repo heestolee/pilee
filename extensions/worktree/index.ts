@@ -3009,7 +3009,7 @@ async function handleCommandFork(pi: ExtensionAPI, args: string, ctx: ExtensionC
 		return { status: activation.status, reason, name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion, activation };
 	}
 	recordActivatedWorktree(worktreePath, contract, session.sessionFile, activation);
-	ctx.ui.notify(`✓ ${name} forked (${branchName}) → ${activation.panelLabel} ${contract.placement}${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}`, "info");
+	ctx.ui.notify(`✓ ${name} forked (${branchName}) → ${activation.panelLabel} ${contract.placement}${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}${activation.anchorNote ? `\n${activation.anchorNote}` : ""}`, activation.anchorNote ? "warning" : "info");
 	return { status: "activated", name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion, activation };
 }
 
@@ -3145,7 +3145,7 @@ async function handleWorkflowFork(pi: ExtensionAPI, args: string, ctx: Extension
 		return { status: activation.status, reason, name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion, activation };
 	}
 	recordActivatedWorktree(worktreePath, contract, session.sessionFile, activation);
-	ctx.ui.notify(`✓ ${name} forked (${branchName}) → ${activation.panelLabel} ${contract.placement}${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}`, "info");
+	ctx.ui.notify(`✓ ${name} forked (${branchName}) → ${activation.panelLabel} ${contract.placement}${contextModeLabel(contextMode)}${framePromotionContextLabel(framePromotion)}${activation.anchorNote ? `\n${activation.anchorNote}` : ""}`, activation.anchorNote ? "warning" : "info");
 	return { status: "activated", name, branch: branchName, path: worktreePath, sessionFile: session.sessionFile, contextMode, framePromotion, activation };
 }
 
@@ -4028,7 +4028,7 @@ export default function (pi: ExtensionAPI) {
 			if (activation.status === "activated") {
 				recordActivatedWorktree(worktreePath, contract, session.sessionFile, activation);
 				return {
-					content: [{ type: "text", text: `✓ Worktree "${name}" created (${branchName}) at ${worktreePath}.${frameText} 새 panel ${activation.panelLabel} (${contract.placement})에서 READY/continuation을 확인했습니다.` }],
+					content: [{ type: "text", text: `✓ Worktree "${name}" created (${branchName}) at ${worktreePath}.${frameText} 새 panel ${activation.panelLabel} (${contract.placement})에서 READY/continuation을 확인했습니다.${activation.anchorNote ? ` ${activation.anchorNote}` : ""}` }],
 					details: { name, branch: branchName, path: worktreePath, activatedInNewPanel: true, activationTarget: "new-panel", contract, activation, framePromotion },
 				};
 			}
@@ -4290,7 +4290,7 @@ export default function (pi: ExtensionAPI) {
 			if (activation.status === "activated") {
 				recordActivatedWorktree(worktreePath, contract, session.sessionFile, activation);
 				return {
-					content: [{ type: "text", text: `✓ Worktree "${name}" forked (${branchName}) at ${worktreePath}. Context: ${contextMode}${contextLength ? `, note ${contextLength} chars` : ""}.${frameText} 새 panel ${activation.panelLabel} (${contract.placement})에서 READY/continuation을 확인했습니다.` }],
+					content: [{ type: "text", text: `✓ Worktree "${name}" forked (${branchName}) at ${worktreePath}. Context: ${contextMode}${contextLength ? `, note ${contextLength} chars` : ""}.${frameText} 새 panel ${activation.panelLabel} (${contract.placement})에서 READY/continuation을 확인했습니다.${activation.anchorNote ? ` ${activation.anchorNote}` : ""}` }],
 					details: { name, branch: branchName, path: worktreePath, contextLength, contextMode, activatedInNewPanel: true, activationTarget: "new-panel", contract, activation, framePromotion },
 				};
 			}

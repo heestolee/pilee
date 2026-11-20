@@ -14,6 +14,7 @@ import {
 	type ExactSessionPanelOpenRequest,
 	type ExactSessionPanelOpenResult,
 } from "../fork-panel/index.ts";
+import { describePanelAnchor } from "../utils/ghostty-panels.ts";
 import {
 	appendWorkspaceAuthorizationEvent,
 	consumeWorkspaceAuthorization,
@@ -110,6 +111,8 @@ export type WorkspacePanelActivationResult =
 		terminalId: string;
 		forkId: string;
 		panelLabel: string;
+		/** 요청한 패널을 못 찾아 포커스된 패널 기준으로 열었을 때의 안내. */
+		anchorNote?: string;
 		readyAt: string;
 		continuationDispatched: boolean;
 	}
@@ -121,6 +124,7 @@ export type WorkspacePanelActivationResult =
 		terminalId: string;
 		forkId: string;
 		panelLabel: string;
+		anchorNote?: string;
 		descriptorPath: string;
 		safeToDeleteTarget: false;
 	}
@@ -457,6 +461,7 @@ function activatedResult(
 		terminalId: opened.terminalId,
 		forkId: opened.forkId,
 		panelLabel: opened.panelLabel,
+		anchorNote: describePanelAnchor(opened.anchor),
 		readyAt: final.readyAt ?? new Date().toISOString(),
 		continuationDispatched: final.status === "continued",
 	};
@@ -464,7 +469,7 @@ function activatedResult(
 
 export async function activateWorkspaceInNewPanel(
 	pi: ExtensionAPI,
-	_ctx: ExtensionContext | ExtensionCommandContext,
+	ctx: ExtensionContext | ExtensionCommandContext,
 	input: ActivateWorkspacePanelInput,
 	dependencies: ActivationDependencies = {},
 ): Promise<WorkspacePanelActivationResult> {
@@ -486,6 +491,7 @@ export async function activateWorkspaceInNewPanel(
 		sourceSessionFile: input.sourceSessionFile,
 		title: input.title,
 		env: { [WORKSPACE_ACTIVATION_ENV]: prepared.path },
+		ctx,
 	});
 	if (opened.status === "blocked") {
 		rmSync(prepared.path, { force: true });
@@ -565,6 +571,7 @@ export async function activateWorkspaceInNewPanel(
 			terminalId: opened.terminalId,
 			forkId: opened.forkId,
 			panelLabel: opened.panelLabel,
+			anchorNote: describePanelAnchor(opened.anchor),
 			descriptorPath: prepared.path,
 			safeToDeleteTarget: false,
 		};
