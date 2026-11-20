@@ -202,7 +202,7 @@ The "NOT TOUCHED" section shows scope discipline and helps reviewers.
 
 - “새 branch를 만들어 작업”은 현재 workspace에서 branch만 생성·전환합니다. 격리가 더 안전하다는 이유로 worktree를 만들지 않습니다.
 - production 기반 branch 전환은 현재 worktree를 in-place로 바꾸는 `/to-production` 계약을 사용합니다.
-- `/wt new`, `/wt fork`, `worktree_create`, `worktree_fork`는 사용자가 worktree topology를 명시적으로 허용한 경우에만 실행합니다. slash `/wt new`는 생성 후 현재 panel로 직접 전환합니다. Slash `/wt fork`, `worktree_create`·`worktree_fork` tool, PR review, Frame/TFT fork는 모두 공통 생성 후 `현재 패널`·`새 탭`·`오른쪽 패널` 중 활성화 위치를 묻습니다. 새 탭·오른쪽은 new-panel READY 계약을 따르고, 현재 패널은 slash 명령이면 바로, tool·Frame/TFT처럼 에이전트 응답 중이면 응답이 끝난 뒤 전환합니다. tool 결과가 응답 뒤 전환을 알리면 이번 턴에서 worktree 작업을 시작하지 말고 짧게 알린 뒤 끝냅니다.
+- `/wt new`, `/wt fork`, `worktree_create`, `worktree_fork`는 사용자가 worktree topology를 명시적으로 허용한 경우에만 실행합니다. slash `/wt new`는 생성 후 현재 panel로 직접 전환합니다. 사용자가 직접 입력한 slash `/wt fork`와 PR review만 `현재 패널`·`새 탭`·`오른쪽 패널` 중 활성화 위치를 묻습니다. 에이전트가 여는 worktree(`worktree_create`·`worktree_fork` tool, Frame/TFT fork)는 위치를 묻지 않습니다. 에이전트가 사용자 말의 뜻으로 `openTarget`을 정하고, 말하지 않았거나 애매하면 오른쪽 패널에 엽니다. 특정 단어를 맞춰 보는 규칙은 두지 않으며, `현재 패널`은 같은 패널에서 이어가길 분명히 원할 때만 고릅니다. 사용자에게 위치를 되묻지 않습니다. 새 탭·오른쪽은 new-panel READY 계약을 따르고, 현재 패널은 slash 명령이면 바로, tool·Frame/TFT처럼 에이전트 응답 중이면 응답이 끝난 뒤 전환합니다. tool 결과가 응답 뒤 전환을 알리면 이번 턴에서 worktree 작업을 시작하지 말고 짧게 알린 뒤 끝냅니다.
 - `/wt switch`와 `worktree_switch`만 기존 worktree session을 current panel에서 여는 명시적 이동 경로입니다.
 - 새 panel open/READY/continuation 실패를 current-panel switch나 절대경로 작업으로 대체하지 않습니다.
 
