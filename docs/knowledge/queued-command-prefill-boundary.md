@@ -25,8 +25,8 @@ source:
   - pilee-history:2026-05-05#41
   - user-direction:2026-05-07-local-resolver
   - user-direction:2026-05-11-subagent-skill-delegation
-reviewed_at: 2026-11-19
-reviewed_commit: 11a806d057b166dce4b57d1fcd4a117114c39efb
+reviewed_at: 2026-11-20
+reviewed_commit: 9a7af67831fd8cc3902678b4279a1ef686f50b27
 related:
   - worktree-execution-boundary
   - session-identity-over-filenames
@@ -49,7 +49,7 @@ Subagent에 slash command 문자열을 그대로 넘기는 것도 command 실행
 
 ## Worktree Tool Rule
 
-`worktree_create`, `worktree_switch`, `worktree_fork` 같은 일반 도구는 slash command를 몰래 실행하지 않습니다. `worktree_create`와 `worktree_fork`는 매 실행 공통 선택기로 `현재 패널 | 새 탭 | 오른쪽 패널`을 묻습니다. 새 탭·오른쪽은 source panel을 유지한 채 exact target session을 새 Ghostty panel/tab에서 열고, target process가 session file과 cwd를 확인해 READY를 먼저 기록한 뒤에만 continuation을 follow-up으로 시작합니다. 현재 패널은 `worktree_switch`와 같은 deferred `requestSessionSwitch`로 응답이 끝난 뒤 current panel을 이동하며, slash command를 queue하지 않습니다. 새 panel open/READY가 실패하면 이번 실행의 terminal/fork record/session/worktree/branch를 정리하고 BLOCKED로 끝내며, current-panel relaunch·slash prefill·절대경로 작업으로 우회하지 않습니다.
+`worktree_create`, `worktree_switch`, `worktree_fork` 같은 일반 도구는 slash command를 몰래 실행하지 않습니다. `worktree_create`와 `worktree_fork`는 위치를 묻지 않고 `openTarget`(`현재 패널 | 새 탭 | 오른쪽 패널`, 기본 오른쪽)으로 엽니다. 새 탭·오른쪽은 source panel을 유지한 채 exact target session을 새 Ghostty panel/tab에서 열고, target process가 session file과 cwd를 확인해 READY를 먼저 기록한 뒤에만 continuation을 follow-up으로 시작합니다. 현재 패널은 `worktree_switch`와 같은 deferred `requestSessionSwitch`로 응답이 끝난 뒤 current panel을 이동하며, slash command를 queue하지 않습니다. 새 panel open/READY가 실패하면 이번 실행의 terminal/fork record/session/worktree/branch를 정리하고 BLOCKED로 끝내며, current-panel relaunch·slash prefill·절대경로 작업으로 우회하지 않습니다.
 
 `/frame`처럼 command shim에서 시작해 agent가 Step 9 결정을 처리하는 흐름은 command context bridge를 둡니다. `/frame` command handler가 자신의 `ExtensionCommandContext`를 frame identity에 묶어 저장하고, Step 9의 `fork해서 시작`은 `frame_worktree_fork` tool을 통해 사용자 slash `/wt fork`와 분리된 composed workflow runner를 호출합니다. placement 선택과 READY handshake는 이 workflow path에서 실행되고, 새 panel continuation이 승격된 frame/task의 첫 ready slice를 시작합니다. bridge context가 없거나 session이 맞지 않으면 worktree를 만들지 않고 BLOCKED로 멈춥니다.
 
