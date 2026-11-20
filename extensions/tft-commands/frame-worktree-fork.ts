@@ -1,3 +1,4 @@
+import type { WorkspaceOpenTarget } from "../worktree/open-target.ts";
 import type { FrameIdentity } from "./frame-identity.ts";
 
 export interface FrameWorktreeForkParams {
@@ -8,6 +9,7 @@ export interface FrameWorktreeForkParams {
 	note?: string;
 	hotfix?: boolean;
 	minimalContext?: boolean;
+	openTarget?: WorkspaceOpenTarget;
 }
 
 function quoteArg(value: string): string {

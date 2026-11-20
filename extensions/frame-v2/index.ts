@@ -19,6 +19,7 @@ import {
 	writeFrameV2Manifest,
 } from "./artifact.ts";
 import { formatInlinedSkill, pileeSkillPath as skillPath, readPileeSkill as readSkill } from "../utils/inlined-skill.ts";
+import { workspaceOpenTargetParameter, type WorkspaceOpenTarget } from "../worktree/open-target.ts";
 
 const SKILL_NAME = "frame-v2";
 const PREREQUISITE_SKILLS = ["tft-guidelines", "ask-user-question-rules"] as const;
@@ -64,6 +65,7 @@ type FrameV2ForkRunner = (
 	ctx: ExtensionCommandContext,
 	options: {
 		authorizationConsumerId?: string;
+		openTarget?: WorkspaceOpenTarget;
 		afterSwitchFollowUp: { customType: string; content: string; display: boolean; details: Record<string, unknown> };
 	},
 ) => Promise<any>;
@@ -373,6 +375,7 @@ function registerFrameV2ForkTool(pi: ExtensionAPI): void {
 			note: Type.Optional(Type.String()),
 			hotfix: Type.Optional(Type.Boolean()),
 			minimalContext: Type.Optional(Type.Boolean()),
+			openTarget: workspaceOpenTargetParameter,
 		}),
 		async execute(toolCallId, params: FrameWorktreeForkParams, _signal, _onUpdate, toolCtx: ExtensionContext) {
 			const record = getContext(params.identityKey);
@@ -388,6 +391,7 @@ function registerFrameV2ForkTool(pi: ExtensionAPI): void {
 			const runWorktreeForkFromCommandContext = await resolveFrameV2ForkRunner();
 			const result = await runWorktreeForkFromCommandContext(pi, args, record.ctx, {
 				authorizationConsumerId: workspaceAuthorizationConsumerId(FRAME_V2_FORK_TOOL, toolCallId),
+				openTarget: params.openTarget,
 				afterSwitchFollowUp: {
 					customType: FRAME_V2_CONTINUATION_TYPE,
 					content: buildContinuationPrompt(record),

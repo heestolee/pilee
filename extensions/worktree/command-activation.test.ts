@@ -64,7 +64,9 @@ test("agent-opened worktrees never ask and default to the right panel", () => {
 	assert.match(resolver, /input\.openTarget \?\? DEFAULT_AGENT_OPEN_TARGET/);
 	assert.match(workflowFork, /options\.openTarget \?\? DEFAULT_AGENT_OPEN_TARGET/);
 	for (const block of [resolver, workflowFork]) assert.doesNotMatch(block, /chooseWorkspaceOpenTarget|ui\.select/);
-	assert.match(source, /openTarget: workspaceOpenTargetParameter/);
+	for (const toolSource of [source, readFileSync(join(packageRoot, "extensions", "tft-commands", "index.ts"), "utf8"), readFileSync(join(packageRoot, "extensions", "frame-v2", "index.ts"), "utf8")]) {
+		assert.match(toolSource, /openTarget: workspaceOpenTargetParameter/);
+	}
 });
 
 test("slash /wt fork switches immediately only for the current panel after shared creation", () => {

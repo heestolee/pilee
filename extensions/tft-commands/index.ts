@@ -10,6 +10,7 @@ import { buildFrameForkContinuationPrompt, buildFrameWorktreeForkArgs, type Fram
 
 import { installExpectedSkillCollisionFilter } from "./skill-diagnostics.ts";
 import { formatInlinedSkill, pileeSkillPath as skillPath, readPileeSkill as readSkill } from "../utils/inlined-skill.ts";
+import { workspaceOpenTargetParameter } from "../worktree/open-target.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = resolve(__dirname, "../..");
@@ -134,6 +135,7 @@ function registerFrameWorktreeForkTool(pi: ExtensionAPI): void {
 			note: Type.Optional(Type.String({ description: "Short note stored in worktree metadata." })),
 			hotfix: Type.Optional(Type.Boolean({ description: "Fork from production/hotfix base." })),
 			minimalContext: Type.Optional(Type.Boolean({ description: "Use minimal handoff instead of the default full transcript." })),
+			openTarget: workspaceOpenTargetParameter,
 		}),
 		async execute(toolCallId, params: FrameWorktreeForkParams, _signal, _onUpdate, toolCtx: ExtensionContext) {
 			const record = getFrameCommandContext(params.identityKey);
@@ -159,6 +161,7 @@ function registerFrameWorktreeForkTool(pi: ExtensionAPI): void {
 			const args = buildFrameWorktreeForkArgs(params, record.frameIdentity);
 			const result = await runWorktreeForkFromCommandContext(pi, args, record.ctx, {
 				authorizationConsumerId: workspaceAuthorizationConsumerId(FRAME_FORK_TOOL_NAME, toolCallId),
+				openTarget: params.openTarget,
 				afterSwitchFollowUp: {
 					customType: FRAME_FORK_CONTINUATION_TYPE,
 					content: buildFrameForkContinuationPrompt(record.frameIdentity),
