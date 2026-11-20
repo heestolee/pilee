@@ -196,7 +196,7 @@ node scripts/knowledge.mjs --confirm verify-report-workflow
 | [외부 Issue와 PR은 기여 규칙 확인과 최종 승인 뒤에 게시한다](./external-issue-preview-gate.md) | active | high | 2026-11-19 | ca8964f | jira, github, issue, pull-request, contributing, preview |
 | [최종 검증은 메인 세션을 막지 않고 병렬화한다](./final-verification-parallelization.md) | active | high | 2026-06-02 | c6cd06f | verification, ship, final-check, subagent, background, parallel |
 | [Fork-panel handoff는 parent inbox로 들어간다](./fork-panel-parent-inbox.md) | active | high | 2026-06-02 | c6cd06f | fork-panel, handoff, inbox, inject, parent, panel |
-| [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-06-02 | 63f2a62 | fork-panel, revive, repanel, ghostty, spatial, panel |
+| [Fork-panel 위치는 작업 맥락의 일부다](./fork-panel-spatial-continuity.md) | active | high | 2026-11-20 | 458e5c1 | fork-panel, revive, repanel, ghostty, spatial, panel |
 | [Frame은 마지막에 Plan을 합성한다](./frame-plan-synthesis-continuity.md) | active | high | 2026-11-20 | 9a7af67 | frame, implementation-plan, tft-studio, worktree, continuity, planning |
 | [Frame identity는 cwd보다 작업 의도를 우선한다](./frame-planning-identity.md) | active | high | 2026-06-02 | 7861f10 | frame, planning, identity, home-directory, ticket, session-title |
 | [TFT Studio는 TFT 단계를 작업 단위 UI로 묶는다](./frame-studio-interactive-decision-ui.md) | active | high | 2026-09-02 | 7295019 | tft-studio, frame-studio, frame, glimpse, ask-user-question, decision-ui |
@@ -629,6 +629,8 @@ graph TD
   doc_fork_panel_spatial_continuity --> doc_revive_over_transcript_recall
   doc_fork_panel_spatial_continuity --> doc_session_identity_over_filenames
   doc_fork_panel_spatial_continuity --> doc_terminal_host_integration
+  doc_fork_panel_spatial_continuity --> doc_terminal_workspace_restore
+  doc_fork_panel_spatial_continuity --> doc_workspace_action_panel_activation_contract
   doc_frame_plan_synthesis_continuity --> doc_frame_planning_identity
   doc_frame_plan_synthesis_continuity --> doc_frame_studio_interactive_decision_ui
   doc_frame_plan_synthesis_continuity --> doc_frame_verify_contract
@@ -807,6 +809,6 @@ graph TD
 ## Review Metadata Summary
 
 - Documents: 117
-- Links: 442
+- Links: 444
 - Generated at: deterministic README build (timestamp intentionally omitted)
 <!-- PILEE_KNOWLEDGE_GRAPH_END -->
