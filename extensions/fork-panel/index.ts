@@ -8,18 +8,28 @@ import type { AutocompleteItem } from "@mariozechner/pi-tui";
 import { completeSimple } from "@mariozechner/pi-ai";
 import { expandProfileTemplate, loadArtifactBrowserProfiles } from "../utils/private-profiles.ts";
 import { resolveForkPanelIdentity, type ForkPanelIdentity } from "../utils/fork-panel-identity.ts";
-import { appleScriptString as esc, prepareSessionLaunchScript, SESSION_LAUNCH_ROOT, shellQuote } from "../utils/session-launch.ts";
+import { prepareSessionLaunchScript, shellQuote } from "../utils/session-launch.ts";
+import {
+	buildCloseTerminalScript,
+	buildInputTerminalScript,
+	buildRepanelScript,
+	closeTerminal,
+	countTerminalsInTabOf,
+	describePanelAnchor,
+	findOwnTerminal,
+	inputToTerminal,
+	openPanel,
+	registerPanelRequestScope,
+	SPLIT_DIRECTIONS,
+	type PanelAnchor,
+	type PanelOpenTarget,
+	type SplitDirection,
+	type SplitPlacement,
+} from "../utils/ghostty-panels.ts";
 import type { NewPanelPlacement } from "../utils/workspace-activation-contract.ts";
 
-const SPLIT_DIRS = ["right", "left", "down", "up"] as const;
-export type SplitDirection = (typeof SPLIT_DIRS)[number];
-export interface SplitPlacement {
-	anchorPath: SplitDirection[];
-	splitDirection: SplitDirection;
-}
-const VALID_DIRS = [...SPLIT_DIRS, "tab"] as const;
+const VALID_DIRS = [...SPLIT_DIRECTIONS, "tab"] as const;
 type Direction = (typeof VALID_DIRS)[number];
-export type PanelOpenTarget = "tab" | SplitPlacement;
 type OpenMode = "here" | PanelOpenTarget;
 type ReviveHereMismatchAction = "fast" | "worktree-here" | Direction;
 
@@ -749,7 +759,7 @@ function parseOpenMode(value: string | undefined): OpenMode | null {
 }
 
 function isSplitDirection(value: string | undefined): value is SplitDirection {
-	return SPLIT_DIRS.includes(value as SplitDirection);
+	return SPLIT_DIRECTIONS.includes(value as SplitDirection);
 }
 
 export function isSplitPlacement(value: unknown): value is SplitPlacement {
@@ -809,12 +819,13 @@ function modeLabel(mode: OpenMode): string {
 	return `${placementLabel(mode)} 패널`;
 }
 
-function panelTargetFromPlacement(placement: NewPanelPlacement): PanelOpenTarget {
-	return placement === "tab" ? "tab" : splitPlacementFromDirections([placement]);
+function anchorNote(anchor: PanelAnchor): string {
+	const note = describePanelAnchor(anchor);
+	return note ? `\n${note}` : "";
 }
 
-function buildSessionLaunchCommand(cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}): string {
-	return prepareSessionLaunchScript(cwd, sessionFile, env).command;
+function panelTargetFromPlacement(placement: NewPanelPlacement): PanelOpenTarget {
+	return placement === "tab" ? "tab" : splitPlacementFromDirections([placement]);
 }
 
 function resolveReviveCwd(target: ForkRecord, fallbackCwd: string): { cwd: string; fallback: boolean; reason?: string } {
@@ -864,94 +875,21 @@ function chdirForCurrentPanelRevive(cwd: string): { previous: string; changed: b
 	}
 }
 
-function buildReplaceCurrentSessionScript(cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}, terminalId?: string | null): string {
-	const cmd = buildSessionLaunchCommand(cwd, sessionFile, env);
-	const targetTermSelector = terminalId
-		? `set targetTerm to first terminal whose id is "${esc(terminalId)}"`
-		: "set targetTerm to focused terminal of selected tab of front window";
-	return `delay 0.8
-tell application "Ghostty"
-  activate
-  ${targetTermSelector}
-  input text "${cmd}" to targetTerm
-  send key "enter" to targetTerm
-end tell`;
-}
-
-function buildAnchorNavigationScript(placement: SplitPlacement, startTermVar: string, anchorTermVar: string): string {
-	const lines = [`set ${anchorTermVar} to ${startTermVar}`];
-	for (const direction of placement.anchorPath) {
-		const pathLabel = esc(placementLabel(placement));
-		lines.push(`set previousAnchorId to id of ${anchorTermVar}`);
-		lines.push(`set navigationOk to perform action "goto_split:${direction}" on ${anchorTermVar}`);
-		lines.push("delay 0.1");
-		lines.push("set nextAnchorTerm to focused terminal of selected tab of front window");
-		lines.push(`if navigationOk is false then error "Ghostty goto_split:${direction} failed for ${pathLabel}"`);
-		lines.push(`if (id of nextAnchorTerm) is previousAnchorId then error "Ghostty anchor path ${pathLabel} did not move from " & previousAnchorId`);
-		lines.push(`set ${anchorTermVar} to nextAnchorTerm`);
-	}
-	return lines.map((line) => `  ${line}`).join("\n");
-}
-
-function buildOpenSessionAppleScript(mode: PanelOpenTarget, cwd: string, command: string): string {
-	const launchConfiguration = `  set launchConfig to new surface configuration
-  set initial working directory of launchConfig to "${esc(cwd)}"
-  set command of launchConfig to "${command}"`;
-	if (mode === "tab") {
-		return `tell application "Ghostty"
-  activate
-${launchConfiguration}
-  set newTab to new tab in front window with configuration launchConfig
-  select tab newTab
-  set newTerm to focused terminal of newTab
-  return id of newTerm
-end tell`;
-	}
-
-	return `tell application "Ghostty"
-  activate
-  set currentTerm to focused terminal of selected tab of front window
-${buildAnchorNavigationScript(mode, "currentTerm", "anchorTerm")}
-${launchConfiguration}
-  set newTerm to split anchorTerm direction ${mode.splitDirection} with configuration launchConfig
-  return id of newTerm
-end tell`;
-}
-
-export function buildOpenSessionPlan(
-	mode: PanelOpenTarget,
-	cwd: string,
-	sessionFile: string,
-	env: Record<string, string | undefined> = {},
-	launchRoot = SESSION_LAUNCH_ROOT,
-): { script: string; launchScriptPath: string } {
-	const launch = prepareSessionLaunchScript(cwd, sessionFile, env, launchRoot);
-	return { script: buildOpenSessionAppleScript(mode, cwd, launch.command), launchScriptPath: launch.scriptPath };
-}
-
-export function buildOpenSessionScript(mode: PanelOpenTarget, cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}): string {
-	return buildOpenSessionPlan(mode, cwd, sessionFile, env).script;
-}
-
-// 세션을 새 Ghostty 탭·분할 화면에서 실행한다. fork 기록 없이 화면만 여는 경로(/show-report 등)도 이 함수를 쓴다.
+// 세션을 새 Ghostty 탭·분할 화면에서 실행한다. 위치 기준은 요청이 나온 패널이고(ghostty-panels), fork 기록 없이 화면만 여는 경로(/show-report 등)도 이 함수를 쓴다.
 export async function launchSessionInGhostty(
 	pi: ExtensionAPI,
 	mode: PanelOpenTarget,
 	cwd: string,
 	sessionFile: string,
 	env: Record<string, string | undefined> = {},
-): Promise<{ ok: true; terminalId: string } | { ok: false; reason: string }> {
-	const launch = buildOpenSessionPlan(mode, cwd, sessionFile, env);
-	const result = await pi.exec("osascript", ["-e", launch.script]);
-	const terminalId = result.code === 0 ? result.stdout?.trim() : "";
-	if (terminalId) return { ok: true, terminalId };
-	try { unlinkSync(launch.launchScriptPath); } catch {}
-	return {
-		ok: false,
-		reason: result.code !== 0
-			? result.stderr?.trim() || result.stdout?.trim() || "Ghostty panel open failed"
-			: "Ghostty가 새 terminal id를 반환하지 않았습니다.",
-	};
+	ctx?: ExtensionContext,
+): Promise<{ ok: true; terminalId: string; anchor: PanelAnchor } | { ok: false; reason: string }> {
+	const launch = prepareSessionLaunchScript(cwd, sessionFile, env);
+	const opened = await openPanel(pi, { target: mode, cwd, launchScriptPath: launch.scriptPath, ctx });
+	if (!opened.ok) {
+		try { unlinkSync(launch.scriptPath); } catch {}
+	}
+	return opened;
 }
 
 export interface ExactSessionPanelOpenRequest {
@@ -963,10 +901,12 @@ export interface ExactSessionPanelOpenRequest {
 	title: string;
 	env?: Record<string, string | undefined>;
 	host?: { platform?: NodeJS.Platform; termProgram?: string };
+	/** 요청이 나온 패널을 아직 모를 때 패널 제목 표식으로 찾는 데 쓴다. */
+	ctx?: ExtensionContext;
 }
 
 export type ExactSessionPanelOpenResult =
-	| { status: "opened"; terminalId: string; forkId: string; panelLabel: string }
+	| { status: "opened"; terminalId: string; forkId: string; panelLabel: string; anchor: PanelAnchor }
 	| { status: "blocked"; reason: string }
 	| { status: "failed"; reason: string; safeToDeleteTarget: false; terminalId?: string; forkId?: string; panelLabel?: string };
 
@@ -992,9 +932,9 @@ export async function openExactSessionInNewPanel(
 		PI_FORK_ID: forkId,
 		PI_FORK_PANEL_LABEL: panelLabel,
 		PI_FORK_PARENT: request.sourceSessionFile,
-	});
+	}, request.ctx);
 	if (!launched.ok) return { status: "failed", reason: launched.reason, safeToDeleteTarget: false };
-	const { terminalId } = launched;
+	const { terminalId, anchor } = launched;
 
 	const entries = readSessionPreviewEntries(request.sessionFile);
 	try {
@@ -1020,7 +960,7 @@ export async function openExactSessionInNewPanel(
 			panelLabel,
 		};
 	}
-	return { status: "opened", terminalId, forkId, panelLabel };
+	return { status: "opened", terminalId, forkId, panelLabel, anchor };
 }
 
 export async function closeExactSessionPanel(
@@ -1031,11 +971,7 @@ export async function closeExactSessionPanel(
 	const platform = host.platform ?? process.platform;
 	const termProgram = host.termProgram ?? process.env.TERM_PROGRAM;
 	if (platform !== "darwin" || termProgram !== "ghostty") return { closed: false, reason: "Ghostty host unavailable" };
-	const script = `tell application "Ghostty"\n  close first terminal whose id is "${esc(terminalId)}"\nend tell`;
-	const result = await pi.exec("osascript", ["-e", script]);
-	return result.code === 0
-		? { closed: true }
-		: { closed: false, reason: result.stderr?.trim() || result.stdout?.trim() || "Ghostty terminal close failed" };
+	return closeTerminal(pi, terminalId);
 }
 
 export function removeExactSessionPanelRecord(forkId: string): void {
@@ -1048,47 +984,6 @@ export function removeExactSessionPanelRecord(forkId: string): void {
 	try { unlinkSync(join(HANDOFF_DIR, `${forkId}.json`)); } catch {}
 }
 
-export function buildRepanelScript(placement: SplitPlacement, cwd: string, sessionFile: string, env: Record<string, string | undefined> = {}, oldTerminalId?: string, launchRoot = SESSION_LAUNCH_ROOT): string {
-	const cmd = prepareSessionLaunchScript(cwd, sessionFile, env, launchRoot).command;
-	const oldTermSelector = oldTerminalId
-		? `set oldTerm to first terminal whose id is "${esc(oldTerminalId)}"`
-		: "set oldTerm to focused terminal of selected tab of front window";
-	if (placement.anchorPath.length === 0) {
-		return `tell application "Ghostty"
-  activate
-  ${oldTermSelector}
-  close oldTerm
-end tell
-delay 0.7
-tell application "Ghostty"
-  set anchorTerm to focused terminal of selected tab of front window
-  set newTerm to split anchorTerm direction ${placement.splitDirection}
-  input text "${cmd}" to newTerm
-  send key "enter" to newTerm
-end tell`;
-	}
-
-	const pathLabel = esc(placementLabel(placement));
-	return `tell application "Ghostty"
-  activate
-  ${oldTermSelector}
-  focus oldTerm
-  set currentTerm to oldTerm
-${buildAnchorNavigationScript(placement, "currentTerm", "anchorTerm")}
-  set anchorId to id of anchorTerm
-  if anchorId is (id of oldTerm) then error "Refusing to repanel: anchor path ${pathLabel} resolved to the current terminal"
-  close oldTerm
-end tell
-delay 0.7
-tell application "Ghostty"
-  set anchorTerm to first terminal whose id is anchorId
-  focus anchorTerm
-  set newTerm to split anchorTerm direction ${placement.splitDirection}
-  input text "${cmd}" to newTerm
-  send key "enter" to newTerm
-end tell`;
-}
-
 async function runDetachedOsa(pi: ExtensionAPI, script: string) {
 	mkdirSync(HANDOFF_DIR, { recursive: true });
 	const scriptPath = join(HANDOFF_DIR, `repanel-${Date.now()}-${randomUUID().slice(0, 8)}.applescript`);
@@ -1096,23 +991,17 @@ async function runDetachedOsa(pi: ExtensionAPI, script: string) {
 	return pi.exec("bash", ["-lc", `nohup osascript ${shellQuote(scriptPath)} >/dev/null 2>&1 &`]);
 }
 
-async function getGhosttyTerminalCount(pi: ExtensionAPI): Promise<number | null> {
-	const result = await pi.exec("osascript", ["-e", `tell application "Ghostty" to count terminals of selected tab of front window`]);
-	if (result.code !== 0) return null;
-	const count = Number.parseInt(result.stdout?.trim() ?? "", 10);
-	return Number.isFinite(count) ? count : null;
-}
-
-async function getGhosttyFocusedTerminalId(pi: ExtensionAPI): Promise<string | null> {
-	const result = await pi.exec("osascript", ["-e", `tell application "Ghostty" to id of focused terminal of selected tab of front window`]);
-	if (result.code !== 0) return null;
-	return result.stdout?.trim() || null;
-}
-
-async function closeCurrentForkPanel(pi: ExtensionAPI) {
+// /done은 자기 패널만 닫는다. 자기 패널을 못 찾으면 다른 패널을 닫지 않고 Pi만 종료한다.
+async function closeCurrentForkPanel(pi: ExtensionAPI, ctx: ExtensionContext) {
 	if (process.platform === "darwin" && process.env.TERM_PROGRAM === "ghostty") {
-		await runDetachedOsa(pi, `delay 0.2\ntell application "Ghostty"\n  close focused terminal of selected tab of front window\nend tell`);
-		setTimeout(() => process.exit(0), 800);
+		const ownTerminalId = await findOwnTerminal(pi, ctx);
+		if (ownTerminalId) {
+			await runDetachedOsa(pi, buildCloseTerminalScript(ownTerminalId, 0.2));
+			setTimeout(() => process.exit(0), 800);
+			return;
+		}
+		ctx.ui.notify("이 패널을 찾지 못해 다른 패널을 닫지 않고 Pi만 종료합니다. 남은 셸은 직접 닫아 주세요.", "warning");
+		setTimeout(() => process.exit(0), 1200);
 		return;
 	}
 	setTimeout(() => process.exit(0), 100);
@@ -1245,34 +1134,8 @@ function assemblePayload(opts: { mode: "summary" | "full" | "last"; lastMessage:
 	return opts.lastMessage;
 }
 
-function buildScript(target: PanelOpenTarget, cwd: string, sessionFile: string, forkId: string, panelLabel: string, parentSessionFile: string, prompt?: string): string {
-	const cmd = buildSessionLaunchCommand(cwd, sessionFile, {
-		PI_FORK_ID: forkId,
-		PI_FORK_PANEL_LABEL: panelLabel,
-		PI_FORK_PARENT: parentSessionFile,
-	});
-
-	if (target === "tab") {
-		return `tell application "System Events"
-  tell process "Ghostty"
-    keystroke "t" using command down
-    delay 1.0
-    keystroke "${cmd}"
-    key code 36${prompt ? `\n    delay 2\n    keystroke "${esc(prompt)}"\n    key code 36` : ""}
-  end tell
-end tell`;
-	}
-
-	return `tell application "Ghostty"
-  set currentTerm to focused terminal of selected tab of front window
-${buildAnchorNavigationScript(target, "currentTerm", "anchorTerm")}
-  set newTerm to split anchorTerm direction ${target.splitDirection}
-  input text "${cmd}" to newTerm
-  send key "enter" to newTerm${prompt ? `\n  delay 2\n  input text "${esc(prompt)}" to newTerm\n  send key "enter" to newTerm` : ""}
-end tell`;
-}
-
 export default function (pi: ExtensionAPI, signals: Pick<NodeJS.Process, "on" | "removeListener" | "exit"> = process) {
+	registerPanelRequestScope(pi);
 	const forkId = process.env.PI_FORK_ID;
 
 	// CHILD MODE additions: this session is a fork of a parent — write snapshots/inbox handoffs
@@ -1450,7 +1313,7 @@ export default function (pi: ExtensionAPI, signals: Pick<NodeJS.Process, "on" | 
 						ctx.ui.notify(`${childPanelLabel ?? "panel"} ${result.inject ? "handoff 즉시 주입 요청 후" : "handoff inbox 저장 후"} 종료`, "info");
 					}
 					try { unlinkSync(handoffPath); } catch {}
-					await closeCurrentForkPanel(pi);
+					await closeCurrentForkPanel(pi, ctx);
 				} catch (e) {
 					ctx.ui.notify(`done 실패: ${e instanceof Error ? e.message : e}`, "error");
 				}
@@ -1555,7 +1418,7 @@ export default function (pi: ExtensionAPI, signals: Pick<NodeJS.Process, "on" | 
 							ctx.ui.notify(`${result.identity.panelLabel} ${result.item.delivery === "inject" ? "handoff 즉시 주입 요청 후" : "handoff inbox 저장 후"} 종료 (recovered)`, "info");
 						}
 						try { unlinkSync(join(HANDOFF_DIR, `${result.identity.forkId}.json`)); } catch {}
-						await closeCurrentForkPanel(pi);
+						await closeCurrentForkPanel(pi, ctx);
 					}
 				} catch (e) {
 					ctx.ui.notify(`done 실패: ${e instanceof Error ? e.message : e}`, "error");
@@ -1669,16 +1532,22 @@ export default function (pi: ExtensionAPI, signals: Pick<NodeJS.Process, "on" | 
 
 			// Open in Ghostty
 			forkInProgress = true;
-			const script = buildScript(target, ctx.cwd, forkedFile, newForkId, panelLabel, parentSessionFile, prompt);
-			const result = await pi.exec("osascript", ["-e", script]);
+			const launched = await launchSessionInGhostty(pi, target, ctx.cwd, forkedFile, {
+				PI_FORK_ID: newForkId,
+				PI_FORK_PANEL_LABEL: panelLabel,
+				PI_FORK_PARENT: parentSessionFile,
+			}, ctx);
 
 			setTimeout(() => { forkInProgress = false; }, FORK_COOLDOWN_MS);
 
-			if (result.code !== 0) {
+			if (!launched.ok) {
 				forkInProgress = false;
-				ctx.ui.notify(`패널 생성 실패: ${result.stderr?.trim() ?? "unknown"}`, "error");
+				ctx.ui.notify(`패널 생성 실패: ${launched.reason}`, "error");
 				try { unlinkSync(forkedFile); } catch {}
 				return;
+			}
+			if (prompt && !(await inputToTerminal(pi, launched.terminalId, prompt, 2))) {
+				ctx.ui.notify("새 패널에 자동 prompt를 입력하지 못했습니다. 새 패널에서 직접 입력해 주세요.", "warning");
 			}
 
 			// Register watcher for handoff
@@ -1696,8 +1565,8 @@ export default function (pi: ExtensionAPI, signals: Pick<NodeJS.Process, "on" | 
 			watchHandoff(newForkId, label, ctx);
 
 			ctx.ui.notify(
-				`${panelLabel} 세션 포크 → ${targetLabel}${prompt ? ` (자동 prompt)` : ""}\n/handoff는 parent inbox에 저장되고, 종료 fallback도 /panels에서 확인합니다.`,
-				"info",
+				`${panelLabel} 세션 포크 → ${targetLabel}${prompt ? ` (자동 prompt)` : ""}${anchorNote(launched.anchor)}\n/handoff는 parent inbox에 저장되고, 종료 fallback도 /panels에서 확인합니다.`,
+				launched.anchor === "focused" ? "warning" : "info",
 			);
 	};
 
@@ -1705,7 +1574,7 @@ export default function (pi: ExtensionAPI, signals: Pick<NodeJS.Process, "on" | 
 		const parts = prefix.split(/\s+/);
 		const last = parts.pop() ?? "";
 		const base = parts.length > 0 ? `${parts.join(" ")} ` : "";
-		const candidates = base ? SPLIT_DIRS : VALID_DIRS;
+		const candidates = base ? SPLIT_DIRECTIONS : VALID_DIRS;
 		const filtered = candidates.filter((d) => d.startsWith(last)).map((d) => ({ value: `${base}${d}`, label: `${base}${d}` }));
 		return filtered.length > 0 ? filtered : null;
 	};
@@ -1867,7 +1736,7 @@ export default function (pi: ExtensionAPI, signals: Pick<NodeJS.Process, "on" | 
 		const parts = prefix.split(/\s+/);
 		const last = parts.pop() ?? "";
 		const base = parts.length > 0 ? `${parts.join(" ")} ` : "";
-		const filtered = SPLIT_DIRS.filter((d) => d.startsWith(last)).map((d) => ({ value: `${base}${d}`, label: `${base}${d}` }));
+		const filtered = SPLIT_DIRECTIONS.filter((d) => d.startsWith(last)).map((d) => ({ value: `${base}${d}`, label: `${base}${d}` }));
 		return filtered.length > 0 ? filtered : null;
 	};
 
@@ -2138,10 +2007,11 @@ export default function (pi: ExtensionAPI, signals: Pick<NodeJS.Process, "on" | 
 			PI_FORK_PANEL_LABEL: target.panelLabel,
 			PI_FORK_PARENT: target.parentSessionFile,
 		};
-		if (process.platform === "darwin" && process.env.TERM_PROGRAM === "ghostty") {
-			const terminalId = await getGhosttyFocusedTerminalId(pi);
-			const script = buildReplaceCurrentSessionScript(reviveCwd.cwd, target.sessionFile, env, terminalId);
-			const launch = await runDetachedOsa(pi, script);
+		// 재실행 명령은 자기 패널에만 입력한다. 자기 패널을 못 찾으면 다른 패널에 입력하지 않고 같은 프로세스 안에서 전환한다.
+		const ownTerminalId = process.platform === "darwin" && process.env.TERM_PROGRAM === "ghostty" ? await findOwnTerminal(pi, ctx) : undefined;
+		if (ownTerminalId) {
+			const launchScript = prepareSessionLaunchScript(reviveCwd.cwd, target.sessionFile, env);
+			const launch = await runDetachedOsa(pi, buildInputTerminalScript(ownTerminalId, launchScript.scriptPath, 0.8));
 			if (launch.code === 0) {
 				if (!isP0) { try { unlinkSync(join(HANDOFF_DIR, `${target.forkId}.json`)); } catch {} }
 				ctx.ui.notify(`${item.workspaceLabel} · ${item.title} 현재 패널 재실행 요청 · 새 runtime의 cwd 확인은 재시작 후 필요합니다.`, reviveCwd.fallback ? "warning" : "info");
@@ -2222,19 +2092,18 @@ export default function (pi: ExtensionAPI, signals: Pick<NodeJS.Process, "on" | 
 		const cwd = reviveCwd.cwd;
 		const isP0 = recordSource(target) === "p0";
 		if (!isP0) { try { unlinkSync(join(HANDOFF_DIR, `${target.forkId}.json`)); } catch {} }
-		const script = buildOpenSessionScript(mode, cwd, target.sessionFile, isP0 ? {} : {
+		const launched = await launchSessionInGhostty(pi, mode, cwd, target.sessionFile, isP0 ? {} : {
 			PI_FORK_ID: target.forkId,
 			PI_FORK_PANEL_LABEL: target.panelLabel,
 			PI_FORK_PARENT: target.parentSessionFile,
-		});
-		const result = await pi.exec("osascript", ["-e", script]);
-		if (result.code !== 0) {
-			ctx.ui.notify(`패널 생성 실패: ${result.stderr?.trim() ?? "unknown"}`, "error");
+		}, ctx);
+		if (!launched.ok) {
+			ctx.ui.notify(`패널 생성 실패: ${launched.reason}`, "error");
 			return;
 		}
 
 		if (!isP0) watchHandoff(target.forkId, item.title || target.label, ctx);
-		ctx.ui.notify(`${panelLabelOf(target)} · ${item.workspaceLabel} · ${item.title} 세션 재개 → ${modeLabel(mode)}`, "info");
+		ctx.ui.notify(`${panelLabelOf(target)} · ${item.workspaceLabel} · ${item.title} 세션 재개 → ${modeLabel(mode)}${anchorNote(launched.anchor)}`, launched.anchor === "focused" ? "warning" : "info");
 	}
 
 	async function repanelCurrent(placement: SplitPlacement, ctx: ExtensionCommandContext) {
@@ -2249,7 +2118,13 @@ export default function (pi: ExtensionAPI, signals: Pick<NodeJS.Process, "on" | 
 			return;
 		}
 
-		const terminalCount = await getGhosttyTerminalCount(pi);
+		// 닫고 다시 여는 대상은 이 Pi가 실행 중인 패널뿐이다. 찾지 못하면 다른 패널을 닫지 않도록 중단한다.
+		const ownTerminalId = await findOwnTerminal(pi, ctx);
+		if (!ownTerminalId) {
+			ctx.ui.notify("이 패널을 찾지 못해 /repanel을 중단했습니다", "error");
+			return;
+		}
+		const terminalCount = await countTerminalsInTabOf(pi, ownTerminalId);
 		if (terminalCount === null) {
 			ctx.ui.notify("Ghostty 패널 수를 확인하지 못해 /repanel을 중단했습니다", "error");
 			return;
@@ -2258,20 +2133,16 @@ export default function (pi: ExtensionAPI, signals: Pick<NodeJS.Process, "on" | 
 			ctx.ui.notify("/repanel은 현재 패널을 먼저 닫은 뒤 남은 패널 기준으로 split하므로, 최소 2개 패널이 필요합니다", "warning");
 			return;
 		}
-		const oldTerminalId = await getGhosttyFocusedTerminalId(pi);
-		if (!oldTerminalId) {
-			ctx.ui.notify("현재 Ghostty 패널 ID를 확인하지 못해 /repanel을 중단했습니다", "error");
-			return;
-		}
 
 		const forkId = process.env.PI_FORK_ID;
 		if (forkId) writeRepanelMarker(forkId);
 
-		const script = buildRepanelScript(placement, ctx.cwd, sessionFile, {
+		const launch = prepareSessionLaunchScript(ctx.cwd, sessionFile, {
 			PI_FORK_ID: forkId,
 			PI_FORK_PANEL_LABEL: process.env.PI_FORK_PANEL_LABEL,
 			PI_FORK_PARENT: process.env.PI_FORK_PARENT,
-		}, oldTerminalId);
+		});
+		const script = buildRepanelScript(ownTerminalId, placement, ctx.cwd, launch.scriptPath);
 		const result = await runDetachedOsa(pi, script);
 		if (result.code !== 0) {
 			if (forkId) consumeRepanelMarker(forkId);

@@ -4,13 +4,11 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { prepareSessionLaunchScript } from "../utils/session-launch.ts";
 import {
-	buildOpenSessionPlan,
-	buildRepanelScript,
 	openExactSessionInNewPanel,
 	parsePanelTargetRequest,
 	parseSplitPlacementArgs,
-	splitPlacementFromDirections,
 } from "./index.ts";
 
 test("parsePanelTargetRequest treats leading directions as anchor path and preserves prompt", () => {
@@ -31,45 +29,6 @@ test("parseSplitPlacementArgs accepts repanel anchor-path syntax only", () => {
 	assert.equal(parseSplitPlacementArgs("right later"), null);
 });
 
-test("buildOpenSessionScript uses a short ASCII script command while preserving exact Unicode launch data", () => {
-	const launchRoot = mkdtempSync(join(tmpdir(), "pilee-panel-transport-"));
-	try {
-		for (const target of ["tab" as const, splitPlacementFromDirections(["right"])]) {
-			const plan = buildOpenSessionPlan(target, "/tmp/한글 work dir", "/tmp/정확한 session.jsonl", {
-				PI_WORKSPACE_ACTIVATION_FILE: "/tmp/활성화.json",
-			}, launchRoot);
-			const command = plan.script.match(/set command of launchConfig to "([^"]+)"/)?.[1] ?? "";
-			assert.equal(command, plan.launchScriptPath);
-			assert.equal([...command].every((char) => char.charCodeAt(0) < 128), true, "Ghostty command must be ASCII-only");
-			assert.ok(command.length < 256, "Ghostty command must stay short");
-			assert.doesNotMatch(plan.script, /set initial input|base64|dquote/);
-			assert.equal(existsSync(plan.launchScriptPath), true);
-			const launchScript = readFileSync(plan.launchScriptPath, "utf8");
-			assert.ok(launchScript.includes("/tmp/한글 work dir"));
-			assert.ok(launchScript.includes("/tmp/정확한 session.jsonl"));
-			assert.ok(launchScript.includes("PI_WORKSPACE_ACTIVATION_FILE="));
-			assert.ok(launchScript.includes("/tmp/활성화.json"));
-			assert.ok(launchScript.indexOf("rm -f --") < launchScript.indexOf("exec /bin/bash"));
-			assert.match(plan.script, /return id of newTerm/);
-		}
-
-		const tabScript = buildOpenSessionPlan("tab", "/tmp/work dir", "/tmp/exact session.jsonl", {}, launchRoot).script;
-		assert.match(tabScript, /set launchConfig to new surface configuration/);
-		assert.match(tabScript, /set initial working directory of launchConfig to "\/tmp\/work dir"/);
-		assert.match(tabScript, /set command of launchConfig to "\/.*launch-.*\.sh"/);
-	assert.match(tabScript, /set newTab to new tab in front window with configuration launchConfig/);
-	assert.match(tabScript, /select tab newTab/);
-	assert.match(tabScript, /set newTerm to focused terminal of newTab/);
-	assert.doesNotMatch(tabScript, /make new tab|input text|send key/);
-
-		const splitScript = buildOpenSessionPlan(splitPlacementFromDirections(["right"]), "/tmp/work dir", "/tmp/exact session.jsonl", {}, launchRoot).script;
-		assert.match(splitScript, /split anchorTerm direction right with configuration launchConfig/);
-		assert.doesNotMatch(splitScript, /input text|send key/);
-	} finally {
-		rmSync(launchRoot, { recursive: true, force: true });
-	}
-});
-
 test("short launch script runs in a background PTY with exact Unicode cwd, env, and session", () => {
 	const root = mkdtempSync(join(tmpdir(), "pilee-panel-pty-"));
 	const workDir = join(root, "한글 작업공간");
@@ -83,7 +42,7 @@ test("short launch script runs in a background PTY with exact Unicode cwd, env, 
 	const previousPiBin = process.env.PILEE_PI_BIN;
 	try {
 		process.env.PILEE_PI_BIN = fakePi;
-		const plan = buildOpenSessionPlan("tab", workDir, sessionFile, { UNICODE_VALUE: "환경값-한글" }, root);
+		const plan = { launchScriptPath: prepareSessionLaunchScript(workDir, sessionFile, { UNICODE_VALUE: "환경값-한글" }, root).scriptPath };
 		const ptyRunner = [
 			"import os,pty,sys",
 			"pid,fd=pty.fork()",
@@ -135,30 +94,5 @@ test("host script failure is unsafe because Ghostty may have already created a s
 		if (result.status === "failed") assert.equal(result.safeToDeleteTarget, false);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
-	}
-});
-
-test("buildRepanelScript resolves anchor before closing current terminal", () => {
-	const launchRoot = mkdtempSync(join(tmpdir(), "pilee-repanel-transport-"));
-	try {
-		const script = buildRepanelScript(
-			splitPlacementFromDirections(["right", "down"]),
-			"/tmp/example",
-			"/tmp/session.jsonl",
-			{},
-			"old-terminal-id",
-			launchRoot,
-		);
-
-		const navigationIndex = script.indexOf('perform action "goto_split:right"');
-		const closeIndex = script.indexOf("close oldTerm");
-		const splitIndex = script.indexOf("split anchorTerm direction down");
-
-		assert.ok(navigationIndex > -1, "script should navigate to the right anchor");
-		assert.ok(closeIndex > navigationIndex, "script must not close the current terminal before anchor resolution");
-		assert.ok(script.includes("set anchorTerm to first terminal whose id is anchorId"));
-		assert.ok(splitIndex > closeIndex, "script should split the resolved anchor after closing the old terminal");
-	} finally {
-		rmSync(launchRoot, { recursive: true, force: true });
 	}
 });
