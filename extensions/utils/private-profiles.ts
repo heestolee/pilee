@@ -60,8 +60,6 @@ export interface WorktreeRepoProfile {
 	productionBranch?: string;
 	branchPrefix?: string;
 	setupScript?: string;
-	autoOpenInGhostty?: boolean;
-	ghosttyDirection?: "right" | "left" | "down" | "up" | "tab";
 	namingScheme?: "words" | "pokemon" | "city" | "none";
 	gate?: WorktreeRepoGateProfile;
 	bootstrap?: WorktreeBootstrapProfile;

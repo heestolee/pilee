@@ -106,8 +106,6 @@ interface WorktreeConfig {
 	productionBranch: string;
 	branchPrefix: string;
 	setupScript?: string;
-	autoOpenInGhostty: boolean;
-	ghosttyDirection: "right" | "left" | "down" | "up" | "tab";
 	namingScheme: WorktreeNamingScheme;
 }
 
@@ -116,8 +114,6 @@ const DEFAULT_CONFIG: WorktreeConfig = {
 	baseBranch: "main",
 	productionBranch: "production",
 	branchPrefix: "feature",
-	autoOpenInGhostty: true,
-	ghosttyDirection: "tab",
 	namingScheme: "words",
 };
 
@@ -142,8 +138,6 @@ function profileConfigDefaults(repoRoot: string): Partial<WorktreeConfig> {
 		productionBranch: profile.productionBranch,
 		branchPrefix: profile.branchPrefix,
 		setupScript: profile.setupScript,
-		autoOpenInGhostty: profile.autoOpenInGhostty,
-		ghosttyDirection: profile.ghosttyDirection,
 		namingScheme: profile.namingScheme,
 	};
 }
@@ -2022,33 +2016,6 @@ async function handleBootstrap(pi: ExtensionAPI, args: string, ctx: ExtensionCom
 	}
 	if (result.state === "failed-to-start" && result.systemNote) { ctx.ui.notify(result.systemNote, "warning"); return; }
 	ctx.ui.notify("Worktree bootstrap was not started.", "warning");
-}
-
-// ─── Ghostty integration ───────────────────────────────────────────────────
-
-async function openInGhostty(pi: ExtensionAPI, cwd: string, direction: WorktreeConfig["ghosttyDirection"]) {
-	if (process.platform !== "darwin" || process.env.TERM_PROGRAM !== "ghostty") return false;
-	const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-	const cmd = `cd "${esc(cwd)}" && pi`;
-
-	let script: string;
-	if (direction === "tab") {
-		script = `tell application "Ghostty"
-  set newTerm to make new tab in front window
-  input text "${esc(cmd)}" to newTerm
-  send key "enter" to newTerm
-end tell`;
-	} else {
-		script = `tell application "Ghostty"
-  set currentTerm to focused terminal of selected tab of front window
-  set newTerm to split currentTerm direction ${direction}
-  input text "${esc(cmd)}" to newTerm
-  send key "enter" to newTerm
-end tell`;
-	}
-
-	const result = await pi.exec("osascript", ["-e", script]);
-	return result.code === 0;
 }
 
 // ─── Commands ──────────────────────────────────────────────────────────────
