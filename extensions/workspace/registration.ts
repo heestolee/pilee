@@ -4,6 +4,7 @@ import { basename } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { beginTerminalTitleProbe } from "../utils/terminal-title.ts";
+import { ghosttyBindingScript, parseBindingOutput, rememberOwnTerminal } from "../utils/ghostty-panels.ts";
 import { resolveForkPanelIdentity } from "../utils/fork-panel-identity.ts";
 import { readSessionIdentity } from "./planner.ts";
 import { readProcessStarts, removeRegistration, writeRegistration, type SessionRegistration, type TerminalBinding } from "./registry.ts";
@@ -25,33 +26,6 @@ export function supportsRegistration(ctx: ExtensionContext, environment: Registr
 		return environment.platform === "darwin" && environment.termProgram === "ghostty" && environment.stdinTTY && environment.stdoutTTY &&
 			ctx.hasUI && (!("mode" in ctx) || ctx.mode === "tui") && !/[\\/]subagents[\\/]/u.test(ctx.sessionManager.getSessionFile() || "");
 	} catch { return false; }
-}
-
-export function ghosttyBindingScript(marker: string): string {
-	if (!/^\[pilee:[a-f0-9-]+\]$/u.test(marker)) throw new Error("잘못된 등록 표식");
-	return `tell application "Ghostty"
-  if not running then error "Ghostty is not running"
-  set matches to ""
-  repeat with targetWindow in windows
-    repeat with targetTab in tabs of targetWindow
-      repeat with targetTerm in terminals of targetTab
-        if (name of targetTerm as text) contains "${marker}" then
-          set matches to matches & (id of targetWindow as text) & (character id 9) & (id of targetTerm as text) & (character id 10)
-        end if
-      end repeat
-    end repeat
-  end repeat
-  return matches
-end tell`;
-}
-
-export function parseBindingOutput(output: string): TerminalBinding | undefined {
-	const lines = output.trim().split(/\r?\n/u).filter(Boolean);
-	if (lines.length > 1) throw new Error("등록 표식이 여러 Ghostty 패널에 있습니다. 정확한 연결을 확정할 수 없습니다.");
-	if (!lines.length) return;
-	const [windowId, terminalId, extra] = lines[0].split("\t");
-	if (!windowId || !terminalId || extra !== undefined) throw new Error("Ghostty 등록 응답 형식이 잘못되었습니다.");
-	return { windowId, terminalId };
 }
 
 export function createSessionRegistration(pi: Pick<ExtensionAPI, "exec">, workspaceDir: string, environment?: RegistrationEnvironment) {
@@ -139,6 +113,7 @@ export function createSessionRegistration(pi: Pick<ExtensionAPI, "exec">, worksp
 					if (retry < 2) await sleep(100, undefined, { signal });
 				}
 				if (!binding) throw new Error("등록 표식과 일치하는 Ghostty 패널이 없습니다. /reload 후 권한·제목 설정을 확인하세요.");
+				rememberOwnTerminal(binding.terminalId);
 				error = undefined;
 			} catch (failure) {
 				if (!isCurrent() || generation !== attempt) return;

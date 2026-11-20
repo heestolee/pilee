@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { createSessionRegistration, ghosttyBindingScript, parseBindingOutput, supportsRegistration, type RegistrationEnvironment } from "./registration.ts";
+import { createSessionRegistration, supportsRegistration, type RegistrationEnvironment } from "./registration.ts";
+import { ghosttyBindingScript, parseBindingOutput } from "../utils/ghostty-panels.ts";
 import { readRegistrations } from "./registry.ts";
 import { syncTerminalTitle } from "../utils/terminal-title.ts";
 
