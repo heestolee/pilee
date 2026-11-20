@@ -53,7 +53,8 @@ test("새 탭은 출처 패널이 있는 창에 만들고, 그 창의 선택 탭
 	const script = buildOpenPanelScript({ target: "tab", cwd: "/tmp", launchScriptPath, sourceTerminalId: "SRC" });
 	assert.match(script, /set newTab to new tab in srcWindow with configuration launchConfig/);
 	assert.match(script, /select tab previousTab/);
-	assert.match(script, /if not appWasFront then\n\s+if previousPid is not 0 then/);
+	assert.match(script, /set previousFrontWindowId to \(id of front window\) as text/);
+	assert.match(script, /activate window \(first window whose id is previousFrontWindowId\)[\s\S]*set frontmost of \(first process whose unix id is previousPid\) to true/);
 	assert.doesNotMatch(script, /new tab in front window/);
 });
 

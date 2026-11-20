@@ -260,8 +260,10 @@ export function buildOpenPanelScript(input: OpenPanelScriptInput): string {
 			"else",
 			"  set previousTab to selected tab of srcWindow",
 			"  set previousPid to 0",
+			"  set previousFrontWindowId to \"\"",
 			"  if not appWasFront then",
 			"    try",
+			"      set previousFrontWindowId to (id of front window) as text",
 			'      tell application "System Events" to set previousPid to unix id of first process whose frontmost is true',
 			"    end try",
 			"  end if",
@@ -270,6 +272,12 @@ export function buildOpenPanelScript(input: OpenPanelScriptInput): string {
 			// 새 탭 만들기는 그 창의 선택 탭을 바꾸고 Ghostty를 앞으로 끌어온다. 탭 선택과(뒤에 있었다면) 원래 앱을 되돌린다.
 			"  select tab previousTab",
 			"  if not appWasFront then",
+			// 앱을 다시 뒤로 보내도 Ghostty 안의 맨 앞 창은 바뀐 채 남는다. 돌아왔을 때 원래 창이 보이도록 되돌린다.
+			"    if previousFrontWindowId is not \"\" and previousFrontWindowId is not ((id of srcWindow) as text) then",
+			"      try",
+			"        activate window (first window whose id is previousFrontWindowId)",
+			"      end try",
+			"    end if",
 			"    if previousPid is not 0 then",
 			"      try",
 			'        tell application "System Events" to set frontmost of (first process whose unix id is previousPid) to true',
