@@ -58,6 +58,6 @@ test("/frame Step 9 routes fork selection to command-context bridge, not worktre
 	assert.match(source, /result\.status !== "activated" && result\.status !== "switched"/);
 	assert.match(frameSkill, /`frame_worktree_fork` tool/);
 	assert.match(frameSkill, /`worktree_fork` tool이나 사용자 slash `\/wt fork`를 호출하지 말고/);
-	assert.match(frameSkill, /composed workflow runner를 실행하고 공통 선택기로 `현재 패널 \| 새 탭 \| 오른쪽 패널`/);
+	assert.match(frameSkill, /`openTarget` 위치\(`현재 패널 \| 새 탭 \| 오른쪽 패널`\)에서 활성화한다\. 위치는 사용자에게 묻지 않는다/);
 	assert.match(frameSkill, /현재 패널을 고른 결과면 이번 턴에서 구현을 시작하지 말고/);
 });
