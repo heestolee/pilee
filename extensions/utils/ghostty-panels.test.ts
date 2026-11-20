@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import {
 	beginPanelRequest,
 	buildCloseTerminalScript,
@@ -164,4 +167,30 @@ test("repanel은 자기 패널 기준으로 기준 패널을 찾은 뒤에 닫�
 	const simple = buildRepanelScript("OWN", right, "/tmp", launchScriptPath);
 	assert.match(simple, /close ownTerm\n\s+delay 0\.7\n\s+set anchorTerm to focused terminal of ownTab/);
 	assert.doesNotMatch(`${script}\n${simple}`, /front window|^\s*activate\s*$/m);
+});
+
+// 패널 위치를 포커스로 추정하는 스크립트가 다시 흩어지지 않도록, Ghostty·키 입력 스크립트는 이 모듈에만 둔다.
+test("Ghostty·키 입력 AppleScript는 공통 모듈 밖에 두지 않는다", () => {
+	const extensionsRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+	const allowed = new Set([
+		"utils/ghostty-panels.ts",
+		// 창 전체를 저장·복원하는 기능이라 맨 앞 창을 대상으로 삼는 것이 의도다.
+		"workspace/capture.ts",
+		"workspace/restore.ts",
+	]);
+	const pattern = /tell application "(Ghostty|System Events)"|focused terminal of selected tab|\bfront window\b|keystroke "|key code \d/;
+	const offenders: string[] = [];
+	const walk = (dir: string) => {
+		for (const name of readdirSync(dir)) {
+			if (name === "node_modules") continue;
+			const path = join(dir, name);
+			if (statSync(path).isDirectory()) walk(path);
+			else if (name.endsWith(".ts") && !name.endsWith(".test.ts")) {
+				const rel = relative(extensionsRoot, path);
+				if (!allowed.has(rel) && pattern.test(readFileSync(path, "utf8"))) offenders.push(rel);
+			}
+		}
+	};
+	walk(extensionsRoot);
+	assert.deepEqual(offenders, []);
 });
